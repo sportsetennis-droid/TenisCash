@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#FF6D00">
+<title>TenisCash</title>
+<link rel="manifest" href="/manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:'Chakra Petch',sans-serif; background:#FF6D00; color:#fff; min-height:100vh; max-width:430px; margin:0 auto; overflow-x:hidden; }
+input { font-family:'Chakra Petch',sans-serif; }
+input::placeholder { color:rgba(255,255,255,0.35); }
+::-webkit-scrollbar { width:0; }
+.screen { display:none; padding:0 20px 110px; }
+.screen.active { display:block; }
+#splash { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:0; }
+@keyframes pulseW { 0%,100%{opacity:.8;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
+@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+.splash-logo { animation:pulseW 2s ease-in-out infinite; margin-bottom:28px; }
+.splash-circle { width:120px; height:120px; border-radius:50%; border:4px solid #fff; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.1); box-shadow:0 0 60px rgba(255,255,255,0.15); }
+.splash-t { font-family:'Orbitron'; font-size:52px; font-weight:900; color:#fff; }
+.splash-name { animation:fadeUp 1s ease-out .5s both; }
+.splash-sub { animation:fadeUp 1s ease-out 1s both; color:rgba(255,255,255,0.5); font-size:11px; letter-spacing:5px; margin-top:14px; }
+.header { display:flex; justify-content:space-between; align-items:center; padding:20px 0 10px; }
+.avatar { width:42px; height:42px; border-radius:50%; border:2px solid #fff; display:flex; align-items:center; justify-content:center; cursor:pointer; background:rgba(255,255,255,0.12); }
+.balance-card { background:rgba(255,255,255,0.1); border-radius:22px; padding:28px 24px; margin-top:16px; border:1px solid rgba(255,255,255,0.2); box-shadow:0 8px 32px rgba(0,0,0,0.15); }
+.balance-label { color:rgba(255,255,255,0.85); font-size:13px; letter-spacing:2px; }
+.balance-amount { font-family:'Orbitron'; font-size:42px; font-weight:900; letter-spacing:2px; margin-top:8px; }
+.balance-equiv { color:rgba(255,255,255,0.25); font-size:11px; margin-top:10px; letter-spacing:1px; }
+.actions { display:flex; gap:10px; margin-top:20px; }
+.action-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 0; border-radius:14px; cursor:pointer; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.15); }
+.action-btn span:first-child { font-size:20px; }
+.action-btn span:last-child { font-size:10px; letter-spacing:1px; color:rgba(255,255,255,0.85); }
+.section-title { display:flex; justify-content:space-between; align-items:center; margin:28px 0 16px; }
+.tx-item { display:flex; align-items:center; gap:14px; padding:13px 0; border-bottom:1px solid rgba(255,255,255,0.08); }
+.tx-icon { width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.tx-info { flex:1; }
+.tx-info p:first-child { font-size:13px; font-weight:500; }
+.tx-info p:last-child { font-size:11px; color:rgba(255,255,255,0.25); margin-top:2px; }
+.tx-amount { font-family:'Orbitron'; font-size:13px; font-weight:700; }
+.back-header { padding:20px 0 10px; display:flex; align-items:center; gap:12px; }
+.back-arrow { font-size:22px; cursor:pointer; }
+.input-label { color:rgba(255,255,255,0.85); font-size:12px; letter-spacing:1px; }
+.input-field { width:100%; padding:16px; margin-top:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; color:#fff; font-size:16px; outline:none; }
+.input-amount-wrap { display:flex; align-items:center; gap:8px; margin-top:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; padding:12px 16px; }
+.input-amount { flex:1; background:transparent; border:none; color:#fff; font-size:34px; font-family:'Orbitron'; font-weight:900; outline:none; width:100%; }
+.btn-primary { width:100%; padding:18px; margin-top:30px; background:#fff; border:none; border-radius:14px; color:#FF6D00; font-size:15px; font-weight:700; cursor:pointer; font-family:'Chakra Petch'; letter-spacing:2px; box-shadow:0 4px 20px rgba(0,0,0,0.15); }
+.btn-outline { margin-top:30px; padding:14px 40px; background:transparent; border:2px solid #fff; border-radius:12px; color:#fff; font-size:14px; font-weight:600; cursor:pointer; font-family:'Chakra Petch'; }
+.success-circle { width:80px; height:80px; border-radius:50%; margin:0 auto 20px; background:rgba(255,255,255,0.15); border:3px solid #fff; display:flex; align-items:center; justify-content:center; font-size:36px; }
+.qr-box { width:220px; height:220px; margin:0 auto; background:#fff; border-radius:16px; padding:16px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 30px rgba(0,0,0,0.2); }
+.qr-img { width:100%; height:100%; object-fit:contain; }
+.promo-card { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:16px; padding:20px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.promo-card.inactive { opacity:0.5; border-color:rgba(255,255,255,0.06); }
+.promo-badge { background:#fff; border-radius:12px; padding:10px 16px; min-width:50px; text-align:center; box-shadow:0 2px 12px rgba(0,0,0,0.15); }
+.promo-badge span { font-family:'Orbitron'; font-size:18px; font-weight:900; color:#FF6D00; }
+.profile-avatar { width:80px; height:80px; border-radius:50%; margin:0 auto 16px; background:rgba(255,255,255,0.12); border:3px solid #fff; display:flex; align-items:center; justify-content:center; }
+.profile-item { display:flex; align-items:center; gap:14px; padding:16px 0; border-bottom:1px solid rgba(255,255,255,0.08); cursor:pointer; }
+.badge { display:inline-block; padding:5px 16px; background:rgba(255,255,255,0.12); border-radius:20px; border:1px solid rgba(255,255,255,0.15); margin-top:8px; }
+.badge span { font-size:11px; font-weight:600; letter-spacing:2px; }
+.bottom-nav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:430px; background:#E86200; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-around; align-items:center; padding:12px 20px 28px; z-index:100; }
+.nav-item { display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; opacity:0.4; transition:opacity .2s; }
+.nav-item.active { opacity:1; }
+.nav-item span:first-child { font-size:20px; }
+.nav-item span:last-child { font-size:10px; letter-spacing:1px; }
+.login-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:40px 20px; }
+.login-logo { width:80px; height:80px; border-radius:50%; border:3px solid #fff; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.1); margin-bottom:20px; }
+.tab-switch { display:flex; gap:0; margin-bottom:30px; width:100%; }
+.tab-btn { flex:1; padding:12px; border:none; cursor:pointer; font-family:'Chakra Petch'; font-size:14px; font-weight:600; letter-spacing:1px; }
+.tab-btn.active { background:#fff; color:#FF6D00; border-radius:10px; }
+.tab-btn:not(.active) { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.6); border-radius:10px; }
+.error-msg { background:rgba(255,0,0,0.2); border:1px solid rgba(255,0,0,0.4); border-radius:10px; padding:12px; margin-top:10px; font-size:13px; text-align:center; }
+.loading { text-align:center; padding:40px; color:rgba(255,255,255,0.5); }
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash" class="screen active">
+  <div class="splash-logo"><div class="splash-circle"><span class="splash-t">T</span></div></div>
+  <div class="splash-name">
+    <span style="font-family:'Orbitron';font-size:30px;font-weight:700;letter-spacing:6px">TENIS</span>
+    <span style="font-family:'Orbitron';font-size:30px;font-weight:900;letter-spacing:6px">CASH</span>
+  </div>
+  <p class="splash-sub">SPORTS & TENNIS</p>
+</div>
+
+<!-- LOGIN / REGISTER -->
+<div id="auth" class="screen">
+  <div class="login-screen">
+    <div class="login-logo"><span style="font-family:'Orbitron';font-size:36px;font-weight:900">T</span></div>
+    <div style="margin-bottom:10px">
+      <span style="font-family:'Orbitron';font-size:22px;font-weight:700;letter-spacing:4px">TENIS</span>
+      <span style="font-family:'Orbitron';font-size:22px;font-weight:900;letter-spacing:4px">CASH</span>
+    </div>
+    <div class="tab-switch">
+      <button class="tab-btn active" onclick="setAuthTab('login')">ENTRAR</button>
+      <button class="tab-btn" onclick="setAuthTab('register')">CRIAR CONTA</button>
+    </div>
+    <div id="login-form" style="width:100%">
+      <label class="input-label">TELEFONE</label>
+      <input id="login-phone" class="input-field" placeholder="(83) 99999-0001" style="margin-bottom:16px">
+      <label class="input-label">PIN</label>
+      <input id="login-pin" class="input-field" type="password" placeholder="••••" maxlength="6">
+      <div id="login-error"></div>
+      <button class="btn-primary" onclick="doLogin()">ENTRAR</button>
+    </div>
+    <div id="register-form" style="width:100%;display:none">
+      <label class="input-label">NOME</label>
+      <input id="reg-name" class="input-field" placeholder="Seu nome" style="margin-bottom:16px">
+      <label class="input-label">TELEFONE</label>
+      <input id="reg-phone" class="input-field" placeholder="(83) 99999-0000" style="margin-bottom:16px">
+      <label class="input-label">CPF (opcional)</label>
+      <input id="reg-cpf" class="input-field" placeholder="000.000.000-00" style="margin-bottom:16px">
+      <label class="input-label">CRIE UM PIN (4-6 dígitos)</label>
+      <input id="reg-pin" class="input-field" type="password" placeholder="••••" maxlength="6">
+      <div id="reg-error"></div>
+      <button class="btn-primary" onclick="doRegister()">CRIAR CONTA</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="home" class="screen">
+  <div class="header">
+    <div>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px">Olá,</p>
+      <p style="font-size:18px;font-weight:700" id="home-name"></p>
+    </div>
+    <div class="avatar" onclick="showScreen('profile')"><span id="home-initial" style="font-weight:700;font-size:16px"></span></div>
+  </div>
+  <div class="balance-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <p class="balance-label">SEU SALDO</p>
+      <span style="cursor:pointer;font-size:18px;color:rgba(255,255,255,0.5)" onclick="toggleBalance()">👁</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="color:#fff;font-size:16px;font-weight:700;font-family:'Orbitron'">T$</span>
+      <span class="balance-amount" id="home-balance"></span>
+    </div>
+    <p class="balance-equiv" id="home-equiv"></p>
+  </div>
+  <div class="actions">
+    <div class="action-btn" onclick="showScreen('transfer')"><span>↑</span><span>Transferir</span></div>
+    <div class="action-btn" onclick="showScreen('receive')"><span>↓</span><span>Receber</span></div>
+    <div class="action-btn" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
+    <div class="action-btn" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
+  </div>
+  <div class="section-title">
+    <p style="font-size:15px;font-weight:700">Movimentações</p>
+  </div>
+  <div id="home-transactions"></div>
+</div>
+
+<!-- TRANSFER -->
+<div id="transfer" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
+  <div id="transfer-form">
+    <div style="margin-top:20px">
+      <label class="input-label">PARA QUEM</label>
+      <input id="tf-to" class="input-field" placeholder="Telefone ou CPF" style="margin-bottom:20px">
+      <div id="tf-lookup" style="font-size:13px;color:rgba(255,255,255,0.7);margin:-12px 0 16px 0"></div>
+      <label class="input-label">QUANTO</label>
+      <div class="input-amount-wrap">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">T$</span>
+        <input id="tf-amount" class="input-amount" placeholder="0" type="number">
+      </div>
+      <p style="color:rgba(255,255,255,0.25);font-size:12px;margin-top:8px" id="tf-balance"></p>
+      <div id="tf-error"></div>
+      <button class="btn-primary" onclick="doTransfer()">ENVIAR TENISCASH</button>
+    </div>
+  </div>
+  <div id="transfer-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Enviado!</p>
+    <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px" id="tf-success-msg"></p>
+    <button class="btn-outline" onclick="resetTransfer();showScreen('home')">VOLTAR</button>
+  </div>
+</div>
+
+<!-- RECEIVE -->
+<div id="receive" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Receber</p></div>
+  <div style="text-align:center;margin-top:40px">
+    <p style="color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px;margin-bottom:20px">SEU CÓDIGO PARA RECEBER</p>
+    <div class="qr-box"><div style="width:100%;height:100%;background:repeating-conic-gradient(#FF6D00 0% 25%,#fff 0% 50%) 0 0/20px 20px;border-radius:8px"></div></div>
+    <p style="font-size:14px;font-weight:600;margin-top:20px" id="recv-name"></p>
+    <p style="color:rgba(255,255,255,0.5);font-size:12px" id="recv-phone"></p>
+    <p style="color:rgba(255,255,255,0.25);font-size:11px;margin-top:20px">Mostre este código para receber TenisCash</p>
+  </div>
+</div>
+
+<!-- QR CODE -->
+<div id="qr" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">QR Code - Usar na Loja</p></div>
+  <div style="text-align:center;margin-top:40px">
+    <p style="color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px;margin-bottom:8px">MOSTRE NO CAIXA</p>
+    <p style="font-family:'Orbitron';font-size:30px;font-weight:900;margin-bottom:20px" id="qr-balance"></p>
+    <div class="qr-box"><img id="qr-img" class="qr-img" alt="QR Code"></div>
+    <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:20px">O vendedor vai escanear para aplicar seu TenisCash</p>
+    <div style="margin-top:20px;padding:10px 20px;border-radius:10px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.15);display:inline-block">
+      <span style="font-size:12px;font-weight:600;letter-spacing:1px" id="qr-code"></span>
+    </div>
+  </div>
+</div>
+
+<!-- PROMOS -->
+<div id="promos" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Promoções</p></div>
+  <div id="promos-list" style="margin-top:16px"></div>
+</div>
+
+<!-- PROFILE -->
+<div id="profile" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Perfil</p></div>
+  <div style="text-align:center;margin-top:30px">
+    <div class="profile-avatar"><span style="font-family:'Orbitron';font-size:32px;font-weight:900" id="prof-initial"></span></div>
+    <p style="font-size:20px;font-weight:700" id="prof-name"></p>
+    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:4px" id="prof-phone"></p>
+    <div class="badge"><span id="prof-since"></span></div>
+  </div>
+  <div style="margin-top:30px">
+    <div class="profile-item"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Segurança</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item"><span style="font-size:18px">🔔</span><span style="flex:1;font-size:14px">Notificações</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item"><span style="font-size:18px">ℹ️</span><span style="flex:1;font-size:14px">Sobre o TenisCash</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="doLogout()"><span style="font-size:18px">🚪</span><span style="flex:1;font-size:14px;color:#FF5252">Sair</span></div>
+  </div>
+  <div style="margin-top:30px;text-align:center">
+    <p style="color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px">TENISCASH v1.0</p>
+    <p style="color:rgba(255,255,255,0.15);font-size:10px">Sports & Tennis © 2026</p>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav" id="bottomNav" style="display:none">
+  <div class="nav-item active" onclick="showScreen('home')"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" onclick="showScreen('transfer')"><span>↗</span><span>Enviar</span></div>
+  <div class="nav-item" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
+  <div class="nav-item" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
+  <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+let token = localStorage.getItem('tc_token');
+let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
+let balanceVisible = true;
+
+// SPLASH
+setTimeout(() => {
+  document.getElementById('splash').classList.remove('active');
+  if (token && user) { showScreen('home'); loadHome(); }
+  else { showScreen('auth'); }
+}, 2200);
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const nav = document.getElementById('bottomNav');
+  const appScreens = ['home','transfer','receive','qr','promos','profile'];
+  nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
+  if (navMap[id] !== undefined) document.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+  if (id === 'home') loadHome();
+  if (id === 'qr') loadQR();
+  if (id === 'promos') loadPromos();
+  if (id === 'profile') loadProfile();
+  if (id === 'receive') { document.getElementById('recv-name').textContent = user?.name || ''; document.getElementById('recv-phone').textContent = user?.phone || ''; }
+  if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
+}
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+
+// AUTH
+function setAuthTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => { b.classList.toggle('active', (tab==='login'?i===0:i===1)); });
+  document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+}
+
+async function doLogin() {
+  const phone = document.getElementById('login-phone').value.replace(/\D/g,'');
+  const pin = document.getElementById('login-pin').value;
+  if (!phone || !pin) { showError('login-error','Preencha telefone e PIN'); return; }
+  const data = await api('/auth/login','POST',{phone,pin});
+  if (data.error) { showError('login-error',data.error); return; }
+  token = data.token; user = data.user;
+  localStorage.setItem('tc_token',token);
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  showScreen('home');
+}
+
+async function doRegister() {
+  const name = document.getElementById('reg-name').value;
+  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
+  const cpf = document.getElementById('reg-cpf').value.replace(/\D/g,'') || null;
+  const pin = document.getElementById('reg-pin').value;
+  if (!name || !phone || !pin) { showError('reg-error','Preencha todos os campos'); return; }
+  if (pin.length < 4) { showError('reg-error','PIN deve ter no mínimo 4 dígitos'); return; }
+  const data = await api('/auth/register','POST',{name,phone,cpf,pin});
+  if (data.error) { showError('reg-error',data.error); return; }
+  token = data.token; user = data.user;
+  localStorage.setItem('tc_token',token);
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  showScreen('home');
+}
+
+function doLogout() {
+  token = null; user = null;
+  localStorage.removeItem('tc_token');
+  localStorage.removeItem('tc_user');
+  showScreen('auth');
+}
+
+function showError(id, msg) {
+  document.getElementById(id).innerHTML = '<div class="error-msg">'+msg+'</div>';
+  setTimeout(() => document.getElementById(id).innerHTML = '', 4000);
+}
+
+// HOME
+async function loadHome() {
+  const me = await api('/auth/me');
+  if (me.error) { doLogout(); return; }
+  user = me.user;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  document.getElementById('home-name').textContent = user.name;
+  document.getElementById('home-initial').textContent = user.name[0];
+  updateBalance();
+  const txData = await api('/wallet/transactions?limit=10');
+  const container = document.getElementById('home-transactions');
+  if (!txData.transactions || txData.transactions.length === 0) {
+    container.innerHTML = '<p class="loading">Nenhuma movimentação ainda</p>';
+    return;
+  }
+  const colors = {credit:'#fff',transfer_in:'#FFD54F',transfer_out:'#FF5252',used:'#FF5252',promo:'#fff',welcome:'#fff',admin_credit:'#fff',admin_debit:'#FF5252'};
+  const icons = {credit:'↓',transfer_in:'←',transfer_out:'→',used:'↑',promo:'★',welcome:'🎁',admin_credit:'↓',admin_debit:'↑'};
+  const signs = {credit:'+',transfer_in:'+',transfer_out:'−',used:'−',promo:'+',welcome:'+',admin_credit:'+',admin_debit:'−'};
+  container.innerHTML = txData.transactions.map(tx => {
+    const c = colors[tx.type]||'#fff';
+    const d = new Date(tx.createdAt);
+    const date = d.toLocaleDateString('pt-BR');
+    const time = d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const bgc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.15)' : 'rgba(255,255,255,0.12)';
+    const bdc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.25)' : 'rgba(255,255,255,0.15)';
+    return '<div class="tx-item"><div class="tx-icon" style="background:'+bgc+';border:1px solid '+bdc+';color:'+c+'">'+(icons[tx.type]||'•')+'</div><div class="tx-info"><p>'+tx.description+'</p><p>'+date+' · '+time+'</p></div><span class="tx-amount" style="color:'+c+'">'+(signs[tx.type]||'')+' '+tx.amount+'</span></div>';
+  }).join('');
+}
+
+function updateBalance() {
+  const bal = document.getElementById('home-balance');
+  const eq = document.getElementById('home-equiv');
+  if (balanceVisible) {
+    bal.textContent = user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    eq.textContent = '≈ R$ '+(user.balance*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2})+' em poder de compra';
+  } else {
+    bal.textContent = '••••••';
+    eq.textContent = '≈ R$ •••• em poder de compra';
+  }
+}
+
+function toggleBalance() { balanceVisible = !balanceVisible; updateBalance(); }
+
+// TRANSFER
+async function doTransfer() {
+  const to = document.getElementById('tf-to').value.replace(/\D/g,'');
+  const amount = document.getElementById('tf-amount').value;
+  if (!to || !amount || parseFloat(amount) <= 0) { showError('tf-error','Preencha destinatário e valor'); return; }
+  const data = await api('/transfer/send','POST',{to,amount:parseFloat(amount)});
+  if (data.error) { showError('tf-error',data.error); return; }
+  document.getElementById('tf-success-msg').textContent = data.message;
+  document.getElementById('transfer-form').style.display = 'none';
+  document.getElementById('transfer-success').style.display = 'block';
+  user.balance = data.balance;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+}
+
+function resetTransfer() {
+  document.getElementById('tf-to').value = '';
+  document.getElementById('tf-amount').value = '';
+  document.getElementById('transfer-form').style.display = 'block';
+  document.getElementById('transfer-success').style.display = 'none';
+}
+
+// QR
+async function loadQR() {
+  document.getElementById('qr-balance').textContent = 'T$ ' + user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const data = await api('/qr/generate');
+  if (data.qrImage) { document.getElementById('qr-img').src = data.qrImage; }
+  if (data.qrCode) { document.getElementById('qr-code').textContent = data.qrCode.substring(0,20)+'...'; }
+}
+
+// PROMOS
+async function loadPromos() {
+  const data = await api('/promos');
+  const container = document.getElementById('promos-list');
+  if (!data.promos || data.promos.length === 0) { container.innerHTML = '<p class="loading">Nenhuma promoção no momento</p>'; return; }
+  container.innerHTML = data.promos.map(p => {
+    const active = p.active;
+    const ends = p.endsAt ? new Date(p.endsAt).toLocaleDateString('pt-BR') : '';
+    return '<div class="promo-card'+(active?'':' inactive')+'"><div><p style="font-size:15px;font-weight:700">'+p.title+'</p><p style="color:rgba(255,255,255,0.85);font-size:12px;margin-top:6px">'+p.description+'</p><p style="color:rgba(255,255,255,0.25);font-size:11px;margin-top:4px">'+(active?'Até '+ends:'Encerrada')+'</p></div><div class="promo-badge"><span>'+p.percentage+'%</span></div></div>';
+  }).join('');
+}
+
+// PROFILE
+function loadProfile() {
+  document.getElementById('prof-initial').textContent = user.name[0];
+  document.getElementById('prof-name').textContent = user.name;
+  document.getElementById('prof-phone').textContent = user.phone;
+  const d = new Date(user.createdAt);
+  const months = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  document.getElementById('prof-since').textContent = 'MEMBRO DESDE '+months[d.getMonth()]+'/'+d.getFullYear();
+}
+</script>
+</body>
+</html>
