@@ -235,6 +235,54 @@ input::placeholder { color:rgba(255,255,255,0.35); }
   </div>
 </div>
 
+<!-- CAIXA (POS) - só admin -->
+<div id="pos" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Caixa - Registrar Venda</p></div>
+  <div id="pos-form">
+    <div style="margin-top:16px">
+      <label class="input-label">TELEFONE DO CLIENTE</label>
+      <input id="pos-phone" class="input-field" placeholder="Telefone do cliente" style="margin-bottom:8px" oninput="posLookup()">
+      <div id="pos-client" style="font-size:14px;font-weight:600;margin-bottom:16px;min-height:20px"></div>
+
+      <label class="input-label">VALOR DA COMPRA (R$)</label>
+      <div class="input-amount-wrap" style="margin-bottom:16px">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">R$</span>
+        <input id="pos-sale" class="input-amount" placeholder="0" type="number" style="font-size:28px" oninput="posCalc()">
+      </div>
+
+      <label class="input-label">MARCA DO PRODUTO</label>
+      <select id="pos-brand" class="input-field" style="margin-bottom:16px;appearance:auto" onchange="posCalc()">
+        <option value="">Selecione a marca</option>
+      </select>
+
+      <label class="input-label">ABATER COM TENISCASH (T$)</label>
+      <div class="input-amount-wrap" style="margin-bottom:8px">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">T$</span>
+        <input id="pos-use" class="input-amount" placeholder="0" type="number" style="font-size:28px" oninput="posCalc()">
+      </div>
+      <p style="font-size:12px;color:rgba(255,255,255,0.5)" id="pos-max">Máximo: --</p>
+      <p style="font-size:12px;color:rgba(255,255,255,0.5)" id="pos-client-balance">Saldo do cliente: --</p>
+
+      <div style="background:rgba(255,255,255,0.1);border-radius:14px;padding:16px;margin:20px 0;border:1px solid rgba(255,255,255,0.2)">
+        <p style="font-size:12px;color:rgba(255,255,255,0.6);letter-spacing:1px;margin-bottom:10px">RESUMO</p>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px">Valor da compra</span><span style="font-size:13px;font-weight:700" id="pos-r-sale">R$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px">Abatimento TenisCash</span><span style="font-size:13px;font-weight:700;color:#FFD54F" id="pos-r-tc">- T$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1)"><span style="font-size:14px;font-weight:700">Cliente paga</span><span style="font-size:14px;font-weight:700" id="pos-r-pay">R$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px"><span style="font-size:12px;color:rgba(255,255,255,0.5)">Cliente ganha</span><span style="font-size:12px;font-weight:600;color:#8BFF8B" id="pos-r-earn">+ T$ 0,00</span></div>
+      </div>
+
+      <div id="pos-error"></div>
+      <button class="btn-primary" onclick="posSubmit()">CONFIRMAR VENDA</button>
+    </div>
+  </div>
+  <div id="pos-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Venda Registrada!</p>
+    <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px" id="pos-success-msg"></p>
+    <button class="btn-outline" onclick="posReset()">NOVA VENDA</button>
+  </div>
+</div>
+
 <!-- BOTTOM NAV -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <div class="nav-item active" onclick="showScreen('home')"><span>⌂</span><span>Início</span></div>
@@ -261,7 +309,7 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   const nav = document.getElementById('bottomNav');
-  const appScreens = ['home','transfer','receive','qr','promos','profile'];
+  const appScreens = ['home','transfer','receive','qr','promos','profile','pos'];
   nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
@@ -270,6 +318,7 @@ function showScreen(id) {
   if (id === 'qr') loadQR();
   if (id === 'promos') loadPromos();
   if (id === 'profile') loadProfile();
+  if (id === 'pos') loadPOS();
   if (id === 'receive') { document.getElementById('recv-name').textContent = user?.name || ''; document.getElementById('recv-phone').textContent = user?.phone || ''; }
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
 }
@@ -337,6 +386,7 @@ async function loadHome() {
   document.getElementById('home-name').textContent = user.name;
   document.getElementById('home-initial').textContent = user.name[0];
   updateBalance();
+  showAdminButton();
   const txData = await api('/wallet/transactions?limit=10');
   const container = document.getElementById('home-transactions');
   if (!txData.transactions || txData.transactions.length === 0) {
@@ -420,6 +470,122 @@ function loadProfile() {
   const d = new Date(user.createdAt);
   const months = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
   document.getElementById('prof-since').textContent = 'MEMBRO DESDE '+months[d.getMonth()]+'/'+d.getFullYear();
+}
+
+// POS - CAIXA
+let posBrands = [];
+let posClientData = null;
+
+async function loadPOS() {
+  const data = await api('/admin/brands');
+  if (data.brands) {
+    posBrands = data.brands;
+    const sel = document.getElementById('pos-brand');
+    sel.innerHTML = '<option value="">Selecione a marca</option>' + data.brands.map(b => '<option value="'+b.brand+'" data-max="'+b.maxDiscount+'">'+b.brand+' (até '+b.maxDiscount+'%)</option>').join('');
+  }
+}
+
+let posLookupTimer;
+function posLookup() {
+  clearTimeout(posLookupTimer);
+  const phone = document.getElementById('pos-phone').value.replace(/\D/g,'');
+  if (phone.length < 8) { document.getElementById('pos-client').innerHTML = ''; posClientData = null; return; }
+  posLookupTimer = setTimeout(async () => {
+    const data = await api('/transfer/lookup?q='+phone);
+    if (data.name) {
+      posClientData = data;
+      document.getElementById('pos-client').innerHTML = '✓ '+data.name;
+      // buscar saldo do cliente via admin
+      const users = await api('/admin/users?search='+phone);
+      if (users.users && users.users.length > 0) {
+        posClientData.balance = users.users[0].balance;
+        posClientData.id = users.users[0].id;
+        document.getElementById('pos-client-balance').textContent = 'Saldo do cliente: T$ '+users.users[0].balance.toFixed(2);
+      }
+    } else {
+      document.getElementById('pos-client').innerHTML = '<span style="color:#FF5252">Cliente não encontrado</span>';
+      posClientData = null;
+    }
+    posCalc();
+  }, 500);
+}
+
+function posCalc() {
+  const sale = parseFloat(document.getElementById('pos-sale').value) || 0;
+  const use = parseFloat(document.getElementById('pos-use').value) || 0;
+  const brandSel = document.getElementById('pos-brand');
+  const brand = brandSel.value;
+  const maxOpt = brandSel.selectedOptions[0]?.dataset?.max;
+  const maxPct = maxOpt ? parseFloat(maxOpt) : 100;
+  const maxTC = sale * maxPct / 100;
+
+  document.getElementById('pos-max').textContent = brand ? 'Máximo para '+brand+': T$ '+maxTC.toFixed(2)+' ('+maxPct+'%)' : 'Selecione a marca para ver o limite';
+  document.getElementById('pos-r-sale').textContent = 'R$ '+sale.toFixed(2);
+  document.getElementById('pos-r-tc').textContent = '- T$ '+use.toFixed(2);
+  document.getElementById('pos-r-pay').textContent = 'R$ '+(sale - use).toFixed(2);
+  document.getElementById('pos-r-earn').textContent = '+ T$ '+sale.toFixed(2);
+}
+
+async function posSubmit() {
+  const phone = document.getElementById('pos-phone').value.replace(/\D/g,'');
+  const sale = parseFloat(document.getElementById('pos-sale').value) || 0;
+  const use = parseFloat(document.getElementById('pos-use').value) || 0;
+  const brand = document.getElementById('pos-brand').value;
+
+  if (!phone || !posClientData) { showError('pos-error','Informe o telefone do cliente'); return; }
+  if (sale <= 0) { showError('pos-error','Informe o valor da compra'); return; }
+
+  let msg = '';
+
+  // 1. Se cliente quer usar TenisCash
+  if (use > 0) {
+    const useData = await api('/admin/use','POST',{ phone, useAmount:use, saleAmount:sale, brand, description:'Compra na loja - '+brand });
+    if (useData.error) { showError('pos-error', useData.error); return; }
+    msg = useData.message;
+  } else {
+    // 2. Só registrar a venda (gerar TenisCash)
+    const saleData = await api('/admin/sale','POST',{ phone, saleAmount:sale, description:'Compra na loja'+(brand?' - '+brand:'') });
+    if (saleData.error) { showError('pos-error', saleData.error); return; }
+    msg = saleData.message;
+  }
+
+  document.getElementById('pos-success-msg').textContent = msg + ' | Cliente ganhou T$ '+sale.toFixed(2);
+  document.getElementById('pos-form').style.display = 'none';
+  document.getElementById('pos-success').style.display = 'block';
+}
+
+function posReset() {
+  document.getElementById('pos-phone').value = '';
+  document.getElementById('pos-sale').value = '';
+  document.getElementById('pos-use').value = '';
+  document.getElementById('pos-brand').selectedIndex = 0;
+  document.getElementById('pos-client').innerHTML = '';
+  document.getElementById('pos-client-balance').textContent = 'Saldo do cliente: --';
+  document.getElementById('pos-max').textContent = 'Máximo: --';
+  document.getElementById('pos-r-sale').textContent = 'R$ 0,00';
+  document.getElementById('pos-r-tc').textContent = '- T$ 0,00';
+  document.getElementById('pos-r-pay').textContent = 'R$ 0,00';
+  document.getElementById('pos-r-earn').textContent = '+ T$ 0,00';
+  document.getElementById('pos-form').style.display = 'block';
+  document.getElementById('pos-success').style.display = 'none';
+  posClientData = null;
+}
+
+// Show admin button on home
+function showAdminButton() {
+  if (user && (user.role === 'admin' || user.role === 'superadmin')) {
+    const actions = document.querySelector('.actions');
+    if (!document.getElementById('pos-btn')) {
+      const btn = document.createElement('div');
+      btn.id = 'pos-btn';
+      btn.className = 'action-btn';
+      btn.onclick = () => showScreen('pos');
+      btn.innerHTML = '<span>💰</span><span>Caixa</span>';
+      btn.style.background = 'rgba(255,255,255,0.2)';
+      btn.style.border = '2px solid rgba(255,255,255,0.4)';
+      actions.appendChild(btn);
+    }
+  }
 }
 </script>
 </body>
