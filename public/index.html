@@ -523,7 +523,7 @@ function posCalc() {
   document.getElementById('pos-r-sale').textContent = 'R$ '+sale.toFixed(2);
   document.getElementById('pos-r-tc').textContent = '- T$ '+use.toFixed(2);
   document.getElementById('pos-r-pay').textContent = 'R$ '+(sale - use).toFixed(2);
-  document.getElementById('pos-r-earn').textContent = '+ T$ '+sale.toFixed(2);
+  document.getElementById('pos-r-earn').textContent = '+ T$ '+(sale - use).toFixed(2);
 }
 
 async function posSubmit() {
@@ -549,7 +549,8 @@ async function posSubmit() {
     msg = saleData.message;
   }
 
-  document.getElementById('pos-success-msg').textContent = msg + ' | Cliente ganhou T$ '+sale.toFixed(2);
+  const earned = use > 0 ? (sale - use) : sale;
+  document.getElementById('pos-success-msg').textContent = msg + ' | Cliente ganhou T$ '+earned.toFixed(2);
   document.getElementById('pos-form').style.display = 'none';
   document.getElementById('pos-success').style.display = 'block';
 }

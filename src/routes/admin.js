@@ -330,23 +330,26 @@ router.post('/use', async (req, res) => {
       });
 
       // Se houve venda, gera TenisCash da compra também
+      // Gera TC apenas sobre o valor pago em dinheiro (total - TenisCash usado)
       let earnedTx = null;
       if (saleAmount) {
-        const netSale = parseFloat(saleAmount); // gera TC sobre o valor total da venda
-        const updatedAgain = await tx.user.update({
-          where: { id: user.id },
-          data: { balance: { increment: netSale } }
-        });
+        const netSale = parseFloat(saleAmount) - tcAmount; // só sobre o que pagou em dinheiro
+        if (netSale > 0) {
+          const updatedAgain = await tx.user.update({
+            where: { id: user.id },
+            data: { balance: { increment: netSale } }
+          });
 
-        earnedTx = await tx.transaction.create({
-          data: {
-            type: 'credit',
-            amount: netSale,
-            description: `Compra R$ ${parseFloat(saleAmount).toFixed(2)}`,
-            receiverId: user.id,
-            balanceAfter: updatedAgain.balance,
-          }
-        });
+          earnedTx = await tx.transaction.create({
+            data: {
+              type: 'credit',
+              amount: netSale,
+              description: `Compra R$ ${parseFloat(saleAmount).toFixed(2)} (pago R$ ${netSale.toFixed(2)})`,
+              receiverId: user.id,
+              balanceAfter: updatedAgain.balance,
+            }
+          });
+        }
       }
 
       return { updated, transaction, earnedTx };
