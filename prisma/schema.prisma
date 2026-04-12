@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  phone         String   @unique
+  cpf           String?  @unique
+  pin           String   // hashed
+  balance       Float    @default(0)
+  role          String   @default("user") // user, admin, superadmin
+  active        Boolean  @default(true)
+  welcomeBonus  Boolean  @default(false) // já recebeu bonus de boas-vindas
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sentTransfers     Transaction[] @relation("sender")
+  receivedTransfers Transaction[] @relation("receiver")
+  adminActions      AdminAction[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  type        String   // credit, used, transfer_in, transfer_out, promo, welcome, admin_credit, admin_debit
+  amount      Float
+  description String
+  
+  senderId    String?
+  sender      User?    @relation("sender", fields: [senderId], references: [id])
+  
+  receiverId  String?
+  receiver    User?    @relation("receiver", fields: [receiverId], references: [id])
+
+  balanceAfter Float?  // saldo após a transação
+  metadata    String?  // JSON com dados extras (marca, produto, % abatimento, etc)
+  
+  createdAt   DateTime @default(now())
+}
+
+model Promo {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  percentage  Float    // percentual de abatimento
+  scope       String   // all, brand, category, product
+  scopeValue  String?  // nome da marca, categoria ou ID do produto
+  active      Boolean  @default(true)
+  startsAt    DateTime @default(now())
+  endsAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BrandRule {
+  id          String   @id @default(uuid())
+  brand       String   @unique
+  maxDiscount Float    // percentual máximo de abatimento com TenisCash
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Config {
+  id    String @id @default("global")
+  key   String @unique
+  value String
+}
+
+model AdminAction {
+  id          String   @id @default(uuid())
+  adminId     String
+  admin       User     @relation(fields: [adminId], references: [id])
+  action      String   // credit, debit, promo_create, promo_update, config_update, user_block
+  targetUserId String?
+  amount      Float?
+  description String
+  metadata    String?  // JSON
+  createdAt   DateTime @default(now())
+}

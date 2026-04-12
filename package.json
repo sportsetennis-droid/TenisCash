@@ -1,0 +1,24 @@
+{
+  "name": "teniscash-api",
+  "version": "1.0.0",
+  "description": "TenisCash - Banco digital esportivo da Sports & Tennis",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "db:push": "npx prisma db push",
+    "db:generate": "npx prisma generate",
+    "db:seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "prisma": "^5.20.0",
+    "qrcode": "^1.5.4",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.4.0"
+  }
+}
