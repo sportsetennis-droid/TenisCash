@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 const { sendVerificationCode, verifyCode } = require('../whatsapp');
+const { sendEmailCode, verifyEmailCode } = require('../email');
 
 const router = express.Router();
 
@@ -301,6 +302,143 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// ESQUECI SENHA - ENVIAR CÓDIGO
+router.post('/forgot-send-code', async (req, res) => {
+  try {
+    const { phone, email, method } = req.body;
+
+    let user;
+    if (method === 'whatsapp' && phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+      if (!user) {
+        return res.status(400).json({ error: 'Telefone não cadastrado' });
+      }
+      const result = await sendVerificationCode(cleanPhone);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+    } else if (method === 'email' && email) {
+      user = await prisma.user.findFirst({ where: { email } });
+      if (!user) {
+        return res.status(400).json({ error: 'E-mail não cadastrado' });
+      }
+      // Envia código por e-mail
+      const result = await sendEmailCode(email);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json({ success: true, message: 'Código enviado para seu e-mail' });
+    } else {
+      return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+    }
+  } catch (err) {
+    console.error('Erro forgot-send-code:', err);
+    res.status(500).json({ error: 'Erro ao enviar código' });
+  }
+});
+
+// ESQUECI SENHA - VERIFICAR CÓDIGO
+router.post('/forgot-verify', async (req, res) => {
+  try {
+    const { phone, email, code } = req.body;
+
+    let result;
+    if (phone) {
+      const targetPhone = phone.replace(/\D/g, '');
+      result = verifyCode(targetPhone, code);
+    } else if (email) {
+      const user = await prisma.user.findFirst({ where: { email } });
+      if (!user) {
+        return res.status(400).json({ error: 'E-mail não cadastrado' });
+      }
+      result = verifyEmailCode(email, code);
+    } else {
+      return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+    }
+
+    if (result.valid) {
+      res.json({ success: true, verified: true });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro forgot-verify:', err);
+    res.status(500).json({ error: 'Erro ao verificar código' });
+  }
+});
+
+// ESQUECI SENHA - ALTERAR SENHA
+router.post('/forgot-reset', async (req, res) => {
+  try {
+    const { phone, email, password } = req.body;
+
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: 'Senha deve ter no mínimo 4 caracteres' });
+    }
+
+    let user;
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    } else if (email) {
+      user = await prisma.user.findFirst({ where: { email } });
+    }
+
+    if (!user) {
+      return res.status(400).json({ error: 'Usuário não encontrado' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { pin: hashedPassword }
+    });
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (err) {
+    console.error('Erro forgot-reset:', err);
+    res.status(500).json({ error: 'Erro ao alterar senha' });
+  }
+});
+
+// ALTERAR SENHA (logado)
+router.post('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    }
+
+    if (newPassword.length < 4) {
+      return res.status(400).json({ error: 'Nova senha deve ter no mínimo 4 caracteres' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.pin);
+    if (!validPassword) {
+      return res.status(400).json({ error: 'Senha atual incorreta' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { pin: hashedPassword }
+    });
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (err) {
+    console.error('Erro change-password:', err);
+    res.status(500).json({ error: 'Erro ao alterar senha' });
+  }
+});
+
 // EXCLUIR CONTA (LGPD)
 router.delete('/me', authMiddleware, async (req, res) => {
   try {
@@ -323,6 +461,109 @@ router.delete('/me', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Erro ao excluir conta:', err);
     res.status(500).json({ error: 'Erro ao excluir conta' });
+  }
+});
+
+// ALTERAR SENHA
+router.post('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    }
+
+    if (newPassword.length < 4 || newPassword.length > 20) {
+      return res.status(400).json({ error: 'Nova senha deve ter entre 4 e 20 caracteres' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.pin);
+    if (!validPassword) {
+      return res.status(400).json({ error: 'Senha atual incorreta' });
+    }
+
+    const hashedNew = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { pin: hashedNew }
+    });
+
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (err) {
+    console.error('Erro ao alterar senha:', err);
+    res.status(500).json({ error: 'Erro ao alterar senha' });
+  }
+});
+
+// ESQUECI A SENHA - ENVIAR CÓDIGO
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    const user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    if (!user) {
+      return res.status(404).json({ error: 'Nenhuma conta encontrada com esse telefone' });
+    }
+
+    if (!user.active) {
+      return res.status(403).json({ error: 'Conta desativada' });
+    }
+
+    const result = await sendVerificationCode(cleanPhone);
+    if (result.success) {
+      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao enviar código:', err);
+    res.status(500).json({ error: 'Erro ao enviar código' });
+  }
+});
+
+// ESQUECI A SENHA - REDEFINIR
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { phone, code, newPassword } = req.body;
+
+    if (!phone || !code || !newPassword) {
+      return res.status(400).json({ error: 'Telefone, código e nova senha são obrigatórios' });
+    }
+
+    if (newPassword.length < 4 || newPassword.length > 20) {
+      return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    const codeResult = verifyCode(cleanPhone, code);
+    if (!codeResult.valid) {
+      return res.status(400).json({ error: codeResult.message });
+    }
+
+    const user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const hashedNew = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { pin: hashedNew }
+    });
+
+    res.json({ success: true, message: 'Senha redefinida com sucesso. Faça login com a nova senha.' });
+  } catch (err) {
+    console.error('Erro ao redefinir senha:', err);
+    res.status(500).json({ error: 'Erro ao redefinir senha' });
   }
 });
 

@@ -118,6 +118,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <input id="login-password" class="input-field" type="password" placeholder="Sua senha">
       <div id="login-error"></div>
       <button class="btn-primary" onclick="doLogin()">ENTRAR</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.6);cursor:pointer;text-decoration:underline" onclick="showScreen('forgot')">Esqueci minha senha</p>
     </div>
     <div id="register-form" style="width:100%;display:none">
       <!-- STEP 1: Telefone + Verificação -->
@@ -256,6 +257,71 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 </div>
 
+<!-- FORGOT PASSWORD -->
+<div id="forgot" class="screen">
+  <div class="login-screen" style="justify-content:flex-start;padding-top:60px">
+    <div class="login-logo"><span style="font-family:'Orbitron';font-size:36px;font-weight:900">T</span></div>
+    <p style="font-size:20px;font-weight:700;margin-bottom:24px">Esqueci minha senha</p>
+    
+    <!-- STEP 1: Escolher método -->
+    <div id="forgot-methods">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:20px">Como deseja recuperar sua senha?</p>
+      <button class="btn-primary" onclick="showForgotMethod('whatsapp')" style="margin-top:0">LEMBRAR SENHA PELO WHATSAPP</button>
+      <button class="btn-secondary" onclick="showForgotMethod('email')">ALTERAR SENHA POR E-MAIL</button>
+      <p style="text-align:center;margin-top:20px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showScreen('auth')">Voltar para login</p>
+    </div>
+
+    <!-- STEP 2A: WhatsApp -->
+    <div id="forgot-whatsapp" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:16px">Digite seu telefone cadastrado. Enviaremos um código pelo WhatsApp para criar uma nova senha.</p>
+      <label class="input-label">TELEFONE COM DDD</label>
+      <input id="forgot-phone" class="input-field" placeholder="83999990000">
+      <div id="forgot-phone-error"></div>
+      <button class="btn-primary" onclick="forgotSendCode()">ENVIAR CÓDIGO POR WHATSAPP</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showForgotStep('methods')">Voltar</p>
+    </div>
+
+    <!-- STEP 2B: Email -->
+    <div id="forgot-email" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:16px">Digite seu e-mail cadastrado. Enviaremos um código para criar uma nova senha.</p>
+      <label class="input-label">E-MAIL CADASTRADO</label>
+      <input id="forgot-email-input" class="input-field" placeholder="seu@email.com" type="email">
+      <div id="forgot-email-error"></div>
+      <button class="btn-primary" onclick="forgotSendEmailCode()">ENVIAR CÓDIGO POR E-MAIL</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showForgotStep('methods')">Voltar</p>
+    </div>
+
+    <!-- STEP 3: Digitar código -->
+    <div id="forgot-code" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:16px" id="forgot-code-msg">Código enviado!</p>
+      <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+      <input id="forgot-code-input" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+      <div id="forgot-code-error"></div>
+      <button class="btn-primary" onclick="forgotVerifyCode()">VERIFICAR CÓDIGO</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="forgotResendCode()">Reenviar código</p>
+    </div>
+
+    <!-- STEP 4: Nova senha -->
+    <div id="forgot-newpass" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:16px">Crie sua nova senha</p>
+      <label class="input-label">NOVA SENHA</label>
+      <input id="forgot-pass1" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+      <label class="input-label">CONFIRMAR NOVA SENHA</label>
+      <input id="forgot-pass2" class="input-field" type="password" placeholder="Repita a senha">
+      <div id="forgot-pass-error"></div>
+      <button class="btn-primary" onclick="forgotResetPassword()">ALTERAR SENHA</button>
+    </div>
+
+    <!-- STEP 5: Sucesso -->
+    <div id="forgot-success" style="display:none;width:100%;text-align:center">
+      <div class="success-circle">✓</div>
+      <p style="font-size:22px;font-weight:700">Senha alterada!</p>
+      <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px">Sua senha foi atualizada com sucesso.</p>
+      <button class="btn-primary" onclick="showScreen('auth')">FAZER LOGIN</button>
+    </div>
+  </div>
+</div>
+
 <!-- HOME -->
 <div id="home" class="screen">
   <div class="header">
@@ -347,14 +413,35 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div style="margin-top:30px">
     <div class="profile-item" id="prof-complete-btn" style="display:none" onclick="showScreen('complete-profile')"><span style="font-size:18px">🎁</span><span style="flex:1;font-size:14px;color:#FFD54F">Completar perfil e ganhar T$ 100</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
-    <div class="profile-item"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Segurança</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('security')"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Alterar senha</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('terms')"><span style="font-size:18px">📄</span><span style="flex:1;font-size:14px">Termos de uso</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('privacy')"><span style="font-size:18px">🔐</span><span style="flex:1;font-size:14px">Política de privacidade</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="doLogout()"><span style="font-size:18px">🚪</span><span style="flex:1;font-size:14px;color:#FF5252">Sair</span></div>
+    <div class="profile-item" onclick="confirmDeleteAccount()"><span style="font-size:18px">🗑️</span><span style="flex:1;font-size:14px;color:#FF5252">Excluir minha conta</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
   </div>
   <div style="margin-top:30px;text-align:center">
     <p style="color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px">TENISCASH v2.0</p>
     <p style="color:rgba(255,255,255,0.15);font-size:10px">Sports & Tennis © 2026</p>
+  </div>
+</div>
+
+<!-- SECURITY - Alterar Senha -->
+<div id="security" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('profile')">←</span><p style="font-size:18px;font-weight:700">Alterar Senha</p></div>
+  <div id="security-form" style="margin-top:20px">
+    <label class="input-label">SENHA ATUAL</label>
+    <input id="sec-current" class="input-field" type="password" placeholder="Sua senha atual">
+    <label class="input-label">NOVA SENHA</label>
+    <input id="sec-new1" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+    <label class="input-label">CONFIRMAR NOVA SENHA</label>
+    <input id="sec-new2" class="input-field" type="password" placeholder="Repita a nova senha">
+    <div id="sec-error"></div>
+    <button class="btn-primary" onclick="changePassword()">ALTERAR SENHA</button>
+  </div>
+  <div id="security-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Senha alterada!</p>
+    <button class="btn-outline" onclick="showScreen('profile')">VOLTAR</button>
   </div>
 </div>
 
@@ -428,7 +515,7 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   const nav = document.getElementById('bottomNav');
-  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile'];
+  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot'];
   nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
@@ -470,6 +557,69 @@ async function doLogin() {
 }
 
 let verifiedPhone = null;
+let forgotMethod = null;
+let forgotPhone = null;
+
+// FORGOT PASSWORD
+function showForgotMethod(method) {
+  forgotMethod = method;
+  document.getElementById('forgot-methods').style.display = 'none';
+  document.getElementById('forgot-whatsapp').style.display = method === 'whatsapp' ? 'block' : 'none';
+  document.getElementById('forgot-email').style.display = method === 'email' ? 'block' : 'none';
+}
+
+function showForgotStep(step) {
+  ['forgot-methods','forgot-whatsapp','forgot-email','forgot-code','forgot-newpass','forgot-success'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('forgot-' + step).style.display = step === 'methods' ? 'block' : 'block';
+  if (step === 'methods') document.getElementById('forgot-methods').style.display = 'block';
+}
+
+async function forgotSendCode() {
+  const phone = document.getElementById('forgot-phone').value.replace(/\D/g,'');
+  if (!phone || phone.length < 10) { showError('forgot-phone-error','Informe um telefone válido'); return; }
+  forgotPhone = phone;
+  const data = await api('/auth/forgot-send-code','POST',{phone,method:'whatsapp'});
+  if (data.error) { showError('forgot-phone-error',data.error); return; }
+  document.getElementById('forgot-code-msg').textContent = 'Código enviado para seu WhatsApp!';
+  showForgotStep('code');
+}
+
+async function forgotSendEmailCode() {
+  const email = document.getElementById('forgot-email-input').value;
+  if (!email) { showError('forgot-email-error','Informe seu e-mail'); return; }
+  forgotPhone = email;
+  const data = await api('/auth/forgot-send-code','POST',{email,method:'email'});
+  if (data.error) { showError('forgot-email-error',data.error); return; }
+  document.getElementById('forgot-code-msg').textContent = 'Código enviado para seu e-mail!';
+  showForgotStep('code');
+}
+
+async function forgotVerifyCode() {
+  const code = document.getElementById('forgot-code-input').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('forgot-code-error','Digite o código de 6 dígitos'); return; }
+  const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,code} : {email:forgotPhone,code};
+  const data = await api('/auth/forgot-verify','POST',body);
+  if (data.error) { showError('forgot-code-error',data.error); return; }
+  if (data.verified) { showForgotStep('newpass'); }
+}
+
+function forgotResendCode() {
+  if (forgotMethod === 'whatsapp') forgotSendCode();
+  else forgotSendEmailCode();
+}
+
+async function forgotResetPassword() {
+  const pass1 = document.getElementById('forgot-pass1').value;
+  const pass2 = document.getElementById('forgot-pass2').value;
+  if (!pass1 || pass1.length < 4) { showError('forgot-pass-error','Senha deve ter no mínimo 4 caracteres'); return; }
+  if (pass1 !== pass2) { showError('forgot-pass-error','As senhas não conferem'); return; }
+  const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,password:pass1} : {email:forgotPhone,password:pass1};
+  const data = await api('/auth/forgot-reset','POST',body);
+  if (data.error) { showError('forgot-pass-error',data.error); return; }
+  showForgotStep('success');
+}
 
 async function sendCode() {
   const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
@@ -712,6 +862,36 @@ async function submitProfile() {
 // POS - CAIXA
 let posBrands = [];
 let posClientData = null;
+
+// CHANGE PASSWORD
+async function changePassword() {
+  const current = document.getElementById('sec-current').value;
+  const new1 = document.getElementById('sec-new1').value;
+  const new2 = document.getElementById('sec-new2').value;
+  if (!current) { showError('sec-error','Informe a senha atual'); return; }
+  if (!new1 || new1.length < 4) { showError('sec-error','Nova senha deve ter no mínimo 4 caracteres'); return; }
+  if (new1 !== new2) { showError('sec-error','As senhas não conferem'); return; }
+  const data = await api('/auth/change-password','POST',{currentPassword:current,newPassword:new1});
+  if (data.error) { showError('sec-error',data.error); return; }
+  document.getElementById('security-form').style.display = 'none';
+  document.getElementById('security-success').style.display = 'block';
+}
+
+// DELETE ACCOUNT
+function confirmDeleteAccount() {
+  if (confirm('Tem certeza que deseja excluir sua conta?\n\nTodos os seus dados e saldo serão apagados permanentemente.\n\nEssa ação NÃO pode ser desfeita.')) {
+    if (confirm('ÚLTIMA CONFIRMAÇÃO\n\nSeu saldo de T$ '+user.balance.toFixed(2)+' será perdido.\n\nDeseja realmente excluir?')) {
+      deleteAccount();
+    }
+  }
+}
+
+async function deleteAccount() {
+  const data = await api('/auth/me','DELETE');
+  if (data.error) { alert(data.error); return; }
+  alert('Conta excluída com sucesso. Seus dados foram apagados conforme a LGPD.');
+  doLogout();
+}
 
 async function loadPOS() {
   const data = await api('/admin/brands');
