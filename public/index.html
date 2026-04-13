@@ -598,7 +598,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
 </div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const API = window.location.origin + '/api';
 let token = localStorage.getItem('tc_token');
 let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
@@ -1337,4 +1337,12 @@ function posReset() {
   document.getElementById('pos-r-sale').textContent = 'R$ 0,00';
   document.getElementById('pos-r-tc').textContent = '- T$ 0,00';
   document.getElementById('pos-r-pay').textContent = 'R$ 0,00';
-  document.ge
+  document.getElementById('pos-r-earn').textContent = '+ T$ 0,00';
+  document.getElementById('pos-error').innerHTML = '';
+  document.getElementById('pos-form').style.display = 'block';
+  document.getElementById('pos-success').style.display = 'none';
+  posClientData = null;
+}
+</script>
+</body>
+</html>
