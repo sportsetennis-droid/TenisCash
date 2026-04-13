@@ -207,19 +207,6 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'CPF inválido. Verifique os dígitos informados.' });
       }
 
-      // Valida se CPF bate com data de nascimento (se ambos informados)
-      if (birthDate || user.birthDate) {
-        const dataNasc = birthDate || user.birthDate;
-        // Extrai ano de nascimento do CPF (heurística: CPF emitido após nascimento)
-        // Validação simples: CPF não pode ser de menor se data de nascimento for de menor
-        const anoNasc = new Date(dataNasc).getFullYear();
-        const anoAtual = new Date().getFullYear();
-        const idade = anoAtual - anoNasc;
-        if (idade < 16) {
-          return res.status(400).json({ error: 'É necessário ter no mínimo 16 anos para se cadastrar.' });
-        }
-      }
-
       const existingCpf = await prisma.user.findFirst({ where: { cpf, NOT: { id: req.userId } } });
       if (existingCpf) return res.status(400).json({ error: 'CPF já cadastrado por outro usuário' });
     }
