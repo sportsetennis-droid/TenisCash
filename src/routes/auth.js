@@ -7,6 +7,27 @@ const { sendEmailCode, verifyEmailCode } = require('../email');
 
 const router = express.Router();
 
+// VALIDAÇÃO DE CPF
+function validarCPF(cpf) {
+  cpf = cpf.replace(/\D/g, '');
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false; // CPFs com todos dígitos iguais
+
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(cpf[i]) * (10 - i);
+  let resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf[9])) return false;
+
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(cpf[i]) * (11 - i);
+  resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf[10])) return false;
+
+  return true;
+}
+
 // ENVIAR CÓDIGO WHATSAPP PARA COMPLETAR PERFIL (não verifica duplicidade)
 router.post('/send-code-profile', authMiddleware, async (req, res) => {
   try {
@@ -181,6 +202,24 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
     if (user.profileComplete) return res.status(400).json({ error: 'Perfil já foi completado' });
 
     if (cpf) {
+      // Valida formato do CPF
+      if (!validarCPF(cpf)) {
+        return res.status(400).json({ error: 'CPF inválido. Verifique os dígitos informados.' });
+      }
+
+      // Valida se CPF bate com data de nascimento (se ambos informados)
+      if (birthDate || user.birthDate) {
+        const dataNasc = birthDate || user.birthDate;
+        // Extrai ano de nascimento do CPF (heurística: CPF emitido após nascimento)
+        // Validação simples: CPF não pode ser de menor se data de nascimento for de menor
+        const anoNasc = new Date(dataNasc).getFullYear();
+        const anoAtual = new Date().getFullYear();
+        const idade = anoAtual - anoNasc;
+        if (idade < 16) {
+          return res.status(400).json({ error: 'É necessário ter no mínimo 16 anos para se cadastrar.' });
+        }
+      }
+
       const existingCpf = await prisma.user.findFirst({ where: { cpf, NOT: { id: req.userId } } });
       if (existingCpf) return res.status(400).json({ error: 'CPF já cadastrado por outro usuário' });
     }

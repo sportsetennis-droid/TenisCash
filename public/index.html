@@ -290,7 +290,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p><strong>TERMOS DE USO - TENISCASH</strong></p>
     <p style="margin-top:10px">1. O TenisCash é um programa de benefícios da Sports & Tennis, com sede em João Pessoa/PB.</p>
     <p style="margin-top:10px">2. O TenisCash (T$) é uma moeda de benefício digital, sem valor monetário real, válida exclusivamente para abatimento em compras nas lojas Sports & Tennis.</p>
-    <p style="margin-top:10px">3. Cada R$ 1,00 pago em dinheiro, Pix ou cartão gera 1 TenisCash (T$ 1,00).</p>
+    <p style="margin-top:10px">3. Cada R$ 1,00 pago em dinheiro gera 1 TenisCash (T$ 1,00).</p>
     <p style="margin-top:10px">4. O saldo de TenisCash não expira e pode ser transferido livremente entre usuários cadastrados.</p>
     <p style="margin-top:10px">5. O percentual máximo de abatimento com TenisCash varia por marca e produto, conforme regras vigentes na loja.</p>
     <p style="margin-top:10px">6. O TenisCash não pode ser convertido em dinheiro, reembolsado ou trocado por valores monetários.</p>
@@ -1039,6 +1039,23 @@ async function cepLookupEdit() {
   } catch(e) { document.getElementById('ep-cep-status').textContent = 'Erro ao buscar CEP'; }
 }
 
+function validarCPF(cpf) {
+  cpf = cpf.replace(/\D/g, '');
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(cpf[i]) * (10 - i);
+  let resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf[9])) return false;
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(cpf[i]) * (11 - i);
+  resto = (soma * 10) % 11;
+  if (resto === 10 || resto === 11) resto = 0;
+  if (resto !== parseInt(cpf[10])) return false;
+  return true;
+}
+
 async function submitProfile() {
   const hasPhone = user.phone && !user.phone.startsWith('email_');
   
@@ -1055,8 +1072,14 @@ async function submitProfile() {
     }
   }
 
+  const cpfVal = document.getElementById('cp-cpf').value.replace(/\D/g,'');
+  if (cpfVal && !validarCPF(cpfVal)) {
+    showError('cp-error','CPF inválido. Verifique os dígitos informados.');
+    return;
+  }
+
   const data = {
-    cpf: document.getElementById('cp-cpf').value.replace(/\D/g,'') || null,
+    cpf: cpfVal || null,
     email: hasPhone ? (emailVerified ? verifiedEmail : null) : (user.email || null),
     phone: !hasPhone ? verifiedPhoneProfile : null,
     cep: document.getElementById('cp-cep').value.replace(/\D/g,'') || null,
