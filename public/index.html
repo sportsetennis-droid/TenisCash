@@ -943,14 +943,19 @@ async function sendEmailVerification() {
     return;
   }
   document.getElementById('cp-email-status').innerHTML = 'Enviando código...';
-  const data = await api('/auth/send-email-code','POST',{email});
-  if (data.error) {
-    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
-    return;
+  try {
+    const data = await api('/auth/send-email-code','POST',{email});
+    if (data.error) {
+      document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+      return;
+    }
+    document.getElementById('cp-email-verify').style.display = 'block';
+    document.getElementById('cp-email-btn').textContent = 'REENVIAR';
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FFD54F">Código enviado para '+email+'</span>';
+  } catch(err) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Erro de conexão. Tente novamente.</span>';
+    console.error('Erro email:', err);
   }
-  document.getElementById('cp-email-verify').style.display = 'block';
-  document.getElementById('cp-email-btn').textContent = 'REENVIAR';
-  document.getElementById('cp-email-status').innerHTML = '<span style="color:#FFD54F">Código enviado para '+email+'</span>';
 }
 
 async function confirmEmailCode() {

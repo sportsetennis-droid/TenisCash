@@ -301,6 +301,20 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// TESTE DE EMAIL (temporário - remover depois)
+router.get('/test-email', async (req, res) => {
+  try {
+    console.log('GMAIL_USER:', process.env.GMAIL_USER);
+    console.log('GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? 'configurado (' + process.env.GMAIL_APP_PASSWORD.length + ' chars)' : 'NAO CONFIGURADO');
+    const result = await sendEmailCode('sportsetennis@gmail.com');
+    console.log('Resultado:', result);
+    res.json(result);
+  } catch(err) {
+    console.error('Erro teste email:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ENVIAR CÓDIGO DE VERIFICAÇÃO POR EMAIL (pra completar perfil)
 router.post('/send-email-code', async (req, res) => {
   try {
