@@ -207,7 +207,10 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'CPF inválido. Verifique os dígitos informados.' });
       }
 
-      const existingCpf = await prisma.user.findFirst({ where: { cpf, NOT: { id: req.userId } } });
+      // Só bloqueia se CPF está em conta ATIVA de outro usuário
+      const existingCpf = await prisma.user.findFirst({ 
+        where: { cpf, active: true, NOT: { id: req.userId } } 
+      });
       if (existingCpf) return res.status(400).json({ error: 'CPF já cadastrado por outro usuário' });
     }
 
