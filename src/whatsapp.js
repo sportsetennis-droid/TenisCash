@@ -1,5 +1,6 @@
 const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 
 // Armazena códigos temporários em memória (expira em 10 min)
 const verificationCodes = new Map();
@@ -30,7 +31,10 @@ async function sendVerificationCode(phone) {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Client-Token': ZAPI_CLIENT_TOKEN
+      },
       body: JSON.stringify({
         phone: formattedPhone,
         message: `🏃 *TenisCash - Sports & Tennis*\n\nSeu código de verificação é:\n\n*${code}*\n\nEsse código expira em 10 minutos.\n\nSe você não solicitou este código, ignore esta mensagem.`
