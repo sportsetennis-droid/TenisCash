@@ -11,17 +11,11 @@ const router = express.Router();
 router.post('/send-code', async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ error: 'Telefone é obrigatório' });
-    }
+    if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório' });
 
     const cleanPhone = phone.replace(/\D/g, '');
-
-    // Verifica se telefone já está cadastrado
     const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-    if (existing) {
-      return res.status(400).json({ error: 'Telefone já cadastrado' });
-    }
+    if (existing && existing.active) return res.status(400).json({ error: 'Telefone já cadastrado' });
 
     const result = await sendVerificationCode(cleanPhone);
     if (result.success) {
@@ -35,13 +29,32 @@ router.post('/send-code', async (req, res) => {
   }
 });
 
-// VERIFICAR CÓDIGO
+// ENVIAR CÓDIGO DE VERIFICAÇÃO POR EMAIL (para cadastro)
+router.post('/send-email-register-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'E-mail é obrigatório' });
+
+    const existing = await prisma.user.findFirst({ where: { email, active: true } });
+    if (existing) return res.status(400).json({ error: 'E-mail já cadastrado' });
+
+    const result = await sendEmailCode(email);
+    if (result.success) {
+      res.json({ success: true, message: 'Código enviado para seu e-mail' });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao enviar código email:', err);
+    res.status(500).json({ error: 'Erro ao enviar código' });
+  }
+});
+
+// VERIFICAR CÓDIGO DE WHATSAPP
 router.post('/verify-code', async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) {
-      return res.status(400).json({ error: 'Telefone e código são obrigatórios' });
-    }
+    if (!phone || !code) return res.status(400).json({ error: 'Telefone e código são obrigatórios' });
 
     const cleanPhone = phone.replace(/\D/g, '');
     const result = verifyCode(cleanPhone, code);
@@ -57,45 +70,54 @@ router.post('/verify-code', async (req, res) => {
   }
 });
 
-// CADASTRO BÁSICO (sem bônus - requer verificação WhatsApp)
+// VERIFICAR CÓDIGO DE EMAIL (para cadastro)
+router.post('/verify-email-register-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: 'E-mail e código são obrigatórios' });
+
+    const result = verifyEmailCode(email, code);
+    if (result.valid) {
+      res.json({ success: true, verified: true });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao verificar código email:', err);
+    res.status(500).json({ error: 'Erro ao verificar código' });
+  }
+});
+
+// CADASTRO (telefone ou email)
 router.post('/register', async (req, res) => {
   try {
-    const { name, phone, birthDate, password, lgpdAccepted, verificationCode } = req.body;
+    const { name, phone, email, birthDate, password, lgpdAccepted, registerMethod } = req.body;
 
-    if (!name || !phone || !password) {
-      return res.status(400).json({ error: 'Nome, telefone e senha são obrigatórios' });
-    }
+    if (!name || !password) return res.status(400).json({ error: 'Nome e senha são obrigatórios' });
+    if (!birthDate) return res.status(400).json({ error: 'Data de nascimento é obrigatória' });
+    if (!lgpdAccepted) return res.status(400).json({ error: 'Você precisa aceitar os termos de uso e política de privacidade' });
+    if (password.length < 4 || password.length > 20) return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
 
-    if (!birthDate) {
-      return res.status(400).json({ error: 'Data de nascimento é obrigatória' });
-    }
-
-    if (!lgpdAccepted) {
-      return res.status(400).json({ error: 'Você precisa aceitar os termos de uso e política de privacidade' });
-    }
-
-    if (password.length < 4 || password.length > 20) {
-      return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
-    }
-
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    // Verifica se telefone foi verificado pelo WhatsApp
-    if (!isPhoneVerified(cleanPhone)) {
-      return res.status(400).json({ error: 'Telefone não verificado. Solicite um novo código.' });
-    }
-
-    const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-    if (existing) {
-      return res.status(400).json({ error: 'Telefone já cadastrado' });
+    if (registerMethod === 'email') {
+      if (!email) return res.status(400).json({ error: 'E-mail é obrigatório' });
+      const existing = await prisma.user.findFirst({ where: { email, active: true } });
+      if (existing) return res.status(400).json({ error: 'E-mail já cadastrado' });
+    } else {
+      if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório' });
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (!isPhoneVerified(cleanPhone)) return res.status(400).json({ error: 'Telefone não verificado. Solicite um novo código.' });
+      const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+      if (existing && existing.active) return res.status(400).json({ error: 'Telefone já cadastrado' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const cleanPhone = phone ? phone.replace(/\D/g, '') : null;
 
     const user = await prisma.user.create({
       data: {
         name,
-        phone: cleanPhone,
+        phone: cleanPhone || `email_${Date.now()}`,
+        email: email || null,
         birthDate,
         pin: hashedPassword,
         balance: 0,
@@ -104,8 +126,9 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    // Limpa verificação usada
-    clearVerified(cleanPhone);
+    if (registerMethod !== 'email' && cleanPhone) {
+      clearVerified(cleanPhone);
+    }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
@@ -127,7 +150,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// COMPLETAR PERFIL (ganha bônus)
+// COMPLETAR PERFIL (ganha bônus - bloqueado por CPF mesmo após exclusão)
 router.post('/complete-profile', authMiddleware, async (req, res) => {
   try {
     const {
@@ -137,25 +160,28 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
     } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    if (user.profileComplete) {
-      return res.status(400).json({ error: 'Perfil já foi completado' });
-    }
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+    if (user.profileComplete) return res.status(400).json({ error: 'Perfil já foi completado' });
 
     if (cpf) {
       const existingCpf = await prisma.user.findFirst({ where: { cpf, NOT: { id: req.userId } } });
-      if (existingCpf) {
-        return res.status(400).json({ error: 'CPF já cadastrado por outro usuário' });
-      }
+      if (existingCpf) return res.status(400).json({ error: 'CPF já cadastrado por outro usuário' });
     }
 
     let bonusAmount = 0;
     const bonusConfig = await prisma.config.findUnique({ where: { key: 'welcome_bonus' } });
-    if (bonusConfig) {
-      bonusAmount = parseFloat(bonusConfig.value);
+    if (bonusConfig) bonusAmount = parseFloat(bonusConfig.value);
+
+    // Bloqueia bônus se CPF já recebeu antes (mesmo em conta excluída)
+    let cpfAlreadyReceivedBonus = false;
+    if (cpf && bonusAmount > 0) {
+      const cpfHistory = await prisma.user.findFirst({
+        where: { cpf, welcomeBonus: true }
+      });
+      if (cpfHistory) {
+        cpfAlreadyReceivedBonus = true;
+        bonusAmount = 0;
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -163,7 +189,7 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
         where: { id: req.userId },
         data: {
           cpf: cpf || null,
-          email: email || null,
+          email: email || user.email || null,
           birthDate: birthDate || null,
           cep: cep || null,
           street: street || null,
@@ -201,40 +227,86 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
       return updated;
     });
 
-    res.json({
-      success: true,
-      message: bonusAmount > 0 ? `Perfil completo! Você ganhou T$ ${bonusAmount.toFixed(2)}` : 'Perfil completo!',
-      balance: result.balance,
-      profileComplete: true,
-    });
+    let message;
+    if (bonusAmount > 0) {
+      message = `Perfil completo! Você ganhou T$ ${bonusAmount.toFixed(2)}`;
+    } else if (cpfAlreadyReceivedBonus) {
+      message = 'Perfil completo! (Bônus de boas-vindas já foi utilizado por este CPF)';
+    } else {
+      message = 'Perfil completo!';
+    }
+
+    res.json({ success: true, message, balance: result.balance, profileComplete: true });
   } catch (err) {
     console.error('Erro ao completar perfil:', err);
     res.status(500).json({ error: 'Erro interno no servidor' });
   }
 });
 
-// LOGIN
+// ATUALIZAR DADOS PESSOAIS (usuário logado)
+router.put('/update-profile', authMiddleware, async (req, res) => {
+  try {
+    const {
+      name, birthDate, cep, street, number, complement, neighborhood, city, state,
+      height, weight, shirtSize, shoeSize,
+      sportsPractice, sportsWant, sportsWhere, favBrands
+    } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const updated = await prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        name: name || user.name,
+        birthDate: birthDate || user.birthDate,
+        cep: cep !== undefined ? cep : user.cep,
+        street: street !== undefined ? street : user.street,
+        number: number !== undefined ? number : user.number,
+        complement: complement !== undefined ? complement : user.complement,
+        neighborhood: neighborhood !== undefined ? neighborhood : user.neighborhood,
+        city: city !== undefined ? city : user.city,
+        state: state !== undefined ? state : user.state,
+        height: height !== undefined ? height : user.height,
+        weight: weight !== undefined ? weight : user.weight,
+        shirtSize: shirtSize !== undefined ? shirtSize : user.shirtSize,
+        shoeSize: shoeSize !== undefined ? shoeSize : user.shoeSize,
+        sportsPractice: sportsPractice !== undefined ? JSON.stringify(sportsPractice) : user.sportsPractice,
+        sportsWant: sportsWant !== undefined ? JSON.stringify(sportsWant) : user.sportsWant,
+        sportsWhere: sportsWhere !== undefined ? JSON.stringify(sportsWhere) : user.sportsWhere,
+        favBrands: favBrands !== undefined ? JSON.stringify(favBrands) : user.favBrands,
+      }
+    });
+
+    res.json({ success: true, message: 'Dados atualizados com sucesso' });
+  } catch (err) {
+    console.error('Erro ao atualizar perfil:', err);
+    res.status(500).json({ error: 'Erro ao atualizar dados' });
+  }
+});
+
+// LOGIN (telefone ou email)
 router.post('/login', async (req, res) => {
   try {
-    const { phone, password } = req.body;
+    const { phone, email, password } = req.body;
 
-    if (!phone || !password) {
-      return res.status(400).json({ error: 'Telefone e senha são obrigatórios' });
+    if (!password) return res.status(400).json({ error: 'Senha é obrigatória' });
+
+    let user;
+    if (email) {
+      user = await prisma.user.findFirst({ where: { email } });
+    } else if (phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    } else {
+      return res.status(400).json({ error: 'Informe telefone ou e-mail' });
     }
 
-    const user = await prisma.user.findUnique({ where: { phone } });
-    if (!user) {
-      return res.status(401).json({ error: 'Telefone ou senha incorretos' });
-    }
-
-    if (!user.active) {
-      return res.status(403).json({ error: 'Conta desativada. Entre em contato com a loja.' });
-    }
+    if (!user) return res.status(401).json({ error: 'Credenciais incorretas' });
+    if (!user.active) return res.status(403).json({ error: 'Conta desativada. Entre em contato com a loja.' });
 
     const validPassword = await bcrypt.compare(password, user.pin);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Telefone ou senha incorretos' });
-    }
+    if (!validPassword) return res.status(401).json({ error: 'Credenciais incorretas' });
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
@@ -260,10 +332,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
-
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
     res.json({
       user: {
@@ -301,27 +370,22 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
-// TESTE DE EMAIL (temporário - remover depois)
+// TESTE DE EMAIL
 router.get('/test-email', async (req, res) => {
   try {
-    console.log('GMAIL_USER:', process.env.GMAIL_USER);
-    console.log('GMAIL_APP_PASSWORD:', process.env.GMAIL_APP_PASSWORD ? 'configurado (' + process.env.GMAIL_APP_PASSWORD.length + ' chars)' : 'NAO CONFIGURADO');
     const result = await sendEmailCode('sportsetennis@gmail.com');
-    console.log('Resultado:', result);
     res.json(result);
   } catch(err) {
-    console.error('Erro teste email:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ENVIAR CÓDIGO DE VERIFICAÇÃO POR EMAIL (pra completar perfil)
+// ENVIAR CÓDIGO EMAIL (para completar perfil)
 router.post('/send-email-code', async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: 'E-mail é obrigatório' });
-    }
+    if (!email) return res.status(400).json({ error: 'E-mail é obrigatório' });
+
     const result = await sendEmailCode(email);
     if (result.success) {
       res.json({ success: true, message: 'Código enviado para seu e-mail' });
@@ -329,18 +393,16 @@ router.post('/send-email-code', async (req, res) => {
       res.status(400).json({ error: result.message });
     }
   } catch (err) {
-    console.error('Erro ao enviar código email:', err);
     res.status(500).json({ error: 'Erro ao enviar código' });
   }
 });
 
-// VERIFICAR CÓDIGO DE EMAIL
+// VERIFICAR CÓDIGO EMAIL (para completar perfil)
 router.post('/verify-email-code', async (req, res) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) {
-      return res.status(400).json({ error: 'E-mail e código são obrigatórios' });
-    }
+    if (!email || !code) return res.status(400).json({ error: 'E-mail e código são obrigatórios' });
+
     const result = verifyEmailCode(email, code);
     if (result.valid) {
       res.json({ success: true, verified: true });
@@ -348,7 +410,6 @@ router.post('/verify-email-code', async (req, res) => {
       res.status(400).json({ error: result.message });
     }
   } catch (err) {
-    console.error('Erro ao verificar código email:', err);
     res.status(500).json({ error: 'Erro ao verificar código' });
   }
 });
@@ -362,24 +423,15 @@ router.post('/forgot-send-code', async (req, res) => {
     if (method === 'whatsapp' && phone) {
       const cleanPhone = phone.replace(/\D/g, '');
       user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-      if (!user) {
-        return res.status(400).json({ error: 'Telefone não cadastrado' });
-      }
+      if (!user) return res.status(400).json({ error: 'Telefone não cadastrado' });
       const result = await sendVerificationCode(cleanPhone);
-      if (!result.success) {
-        return res.status(400).json({ error: result.message });
-      }
+      if (!result.success) return res.status(400).json({ error: result.message });
       res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
     } else if (method === 'email' && email) {
       user = await prisma.user.findFirst({ where: { email } });
-      if (!user) {
-        return res.status(400).json({ error: 'E-mail não cadastrado' });
-      }
-      // Envia código por e-mail
+      if (!user) return res.status(400).json({ error: 'E-mail não cadastrado' });
       const result = await sendEmailCode(email);
-      if (!result.success) {
-        return res.status(400).json({ error: result.message });
-      }
+      if (!result.success) return res.status(400).json({ error: result.message });
       res.json({ success: true, message: 'Código enviado para seu e-mail' });
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
@@ -397,13 +449,10 @@ router.post('/forgot-verify', async (req, res) => {
 
     let result;
     if (phone) {
-      const targetPhone = phone.replace(/\D/g, '');
-      result = verifyCode(targetPhone, code);
+      result = verifyCode(phone.replace(/\D/g, ''), code);
     } else if (email) {
       const user = await prisma.user.findFirst({ where: { email } });
-      if (!user) {
-        return res.status(400).json({ error: 'E-mail não cadastrado' });
-      }
+      if (!user) return res.status(400).json({ error: 'E-mail não cadastrado' });
       result = verifyEmailCode(email, code);
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
@@ -415,41 +464,29 @@ router.post('/forgot-verify', async (req, res) => {
       res.status(400).json({ error: result.message });
     }
   } catch (err) {
-    console.error('Erro forgot-verify:', err);
     res.status(500).json({ error: 'Erro ao verificar código' });
   }
 });
 
-// ESQUECI SENHA - ALTERAR SENHA
+// ESQUECI SENHA - ALTERAR
 router.post('/forgot-reset', async (req, res) => {
   try {
     const { phone, email, password } = req.body;
-
-    if (!password || password.length < 4) {
-      return res.status(400).json({ error: 'Senha deve ter no mínimo 4 caracteres' });
-    }
+    if (!password || password.length < 4) return res.status(400).json({ error: 'Senha deve ter no mínimo 4 caracteres' });
 
     let user;
     if (phone) {
-      const cleanPhone = phone.replace(/\D/g, '');
-      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+      user = await prisma.user.findUnique({ where: { phone: phone.replace(/\D/g, '') } });
     } else if (email) {
       user = await prisma.user.findFirst({ where: { email } });
     }
-
-    if (!user) {
-      return res.status(400).json({ error: 'Usuário não encontrado' });
-    }
+    if (!user) return res.status(400).json({ error: 'Usuário não encontrado' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { pin: hashedPassword }
-    });
+    await prisma.user.update({ where: { id: user.id }, data: { pin: hashedPassword } });
 
     res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (err) {
-    console.error('Erro forgot-reset:', err);
     res.status(500).json({ error: 'Erro ao alterar senha' });
   }
 });
@@ -458,34 +495,20 @@ router.post('/forgot-reset', async (req, res) => {
 router.post('/change-password', authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
-    }
-
-    if (newPassword.length < 4) {
-      return res.status(400).json({ error: 'Nova senha deve ter no mínimo 4 caracteres' });
-    }
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    if (newPassword.length < 4 || newPassword.length > 20) return res.status(400).json({ error: 'Nova senha deve ter entre 4 e 20 caracteres' });
 
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
     const validPassword = await bcrypt.compare(currentPassword, user.pin);
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Senha atual incorreta' });
-    }
+    if (!validPassword) return res.status(400).json({ error: 'Senha atual incorreta' });
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: req.userId },
-      data: { pin: hashedPassword }
-    });
+    const hashedNew = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: req.userId }, data: { pin: hashedNew } });
 
     res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (err) {
-    console.error('Erro change-password:', err);
     res.status(500).json({ error: 'Erro ao alterar senha' });
   }
 });
@@ -499,12 +522,13 @@ router.delete('/me', authMiddleware, async (req, res) => {
         active: false,
         name: 'Conta excluída',
         phone: `deleted_${Date.now()}`,
-        email: null, cpf: null, birthDate: null,
+        email: null, birthDate: null,
         cep: null, street: null, number: null, complement: null,
         neighborhood: null, city: null, state: null,
         height: null, weight: null, shirtSize: null, shoeSize: null,
         sportsPractice: null, sportsWant: null, sportsWhere: null, favBrands: null,
         balance: 0,
+        // CPF e welcomeBonus são mantidos para bloquear novo bônus
       }
     });
 
@@ -512,109 +536,6 @@ router.delete('/me', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Erro ao excluir conta:', err);
     res.status(500).json({ error: 'Erro ao excluir conta' });
-  }
-});
-
-// ALTERAR SENHA
-router.post('/change-password', authMiddleware, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
-    }
-
-    if (newPassword.length < 4 || newPassword.length > 20) {
-      return res.status(400).json({ error: 'Nova senha deve ter entre 4 e 20 caracteres' });
-    }
-
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    const validPassword = await bcrypt.compare(currentPassword, user.pin);
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Senha atual incorreta' });
-    }
-
-    const hashedNew = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: req.userId },
-      data: { pin: hashedNew }
-    });
-
-    res.json({ success: true, message: 'Senha alterada com sucesso' });
-  } catch (err) {
-    console.error('Erro ao alterar senha:', err);
-    res.status(500).json({ error: 'Erro ao alterar senha' });
-  }
-});
-
-// ESQUECI A SENHA - ENVIAR CÓDIGO
-router.post('/forgot-password', async (req, res) => {
-  try {
-    const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ error: 'Telefone é obrigatório' });
-    }
-
-    const cleanPhone = phone.replace(/\D/g, '');
-    const user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-    if (!user) {
-      return res.status(404).json({ error: 'Nenhuma conta encontrada com esse telefone' });
-    }
-
-    if (!user.active) {
-      return res.status(403).json({ error: 'Conta desativada' });
-    }
-
-    const result = await sendVerificationCode(cleanPhone);
-    if (result.success) {
-      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
-    } else {
-      res.status(400).json({ error: result.message });
-    }
-  } catch (err) {
-    console.error('Erro ao enviar código:', err);
-    res.status(500).json({ error: 'Erro ao enviar código' });
-  }
-});
-
-// ESQUECI A SENHA - REDEFINIR
-router.post('/reset-password', async (req, res) => {
-  try {
-    const { phone, code, newPassword } = req.body;
-
-    if (!phone || !code || !newPassword) {
-      return res.status(400).json({ error: 'Telefone, código e nova senha são obrigatórios' });
-    }
-
-    if (newPassword.length < 4 || newPassword.length > 20) {
-      return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
-    }
-
-    const cleanPhone = phone.replace(/\D/g, '');
-    const codeResult = verifyCode(cleanPhone, code);
-    if (!codeResult.valid) {
-      return res.status(400).json({ error: codeResult.message });
-    }
-
-    const user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    const hashedNew = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { pin: hashedNew }
-    });
-
-    res.json({ success: true, message: 'Senha redefinida com sucesso. Faça login com a nova senha.' });
-  } catch (err) {
-    console.error('Erro ao redefinir senha:', err);
-    res.status(500).json({ error: 'Erro ao redefinir senha' });
   }
 });
 

@@ -112,8 +112,18 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <button class="tab-btn" onclick="setAuthTab('register')">CRIAR CONTA</button>
     </div>
     <div id="login-form" style="width:100%">
-      <label class="input-label">TELEFONE</label>
-      <input id="login-phone" class="input-field" placeholder="(83) 99999-0001">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">TELEFONE</button>
+        <button id="login-tab-email" onclick="setLoginTab('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">E-MAIL</button>
+      </div>
+      <div id="login-phone-field">
+        <label class="input-label">TELEFONE COM DDD</label>
+        <input id="login-phone" class="input-field" placeholder="83999990000">
+      </div>
+      <div id="login-email-field" style="display:none">
+        <label class="input-label">E-MAIL</label>
+        <input id="login-email" class="input-field" type="email" placeholder="seu@email.com">
+      </div>
       <label class="input-label">SENHA</label>
       <input id="login-password" class="input-field" type="password" placeholder="Sua senha">
       <div id="login-error"></div>
@@ -121,8 +131,17 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.6);cursor:pointer;text-decoration:underline" onclick="showScreen('forgot')">Esqueci minha senha</p>
     </div>
     <div id="register-form" style="width:100%;display:none">
-      <!-- STEP 1: Telefone + Verificação -->
-      <div id="reg-step1">
+      <!-- Escolher método de cadastro -->
+      <div id="reg-method-choice" style="margin-bottom:16px">
+        <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:12px">Cadastrar com:</p>
+        <div style="display:flex;gap:8px">
+          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">📱 TELEFONE</button>
+          <button id="reg-tab-email" onclick="setRegisterMethod('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">✉️ E-MAIL</button>
+        </div>
+      </div>
+
+      <!-- STEP 1A: Cadastro por telefone -->
+      <div id="reg-step1-phone">
         <label class="input-label">TELEFONE COM DDD</label>
         <input id="reg-phone" class="input-field" placeholder="83999990000">
         <div id="reg-code-sent" style="display:none;margin-top:10px">
@@ -137,6 +156,24 @@ input::placeholder{color:rgba(255,255,255,0.35)}
           <button class="btn-primary" onclick="sendCode()">ENVIAR CÓDIGO POR WHATSAPP</button>
         </div>
       </div>
+
+      <!-- STEP 1B: Cadastro por email -->
+      <div id="reg-step1-email" style="display:none">
+        <label class="input-label">E-MAIL</label>
+        <input id="reg-email" class="input-field" type="email" placeholder="seu@email.com">
+        <div id="reg-email-code-sent" style="display:none;margin-top:10px">
+          <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:8px">Código enviado para seu e-mail!</p>
+          <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+          <input id="reg-email-code" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+          <button class="btn-primary" onclick="verifyEmailRegister()">VERIFICAR</button>
+          <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:10px;text-align:center;cursor:pointer" onclick="sendEmailRegisterCode()">Reenviar código</p>
+        </div>
+        <div id="reg-email-send-btn">
+          <div id="reg-email-error"></div>
+          <button class="btn-primary" onclick="sendEmailRegisterCode()">ENVIAR CÓDIGO POR E-MAIL</button>
+        </div>
+      </div>
+
       <!-- STEP 2: Dados + Senha (aparece após verificação) -->
       <div id="reg-step2" style="display:none">
         <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
@@ -151,12 +188,12 @@ input::placeholder{color:rgba(255,255,255,0.35)}
         <input id="reg-password" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
         <div class="lgpd-check">
           <input type="checkbox" id="reg-lgpd">
-        <label for="reg-lgpd" style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4">Li e aceito os <a href="#" onclick="showScreen('terms');return false" style="color:#fff;font-weight:700;text-decoration:underline">Termos de Uso</a> e a <a href="#" onclick="showScreen('privacy');return false" style="color:#fff;font-weight:700;text-decoration:underline">Política de Privacidade</a> do TenisCash conforme a LGPD.</label>
+          <label for="reg-lgpd" style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4">Li e aceito os <a href="#" onclick="showScreen('terms');return false" style="color:#fff;font-weight:700;text-decoration:underline">Termos de Uso</a> e a <a href="#" onclick="showScreen('privacy');return false" style="color:#fff;font-weight:700;text-decoration:underline">Política de Privacidade</a> do TenisCash conforme a LGPD.</label>
+        </div>
+        <div id="reg-error"></div>
+        <button class="btn-primary" onclick="doRegister()">CRIAR CONTA</button>
+        <p class="lgpd-text" style="text-align:center;margin-top:16px">Seus dados são protegidos pela Lei Geral de Proteção de Dados (LGPD). Você pode excluir sua conta e dados a qualquer momento.</p>
       </div>
-      <div id="reg-error"></div>
-      <button class="btn-primary" onclick="doRegister()">CRIAR CONTA</button>
-      <p class="lgpd-text" style="text-align:center;margin-top:16px">Seus dados são protegidos pela Lei Geral de Proteção de Dados (LGPD). Você pode excluir sua conta e dados a qualquer momento.</p>
-      </div><!-- end reg-step2 -->
     </div>
   </div>
 </div>
@@ -258,7 +295,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p style="margin-top:10px"><strong>Armazenamento:</strong> Os dados são armazenados em servidores seguros com criptografia.</p>
     <p style="margin-top:10px"><strong>Seus direitos (LGPD):</strong> Você pode a qualquer momento: acessar seus dados, corrigir informações, solicitar a exclusão completa de sua conta e dados, revogar o consentimento.</p>
     <p style="margin-top:10px"><strong>Controlador dos dados:</strong> Sports & Tennis (Foco Comércio e Serviços) - João Pessoa/PB</p>
-    <p style="margin-top:10px"><strong>Contato:</strong> sportsetennis@gmail.com</p>
+    <p style="margin-top:10px"><strong>Contato:</strong> <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a2d1d2cdd0d6d1c7d6c7cccccbd1e2c5cfc3cbce8cc1cdcf">[email&#160;protected]</a></p>
     <p style="margin-top:10px">Última atualização: Abril/2026</p>
   </div>
 </div>
@@ -498,6 +535,60 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 </div>
 
+<!-- EDITAR DADOS PESSOAIS -->
+<div id="edit-profile" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('mydata')">←</span><p style="font-size:18px;font-weight:700">Alterar Dados</p></div>
+
+  <p class="section-header">Dados Pessoais</p>
+  <label class="input-label">NOME COMPLETO</label>
+  <input id="ep-name" class="input-field" placeholder="Nome e sobrenome">
+  <label class="input-label">DATA DE NASCIMENTO</label>
+  <input id="ep-birth" class="input-field" type="date">
+
+  <p class="section-header">Endereço</p>
+  <label class="input-label">CEP</label>
+  <input id="ep-cep" class="input-field" placeholder="58000-000" maxlength="9" oninput="cepLookupEdit()">
+  <div id="ep-cep-status" style="font-size:12px;margin-top:4px"></div>
+  <label class="input-label">RUA</label>
+  <input id="ep-street" class="input-field" placeholder="Rua">
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">NÚMERO</label><input id="ep-number" class="input-field" placeholder="Nº"></div>
+    <div style="flex:1"><label class="input-label">COMPLEMENTO</label><input id="ep-complement" class="input-field" placeholder="Apt, bloco..."></div>
+  </div>
+  <label class="input-label">BAIRRO</label>
+  <input id="ep-neighborhood" class="input-field" placeholder="Bairro">
+  <div class="input-row">
+    <div style="flex:2"><label class="input-label">CIDADE</label><input id="ep-city" class="input-field" placeholder="Cidade"></div>
+    <div style="flex:1"><label class="input-label">UF</label><input id="ep-state" class="input-field" placeholder="PB" maxlength="2"></div>
+  </div>
+
+  <p class="section-header">Dados Físicos</p>
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">ALTURA (cm)</label><input id="ep-height" class="input-field" placeholder="175" type="number"></div>
+    <div style="flex:1"><label class="input-label">PESO (kg)</label><input id="ep-weight" class="input-field" placeholder="75" type="number"></div>
+  </div>
+  <label class="input-label">TAMANHO DE ROUPA</label>
+  <select id="ep-shirt" class="input-field"><option value="">Selecione</option><option>PP</option><option>P</option><option>M</option><option>G</option><option>GG</option><option>XG</option><option>XXG</option></select>
+  <label class="input-label">TAMANHO DE TÊNIS</label>
+  <select id="ep-shoe" class="input-field"><option value="">Selecione</option></select>
+
+  <p class="section-header">Esportes que Pratica</p>
+  <div class="chip-grid" id="ep-sports-practice"></div>
+
+  <p class="section-header">Esportes que Quer Começar</p>
+  <div class="chip-grid" id="ep-sports-want"></div>
+
+  <p class="section-header">Onde Pratica Esporte</p>
+  <div class="chip-grid" id="ep-sports-where"></div>
+
+  <p class="section-header">Marcas Preferidas</p>
+  <div class="chip-grid" id="ep-brands"></div>
+
+  <div id="ep-error"></div>
+  <button class="btn-primary" onclick="saveEditProfile()">SALVAR ALTERAÇÕES</button>
+  <button class="btn-secondary" onclick="showScreen('mydata')">CANCELAR</button>
+</div>
+
 <!-- BOTTOM NAV -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <div class="nav-item active" onclick="showScreen('home')"><span>⌂</span><span>Início</span></div>
@@ -507,15 +598,15 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
 </div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const API = window.location.origin + '/api';
 let token = localStorage.getItem('tc_token');
 let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
 let balanceVisible = true;
 
-const SPORTS = ['Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro'];
-const BRANDS = ['Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra'];
-const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro'];
+const SPORTS = ['Nenhum','Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro'];
+const BRANDS = ['Nenhuma','Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra'];
+const PLACES = ['Nenhum','Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro'];
 
 setTimeout(() => {
   document.getElementById('splash').classList.remove('active');
@@ -527,7 +618,7 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   const nav = document.getElementById('bottomNav');
-  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata'];
+  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
   nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
@@ -539,6 +630,7 @@ function showScreen(id) {
   if (id === 'pos') loadPOS();
   if (id === 'complete-profile') initProfileForm();
   if (id === 'mydata') loadMyData();
+  if (id === 'edit-profile') initEditProfileForm();
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
 }
 
@@ -557,11 +649,32 @@ function setAuthTab(tab) {
   document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
 }
 
+let loginMethod = 'phone';
+
+function setLoginTab(tab) {
+  loginMethod = tab;
+  document.getElementById('login-phone-field').style.display = tab === 'phone' ? 'block' : 'none';
+  document.getElementById('login-email-field').style.display = tab === 'email' ? 'block' : 'none';
+  document.getElementById('login-tab-phone').style.background = tab === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-email').style.background = tab === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+}
+
 async function doLogin() {
-  const phone = document.getElementById('login-phone').value.replace(/\D/g,'');
   const password = document.getElementById('login-password').value;
-  if (!phone || !password) { showError('login-error','Preencha telefone e senha'); return; }
-  const data = await api('/auth/login','POST',{phone,password});
+  if (!password) { showError('login-error','Informe sua senha'); return; }
+  let body = { password };
+  if (loginMethod === 'email') {
+    const email = document.getElementById('login-email').value;
+    if (!email) { showError('login-error','Informe seu e-mail'); return; }
+    body.email = email;
+  } else {
+    const phone = document.getElementById('login-phone').value.replace(/\D/g,'');
+    if (!phone) { showError('login-error','Informe seu telefone'); return; }
+    body.phone = phone;
+  }
+  const data = await api('/auth/login','POST', body);
   if (data.error) { showError('login-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
@@ -570,8 +683,44 @@ async function doLogin() {
 }
 
 let verifiedPhone = null;
+let verifiedEmailRegister = null;
+let registerMethod = 'phone';
 let forgotMethod = null;
 let forgotPhone = null;
+
+function setRegisterMethod(method) {
+  registerMethod = method;
+  document.getElementById('reg-step1-phone').style.display = method === 'phone' ? 'block' : 'none';
+  document.getElementById('reg-step1-email').style.display = method === 'email' ? 'block' : 'none';
+  document.getElementById('reg-tab-phone').style.background = method === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-email').style.background = method === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+}
+
+async function sendEmailRegisterCode() {
+  const email = document.getElementById('reg-email').value;
+  if (!email || !email.includes('@')) { showError('reg-email-error','Informe um e-mail válido'); return; }
+  const data = await api('/auth/send-email-register-code','POST',{email});
+  if (data.error) { showError('reg-email-error',data.error); return; }
+  document.getElementById('reg-email-code-sent').style.display = 'block';
+  document.getElementById('reg-email-send-btn').style.display = 'none';
+  document.getElementById('reg-email').disabled = true;
+}
+
+async function verifyEmailRegister() {
+  const email = document.getElementById('reg-email').value;
+  const code = document.getElementById('reg-email-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('reg-email-error','Digite o código de 6 dígitos'); return; }
+  const data = await api('/auth/verify-email-register-code','POST',{email,code});
+  if (data.error) { showError('reg-email-error',data.error); return; }
+  if (data.verified) {
+    verifiedEmailRegister = email;
+    document.getElementById('reg-step1-email').style.display = 'none';
+    document.getElementById('reg-step2').style.display = 'block';
+    document.getElementById('reg-verified-phone').textContent = 'E-mail verificado: ' + email;
+  }
+}
 
 // FORGOT PASSWORD
 function showForgotMethod(method) {
@@ -652,7 +801,7 @@ async function verifyPhone() {
   if (data.error) { showError('reg-phone-error',data.error); return; }
   if (data.verified) {
     verifiedPhone = phone;
-    document.getElementById('reg-step1').style.display = 'none';
+    document.getElementById('reg-step1-phone').style.display = 'none';
     document.getElementById('reg-step2').style.display = 'block';
     document.getElementById('reg-verified-phone').textContent = 'Telefone verificado: ' + phone;
   }
@@ -663,12 +812,21 @@ async function doRegister() {
   const birthDate = document.getElementById('reg-birth').value;
   const password = document.getElementById('reg-password').value;
   const lgpd = document.getElementById('reg-lgpd').checked;
-  if (!verifiedPhone) { showError('reg-error','Verifique seu telefone primeiro'); return; }
   if (!name) { showError('reg-error','Informe seu nome completo'); return; }
   if (!birthDate) { showError('reg-error','Informe sua data de nascimento'); return; }
   if (!password || password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
   if (!lgpd) { showError('reg-error','Você precisa aceitar os termos e a política de privacidade'); return; }
-  const data = await api('/auth/register','POST',{name,phone:verifiedPhone,birthDate,password,lgpdAccepted:true});
+
+  let body = { name, birthDate, password, lgpdAccepted: true, registerMethod };
+  if (registerMethod === 'email') {
+    if (!verifiedEmailRegister) { showError('reg-error','Verifique seu e-mail primeiro'); return; }
+    body.email = verifiedEmailRegister;
+  } else {
+    if (!verifiedPhone) { showError('reg-error','Verifique seu telefone primeiro'); return; }
+    body.phone = verifiedPhone;
+  }
+
+  const data = await api('/auth/register','POST', body);
   if (data.error) { showError('reg-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
@@ -841,6 +999,23 @@ async function cepLookup() {
   } catch(e) { document.getElementById('cp-cep-status').textContent = 'Erro ao buscar CEP'; }
 }
 
+async function cepLookupEdit() {
+  const cep = document.getElementById('ep-cep').value.replace(/\D/g,'');
+  if (cep.length !== 8) return;
+  document.getElementById('ep-cep-status').textContent = 'Buscando...';
+  try {
+    const res = await fetch('https://viacep.com.br/ws/'+cep+'/json/');
+    const data = await res.json();
+    if (data.erro) { document.getElementById('ep-cep-status').textContent = 'CEP não encontrado'; return; }
+    document.getElementById('ep-street').value = data.logradouro || '';
+    document.getElementById('ep-neighborhood').value = data.bairro || '';
+    document.getElementById('ep-city').value = data.localidade || '';
+    document.getElementById('ep-state').value = data.uf || '';
+    document.getElementById('ep-cep-status').innerHTML = '<span style="color:#8BFF8B">✓ Endereço encontrado</span>';
+    document.getElementById('ep-number').focus();
+  } catch(e) { document.getElementById('ep-cep-status').textContent = 'Erro ao buscar CEP'; }
+}
+
 async function submitProfile() {
   const emailField = document.getElementById('cp-email').value;
   if (emailField && !emailVerified) {
@@ -897,7 +1072,7 @@ async function loadMyData() {
 
   let html = '<p style="font-size:16px;font-weight:700;margin-bottom:16px">Dados Pessoais</p>';
   html += row('NOME', u.name);
-  html += row('TELEFONE', u.phone);
+  html += row('TELEFONE', u.phone && !u.phone.startsWith('email_') ? u.phone : null);
   html += row('E-MAIL', u.email);
   html += row('CPF', u.cpf);
   html += row('DATA DE NASCIMENTO', u.birthDate);
@@ -925,11 +1100,82 @@ async function loadMyData() {
   html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Marcas</p>';
   html += chips('MARCAS PREFERIDAS', u.favBrands);
 
+  html += '<button class="btn-primary" onclick="showEditProfile()" style="margin-top:24px">✏️ ALTERAR DADOS</button>';
+
   if (!u.profileComplete) {
-    html += '<button class="btn-primary" onclick="showScreen(\'complete-profile\')" style="margin-top:24px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
+    html += '<button class="btn-secondary" onclick="showScreen(\'complete-profile\')" style="margin-top:12px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
   }
 
   container.innerHTML = html;
+}
+
+function showEditProfile() {
+  showScreen('edit-profile');
+  initEditProfileForm();
+}
+
+async function initEditProfileForm() {
+  const me = await api('/auth/me');
+  if (me.error) return;
+  const u = me.user;
+
+  // Shoe sizes
+  const shoeSel = document.getElementById('ep-shoe');
+  if (shoeSel.options.length <= 1) {
+    for (let i = 28; i <= 48; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; shoeSel.appendChild(o); }
+  }
+
+  document.getElementById('ep-name').value = u.name || '';
+  document.getElementById('ep-birth').value = u.birthDate || '';
+  document.getElementById('ep-cep').value = u.cep || '';
+  document.getElementById('ep-street').value = u.street || '';
+  document.getElementById('ep-number').value = u.number || '';
+  document.getElementById('ep-complement').value = u.complement || '';
+  document.getElementById('ep-neighborhood').value = u.neighborhood || '';
+  document.getElementById('ep-city').value = u.city || '';
+  document.getElementById('ep-state').value = u.state || '';
+  document.getElementById('ep-height').value = u.height || '';
+  document.getElementById('ep-weight').value = u.weight || '';
+  document.getElementById('ep-shirt').value = u.shirtSize || '';
+  document.getElementById('ep-shoe').value = u.shoeSize || '';
+
+  renderChipsEdit('ep-sports-practice', SPORTS, u.sportsPractice || []);
+  renderChipsEdit('ep-sports-want', SPORTS, u.sportsWant || []);
+  renderChipsEdit('ep-sports-where', PLACES, u.sportsWhere || []);
+  renderChipsEdit('ep-brands', BRANDS, u.favBrands || []);
+}
+
+function renderChipsEdit(containerId, items, selected) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = items.map(item => '<div class="chip'+(selected.includes(item)?' selected':'')+'" onclick="this.classList.toggle(\'selected\')" data-value="'+item+'">'+item+'</div>').join('');
+}
+
+async function saveEditProfile() {
+  const data = {
+    name: document.getElementById('ep-name').value || null,
+    birthDate: document.getElementById('ep-birth').value || null,
+    cep: document.getElementById('ep-cep').value.replace(/\D/g,'') || null,
+    street: document.getElementById('ep-street').value || null,
+    number: document.getElementById('ep-number').value || null,
+    complement: document.getElementById('ep-complement').value || null,
+    neighborhood: document.getElementById('ep-neighborhood').value || null,
+    city: document.getElementById('ep-city').value || null,
+    state: document.getElementById('ep-state').value || null,
+    height: document.getElementById('ep-height').value || null,
+    weight: document.getElementById('ep-weight').value || null,
+    shirtSize: document.getElementById('ep-shirt').value || null,
+    shoeSize: document.getElementById('ep-shoe').value || null,
+    sportsPractice: getSelectedChips('ep-sports-practice'),
+    sportsWant: getSelectedChips('ep-sports-want'),
+    sportsWhere: getSelectedChips('ep-sports-where'),
+    favBrands: getSelectedChips('ep-brands'),
+  };
+  const result = await api('/auth/update-profile','PUT',data);
+  if (result.error) { showError('ep-error',result.error); return; }
+  // Atualiza nome na sessão
+  if (data.name) { user.name = data.name; localStorage.setItem('tc_user',JSON.stringify(user)); }
+  alert('Dados atualizados com sucesso!');
+  showScreen('mydata');
 }
 
 // EMAIL VERIFICATION
@@ -1091,11 +1337,4 @@ function posReset() {
   document.getElementById('pos-r-sale').textContent = 'R$ 0,00';
   document.getElementById('pos-r-tc').textContent = '- T$ 0,00';
   document.getElementById('pos-r-pay').textContent = 'R$ 0,00';
-  document.getElementById('pos-r-earn').textContent = '+ T$ 0,00';
-  document.getElementById('pos-form').style.display = 'block';
-  document.getElementById('pos-success').style.display = 'none';
-  posClientData = null;
-}
-</script>
-</body>
-</html>
+  document.ge
