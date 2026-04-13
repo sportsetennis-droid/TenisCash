@@ -5,21 +5,25 @@ const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 
 const router = express.Router();
 
-// CADASTRO BÁSICO (sem bônus)
+// CADASTRO BÁSICO (sem bônus - bônus só no perfil completo)
 router.post('/register', async (req, res) => {
   try {
-    const { name, phone, pin, lgpdAccepted } = req.body;
+    const { name, phone, birthDate, password, lgpdAccepted } = req.body;
 
-    if (!name || !phone || !pin) {
-      return res.status(400).json({ error: 'Nome, telefone e PIN são obrigatórios' });
+    if (!name || !phone || !password) {
+      return res.status(400).json({ error: 'Nome, telefone e senha são obrigatórios' });
+    }
+
+    if (!birthDate) {
+      return res.status(400).json({ error: 'Data de nascimento é obrigatória' });
     }
 
     if (!lgpdAccepted) {
       return res.status(400).json({ error: 'Você precisa aceitar os termos de uso e política de privacidade' });
     }
 
-    if (pin.length < 4 || pin.length > 6) {
-      return res.status(400).json({ error: 'PIN deve ter entre 4 e 6 dígitos' });
+    if (password.length < 4 || password.length > 20) {
+      return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
     }
 
     const existing = await prisma.user.findUnique({ where: { phone } });
@@ -27,13 +31,14 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Telefone já cadastrado' });
     }
 
-    const hashedPin = await bcrypt.hash(pin, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
       data: {
         name,
         phone,
-        pin: hashedPin,
+        birthDate,
+        pin: hashedPassword,
         balance: 0,
         lgpdAccepted: true,
         lgpdDate: new Date(),
@@ -149,24 +154,24 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
 // LOGIN
 router.post('/login', async (req, res) => {
   try {
-    const { phone, pin } = req.body;
+    const { phone, password } = req.body;
 
-    if (!phone || !pin) {
-      return res.status(400).json({ error: 'Telefone e PIN são obrigatórios' });
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Telefone e senha são obrigatórios' });
     }
 
     const user = await prisma.user.findUnique({ where: { phone } });
     if (!user) {
-      return res.status(401).json({ error: 'Telefone ou PIN incorretos' });
+      return res.status(401).json({ error: 'Telefone ou senha incorretos' });
     }
 
     if (!user.active) {
       return res.status(403).json({ error: 'Conta desativada. Entre em contato com a loja.' });
     }
 
-    const validPin = await bcrypt.compare(pin, user.pin);
-    if (!validPin) {
-      return res.status(401).json({ error: 'Telefone ou PIN incorretos' });
+    const validPassword = await bcrypt.compare(password, user.pin);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Telefone ou senha incorretos' });
     }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });

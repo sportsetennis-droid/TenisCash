@@ -114,8 +114,8 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div id="login-form" style="width:100%">
       <label class="input-label">TELEFONE</label>
       <input id="login-phone" class="input-field" placeholder="(83) 99999-0001">
-      <label class="input-label">PIN</label>
-      <input id="login-pin" class="input-field" type="password" placeholder="••••" maxlength="6">
+      <label class="input-label">SENHA</label>
+      <input id="login-password" class="input-field" type="password" placeholder="Sua senha">
       <div id="login-error"></div>
       <button class="btn-primary" onclick="doLogin()">ENTRAR</button>
     </div>
@@ -124,8 +124,10 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <input id="reg-name" class="input-field" placeholder="Nome e sobrenome">
       <label class="input-label">TELEFONE COM DDD</label>
       <input id="reg-phone" class="input-field" placeholder="83999990000">
-      <label class="input-label">CRIE UM PIN (4-6 dígitos)</label>
-      <input id="reg-pin" class="input-field" type="password" placeholder="••••" maxlength="6">
+      <label class="input-label">DATA DE NASCIMENTO</label>
+      <input id="reg-birth" class="input-field" type="date">
+      <label class="input-label">CRIE UMA SENHA</label>
+      <input id="reg-password" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
       <div class="lgpd-check">
         <input type="checkbox" id="reg-lgpd">
         <label for="reg-lgpd" style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4">Li e aceito os <a href="#" onclick="showScreen('terms');return false" style="color:#fff;font-weight:700;text-decoration:underline">Termos de Uso</a> e a <a href="#" onclick="showScreen('privacy');return false" style="color:#fff;font-weight:700;text-decoration:underline">Política de Privacidade</a> do TenisCash conforme a LGPD.</label>
@@ -436,9 +438,9 @@ function setAuthTab(tab) {
 
 async function doLogin() {
   const phone = document.getElementById('login-phone').value.replace(/\D/g,'');
-  const pin = document.getElementById('login-pin').value;
-  if (!phone || !pin) { showError('login-error','Preencha telefone e PIN'); return; }
-  const data = await api('/auth/login','POST',{phone,pin});
+  const password = document.getElementById('login-password').value;
+  if (!phone || !password) { showError('login-error','Preencha telefone e senha'); return; }
+  const data = await api('/auth/login','POST',{phone,password});
   if (data.error) { showError('login-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
@@ -449,12 +451,14 @@ async function doLogin() {
 async function doRegister() {
   const name = document.getElementById('reg-name').value.trim();
   const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
-  const pin = document.getElementById('reg-pin').value;
+  const birthDate = document.getElementById('reg-birth').value;
+  const password = document.getElementById('reg-password').value;
   const lgpd = document.getElementById('reg-lgpd').checked;
-  if (!name || !phone || !pin) { showError('reg-error','Preencha todos os campos'); return; }
-  if (pin.length < 4) { showError('reg-error','PIN deve ter no mínimo 4 dígitos'); return; }
+  if (!name || !phone || !password) { showError('reg-error','Preencha todos os campos'); return; }
+  if (!birthDate) { showError('reg-error','Informe sua data de nascimento'); return; }
+  if (password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
   if (!lgpd) { showError('reg-error','Você precisa aceitar os termos e a política de privacidade'); return; }
-  const data = await api('/auth/register','POST',{name,phone,pin,lgpdAccepted:true});
+  const data = await api('/auth/register','POST',{name,phone,birthDate,password,lgpdAccepted:true});
   if (data.error) { showError('reg-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
