@@ -976,6 +976,9 @@ async function confirmEmailCode() {
   document.getElementById('cp-email').disabled = true;
   document.getElementById('cp-email-status').innerHTML = '<span style="color:#8BFF8B">✓ E-mail verificado</span>';
 }
+
+// CHANGE PASSWORD
+async function changePassword() {
   const current = document.getElementById('sec-current').value;
   const new1 = document.getElementById('sec-new1').value;
   const new2 = document.getElementById('sec-new2').value;
