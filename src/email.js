@@ -19,7 +19,7 @@ async function sendEmailCode(email) {
 
   try {
     await resend.emails.send({
-      from: 'TenisCash <onboarding@resend.dev>',
+      from: 'TenisCash <noreply@teniscash.com.br>',
       to: email,
       subject: `Seu codigo TenisCash: ${code}`,
       html: `
