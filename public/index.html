@@ -174,9 +174,15 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <label class="input-label">CPF</label>
   <input id="cp-cpf" class="input-field" placeholder="000.000.000-00">
   <label class="input-label">E-MAIL</label>
-  <input id="cp-email" class="input-field" placeholder="seu@email.com" type="email">
-  <label class="input-label">DATA DE NASCIMENTO</label>
-  <input id="cp-birth" class="input-field" type="date">
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <input id="cp-email" class="input-field" placeholder="seu@email.com" type="email" style="flex:1;margin-top:0">
+    <button id="cp-email-btn" onclick="sendEmailVerification()" style="padding:14px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Chakra Petch'">VERIFICAR</button>
+  </div>
+  <div id="cp-email-verify" style="display:none;margin-top:8px">
+    <input id="cp-email-code" class="input-field" placeholder="Código de 6 dígitos" maxlength="6" style="text-align:center;letter-spacing:6px">
+    <button onclick="confirmEmailCode()" style="width:100%;padding:12px;margin-top:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'">CONFIRMAR CÓDIGO</button>
+  </div>
+  <div id="cp-email-status" style="font-size:12px;margin-top:4px"></div>
 
   <p class="section-header">Endereço</p>
   <label class="input-label">CEP</label>
@@ -412,7 +418,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
   <div style="margin-top:30px">
     <div class="profile-item" id="prof-complete-btn" style="display:none" onclick="showScreen('complete-profile')"><span style="font-size:18px">🎁</span><span style="flex:1;font-size:14px;color:#FFD54F">Completar perfil e ganhar T$ 100</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
-    <div class="profile-item"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('mydata')"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('security')"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Alterar senha</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('terms')"><span style="font-size:18px">📄</span><span style="flex:1;font-size:14px">Termos de uso</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('privacy')"><span style="font-size:18px">🔐</span><span style="flex:1;font-size:14px">Política de privacidade</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
@@ -423,6 +429,12 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p style="color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px">TENISCASH v2.0</p>
     <p style="color:rgba(255,255,255,0.15);font-size:10px">Sports & Tennis © 2026</p>
   </div>
+</div>
+
+<!-- DADOS PESSOAIS -->
+<div id="mydata" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('profile')">←</span><p style="font-size:18px;font-weight:700">Meus Dados</p></div>
+  <div id="mydata-content" style="margin-top:16px"></div>
 </div>
 
 <!-- SECURITY - Alterar Senha -->
@@ -515,7 +527,7 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   const nav = document.getElementById('bottomNav');
-  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot'];
+  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata'];
   nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
@@ -526,6 +538,7 @@ function showScreen(id) {
   if (id === 'profile') loadProfile();
   if (id === 'pos') loadPOS();
   if (id === 'complete-profile') initProfileForm();
+  if (id === 'mydata') loadMyData();
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
 }
 
@@ -829,10 +842,14 @@ async function cepLookup() {
 }
 
 async function submitProfile() {
+  const emailField = document.getElementById('cp-email').value;
+  if (emailField && !emailVerified) {
+    showError('cp-error','Verifique seu e-mail antes de continuar');
+    return;
+  }
   const data = {
     cpf: document.getElementById('cp-cpf').value.replace(/\D/g,'') || null,
-    email: document.getElementById('cp-email').value || null,
-    birthDate: document.getElementById('cp-birth').value || null,
+    email: emailVerified ? verifiedEmail : null,
     cep: document.getElementById('cp-cep').value.replace(/\D/g,'') || null,
     street: document.getElementById('cp-street').value || null,
     number: document.getElementById('cp-number').value || null,
@@ -864,6 +881,101 @@ let posClientData = null;
 
 // CHANGE PASSWORD
 async function changePassword() {
+
+// MY DATA
+async function loadMyData() {
+  const me = await api('/auth/me');
+  if (me.error) return;
+  const u = me.user;
+  const container = document.getElementById('mydata-content');
+  
+  function row(label, value) {
+    return '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><p style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1px">'+label+'</p><p style="font-size:14px;margin-top:4px">'+(value||'Não informado')+'</p></div>';
+  }
+  
+  function chips(label, arr) {
+    if (!arr || arr.length === 0) return row(label, 'Não informado');
+    return '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><p style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1px">'+label+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+arr.map(function(s){return '<span style="padding:4px 12px;background:rgba(255,255,255,0.12);border-radius:16px;font-size:12px">'+s+'</span>';}).join('')+'</div></div>';
+  }
+
+  let html = '<p style="font-size:16px;font-weight:700;margin-bottom:16px">Dados Pessoais</p>';
+  html += row('NOME', u.name);
+  html += row('TELEFONE', u.phone);
+  html += row('E-MAIL', u.email);
+  html += row('CPF', u.cpf);
+  html += row('DATA DE NASCIMENTO', u.birthDate);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Endereço</p>';
+  html += row('CEP', u.cep);
+  html += row('RUA', u.street);
+  html += row('NÚMERO', u.number);
+  html += row('COMPLEMENTO', u.complement);
+  html += row('BAIRRO', u.neighborhood);
+  html += row('CIDADE', u.city);
+  html += row('UF', u.state);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Dados Físicos</p>';
+  html += row('ALTURA', u.height ? u.height + ' cm' : null);
+  html += row('PESO', u.weight ? u.weight + ' kg' : null);
+  html += row('TAMANHO ROUPA', u.shirtSize);
+  html += row('TAMANHO TÊNIS', u.shoeSize);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Esportes</p>';
+  html += chips('PRATICA', u.sportsPractice);
+  html += chips('QUER COMEÇAR', u.sportsWant);
+  html += chips('ONDE PRATICA', u.sportsWhere);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Marcas</p>';
+  html += chips('MARCAS PREFERIDAS', u.favBrands);
+
+  if (!u.profileComplete) {
+    html += '<button class="btn-primary" onclick="showScreen(\'complete-profile\')" style="margin-top:24px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
+  }
+
+  container.innerHTML = html;
+}
+
+// EMAIL VERIFICATION
+let emailVerified = false;
+let verifiedEmail = null;
+
+async function sendEmailVerification() {
+  const email = document.getElementById('cp-email').value;
+  if (!email || !email.includes('@')) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Informe um e-mail válido</span>';
+    return;
+  }
+  document.getElementById('cp-email-status').innerHTML = 'Enviando código...';
+  const data = await api('/auth/send-email-code','POST',{email});
+  if (data.error) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+    return;
+  }
+  document.getElementById('cp-email-verify').style.display = 'block';
+  document.getElementById('cp-email-btn').textContent = 'REENVIAR';
+  document.getElementById('cp-email-status').innerHTML = '<span style="color:#FFD54F">Código enviado para '+email+'</span>';
+}
+
+async function confirmEmailCode() {
+  const email = document.getElementById('cp-email').value;
+  const code = document.getElementById('cp-email-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Digite o código de 6 dígitos</span>';
+    return;
+  }
+  const data = await api('/auth/verify-email-code','POST',{email,code});
+  if (data.error) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+    return;
+  }
+  emailVerified = true;
+  verifiedEmail = email;
+  document.getElementById('cp-email-verify').style.display = 'none';
+  document.getElementById('cp-email-btn').textContent = '✓';
+  document.getElementById('cp-email-btn').disabled = true;
+  document.getElementById('cp-email').disabled = true;
+  document.getElementById('cp-email-status').innerHTML = '<span style="color:#8BFF8B">✓ E-mail verificado</span>';
+}
   const current = document.getElementById('sec-current').value;
   const new1 = document.getElementById('sec-new1').value;
   const new2 = document.getElementById('sec-new2').value;

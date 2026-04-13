@@ -301,6 +301,44 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// ENVIAR CÓDIGO DE VERIFICAÇÃO POR EMAIL (pra completar perfil)
+router.post('/send-email-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'E-mail é obrigatório' });
+    }
+    const result = await sendEmailCode(email);
+    if (result.success) {
+      res.json({ success: true, message: 'Código enviado para seu e-mail' });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao enviar código email:', err);
+    res.status(500).json({ error: 'Erro ao enviar código' });
+  }
+});
+
+// VERIFICAR CÓDIGO DE EMAIL
+router.post('/verify-email-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: 'E-mail e código são obrigatórios' });
+    }
+    const result = verifyEmailCode(email, code);
+    if (result.valid) {
+      res.json({ success: true, verified: true });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao verificar código email:', err);
+    res.status(500).json({ error: 'Erro ao verificar código' });
+  }
+});
+
 // ESQUECI SENHA - ENVIAR CÓDIGO
 router.post('/forgot-send-code', async (req, res) => {
   try {
