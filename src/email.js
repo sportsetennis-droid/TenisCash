@@ -11,15 +11,24 @@ function generateCode() {
 }
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
     user: GMAIL_USER,
     pass: GMAIL_APP_PASSWORD,
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
 async function sendEmailCode(email) {
   const code = generateCode();
+
+  console.log('Tentando enviar email para:', email);
+  console.log('GMAIL_USER configurado:', GMAIL_USER ? 'sim' : 'NAO');
+  console.log('GMAIL_APP_PASSWORD configurado:', GMAIL_APP_PASSWORD ? 'sim ('+GMAIL_APP_PASSWORD.length+' chars)' : 'NAO');
 
   emailCodes.set(email, {
     code,
@@ -28,27 +37,28 @@ async function sendEmailCode(email) {
   });
 
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"TenisCash - Sports & Tennis" <${GMAIL_USER}>`,
       to: email,
-      subject: `Seu código TenisCash: ${code}`,
+      subject: `Seu codigo TenisCash: ${code}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:30px;background:#FF6D00;border-radius:16px;color:#fff;text-align:center">
           <div style="width:60px;height:60px;border-radius:50%;border:3px solid #fff;margin:0 auto 16px;display:flex;align-items:center;justify-content:center">
             <span style="font-size:28px;font-weight:900;color:#fff">T</span>
           </div>
           <h2 style="margin:0 0 8px;letter-spacing:4px">TENISCASH</h2>
-          <p style="font-size:12px;opacity:0.7;margin:0 0 24px">SPORTS & TENNIS</p>
-          <p style="font-size:14px;margin:0 0 16px">Seu código de verificação é:</p>
+          <p style="font-size:12px;opacity:0.7;margin:0 0 24px">SPORTS E TENNIS</p>
+          <p style="font-size:14px;margin:0 0 16px">Seu codigo de verificacao:</p>
           <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:20px;margin:0 0 16px">
             <span style="font-size:32px;font-weight:900;letter-spacing:8px">${code}</span>
           </div>
-          <p style="font-size:12px;opacity:0.6;margin:0">Esse código expira em 10 minutos.</p>
-          <p style="font-size:11px;opacity:0.4;margin:16px 0 0">Se você não solicitou este código, ignore este e-mail.</p>
+          <p style="font-size:12px;opacity:0.6;margin:0">Esse codigo expira em 10 minutos.</p>
+          <p style="font-size:11px;opacity:0.4;margin:16px 0 0">Se voce nao solicitou este codigo, ignore este e-mail.</p>
         </div>
       `
     });
 
+    console.log('Email enviado com sucesso:', info.messageId);
     return { success: true, message: 'Código enviado para seu e-mail' };
   } catch (err) {
     console.error('Erro ao enviar e-mail:', err);
