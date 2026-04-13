@@ -11,12 +11,39 @@ model User {
   id            String   @id @default(uuid())
   name          String
   phone         String   @unique
+  email         String?
   cpf           String?  @unique
   pin           String   // hashed
   balance       Float    @default(0)
   role          String   @default("user") // user, admin, superadmin
   active        Boolean  @default(true)
   welcomeBonus  Boolean  @default(false) // já recebeu bonus de boas-vindas
+  profileComplete Boolean @default(false) // perfil CRM completo
+  lgpdAccepted  Boolean  @default(false)
+  lgpdDate      DateTime? // data do aceite LGPD
+
+  // Dados pessoais
+  birthDate     String?
+  cep           String?
+  street        String?
+  number        String?
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String?
+
+  // Dados físicos
+  height        String?  // cm
+  weight        String?  // kg
+  shirtSize     String?  // PP, P, M, G, GG, XG, XXG
+  shoeSize      String?  // 28-48
+
+  // CRM Esportivo
+  sportsPractice  String?  // JSON array - esportes que pratica
+  sportsWant      String?  // JSON array - esportes que quer começar
+  sportsWhere     String?  // JSON array - onde pratica
+  favBrands       String?  // JSON array - marcas preferidas
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
