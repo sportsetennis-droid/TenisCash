@@ -1,34 +1,15 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Armazena códigos de email temporários
 const emailCodes = new Map();
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: GMAIL_USER,
-    pass: GMAIL_APP_PASSWORD,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
-
 async function sendEmailCode(email) {
   const code = generateCode();
-
-  console.log('Tentando enviar email para:', email);
-  console.log('GMAIL_USER configurado:', GMAIL_USER ? 'sim' : 'NAO');
-  console.log('GMAIL_APP_PASSWORD configurado:', GMAIL_APP_PASSWORD ? 'sim ('+GMAIL_APP_PASSWORD.length+' chars)' : 'NAO');
 
   emailCodes.set(email, {
     code,
@@ -37,28 +18,23 @@ async function sendEmailCode(email) {
   });
 
   try {
-    const info = await transporter.sendMail({
-      from: `"TenisCash - Sports & Tennis" <${GMAIL_USER}>`,
+    await resend.emails.send({
+      from: 'TenisCash <onboarding@resend.dev>',
       to: email,
       subject: `Seu codigo TenisCash: ${code}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:30px;background:#FF6D00;border-radius:16px;color:#fff;text-align:center">
-          <div style="width:60px;height:60px;border-radius:50%;border:3px solid #fff;margin:0 auto 16px;display:flex;align-items:center;justify-content:center">
-            <span style="font-size:28px;font-weight:900;color:#fff">T</span>
-          </div>
           <h2 style="margin:0 0 8px;letter-spacing:4px">TENISCASH</h2>
           <p style="font-size:12px;opacity:0.7;margin:0 0 24px">SPORTS E TENNIS</p>
           <p style="font-size:14px;margin:0 0 16px">Seu codigo de verificacao:</p>
           <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:20px;margin:0 0 16px">
             <span style="font-size:32px;font-weight:900;letter-spacing:8px">${code}</span>
           </div>
-          <p style="font-size:12px;opacity:0.6;margin:0">Esse codigo expira em 10 minutos.</p>
-          <p style="font-size:11px;opacity:0.4;margin:16px 0 0">Se voce nao solicitou este codigo, ignore este e-mail.</p>
+          <p style="font-size:12px;opacity:0.6;margin:0">Expira em 10 minutos.</p>
         </div>
       `
     });
 
-    console.log('Email enviado com sucesso:', info.messageId);
     return { success: true, message: 'Código enviado para seu e-mail' };
   } catch (err) {
     console.error('Erro ao enviar e-mail:', err);
@@ -69,10 +45,7 @@ async function sendEmailCode(email) {
 function verifyEmailCode(email, code) {
   const stored = emailCodes.get(email);
 
-  if (!stored) {
-    return { valid: false, message: 'Código não encontrado. Solicite um novo.' };
-  }
-
+  if (!stored) return { valid: false, message: 'Código não encontrado. Solicite um novo.' };
   if (Date.now() > stored.expiresAt) {
     emailCodes.delete(email);
     return { valid: false, message: 'Código expirado. Solicite um novo.' };
@@ -84,21 +57,16 @@ function verifyEmailCode(email, code) {
     return { valid: false, message: 'Muitas tentativas. Solicite um novo código.' };
   }
 
-  if (stored.code !== code) {
-    return { valid: false, message: 'Código incorreto. Tente novamente.' };
-  }
+  if (stored.code !== code) return { valid: false, message: 'Código incorreto.' };
 
   emailCodes.delete(email);
   return { valid: true };
 }
 
-// Limpa códigos expirados
 setInterval(() => {
   const now = Date.now();
   for (const [email, data] of emailCodes.entries()) {
-    if (now > data.expiresAt) {
-      emailCodes.delete(email);
-    }
+    if (now > data.expiresAt) emailCodes.delete(email);
   }
 }, 5 * 60 * 1000);
 
