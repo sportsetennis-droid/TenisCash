@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#FF6D00">
+<title>TenisCash</title>
+<link rel="manifest" href="/manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Chakra Petch',sans-serif;background:#FF6D00;color:#fff;min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
+input,select,textarea{font-family:'Chakra Petch',sans-serif}
+input::placeholder{color:rgba(255,255,255,0.35)}
+::-webkit-scrollbar{width:0}
+.screen{display:none;padding:0 20px 110px}
+.screen.active{display:block}
+#splash{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:0}
+@keyframes pulseW{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.splash-logo{animation:pulseW 2s ease-in-out infinite;margin-bottom:28px}
+.splash-circle{width:120px;height:120px;border-radius:50%;border:4px solid #fff;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.1)}
+.splash-t{font-family:'Orbitron';font-size:52px;font-weight:900;color:#fff}
+.splash-name{animation:fadeUp 1s ease-out .5s both}
+.splash-sub{animation:fadeUp 1s ease-out 1s both;color:rgba(255,255,255,0.5);font-size:11px;letter-spacing:5px;margin-top:14px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:20px 0 10px}
+.avatar{width:42px;height:42px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,0.12)}
+.balance-card{background:rgba(255,255,255,0.1);border-radius:22px;padding:28px 24px;margin-top:16px;border:1px solid rgba(255,255,255,0.2)}
+.balance-label{color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px}
+.balance-amount{font-family:'Orbitron';font-size:42px;font-weight:900;letter-spacing:2px;margin-top:8px}
+.balance-equiv{color:rgba(255,255,255,0.25);font-size:11px;margin-top:10px;letter-spacing:1px}
+.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.action-btn{flex:1;min-width:70px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;border-radius:14px;cursor:pointer;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15)}
+.action-btn span:first-child{font-size:20px}
+.action-btn span:last-child{font-size:10px;letter-spacing:1px;color:rgba(255,255,255,0.85)}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin:28px 0 16px}
+.tx-item{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
+.tx-icon{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px}
+.tx-info{flex:1}
+.tx-info p:first-child{font-size:13px;font-weight:500}
+.tx-info p:last-child{font-size:11px;color:rgba(255,255,255,0.25);margin-top:2px}
+.tx-amount{font-family:'Orbitron';font-size:13px;font-weight:700}
+.back-header{padding:20px 0 10px;display:flex;align-items:center;gap:12px}
+.back-arrow{font-size:22px;cursor:pointer}
+.input-label{color:rgba(255,255,255,0.85);font-size:12px;letter-spacing:1px;display:block;margin-top:14px}
+.input-field{width:100%;padding:14px;margin-top:6px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;color:#fff;font-size:15px;outline:none}
+.input-field option{color:#333;background:#fff}
+.input-row{display:flex;gap:10px}
+.input-row .input-field{flex:1}
+.input-amount-wrap{display:flex;align-items:center;gap:8px;margin-top:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px}
+.input-amount{flex:1;background:transparent;border:none;color:#fff;font-size:34px;font-family:'Orbitron';font-weight:900;outline:none;width:100%}
+.btn-primary{width:100%;padding:16px;margin-top:24px;background:#fff;border:none;border-radius:14px;color:#FF6D00;font-size:15px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px}
+.btn-outline{margin-top:24px;padding:14px 40px;background:transparent;border:2px solid #fff;border-radius:12px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'}
+.btn-secondary{width:100%;padding:14px;margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:14px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px}
+.success-circle{width:80px;height:80px;border-radius:50%;margin:0 auto 20px;background:rgba(255,255,255,0.15);border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:36px}
+.qr-box{width:220px;height:220px;margin:0 auto;background:#fff;border-radius:16px;padding:16px;display:flex;align-items:center;justify-content:center}
+.qr-img{width:100%;height:100%;object-fit:contain}
+.promo-card{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.promo-badge{background:#fff;border-radius:12px;padding:10px 16px;min-width:50px;text-align:center}
+.promo-badge span{font-family:'Orbitron';font-size:18px;font-weight:900;color:#FF6D00}
+.profile-avatar{width:80px;height:80px;border-radius:50%;margin:0 auto 16px;background:rgba(255,255,255,0.12);border:3px solid #fff;display:flex;align-items:center;justify-content:center}
+.profile-item{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}
+.badge{display:inline-block;padding:5px 16px;background:rgba(255,255,255,0.12);border-radius:20px;border:1px solid rgba(255,255,255,0.15);margin-top:8px}
+.badge span{font-size:11px;font-weight:600;letter-spacing:2px}
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:#E86200;border-top:1px solid rgba(255,255,255,0.1);display:flex;justify-content:space-around;align-items:center;padding:12px 20px 28px;z-index:100}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;opacity:0.4;transition:opacity .2s}
+.nav-item.active{opacity:1}
+.nav-item span:first-child{font-size:20px}
+.nav-item span:last-child{font-size:10px;letter-spacing:1px}
+.login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px}
+.login-logo{width:80px;height:80px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.1);margin-bottom:20px}
+.tab-switch{display:flex;gap:0;margin-bottom:30px;width:100%}
+.tab-btn{flex:1;padding:12px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:14px;font-weight:600;letter-spacing:1px}
+.tab-btn.active{background:#fff;color:#FF6D00;border-radius:10px}
+.tab-btn:not(.active){background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px}
+.error-msg{background:rgba(255,0,0,0.2);border:1px solid rgba(255,0,0,0.4);border-radius:10px;padding:12px;margin-top:10px;font-size:13px;text-align:center}
+.loading{text-align:center;padding:40px;color:rgba(255,255,255,0.5)}
+.chip-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{padding:8px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);transition:all .2s}
+.chip.selected{background:#fff;color:#FF6D00;border-color:#fff;font-weight:700}
+.section-header{font-size:16px;font-weight:700;margin-top:24px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.15)}
+.bonus-banner{background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:20px;margin:20px 0;text-align:center}
+.bonus-banner .amount{font-family:'Orbitron';font-size:36px;font-weight:900}
+.lgpd-text{font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px;line-height:1.5}
+.lgpd-check{display:flex;align-items:flex-start;gap:10px;margin-top:16px}
+.lgpd-check input{margin-top:3px;width:20px;height:20px;accent-color:#fff}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash" class="screen active">
+  <div class="splash-logo"><div class="splash-circle"><span class="splash-t">T</span></div></div>
+  <div class="splash-name">
+    <span style="font-family:'Orbitron';font-size:30px;font-weight:700;letter-spacing:6px">TENIS</span>
+    <span style="font-family:'Orbitron';font-size:30px;font-weight:900;letter-spacing:6px">CASH</span>
+  </div>
+  <p class="splash-sub">SPORTS & TENNIS</p>
+</div>
+
+<!-- LOGIN / REGISTER -->
+<div id="auth" class="screen">
+  <div class="login-screen">
+    <div class="login-logo"><span style="font-family:'Orbitron';font-size:36px;font-weight:900">T</span></div>
+    <div style="margin-bottom:10px">
+      <span style="font-family:'Orbitron';font-size:22px;font-weight:700;letter-spacing:4px">TENIS</span>
+      <span style="font-family:'Orbitron';font-size:22px;font-weight:900;letter-spacing:4px">CASH</span>
+    </div>
+    <div class="tab-switch">
+      <button class="tab-btn active" onclick="setAuthTab('login')">ENTRAR</button>
+      <button class="tab-btn" onclick="setAuthTab('register')">CRIAR CONTA</button>
+    </div>
+    <div id="login-form" style="width:100%">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">TELEFONE</button>
+        <button id="login-tab-email" onclick="setLoginTab('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">E-MAIL</button>
+      </div>
+      <div id="login-phone-field">
+        <label class="input-label">TELEFONE COM DDD</label>
+        <input id="login-phone" class="input-field" placeholder="83999990000">
+      </div>
+      <div id="login-email-field" style="display:none">
+        <label class="input-label">E-MAIL</label>
+        <input id="login-email" class="input-field" type="email" placeholder="seu@email.com">
+      </div>
+      <label class="input-label">SENHA</label>
+      <input id="login-password" class="input-field" type="password" placeholder="Sua senha">
+      <div id="login-error"></div>
+      <button class="btn-primary" onclick="doLogin()">ENTRAR</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.6);cursor:pointer;text-decoration:underline" onclick="showScreen('forgot')">Esqueci minha senha</p>
+    </div>
+    <div id="register-form" style="width:100%;display:none">
+      <!-- Escolher método de cadastro -->
+      <div id="reg-method-choice" style="margin-bottom:16px">
+        <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:12px">Cadastrar com:</p>
+        <div style="display:flex;gap:8px">
+          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">📱 TELEFONE</button>
+          <button id="reg-tab-email" onclick="setRegisterMethod('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">✉️ E-MAIL</button>
+        </div>
+      </div>
+
+      <!-- STEP 1A: Cadastro por telefone -->
+      <div id="reg-step1-phone">
+        <label class="input-label">TELEFONE COM DDD</label>
+        <input id="reg-phone" class="input-field" placeholder="83999990000">
+        <div id="reg-code-sent" style="display:none;margin-top:10px">
+          <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:8px">Código enviado para seu WhatsApp!</p>
+          <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+          <input id="reg-code" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+          <button class="btn-primary" onclick="verifyPhone()">VERIFICAR</button>
+          <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:10px;text-align:center;cursor:pointer" onclick="sendCode()">Reenviar código</p>
+        </div>
+        <div id="reg-send-btn">
+          <div id="reg-phone-error"></div>
+          <button class="btn-primary" onclick="sendCode()">ENVIAR CÓDIGO POR WHATSAPP</button>
+        </div>
+      </div>
+
+      <!-- STEP 1B: Cadastro por email -->
+      <div id="reg-step1-email" style="display:none">
+        <label class="input-label">E-MAIL</label>
+        <input id="reg-email" class="input-field" type="email" placeholder="seu@email.com">
+        <div id="reg-email-code-sent" style="display:none;margin-top:10px">
+          <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:8px">Código enviado para seu e-mail!</p>
+          <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+          <input id="reg-email-code" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+          <button class="btn-primary" onclick="verifyEmailRegister()">VERIFICAR</button>
+          <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:10px;text-align:center;cursor:pointer" onclick="sendEmailRegisterCode()">Reenviar código</p>
+        </div>
+        <div id="reg-email-send-btn">
+          <div id="reg-email-error"></div>
+          <button class="btn-primary" onclick="sendEmailRegisterCode()">ENVIAR CÓDIGO POR E-MAIL</button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Dados + Senha (aparece após verificação) -->
+      <div id="reg-step2" style="display:none">
+        <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+          <span style="color:#8BFF8B;font-size:16px">✓</span>
+          <span style="font-size:13px" id="reg-verified-phone"></span>
+        </div>
+        <label class="input-label">NOME COMPLETO</label>
+        <input id="reg-name" class="input-field" placeholder="Nome e sobrenome">
+        <label class="input-label">DATA DE NASCIMENTO</label>
+        <input id="reg-birth" class="input-field" type="date">
+        <label class="input-label">CRIE UMA SENHA</label>
+        <input id="reg-password" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+        <div class="lgpd-check">
+          <input type="checkbox" id="reg-lgpd">
+          <label for="reg-lgpd" style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4">Li e aceito os <a href="#" onclick="showScreen('terms');return false" style="color:#fff;font-weight:700;text-decoration:underline">Termos de Uso</a> e a <a href="#" onclick="showScreen('privacy');return false" style="color:#fff;font-weight:700;text-decoration:underline">Política de Privacidade</a> do TenisCash conforme a LGPD.</label>
+        </div>
+        <div id="reg-error"></div>
+        <button class="btn-primary" onclick="doRegister()">CRIAR CONTA</button>
+        <p class="lgpd-text" style="text-align:center;margin-top:16px">Seus dados são protegidos pela Lei Geral de Proteção de Dados (LGPD). Você pode excluir sua conta e dados a qualquer momento.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETE PROFILE -->
+<div id="complete-profile" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Complete seu Perfil</p></div>
+  <div class="bonus-banner">
+    <p style="font-size:13px;letter-spacing:2px;margin-bottom:8px">COMPLETE E GANHE</p>
+    <p class="amount">T$ 100</p>
+    <p style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:8px">Preencha seus dados e ganhe TenisCash grátis!</p>
+  </div>
+
+  <p class="section-header">Dados Pessoais</p>
+  <label class="input-label">CPF</label>
+  <input id="cp-cpf" class="input-field" placeholder="000.000.000-00">
+  <label class="input-label">E-MAIL</label>
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <input id="cp-email" class="input-field" placeholder="seu@email.com" type="email" style="flex:1;margin-top:0">
+    <button id="cp-email-btn" onclick="sendEmailVerification()" style="padding:14px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Chakra Petch'">VERIFICAR</button>
+  </div>
+  <div id="cp-email-verify" style="display:none;margin-top:8px">
+    <input id="cp-email-code" class="input-field" placeholder="Código de 6 dígitos" maxlength="6" style="text-align:center;letter-spacing:6px">
+    <button onclick="confirmEmailCode()" style="width:100%;padding:12px;margin-top:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'">CONFIRMAR CÓDIGO</button>
+  </div>
+  <div id="cp-email-status" style="font-size:12px;margin-top:4px"></div>
+
+  <p class="section-header">Endereço</p>
+  <label class="input-label">CEP</label>
+  <input id="cp-cep" class="input-field" placeholder="58000-000" maxlength="9" oninput="cepLookup()">
+  <div id="cp-cep-status" style="font-size:12px;margin-top:4px"></div>
+  <label class="input-label">RUA</label>
+  <input id="cp-street" class="input-field" placeholder="Rua">
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">NÚMERO</label><input id="cp-number" class="input-field" placeholder="Nº"></div>
+    <div style="flex:1"><label class="input-label">COMPLEMENTO (opcional)</label><input id="cp-complement" class="input-field" placeholder="Apt, bloco..."></div>
+  </div>
+  <label class="input-label">BAIRRO</label>
+  <input id="cp-neighborhood" class="input-field" placeholder="Bairro">
+  <div class="input-row">
+    <div style="flex:2"><label class="input-label">CIDADE</label><input id="cp-city" class="input-field" placeholder="Cidade"></div>
+    <div style="flex:1"><label class="input-label">UF</label><input id="cp-state" class="input-field" placeholder="PB" maxlength="2"></div>
+  </div>
+
+  <p class="section-header">Dados Físicos</p>
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">ALTURA (cm)</label><input id="cp-height" class="input-field" placeholder="175" type="number"></div>
+    <div style="flex:1"><label class="input-label">PESO (kg)</label><input id="cp-weight" class="input-field" placeholder="75" type="number"></div>
+  </div>
+  <label class="input-label">TAMANHO DE ROUPA</label>
+  <select id="cp-shirt" class="input-field"><option value="">Selecione</option><option>PP</option><option>P</option><option>M</option><option>G</option><option>GG</option><option>XG</option><option>XXG</option></select>
+  <label class="input-label">TAMANHO DE TÊNIS</label>
+  <select id="cp-shoe" class="input-field"><option value="">Selecione</option></select>
+
+  <p class="section-header">Esportes que Pratica</p>
+  <div class="chip-grid" id="cp-sports-practice"></div>
+
+  <p class="section-header">Esportes que Quer Começar</p>
+  <div class="chip-grid" id="cp-sports-want"></div>
+
+  <p class="section-header">Onde Pratica Esporte</p>
+  <div class="chip-grid" id="cp-sports-where"></div>
+
+  <p class="section-header">Marcas Preferidas</p>
+  <div class="chip-grid" id="cp-brands"></div>
+
+  <div id="cp-error"></div>
+  <button class="btn-primary" onclick="submitProfile()">COMPLETAR PERFIL E GANHAR T$ 100</button>
+  <button class="btn-secondary" onclick="showScreen('home')">PULAR POR ENQUANTO</button>
+</div>
+
+<!-- TERMS -->
+<div id="terms" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('auth')">←</span><p style="font-size:18px;font-weight:700">Termos de Uso</p></div>
+  <div style="margin-top:16px;font-size:13px;line-height:1.8;color:rgba(255,255,255,0.85)">
+    <p><strong>TERMOS DE USO - TENISCASH</strong></p>
+    <p style="margin-top:10px">1. O TenisCash é um programa de benefícios da Sports & Tennis, com sede em João Pessoa/PB.</p>
+    <p style="margin-top:10px">2. O TenisCash (T$) é uma moeda de benefício digital, sem valor monetário real, válida exclusivamente para abatimento em compras nas lojas Sports & Tennis.</p>
+    <p style="margin-top:10px">3. Cada R$ 1,00 pago em dinheiro gera 1 TenisCash (T$ 1,00).</p>
+    <p style="margin-top:10px">4. O saldo de TenisCash não expira e pode ser transferido livremente entre usuários cadastrados.</p>
+    <p style="margin-top:10px">5. O percentual máximo de abatimento com TenisCash varia por marca e produto, conforme regras vigentes na loja.</p>
+    <p style="margin-top:10px">6. O TenisCash não pode ser convertido em dinheiro, reembolsado ou trocado por valores monetários.</p>
+    <p style="margin-top:10px">7. A Sports & Tennis reserva-se o direito de alterar as regras do programa mediante aviso prévio aos usuários.</p>
+    <p style="margin-top:10px">8. O uso indevido, fraude ou manipulação do sistema pode resultar no cancelamento da conta e perda do saldo.</p>
+    <p style="margin-top:10px">9. O usuário pode solicitar a exclusão de sua conta e dados a qualquer momento, conforme a LGPD.</p>
+    <p style="margin-top:10px">Última atualização: Abril/2026</p>
+  </div>
+</div>
+
+<!-- PRIVACY -->
+<div id="privacy" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('auth')">←</span><p style="font-size:18px;font-weight:700">Política de Privacidade</p></div>
+  <div style="margin-top:16px;font-size:13px;line-height:1.8;color:rgba(255,255,255,0.85)">
+    <p><strong>POLÍTICA DE PRIVACIDADE - TENISCASH</strong></p>
+    <p style="margin-top:10px">Em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018):</p>
+    <p style="margin-top:10px"><strong>Dados coletados:</strong> Nome, telefone, e-mail, CPF, endereço, data de nascimento, dados físicos (altura, peso, tamanho de roupa e calçado), preferências esportivas e de marcas.</p>
+    <p style="margin-top:10px"><strong>Finalidade:</strong> Os dados são utilizados exclusivamente para operação do programa TenisCash, personalização da experiência de compra e comunicação de promoções relevantes pela Sports & Tennis.</p>
+    <p style="margin-top:10px"><strong>Compartilhamento:</strong> Seus dados NÃO são compartilhados, vendidos ou transferidos a terceiros em nenhuma circunstância.</p>
+    <p style="margin-top:10px"><strong>Armazenamento:</strong> Os dados são armazenados em servidores seguros com criptografia.</p>
+    <p style="margin-top:10px"><strong>Seus direitos (LGPD):</strong> Você pode a qualquer momento: acessar seus dados, corrigir informações, solicitar a exclusão completa de sua conta e dados, revogar o consentimento.</p>
+    <p style="margin-top:10px"><strong>Controlador dos dados:</strong> Sports & Tennis (Foco Comércio e Serviços) - João Pessoa/PB</p>
+    <p style="margin-top:10px"><strong>Contato:</strong> <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a2d1d2cdd0d6d1c7d6c7cccccbd1e2c5cfc3cbce8cc1cdcf">[email&#160;protected]</a></p>
+    <p style="margin-top:10px">Última atualização: Abril/2026</p>
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div id="forgot" class="screen">
+  <div class="login-screen" style="justify-content:flex-start;padding-top:60px">
+    <div class="login-logo"><span style="font-family:'Orbitron';font-size:36px;font-weight:900">T</span></div>
+    <p style="font-size:20px;font-weight:700;margin-bottom:24px">Esqueci minha senha</p>
+    
+    <!-- STEP 1: Escolher método -->
+    <div id="forgot-methods">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:20px">Como deseja recuperar sua senha?</p>
+      <button class="btn-primary" onclick="showForgotMethod('whatsapp')" style="margin-top:0">LEMBRAR SENHA PELO WHATSAPP</button>
+      <button class="btn-secondary" onclick="showForgotMethod('email')">ALTERAR SENHA POR E-MAIL</button>
+      <p style="text-align:center;margin-top:20px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showScreen('auth')">Voltar para login</p>
+    </div>
+
+    <!-- STEP 2A: WhatsApp -->
+    <div id="forgot-whatsapp" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:16px">Digite seu telefone cadastrado. Enviaremos um código pelo WhatsApp para criar uma nova senha.</p>
+      <label class="input-label">TELEFONE COM DDD</label>
+      <input id="forgot-phone" class="input-field" placeholder="83999990000">
+      <div id="forgot-phone-error"></div>
+      <button class="btn-primary" onclick="forgotSendCode()">ENVIAR CÓDIGO POR WHATSAPP</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showForgotStep('methods')">Voltar</p>
+    </div>
+
+    <!-- STEP 2B: Email -->
+    <div id="forgot-email" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:16px">Digite seu e-mail cadastrado. Enviaremos um código para criar uma nova senha.</p>
+      <label class="input-label">E-MAIL CADASTRADO</label>
+      <input id="forgot-email-input" class="input-field" placeholder="seu@email.com" type="email">
+      <div id="forgot-email-error"></div>
+      <button class="btn-primary" onclick="forgotSendEmailCode()">ENVIAR CÓDIGO POR E-MAIL</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="showForgotStep('methods')">Voltar</p>
+    </div>
+
+    <!-- STEP 3: Digitar código -->
+    <div id="forgot-code" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:16px" id="forgot-code-msg">Código enviado!</p>
+      <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+      <input id="forgot-code-input" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+      <div id="forgot-code-error"></div>
+      <button class="btn-primary" onclick="forgotVerifyCode()">VERIFICAR CÓDIGO</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);cursor:pointer;text-decoration:underline" onclick="forgotResendCode()">Reenviar código</p>
+    </div>
+
+    <!-- STEP 4: Nova senha -->
+    <div id="forgot-newpass" style="display:none;width:100%">
+      <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:16px">Crie sua nova senha</p>
+      <label class="input-label">NOVA SENHA</label>
+      <input id="forgot-pass1" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+      <label class="input-label">CONFIRMAR NOVA SENHA</label>
+      <input id="forgot-pass2" class="input-field" type="password" placeholder="Repita a senha">
+      <div id="forgot-pass-error"></div>
+      <button class="btn-primary" onclick="forgotResetPassword()">ALTERAR SENHA</button>
+    </div>
+
+    <!-- STEP 5: Sucesso -->
+    <div id="forgot-success" style="display:none;width:100%;text-align:center">
+      <div class="success-circle">✓</div>
+      <p style="font-size:22px;font-weight:700">Senha alterada!</p>
+      <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px">Sua senha foi atualizada com sucesso.</p>
+      <button class="btn-primary" onclick="showScreen('auth')">FAZER LOGIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="home" class="screen">
+  <div class="header">
+    <div>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px">Olá,</p>
+      <p style="font-size:18px;font-weight:700" id="home-name"></p>
+    </div>
+    <div class="avatar" onclick="showScreen('profile')"><span id="home-initial" style="font-weight:700;font-size:16px"></span></div>
+  </div>
+  <div id="profile-banner" style="display:none;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer" onclick="showScreen('complete-profile')">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px">🎁</span>
+      <div style="flex:1"><p style="font-size:13px;font-weight:700">Complete seu perfil e ganhe T$ 100!</p><p style="font-size:11px;color:rgba(255,255,255,0.6)">Toque aqui para preencher</p></div>
+      <span style="font-size:18px">›</span>
+    </div>
+  </div>
+  <div class="balance-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <p class="balance-label">SEU SALDO</p>
+      <span style="cursor:pointer;font-size:18px;color:rgba(255,255,255,0.5)" onclick="toggleBalance()">👁</span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="color:#fff;font-size:16px;font-weight:700;font-family:'Orbitron'">T$</span>
+      <span class="balance-amount" id="home-balance"></span>
+    </div>
+    <p class="balance-equiv" id="home-equiv"></p>
+  </div>
+  <div class="actions" id="home-actions">
+    <div class="action-btn" onclick="showScreen('transfer')"><span>↑</span><span>Transferir</span></div>
+    <div class="action-btn" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
+    <div class="action-btn" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
+  </div>
+  <div class="section-title"><p style="font-size:15px;font-weight:700">Movimentações</p></div>
+  <div id="home-transactions"></div>
+</div>
+
+<!-- TRANSFER -->
+<div id="transfer" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
+  <div id="transfer-form">
+    <div style="margin-top:20px">
+      <label class="input-label">PARA QUEM</label>
+      <input id="tf-to" class="input-field" placeholder="Telefone ou CPF">
+      <div id="tf-lookup" style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px;min-height:20px"></div>
+      <label class="input-label">QUANTO</label>
+      <div class="input-amount-wrap">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">T$</span>
+        <input id="tf-amount" class="input-amount" placeholder="0" type="number">
+      </div>
+      <p style="color:rgba(255,255,255,0.25);font-size:12px;margin-top:8px" id="tf-balance"></p>
+      <div id="tf-error"></div>
+      <button class="btn-primary" onclick="doTransfer()">ENVIAR TENISCASH</button>
+    </div>
+  </div>
+  <div id="transfer-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Enviado!</p>
+    <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px" id="tf-success-msg"></p>
+    <button class="btn-outline" onclick="resetTransfer();showScreen('home')">VOLTAR</button>
+  </div>
+</div>
+
+<!-- QR CODE -->
+<div id="qr" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">QR Code - Usar na Loja</p></div>
+  <div style="text-align:center;margin-top:40px">
+    <p style="color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px;margin-bottom:8px">MOSTRE NO CAIXA</p>
+    <p style="font-family:'Orbitron';font-size:30px;font-weight:900;margin-bottom:20px" id="qr-balance"></p>
+    <div class="qr-box"><img id="qr-img" class="qr-img" alt="QR Code"></div>
+    <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:20px">O vendedor vai usar seu telefone para aplicar o TenisCash</p>
+  </div>
+</div>
+
+<!-- PROMOS -->
+<div id="promos" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Promoções</p></div>
+  <div id="promos-list" style="margin-top:16px"></div>
+</div>
+
+<!-- PROFILE -->
+<div id="profile" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Perfil</p></div>
+  <div style="text-align:center;margin-top:30px">
+    <div class="profile-avatar"><span style="font-family:'Orbitron';font-size:32px;font-weight:900" id="prof-initial"></span></div>
+    <p style="font-size:20px;font-weight:700" id="prof-name"></p>
+    <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-top:4px" id="prof-phone"></p>
+    <div class="badge"><span id="prof-since"></span></div>
+  </div>
+  <div style="margin-top:30px">
+    <div class="profile-item" id="prof-complete-btn" style="display:none" onclick="showScreen('complete-profile')"><span style="font-size:18px">🎁</span><span style="flex:1;font-size:14px;color:#FFD54F">Completar perfil e ganhar T$ 100</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('mydata')"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('security')"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Alterar senha</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('terms')"><span style="font-size:18px">📄</span><span style="flex:1;font-size:14px">Termos de uso</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('privacy')"><span style="font-size:18px">🔐</span><span style="flex:1;font-size:14px">Política de privacidade</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="doLogout()"><span style="font-size:18px">🚪</span><span style="flex:1;font-size:14px;color:#fff">Sair</span></div>
+    <div class="profile-item" onclick="confirmDeleteAccount()"><span style="font-size:18px">🗑️</span><span style="flex:1;font-size:14px;color:#fff">Excluir minha conta</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+  </div>
+  <div style="margin-top:30px;text-align:center">
+    <p style="color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px">TENISCASH v2.0</p>
+    <p style="color:rgba(255,255,255,0.15);font-size:10px">Sports & Tennis © 2026</p>
+  </div>
+</div>
+
+<!-- DADOS PESSOAIS -->
+<div id="mydata" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('profile')">←</span><p style="font-size:18px;font-weight:700">Meus Dados</p></div>
+  <div id="mydata-content" style="margin-top:16px"></div>
+</div>
+
+<!-- SECURITY - Alterar Senha -->
+<div id="security" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('profile')">←</span><p style="font-size:18px;font-weight:700">Alterar Senha</p></div>
+  <div id="security-form" style="margin-top:20px">
+    <label class="input-label">SENHA ATUAL</label>
+    <input id="sec-current" class="input-field" type="password" placeholder="Sua senha atual">
+    <label class="input-label">NOVA SENHA</label>
+    <input id="sec-new1" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+    <label class="input-label">CONFIRMAR NOVA SENHA</label>
+    <input id="sec-new2" class="input-field" type="password" placeholder="Repita a nova senha">
+    <div id="sec-error"></div>
+    <button class="btn-primary" onclick="changePassword()">ALTERAR SENHA</button>
+  </div>
+  <div id="security-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Senha alterada!</p>
+    <button class="btn-outline" onclick="showScreen('profile')">VOLTAR</button>
+  </div>
+</div>
+
+<!-- CAIXA (POS) - só admin -->
+<div id="pos" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Caixa - Registrar Venda</p></div>
+  <div id="pos-form">
+    <div style="margin-top:16px">
+      <label class="input-label">TELEFONE DO CLIENTE</label>
+      <input id="pos-phone" class="input-field" placeholder="Telefone do cliente" oninput="posLookup()">
+      <div id="pos-client" style="font-size:14px;font-weight:600;margin-top:4px;min-height:20px"></div>
+      <label class="input-label">VALOR DA COMPRA (R$)</label>
+      <div class="input-amount-wrap">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">R$</span>
+        <input id="pos-sale" class="input-amount" placeholder="0" type="number" style="font-size:28px" oninput="posCalc()">
+      </div>
+      <label class="input-label">MARCA DO PRODUTO</label>
+      <select id="pos-brand" class="input-field" onchange="posCalc()"><option value="">Selecione a marca</option></select>
+      <label class="input-label">ABATER COM TENISCASH (T$)</label>
+      <div class="input-amount-wrap">
+        <span style="color:#fff;font-family:'Orbitron';font-size:16px;font-weight:700">T$</span>
+        <input id="pos-use" class="input-amount" placeholder="0" type="number" style="font-size:28px" oninput="posCalc()">
+      </div>
+      <p style="font-size:12px;color:rgba(255,255,255,0.5)" id="pos-max">Máximo: --</p>
+      <p style="font-size:12px;color:rgba(255,255,255,0.5)" id="pos-client-balance">Saldo do cliente: --</p>
+      <div style="background:rgba(255,255,255,0.1);border-radius:14px;padding:16px;margin:20px 0;border:1px solid rgba(255,255,255,0.2)">
+        <p style="font-size:12px;color:rgba(255,255,255,0.6);letter-spacing:1px;margin-bottom:10px">RESUMO</p>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px">Valor da compra</span><span style="font-size:13px;font-weight:700" id="pos-r-sale">R$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13px">Abatimento TenisCash</span><span style="font-size:13px;font-weight:700;color:#FFD54F" id="pos-r-tc">- T$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1)"><span style="font-size:14px;font-weight:700">Cliente paga</span><span style="font-size:14px;font-weight:700" id="pos-r-pay">R$ 0,00</span></div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px"><span style="font-size:12px;color:rgba(255,255,255,0.5)">Cliente ganha</span><span style="font-size:12px;font-weight:600;color:#8BFF8B" id="pos-r-earn">+ T$ 0,00</span></div>
+      </div>
+      <div id="pos-error"></div>
+      <button class="btn-primary" onclick="posSubmit()">CONFIRMAR VENDA</button>
+    </div>
+  </div>
+  <div id="pos-success" style="display:none;text-align:center;margin-top:60px">
+    <div class="success-circle">✓</div>
+    <p style="font-size:22px;font-weight:700">Venda Registrada!</p>
+    <p style="color:rgba(255,255,255,0.85);font-size:14px;margin-top:8px" id="pos-success-msg"></p>
+    <button class="btn-outline" onclick="posReset()">NOVA VENDA</button>
+  </div>
+</div>
+
+<!-- EDITAR DADOS PESSOAIS -->
+<div id="edit-profile" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('mydata')">←</span><p style="font-size:18px;font-weight:700">Alterar Dados</p></div>
+
+  <p class="section-header">Dados Pessoais</p>
+  <label class="input-label">NOME COMPLETO</label>
+  <input id="ep-name" class="input-field" placeholder="Nome e sobrenome">
+  <label class="input-label">DATA DE NASCIMENTO</label>
+  <input id="ep-birth" class="input-field" type="date">
+
+  <p class="section-header">Endereço</p>
+  <label class="input-label">CEP</label>
+  <input id="ep-cep" class="input-field" placeholder="58000-000" maxlength="9" oninput="cepLookupEdit()">
+  <div id="ep-cep-status" style="font-size:12px;margin-top:4px"></div>
+  <label class="input-label">RUA</label>
+  <input id="ep-street" class="input-field" placeholder="Rua">
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">NÚMERO</label><input id="ep-number" class="input-field" placeholder="Nº"></div>
+    <div style="flex:1"><label class="input-label">COMPLEMENTO</label><input id="ep-complement" class="input-field" placeholder="Apt, bloco..."></div>
+  </div>
+  <label class="input-label">BAIRRO</label>
+  <input id="ep-neighborhood" class="input-field" placeholder="Bairro">
+  <div class="input-row">
+    <div style="flex:2"><label class="input-label">CIDADE</label><input id="ep-city" class="input-field" placeholder="Cidade"></div>
+    <div style="flex:1"><label class="input-label">UF</label><input id="ep-state" class="input-field" placeholder="PB" maxlength="2"></div>
+  </div>
+
+  <p class="section-header">Dados Físicos</p>
+  <div class="input-row">
+    <div style="flex:1"><label class="input-label">ALTURA (cm)</label><input id="ep-height" class="input-field" placeholder="175" type="number"></div>
+    <div style="flex:1"><label class="input-label">PESO (kg)</label><input id="ep-weight" class="input-field" placeholder="75" type="number"></div>
+  </div>
+  <label class="input-label">TAMANHO DE ROUPA</label>
+  <select id="ep-shirt" class="input-field"><option value="">Selecione</option><option>PP</option><option>P</option><option>M</option><option>G</option><option>GG</option><option>XG</option><option>XXG</option></select>
+  <label class="input-label">TAMANHO DE TÊNIS</label>
+  <select id="ep-shoe" class="input-field"><option value="">Selecione</option></select>
+
+  <p class="section-header">Esportes que Pratica</p>
+  <div class="chip-grid" id="ep-sports-practice"></div>
+
+  <p class="section-header">Esportes que Quer Começar</p>
+  <div class="chip-grid" id="ep-sports-want"></div>
+
+  <p class="section-header">Onde Pratica Esporte</p>
+  <div class="chip-grid" id="ep-sports-where"></div>
+
+  <p class="section-header">Marcas Preferidas</p>
+  <div class="chip-grid" id="ep-brands"></div>
+
+  <div id="ep-error"></div>
+  <button class="btn-primary" onclick="saveEditProfile()">SALVAR ALTERAÇÕES</button>
+  <button class="btn-secondary" onclick="showScreen('mydata')">CANCELAR</button>
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav" id="bottomNav" style="display:none">
+  <div class="nav-item active" onclick="showScreen('home')"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" onclick="showScreen('transfer')"><span>↗</span><span>Enviar</span></div>
+  <div class="nav-item" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
+  <div class="nav-item" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
+  <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const API = window.location.origin + '/api';
+let token = localStorage.getItem('tc_token');
+let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
+let balanceVisible = true;
+
+const SPORTS = ['Nenhum','Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro'];
+const BRANDS = ['Nenhuma','Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra'];
+const PLACES = ['Nenhum','Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro'];
+
+setTimeout(() => {
+  document.getElementById('splash').classList.remove('active');
+  if (token && user) { showScreen('home'); loadHome(); }
+  else { showScreen('auth'); }
+}, 2200);
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const nav = document.getElementById('bottomNav');
+  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
+  nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
+  if (navMap[id] !== undefined) document.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+  if (id === 'home') loadHome();
+  if (id === 'qr') loadQR();
+  if (id === 'promos') loadPromos();
+  if (id === 'profile') loadProfile();
+  if (id === 'pos') loadPOS();
+  if (id === 'complete-profile') initProfileForm();
+  if (id === 'mydata') loadMyData();
+  if (id === 'edit-profile') initEditProfileForm();
+  if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
+}
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+
+// AUTH
+function setAuthTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => { b.classList.toggle('active', (tab==='login'?i===0:i===1)); });
+  document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+}
+
+let loginMethod = 'phone';
+
+function setLoginTab(tab) {
+  loginMethod = tab;
+  document.getElementById('login-phone-field').style.display = tab === 'phone' ? 'block' : 'none';
+  document.getElementById('login-email-field').style.display = tab === 'email' ? 'block' : 'none';
+  document.getElementById('login-tab-phone').style.background = tab === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-email').style.background = tab === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+}
+
+async function doLogin() {
+  const password = document.getElementById('login-password').value;
+  if (!password) { showError('login-error','Informe sua senha'); return; }
+  let body = { password };
+  if (loginMethod === 'email') {
+    const email = document.getElementById('login-email').value;
+    if (!email) { showError('login-error','Informe seu e-mail'); return; }
+    body.email = email;
+  } else {
+    const phone = document.getElementById('login-phone').value.replace(/\D/g,'');
+    if (!phone) { showError('login-error','Informe seu telefone'); return; }
+    body.phone = phone;
+  }
+  const data = await api('/auth/login','POST', body);
+  if (data.error) { showError('login-error',data.error); return; }
+  token = data.token; user = data.user;
+  localStorage.setItem('tc_token',token);
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  showScreen('home');
+}
+
+let verifiedPhone = null;
+let verifiedEmailRegister = null;
+let registerMethod = 'phone';
+let forgotMethod = null;
+let forgotPhone = null;
+
+function setRegisterMethod(method) {
+  registerMethod = method;
+  document.getElementById('reg-step1-phone').style.display = method === 'phone' ? 'block' : 'none';
+  document.getElementById('reg-step1-email').style.display = method === 'email' ? 'block' : 'none';
+  document.getElementById('reg-tab-phone').style.background = method === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-email').style.background = method === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
+  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+}
+
+async function sendEmailRegisterCode() {
+  const email = document.getElementById('reg-email').value;
+  if (!email || !email.includes('@')) { showError('reg-email-error','Informe um e-mail válido'); return; }
+  const data = await api('/auth/send-email-register-code','POST',{email});
+  if (data.error) { showError('reg-email-error',data.error); return; }
+  document.getElementById('reg-email-code-sent').style.display = 'block';
+  document.getElementById('reg-email-send-btn').style.display = 'none';
+  document.getElementById('reg-email').disabled = true;
+}
+
+async function verifyEmailRegister() {
+  const email = document.getElementById('reg-email').value;
+  const code = document.getElementById('reg-email-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('reg-email-error','Digite o código de 6 dígitos'); return; }
+  const data = await api('/auth/verify-email-register-code','POST',{email,code});
+  if (data.error) { showError('reg-email-error',data.error); return; }
+  if (data.verified) {
+    verifiedEmailRegister = email;
+    document.getElementById('reg-step1-email').style.display = 'none';
+    document.getElementById('reg-step2').style.display = 'block';
+    document.getElementById('reg-verified-phone').textContent = 'E-mail verificado: ' + email;
+  }
+}
+
+// FORGOT PASSWORD
+function showForgotMethod(method) {
+  forgotMethod = method;
+  document.getElementById('forgot-methods').style.display = 'none';
+  document.getElementById('forgot-whatsapp').style.display = method === 'whatsapp' ? 'block' : 'none';
+  document.getElementById('forgot-email').style.display = method === 'email' ? 'block' : 'none';
+}
+
+function showForgotStep(step) {
+  ['forgot-methods','forgot-whatsapp','forgot-email','forgot-code','forgot-newpass','forgot-success'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById('forgot-' + step).style.display = step === 'methods' ? 'block' : 'block';
+  if (step === 'methods') document.getElementById('forgot-methods').style.display = 'block';
+}
+
+async function forgotSendCode() {
+  const phone = document.getElementById('forgot-phone').value.replace(/\D/g,'');
+  if (!phone || phone.length < 10) { showError('forgot-phone-error','Informe um telefone válido'); return; }
+  forgotPhone = phone;
+  const data = await api('/auth/forgot-send-code','POST',{phone,method:'whatsapp'});
+  if (data.error) { showError('forgot-phone-error',data.error); return; }
+  document.getElementById('forgot-code-msg').textContent = 'Código enviado para seu WhatsApp!';
+  showForgotStep('code');
+}
+
+async function forgotSendEmailCode() {
+  const email = document.getElementById('forgot-email-input').value;
+  if (!email) { showError('forgot-email-error','Informe seu e-mail'); return; }
+  forgotPhone = email;
+  const data = await api('/auth/forgot-send-code','POST',{email,method:'email'});
+  if (data.error) { showError('forgot-email-error',data.error); return; }
+  document.getElementById('forgot-code-msg').textContent = 'Código enviado para seu e-mail!';
+  showForgotStep('code');
+}
+
+async function forgotVerifyCode() {
+  const code = document.getElementById('forgot-code-input').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('forgot-code-error','Digite o código de 6 dígitos'); return; }
+  const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,code} : {email:forgotPhone,code};
+  const data = await api('/auth/forgot-verify','POST',body);
+  if (data.error) { showError('forgot-code-error',data.error); return; }
+  if (data.verified) { showForgotStep('newpass'); }
+}
+
+function forgotResendCode() {
+  if (forgotMethod === 'whatsapp') forgotSendCode();
+  else forgotSendEmailCode();
+}
+
+async function forgotResetPassword() {
+  const pass1 = document.getElementById('forgot-pass1').value;
+  const pass2 = document.getElementById('forgot-pass2').value;
+  if (!pass1 || pass1.length < 4) { showError('forgot-pass-error','Senha deve ter no mínimo 4 caracteres'); return; }
+  if (pass1 !== pass2) { showError('forgot-pass-error','As senhas não conferem'); return; }
+  const body = forgotMethod === 'whatsapp' ? {phone:forgotPhone,password:pass1} : {email:forgotPhone,password:pass1};
+  const data = await api('/auth/forgot-reset','POST',body);
+  if (data.error) { showError('forgot-pass-error',data.error); return; }
+  showForgotStep('success');
+}
+
+async function sendCode() {
+  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
+  if (!phone || phone.length < 10) { showError('reg-phone-error','Informe um telefone válido com DDD'); return; }
+  const data = await api('/auth/send-code','POST',{phone});
+  if (data.error) { showError('reg-phone-error',data.error); return; }
+  document.getElementById('reg-code-sent').style.display = 'block';
+  document.getElementById('reg-send-btn').style.display = 'none';
+  document.getElementById('reg-phone').disabled = true;
+}
+
+async function verifyPhone() {
+  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
+  const code = document.getElementById('reg-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('reg-phone-error','Digite o código de 6 dígitos'); return; }
+  const data = await api('/auth/verify-code','POST',{phone,code});
+  if (data.error) { showError('reg-phone-error',data.error); return; }
+  if (data.verified) {
+    verifiedPhone = phone;
+    document.getElementById('reg-step1-phone').style.display = 'none';
+    document.getElementById('reg-step2').style.display = 'block';
+    document.getElementById('reg-verified-phone').textContent = 'Telefone verificado: ' + phone;
+  }
+}
+
+async function doRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  const birthDate = document.getElementById('reg-birth').value;
+  const password = document.getElementById('reg-password').value;
+  const lgpd = document.getElementById('reg-lgpd').checked;
+  if (!name) { showError('reg-error','Informe seu nome completo'); return; }
+  if (!birthDate) { showError('reg-error','Informe sua data de nascimento'); return; }
+  if (!password || password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
+  if (!lgpd) { showError('reg-error','Você precisa aceitar os termos e a política de privacidade'); return; }
+
+  let body = { name, birthDate, password, lgpdAccepted: true, registerMethod };
+  if (registerMethod === 'email') {
+    if (!verifiedEmailRegister) { showError('reg-error','Verifique seu e-mail primeiro'); return; }
+    body.email = verifiedEmailRegister;
+  } else {
+    if (!verifiedPhone) { showError('reg-error','Verifique seu telefone primeiro'); return; }
+    body.phone = verifiedPhone;
+  }
+
+  const data = await api('/auth/register','POST', body);
+  if (data.error) { showError('reg-error',data.error); return; }
+  token = data.token; user = data.user;
+  localStorage.setItem('tc_token',token);
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  showScreen('home');
+}
+
+function doLogout() {
+  token = null; user = null;
+  localStorage.removeItem('tc_token');
+  localStorage.removeItem('tc_user');
+  showScreen('auth');
+}
+
+function showError(id, msg) {
+  document.getElementById(id).innerHTML = '<div class="error-msg">'+msg+'</div>';
+  setTimeout(() => { const el = document.getElementById(id); if(el) el.innerHTML = ''; }, 4000);
+}
+
+// HOME
+async function loadHome() {
+  const me = await api('/auth/me');
+  if (me.error) { doLogout(); return; }
+  user = me.user;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  document.getElementById('home-name').textContent = user.name.split(' ')[0];
+  document.getElementById('home-initial').textContent = user.name[0];
+  updateBalance();
+  // Profile banner
+  document.getElementById('profile-banner').style.display = user.profileComplete ? 'none' : 'block';
+  // Admin button
+  showAdminButton();
+  // Transactions
+  const txData = await api('/wallet/transactions?limit=10');
+  const container = document.getElementById('home-transactions');
+  if (!txData.transactions || txData.transactions.length === 0) {
+    container.innerHTML = '<p class="loading">Nenhuma movimentação ainda</p>';
+    return;
+  }
+  const colors = {credit:'#fff',transfer_in:'#FFD54F',transfer_out:'#FF5252',used:'#FF5252',promo:'#fff',welcome:'#fff',admin_credit:'#fff',admin_debit:'#FF5252'};
+  const icons = {credit:'↓',transfer_in:'←',transfer_out:'→',used:'↑',promo:'★',welcome:'🎁',admin_credit:'↓',admin_debit:'↑'};
+  const signs = {credit:'+',transfer_in:'+',transfer_out:'−',used:'−',promo:'+',welcome:'+',admin_credit:'+',admin_debit:'−'};
+  container.innerHTML = txData.transactions.map(tx => {
+    const c = colors[tx.type]||'#fff';
+    const d = new Date(tx.createdAt);
+    const date = d.toLocaleDateString('pt-BR');
+    const time = d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const bgc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.15)' : 'rgba(255,255,255,0.12)';
+    const bdc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.25)' : 'rgba(255,255,255,0.15)';
+    return '<div class="tx-item"><div class="tx-icon" style="background:'+bgc+';border:1px solid '+bdc+';color:'+c+'">'+(icons[tx.type]||'•')+'</div><div class="tx-info"><p>'+tx.description+'</p><p>'+date+' · '+time+'</p></div><span class="tx-amount" style="color:'+c+'">'+(signs[tx.type]||'')+' '+tx.amount+'</span></div>';
+  }).join('');
+}
+
+function updateBalance() {
+  const bal = document.getElementById('home-balance');
+  const eq = document.getElementById('home-equiv');
+  if (balanceVisible) {
+    bal.textContent = user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    eq.textContent = '≈ R$ '+(user.balance*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2})+' em poder de compra';
+  } else { bal.textContent = '••••••'; eq.textContent = ''; }
+}
+
+function toggleBalance() { balanceVisible = !balanceVisible; updateBalance(); }
+
+function showAdminButton() {
+  if (user && (user.role === 'admin' || user.role === 'superadmin')) {
+    const actions = document.getElementById('home-actions');
+    if (!document.getElementById('pos-btn')) {
+      const btn = document.createElement('div');
+      btn.id = 'pos-btn';
+      btn.className = 'action-btn';
+      btn.onclick = () => showScreen('pos');
+      btn.innerHTML = '<span>💰</span><span>Caixa</span>';
+      btn.style.background = 'rgba(255,255,255,0.2)';
+      btn.style.border = '2px solid rgba(255,255,255,0.4)';
+      actions.appendChild(btn);
+    }
+  }
+}
+
+// TRANSFER
+async function doTransfer() {
+  const to = document.getElementById('tf-to').value.replace(/\D/g,'');
+  const amount = document.getElementById('tf-amount').value;
+  if (!to || !amount || parseFloat(amount) <= 0) { showError('tf-error','Preencha destinatário e valor'); return; }
+  const data = await api('/transfer/send','POST',{to,amount:parseFloat(amount)});
+  if (data.error) { showError('tf-error',data.error); return; }
+  document.getElementById('tf-success-msg').textContent = data.message;
+  document.getElementById('transfer-form').style.display = 'none';
+  document.getElementById('transfer-success').style.display = 'block';
+  user.balance = data.balance;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+}
+
+function resetTransfer() {
+  document.getElementById('tf-to').value = '';
+  document.getElementById('tf-amount').value = '';
+  document.getElementById('transfer-form').style.display = 'block';
+  document.getElementById('transfer-success').style.display = 'none';
+}
+
+// QR
+async function loadQR() {
+  document.getElementById('qr-balance').textContent = 'T$ ' + user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const data = await api('/qr/generate');
+  if (data.qrImage) { document.getElementById('qr-img').src = data.qrImage; }
+}
+
+// PROMOS
+async function loadPromos() {
+  const data = await api('/promos');
+  const container = document.getElementById('promos-list');
+  if (!data.promos || data.promos.length === 0) { container.innerHTML = '<p class="loading">Nenhuma promoção no momento</p>'; return; }
+  container.innerHTML = data.promos.map(p => {
+    const active = p.active;
+    const ends = p.endsAt ? new Date(p.endsAt).toLocaleDateString('pt-BR') : '';
+    return '<div class="promo-card"><div><p style="font-size:15px;font-weight:700">'+p.title+'</p><p style="color:rgba(255,255,255,0.85);font-size:12px;margin-top:6px">'+p.description+'</p><p style="color:rgba(255,255,255,0.25);font-size:11px;margin-top:4px">'+(active?'Até '+ends:'Encerrada')+'</p></div><div class="promo-badge"><span>'+p.percentage+'%</span></div></div>';
+  }).join('');
+}
+
+// PROFILE
+function loadProfile() {
+  document.getElementById('prof-initial').textContent = user.name[0];
+  document.getElementById('prof-name').textContent = user.name;
+  document.getElementById('prof-phone').textContent = user.phone;
+  const d = new Date(user.createdAt);
+  const months = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  document.getElementById('prof-since').textContent = 'MEMBRO DESDE '+months[d.getMonth()]+'/'+d.getFullYear();
+  document.getElementById('prof-complete-btn').style.display = user.profileComplete ? 'none' : 'flex';
+}
+
+// COMPLETE PROFILE
+function initProfileForm() {
+  // Shoe sizes 28-48
+  const shoeSel = document.getElementById('cp-shoe');
+  if (shoeSel.options.length <= 1) {
+    for (let i = 28; i <= 48; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; shoeSel.appendChild(o); }
+  }
+  // Sports chips
+  renderChips('cp-sports-practice', SPORTS);
+  renderChips('cp-sports-want', SPORTS);
+  renderChips('cp-sports-where', PLACES);
+  renderChips('cp-brands', BRANDS);
+}
+
+function renderChips(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (container.children.length > 0) return;
+  container.innerHTML = items.map(item => '<div class="chip" onclick="this.classList.toggle(\'selected\')" data-value="'+item+'">'+item+'</div>').join('');
+}
+
+function getSelectedChips(containerId) {
+  return Array.from(document.querySelectorAll('#'+containerId+' .chip.selected')).map(c => c.dataset.value);
+}
+
+async function cepLookup() {
+  const cep = document.getElementById('cp-cep').value.replace(/\D/g,'');
+  if (cep.length !== 8) return;
+  document.getElementById('cp-cep-status').textContent = 'Buscando...';
+  try {
+    const res = await fetch('https://viacep.com.br/ws/'+cep+'/json/');
+    const data = await res.json();
+    if (data.erro) { document.getElementById('cp-cep-status').textContent = 'CEP não encontrado'; return; }
+    document.getElementById('cp-street').value = data.logradouro || '';
+    document.getElementById('cp-neighborhood').value = data.bairro || '';
+    document.getElementById('cp-city').value = data.localidade || '';
+    document.getElementById('cp-state').value = data.uf || '';
+    document.getElementById('cp-cep-status').innerHTML = '<span style="color:#8BFF8B">✓ Endereço encontrado</span>';
+    document.getElementById('cp-number').focus();
+  } catch(e) { document.getElementById('cp-cep-status').textContent = 'Erro ao buscar CEP'; }
+}
+
+async function cepLookupEdit() {
+  const cep = document.getElementById('ep-cep').value.replace(/\D/g,'');
+  if (cep.length !== 8) return;
+  document.getElementById('ep-cep-status').textContent = 'Buscando...';
+  try {
+    const res = await fetch('https://viacep.com.br/ws/'+cep+'/json/');
+    const data = await res.json();
+    if (data.erro) { document.getElementById('ep-cep-status').textContent = 'CEP não encontrado'; return; }
+    document.getElementById('ep-street').value = data.logradouro || '';
+    document.getElementById('ep-neighborhood').value = data.bairro || '';
+    document.getElementById('ep-city').value = data.localidade || '';
+    document.getElementById('ep-state').value = data.uf || '';
+    document.getElementById('ep-cep-status').innerHTML = '<span style="color:#8BFF8B">✓ Endereço encontrado</span>';
+    document.getElementById('ep-number').focus();
+  } catch(e) { document.getElementById('ep-cep-status').textContent = 'Erro ao buscar CEP'; }
+}
+
+async function submitProfile() {
+  const emailField = document.getElementById('cp-email').value;
+  if (emailField && !emailVerified) {
+    showError('cp-error','Verifique seu e-mail antes de continuar');
+    return;
+  }
+  const data = {
+    cpf: document.getElementById('cp-cpf').value.replace(/\D/g,'') || null,
+    email: emailVerified ? verifiedEmail : null,
+    cep: document.getElementById('cp-cep').value.replace(/\D/g,'') || null,
+    street: document.getElementById('cp-street').value || null,
+    number: document.getElementById('cp-number').value || null,
+    complement: document.getElementById('cp-complement').value || null,
+    neighborhood: document.getElementById('cp-neighborhood').value || null,
+    city: document.getElementById('cp-city').value || null,
+    state: document.getElementById('cp-state').value || null,
+    height: document.getElementById('cp-height').value || null,
+    weight: document.getElementById('cp-weight').value || null,
+    shirtSize: document.getElementById('cp-shirt').value || null,
+    shoeSize: document.getElementById('cp-shoe').value || null,
+    sportsPractice: getSelectedChips('cp-sports-practice'),
+    sportsWant: getSelectedChips('cp-sports-want'),
+    sportsWhere: getSelectedChips('cp-sports-where'),
+    favBrands: getSelectedChips('cp-brands'),
+  };
+  const result = await api('/auth/complete-profile','POST',data);
+  if (result.error) { showError('cp-error', result.error); return; }
+  user.balance = result.balance;
+  user.profileComplete = true;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  alert(result.message);
+  showScreen('home');
+}
+
+// POS - CAIXA
+let posBrands = [];
+let posClientData = null;
+
+// MY DATA
+async function loadMyData() {
+  const me = await api('/auth/me');
+  if (me.error) return;
+  const u = me.user;
+  const container = document.getElementById('mydata-content');
+  
+  function row(label, value) {
+    return '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><p style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1px">'+label+'</p><p style="font-size:14px;margin-top:4px">'+(value||'Não informado')+'</p></div>';
+  }
+  
+  function chips(label, arr) {
+    if (!arr || arr.length === 0) return row(label, 'Não informado');
+    return '<div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><p style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1px">'+label+'</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+arr.map(function(s){return '<span style="padding:4px 12px;background:rgba(255,255,255,0.12);border-radius:16px;font-size:12px">'+s+'</span>';}).join('')+'</div></div>';
+  }
+
+  let html = '<p style="font-size:16px;font-weight:700;margin-bottom:16px">Dados Pessoais</p>';
+  html += row('NOME', u.name);
+  html += row('TELEFONE', u.phone && !u.phone.startsWith('email_') ? u.phone : null);
+  html += row('E-MAIL', u.email);
+  html += row('CPF', u.cpf);
+  html += row('DATA DE NASCIMENTO', u.birthDate);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Endereço</p>';
+  html += row('CEP', u.cep);
+  html += row('RUA', u.street);
+  html += row('NÚMERO', u.number);
+  html += row('COMPLEMENTO', u.complement);
+  html += row('BAIRRO', u.neighborhood);
+  html += row('CIDADE', u.city);
+  html += row('UF', u.state);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Dados Físicos</p>';
+  html += row('ALTURA', u.height ? u.height + ' cm' : null);
+  html += row('PESO', u.weight ? u.weight + ' kg' : null);
+  html += row('TAMANHO ROUPA', u.shirtSize);
+  html += row('TAMANHO TÊNIS', u.shoeSize);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Esportes</p>';
+  html += chips('PRATICA', u.sportsPractice);
+  html += chips('QUER COMEÇAR', u.sportsWant);
+  html += chips('ONDE PRATICA', u.sportsWhere);
+  
+  html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Marcas</p>';
+  html += chips('MARCAS PREFERIDAS', u.favBrands);
+
+  html += '<button class="btn-primary" onclick="showEditProfile()" style="margin-top:24px">✏️ ALTERAR DADOS</button>';
+
+  if (!u.profileComplete) {
+    html += '<button class="btn-secondary" onclick="showScreen(\'complete-profile\')" style="margin-top:12px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
+  }
+
+  container.innerHTML = html;
+}
+
+function showEditProfile() {
+  showScreen('edit-profile');
+  initEditProfileForm();
+}
+
+async function initEditProfileForm() {
+  const me = await api('/auth/me');
+  if (me.error) return;
+  const u = me.user;
+
+  // Shoe sizes
+  const shoeSel = document.getElementById('ep-shoe');
+  if (shoeSel.options.length <= 1) {
+    for (let i = 28; i <= 48; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; shoeSel.appendChild(o); }
+  }
+
+  document.getElementById('ep-name').value = u.name || '';
+  document.getElementById('ep-birth').value = u.birthDate || '';
+  document.getElementById('ep-cep').value = u.cep || '';
+  document.getElementById('ep-street').value = u.street || '';
+  document.getElementById('ep-number').value = u.number || '';
+  document.getElementById('ep-complement').value = u.complement || '';
+  document.getElementById('ep-neighborhood').value = u.neighborhood || '';
+  document.getElementById('ep-city').value = u.city || '';
+  document.getElementById('ep-state').value = u.state || '';
+  document.getElementById('ep-height').value = u.height || '';
+  document.getElementById('ep-weight').value = u.weight || '';
+  document.getElementById('ep-shirt').value = u.shirtSize || '';
+  document.getElementById('ep-shoe').value = u.shoeSize || '';
+
+  renderChipsEdit('ep-sports-practice', SPORTS, u.sportsPractice || []);
+  renderChipsEdit('ep-sports-want', SPORTS, u.sportsWant || []);
+  renderChipsEdit('ep-sports-where', PLACES, u.sportsWhere || []);
+  renderChipsEdit('ep-brands', BRANDS, u.favBrands || []);
+}
+
+function renderChipsEdit(containerId, items, selected) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = items.map(item => '<div class="chip'+(selected.includes(item)?' selected':'')+'" onclick="this.classList.toggle(\'selected\')" data-value="'+item+'">'+item+'</div>').join('');
+}
+
+async function saveEditProfile() {
+  const data = {
+    name: document.getElementById('ep-name').value || null,
+    birthDate: document.getElementById('ep-birth').value || null,
+    cep: document.getElementById('ep-cep').value.replace(/\D/g,'') || null,
+    street: document.getElementById('ep-street').value || null,
+    number: document.getElementById('ep-number').value || null,
+    complement: document.getElementById('ep-complement').value || null,
+    neighborhood: document.getElementById('ep-neighborhood').value || null,
+    city: document.getElementById('ep-city').value || null,
+    state: document.getElementById('ep-state').value || null,
+    height: document.getElementById('ep-height').value || null,
+    weight: document.getElementById('ep-weight').value || null,
+    shirtSize: document.getElementById('ep-shirt').value || null,
+    shoeSize: document.getElementById('ep-shoe').value || null,
+    sportsPractice: getSelectedChips('ep-sports-practice'),
+    sportsWant: getSelectedChips('ep-sports-want'),
+    sportsWhere: getSelectedChips('ep-sports-where'),
+    favBrands: getSelectedChips('ep-brands'),
+  };
+  const result = await api('/auth/update-profile','PUT',data);
+  if (result.error) { showError('ep-error',result.error); return; }
+  // Atualiza nome na sessão
+  if (data.name) { user.name = data.name; localStorage.setItem('tc_user',JSON.stringify(user)); }
+  alert('Dados atualizados com sucesso!');
+  showScreen('mydata');
+}
+
+// EMAIL VERIFICATION
+let emailVerified = false;
+let verifiedEmail = null;
+
+async function sendEmailVerification() {
+  const email = document.getElementById('cp-email').value;
+  if (!email || !email.includes('@')) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Informe um e-mail válido</span>';
+    return;
+  }
+  document.getElementById('cp-email-status').innerHTML = 'Enviando código...';
+  try {
+    const data = await api('/auth/send-email-code','POST',{email});
+    if (data.error) {
+      document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+      return;
+    }
+    document.getElementById('cp-email-verify').style.display = 'block';
+    document.getElementById('cp-email-btn').textContent = 'REENVIAR';
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FFD54F">Código enviado para '+email+'</span>';
+  } catch(err) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Erro de conexão. Tente novamente.</span>';
+    console.error('Erro email:', err);
+  }
+}
+
+async function confirmEmailCode() {
+  const email = document.getElementById('cp-email').value;
+  const code = document.getElementById('cp-email-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">Digite o código de 6 dígitos</span>';
+    return;
+  }
+  const data = await api('/auth/verify-email-code','POST',{email,code});
+  if (data.error) {
+    document.getElementById('cp-email-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+    return;
+  }
+  emailVerified = true;
+  verifiedEmail = email;
+  document.getElementById('cp-email-verify').style.display = 'none';
+  document.getElementById('cp-email-btn').textContent = '✓';
+  document.getElementById('cp-email-btn').disabled = true;
+  document.getElementById('cp-email').disabled = true;
+  document.getElementById('cp-email-status').innerHTML = '<span style="color:#8BFF8B">✓ E-mail verificado</span>';
+}
+
+// CHANGE PASSWORD
+async function changePassword() {
+  const current = document.getElementById('sec-current').value;
+  const new1 = document.getElementById('sec-new1').value;
+  const new2 = document.getElementById('sec-new2').value;
+  if (!current) { showError('sec-error','Informe a senha atual'); return; }
+  if (!new1 || new1.length < 4) { showError('sec-error','Nova senha deve ter no mínimo 4 caracteres'); return; }
+  if (new1 !== new2) { showError('sec-error','As senhas não conferem'); return; }
+  const data = await api('/auth/change-password','POST',{currentPassword:current,newPassword:new1});
+  if (data.error) { showError('sec-error',data.error); return; }
+  document.getElementById('security-form').style.display = 'none';
+  document.getElementById('security-success').style.display = 'block';
+}
+
+// DELETE ACCOUNT
+function confirmDeleteAccount() {
+  if (confirm('Tem certeza que deseja excluir sua conta?\n\nTodos os seus dados e saldo serão apagados permanentemente.\n\nEssa ação NÃO pode ser desfeita.')) {
+    if (confirm('ÚLTIMA CONFIRMAÇÃO\n\nSeu saldo de T$ '+user.balance.toFixed(2)+' será perdido.\n\nDeseja realmente excluir?')) {
+      deleteAccount();
+    }
+  }
+}
+
+async function deleteAccount() {
+  const data = await api('/auth/me','DELETE');
+  if (data.error) { alert(data.error); return; }
+  alert('Conta excluída com sucesso. Seus dados foram apagados conforme a LGPD.');
+  doLogout();
+}
+
+async function loadPOS() {
+  const data = await api('/admin/brands');
+  if (data.brands) {
+    posBrands = data.brands;
+    const sel = document.getElementById('pos-brand');
+    sel.innerHTML = '<option value="">Selecione a marca</option>' + data.brands.map(b => '<option value="'+b.brand+'" data-max="'+b.maxDiscount+'">'+b.brand+' (até '+b.maxDiscount+'%)</option>').join('');
+  }
+}
+
+let posLookupTimer;
+function posLookup() {
+  clearTimeout(posLookupTimer);
+  const phone = document.getElementById('pos-phone').value.replace(/\D/g,'');
+  if (phone.length < 8) { document.getElementById('pos-client').innerHTML = ''; posClientData = null; return; }
+  posLookupTimer = setTimeout(async () => {
+    const data = await api('/transfer/lookup?q='+phone);
+    if (data.name) {
+      posClientData = data;
+      document.getElementById('pos-client').innerHTML = '✓ '+data.name;
+      const users = await api('/admin/users?search='+phone);
+      if (users.users && users.users.length > 0) {
+        posClientData.balance = users.users[0].balance;
+        posClientData.id = users.users[0].id;
+        document.getElementById('pos-client-balance').textContent = 'Saldo do cliente: T$ '+users.users[0].balance.toFixed(2);
+      }
+    } else {
+      document.getElementById('pos-client').innerHTML = '<span style="color:#FF5252">Cliente não encontrado</span>';
+      posClientData = null;
+    }
+    posCalc();
+  }, 500);
+}
+
+function posCalc() {
+  const sale = parseFloat(document.getElementById('pos-sale').value) || 0;
+  const use = parseFloat(document.getElementById('pos-use').value) || 0;
+  const brandSel = document.getElementById('pos-brand');
+  const brand = brandSel.value;
+  const maxOpt = brandSel.selectedOptions[0]?.dataset?.max;
+  const maxPct = maxOpt ? parseFloat(maxOpt) : 100;
+  const maxTC = sale * maxPct / 100;
+  document.getElementById('pos-max').textContent = brand ? 'Máximo para '+brand+': T$ '+maxTC.toFixed(2)+' ('+maxPct+'%)' : 'Selecione a marca para ver o limite';
+  document.getElementById('pos-r-sale').textContent = 'R$ '+sale.toFixed(2);
+  document.getElementById('pos-r-tc').textContent = '- T$ '+use.toFixed(2);
+  document.getElementById('pos-r-pay').textContent = 'R$ '+(sale - use).toFixed(2);
+  document.getElementById('pos-r-earn').textContent = '+ T$ '+(sale - use).toFixed(2);
+}
+
+async function posSubmit() {
+  const phone = document.getElementById('pos-phone').value.replace(/\D/g,'');
+  const sale = parseFloat(document.getElementById('pos-sale').value) || 0;
+  const use = parseFloat(document.getElementById('pos-use').value) || 0;
+  const brand = document.getElementById('pos-brand').value;
+  if (!phone || !posClientData) { showError('pos-error','Informe o telefone do cliente'); return; }
+  if (sale <= 0) { showError('pos-error','Informe o valor da compra'); return; }
+  let msg = '';
+  if (use > 0) {
+    const useData = await api('/admin/use','POST',{ phone, useAmount:use, saleAmount:sale, brand, description:'Compra na loja - '+brand });
+    if (useData.error) { showError('pos-error', useData.error); return; }
+    msg = useData.message;
+  } else {
+    const saleData = await api('/admin/sale','POST',{ phone, saleAmount:sale, description:'Compra na loja'+(brand?' - '+brand:'') });
+    if (saleData.error) { showError('pos-error', saleData.error); return; }
+    msg = saleData.message;
+  }
+  const earned = use > 0 ? (sale - use) : sale;
+  document.getElementById('pos-success-msg').textContent = msg + ' | Cliente ganhou T$ '+earned.toFixed(2);
+  document.getElementById('pos-form').style.display = 'none';
+  document.getElementById('pos-success').style.display = 'block';
+}
+
+function posReset() {
+  document.getElementById('pos-phone').value = '';
+  document.getElementById('pos-sale').value = '';
+  document.getElementById('pos-use').value = '';
+  document.getElementById('pos-brand').selectedIndex = 0;
+  document.getElementById('pos-client').innerHTML = '';
+  document.getElementById('pos-client-balance').textContent = 'Saldo do cliente: --';
+  document.getElementById('pos-max').textContent = 'Máximo: --';
+  document.getElementById('pos-r-sale').textContent = 'R$ 0,00';
+  document.getElementById('pos-r-tc').textContent = '- T$ 0,00';
+  document.getElementById('pos-r-pay').textContent = 'R$ 0,00';
+  document.getElementById('pos-r-earn').textContent = '+ T$ 0,00';
+  document.getElementById('pos-error').innerHTML = '';
+  document.getElementById('pos-form').style.display = 'block';
+  document.getElementById('pos-success').style.display = 'none';
+  posClientData = null;
+}
+</script>
+</body>
+</html>
