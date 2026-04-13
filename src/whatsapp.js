@@ -55,10 +55,17 @@ async function sendVerificationCode(phone) {
   }
 }
 
+// Telefones verificados temporariamente (expira em 15 min)
+const verifiedPhones = new Map();
+
 function verifyCode(phone, code) {
   const stored = verificationCodes.get(phone);
   
   if (!stored) {
+    // Checa se já foi verificado
+    if (verifiedPhones.has(phone)) {
+      return { valid: true };
+    }
     return { valid: false, message: 'Código não encontrado. Solicite um novo.' };
   }
 
@@ -77,9 +84,24 @@ function verifyCode(phone, code) {
     return { valid: false, message: 'Código incorreto. Tente novamente.' };
   }
 
-  // Código válido - remove
+  // Código válido - marca como verificado por 15 minutos
   verificationCodes.delete(phone);
+  verifiedPhones.set(phone, { expiresAt: Date.now() + 15 * 60 * 1000 });
   return { valid: true };
+}
+
+function isPhoneVerified(phone) {
+  const data = verifiedPhones.get(phone);
+  if (!data) return false;
+  if (Date.now() > data.expiresAt) {
+    verifiedPhones.delete(phone);
+    return false;
+  }
+  return true;
+}
+
+function clearVerified(phone) {
+  verifiedPhones.delete(phone);
 }
 
 // Limpa códigos expirados a cada 5 minutos
@@ -92,4 +114,4 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-module.exports = { sendVerificationCode, verifyCode };
+module.exports = { sendVerificationCode, verifyCode, isPhoneVerified, clearVerified };

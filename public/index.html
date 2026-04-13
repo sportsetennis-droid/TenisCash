@@ -416,8 +416,8 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="profile-item" onclick="showScreen('security')"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Alterar senha</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('terms')"><span style="font-size:18px">📄</span><span style="flex:1;font-size:14px">Termos de uso</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('privacy')"><span style="font-size:18px">🔐</span><span style="flex:1;font-size:14px">Política de privacidade</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
-    <div class="profile-item" onclick="doLogout()"><span style="font-size:18px">🚪</span><span style="flex:1;font-size:14px;color:#FF5252">Sair</span></div>
-    <div class="profile-item" onclick="confirmDeleteAccount()"><span style="font-size:18px">🗑️</span><span style="flex:1;font-size:14px;color:#FF5252">Excluir minha conta</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="doLogout()"><span style="font-size:18px">🚪</span><span style="flex:1;font-size:14px;color:#fff">Sair</span></div>
+    <div class="profile-item" onclick="confirmDeleteAccount()"><span style="font-size:18px">🗑️</span><span style="flex:1;font-size:14px;color:#fff">Excluir minha conta</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
   </div>
   <div style="margin-top:30px;text-align:center">
     <p style="color:rgba(255,255,255,0.25);font-size:11px;letter-spacing:2px">TENISCASH v2.0</p>
@@ -655,8 +655,7 @@ async function doRegister() {
   if (!birthDate) { showError('reg-error','Informe sua data de nascimento'); return; }
   if (!password || password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
   if (!lgpd) { showError('reg-error','Você precisa aceitar os termos e a política de privacidade'); return; }
-  const code = document.getElementById('reg-code').value.replace(/\D/g,'');
-  const data = await api('/auth/register','POST',{name,phone:verifiedPhone,birthDate,password,lgpdAccepted:true,verificationCode:code});
+  const data = await api('/auth/register','POST',{name,phone:verifiedPhone,birthDate,password,lgpdAccepted:true});
   if (data.error) { showError('reg-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);

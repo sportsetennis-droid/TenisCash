@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
-const { sendVerificationCode, verifyCode } = require('../whatsapp');
+const { sendVerificationCode, verifyCode, isPhoneVerified, clearVerified } = require('../whatsapp');
 const { sendEmailCode, verifyEmailCode } = require('../email');
 
 const router = express.Router();
@@ -80,13 +80,9 @@ router.post('/register', async (req, res) => {
 
     const cleanPhone = phone.replace(/\D/g, '');
 
-    // Verifica código do WhatsApp
-    if (!verificationCode) {
-      return res.status(400).json({ error: 'Código de verificação é obrigatório' });
-    }
-    const codeResult = verifyCode(cleanPhone, verificationCode);
-    if (!codeResult.valid) {
-      return res.status(400).json({ error: codeResult.message });
+    // Verifica se telefone foi verificado pelo WhatsApp
+    if (!isPhoneVerified(cleanPhone)) {
+      return res.status(400).json({ error: 'Telefone não verificado. Solicite um novo código.' });
     }
 
     const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
@@ -107,6 +103,9 @@ router.post('/register', async (req, res) => {
         lgpdDate: new Date(),
       }
     });
+
+    // Limpa verificação usada
+    clearVerified(cleanPhone);
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
