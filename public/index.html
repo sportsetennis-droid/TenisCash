@@ -120,21 +120,42 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <button class="btn-primary" onclick="doLogin()">ENTRAR</button>
     </div>
     <div id="register-form" style="width:100%;display:none">
-      <label class="input-label">NOME COMPLETO</label>
-      <input id="reg-name" class="input-field" placeholder="Nome e sobrenome">
-      <label class="input-label">TELEFONE COM DDD</label>
-      <input id="reg-phone" class="input-field" placeholder="83999990000">
-      <label class="input-label">DATA DE NASCIMENTO</label>
-      <input id="reg-birth" class="input-field" type="date">
-      <label class="input-label">CRIE UMA SENHA</label>
-      <input id="reg-password" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
-      <div class="lgpd-check">
-        <input type="checkbox" id="reg-lgpd">
+      <!-- STEP 1: Telefone + Verificação -->
+      <div id="reg-step1">
+        <label class="input-label">TELEFONE COM DDD</label>
+        <input id="reg-phone" class="input-field" placeholder="83999990000">
+        <div id="reg-code-sent" style="display:none;margin-top:10px">
+          <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:8px">Código enviado para seu WhatsApp!</p>
+          <label class="input-label">CÓDIGO DE VERIFICAÇÃO</label>
+          <input id="reg-code" class="input-field" placeholder="000000" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:8px">
+          <button class="btn-primary" onclick="verifyPhone()">VERIFICAR</button>
+          <p style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:10px;text-align:center;cursor:pointer" onclick="sendCode()">Reenviar código</p>
+        </div>
+        <div id="reg-send-btn">
+          <div id="reg-phone-error"></div>
+          <button class="btn-primary" onclick="sendCode()">ENVIAR CÓDIGO POR WHATSAPP</button>
+        </div>
+      </div>
+      <!-- STEP 2: Dados + Senha (aparece após verificação) -->
+      <div id="reg-step2" style="display:none">
+        <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+          <span style="color:#8BFF8B;font-size:16px">✓</span>
+          <span style="font-size:13px" id="reg-verified-phone"></span>
+        </div>
+        <label class="input-label">NOME COMPLETO</label>
+        <input id="reg-name" class="input-field" placeholder="Nome e sobrenome">
+        <label class="input-label">DATA DE NASCIMENTO</label>
+        <input id="reg-birth" class="input-field" type="date">
+        <label class="input-label">CRIE UMA SENHA</label>
+        <input id="reg-password" class="input-field" type="password" placeholder="Mínimo 4 caracteres">
+        <div class="lgpd-check">
+          <input type="checkbox" id="reg-lgpd">
         <label for="reg-lgpd" style="font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4">Li e aceito os <a href="#" onclick="showScreen('terms');return false" style="color:#fff;font-weight:700;text-decoration:underline">Termos de Uso</a> e a <a href="#" onclick="showScreen('privacy');return false" style="color:#fff;font-weight:700;text-decoration:underline">Política de Privacidade</a> do TenisCash conforme a LGPD.</label>
       </div>
       <div id="reg-error"></div>
       <button class="btn-primary" onclick="doRegister()">CRIAR CONTA</button>
       <p class="lgpd-text" style="text-align:center;margin-top:16px">Seus dados são protegidos pela Lei Geral de Proteção de Dados (LGPD). Você pode excluir sua conta e dados a qualquer momento.</p>
+      </div><!-- end reg-step2 -->
     </div>
   </div>
 </div>
@@ -448,17 +469,44 @@ async function doLogin() {
   showScreen('home');
 }
 
+let verifiedPhone = null;
+
+async function sendCode() {
+  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
+  if (!phone || phone.length < 10) { showError('reg-phone-error','Informe um telefone válido com DDD'); return; }
+  const data = await api('/auth/send-code','POST',{phone});
+  if (data.error) { showError('reg-phone-error',data.error); return; }
+  document.getElementById('reg-code-sent').style.display = 'block';
+  document.getElementById('reg-send-btn').style.display = 'none';
+  document.getElementById('reg-phone').disabled = true;
+}
+
+async function verifyPhone() {
+  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
+  const code = document.getElementById('reg-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) { showError('reg-phone-error','Digite o código de 6 dígitos'); return; }
+  const data = await api('/auth/verify-code','POST',{phone,code});
+  if (data.error) { showError('reg-phone-error',data.error); return; }
+  if (data.verified) {
+    verifiedPhone = phone;
+    document.getElementById('reg-step1').style.display = 'none';
+    document.getElementById('reg-step2').style.display = 'block';
+    document.getElementById('reg-verified-phone').textContent = 'Telefone verificado: ' + phone;
+  }
+}
+
 async function doRegister() {
   const name = document.getElementById('reg-name').value.trim();
-  const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
   const birthDate = document.getElementById('reg-birth').value;
   const password = document.getElementById('reg-password').value;
   const lgpd = document.getElementById('reg-lgpd').checked;
-  if (!name || !phone || !password) { showError('reg-error','Preencha todos os campos'); return; }
+  if (!verifiedPhone) { showError('reg-error','Verifique seu telefone primeiro'); return; }
+  if (!name) { showError('reg-error','Informe seu nome completo'); return; }
   if (!birthDate) { showError('reg-error','Informe sua data de nascimento'); return; }
-  if (password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
+  if (!password || password.length < 4) { showError('reg-error','Senha deve ter no mínimo 4 caracteres'); return; }
   if (!lgpd) { showError('reg-error','Você precisa aceitar os termos e a política de privacidade'); return; }
-  const data = await api('/auth/register','POST',{name,phone,birthDate,password,lgpdAccepted:true});
+  const code = document.getElementById('reg-code').value.replace(/\D/g,'');
+  const data = await api('/auth/register','POST',{name,phone:verifiedPhone,birthDate,password,lgpdAccepted:true,verificationCode:code});
   if (data.error) { showError('reg-error',data.error); return; }
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);

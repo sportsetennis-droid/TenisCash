@@ -2,13 +2,64 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
+const { sendVerificationCode, verifyCode } = require('../whatsapp');
 
 const router = express.Router();
 
-// CADASTRO BÁSICO (sem bônus - bônus só no perfil completo)
+// ENVIAR CÓDIGO DE VERIFICAÇÃO POR WHATSAPP
+router.post('/send-code', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    // Verifica se telefone já está cadastrado
+    const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    if (existing) {
+      return res.status(400).json({ error: 'Telefone já cadastrado' });
+    }
+
+    const result = await sendVerificationCode(cleanPhone);
+    if (result.success) {
+      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao enviar código:', err);
+    res.status(500).json({ error: 'Erro ao enviar código de verificação' });
+  }
+});
+
+// VERIFICAR CÓDIGO
+router.post('/verify-code', async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ error: 'Telefone e código são obrigatórios' });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    const result = verifyCode(cleanPhone, code);
+
+    if (result.valid) {
+      res.json({ success: true, verified: true });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    console.error('Erro ao verificar código:', err);
+    res.status(500).json({ error: 'Erro ao verificar código' });
+  }
+});
+
+// CADASTRO BÁSICO (sem bônus - requer verificação WhatsApp)
 router.post('/register', async (req, res) => {
   try {
-    const { name, phone, birthDate, password, lgpdAccepted } = req.body;
+    const { name, phone, birthDate, password, lgpdAccepted, verificationCode } = req.body;
 
     if (!name || !phone || !password) {
       return res.status(400).json({ error: 'Nome, telefone e senha são obrigatórios' });
@@ -26,7 +77,18 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Senha deve ter entre 4 e 20 caracteres' });
     }
 
-    const existing = await prisma.user.findUnique({ where: { phone } });
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    // Verifica código do WhatsApp
+    if (!verificationCode) {
+      return res.status(400).json({ error: 'Código de verificação é obrigatório' });
+    }
+    const codeResult = verifyCode(cleanPhone, verificationCode);
+    if (!codeResult.valid) {
+      return res.status(400).json({ error: codeResult.message });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
     if (existing) {
       return res.status(400).json({ error: 'Telefone já cadastrado' });
     }
@@ -36,7 +98,7 @@ router.post('/register', async (req, res) => {
     const user = await prisma.user.create({
       data: {
         name,
-        phone,
+        phone: cleanPhone,
         birthDate,
         pin: hashedPassword,
         balance: 0,
