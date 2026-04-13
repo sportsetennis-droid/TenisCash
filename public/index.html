@@ -210,16 +210,34 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <p class="section-header">Dados Pessoais</p>
   <label class="input-label">CPF</label>
   <input id="cp-cpf" class="input-field" placeholder="000.000.000-00">
-  <label class="input-label">E-MAIL</label>
-  <div style="display:flex;gap:8px;margin-top:6px">
-    <input id="cp-email" class="input-field" placeholder="seu@email.com" type="email" style="flex:1;margin-top:0">
-    <button id="cp-email-btn" onclick="sendEmailVerification()" style="padding:14px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Chakra Petch'">VERIFICAR</button>
+
+  <!-- Se cadastrou por telefone: pede email -->
+  <div id="cp-email-section">
+    <label class="input-label">E-MAIL</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input id="cp-email" class="input-field" placeholder="seu@email.com" type="email" style="flex:1;margin-top:0">
+      <button id="cp-email-btn" onclick="sendEmailVerification()" style="padding:14px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Chakra Petch'">VERIFICAR</button>
+    </div>
+    <div id="cp-email-verify" style="display:none;margin-top:8px">
+      <input id="cp-email-code" class="input-field" placeholder="Código de 6 dígitos" maxlength="6" style="text-align:center;letter-spacing:6px">
+      <button onclick="confirmEmailCode()" style="width:100%;padding:12px;margin-top:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'">CONFIRMAR CÓDIGO</button>
+    </div>
+    <div id="cp-email-status" style="font-size:12px;margin-top:4px"></div>
   </div>
-  <div id="cp-email-verify" style="display:none;margin-top:8px">
-    <input id="cp-email-code" class="input-field" placeholder="Código de 6 dígitos" maxlength="6" style="text-align:center;letter-spacing:6px">
-    <button onclick="confirmEmailCode()" style="width:100%;padding:12px;margin-top:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'">CONFIRMAR CÓDIGO</button>
+
+  <!-- Se cadastrou por email: pede WhatsApp -->
+  <div id="cp-phone-section" style="display:none">
+    <label class="input-label">WHATSAPP COM DDD</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input id="cp-phone" class="input-field" placeholder="83999990000" style="flex:1;margin-top:0">
+      <button id="cp-phone-btn" onclick="sendPhoneVerificationProfile()" style="padding:14px 16px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Chakra Petch'">VERIFICAR</button>
+    </div>
+    <div id="cp-phone-verify" style="display:none;margin-top:8px">
+      <input id="cp-phone-code" class="input-field" placeholder="Código de 6 dígitos" maxlength="6" style="text-align:center;letter-spacing:6px">
+      <button onclick="confirmPhoneCodeProfile()" style="width:100%;padding:12px;margin-top:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'">CONFIRMAR CÓDIGO</button>
+    </div>
+    <div id="cp-phone-status" style="font-size:12px;margin-top:4px"></div>
   </div>
-  <div id="cp-email-status" style="font-size:12px;margin-top:4px"></div>
 
   <p class="section-header">Endereço</p>
   <label class="input-label">CEP</label>
@@ -604,9 +622,9 @@ let token = localStorage.getItem('tc_token');
 let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
 let balanceVisible = true;
 
-const SPORTS = ['Nenhum','Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro'];
-const BRANDS = ['Nenhuma','Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra'];
-const PLACES = ['Nenhum','Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro'];
+const SPORTS = ['Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro','Nenhum'];
+const BRANDS = ['Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra','Nenhuma'];
+const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro','Nenhum'];
 
 setTimeout(() => {
   document.getElementById('splash').classList.remove('active');
@@ -960,6 +978,11 @@ function loadProfile() {
 
 // COMPLETE PROFILE
 function initProfileForm() {
+  // Mostra campo correto baseado em como se cadastrou
+  const hasPhone = user.phone && !user.phone.startsWith('email_');
+  document.getElementById('cp-email-section').style.display = hasPhone ? 'block' : 'none';
+  document.getElementById('cp-phone-section').style.display = hasPhone ? 'none' : 'block';
+
   // Shoe sizes 28-48
   const shoeSel = document.getElementById('cp-shoe');
   if (shoeSel.options.length <= 1) {
@@ -1017,14 +1040,25 @@ async function cepLookupEdit() {
 }
 
 async function submitProfile() {
-  const emailField = document.getElementById('cp-email').value;
-  if (emailField && !emailVerified) {
-    showError('cp-error','Verifique seu e-mail antes de continuar');
-    return;
+  const hasPhone = user.phone && !user.phone.startsWith('email_');
+  
+  if (hasPhone) {
+    const emailField = document.getElementById('cp-email').value;
+    if (emailField && !emailVerified) {
+      showError('cp-error','Verifique seu e-mail antes de continuar');
+      return;
+    }
+  } else {
+    if (!phoneVerifiedProfile) {
+      showError('cp-error','Verifique seu WhatsApp antes de continuar');
+      return;
+    }
   }
+
   const data = {
     cpf: document.getElementById('cp-cpf').value.replace(/\D/g,'') || null,
-    email: emailVerified ? verifiedEmail : null,
+    email: hasPhone ? (emailVerified ? verifiedEmail : null) : (user.email || null),
+    phone: !hasPhone ? verifiedPhoneProfile : null,
     cep: document.getElementById('cp-cep').value.replace(/\D/g,'') || null,
     street: document.getElementById('cp-street').value || null,
     number: document.getElementById('cp-number').value || null,
@@ -1181,6 +1215,46 @@ async function saveEditProfile() {
 // EMAIL VERIFICATION
 let emailVerified = false;
 let verifiedEmail = null;
+let phoneVerifiedProfile = false;
+let verifiedPhoneProfile = null;
+
+async function sendPhoneVerificationProfile() {
+  const phone = document.getElementById('cp-phone').value.replace(/\D/g,'');
+  if (!phone || phone.length < 10) {
+    document.getElementById('cp-phone-status').innerHTML = '<span style="color:#FF5252">Informe um WhatsApp válido com DDD</span>';
+    return;
+  }
+  document.getElementById('cp-phone-status').innerHTML = 'Enviando código...';
+  const data = await api('/auth/send-code-profile','POST',{phone});
+  if (data.error) {
+    document.getElementById('cp-phone-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+    return;
+  }
+  document.getElementById('cp-phone-verify').style.display = 'block';
+  document.getElementById('cp-phone-btn').textContent = 'REENVIAR';
+  document.getElementById('cp-phone-status').innerHTML = '<span style="color:#FFD54F">Código enviado para o WhatsApp</span>';
+}
+
+async function confirmPhoneCodeProfile() {
+  const phone = document.getElementById('cp-phone').value.replace(/\D/g,'');
+  const code = document.getElementById('cp-phone-code').value.replace(/\D/g,'');
+  if (!code || code.length !== 6) {
+    document.getElementById('cp-phone-status').innerHTML = '<span style="color:#FF5252">Digite o código de 6 dígitos</span>';
+    return;
+  }
+  const data = await api('/auth/verify-code','POST',{phone,code});
+  if (data.error) {
+    document.getElementById('cp-phone-status').innerHTML = '<span style="color:#FF5252">'+data.error+'</span>';
+    return;
+  }
+  phoneVerifiedProfile = true;
+  verifiedPhoneProfile = phone;
+  document.getElementById('cp-phone-verify').style.display = 'none';
+  document.getElementById('cp-phone-btn').textContent = '✓';
+  document.getElementById('cp-phone-btn').disabled = true;
+  document.getElementById('cp-phone').disabled = true;
+  document.getElementById('cp-phone-status').innerHTML = '<span style="color:#8BFF8B">✓ WhatsApp verificado</span>';
+}
 
 async function sendEmailVerification() {
   const email = document.getElementById('cp-email').value;

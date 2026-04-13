@@ -7,6 +7,23 @@ const { sendEmailCode, verifyEmailCode } = require('../email');
 
 const router = express.Router();
 
+// ENVIAR CÓDIGO WHATSAPP PARA COMPLETAR PERFIL (não verifica duplicidade)
+router.post('/send-code-profile', authMiddleware, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório' });
+    const cleanPhone = phone.replace(/\D/g, '');
+    const result = await sendVerificationCode(cleanPhone);
+    if (result.success) {
+      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao enviar código' });
+  }
+});
+
 // ENVIAR CÓDIGO DE VERIFICAÇÃO POR WHATSAPP
 router.post('/send-code', async (req, res) => {
   try {
@@ -154,7 +171,7 @@ router.post('/register', async (req, res) => {
 router.post('/complete-profile', authMiddleware, async (req, res) => {
   try {
     const {
-      cpf, email, birthDate, cep, street, number, complement, neighborhood, city, state,
+      cpf, email, phone, birthDate, cep, street, number, complement, neighborhood, city, state,
       height, weight, shirtSize, shoeSize,
       sportsPractice, sportsWant, sportsWhere, favBrands
     } = req.body;
@@ -190,6 +207,7 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
         data: {
           cpf: cpf || null,
           email: email || user.email || null,
+          phone: phone ? phone.replace(/\D/g,'') : user.phone,
           birthDate: birthDate || null,
           cep: cep || null,
           street: street || null,
