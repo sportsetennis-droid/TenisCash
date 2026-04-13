@@ -218,11 +218,16 @@ router.post('/complete-profile', authMiddleware, async (req, res) => {
     const bonusConfig = await prisma.config.findUnique({ where: { key: 'welcome_bonus' } });
     if (bonusConfig) bonusAmount = parseFloat(bonusConfig.value);
 
-    // Bloqueia bônus se CPF já recebeu antes (mesmo em conta excluída)
+    // Bloqueia bônus se CPF já recebeu antes (mesmo em conta excluída - via deletedCpf)
     let cpfAlreadyReceivedBonus = false;
     if (cpf && bonusAmount > 0) {
       const cpfHistory = await prisma.user.findFirst({
-        where: { cpf, welcomeBonus: true }
+        where: {
+          OR: [
+            { cpf, welcomeBonus: true },
+            { deletedCpf: cpf, welcomeBonus: true }
+          ]
+        }
       });
       if (cpfHistory) {
         cpfAlreadyReceivedBonus = true;
@@ -563,19 +568,25 @@ router.post('/change-password', authMiddleware, async (req, res) => {
 // EXCLUIR CONTA (LGPD)
 router.delete('/me', authMiddleware, async (req, res) => {
   try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
     await prisma.user.update({
       where: { id: req.userId },
       data: {
         active: false,
         name: 'Conta excluída',
         phone: `deleted_${Date.now()}`,
-        email: null, birthDate: null,
+        email: null,
+        // CPF é apagado mas welcomeBonus e deletedCpf ficam para controle de bônus
+        cpf: null,
+        deletedCpf: user.cpf || null, // guarda CPF para bloquear bônus futuro
+        birthDate: null,
         cep: null, street: null, number: null, complement: null,
         neighborhood: null, city: null, state: null,
         height: null, weight: null, shirtSize: null, shoeSize: null,
         sportsPractice: null, sportsWant: null, sportsWhere: null, favBrands: null,
         balance: 0,
-        // CPF e welcomeBonus são mantidos para bloquear novo bônus
       }
     });
 

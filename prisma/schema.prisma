@@ -18,6 +18,7 @@ model User {
   role          String   @default("user") // user, admin, superadmin
   active        Boolean  @default(true)
   welcomeBonus  Boolean  @default(false) // já recebeu bonus de boas-vindas
+  deletedCpf    String?  // CPF guardado após exclusão para bloquear novo bônus
   profileComplete Boolean @default(false) // perfil CRM completo
   lgpdAccepted  Boolean  @default(false)
   lgpdDate      DateTime? // data do aceite LGPD
