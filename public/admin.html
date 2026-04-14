@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TenisCash - Painel Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#111;--card:#1a1a1a;--border:#2a2a2a;--orange:#FF6D00;--orange2:#E05A0A;--green:#4CAF50;--red:#FF5252;--text:#fff;--text2:rgba(255,255,255,0.6);--text3:rgba(255,255,255,0.3)}
+body{font-family:'Chakra Petch',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{width:100%;max-width:380px;text-align:center}
+.login-logo{width:80px;height:80px;border-radius:50%;border:3px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;background:rgba(255,109,0,0.1)}
+.login-logo span{font-family:'Orbitron';font-size:32px;font-weight:900;color:var(--orange)}
+.login-title{font-family:'Orbitron';font-size:14px;letter-spacing:4px;color:var(--orange);margin-bottom:30px}
+.login-input{width:100%;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:14px;font-family:'Chakra Petch';outline:none;margin-bottom:12px}
+.login-input:focus{border-color:var(--orange)}
+.login-input::placeholder{color:var(--text3)}
+.login-btn{width:100%;padding:14px;background:var(--orange);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px;margin-top:8px;transition:background .2s}
+.login-btn:hover{background:var(--orange2)}
+.login-error{color:var(--red);font-size:13px;margin-top:10px}
+
+.dashboard{display:none;max-width:1200px;margin:0 auto;padding:20px}
+.top-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 0 30px}
+.top-left{display:flex;align-items:center;gap:14px}
+.top-logo{width:40px;height:40px;border-radius:50%;border:2px solid var(--orange);display:flex;align-items:center;justify-content:center;background:rgba(255,109,0,0.1)}
+.top-logo span{font-family:'Orbitron';font-size:16px;font-weight:900;color:var(--orange)}
+.top-title{font-family:'Orbitron';font-size:13px;letter-spacing:3px;color:var(--text2)}
+.top-right{display:flex;align-items:center;gap:16px}
+.top-user{font-size:13px;color:var(--text2)}
+.logout-btn{padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';transition:all .2s}
+.logout-btn:hover{border-color:var(--red);color:var(--red)}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:30px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}
+.stat-label{font-size:11px;letter-spacing:2px;color:var(--text3);margin-bottom:8px}
+.stat-value{font-family:'Orbitron';font-size:32px;font-weight:900}
+.stat-sub{font-size:12px;color:var(--text2);margin-top:6px}
+.stat-orange .stat-value{color:var(--orange)}
+.stat-green .stat-value{color:var(--green)}
+
+.section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:20px}
+.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.section-title{font-size:16px;font-weight:700;letter-spacing:1px}
+.search-box{padding:10px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:'Chakra Petch';outline:none;width:260px}
+.search-box:focus{border-color:var(--orange)}
+.search-box::placeholder{color:var(--text3)}
+
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;letter-spacing:2px;color:var(--text3);padding:10px 12px;border-bottom:1px solid var(--border)}
+td{padding:12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.badge-role{display:inline-block;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:1px}
+.badge-admin{background:rgba(255,109,0,0.15);color:var(--orange);border:1px solid rgba(255,109,0,0.3)}
+.badge-user{background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border)}
+.badge-super{background:rgba(76,175,80,0.15);color:var(--green);border:1px solid rgba(76,175,80,0.3)}
+.amount-pos{color:var(--green);font-family:'Orbitron';font-size:12px}
+.amount-neg{color:var(--red);font-family:'Orbitron';font-size:12px}
+.amount-neutral{color:var(--text2);font-family:'Orbitron';font-size:12px}
+
+.pagination{display:flex;justify-content:center;gap:8px;margin-top:16px}
+.page-btn{padding:8px 14px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch'}
+.page-btn.active{background:var(--orange);border-color:var(--orange);color:#fff}
+.page-btn:hover:not(.active){border-color:var(--orange);color:var(--orange)}
+
+.loading-spinner{text-align:center;padding:40px;color:var(--text3);font-size:13px}
+.refresh-btn{padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';transition:all .2s}
+.refresh-btn:hover{border-color:var(--orange);color:var(--orange)}
+.tabs{display:flex;gap:4px;margin-bottom:20px}
+.tab{padding:10px 20px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px;transition:all .2s}
+.tab.active{background:var(--orange);border-color:var(--orange);color:#fff}
+.tab:hover:not(.active){border-color:var(--orange);color:var(--orange)}
+.empty-state{text-align:center;padding:40px;color:var(--text3);font-size:13px}
+
+.detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;padding:20px}
+.detail-modal.show{display:flex}
+.detail-content{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:30px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto}
+.detail-close{float:right;font-size:20px;cursor:pointer;color:var(--text2);background:none;border:none}
+.detail-close:hover{color:#fff}
+.detail-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px}
+.detail-row .label{color:var(--text3);font-size:11px;letter-spacing:1px}
+.detail-row .value{text-align:right}
+
+@media(max-width:768px){
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .section-head{flex-direction:column;gap:12px;align-items:flex-start}
+  .search-box{width:100%}
+  .top-bar{flex-direction:column;gap:12px;align-items:flex-start}
+  table{font-size:12px}
+  th,td{padding:8px 6px}
+  .stat-value{font-size:24px}
+}
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-screen">
+  <div class="login-box">
+    <div class="login-logo"><span>TC</span></div>
+    <div class="login-title">PAINEL ADMIN</div>
+    <input class="login-input" id="admin-phone" placeholder="Telefone ou e-mail">
+    <input class="login-input" id="admin-pass" type="password" placeholder="Senha">
+    <button class="login-btn" onclick="doAdminLogin()">ENTRAR</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard" id="dashboard">
+  <div class="top-bar">
+    <div class="top-left">
+      <div class="top-logo"><span>TC</span></div>
+      <span class="top-title">TENISCASH ADMIN</span>
+    </div>
+    <div class="top-right">
+      <span class="top-user" id="admin-name"></span>
+      <button class="refresh-btn" onclick="loadDashboard()">↻ Atualizar</button>
+      <button class="logout-btn" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">USUÁRIOS CADASTRADOS</div>
+      <div class="stat-value" id="s-total-users">—</div>
+      <div class="stat-sub" id="s-users-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">PERFIS COMPLETOS</div>
+      <div class="stat-value" id="s-complete">—</div>
+      <div class="stat-sub" id="s-complete-sub"></div>
+    </div>
+    <div class="stat-card stat-green">
+      <div class="stat-label">T$ EM CIRCULAÇÃO</div>
+      <div class="stat-value" id="s-circulation">—</div>
+      <div class="stat-sub" id="s-circ-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">T$ BÔNUS DISTRIBUÍDO</div>
+      <div class="stat-value" id="s-bonus">—</div>
+      <div class="stat-sub" id="s-bonus-sub"></div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('users',this)">Usuários</button>
+    <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
+  </div>
+
+  <!-- USERS SECTION -->
+  <div class="section" id="tab-users">
+    <div class="section-head">
+      <span class="section-title">Usuários Cadastrados</span>
+      <input class="search-box" id="user-search" placeholder="Buscar por nome, telefone, email..." oninput="searchUsers()">
+    </div>
+    <div id="users-table-wrap">
+      <div class="loading-spinner">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- TRANSACTIONS SECTION -->
+  <div class="section" id="tab-transactions" style="display:none">
+    <div class="section-head">
+      <span class="section-title">Últimas Transações</span>
+      <button class="refresh-btn" onclick="loadTransactions()">↻</button>
+    </div>
+    <div id="tx-table-wrap">
+      <div class="loading-spinner">Carregando...</div>
+    </div>
+  </div>
+</div>
+
+<!-- USER DETAIL MODAL -->
+<div class="detail-modal" id="user-modal">
+  <div class="detail-content" id="user-detail"></div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+let token = localStorage.getItem('tc_admin_token');
+let adminUser = null;
+let allUsers = [];
+let searchTimer = null;
+
+// API helper
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(API + path, opts);
+    return await res.json();
+  } catch(e) {
+    return { error: 'Erro de conexão' };
+  }
+}
+
+// LOGIN
+async function doAdminLogin() {
+  const input = document.getElementById('admin-phone').value.trim();
+  const password = document.getElementById('admin-pass').value;
+  if (!input || !password) { document.getElementById('login-error').textContent = 'Preencha todos os campos'; return; }
+
+  let body = { password };
+  if (input.includes('@')) {
+    body.email = input;
+  } else {
+    body.phone = input.replace(/\D/g, '');
+  }
+
+  const data = await api('/auth/login', 'POST', body);
+  if (data.error) { document.getElementById('login-error').textContent = data.error; return; }
+  if (data.user.role !== 'admin' && data.user.role !== 'superadmin') {
+    document.getElementById('login-error').textContent = 'Acesso restrito a administradores';
+    return;
+  }
+  token = data.token;
+  adminUser = data.user;
+  localStorage.setItem('tc_admin_token', token);
+  showDashboard();
+}
+
+function doLogout() {
+  token = null;
+  adminUser = null;
+  localStorage.removeItem('tc_admin_token');
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function showDashboard() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  if (!adminUser) {
+    const me = await api('/auth/me');
+    if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin')) { doLogout(); return; }
+    adminUser = me.user;
+  }
+  document.getElementById('admin-name').textContent = adminUser.name;
+  loadDashboard();
+}
+
+// LOAD ALL DATA
+async function loadDashboard() {
+  loadUsers();
+  loadTransactions();
+}
+
+// USERS
+async function loadUsers(search='') {
+  const wrap = document.getElementById('users-table-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando usuários...</div>';
+
+  const url = search ? '/admin/users?search=' + encodeURIComponent(search) : '/admin/users';
+  const data = await api(url);
+
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
+  if (!data.users || data.users.length === 0) { wrap.innerHTML = '<div class="empty-state">Nenhum usuário encontrado</div>'; return; }
+
+  allUsers = data.users;
+  updateStats(data.users);
+  renderUsersTable(data.users);
+}
+
+function updateStats(users) {
+  const active = users.filter(u => u.active);
+  const complete = users.filter(u => u.profileComplete && u.active);
+  const totalBalance = active.reduce((sum, u) => sum + (u.balance || 0), 0);
+  const bonusUsers = users.filter(u => u.welcomeBonus);
+  const bonusTotal = bonusUsers.length * 100; // estimativa baseada no T$100 por perfil
+
+  document.getElementById('s-total-users').textContent = active.length;
+  document.getElementById('s-users-sub').textContent = users.filter(u => !u.active).length + ' contas excluídas';
+
+  document.getElementById('s-complete').textContent = complete.length;
+  const pct = active.length > 0 ? Math.round((complete.length / active.length) * 100) : 0;
+  document.getElementById('s-complete-sub').textContent = pct + '% dos usuários';
+
+  document.getElementById('s-circulation').textContent = 'T$ ' + totalBalance.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0});
+  document.getElementById('s-circ-sub').textContent = '≈ R$ ' + (totalBalance * 0.20).toLocaleString('pt-BR', {minimumFractionDigits:2}) + ' em poder de compra';
+
+  document.getElementById('s-bonus').textContent = 'T$ ' + bonusTotal.toLocaleString('pt-BR');
+  document.getElementById('s-bonus-sub').textContent = bonusUsers.length + ' bônus de boas-vindas';
+}
+
+function renderUsersTable(users) {
+  const wrap = document.getElementById('users-table-wrap');
+  if (users.length === 0) { wrap.innerHTML = '<div class="empty-state">Nenhum usuário encontrado</div>'; return; }
+
+  let html = '<table><thead><tr><th>NOME</th><th>TELEFONE</th><th>SALDO</th><th>PERFIL</th><th>ROLE</th><th>CADASTRO</th></tr></thead><tbody>';
+
+  users.forEach(u => {
+    const d = new Date(u.createdAt);
+    const date = d.toLocaleDateString('pt-BR');
+    const roleClass = u.role === 'superadmin' ? 'badge-super' : u.role === 'admin' ? 'badge-admin' : 'badge-user';
+    const inactive = !u.active ? ' style="opacity:0.4"' : '';
+    const profileIcon = u.profileComplete ? '<span style="color:#4CAF50">✓</span>' : '<span style="color:rgba(255,255,255,0.2)">—</span>';
+
+    html += '<tr' + inactive + ' onclick="showUserDetail(\'' + u.id + '\')" style="cursor:pointer">';
+    html += '<td>' + (u.name || '—') + '</td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + (u.phone || '—') + '</td>';
+    html += '<td><span class="amount-neutral">T$ ' + (u.balance || 0).toFixed(2) + '</span></td>';
+    html += '<td style="text-align:center">' + profileIcon + '</td>';
+    html += '<td><span class="badge-role ' + roleClass + '">' + u.role.toUpperCase() + '</span></td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + date + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function searchUsers() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const q = document.getElementById('user-search').value.trim();
+    loadUsers(q);
+  }, 400);
+}
+
+// USER DETAIL
+function showUserDetail(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+
+  const d = new Date(u.createdAt);
+  const roleClass = u.role === 'superadmin' ? 'badge-super' : u.role === 'admin' ? 'badge-admin' : 'badge-user';
+
+  let html = '<button class="detail-close" onclick="closeModal()">✕</button>';
+  html += '<div style="text-align:center;margin-bottom:20px">';
+  html += '<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,109,0,0.15);border:2px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:24px;font-weight:900;color:var(--orange)">' + (u.name ? u.name[0] : '?') + '</div>';
+  html += '<div style="font-size:18px;font-weight:700">' + (u.name || 'Sem nome') + '</div>';
+  html += '<span class="badge-role ' + roleClass + '" style="margin-top:8px">' + u.role.toUpperCase() + '</span>';
+  html += '</div>';
+
+  html += '<div class="detail-row"><span class="label">STATUS</span><span class="value">' + (u.active ? '<span style="color:#4CAF50">Ativo</span>' : '<span style="color:#FF5252">Excluído</span>') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">SALDO</span><span class="value" style="font-family:Orbitron;font-weight:900;color:var(--orange)">T$ ' + (u.balance || 0).toFixed(2) + '</span></div>';
+  html += '<div class="detail-row"><span class="label">TELEFONE</span><span class="value">' + (u.phone || '—') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">EMAIL</span><span class="value">' + (u.email || '—') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">CPF</span><span class="value">' + (u.cpf || '—') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">NASCIMENTO</span><span class="value">' + (u.birthDate || '—') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">PERFIL COMPLETO</span><span class="value">' + (u.profileComplete ? '✓ Sim' : 'Não') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">BÔNUS BOAS-VINDAS</span><span class="value">' + (u.welcomeBonus ? '✓ Recebeu' : 'Não') + '</span></div>';
+  html += '<div class="detail-row"><span class="label">CADASTRO</span><span class="value">' + d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + '</span></div>';
+
+  if (u.city || u.state) {
+    html += '<div class="detail-row"><span class="label">CIDADE</span><span class="value">' + (u.city || '') + '/' + (u.state || '') + '</span></div>';
+  }
+  if (u.shoeSize) {
+    html += '<div class="detail-row"><span class="label">TAMANHO TÊNIS</span><span class="value">' + u.shoeSize + '</span></div>';
+  }
+  if (u.shirtSize) {
+    html += '<div class="detail-row"><span class="label">TAMANHO ROUPA</span><span class="value">' + u.shirtSize + '</span></div>';
+  }
+
+  // CRM data
+  if (u.sportsPractice) {
+    try {
+      const sp = typeof u.sportsPractice === 'string' ? JSON.parse(u.sportsPractice) : u.sportsPractice;
+      if (sp.length) html += '<div class="detail-row"><span class="label">PRATICA</span><span class="value">' + sp.join(', ') + '</span></div>';
+    } catch(e){}
+  }
+  if (u.favBrands) {
+    try {
+      const fb = typeof u.favBrands === 'string' ? JSON.parse(u.favBrands) : u.favBrands;
+      if (fb.length) html += '<div class="detail-row"><span class="label">MARCAS FAV</span><span class="value">' + fb.join(', ') + '</span></div>';
+    } catch(e){}
+  }
+
+  document.getElementById('user-detail').innerHTML = html;
+  document.getElementById('user-modal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('user-modal').classList.remove('show');
+}
+
+document.getElementById('user-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// TRANSACTIONS
+async function loadTransactions() {
+  const wrap = document.getElementById('tx-table-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando transações...</div>';
+
+  const data = await api('/admin/transactions?limit=50');
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
+  if (!data.transactions || data.transactions.length === 0) { wrap.innerHTML = '<div class="empty-state">Nenhuma transação encontrada</div>'; return; }
+
+  const typeLabels = {
+    credit: 'Compra (crédito)',
+    used: 'Uso de TenisCash',
+    transfer_in: 'Transferência recebida',
+    transfer_out: 'Transferência enviada',
+    promo: 'Promoção',
+    welcome: 'Bônus boas-vindas',
+    admin_credit: 'Crédito admin',
+    admin_debit: 'Débito admin'
+  };
+  const posTypes = ['credit','transfer_in','promo','welcome','admin_credit'];
+
+  let html = '<table><thead><tr><th>TIPO</th><th>DESCRIÇÃO</th><th>VALOR</th><th>USUÁRIO</th><th>DATA</th></tr></thead><tbody>';
+
+  data.transactions.forEach(tx => {
+    const d = new Date(tx.createdAt);
+    const date = d.toLocaleDateString('pt-BR');
+    const time = d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const isPos = posTypes.includes(tx.type);
+    const amtClass = isPos ? 'amount-pos' : 'amount-neg';
+    const sign = isPos ? '+' : '−';
+    const userName = tx.receiver?.name || tx.sender?.name || '—';
+
+    html += '<tr>';
+    html += '<td style="font-size:11px;letter-spacing:1px;color:var(--text2)">' + (typeLabels[tx.type] || tx.type) + '</td>';
+    html += '<td style="font-size:12px">' + tx.description + '</td>';
+    html += '<td><span class="' + amtClass + '">' + sign + ' T$ ' + tx.amount.toFixed(2) + '</span></td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + userName + '</td>';
+    html += '<td style="font-size:11px;color:var(--text3)">' + date + ' ' + time + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// TABS
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
+  document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
+}
+
+// AUTO LOGIN
+if (token) {
+  showDashboard();
+}
+
+// Keyboard shortcut
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') {
+    doAdminLogin();
+  }
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+</body>
+</html>
