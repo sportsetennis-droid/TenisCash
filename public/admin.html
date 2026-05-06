@@ -425,11 +425,11 @@ function searchUserPicker() {
       const role = (u.role || '').toString();
       const roleBadge = role === 'superadmin' ? 'badge-super' : role === 'admin' ? 'badge-admin' : 'badge-user';
       return (
-        '<div class=\"picker-item\" onclick=\"pickSellerUser(\\'' + u.id + '\\')\">' +
+        '<div class="picker-item" data-user-id="' + u.id + '">' +
           '<strong>' + (escapeHtml(u.name || '—')) + '</strong>' +
-          '<div class=\"sub\">' +
-            '<span style=\"margin-right:8px;color:var(--text2)\">' + (escapeHtml(phone || '—')) + '</span>' +
-            '<span class=\"badge-role ' + roleBadge + '\">' + role.toUpperCase() + '</span>' +
+          '<div class="sub">' +
+            '<span style="margin-right:8px;color:var(--text2)">' + (escapeHtml(phone || '—')) + '</span>' +
+            '<span class="badge-role ' + roleBadge + '">' + role.toUpperCase() + '</span>' +
           '</div>' +
         '</div>'
       );
@@ -437,6 +437,9 @@ function searchUserPicker() {
 
     allUsers = data.users;
     list.style.display = 'block';
+    Array.from(list.querySelectorAll('.picker-item')).forEach(el => {
+      el.onclick = () => pickSellerUser(el.dataset.userId);
+    });
   }, 350);
 }
 
@@ -472,11 +475,14 @@ async function loadSellers() {
     html += '<td style=\"font-size:12px;color:var(--text2)\">' + escapeHtml(s.phone || '—') + '</td>';
     html += '<td style=\"font-size:12px;color:var(--text2)\">' + escapeHtml(storeLabel) + '</td>';
     html += '<td><span style=\"font-family:Orbitron;font-size:12px;color:var(--orange)\">' + escapeHtml(s.employeeCode || '—') + '</span></td>';
-    html += '<td><button class=\"btn btn-danger\" onclick=\"removeSellerConfirm(\\'' + s.id + '\\', \\'' + escapeJs(s.name || '') + '\\')\">Remover</button></td>';
+    html += '<td><button class="btn btn-danger js-remove-seller" data-seller-id="' + s.id + '" data-seller-name="' + escapeHtml(s.name || '') + '">Remover</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-remove-seller')).forEach(btn => {
+    btn.onclick = () => removeSellerConfirm(btn.dataset.sellerId, btn.dataset.sellerName);
+  });
 }
 
 async function assignSeller() {
