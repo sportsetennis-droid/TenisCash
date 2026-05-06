@@ -72,6 +72,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .tab.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .tab:hover:not(.active){border-color:var(--orange);color:var(--orange)}
 .empty-state{text-align:center;padding:40px;color:var(--text3);font-size:13px}
+.muted{color:var(--text2)}
+.btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px;transition:all .2s}
+.btn:hover{border-color:var(--orange);color:var(--orange)}
+.btn-primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:800}
+.btn-primary:hover{background:var(--orange2);border-color:var(--orange2);color:#fff}
+.btn-danger{border-color:rgba(255,82,82,0.35);color:rgba(255,82,82,0.9)}
+.btn-danger:hover{border-color:var(--red);color:var(--red)}
+.form-grid{display:grid;grid-template-columns:1.2fr 1fr auto;gap:10px}
+.form-input{padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:13px;font-family:'Chakra Petch';outline:none;width:100%}
+.form-input:focus{border-color:var(--orange)}
+.picker{position:relative}
+.picker-list{position:absolute;top:44px;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;max-height:240px;overflow:auto;z-index:20}
+.picker-item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer}
+.picker-item:hover{background:rgba(255,255,255,0.03)}
+.picker-item strong{color:#fff}
+.picker-item .sub{font-size:11px;color:var(--text2);margin-top:4px}
+.note{font-size:12px;color:var(--text2);line-height:1.5;margin-top:10px}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;border:1px solid var(--border);color:var(--text2)}
+.pill-ok{border-color:rgba(76,175,80,0.3);color:var(--green);background:rgba(76,175,80,0.08)}
+.pill-warn{border-color:rgba(255,109,0,0.35);color:var(--orange);background:rgba(255,109,0,0.08)}
 
 .detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .detail-modal.show{display:flex}
@@ -152,6 +172,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div class="tabs">
     <button class="tab active" onclick="switchTab('users',this)">Usuários</button>
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
+    <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -175,6 +196,48 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="loading-spinner">Carregando...</div>
     </div>
   </div>
+
+  <!-- SELLERS SECTION -->
+  <div class="section" id="tab-sellers" style="display:none">
+    <div class="section-head">
+      <span class="section-title">Gerenciar Vendedores</span>
+      <button class="refresh-btn" onclick="loadSellers()">↻</button>
+    </div>
+
+    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:16px">
+      <div style="font-size:12px;letter-spacing:2px;color:var(--text3);margin-bottom:10px">TORNAR VENDEDOR</div>
+
+      <div class="form-grid">
+        <div class="picker">
+          <input class="form-input" id="seller-user-search" placeholder="Buscar usuário por nome ou telefone..." oninput="searchUserPicker()" autocomplete="off">
+          <div class="picker-list" id="seller-user-picker" style="display:none"></div>
+        </div>
+
+        <select class="form-input" id="seller-store-select">
+          <option value="">Selecione a loja</option>
+        </select>
+
+        <button class="btn btn-primary" onclick="assignSeller()">Tornar Vendedor</button>
+      </div>
+
+      <div class="note">
+        <span class="pill pill-warn">Requisito</span>
+        O usuário precisa ser vinculado a uma loja para usar Ponto Digital.
+        Após tornar vendedor, ele entra no modo vendedor no app.
+      </div>
+      <div id="seller-assign-msg" style="margin-top:10px"></div>
+    </div>
+
+    <div style="margin-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:12px;letter-spacing:2px;color:var(--text3)">VENDEDORES ATUAIS</div>
+        <span class="pill pill-ok" id="seller-count">0 vendedores</span>
+      </div>
+      <div id="sellers-table-wrap">
+        <div class="loading-spinner">Carregando...</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- USER DETAIL MODAL -->
@@ -188,6 +251,9 @@ let token = localStorage.getItem('tc_admin_token');
 let adminUser = null;
 let allUsers = [];
 let searchTimer = null;
+let pickerTimer = null;
+let selectedSellerUser = null;
+let storesCache = [];
 
 // API helper
 async function api(path, method='GET', body=null) {
@@ -251,6 +317,8 @@ async function showDashboard() {
 async function loadDashboard() {
   loadUsers();
   loadTransactions();
+  await loadStores();
+  loadSellers();
 }
 
 // USERS
@@ -323,6 +391,142 @@ function searchUsers() {
     const q = document.getElementById('user-search').value.trim();
     loadUsers(q);
   }, 400);
+}
+
+// STORES
+async function loadStores() {
+  const data = await api('/stores');
+  if (data.error) return;
+  storesCache = data.stores || [];
+  const sel = document.getElementById('seller-store-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Selecione a loja</option>' + storesCache.map(s => (
+    '<option value="' + s.code + '">' + s.code + ' — ' + s.name + '</option>'
+  )).join('');
+}
+
+// SELLER PICKER (buscar usuário por nome/telefone e selecionar)
+function searchUserPicker() {
+  clearTimeout(pickerTimer);
+  pickerTimer = setTimeout(async () => {
+    const q = document.getElementById('seller-user-search').value.trim();
+    const list = document.getElementById('seller-user-picker');
+    selectedSellerUser = null;
+    if (!q || q.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    const data = await api('/admin/users?search=' + encodeURIComponent(q));
+    if (data.error || !data.users) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    const users = data.users.slice(0, 8);
+    if (users.length === 0) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    list.innerHTML = users.map(u => {
+      const phone = (u.phone || '').toString();
+      const role = (u.role || '').toString();
+      const roleBadge = role === 'superadmin' ? 'badge-super' : role === 'admin' ? 'badge-admin' : 'badge-user';
+      return (
+        '<div class=\"picker-item\" onclick=\"pickSellerUser(\\'' + u.id + '\\')\">' +
+          '<strong>' + (escapeHtml(u.name || '—')) + '</strong>' +
+          '<div class=\"sub\">' +
+            '<span style=\"margin-right:8px;color:var(--text2)\">' + (escapeHtml(phone || '—')) + '</span>' +
+            '<span class=\"badge-role ' + roleBadge + '\">' + role.toUpperCase() + '</span>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    allUsers = data.users;
+    list.style.display = 'block';
+  }, 350);
+}
+
+function pickSellerUser(userId) {
+  const u = (allUsers || []).find(x => x.id === userId);
+  if (!u) return;
+  selectedSellerUser = u;
+  document.getElementById('seller-user-search').value = (u.name || '—') + ' (' + (u.phone || '—') + ')';
+  const list = document.getElementById('seller-user-picker');
+  list.style.display = 'none';
+  list.innerHTML = '';
+}
+
+// SELLERS
+async function loadSellers() {
+  const wrap = document.getElementById('sellers-table-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class=\"loading-spinner\">Carregando vendedores...</div>';
+  const data = await api('/admin/sellers');
+  if (data.error) { wrap.innerHTML = '<div class=\"empty-state\">Erro: ' + data.error + '</div>'; return; }
+
+  const sellers = data.sellers || [];
+  const countEl = document.getElementById('seller-count');
+  if (countEl) countEl.textContent = sellers.length + (sellers.length === 1 ? ' vendedor' : ' vendedores');
+
+  if (sellers.length === 0) { wrap.innerHTML = '<div class=\"empty-state\">Nenhum vendedor cadastrado ainda</div>'; return; }
+
+  let html = '<table><thead><tr><th>NOME</th><th>TELEFONE</th><th>LOJA</th><th>CÓDIGO</th><th>AÇÕES</th></tr></thead><tbody>';
+  sellers.forEach(s => {
+    const storeLabel = s.store ? (s.store.code + ' — ' + s.store.name) : (s.storeId ? s.storeId : '—');
+    html += '<tr>';
+    html += '<td>' + escapeHtml(s.name || '—') + '</td>';
+    html += '<td style=\"font-size:12px;color:var(--text2)\">' + escapeHtml(s.phone || '—') + '</td>';
+    html += '<td style=\"font-size:12px;color:var(--text2)\">' + escapeHtml(storeLabel) + '</td>';
+    html += '<td><span style=\"font-family:Orbitron;font-size:12px;color:var(--orange)\">' + escapeHtml(s.employeeCode || '—') + '</span></td>';
+    html += '<td><button class=\"btn btn-danger\" onclick=\"removeSellerConfirm(\\'' + s.id + '\\', \\'' + escapeJs(s.name || '') + '\\')\">Remover</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function assignSeller() {
+  const msg = document.getElementById('seller-assign-msg');
+  msg.innerHTML = '';
+
+  const storeCode = document.getElementById('seller-store-select').value;
+  if (!selectedSellerUser) { msg.innerHTML = '<div class=\"login-error\">Selecione um usuário</div>'; return; }
+  if (!storeCode) { msg.innerHTML = '<div class=\"login-error\">Selecione a loja</div>'; return; }
+
+  const phone = (selectedSellerUser.phone || '').toString();
+  if (!phone) { msg.innerHTML = '<div class=\"login-error\">Usuário sem telefone</div>'; return; }
+
+  const data = await api('/admin/seller/assign-store', 'POST', { phone, storeCode });
+  if (data.error) { msg.innerHTML = '<div class=\"login-error\">' + data.error + '</div>'; return; }
+
+  msg.innerHTML = '<div style=\"color:var(--green);font-size:13px\">' + (data.message || 'Vendedor vinculado') + '</div>';
+  selectedSellerUser = null;
+  document.getElementById('seller-user-search').value = '';
+  document.getElementById('seller-store-select').value = '';
+  loadSellers();
+}
+
+function removeSellerConfirm(userId, name) {
+  const ok = confirm('Remover vendedor?\\n\\n' + name + '\\n\\nIsso vai voltar o role para USER e limpar loja/código.');
+  if (!ok) return;
+  removeSeller(userId);
+}
+
+async function removeSeller(userId) {
+  const data = await api('/admin/seller/remove', 'POST', { userId });
+  if (data.error) { alert(data.error); return; }
+  loadSellers();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function escapeJs(str) {
+  return String(str)
+    .replaceAll('\\\\', '\\\\\\\\')
+    .replaceAll("'", "\\'")
+    .replaceAll('\\n', ' ')
+    .replaceAll('\\r', ' ');
 }
 
 // USER DETAIL
@@ -437,6 +641,8 @@ function switchTab(tab, btn) {
   btn.classList.add('active');
   document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
+  document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
+  if (tab === 'sellers') { loadStores(); loadSellers(); }
 }
 
 // AUTO LOGIN

@@ -563,6 +563,80 @@ router.post('/seller/assign-store', async (req, res) => {
   }
 });
 
+// ==================== LISTAR VENDEDORES ====================
+router.get('/sellers', async (req, res) => {
+  try {
+    const sellers = await prisma.user.findMany({
+      where: { role: 'seller', active: true },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        employeeCode: true,
+        hireDate: true,
+        storeId: true,
+        store: { select: { id: true, code: true, name: true } },
+        createdAt: true,
+      },
+    });
+
+    res.json({ sellers });
+  } catch (err) {
+    console.error('Erro ao listar vendedores:', err);
+    res.status(500).json({ error: 'Erro ao listar vendedores' });
+  }
+});
+
+// ==================== REMOVER VENDEDOR (volta pra user) ====================
+router.post('/seller/remove', async (req, res) => {
+  try {
+    const { userId, phone, employeeCode } = req.body || {};
+    if (!userId && !phone && !employeeCode) {
+      return res.status(400).json({ error: 'Informe userId, phone ou employeeCode' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        ...(userId ? { id: userId } : {}),
+        ...(phone ? { phone: String(phone).replace(/\D/g, '') } : {}),
+        ...(employeeCode ? { employeeCode } : {}),
+        role: 'seller',
+      },
+      select: { id: true, name: true, storeId: true, employeeCode: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'Vendedor não encontrado' });
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        role: 'user',
+        storeId: null,
+        hireDate: null,
+        baseSalary: null,
+        employeeCode: null,
+      },
+      select: { id: true, name: true, role: true },
+    });
+
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.userId,
+        action: 'seller_remove',
+        targetUserId: user.id,
+        description: `Removeu vendedor (voltou para user): ${user.name}`,
+        metadata: JSON.stringify({ previousStoreId: user.storeId, employeeCode: user.employeeCode }),
+      }
+    });
+
+    res.json({ success: true, message: `Vendedor removido: ${updated.name}`, user: updated });
+  } catch (err) {
+    console.error('Erro ao remover vendedor:', err);
+    res.status(500).json({ error: 'Erro ao remover vendedor' });
+  }
+});
+
 // ==================== LOG DE AÇÕES ADMIN ====================
 
 router.get('/log', async (req, res) => {

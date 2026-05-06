@@ -10,6 +10,7 @@ const promoRoutes = require('./routes/promo');
 const adminRoutes = require('./routes/admin');
 const qrRoutes = require('./routes/qr');
 const sellerRoutes = require('./routes/seller');
+const storesRoutes = require('./routes/stores');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,6 +44,7 @@ app.use('/api/promos', promoRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/qr', qrRoutes);
 app.use('/api/seller', sellerRoutes);
+app.use('/api/stores', storesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
