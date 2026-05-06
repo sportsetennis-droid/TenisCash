@@ -391,7 +391,7 @@ function renderUsersTable(users) {
     const inactive = !u.active ? ' style="opacity:0.4"' : '';
     const profileIcon = u.profileComplete ? '<span style="color:#4CAF50">✓</span>' : '<span style="color:rgba(255,255,255,0.2)">—</span>';
 
-    html += '<tr' + inactive + ' onclick="showUserDetail(\'' + u.id + '\')" style="cursor:pointer">';
+    html += '<tr class="js-user-row"' + inactive + ' data-user-id="' + u.id + '" style="cursor:pointer">';
     html += '<td>' + (u.name || '—') + '</td>';
     html += '<td style="font-size:12px;color:var(--text2)">' + (u.phone || '—') + '</td>';
     html += '<td><span class="amount-neutral">T$ ' + (u.balance || 0).toFixed(2) + '</span></td>';
@@ -403,6 +403,9 @@ function renderUsersTable(users) {
 
   html += '</tbody></table>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-user-row')).forEach(row => {
+    row.onclick = () => showUserDetail(row.dataset.userId);
+  });
 }
 
 function searchUsers() {
@@ -547,7 +550,8 @@ async function loadClockinAdmin() {
   const period = (document.getElementById('clockin-period')?.value || '').trim();
   const date = (document.getElementById('clockin-date')?.value || '').trim();
 
-  const qs = date ? ('?date=' + encodeURIComponent(date)) : ('?period=' + encodeURIComponent(period || currentYYYYMM()));
+  const effectivePeriod = period || currentYYYYMM();
+  const qs = date ? ('?date=' + encodeURIComponent(date)) : ('?period=' + encodeURIComponent(effectivePeriod));
   const data = await api('/admin/clockin/summary' + qs);
   if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
 
@@ -559,7 +563,7 @@ async function loadClockinAdmin() {
     const store = s.store ? (s.store.code + ' — ' + s.store.name) : '—';
     const hours = formatHM(s.totalMinutes);
     const extras = formatHM(s.overtimeMinutes);
-    html += '<tr style="cursor:pointer" onclick="openClockinSeller(\\'' + s.userId + '\\', \\'' + escapeJs(s.name || '') + '\\', \\'' + escapeJs(period || currentYYYYMM()) + '\\')">';
+    html += '<tr class="js-clockin-row" style="cursor:pointer" data-user-id="' + s.userId + '" data-period="' + escapeHtml(effectivePeriod) + '">';
     html += '<td>' + escapeHtml(s.name || '—') + '<div class="sub" style="margin-top:4px">' + escapeHtml(s.phone || '—') + '</div></td>';
     html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(store) + '</td>';
     html += '<td>' + (s.daysWorked || 0) + '</td>';
@@ -570,6 +574,9 @@ async function loadClockinAdmin() {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-clockin-row')).forEach(row => {
+    row.onclick = () => openClockinSeller(row.dataset.userId, null, row.dataset.period);
+  });
 }
 
 function currentYYYYMM() {
@@ -591,7 +598,7 @@ async function openClockinSeller(userId, name, period) {
   if (data.error) { alert(data.error); return; }
 
   const days = data.days || [];
-  let html = '<button class="detail-close" onclick="closeModal()">✕</button>';
+  let html = '<button class="detail-close js-modal-close">✕</button>';
   html += '<div style="margin-bottom:18px">';
   html += '<div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">PONTO DIGITAL</div>';
   html += '<div style="font-size:18px;font-weight:800;margin-top:8px">' + escapeHtml(data.seller?.name || name || 'Vendedor') + '</div>';
@@ -623,6 +630,8 @@ async function openClockinSeller(userId, name, period) {
 
   document.getElementById('user-detail').innerHTML = html;
   document.getElementById('user-modal').classList.add('show');
+  const closeBtn = document.querySelector('#user-detail .js-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
 }
 
 function escapeHtml(str) {
@@ -650,7 +659,7 @@ function showUserDetail(id) {
   const d = new Date(u.createdAt);
   const roleClass = u.role === 'superadmin' ? 'badge-super' : u.role === 'admin' ? 'badge-admin' : 'badge-user';
 
-  let html = '<button class="detail-close" onclick="closeModal()">✕</button>';
+  let html = '<button class="detail-close js-modal-close">✕</button>';
   html += '<div style="text-align:center;margin-bottom:20px">';
   html += '<div style="width:60px;height:60px;border-radius:50%;background:rgba(255,109,0,0.15);border:2px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:24px;font-weight:900;color:var(--orange)">' + (u.name ? u.name[0] : '?') + '</div>';
   html += '<div style="font-size:18px;font-weight:700">' + (u.name || 'Sem nome') + '</div>';
@@ -693,6 +702,8 @@ function showUserDetail(id) {
 
   document.getElementById('user-detail').innerHTML = html;
   document.getElementById('user-modal').classList.add('show');
+  const closeBtn = document.querySelector('#user-detail .js-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
 }
 
 function closeModal() {
