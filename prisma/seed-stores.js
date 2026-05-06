@@ -13,6 +13,8 @@ const stores = [
     mall: 'Parahyba Mall',
     city: 'João Pessoa',
     state: 'PB',
+    latitude: -7.0812177,
+    longitude: -34.8391033,
   },
   {
     code: 'LOJA02',
@@ -21,6 +23,8 @@ const stores = [
     mall: 'Pirâmide Shopping Tambaú',
     city: 'João Pessoa',
     state: 'PB',
+    latitude: -7.1147014,
+    longitude: -34.8238210,
   },
   {
     code: 'LOJA03',
@@ -29,6 +33,8 @@ const stores = [
     mall: 'Complexo K',
     city: 'Campina Grande',
     state: 'PB',
+    latitude: -7.2328083,
+    longitude: -35.8716498,
   },
   {
     code: 'LOJA04',
@@ -37,6 +43,8 @@ const stores = [
     mall: 'Shopping Tambiá',
     city: 'João Pessoa',
     state: 'PB',
+    latitude: -7.1163828,
+    longitude: -34.8798557,
   },
 ];
 

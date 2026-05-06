@@ -173,6 +173,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab active" onclick="switchTab('users',this)">Usuários</button>
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
+    <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -236,6 +237,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div id="sellers-table-wrap">
         <div class="loading-spinner">Carregando...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- CLOCK-IN SECTION -->
+  <div class="section" id="tab-clockin" style="display:none">
+    <div class="section-head">
+      <span class="section-title">Ponto Digital</span>
+      <button class="refresh-btn" onclick="loadClockinAdmin()">↻</button>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input class="search-box" id="clockin-period" placeholder="Período (YYYY-MM)" style="width:180px" value="">
+      <input class="search-box" id="clockin-date" placeholder="Dia (YYYY-MM-DD)" style="width:200px" value="">
+      <button class="btn btn-primary" onclick="loadClockinAdmin()">Buscar</button>
+      <span class="muted" style="font-size:12px">Use <strong>período</strong> ou <strong>dia</strong>.</span>
+    </div>
+
+    <div id="clockin-summary-wrap">
+      <div class="loading-spinner">Carregando...</div>
     </div>
   </div>
 </div>
@@ -518,6 +538,93 @@ async function removeSeller(userId) {
   loadSellers();
 }
 
+// CLOCK-IN (ADMIN)
+async function loadClockinAdmin() {
+  const wrap = document.getElementById('clockin-summary-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+
+  const period = (document.getElementById('clockin-period')?.value || '').trim();
+  const date = (document.getElementById('clockin-date')?.value || '').trim();
+
+  const qs = date ? ('?date=' + encodeURIComponent(date)) : ('?period=' + encodeURIComponent(period || currentYYYYMM()));
+  const data = await api('/admin/clockin/summary' + qs);
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
+
+  const sellers = data.sellers || [];
+  if (!sellers.length) { wrap.innerHTML = '<div class="empty-state">Nenhum vendedor encontrado</div>'; return; }
+
+  let html = '<table><thead><tr><th>VENDEDOR</th><th>LOJA</th><th>DIAS</th><th>HORAS</th><th>ATRASOS</th><th>EXTRAS</th></tr></thead><tbody>';
+  sellers.forEach(s => {
+    const store = s.store ? (s.store.code + ' — ' + s.store.name) : '—';
+    const hours = formatHM(s.totalMinutes);
+    const extras = formatHM(s.overtimeMinutes);
+    html += '<tr style="cursor:pointer" onclick="openClockinSeller(\\'' + s.userId + '\\', \\'' + escapeJs(s.name || '') + '\\', \\'' + escapeJs(period || currentYYYYMM()) + '\\')">';
+    html += '<td>' + escapeHtml(s.name || '—') + '<div class="sub" style="margin-top:4px">' + escapeHtml(s.phone || '—') + '</div></td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(store) + '</td>';
+    html += '<td>' + (s.daysWorked || 0) + '</td>';
+    html += '<td><span class="amount-neutral">' + hours + '</span></td>';
+    html += '<td>' + (s.lateCount || 0) + '</td>';
+    html += '<td><span class="amount-pos">' + extras + '</span></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function currentYYYYMM() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return y + '-' + m;
+}
+
+function formatHM(mins) {
+  const m = Math.max(0, Math.round(mins || 0));
+  const h = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, '0');
+  return h + 'h' + mm;
+}
+
+async function openClockinSeller(userId, name, period) {
+  const data = await api('/admin/clockin/seller/' + encodeURIComponent(userId) + '?period=' + encodeURIComponent(period));
+  if (data.error) { alert(data.error); return; }
+
+  const days = data.days || [];
+  let html = '<button class="detail-close" onclick="closeModal()">✕</button>';
+  html += '<div style="margin-bottom:18px">';
+  html += '<div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">PONTO DIGITAL</div>';
+  html += '<div style="font-size:18px;font-weight:800;margin-top:8px">' + escapeHtml(data.seller?.name || name || 'Vendedor') + '</div>';
+  html += '<div style="font-size:12px;color:var(--text2);margin-top:6px">' + escapeHtml(data.seller?.store ? (data.seller.store.code + ' — ' + data.seller.store.name) : '—') + '</div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-top:6px">Período: ' + escapeHtml(period) + '</div>';
+  html += '</div>';
+
+  if (!days.length) {
+    html += '<div class="empty-state" style="padding:20px">Sem registros no período</div>';
+  } else {
+    days.forEach(d => {
+      html += '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px;margin-bottom:10px;background:rgba(255,255,255,0.02)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div style="font-weight:800">' + escapeHtml(d.date) + '</div>';
+      html += '<div style="font-family:Orbitron;color:#fff">' + formatHM(d.summary?.workedMinutes) + '</div>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--text2);margin-top:6px">' + (d.summary?.breakMinutes || 0) + ' min pausa</div>';
+      html += '<div style="margin-top:10px">';
+      (d.points || []).forEach(p => {
+        const t = new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">';
+        html += '<span style="font-size:12px;color:var(--text2)">' + escapeHtml(p.type) + '</span>';
+        html += '<span style="font-family:Orbitron;font-size:12px">' + t + '</span>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    });
+  }
+
+  document.getElementById('user-detail').innerHTML = html;
+  document.getElementById('user-modal').classList.add('show');
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll('&', '&amp;')
@@ -648,7 +755,9 @@ function switchTab(tab, btn) {
   document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
   document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
+  document.getElementById('tab-clockin').style.display = tab === 'clockin' ? 'block' : 'none';
   if (tab === 'sellers') { loadStores(); loadSellers(); }
+  if (tab === 'clockin') { loadClockinAdmin(); }
 }
 
 // AUTO LOGIN

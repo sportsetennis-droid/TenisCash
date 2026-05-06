@@ -466,8 +466,21 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
   <div style="margin-top:16px">
     <p style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5">
-      Registre suas batidas. Isso salva no banco com data/hora do servidor.
+      Bata o ponto com GPS dentro de 150m da loja.
     </p>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;background:rgba(255,255,255,0.1);border-radius:16px;padding:16px;border:1px solid rgba(255,255,255,0.18)">
+      <div>
+        <p style="font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px">AGORA</p>
+        <p style="font-family:'Orbitron';font-size:26px;font-weight:900;margin-top:8px" id="clock-now">--:--:--</p>
+        <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px" id="clock-date">--</p>
+      </div>
+      <div style="text-align:right">
+        <p style="font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px">LOCALIZAÇÃO</p>
+        <p style="font-size:13px;font-weight:700;margin-top:8px" id="clock-gps-status">Aguardando…</p>
+        <button onclick="requestClockGeo()" style="margin-top:10px;padding:10px 12px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);border-radius:12px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Chakra Petch'">ATIVAR GPS</button>
+      </div>
+    </div>
 
     <div style="background:rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-top:14px;border:1px solid rgba(255,255,255,0.18)">
       <p style="font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px">LOJA VINCULADA</p>
@@ -475,16 +488,20 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <p style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Se estiver “não definida”, fale com o admin pra vincular seu usuário a uma loja.</p>
     </div>
 
+    <div style="background:rgba(255,255,255,0.08);border-radius:16px;padding:16px;margin-top:14px;border:1px solid rgba(255,255,255,0.14)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <p style="font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px">HOJE</p>
+        <p style="font-family:'Orbitron';font-size:12px;color:#fff" id="clock-worked">0h00</p>
+      </div>
+      <p style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px" id="clock-worked-sub">0 min de pausa</p>
+      <div id="clock-today-list" style="margin-top:12px"></div>
+    </div>
+
     <label class="input-label">OBSERVAÇÃO (opcional)</label>
     <input id="clock-note" class="input-field" placeholder="Ex: Cheguei mais cedo / reuniāo / etc" maxlength="120">
     <div id="clock-error"></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
-      <button class="btn-secondary" onclick="sellerClockIn('entry')" style="margin-top:0">✅ ENTRADA</button>
-      <button class="btn-secondary" onclick="sellerClockIn('break_start')" style="margin-top:0">☕ INÍCIO PAUSA</button>
-      <button class="btn-secondary" onclick="sellerClockIn('break_end')" style="margin-top:0">⚡ FIM PAUSA</button>
-      <button class="btn-secondary" onclick="sellerClockIn('exit')" style="margin-top:0;border:2px solid rgba(255,255,255,0.35)">🚪 SAÍDA</button>
-    </div>
+    <div id="clock-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"></div>
 
     <div id="clock-success" style="display:none;text-align:center;margin-top:28px">
       <div class="success-circle">✓</div>
@@ -1043,6 +1060,14 @@ function initSellerClock() {
   document.getElementById('clock-store').textContent = storeLabel;
   document.getElementById('clock-error').innerHTML = '';
   document.getElementById('clock-success').style.display = 'none';
+  document.getElementById('clock-gps-status').textContent = 'Aguardando…';
+  document.getElementById('clock-now').textContent = '--:--:--';
+  document.getElementById('clock-date').textContent = '--';
+  document.getElementById('clock-today-list').innerHTML = '<p style="color:rgba(255,255,255,0.45);font-size:12px">Carregando pontos de hoje...</p>';
+  document.getElementById('clock-actions').innerHTML = '';
+  startClockTicker();
+  requestClockGeo();
+  loadClockToday();
 }
 
 function resetSellerClock() {
@@ -1051,12 +1076,114 @@ function resetSellerClock() {
   document.getElementById('clock-success').style.display = 'none';
 }
 
+let clockTimer = null;
+let geoOk = false;
+let currentPos = null; // { latitude, longitude }
+
+function startClockTicker() {
+  if (clockTimer) clearInterval(clockTimer);
+  const tick = () => {
+    const now = new Date();
+    document.getElementById('clock-now').textContent = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('clock-date').textContent = now.toLocaleDateString('pt-BR');
+  };
+  tick();
+  clockTimer = setInterval(tick, 1000);
+}
+
+function requestClockGeo() {
+  const statusEl = document.getElementById('clock-gps-status');
+  geoOk = false;
+  currentPos = null;
+  statusEl.textContent = 'Solicitando...';
+
+  if (!navigator.geolocation) {
+    statusEl.textContent = 'GPS indisponível';
+    showError('clock-error', 'Este dispositivo/navegador não suporta geolocalização');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      geoOk = true;
+      currentPos = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      statusEl.textContent = 'Localização OK ✓';
+    },
+    (err) => {
+      geoOk = false;
+      currentPos = null;
+      statusEl.textContent = 'Localização negada';
+      showError('clock-error', 'Ative a localização para bater ponto');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+}
+
+function formatHM(totalMinutes) {
+  const m = Math.max(0, Math.round(totalMinutes || 0));
+  const h = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, '0');
+  return h + 'h' + mm;
+}
+
+function labelType(type) {
+  const map = { entry: 'Entrada', break_start: 'Início pausa', break_end: 'Fim pausa', exit: 'Saída' };
+  return map[type] || type;
+}
+
+function renderClockActions(allowedNext) {
+  const wrap = document.getElementById('clock-actions');
+  const btn = (type, label, styleExtra = '') =>
+    '<button class="btn-secondary" onclick="sellerClockIn(\\'' + type + '\\')" style="margin-top:0;' + styleExtra + '">' + label + '</button>';
+
+  const set = new Set(allowedNext || []);
+  let html = '';
+  if (set.has('entry')) html += btn('entry', '✅ ENTRADA');
+  if (set.has('break_start')) html += btn('break_start', '☕ INÍCIO PAUSA');
+  if (set.has('break_end')) html += btn('break_end', '⚡ FIM PAUSA');
+  if (set.has('exit')) html += btn('exit', '🚪 SAÍDA', 'border:2px solid rgba(255,255,255,0.35)');
+  wrap.innerHTML = html || '<p style="color:rgba(255,255,255,0.45);font-size:12px">Nenhuma ação disponível.</p>';
+}
+
+async function loadClockToday() {
+  const data = await api('/seller/clockin/today');
+  if (data.error) {
+    document.getElementById('clock-today-list').innerHTML = '<p style="color:rgba(255,82,82,0.85);font-size:12px">' + data.error + '</p>';
+    return;
+  }
+
+  const points = data.points || [];
+  const summary = data.summary || {};
+
+  document.getElementById('clock-worked').textContent = formatHM(summary.workedMinutes);
+  document.getElementById('clock-worked-sub').textContent = (summary.breakMinutes || 0) + ' min de pausa';
+  renderClockActions(summary.allowedNext);
+
+  if (!points.length) {
+    document.getElementById('clock-today-list').innerHTML = '<p style="color:rgba(255,255,255,0.45);font-size:12px">Nenhum ponto registrado hoje.</p>';
+    return;
+  }
+
+  const rows = points.map(p => {
+    const d = new Date(p.timestamp);
+    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="font-size:13px">' + labelType(p.type) + '</span><span style="font-family:Orbitron;font-size:12px;color:rgba(255,255,255,0.85)">' + time + '</span></div>';
+  }).join('');
+  document.getElementById('clock-today-list').innerHTML = rows;
+}
+
 async function sellerClockIn(type) {
   if (!user || !token) { doLogout(); return; }
   if (!isSeller()) { alert('Acesso restrito ao vendedor'); return; }
 
+  if (!geoOk || !currentPos) {
+    showError('clock-error', 'Ative a localização para bater ponto');
+    requestClockGeo();
+    return;
+  }
+
   const note = document.getElementById('clock-note').value || null;
-  const body = { type, note };
+  const body = { type, note, latitude: currentPos.latitude, longitude: currentPos.longitude };
 
   const data = await api('/seller/clockin', 'POST', body);
   if (data.error) { showError('clock-error', data.error); return; }
@@ -1065,6 +1192,7 @@ async function sellerClockIn(type) {
   document.getElementById('clock-success-msg').textContent =
     'Registrado: ' + type + ' — ' + ts.toLocaleDateString('pt-BR') + ' ' + ts.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('clock-success').style.display = 'block';
+  loadClockToday();
 }
 
 function updateBalance() {

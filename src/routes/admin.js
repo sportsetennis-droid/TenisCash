@@ -5,6 +5,72 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
+function recifeDayBoundsFromDate(dateYYYYMMDD) {
+  const [yStr, mStr, dStr] = String(dateYYYYMMDD || '').split('-');
+  const y = parseInt(yStr, 10);
+  const m1 = parseInt(mStr, 10);
+  const d = parseInt(dStr, 10);
+  if (!y || !m1 || !d) return null;
+  const offsetMin = -180;
+  const startLocalUtc = new Date(Date.UTC(y, m1 - 1, d, 0, 0, 0, 0));
+  const startUtc = new Date(startLocalUtc.getTime() - offsetMin * 60 * 1000);
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+  return { startUtc, endUtc };
+}
+
+function recifeMonthBounds(periodYYYYMM) {
+  const [yStr, mStr] = String(periodYYYYMM || '').split('-');
+  const y = parseInt(yStr, 10);
+  const m1 = parseInt(mStr, 10);
+  if (!y || !m1 || m1 < 1 || m1 > 12) return null;
+  const offsetMin = -180;
+  const startLocalUtc = new Date(Date.UTC(y, m1 - 1, 1, 0, 0, 0, 0));
+  const startUtc = new Date(startLocalUtc.getTime() - offsetMin * 60 * 1000);
+  const endLocalUtc = new Date(Date.UTC(y, m1, 1, 0, 0, 0, 0));
+  const endUtc = new Date(endLocalUtc.getTime() - offsetMin * 60 * 1000);
+  return { startUtc, endUtc };
+}
+
+function minutesBetween(a, b) {
+  return Math.max(0, (b - a) / 60000);
+}
+
+function summarizeDayPoints(points, now = null) {
+  const items = (points || []).slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const entry = items.find(x => x.type === 'entry');
+  const exit = items.find(x => x.type === 'exit');
+  const effectiveEnd = exit ? new Date(exit.timestamp) : (now || null);
+
+  let breakMinutes = 0;
+  let lastBreakStart = null;
+  for (const it of items) {
+    if (it.type === 'break_start') lastBreakStart = new Date(it.timestamp);
+    if (it.type === 'break_end' && lastBreakStart) {
+      breakMinutes += minutesBetween(lastBreakStart, new Date(it.timestamp));
+      lastBreakStart = null;
+    }
+  }
+  if (lastBreakStart && effectiveEnd) breakMinutes += minutesBetween(lastBreakStart, effectiveEnd);
+
+  let workedMinutes = 0;
+  if (entry && effectiveEnd) workedMinutes = Math.max(0, minutesBetween(new Date(entry.timestamp), effectiveEnd) - breakMinutes);
+
+  return {
+    hasEntry: !!entry,
+    hasExit: !!exit,
+    entryAt: entry ? entry.timestamp : null,
+    exitAt: exit ? exit.timestamp : null,
+    breakMinutes: Math.round(breakMinutes),
+    workedMinutes: Math.round(workedMinutes),
+  };
+}
+
+function localRecifeDateKey(ts) {
+  const offsetMin = -180;
+  const local = new Date(new Date(ts).getTime() + offsetMin * 60000);
+  return `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
+}
+
 // ==================== DASHBOARD ====================
 
 router.get('/dashboard', async (req, res) => {
@@ -634,6 +700,128 @@ router.post('/seller/remove', async (req, res) => {
   } catch (err) {
     console.error('Erro ao remover vendedor:', err);
     res.status(500).json({ error: 'Erro ao remover vendedor' });
+  }
+});
+
+// ==================== PONTO DIGITAL (ADMIN) ====================
+router.get('/clockin/summary', async (req, res) => {
+  try {
+    const { period, date } = req.query;
+    const bounds = date ? recifeDayBoundsFromDate(date) : recifeMonthBounds(period);
+    if (!bounds) return res.status(400).json({ error: 'Informe date=YYYY-MM-DD ou period=YYYY-MM' });
+
+    const sellers = await prisma.user.findMany({
+      where: { role: 'seller', active: true },
+      select: { id: true, name: true, phone: true, employeeCode: true, store: { select: { code: true, name: true } } },
+      orderBy: { name: 'asc' },
+    });
+    const sellerIds = sellers.map(s => s.id);
+
+    const clockins = await prisma.clockIn.findMany({
+      where: { userId: { in: sellerIds }, timestamp: { gte: bounds.startUtc, lt: bounds.endUtc } },
+      select: { userId: true, type: true, timestamp: true },
+      orderBy: { timestamp: 'asc' },
+    });
+
+    const byUserByDay = new Map(); // userId -> Map(dayKey -> points[])
+    for (const c of clockins) {
+      const dayKey = localRecifeDateKey(c.timestamp);
+      if (!byUserByDay.has(c.userId)) byUserByDay.set(c.userId, new Map());
+      const m = byUserByDay.get(c.userId);
+      if (!m.has(dayKey)) m.set(dayKey, []);
+      m.get(dayKey).push(c);
+    }
+
+    // Regra simples: esperado entrada até 09:10 (Recife)
+    const expectedHour = 9;
+    const expectedMin = 10;
+    const overtimeThresholdMin = 8 * 60;
+
+    const rows = sellers.map(s => {
+      const daysMap = byUserByDay.get(s.id) || new Map();
+      let totalMinutes = 0;
+      let daysWorked = 0;
+      let lateCount = 0;
+      let overtimeMinutes = 0;
+
+      for (const [day, pts] of daysMap.entries()) {
+        const sum = summarizeDayPoints(pts, null);
+        if (sum.hasEntry) {
+          daysWorked += 1;
+          totalMinutes += sum.workedMinutes;
+          if (sum.workedMinutes > overtimeThresholdMin) overtimeMinutes += (sum.workedMinutes - overtimeThresholdMin);
+
+          if (sum.entryAt) {
+            const offsetMin = -180;
+            const local = new Date(new Date(sum.entryAt).getTime() + offsetMin * 60000);
+            const h = local.getUTCHours();
+            const m = local.getUTCMinutes();
+            if (h > expectedHour || (h === expectedHour && m > expectedMin)) lateCount += 1;
+          }
+        }
+      }
+
+      return {
+        userId: s.id,
+        name: s.name,
+        phone: s.phone,
+        employeeCode: s.employeeCode,
+        store: s.store || null,
+        totalMinutes,
+        daysWorked,
+        lateCount,
+        overtimeMinutes: Math.max(0, Math.round(overtimeMinutes)),
+      };
+    });
+
+    res.json({ period: period || null, date: date || null, sellers: rows });
+  } catch (err) {
+    console.error('Erro clockin summary:', err);
+    res.status(500).json({ error: 'Erro ao gerar resumo' });
+  }
+});
+
+router.get('/clockin/seller/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { period } = req.query;
+    const bounds = recifeMonthBounds(period);
+    if (!bounds) return res.status(400).json({ error: 'Informe period=YYYY-MM' });
+
+    const seller = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, phone: true, employeeCode: true, store: { select: { code: true, name: true } } },
+    });
+    if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado' });
+
+    const points = await prisma.clockIn.findMany({
+      where: { userId, timestamp: { gte: bounds.startUtc, lt: bounds.endUtc } },
+      orderBy: { timestamp: 'asc' },
+      select: { id: true, type: true, timestamp: true, latitude: true, longitude: true, store: { select: { code: true, name: true } } },
+    });
+
+    const offsetMin = -180;
+    const byDay = new Map();
+    for (const p of points) {
+      const local = new Date(new Date(p.timestamp).getTime() + offsetMin * 60000);
+      const key = `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, '0')}-${String(local.getUTCDate()).padStart(2, '0')}`;
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(p);
+    }
+
+    const days = Array.from(byDay.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([date, pts]) => {
+      const sum = summarizeDayPoints(pts, null);
+      return {
+        date,
+        summary: sum,
+        points: pts.map(x => ({ id: x.id, type: x.type, timestamp: x.timestamp, latitude: x.latitude, longitude: x.longitude, store: x.store })),
+      };
+    });
+
+    res.json({ period, seller, days });
+  } catch (err) {
+    console.error('Erro clockin seller:', err);
+    res.status(500).json({ error: 'Erro ao buscar detalhamento' });
   }
 });
 
