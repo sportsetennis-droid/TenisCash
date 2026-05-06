@@ -1,0 +1,36 @@
+# Regras OBRIGATÓRIAS deste projeto (TenisCash)
+
+## JavaScript
+- NUNCA gerar onclick="..." dentro de innerHTML ou template strings.
+- SEMPRE usar data-* attributes + addEventListener após inserir o HTML.
+- Antes de commit, fazer grep "onclick=" nos arquivos editados e refatorar qualquer ocorrência.
+
+## Validação antes de commit
+- Após editar public/index.html ou public/admin.html, abrir o arquivo e ler as últimas 50 linhas pra validar fechamento de tags e sintaxe.
+- Em arquivos com mais de 1000 linhas, reler o arquivo inteiro depois das alterações.
+- Se houver erro de sintaxe JavaScript, NÃO faz push.
+
+## Padrão visual
+- Cor principal: #FF6D00
+- Fontes: Orbitron (títulos) + Chakra Petch (corpo)
+- Cards escuros com bordas sutis
+- Sempre português brasileiro
+
+## Idioma
+- Toda comunicação em português brasileiro.
+- Resposta direta, técnica, sem teoria nem elogio.
+
+## Banco de dados
+- Stack: Node.js + Express + Prisma + PostgreSQL
+- Hospedagem: Railway (deploy automático via git push main)
+- Antes de mudar schema, sempre usar prisma db push (NUNCA migrate dev, pra não pedir reset do banco em produção).
+
+## Antes de começar tarefa
+- Ler os arquivos relevantes ANTES de editar
+- Em arquivo grande, ler o arquivo inteiro, não apenas trecho
+- Após implementar, validar visualmente o resultado
+
+## Lojas
+- 4 lojas (LOJA01-04) com DNAs distintos: Bessa-Masculino, Tambaú-Feminino, Campina Grande-Futebol, Tambiá-Geral
+- Coordenadas GPS já estão no banco com raio de 150m para validação de ponto digital
+
