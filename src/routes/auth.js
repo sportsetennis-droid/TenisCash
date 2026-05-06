@@ -344,12 +344,18 @@ router.post('/login', async (req, res) => {
 
     if (!password) return res.status(400).json({ error: 'Senha é obrigatória' });
 
+    const includeStore = {
+      store: {
+        select: { id: true, name: true, code: true, dna: true, mall: true, city: true, state: true }
+      }
+    };
+
     let user;
     if (email) {
-      user = await prisma.user.findFirst({ where: { email } });
+      user = await prisma.user.findFirst({ where: { email }, include: includeStore });
     } else if (phone) {
       const cleanPhone = phone.replace(/\D/g, '');
-      user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone }, include: includeStore });
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
     }
@@ -368,6 +374,8 @@ router.post('/login', async (req, res) => {
         id: user.id,
         name: user.name,
         phone: user.phone,
+        storeId: user.storeId,
+        store: user.store || null,
         balance: user.balance,
         role: user.role,
         profileComplete: user.profileComplete,
@@ -383,7 +391,14 @@ router.post('/login', async (req, res) => {
 // PERFIL
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: {
+        store: {
+          select: { id: true, name: true, code: true, dna: true, mall: true, city: true, state: true }
+        }
+      }
+    });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
     res.json({
@@ -396,6 +411,8 @@ router.get('/me', authMiddleware, async (req, res) => {
         balance: user.balance,
         role: user.role,
         profileComplete: user.profileComplete,
+        storeId: user.storeId,
+        store: user.store || null,
         birthDate: user.birthDate,
         cep: user.cep,
         street: user.street,

@@ -1023,7 +1023,10 @@ async function loadSellerHome() {
 
   document.getElementById('seller-name').textContent = user.name.split(' ')[0];
   document.getElementById('seller-initial').textContent = user.name[0];
-  document.getElementById('seller-store').textContent = user.storeId ? ('Loja vinculada: ' + user.storeId) : 'Loja vinculada: não definida';
+  const storeLine = user.store
+    ? ('Loja: ' + user.store.code + ' — ' + user.store.name + (user.store.dna ? (' • DNA ' + user.store.dna) : ''))
+    : (user.storeId ? ('Loja vinculada: ' + user.storeId) : 'Loja vinculada: não definida');
+  document.getElementById('seller-store').textContent = storeLine;
 
   const warn = document.getElementById('seller-warn');
   if (!user.storeId) {
@@ -1034,7 +1037,10 @@ async function loadSellerHome() {
 }
 
 function initSellerClock() {
-  document.getElementById('clock-store').textContent = user?.storeId ? user.storeId : 'Não definida';
+  const storeLabel = user?.store
+    ? (user.store.code + ' — ' + user.store.name)
+    : (user?.storeId ? user.storeId : 'Não definida');
+  document.getElementById('clock-store').textContent = storeLabel;
   document.getElementById('clock-error').innerHTML = '';
   document.getElementById('clock-success').style.display = 'none';
 }
