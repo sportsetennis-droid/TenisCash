@@ -518,6 +518,75 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 </div>
 
+<!-- SELLER MESSAGES -->
+<div id="seller-messages" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Mensagens</p></div>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button type="button" class="tab-btn active js-msg-tab" data-tab="inbox" style="padding:10px 12px">INBOX</button>
+    <button type="button" class="tab-btn js-msg-tab" data-tab="sent" style="padding:10px 12px">ENVIADAS</button>
+    <button type="button" class="tab-btn js-msg-tab" data-tab="pending" style="padding:10px 12px">PENDENTES</button>
+  </div>
+  <div id="seller-messages-top" style="margin-top:14px"></div>
+  <div id="seller-messages-list" style="margin-top:10px"></div>
+  <button type="button" id="seller-msg-new-btn" style="position:fixed;right:calc(50% - 215px + 18px);bottom:92px;width:54px;height:54px;border-radius:50%;border:none;background:#fff;color:#FF6D00;font-size:26px;font-weight:900;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.25)">+</button>
+</div>
+
+<!-- SELLER MESSAGE DETAIL -->
+<div id="seller-message-detail" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-messages')">←</span><p style="font-size:18px;font-weight:700">Detalhe</p></div>
+  <div id="seller-msg-detail" style="margin-top:16px"></div>
+</div>
+
+<!-- SELLER MESSAGE NEW -->
+<div id="seller-message-new" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-messages')">←</span><p style="font-size:18px;font-weight:700">Nova Mensagem</p></div>
+  <div style="margin-top:10px">
+    <label class="input-label">TIPO</label>
+    <select id="msg-new-type" class="input-field">
+      <option value="message">Mensagem</option>
+      <option value="demand">Demanda</option>
+      <option value="request">Solicitação (Admin)</option>
+    </select>
+    <div id="msg-new-to-wrap">
+      <label class="input-label">DESTINATÁRIO (ID do vendedor)</label>
+      <input id="msg-new-to" class="input-field" placeholder="Cole o ID do vendedor (temporário)">
+      <p style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Busca por nome será adicionada na próxima iteração.</p>
+    </div>
+
+    <div id="msg-new-demand-fields" style="display:none">
+      <label class="input-label">PRIORIDADE</label>
+      <select id="msg-new-priority" class="input-field">
+        <option value="normal">Normal</option>
+        <option value="low">Baixa</option>
+        <option value="high">Alta</option>
+        <option value="urgent">Urgente</option>
+      </select>
+      <label class="input-label">PRAZO (dueDate)</label>
+      <input id="msg-new-due" class="input-field" type="datetime-local">
+    </div>
+
+    <label class="input-label">TÍTULO</label>
+    <input id="msg-new-title" class="input-field" placeholder="Título (obrigatório p/ demanda e solicitação)">
+    <label class="input-label">CONTEÚDO</label>
+    <textarea id="msg-new-content" class="input-field" rows="5" placeholder="Escreva aqui..."></textarea>
+    <div id="msg-new-error"></div>
+    <button type="button" class="btn-primary" id="msg-new-send">ENVIAR</button>
+  </div>
+</div>
+
+<!-- POPUP PENDÊNCIAS (após entrada) -->
+<div id="seller-pending-popup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:430px;background:#111;border-top-left-radius:18px;border-top-right-radius:18px;border:1px solid rgba(255,255,255,0.15);padding:18px 18px 22px">
+    <p style="font-family:Orbitron;font-weight:900;letter-spacing:1px">PENDÊNCIAS</p>
+    <p style="margin-top:8px;color:rgba(255,255,255,0.75);font-size:13px" id="seller-pending-title">Você tem pendências</p>
+    <div id="seller-pending-list" style="margin-top:10px"></div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button type="button" class="btn-secondary" id="seller-pending-close" style="margin-top:0">CONTINUAR</button>
+      <button type="button" class="btn-primary" id="seller-pending-open" style="margin-top:0">VER TUDO</button>
+    </div>
+  </div>
+</div>
+
 <!-- TRANSFER -->
 <div id="transfer" class="screen">
   <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
@@ -720,6 +789,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="nav-item active" onclick="showScreen('seller-home')"><span>⌂</span><span>Início</span></div>
   <div class="nav-item" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
   <div class="nav-item" onclick="alert('Em breve: Carteira')"><span>💳</span><span>Carteira</span></div>
+  <div class="nav-item" onclick="showScreen('seller-messages')"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
   <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
 </div>
 
@@ -755,7 +825,7 @@ function showScreen(id) {
   const navSeller = document.getElementById('bottomNavSeller');
 
   const customerScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
-  const sellerScreens = ['seller-home','seller-clock','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','profile','security','mydata','edit-profile'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
 
@@ -779,6 +849,8 @@ function showScreen(id) {
   if (id === 'home') loadHome();
   if (id === 'seller-home') loadSellerHome();
   if (id === 'seller-clock') initSellerClock();
+  if (id === 'seller-messages') initSellerMessages();
+  if (id === 'seller-message-new') initSellerMessageNew();
   if (id === 'qr') loadQR();
   if (id === 'promos') loadPromos();
   if (id === 'profile') loadProfile();
@@ -1213,6 +1285,350 @@ async function sellerClockIn(type) {
     'Registrado: ' + type + ' — ' + ts.toLocaleDateString('pt-BR') + ' ' + ts.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('clock-success').style.display = 'block';
   loadClockToday();
+
+  if (type === 'entry') {
+    showSellerPendingPopup();
+  }
+}
+
+// ==================== MENSAGENS (VENDEDOR) ====================
+
+let sellerMsgTab = 'inbox';
+let sellerMsgCache = { inbox: [], sent: [], pending: [] };
+let sellerPendingTimer = null;
+
+function msgTypeLabel(t) {
+  const map = { message: 'Mensagem', demand: 'Demanda', announcement: 'Anúncio', request: 'Solicitação' };
+  return map[t] || t;
+}
+
+function msgTypeIcon(t) {
+  const map = { message: '💬', demand: '🟧', announcement: '📣', request: '🟣' };
+  return map[t] || '✉️';
+}
+
+function priorityColor(p) {
+  if (p === 'urgent') return 'rgba(255,82,82,0.18)';
+  if (p === 'high') return 'rgba(255,109,0,0.18)';
+  if (p === 'low') return 'rgba(255,255,255,0.08)';
+  return 'rgba(255,213,79,0.14)'; // normal
+}
+
+function badgeFromPending(pendingData) {
+  const items = (pendingData && pendingData.pending) ? pendingData.pending : [];
+  const replies = (pendingData && pendingData.requestReplies) ? pendingData.requestReplies : [];
+  const n = items.length + replies.length;
+  const urgent = items.some(x => x.type === 'demand' && x.priority === 'urgent' && x.status !== 'done');
+  const high = items.some(x => x.type === 'demand' && x.priority === 'high' && x.status !== 'done');
+  return { n, urgent, high };
+}
+
+async function refreshSellerMessageBadge() {
+  if (!isSeller() || !token) return;
+  const data = await api('/messages/pending');
+  if (data.error) return;
+  const badge = badgeFromPending(data);
+  const el = document.getElementById('seller-msg-badge');
+  if (!el) return;
+  if (badge.n <= 0) { el.style.display = 'none'; return; }
+  el.textContent = String(badge.n);
+  el.style.display = 'inline-block';
+  el.style.background = badge.urgent ? '#FF5252' : (badge.high ? '#FF6D00' : '#FFD54F');
+  el.style.color = badge.urgent || badge.high ? '#fff' : '#111';
+}
+
+function startSellerPendingReminders() {
+  if (sellerPendingTimer) clearInterval(sellerPendingTimer);
+  // 2h = 7200000
+  sellerPendingTimer = setInterval(async () => {
+    if (!isSeller() || !token) return;
+    const data = await api('/messages/pending');
+    if (data.error) return;
+    const items = data.pending || [];
+    const alertItems = items.filter(x => x.type === 'demand' && (x.priority === 'high' || x.priority === 'urgent') && x.status !== 'done');
+    if (alertItems.length > 0) {
+      alert('Você tem demandas pendentes (alta/urgente). Abra Mensagens para ver.');
+    }
+    refreshSellerMessageBadge();
+  }, 7200000);
+}
+
+async function initSellerMessages() {
+  if (!isSeller()) { showScreen('home'); return; }
+
+  const tabButtons = Array.from(document.querySelectorAll('#seller-messages .js-msg-tab'));
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', function () {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      sellerMsgTab = btn.dataset.tab || 'inbox';
+      loadSellerMessages(sellerMsgTab);
+    });
+  });
+
+  const newBtn = document.getElementById('seller-msg-new-btn');
+  if (newBtn) newBtn.addEventListener('click', function () { showScreen('seller-message-new'); });
+
+  await refreshSellerMessageBadge();
+  startSellerPendingReminders();
+  loadSellerMessages(sellerMsgTab);
+}
+
+async function loadSellerMessages(tab) {
+  const top = document.getElementById('seller-messages-top');
+  const list = document.getElementById('seller-messages-list');
+  if (!top || !list) return;
+  top.innerHTML = '';
+  list.innerHTML = '<p class="loading">Carregando...</p>';
+
+  if (tab === 'pending') {
+    const data = await api('/messages/pending');
+    if (data.error) { list.innerHTML = '<div class="error-msg">'+data.error+'</div>'; return; }
+    const items = (data.pending || []).concat((data.requestReplies || []).map(r => ({ ...r, type: 'request_reply' })));
+    sellerMsgCache.pending = items;
+    renderSellerMessagesList(items, tab);
+    await refreshSellerMessageBadge();
+    return;
+  }
+
+  if (tab === 'sent') {
+    const data = await api('/messages/sent');
+    if (data.error) { list.innerHTML = '<div class="error-msg">'+data.error+'</div>'; return; }
+    sellerMsgCache.sent = data.messages || [];
+    renderSellerMessagesList(sellerMsgCache.sent, tab);
+    await refreshSellerMessageBadge();
+    return;
+  }
+
+  const data = await api('/messages/inbox');
+  if (data.error) { list.innerHTML = '<div class="error-msg">'+data.error+'</div>'; return; }
+  sellerMsgCache.inbox = data.messages || [];
+  renderSellerMessagesList(sellerMsgCache.inbox, tab);
+  await refreshSellerMessageBadge();
+}
+
+function renderSellerMessagesList(items, tab) {
+  const list = document.getElementById('seller-messages-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!items || items.length === 0) {
+    list.innerHTML = '<p class="loading">Nenhuma mensagem.</p>';
+    return;
+  }
+
+  items.forEach(function (m) {
+    const card = document.createElement('div');
+    const t = m.type === 'request_reply' ? 'request' : m.type;
+    const bg = t === 'demand' ? priorityColor(m.priority) : (t === 'announcement' ? 'rgba(60,130,255,0.18)' : (t === 'request' ? 'rgba(160,90,255,0.18)' : 'rgba(255,255,255,0.08)'));
+    card.style.cssText = 'background:'+bg+';border:1px solid rgba(255,255,255,0.14);border-radius:14px;padding:14px;margin-top:10px;cursor:pointer';
+    card.dataset.id = m.id;
+
+    const title = m.title || msgTypeLabel(t);
+    const preview = (m.content || '').slice(0, 90);
+    const due = m.dueDate ? new Date(m.dueDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    const status = m.status || '';
+    const fromName = m.from?.name ? m.from.name.split(' ')[0] : '';
+    const metaLine =
+      t === 'demand' && due ? ('Prazo: ' + due) :
+      t === 'request' && m.repliedAt ? ('Respondida: ' + new Date(m.repliedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })) :
+      (m.createdAt ? new Date(m.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
+
+    card.innerHTML =
+      '<div style="display:flex;gap:10px;align-items:flex-start">' +
+        '<div style="font-size:18px;line-height:1.1;margin-top:1px">' + msgTypeIcon(t) + '</div>' +
+        '<div style="flex:1">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px">' +
+            '<p style="font-weight:800;font-size:14px">'+title+'</p>' +
+            '<p style="font-family:Orbitron;font-size:10px;color:rgba(255,255,255,0.7)">'+(status||'')+'</p>' +
+          '</div>' +
+          '<p style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:6px;line-height:1.4">'+preview+'</p>' +
+          '<p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:8px">'+(fromName?('De: '+fromName+' · '):'')+metaLine+'</p>' +
+        '</div>' +
+      '</div>';
+
+    card.addEventListener('click', function () {
+      openSellerMessageDetail(m, tab);
+    });
+
+    list.appendChild(card);
+  });
+}
+
+async function openSellerMessageDetail(m, tab) {
+  showScreen('seller-message-detail');
+  const wrap = document.getElementById('seller-msg-detail');
+  if (!wrap) return;
+  wrap.innerHTML = '<p class="loading">Carregando...</p>';
+
+  // marca como lida quando abrir (inclui request respondida do próprio vendedor)
+  await api('/messages/' + m.id + '/read', 'PUT', {});
+  await refreshSellerMessageBadge();
+
+  const t = m.type === 'request_reply' ? 'request' : m.type;
+  const title = m.title || msgTypeLabel(t);
+  const created = m.createdAt ? new Date(m.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const due = m.dueDate ? new Date(m.dueDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const fromName = m.from?.name || '';
+
+  let html =
+    '<div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);border-radius:16px;padding:16px">' +
+      '<p style="font-family:Orbitron;font-weight:900;letter-spacing:1px">'+title+'</p>' +
+      '<p style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:8px">'+(fromName?('De: '+fromName+' · '):'')+created+'</p>' +
+      (t === 'demand' && due ? ('<p style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:8px">Prazo: <strong>'+due+'</strong></p>') : '') +
+      '<p style="margin-top:12px;font-size:13px;line-height:1.6;color:rgba(255,255,255,0.92)">'+String(m.content||'').replace(/</g,'&lt;')+'</p>';
+
+  if (t === 'request' && m.replyContent) {
+    html += '<div style="margin-top:14px;padding:12px;border-radius:12px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.12)">' +
+      '<p style="font-size:12px;color:rgba(255,255,255,0.65);letter-spacing:1px">RESPOSTA DO ADMIN</p>' +
+      '<p style="margin-top:8px;font-size:13px;line-height:1.6">'+String(m.replyContent).replace(/</g,'&lt;')+'</p>' +
+      '<p style="margin-top:8px;font-family:Orbitron;font-size:11px;color:rgba(255,255,255,0.75)">'+String(m.status||'')+'</p>' +
+    '</div>';
+  }
+
+  html += '</div>';
+  html += '<div id="seller-msg-detail-actions" style="margin-top:12px"></div>';
+  wrap.innerHTML = html;
+
+  const actions = document.getElementById('seller-msg-detail-actions');
+  if (!actions) return;
+  actions.innerHTML = '';
+
+  if (t === 'demand' && m.status !== 'done') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-primary';
+    btn.textContent = 'MARCAR COMO FEITO';
+    btn.addEventListener('click', async function () {
+      const r = await api('/messages/' + m.id + '/done', 'PUT', {});
+      if (r.error) { alert(r.error); return; }
+      alert('Demanda concluída!');
+      showScreen('seller-messages');
+      loadSellerMessages('pending');
+    });
+    actions.appendChild(btn);
+  }
+
+  if (t === 'announcement' && m.status !== 'confirmed') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-primary';
+    btn.textContent = 'LI E ENTENDI';
+    btn.addEventListener('click', async function () {
+      const r = await api('/messages/' + m.id + '/confirm', 'PUT', {});
+      if (r.error) { alert(r.error); return; }
+      alert('Anúncio confirmado.');
+      showScreen('seller-messages');
+      loadSellerMessages('pending');
+    });
+    actions.appendChild(btn);
+  }
+}
+
+function initSellerMessageNew() {
+  if (!isSeller()) { showScreen('home'); return; }
+  const typeSel = document.getElementById('msg-new-type');
+  const toWrap = document.getElementById('msg-new-to-wrap');
+  const demandWrap = document.getElementById('msg-new-demand-fields');
+  const errWrap = document.getElementById('msg-new-error');
+  const sendBtn = document.getElementById('msg-new-send');
+
+  function sync() {
+    const t = typeSel.value;
+    if (t === 'request') {
+      toWrap.style.display = 'none';
+      demandWrap.style.display = 'none';
+    } else if (t === 'demand') {
+      toWrap.style.display = 'block';
+      demandWrap.style.display = 'block';
+    } else {
+      toWrap.style.display = 'block';
+      demandWrap.style.display = 'none';
+    }
+  }
+
+  typeSel.addEventListener('change', sync);
+  sync();
+
+  sendBtn.onclick = null;
+  sendBtn.addEventListener('click', async function () {
+    errWrap.innerHTML = '';
+    const t = typeSel.value;
+    const body = {
+      type: t,
+      title: document.getElementById('msg-new-title').value || null,
+      content: document.getElementById('msg-new-content').value || null,
+    };
+    if (t !== 'request') body.toId = document.getElementById('msg-new-to').value.trim();
+    if (t === 'demand') {
+      body.priority = document.getElementById('msg-new-priority').value;
+      const dueRaw = document.getElementById('msg-new-due').value;
+      body.dueDate = dueRaw ? new Date(dueRaw).toISOString() : null;
+    }
+    const r = await api('/messages', 'POST', body);
+    if (r.error) { showError('msg-new-error', r.error); return; }
+    alert('Mensagem enviada!');
+    showScreen('seller-messages');
+    sellerMsgTab = 'sent';
+    const btn = document.querySelector('#seller-messages .js-msg-tab[data-tab=\"sent\"]');
+    if (btn) {
+      Array.from(document.querySelectorAll('#seller-messages .js-msg-tab')).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+    loadSellerMessages('sent');
+  });
+}
+
+async function showSellerPendingPopup() {
+  if (!isSeller() || !token) return;
+  const popup = document.getElementById('seller-pending-popup');
+  const title = document.getElementById('seller-pending-title');
+  const list = document.getElementById('seller-pending-list');
+  if (!popup || !title || !list) return;
+
+  const data = await api('/messages/pending');
+  if (data.error) return;
+  const pending = data.pending || [];
+  const replies = data.requestReplies || [];
+  const total = pending.length + replies.length;
+  if (total <= 0) return;
+
+  title.textContent = 'Você tem ' + total + ' pendência(s).';
+  list.innerHTML = '';
+
+  const top = pending
+    .filter(x => x.type === 'demand' && (x.priority === 'urgent' || x.priority === 'high'))
+    .slice(0, 5);
+  const show = top.length ? top : pending.slice(0, 5);
+
+  show.forEach(function (m) {
+    const line = document.createElement('div');
+    line.style.cssText = 'padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08)';
+    const due = m.dueDate ? new Date(m.dueDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    line.innerHTML =
+      '<p style="font-size:13px;font-weight:800">'+(m.title || msgTypeLabel(m.type))+'</p>' +
+      '<p style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px">'+(m.type==='demand'&&due?('Prazo: '+due):msgTypeLabel(m.type))+'</p>';
+    list.appendChild(line);
+  });
+
+  const closeBtn = document.getElementById('seller-pending-close');
+  const openBtn = document.getElementById('seller-pending-open');
+  closeBtn.onclick = null;
+  openBtn.onclick = null;
+  closeBtn.addEventListener('click', function () { popup.style.display = 'none'; });
+  openBtn.addEventListener('click', function () {
+    popup.style.display = 'none';
+    showScreen('seller-messages');
+    sellerMsgTab = 'pending';
+    const btn = document.querySelector('#seller-messages .js-msg-tab[data-tab=\"pending\"]');
+    if (btn) {
+      Array.from(document.querySelectorAll('#seller-messages .js-msg-tab')).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+    loadSellerMessages('pending');
+  });
+
+  popup.style.display = 'flex';
+  await refreshSellerMessageBadge();
 }
 
 function updateBalance() {

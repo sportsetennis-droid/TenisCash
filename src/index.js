@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/admin');
 const qrRoutes = require('./routes/qr');
 const sellerRoutes = require('./routes/seller');
 const storesRoutes = require('./routes/stores');
+const messagesRoutes = require('./routes/messages');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/qr', qrRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/stores', storesRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

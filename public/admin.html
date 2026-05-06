@@ -145,6 +145,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
     <div class="top-right">
       <span class="top-user" id="admin-name"></span>
+      <button class="refresh-btn" id="msg-bell" style="position:relative" title="Notificações">
+        🔔
+        <span id="msg-bell-badge" style="display:none;position:absolute;top:-6px;right:-8px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span>
+      </button>
       <button class="refresh-btn" onclick="loadDashboard()">↻ Atualizar</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
     </div>
@@ -180,6 +184,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
+    <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -264,11 +269,131 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="loading-spinner">Carregando...</div>
     </div>
   </div>
+
+  <!-- MESSAGES SECTION -->
+  <div class="section" id="tab-messages" style="display:none">
+    <div class="section-head">
+      <span class="section-title">Mensagens • Demandas • Anúncios</span>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="refresh-btn" onclick="loadAdminMessages()">↻</button>
+        <button class="btn btn-primary" id="btn-new-admin-message">+ Nova Mensagem</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom:18px">
+      <div class="stat-card" style="padding:18px">
+        <div class="stat-label">DEMANDAS ATRASADAS</div>
+        <div class="stat-value" id="msg-stat-overdue">—</div>
+        <div class="stat-sub" id="msg-stat-overdue-sub"></div>
+      </div>
+      <div class="stat-card" style="padding:18px">
+        <div class="stat-label">ANÚNCIOS NÃO CONFIRMADOS</div>
+        <div class="stat-value" id="msg-stat-ann">—</div>
+        <div class="stat-sub" id="msg-stat-ann-sub"></div>
+      </div>
+      <div class="stat-card" style="padding:18px">
+        <div class="stat-label">SOLICITAÇÕES PENDENTES</div>
+        <div class="stat-value" id="msg-stat-req">—</div>
+        <div class="stat-sub" id="msg-stat-req-sub"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <button type="button" class="tab active js-admin-msg-tab" data-tab="inbox">Inbox</button>
+      <button type="button" class="tab js-admin-msg-tab" data-tab="sent">Enviadas</button>
+      <button type="button" class="tab js-admin-msg-tab" data-tab="demand">Demandas</button>
+      <button type="button" class="tab js-admin-msg-tab" data-tab="announcement">Anúncios</button>
+      <button type="button" class="tab js-admin-msg-tab" data-tab="request">Solicitações</button>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <select class="search-box" id="msg-filter-store" style="width:220px">
+        <option value="">Todas as lojas</option>
+      </select>
+      <input class="search-box" id="msg-filter-user" placeholder="Filtrar por userId (opcional)" style="width:260px">
+      <select class="search-box" id="msg-filter-priority" style="width:200px">
+        <option value="">Prioridade (todas)</option>
+        <option value="low">Baixa</option>
+        <option value="normal">Normal</option>
+        <option value="high">Alta</option>
+        <option value="urgent">Urgente</option>
+      </select>
+      <select class="search-box" id="msg-filter-status" style="width:220px">
+        <option value="">Status (todos)</option>
+        <option value="sent">sent</option>
+        <option value="read">read</option>
+        <option value="doing">doing</option>
+        <option value="done">done</option>
+        <option value="confirmed">confirmed</option>
+        <option value="approved">approved</option>
+        <option value="rejected">rejected</option>
+      </select>
+      <button class="btn btn-primary" onclick="loadAdminMessages()">Filtrar</button>
+    </div>
+
+    <div id="admin-messages-wrap">
+      <div class="loading-spinner">Carregando...</div>
+    </div>
+  </div>
 </div>
 
 <!-- USER DETAIL MODAL -->
 <div class="detail-modal" id="user-modal">
   <div class="detail-content" id="user-detail"></div>
+</div>
+
+<!-- ADMIN MESSAGE MODAL -->
+<div class="detail-modal" id="msg-modal">
+  <div class="detail-content">
+    <button class="detail-close" id="msg-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">NOVA MENSAGEM</div>
+
+    <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">TIPO</label>
+    <select class="form-input" id="admin-msg-type" style="margin-top:8px">
+      <option value="message">Mensagem</option>
+      <option value="demand">Demanda</option>
+      <option value="announcement">Anúncio</option>
+    </select>
+
+    <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">DESTINO</label>
+    <select class="form-input" id="admin-msg-dest" style="margin-top:8px">
+      <option value="user">Vendedor específico</option>
+      <option value="store">Loja inteira</option>
+      <option value="all">Todas as lojas</option>
+    </select>
+
+    <div id="admin-msg-to-user-wrap" style="margin-top:10px">
+      <div class="picker">
+        <input class="form-input" id="admin-msg-user-search" placeholder="Buscar vendedor por nome/telefone..." oninput="searchAdminMsgUserPicker()" autocomplete="off">
+        <div class="picker-list" id="admin-msg-user-picker" style="display:none"></div>
+      </div>
+      <div class="note">Selecionado: <span id="admin-msg-user-picked" class="pill">—</span></div>
+    </div>
+
+    <div id="admin-msg-to-store-wrap" style="margin-top:10px;display:none">
+      <select class="form-input" id="admin-msg-store"></select>
+    </div>
+
+    <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">TÍTULO</label>
+    <input class="form-input" id="admin-msg-title" placeholder="Título (obrigatório p/ demanda/anúncio)" style="margin-top:8px">
+
+    <div id="admin-msg-demand-fields" style="display:none">
+      <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">PRIORIDADE</label>
+      <select class="form-input" id="admin-msg-priority" style="margin-top:8px">
+        <option value="normal">Normal</option>
+        <option value="low">Baixa</option>
+        <option value="high">Alta</option>
+        <option value="urgent">Urgente</option>
+      </select>
+      <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">PRAZO</label>
+      <input class="form-input" id="admin-msg-due" type="datetime-local" style="margin-top:8px">
+    </div>
+
+    <label style="display:block;margin-top:16px;font-size:11px;letter-spacing:2px;color:var(--text3)">CONTEÚDO</label>
+    <textarea class="form-input" id="admin-msg-content" rows="5" style="margin-top:8px"></textarea>
+    <div id="admin-msg-error" style="margin-top:10px"></div>
+    <button class="btn btn-primary" id="admin-msg-send" style="margin-top:14px;width:100%">ENVIAR</button>
+  </div>
 </div>
 
 <script>
@@ -280,6 +405,8 @@ let searchTimer = null;
 let pickerTimer = null;
 let selectedSellerUser = null;
 let storesCache = [];
+let adminMsgTab = 'inbox';
+let adminMsgPickedUser = null;
 
 // API helper
 async function api(path, method='GET', body=null) {
@@ -345,6 +472,7 @@ async function loadDashboard() {
   loadTransactions();
   await loadStores();
   loadSellers();
+  loadAdminMessageStats();
 }
 
 // USERS
@@ -432,6 +560,20 @@ async function loadStores() {
   sel.innerHTML = '<option value="">Selecione a loja</option>' + storesCache.map(s => (
     '<option value="' + s.code + '">' + s.code + ' — ' + s.name + '</option>'
   )).join('');
+
+  // messages filters + modal store
+  const fStore = document.getElementById('msg-filter-store');
+  if (fStore) {
+    fStore.innerHTML = '<option value="">Todas as lojas</option>' + storesCache.map(s => (
+      '<option value="' + s.id + '">' + s.code + ' — ' + s.name + '</option>'
+    )).join('');
+  }
+  const mStore = document.getElementById('admin-msg-store');
+  if (mStore) {
+    mStore.innerHTML = '<option value="">Selecione a loja</option>' + storesCache.map(s => (
+      '<option value="' + s.id + '">' + s.code + ' — ' + s.name + '</option>'
+    )).join('');
+  }
 }
 
 // SELLER PICKER (buscar usuário por nome/telefone e selecionar)
@@ -773,8 +915,244 @@ function switchTab(tab, btn) {
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
   document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
   document.getElementById('tab-clockin').style.display = tab === 'clockin' ? 'block' : 'none';
+  document.getElementById('tab-messages').style.display = tab === 'messages' ? 'block' : 'none';
   if (tab === 'sellers') { loadStores(); loadSellers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
+  if (tab === 'messages') { initAdminMessagesUI(); }
+}
+
+// ==================== MENSAGENS (ADMIN) ====================
+
+async function loadAdminMessageStats() {
+  const data = await api('/admin/messages/stats');
+  if (data.error) return;
+  const overdue = data.overdueDemands || 0;
+  const ann = data.unconfirmedAnnouncements || 0;
+  const req = data.pendingRequests || 0;
+
+  const elO = document.getElementById('msg-stat-overdue');
+  const elA = document.getElementById('msg-stat-ann');
+  const elR = document.getElementById('msg-stat-req');
+  if (elO) elO.textContent = overdue;
+  if (elA) elA.textContent = ann;
+  if (elR) elR.textContent = req;
+  const subO = document.getElementById('msg-stat-overdue-sub');
+  const subA = document.getElementById('msg-stat-ann-sub');
+  const subR = document.getElementById('msg-stat-req-sub');
+  if (subO) subO.textContent = 'Atrasadas (demanda)';
+  if (subA) subA.textContent = 'Falta confirmação';
+  if (subR) subR.textContent = 'Aguardando resposta';
+
+  const bell = document.getElementById('msg-bell-badge');
+  if (bell) {
+    const total = overdue + ann + req;
+    if (total <= 0) { bell.style.display = 'none'; }
+    else { bell.style.display = 'inline-block'; bell.textContent = total; }
+  }
+}
+
+function syncAdminMsgModal() {
+  const type = document.getElementById('admin-msg-type')?.value || 'message';
+  const dest = document.getElementById('admin-msg-dest')?.value || 'user';
+  const toUser = document.getElementById('admin-msg-to-user-wrap');
+  const toStore = document.getElementById('admin-msg-to-store-wrap');
+  const demand = document.getElementById('admin-msg-demand-fields');
+  if (toUser) toUser.style.display = dest === 'user' ? 'block' : 'none';
+  if (toStore) toStore.style.display = dest === 'store' ? 'block' : 'none';
+  if (demand) demand.style.display = type === 'demand' ? 'block' : 'none';
+}
+
+function openAdminMsgModal() {
+  adminMsgPickedUser = null;
+  const picked = document.getElementById('admin-msg-user-picked');
+  if (picked) picked.textContent = '—';
+  const search = document.getElementById('admin-msg-user-search');
+  if (search) search.value = '';
+  const list = document.getElementById('admin-msg-user-picker');
+  if (list) { list.style.display = 'none'; list.innerHTML = ''; }
+  document.getElementById('admin-msg-title').value = '';
+  document.getElementById('admin-msg-content').value = '';
+  document.getElementById('admin-msg-error').innerHTML = '';
+  document.getElementById('admin-msg-due').value = '';
+  document.getElementById('admin-msg-type').value = 'message';
+  document.getElementById('admin-msg-dest').value = 'user';
+  syncAdminMsgModal();
+  document.getElementById('msg-modal').classList.add('show');
+}
+
+function closeAdminMsgModal() {
+  document.getElementById('msg-modal').classList.remove('show');
+}
+
+async function loadAdminMessages() {
+  const wrap = document.getElementById('admin-messages-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+
+  const storeId = (document.getElementById('msg-filter-store')?.value || '').trim();
+  const userId = (document.getElementById('msg-filter-user')?.value || '').trim();
+  const priority = (document.getElementById('msg-filter-priority')?.value || '').trim();
+  const status = (document.getElementById('msg-filter-status')?.value || '').trim();
+
+  const qs = new URLSearchParams();
+  if (priority) qs.set('priority', priority);
+  if (status) qs.set('status', status);
+  if (storeId) qs.set('toStoreId', storeId);
+
+  if (adminMsgTab === 'sent') qs.set('fromId', adminUser?.id || '');
+  if (adminMsgTab === 'inbox') qs.set('toId', adminUser?.id || '');
+  if (adminMsgTab === 'demand') qs.set('type', 'demand');
+  if (adminMsgTab === 'announcement') qs.set('type', 'announcement');
+  if (adminMsgTab === 'request') qs.set('type', 'request');
+
+  if (userId) {
+    if (adminMsgTab === 'sent') qs.set('toId', userId);
+    else qs.set('fromId', userId);
+  }
+
+  const data = await api('/admin/messages?' + qs.toString());
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
+  const msgs = data.messages || [];
+  if (!msgs.length) { wrap.innerHTML = '<div class="empty-state">Nenhuma mensagem encontrada</div>'; return; }
+
+  let html = '<table><thead><tr><th>TIPO</th><th>TÍTULO</th><th>DE</th><th>PARA</th><th>STATUS</th><th>PRAZO</th><th>DATA</th><th>AÇÕES</th></tr></thead><tbody>';
+  msgs.forEach(m => {
+    const d = new Date(m.createdAt);
+    const date = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const due = m.dueDate ? new Date(m.dueDate).toLocaleDateString('pt-BR') + ' ' + new Date(m.dueDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+    const from = m.from?.name || '—';
+    const to = m.to?.name || (m.toStore ? (m.toStore.code + ' — ' + m.toStore.name) : (m.toAll ? 'TODAS' : '—'));
+    const pr = m.priority ? ('<span class="pill">' + escapeHtml(m.priority) + '</span>') : '';
+    const act = (m.type === 'request' && (m.status === 'sent' || m.status === 'read'))
+      ? ('<button class="btn js-reply" data-id="' + m.id + '" data-title="' + escapeHtml(m.title||'') + '">Responder</button>')
+      : '—';
+    html += '<tr>';
+    html += '<td style="font-size:11px;color:var(--text2)">' + escapeHtml(m.type) + ' ' + pr + '</td>';
+    html += '<td>' + escapeHtml(m.title || '—') + '<div class="sub" style="margin-top:4px">' + escapeHtml((m.content||'').slice(0,80)) + '</div></td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(from) + '</td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(to) + '</td>';
+    html += '<td><span class="pill">' + escapeHtml(m.status || '—') + '</span></td>';
+    html += '<td style="font-size:11px;color:var(--text2)">' + escapeHtml(due) + '</td>';
+    html += '<td style="font-size:11px;color:var(--text3)">' + escapeHtml(date) + '</td>';
+    html += '<td>' + act + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-reply')).forEach(btn => {
+    btn.addEventListener('click', function () {
+      openAdminReply(btn.dataset.id, btn.dataset.title);
+    });
+  });
+
+  loadAdminMessageStats();
+}
+
+async function openAdminReply(messageId, title) {
+  const reply = prompt('Responder solicitação:\n\n' + (title || ''), '');
+  if (reply === null) return;
+  const status = confirm('Aprovar?\n\nOK = approved\nCancelar = rejected') ? 'approved' : 'rejected';
+  const data = await api('/admin/messages/' + encodeURIComponent(messageId) + '/reply', 'PUT', { replyContent: reply, status });
+  if (data.error) { alert(data.error); return; }
+  alert('Resposta enviada.');
+  loadAdminMessages();
+}
+
+function searchAdminMsgUserPicker() {
+  clearTimeout(pickerTimer);
+  pickerTimer = setTimeout(async () => {
+    const q = document.getElementById('admin-msg-user-search').value.trim();
+    const list = document.getElementById('admin-msg-user-picker');
+    adminMsgPickedUser = null;
+    const picked = document.getElementById('admin-msg-user-picked');
+    if (picked) picked.textContent = '—';
+    if (!q || q.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    const data = await api('/admin/users?search=' + encodeURIComponent(q));
+    if (data.error || !data.users) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    const users = data.users.filter(u => u.role === 'seller').slice(0, 8);
+    if (users.length === 0) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    list.innerHTML = users.map(u => (
+      '<div class="picker-item" data-user-id="' + u.id + '" data-user-name="' + escapeHtml(u.name||'') + '">' +
+        '<strong>' + escapeHtml(u.name || '—') + '</strong>' +
+        '<div class="sub">' + escapeHtml(u.phone || '—') + '</div>' +
+      '</div>'
+    )).join('');
+    list.style.display = 'block';
+    Array.from(list.querySelectorAll('.picker-item')).forEach(el => {
+      el.addEventListener('click', function () {
+        adminMsgPickedUser = { id: el.dataset.userId, name: el.dataset.userName };
+        if (picked) picked.textContent = adminMsgPickedUser.name || adminMsgPickedUser.id;
+        list.style.display = 'none';
+        list.innerHTML = '';
+      });
+    });
+  }, 350);
+}
+
+async function sendAdminMessage() {
+  document.getElementById('admin-msg-error').innerHTML = '';
+  const type = document.getElementById('admin-msg-type').value;
+  const dest = document.getElementById('admin-msg-dest').value;
+  const title = document.getElementById('admin-msg-title').value;
+  const content = document.getElementById('admin-msg-content').value;
+  const body = { type, title: title || null, content: content || null };
+  if (type === 'demand') {
+    body.priority = document.getElementById('admin-msg-priority').value;
+    const dueRaw = document.getElementById('admin-msg-due').value;
+    body.dueDate = dueRaw ? new Date(dueRaw).toISOString() : null;
+  }
+  if (dest === 'user') {
+    if (!adminMsgPickedUser?.id) { document.getElementById('admin-msg-error').innerHTML = '<div class="login-error">Selecione um vendedor</div>'; return; }
+    body.toId = adminMsgPickedUser.id;
+  } else if (dest === 'store') {
+    const storeId = document.getElementById('admin-msg-store').value;
+    if (!storeId) { document.getElementById('admin-msg-error').innerHTML = '<div class="login-error">Selecione a loja</div>'; return; }
+    body.toStoreId = storeId;
+  } else {
+    body.toAll = true;
+  }
+  const data = await api('/admin/messages', 'POST', body);
+  if (data.error) { document.getElementById('admin-msg-error').innerHTML = '<div class="login-error">' + data.error + '</div>'; return; }
+  closeAdminMsgModal();
+  alert('Mensagem enviada. (' + (data.createdCount || 0) + ' destinatários)');
+  loadAdminMessages();
+}
+
+function initAdminMessagesUI() {
+  const tabs = Array.from(document.querySelectorAll('.js-admin-msg-tab'));
+  tabs.forEach(t => {
+    t.addEventListener('click', function () {
+      tabs.forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      adminMsgTab = t.dataset.tab;
+      loadAdminMessages();
+    });
+  });
+
+  const openBtn = document.getElementById('btn-new-admin-message');
+  if (openBtn) openBtn.addEventListener('click', openAdminMsgModal);
+  const closeBtn = document.getElementById('msg-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeAdminMsgModal);
+  const modal = document.getElementById('msg-modal');
+  if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeAdminMsgModal(); });
+
+  const typeSel = document.getElementById('admin-msg-type');
+  const destSel = document.getElementById('admin-msg-dest');
+  if (typeSel) typeSel.addEventListener('change', syncAdminMsgModal);
+  if (destSel) destSel.addEventListener('change', syncAdminMsgModal);
+  syncAdminMsgModal();
+
+  const sendBtn = document.getElementById('admin-msg-send');
+  if (sendBtn) sendBtn.addEventListener('click', sendAdminMessage);
+
+  const bell = document.getElementById('msg-bell');
+  if (bell) bell.addEventListener('click', function () {
+    const btn = Array.from(document.querySelectorAll('.tab')).find(b => b.textContent.trim() === 'Mensagens');
+    if (btn) switchTab('messages', btn);
+  });
+
+  loadAdminMessageStats();
+  loadAdminMessages();
 }
 
 // AUTO LOGIN

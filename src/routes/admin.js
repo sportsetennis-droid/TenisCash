@@ -841,4 +841,267 @@ router.get('/log', async (req, res) => {
   }
 });
 
+// ==================== MENSAGENS (MÓDULO 1) ====================
+
+function isValidMessageType(type) {
+  return ['message', 'demand', 'announcement', 'request'].includes(type);
+}
+
+function isValidDemandPriority(p) {
+  return ['low', 'normal', 'high', 'urgent'].includes(p);
+}
+
+function parseDueDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  // eslint-disable-next-line no-restricted-globals
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+router.get('/messages', async (req, res) => {
+  try {
+    const { type, status, priority, fromId, toId, toStoreId } = req.query || {};
+    const where = {
+      ...(type && isValidMessageType(type) ? { type } : {}),
+      ...(status ? { status: String(status) } : {}),
+      ...(priority ? { priority: String(priority) } : {}),
+      ...(fromId ? { fromId: String(fromId) } : {}),
+      ...(toId ? { toId: String(toId) } : {}),
+      ...(toStoreId ? { toStoreId: String(toStoreId) } : {}),
+    };
+
+    const messages = await prisma.message.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        content: true,
+        priority: true,
+        dueDate: true,
+        status: true,
+        readAt: true,
+        doneAt: true,
+        repliedAt: true,
+        replyContent: true,
+        createdAt: true,
+        from: { select: { id: true, name: true, role: true, store: { select: { code: true, name: true } } } },
+        to: { select: { id: true, name: true, role: true, store: { select: { code: true, name: true } } } },
+        toStore: { select: { id: true, code: true, name: true } },
+        toAll: true,
+      },
+    });
+
+    res.json({ messages });
+  } catch (err) {
+    console.error('Erro admin/messages:', err);
+    res.status(500).json({ error: 'Erro ao listar mensagens' });
+  }
+});
+
+router.get('/messages/pending', async (req, res) => {
+  try {
+    const now = new Date();
+    const pendingDemands = await prisma.message.findMany({
+      where: { type: 'demand', NOT: { status: 'done' } },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+      take: 500,
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        priority: true,
+        dueDate: true,
+        status: true,
+        createdAt: true,
+        from: { select: { id: true, name: true, store: { select: { code: true } } } },
+        to: { select: { id: true, name: true, store: { select: { code: true } } } },
+      },
+    });
+
+    const pendingAnnouncements = await prisma.message.findMany({
+      where: { type: 'announcement', NOT: { status: 'confirmed' } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        status: true,
+        createdAt: true,
+        from: { select: { id: true, name: true } },
+        to: { select: { id: true, name: true, store: { select: { code: true } } } },
+      },
+    });
+
+    const pendingRequests = await prisma.message.findMany({
+      where: { type: 'request', status: { in: ['sent', 'read'] } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        status: true,
+        createdAt: true,
+        from: { select: { id: true, name: true, store: { select: { code: true } } } },
+      },
+    });
+
+    const demands = pendingDemands.map((d) => ({
+      ...d,
+      overdue: d.dueDate ? new Date(d.dueDate).getTime() < now.getTime() : false,
+    }));
+
+    res.json({ demands, announcements: pendingAnnouncements, requests: pendingRequests });
+  } catch (err) {
+    console.error('Erro admin/messages/pending:', err);
+    res.status(500).json({ error: 'Erro ao listar pendências' });
+  }
+});
+
+router.post('/messages', async (req, res) => {
+  try {
+    const { toId, toStoreId, toAll, type, title, content, priority, dueDate } = req.body || {};
+    const t = String(type || '').trim();
+    if (!isValidMessageType(t)) return res.status(400).json({ error: 'Tipo inválido' });
+
+    const c = String(content || '').trim();
+    if (!c) return res.status(400).json({ error: 'Conteúdo é obrigatório' });
+
+    const ttl = title ? String(title).trim().slice(0, 120) : null;
+    const pr = priority ? String(priority).trim() : null;
+    const dd = parseDueDate(dueDate);
+
+    if ((toId ? 1 : 0) + (toStoreId ? 1 : 0) + (toAll ? 1 : 0) !== 1) {
+      return res.status(400).json({ error: 'Informe exatamente um destino: toId, toStoreId ou toAll' });
+    }
+
+    // validações
+    if (t === 'demand') {
+      if (!ttl) return res.status(400).json({ error: 'Título é obrigatório para demanda' });
+      if (!dd) return res.status(400).json({ error: 'dueDate é obrigatório e deve ser válido' });
+      if (pr && !isValidDemandPriority(pr)) return res.status(400).json({ error: 'priority inválido (low/normal/high/urgent)' });
+    }
+    if (t === 'announcement' || t === 'request') {
+      if (!ttl) return res.status(400).json({ error: 'Título é obrigatório' });
+    }
+
+    // destinatários (fan-out)
+    let recipients = [];
+    if (toId) {
+      const u = await prisma.user.findUnique({ where: { id: String(toId) }, select: { id: true, active: true } });
+      if (!u || !u.active) return res.status(404).json({ error: 'Destinatário não encontrado' });
+      recipients = [u.id];
+    } else if (toStoreId) {
+      const store = await prisma.store.findUnique({ where: { id: String(toStoreId) }, select: { id: true } });
+      if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+      const sellers = await prisma.user.findMany({
+        where: { active: true, role: 'seller', storeId: store.id },
+        select: { id: true },
+      });
+      recipients = sellers.map(s => s.id);
+      if (!recipients.length) return res.status(400).json({ error: 'Nenhum vendedor ativo nesta loja' });
+    } else if (toAll) {
+      const sellers = await prisma.user.findMany({
+        where: { active: true, role: 'seller', storeId: { not: null } },
+        select: { id: true, storeId: true },
+      });
+      recipients = sellers.map(s => s.id);
+      if (!recipients.length) return res.status(400).json({ error: 'Nenhum vendedor ativo encontrado' });
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const rows = [];
+      for (const rid of recipients) {
+        rows.push(await tx.message.create({
+          data: {
+            fromId: req.userId,
+            toId: rid,
+            toStoreId: toStoreId ? String(toStoreId) : null,
+            toAll: !!toAll,
+            type: t,
+            title: ttl,
+            content: c.slice(0, 2000),
+            priority: t === 'demand' ? (pr || 'normal') : null,
+            dueDate: t === 'demand' ? dd : null,
+            status: 'sent',
+          },
+        }));
+      }
+      return rows;
+    });
+
+    res.json({ success: true, createdCount: created.length });
+  } catch (err) {
+    console.error('Erro admin/messages create:', err);
+    res.status(500).json({ error: 'Erro ao criar mensagem' });
+  }
+});
+
+router.put('/messages/:id/reply', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const { replyContent, status } = req.body || {};
+    const reply = String(replyContent || '').trim();
+    if (!reply) return res.status(400).json({ error: 'replyContent é obrigatório' });
+    const st = String(status || '').trim();
+    if (!['approved', 'rejected'].includes(st)) return res.status(400).json({ error: 'status inválido (approved|rejected)' });
+
+    const msg = await prisma.message.findUnique({
+      where: { id },
+      select: { id: true, type: true, fromId: true },
+    });
+    if (!msg) return res.status(404).json({ error: 'Solicitação não encontrada' });
+    if (msg.type !== 'request') return res.status(400).json({ error: 'Apenas solicitações (request) podem receber reply' });
+
+    const updated = await prisma.message.update({
+      where: { id },
+      data: {
+        status: st,
+        replyContent: reply.slice(0, 2000),
+        repliedAt: new Date(),
+      },
+      select: { id: true, status: true, repliedAt: true },
+    });
+
+    res.json({ success: true, message: updated });
+  } catch (err) {
+    console.error('Erro admin/messages reply:', err);
+    res.status(500).json({ error: 'Erro ao responder solicitação' });
+  }
+});
+
+router.get('/messages/stats', async (req, res) => {
+  try {
+    const now = new Date();
+    const demands = await prisma.message.findMany({
+      where: { type: 'demand', NOT: { status: 'done' } },
+      select: { id: true, dueDate: true, priority: true },
+      take: 2000,
+    });
+    const overdueDemands = demands.filter(d => d.dueDate && new Date(d.dueDate).getTime() < now.getTime()).length;
+
+    const unconfirmedAnnouncements = await prisma.message.count({
+      where: { type: 'announcement', NOT: { status: 'confirmed' } },
+    });
+
+    const pendingRequests = await prisma.message.count({
+      where: { type: 'request', status: { in: ['sent', 'read'] } },
+    });
+
+    res.json({
+      overdueDemands,
+      unconfirmedAnnouncements,
+      pendingRequests,
+    });
+  } catch (err) {
+    console.error('Erro admin/messages/stats:', err);
+    res.status(500).json({ error: 'Erro ao gerar stats' });
+  }
+});
+
 module.exports = router;

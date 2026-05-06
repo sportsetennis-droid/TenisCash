@@ -164,6 +164,7 @@ model Store {
 
   sellers  User[]
   clockIns ClockIn[]
+  messages Message[] @relation("storeMessages")
 }
 
 // ============================================================
@@ -369,22 +370,44 @@ model SaleCommission {
 // ============================================================
 
 model Message {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
   fromId    String
-  from      User     @relation("messagesSent", fields: [fromId], references: [id])
-  toId      String?
-  to        User?    @relation("messagesReceived", fields: [toId], references: [id])
-  channelId String?
-  content   String
-  type      String   @default("message")
-  priority  String   @default("normal")
-  status    String   @default("sent")
-  parentId  String?
-  metadata  String?
+  from      User   @relation("messagesSent", fields: [fromId], references: [id])
+
+  // Destinatário (pelo menos um deve estar preenchido)
+  toId      String? // mensagem direta a um usuário (fan-out também usa isso)
+  to        User?   @relation("messagesReceived", fields: [toId], references: [id])
+  toStoreId String? // broadcast pra loja (apenas rastreio)
+  toStore   Store?  @relation("storeMessages", fields: [toStoreId], references: [id])
+  toAll     Boolean @default(false) // broadcast pra todas as lojas (apenas rastreio)
+
+  // Tipo
+  type String // 'message', 'demand', 'announcement', 'request'
+
+  // Conteúdo
+  title   String? // obrigatório pra demand/announcement/request
+  content String
+
+  // Demand fields
+  priority String?   // 'low', 'normal', 'high', 'urgent' (só pra demand)
+  dueDate   DateTime? // só pra demand
+
+  // Status
+  status   String   @default("sent") // sent, read, doing, done, confirmed, replied, approved, rejected
+  readAt   DateTime?
+  doneAt   DateTime?
+  doneById String?
+
+  // Resposta (pra request)
+  parentId     String?
+  replyContent String?
+  repliedAt    DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([toId, status])
-  @@index([channelId, createdAt])
+  @@index([toStoreId, status])
+  @@index([type, status])
 }
 
 model Channel {
