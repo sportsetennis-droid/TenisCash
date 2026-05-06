@@ -91,6 +91,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .lgpd-text{font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px;line-height:1.5}
 .lgpd-check{display:flex;align-items:flex-start;gap:10px;margin-top:16px}
 .lgpd-check input{margin-top:3px;width:20px;height:20px;accent-color:#fff}
+.msg-picker{position:relative}
+.msg-picker-list{position:absolute;left:0;right:0;top:100%;margin-top:4px;max-height:220px;overflow:auto;z-index:30;background:rgba(30,30,30,0.98);border:1px solid rgba(255,255,255,0.22);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.35)}
+.msg-picker-item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}
+.msg-picker-item:hover{background:rgba(255,255,255,0.08)}
+.msg-picker-item .sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:4px}
 </style>
 </head>
 <body>
@@ -548,14 +553,25 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <option value="request">Solicitação (Admin)</option>
     </select>
     <div id="msg-new-to-wrap">
-      <label class="input-label">DESTINATÁRIO (ID do vendedor)</label>
-      <input id="msg-new-to" class="input-field" placeholder="Cole o ID do vendedor (temporário)">
-      <p style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Busca por nome será adicionada na próxima iteração.</p>
+      <div id="msg-new-to-admin-note" style="display:none;margin-top:10px;padding:14px;background:rgba(255,255,255,0.08);border-radius:12px;border:1px solid rgba(255,255,255,0.15)">
+        <span style="font-size:13px;font-weight:700">Destinatário: Administração</span>
+        <p style="font-size:12px;color:rgba(255,255,255,0.55);margin-top:6px">Sua solicitação será enviada a um administrador.</p>
+      </div>
+      <div id="msg-new-to-picker-block">
+        <label class="input-label">DESTINATÁRIO</label>
+        <div class="msg-picker">
+          <input id="msg-new-to-search" class="input-field" type="text" autocomplete="off" placeholder="Buscar vendedor por nome, telefone ou email...">
+          <input type="hidden" id="msg-new-to-id" value="">
+          <div id="msg-new-to-list" class="msg-picker-list" style="display:none"></div>
+        </div>
+        <p id="msg-new-to-hint" style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:8px"></p>
+      </div>
     </div>
 
     <div id="msg-new-demand-fields" style="display:none">
       <label class="input-label">PRIORIDADE</label>
       <select id="msg-new-priority" class="input-field">
+        <option value="">Selecione a prioridade</option>
         <option value="normal">Normal</option>
         <option value="low">Baixa</option>
         <option value="high">Alta</option>
@@ -798,6 +814,8 @@ const API = window.location.origin + '/api';
 let token = localStorage.getItem('tc_token');
 let user = JSON.parse(localStorage.getItem('tc_user') || 'null');
 let balanceVisible = true;
+let sellerMsgNewUIReady = false;
+let sellerMsgToSearchTimer = null;
 
 const SPORTS = ['Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsal','Society','Vôlei','Vôlei de praia','Basquete','Tênis','Beach Tennis','Padel','Badminton','Natação','Ciclismo','Skate','Surf','Jiu-Jitsu','Muay Thai','Boxe','Karatê','Judô','Taekwondo','MMA','Capoeira','Dança','Yoga','Pilates','Funcional','Handball','Rugby','Atletismo','Triathlon','Escalada','Remo','Canoagem','Tiro com Arco','Golfe','Ping Pong','Patinação','Slackline','Parkour','Outro','Nenhum'];
 const BRANDS = ['Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra','Nenhuma'];
@@ -861,12 +879,30 @@ function showScreen(id) {
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
 }
 
+function escapeHtmlSellerMsg(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 async function api(path, method='GET', body=null) {
   const opts = { method, headers: {'Content-Type':'application/json'} };
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(API + path, opts);
-  return res.json();
+  const text = await res.text();
+  try {
+    const data = text ? JSON.parse(text) : {};
+    if (!res.ok && data && typeof data === 'object' && !data.error) {
+      data.error = 'Erro ' + res.status;
+    }
+    return data;
+  } catch (e) {
+    return { error: text || ('Erro ' + res.status) };
+  }
 }
 
 // AUTH
@@ -1527,55 +1563,140 @@ async function openSellerMessageDetail(m, tab) {
 function initSellerMessageNew() {
   if (!isSeller()) { showScreen('home'); return; }
   const typeSel = document.getElementById('msg-new-type');
-  const toWrap = document.getElementById('msg-new-to-wrap');
+  const adminNote = document.getElementById('msg-new-to-admin-note');
+  const pickerBlock = document.getElementById('msg-new-to-picker-block');
   const demandWrap = document.getElementById('msg-new-demand-fields');
   const errWrap = document.getElementById('msg-new-error');
   const sendBtn = document.getElementById('msg-new-send');
+  const searchInp = document.getElementById('msg-new-to-search');
+  const hidId = document.getElementById('msg-new-to-id');
+  const listEl = document.getElementById('msg-new-to-list');
+  const hintEl = document.getElementById('msg-new-to-hint');
+
+  function clearRecipient() {
+    if (hidId) hidId.value = '';
+    if (hintEl) hintEl.textContent = '';
+    if (searchInp) searchInp.value = '';
+    if (listEl) { listEl.style.display = 'none'; listEl.innerHTML = ''; }
+  }
 
   function sync() {
     const t = typeSel.value;
     if (t === 'request') {
-      toWrap.style.display = 'none';
-      demandWrap.style.display = 'none';
+      if (adminNote) adminNote.style.display = 'block';
+      if (pickerBlock) pickerBlock.style.display = 'none';
+      if (demandWrap) demandWrap.style.display = 'none';
+      clearRecipient();
     } else if (t === 'demand') {
-      toWrap.style.display = 'block';
-      demandWrap.style.display = 'block';
+      if (adminNote) adminNote.style.display = 'none';
+      if (pickerBlock) pickerBlock.style.display = 'block';
+      if (demandWrap) demandWrap.style.display = 'block';
     } else {
-      toWrap.style.display = 'block';
-      demandWrap.style.display = 'none';
+      if (adminNote) adminNote.style.display = 'none';
+      if (pickerBlock) pickerBlock.style.display = 'block';
+      if (demandWrap) demandWrap.style.display = 'none';
     }
   }
 
-  typeSel.addEventListener('change', sync);
-  sync();
+  if (!sellerMsgNewUIReady) {
+    sellerMsgNewUIReady = true;
+    typeSel.addEventListener('change', sync);
 
-  sendBtn.onclick = null;
-  sendBtn.addEventListener('click', async function () {
-    errWrap.innerHTML = '';
-    const t = typeSel.value;
-    const body = {
-      type: t,
-      title: document.getElementById('msg-new-title').value || null,
-      content: document.getElementById('msg-new-content').value || null,
-    };
-    if (t !== 'request') body.toId = document.getElementById('msg-new-to').value.trim();
-    if (t === 'demand') {
-      body.priority = document.getElementById('msg-new-priority').value;
-      const dueRaw = document.getElementById('msg-new-due').value;
-      body.dueDate = dueRaw ? new Date(dueRaw).toISOString() : null;
+    if (searchInp) {
+      searchInp.addEventListener('input', function () {
+        clearTimeout(sellerMsgToSearchTimer);
+        if (hidId) hidId.value = '';
+        if (hintEl) hintEl.textContent = '';
+        const q = searchInp.value.trim();
+        if (q.length < 2) {
+          if (listEl) { listEl.style.display = 'none'; listEl.innerHTML = ''; }
+          return;
+        }
+        sellerMsgToSearchTimer = setTimeout(async function () {
+          const data = await api('/sellers/search?q=' + encodeURIComponent(q));
+          if (data.error || !data.sellers || !listEl) {
+            if (listEl) { listEl.style.display = 'none'; listEl.innerHTML = ''; }
+            return;
+          }
+          const sellers = data.sellers;
+          if (!sellers.length) {
+            listEl.style.display = 'none';
+            listEl.innerHTML = '';
+            return;
+          }
+          listEl.innerHTML = sellers.map(function (s) {
+            const storeLabel = s.store ? (s.store.name || s.store.code || 'Loja') : '—';
+            return (
+              '<div class="msg-picker-item js-msg-seller-pick" data-id="' + s.id + '">' +
+              '<strong style="font-size:14px">' + escapeHtmlSellerMsg((s.name || '—') + ' (' + storeLabel + ')') + '</strong>' +
+              '<div class="sub">' + escapeHtmlSellerMsg(s.phone || '—') + '</div></div>'
+            );
+          }).join('');
+          listEl.style.display = 'block';
+          Array.from(listEl.querySelectorAll('.js-msg-seller-pick')).forEach(function (row) {
+            row.addEventListener('click', function () {
+              const id = row.dataset.id;
+              const sel = sellers.find(function (x) { return x.id === id; });
+              if (hidId) hidId.value = id;
+              if (hintEl && sel) {
+                const sl = sel.store ? (sel.store.name || sel.store.code || 'Loja') : '—';
+                hintEl.textContent = 'Enviar para: ' + (sel.name || '') + ' (' + sl + ')';
+              }
+              if (searchInp && sel) searchInp.value = (sel.name || '') + ' — ' + (sel.phone || '');
+              listEl.style.display = 'none';
+              listEl.innerHTML = '';
+            });
+          });
+        }, 300);
+      });
     }
-    const r = await api('/messages', 'POST', body);
-    if (r.error) { showError('msg-new-error', r.error); return; }
-    alert('Mensagem enviada!');
-    showScreen('seller-messages');
-    sellerMsgTab = 'sent';
-    const btn = document.querySelector('#seller-messages .js-msg-tab[data-tab=\"sent\"]');
-    if (btn) {
-      Array.from(document.querySelectorAll('#seller-messages .js-msg-tab')).forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+
+    document.addEventListener('click', function sellerMsgNewOutside(ev) {
+      if (!listEl || !searchInp) return;
+      const wrap = document.querySelector('#msg-new-to-picker-block .msg-picker');
+      if (wrap && !wrap.contains(ev.target)) {
+        listEl.style.display = 'none';
+      }
+    });
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', async function () {
+        errWrap.innerHTML = '';
+        const t = typeSel.value;
+        const body = {
+          type: t,
+          title: document.getElementById('msg-new-title').value || null,
+          content: document.getElementById('msg-new-content').value || null,
+        };
+        if (t !== 'request') {
+          const tid = (hidId && hidId.value) ? hidId.value.trim() : '';
+          if (!tid) {
+            showError('msg-new-error', 'Selecione um destinatário na busca.');
+            return;
+          }
+          body.toId = tid;
+        }
+        if (t === 'demand') {
+          body.priority = document.getElementById('msg-new-priority').value;
+          const dueRaw = document.getElementById('msg-new-due').value;
+          body.dueDate = dueRaw ? new Date(dueRaw).toISOString() : null;
+        }
+        const r = await api('/messages', 'POST', body);
+        if (r.error) { showError('msg-new-error', r.error); return; }
+        alert('Mensagem enviada!');
+        showScreen('seller-messages');
+        sellerMsgTab = 'sent';
+        const btn = document.querySelector('#seller-messages .js-msg-tab[data-tab=\"sent\"]');
+        if (btn) {
+          Array.from(document.querySelectorAll('#seller-messages .js-msg-tab')).forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        }
+        loadSellerMessages('sent');
+      });
     }
-    loadSellerMessages('sent');
-  });
+  }
+
+  sync();
 }
 
 async function showSellerPendingPopup() {

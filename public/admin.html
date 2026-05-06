@@ -364,7 +364,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
     <div id="admin-msg-to-user-wrap" style="margin-top:10px">
       <div class="picker">
-        <input class="form-input" id="admin-msg-user-search" placeholder="Buscar vendedor por nome/telefone..." oninput="searchAdminMsgUserPicker()" autocomplete="off">
+        <input class="form-input" id="admin-msg-user-search" placeholder="Buscar por nome, telefone ou e-mail..." autocomplete="off">
         <div class="picker-list" id="admin-msg-user-picker" style="display:none"></div>
       </div>
       <div class="note">Selecionado: <span id="admin-msg-user-picked" class="pill">—</span></div>
@@ -407,6 +407,8 @@ let selectedSellerUser = null;
 let storesCache = [];
 let adminMsgTab = 'inbox';
 let adminMsgPickedUser = null;
+let adminMsgUIInitialized = false;
+let adminMsgSearchTimer = null;
 
 // API helper
 async function api(path, method='GET', body=null) {
@@ -556,10 +558,11 @@ async function loadStores() {
   if (data.error) return;
   storesCache = data.stores || [];
   const sel = document.getElementById('seller-store-select');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Selecione a loja</option>' + storesCache.map(s => (
-    '<option value="' + s.code + '">' + s.code + ' — ' + s.name + '</option>'
-  )).join('');
+  if (sel) {
+    sel.innerHTML = '<option value="">Selecione a loja</option>' + storesCache.map(s => (
+      '<option value="' + s.code + '">' + s.code + ' — ' + s.name + '</option>'
+    )).join('');
+  }
 
   // messages filters + modal store
   const fStore = document.getElementById('msg-filter-store');
@@ -962,7 +965,7 @@ function syncAdminMsgModal() {
   if (demand) demand.style.display = type === 'demand' ? 'block' : 'none';
 }
 
-function openAdminMsgModal() {
+async function openAdminMsgModal() {
   adminMsgPickedUser = null;
   const picked = document.getElementById('admin-msg-user-picked');
   if (picked) picked.textContent = '—';
@@ -977,6 +980,7 @@ function openAdminMsgModal() {
   document.getElementById('admin-msg-type').value = 'message';
   document.getElementById('admin-msg-dest').value = 'user';
   syncAdminMsgModal();
+  if (!storesCache.length) await loadStores();
   document.getElementById('msg-modal').classList.add('show');
 }
 
@@ -1059,34 +1063,42 @@ async function openAdminReply(messageId, title) {
 }
 
 function searchAdminMsgUserPicker() {
-  clearTimeout(pickerTimer);
-  pickerTimer = setTimeout(async () => {
+  clearTimeout(adminMsgSearchTimer);
+  adminMsgSearchTimer = setTimeout(async () => {
     const q = document.getElementById('admin-msg-user-search').value.trim();
     const list = document.getElementById('admin-msg-user-picker');
     adminMsgPickedUser = null;
     const picked = document.getElementById('admin-msg-user-picked');
     if (picked) picked.textContent = '—';
     if (!q || q.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
-    const data = await api('/admin/users?search=' + encodeURIComponent(q));
-    if (data.error || !data.users) { list.style.display = 'none'; list.innerHTML = ''; return; }
-    const users = data.users.filter(u => u.role === 'seller').slice(0, 8);
-    if (users.length === 0) { list.style.display = 'none'; list.innerHTML = ''; return; }
-    list.innerHTML = users.map(u => (
-      '<div class="picker-item" data-user-id="' + u.id + '" data-user-name="' + escapeHtml(u.name||'') + '">' +
-        '<strong>' + escapeHtml(u.name || '—') + '</strong>' +
-        '<div class="sub">' + escapeHtml(u.phone || '—') + '</div>' +
-      '</div>'
-    )).join('');
+    const data = await api('/sellers/search?q=' + encodeURIComponent(q));
+    if (data.error || !data.sellers) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    const sellers = data.sellers.slice(0, 10);
+    if (sellers.length === 0) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    list.innerHTML = sellers.map(function (s) {
+      const storeName = s.store ? (s.store.name || s.store.code || 'Loja') : '—';
+      const line = escapeHtml((s.name || '—') + ' (' + storeName + ') — ' + (s.phone || '—'));
+      return (
+        '<div class="picker-item js-admin-msg-pick" data-user-id="' + s.id + '">' +
+        '<strong>' + line + '</strong></div>'
+      );
+    }).join('');
     list.style.display = 'block';
-    Array.from(list.querySelectorAll('.picker-item')).forEach(el => {
+    Array.from(list.querySelectorAll('.js-admin-msg-pick')).forEach(function (el) {
       el.addEventListener('click', function () {
-        adminMsgPickedUser = { id: el.dataset.userId, name: el.dataset.userName };
-        if (picked) picked.textContent = adminMsgPickedUser.name || adminMsgPickedUser.id;
+        const id = el.dataset.userId;
+        const row = sellers.find(function (x) { return x.id === id; });
+        adminMsgPickedUser = { id: id, name: row ? row.name : id };
+        if (picked) {
+          picked.textContent = row
+            ? ((row.name || '—') + ' (' + (row.store ? (row.store.name || row.store.code || 'Loja') : '—') + ')')
+            : id;
+        }
         list.style.display = 'none';
         list.innerHTML = '';
       });
     });
-  }, 350);
+  }, 300);
 }
 
 async function sendAdminMessage() {
@@ -1119,38 +1131,44 @@ async function sendAdminMessage() {
 }
 
 function initAdminMessagesUI() {
-  const tabs = Array.from(document.querySelectorAll('.js-admin-msg-tab'));
-  tabs.forEach(t => {
-    t.addEventListener('click', function () {
-      tabs.forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      adminMsgTab = t.dataset.tab;
-      loadAdminMessages();
+  if (!adminMsgUIInitialized) {
+    adminMsgUIInitialized = true;
+    const tabs = Array.from(document.querySelectorAll('.js-admin-msg-tab'));
+    tabs.forEach(t => {
+      t.addEventListener('click', function () {
+        tabs.forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        adminMsgTab = t.dataset.tab;
+        loadAdminMessages();
+      });
     });
-  });
 
-  const openBtn = document.getElementById('btn-new-admin-message');
-  if (openBtn) openBtn.addEventListener('click', openAdminMsgModal);
-  const closeBtn = document.getElementById('msg-modal-close');
-  if (closeBtn) closeBtn.addEventListener('click', closeAdminMsgModal);
-  const modal = document.getElementById('msg-modal');
-  if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeAdminMsgModal(); });
+    const openBtn = document.getElementById('btn-new-admin-message');
+    if (openBtn) openBtn.addEventListener('click', function () { openAdminMsgModal(); });
+    const closeBtn = document.getElementById('msg-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeAdminMsgModal);
+    const modal = document.getElementById('msg-modal');
+    if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeAdminMsgModal(); });
 
-  const typeSel = document.getElementById('admin-msg-type');
-  const destSel = document.getElementById('admin-msg-dest');
-  if (typeSel) typeSel.addEventListener('change', syncAdminMsgModal);
-  if (destSel) destSel.addEventListener('change', syncAdminMsgModal);
+    const typeSel = document.getElementById('admin-msg-type');
+    const destSel = document.getElementById('admin-msg-dest');
+    if (typeSel) typeSel.addEventListener('change', syncAdminMsgModal);
+    if (destSel) destSel.addEventListener('change', syncAdminMsgModal);
+
+    const sendBtn = document.getElementById('admin-msg-send');
+    if (sendBtn) sendBtn.addEventListener('click', sendAdminMessage);
+
+    const userSearch = document.getElementById('admin-msg-user-search');
+    if (userSearch) userSearch.addEventListener('input', searchAdminMsgUserPicker);
+
+    const bell = document.getElementById('msg-bell');
+    if (bell) bell.addEventListener('click', function () {
+      const btn = Array.from(document.querySelectorAll('.tab')).find(b => b.textContent.trim() === 'Mensagens');
+      if (btn) switchTab('messages', btn);
+    });
+  }
+
   syncAdminMsgModal();
-
-  const sendBtn = document.getElementById('admin-msg-send');
-  if (sendBtn) sendBtn.addEventListener('click', sendAdminMessage);
-
-  const bell = document.getElementById('msg-bell');
-  if (bell) bell.addEventListener('click', function () {
-    const btn = Array.from(document.querySelectorAll('.tab')).find(b => b.textContent.trim() === 'Mensagens');
-    if (btn) switchTab('messages', btn);
-  });
-
   loadAdminMessageStats();
   loadAdminMessages();
 }

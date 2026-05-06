@@ -191,35 +191,40 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
     if (req.userRole !== 'seller') return res.status(403).json({ error: 'Apenas vendedor pode criar nesta rota' });
 
     const { toId, type, title, content, priority, dueDate } = req.body || {};
-    const t = String(type || '').trim();
+
+    if (type === undefined || type === null || String(type).trim() === '') {
+      return res.status(400).json({ error: 'Tipo é obrigatório' });
+    }
+    const t = String(type).trim();
     if (!isValidType(t)) return res.status(400).json({ error: 'Tipo inválido' });
+
+    if (t === 'announcement') {
+      return res.status(403).json({ error: 'Apenas admin pode enviar anúncios' });
+    }
 
     const c = safeStr(content, 2000);
     if (!c) return res.status(400).json({ error: 'Conteúdo é obrigatório' });
 
-    const ttl = title ? safeStr(title, 120) : null;
-    const pr = priority ? String(priority).trim() : null;
+    const ttl = title !== undefined && title !== null ? safeStr(title, 120) : '';
+    const pr = priority !== undefined && priority !== null ? String(priority).trim() : '';
     const dd = parseDueDate(dueDate);
 
-    // validações por tipo
-    if (t === 'announcement') return res.status(403).json({ error: 'Vendedor não pode enviar anúncio' });
+    if ((t === 'demand' || t === 'request') && !ttl) {
+      return res.status(400).json({ error: 'Título é obrigatório para demanda/anúncio/solicitação' });
+    }
+
+    const toIdStr = toId ? String(toId).trim() : '';
+    if (t !== 'request') {
+      if (!toIdStr) return res.status(400).json({ error: 'Destinatário é obrigatório' });
+    }
+    if (toIdStr && toIdStr === me.id) {
+      return res.status(400).json({ error: 'Não é possível enviar mensagem pra si mesmo' });
+    }
 
     if (t === 'demand') {
-      if (!toId) return res.status(400).json({ error: 'toId é obrigatório para demanda' });
-      if (!ttl) return res.status(400).json({ error: 'Título é obrigatório para demanda' });
-      if (!dd) return res.status(400).json({ error: 'dueDate é obrigatório e deve ser válido' });
-      if (pr && !isValidPriority(pr)) return res.status(400).json({ error: 'priority inválido (low/normal/high/urgent)' });
+      if (!dd) return res.status(400).json({ error: 'Prazo é obrigatório para demanda' });
+      if (!pr || !isValidPriority(pr)) return res.status(400).json({ error: 'Prioridade é obrigatória para demanda' });
     }
-
-    if (t === 'request') {
-      if (!ttl) return res.status(400).json({ error: 'Título é obrigatório para solicitação' });
-    }
-
-    if (t === 'message') {
-      if (!toId) return res.status(400).json({ error: 'toId é obrigatório para mensagem' });
-    }
-
-    if (toId && String(toId) === me.id) return res.status(400).json({ error: 'Não pode enviar mensagem para si mesmo' });
 
     // Destino request: primeiro superadmin/admin ativo (um único destinatário)
     if (t === 'request') {
@@ -235,7 +240,7 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
           fromId: me.id,
           toId: admin.id,
           type: 'request',
-          title: ttl,
+          title: ttl || null,
           content: c,
           status: 'sent',
         },
@@ -245,10 +250,10 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
 
     // Demanda/mensagem: valida destinatário
     const dest = await prisma.user.findUnique({
-      where: { id: String(toId) },
+      where: { id: String(toIdStr) },
       select: { id: true, role: true, active: true },
     });
-    if (!dest || !dest.active) return res.status(404).json({ error: 'Destinatário não encontrado' });
+    if (!dest || !dest.active) return res.status(400).json({ error: 'Destinatário não encontrado' });
 
     if (dest.role === 'admin' || dest.role === 'superadmin') {
       if (t !== 'message') return res.status(400).json({ error: 'Vendedor só pode falar com admin via message ou request' });
@@ -263,9 +268,9 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
         fromId: me.id,
         toId: dest.id,
         type: t,
-        title: ttl,
+        title: ttl || null,
         content: c,
-        priority: t === 'demand' ? (pr || 'normal') : null,
+        priority: t === 'demand' ? pr : null,
         dueDate: t === 'demand' ? dd : null,
         status: 'sent',
       },
@@ -362,33 +367,6 @@ router.put('/:id/confirm', authMiddleware, sellerOnly, async (req, res) => {
   } catch (err) {
     console.error('Erro messages/confirm:', err);
     res.status(500).json({ error: 'Erro ao confirmar' });
-  }
-});
-
-// ==================== DONE (alias obrigatório na spec) ====================
-router.put('/:id/done', authMiddleware, sellerOnly, async (req, res) => {
-  try {
-    const me = await getMe(req);
-    if (!me || !me.active) return res.status(404).json({ error: 'Usuário não encontrado' });
-
-    const id = String(req.params.id);
-    const msg = await prisma.message.findUnique({
-      where: { id },
-      select: { id: true, toId: true, type: true },
-    });
-    if (!msg) return res.status(404).json({ error: 'Mensagem não encontrada' });
-    if (msg.type !== 'demand') return res.status(400).json({ error: 'Apenas demandas podem ser marcadas como feito' });
-    if (msg.toId !== me.id) return res.status(403).json({ error: 'Apenas o destinatário pode concluir a demanda' });
-
-    const updated = await prisma.message.update({
-      where: { id },
-      data: { status: 'done', doneAt: new Date(), doneById: me.id },
-      select: { id: true, status: true, doneAt: true },
-    });
-    res.json({ success: true, message: updated });
-  } catch (err) {
-    console.error('Erro messages/done:', err);
-    res.status(500).json({ error: 'Erro ao marcar como feito' });
   }
 });
 

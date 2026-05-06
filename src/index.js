@@ -12,6 +12,7 @@ const qrRoutes = require('./routes/qr');
 const sellerRoutes = require('./routes/seller');
 const storesRoutes = require('./routes/stores');
 const messagesRoutes = require('./routes/messages');
+const sellersRoutes = require('./routes/sellers');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,6 +48,7 @@ app.use('/api/qr', qrRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/stores', storesRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/sellers', sellersRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
