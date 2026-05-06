@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+  TenisCash — REGRA PERMANENTE (HTML gerado por JS):
+  NUNCA usar onclick="..." em strings atribuídas a innerHTML / template literals dinâmicos.
+  SEMPRE usar data-* + addEventListener (ou createElement + addEventListener) após inserir no DOM.
+  Antes de commit: buscar onclick= dentro dos trechos que montam HTML via JS e refatorar.
+-->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1133,16 +1139,30 @@ function labelType(type) {
 
 function renderClockActions(allowedNext) {
   const wrap = document.getElementById('clock-actions');
-  const btn = (type, label, styleExtra = '') =>
-    '<button class="btn-secondary" onclick="sellerClockIn(\\'' + type + '\\')" style="margin-top:0;' + styleExtra + '">' + label + '</button>';
-
+  wrap.innerHTML = '';
   const set = new Set(allowedNext || []);
-  let html = '';
-  if (set.has('entry')) html += btn('entry', '✅ ENTRADA');
-  if (set.has('break_start')) html += btn('break_start', '☕ INÍCIO PAUSA');
-  if (set.has('break_end')) html += btn('break_end', '⚡ FIM PAUSA');
-  if (set.has('exit')) html += btn('exit', '🚪 SAÍDA', 'border:2px solid rgba(255,255,255,0.35)');
-  wrap.innerHTML = html || '<p style="color:rgba(255,255,255,0.45);font-size:12px">Nenhuma ação disponível.</p>';
+  const btnData = [
+    { type: 'entry', label: '✅ ENTRADA', extraStyle: '' },
+    { type: 'break_start', label: '☕ INÍCIO PAUSA', extraStyle: '' },
+    { type: 'break_end', label: '⚡ FIM PAUSA', extraStyle: '' },
+    { type: 'exit', label: '🚪 SAÍDA', extraStyle: 'border:2px solid rgba(255,255,255,0.35)' },
+  ];
+  let any = false;
+  btnData.forEach(function (b) {
+    if (!set.has(b.type)) return;
+    any = true;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary';
+    btn.style.cssText = 'margin-top:0;' + (b.extraStyle || '');
+    btn.textContent = b.label;
+    btn.dataset.type = b.type;
+    btn.addEventListener('click', function () { sellerClockIn(b.type); });
+    wrap.appendChild(btn);
+  });
+  if (!any) {
+    wrap.innerHTML = '<p style="color:rgba(255,255,255,0.45);font-size:12px">Nenhuma ação disponível.</p>';
+  }
 }
 
 async function loadClockToday() {
@@ -1295,7 +1315,14 @@ function initProfileForm() {
 function renderChips(containerId, items) {
   const container = document.getElementById(containerId);
   if (container.children.length > 0) return;
-  container.innerHTML = items.map(item => '<div class="chip" onclick="this.classList.toggle(\'selected\')" data-value="'+item+'">'+item+'</div>').join('');
+  items.forEach(function (item) {
+    const div = document.createElement('div');
+    div.className = 'chip js-profile-chip';
+    div.dataset.value = item;
+    div.textContent = item;
+    div.addEventListener('click', function () { div.classList.toggle('selected'); });
+    container.appendChild(div);
+  });
 }
 
 function getSelectedChips(containerId) {
@@ -1454,13 +1481,17 @@ async function loadMyData() {
   html += '<p style="font-size:16px;font-weight:700;margin:24px 0 16px">Marcas</p>';
   html += chips('MARCAS PREFERIDAS', u.favBrands);
 
-  html += '<button class="btn-primary" onclick="showEditProfile()" style="margin-top:24px">✏️ ALTERAR DADOS</button>';
+  html += '<button type="button" class="btn-primary js-mydata-edit" style="margin-top:24px">✏️ ALTERAR DADOS</button>';
 
   if (!u.profileComplete) {
-    html += '<button class="btn-secondary" onclick="showScreen(\'complete-profile\')" style="margin-top:12px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
+    html += '<button type="button" class="btn-secondary js-mydata-complete" style="margin-top:12px">COMPLETAR PERFIL E GANHAR T$ 100</button>';
   }
 
   container.innerHTML = html;
+  const editBtn = container.querySelector('.js-mydata-edit');
+  if (editBtn) editBtn.addEventListener('click', showEditProfile);
+  const completeBtn = container.querySelector('.js-mydata-complete');
+  if (completeBtn) completeBtn.addEventListener('click', function () { showScreen('complete-profile'); });
 }
 
 function showEditProfile() {
@@ -1501,7 +1532,15 @@ async function initEditProfileForm() {
 
 function renderChipsEdit(containerId, items, selected) {
   const container = document.getElementById(containerId);
-  container.innerHTML = items.map(item => '<div class="chip'+(selected.includes(item)?' selected':'')+'" onclick="this.classList.toggle(\'selected\')" data-value="'+item+'">'+item+'</div>').join('');
+  container.innerHTML = '';
+  items.forEach(function (item) {
+    const div = document.createElement('div');
+    div.className = 'chip js-edit-chip' + (selected.includes(item) ? ' selected' : '');
+    div.dataset.value = item;
+    div.textContent = item;
+    div.addEventListener('click', function () { div.classList.toggle('selected'); });
+    container.appendChild(div);
+  });
 }
 
 async function saveEditProfile() {

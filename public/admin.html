@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+  TenisCash Admin — REGRA PERMANENTE (HTML gerado por JS):
+  NUNCA usar onclick="..." em strings atribuídas a innerHTML / template literals dinâmicos.
+  SEMPRE usar data-* + addEventListener após inserir no DOM.
+  Antes de commit: buscar onclick= dentro dos trechos que montam HTML via JS e refatorar.
+-->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
