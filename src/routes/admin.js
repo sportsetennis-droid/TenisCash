@@ -501,6 +501,68 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// ==================== VINCULAR VENDEDOR À LOJA ====================
+// Define role=seller e storeId do usuário
+router.post('/seller/assign-store', async (req, res) => {
+  try {
+    const { userId, phone, employeeCode, storeCode, storeId } = req.body || {};
+
+    if (!userId && !phone && !employeeCode) {
+      return res.status(400).json({ error: 'Informe userId, phone ou employeeCode' });
+    }
+    if (!storeId && !storeCode) {
+      return res.status(400).json({ error: 'Informe storeId ou storeCode' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        ...(userId ? { id: userId } : {}),
+        ...(phone ? { phone: String(phone).replace(/\D/g, '') } : {}),
+        ...(employeeCode ? { employeeCode } : {}),
+      },
+      select: { id: true, name: true, role: true, storeId: true, active: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const store = await prisma.store.findFirst({
+      where: {
+        ...(storeId ? { id: storeId } : {}),
+        ...(storeCode ? { code: storeCode } : {}),
+      },
+      select: { id: true, code: true, name: true },
+    });
+
+    if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'seller', storeId: store.id },
+      select: { id: true, name: true, role: true, storeId: true },
+    });
+
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.userId,
+        action: 'seller_assign_store',
+        targetUserId: user.id,
+        description: `Vinculou vendedor à loja ${store.code} (${store.name})`,
+        metadata: JSON.stringify({ storeId: store.id, storeCode: store.code }),
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Vendedor vinculado: ${updated.name} → ${store.code} (${store.name})`,
+      user: updated,
+      store,
+    });
+  } catch (err) {
+    console.error('Erro ao vincular vendedor:', err);
+    res.status(500).json({ error: 'Erro ao vincular vendedor' });
+  }
+});
+
 // ==================== LOG DE AÇÕES ADMIN ====================
 
 router.get('/log', async (req, res) => {

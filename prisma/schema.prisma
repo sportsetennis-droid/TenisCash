@@ -7,21 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// USUÁRIOS (clientes + vendedores + admins)
+// ============================================================
+
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  phone         String   @unique
-  email         String?
-  cpf           String?  @unique
-  pin           String   // hashed
-  balance       Float    @default(0)
-  role          String   @default("user") // user, admin, superadmin
-  active        Boolean  @default(true)
-  welcomeBonus  Boolean  @default(false) // já recebeu bonus de boas-vindas
-  deletedCpf    String?  // CPF guardado após exclusão para bloquear novo bônus
-  profileComplete Boolean @default(false) // perfil CRM completo
-  lgpdAccepted  Boolean  @default(false)
-  lgpdDate      DateTime? // data do aceite LGPD
+  id              String   @id @default(uuid())
+  name            String
+  phone           String   @unique
+  email           String?
+  cpf             String?  @unique
+  pin             String   // hashed
+  balance         Float    @default(0)
+  role            String   @default("user") // user, seller, admin, superadmin
+  active          Boolean  @default(true)
+  welcomeBonus    Boolean  @default(false)
+  deletedCpf      String?
+  profileComplete Boolean  @default(false)
+  lgpdAccepted    Boolean  @default(false)
+  lgpdDate        DateTime?
 
   // Dados pessoais
   birthDate     String?
@@ -34,40 +38,67 @@ model User {
   state         String?
 
   // Dados físicos
-  height        String?  // cm
-  weight        String?  // kg
-  shirtSize     String?  // PP, P, M, G, GG, XG, XXG
-  shoeSize      String?  // 28-48
+  height        String?
+  weight        String?
+  shirtSize     String?
+  shoeSize      String?
 
-  // CRM Esportivo
-  sportsPractice  String?  // JSON array - esportes que pratica
-  sportsWant      String?  // JSON array - esportes que quer começar
-  sportsWhere     String?  // JSON array - onde pratica
-  favBrands       String?  // JSON array - marcas preferidas
+  // CRM Esportivo (cliente)
+  sportsPractice String?
+  sportsWant     String?
+  sportsWhere    String?
+  favBrands      String?
+
+  // Dados do vendedor (apenas role=seller)
+  storeId       String?
+  store         Store?   @relation(fields: [storeId], references: [id])
+  hireDate      DateTime?
+  baseSalary    Float?
+  employeeCode  String?  @unique // V001, V002, etc
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Relations existentes
   sentTransfers     Transaction[] @relation("sender")
   receivedTransfers Transaction[] @relation("receiver")
   adminActions      AdminAction[]
+
+  // Relations vendedor
+  clockIns         ClockIn[]         @relation("clockIns")
+  clockSummaries   ClockSummary[]    @relation("clockSummaries")
+  walletEntries    SellerWallet[]    @relation("walletEntries")
+  sellerClients    SellerClient[]    @relation("sellerClients")
+  sales            Sale[]            @relation("sellerSales")
+  commissions      SaleCommission[]  @relation("commissions")
+  messagesSent     Message[]         @relation("messagesSent")
+  messagesReceived Message[]         @relation("messagesReceived")
+  tasksCreated     Task[]            @relation("tasksCreated")
+  tasksAssigned    Task[]            @relation("tasksAssigned")
+  taskExecutions   TaskExecution[]   @relation("taskExecutions")
+  trainings        SellerTraining[]  @relation("trainings")
+  quizAttempts     QuizAttempt[]     @relation("quizAttempts")
 }
+
+// ============================================================
+// MODELOS EXISTENTES (sem alteração)
+// ============================================================
 
 model Transaction {
   id          String   @id @default(uuid())
-  type        String   // credit, used, transfer_in, transfer_out, promo, welcome, admin_credit, admin_debit
+  type        String
   amount      Float
   description String
-  
+
   senderId    String?
   sender      User?    @relation("sender", fields: [senderId], references: [id])
-  
+
   receiverId  String?
   receiver    User?    @relation("receiver", fields: [receiverId], references: [id])
 
-  balanceAfter Float?  // saldo após a transação
-  metadata    String?  // JSON com dados extras (marca, produto, % abatimento, etc)
-  
+  balanceAfter Float?
+  metadata    String?
+
   createdAt   DateTime @default(now())
 }
 
@@ -75,9 +106,9 @@ model Promo {
   id          String   @id @default(uuid())
   title       String
   description String
-  percentage  Float    // percentual de abatimento
-  scope       String   // all, brand, category, product
-  scopeValue  String?  // nome da marca, categoria ou ID do produto
+  percentage  Float
+  scope       String
+  scopeValue  String?
   active      Boolean  @default(true)
   startsAt    DateTime @default(now())
   endsAt      DateTime?
@@ -88,7 +119,7 @@ model Promo {
 model BrandRule {
   id          String   @id @default(uuid())
   brand       String   @unique
-  maxDiscount Float    // percentual máximo de abatimento com TenisCash
+  maxDiscount Float
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -101,13 +132,361 @@ model Config {
 }
 
 model AdminAction {
-  id          String   @id @default(uuid())
-  adminId     String
-  admin       User     @relation(fields: [adminId], references: [id])
-  action      String   // credit, debit, promo_create, promo_update, config_update, user_block
+  id           String   @id @default(uuid())
+  adminId      String
+  admin        User     @relation(fields: [adminId], references: [id])
+  action       String
   targetUserId String?
-  amount      Float?
+  amount       Float?
+  description  String
+  metadata     String?
+  createdAt    DateTime @default(now())
+}
+
+// ============================================================
+// MÓDULO 0 — LOJAS
+// ============================================================
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  dna       String?  // Masculino, Feminino, Futebol, Geral
+  mall      String?  // Parahyba Mall, Pirâmide, Complexo K, Tambiá
+  address   String?
+  city      String?
+  state     String?
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  sellers  User[]
+  clockIns ClockIn[]
+}
+
+// ============================================================
+// MÓDULO 1 — PONTO DIGITAL
+// ============================================================
+
+model ClockIn {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation("clockIns", fields: [userId], references: [id])
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id])
+  type      String   // entry, break_start, break_end, exit
+  timestamp DateTime @default(now())
+  latitude  Float?
+  longitude Float?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, timestamp])
+}
+
+model ClockSummary {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation("clockSummaries", fields: [userId], references: [id])
+  date            DateTime
+  totalMinutes    Int
+  breakMinutes    Int      @default(0)
+  overtimeMinutes Int      @default(0)
+  status          String   @default("normal")
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+// ============================================================
+// MÓDULO 2 — CARTEIRA DO VENDEDOR
+// ============================================================
+
+model SellerWallet {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation("walletEntries", fields: [userId], references: [id])
+  type        String   // salary, commission, vt, vr, bonus, overtime, deduction, advance
+  amount      Float
   description String
-  metadata    String?  // JSON
+  reference   String?  // "2026-04"
+  metadata    String?
+  paidAt      DateTime?
   createdAt   DateTime @default(now())
+
+  @@index([userId, reference])
+}
+
+// ============================================================
+// MÓDULO 3 — CATÁLOGO
+// ============================================================
+
+model Product {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  brand       String
+  category    String
+  subcategory String?
+  description String?
+  features    String?  // JSON
+  price       Float
+  imageUrl    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sizes     ProductSize[]
+  saleItems SaleItem[]
+  trainings SellerTraining[]
+  quizzes   Quiz[]
+}
+
+model ProductSize {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  size      String
+  stock     Int     @default(0)
+  barcode   String?
+
+  @@unique([productId, size])
+}
+
+// ============================================================
+// MÓDULO 4 — CRM DO VENDEDOR
+// ============================================================
+
+model SellerClient {
+  id            String   @id @default(uuid())
+  sellerId      String
+  seller        User     @relation("sellerClients", fields: [sellerId], references: [id])
+  tcUserId      String?
+  name          String
+  phone         String?
+  email         String?
+  cpf           String?
+  birthDate     String?
+  address       String?
+  city          String?
+  state         String?
+  height        String?
+  weight        String?
+  shirtSize     String?
+  shoeSize      String?
+  notes         String?
+  tags          String?
+  lastPurchase  DateTime?
+  totalSpent    Float    @default(0)
+  purchaseCount Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sales Sale[]
+
+  @@index([sellerId])
+  @@index([birthDate])
+}
+
+// ============================================================
+// MÓDULO 5 — VENDAS
+// ============================================================
+
+model Sale {
+  id            String        @id @default(uuid())
+  sellerId      String
+  seller        User          @relation("sellerSales", fields: [sellerId], references: [id])
+  clientId      String?
+  client        SellerClient? @relation(fields: [clientId], references: [id])
+  storeId       String?
+  totalAmount   Float
+  tcUsed        Float         @default(0)
+  tcEarned      Float         @default(0)
+  paymentMethod String?
+  status        String        @default("completed")
+  erpReference  String?
+  note          String?
+  createdAt     DateTime      @default(now())
+
+  items       SaleItem[]
+  commissions SaleCommission[]
+
+  @@index([sellerId, createdAt])
+  @@index([clientId])
+}
+
+model SaleItem {
+  id          String   @id @default(uuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  productName String
+  brand       String
+  category    String?
+  size        String?
+  quantity    Int      @default(1)
+  unitPrice   Float
+  totalPrice  Float
+}
+
+// ============================================================
+// MÓDULO 6 — COMISSÕES
+// ============================================================
+
+model BrandCommission {
+  id            String   @id @default(uuid())
+  brand         String   @unique
+  commissionPct Float
+  bonusPct      Float?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model SaleCommission {
+  id         String    @id @default(uuid())
+  saleId     String
+  sale       Sale      @relation(fields: [saleId], references: [id])
+  sellerId   String
+  seller     User      @relation("commissions", fields: [sellerId], references: [id])
+  brand      String
+  saleAmount Float
+  pct        Float
+  amount     Float
+  status     String    @default("pending")
+  paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([sellerId, status])
+}
+
+// ============================================================
+// MÓDULO 7 — COMUNICAÇÃO INTERNA
+// ============================================================
+
+model Message {
+  id        String   @id @default(uuid())
+  fromId    String
+  from      User     @relation("messagesSent", fields: [fromId], references: [id])
+  toId      String?
+  to        User?    @relation("messagesReceived", fields: [toId], references: [id])
+  channelId String?
+  content   String
+  type      String   @default("message")
+  priority  String   @default("normal")
+  status    String   @default("sent")
+  parentId  String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([toId, status])
+  @@index([channelId, createdAt])
+}
+
+model Channel {
+  id          String   @id @default(uuid())
+  name        String
+  type        String
+  storeId     String?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// ============================================================
+// MÓDULO 8 — TAREFAS
+// ============================================================
+
+model Task {
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
+  createdById  String
+  createdBy    User      @relation("tasksCreated", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?     @relation("tasksAssigned", fields: [assignedToId], references: [id])
+  storeId      String?
+  type         String    @default("once")
+  priority     String    @default("normal")
+  dueDate      DateTime?
+  recurrence   String?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  executions TaskExecution[]
+}
+
+model TaskExecution {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id])
+  userId      String
+  user        User     @relation("taskExecutions", fields: [userId], references: [id])
+  date        DateTime
+  status      String   @default("done")
+  note        String?
+  photoUrl    String?
+  completedAt DateTime @default(now())
+
+  @@index([taskId, date])
+  @@index([userId, date])
+}
+
+// ============================================================
+// MÓDULO 9 — TREINAMENTO + QUIZ
+// ============================================================
+
+model SellerTraining {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation("trainings", fields: [userId], references: [id])
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  topic       String
+  type        String   @default("product")
+  source      String?
+  completedAt DateTime @default(now())
+  score       Float?
+  certified   Boolean  @default(false)
+  metadata    String?
+
+  @@index([userId])
+}
+
+model Quiz {
+  id        String   @id @default(uuid())
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  topic     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  questions QuizQuestion[]
+}
+
+model QuizQuestion {
+  id           String @id @default(uuid())
+  quizId       String
+  quiz         Quiz   @relation(fields: [quizId], references: [id])
+  question     String
+  options      String // JSON array
+  correctIndex Int
+  explanation  String?
+  order        Int    @default(0)
+}
+
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation("quizAttempts", fields: [userId], references: [id])
+  quizId      String
+  answers     String   // JSON
+  score       Float
+  passed      Boolean
+  completedAt DateTime @default(now())
+
+  @@index([userId, quizId])
 }

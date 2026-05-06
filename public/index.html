@@ -419,6 +419,82 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div id="home-transactions"></div>
 </div>
 
+<!-- SELLER HOME -->
+<div id="seller-home" class="screen">
+  <div class="header">
+    <div>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px">Vendedor</p>
+      <p style="font-size:18px;font-weight:700" id="seller-name"></p>
+      <p style="color:rgba(255,255,255,0.65);font-size:12px;margin-top:4px" id="seller-store"></p>
+    </div>
+    <div class="avatar" onclick="showScreen('profile')"><span id="seller-initial" style="font-weight:700;font-size:16px"></span></div>
+  </div>
+
+  <div class="balance-card" style="padding:20px 20px">
+    <p class="balance-label">ATENÇÃO</p>
+    <p style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:10px;line-height:1.5">
+      Esta é a área do vendedor. Os módulos serão liberados por fases.
+    </p>
+    <div id="seller-warn" style="margin-top:12px"></div>
+  </div>
+
+  <div class="actions" style="margin-top:16px" id="seller-actions">
+    <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
+    <div class="action-btn" onclick="alert('Em breve: Carteira do vendedor')"><span>💳</span><span>Carteira</span></div>
+    <div class="action-btn" onclick="alert('Em breve: CRM de clientes')"><span>👥</span><span>CRM</span></div>
+    <div class="action-btn" onclick="alert('Em breve: Vendas')"><span>🧾</span><span>Vendas</span></div>
+  </div>
+
+  <div class="section-title" style="margin-top:26px">
+    <p style="font-size:15px;font-weight:700">Atalhos</p>
+  </div>
+
+  <div style="background:rgba(255,255,255,0.1);border-radius:18px;padding:18px;border:1px solid rgba(255,255,255,0.18)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <p style="font-size:13px;font-weight:700;letter-spacing:1px">PONTO DIGITAL</p>
+        <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px">Registrar entrada, pausa e saída</p>
+      </div>
+      <button onclick="showScreen('seller-clock')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#FF6D00;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
+    </div>
+  </div>
+</div>
+
+<!-- SELLER CLOCK-IN -->
+<div id="seller-clock" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Ponto Digital</p></div>
+
+  <div style="margin-top:16px">
+    <p style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5">
+      Registre suas batidas. Isso salva no banco com data/hora do servidor.
+    </p>
+
+    <div style="background:rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-top:14px;border:1px solid rgba(255,255,255,0.18)">
+      <p style="font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:1px">LOJA VINCULADA</p>
+      <p style="font-size:14px;font-weight:700;margin-top:8px" id="clock-store">--</p>
+      <p style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Se estiver “não definida”, fale com o admin pra vincular seu usuário a uma loja.</p>
+    </div>
+
+    <label class="input-label">OBSERVAÇÃO (opcional)</label>
+    <input id="clock-note" class="input-field" placeholder="Ex: Cheguei mais cedo / reuniāo / etc" maxlength="120">
+    <div id="clock-error"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+      <button class="btn-secondary" onclick="sellerClockIn('entry')" style="margin-top:0">✅ ENTRADA</button>
+      <button class="btn-secondary" onclick="sellerClockIn('break_start')" style="margin-top:0">☕ INÍCIO PAUSA</button>
+      <button class="btn-secondary" onclick="sellerClockIn('break_end')" style="margin-top:0">⚡ FIM PAUSA</button>
+      <button class="btn-secondary" onclick="sellerClockIn('exit')" style="margin-top:0;border:2px solid rgba(255,255,255,0.35)">🚪 SAÍDA</button>
+    </div>
+
+    <div id="clock-success" style="display:none;text-align:center;margin-top:28px">
+      <div class="success-circle">✓</div>
+      <p style="font-size:20px;font-weight:800">Ponto registrado</p>
+      <p style="color:rgba(255,255,255,0.75);font-size:13px;margin-top:8px" id="clock-success-msg"></p>
+      <button class="btn-outline" onclick="resetSellerClock();showScreen('seller-home')">VOLTAR</button>
+    </div>
+  </div>
+</div>
+
 <!-- TRANSFER -->
 <div id="transfer" class="screen">
   <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
@@ -616,6 +692,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
 </div>
 
+<!-- BOTTOM NAV (SELLER) -->
+<div class="bottom-nav" id="bottomNavSeller" style="display:none">
+  <div class="nav-item active" onclick="showScreen('seller-home')"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
+  <div class="nav-item" onclick="alert('Em breve: Carteira')"><span>💳</span><span>Carteira</span></div>
+  <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
+</div>
+
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const API = window.location.origin + '/api';
 let token = localStorage.getItem('tc_token');
@@ -628,20 +712,50 @@ const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Está
 
 setTimeout(() => {
   document.getElementById('splash').classList.remove('active');
-  if (token && user) { showScreen('home'); loadHome(); }
+  if (token && user) { goHomeByRole(); }
   else { showScreen('auth'); }
 }, 2200);
+
+function isSeller() {
+  return user && user.role === 'seller';
+}
+
+function goHomeByRole() {
+  if (isSeller()) showScreen('seller-home');
+  else showScreen('home');
+}
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const nav = document.getElementById('bottomNav');
-  const appScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
-  nav.style.display = appScreens.includes(id) ? 'flex' : 'none';
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
-  if (navMap[id] !== undefined) document.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+  const navCustomer = document.getElementById('bottomNav');
+  const navSeller = document.getElementById('bottomNavSeller');
+
+  const customerScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-clock','profile','security','mydata','edit-profile'];
+  const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller();
+  const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
+
+  navCustomer.style.display = shouldShowCustomerNav ? 'flex' : 'none';
+  navSeller.style.display = shouldShowSellerNav ? 'flex' : 'none';
+
+  // Active item (customer)
+  if (shouldShowCustomerNav) {
+    Array.from(navCustomer.querySelectorAll('.nav-item')).forEach(n => n.classList.remove('active'));
+    const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
+    if (navMap[id] !== undefined) navCustomer.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+  }
+
+  // Active item (seller)
+  if (shouldShowSellerNav) {
+    Array.from(navSeller.querySelectorAll('.nav-item')).forEach(n => n.classList.remove('active'));
+    const navMapSeller = {'seller-home':0,'seller-clock':1,'profile':3};
+    if (navMapSeller[id] !== undefined) navSeller.querySelectorAll('.nav-item')[navMapSeller[id]].classList.add('active');
+  }
+
   if (id === 'home') loadHome();
+  if (id === 'seller-home') loadSellerHome();
+  if (id === 'seller-clock') initSellerClock();
   if (id === 'qr') loadQR();
   if (id === 'promos') loadPromos();
   if (id === 'profile') loadProfile();
@@ -697,7 +811,7 @@ async function doLogin() {
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
   localStorage.setItem('tc_user',JSON.stringify(user));
-  showScreen('home');
+  goHomeByRole();
 }
 
 let verifiedPhone = null;
@@ -849,7 +963,7 @@ async function doRegister() {
   token = data.token; user = data.user;
   localStorage.setItem('tc_token',token);
   localStorage.setItem('tc_user',JSON.stringify(user));
-  showScreen('home');
+  goHomeByRole();
 }
 
 function doLogout() {
@@ -870,6 +984,7 @@ async function loadHome() {
   if (me.error) { doLogout(); return; }
   user = me.user;
   localStorage.setItem('tc_user',JSON.stringify(user));
+  if (isSeller()) { showScreen('seller-home'); return; }
   document.getElementById('home-name').textContent = user.name.split(' ')[0];
   document.getElementById('home-initial').textContent = user.name[0];
   updateBalance();
@@ -896,6 +1011,54 @@ async function loadHome() {
     const bdc = tx.type.includes('out')||tx.type==='used'||tx.type==='admin_debit' ? 'rgba(255,82,82,0.25)' : 'rgba(255,255,255,0.15)';
     return '<div class="tx-item"><div class="tx-icon" style="background:'+bgc+';border:1px solid '+bdc+';color:'+c+'">'+(icons[tx.type]||'•')+'</div><div class="tx-info"><p>'+tx.description+'</p><p>'+date+' · '+time+'</p></div><span class="tx-amount" style="color:'+c+'">'+(signs[tx.type]||'')+' '+tx.amount+'</span></div>';
   }).join('');
+}
+
+// SELLER HOME
+async function loadSellerHome() {
+  const me = await api('/auth/me');
+  if (me.error) { doLogout(); return; }
+  user = me.user;
+  localStorage.setItem('tc_user',JSON.stringify(user));
+  if (!isSeller()) { showScreen('home'); return; }
+
+  document.getElementById('seller-name').textContent = user.name.split(' ')[0];
+  document.getElementById('seller-initial').textContent = user.name[0];
+  document.getElementById('seller-store').textContent = user.storeId ? ('Loja vinculada: ' + user.storeId) : 'Loja vinculada: não definida';
+
+  const warn = document.getElementById('seller-warn');
+  if (!user.storeId) {
+    warn.innerHTML = '<div class="error-msg" style="margin-top:0">Seu usuário vendedor ainda não está vinculado a uma loja (storeId). O Ponto Digital vai falhar até vincular.</div>';
+  } else {
+    warn.innerHTML = '<div style="background:rgba(139,255,139,0.15);border:1px solid rgba(139,255,139,0.35);border-radius:10px;padding:12px;font-size:13px;text-align:center">✓ Loja OK. Você já pode testar o Ponto Digital.</div>';
+  }
+}
+
+function initSellerClock() {
+  document.getElementById('clock-store').textContent = user?.storeId ? user.storeId : 'Não definida';
+  document.getElementById('clock-error').innerHTML = '';
+  document.getElementById('clock-success').style.display = 'none';
+}
+
+function resetSellerClock() {
+  document.getElementById('clock-note').value = '';
+  document.getElementById('clock-error').innerHTML = '';
+  document.getElementById('clock-success').style.display = 'none';
+}
+
+async function sellerClockIn(type) {
+  if (!user || !token) { doLogout(); return; }
+  if (!isSeller()) { alert('Acesso restrito ao vendedor'); return; }
+
+  const note = document.getElementById('clock-note').value || null;
+  const body = { type, note };
+
+  const data = await api('/seller/clockin', 'POST', body);
+  if (data.error) { showError('clock-error', data.error); return; }
+
+  const ts = data.clockIn?.timestamp ? new Date(data.clockIn.timestamp) : new Date();
+  document.getElementById('clock-success-msg').textContent =
+    'Registrado: ' + type + ' — ' + ts.toLocaleDateString('pt-BR') + ' ' + ts.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('clock-success').style.display = 'block';
 }
 
 function updateBalance() {
