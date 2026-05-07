@@ -3,7 +3,7 @@ const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const { prisma, JWT_SECRET } = require('../middleware');
-const { searchProductsForAI, getProductBySkuForAI } = require('../services/catalogSearch');
+const { searchProductsForAI, getProductBySkuForAI, listCatalogSummary } = require('../services/catalogSearch');
 
 const router = express.Router();
 
@@ -15,21 +15,34 @@ const SYSTEM_PROMPT_BASE = `Você é o **Consultor Esportivo Virtual da Sports &
 # Identidade
 - Tom: profissional, amigável, direto
 - Idioma: português brasileiro
-- Conhecimento: produtos esportivos, técnicas de corrida, fitness, ciclismo, futebol, basquete, treino funcional, biomecânica básica
-- Sempre fala em nome da Sports & Tennis (1ª pessoa do plural quando se referir à loja)
+- Conhecimento: produtos esportivos, corrida, fitness, ciclismo, futebol, basquete, treino funcional, biomecânica básica
+- Sempre fala em nome da Sports & Tennis (1ª pessoa do plural)
+
+============================================================
+# REGRAS INVIOLÁVEIS — LEIA COM ATENÇÃO
+============================================================
+
+REGRA INVIOLÁVEL #1: Você SÓ pode mencionar marcas e produtos que apareceram no resultado de search_products() OU em list_catalog(). É TERMINANTEMENTE PROIBIDO citar uma marca que você "acha" que a loja vende. Se nunca viu a marca em uma tool, ela NÃO existe pra você.
+
+REGRA INVIOLÁVEL #2: Quando o usuário pede um produto, marca, categoria ou estilo (ex.: "quero Adidas", "tênis pra correr"), sua PRIMEIRA ação é OBRIGATORIAMENTE chamar search_products() com a query relevante — ANTES de qualquer texto na resposta. Se a query for genérica ("o que vocês têm?"), use list_catalog() primeiro.
+
+REGRA INVIOLÁVEL #3: Se search_products() retornar { products: [] } e a mensagem indicar "Nenhum produto encontrado", você DEVE:
+  (a) responder "No momento não tenho [X] no catálogo." onde [X] é o que o usuário pediu;
+  (b) ofereçer alternativas SOMENTE com base nas marcas/categorias listadas em catalog.brands / catalog.categories que vieram na resposta da própria tool;
+  (c) NUNCA citar marcas que não aparecem nessa lista.
+
+REGRA INVIOLÁVEL #4: Se a tool retornar produtos com inStock=false ou stockTotal=0, ainda assim PODE recomendar — apenas avise discretamente "estoque pode variar por loja, confirme com o vendedor". Não use "sem estoque" como motivo pra rejeitar produtos que vieram da tool: a base de estoque pode estar zerada após importação inicial.
+
+REGRA INVIOLÁVEL #5: Você NUNCA pode inventar SKU, modelo, preço ou tamanho. Tudo vem das tools. Se o usuário pedir tamanho/preço de algo que você não buscou, chame get_product() ou search_products() primeiro.
+
+============================================================
 
 # Comportamento
 - Responde em até 200 palavras (objetivo, sem encher linguiça)
-- NUNCA inventa produtos - SEMPRE usa search_products() pra buscar no catálogo
-- Se não tem o produto perfeito, sugere o mais próximo disponível
-- Se cliente perguntar sobre saúde/lesão grave, orienta procurar profissional
-- Se pergunta fugir totalmente de esporte, gentilmente recoloca: "Sou especialista em esporte, posso te ajudar com algum produto?"
-
-# Recomendações
-- Sempre pergunta sobre: tipo de uso, frequência, peso, pisada (se for tênis de corrida)
-- Recomenda 2-3 opções, não só 1 (cliente quer escolher)
-- Indica qual é melhor pra qual perfil
-- Sempre cita marca + modelo + preço quando usar dados das tools
+- Pra tênis de corrida, pode perguntar sobre uso/frequência/peso/pisada
+- Recomenda 2-3 opções (cliente quer escolher), sempre citando marca + modelo + preço vindos da tool
+- Saúde/lesão grave → orienta procurar profissional
+- Se a pergunta fugir totalmente de esporte: "Sou especialista em esporte, posso te ajudar com algum produto?"
 
 # Sports & Tennis - DNA das lojas
 - LOJA01 - Bessa (Parahyba Mall): DNA Masculino
@@ -37,17 +50,10 @@ const SYSTEM_PROMPT_BASE = `Você é o **Consultor Esportivo Virtual da Sports &
 - LOJA03 - Campina Grande (Complexo K): DNA Futebol
 - LOJA04 - Tambiá: DNA Geral
 
-# Conhecimento sobre João Pessoa
-- JP é a capital do pedestrianismo do Nordeste (35+ provas/ano)
-- Comunidade forte de corrida (orla, parques)
-- Marcas mais procuradas: Asics, Olympikus, Mizuno (corrida); Nike, Adidas (casual)
-- Ticket médio do corredor iniciante: R$ 400-700
-
 # Tools disponíveis
-- search_products(query): busca produtos no catálogo (somente com estoque)
-- get_product(sku): retorna detalhes completos de um produto pelo SKU
-
-Use as tools sempre que recomendar produto. Não invente nem fale de produtos que não estão no catálogo.
+- search_products(query): busca por marca, modelo, categoria, subcategoria, descrição.
+- get_product(sku): detalhes completos por SKU.
+- list_catalog(): retorna todas as marcas e categorias presentes no catálogo (use no início da conversa, ou quando precisar saber o que existe na loja).
 
 # Formato obrigatório ao final
 Após a resposta principal, inclua UMA linha final exatamente neste formato (sem markdown):
@@ -177,18 +183,18 @@ const TOOLS = [
   {
     name: 'search_products',
     description:
-      'Busca produtos ativos no catálogo Sports & Tennis que possuem estoque. Use termos como marca, modelo, categoria ou palavras do nome.',
+      'Busca produtos ATIVOS no catálogo Sports & Tennis. Use marca ("Adidas", "Nike"), categoria ("tenis", "acessorios"), subcategoria ("corrida", "casual"), modelo ou palavras do nome. Não filtra por estoque — retorna tudo que está cadastrado e ativo. Se vazio, retorna em "catalog" as marcas/categorias que existem.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Texto de busca (ex: Asics corrida, tênis casual Nike)' },
+        query: { type: 'string', description: 'Texto de busca (ex.: "Adidas", "tenis corrida", "joelheira")' },
       },
       required: ['query'],
     },
   },
   {
     name: 'get_product',
-    description: 'Obtém detalhes completos de um produto pelo SKU exato ou código informado no catálogo.',
+    description: 'Obtém detalhes completos de um produto pelo SKU.',
     input_schema: {
       type: 'object',
       properties: {
@@ -197,22 +203,48 @@ const TOOLS = [
       required: ['sku'],
     },
   },
+  {
+    name: 'list_catalog',
+    description:
+      'Lista as marcas e categorias atualmente no catálogo da Sports & Tennis (com contagem de produtos por marca/categoria). Use sempre que o usuário perguntar "o que vocês têm?", "quais marcas?", ou quando você não souber se a loja vende algo específico.',
+    input_schema: { type: 'object', properties: {} },
+  },
 ];
 
 async function execTool(name, input) {
-  if (name === 'search_products') {
-    return searchProductsForAI(input.query);
+  console.log('[ai] execTool start:', name, JSON.stringify(input || {}));
+  try {
+    if (name === 'search_products') {
+      const out = await searchProductsForAI(input?.query);
+      console.log('[ai] execTool search_products done. products=', (out.products || []).length, 'hasCatalog=', !!out.catalog);
+      return out;
+    }
+    if (name === 'get_product') {
+      const r = await getProductBySkuForAI(input?.sku);
+      if (r.error) {
+        console.log('[ai] execTool get_product error:', r.error);
+        return { error: r.error };
+      }
+      console.log('[ai] execTool get_product ok sku=', r.product?.sku);
+      return r;
+    }
+    if (name === 'list_catalog') {
+      const summary = await listCatalogSummary();
+      console.log(
+        '[ai] execTool list_catalog total=',
+        summary.totalActiveProducts,
+        'brands=',
+        summary.brands.length,
+        'categories=',
+        summary.categories.length,
+      );
+      return summary;
+    }
+    return { error: 'Tool desconhecida' };
+  } catch (err) {
+    console.error('[ai] execTool error', name, err);
+    return { error: 'Erro ao executar tool ' + name };
   }
-  if (name === 'get_product') {
-    const r = await getProductBySkuForAI(input.sku);
-    if (r.error) return { error: r.error };
-    return {
-      product: r.product,
-      longDescription: r.detail?.longDescription,
-      features: r.detail?.features,
-    };
-  }
-  return { error: 'Tool desconhecida' };
 }
 
 function anthropicClient() {
@@ -300,7 +332,21 @@ router.post('/chat', optionalAuth, chatMinuteLimiter, async (req, res) => {
 
     const model = process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
     const maxTokens = parseInt(process.env.AI_MAX_TOKENS || '400', 10);
-    const system = systemPromptForUserType(userType);
+
+    let catalogPrimer = null;
+    try {
+      catalogPrimer = await listCatalogSummary();
+    } catch (eP) {
+      console.warn('[ai] listCatalogSummary failed:', eP.message);
+    }
+    const primerStr = catalogPrimer
+      ? '\n\n# CATÁLOGO ATUAL (gerado automaticamente)\n'
+        + 'Total ativos: ' + catalogPrimer.totalActiveProducts + '\n'
+        + 'Marcas presentes: ' + (catalogPrimer.brands.map((b) => b.brand + ' (' + b.count + ')').join(', ') || '(nenhuma)') + '\n'
+        + 'Categorias: ' + (catalogPrimer.categories.map((c) => c.category + ' (' + c.count + ')').join(', ') || '(nenhuma)') + '\n'
+        + 'Use APENAS estas marcas e categorias. Marcas fora desta lista NÃO existem no nosso catálogo.\n'
+      : '';
+    const system = systemPromptForUserType(userType) + primerStr;
 
     const anthropicMessages = msgs
       .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -310,6 +356,8 @@ router.post('/chat', optionalAuth, chatMinuteLimiter, async (req, res) => {
         }
         return { role: 'assistant', content: m.content };
       });
+
+    console.log('[ai] /chat user=', req.userId || 'guest', 'role=', userType, 'msg=', JSON.stringify(text).slice(0, 200));
 
     const client = anthropicClient();
     let totalIn = 0;
@@ -333,6 +381,14 @@ router.post('/chat', optionalAuth, chatMinuteLimiter, async (req, res) => {
       totalIn += resp.usage?.input_tokens || 0;
       totalOut += resp.usage?.output_tokens || 0;
 
+      console.log(
+        '[ai] turn=', turn,
+        'stop_reason=', resp.stop_reason,
+        'tokens_in=', resp.usage?.input_tokens,
+        'tokens_out=', resp.usage?.output_tokens,
+        'content_types=', (resp.content || []).map((b) => b.type).join(','),
+      );
+
       if (resp.stop_reason === 'end_turn' || resp.stop_reason === 'max_tokens') {
         const blocks = resp.content || [];
         const textBlocks = blocks.filter((b) => b.type === 'text').map((b) => b.text);
@@ -347,6 +403,7 @@ router.post('/chat', optionalAuth, chatMinuteLimiter, async (req, res) => {
         const toolResults = [];
         for (const block of assistantContent) {
           if (block.type !== 'tool_use') continue;
+          console.log('[ai] tool_use detected:', block.name, JSON.stringify(block.input || {}));
           const out = await execTool(block.name, block.input);
           toolOutputsForCards.push(out);
           toolResults.push({
@@ -362,6 +419,8 @@ router.post('/chat', optionalAuth, chatMinuteLimiter, async (req, res) => {
       finalText = 'Não foi possível concluir a resposta. Tente de novo.';
       break;
     }
+
+    console.log('[ai] /chat finished turns=', turn, 'tools_called=', toolOutputsForCards.length);
 
     const { reply, suggestions } = parseSuggestionsFromReply(finalText);
     const products = collectProductsFromTools(toolOutputsForCards);
