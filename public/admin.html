@@ -99,6 +99,19 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .pill-ok{border-color:rgba(76,175,80,0.3);color:var(--green);background:rgba(76,175,80,0.08)}
 .pill-warn{border-color:rgba(255,109,0,0.35);color:var(--orange);background:rgba(255,109,0,0.08)}
 
+.csv-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:28px 20px;background:var(--bg);border:2px dashed rgba(255,109,0,0.5);border-radius:14px;cursor:pointer;text-align:center;transition:all .2s}
+.csv-drop:hover{border-color:var(--orange);background:rgba(255,109,0,0.05)}
+.csv-drop.dragover{border-color:var(--orange);background:rgba(255,109,0,0.1)}
+.csv-drop-icon{font-size:32px}
+.csv-drop-text{font-family:'Chakra Petch';font-weight:700;letter-spacing:1px;color:var(--text);font-size:13px}
+.csv-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.csv-stat{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.csv-stat .label{font-size:10px;letter-spacing:2px;color:var(--text3);margin-bottom:4px}
+.csv-stat .value{font-family:'Orbitron';font-size:20px;font-weight:900;color:var(--orange)}
+.csv-errors{max-height:240px;overflow:auto;background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12px;color:#FFB3B3;line-height:1.4}
+.csv-success{background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.35);border-radius:12px;padding:14px 16px;color:#A8FFB0}
+.csv-success strong{color:#fff;font-family:Orbitron;letter-spacing:1px}
+
 .detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .detail-modal.show{display:flex}
 .detail-content{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:30px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto}
@@ -366,11 +379,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
 
     <div id="cat-panel-import" style="display:none">
-      <p class="note">Envie um CSV com colunas: sku, name, brand, category, subcategory, price, size, stock, imageUrl</p>
-      <input type="file" id="cat-csv-file" accept=".csv,.txt">
-      <button type="button" class="btn btn-primary" id="cat-csv-preview" style="margin-top:10px">Gerar preview</button>
-      <div id="cat-csv-preview-wrap" style="margin-top:16px"></div>
-      <button type="button" class="btn btn-primary" id="cat-csv-apply" style="display:none;margin-top:12px">Confirmar importação</button>
+      <h3 style="font-family:Orbitron;font-size:16px;letter-spacing:2px;margin-bottom:6px">Importar Produtos via CSV</h3>
+      <p class="note" style="margin-top:0">Cada linha do CSV deve representar uma variante (tamanho) de um produto. Linhas com mesmo SKU serão agrupadas.</p>
+      <p class="note" style="margin-top:6px">Cabeçalhos obrigatórios: <code>sku, nome, marca, categoria, subcategoria, preco_custo, preco_venda</code> — opcionais: <code>tamanho, codigo_barras, fornecedor</code>. Limite 50MB. UTF-8.</p>
+
+      <label class="csv-drop" id="cat-csv-drop">
+        <input type="file" id="cat-csv-file" accept=".csv,.txt" style="display:none">
+        <span class="csv-drop-icon" aria-hidden="true">📂</span>
+        <span class="csv-drop-text" id="cat-csv-drop-text">Selecionar arquivo CSV</span>
+      </label>
+      <div id="cat-csv-fileinfo" class="note" style="margin-top:10px;display:none"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+        <button type="button" class="btn btn-primary" id="cat-csv-preview">Pré-visualizar</button>
+        <button type="button" class="btn btn-primary" id="cat-csv-apply" style="display:none">Confirmar Importação</button>
+        <button type="button" class="btn" id="cat-csv-clear" style="display:none">Limpar</button>
+      </div>
+
+      <div id="cat-csv-preview-wrap" style="margin-top:18px"></div>
+      <div id="cat-csv-result-wrap" style="margin-top:18px"></div>
     </div>
 
     <div id="cat-panel-aichat" style="display:none">
@@ -578,7 +605,8 @@ async function loadAdminAiCostCard() {
 }
 
 let adminCatalogInitialized = false;
-let csvImportDraft = null;
+let csvSelectedFile = null;
+let csvLastPreview = null;
 
 function syncCatSubPanels(sub) {
   document.querySelectorAll('.js-cat-sub').forEach(b => b.classList.toggle('active', b.getAttribute('data-cat-sub') === sub));
@@ -621,8 +649,10 @@ function initAdminCatalogTab() {
         document.getElementById('cat-p-sizes').value = f.suggestedSizes.map(function (x) { return (x.size || '') + '|' + (x.stock != null ? x.stock : 0); }).join('\n');
       }
     });
+    initCsvUploaderUI();
     document.getElementById('cat-csv-preview').addEventListener('click', catCsvPreview);
     document.getElementById('cat-csv-apply').addEventListener('click', catCsvApply);
+    document.getElementById('cat-csv-clear').addEventListener('click', csvResetState);
     document.getElementById('cat-product-modal-close').addEventListener('click', function () {
       document.getElementById('cat-product-modal').classList.remove('show');
     });
@@ -737,38 +767,213 @@ async function catProductSave() {
   loadCatalogProductsAdmin();
 }
 
-async function catCsvPreview() {
+function formatBytes(n) {
+  if (!Number.isFinite(n)) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function csvSetSelectedFile(file) {
+  csvSelectedFile = file || null;
+  const info = document.getElementById('cat-csv-fileinfo');
+  const txt = document.getElementById('cat-csv-drop-text');
+  const clear = document.getElementById('cat-csv-clear');
+  if (file) {
+    if (info) {
+      info.style.display = 'block';
+      info.textContent = 'Arquivo: ' + file.name + ' • ' + formatBytes(file.size);
+    }
+    if (txt) txt.textContent = 'Trocar arquivo';
+    if (clear) clear.style.display = 'inline-block';
+  } else {
+    if (info) { info.style.display = 'none'; info.textContent = ''; }
+    if (txt) txt.textContent = 'Selecionar arquivo CSV';
+    if (clear) clear.style.display = 'none';
+  }
+}
+
+function csvResetState() {
+  csvSelectedFile = null;
+  csvLastPreview = null;
   const inp = document.getElementById('cat-csv-file');
-  const wrap = document.getElementById('cat-csv-preview-wrap');
-  const apply = document.getElementById('cat-csv-apply');
-  if (!inp.files || !inp.files[0]) { alert('Selecione um arquivo'); return; }
+  if (inp) inp.value = '';
+  csvSetSelectedFile(null);
+  document.getElementById('cat-csv-preview-wrap').innerHTML = '';
+  document.getElementById('cat-csv-result-wrap').innerHTML = '';
+  document.getElementById('cat-csv-apply').style.display = 'none';
+}
+
+function initCsvUploaderUI() {
+  const drop = document.getElementById('cat-csv-drop');
+  const inp = document.getElementById('cat-csv-file');
+  if (!drop || !inp) return;
+  drop.addEventListener('click', function (e) {
+    if (e.target === inp) return;
+    inp.click();
+  });
+  inp.addEventListener('change', function () {
+    const f = inp.files && inp.files[0];
+    csvSetSelectedFile(f || null);
+    document.getElementById('cat-csv-preview-wrap').innerHTML = '';
+    document.getElementById('cat-csv-result-wrap').innerHTML = '';
+    document.getElementById('cat-csv-apply').style.display = 'none';
+    csvLastPreview = null;
+  });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); drop.classList.add('dragover'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); drop.classList.remove('dragover'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    const dt = e.dataTransfer;
+    const f = dt && dt.files && dt.files[0];
+    if (f) {
+      try {
+        const transfer = new DataTransfer();
+        transfer.items.add(f);
+        inp.files = transfer.files;
+      } catch (_) { /* fallback: só guarda em variável */ }
+      csvSetSelectedFile(f);
+      document.getElementById('cat-csv-preview-wrap').innerHTML = '';
+      document.getElementById('cat-csv-result-wrap').innerHTML = '';
+      document.getElementById('cat-csv-apply').style.display = 'none';
+      csvLastPreview = null;
+    }
+  });
+}
+
+async function csvUploadAndCall(endpoint, btn) {
+  if (!csvSelectedFile) { alert('Selecione um arquivo CSV'); return null; }
+  if (csvSelectedFile.size > 50 * 1024 * 1024) { alert('Arquivo maior que 50MB'); return null; }
   const fd = new FormData();
-  fd.append('file', inp.files[0]);
-  const res = await fetch(API + '/admin/catalog/import-csv', {
-    method: 'POST',
-    headers: token ? { Authorization: 'Bearer ' + token } : {},
-    body: fd,
-  });
-  const data = await res.json();
-  if (data.error) { alert(data.error); return; }
-  csvImportDraft = data.items;
-  let h = '<p class="note">Preview (' + (data.preview || []).length + ' de ' + (data.count || 0) + ' SKUs)</p><table><thead><tr><th>SKU</th><th>Nome</th><th>Qtd tamanhos</th></tr></thead><tbody>';
-  (data.preview || []).forEach(function (r) {
-    h += '<tr><td>' + escapeHtml(r.sku) + '</td><td>' + escapeHtml(r.name) + '</td><td>' + (r.sizes || []).length + '</td></tr>';
-  });
-  h += '</tbody></table>';
-  wrap.innerHTML = h;
-  apply.style.display = 'inline-block';
+  fd.append('file', csvSelectedFile);
+  let originalLabel = '';
+  if (btn) { originalLabel = btn.textContent; btn.disabled = true; btn.textContent = 'Processando...'; }
+  try {
+    const res = await fetch(API + '/admin/catalog/' + endpoint, {
+      method: 'POST',
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(function () { return { error: 'Resposta inválida' }; });
+    return data;
+  } catch (e) {
+    return { error: 'Erro de conexão' };
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+  }
+}
+
+function renderCsvPreview(data) {
+  const wrap = document.getElementById('cat-csv-preview-wrap');
+  if (!wrap) return;
+  let html = '';
+  html += '<div class="csv-stats">';
+  html += '<div class="csv-stat"><div class="label">PRODUTOS ÚNICOS</div><div class="value">' + (data.uniqueProducts || 0) + '</div></div>';
+  html += '<div class="csv-stat"><div class="label">VARIANTES</div><div class="value">' + (data.totalVariants || 0) + '</div></div>';
+  html += '<div class="csv-stat"><div class="label">MARCAS</div><div class="value">' + (data.brandsCount || 0) + '</div></div>';
+  html += '<div class="csv-stat"><div class="label">LINHAS LIDAS</div><div class="value">' + (data.totalRows || 0) + '</div></div>';
+  html += '</div>';
+
+  if (Array.isArray(data.brands) && data.brands.length) {
+    html += '<p class="note" style="margin:6px 0 14px"><strong>Marcas:</strong> ' + data.brands.slice(0, 12).map(function (b) {
+      return escapeHtml(b.brand) + ' (' + b.count + ')';
+    }).join(' • ');
+    if (data.brands.length > 12) html += ' • +' + (data.brands.length - 12) + ' marcas';
+    html += '</p>';
+  }
+
+  const preview = Array.isArray(data.preview) ? data.preview : [];
+  if (preview.length) {
+    html += '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Categoria</th><th>Custo</th><th>Venda</th><th>Tamanhos</th></tr></thead><tbody>';
+    preview.forEach(function (p) {
+      const sizes = (p.sizes || []).map(function (s) { return s.size; }).join(', ');
+      html += '<tr>'
+        + '<td>' + escapeHtml(p.sku) + '</td>'
+        + '<td>' + escapeHtml(p.name) + '</td>'
+        + '<td>' + escapeHtml(p.brand) + '</td>'
+        + '<td>' + escapeHtml((p.category || '') + (p.subcategory ? ' / ' + p.subcategory : '')) + '</td>'
+        + '<td>R$ ' + Number(p.costPrice || 0).toFixed(2) + '</td>'
+        + '<td>R$ ' + Number(p.price || 0).toFixed(2) + '</td>'
+        + '<td>' + escapeHtml(sizes) + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  if (Array.isArray(data.errors) && data.errors.length) {
+    html += '<div class="csv-errors"><strong>Atenção: ' + data.errors.length + ' linha(s) com aviso</strong>';
+    html += '<ul style="margin-top:6px;padding-left:18px">';
+    data.errors.slice(0, 30).forEach(function (e) {
+      const line = e.line ? ('Linha ' + e.line + ': ') : '';
+      const sku = e.sku ? (' [SKU ' + escapeHtml(e.sku) + ']') : '';
+      html += '<li>' + line + escapeHtml(e.error || 'erro') + sku + '</li>';
+    });
+    if (data.errors.length > 30) html += '<li>... +' + (data.errors.length - 30) + ' avisos</li>';
+    html += '</ul></div>';
+  }
+
+  wrap.innerHTML = html;
+}
+
+async function catCsvPreview() {
+  document.getElementById('cat-csv-result-wrap').innerHTML = '';
+  const btn = document.getElementById('cat-csv-preview');
+  const data = await csvUploadAndCall('import-preview', btn);
+  if (!data) return;
+  if (data.error) {
+    document.getElementById('cat-csv-preview-wrap').innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(data.error) + '</strong></div>';
+    document.getElementById('cat-csv-apply').style.display = 'none';
+    return;
+  }
+  csvLastPreview = data;
+  renderCsvPreview(data);
+  document.getElementById('cat-csv-apply').style.display = (data.uniqueProducts > 0) ? 'inline-block' : 'none';
 }
 
 async function catCsvApply() {
-  if (!csvImportDraft || !csvImportDraft.length) { alert('Gere o preview antes'); return; }
-  const r = await api('/admin/catalog/import-csv/apply', 'POST', { items: csvImportDraft });
-  if (r.error) { alert(r.error); return; }
-  alert('Importação concluída. Criados: ' + (r.created || 0) + ', atualizados: ' + (r.updated || 0));
-  csvImportDraft = null;
+  if (!csvSelectedFile) { alert('Selecione um arquivo'); return; }
+  if (!csvLastPreview) {
+    if (!confirm('Pré-visualizar antes é recomendado. Importar mesmo assim?')) return;
+  }
+  const btn = document.getElementById('cat-csv-apply');
+  const data = await csvUploadAndCall('import-csv', btn);
+  if (!data) return;
+  const wrap = document.getElementById('cat-csv-result-wrap');
+  if (data.error) {
+    wrap.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(data.error) + '</strong></div>';
+    return;
+  }
+  let html = '<div class="csv-success">'
+    + '<strong>Importação concluída</strong><br>'
+    + 'Linhas lidas: ' + (data.totalRows || 0) + '<br>'
+    + 'Produtos criados: ' + (data.productsCreated || 0) + '<br>'
+    + 'Produtos atualizados: ' + (data.productsUpdated || 0) + '<br>'
+    + 'Tamanhos criados: ' + (data.sizesCreated || 0)
+    + '</div>';
+  if (Array.isArray(data.errors) && data.errors.length) {
+    html += '<div class="csv-errors" style="margin-top:12px"><strong>' + data.errors.length + ' aviso(s)</strong>';
+    html += '<ul style="margin-top:6px;padding-left:18px">';
+    data.errors.slice(0, 50).forEach(function (e) {
+      const line = e.line ? ('Linha ' + e.line + ': ') : '';
+      const sku = e.sku ? (' [SKU ' + escapeHtml(e.sku) + ']') : '';
+      html += '<li>' + line + escapeHtml(e.error || 'erro') + sku + '</li>';
+    });
+    if (data.errors.length > 50) html += '<li>... +' + (data.errors.length - 50) + ' avisos</li>';
+    html += '</ul></div>';
+  }
+  html += '<div style="margin-top:14px"><button type="button" class="btn btn-primary" id="cat-go-to-products">Ver produtos importados</button></div>';
+  wrap.innerHTML = html;
   document.getElementById('cat-csv-apply').style.display = 'none';
-  loadCatalogProductsAdmin();
+  const goBtn = document.getElementById('cat-go-to-products');
+  if (goBtn) {
+    goBtn.addEventListener('click', function () {
+      syncCatSubPanels('prod');
+      loadCatalogProductsAdmin();
+    });
+  }
 }
 
 async function loadAdminAiConversationsPanel() {

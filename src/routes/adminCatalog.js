@@ -9,8 +9,15 @@ router.use(authMiddleware);
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
+
+function multerErrorHandler(err, _req, res, _next) {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Arquivo muito grande. Limite: 50MB.' });
+  }
+  return res.status(400).json({ error: err && err.message ? err.message : 'Erro no upload' });
+}
 
 function adminOnly(req, res, next) {
   if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
@@ -219,139 +226,318 @@ router.delete('/products/:id', adminOnly, async (req, res) => {
   }
 });
 
-function groupCsvRows(rows) {
+/* ====================== IMPORTAÇÃO CSV ====================== */
+
+const REQUIRED_HEADERS = ['sku', 'nome', 'marca', 'categoria', 'subcategoria', 'preco_custo', 'preco_venda'];
+
+function normalizeBom(text) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+function parsePtNumber(v) {
+  if (v == null) return NaN;
+  let s = String(v).trim();
+  if (!s) return NaN;
+  s = s.replace(/\s+/g, '').replace(/[Rr]\$/g, '');
+  // 1.234,56 -> 1234.56
+  if (s.indexOf(',') >= 0 && s.indexOf('.') >= 0) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.indexOf(',') >= 0) {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function parseCatalogCsv(text) {
+  const cleaned = normalizeBom(text);
+  const parsed = Papa.parse(cleaned, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    transformHeader: (h) => String(h || '').trim().toLowerCase(),
+  });
+  return parsed;
+}
+
+function summarizeBrands(grouped) {
+  const counts = new Map();
+  for (const it of grouped) {
+    counts.set(it.brand, (counts.get(it.brand) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([brand, count]) => ({ brand, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function groupCatalogRows(rows) {
   const bySku = new Map();
-  for (const row of rows) {
-    const sku = String(row.sku || row.SKU || '').trim();
-    if (!sku) continue;
-    const name = String(row.name || row.nome || '').trim();
-    const brand = String(row.brand || row.marca || '').trim();
-    const category = String(row.category || row.categoria || 'tenis').trim();
-    const subcategory = row.subcategory ? String(row.subcategory).trim() : null;
-    const price = parseFloat(row.price || row.preco || '0');
-    const size = String(row.size || row.tamanho || '').trim();
-    const stock = parseInt(row.stock || row.estoque || '0', 10) || 0;
-    const imageUrl = row.imageUrl || row.image || row.foto ? String(row.imageUrl || row.image || row.foto).trim() : null;
+  const errors = [];
+  let totalRows = 0;
+  let totalVariants = 0;
+
+  rows.forEach((row, idx) => {
+    const lineNumber = idx + 2; // +2 = cabeçalho + 1 (linhas humanas)
+    if (!row || typeof row !== 'object') return;
+
+    const sku = String(row.sku || '').trim();
+    const nome = String(row.nome || '').trim();
+    const marca = String(row.marca || '').trim();
+    const categoria = String(row.categoria || '').trim();
+    const subcategoria = String(row.subcategoria || '').trim();
+    const tamanho = String(row.tamanho || '').trim();
+    const codigoBarras = String(row.codigo_barras || '').trim();
+    const fornecedor = String(row.fornecedor || '').trim();
+
+    if (!sku && !nome && !marca && !tamanho) return;
+    totalRows += 1;
+
+    if (!sku) {
+      errors.push({ line: lineNumber, error: 'SKU vazio' });
+      return;
+    }
+    if (!nome) {
+      errors.push({ line: lineNumber, sku, error: 'Nome vazio' });
+      return;
+    }
+    if (!marca) {
+      errors.push({ line: lineNumber, sku, error: 'Marca vazia' });
+      return;
+    }
+    if (!categoria) {
+      errors.push({ line: lineNumber, sku, error: 'Categoria vazia' });
+      return;
+    }
+
+    const precoCusto = parsePtNumber(row.preco_custo);
+    const precoVenda = parsePtNumber(row.preco_venda);
+    if (Number.isNaN(precoVenda) || precoVenda <= 0) {
+      errors.push({ line: lineNumber, sku, error: 'preco_venda inválido' });
+      return;
+    }
+    if (Number.isNaN(precoCusto) || precoCusto < 0) {
+      errors.push({ line: lineNumber, sku, error: 'preco_custo inválido' });
+      return;
+    }
 
     if (!bySku.has(sku)) {
       bySku.set(sku, {
         sku,
-        name: name || sku,
-        brand: brand || '—',
-        category: category || 'tenis',
-        subcategory,
-        price: Number.isNaN(price) ? 0 : price,
-        imageUrl,
+        name: nome,
+        brand: marca,
+        category: categoria.toLowerCase(),
+        subcategory: subcategoria || null,
+        price: precoVenda,
+        costPrice: precoCusto,
+        supplier: fornecedor || null,
         sizes: [],
       });
     }
     const g = bySku.get(sku);
-    if (size) g.sizes.push({ size, stock });
-    if (name) g.name = name;
-    if (brand) g.brand = brand;
-    if (!Number.isNaN(price) && price > 0) g.price = price;
-    if (imageUrl) g.imageUrl = imageUrl;
-  }
-  return Array.from(bySku.values());
-}
-
-router.post('/import-csv', adminOnly, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ error: 'Envie o arquivo CSV no campo file' });
+    if (precoVenda && (!g.price || g.price < precoVenda)) {
+      // mantém o maior preço de venda visto entre as linhas (caso variem)
+      // mas idealmente deve ser o mesmo em todas as linhas
     }
-    const text = req.file.buffer.toString('utf8');
-    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-    if (parsed.errors && parsed.errors.length) {
-      return res.status(400).json({ error: 'CSV inválido', details: parsed.errors.slice(0, 5) });
-    }
-    const items = groupCsvRows(parsed.data || []);
-    const preview = items.slice(0, 10);
-    res.json({
-      preview,
-      count: items.length,
-      items,
-    });
-  } catch (err) {
-    console.error('import-csv', err);
-    res.status(500).json({ error: 'Erro ao processar CSV' });
-  }
-});
-
-router.post('/import-csv/apply', adminOnly, async (req, res) => {
-  try {
-    const items = req.body?.items;
-    if (!Array.isArray(items) || !items.length) {
-      return res.status(400).json({ error: 'items (array) é obrigatório' });
-    }
-    let created = 0;
-    let updated = 0;
-    for (const it of items) {
-      const sku = String(it.sku || '').trim();
-      if (!sku) continue;
-      const name = String(it.name || '').trim() || sku;
-      const brand = String(it.brand || '').trim() || '—';
-      const category = String(it.category || '').trim() || 'tenis';
-      const price = parseFloat(it.price);
-      if (Number.isNaN(price)) continue;
-
-      const sizes = Array.isArray(it.sizes) ? it.sizes : [];
-
-      const existing = await prisma.product.findUnique({ where: { sku } });
-      if (existing) {
-        await prisma.productSize.deleteMany({ where: { productId: existing.id } });
-        await prisma.product.update({
-          where: { id: existing.id },
-          data: {
-            name,
-            brand,
-            category,
-            subcategory: it.subcategory || null,
-            price,
-            imageUrl: it.imageUrl || null,
-            source: 'csv',
-            sizes: {
-              create: sizes
-                .filter((s) => s && s.size)
-                .map((s) => ({
-                  size: String(s.size),
-                  stock: Math.max(0, parseInt(s.stock, 10) || 0),
-                })),
-            },
-          },
+    if (tamanho) {
+      const seen = g.sizes.find((s) => s.size === tamanho);
+      if (!seen) {
+        g.sizes.push({
+          size: tamanho,
+          stock: 0,
+          barcode: codigoBarras || null,
         });
-        updated += 1;
-      } else {
-        await prisma.product.create({
-          data: {
-            sku,
-            name,
-            brand,
-            category,
-            subcategory: it.subcategory || null,
-            price,
-            imageUrl: it.imageUrl || null,
-            source: 'csv',
-            createdById: req.userId,
-            sizes: {
-              create: sizes
-                .filter((s) => s && s.size)
-                .map((s) => ({
-                  size: String(s.size),
-                  stock: Math.max(0, parseInt(s.stock, 10) || 0),
-                })),
-            },
-          },
-        });
-        created += 1;
+        totalVariants += 1;
+      } else if (codigoBarras && !seen.barcode) {
+        seen.barcode = codigoBarras;
       }
     }
-    res.json({ success: true, created, updated });
-  } catch (err) {
-    console.error('import-csv apply', err);
-    res.status(500).json({ error: 'Erro ao importar produtos' });
-  }
-});
+  });
+
+  return {
+    items: Array.from(bySku.values()),
+    totalRows,
+    totalVariants,
+    errors,
+  };
+}
+
+function validateHeaders(parsed) {
+  const headers = (parsed.meta && parsed.meta.fields) || [];
+  const set = new Set(headers.map((h) => String(h || '').trim().toLowerCase()));
+  const missing = REQUIRED_HEADERS.filter((h) => !set.has(h));
+  return missing;
+}
+
+router.post(
+  '/import-preview',
+  adminOnly,
+  (req, res, next) => upload.single('file')(req, res, (err) => (err ? multerErrorHandler(err, req, res, next) : next())),
+  async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: 'Envie o arquivo CSV no campo file' });
+      }
+      const text = req.file.buffer.toString('utf8');
+      const parsed = parseCatalogCsv(text);
+
+      const missing = validateHeaders(parsed);
+      if (missing.length) {
+        return res.status(400).json({
+          error: 'Cabeçalhos obrigatórios faltando: ' + missing.join(', '),
+          required: REQUIRED_HEADERS,
+        });
+      }
+
+      const parseErrs = (parsed.errors || []).slice(0, 20).map((e) => ({
+        line: (e.row != null ? e.row + 2 : null),
+        error: e.message || 'Erro de parse CSV',
+      }));
+
+      const grouped = groupCatalogRows(parsed.data || []);
+      const errors = parseErrs.concat(grouped.errors).slice(0, 200);
+
+      const items = grouped.items;
+      const brands = summarizeBrands(items);
+
+      res.json({
+        ok: true,
+        totalRows: grouped.totalRows,
+        uniqueProducts: items.length,
+        totalVariants: grouped.totalVariants,
+        brandsCount: brands.length,
+        brands,
+        preview: items.slice(0, 10).map((it) => ({
+          sku: it.sku,
+          name: it.name,
+          brand: it.brand,
+          category: it.category,
+          subcategory: it.subcategory,
+          costPrice: it.costPrice,
+          price: it.price,
+          sizes: it.sizes,
+        })),
+        errors,
+      });
+    } catch (err) {
+      console.error('import-preview', err);
+      res.status(500).json({ error: 'Erro ao processar CSV' });
+    }
+  },
+);
+
+router.post(
+  '/import-csv',
+  adminOnly,
+  (req, res, next) => upload.single('file')(req, res, (err) => (err ? multerErrorHandler(err, req, res, next) : next())),
+  async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: 'Envie o arquivo CSV no campo file' });
+      }
+      const text = req.file.buffer.toString('utf8');
+      const parsed = parseCatalogCsv(text);
+
+      const missing = validateHeaders(parsed);
+      if (missing.length) {
+        return res.status(400).json({
+          error: 'Cabeçalhos obrigatórios faltando: ' + missing.join(', '),
+          required: REQUIRED_HEADERS,
+        });
+      }
+
+      const grouped = groupCatalogRows(parsed.data || []);
+      const errors = grouped.errors.slice();
+      const items = grouped.items;
+
+      let productsCreated = 0;
+      let productsUpdated = 0;
+      let sizesCreated = 0;
+
+      for (const it of items) {
+        try {
+          const aiContext = {
+            costPrice: it.costPrice,
+            supplier: it.supplier || null,
+          };
+
+          const sizesData = it.sizes
+            .filter((s) => s && s.size)
+            .map((s) => ({
+              size: String(s.size).slice(0, 20),
+              stock: 0,
+              barcode: s.barcode ? String(s.barcode).slice(0, 64) : null,
+            }));
+
+          const existing = await prisma.product.findUnique({
+            where: { sku: it.sku },
+            select: { id: true, sizes: { select: { size: true } } },
+          });
+
+          if (existing) {
+            await prisma.product.update({
+              where: { id: existing.id },
+              data: {
+                name: it.name,
+                brand: it.brand,
+                category: it.category,
+                subcategory: it.subcategory || null,
+                price: it.price,
+                source: 'csv',
+                aiContext,
+              },
+            });
+            const existingSizes = new Set(existing.sizes.map((s) => s.size));
+            const toCreate = sizesData.filter((s) => !existingSizes.has(s.size));
+            if (toCreate.length) {
+              for (const s of toCreate) {
+                try {
+                  await prisma.productSize.create({
+                    data: { ...s, productId: existing.id },
+                  });
+                  sizesCreated += 1;
+                } catch (e2) {
+                  errors.push({ sku: it.sku, error: 'Falha ao criar tamanho ' + s.size + ': ' + (e2.code || e2.message || 'erro') });
+                }
+              }
+            }
+            productsUpdated += 1;
+          } else {
+            const created = await prisma.product.create({
+              data: {
+                sku: it.sku,
+                name: it.name,
+                brand: it.brand,
+                category: it.category,
+                subcategory: it.subcategory || null,
+                price: it.price,
+                source: 'csv',
+                createdById: req.userId,
+                aiContext,
+                sizes: sizesData.length ? { create: sizesData } : undefined,
+              },
+              select: { id: true, sizes: { select: { id: true } } },
+            });
+            productsCreated += 1;
+            sizesCreated += created.sizes.length;
+          }
+        } catch (eRow) {
+          errors.push({ sku: it.sku, error: eRow.code || eRow.message || 'erro' });
+        }
+      }
+
+      res.json({
+        ok: true,
+        totalRows: grouped.totalRows,
+        productsCreated,
+        productsUpdated,
+        sizesCreated,
+        errors: errors.slice(0, 200),
+      });
+    } catch (err) {
+      console.error('import-csv', err);
+      res.status(500).json({ error: 'Erro ao importar CSV' });
+    }
+  },
+);
 
 router.post('/products/auto-fill', sellerOrAdmin, async (req, res) => {
   try {
