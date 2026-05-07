@@ -547,6 +547,39 @@ let activeEnrichJobId = null;
 const ENRICH_BATCH_CONCURRENCY = 5;
 const ENRICH_PER_PRODUCT_BRL_ESTIMATE = parseFloat(process.env.AI_ENRICH_PER_PRODUCT_BRL || '0.20');
 
+const ALLOWED_CATEGORIES = ['Tênis', 'Vestuário', 'Acessórios', 'Calçado', 'Esportes'];
+const ALLOWED_SUBCATEGORIES = {
+  'Tênis': ['Corrida', 'Casual', 'Futebol Campo', 'Futsal', 'Society', 'Lifestyle', 'Treino', 'Caminhada'],
+  'Vestuário': ['Camiseta', 'Short', 'Calça', 'Jaqueta'],
+  'Acessórios': ['Meias', 'Boné', 'Mochila', 'Proteção'],
+  'Calçado': ['Sandália', 'Chinelo'],
+  'Esportes': ['Bola', 'Luvas'],
+};
+
+function normalizeCategory(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim().toLowerCase();
+  for (const c of ALLOWED_CATEGORIES) {
+    if (c.toLowerCase() === s) return c;
+  }
+  if (s === 'tenis' || s === 'tênis') return 'Tênis';
+  if (s === 'vestuario' || s === 'vestuário' || s === 'roupa' || s === 'roupas') return 'Vestuário';
+  if (s === 'acessorio' || s === 'acessório' || s === 'acessorios' || s === 'acessórios') return 'Acessórios';
+  if (s === 'calcado' || s === 'calçado' || s === 'calcados' || s === 'calçados') return 'Calçado';
+  if (s === 'esporte' || s === 'esportes') return 'Esportes';
+  return null;
+}
+
+function normalizeSubcategory(category, raw) {
+  if (!raw || !category) return null;
+  const list = ALLOWED_SUBCATEGORIES[category] || [];
+  const s = String(raw).trim().toLowerCase();
+  for (const sub of list) {
+    if (sub.toLowerCase() === s) return sub;
+  }
+  return null;
+}
+
 function buildEnrichmentPrompt(p) {
   const brand = String(p.brand || '').trim();
   const name = String(p.name || '').trim();
@@ -557,9 +590,11 @@ function buildEnrichmentPrompt(p) {
 
   return (
     'Busque online o produto "' + brand + ' ' + name + '" '
-    + '(categoria: ' + cabec + ', SKU ' + sku + ') e me retorne JSON estruturado com:\n'
+    + '(categoria atual no banco: ' + cabec + ', SKU ' + sku + ') e me retorne JSON estruturado com:\n'
     + '{\n'
-    + '  "imageUrl": "URL da foto oficial do produto (de site oficial ou loja confiável - prefira nike.com.br, adidas.com.br, netshoes, centauro)",\n'
+    + '  "imageUrl": "URL DIRETA da imagem oficial — DEVE terminar em .jpg, .jpeg, .png ou .webp. NUNCA URL de página HTML.",\n'
+    + '  "category": "uma de: Tênis, Vestuário, Acessórios, Calçado, Esportes",\n'
+    + '  "subcategory": "subcategoria conforme tabela abaixo",\n'
     + '  "shortDescription": "1 frase descrevendo o produto",\n'
     + '  "longDescription": "parágrafo de 2-3 frases sobre o produto, construção, propósito",\n'
     + '  "features": {\n'
@@ -573,12 +608,23 @@ function buildEnrichmentPrompt(p) {
     + '  "recommendedFor": ["lista de perfis - ex: corrida_iniciante, pisada_neutra, peso_acima_80kg"],\n'
     + '  "notRecommendedFor": ["lista - ex: trail_running, alta_velocidade"]\n'
     + '}\n\n'
-    + 'REGRAS:\n'
-    + '- Se for vestuário/acessório, foque em material, tecnologias, uso indicado\n'
-    + '- Se não encontrar imagem oficial confiável, retorna imageUrl: null\n'
-    + '- NUNCA invente especificações - se não souber, omite o campo\n'
-    + '- Retorne APENAS o JSON, sem texto antes ou depois\n'
-    + '- Se o produto não for encontrado online, retorna { "error": "Produto não localizado" }'
+    + 'REGRAS DE imageUrl (CRÍTICO):\n'
+    + '- imageUrl DEVE ser uma URL DIRETA da imagem (.jpg, .jpeg, .png ou .webp). NUNCA URL de página HTML.\n'
+    + '- Se você não conseguir encontrar URL DIRETA da imagem, retorne imageUrl: null. NÃO INVENTE.\n'
+    + '- Use a tool web_search com queries como: "site:assets.adidas.com ' + sku + ' jpg" ou "' + brand + ' ' + name + ' product image jpg" para achar a URL direta.\n'
+    + '- VÁLIDO: https://assets.adidas.com/images/.../JP5219_01.jpg, https://imagedelivery.net/abc/foto.png, https://static.netshoes.com.br/produtos/.../foto.jpg\n'
+    + '- INVÁLIDO: https://adidas.com.br/tenis-alphaedge/JP5219.html, https://google.com/search?q=..., https://nike.com.br/produto\n\n'
+    + 'REGRAS DE category / subcategory:\n'
+    + '- category DEVE ser exatamente uma de: ' + ALLOWED_CATEGORIES.join(', ') + '\n'
+    + '- subcategory baseada na category:\n'
+    + Object.entries(ALLOWED_SUBCATEGORIES).map(([k, v]) => '  - ' + k + ': ' + v.join(', ')).join('\n') + '\n'
+    + '- Se não souber a subcategory, use "Geral".\n'
+    + '- Identifique a category mesmo que a categoria atual no banco esteja errada (ex.: "outros").\n\n'
+    + 'OUTRAS REGRAS:\n'
+    + '- Se for vestuário/acessório, foque em material, tecnologias, uso indicado.\n'
+    + '- NUNCA invente especificações — se não souber, omite o campo dentro de features.\n'
+    + '- Retorne APENAS o JSON, sem texto antes ou depois, sem markdown.\n'
+    + '- Se o produto não for encontrado online, retorne { "error": "Produto não localizado" }'
   );
 }
 
@@ -603,6 +649,23 @@ function isValidHttpUrl(v) {
   } catch {
     return false;
   }
+}
+
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|avif)(\?.*)?$/i;
+const IMAGE_PATH_HINT_RE = /\/(image|img|photo|foto|product|produto|asset)s?\//i;
+const HTML_PATH_RE = /\.(html?|aspx|php|jsp)(\?.*)?$/i;
+
+function validateImageUrl(raw) {
+  if (!isValidHttpUrl(raw)) return { ok: false, reason: 'URL não-http(s)' };
+  const url = String(raw).trim();
+  if (HTML_PATH_RE.test(url)) return { ok: false, reason: 'URL aponta pra página HTML' };
+  if (/[?&](q|search)=/i.test(url)) return { ok: false, reason: 'URL é uma busca, não imagem' };
+  if (IMAGE_EXT_RE.test(url)) return { ok: true, url };
+  // tolera CDNs comuns (imagedelivery.net, cloudfront, etc) que servem imagem sem extensão
+  if (IMAGE_PATH_HINT_RE.test(url) && !/\.html?$/i.test(url)) {
+    return { ok: true, url, soft: true };
+  }
+  return { ok: false, reason: 'URL não termina em extensão de imagem (.jpg/.jpeg/.png/.webp/.gif)' };
 }
 
 function computeAiCost(usage) {
@@ -652,7 +715,25 @@ async function enrichProductOnce(product) {
   }
 
   const updates = {};
-  if (isValidHttpUrl(data.imageUrl)) updates.imageUrl = String(data.imageUrl).slice(0, 1000);
+  let imageRejectReason = null;
+  if (data.imageUrl != null) {
+    const v = validateImageUrl(data.imageUrl);
+    if (v.ok) {
+      updates.imageUrl = v.url.slice(0, 1000);
+    } else {
+      imageRejectReason = v.reason;
+      console.warn('[enrich] URL inválida descartada (' + v.reason + '): ' + String(data.imageUrl).slice(0, 200));
+    }
+  }
+  const cat = normalizeCategory(data.category);
+  if (cat) {
+    updates.category = cat;
+    const sub = normalizeSubcategory(cat, data.subcategory);
+    updates.subcategory = sub || (data.subcategory ? String(data.subcategory).slice(0, 60) : 'Geral');
+  } else if (data.subcategory) {
+    updates.subcategory = String(data.subcategory).slice(0, 60);
+  }
+
   if (data.shortDescription) updates.shortDescription = String(data.shortDescription).slice(0, 1000);
   if (data.longDescription) updates.longDescription = String(data.longDescription).slice(0, 4000);
   if (data.features && typeof data.features === 'object' && !Array.isArray(data.features)) {
@@ -673,6 +754,7 @@ async function enrichProductOnce(product) {
     ...(product.aiContext && typeof product.aiContext === 'object' ? product.aiContext : {}),
     enrichedAt: new Date().toISOString(),
     enrichedModel: model,
+    ...(imageRejectReason ? { imageRejectReason, rawImageUrl: String(data.imageUrl).slice(0, 500) } : {}),
   };
 
   const updated = await prisma.product.update({

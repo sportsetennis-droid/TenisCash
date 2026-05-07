@@ -134,6 +134,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .product-status{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:13px;margin-right:6px}
 .product-status.ok{background:rgba(76,175,80,0.18);color:#A8FFB0}
 .product-status.miss{background:rgba(255,109,0,0.18);color:var(--orange)}
+.admin-prod-thumb{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:8px;background:rgba(255,255,255,0.04);overflow:hidden;border:1px solid var(--border)}
+.admin-prod-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.admin-prod-thumb.placeholder{border:1px dashed rgba(255,255,255,0.18);color:var(--text3);font-size:18px}
 
 .detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .detail-modal.show{display:flex}
@@ -946,6 +949,28 @@ async function enrichOneProduct(btn) {
   }
 }
 
+function buildAdminProductThumb(url) {
+  const wrap = document.createElement('span');
+  wrap.className = 'admin-prod-thumb';
+  if (!url) {
+    wrap.classList.add('placeholder');
+    wrap.textContent = '🖼';
+    return wrap;
+  }
+  const img = document.createElement('img');
+  img.alt = '';
+  img.loading = 'lazy';
+  img.referrerPolicy = 'no-referrer';
+  img.addEventListener('error', function () {
+    wrap.innerHTML = '';
+    wrap.classList.add('placeholder');
+    wrap.textContent = '🖼';
+  });
+  img.src = url;
+  wrap.appendChild(img);
+  return wrap;
+}
+
 async function loadCatalogProductsAdmin() {
   const wrap = document.getElementById('cat-products-wrap');
   if (!wrap) return;
@@ -961,16 +986,20 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th>Status</th><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Nome</th><th>Marca</th><th>Categoria</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusIcon = enriched
       ? '<span class="product-status ok" title="Foto + descrição prontas">✨</span>'
       : '<span class="product-status miss" title="Falta foto/descrição">⚠</span>';
-    html += '<tr><td>' + statusIcon + '</td>'
+    const cat = (p.category || '') + (p.subcategory ? ' / ' + p.subcategory : '');
+    const thumbCell = '<span class="js-thumb-slot" data-img="' + (p.imageUrl ? escapeHtml(p.imageUrl) : '') + '"></span>';
+    html += '<tr><td>' + thumbCell + '</td>'
+      + '<td>' + statusIcon + '</td>'
       + '<td>' + escapeHtml(p.sku) + '</td>'
       + '<td>' + escapeHtml(p.name) + '</td>'
       + '<td>' + escapeHtml(p.brand) + '</td>'
+      + '<td>' + escapeHtml(cat) + '</td>'
       + '<td>R$ ' + Number(p.price).toFixed(2) + '</td>'
       + '<td>' + (p.active ? 'sim' : 'não') + '</td>'
       + '<td>';
@@ -981,6 +1010,10 @@ async function loadCatalogProductsAdmin() {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-thumb-slot').forEach(function (slot) {
+    const url = slot.getAttribute('data-img') || '';
+    slot.appendChild(buildAdminProductThumb(url));
+  });
   wrap.querySelectorAll('.js-cat-edit').forEach(function (btn) {
     btn.addEventListener('click', function () { openCatProductModal(btn.getAttribute('data-id')); });
   });

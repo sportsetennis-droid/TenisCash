@@ -112,6 +112,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .catalog-search-btn:hover{background:#fff;color:#FF6D00}
 .prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
 .prod-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0}
+.prod-thumb{width:76px;height:76px;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.prod-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.prod-thumb.placeholder{background:rgba(255,255,255,0.06);border:1px dashed rgba(255,255,255,0.18)}
+.prod-thumb-ico{font-size:26px;opacity:0.55}
+.prod-thumb-large{width:100%;max-width:320px;height:240px;border-radius:14px;background:rgba(255,255,255,0.06);overflow:hidden;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.prod-thumb-large img{width:100%;height:100%;object-fit:cover;display:block}
+.prod-thumb-large.placeholder{border:1px dashed rgba(255,255,255,0.2)}
+.prod-thumb-large .prod-thumb-ico{font-size:60px;opacity:0.5}
 .prod-card .pinfo{flex:1;min-width:0}
 .prod-card .pprice{font-family:'Orbitron';font-size:14px;font-weight:900;color:#FF6D00;margin-top:4px}
 .prod-card .pbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -1065,13 +1073,39 @@ function sendSellerAi() {
   });
 }
 
+function buildProductThumb(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'prod-thumb';
+  if (p && p.imageUrl) {
+    const img = document.createElement('img');
+    img.alt = (p.brand || '') + ' ' + (p.name || '');
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', function () {
+      wrap.innerHTML = '';
+      wrap.classList.add('placeholder');
+      const ic = document.createElement('span');
+      ic.className = 'prod-thumb-ico';
+      ic.textContent = '🖼';
+      wrap.appendChild(ic);
+    });
+    img.src = p.imageUrl;
+    wrap.appendChild(img);
+  } else {
+    wrap.classList.add('placeholder');
+    const ic = document.createElement('span');
+    ic.className = 'prod-thumb-ico';
+    ic.textContent = '🖼';
+    wrap.appendChild(ic);
+  }
+  return wrap;
+}
+
 function renderAiProductCards(log, products, mode) {
   products.forEach(function (p) {
     const card = document.createElement('div');
     card.className = 'prod-card';
-    const img = document.createElement('img');
-    img.src = p.imageUrl || '';
-    img.alt = '';
+    const thumb = buildProductThumb(p);
     const info = document.createElement('div');
     info.className = 'pinfo';
     const t = document.createElement('div');
@@ -1119,7 +1153,7 @@ function renderAiProductCards(log, products, mode) {
     info.appendChild(sku);
     info.appendChild(price);
     info.appendChild(btns);
-    card.appendChild(img);
+    card.appendChild(thumb);
     card.appendChild(info);
     log.appendChild(card);
   });
@@ -1227,20 +1261,26 @@ function runSellerCatalogSearch() {
       row.className = 'prod-card';
       row.style.cursor = 'pointer';
       row.addEventListener('click', function () { openProductDetailScreen(p.id, 'seller'); });
+      const thumb = buildProductThumb(p);
+      const info = document.createElement('div');
+      info.className = 'pinfo';
       const title = document.createElement('div');
       title.style.fontWeight = '700';
       title.textContent = p.name;
       const meta = document.createElement('div');
       meta.style.fontSize = '12px';
       meta.style.opacity = '0.75';
+      meta.style.marginTop = '4px';
       meta.textContent = p.brand + ' • ' + p.sku;
       const price = document.createElement('div');
       price.className = 'pprice';
       const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
       price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
-      row.appendChild(title);
-      row.appendChild(meta);
-      row.appendChild(price);
+      info.appendChild(title);
+      info.appendChild(meta);
+      info.appendChild(price);
+      row.appendChild(thumb);
+      row.appendChild(info);
       res.appendChild(row);
     });
   });
@@ -1254,6 +1294,31 @@ function openProductDetailScreen(id, mode) {
     const scr = mode === 'seller' ? 'seller-product-detail' : 'client-product-detail';
     const wrap = document.getElementById(wrapId);
     wrap.innerHTML = '';
+    const big = document.createElement('div');
+    if (p.imageUrl) {
+      big.className = 'prod-thumb-large';
+      const img = document.createElement('img');
+      img.alt = (p.brand || '') + ' ' + (p.name || '');
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('error', function () {
+        big.innerHTML = '';
+        big.classList.add('placeholder');
+        const ic = document.createElement('span');
+        ic.className = 'prod-thumb-ico';
+        ic.textContent = '🖼';
+        big.appendChild(ic);
+      });
+      img.src = p.imageUrl;
+      big.appendChild(img);
+    } else {
+      big.className = 'prod-thumb-large placeholder';
+      const ic = document.createElement('span');
+      ic.className = 'prod-thumb-ico';
+      ic.textContent = '🖼';
+      big.appendChild(ic);
+    }
+    big.style.marginBottom = '14px';
+    wrap.appendChild(big);
     const h = document.createElement('p');
     h.style.fontWeight = '800';
     h.style.fontSize = '17px';
