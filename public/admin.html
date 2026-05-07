@@ -112,6 +112,29 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .csv-success{background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.35);border-radius:12px;padding:14px 16px;color:#A8FFB0}
 .csv-success strong{color:#fff;font-family:Orbitron;letter-spacing:1px}
 
+.enrich-cta{background:linear-gradient(135deg,var(--orange),var(--orange2));border:none;font-weight:700;letter-spacing:1px}
+.enrich-cta:hover{filter:brightness(1.1)}
+.enrich-options{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.enrich-opt{display:flex;gap:12px;align-items:flex-start;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .2s,background .2s}
+.enrich-opt:hover{border-color:rgba(255,109,0,0.5)}
+.enrich-opt input[type=radio]{margin-top:4px;accent-color:var(--orange)}
+.enrich-opt-title{font-family:'Chakra Petch';font-weight:700;font-size:14px;color:var(--text)}
+.enrich-opt-sub{font-size:12px;color:var(--text2);margin-top:4px}
+.enrich-cat-input{width:100%}
+.enrich-progress{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+.enrich-progress h4{font-family:Orbitron;letter-spacing:2px;font-size:13px;color:var(--orange);margin:0 0 10px}
+.enrich-bar{height:10px;background:rgba(255,255,255,0.05);border-radius:6px;overflow:hidden;margin:6px 0 10px;border:1px solid var(--border)}
+.enrich-bar-fill{height:100%;background:linear-gradient(90deg,var(--orange),#FFB269);transition:width .4s ease}
+.enrich-progress .enrich-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:8px;font-size:12px}
+.enrich-progress .enrich-stat{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.enrich-progress .enrich-stat strong{display:block;font-family:Orbitron;color:var(--orange);font-size:16px;margin-top:2px}
+.enrich-progress .enrich-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.enrich-progress .enrich-errors{max-height:160px;overflow:auto;background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:10px;padding:8px 12px;font-size:12px;color:#FFB3B3;margin-top:10px}
+.enrich-progress .enrich-done{color:#A8FFB0;font-family:Orbitron;letter-spacing:1px;margin-top:6px}
+.product-status{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:13px;margin-right:6px}
+.product-status.ok{background:rgba(76,175,80,0.18);color:#A8FFB0}
+.product-status.miss{background:rgba(255,109,0,0.18);color:var(--orange)}
+
 .detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;align-items:center;justify-content:center;padding:20px}
 .detail-modal.show{display:flex}
 .detail-content{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:30px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto}
@@ -368,6 +391,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
     <div id="cat-panel-prod">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+        <button type="button" class="btn btn-primary enrich-cta" id="cat-btn-enrich-open">🤖 Enriquecer com IA</button>
         <input class="search-box" id="cat-filter-search" placeholder="Buscar nome/SKU..." style="width:220px">
         <input class="search-box" id="cat-filter-brand" placeholder="Marca" style="width:140px">
         <input class="search-box" id="cat-filter-category" placeholder="Categoria" style="width:140px">
@@ -375,6 +399,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
         <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
       </div>
+      <div id="enrich-progress-wrap" style="display:none;margin-bottom:16px"></div>
       <div id="cat-products-wrap"><div class="loading-spinner">Carregando catálogo...</div></div>
     </div>
 
@@ -473,6 +498,56 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <textarea class="form-input" id="admin-msg-content" rows="5" style="margin-top:8px"></textarea>
     <div id="admin-msg-error" style="margin-top:10px"></div>
     <button class="btn btn-primary" id="admin-msg-send" style="margin-top:14px;width:100%">ENVIAR</button>
+  </div>
+</div>
+
+<!-- CATÁLOGO: ENRIQUECIMENTO COM IA -->
+<div class="detail-modal" id="enrich-modal">
+  <div class="detail-content" style="max-width:560px">
+    <button type="button" class="detail-close" id="enrich-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">ENRIQUECER COM IA</div>
+    <p class="note" style="margin-top:10px">A IA vai pesquisar online cada produto, buscar foto oficial, escrever descrição rica e extrair especificações técnicas. Em seguida, atualiza no banco.</p>
+
+    <div class="enrich-options" id="enrich-options">
+      <label class="enrich-opt">
+        <input type="radio" name="enrich-scope" value="all" checked>
+        <div>
+          <div class="enrich-opt-title">Enriquecer TODOS os produtos ativos</div>
+          <div class="enrich-opt-sub" id="enrich-est-all">—</div>
+        </div>
+      </label>
+      <label class="enrich-opt">
+        <input type="radio" name="enrich-scope" value="missing">
+        <div>
+          <div class="enrich-opt-title">Só os SEM foto (imageUrl vazia)</div>
+          <div class="enrich-opt-sub" id="enrich-est-missing">—</div>
+        </div>
+      </label>
+      <label class="enrich-opt">
+        <input type="radio" name="enrich-scope" value="category">
+        <div>
+          <div class="enrich-opt-title">Só uma categoria</div>
+          <div class="enrich-opt-sub">
+            <input class="form-input enrich-cat-input" id="enrich-cat-input" placeholder="Ex.: tenis, vestuario, acessorios" style="margin-top:6px">
+            <div id="enrich-est-cat" style="margin-top:6px">—</div>
+          </div>
+        </div>
+      </label>
+      <label class="enrich-opt">
+        <input type="radio" name="enrich-scope" value="brand">
+        <div>
+          <div class="enrich-opt-title">Só uma marca</div>
+          <div class="enrich-opt-sub">
+            <input class="form-input enrich-cat-input" id="enrich-brand-input" placeholder="Ex.: Adidas, Nike" style="margin-top:6px">
+            <div id="enrich-est-brand" style="margin-top:6px">—</div>
+          </div>
+        </div>
+      </label>
+    </div>
+
+    <div id="enrich-error" style="margin-top:10px"></div>
+    <button type="button" class="btn btn-primary" id="enrich-start-btn" style="margin-top:14px;width:100%">INICIAR ENRIQUECIMENTO</button>
+    <p class="note" style="margin-top:10px;font-size:11px">⚠ Estimativa baseada em ~R$ 0,20 por produto (Claude Haiku + web_search). Custo real pode variar 20-30% pra cima ou pra baixo.</p>
   </div>
 </div>
 
@@ -658,9 +733,217 @@ function initAdminCatalogTab() {
     });
     document.getElementById('cat-p-save').addEventListener('click', catProductSave);
     document.getElementById('cat-ai-filter-type').addEventListener('change', loadAdminAiConversationsPanel);
+    initEnrichUI();
   }
   syncCatSubPanels('prod');
   loadCatalogProductsAdmin();
+}
+
+/* ====================== ENRIQUECIMENTO COM IA ====================== */
+
+let enrichJobId = null;
+let enrichPollTimer = null;
+
+function initEnrichUI() {
+  const openBtn = document.getElementById('cat-btn-enrich-open');
+  const closeBtn = document.getElementById('enrich-modal-close');
+  const startBtn = document.getElementById('enrich-start-btn');
+  if (!openBtn || !closeBtn || !startBtn) return;
+  openBtn.addEventListener('click', openEnrichModal);
+  closeBtn.addEventListener('click', function () {
+    document.getElementById('enrich-modal').classList.remove('show');
+  });
+  startBtn.addEventListener('click', startEnrichJob);
+
+  document.querySelectorAll('input[name="enrich-scope"]').forEach(function (r) {
+    r.addEventListener('change', refreshEnrichEstimates);
+  });
+  ['enrich-cat-input', 'enrich-brand-input'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let t = null;
+    el.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(refreshEnrichEstimates, 300);
+    });
+  });
+}
+
+async function openEnrichModal() {
+  document.getElementById('enrich-error').innerHTML = '';
+  document.getElementById('enrich-modal').classList.add('show');
+  refreshEnrichEstimates();
+}
+
+async function fetchEnrichEstimate(params) {
+  const q = new URLSearchParams(params).toString();
+  return api('/admin/catalog/enrich-estimate' + (q ? ('?' + q) : ''));
+}
+
+async function refreshEnrichEstimates() {
+  const setText = function (id, text) { const el = document.getElementById(id); if (el) el.textContent = text; };
+  setText('enrich-est-all', 'Calculando...');
+  setText('enrich-est-missing', 'Calculando...');
+  setText('enrich-est-cat', 'Selecione esta opção e digite a categoria.');
+  setText('enrich-est-brand', 'Selecione esta opção e digite a marca.');
+
+  const fmt = function (d) {
+    if (!d || d.error) return d && d.error ? d.error : 'erro';
+    return d.total + ' produto(s) — estimativa R$ ' + Number(d.estimateBRL).toFixed(2);
+  };
+
+  const all = await fetchEnrichEstimate({});
+  setText('enrich-est-all', fmt(all));
+  if (all && all.activeJobId) {
+    document.getElementById('enrich-error').innerHTML = '<div class="csv-errors"><strong>⚠ Já existe um job em andamento (' + all.activeJobId + '). Aguarde terminar.</strong></div>';
+  }
+
+  const miss = await fetchEnrichEstimate({ onlyMissing: 'true' });
+  setText('enrich-est-missing', fmt(miss));
+
+  const scope = (document.querySelector('input[name="enrich-scope"]:checked') || {}).value;
+  if (scope === 'category') {
+    const cat = (document.getElementById('enrich-cat-input').value || '').trim();
+    if (cat) {
+      const c = await fetchEnrichEstimate({ category: cat });
+      setText('enrich-est-cat', fmt(c));
+    }
+  }
+  if (scope === 'brand') {
+    const br = (document.getElementById('enrich-brand-input').value || '').trim();
+    if (br) {
+      const b = await fetchEnrichEstimate({ brand: br });
+      setText('enrich-est-brand', fmt(b));
+    }
+  }
+}
+
+async function startEnrichJob() {
+  const errEl = document.getElementById('enrich-error');
+  errEl.innerHTML = '';
+  const scope = (document.querySelector('input[name="enrich-scope"]:checked') || {}).value || 'all';
+  const body = {};
+  if (scope === 'missing') body.onlyMissing = true;
+  else if (scope === 'category') {
+    const cat = (document.getElementById('enrich-cat-input').value || '').trim();
+    if (!cat) { errEl.innerHTML = '<div class="csv-errors"><strong>Digite a categoria</strong></div>'; return; }
+    body.category = cat;
+  } else if (scope === 'brand') {
+    const br = (document.getElementById('enrich-brand-input').value || '').trim();
+    if (!br) { errEl.innerHTML = '<div class="csv-errors"><strong>Digite a marca</strong></div>'; return; }
+    body.brand = br;
+  }
+
+  const startBtn = document.getElementById('enrich-start-btn');
+  const orig = startBtn.textContent;
+  startBtn.disabled = true;
+  startBtn.textContent = 'Iniciando...';
+
+  const data = await api('/admin/catalog/enrich-batch', 'POST', body);
+  startBtn.disabled = false;
+  startBtn.textContent = orig;
+
+  if (data.error) {
+    errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(data.error) + '</strong></div>';
+    return;
+  }
+
+  enrichJobId = data.jobId;
+  document.getElementById('enrich-modal').classList.remove('show');
+  renderEnrichProgress({ jobId: enrichJobId, total: data.total, processed: 0, succeeded: 0, failed: 0, errors: [], totalCostBRL: 0, completed: false });
+  pollEnrichJob();
+}
+
+async function pollEnrichJob() {
+  if (!enrichJobId) return;
+  const data = await api('/admin/catalog/enrich-status/' + encodeURIComponent(enrichJobId));
+  if (data.error) {
+    const wrap = document.getElementById('enrich-progress-wrap');
+    if (wrap) wrap.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(data.error) + '</strong></div>';
+    return;
+  }
+  renderEnrichProgress(data);
+  if (!data.completed) {
+    clearTimeout(enrichPollTimer);
+    enrichPollTimer = setTimeout(pollEnrichJob, 3000);
+  } else {
+    enrichJobId = null;
+    loadCatalogProductsAdmin();
+  }
+}
+
+function renderEnrichProgress(j) {
+  const wrap = document.getElementById('enrich-progress-wrap');
+  if (!wrap) return;
+  wrap.style.display = 'block';
+  const pct = j.total ? Math.round((j.processed / j.total) * 100) : 0;
+  let html = '<div class="enrich-progress">';
+  html += '<h4>ENRIQUECIMENTO COM IA</h4>';
+  html += '<div class="enrich-bar"><div class="enrich-bar-fill" style="width:' + pct + '%"></div></div>';
+  html += '<div class="enrich-stats">';
+  html += '<div class="enrich-stat">PROCESSADOS<strong>' + (j.processed || 0) + ' / ' + (j.total || 0) + '</strong></div>';
+  html += '<div class="enrich-stat">SUCESSO<strong>' + (j.succeeded || 0) + '</strong></div>';
+  html += '<div class="enrich-stat">FALHAS<strong>' + (j.failed || 0) + '</strong></div>';
+  html += '<div class="enrich-stat">CUSTO R$<strong>' + Number(j.totalCostBRL || 0).toFixed(2) + '</strong></div>';
+  html += '</div>';
+  if (j.lastSku && !j.completed) {
+    html += '<div class="note" style="font-size:12px;margin-top:4px">Atual: ' + escapeHtml(j.lastSku) + '</div>';
+  }
+  if (Array.isArray(j.errors) && j.errors.length) {
+    html += '<div class="enrich-errors"><strong>' + j.errors.length + ' falha(s) recente(s)</strong><ul style="margin-top:6px;padding-left:18px">';
+    j.errors.slice(-15).forEach(function (e) {
+      html += '<li>[' + escapeHtml(e.sku || '?') + '] ' + escapeHtml(e.error || 'erro') + '</li>';
+    });
+    html += '</ul></div>';
+  }
+  if (j.completed) {
+    html += '<div class="enrich-done">✅ Concluído. ' + (j.succeeded || 0) + ' atualizados, ' + (j.failed || 0) + ' falhas. Custo total: R$ ' + Number(j.totalCostBRL || 0).toFixed(2) + '</div>';
+    html += '<div class="enrich-actions">';
+    html += '<button type="button" class="btn" id="enrich-clear-btn">Fechar</button>';
+    html += '<button type="button" class="btn btn-primary" id="enrich-refresh-list-btn">Recarregar produtos</button>';
+    html += '</div>';
+  } else {
+    html += '<div class="enrich-actions">';
+    html += '<button type="button" class="btn btn-danger" id="enrich-cancel-btn">Cancelar</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  const cancelBtn = document.getElementById('enrich-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', async function () {
+      if (!confirm('Cancelar enriquecimento?')) return;
+      cancelBtn.disabled = true;
+      await api('/admin/catalog/enrich-cancel', 'POST', { jobId: enrichJobId });
+    });
+  }
+  const clearBtn = document.getElementById('enrich-clear-btn');
+  if (clearBtn) clearBtn.addEventListener('click', function () { wrap.innerHTML = ''; wrap.style.display = 'none'; });
+  const refreshBtn = document.getElementById('enrich-refresh-list-btn');
+  if (refreshBtn) refreshBtn.addEventListener('click', loadCatalogProductsAdmin);
+}
+
+async function enrichOneProduct(btn) {
+  const id = btn.getAttribute('data-id');
+  const sku = btn.getAttribute('data-sku') || '';
+  if (!id) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Buscando...';
+  try {
+    const r = await api('/admin/catalog/enrich/' + encodeURIComponent(id), 'POST');
+    if (r.error) {
+      alert('Falha ao enriquecer ' + sku + ': ' + r.error);
+      return;
+    }
+    const brl = r.cost && r.cost.brl != null ? Number(r.cost.brl).toFixed(4) : '?';
+    alert('✨ ' + sku + ' enriquecido (R$ ' + brl + ')');
+    loadCatalogProductsAdmin();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 }
 
 async function loadCatalogProductsAdmin() {
@@ -678,10 +961,21 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Status</th><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
-    html += '<tr><td>' + escapeHtml(p.sku) + '</td><td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.brand) + '</td><td>R$ ' + Number(p.price).toFixed(2) + '</td><td>' + (p.active ? 'sim' : 'não') + '</td><td>';
+    const enriched = !!(p.imageUrl && p.shortDescription);
+    const statusIcon = enriched
+      ? '<span class="product-status ok" title="Foto + descrição prontas">✨</span>'
+      : '<span class="product-status miss" title="Falta foto/descrição">⚠</span>';
+    html += '<tr><td>' + statusIcon + '</td>'
+      + '<td>' + escapeHtml(p.sku) + '</td>'
+      + '<td>' + escapeHtml(p.name) + '</td>'
+      + '<td>' + escapeHtml(p.brand) + '</td>'
+      + '<td>R$ ' + Number(p.price).toFixed(2) + '</td>'
+      + '<td>' + (p.active ? 'sim' : 'não') + '</td>'
+      + '<td>';
     html += '<button type="button" class="btn js-cat-edit" data-id="' + p.id + '">Editar</button> ';
+    html += '<button type="button" class="btn js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '">Enriquecer</button> ';
     html += '<button type="button" class="btn btn-danger js-cat-del" data-id="' + p.id + '">Excluir</button>';
     html += '</td></tr>';
   });
@@ -697,6 +991,9 @@ async function loadCatalogProductsAdmin() {
       if (r.error) { alert(r.error); return; }
       loadCatalogProductsAdmin();
     });
+  });
+  wrap.querySelectorAll('.js-cat-enrich-one').forEach(function (btn) {
+    btn.addEventListener('click', function () { enrichOneProduct(btn); });
   });
 }
 

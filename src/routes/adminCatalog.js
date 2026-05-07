@@ -539,6 +539,353 @@ router.post(
   },
 );
 
+/* ====================== ENRIQUECIMENTO COM IA ====================== */
+
+const enrichJobs = new Map();
+let activeEnrichJobId = null;
+
+const ENRICH_BATCH_CONCURRENCY = 5;
+const ENRICH_PER_PRODUCT_BRL_ESTIMATE = parseFloat(process.env.AI_ENRICH_PER_PRODUCT_BRL || '0.20');
+
+function buildEnrichmentPrompt(p) {
+  const brand = String(p.brand || '').trim();
+  const name = String(p.name || '').trim();
+  const cat = String(p.category || '').trim();
+  const sub = String(p.subcategory || '').trim();
+  const sku = String(p.sku || '').trim();
+  const cabec = (sub ? cat + ' / ' + sub : cat);
+
+  return (
+    'Busque online o produto "' + brand + ' ' + name + '" '
+    + '(categoria: ' + cabec + ', SKU ' + sku + ') e me retorne JSON estruturado com:\n'
+    + '{\n'
+    + '  "imageUrl": "URL da foto oficial do produto (de site oficial ou loja confiável - prefira nike.com.br, adidas.com.br, netshoes, centauro)",\n'
+    + '  "shortDescription": "1 frase descrevendo o produto",\n'
+    + '  "longDescription": "parágrafo de 2-3 frases sobre o produto, construção, propósito",\n'
+    + '  "features": {\n'
+    + '    "peso": "peso em gramas se for tênis",\n'
+    + '    "drop": "drop em mm se for tênis",\n'
+    + '    "amortecimento": "tipo de amortecimento",\n'
+    + '    "tecnologias": ["lista", "de", "tecnologias"],\n'
+    + '    "material": "material do upper/cabedal",\n'
+    + '    "uso_indicado": "corrida iniciante / treino / casual / etc"\n'
+    + '  },\n'
+    + '  "recommendedFor": ["lista de perfis - ex: corrida_iniciante, pisada_neutra, peso_acima_80kg"],\n'
+    + '  "notRecommendedFor": ["lista - ex: trail_running, alta_velocidade"]\n'
+    + '}\n\n'
+    + 'REGRAS:\n'
+    + '- Se for vestuário/acessório, foque em material, tecnologias, uso indicado\n'
+    + '- Se não encontrar imagem oficial confiável, retorna imageUrl: null\n'
+    + '- NUNCA invente especificações - se não souber, omite o campo\n'
+    + '- Retorne APENAS o JSON, sem texto antes ou depois\n'
+    + '- Se o produto não for encontrado online, retorna { "error": "Produto não localizado" }'
+  );
+}
+
+function extractJsonObject(text) {
+  const s = String(text || '');
+  const i = s.indexOf('{');
+  const j = s.lastIndexOf('}');
+  if (i === -1 || j === -1 || j <= i) return null;
+  const snippet = s.slice(i, j + 1);
+  try {
+    return JSON.parse(snippet);
+  } catch {
+    return null;
+  }
+}
+
+function isValidHttpUrl(v) {
+  if (!v) return false;
+  try {
+    const u = new URL(String(v));
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function computeAiCost(usage) {
+  const inM = parseFloat(process.env.AI_PRICE_INPUT_PER_1M || '1');
+  const outM = parseFloat(process.env.AI_PRICE_OUTPUT_PER_1M || '5');
+  const brl = parseFloat(process.env.BRL_PER_USD || '5.5');
+  const inT = (usage && usage.input_tokens) || 0;
+  const outT = (usage && usage.output_tokens) || 0;
+  const usd = (inT / 1e6) * inM + (outT / 1e6) * outM;
+  return { inT, outT, usd, brl: usd * brl };
+}
+
+async function enrichProductOnce(product) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return { ok: false, error: 'IA indisponível (ANTHROPIC_API_KEY ausente)' };
+
+  const client = new Anthropic({ apiKey: key });
+  const model = process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+
+  const t0 = Date.now();
+  let resp;
+  try {
+    resp = await client.messages.create({
+      model,
+      max_tokens: 1500,
+      system:
+        'Você é especialista em calçados e artigos esportivos. Use web_search para encontrar dados reais do produto antes de responder. Responda APENAS com JSON válido (sem markdown, sem texto extra antes ou depois).',
+      tools,
+      messages: [{ role: 'user', content: buildEnrichmentPrompt(product) }],
+    });
+  } catch (err) {
+    return { ok: false, error: 'Erro Anthropic: ' + (err.message || 'desconhecido') };
+  }
+
+  const textOut = (resp.content || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+
+  const data = extractJsonObject(textOut);
+  if (!data) {
+    return { ok: false, error: 'Resposta da IA sem JSON', raw: textOut.slice(0, 300) };
+  }
+  if (data.error) {
+    return { ok: false, error: String(data.error).slice(0, 200) };
+  }
+
+  const updates = {};
+  if (isValidHttpUrl(data.imageUrl)) updates.imageUrl = String(data.imageUrl).slice(0, 1000);
+  if (data.shortDescription) updates.shortDescription = String(data.shortDescription).slice(0, 1000);
+  if (data.longDescription) updates.longDescription = String(data.longDescription).slice(0, 4000);
+  if (data.features && typeof data.features === 'object' && !Array.isArray(data.features)) {
+    updates.features = data.features;
+  }
+  if (Array.isArray(data.recommendedFor)) {
+    updates.recommendedFor = data.recommendedFor.map((x) => String(x).slice(0, 80)).slice(0, 20);
+  }
+  if (Array.isArray(data.notRecommendedFor)) {
+    updates.notRecommendedFor = data.notRecommendedFor.map((x) => String(x).slice(0, 80)).slice(0, 20);
+  }
+
+  if (!Object.keys(updates).length) {
+    return { ok: false, error: 'IA não retornou campos utilizáveis' };
+  }
+
+  updates.aiContext = {
+    ...(product.aiContext && typeof product.aiContext === 'object' ? product.aiContext : {}),
+    enrichedAt: new Date().toISOString(),
+    enrichedModel: model,
+  };
+
+  const updated = await prisma.product.update({
+    where: { id: product.id },
+    data: updates,
+  });
+
+  const cost = computeAiCost(resp.usage);
+  cost.ms = Date.now() - t0;
+
+  return { ok: true, product: updated, cost, raw: data };
+}
+
+router.post('/enrich/:productId', adminOnly, async (req, res) => {
+  try {
+    const id = String(req.params.productId);
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    const r = await enrichProductOnce(product);
+    if (!r.ok) {
+      console.warn('[enrich] sku=' + product.sku + ' fail:', r.error);
+      return res.status(422).json({ error: r.error, raw: r.raw });
+    }
+    console.log(
+      '[enrich] sku=' + product.sku
+      + ' ok ms=' + r.cost.ms
+      + ' usd=' + r.cost.usd.toFixed(4)
+      + ' brl=' + r.cost.brl.toFixed(4),
+    );
+    res.json({ success: true, product: r.product, cost: r.cost });
+  } catch (err) {
+    console.error('[enrich] route error', err);
+    res.status(500).json({ error: 'Erro no enriquecimento' });
+  }
+});
+
+function buildEnrichWhere({ onlyMissing, category, brand, productIds, source }) {
+  const where = { active: true };
+  if (Array.isArray(productIds) && productIds.length) {
+    where.id = { in: productIds.map(String) };
+    return where;
+  }
+  if (onlyMissing) where.imageUrl = null;
+  if (category) where.category = { equals: String(category), mode: 'insensitive' };
+  if (brand) where.brand = { equals: String(brand), mode: 'insensitive' };
+  if (source) where.source = String(source);
+  return where;
+}
+
+router.get('/enrich-estimate', adminOnly, async (req, res) => {
+  try {
+    const where = buildEnrichWhere({
+      onlyMissing: req.query.onlyMissing === 'true',
+      category: req.query.category,
+      brand: req.query.brand,
+      source: req.query.source,
+    });
+    const total = await prisma.product.count({ where });
+    const estimateBRL = total * ENRICH_PER_PRODUCT_BRL_ESTIMATE;
+    res.json({
+      total,
+      estimateBRL: Number(estimateBRL.toFixed(2)),
+      perProductBRL: ENRICH_PER_PRODUCT_BRL_ESTIMATE,
+      activeJobId: activeEnrichJobId,
+    });
+  } catch (err) {
+    console.error('[enrich-estimate] error', err);
+    res.status(500).json({ error: 'Erro ao estimar enriquecimento' });
+  }
+});
+
+router.post('/enrich-batch', adminOnly, async (req, res) => {
+  try {
+    if (activeEnrichJobId && enrichJobs.get(activeEnrichJobId) && !enrichJobs.get(activeEnrichJobId).completed) {
+      return res.status(409).json({ error: 'Já existe um enriquecimento em andamento', jobId: activeEnrichJobId });
+    }
+
+    const body = req.body || {};
+    const where = buildEnrichWhere({
+      onlyMissing: !!body.onlyMissing,
+      category: body.category,
+      brand: body.brand,
+      productIds: body.productIds,
+      source: body.source,
+    });
+
+    const products = await prisma.product.findMany({
+      where,
+      select: { id: true, sku: true, name: true, brand: true, category: true, subcategory: true, aiContext: true },
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    if (!products.length) {
+      return res.status(400).json({ error: 'Nenhum produto encontrado para enriquecer com esses filtros' });
+    }
+
+    const jobId = 'enrich_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const job = {
+      id: jobId,
+      total: products.length,
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      errors: [],
+      totalCostBRL: 0,
+      totalCostUSD: 0,
+      completed: false,
+      cancelled: false,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      lastSku: null,
+      filters: {
+        onlyMissing: !!body.onlyMissing,
+        category: body.category || null,
+        brand: body.brand || null,
+        productIdsCount: Array.isArray(body.productIds) ? body.productIds.length : 0,
+      },
+    };
+    enrichJobs.set(jobId, job);
+    activeEnrichJobId = jobId;
+
+    console.log('[enrich] batch start jobId=' + jobId + ' total=' + products.length, job.filters);
+
+    res.json({ jobId, total: products.length });
+
+    setImmediate(async () => {
+      try {
+        let i = 0;
+        while (i < products.length) {
+          if (job.cancelled) break;
+          const slice = products.slice(i, i + ENRICH_BATCH_CONCURRENCY);
+          await Promise.allSettled(slice.map(async (p) => {
+            try {
+              job.lastSku = p.sku;
+              const r = await enrichProductOnce(p);
+              job.processed += 1;
+              if (r.ok) {
+                job.succeeded += 1;
+                job.totalCostBRL += r.cost.brl;
+                job.totalCostUSD += r.cost.usd;
+                console.log(
+                  '[enrich] ' + p.sku
+                  + ' ok ' + r.cost.ms + 'ms'
+                  + ' brl=' + r.cost.brl.toFixed(4),
+                );
+              } else {
+                job.failed += 1;
+                job.errors.push({ sku: p.sku, productId: p.id, error: r.error });
+                console.warn('[enrich] ' + p.sku + ' fail: ' + r.error);
+              }
+            } catch (eP) {
+              job.processed += 1;
+              job.failed += 1;
+              job.errors.push({ sku: p.sku, productId: p.id, error: eP.message || 'erro' });
+              console.error('[enrich] ' + p.sku + ' throw:', eP);
+            }
+          }));
+          i += ENRICH_BATCH_CONCURRENCY;
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      } catch (eAll) {
+        console.error('[enrich] batch fatal:', eAll);
+      } finally {
+        job.completed = true;
+        job.finishedAt = new Date().toISOString();
+        if (activeEnrichJobId === jobId) activeEnrichJobId = null;
+        console.log(
+          '[enrich] batch done jobId=' + jobId
+          + ' processed=' + job.processed
+          + ' succeeded=' + job.succeeded
+          + ' failed=' + job.failed
+          + ' brl=' + job.totalCostBRL.toFixed(2),
+        );
+      }
+    });
+  } catch (err) {
+    console.error('[enrich-batch] route error', err);
+    res.status(500).json({ error: 'Erro ao iniciar enriquecimento em lote' });
+  }
+});
+
+router.get('/enrich-status/:jobId', adminOnly, (req, res) => {
+  const job = enrichJobs.get(String(req.params.jobId));
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  res.json({
+    jobId: job.id,
+    total: job.total,
+    processed: job.processed,
+    succeeded: job.succeeded,
+    failed: job.failed,
+    errorCount: job.errors.length,
+    errors: job.errors.slice(-50),
+    totalCostBRL: Number(job.totalCostBRL.toFixed(4)),
+    totalCostUSD: Number(job.totalCostUSD.toFixed(4)),
+    completed: job.completed,
+    cancelled: job.cancelled,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    lastSku: job.lastSku,
+    filters: job.filters,
+  });
+});
+
+router.post('/enrich-cancel', adminOnly, (req, res) => {
+  const targetId = String(req.body?.jobId || activeEnrichJobId || '');
+  if (!targetId) return res.json({ ok: true, message: 'Nenhum job ativo' });
+  const job = enrichJobs.get(targetId);
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  job.cancelled = true;
+  res.json({ ok: true, jobId: targetId });
+});
+
 router.post('/products/auto-fill', sellerOrAdmin, async (req, res) => {
   try {
     const sku = String(req.body?.sku || '').trim();
