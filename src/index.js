@@ -13,8 +13,12 @@ const sellerRoutes = require('./routes/seller');
 const storesRoutes = require('./routes/stores');
 const messagesRoutes = require('./routes/messages');
 const sellersRoutes = require('./routes/sellers');
+const catalogRoutes = require('./routes/catalog');
+const aiRoutes = require('./routes/ai');
+const adminCatalogRoutes = require('./routes/adminCatalog');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // Segurança
@@ -49,6 +53,9 @@ app.use('/api/seller', sellerRoutes);
 app.use('/api/stores', storesRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/sellers', sellersRoutes);
+app.use('/api/catalog', catalogRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/admin/catalog', adminCatalogRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

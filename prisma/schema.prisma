@@ -78,6 +78,8 @@ model User {
   taskExecutions   TaskExecution[]   @relation("taskExecutions")
   trainings        SellerTraining[]  @relation("trainings")
   quizAttempts     QuizAttempt[]     @relation("quizAttempts")
+  aiConversations  AIConversation[]  @relation("aiConversations")
+  productsCreated  Product[]         @relation("productsCreated")
 }
 
 // ============================================================
@@ -229,20 +231,60 @@ model Product {
   sku         String   @unique
   name        String
   brand       String
-  category    String
+  category    String // tenis, roupa, acessorio
   subcategory String?
-  description String?
-  features    String?  // JSON
-  price       Float
-  imageUrl    String?
-  active      Boolean  @default(true)
+
+  shortDescription  String?
+  longDescription   String?
+  features          Json?
+  aiContext         Json?
+  recommendedFor    Json?
+  notRecommendedFor Json?
+
+  imageUrl  String?
+  imageUrls Json?
+
+  price      Float
+  promoPrice Float?
+
+  active   Boolean @default(true)
+  featured Boolean @default(false)
+  source   String  @default("manual") // manual, csv, ai
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  createdById String?
+  createdBy   User?    @relation("productsCreated", fields: [createdById], references: [id])
 
   sizes     ProductSize[]
   saleItems SaleItem[]
   trainings SellerTraining[]
   quizzes   Quiz[]
+
+  @@index([brand, category])
+  @@index([active, featured])
+}
+
+model AIConversation {
+  id             String   @id @default(uuid())
+  userId         String?
+  user           User?    @relation("aiConversations", fields: [userId], references: [id])
+  userType       String // seller, client, guest
+  sessionKey     String? // identifica convidado (UUID do cliente) p/ limite diário
+
+  title          String?
+  messages       Json     @default("[]")
+
+  totalTokensIn  Int    @default(0)
+  totalTokensOut Int    @default(0)
+  totalCostBRL   Float  @default(0)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, active])
+  @@index([sessionKey])
 }
 
 model ProductSize {

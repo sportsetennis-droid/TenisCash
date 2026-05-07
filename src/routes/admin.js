@@ -1075,6 +1075,91 @@ router.put('/messages/:id/reply', async (req, res) => {
   }
 });
 
+function startOfMonthBrazil() {
+  const offsetMin = -180;
+  const now = new Date();
+  const local = new Date(now.getTime() + offsetMin * 60000);
+  const y = local.getUTCFullYear();
+  const m = local.getUTCMonth();
+  const startLocalAsUtc = Date.UTC(y, m, 1, 0, 0, 0, 0);
+  return new Date(startLocalAsUtc - offsetMin * 60000);
+}
+
+router.get('/ai/stats', async (req, res) => {
+  try {
+    const monthStart = startOfMonthBrazil();
+    const [agg, byType, last30] = await Promise.all([
+      prisma.aIConversation.aggregate({
+        where: { createdAt: { gte: monthStart }, active: true },
+        _sum: { totalCostBRL: true, totalTokensIn: true, totalTokensOut: true },
+        _count: true,
+      }),
+      prisma.aIConversation.groupBy({
+        by: ['userType'],
+        where: { createdAt: { gte: monthStart }, active: true },
+        _sum: { totalCostBRL: true },
+        _count: { _all: true },
+      }),
+      prisma.aIConversation.count({
+        where: {
+          active: true,
+          updatedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+    ]);
+
+    const monthCost = agg._sum.totalCostBRL || 0;
+    res.json({
+      monthCostBRL: monthCost,
+      monthTokensIn: agg._sum.totalTokensIn || 0,
+      monthTokensOut: agg._sum.totalTokensOut || 0,
+      conversationsThisMonth: agg._count?._all ?? 0,
+      conversationsLast30Days: last30,
+      byUserType: byType,
+      alertOverBudget: monthCost > 200,
+    });
+  } catch (err) {
+    console.error('Erro admin/ai/stats:', err);
+    res.status(500).json({ error: 'Erro ao gerar estatísticas de IA' });
+  }
+});
+
+router.get('/ai/conversations', async (req, res) => {
+  try {
+    const userType = String(req.query.userType || '').trim();
+    const where = {
+      active: true,
+      ...(userType ? { userType } : {}),
+    };
+    const conversations = await prisma.aIConversation.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 300,
+      include: {
+        user: { select: { id: true, name: true, role: true, phone: true } },
+      },
+    });
+    res.json({ conversations });
+  } catch (err) {
+    console.error('Erro admin/ai/conversations:', err);
+    res.status(500).json({ error: 'Erro ao listar conversas de IA' });
+  }
+});
+
+router.get('/ai/conversations/:id', async (req, res) => {
+  try {
+    const c = await prisma.aIConversation.findFirst({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, name: true, role: true, phone: true } } },
+    });
+    if (!c) return res.status(404).json({ error: 'Conversa não encontrada' });
+    res.json({ conversation: c });
+  } catch (err) {
+    console.error('Erro admin/ai/conversations/:id:', err);
+    res.status(500).json({ error: 'Erro ao carregar conversa' });
+  }
+});
+
 router.get('/messages/stats', async (req, res) => {
   try {
     const now = new Date();

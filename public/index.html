@@ -96,6 +96,22 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .msg-picker-item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}
 .msg-picker-item:hover{background:rgba(255,255,255,0.08)}
 .msg-picker-item .sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:4px}
+.ai-consultor-head{font-family:'Orbitron';font-size:15px;font-weight:800;letter-spacing:1px;margin:8px 0 4px;text-align:center}
+.ai-chat-log{min-height:220px;max-height:46vh;overflow-y:auto;padding:10px 0 14px;display:flex;flex-direction:column;gap:10px}
+.ai-msg-user{align-self:flex-end;max-width:90%;background:rgba(255,255,255,0.22);padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:14px;line-height:1.35}
+.ai-msg-bot{align-self:flex-start;max-width:94%;background:rgba(0,0,0,0.2);padding:10px 14px;border-radius:14px 14px 14px 4px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,0.12)}
+.ai-sugg{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.ai-sugg button{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;cursor:pointer;font-family:'Chakra Petch'}
+.ai-input-row{display:flex;gap:8px;margin-top:6px;align-items:stretch}
+.ai-input-row input{flex:1}
+.catalog-fab{position:fixed;right:18px;bottom:96px;width:56px;height:56px;border-radius:50%;border:none;background:#fff;color:#FF6D00;font-size:11px;font-weight:900;cursor:pointer;box-shadow:0 10px 28px rgba(0,0,0,0.28);z-index:40;font-family:'Chakra Petch';line-height:1.15;padding:6px;max-width:430px;left:50%;transform:translateX(calc(-50% + 175px))}
+@media(max-width:400px){.catalog-fab{right:12px;transform:none;left:auto}}
+.prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
+.prod-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0}
+.prod-card .pinfo{flex:1;min-width:0}
+.prod-card .pprice{font-family:'Orbitron';font-size:14px;font-weight:900;color:#FF6D00;margin-top:4px}
+.prod-card .pbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.prod-card .pbtns button{font-size:11px;padding:7px 10px;border-radius:10px;border:none;cursor:pointer;background:#fff;color:#FF6D00;font-weight:700;font-family:'Chakra Petch'}
 </style>
 </head>
 <body>
@@ -791,22 +807,68 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <button class="btn-secondary" onclick="showScreen('mydata')">CANCELAR</button>
 </div>
 
+<!-- SELLER: CATÁLOGO + IA -->
+<div id="seller-catalog" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="seller-home">←</span><p style="font-size:18px;font-weight:700">Catálogo</p></div>
+  <p class="ai-consultor-head">Consultor Sports &amp; Tennis</p>
+  <div id="seller-ai-chat-log" class="ai-chat-log"></div>
+  <div class="ai-sugg" id="seller-ai-sugg"></div>
+  <div class="ai-input-row">
+    <input id="seller-ai-input" class="input-field" type="text" placeholder="Escreva sua pergunta..." autocomplete="off">
+    <button type="button" class="btn-primary" id="seller-ai-send" style="margin-top:0;max-width:100px;padding:14px 12px">ENVIAR</button>
+  </div>
+  <div id="seller-ai-err" class="error-msg" style="display:none;margin-top:10px"></div>
+  <button type="button" class="catalog-fab" id="seller-catalog-fab" title="Buscar produto">BUSCAR<br>PRODUTO</button>
+</div>
+
+<div id="seller-catalog-search" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="seller-catalog">←</span><p style="font-size:18px;font-weight:700">Busca no catálogo</p></div>
+  <input id="seller-cat-q" class="input-field" placeholder="Nome, SKU ou marca..." autocomplete="off">
+  <button type="button" class="btn-primary" id="seller-cat-search-btn" style="margin-top:12px">BUSCAR</button>
+  <div id="seller-cat-results" style="margin-top:14px"></div>
+</div>
+
+<div id="seller-product-detail" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="seller-catalog">←</span><p style="font-size:18px;font-weight:700">Produto</p></div>
+  <div id="seller-pd-wrap" style="margin-top:8px"></div>
+</div>
+
+<!-- CLIENT: CONSULTOR IA -->
+<div id="client-ai-chat" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="home">←</span><p style="font-size:18px;font-weight:700">Consultor</p></div>
+  <p class="ai-consultor-head">Consultor Sports &amp; Tennis</p>
+  <div id="client-ai-chat-log" class="ai-chat-log"></div>
+  <div class="ai-sugg" id="client-ai-sugg"></div>
+  <div class="ai-input-row">
+    <input id="client-ai-input" class="input-field" type="text" placeholder="Em que podemos ajudar?" autocomplete="off">
+    <button type="button" class="btn-primary" id="client-ai-send" style="margin-top:0;max-width:100px;padding:14px 12px">ENVIAR</button>
+  </div>
+  <div id="client-ai-err" class="error-msg" style="display:none;margin-top:10px"></div>
+</div>
+
+<div id="client-product-detail" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="client-ai-chat">←</span><p style="font-size:18px;font-weight:700">Produto</p></div>
+  <div id="client-pd-wrap" style="margin-top:8px"></div>
+</div>
+
 <!-- BOTTOM NAV -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
-  <div class="nav-item active" onclick="showScreen('home')"><span>⌂</span><span>Início</span></div>
-  <div class="nav-item" onclick="showScreen('transfer')"><span>↗</span><span>Enviar</span></div>
-  <div class="nav-item" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
-  <div class="nav-item" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
-  <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
+  <div class="nav-item active" data-screen="home"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" data-screen="transfer"><span>↗</span><span>Enviar</span></div>
+  <div class="nav-item" data-screen="qr"><span>⬡</span><span>QR Code</span></div>
+  <div class="nav-item" data-screen="client-ai-chat"><span>🤖</span><span>Consultor</span></div>
+  <div class="nav-item" data-screen="promos"><span>★</span><span>Promos</span></div>
+  <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
 </div>
 
 <!-- BOTTOM NAV (SELLER) -->
 <div class="bottom-nav" id="bottomNavSeller" style="display:none">
-  <div class="nav-item active" onclick="showScreen('seller-home')"><span>⌂</span><span>Início</span></div>
-  <div class="nav-item" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
-  <div class="nav-item" onclick="alert('Em breve: Carteira')"><span>💳</span><span>Carteira</span></div>
-  <div class="nav-item" onclick="showScreen('seller-messages')"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
-  <div class="nav-item" onclick="showScreen('profile')"><span>●</span><span>Perfil</span></div>
+  <div class="nav-item active" data-screen="seller-home"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" data-screen="seller-clock"><span>⏱</span><span>Ponto</span></div>
+  <div class="nav-item" data-nav="seller-wallet"><span>💳</span><span>Carteira</span></div>
+  <div class="nav-item" data-screen="seller-messages"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
+  <div class="nav-item" data-screen="seller-catalog"><span>🛍</span><span>Catálogo</span></div>
+  <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
 </div>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
@@ -842,8 +904,8 @@ function showScreen(id) {
   const navCustomer = document.getElementById('bottomNav');
   const navSeller = document.getElementById('bottomNavSeller');
 
-  const customerScreens = ['home','transfer','qr','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
-  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','profile','security','mydata','edit-profile'];
+  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','profile','security','mydata','edit-profile'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
 
@@ -852,16 +914,12 @@ function showScreen(id) {
 
   // Active item (customer)
   if (shouldShowCustomerNav) {
-    Array.from(navCustomer.querySelectorAll('.nav-item')).forEach(n => n.classList.remove('active'));
-    const navMap = {home:0,transfer:1,qr:2,promos:3,profile:4};
-    if (navMap[id] !== undefined) navCustomer.querySelectorAll('.nav-item')[navMap[id]].classList.add('active');
+    Array.from(navCustomer.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
   }
 
   // Active item (seller)
   if (shouldShowSellerNav) {
-    Array.from(navSeller.querySelectorAll('.nav-item')).forEach(n => n.classList.remove('active'));
-    const navMapSeller = {'seller-home':0,'seller-clock':1,'profile':3};
-    if (navMapSeller[id] !== undefined) navSeller.querySelectorAll('.nav-item')[navMapSeller[id]].classList.add('active');
+    Array.from(navSeller.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
   }
 
   if (id === 'home') loadHome();
@@ -869,6 +927,9 @@ function showScreen(id) {
   if (id === 'seller-clock') initSellerClock();
   if (id === 'seller-messages') initSellerMessages();
   if (id === 'seller-message-new') initSellerMessageNew();
+  if (id === 'seller-catalog') initSellerCatalogAi();
+  if (id === 'seller-catalog-search') initSellerCatalogSearchScreen();
+  if (id === 'client-ai-chat') initClientAiChat();
   if (id === 'qr') loadQR();
   if (id === 'promos') loadPromos();
   if (id === 'profile') loadProfile();
@@ -877,6 +938,356 @@ function showScreen(id) {
   if (id === 'mydata') loadMyData();
   if (id === 'edit-profile') initEditProfileForm();
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
+}
+
+if (!window._tcUiNavBound) {
+  window._tcUiNavBound = true;
+  document.addEventListener('click', function (ev) {
+    const back = ev.target.closest('.back-arrow[data-back]');
+    if (back) {
+      ev.preventDefault();
+      showScreen(back.getAttribute('data-back'));
+      return;
+    }
+    const navItem = ev.target.closest('.bottom-nav .nav-item');
+    if (!navItem) return;
+    if (navItem.getAttribute('data-nav') === 'seller-wallet') {
+      alert('Em breve: Carteira do vendedor');
+      return;
+    }
+    const s = navItem.getAttribute('data-screen');
+    if (s) showScreen(s);
+  });
+}
+
+let sellerAiUiReady = false;
+let clientAiUiReady = false;
+let sellerCatSearchReady = false;
+
+function initSellerCatalogAi() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  const log = document.getElementById('seller-ai-chat-log');
+  const sugg = document.getElementById('seller-ai-sugg');
+  const inp = document.getElementById('seller-ai-input');
+  const err = document.getElementById('seller-ai-err');
+  if (!log || !sugg || !inp) return;
+  if (!log.dataset.seeded) {
+    log.dataset.seeded = '1';
+    const w = document.createElement('div');
+    w.className = 'ai-msg-bot';
+    w.textContent = 'Olá! Sou seu consultor esportivo virtual. Pode me perguntar sobre produtos do catálogo, comparações, dicas de venda ou dúvidas sobre esporte. Em que posso ajudar?';
+    log.appendChild(w);
+  }
+  if (!sellerAiUiReady) {
+    sellerAiUiReady = true;
+    sugg.innerHTML = '';
+    ['Cliente quer um tênis pra correr 5km', 'Comparar Cumulus e Nimbus', 'Tênis pra pisada pronada'].forEach(function (st) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = st;
+      b.addEventListener('click', function () { inp.value = st; inp.focus(); });
+      sugg.appendChild(b);
+    });
+    document.getElementById('seller-ai-send').addEventListener('click', sendSellerAi);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAi(); });
+    document.getElementById('seller-catalog-fab').addEventListener('click', function () { showScreen('seller-catalog-search'); });
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function sendSellerAi() {
+  const inp = document.getElementById('seller-ai-input');
+  const log = document.getElementById('seller-ai-chat-log');
+  const err = document.getElementById('seller-ai-err');
+  const msg = (inp.value || '').trim();
+  if (!msg) return;
+  err.style.display = 'none';
+  inp.value = '';
+  const u = document.createElement('div');
+  u.className = 'ai-msg-user';
+  u.textContent = msg;
+  log.appendChild(u);
+  log.scrollTop = log.scrollHeight;
+  const convId = sessionStorage.getItem('tc_ai_conv_seller') || undefined;
+  api('/ai/chat', 'POST', { message: msg, conversationId: convId }).then(function (r) {
+    if (r.error) {
+      err.textContent = r.error;
+      err.style.display = 'block';
+      return;
+    }
+    if (r.conversationId) sessionStorage.setItem('tc_ai_conv_seller', r.conversationId);
+    const b = document.createElement('div');
+    b.className = 'ai-msg-bot';
+    b.textContent = r.reply || '—';
+    log.appendChild(b);
+    if (r.products && r.products.length) renderAiProductCards(log, r.products, 'seller');
+    const sg = document.getElementById('seller-ai-sugg');
+    sg.innerHTML = '';
+    (r.suggestions || []).forEach(function (st) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = st;
+      btn.addEventListener('click', function () { inp.value = st; inp.focus(); });
+      sg.appendChild(btn);
+    });
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+function renderAiProductCards(log, products, mode) {
+  products.forEach(function (p) {
+    const card = document.createElement('div');
+    card.className = 'prod-card';
+    const img = document.createElement('img');
+    img.src = p.imageUrl || '';
+    img.alt = '';
+    const info = document.createElement('div');
+    info.className = 'pinfo';
+    const t = document.createElement('div');
+    t.style.fontWeight = '700';
+    t.textContent = (p.brand || '') + ' — ' + (p.name || '');
+    const sku = document.createElement('div');
+    sku.style.fontSize = '11px';
+    sku.style.opacity = '0.65';
+    sku.style.marginTop = '4px';
+    sku.textContent = 'SKU: ' + (p.sku || '');
+    const price = document.createElement('div');
+    price.className = 'pprice';
+    const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
+    price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
+    const btns = document.createElement('div');
+    btns.className = 'pbtns';
+    const b1 = document.createElement('button');
+    b1.type = 'button';
+    b1.textContent = 'Ver no catálogo';
+    b1.addEventListener('click', function () { openProductDetailScreen(p.id, mode); });
+    btns.appendChild(b1);
+    if (mode === 'seller') {
+      const b2 = document.createElement('button');
+      b2.type = 'button';
+      b2.textContent = 'Recomendar pro cliente';
+      b2.addEventListener('click', function () {
+        const link = window.location.origin + '/?produto=' + encodeURIComponent(p.id);
+        prompt('Compartilhe este link com o cliente:', link);
+      });
+      btns.appendChild(b2);
+    } else {
+      const b3 = document.createElement('button');
+      b3.type = 'button';
+      b3.textContent = 'Reservar na loja';
+      b3.addEventListener('click', async function () {
+        const sz = prompt('Qual tamanho você deseja reservar?', '');
+        if (sz === null) return;
+        const res = await api('/catalog/request-reservation', 'POST', { productId: p.id, size: sz || '' });
+        if (res.error) { alert(res.error); return; }
+        alert(res.message || 'Pedido enviado!');
+      });
+      btns.appendChild(b3);
+    }
+    info.appendChild(t);
+    info.appendChild(sku);
+    info.appendChild(price);
+    info.appendChild(btns);
+    card.appendChild(img);
+    card.appendChild(info);
+    log.appendChild(card);
+  });
+}
+
+function initClientAiChat() {
+  if (isSeller()) { showScreen('seller-home'); return; }
+  if (!token || !user) { showScreen('auth'); return; }
+  const log = document.getElementById('client-ai-chat-log');
+  const sugg = document.getElementById('client-ai-sugg');
+  const inp = document.getElementById('client-ai-input');
+  const err = document.getElementById('client-ai-err');
+  if (!log || !sugg || !inp) return;
+  if (!log.dataset.seeded) {
+    log.dataset.seeded = '1';
+    const w = document.createElement('div');
+    w.className = 'ai-msg-bot';
+    w.textContent = 'Oi! Sou seu consultor esportivo virtual da Sports & Tennis. Posso te ajudar a escolher o tênis certo, esclarecer dúvidas sobre esporte ou recomendar produtos. O que você procura?';
+    log.appendChild(w);
+  }
+  if (!clientAiUiReady) {
+    clientAiUiReady = true;
+    sugg.innerHTML = '';
+    ['Quero começar a correr', 'Tênis casual pra dia a dia', 'Qual a diferença entre tênis de corrida e treino?'].forEach(function (st) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = st;
+      b.addEventListener('click', function () { inp.value = st; inp.focus(); });
+      sugg.appendChild(b);
+    });
+    document.getElementById('client-ai-send').addEventListener('click', sendClientAi);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendClientAi(); });
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function sendClientAi() {
+  const inp = document.getElementById('client-ai-input');
+  const log = document.getElementById('client-ai-chat-log');
+  const err = document.getElementById('client-ai-err');
+  const msg = (inp.value || '').trim();
+  if (!msg) return;
+  err.style.display = 'none';
+  inp.value = '';
+  const u = document.createElement('div');
+  u.className = 'ai-msg-user';
+  u.textContent = msg;
+  log.appendChild(u);
+  log.scrollTop = log.scrollHeight;
+  const convId = sessionStorage.getItem('tc_ai_conv_client') || undefined;
+  api('/ai/chat', 'POST', { message: msg, conversationId: convId }).then(function (r) {
+    if (r.error) {
+      err.textContent = r.error;
+      err.style.display = 'block';
+      return;
+    }
+    if (r.conversationId) sessionStorage.setItem('tc_ai_conv_client', r.conversationId);
+    const b = document.createElement('div');
+    b.className = 'ai-msg-bot';
+    b.textContent = r.reply || '—';
+    log.appendChild(b);
+    if (r.products && r.products.length) renderAiProductCards(log, r.products, 'client');
+    const sg = document.getElementById('client-ai-sugg');
+    sg.innerHTML = '';
+    (r.suggestions || []).forEach(function (st) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = st;
+      btn.addEventListener('click', function () { inp.value = st; inp.focus(); });
+      sg.appendChild(btn);
+    });
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+function initSellerCatalogSearchScreen() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  const btn = document.getElementById('seller-cat-search-btn');
+  const q = document.getElementById('seller-cat-q');
+  const res = document.getElementById('seller-cat-results');
+  if (!sellerCatSearchReady) {
+    sellerCatSearchReady = true;
+    btn.addEventListener('click', runSellerCatalogSearch);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') runSellerCatalogSearch(); });
+  }
+  res.innerHTML = '';
+}
+
+function runSellerCatalogSearch() {
+  const q = document.getElementById('seller-cat-q').value.trim();
+  const res = document.getElementById('seller-cat-results');
+  res.innerHTML = '<div class="loading">Buscando...</div>';
+  const qs = q ? ('?search=' + encodeURIComponent(q)) : '';
+  api('/catalog/products' + qs).then(function (data) {
+    if (data.error) { res.innerHTML = '<div class="error-msg">' + data.error + '</div>'; return; }
+    const list = data.products || [];
+    res.innerHTML = '';
+    if (!list.length) {
+      res.appendChild(document.createTextNode('Nenhum produto encontrado.'));
+      return;
+    }
+    list.forEach(function (p) {
+      const row = document.createElement('div');
+      row.className = 'prod-card';
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function () { openProductDetailScreen(p.id, 'seller'); });
+      const title = document.createElement('div');
+      title.style.fontWeight = '700';
+      title.textContent = p.name;
+      const meta = document.createElement('div');
+      meta.style.fontSize = '12px';
+      meta.style.opacity = '0.75';
+      meta.textContent = p.brand + ' • ' + p.sku;
+      const price = document.createElement('div');
+      price.className = 'pprice';
+      const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
+      price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
+      row.appendChild(title);
+      row.appendChild(meta);
+      row.appendChild(price);
+      res.appendChild(row);
+    });
+  });
+}
+
+function openProductDetailScreen(id, mode) {
+  api('/catalog/products/' + encodeURIComponent(id)).then(function (data) {
+    if (data.error) { alert(data.error); return; }
+    const p = data.product;
+    const wrapId = mode === 'seller' ? 'seller-pd-wrap' : 'client-pd-wrap';
+    const scr = mode === 'seller' ? 'seller-product-detail' : 'client-product-detail';
+    const wrap = document.getElementById(wrapId);
+    wrap.innerHTML = '';
+    const h = document.createElement('p');
+    h.style.fontWeight = '800';
+    h.style.fontSize = '17px';
+    h.textContent = p.name;
+    const sub = document.createElement('p');
+    sub.style.fontSize = '12px';
+    sub.style.opacity = '0.75';
+    sub.style.marginTop = '6px';
+    sub.textContent = p.brand + ' • SKU ' + p.sku + ' • ' + p.category;
+    const pr = document.createElement('p');
+    pr.className = 'pprice';
+    pr.style.fontSize = '22px';
+    const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
+    pr.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
+    wrap.appendChild(h);
+    wrap.appendChild(sub);
+    wrap.appendChild(pr);
+    if (p.shortDescription || p.longDescription) {
+      const d = document.createElement('p');
+      d.style.marginTop = '12px';
+      d.style.fontSize = '14px';
+      d.style.lineHeight = '1.45';
+      d.textContent = p.longDescription || p.shortDescription || '';
+      wrap.appendChild(d);
+    }
+    const szTitle = document.createElement('p');
+    szTitle.style.marginTop = '16px';
+    szTitle.style.fontWeight = '700';
+    szTitle.textContent = 'Tamanhos e estoque';
+    wrap.appendChild(szTitle);
+    (p.sizes || []).forEach(function (s) {
+      const line = document.createElement('div');
+      line.style.fontSize = '13px';
+      line.style.padding = '6px 0';
+      line.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+      line.textContent = 'Tam. ' + s.size + ': ' + s.stock + ' un.';
+      wrap.appendChild(line);
+    });
+    const btnRow = document.createElement('div');
+    btnRow.className = 'pbtns';
+    btnRow.style.marginTop = '16px';
+    if (mode === 'seller') {
+      const b2 = document.createElement('button');
+      b2.type = 'button';
+      b2.textContent = 'Recomendar pro cliente';
+      b2.addEventListener('click', function () {
+        const link = window.location.origin + '/?produto=' + encodeURIComponent(p.id);
+        prompt('Link para o cliente:', link);
+      });
+      btnRow.appendChild(b2);
+    } else {
+      const b3 = document.createElement('button');
+      b3.type = 'button';
+      b3.textContent = 'Reservar na loja';
+      b3.addEventListener('click', async function () {
+        const sz = prompt('Tamanho desejado?', '');
+        if (sz === null) return;
+        const out = await api('/catalog/request-reservation', 'POST', { productId: p.id, size: sz || '' });
+        if (out.error) { alert(out.error); return; }
+        alert(out.message || 'Enviado!');
+      });
+      btnRow.appendChild(b3);
+    }
+    wrap.appendChild(btnRow);
+    showScreen(scr);
+  });
 }
 
 function escapeHtmlSellerMsg(str) {

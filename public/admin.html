@@ -176,6 +176,11 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="stat-value" id="s-bonus">—</div>
       <div class="stat-sub" id="s-bonus-sub"></div>
     </div>
+    <div class="stat-card stat-orange">
+      <div class="stat-label">IA: GASTO NO MÊS (R$)</div>
+      <div class="stat-value" id="s-ai-cost" style="font-size:26px">—</div>
+      <div class="stat-sub" id="s-ai-sub">Consultor + auto-preenchimento</div>
+    </div>
   </div>
 
   <!-- TABS -->
@@ -185,6 +190,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
+    <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -335,6 +341,53 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="loading-spinner">Carregando...</div>
     </div>
   </div>
+
+  <div class="section" id="tab-catalog" style="display:none">
+    <div class="section-head">
+      <span class="section-title">Catálogo &amp; IA</span>
+      <button type="button" class="refresh-btn" id="btn-catalog-refresh">↻</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button type="button" class="tab active js-cat-sub" data-cat-sub="prod">Produtos</button>
+      <button type="button" class="tab js-cat-sub" data-cat-sub="import">Importar CSV</button>
+      <button type="button" class="tab js-cat-sub" data-cat-sub="aichat">Conversas IA</button>
+    </div>
+
+    <div id="cat-panel-prod">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+        <input class="search-box" id="cat-filter-search" placeholder="Buscar nome/SKU..." style="width:220px">
+        <input class="search-box" id="cat-filter-brand" placeholder="Marca" style="width:140px">
+        <input class="search-box" id="cat-filter-category" placeholder="Categoria" style="width:140px">
+        <button type="button" class="btn btn-primary" id="cat-btn-filter">Filtrar</button>
+        <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
+        <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
+      </div>
+      <div id="cat-products-wrap"><div class="loading-spinner">Carregando catálogo...</div></div>
+    </div>
+
+    <div id="cat-panel-import" style="display:none">
+      <p class="note">Envie um CSV com colunas: sku, name, brand, category, subcategory, price, size, stock, imageUrl</p>
+      <input type="file" id="cat-csv-file" accept=".csv,.txt">
+      <button type="button" class="btn btn-primary" id="cat-csv-preview" style="margin-top:10px">Gerar preview</button>
+      <div id="cat-csv-preview-wrap" style="margin-top:16px"></div>
+      <button type="button" class="btn btn-primary" id="cat-csv-apply" style="display:none;margin-top:12px">Confirmar importação</button>
+    </div>
+
+    <div id="cat-panel-aichat" style="display:none">
+      <div class="stats-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-label">CONVERSAS (30 DIAS)</div><div class="stat-value" id="cat-ai-n">—</div></div>
+        <div class="stat-card stat-orange"><div class="stat-label">CUSTO MÊS (R$)</div><div class="stat-value" id="cat-ai-cost">—</div></div>
+        <div class="stat-card"><div class="stat-label">ALERTA ORÇAMENTO</div><div class="stat-value" id="cat-ai-alert" style="font-size:16px">—</div></div>
+      </div>
+      <select class="search-box" id="cat-ai-filter-type" style="width:220px;margin-bottom:12px">
+        <option value="">Todos os tipos</option>
+        <option value="seller">Vendedor</option>
+        <option value="client">Cliente</option>
+        <option value="guest">Convidado</option>
+      </select>
+      <div id="cat-ai-conv-wrap"><div class="loading-spinner">Carregando...</div></div>
+    </div>
+  </div>
 </div>
 
 <!-- USER DETAIL MODAL -->
@@ -393,6 +446,41 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <textarea class="form-input" id="admin-msg-content" rows="5" style="margin-top:8px"></textarea>
     <div id="admin-msg-error" style="margin-top:10px"></div>
     <button class="btn btn-primary" id="admin-msg-send" style="margin-top:14px;width:100%">ENVIAR</button>
+  </div>
+</div>
+
+<!-- CATÁLOGO: NOVO / EDITAR PRODUTO -->
+<div class="detail-modal" id="cat-product-modal">
+  <div class="detail-content" style="max-width:560px">
+    <button type="button" class="detail-close" id="cat-product-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">PRODUTO</div>
+    <input type="hidden" id="cat-p-id">
+    <label class="muted" style="display:block;margin-top:12px;font-size:11px;letter-spacing:2px">SKU</label>
+    <input class="form-input" id="cat-p-sku" style="margin-top:6px">
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOME</label>
+    <input class="form-input" id="cat-p-name" style="margin-top:6px">
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">MARCA / CATEGORIA</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="form-input" id="cat-p-brand" placeholder="Marca">
+      <input class="form-input" id="cat-p-category" placeholder="Categoria">
+    </div>
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">PREÇO / PROMO</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="form-input" id="cat-p-price" type="number" step="0.01" placeholder="Preço">
+      <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)">
+    </div>
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">DESCRIÇÃO CURTA</label>
+    <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px"></textarea>
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">URL IMAGEM</label>
+    <input class="form-input" id="cat-p-img" style="margin-top:6px">
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">TAMANHOS (um por linha: 38|5)</label>
+    <textarea class="form-input" id="cat-p-sizes" rows="4" placeholder="38|5&#10;39|3" style="margin-top:6px"></textarea>
+    <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+      <label style="font-size:13px;color:var(--text2)"><input type="checkbox" id="cat-p-active" checked> Ativo</label>
+      <label style="font-size:13px;color:var(--text2)"><input type="checkbox" id="cat-p-featured"> Destaque</label>
+    </div>
+    <div id="cat-p-error" style="margin-top:10px"></div>
+    <button type="button" class="btn btn-primary" id="cat-p-save" style="margin-top:14px;width:100%">SALVAR</button>
   </div>
 </div>
 
@@ -475,6 +563,245 @@ async function loadDashboard() {
   await loadStores();
   loadSellers();
   loadAdminMessageStats();
+  loadAdminAiCostCard();
+}
+
+async function loadAdminAiCostCard() {
+  const el = document.getElementById('s-ai-cost');
+  const sub = document.getElementById('s-ai-sub');
+  if (!el) return;
+  const data = await api('/admin/ai/stats');
+  if (data.error) { el.textContent = '—'; return; }
+  const v = data.monthCostBRL != null ? Number(data.monthCostBRL).toFixed(2) : '0,00';
+  el.textContent = 'R$ ' + v.replace('.', ',');
+  if (sub) sub.textContent = (data.conversationsThisMonth || 0) + ' conversas no mês' + (data.alertOverBudget ? ' • Atenção: orçamento IA > R$ 200' : '');
+}
+
+let adminCatalogInitialized = false;
+let csvImportDraft = null;
+
+function syncCatSubPanels(sub) {
+  document.querySelectorAll('.js-cat-sub').forEach(b => b.classList.toggle('active', b.getAttribute('data-cat-sub') === sub));
+  document.getElementById('cat-panel-prod').style.display = sub === 'prod' ? 'block' : 'none';
+  document.getElementById('cat-panel-import').style.display = sub === 'import' ? 'block' : 'none';
+  document.getElementById('cat-panel-aichat').style.display = sub === 'aichat' ? 'block' : 'none';
+}
+
+function initAdminCatalogTab() {
+  if (!adminCatalogInitialized) {
+    adminCatalogInitialized = true;
+    document.querySelectorAll('.js-cat-sub').forEach(btn => {
+      btn.addEventListener('click', function () {
+        syncCatSubPanels(btn.getAttribute('data-cat-sub'));
+        if (btn.getAttribute('data-cat-sub') === 'aichat') loadAdminAiConversationsPanel();
+      });
+    });
+    document.getElementById('btn-catalog-refresh').addEventListener('click', function () {
+      loadCatalogProductsAdmin();
+      loadAdminAiCostCard();
+      loadAdminAiConversationsPanel();
+    });
+    document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
+    document.getElementById('cat-btn-new').addEventListener('click', function () { openCatProductModal(null); });
+    document.getElementById('cat-btn-autofill').addEventListener('click', async function () {
+      const sku = prompt('SKU para pesquisa com IA:', '');
+      if (!sku) return;
+      const data = await api('/admin/catalog/products/auto-fill', 'POST', { sku: sku.trim() });
+      if (data.error) { alert(data.error); return; }
+      const f = data.fill || {};
+      openCatProductModal(null);
+      document.getElementById('cat-p-sku').value = data.sku || sku;
+      if (f.name) document.getElementById('cat-p-name').value = f.name;
+      if (f.brand) document.getElementById('cat-p-brand').value = f.brand;
+      if (f.category) document.getElementById('cat-p-category').value = f.category;
+      if (f.shortDescription) document.getElementById('cat-p-short').value = f.shortDescription;
+      if (f.suggestedRetailPrice != null) document.getElementById('cat-p-price').value = f.suggestedRetailPrice;
+      if (f.imageUrls && f.imageUrls[0]) document.getElementById('cat-p-img').value = f.imageUrls[0];
+      if (Array.isArray(f.suggestedSizes)) {
+        document.getElementById('cat-p-sizes').value = f.suggestedSizes.map(function (x) { return (x.size || '') + '|' + (x.stock != null ? x.stock : 0); }).join('\n');
+      }
+    });
+    document.getElementById('cat-csv-preview').addEventListener('click', catCsvPreview);
+    document.getElementById('cat-csv-apply').addEventListener('click', catCsvApply);
+    document.getElementById('cat-product-modal-close').addEventListener('click', function () {
+      document.getElementById('cat-product-modal').classList.remove('show');
+    });
+    document.getElementById('cat-p-save').addEventListener('click', catProductSave);
+    document.getElementById('cat-ai-filter-type').addEventListener('change', loadAdminAiConversationsPanel);
+  }
+  syncCatSubPanels('prod');
+  loadCatalogProductsAdmin();
+}
+
+async function loadCatalogProductsAdmin() {
+  const wrap = document.getElementById('cat-products-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const q = new URLSearchParams();
+  const s = document.getElementById('cat-filter-search').value.trim();
+  const b = document.getElementById('cat-filter-brand').value.trim();
+  const c = document.getElementById('cat-filter-category').value.trim();
+  if (s) q.set('search', s);
+  if (b) q.set('brand', b);
+  if (c) q.set('category', c);
+  const data = await api('/admin/catalog/products?' + q.toString());
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
+  const rows = data.products || [];
+  if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
+  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  rows.forEach(function (p) {
+    html += '<tr><td>' + escapeHtml(p.sku) + '</td><td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.brand) + '</td><td>R$ ' + Number(p.price).toFixed(2) + '</td><td>' + (p.active ? 'sim' : 'não') + '</td><td>';
+    html += '<button type="button" class="btn js-cat-edit" data-id="' + p.id + '">Editar</button> ';
+    html += '<button type="button" class="btn btn-danger js-cat-del" data-id="' + p.id + '">Excluir</button>';
+    html += '</td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-cat-edit').forEach(function (btn) {
+    btn.addEventListener('click', function () { openCatProductModal(btn.getAttribute('data-id')); });
+  });
+  wrap.querySelectorAll('.js-cat-del').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      if (!confirm('Excluir produto?')) return;
+      const r = await api('/admin/catalog/products/' + encodeURIComponent(btn.getAttribute('data-id')), 'DELETE');
+      if (r.error) { alert(r.error); return; }
+      loadCatalogProductsAdmin();
+    });
+  });
+}
+
+function openCatProductModal(id) {
+  document.getElementById('cat-p-error').innerHTML = '';
+  document.getElementById('cat-product-modal').classList.add('show');
+  if (!id) {
+    document.getElementById('cat-p-id').value = '';
+    document.getElementById('cat-p-sku').value = '';
+    document.getElementById('cat-p-name').value = '';
+    document.getElementById('cat-p-brand').value = '';
+    document.getElementById('cat-p-category').value = '';
+    document.getElementById('cat-p-price').value = '';
+    document.getElementById('cat-p-promo').value = '';
+    document.getElementById('cat-p-short').value = '';
+    document.getElementById('cat-p-img').value = '';
+    document.getElementById('cat-p-sizes').value = '';
+    document.getElementById('cat-p-active').checked = true;
+    document.getElementById('cat-p-featured').checked = false;
+    return;
+  }
+  api('/admin/catalog/products/' + encodeURIComponent(id)).then(function (data) {
+    if (data.error) { alert(data.error); return; }
+    const p = data.product;
+    document.getElementById('cat-p-id').value = p.id;
+    document.getElementById('cat-p-sku').value = p.sku;
+    document.getElementById('cat-p-name').value = p.name;
+    document.getElementById('cat-p-brand').value = p.brand;
+    document.getElementById('cat-p-category').value = p.category;
+    document.getElementById('cat-p-price').value = p.price;
+    document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
+    document.getElementById('cat-p-short').value = p.shortDescription || '';
+    document.getElementById('cat-p-img').value = p.imageUrl || '';
+    document.getElementById('cat-p-sizes').value = (p.sizes || []).map(function (s) { return s.size + '|' + s.stock; }).join('\n');
+    document.getElementById('cat-p-active').checked = p.active !== false;
+    document.getElementById('cat-p-featured').checked = !!p.featured;
+  });
+}
+
+async function catProductSave() {
+  const errEl = document.getElementById('cat-p-error');
+  errEl.innerHTML = '';
+  const id = document.getElementById('cat-p-id').value.trim();
+  const sizesRaw = document.getElementById('cat-p-sizes').value.trim();
+  const sizes = [];
+  sizesRaw.split('\n').forEach(function (line) {
+    const p = line.trim().split('|');
+    if (p[0]) sizes.push({ size: p[0].trim(), stock: parseInt(p[1], 10) || 0 });
+  });
+  const body = {
+    sku: document.getElementById('cat-p-sku').value.trim(),
+    name: document.getElementById('cat-p-name').value.trim(),
+    brand: document.getElementById('cat-p-brand').value.trim(),
+    category: document.getElementById('cat-p-category').value.trim(),
+    price: parseFloat(document.getElementById('cat-p-price').value),
+    promoPrice: document.getElementById('cat-p-promo').value ? parseFloat(document.getElementById('cat-p-promo').value) : null,
+    shortDescription: document.getElementById('cat-p-short').value.trim() || null,
+    imageUrl: document.getElementById('cat-p-img').value.trim() || null,
+    active: document.getElementById('cat-p-active').checked,
+    featured: document.getElementById('cat-p-featured').checked,
+    sizes: sizes,
+  };
+  let r;
+  if (id) r = await api('/admin/catalog/products/' + encodeURIComponent(id), 'PUT', body);
+  else r = await api('/admin/catalog/products', 'POST', body);
+  if (r.error) { errEl.innerHTML = '<div class="login-error">' + r.error + '</div>'; return; }
+  document.getElementById('cat-product-modal').classList.remove('show');
+  loadCatalogProductsAdmin();
+}
+
+async function catCsvPreview() {
+  const inp = document.getElementById('cat-csv-file');
+  const wrap = document.getElementById('cat-csv-preview-wrap');
+  const apply = document.getElementById('cat-csv-apply');
+  if (!inp.files || !inp.files[0]) { alert('Selecione um arquivo'); return; }
+  const fd = new FormData();
+  fd.append('file', inp.files[0]);
+  const res = await fetch(API + '/admin/catalog/import-csv', {
+    method: 'POST',
+    headers: token ? { Authorization: 'Bearer ' + token } : {},
+    body: fd,
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  csvImportDraft = data.items;
+  let h = '<p class="note">Preview (' + (data.preview || []).length + ' de ' + (data.count || 0) + ' SKUs)</p><table><thead><tr><th>SKU</th><th>Nome</th><th>Qtd tamanhos</th></tr></thead><tbody>';
+  (data.preview || []).forEach(function (r) {
+    h += '<tr><td>' + escapeHtml(r.sku) + '</td><td>' + escapeHtml(r.name) + '</td><td>' + (r.sizes || []).length + '</td></tr>';
+  });
+  h += '</tbody></table>';
+  wrap.innerHTML = h;
+  apply.style.display = 'inline-block';
+}
+
+async function catCsvApply() {
+  if (!csvImportDraft || !csvImportDraft.length) { alert('Gere o preview antes'); return; }
+  const r = await api('/admin/catalog/import-csv/apply', 'POST', { items: csvImportDraft });
+  if (r.error) { alert(r.error); return; }
+  alert('Importação concluída. Criados: ' + (r.created || 0) + ', atualizados: ' + (r.updated || 0));
+  csvImportDraft = null;
+  document.getElementById('cat-csv-apply').style.display = 'none';
+  loadCatalogProductsAdmin();
+}
+
+async function loadAdminAiConversationsPanel() {
+  const wrap = document.getElementById('cat-ai-conv-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const st = await api('/admin/ai/stats');
+  if (!st.error) {
+    document.getElementById('cat-ai-n').textContent = st.conversationsLast30Days != null ? st.conversationsLast30Days : '—';
+    document.getElementById('cat-ai-cost').textContent = st.monthCostBRL != null ? ('R$ ' + Number(st.monthCostBRL).toFixed(2)) : '—';
+    document.getElementById('cat-ai-alert').textContent = st.alertOverBudget ? 'Acima de R$ 200' : 'OK';
+  }
+  const ut = document.getElementById('cat-ai-filter-type').value;
+  const q = ut ? ('?userType=' + encodeURIComponent(ut)) : '';
+  const data = await api('/admin/ai/conversations' + q);
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
+  const list = data.conversations || [];
+  if (!list.length) { wrap.innerHTML = '<div class="empty-state">Nenhuma conversa</div>'; return; }
+  let html = '<table><thead><tr><th>Tipo</th><th>Usuário</th><th>Título</th><th>Custo R$</th><th>Atualizado</th><th></th></tr></thead><tbody>';
+  list.forEach(function (c) {
+    const un = c.user ? (c.user.name + ' (' + c.user.role + ')') : '—';
+    html += '<tr><td>' + escapeHtml(c.userType) + '</td><td>' + escapeHtml(un) + '</td><td>' + escapeHtml(c.title || '—') + '</td><td>' + Number(c.totalCostBRL || 0).toFixed(4) + '</td><td>' + new Date(c.updatedAt).toLocaleString('pt-BR') + '</td>';
+    html += '<td><button type="button" class="btn js-ai-conv" data-id="' + c.id + '">Ver JSON</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-ai-conv').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const d = await api('/admin/ai/conversations/' + encodeURIComponent(btn.getAttribute('data-id')));
+      if (d.error) { alert(d.error); return; }
+      alert(JSON.stringify(d.conversation && d.conversation.messages, null, 2).slice(0, 3500));
+    });
+  });
 }
 
 // USERS
@@ -912,16 +1239,19 @@ async function loadTransactions() {
 
 // TABS
 function switchTab(tab, btn) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tabs > .tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
   document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
   document.getElementById('tab-clockin').style.display = tab === 'clockin' ? 'block' : 'none';
   document.getElementById('tab-messages').style.display = tab === 'messages' ? 'block' : 'none';
+  const tabCat = document.getElementById('tab-catalog');
+  if (tabCat) tabCat.style.display = tab === 'catalog' ? 'block' : 'none';
   if (tab === 'sellers') { loadStores(); loadSellers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
   if (tab === 'messages') { initAdminMessagesUI(); }
+  if (tab === 'catalog') { initAdminCatalogTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
