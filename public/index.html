@@ -97,15 +97,19 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .msg-picker-item:hover{background:rgba(255,255,255,0.08)}
 .msg-picker-item .sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:4px}
 .ai-consultor-head{font-family:'Orbitron';font-size:15px;font-weight:800;letter-spacing:1px;margin:8px 0 4px;text-align:center}
-.ai-chat-log{min-height:220px;max-height:46vh;overflow-y:auto;padding:10px 0 14px;display:flex;flex-direction:column;gap:10px}
+.ai-chat-log{min-height:200px;max-height:calc(100vh - 320px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:10px 6px 14px 0;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;scrollbar-color:#FF6D00 rgba(255,255,255,0.08)}
+.ai-chat-log::-webkit-scrollbar{width:8px}
+.ai-chat-log::-webkit-scrollbar-track{background:rgba(255,255,255,0.08);border-radius:8px}
+.ai-chat-log::-webkit-scrollbar-thumb{background:#FF6D00;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.ai-chat-log::-webkit-scrollbar-thumb:hover{background:#fff}
 .ai-msg-user{align-self:flex-end;max-width:90%;background:rgba(255,255,255,0.22);padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:14px;line-height:1.35}
 .ai-msg-bot{align-self:flex-start;max-width:94%;background:rgba(0,0,0,0.2);padding:10px 14px;border-radius:14px 14px 14px 4px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,0.12)}
 .ai-sugg{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
 .ai-sugg button{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;cursor:pointer;font-family:'Chakra Petch'}
 .ai-input-row{display:flex;gap:8px;margin-top:6px;align-items:stretch}
 .ai-input-row input{flex:1}
-.catalog-fab{position:fixed;right:18px;bottom:96px;width:56px;height:56px;border-radius:50%;border:none;background:#fff;color:#FF6D00;font-size:11px;font-weight:900;cursor:pointer;box-shadow:0 10px 28px rgba(0,0,0,0.28);z-index:40;font-family:'Chakra Petch';line-height:1.15;padding:6px;max-width:430px;left:50%;transform:translateX(calc(-50% + 175px))}
-@media(max-width:400px){.catalog-fab{right:12px;transform:none;left:auto}}
+.catalog-search-btn{margin-left:auto;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:'Chakra Petch';display:inline-flex;align-items:center;gap:6px}
+.catalog-search-btn:hover{background:#fff;color:#FF6D00}
 .prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
 .prod-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0}
 .prod-card .pinfo{flex:1;min-width:0}
@@ -809,7 +813,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER: CATÁLOGO + IA -->
 <div id="seller-catalog" class="screen">
-  <div class="back-header"><span class="back-arrow" data-back="seller-home">←</span><p style="font-size:18px;font-weight:700">Catálogo</p></div>
+  <div class="back-header" style="display:flex;align-items:center;gap:12px">
+    <span class="back-arrow" data-back="seller-home">←</span>
+    <p style="font-size:18px;font-weight:700;flex:1">Catálogo</p>
+    <button type="button" class="catalog-search-btn" id="seller-catalog-fab" title="Buscar produto"><span aria-hidden="true">🔍</span><span>Buscar produto</span></button>
+  </div>
   <p class="ai-consultor-head">Consultor Sports &amp; Tennis</p>
   <div id="seller-ai-chat-log" class="ai-chat-log"></div>
   <div class="ai-sugg" id="seller-ai-sugg"></div>
@@ -818,7 +826,6 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button type="button" class="btn-primary" id="seller-ai-send" style="margin-top:0;max-width:100px;padding:14px 12px">ENVIAR</button>
   </div>
   <div id="seller-ai-err" class="error-msg" style="display:none;margin-top:10px"></div>
-  <button type="button" class="catalog-fab" id="seller-catalog-fab" title="Buscar produto">BUSCAR<br>PRODUTO</button>
 </div>
 
 <div id="seller-catalog-search" class="screen">
@@ -883,11 +890,22 @@ const SPORTS = ['Corrida','Caminhada','Musculação','Crossfit','Futebol','Futsa
 const BRANDS = ['Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','Reebok','Brooks','New Balance','Asics','Penalty','Umbro','Under Armour','Vans','Skechers','Hoka','Salomon','Oakley','Columbia','The North Face','Everlast','Kappa','Diadora','Lotto','Speedo','Arena','Rainha','Topper','Outra','Nenhuma'];
 const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro','Nenhum'];
 
-setTimeout(() => {
-  document.getElementById('splash').classList.remove('active');
-  if (token && user) { goHomeByRole(); }
-  else { showScreen('auth'); }
-}, 2200);
+(function bootInitialScreen() {
+  function go() {
+    var sp = document.getElementById('splash');
+    if (sp) {
+      sp.classList.remove('active');
+      sp.style.display = 'none';
+    }
+    if (token && user) { goHomeByRole(); }
+    else { showScreen('auth'); }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(go, 50); });
+  } else {
+    setTimeout(go, 50);
+  }
+})();
 
 function isSeller() {
   return user && user.role === 'seller';
@@ -992,7 +1010,19 @@ function initSellerCatalogAi() {
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAi(); });
     document.getElementById('seller-catalog-fab').addEventListener('click', function () { showScreen('seller-catalog-search'); });
   }
-  log.scrollTop = log.scrollHeight;
+  aiChatScrollToBottom(log, true);
+}
+
+function aiChatIsNearBottom(log) {
+  if (!log) return true;
+  return (log.scrollHeight - log.scrollTop - log.clientHeight) < 80;
+}
+
+function aiChatScrollToBottom(log, force) {
+  if (!log) return;
+  if (force || aiChatIsNearBottom(log)) {
+    log.scrollTop = log.scrollHeight;
+  }
 }
 
 function sendSellerAi() {
@@ -1007,7 +1037,7 @@ function sendSellerAi() {
   u.className = 'ai-msg-user';
   u.textContent = msg;
   log.appendChild(u);
-  log.scrollTop = log.scrollHeight;
+  aiChatScrollToBottom(log, true);
   const convId = sessionStorage.getItem('tc_ai_conv_seller') || undefined;
   api('/ai/chat', 'POST', { message: msg, conversationId: convId }).then(function (r) {
     if (r.error) {
@@ -1016,6 +1046,7 @@ function sendSellerAi() {
       return;
     }
     if (r.conversationId) sessionStorage.setItem('tc_ai_conv_seller', r.conversationId);
+    const wasNearBottom = aiChatIsNearBottom(log);
     const b = document.createElement('div');
     b.className = 'ai-msg-bot';
     b.textContent = r.reply || '—';
@@ -1030,7 +1061,7 @@ function sendSellerAi() {
       btn.addEventListener('click', function () { inp.value = st; inp.focus(); });
       sg.appendChild(btn);
     });
-    log.scrollTop = log.scrollHeight;
+    if (wasNearBottom) aiChatScrollToBottom(log, true);
   });
 }
 
@@ -1122,7 +1153,7 @@ function initClientAiChat() {
     document.getElementById('client-ai-send').addEventListener('click', sendClientAi);
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendClientAi(); });
   }
-  log.scrollTop = log.scrollHeight;
+  aiChatScrollToBottom(log, true);
 }
 
 function sendClientAi() {
@@ -1137,7 +1168,7 @@ function sendClientAi() {
   u.className = 'ai-msg-user';
   u.textContent = msg;
   log.appendChild(u);
-  log.scrollTop = log.scrollHeight;
+  aiChatScrollToBottom(log, true);
   const convId = sessionStorage.getItem('tc_ai_conv_client') || undefined;
   api('/ai/chat', 'POST', { message: msg, conversationId: convId }).then(function (r) {
     if (r.error) {
@@ -1146,6 +1177,7 @@ function sendClientAi() {
       return;
     }
     if (r.conversationId) sessionStorage.setItem('tc_ai_conv_client', r.conversationId);
+    const wasNearBottom = aiChatIsNearBottom(log);
     const b = document.createElement('div');
     b.className = 'ai-msg-bot';
     b.textContent = r.reply || '—';
@@ -1160,7 +1192,7 @@ function sendClientAi() {
       btn.addEventListener('click', function () { inp.value = st; inp.focus(); });
       sg.appendChild(btn);
     });
-    log.scrollTop = log.scrollHeight;
+    if (wasNearBottom) aiChatScrollToBottom(log, true);
   });
 }
 
