@@ -608,12 +608,17 @@ function buildEnrichmentPrompt(p) {
     + '  "recommendedFor": ["lista de perfis - ex: corrida_iniciante, pisada_neutra, peso_acima_80kg"],\n'
     + '  "notRecommendedFor": ["lista - ex: trail_running, alta_velocidade"]\n'
     + '}\n\n'
-    + 'REGRAS DE imageUrl (CRÍTICO):\n'
-    + '- imageUrl DEVE ser uma URL DIRETA da imagem (.jpg, .jpeg, .png ou .webp). NUNCA URL de página HTML.\n'
-    + '- Se você não conseguir encontrar URL DIRETA da imagem, retorne imageUrl: null. NÃO INVENTE.\n'
+    + 'REGRAS DE imageUrl (CRÍTICO — NÃO INFRINJA):\n'
+    + '- imageUrl DEVE ser uma URL DIRETA da imagem cujo final do path termina em .jpg, .jpeg, .png, .webp, .gif ou .avif. NUNCA URL de página HTML.\n'
+    + '- VERIFICAÇÃO FINAL antes de retornar imageUrl, faça mentalmente:\n'
+    + '  (a) A URL termina em .jpg, .jpeg, .png, .webp, .gif ou .avif? Se NÃO → retorne imageUrl: null\n'
+    + '  (b) A URL contém ".html" em qualquer lugar? Se SIM → retorne imageUrl: null\n'
+    + '  (c) A URL contém "/p/", "/produto/", "/produtos/", "/product/" ou "/products/" no caminho? Se SIM (página de produto) → retorne imageUrl: null\n'
+    + '  (d) A URL é resultado de busca (?q=, ?search=)? Se SIM → retorne imageUrl: null\n'
+    + '- Se você não conseguir encontrar URL DIRETA da imagem após verificação, retorne imageUrl: null. NÃO INVENTE.\n'
     + '- Use a tool web_search com queries como: "site:assets.adidas.com ' + sku + ' jpg" ou "' + brand + ' ' + name + ' product image jpg" para achar a URL direta.\n'
-    + '- VÁLIDO: https://assets.adidas.com/images/.../JP5219_01.jpg, https://imagedelivery.net/abc/foto.png, https://static.netshoes.com.br/produtos/.../foto.jpg\n'
-    + '- INVÁLIDO: https://adidas.com.br/tenis-alphaedge/JP5219.html, https://google.com/search?q=..., https://nike.com.br/produto\n\n'
+    + '- VÁLIDO: https://assets.adidas.com/images/.../JP5219_01.jpg, https://imagedelivery.net/abc/foto.png, https://static.netshoes.com.br/static/foto_001.jpg\n'
+    + '- INVÁLIDO: https://adidas.com.br/tenis-alphaedge/JP5219.html (HTML), https://nike.com.br/produto (sem extensão de imagem), https://www.adidas.com.br/p/JP5219 (página de produto), https://google.com/search?q=... (busca)\n\n'
     + 'REGRAS DE category / subcategory:\n'
     + '- category DEVE ser exatamente uma de: ' + ALLOWED_CATEGORIES.join(', ') + '\n'
     + '- subcategory baseada na category:\n'
@@ -651,21 +656,37 @@ function isValidHttpUrl(v) {
   }
 }
 
-const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|avif)(\?.*)?$/i;
-const IMAGE_PATH_HINT_RE = /\/(image|img|photo|foto|product|produto|asset)s?\//i;
-const HTML_PATH_RE = /\.(html?|aspx|php|jsp)(\?.*)?$/i;
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|avif)(\?[^#]*)?(#.*)?$/i;
+const IMAGE_PATH_HINT_RE = /\/(image|img|photo|foto|asset)s?\//i;
+const HTML_ANY_RE = /\.html?(\b|$|[?#/])/i;
+const PRODUCT_PAGE_PATH_RE = /\/(p|produto|produtos|product|products)\//i;
+
+function isImageContentPathOnly(pathname) {
+  return /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(pathname);
+}
 
 function validateImageUrl(raw) {
+  if (raw == null || raw === '') return { ok: false, reason: 'imageUrl ausente' };
   if (!isValidHttpUrl(raw)) return { ok: false, reason: 'URL não-http(s)' };
   const url = String(raw).trim();
-  if (HTML_PATH_RE.test(url)) return { ok: false, reason: 'URL aponta pra página HTML' };
-  if (/[?&](q|search)=/i.test(url)) return { ok: false, reason: 'URL é uma busca, não imagem' };
+
+  let pathname = '';
+  try { pathname = new URL(url).pathname || ''; } catch { /* já validamos acima */ }
+
+  if (HTML_ANY_RE.test(url)) return { ok: false, reason: 'URL contém .html (página HTML)' };
+  if (/\.(aspx|php|jsp|asp)(\b|$|[?#/])/i.test(url)) return { ok: false, reason: 'URL é página dinâmica' };
+  if (PRODUCT_PAGE_PATH_RE.test(pathname)) {
+    return { ok: false, reason: 'URL aponta pra página de produto (/p/ ou /produto/ ou /products/)' };
+  }
+  if (/[?&](q|search|query)=/i.test(url)) return { ok: false, reason: 'URL é uma busca, não imagem' };
+
+  if (isImageContentPathOnly(pathname)) return { ok: true, url };
   if (IMAGE_EXT_RE.test(url)) return { ok: true, url };
-  // tolera CDNs comuns (imagedelivery.net, cloudfront, etc) que servem imagem sem extensão
-  if (IMAGE_PATH_HINT_RE.test(url) && !/\.html?$/i.test(url)) {
+
+  if (IMAGE_PATH_HINT_RE.test(pathname)) {
     return { ok: true, url, soft: true };
   }
-  return { ok: false, reason: 'URL não termina em extensão de imagem (.jpg/.jpeg/.png/.webp/.gif)' };
+  return { ok: false, reason: 'URL não termina em extensão de imagem (.jpg/.jpeg/.png/.webp/.gif/.avif)' };
 }
 
 function computeAiCost(usage) {
@@ -716,13 +737,20 @@ async function enrichProductOnce(product) {
 
   const updates = {};
   let imageRejectReason = null;
-  if (data.imageUrl != null) {
-    const v = validateImageUrl(data.imageUrl);
+  let rawImageUrlSeen = data.imageUrl != null ? String(data.imageUrl) : null;
+  console.log('[enrich] sku=' + product.sku + ' URL recebida da IA: ' + (rawImageUrlSeen ? rawImageUrlSeen.slice(0, 300) : '(null)'));
+  if (rawImageUrlSeen == null || rawImageUrlSeen === '') {
+    updates.imageUrl = null;
+    console.log('[enrich] sku=' + product.sku + ' URL válida? false (IA retornou null/vazia)');
+  } else {
+    const v = validateImageUrl(rawImageUrlSeen);
+    console.log('[enrich] sku=' + product.sku + ' URL válida? ' + v.ok + (v.ok ? '' : ' — motivo: ' + v.reason) + (v.soft ? ' (soft)' : ''));
     if (v.ok) {
       updates.imageUrl = v.url.slice(0, 1000);
     } else {
+      updates.imageUrl = null;
       imageRejectReason = v.reason;
-      console.warn('[enrich] URL inválida descartada (' + v.reason + '): ' + String(data.imageUrl).slice(0, 200));
+      console.warn('[enrich] sku=' + product.sku + ' URL inválida descartada (' + v.reason + '): ' + rawImageUrlSeen.slice(0, 200));
     }
   }
   const cat = normalizeCategory(data.category);
@@ -761,6 +789,8 @@ async function enrichProductOnce(product) {
     where: { id: product.id },
     data: updates,
   });
+
+  console.log('[enrich] sku=' + product.sku + ' URL final salva: ' + (updated.imageUrl || '(null)'));
 
   const cost = computeAiCost(resp.usage);
   cost.ms = Date.now() - t0;
