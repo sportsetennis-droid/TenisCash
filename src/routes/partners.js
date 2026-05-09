@@ -130,7 +130,7 @@ router.get('/partner/me', authMiddleware, partnerOnly, async (req, res) => {
   try {
     const partner = await prisma.partner.findUnique({
       where: { userId: req.userId },
-      include: { user: { select: { id: true, name: true, phone: true, email: true, balance: true } } },
+      include: { user: { select: { id: true, name: true, phone: true, email: true, balance: true, partnerBalance: true } } },
     });
     if (!partner) return res.status(404).json({ error: 'Parceiro não encontrado' });
     res.json({ partner });
@@ -144,7 +144,7 @@ router.get('/partner/dashboard', authMiddleware, partnerOnly, async (req, res) =
   try {
     const partner = await prisma.partner.findUnique({
       where: { userId: req.userId },
-      include: { user: { select: { id: true, name: true, balance: true } } },
+      include: { user: { select: { id: true, name: true, balance: true, partnerBalance: true } } },
     });
     if (!partner) return res.status(404).json({ error: 'Parceiro não encontrado' });
 
@@ -183,7 +183,9 @@ router.get('/partner/dashboard', authMiddleware, partnerOnly, async (req, res) =
         totalCommission: partner.totalCommission,
       },
       user: partner.user,
+      // Mantém `balance` (cashback) e expõe `partnerBalance` (comissão) separados
       balance: partner.user?.balance || 0,
+      partnerBalance: partner.user?.partnerBalance || 0,
       monthSales: salesMonth._count?._all || 0,
       monthRevenue: salesMonth._sum?.saleAmount || 0,
       monthCommission: salesMonth._sum?.commissionT || 0,
@@ -227,7 +229,7 @@ router.post('/partner/redeem', authMiddleware, partnerOnly, async (req, res) => 
   try {
     const partner = await prisma.partner.findUnique({
       where: { userId: req.userId },
-      include: { user: { select: { id: true, name: true, balance: true } } },
+      include: { user: { select: { id: true, name: true, balance: true, partnerBalance: true } } },
     });
     if (!partner) return res.status(404).json({ error: 'Parceiro não encontrado' });
 
@@ -236,8 +238,10 @@ router.post('/partner/redeem', authMiddleware, partnerOnly, async (req, res) => 
     if (!items.length || totalT <= 0) {
       return res.status(400).json({ error: 'Adicione pelo menos um item à troca' });
     }
-    if (totalT > (partner.user?.balance || 0)) {
-      return res.status(400).json({ error: 'Saldo T$ insuficiente para esta troca' });
+    // Troca usa SALDO COMISSÃO (partnerBalance), nunca cashback do cliente (balance)
+    const partnerBalance = partner.user?.partnerBalance || 0;
+    if (totalT > partnerBalance) {
+      return res.status(400).json({ error: 'Saldo de comissão insuficiente. Disponível: T$ ' + partnerBalance.toFixed(2) });
     }
 
     const summary = items
@@ -257,7 +261,7 @@ router.post('/partner/redeem', authMiddleware, partnerOnly, async (req, res) => 
         toId: adminUser.id,
         type: 'request',
         title: `Troca de T$ ${totalT.toFixed(2)} — Parceiro ${partner.user?.name || ''}`.slice(0, 200),
-        content: `Solicitação de troca de TenisCash por produtos:\n\n${summary}\n\nTotal solicitado: T$ ${totalT.toFixed(2)}\nSaldo disponível: T$ ${(partner.user?.balance || 0).toFixed(2)}`,
+        content: `Solicitação de troca de TenisCash (comissão) por produtos:\n\n${summary}\n\nTotal solicitado: T$ ${totalT.toFixed(2)}\nSaldo comissão disponível: T$ ${partnerBalance.toFixed(2)}`,
         status: 'sent',
       },
     });
@@ -576,21 +580,26 @@ router.post('/admin/sale-with-coupon', authMiddleware, sellerOrAdmin, async (req
         },
       });
 
-      // Credita comissão T$ no User do parceiro
+      // Credita comissão T$ no SALDO COMISSÃO (partnerBalance) — NUNCA no balance (cashback)
       const updatedUser = await tx.user.update({
         where: { id: partner.userId },
-        data: { balance: { increment: commissionT } },
+        data: { partnerBalance: { increment: commissionT } },
       });
 
-      // Cria Transaction de rastreio
+      // Cria Transaction de rastreio. balanceAfter representa o partnerBalance pós-crédito.
       await tx.transaction.create({
         data: {
           type: 'partner_commission',
           amount: commissionT,
           description: `Comissão cupom ${partner.couponCode} — venda R$ ${saleAmount.toFixed(2)}`,
           receiverId: partner.userId,
-          balanceAfter: updatedUser.balance,
-          metadata: JSON.stringify({ partnerSaleId: sale.id, couponCode: partner.couponCode, sellerId: req.userId }),
+          balanceAfter: updatedUser.partnerBalance,
+          metadata: JSON.stringify({
+            partnerSaleId: sale.id,
+            couponCode: partner.couponCode,
+            sellerId: req.userId,
+            wallet: 'partnerBalance',
+          }),
         },
       });
 
@@ -628,7 +637,8 @@ router.post('/admin/sale-with-coupon', authMiddleware, sellerOrAdmin, async (req
         totalSales: result.partner.totalSales,
       },
       commissionEarned: commissionT,
-      partnerBalance: result.user.balance,
+      partnerBalance: result.user.partnerBalance,
+      cashbackBalance: result.user.balance,
     });
   } catch (err) {
     console.error('admin/sale-with-coupon', err);

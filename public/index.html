@@ -633,7 +633,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- TRANSFER -->
 <div id="transfer" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
+  <div class="back-header"><span class="back-arrow" data-back="auto">←</span><p style="font-size:18px;font-weight:700">Transferir</p></div>
   <div id="transfer-form">
     <div style="margin-top:20px">
       <label class="input-label">PARA QUEM</label>
@@ -659,7 +659,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- QR CODE -->
 <div id="qr" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">QR Code - Usar na Loja</p></div>
+  <div class="back-header"><span class="back-arrow" data-back="auto">←</span><p style="font-size:18px;font-weight:700">QR Code - Usar na Loja</p></div>
   <div style="text-align:center;margin-top:40px">
     <p style="color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px;margin-bottom:8px">MOSTRE NO CAIXA</p>
     <p style="font-family:'Orbitron';font-size:30px;font-weight:900;margin-bottom:20px" id="qr-balance"></p>
@@ -670,13 +670,13 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- PROMOS -->
 <div id="promos" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Promoções</p></div>
+  <div class="back-header"><span class="back-arrow" data-back="auto">←</span><p style="font-size:18px;font-weight:700">Promoções</p></div>
   <div id="promos-list" style="margin-top:16px"></div>
 </div>
 
 <!-- PROFILE -->
 <div id="profile" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Perfil</p></div>
+  <div class="back-header"><span class="back-arrow" data-back="auto">←</span><p style="font-size:18px;font-weight:700">Perfil</p></div>
   <div style="text-align:center;margin-top:30px">
     <div class="profile-avatar"><span style="font-family:'Orbitron';font-size:32px;font-weight:900" id="prof-initial"></span></div>
     <p style="font-size:20px;font-weight:700" id="prof-name"></p>
@@ -877,23 +877,41 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="avatar" data-screen="profile"><span id="partner-initial" style="font-weight:700;font-size:16px"></span></div>
   </div>
 
-  <div class="balance-card" style="background:linear-gradient(135deg,#FF6D00,#E05A0A);padding:20px;border-radius:18px;margin-top:14px;color:#fff">
-    <p style="font-size:11px;letter-spacing:2px;opacity:.85">SALDO TENISCASH</p>
-    <h2 style="font-size:34px;font-family:'Orbitron';font-weight:900;margin-top:6px">T$ <span id="partner-balance">0,00</span></h2>
-    <p style="font-size:12px;opacity:.8;margin-top:6px">Tier <strong id="partner-tier">bronze</strong> • Posição <strong id="partner-rank">—</strong></p>
-  </div>
-
+  <!-- CARD DUPLO DE SALDO: COMISSÃO (parceiro) + CASHBACK (cliente) -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
-    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px">
-      <p style="font-size:10px;letter-spacing:2px;opacity:.6">VENDAS DO MÊS</p>
-      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px"><span id="partner-month-sales">0</span></p>
+    <div style="background:linear-gradient(135deg,#E05A0A,#A03E00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
+      <div>
+        <p style="font-size:10px;letter-spacing:2px;opacity:.85">SALDO COMISSÃO</p>
+        <h2 style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px;line-height:1.05">T$ <span id="partner-balance">0,00</span></h2>
+      </div>
+      <p style="font-size:10px;opacity:.85;margin-top:6px;line-height:1.3">Tier <strong id="partner-tier">bronze</strong> • <strong id="partner-rank">—</strong><br>Use pra trocar por produtos</p>
     </div>
-    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px">
-      <p style="font-size:10px;letter-spacing:2px;opacity:.6">COMISSÃO MÊS</p>
-      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px">T$ <span id="partner-month-commission">0,00</span></p>
+    <div style="background:linear-gradient(135deg,#FF8A33,#FF6D00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
+      <div>
+        <p style="font-size:10px;letter-spacing:2px;opacity:.85">SALDO CASHBACK</p>
+        <h2 style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px;line-height:1.05">T$ <span id="partner-cashback-balance">0,00</span></h2>
+      </div>
+      <p style="font-size:10px;opacity:.85;margin-top:6px;line-height:1.3">Use em compras<br>ou transfira pra outra pessoa</p>
     </div>
   </div>
 
+  <!-- ESTATÍSTICAS DE PARCEIRO -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px">
+    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px;text-align:center">
+      <p style="font-size:9px;letter-spacing:1.5px;opacity:.6">VENDAS MÊS</p>
+      <p style="font-size:18px;font-family:'Orbitron';margin-top:4px"><span id="partner-month-sales">0</span></p>
+    </div>
+    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px;text-align:center">
+      <p style="font-size:9px;letter-spacing:1.5px;opacity:.6">COMISSÃO MÊS</p>
+      <p style="font-size:18px;font-family:'Orbitron';margin-top:4px"><span id="partner-month-commission">0,00</span></p>
+    </div>
+    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px;text-align:center">
+      <p style="font-size:9px;letter-spacing:1.5px;opacity:.6">TIER</p>
+      <p style="font-size:14px;font-family:'Orbitron';margin-top:6px;text-transform:uppercase;color:#FF6D00"><span id="partner-tier-2">bronze</span></p>
+    </div>
+  </div>
+
+  <!-- CUPOM EM DESTAQUE -->
   <div id="partner-coupon-card" style="background:rgba(255,109,0,0.1);border:1px solid rgba(255,109,0,0.4);border-radius:14px;padding:14px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div>
       <p style="font-size:10px;letter-spacing:2px;color:#FF6D00">SEU CUPOM</p>
@@ -903,13 +921,36 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button type="button" class="btn-primary" id="partner-share-btn" style="padding:10px 14px;font-size:12px">Compartilhar</button>
   </div>
 
-  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:18px 0 8px">ÚLTIMAS VENDAS</h3>
+  <!-- ÚLTIMAS VENDAS -->
+  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:18px 0 8px">ÚLTIMAS VENDAS COM CUPOM</h3>
   <div id="partner-recent-wrap"></div>
 
-  <div style="display:flex;gap:10px;margin-top:18px">
+  <div style="display:flex;gap:10px;margin-top:14px">
     <button type="button" class="btn-primary" data-screen="partner-sales" style="flex:1">Ver vendas</button>
     <button type="button" class="btn-secondary" data-screen="partner-redeem" style="flex:1">Trocar T$</button>
   </div>
+
+  <!-- MINHAS COMPRAS (funções de cliente) -->
+  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:24px 0 10px">MINHAS COMPRAS</h3>
+  <p style="font-size:11px;opacity:.6;margin-bottom:10px">Use seu cashback como cliente — independente da sua comissão de parceiro.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button type="button" class="action-btn" data-screen="transfer" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;cursor:pointer">
+      <span style="font-size:22px">↗</span><span style="font-size:12px;font-family:'Chakra Petch';font-weight:700">Transferir</span>
+    </button>
+    <button type="button" class="action-btn" data-screen="qr" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;cursor:pointer">
+      <span style="font-size:22px">⬡</span><span style="font-size:12px;font-family:'Chakra Petch';font-weight:700">QR Code</span>
+    </button>
+    <button type="button" class="action-btn" data-screen="client-ai-chat" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;cursor:pointer">
+      <span style="font-size:22px">🤖</span><span style="font-size:12px;font-family:'Chakra Petch';font-weight:700">Consultor IA</span>
+    </button>
+    <button type="button" class="action-btn" data-screen="promos" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;cursor:pointer">
+      <span style="font-size:22px">★</span><span style="font-size:12px;font-family:'Chakra Petch';font-weight:700">Promos</span>
+    </button>
+  </div>
+
+  <!-- ÚLTIMAS MOVIMENTAÇÕES (cashback do parceiro como cliente) -->
+  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:24px 0 8px">MOVIMENTAÇÕES DO CASHBACK</h3>
+  <div id="partner-cashback-tx" style="margin-bottom:30px"><p style="font-size:12px;opacity:.6">Carregando...</p></div>
 </div>
 
 <div id="partner-sales" class="screen">
@@ -1036,7 +1077,8 @@ function showScreen(id) {
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','profile','security','mydata','edit-profile'];
-  const partnerScreens = ['partner-home','partner-sales','partner-redeem','profile','security','mydata','edit-profile'];
+  // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
+  const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
   const shouldShowPartnerNav = partnerScreens.includes(id) && isPartner();
@@ -1082,7 +1124,9 @@ if (!window._tcUiNavBound) {
     const back = ev.target.closest('.back-arrow[data-back]');
     if (back) {
       ev.preventDefault();
-      showScreen(back.getAttribute('data-back'));
+      const target = back.getAttribute('data-back');
+      if (target === 'auto') goHomeByRole();
+      else showScreen(target);
       return;
     }
     const navItem = ev.target.closest('.bottom-nav .nav-item');
@@ -2959,14 +3003,29 @@ async function loadPartnerHome() {
   partnerCacheCoupon = (data.partner && data.partner.couponCode) || null;
   partnerCacheDiscountPct = (data.partner && data.partner.discountPct) || 0;
 
-  document.getElementById('partner-balance').textContent = fmtBRL(data.balance);
-  document.getElementById('partner-tier').textContent = (data.partner && data.partner.tier) || 'bronze';
+  // Saldo COMISSÃO (parceiro) — só para troca de produtos
+  document.getElementById('partner-balance').textContent = fmtBRL(data.partnerBalance);
+  // Saldo CASHBACK (cliente) — pode transferir/usar em compras
+  document.getElementById('partner-cashback-balance').textContent = fmtBRL(data.balance);
+  // Sincroniza local com servidor para outras telas (transfer/qr) usarem o cashback correto
+  if (user) {
+    user.balance = data.balance != null ? data.balance : user.balance;
+    user.partnerBalance = data.partnerBalance != null ? data.partnerBalance : (user.partnerBalance || 0);
+    localStorage.setItem('tc_user', JSON.stringify(user));
+  }
+
+  const tier = (data.partner && data.partner.tier) || 'bronze';
+  document.getElementById('partner-tier').textContent = tier;
+  const tier2 = document.getElementById('partner-tier-2');
+  if (tier2) tier2.textContent = tier;
   document.getElementById('partner-rank').textContent = '#' + (data.rankingPosition || '?');
   document.getElementById('partner-month-sales').textContent = data.monthSales || 0;
   document.getElementById('partner-month-commission').textContent = fmtBRL(data.monthCommission);
   document.getElementById('partner-coupon-code').textContent = partnerCacheCoupon || '—';
   document.getElementById('partner-coupon-discount').textContent = data.partner && data.partner.discountPct != null ? data.partner.discountPct : 5;
   document.getElementById('partner-coupon-commission').textContent = data.partner && data.partner.commissionPct != null ? data.partner.commissionPct : 3;
+
+  loadPartnerCashbackMovements();
 
   const recentWrap = document.getElementById('partner-recent-wrap');
   recentWrap.innerHTML = '';
@@ -3015,6 +3074,42 @@ async function loadPartnerHome() {
       recentWrap.appendChild(row);
     });
   }
+}
+
+async function loadPartnerCashbackMovements() {
+  const wrap = document.getElementById('partner-cashback-tx');
+  if (!wrap) return;
+  wrap.innerHTML = '<p style="font-size:12px;opacity:.6">Carregando...</p>';
+  const tx = await api('/wallet/transactions?limit=5');
+  if (!tx || !tx.transactions) {
+    wrap.innerHTML = '<p style="font-size:12px;opacity:.6">Sem movimentações ainda.</p>';
+    return;
+  }
+  // Filtra fora as comissões (que ficam no saldo separado) — aqui só mostra cashback do cliente
+  const list = tx.transactions.filter(function (t) { return t.type !== 'partner_commission'; });
+  if (!list.length) {
+    wrap.innerHTML = '<p style="font-size:12px;opacity:.6">Nenhuma movimentação de cashback ainda.</p>';
+    return;
+  }
+  wrap.innerHTML = '';
+  list.slice(0, 5).forEach(function (t) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;margin-top:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px';
+    const left = document.createElement('div');
+    const desc = document.createElement('div');
+    desc.style.cssText = 'font-size:13px;font-weight:600';
+    desc.textContent = t.description || t.type;
+    const dt = document.createElement('div');
+    dt.style.cssText = 'font-size:11px;opacity:.6;margin-top:2px';
+    dt.textContent = new Date(t.createdAt).toLocaleString('pt-BR');
+    left.appendChild(desc); left.appendChild(dt);
+    const right = document.createElement('div');
+    const negative = (t.type || '').includes('out') || t.type === 'used' || t.type === 'admin_debit';
+    right.style.cssText = 'font-family:Orbitron;font-weight:900;font-size:13px;color:' + (negative ? '#FF5252' : '#FF6D00');
+    right.textContent = (negative ? '- ' : '+ ') + 'T$ ' + fmtBRL(t.amount);
+    row.appendChild(left); row.appendChild(right);
+    wrap.appendChild(row);
+  });
 }
 
 function ensurePartnerListeners() {

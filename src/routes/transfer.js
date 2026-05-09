@@ -4,11 +4,17 @@ const { authMiddleware, prisma } = require('../middleware');
 const router = express.Router();
 
 // TRANSFERIR TENISCASH
+// IMPORTANTE: SOMENTE o saldo `balance` (cashback) é transferível.
+// `partnerBalance` (comissão de afiliado) NUNCA pode ser transferido — apenas trocado por produto via /partner/redeem.
 router.post('/send', authMiddleware, async (req, res) => {
   try {
-    const { to, amount } = req.body;
+    const { to, amount, source } = req.body;
 
-    // Validações
+    // Bloqueia explicitamente qualquer tentativa de transferir comissão
+    if (source && String(source).toLowerCase() === 'partnerbalance') {
+      return res.status(400).json({ error: 'Comissões só podem ser trocadas por produtos. Não é possível transferir.' });
+    }
+
     if (!to || !amount) {
       return res.status(400).json({ error: 'Destinatário e valor são obrigatórios' });
     }
@@ -18,14 +24,14 @@ router.post('/send', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Valor deve ser maior que zero' });
     }
 
-    // Busca remetente
     const sender = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!sender) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
+    // Sempre valida contra o `balance` (cashback). Comissão é segregada.
     if (sender.balance < transferAmount) {
-      return res.status(400).json({ error: 'Saldo insuficiente' });
+      return res.status(400).json({ error: 'Saldo de cashback insuficiente. Comissões de parceiro não podem ser transferidas.' });
     }
 
     // Busca destinatário por telefone ou CPF
