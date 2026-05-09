@@ -230,6 +230,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
+    <button class="tab" onclick="switchTab('partners',this)">Parceiros</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -442,6 +443,156 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </select>
       <div id="cat-ai-conv-wrap"><div class="loading-spinner">Carregando...</div></div>
     </div>
+  </div>
+</div>
+
+<!-- PARCEIROS -->
+<div class="section" id="tab-partners" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Programa de Parceiros</span>
+    <button type="button" class="refresh-btn" id="btn-partners-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <button type="button" class="tab active js-prt-sub" data-prt-sub="list">Lista de Parceiros</button>
+    <button type="button" class="tab js-prt-sub" data-prt-sub="sales">Vendas com Cupom</button>
+    <button type="button" class="tab js-prt-sub" data-prt-sub="stats">Estatísticas</button>
+  </div>
+
+  <div id="prt-panel-list">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <button type="button" class="btn btn-primary" id="prt-btn-new">+ Novo parceiro</button>
+      <button type="button" class="btn btn-primary" id="prt-btn-sale">Registrar venda com cupom</button>
+      <input class="search-box" id="prt-filter-search" placeholder="Buscar nome, telefone ou cupom..." style="width:280px">
+      <select class="search-box" id="prt-filter-status" style="width:160px">
+        <option value="">Todos status</option>
+        <option value="active">Ativo</option>
+        <option value="paused">Pausado</option>
+        <option value="banned">Banido</option>
+      </select>
+      <button type="button" class="btn btn-primary" id="prt-btn-filter">Filtrar</button>
+    </div>
+    <div id="prt-list-wrap"><div class="loading-spinner">Carregando...</div></div>
+  </div>
+
+  <div id="prt-panel-sales" style="display:none">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <input class="search-box" id="prt-sales-month" type="month" style="width:180px">
+      <button type="button" class="btn btn-primary" id="prt-sales-filter">Filtrar mês</button>
+    </div>
+    <div id="prt-sales-wrap"><div class="loading-spinner">Carregando...</div></div>
+  </div>
+
+  <div id="prt-panel-stats" style="display:none">
+    <div class="stats-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">PARCEIROS</div><div class="stat-value" id="prt-stat-count">—</div></div>
+      <div class="stat-card stat-orange"><div class="stat-label">VENDAS NO MÊS</div><div class="stat-value" id="prt-stat-month-sales">—</div></div>
+      <div class="stat-card"><div class="stat-label">RECEITA NO MÊS</div><div class="stat-value" id="prt-stat-month-rev">—</div></div>
+      <div class="stat-card"><div class="stat-label">COMISSÃO NO MÊS (T$)</div><div class="stat-value" id="prt-stat-month-com">—</div></div>
+      <div class="stat-card"><div class="stat-label">DESCONTO CONCEDIDO MÊS</div><div class="stat-value" id="prt-stat-month-disc">—</div></div>
+      <div class="stat-card stat-orange"><div class="stat-label">ROI DO MÊS (R$/T$)</div><div class="stat-value" id="prt-stat-roi">—</div></div>
+    </div>
+    <h3 style="font-family:Orbitron;font-size:14px;letter-spacing:2px;margin:14px 0 10px">Top 10 parceiros por comissão</h3>
+    <div id="prt-stats-top-wrap"></div>
+  </div>
+</div>
+
+<!-- MODAL: NOVO / EDITAR PARCEIRO -->
+<div class="detail-modal" id="prt-modal">
+  <div class="detail-content" style="max-width:560px">
+    <button type="button" class="detail-close" id="prt-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)" id="prt-modal-title">NOVO PARCEIRO</div>
+    <input type="hidden" id="prt-id">
+    <input type="hidden" id="prt-user-id">
+
+    <div id="prt-user-search-wrap">
+      <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">USUÁRIO (busca por nome/telefone/email)</label>
+      <div class="picker">
+        <input class="form-input" id="prt-user-search" placeholder="Digite nome, telefone ou email..." autocomplete="off" style="margin-top:6px">
+        <div class="picker-list" id="prt-user-picker" style="display:none"></div>
+      </div>
+      <div class="note">Selecionado: <span id="prt-user-picked" class="pill">—</span></div>
+    </div>
+
+    <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">TIPO</label>
+    <select class="form-input" id="prt-type" style="margin-top:6px">
+      <option value="atleta">Atleta</option>
+      <option value="influencer">Influencer</option>
+      <option value="saude">Profissional de saúde</option>
+      <option value="personal">Personal trainer</option>
+      <option value="outro">Outro</option>
+    </select>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">CUPOM (UPPERCASE, 3+ caracteres)</label>
+    <input class="form-input" id="prt-coupon" placeholder="Ex.: PEDRO, CARLA-RUN" style="margin-top:6px;text-transform:uppercase">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">% DESCONTO PRO CLIENTE / % COMISSÃO PRO PARCEIRO</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="form-input" id="prt-discount" type="number" step="0.5" placeholder="Desconto %" value="5">
+      <input class="form-input" id="prt-commission" type="number" step="0.5" placeholder="Comissão %" value="3">
+    </div>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">STATUS</label>
+    <select class="form-input" id="prt-status" style="margin-top:6px">
+      <option value="active">Ativo</option>
+      <option value="paused">Pausado</option>
+      <option value="banned">Banido</option>
+    </select>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NICHO / SEGUIDORES</label>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="form-input" id="prt-niche" placeholder="Ex.: corrida feminina">
+      <input class="form-input" id="prt-followers" type="number" placeholder="Seguidores (opcional)">
+    </div>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">REDES SOCIAIS</label>
+    <input class="form-input" id="prt-social" placeholder="@instagram | tiktok.com/@... | etc" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">BIO</label>
+    <textarea class="form-input" id="prt-bio" rows="2" style="margin-top:6px"></textarea>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOTAS INTERNAS (não visível ao parceiro)</label>
+    <textarea class="form-input" id="prt-notes" rows="2" style="margin-top:6px"></textarea>
+
+    <div id="prt-error" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button type="button" class="btn btn-primary" id="prt-save" style="flex:1">SALVAR</button>
+      <button type="button" class="btn btn-danger" id="prt-delete" style="display:none">REMOVER</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REGISTRAR VENDA COM CUPOM -->
+<div class="detail-modal" id="prt-sale-modal">
+  <div class="detail-content" style="max-width:560px">
+    <button type="button" class="detail-close" id="prt-sale-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">REGISTRAR VENDA COM CUPOM</div>
+
+    <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">CUPOM</label>
+    <input class="form-input" id="prt-sale-coupon" placeholder="Digite o código" style="margin-top:6px;text-transform:uppercase">
+    <div id="prt-sale-coupon-info" class="note" style="margin-top:6px">—</div>
+
+    <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">TELEFONE DO CLIENTE</label>
+    <input class="form-input" id="prt-sale-phone" placeholder="83999990000" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOME DO CLIENTE</label>
+    <input class="form-input" id="prt-sale-name" placeholder="Nome do cliente" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">CPF (opcional, ativa antifraude)</label>
+    <input class="form-input" id="prt-sale-cpf" placeholder="000.000.000-00" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">VALOR TOTAL SEM DESCONTO (R$)</label>
+    <input class="form-input" id="prt-sale-amount" type="number" step="0.01" placeholder="0.00" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">PRODUTOS (1 por linha — formato: SKU|nome|qty|preço)</label>
+    <textarea class="form-input" id="prt-sale-products" rows="3" placeholder="JP5219|Adidas Alphaedge|1|499.90" style="margin-top:6px"></textarea>
+
+    <div id="prt-sale-calc" style="margin-top:14px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:none">
+      <div style="font-size:11px;letter-spacing:2px;color:var(--text3);margin-bottom:6px">CÁLCULO</div>
+      <div id="prt-sale-calc-body" style="font-size:13px;line-height:1.6"></div>
+    </div>
+
+    <div id="prt-sale-error" style="margin-top:10px"></div>
+    <button type="button" class="btn btn-primary" id="prt-sale-confirm" style="margin-top:14px;width:100%">CONFIRMAR VENDA</button>
   </div>
 </div>
 
@@ -1339,6 +1490,382 @@ async function loadAdminAiConversationsPanel() {
   });
 }
 
+/* ====================== PROGRAMA DE PARCEIROS (ADMIN) ====================== */
+
+let adminPartnersInitialized = false;
+let prtUserPickedId = null;
+let prtUserPickerTimer = null;
+let prtSaleCouponTimer = null;
+let prtSaleCouponInfo = null;
+
+function syncPrtSubPanels(sub) {
+  document.querySelectorAll('.js-prt-sub').forEach(b => b.classList.toggle('active', b.getAttribute('data-prt-sub') === sub));
+  document.getElementById('prt-panel-list').style.display = sub === 'list' ? 'block' : 'none';
+  document.getElementById('prt-panel-sales').style.display = sub === 'sales' ? 'block' : 'none';
+  document.getElementById('prt-panel-stats').style.display = sub === 'stats' ? 'block' : 'none';
+  if (sub === 'list') loadAdminPartnersList();
+  if (sub === 'sales') loadAdminPartnerSales();
+  if (sub === 'stats') loadAdminPartnerStats();
+}
+
+function initAdminPartnersTab() {
+  if (!adminPartnersInitialized) {
+    adminPartnersInitialized = true;
+    document.querySelectorAll('.js-prt-sub').forEach(btn => {
+      btn.addEventListener('click', function () { syncPrtSubPanels(btn.getAttribute('data-prt-sub')); });
+    });
+    document.getElementById('btn-partners-refresh').addEventListener('click', function () {
+      loadAdminPartnersList(); loadAdminPartnerStats();
+    });
+    document.getElementById('prt-btn-filter').addEventListener('click', loadAdminPartnersList);
+    document.getElementById('prt-btn-new').addEventListener('click', function () { openPartnerModal(null); });
+    document.getElementById('prt-btn-sale').addEventListener('click', openPartnerSaleModal);
+    document.getElementById('prt-sales-filter').addEventListener('click', loadAdminPartnerSales);
+    document.getElementById('prt-modal-close').addEventListener('click', function () {
+      document.getElementById('prt-modal').classList.remove('show');
+    });
+    document.getElementById('prt-save').addEventListener('click', savePartnerModal);
+    document.getElementById('prt-delete').addEventListener('click', deletePartnerFromModal);
+    document.getElementById('prt-coupon').addEventListener('input', function (e) {
+      e.target.value = String(e.target.value || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+    });
+    document.getElementById('prt-user-search').addEventListener('input', function () {
+      clearTimeout(prtUserPickerTimer);
+      prtUserPickerTimer = setTimeout(searchPrtUserPicker, 300);
+    });
+
+    document.getElementById('prt-sale-modal-close').addEventListener('click', function () {
+      document.getElementById('prt-sale-modal').classList.remove('show');
+    });
+    document.getElementById('prt-sale-confirm').addEventListener('click', confirmPartnerSale);
+    document.getElementById('prt-sale-coupon').addEventListener('input', function (e) {
+      e.target.value = String(e.target.value || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+      clearTimeout(prtSaleCouponTimer);
+      prtSaleCouponTimer = setTimeout(checkPartnerSaleCoupon, 350);
+    });
+    document.getElementById('prt-sale-amount').addEventListener('input', recalcPartnerSale);
+  }
+  syncPrtSubPanels('list');
+}
+
+async function loadAdminPartnersList() {
+  const wrap = document.getElementById('prt-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const q = new URLSearchParams();
+  const s = document.getElementById('prt-filter-search').value.trim();
+  const st = document.getElementById('prt-filter-status').value;
+  if (s) q.set('search', s);
+  if (st) q.set('status', st);
+  const data = await api('/admin/partners' + (q.toString() ? '?' + q.toString() : ''));
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(data.error) + '</div>'; return; }
+  const list = data.partners || [];
+  if (!list.length) { wrap.innerHTML = '<div class="empty-state">Nenhum parceiro</div>'; return; }
+  let html = '<table><thead><tr><th>Cupom</th><th>Parceiro</th><th>Tipo</th><th>%Desc</th><th>%Com</th><th>Vendas</th><th>Comissão T$</th><th>Tier</th><th>Status</th><th></th></tr></thead><tbody>';
+  list.forEach(function (p) {
+    const u = p.user || {};
+    html += '<tr>'
+      + '<td><strong>' + escapeHtml(p.couponCode) + '</strong></td>'
+      + '<td>' + escapeHtml(u.name || '—') + '<br><span class="note">' + escapeHtml(u.phone || '—') + '</span></td>'
+      + '<td>' + escapeHtml(p.type) + '</td>'
+      + '<td>' + Number(p.discountPct).toFixed(1) + '%</td>'
+      + '<td>' + Number(p.commissionPct).toFixed(1) + '%</td>'
+      + '<td>' + (p.totalSales || 0) + '</td>'
+      + '<td>' + Number(p.totalCommission || 0).toFixed(2) + '</td>'
+      + '<td>' + escapeHtml(p.tier) + '</td>'
+      + '<td>' + escapeHtml(p.status) + '</td>'
+      + '<td><button type="button" class="btn js-prt-edit" data-id="' + p.id + '">Editar</button></td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-prt-edit').forEach(function (btn) {
+    btn.addEventListener('click', function () { openPartnerModal(btn.getAttribute('data-id')); });
+  });
+}
+
+async function searchPrtUserPicker() {
+  const term = document.getElementById('prt-user-search').value.trim();
+  const list = document.getElementById('prt-user-picker');
+  if (!list) return;
+  if (term.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
+  const data = await api('/sellers/search?q=' + encodeURIComponent(term));
+  const users = data && Array.isArray(data.sellers) ? data.sellers : [];
+  if (!users.length) {
+    list.style.display = 'block';
+    list.innerHTML = '<div class="picker-item" style="opacity:.6">Nenhum usuário encontrado. Use telefone exato.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  users.forEach(function (u) {
+    const item = document.createElement('div');
+    item.className = 'picker-item';
+    item.style.cursor = 'pointer';
+    item.textContent = (u.name || '—') + ' • ' + (u.phone || '—');
+    item.addEventListener('click', function () {
+      prtUserPickedId = u.id;
+      document.getElementById('prt-user-id').value = u.id;
+      document.getElementById('prt-user-picked').textContent = (u.name || '—') + ' (' + (u.phone || '—') + ')';
+      document.getElementById('prt-user-search').value = u.phone || '';
+      list.style.display = 'none';
+    });
+    list.appendChild(item);
+  });
+  list.style.display = 'block';
+}
+
+async function openPartnerModal(id) {
+  const modal = document.getElementById('prt-modal');
+  const errEl = document.getElementById('prt-error');
+  errEl.innerHTML = '';
+  modal.classList.add('show');
+  document.getElementById('prt-id').value = '';
+  document.getElementById('prt-user-id').value = '';
+  document.getElementById('prt-user-search').value = '';
+  document.getElementById('prt-user-picked').textContent = '—';
+  document.getElementById('prt-coupon').value = '';
+  document.getElementById('prt-discount').value = 5;
+  document.getElementById('prt-commission').value = 3;
+  document.getElementById('prt-type').value = 'atleta';
+  document.getElementById('prt-status').value = 'active';
+  document.getElementById('prt-niche').value = '';
+  document.getElementById('prt-followers').value = '';
+  document.getElementById('prt-social').value = '';
+  document.getElementById('prt-bio').value = '';
+  document.getElementById('prt-notes').value = '';
+  document.getElementById('prt-user-search-wrap').style.display = id ? 'none' : 'block';
+  document.getElementById('prt-delete').style.display = id ? 'inline-block' : 'none';
+  document.getElementById('prt-modal-title').textContent = id ? 'EDITAR PARCEIRO' : 'NOVO PARCEIRO';
+
+  if (!id) return;
+  const data = await api('/admin/partners/' + encodeURIComponent(id));
+  if (data.error) { alert(data.error); return; }
+  const p = data.partner;
+  document.getElementById('prt-id').value = p.id;
+  document.getElementById('prt-coupon').value = p.couponCode;
+  document.getElementById('prt-discount').value = p.discountPct;
+  document.getElementById('prt-commission').value = p.commissionPct;
+  document.getElementById('prt-type').value = p.type;
+  document.getElementById('prt-status').value = p.status;
+  document.getElementById('prt-niche').value = p.niche || '';
+  document.getElementById('prt-followers').value = p.followers != null ? p.followers : '';
+  document.getElementById('prt-social').value = p.socialMedia || '';
+  document.getElementById('prt-bio').value = p.bio || '';
+  document.getElementById('prt-notes').value = p.notes || '';
+  document.getElementById('prt-user-picked').textContent = (p.user && p.user.name ? p.user.name : '—') + ' (' + (p.user && p.user.phone ? p.user.phone : '—') + ')';
+}
+
+async function savePartnerModal() {
+  const errEl = document.getElementById('prt-error');
+  errEl.innerHTML = '';
+  const id = document.getElementById('prt-id').value.trim();
+  const body = {
+    type: document.getElementById('prt-type').value,
+    couponCode: document.getElementById('prt-coupon').value.trim(),
+    discountPct: parseFloat(document.getElementById('prt-discount').value) || 0,
+    commissionPct: parseFloat(document.getElementById('prt-commission').value) || 0,
+    status: document.getElementById('prt-status').value,
+    niche: document.getElementById('prt-niche').value.trim(),
+    followers: document.getElementById('prt-followers').value,
+    socialMedia: document.getElementById('prt-social').value.trim(),
+    bio: document.getElementById('prt-bio').value.trim(),
+    notes: document.getElementById('prt-notes').value.trim(),
+  };
+  let r;
+  if (id) {
+    r = await api('/admin/partners/' + encodeURIComponent(id), 'PUT', body);
+  } else {
+    const phone = document.getElementById('prt-user-search').value.replace(/\D/g, '');
+    if (!phone) { errEl.innerHTML = '<div class="csv-errors"><strong>Selecione um usuário (busque por nome/telefone)</strong></div>'; return; }
+    body.phone = phone;
+    r = await api('/admin/partners', 'POST', body);
+  }
+  if (r.error) { errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(r.error) + '</strong></div>'; return; }
+  document.getElementById('prt-modal').classList.remove('show');
+  loadAdminPartnersList();
+}
+
+async function deletePartnerFromModal() {
+  const id = document.getElementById('prt-id').value.trim();
+  if (!id) return;
+  if (!confirm('Remover parceiro? Se houver vendas, ele será apenas banido (histórico preservado).')) return;
+  const r = await api('/admin/partners/' + encodeURIComponent(id), 'DELETE');
+  if (r.error) { alert(r.error); return; }
+  if (r.soft) alert(r.message || 'Parceiro banido (vendas preservadas)');
+  document.getElementById('prt-modal').classList.remove('show');
+  loadAdminPartnersList();
+}
+
+async function loadAdminPartnerSales() {
+  const wrap = document.getElementById('prt-sales-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const month = document.getElementById('prt-sales-month').value;
+  // usa endpoint admin/partners agregado: pega top parceiros e cada um com sales=N? Usamos um endpoint geral via stats? Vamos buscar todos parceiros e somar.
+  // Estratégia simples: lista todos e mostra last 100 vendas concatenadas — usando GET /admin/partners e em seguida iterar.
+  const partnersData = await api('/admin/partners');
+  if (partnersData.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(partnersData.error) + '</div>'; return; }
+  const partners = partnersData.partners || [];
+  if (!partners.length) { wrap.innerHTML = '<div class="empty-state">Nenhum parceiro</div>'; return; }
+  // pega vendas dos top 25 parceiros por totalCommission (o backend já ordena)
+  const top = partners.slice(0, 25);
+  const all = [];
+  for (const p of top) {
+    const r = await api('/admin/partners/' + encodeURIComponent(p.id) + '/sales');
+    if (r && Array.isArray(r.sales)) {
+      r.sales.forEach(function (s) {
+        all.push(Object.assign({ partner: { id: p.id, couponCode: p.couponCode, name: (p.user && p.user.name) || '—' } }, s));
+      });
+    }
+  }
+  let filtered = all;
+  if (/^\d{4}-\d{2}$/.test(month)) {
+    const [y, m] = month.split('-').map(function (x) { return parseInt(x, 10); });
+    const start = new Date(Date.UTC(y, m - 1, 1, 3, 0, 0)).getTime();
+    const end = new Date(Date.UTC(y, m, 1, 3, 0, 0)).getTime();
+    filtered = all.filter(function (s) {
+      const t = new Date(s.createdAt).getTime();
+      return t >= start && t < end;
+    });
+  }
+  filtered.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+  if (!filtered.length) { wrap.innerHTML = '<div class="empty-state">Nenhuma venda para os filtros</div>'; return; }
+  let html = '<table><thead><tr><th>Data</th><th>Cupom</th><th>Parceiro</th><th>Cliente</th><th>Valor</th><th>Desconto</th><th>Comissão T$</th><th>Vendedor</th><th>Status</th></tr></thead><tbody>';
+  filtered.slice(0, 300).forEach(function (s) {
+    const cli = (s.customerName || '—') + (s.customerPhone ? ' (' + s.customerPhone + ')' : '');
+    html += '<tr>'
+      + '<td>' + new Date(s.createdAt).toLocaleString('pt-BR') + '</td>'
+      + '<td>' + escapeHtml(s.partner.couponCode) + '</td>'
+      + '<td>' + escapeHtml(s.partner.name) + '</td>'
+      + '<td>' + escapeHtml(cli) + '</td>'
+      + '<td>R$ ' + Number(s.saleAmount).toFixed(2) + '<br><span class="note">de R$ ' + Number(s.saleAmountFull).toFixed(2) + '</span></td>'
+      + '<td>R$ ' + Number(s.discountValue).toFixed(2) + '</td>'
+      + '<td>' + Number(s.commissionT).toFixed(2) + '</td>'
+      + '<td>' + escapeHtml((s.seller && s.seller.name) || '—') + '</td>'
+      + '<td>' + escapeHtml(s.status) + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  if (filtered.length > 300) html += '<p class="note">Mostrando últimas 300 de ' + filtered.length + '</p>';
+  wrap.innerHTML = html;
+}
+
+async function loadAdminPartnerStats() {
+  const data = await api('/admin/partners/stats');
+  if (data.error) return;
+  document.getElementById('prt-stat-count').textContent = data.partnersCount || 0;
+  document.getElementById('prt-stat-month-sales').textContent = data.monthSales || 0;
+  document.getElementById('prt-stat-month-rev').textContent = 'R$ ' + Number(data.monthRevenue || 0).toFixed(2);
+  document.getElementById('prt-stat-month-com').textContent = 'T$ ' + Number(data.monthCommission || 0).toFixed(2);
+  document.getElementById('prt-stat-month-disc').textContent = 'R$ ' + Number(data.monthDiscount || 0).toFixed(2);
+  document.getElementById('prt-stat-roi').textContent = data.monthRoi != null ? data.monthRoi : '—';
+  const wrap = document.getElementById('prt-stats-top-wrap');
+  const top = data.top || [];
+  if (!top.length) { wrap.innerHTML = '<div class="empty-state">Sem vendas ainda</div>'; return; }
+  let html = '<table><thead><tr><th>#</th><th>Cupom</th><th>Parceiro</th><th>Vendas</th><th>Comissão T$</th><th>Tier</th></tr></thead><tbody>';
+  top.forEach(function (p, i) {
+    html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(p.couponCode) + '</td><td>' + escapeHtml(p.userName || '—') + '</td><td>' + (p.totalSales || 0) + '</td><td>' + Number(p.totalCommission || 0).toFixed(2) + '</td><td>' + escapeHtml(p.tier) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function openPartnerSaleModal() {
+  const m = document.getElementById('prt-sale-modal');
+  m.classList.add('show');
+  document.getElementById('prt-sale-coupon').value = '';
+  document.getElementById('prt-sale-coupon-info').textContent = '—';
+  document.getElementById('prt-sale-coupon-info').style.color = '';
+  document.getElementById('prt-sale-phone').value = '';
+  document.getElementById('prt-sale-name').value = '';
+  document.getElementById('prt-sale-cpf').value = '';
+  document.getElementById('prt-sale-amount').value = '';
+  document.getElementById('prt-sale-products').value = '';
+  document.getElementById('prt-sale-error').innerHTML = '';
+  document.getElementById('prt-sale-calc').style.display = 'none';
+  prtSaleCouponInfo = null;
+}
+
+async function checkPartnerSaleCoupon() {
+  const code = document.getElementById('prt-sale-coupon').value.trim();
+  const info = document.getElementById('prt-sale-coupon-info');
+  if (!code || code.length < 3) { info.textContent = '—'; info.style.color = ''; prtSaleCouponInfo = null; recalcPartnerSale(); return; }
+  const r = await api('/coupon/validate', 'POST', { code });
+  if (r.valid) {
+    prtSaleCouponInfo = r;
+    info.textContent = '✓ ' + r.partnerName + ' • Desconto ' + r.discountPct + '% • Comissão ' + r.commissionPct + '% • Tier ' + r.tier;
+    info.style.color = '#A8FFB0';
+  } else {
+    prtSaleCouponInfo = null;
+    info.textContent = '✗ ' + (r.error || 'Cupom inválido');
+    info.style.color = '#FF8A8A';
+  }
+  recalcPartnerSale();
+}
+
+function recalcPartnerSale() {
+  const calc = document.getElementById('prt-sale-calc');
+  const body = document.getElementById('prt-sale-calc-body');
+  const full = parseFloat(document.getElementById('prt-sale-amount').value) || 0;
+  if (!prtSaleCouponInfo || full <= 0) { calc.style.display = 'none'; return; }
+  const disc = full * (prtSaleCouponInfo.discountPct || 0) / 100;
+  const total = full - disc;
+  const com = total * (prtSaleCouponInfo.commissionPct || 0) / 100;
+  body.innerHTML = ''
+    + 'Subtotal: <strong>R$ ' + full.toFixed(2) + '</strong><br>'
+    + 'Desconto (' + prtSaleCouponInfo.discountPct + '%): <strong style="color:var(--orange)">-R$ ' + disc.toFixed(2) + '</strong><br>'
+    + 'Total cobrado: <strong>R$ ' + total.toFixed(2) + '</strong><br>'
+    + '<span style="color:#A8FFB0">Comissão pro parceiro: T$ ' + com.toFixed(2) + '</span>';
+  calc.style.display = 'block';
+}
+
+function parseSaleProducts(raw) {
+  return String(raw || '').split('\n').map(function (line) {
+    const p = line.trim().split('|');
+    if (!p[0]) return null;
+    return {
+      sku: (p[0] || '').trim(),
+      name: (p[1] || '').trim() || (p[0] || '').trim(),
+      qty: Math.max(1, parseInt(p[2], 10) || 1),
+      price: parseFloat((p[3] || '').replace(',', '.')) || 0,
+    };
+  }).filter(Boolean);
+}
+
+async function confirmPartnerSale() {
+  const errEl = document.getElementById('prt-sale-error');
+  errEl.innerHTML = '';
+  const code = document.getElementById('prt-sale-coupon').value.trim();
+  const phone = document.getElementById('prt-sale-phone').value.replace(/\D/g, '');
+  const name = document.getElementById('prt-sale-name').value.trim();
+  const cpf = document.getElementById('prt-sale-cpf').value.replace(/\D/g, '');
+  const amount = parseFloat(document.getElementById('prt-sale-amount').value);
+  if (!code || !Number.isFinite(amount) || amount <= 0) {
+    errEl.innerHTML = '<div class="csv-errors"><strong>Cupom e valor sem desconto são obrigatórios.</strong></div>';
+    return;
+  }
+  const products = parseSaleProducts(document.getElementById('prt-sale-products').value);
+  const btn = document.getElementById('prt-sale-confirm');
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Registrando...';
+  const r = await api('/admin/sale-with-coupon', 'POST', {
+    couponCode: code,
+    customerPhone: phone,
+    customerName: name,
+    customerCpf: cpf,
+    saleAmountFull: amount,
+    products,
+  });
+  btn.disabled = false; btn.textContent = origText;
+  if (r.error) {
+    errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(r.error) + '</strong></div>';
+    return;
+  }
+  alert('Venda registrada. Comissão T$ ' + Number(r.commissionEarned).toFixed(2) + ' creditada ao parceiro. Saldo: T$ ' + Number(r.partnerBalance).toFixed(2));
+  document.getElementById('prt-sale-modal').classList.remove('show');
+  loadAdminPartnersList();
+}
+
 // USERS
 async function loadUsers(search='') {
   const wrap = document.getElementById('users-table-wrap');
@@ -1783,10 +2310,13 @@ function switchTab(tab, btn) {
   document.getElementById('tab-messages').style.display = tab === 'messages' ? 'block' : 'none';
   const tabCat = document.getElementById('tab-catalog');
   if (tabCat) tabCat.style.display = tab === 'catalog' ? 'block' : 'none';
+  const tabPrt = document.getElementById('tab-partners');
+  if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   if (tab === 'sellers') { loadStores(); loadSellers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
   if (tab === 'messages') { initAdminMessagesUI(); }
   if (tab === 'catalog') { initAdminCatalogTab(); }
+  if (tab === 'partners') { initAdminPartnersTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================

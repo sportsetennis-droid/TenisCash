@@ -866,6 +866,74 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div id="client-pd-wrap" style="margin-top:8px"></div>
 </div>
 
+<!-- ============================ PARCEIRO ============================ -->
+
+<div id="partner-home" class="screen">
+  <div class="top-bar">
+    <div>
+      <p style="font-size:11px;color:rgba(255,255,255,0.55);letter-spacing:2px;font-family:'Orbitron'">PARCEIRO</p>
+      <h1 id="partner-greeting" style="font-size:20px">Olá!</h1>
+    </div>
+    <div class="avatar" data-screen="profile"><span id="partner-initial" style="font-weight:700;font-size:16px"></span></div>
+  </div>
+
+  <div class="balance-card" style="background:linear-gradient(135deg,#FF6D00,#E05A0A);padding:20px;border-radius:18px;margin-top:14px;color:#fff">
+    <p style="font-size:11px;letter-spacing:2px;opacity:.85">SALDO TENISCASH</p>
+    <h2 style="font-size:34px;font-family:'Orbitron';font-weight:900;margin-top:6px">T$ <span id="partner-balance">0,00</span></h2>
+    <p style="font-size:12px;opacity:.8;margin-top:6px">Tier <strong id="partner-tier">bronze</strong> • Posição <strong id="partner-rank">—</strong></p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px">
+      <p style="font-size:10px;letter-spacing:2px;opacity:.6">VENDAS DO MÊS</p>
+      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px"><span id="partner-month-sales">0</span></p>
+    </div>
+    <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px">
+      <p style="font-size:10px;letter-spacing:2px;opacity:.6">COMISSÃO MÊS</p>
+      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px">T$ <span id="partner-month-commission">0,00</span></p>
+    </div>
+  </div>
+
+  <div id="partner-coupon-card" style="background:rgba(255,109,0,0.1);border:1px solid rgba(255,109,0,0.4);border-radius:14px;padding:14px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <div>
+      <p style="font-size:10px;letter-spacing:2px;color:#FF6D00">SEU CUPOM</p>
+      <p id="partner-coupon-code" style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px">—</p>
+      <p style="font-size:11px;opacity:.7;margin-top:2px"><span id="partner-coupon-discount">5</span>% de desconto pro cliente • <span id="partner-coupon-commission">3</span>% pra você</p>
+    </div>
+    <button type="button" class="btn-primary" id="partner-share-btn" style="padding:10px 14px;font-size:12px">Compartilhar</button>
+  </div>
+
+  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:18px 0 8px">ÚLTIMAS VENDAS</h3>
+  <div id="partner-recent-wrap"></div>
+
+  <div style="display:flex;gap:10px;margin-top:18px">
+    <button type="button" class="btn-primary" data-screen="partner-sales" style="flex:1">Ver vendas</button>
+    <button type="button" class="btn-secondary" data-screen="partner-redeem" style="flex:1">Trocar T$</button>
+  </div>
+</div>
+
+<div id="partner-sales" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="partner-home">←</span><p style="font-size:18px;font-weight:700">Minhas Vendas</p></div>
+  <div style="display:flex;gap:10px;margin-top:10px">
+    <input type="month" id="partner-sales-month" class="input-field" style="flex:1">
+    <button type="button" class="btn-primary" id="partner-sales-filter-btn" style="padding:10px 14px;font-size:12px">Filtrar</button>
+  </div>
+  <div id="partner-sales-wrap" style="margin-top:14px"></div>
+</div>
+
+<div id="partner-redeem" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="partner-home">←</span><p style="font-size:18px;font-weight:700">Trocar T$ por produtos</p></div>
+  <p style="font-size:13px;opacity:.75;margin-top:10px">Selecione produtos do catálogo. Quando confirmar, sua solicitação vai pro admin aprovar.</p>
+  <input id="partner-redeem-search" class="input-field" placeholder="Buscar produto..." style="margin-top:10px">
+  <div id="partner-redeem-results" style="margin-top:10px"></div>
+  <div id="partner-redeem-cart-wrap" style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.1);padding-top:14px">
+    <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron'">CARRINHO</h3>
+    <div id="partner-redeem-cart"><p style="font-size:13px;opacity:.6;margin-top:6px">Vazio</p></div>
+    <p id="partner-redeem-total" style="margin-top:10px;font-family:'Orbitron';font-size:16px">Total: T$ 0,00</p>
+    <button type="button" class="btn-primary" id="partner-redeem-confirm" style="width:100%;margin-top:10px">SOLICITAR TROCA</button>
+  </div>
+</div>
+
 <!-- BOTTOM NAV -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <div class="nav-item active" data-screen="home"><span>⌂</span><span>Início</span></div>
@@ -883,6 +951,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="nav-item" data-nav="seller-wallet"><span>💳</span><span>Carteira</span></div>
   <div class="nav-item" data-screen="seller-messages"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
   <div class="nav-item" data-screen="seller-catalog"><span>🛍</span><span>Catálogo</span></div>
+  <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
+</div>
+
+<!-- BOTTOM NAV (PARTNER) -->
+<div class="bottom-nav" id="bottomNavPartner" style="display:none">
+  <div class="nav-item active" data-screen="partner-home"><span>⌂</span><span>Início</span></div>
+  <div class="nav-item" data-screen="partner-sales"><span>📊</span><span>Vendas</span></div>
+  <div class="nav-item" data-screen="partner-redeem"><span>↻</span><span>Trocar</span></div>
   <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
 </div>
 
@@ -919,8 +995,13 @@ function isSeller() {
   return user && user.role === 'seller';
 }
 
+function isPartner() {
+  return user && user.role === 'partner';
+}
+
 function goHomeByRole() {
-  if (isSeller()) showScreen('seller-home');
+  if (isPartner()) showScreen('partner-home');
+  else if (isSeller()) showScreen('seller-home');
   else showScreen('home');
 }
 
@@ -929,23 +1010,27 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
   const navCustomer = document.getElementById('bottomNav');
   const navSeller = document.getElementById('bottomNavSeller');
+  const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','profile','security','mydata','edit-profile'];
-  const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller();
+  const partnerScreens = ['partner-home','partner-sales','partner-redeem','profile','security','mydata','edit-profile'];
+  const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
+  const shouldShowPartnerNav = partnerScreens.includes(id) && isPartner();
 
   navCustomer.style.display = shouldShowCustomerNav ? 'flex' : 'none';
   navSeller.style.display = shouldShowSellerNav ? 'flex' : 'none';
+  if (navPartner) navPartner.style.display = shouldShowPartnerNav ? 'flex' : 'none';
 
-  // Active item (customer)
   if (shouldShowCustomerNav) {
     Array.from(navCustomer.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
   }
-
-  // Active item (seller)
   if (shouldShowSellerNav) {
     Array.from(navSeller.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
+  }
+  if (shouldShowPartnerNav && navPartner) {
+    Array.from(navPartner.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
   }
 
   if (id === 'home') loadHome();
@@ -964,6 +1049,9 @@ function showScreen(id) {
   if (id === 'mydata') loadMyData();
   if (id === 'edit-profile') initEditProfileForm();
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
+  if (id === 'partner-home') loadPartnerHome();
+  if (id === 'partner-sales') loadPartnerSalesScreen();
+  if (id === 'partner-redeem') initPartnerRedeem();
 }
 
 if (!window._tcUiNavBound) {
@@ -2820,6 +2908,360 @@ function posReset() {
   document.getElementById('pos-form').style.display = 'block';
   document.getElementById('pos-success').style.display = 'none';
   posClientData = null;
+}
+
+/* ====================== PROGRAMA DE PARCEIROS ====================== */
+
+let partnerInitialized = false;
+let partnerCacheCoupon = null;
+let partnerCacheDiscountPct = 0;
+let partnerRedeemCart = [];
+let partnerRedeemTimer = null;
+
+function fmtBRL(n) { return Number(n || 0).toFixed(2).replace('.', ','); }
+function firstName(n) { return String(n || '').split(' ')[0] || ''; }
+
+async function loadPartnerHome() {
+  if (!isPartner()) { showScreen('home'); return; }
+  ensurePartnerListeners();
+  const greet = document.getElementById('partner-greeting');
+  const init = document.getElementById('partner-initial');
+  if (greet) greet.textContent = 'Olá, ' + firstName(user.name) + '!';
+  if (init) init.textContent = (firstName(user.name)[0] || '?').toUpperCase();
+
+  const data = await api('/partner/dashboard');
+  if (data.error) {
+    document.getElementById('partner-recent-wrap').innerHTML = '<p class="error-msg">' + data.error + '</p>';
+    return;
+  }
+  partnerCacheCoupon = (data.partner && data.partner.couponCode) || null;
+  partnerCacheDiscountPct = (data.partner && data.partner.discountPct) || 0;
+
+  document.getElementById('partner-balance').textContent = fmtBRL(data.balance);
+  document.getElementById('partner-tier').textContent = (data.partner && data.partner.tier) || 'bronze';
+  document.getElementById('partner-rank').textContent = '#' + (data.rankingPosition || '?');
+  document.getElementById('partner-month-sales').textContent = data.monthSales || 0;
+  document.getElementById('partner-month-commission').textContent = fmtBRL(data.monthCommission);
+  document.getElementById('partner-coupon-code').textContent = partnerCacheCoupon || '—';
+  document.getElementById('partner-coupon-discount').textContent = data.partner && data.partner.discountPct != null ? data.partner.discountPct : 5;
+  document.getElementById('partner-coupon-commission').textContent = data.partner && data.partner.commissionPct != null ? data.partner.commissionPct : 3;
+
+  const recentWrap = document.getElementById('partner-recent-wrap');
+  recentWrap.innerHTML = '';
+  const recentTitle = document.createElement('p');
+  recentTitle.style.fontSize = '12px';
+  recentTitle.style.opacity = '0.7';
+  recentTitle.style.letterSpacing = '2px';
+  recentTitle.style.marginTop = '18px';
+  recentTitle.textContent = 'ÚLTIMAS VENDAS';
+  recentWrap.appendChild(recentTitle);
+  if (!data.recentSales || !data.recentSales.length) {
+    const e = document.createElement('p');
+    e.style.fontSize = '13px';
+    e.style.opacity = '0.6';
+    e.style.marginTop = '6px';
+    e.textContent = 'Nenhuma venda ainda. Compartilhe seu cupom!';
+    recentWrap.appendChild(e);
+  } else {
+    data.recentSales.forEach(function (s) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;margin-top:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px';
+      const left = document.createElement('div');
+      const who = document.createElement('div');
+      who.style.fontWeight = '700';
+      who.style.fontSize = '13px';
+      who.textContent = firstName(s.customerName) || 'Cliente';
+      const dt = document.createElement('div');
+      dt.style.fontSize = '11px';
+      dt.style.opacity = '0.6';
+      dt.textContent = new Date(s.createdAt).toLocaleDateString('pt-BR');
+      left.appendChild(who); left.appendChild(dt);
+      const right = document.createElement('div');
+      right.style.textAlign = 'right';
+      const v = document.createElement('div');
+      v.style.fontSize = '12px';
+      v.style.opacity = '0.75';
+      v.textContent = 'R$ ' + fmtBRL(s.saleAmount);
+      const c = document.createElement('div');
+      c.style.fontFamily = 'Orbitron';
+      c.style.color = '#FF6D00';
+      c.style.fontWeight = '900';
+      c.style.fontSize = '13px';
+      c.textContent = '+ T$ ' + fmtBRL(s.commissionT);
+      right.appendChild(v); right.appendChild(c);
+      row.appendChild(left); row.appendChild(right);
+      recentWrap.appendChild(row);
+    });
+  }
+}
+
+function ensurePartnerListeners() {
+  if (partnerInitialized) return;
+  partnerInitialized = true;
+
+  const couponCard = document.getElementById('partner-coupon-card');
+  if (couponCard) {
+    couponCard.style.cursor = 'pointer';
+    couponCard.addEventListener('click', function (ev) {
+      if (ev.target.closest('#partner-share-btn')) return;
+      copyPartnerCoupon();
+    });
+  }
+  const shareBtn = document.getElementById('partner-share-btn');
+  if (shareBtn) shareBtn.addEventListener('click', sharePartnerCoupon);
+
+  const filterBtn = document.getElementById('partner-sales-filter-btn');
+  if (filterBtn) filterBtn.addEventListener('click', loadPartnerSalesScreen);
+  const monthInp = document.getElementById('partner-sales-month');
+  if (monthInp) monthInp.addEventListener('change', loadPartnerSalesScreen);
+
+  const redeemSearch = document.getElementById('partner-redeem-search');
+  if (redeemSearch) {
+    redeemSearch.addEventListener('input', function () {
+      clearTimeout(partnerRedeemTimer);
+      partnerRedeemTimer = setTimeout(loadPartnerRedeemResults, 350);
+    });
+  }
+  const confirmBtn = document.getElementById('partner-redeem-confirm');
+  if (confirmBtn) confirmBtn.addEventListener('click', confirmPartnerRedeem);
+}
+
+async function copyPartnerCoupon() {
+  if (!partnerCacheCoupon) return;
+  try {
+    await navigator.clipboard.writeText(partnerCacheCoupon);
+    flashFeedback('Cupom ' + partnerCacheCoupon + ' copiado!');
+  } catch {
+    prompt('Copie seu cupom:', partnerCacheCoupon);
+  }
+}
+
+async function sharePartnerCoupon() {
+  if (!partnerCacheCoupon) return;
+  const txt = 'Use meu cupom ' + partnerCacheCoupon + ' nas lojas Sports & Tennis e ganhe '
+    + (partnerCacheDiscountPct || 5) + '% de desconto! 🎾👟';
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Cupom Sports & Tennis', text: txt }); return; } catch {}
+  }
+  try {
+    await navigator.clipboard.writeText(txt);
+    flashFeedback('Texto copiado! Cole onde quiser compartilhar.');
+  } catch {
+    prompt('Compartilhe seu cupom:', txt);
+  }
+}
+
+function flashFeedback(msg) {
+  let el = document.getElementById('tc-flash');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'tc-flash';
+    el.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#FF6D00;color:#fff;padding:12px 20px;border-radius:30px;font-family:Chakra Petch;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:opacity .25s';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  el.style.display = 'block';
+  clearTimeout(window._tcFlashT);
+  window._tcFlashT = setTimeout(function () { el.style.opacity = '0'; setTimeout(function(){ el.style.display = 'none'; }, 250); }, 2200);
+}
+
+async function loadPartnerSalesScreen() {
+  if (!isPartner()) return;
+  ensurePartnerListeners();
+  const monthInp = document.getElementById('partner-sales-month');
+  if (monthInp && !monthInp.value) {
+    const d = new Date();
+    monthInp.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  const wrap = document.getElementById('partner-sales-wrap');
+  wrap.innerHTML = '<p style="opacity:.6;margin-top:10px">Carregando...</p>';
+  const month = monthInp ? monthInp.value : '';
+  const qs = month ? ('?month=' + encodeURIComponent(month)) : '';
+  const data = await api('/partner/sales' + qs);
+  if (data.error) { wrap.innerHTML = '<p class="error-msg">' + data.error + '</p>'; return; }
+  const sales = data.sales || [];
+  if (!sales.length) {
+    wrap.innerHTML = '<p style="opacity:.6;margin-top:10px">Nenhuma venda neste período.</p>';
+    return;
+  }
+  const totalCommission = sales.reduce(function (a, s) { return a + (s.commissionT || 0); }, 0);
+  const totalRevenue = sales.reduce(function (a, s) { return a + (s.saleAmount || 0); }, 0);
+  wrap.innerHTML = '';
+  const summary = document.createElement('div');
+  summary.style.cssText = 'background:rgba(255,109,0,0.08);border:1px solid rgba(255,109,0,0.3);border-radius:12px;padding:12px 14px;margin-bottom:14px';
+  summary.innerHTML = '<p style="font-size:11px;opacity:.7;letter-spacing:2px">PERÍODO</p>'
+    + '<p style="margin-top:6px"><span style="opacity:.7">Vendas:</span> <strong>' + sales.length + '</strong> &nbsp;•&nbsp; '
+    + '<span style="opacity:.7">Receita:</span> <strong>R$ ' + fmtBRL(totalRevenue) + '</strong> &nbsp;•&nbsp; '
+    + '<span style="opacity:.7">Comissão:</span> <strong style="color:#FF6D00">T$ ' + fmtBRL(totalCommission) + '</strong></p>';
+  wrap.appendChild(summary);
+
+  sales.forEach(function (s) {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer';
+    const top = document.createElement('div');
+    top.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:10px';
+    const left = document.createElement('div');
+    const who = document.createElement('div');
+    who.style.fontWeight = '700';
+    who.textContent = firstName(s.customerName) || 'Cliente';
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11px;opacity:.6;margin-top:2px';
+    meta.textContent = new Date(s.createdAt).toLocaleString('pt-BR');
+    left.appendChild(who); left.appendChild(meta);
+    const right = document.createElement('div');
+    right.style.textAlign = 'right';
+    const r = document.createElement('div');
+    r.style.cssText = 'font-size:12px;opacity:.75';
+    r.textContent = 'R$ ' + fmtBRL(s.saleAmount);
+    const com = document.createElement('div');
+    com.style.cssText = 'font-family:Orbitron;color:#FF6D00;font-weight:900;font-size:14px';
+    com.textContent = '+ T$ ' + fmtBRL(s.commissionT);
+    right.appendChild(r); right.appendChild(com);
+    top.appendChild(left); top.appendChild(right);
+    card.appendChild(top);
+
+    const detail = document.createElement('div');
+    detail.style.cssText = 'display:none;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.1);font-size:12px';
+    let prods = [];
+    try { prods = s.products ? JSON.parse(s.products) : []; } catch {}
+    if (prods.length) {
+      const ul = document.createElement('ul');
+      ul.style.cssText = 'margin:6px 0 0 18px;padding:0';
+      prods.forEach(function (p) {
+        const li = document.createElement('li');
+        li.textContent = (p.qty || 1) + 'x ' + (p.name || p.sku || 'item') + ' — R$ ' + fmtBRL(p.price || 0);
+        ul.appendChild(li);
+      });
+      detail.appendChild(ul);
+    } else {
+      detail.textContent = 'Sem detalhes de produtos.';
+    }
+    const calc = document.createElement('div');
+    calc.style.cssText = 'margin-top:6px;opacity:.7';
+    calc.innerHTML = 'Subtotal: R$ ' + fmtBRL(s.saleAmountFull)
+      + ' • Desconto: -R$ ' + fmtBRL(s.discountValue);
+    detail.appendChild(calc);
+    card.appendChild(detail);
+
+    card.addEventListener('click', function () {
+      detail.style.display = detail.style.display === 'block' ? 'none' : 'block';
+    });
+    wrap.appendChild(card);
+  });
+}
+
+async function initPartnerRedeem() {
+  if (!isPartner()) return;
+  ensurePartnerListeners();
+  const search = document.getElementById('partner-redeem-search');
+  if (search) search.value = '';
+  partnerRedeemCart = [];
+  renderPartnerRedeemCart();
+  await loadPartnerRedeemResults();
+}
+
+async function loadPartnerRedeemResults() {
+  const wrap = document.getElementById('partner-redeem-results');
+  wrap.innerHTML = '<p style="opacity:.6">Carregando...</p>';
+  const q = (document.getElementById('partner-redeem-search').value || '').trim();
+  const qs = q ? ('?search=' + encodeURIComponent(q) + '&limit=20') : '?limit=20';
+  const data = await api('/catalog/products' + qs);
+  if (data.error) { wrap.innerHTML = '<p class="error-msg">' + data.error + '</p>'; return; }
+  const list = data.products || [];
+  if (!list.length) { wrap.innerHTML = '<p style="opacity:.6">Nenhum produto.</p>'; return; }
+  wrap.innerHTML = '';
+  list.forEach(function (p) {
+    const row = document.createElement('div');
+    row.className = 'prod-card';
+    const thumb = (typeof buildProductThumb === 'function') ? buildProductThumb(p) : document.createElement('div');
+    const info = document.createElement('div');
+    info.className = 'pinfo';
+    const t = document.createElement('div');
+    t.style.fontWeight = '700';
+    t.textContent = (p.brand || '') + ' — ' + (p.name || '');
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11px;opacity:.6;margin-top:2px';
+    meta.textContent = 'SKU: ' + (p.sku || '');
+    const priceT = document.createElement('div');
+    priceT.className = 'pprice';
+    priceT.textContent = 'T$ ' + fmtBRL(p.price);
+    const btns = document.createElement('div');
+    btns.className = 'pbtns';
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.textContent = 'Adicionar';
+    add.addEventListener('click', function () { addToPartnerCart(p); });
+    btns.appendChild(add);
+    info.appendChild(t); info.appendChild(meta); info.appendChild(priceT); info.appendChild(btns);
+    row.appendChild(thumb); row.appendChild(info);
+    wrap.appendChild(row);
+  });
+}
+
+function addToPartnerCart(p) {
+  const sku = p.sku || p.id;
+  const existing = partnerRedeemCart.find(function (x) { return x.sku === sku; });
+  if (existing) existing.qty += 1;
+  else partnerRedeemCart.push({ sku: sku, name: p.name, priceT: p.price, qty: 1 });
+  renderPartnerRedeemCart();
+  flashFeedback((p.name || 'Item') + ' adicionado');
+}
+
+function renderPartnerRedeemCart() {
+  const wrap = document.getElementById('partner-redeem-cart');
+  const totalEl = document.getElementById('partner-redeem-total');
+  if (!wrap) return;
+  if (!partnerRedeemCart.length) {
+    wrap.innerHTML = '<p style="font-size:13px;opacity:.6;margin-top:6px">Vazio</p>';
+    if (totalEl) totalEl.textContent = 'Total: T$ 0,00';
+    return;
+  }
+  wrap.innerHTML = '';
+  let total = 0;
+  partnerRedeemCart.forEach(function (it, idx) {
+    total += (it.priceT || 0) * (it.qty || 1);
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06)';
+    const name = document.createElement('div');
+    name.style.flex = '1';
+    name.style.fontSize = '13px';
+    name.textContent = it.qty + 'x ' + (it.name || it.sku);
+    const price = document.createElement('div');
+    price.style.cssText = 'font-family:Orbitron;color:#FF6D00;font-weight:700';
+    price.textContent = 'T$ ' + fmtBRL((it.priceT || 0) * (it.qty || 1));
+    const rem = document.createElement('button');
+    rem.type = 'button';
+    rem.style.cssText = 'background:transparent;border:none;color:#FF5252;cursor:pointer;font-size:18px;padding:0 4px';
+    rem.textContent = '✕';
+    rem.addEventListener('click', function () {
+      partnerRedeemCart.splice(idx, 1);
+      renderPartnerRedeemCart();
+    });
+    line.appendChild(name); line.appendChild(price); line.appendChild(rem);
+    wrap.appendChild(line);
+  });
+  if (totalEl) totalEl.textContent = 'Total: T$ ' + fmtBRL(total);
+}
+
+async function confirmPartnerRedeem() {
+  if (!partnerRedeemCart.length) { alert('Adicione pelo menos um item'); return; }
+  if (!confirm('Confirmar solicitação de troca? O admin precisa aprovar.')) return;
+  const btn = document.getElementById('partner-redeem-confirm');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  try {
+    const data = await api('/partner/redeem', 'POST', { items: partnerRedeemCart });
+    if (data.error) { alert(data.error); return; }
+    alert('✓ Solicitação enviada! O admin vai analisar e te avisar pelas mensagens.');
+    partnerRedeemCart = [];
+    renderPartnerRedeemCart();
+    showScreen('partner-home');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 }
 </script>
 </body>

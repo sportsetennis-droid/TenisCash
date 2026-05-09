@@ -12,36 +12,36 @@ datasource db {
 // ============================================================
 
 model User {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   name            String
-  phone           String   @unique
+  phone           String    @unique
   email           String?
-  cpf             String?  @unique
-  pin             String   // hashed
-  balance         Float    @default(0)
-  role            String   @default("user") // user, seller, admin, superadmin
-  active          Boolean  @default(true)
-  welcomeBonus    Boolean  @default(false)
+  cpf             String?   @unique
+  pin             String // hashed
+  balance         Float     @default(0)
+  role            String    @default("user") // user, seller, admin, superadmin
+  active          Boolean   @default(true)
+  welcomeBonus    Boolean   @default(false)
   deletedCpf      String?
-  profileComplete Boolean  @default(false)
-  lgpdAccepted    Boolean  @default(false)
+  profileComplete Boolean   @default(false)
+  lgpdAccepted    Boolean   @default(false)
   lgpdDate        DateTime?
 
   // Dados pessoais
-  birthDate     String?
-  cep           String?
-  street        String?
-  number        String?
-  complement    String?
-  neighborhood  String?
-  city          String?
-  state         String?
+  birthDate    String?
+  cep          String?
+  street       String?
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String?
+  state        String?
 
   // Dados físicos
-  height        String?
-  weight        String?
-  shirtSize     String?
-  shoeSize      String?
+  height    String?
+  weight    String?
+  shirtSize String?
+  shoeSize  String?
 
   // CRM Esportivo (cliente)
   sportsPractice String?
@@ -50,14 +50,14 @@ model User {
   favBrands      String?
 
   // Dados do vendedor (apenas role=seller)
-  storeId       String?
-  store         Store?   @relation(fields: [storeId], references: [id])
-  hireDate      DateTime?
-  baseSalary    Float?
-  employeeCode  String?  @unique // V001, V002, etc
+  storeId      String?
+  store        Store?    @relation(fields: [storeId], references: [id])
+  hireDate     DateTime?
+  baseSalary   Float?
+  employeeCode String?   @unique // V001, V002, etc
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations existentes
   sentTransfers     Transaction[] @relation("sender")
@@ -65,21 +65,25 @@ model User {
   adminActions      AdminAction[]
 
   // Relations vendedor
-  clockIns         ClockIn[]         @relation("clockIns")
-  clockSummaries   ClockSummary[]    @relation("clockSummaries")
-  walletEntries    SellerWallet[]    @relation("walletEntries")
-  sellerClients    SellerClient[]    @relation("sellerClients")
-  sales            Sale[]            @relation("sellerSales")
-  commissions      SaleCommission[]  @relation("commissions")
-  messagesSent     Message[]         @relation("messagesSent")
-  messagesReceived Message[]         @relation("messagesReceived")
-  tasksCreated     Task[]            @relation("tasksCreated")
-  tasksAssigned    Task[]            @relation("tasksAssigned")
-  taskExecutions   TaskExecution[]   @relation("taskExecutions")
-  trainings        SellerTraining[]  @relation("trainings")
-  quizAttempts     QuizAttempt[]     @relation("quizAttempts")
-  aiConversations  AIConversation[]  @relation("aiConversations")
-  productsCreated  Product[]         @relation("productsCreated")
+  clockIns         ClockIn[]        @relation("clockIns")
+  clockSummaries   ClockSummary[]   @relation("clockSummaries")
+  walletEntries    SellerWallet[]   @relation("walletEntries")
+  sellerClients    SellerClient[]   @relation("sellerClients")
+  sales            Sale[]           @relation("sellerSales")
+  commissions      SaleCommission[] @relation("commissions")
+  messagesSent     Message[]        @relation("messagesSent")
+  messagesReceived Message[]        @relation("messagesReceived")
+  tasksCreated     Task[]           @relation("tasksCreated")
+  tasksAssigned    Task[]           @relation("tasksAssigned")
+  taskExecutions   TaskExecution[]  @relation("taskExecutions")
+  trainings        SellerTraining[] @relation("trainings")
+  quizAttempts     QuizAttempt[]    @relation("quizAttempts")
+  aiConversations  AIConversation[] @relation("aiConversations")
+  productsCreated  Product[]        @relation("productsCreated")
+
+  // Programa de Parceiros
+  partner              Partner?      @relation("partner")
+  partnerSalesAsSeller PartnerSale[] @relation("partnerSaleSeller")
 }
 
 // ============================================================
@@ -87,35 +91,35 @@ model User {
 // ============================================================
 
 model Transaction {
-  id          String   @id @default(uuid())
+  id          String @id @default(uuid())
   type        String
   amount      Float
   description String
 
-  senderId    String?
-  sender      User?    @relation("sender", fields: [senderId], references: [id])
+  senderId String?
+  sender   User?   @relation("sender", fields: [senderId], references: [id])
 
-  receiverId  String?
-  receiver    User?    @relation("receiver", fields: [receiverId], references: [id])
+  receiverId String?
+  receiver   User?   @relation("receiver", fields: [receiverId], references: [id])
 
   balanceAfter Float?
-  metadata    String?
+  metadata     String?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Promo {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
   description String
   percentage  Float
   scope       String
   scopeValue  String?
-  active      Boolean  @default(true)
-  startsAt    DateTime @default(now())
+  active      Boolean   @default(true)
+  startsAt    DateTime  @default(now())
   endsAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model BrandRule {
@@ -153,8 +157,8 @@ model Store {
   id        String   @id @default(uuid())
   name      String
   code      String   @unique
-  dna       String?  // Masculino, Feminino, Futebol, Geral
-  mall      String?  // Parahyba Mall, Pirâmide, Complexo K, Tambiá
+  dna       String? // Masculino, Feminino, Futebol, Geral
+  mall      String? // Parahyba Mall, Pirâmide, Complexo K, Tambiá
   address   String?
   city      String?
   state     String?
@@ -179,7 +183,7 @@ model ClockIn {
   user      User     @relation("clockIns", fields: [userId], references: [id])
   storeId   String
   store     Store    @relation(fields: [storeId], references: [id])
-  type      String   // entry, break_start, break_end, exit
+  type      String // entry, break_start, break_end, exit
   timestamp DateTime @default(now())
   latitude  Float?
   longitude Float?
@@ -208,16 +212,16 @@ model ClockSummary {
 // ============================================================
 
 model SellerWallet {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
-  user        User     @relation("walletEntries", fields: [userId], references: [id])
-  type        String   // salary, commission, vt, vr, bonus, overtime, deduction, advance
+  user        User      @relation("walletEntries", fields: [userId], references: [id])
+  type        String // salary, commission, vt, vr, bonus, overtime, deduction, advance
   amount      Float
   description String
-  reference   String?  // "2026-04"
+  reference   String? // "2026-04"
   metadata    String?
   paidAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([userId, reference])
 }
@@ -227,8 +231,8 @@ model SellerWallet {
 // ============================================================
 
 model Product {
-  id          String   @id @default(uuid())
-  sku         String   @unique
+  id          String  @id @default(uuid())
+  sku         String  @unique
   name        String
   brand       String
   category    String // tenis, roupa, acessorio
@@ -266,18 +270,18 @@ model Product {
 }
 
 model AIConversation {
-  id             String   @id @default(uuid())
-  userId         String?
-  user           User?    @relation("aiConversations", fields: [userId], references: [id])
-  userType       String // seller, client, guest
-  sessionKey     String? // identifica convidado (UUID do cliente) p/ limite diário
+  id         String  @id @default(uuid())
+  userId     String?
+  user       User?   @relation("aiConversations", fields: [userId], references: [id])
+  userType   String // seller, client, guest
+  sessionKey String? // identifica convidado (UUID do cliente) p/ limite diário
 
-  title          String?
-  messages       Json     @default("[]")
+  title    String?
+  messages Json    @default("[]")
 
-  totalTokensIn  Int    @default(0)
-  totalTokensOut Int    @default(0)
-  totalCostBRL   Float  @default(0)
+  totalTokensIn  Int   @default(0)
+  totalTokensOut Int   @default(0)
+  totalCostBRL   Float @default(0)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -303,9 +307,9 @@ model ProductSize {
 // ============================================================
 
 model SellerClient {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   sellerId      String
-  seller        User     @relation("sellerClients", fields: [sellerId], references: [id])
+  seller        User      @relation("sellerClients", fields: [sellerId], references: [id])
   tcUserId      String?
   name          String
   phone         String?
@@ -322,11 +326,11 @@ model SellerClient {
   notes         String?
   tags          String?
   lastPurchase  DateTime?
-  totalSpent    Float    @default(0)
-  purchaseCount Int      @default(0)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  totalSpent    Float     @default(0)
+  purchaseCount Int       @default(0)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   sales Sale[]
 
@@ -412,9 +416,9 @@ model SaleCommission {
 // ============================================================
 
 model Message {
-  id        String @id @default(uuid())
-  fromId    String
-  from      User   @relation("messagesSent", fields: [fromId], references: [id])
+  id     String @id @default(uuid())
+  fromId String
+  from   User   @relation("messagesSent", fields: [fromId], references: [id])
 
   // Destinatário (pelo menos um deve estar preenchido)
   toId      String? // mensagem direta a um usuário (fan-out também usa isso)
@@ -431,11 +435,11 @@ model Message {
   content String
 
   // Demand fields
-  priority String?   // 'low', 'normal', 'high', 'urgent' (só pra demand)
-  dueDate   DateTime? // só pra demand
+  priority String? // 'low', 'normal', 'high', 'urgent' (só pra demand)
+  dueDate  DateTime? // só pra demand
 
   // Status
-  status   String   @default("sent") // sent, read, doing, done, confirmed, replied, approved, rejected
+  status   String    @default("sent") // sent, read, doing, done, confirmed, replied, approved, rejected
   readAt   DateTime?
   doneAt   DateTime?
   doneById String?
@@ -535,14 +539,14 @@ model Quiz {
 }
 
 model QuizQuestion {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   quizId       String
-  quiz         Quiz   @relation(fields: [quizId], references: [id])
+  quiz         Quiz    @relation(fields: [quizId], references: [id])
   question     String
   options      String // JSON array
   correctIndex Int
   explanation  String?
-  order        Int    @default(0)
+  order        Int     @default(0)
 }
 
 model QuizAttempt {
@@ -550,10 +554,76 @@ model QuizAttempt {
   userId      String
   user        User     @relation("quizAttempts", fields: [userId], references: [id])
   quizId      String
-  answers     String   // JSON
+  answers     String // JSON
   score       Float
   passed      Boolean
   completedAt DateTime @default(now())
 
   @@index([userId, quizId])
+}
+
+// ============================================================
+// MÓDULO 10 — PROGRAMA DE PARCEIROS (afiliados)
+// ============================================================
+
+model Partner {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation("partner", fields: [userId], references: [id])
+
+  type   String // 'atleta', 'influencer', 'saude', 'personal', 'outro'
+  status String @default("active") // active, paused, banned
+
+  couponCode    String @unique // ex: PEDRO, CARLA-RUN
+  discountPct   Float  @default(5) // % desconto pro cliente
+  commissionPct Float  @default(3) // % comissão pro parceiro
+
+  // Estatísticas (denormalizadas pra dashboard rápido)
+  totalSales      Int    @default(0)
+  totalRevenue    Float  @default(0)
+  totalCommission Float  @default(0)
+  tier            String @default("bronze") // bronze, prata, ouro, platina
+
+  // Info do parceiro
+  bio         String?
+  socialMedia String? // JSON
+  followers   Int?
+  niche       String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales PartnerSale[]
+
+  @@index([status])
+  @@index([tier])
+}
+
+model PartnerSale {
+  id        String  @id @default(uuid())
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id])
+
+  customerName  String?
+  customerCpf   String? // mascarado (apenas dígitos limpos)
+  customerPhone String?
+
+  saleAmount     Float // valor TOTAL da venda (após desconto)
+  saleAmountFull Float // valor SEM desconto
+  discountValue  Float // valor do desconto aplicado
+  commissionT    Float // T$ que o parceiro ganhou
+
+  products String? // JSON com produtos vendidos
+
+  status   String  @default("approved") // approved, pending, refunded
+  storeId  String?
+  sellerId String? // vendedor que registrou a venda
+  seller   User?   @relation("partnerSaleSeller", fields: [sellerId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([partnerId, createdAt])
+  @@index([customerCpf, createdAt])
 }
