@@ -344,18 +344,21 @@ router.post('/login', async (req, res) => {
 
     if (!password) return res.status(400).json({ error: 'Senha é obrigatória' });
 
-    const includeStore = {
+    const includeRich = {
       store: {
         select: { id: true, name: true, code: true, dna: true, mall: true, city: true, state: true }
+      },
+      partner: {
+        select: { id: true, couponCode: true, discountPct: true, commissionPct: true, tier: true, status: true, type: true, totalSales: true, totalCommission: true }
       }
     };
 
     let user;
     if (email) {
-      user = await prisma.user.findFirst({ where: { email }, include: includeStore });
+      user = await prisma.user.findFirst({ where: { email }, include: includeRich });
     } else if (phone) {
       const cleanPhone = phone.replace(/\D/g, '');
-      user = await prisma.user.findUnique({ where: { phone: cleanPhone }, include: includeStore });
+      user = await prisma.user.findUnique({ where: { phone: cleanPhone }, include: includeRich });
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
     }
@@ -367,6 +370,8 @@ router.post('/login', async (req, res) => {
     if (!validPassword) return res.status(401).json({ error: 'Credenciais incorretas' });
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+
+    console.log('[auth/login] userId=' + user.id + ' role=' + user.role + ' isPartner=' + !!user.partner);
 
     res.json({
       token,
@@ -380,6 +385,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         profileComplete: user.profileComplete,
         createdAt: user.createdAt,
+        partner: user.partner || null,
       }
     });
   } catch (err) {
@@ -396,10 +402,15 @@ router.get('/me', authMiddleware, async (req, res) => {
       include: {
         store: {
           select: { id: true, name: true, code: true, dna: true, mall: true, city: true, state: true }
+        },
+        partner: {
+          select: { id: true, couponCode: true, discountPct: true, commissionPct: true, tier: true, status: true, type: true, totalSales: true, totalCommission: true }
         }
       }
     });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    console.log('[auth/me] userId=' + user.id + ' role=' + user.role + ' isPartner=' + !!user.partner);
 
     res.json({
       user: {
@@ -431,6 +442,7 @@ router.get('/me', authMiddleware, async (req, res) => {
         favBrands: user.favBrands ? JSON.parse(user.favBrands) : [],
         createdAt: user.createdAt,
         active: user.active,
+        partner: user.partner || null,
       }
     });
   } catch (err) {

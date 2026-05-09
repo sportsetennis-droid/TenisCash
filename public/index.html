@@ -975,14 +975,36 @@ const BRANDS = ['Nike','Adidas','Puma','Mizuno','Olympikus','Fila','Converse','R
 const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Estádio','Piscina','Trilha','Estúdio','Condomínio','Escola/Universidade','Outro','Nenhum'];
 
 (function bootInitialScreen() {
-  function go() {
+  async function go() {
     var sp = document.getElementById('splash');
     if (sp) {
       sp.classList.remove('active');
       sp.style.display = 'none';
     }
-    if (token && user) { goHomeByRole(); }
-    else { showScreen('auth'); }
+    if (!token) { showScreen('auth'); return; }
+
+    if (user) goHomeByRole();
+    else showScreen('auth');
+
+    try {
+      const fresh = await api('/auth/me');
+      if (fresh && fresh.user) {
+        const prevRole = user && user.role;
+        user = fresh.user;
+        localStorage.setItem('tc_user', JSON.stringify(user));
+        console.log('[boot] role do servidor:', user.role, 'isPartner:', !!user.partner);
+        if (prevRole !== user.role) {
+          console.log('[boot] role mudou (' + prevRole + ' -> ' + user.role + '), redirecionando.');
+          goHomeByRole();
+        }
+      } else if (fresh && fresh.error) {
+        token = null; user = null;
+        localStorage.removeItem('tc_token');
+        localStorage.removeItem('tc_user');
+        showScreen('auth');
+      }
+    } catch (e) {
+    }
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () { setTimeout(go, 50); });
