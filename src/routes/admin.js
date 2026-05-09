@@ -73,6 +73,66 @@ function localRecifeDateKey(ts) {
 
 // ==================== DASHBOARD ====================
 
+// ==================== BUSCA GENÉRICA DE USUÁRIOS (admin) ====================
+//
+// Substitui /api/sellers/search quando o admin precisa buscar QUALQUER usuário
+// (cliente, vendedor, parceiro, admin) — por exemplo na tela de criar parceiro.
+// Marca isPartner=true para os que já têm registro ativo em Partner, para o
+// frontend desabilitar a seleção.
+router.get('/users/search', async (req, res) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    const digits = raw.replace(/\D/g, '');
+    if (raw.length < 2 && digits.length < 2) {
+      return res.json({ users: [] });
+    }
+
+    const or = [];
+    if (raw.length >= 2) {
+      or.push({ name: { contains: raw, mode: 'insensitive' } });
+      or.push({ email: { contains: raw, mode: 'insensitive' } });
+    }
+    if (digits.length >= 2) {
+      or.push({ phone: { contains: digits } });
+      or.push({ cpf: { contains: digits } });
+    }
+
+    const users = await prisma.user.findMany({
+      where: {
+        active: true,
+        OR: or,
+      },
+      take: 20,
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        cpf: true,
+        role: true,
+        partner: { select: { id: true, status: true, couponCode: true } },
+      },
+    });
+
+    const result = users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      email: u.email,
+      cpf: u.cpf,
+      role: u.role,
+      isPartner: !!(u.partner && u.partner.status === 'active'),
+      partnerCoupon: u.partner ? u.partner.couponCode : null,
+    }));
+
+    res.json({ users: result });
+  } catch (err) {
+    console.error('Erro admin/users/search:', err);
+    res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
 router.get('/dashboard', async (req, res) => {
   try {
     const totalUsers = await prisma.user.count({ where: { role: 'user' } });

@@ -1584,31 +1584,71 @@ async function loadAdminPartnersList() {
   });
 }
 
+function prtRoleLabel(role) {
+  switch (role) {
+    case 'user': return 'cliente';
+    case 'seller': return 'vendedor';
+    case 'admin': return 'admin';
+    case 'superadmin': return 'superadmin';
+    case 'partner': return 'parceiro';
+    default: return role || '—';
+  }
+}
+
 async function searchPrtUserPicker() {
   const term = document.getElementById('prt-user-search').value.trim();
   const list = document.getElementById('prt-user-picker');
   if (!list) return;
   if (term.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
-  const data = await api('/sellers/search?q=' + encodeURIComponent(term));
-  const users = data && Array.isArray(data.sellers) ? data.sellers : [];
+  // Busca em TODOS os usuários (qualquer role), inclusive clientes (role='user')
+  const data = await api('/admin/users/search?q=' + encodeURIComponent(term));
+  const users = data && Array.isArray(data.users) ? data.users : [];
   if (!users.length) {
     list.style.display = 'block';
-    list.innerHTML = '<div class="picker-item" style="opacity:.6">Nenhum usuário encontrado. Use telefone exato.</div>';
+    list.innerHTML = '<div class="picker-item" style="opacity:.6">Nenhum usuário encontrado. Tente nome, telefone, email ou CPF.</div>';
     return;
   }
   list.innerHTML = '';
   users.forEach(function (u) {
     const item = document.createElement('div');
     item.className = 'picker-item';
-    item.style.cursor = 'pointer';
-    item.textContent = (u.name || '—') + ' • ' + (u.phone || '—');
-    item.addEventListener('click', function () {
-      prtUserPickedId = u.id;
-      document.getElementById('prt-user-id').value = u.id;
-      document.getElementById('prt-user-picked').textContent = (u.name || '—') + ' (' + (u.phone || '—') + ')';
-      document.getElementById('prt-user-search').value = u.phone || '';
-      list.style.display = 'none';
-    });
+    item.style.cssText = 'cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px';
+
+    const left = document.createElement('div');
+    const name = document.createElement('div');
+    name.style.fontWeight = '700';
+    name.textContent = u.name || '—';
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11px;opacity:.7';
+    meta.textContent = (u.phone || '—') + (u.email ? ' • ' + u.email : '') + ' • Role: ' + prtRoleLabel(u.role);
+    left.appendChild(name);
+    left.appendChild(meta);
+
+    const right = document.createElement('div');
+    if (u.isPartner) {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'background:#FF5252;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;letter-spacing:1px';
+      badge.textContent = 'JÁ É PARCEIRO';
+      right.appendChild(badge);
+      item.style.cursor = 'not-allowed';
+      item.style.opacity = '0.55';
+    }
+    item.appendChild(left);
+    item.appendChild(right);
+
+    if (!u.isPartner) {
+      item.addEventListener('click', function () {
+        prtUserPickedId = u.id;
+        document.getElementById('prt-user-id').value = u.id;
+        document.getElementById('prt-user-picked').textContent = (u.name || '—') + ' (' + (u.phone || '—') + ') — ' + prtRoleLabel(u.role);
+        document.getElementById('prt-user-search').value = u.phone || '';
+        list.style.display = 'none';
+      });
+    } else {
+      item.addEventListener('click', function () {
+        alert('Esse usuário já é parceiro (cupom: ' + (u.partnerCoupon || '?') + '). Escolha outro.');
+      });
+    }
     list.appendChild(item);
   });
   list.style.display = 'block';

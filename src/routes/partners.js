@@ -399,12 +399,20 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
 
     const user = await prisma.user.findUnique({ where: { phone } });
     if (!user) return res.status(404).json({ error: 'Usuário com este telefone não encontrado. Cadastre o usuário antes.' });
+    if (!user.active) return res.status(400).json({ error: 'Usuário desativado — não pode virar parceiro.' });
 
     const existsP = await prisma.partner.findUnique({ where: { userId: user.id } });
-    if (existsP) return res.status(400).json({ error: 'Este usuário já é parceiro' });
+    if (existsP) {
+      if (existsP.status === 'banned') {
+        return res.status(400).json({ error: 'Esse usuário já foi parceiro e está banido. Remova-o pelo botão Excluir antes de recriar.' });
+      }
+      return res.status(400).json({ error: 'Esse usuário já é parceiro (cupom: ' + existsP.couponCode + ')' });
+    }
 
     const dupCoupon = await prisma.partner.findUnique({ where: { couponCode } });
-    if (dupCoupon) return res.status(400).json({ error: 'Cupom já está em uso' });
+    if (dupCoupon) {
+      return res.status(400).json({ error: 'Esse cupom já está em uso por outro parceiro. Escolha outro código.' });
+    }
 
     const partner = await prisma.$transaction(async (tx) => {
       const p = await tx.partner.create({
@@ -490,20 +498,37 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
     const partner = await prisma.partner.findUnique({ where: { id } });
     if (!partner) return res.status(404).json({ error: 'Parceiro não encontrado' });
 
+    // Sufixo arquivado para liberar o couponCode original (campo @unique).
+    // Mantém rastro: PEDRO -> PEDRO_DEL_1716490231234
+    const archivedCoupon = (partner.couponCode || '').slice(0, 24).toUpperCase()
+      + '_DEL_' + Date.now();
+
     const salesCount = await prisma.partnerSale.count({ where: { partnerId: id } });
     if (salesCount > 0 && req.query.force !== 'true') {
-      // tem vendas: só altera status pra banned (preserva histórico)
-      const updated = await prisma.partner.update({ where: { id }, data: { status: 'banned' } });
-      await prisma.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
-      return res.json({ ok: true, soft: true, partner: updated, message: 'Parceiro com vendas — apenas banido. Use ?force=true para apagar.' });
+      // Tem vendas: ban + libera cupom (renomeia) preservando o histórico de PartnerSale
+      const updated = await prisma.$transaction(async (tx) => {
+        const p = await tx.partner.update({
+          where: { id },
+          data: { status: 'banned', couponCode: archivedCoupon },
+        });
+        await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
+        return p;
+      });
+      return res.json({
+        ok: true,
+        soft: true,
+        partner: updated,
+        message: 'Parceiro tem vendas: banido (histórico preservado). Cupom "' + partner.couponCode + '" liberado para reuso.',
+      });
     }
 
+    // Hard delete (sem vendas, ou ?force=true): apaga PartnerSale + Partner e libera tudo
     await prisma.$transaction(async (tx) => {
       if (salesCount > 0) await tx.partnerSale.deleteMany({ where: { partnerId: id } });
       await tx.partner.delete({ where: { id } });
       await tx.user.update({ where: { id: partner.userId }, data: { role: 'user' } });
     });
-    res.json({ ok: true });
+    res.json({ ok: true, message: 'Parceiro removido. Cupom "' + partner.couponCode + '" liberado.' });
   } catch (err) {
     console.error('admin/partners delete', err);
     res.status(500).json({ error: 'Erro ao remover parceiro' });
