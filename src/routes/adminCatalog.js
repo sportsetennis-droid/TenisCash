@@ -608,17 +608,25 @@ function buildEnrichmentPrompt(p) {
     + '  "recommendedFor": ["lista de perfis - ex: corrida_iniciante, pisada_neutra, peso_acima_80kg"],\n'
     + '  "notRecommendedFor": ["lista - ex: trail_running, alta_velocidade"]\n'
     + '}\n\n'
-    + 'REGRAS DE imageUrl (CRÍTICO — NÃO INFRINJA):\n'
-    + '- imageUrl DEVE ser uma URL DIRETA da imagem cujo final do path termina em .jpg, .jpeg, .png, .webp, .gif ou .avif. NUNCA URL de página HTML.\n'
-    + '- VERIFICAÇÃO FINAL antes de retornar imageUrl, faça mentalmente:\n'
-    + '  (a) A URL termina em .jpg, .jpeg, .png, .webp, .gif ou .avif? Se NÃO → retorne imageUrl: null\n'
-    + '  (b) A URL contém ".html" em qualquer lugar? Se SIM → retorne imageUrl: null\n'
-    + '  (c) A URL contém "/p/", "/produto/", "/produtos/", "/product/" ou "/products/" no caminho? Se SIM (página de produto) → retorne imageUrl: null\n'
-    + '  (d) A URL é resultado de busca (?q=, ?search=)? Se SIM → retorne imageUrl: null\n'
-    + '- Se você não conseguir encontrar URL DIRETA da imagem após verificação, retorne imageUrl: null. NÃO INVENTE.\n'
-    + '- Use a tool web_search com queries como: "site:assets.adidas.com ' + sku + ' jpg" ou "' + brand + ' ' + name + ' product image jpg" para achar a URL direta.\n'
-    + '- VÁLIDO: https://assets.adidas.com/images/.../JP5219_01.jpg, https://imagedelivery.net/abc/foto.png, https://static.netshoes.com.br/static/foto_001.jpg\n'
-    + '- INVÁLIDO: https://adidas.com.br/tenis-alphaedge/JP5219.html (HTML), https://nike.com.br/produto (sem extensão de imagem), https://www.adidas.com.br/p/JP5219 (página de produto), https://google.com/search?q=... (busca)\n\n'
+    + 'REGRAS DE imageUrl — TENTE GOOGLE IMAGES PRIMEIRO:\n'
+    + '- Use a tool web_search NESTA ORDEM até achar URL de imagem:\n'
+    + '   1. "images.google.com ' + brand + ' ' + name + '"\n'
+    + '   2. "' + brand + ' ' + name + ' ' + sku + ' imagem"\n'
+    + '   3. "' + brand + ' ' + name + ' foto produto"\n'
+    + '   4. "site:assets.adidas.com OR site:static.nike.com OR site:images.puma.com ' + sku + '"\n'
+    + '   5. "site:netshoes.com.br OR site:centauro.com.br ' + brand + ' ' + name + ' jpg"\n'
+    + '- ACEITE qualquer uma destas:\n'
+    + '   • URL terminando em .jpg, .jpeg, .png, .webp, .gif ou .avif\n'
+    + '   • URL Google Images: encrypted-tbn0.gstatic.com, googleusercontent.com\n'
+    + '   • CDNs de imagem conhecidos: cloudfront.net, cdn.shopify.com, mlcdn.com.br, mlstatic.com, akamaihd.net, imgix.net, cloudinary.com, imagedelivery.net, assets.adidas.com, static.nike.com, images.puma.com, static.netshoes.com.br, static.centauro.com.br\n'
+    + '- REJEITE (retorne imageUrl: null) se a URL:\n'
+    + '   (a) contém ".html" ou ".htm" em qualquer lugar\n'
+    + '   (b) é "google.com/search?q=..." (página de busca, não thumbnail)\n'
+    + '   (c) termina em "/p/SLUG", "/produto/SLUG", "/produtos/SLUG", "/product/SLUG" ou "/products/SLUG" sem extensão de imagem\n'
+    + '   (d) tem ?q= ?search= ?query= como parâmetro principal\n'
+    + '- Se nada funcionar, retorne imageUrl: null. NÃO INVENTE URL.\n'
+    + '- VÁLIDO: https://encrypted-tbn0.gstatic.com/images?q=tbn:abc..., https://imagedelivery.net/abc/foto.png, https://assets.adidas.com/.../JP5219_01.jpg, https://cdn.shopify.com/s/files/.../foo.jpg\n'
+    + '- INVÁLIDO: https://adidas.com.br/tenis-alphaedge/JP5219.html, https://google.com/search?q=adidas, https://www.adidas.com.br/p/JP5219, https://nike.com.br/algumacoisa\n\n'
     + 'REGRAS DE category / subcategory:\n'
     + '- category DEVE ser exatamente uma de: ' + ALLOWED_CATEGORIES.join(', ') + '\n'
     + '- subcategory baseada na category:\n'
@@ -656,37 +664,65 @@ function isValidHttpUrl(v) {
   }
 }
 
-const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|avif)(\?[^#]*)?(#.*)?$/i;
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|avif)$/i;
 const IMAGE_PATH_HINT_RE = /\/(image|img|photo|foto|asset)s?\//i;
-const HTML_ANY_RE = /\.html?(\b|$|[?#/])/i;
-const PRODUCT_PAGE_PATH_RE = /\/(p|produto|produtos|product|products)\//i;
+const HTML_ANY_RE = /\.html?(?:[/?#]|$)/i;
+const PRODUCT_PAGE_END_RE = /\/(p|produto|produtos|product|products)\/[^/]+\/?$/i;
+const KNOWN_IMAGE_CDNS = [
+  'encrypted-tbn0.gstatic.com',
+  'googleusercontent.com',
+  'cloudfront.net',
+  'akamaihd.net',
+  'mlcdn.com.br',
+  'mlstatic.com',
+  'cdn.shopify.com',
+  'shopify.com',
+  'imgix.net',
+  'cloudinary.com',
+  'imagedelivery.net',
+  'assets.adidas.com',
+  'static.nike.com',
+  'images.puma.com',
+  'static.netshoes.com.br',
+  'static.centauro.com.br',
+  'imgnike-a.akamaihd.net',
+];
 
-function isImageContentPathOnly(pathname) {
-  return /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(pathname);
+function pathOnly(url) {
+  try { return new URL(url).pathname || ''; } catch { return ''; }
 }
 
 function validateImageUrl(raw) {
   if (raw == null || raw === '') return { ok: false, reason: 'imageUrl ausente' };
   if (!isValidHttpUrl(raw)) return { ok: false, reason: 'URL não-http(s)' };
   const url = String(raw).trim();
+  const lower = url.toLowerCase();
+  const pathname = pathOnly(url);
+  const pathLower = pathname.toLowerCase();
 
-  let pathname = '';
-  try { pathname = new URL(url).pathname || ''; } catch { /* já validamos acima */ }
+  // Rejeições incondicionais (mesmo se vier de CDN conhecido)
+  if (HTML_ANY_RE.test(lower)) return { ok: false, reason: 'URL contém .html / .htm (página HTML)' };
+  if (/\.(aspx|php|jsp|asp)(?:[/?#]|$)/i.test(lower)) return { ok: false, reason: 'URL é página dinâmica' };
+  if (lower.includes('google.com/search')) return { ok: false, reason: 'URL é busca Google (google.com/search)' };
 
-  if (HTML_ANY_RE.test(url)) return { ok: false, reason: 'URL contém .html (página HTML)' };
-  if (/\.(aspx|php|jsp|asp)(\b|$|[?#/])/i.test(url)) return { ok: false, reason: 'URL é página dinâmica' };
-  if (PRODUCT_PAGE_PATH_RE.test(pathname)) {
-    return { ok: false, reason: 'URL aponta pra página de produto (/p/ ou /produto/ ou /products/)' };
+  // Aceites prioritários
+  if (IMAGE_EXT_RE.test(pathname)) return { ok: true, url };
+  for (const cdn of KNOWN_IMAGE_CDNS) {
+    if (lower.includes(cdn)) return { ok: true, url, cdn };
   }
-  if (/[?&](q|search|query)=/i.test(url)) return { ok: false, reason: 'URL é uma busca, não imagem' };
 
-  if (isImageContentPathOnly(pathname)) return { ok: true, url };
-  if (IMAGE_EXT_RE.test(url)) return { ok: true, url };
+  // Rejeições contextuais (só aplicam se não é CDN conhecido nem extensão de imagem)
+  if (PRODUCT_PAGE_END_RE.test(pathname)) {
+    return { ok: false, reason: 'URL é página de produto (termina em /p|produto|products/SLUG)' };
+  }
+  if (/[?&](q|search|query)=/i.test(lower)) {
+    return { ok: false, reason: 'URL é uma busca, não imagem' };
+  }
 
-  if (IMAGE_PATH_HINT_RE.test(pathname)) {
+  if (IMAGE_PATH_HINT_RE.test(pathLower)) {
     return { ok: true, url, soft: true };
   }
-  return { ok: false, reason: 'URL não termina em extensão de imagem (.jpg/.jpeg/.png/.webp/.gif/.avif)' };
+  return { ok: false, reason: 'URL não termina em extensão de imagem nem é CDN de imagem conhecido' };
 }
 
 function computeAiCost(usage) {
