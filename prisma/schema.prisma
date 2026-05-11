@@ -628,3 +628,176 @@ model PartnerSale {
   @@index([partnerId, createdAt])
   @@index([customerCpf, createdAt])
 }
+
+// ============================================================
+// CAMADA DE AGENTES IA — Central IA Sports & Tennis
+// ============================================================
+// Modelos para o Orquestrador Central, agentes especialistas,
+// aprovações humanas, logs de IA e Life Assessor.
+// Nomenclatura técnica genérica para permitir evolução futura
+// para ST Core / ST OS sem refactor estrutural.
+
+model AIAgent {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  category    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AIOrchestration {
+  id          String   @id @default(cuid())
+  objective   String
+  company     String?  @default("Sports & Tennis")
+  status      String   @default("pending") // pending, running, completed, failed
+  input       Json?
+  context     Json?
+  result      Json?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tasks     AIOrchestrationTask[]
+  approvals AIApproval[]
+
+  @@index([status, createdAt])
+  @@index([createdById, createdAt])
+}
+
+model AIOrchestrationTask {
+  id              String   @id @default(cuid())
+  orchestrationId String
+  agentCode       String
+  task            String
+  status          String   @default("pending") // pending, running, completed, failed
+  input           Json?
+  output          Json?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orchestration AIOrchestration @relation(fields: [orchestrationId], references: [id], onDelete: Cascade)
+
+  @@index([orchestrationId])
+  @@index([agentCode, status])
+}
+
+model AIApproval {
+  id              String    @id @default(cuid())
+  orchestrationId String?
+  type            String // discount, whatsapp_bulk, paid_campaign, stock_purchase, balance_change, etc.
+  title           String
+  description     String?
+  riskLevel       String    @default("medium") // low, medium, high
+  status          String    @default("pending") // pending, approved, rejected, correction_requested, executed, cancelled
+  payload         Json?
+  approvedById    String?
+  decisionNote    String?
+  decidedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  orchestration AIOrchestration? @relation(fields: [orchestrationId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([type, status])
+}
+
+model AILog {
+  id          String   @id @default(cuid())
+  agentCode   String
+  action      String
+  input       Json?
+  output      Json?
+  error       String?
+  cost        Float?
+  tokens      Int?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([agentCode, createdAt])
+  @@index([createdAt])
+}
+
+// ============================================================
+// LIFE AGENT — perfil de vida ativa do assinante
+// ============================================================
+
+model UserLifeProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  sportsPracticed   Json?
+  sportsWanted      Json?
+  goals             Json?
+  routine           Json?
+  preferences       Json?
+  culturalInterests Json?
+  budgetProfile     String?
+  availability      Json?
+  energyPattern     Json?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model UserMoodCheckin {
+  id        String   @id @default(cuid())
+  userId    String
+  mood      String?
+  energy    String?
+  context   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model UserTrainingLog {
+  id          String   @id @default(cuid())
+  userId      String
+  sport       String?
+  title       String?
+  durationMin Int?
+  intensity   String?
+  location    String?
+  teacherName String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model UserRecommendation {
+  id            String   @id @default(cuid())
+  userId        String
+  source        String   @default("life-assessor-agent")
+  input         Json?
+  possibilities Json?
+  selected      Json?
+  status        String   @default("generated") // generated, viewed, acted, dismissed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model UserAction {
+  id               String    @id @default(cuid())
+  userId           String
+  recommendationId String?
+  type             String // schedule, invite, buy, rest, train, attend_event, message, learn, other
+  title            String
+  status           String    @default("pending") // pending, approved, rejected, executed, cancelled
+  payload          Json?
+  requiresApproval Boolean   @default(true)
+  approvedAt       DateTime?
+  executedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}

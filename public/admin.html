@@ -231,6 +231,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('partners',this)">Parceiros</button>
+    <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -493,6 +494,83 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
     <h3 style="font-family:Orbitron;font-size:14px;letter-spacing:2px;margin:14px 0 10px">Top 10 parceiros por comissão</h3>
     <div id="prt-stats-top-wrap"></div>
+  </div>
+</div>
+
+<!-- CENTRAL IA Sports & Tennis -->
+<div class="section" id="tab-aiCenter" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Central IA Sports &amp; Tennis</span>
+    <button type="button" class="refresh-btn" id="btn-ai-refresh">↻</button>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <button type="button" class="tab active js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="history">Histórico</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="agents">Agentes</button>
+  </div>
+
+  <!-- RODAR ORQUESTRADOR -->
+  <div id="ai-panel-run">
+    <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:780px;margin-bottom:14px">
+      <label class="muted" style="font-size:11px;letter-spacing:2px">OBJETIVO</label>
+      <textarea id="ai-objective" rows="3" class="search-box" style="resize:vertical;font-family:inherit"
+        placeholder="Ex.: Criar plano de venda do dia para a loja Parahyba Mall, com foco em produtos parados"></textarea>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <select class="search-box" id="ai-store" style="min-width:220px">
+          <option value="">Todas as lojas</option>
+        </select>
+        <input class="search-box" id="ai-user" placeholder="userId (opcional)" style="min-width:220px">
+      </div>
+
+      <label class="muted" style="font-size:11px;letter-spacing:2px">OBSERVAÇÕES (opcional)</label>
+      <textarea id="ai-notes" rows="2" class="search-box" style="resize:vertical;font-family:inherit"
+        placeholder="Ex.: Vendas fracas ontem; quero girar estoque sem destruir margem"></textarea>
+
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn btn-primary" id="ai-btn-run">Rodar Orquestrador</button>
+        <span id="ai-run-status" class="muted" style="font-size:12px"></span>
+      </div>
+    </div>
+
+    <div id="ai-run-result"></div>
+  </div>
+
+  <!-- APROVAÇÕES -->
+  <div id="ai-panel-approvals" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <strong style="font-family:Orbitron;letter-spacing:2px;font-size:13px">Aprovações pendentes</strong>
+      <button type="button" class="btn btn-primary" id="ai-btn-reload-approvals">Recarregar</button>
+    </div>
+    <div id="ai-approvals-wrap"><div class="loading-spinner">Carregando...</div></div>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div id="ai-panel-history" style="display:none">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <strong style="font-family:Orbitron;letter-spacing:2px;font-size:13px">Histórico de orquestrações</strong>
+      <button type="button" class="btn btn-primary" id="ai-btn-reload-history">Recarregar</button>
+    </div>
+    <div id="ai-history-wrap"><div class="loading-spinner">Carregando...</div></div>
+  </div>
+
+  <!-- AGENTES -->
+  <div id="ai-panel-agents" style="display:none">
+    <div style="margin-bottom:12px">
+      <strong style="font-family:Orbitron;letter-spacing:2px;font-size:13px">Agentes registrados</strong>
+    </div>
+    <div id="ai-agents-wrap"><div class="loading-spinner">Carregando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL: DETALHE DE ORQUESTRAÇÃO -->
+<div class="detail-modal" id="ai-orch-modal">
+  <div class="detail-content" style="max-width:900px">
+    <button type="button" class="detail-close" id="ai-orch-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">DETALHE DA ORQUESTRAÇÃO</div>
+    <div id="ai-orch-modal-body" style="margin-top:14px"></div>
   </div>
 </div>
 
@@ -2352,11 +2430,14 @@ function switchTab(tab, btn) {
   if (tabCat) tabCat.style.display = tab === 'catalog' ? 'block' : 'none';
   const tabPrt = document.getElementById('tab-partners');
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
+  const tabAI = document.getElementById('tab-aiCenter');
+  if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
   if (tab === 'sellers') { loadStores(); loadSellers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
   if (tab === 'messages') { initAdminMessagesUI(); }
   if (tab === 'catalog') { initAdminCatalogTab(); }
   if (tab === 'partners') { initAdminPartnersTab(); }
+  if (tab === 'aiCenter') { initAdminAICenter(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
@@ -2620,6 +2701,231 @@ document.addEventListener('keydown', function(e) {
   }
   if (e.key === 'Escape') closeModal();
 });
+
+// ==================== CENTRAL IA Sports & Tennis ====================
+
+let _aiCenterInitialized = false;
+
+async function initAdminAICenter() {
+  // Sub-tabs
+  document.querySelectorAll('.js-ai-sub').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.js-ai-sub').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const sub = btn.dataset.aiSub;
+      ['run','approvals','history','agents'].forEach(s => {
+        const el = document.getElementById('ai-panel-' + s);
+        if (el) el.style.display = (s === sub) ? 'block' : 'none';
+      });
+      if (sub === 'approvals') loadAIApprovals();
+      if (sub === 'history') loadAIHistory();
+      if (sub === 'agents') loadAIAgents();
+    };
+  });
+
+  const btnRun = document.getElementById('ai-btn-run');
+  if (btnRun && !btnRun._wired) {
+    btnRun._wired = true;
+    btnRun.onclick = runAIOrchestration;
+  }
+  const btnRefresh = document.getElementById('btn-ai-refresh');
+  if (btnRefresh && !btnRefresh._wired) {
+    btnRefresh._wired = true;
+    btnRefresh.onclick = () => {
+      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'run';
+      if (activeSub === 'approvals') loadAIApprovals();
+      else if (activeSub === 'history') loadAIHistory();
+      else if (activeSub === 'agents') loadAIAgents();
+    };
+  }
+  const btnA = document.getElementById('ai-btn-reload-approvals');
+  if (btnA && !btnA._wired) { btnA._wired = true; btnA.onclick = loadAIApprovals; }
+  const btnH = document.getElementById('ai-btn-reload-history');
+  if (btnH && !btnH._wired) { btnH._wired = true; btnH.onclick = loadAIHistory; }
+  const btnClose = document.getElementById('ai-orch-modal-close');
+  if (btnClose && !btnClose._wired) {
+    btnClose._wired = true;
+    btnClose.onclick = () => { document.getElementById('ai-orch-modal').style.display = 'none'; };
+  }
+
+  if (!_aiCenterInitialized) {
+    _aiCenterInitialized = true;
+    // Popula select de lojas usando função existente loadStores se disponível
+    try {
+      const data = await api('/stores');
+      const sel = document.getElementById('ai-store');
+      if (sel && data && Array.isArray(data.stores)) {
+        data.stores.forEach(s => {
+          const o = document.createElement('option');
+          o.value = s.id;
+          o.textContent = `${s.code || ''} — ${s.name || ''}`.trim();
+          sel.appendChild(o);
+        });
+      }
+    } catch (e) { /* ignora — campo segue como "Todas as lojas" */ }
+  }
+}
+
+async function runAIOrchestration() {
+  const objective = (document.getElementById('ai-objective').value || '').trim();
+  if (!objective) { alert('Informe o objetivo'); return; }
+  const storeId = document.getElementById('ai-store').value || null;
+  const userId = (document.getElementById('ai-user').value || '').trim() || null;
+  const notes = (document.getElementById('ai-notes').value || '').trim() || null;
+
+  const status = document.getElementById('ai-run-status');
+  const result = document.getElementById('ai-run-result');
+  const btn = document.getElementById('ai-btn-run');
+  btn.disabled = true;
+  status.textContent = 'Rodando agentes... pode levar alguns segundos.';
+  result.innerHTML = '';
+
+  const data = await api('/admin/ai/orchestrate', 'POST', { objective, storeId, userId, notes });
+  btn.disabled = false;
+
+  if (data.error) {
+    status.textContent = '';
+    result.innerHTML = `<div style="color:#e35;margin-top:12px">Erro: ${escapeHtml(data.error)}${data.detail ? ' — ' + escapeHtml(data.detail) : ''}</div>`;
+    return;
+  }
+  status.textContent = 'Concluído.';
+  result.innerHTML = renderOrchestrationResult(data);
+}
+
+function renderOrchestrationResult(r) {
+  const safetyRiskColor = (r.safetyReview && r.safetyReview.riskLevel === 'high') ? '#e35'
+    : (r.safetyReview && r.safetyReview.riskLevel === 'medium') ? '#e90' : '#7b7';
+  const approvals = Array.isArray(r.approvalRequired) ? r.approvalRequired : [];
+  const risks = Array.isArray(r.risks) ? r.risks : [];
+
+  let html = '';
+  html += `<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:14px">`;
+  html += `<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">`;
+  html += `<div><strong>${escapeHtml(r.objective || '')}</strong></div>`;
+  html += `<div style="font-size:11px;color:var(--text2)">orchestrationId: <code>${escapeHtml(r.orchestrationId || '')}</code></div>`;
+  html += `</div>`;
+
+  html += `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">Agentes acionados: ${(r.agentsUsed || []).map(escapeHtml).join(', ')}</div>`;
+
+  html += `<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">PLANO CONSOLIDADO</h4>`;
+  html += `<div style="white-space:pre-wrap">${escapeHtml(r.consolidatedPlan || '(vazio)')}</div>`;
+
+  if (approvals.length) {
+    html += `<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px;color:var(--orange)">APROVAÇÕES PENDENTES (${approvals.length})</h4>`;
+    html += '<ul style="padding-left:18px">';
+    approvals.forEach(a => {
+      html += `<li><strong>[${escapeHtml(a.riskLevel || 'medium')}] ${escapeHtml(a.title || '')}</strong> — <code>${escapeHtml(a.type || '')}</code></li>`;
+    });
+    html += '</ul>';
+  }
+
+  if (risks.length) {
+    html += `<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">RISCOS</h4>`;
+    html += '<ul style="padding-left:18px">';
+    risks.forEach(x => { html += `<li>${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}</li>`; });
+    html += '</ul>';
+  }
+
+  if (r.safetyReview) {
+    html += `<div style="margin-top:10px;font-size:12px"><span style="color:${safetyRiskColor}">●</span> Safety: ${escapeHtml(r.safetyReview.riskLevel || 'low')} ${r.safetyReview.approved ? '(aprovado)' : '(NÃO aprovado)'}</div>`;
+  }
+
+  if (r.nextRecommendedAction) {
+    html += `<div style="margin-top:10px;font-size:13px"><strong>Próxima ação:</strong> ${escapeHtml(r.nextRecommendedAction)}</div>`;
+  }
+
+  html += `<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">Ver materiais por agente (JSON)</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:400px;overflow:auto">${escapeHtml(JSON.stringify(r.readyMaterials || {}, null, 2))}</pre></details>`;
+
+  html += `</div>`;
+  return html;
+}
+
+async function loadAIApprovals() {
+  const wrap = document.getElementById('ai-approvals-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/ai/approvals/pending');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error)}</div>`; return; }
+  const list = data.approvals || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma aprovação pendente.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Risco</th><th>Tipo</th><th>Título</th><th>Descrição</th><th>Criada</th><th>Ações</th></tr></thead><tbody>';
+  list.forEach(a => {
+    html += `<tr>
+      <td><span style="font-weight:bold;color:${a.riskLevel === 'high' ? '#e35' : a.riskLevel === 'medium' ? '#e90' : '#7b7'}">${escapeHtml(a.riskLevel || 'medium')}</span></td>
+      <td><code>${escapeHtml(a.type || '')}</code></td>
+      <td>${escapeHtml(a.title || '')}</td>
+      <td style="font-size:12px;color:var(--text2);max-width:280px">${escapeHtml(a.description || '')}</td>
+      <td style="font-size:11px;color:var(--text2)">${new Date(a.createdAt).toLocaleString('pt-BR')}</td>
+      <td>
+        <button type="button" class="btn btn-primary" onclick="aiDecide('${a.id}','approved')" style="margin-right:4px">Aprovar</button>
+        <button type="button" class="btn" onclick="aiDecide('${a.id}','correction_requested')" style="margin-right:4px">Pedir correção</button>
+        <button type="button" class="btn" onclick="aiDecide('${a.id}','rejected')">Recusar</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function aiDecide(approvalId, decision) {
+  const note = prompt('Observação (opcional):') || '';
+  const data = await api(`/admin/ai/approvals/${approvalId}/decision`, 'POST', { decision, note });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  loadAIApprovals();
+}
+
+async function loadAIHistory() {
+  const wrap = document.getElementById('ai-history-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/ai/orchestrations?limit=30');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error)}</div>`; return; }
+  const list = data.orchestrations || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma orquestração ainda.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Quando</th><th>Status</th><th>Objetivo</th><th></th></tr></thead><tbody>';
+  list.forEach(o => {
+    html += `<tr>
+      <td style="font-size:11px;color:var(--text2)">${new Date(o.createdAt).toLocaleString('pt-BR')}</td>
+      <td>${escapeHtml(o.status || '')}</td>
+      <td>${escapeHtml((o.objective || '').slice(0, 120))}${(o.objective || '').length > 120 ? '...' : ''}</td>
+      <td><button type="button" class="btn btn-primary" onclick="aiShowOrch('${o.id}')">Ver</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function aiShowOrch(id) {
+  const data = await api('/admin/ai/orchestrations/' + id);
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  const o = data.orchestration;
+  const body = document.getElementById('ai-orch-modal-body');
+  body.innerHTML = `
+    <div><strong>Objetivo:</strong> ${escapeHtml(o.objective || '')}</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:4px">Status: ${escapeHtml(o.status)} — ${new Date(o.createdAt).toLocaleString('pt-BR')}</div>
+    <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">Tarefas (${(o.tasks||[]).length})</h4>
+    <ul style="padding-left:18px;font-size:12px">${(o.tasks||[]).map(t => `<li><strong>${escapeHtml(t.agentCode)}</strong> — ${escapeHtml(t.status)} — ${escapeHtml(t.task||'').slice(0,120)}</li>`).join('')}</ul>
+    <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">Aprovações (${(o.approvals||[]).length})</h4>
+    <ul style="padding-left:18px;font-size:12px">${(o.approvals||[]).map(a => `<li>[${escapeHtml(a.status)}] ${escapeHtml(a.title)} — <code>${escapeHtml(a.type)}</code></li>`).join('')}</ul>
+    <details style="margin-top:14px"><summary style="cursor:pointer">Resultado completo (JSON)</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:400px;overflow:auto">${escapeHtml(JSON.stringify(o.result || {}, null, 2))}</pre></details>
+  `;
+  document.getElementById('ai-orch-modal').style.display = 'flex';
+}
+
+async function loadAIAgents() {
+  const wrap = document.getElementById('ai-agents-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/ai/agents');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error)}</div>`; return; }
+  const list = data.agents || [];
+  let html = '<table><thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Descrição</th></tr></thead><tbody>';
+  list.forEach(a => {
+    html += `<tr><td><code>${escapeHtml(a.code)}</code></td><td>${escapeHtml(a.name||'')}</td><td>${escapeHtml(a.category||'')}</td><td>${escapeHtml(a.description||'')}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
 </script>
 </body>
 </html>

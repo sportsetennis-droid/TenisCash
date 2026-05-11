@@ -74,6 +74,13 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .nav-item.active{opacity:1}
 .nav-item span:first-child{font-size:20px}
 .nav-item span:last-child{font-size:10px;letter-spacing:1px}
+.assessor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.assessor-chip{padding:12px 10px;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);color:#fff;font-family:'Chakra Petch';font-size:13px;cursor:pointer;transition:all .15s}
+.assessor-chip.active{background:#fff;color:#E86200;border-color:#fff}
+.assessor-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:14px;margin-top:12px;background:rgba(255,255,255,0.05)}
+.assessor-card h4{font-size:15px;font-weight:700;margin-bottom:8px}
+.assessor-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:rgba(255,255,255,0.7);margin-top:8px}
+.assessor-tag{display:inline-block;padding:3px 8px;border-radius:8px;background:rgba(255,255,255,0.12);font-size:10px;margin-right:4px;letter-spacing:1px}
 .login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.1);margin-bottom:20px}
 .tab-switch{display:flex;gap:0;margin-bottom:30px;width:100%}
@@ -453,6 +460,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="action-btn" onclick="showScreen('transfer')"><span>↑</span><span>Transferir</span></div>
     <div class="action-btn" onclick="showScreen('qr')"><span>⬡</span><span>QR Code</span></div>
     <div class="action-btn" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
+    <div class="action-btn" onclick="showScreen('assessor')"><span>✦</span><span>Assessor</span></div>
   </div>
   <div class="section-title"><p style="font-size:15px;font-weight:700">Movimentações</p></div>
   <div id="home-transactions"></div>
@@ -975,6 +983,52 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 </div>
 
+<!-- ASSESSOR (Life Agent — possibilidades personalizadas) -->
+<div id="assessor" class="screen">
+  <div class="back-header">
+    <span class="back-arrow" onclick="showScreen('home')">←</span>
+    <p style="font-size:18px;font-weight:700">Assessor</p>
+  </div>
+
+  <div id="assessor-step-1" style="margin-top:14px">
+    <p style="font-size:15px;font-weight:700;margin-bottom:4px">Como você está agora?</p>
+    <p style="font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:14px">Sem pressão. Escolha o que mais combina.</p>
+    <div class="assessor-grid">
+      <button type="button" class="assessor-chip" data-mood="energizado">Com energia</button>
+      <button type="button" class="assessor-chip" data-mood="cansado">Cansado</button>
+      <button type="button" class="assessor-chip" data-mood="triste">Triste</button>
+      <button type="button" class="assessor-chip" data-mood="sem-foco">Sem foco</button>
+      <button type="button" class="assessor-chip" data-mood="pouco-tempo">Com pouco tempo</button>
+      <button type="button" class="assessor-chip" data-mood="treinar">Querendo treinar</button>
+      <button type="button" class="assessor-chip" data-mood="sair">Querendo sair</button>
+      <button type="button" class="assessor-chip" data-mood="descansar">Querendo descansar</button>
+    </div>
+
+    <p style="font-size:15px;font-weight:700;margin-top:22px;margin-bottom:14px">O que você quer agora?</p>
+    <div class="assessor-grid">
+      <button type="button" class="assessor-chip" data-goal="mover">Me movimentar</button>
+      <button type="button" class="assessor-chip" data-goal="relaxar">Relaxar</button>
+      <button type="button" class="assessor-chip" data-goal="socializar">Socializar</button>
+      <button type="button" class="assessor-chip" data-goal="organizar-treino">Organizar meu treino</button>
+      <button type="button" class="assessor-chip" data-goal="escolher">Escolher algo para fazer</button>
+      <button type="button" class="assessor-chip" data-goal="constancia">Melhorar constância</button>
+      <button type="button" class="assessor-chip" data-goal="comprar">Comprar algo certo</button>
+      <button type="button" class="assessor-chip" data-goal="descansar">Descansar melhor</button>
+    </div>
+
+    <p style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:18px">Contexto (opcional)</p>
+    <textarea id="assessor-context" rows="2" placeholder="Ex.: trabalhei e treinei hoje" style="width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-family:inherit;resize:vertical"></textarea>
+
+    <button class="btn-primary" id="assessor-generate-btn" style="width:100%;margin-top:18px">Gerar possibilidades</button>
+  </div>
+
+  <div id="assessor-step-2" style="display:none;margin-top:14px">
+    <div id="assessor-loading" style="text-align:center;padding:30px;color:rgba(255,255,255,0.7)">Pensando com clareza...</div>
+    <div id="assessor-result"></div>
+    <button type="button" class="btn-outline" id="assessor-restart-btn" style="width:100%;margin-top:16px;display:none">Tentar de novo</button>
+  </div>
+</div>
+
 <!-- BOTTOM NAV -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <div class="nav-item active" data-screen="home"><span>⌂</span><span>Início</span></div>
@@ -1075,7 +1129,7 @@ function showScreen(id) {
   const navSeller = document.getElementById('bottomNavSeller');
   const navPartner = document.getElementById('bottomNavPartner');
 
-  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile'];
+  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile'];
@@ -3380,6 +3434,145 @@ async function confirmPartnerRedeem() {
     btn.textContent = orig;
   }
 }
+
+// ==================== ASSESSOR (Life Agent) ====================
+(function initAssessor() {
+  const moodLabels = {
+    energizado: 'com energia', cansado: 'cansado(a)', triste: 'triste',
+    'sem-foco': 'sem foco', 'pouco-tempo': 'com pouco tempo',
+    treinar: 'querendo treinar', sair: 'querendo sair', descansar: 'querendo descansar',
+  };
+  const goalLabels = {
+    mover: 'me movimentar', relaxar: 'relaxar', socializar: 'socializar',
+    'organizar-treino': 'organizar meu treino', escolher: 'escolher algo para fazer',
+    constancia: 'melhorar constância', comprar: 'comprar algo certo', descansar: 'descansar melhor',
+  };
+
+  function wire() {
+    document.querySelectorAll('#assessor [data-mood]').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('#assessor [data-mood]').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+      };
+    });
+    document.querySelectorAll('#assessor [data-goal]').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('#assessor [data-goal]').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+      };
+    });
+    const genBtn = document.getElementById('assessor-generate-btn');
+    if (genBtn) genBtn.onclick = generate;
+    const restartBtn = document.getElementById('assessor-restart-btn');
+    if (restartBtn) restartBtn.onclick = restart;
+  }
+
+  function restart() {
+    document.getElementById('assessor-step-1').style.display = 'block';
+    document.getElementById('assessor-step-2').style.display = 'none';
+    document.getElementById('assessor-result').innerHTML = '';
+    document.getElementById('assessor-loading').style.display = 'block';
+    document.getElementById('assessor-restart-btn').style.display = 'none';
+    document.querySelectorAll('#assessor .assessor-chip.active').forEach(x => x.classList.remove('active'));
+    const c = document.getElementById('assessor-context');
+    if (c) c.value = '';
+  }
+
+  async function generate() {
+    const mood = document.querySelector('#assessor [data-mood].active')?.dataset.mood || null;
+    const goal = document.querySelector('#assessor [data-goal].active')?.dataset.goal || null;
+    const ctx = (document.getElementById('assessor-context').value || '').trim();
+
+    document.getElementById('assessor-step-1').style.display = 'none';
+    document.getElementById('assessor-step-2').style.display = 'block';
+    document.getElementById('assessor-loading').style.display = 'block';
+    document.getElementById('assessor-result').innerHTML = '';
+
+    const payload = {
+      currentCondition: {
+        mood: mood ? moodLabels[mood] : null,
+        energy: mood === 'cansado' ? 'baixa' : mood === 'energizado' ? 'alta' : null,
+        context: ctx || null,
+      },
+      objective: goal ? goalLabels[goal] : 'quero clareza sobre o próximo passo',
+    };
+
+    let data;
+    try {
+      const opts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || '') },
+        body: JSON.stringify(payload),
+      };
+      const res = await fetch(API + '/life/possibilities', opts);
+      data = await res.json();
+    } catch (e) {
+      data = { error: 'Não foi possível conectar agora. Tente em alguns segundos.' };
+    }
+
+    document.getElementById('assessor-loading').style.display = 'none';
+    document.getElementById('assessor-restart-btn').style.display = 'block';
+    document.getElementById('assessor-result').innerHTML = renderAssessorResult(data);
+  }
+
+  function renderAssessorResult(data) {
+    if (!data || data.error) {
+      return `<div class="error-msg">${escapeAssessor(data?.error || 'Erro desconhecido')}</div>`;
+    }
+    let html = '';
+    if (data.summary) {
+      html += `<p style="font-size:14px;color:rgba(255,255,255,0.9);margin-bottom:8px">${escapeAssessor(data.summary)}</p>`;
+    }
+    const pos = Array.isArray(data.possibilities) ? data.possibilities : [];
+    if (!pos.length) {
+      html += `<p style="color:rgba(255,255,255,0.6);font-size:13px">Sem possibilidades agora. Tente reformular a condição atual.</p>`;
+    }
+    pos.forEach(p => {
+      html += `<div class="assessor-card">`;
+      html += `<h4>${escapeAssessor(p.title || '(sem título)')}</h4>`;
+      if (p.whyItMakesSense) html += `<p style="font-size:13px;color:rgba(255,255,255,0.85);margin-bottom:8px">${escapeAssessor(p.whyItMakesSense)}</p>`;
+      html += `<div class="assessor-meta">`;
+      if (p.energyRequired) html += `<div>⚡ Energia: ${escapeAssessor(p.energyRequired)}</div>`;
+      if (p.timeRequired) html += `<div>⏱ Tempo: ${escapeAssessor(p.timeRequired)}</div>`;
+      if (p.estimatedCost) html += `<div>💰 Custo: ${escapeAssessor(p.estimatedCost)}</div>`;
+      if (p.probableBenefit) html += `<div>✨ Benefício: ${escapeAssessor(p.probableBenefit)}</div>`;
+      html += `</div>`;
+      if (p.attentionPoint) html += `<p style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:8px">⚠ ${escapeAssessor(p.attentionPoint)}</p>`;
+      if (p.nextStep) html += `<p style="font-size:13px;color:#FFD54F;margin-top:8px"><strong>Próximo passo:</strong> ${escapeAssessor(p.nextStep)}</p>`;
+      html += `<div style="margin-top:10px"><span class="assessor-tag">${escapeAssessor(p.actionType || 'other')}</span>`;
+      if (p.requiresApproval) html += `<span class="assessor-tag">precisa sua confirmação</span>`;
+      html += `</div>`;
+      html += `</div>`;
+    });
+    if (data.clarityNote) {
+      html += `<p style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:14px;font-style:italic">${escapeAssessor(data.clarityNote)}</p>`;
+    }
+    if (Array.isArray(data.safetyNotes) && data.safetyNotes.length) {
+      html += `<div style="margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,0.06);font-size:12px;color:rgba(255,255,255,0.8)">`;
+      data.safetyNotes.forEach(n => { html += `<div>• ${escapeAssessor(typeof n === 'string' ? n : JSON.stringify(n))}</div>`; });
+      html += `</div>`;
+    }
+    if (data.nextQuestion) {
+      html += `<p style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:14px"><em>${escapeAssessor(data.nextQuestion)}</em></p>`;
+    }
+    return html;
+  }
+
+  function escapeAssessor(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
 </script>
 </body>
 </html>

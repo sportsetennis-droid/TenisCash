@@ -17,6 +17,8 @@ const catalogRoutes = require('./routes/catalog');
 const aiRoutes = require('./routes/ai');
 const adminCatalogRoutes = require('./routes/adminCatalog');
 const partnersRoutes = require('./routes/partners');
+const adminAIRoutes = require('./ai/orchestrator/orchestrator.routes');
+const lifeRoutes = require('./routes/life');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -57,6 +59,8 @@ app.use('/api/sellers', sellersRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin/catalog', adminCatalogRoutes);
+app.use('/api/admin/ai', adminAIRoutes);
+app.use('/api/life', lifeRoutes);
 app.use('/api', partnersRoutes);
 
 // Health check
