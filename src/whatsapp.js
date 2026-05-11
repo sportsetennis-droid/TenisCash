@@ -114,4 +114,79 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-module.exports = { sendVerificationCode, verifyCode, isPhoneVerified, clearVerified };
+// =====================================================================
+// CAMPANHA — envio em lote via Z-API com throttling e log
+// =====================================================================
+
+function formatPhoneBR(raw) {
+  let p = String(raw || '').replace(/\D/g, '');
+  if (!p) return null;
+  if (!p.startsWith('55')) p = '55' + p;
+  if (p.length < 12 || p.length > 13) return null;
+  return p;
+}
+
+async function sendCustomMessage(phone, message) {
+  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN || !ZAPI_CLIENT_TOKEN) {
+    return { ok: false, error: 'Z-API não configurada' };
+  }
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) return { ok: false, error: 'Telefone inválido' };
+  if (!message || !String(message).trim()) return { ok: false, error: 'Mensagem vazia' };
+
+  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
+      body: JSON.stringify({ phone: formattedPhone, message: String(message) }),
+    });
+    const data = await response.json();
+    if (data.zapiMessageId || data.messageId) {
+      return { ok: true, messageId: data.zapiMessageId || data.messageId };
+    }
+    return { ok: false, error: data.error || data.message || 'Falha no envio Z-API' };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Erro de conexão Z-API' };
+  }
+}
+
+/**
+ * sendCampaignBatch — envia para uma lista de telefones com throttling.
+ * Retorna sumário { total, sent, failed, errors[] }.
+ *
+ * @param {Object} opts
+ * @param {string[]} opts.phones - lista de telefones (qualquer formato BR)
+ * @param {string} opts.message - texto único OU template com placeholders {{name}}
+ * @param {Array} [opts.recipients] - alternativa: [{phone, name}] para personalizar {{name}}
+ * @param {number} [opts.delayMs=1500] - delay entre envios
+ */
+async function sendCampaignBatch({ phones, message, recipients, delayMs = 1500 } = {}) {
+  const list = Array.isArray(recipients) && recipients.length
+    ? recipients
+    : (phones || []).map((p) => ({ phone: p, name: '' }));
+  const result = { total: list.length, sent: 0, failed: 0, errors: [] };
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    const personalized = String(message || '').replace(/\{\{name\}\}/gi, r.name || '');
+    const out = await sendCustomMessage(r.phone, personalized);
+    if (out.ok) {
+      result.sent += 1;
+    } else {
+      result.failed += 1;
+      result.errors.push({ phone: r.phone, error: out.error });
+    }
+    if (i < list.length - 1) await new Promise((res) => setTimeout(res, delayMs));
+  }
+  return result;
+}
+
+module.exports = {
+  sendVerificationCode,
+  verifyCode,
+  isPhoneVerified,
+  clearVerified,
+  sendCustomMessage,
+  sendCampaignBatch,
+  formatPhoneBR,
+};

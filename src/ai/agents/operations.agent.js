@@ -14,6 +14,7 @@ async function operationsAgent({ task, context, objective, createdById }) {
       executionTimeline: [],
       nextAction: 'Operação indisponível — organizar checklist manualmente.',
     },
+    maxTokens: 2000,
     createdById,
   });
 }

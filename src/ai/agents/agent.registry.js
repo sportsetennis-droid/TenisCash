@@ -13,6 +13,7 @@ const partnerAgent = require('./partner.agent');
 const productAgent = require('./product.agent');
 const lifeAssessorAgent = require('./life-assessor.agent');
 const safetyAgent = require('./safety.agent');
+const designBriefAgent = require('./design-brief.agent');
 
 const agents = {
   'stock-agent': stockAgent,
@@ -24,6 +25,7 @@ const agents = {
   'operations-agent': operationsAgent,
   'partner-agent': partnerAgent,
   'product-agent': productAgent,
+  'design-brief-agent': designBriefAgent,
   'life-assessor-agent': lifeAssessorAgent,
   'safety-agent': safetyAgent,
 };
@@ -38,6 +40,7 @@ const metadata = {
   'operations-agent': { name: 'Operações', category: 'operations', description: 'Checklist, rotina, execução por horário' },
   'partner-agent': { name: 'Parceiros', category: 'commercial', description: 'Programa de Parceiros Sports & Tennis' },
   'product-agent': { name: 'Produto', category: 'commercial', description: 'Recomendações, lacunas, conexão com perfil' },
+  'design-brief-agent': { name: 'Briefing Visual', category: 'commercial', description: 'Briefing pronto pra claude.ai/design, Canva ou designer' },
   'life-assessor-agent': { name: 'Assessor (Clareza)', category: 'life', description: 'Possibilidades personalizadas com clareza real' },
   'safety-agent': { name: 'Segurança', category: 'safety', description: 'Revisão de risco antes de apresentar resposta' },
 };
@@ -89,8 +92,9 @@ function selectAgentsForObjective(objective) {
   // Venda/campanha/loja/meta
   if (has(['venda', 'vender', 'campanha', 'loja', 'meta', 'parad', 'giro', 'desconto'])) {
     return [
-      'stock-agent', 'finance-agent', 'marketing-agent', 'sales-agent',
-      'whatsapp-agent', 'report-agent', 'operations-agent', 'safety-agent',
+      'stock-agent', 'finance-agent', 'marketing-agent', 'design-brief-agent',
+      'sales-agent', 'whatsapp-agent', 'report-agent', 'operations-agent',
+      'safety-agent',
     ];
   }
 

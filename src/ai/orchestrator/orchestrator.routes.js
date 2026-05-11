@@ -18,7 +18,9 @@ const {
   getApproval,
   VALID_DECISIONS,
 } = require('../approvals/approval.service');
+const { executeApprovalById, pickRecipientsForCampaign } = require('../approvals/approval.executor');
 const { listRecentLogs } = require('../logs/ai-log.service');
+const instagram = require('../../services/instagram');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -122,6 +124,46 @@ router.post('/approvals/:id/decision', async (req, res) => {
   } catch (err) {
     console.error('[ai/approvals/decision] erro:', err);
     res.status(500).json({ error: 'Erro ao registrar decisão', detail: err.message });
+  }
+});
+
+// Prévia de destinatários antes de executar
+router.get('/approvals/:id/preview-recipients', async (req, res) => {
+  try {
+    const scope = req.query.scope || 'all';
+    const limit = parseInt(req.query.limit || '200', 10);
+    const recipients = await pickRecipientsForCampaign({ scope, limit });
+    res.json({ total: recipients.length, recipients: recipients.slice(0, 20), scope });
+  } catch (err) {
+    console.error('[ai/preview-recipients] erro:', err);
+    res.status(500).json({ error: 'Erro ao listar destinatários' });
+  }
+});
+
+// EXECUTA uma aprovação aprovada (WhatsApp bulk/single, Instagram feed/story)
+router.post('/approvals/:id/execute', async (req, res) => {
+  try {
+    const opts = req.body || {};
+    const result = await executeApprovalById(req.params.id, opts);
+    res.json(result);
+  } catch (err) {
+    console.error('[ai/execute] erro:', err);
+    res.status(500).json({ error: 'Erro ao executar aprovação', detail: err.message });
+  }
+});
+
+// Instagram — status da config
+router.get('/instagram/status', async (_req, res) => {
+  try {
+    const configured = instagram.isConfigured();
+    if (!configured) {
+      return res.json({ configured: false, message: 'Faltam env vars META_IG_ACCESS_TOKEN e/ou META_IG_BUSINESS_ID' });
+    }
+    const info = await instagram.getAccountInfo();
+    res.json({ configured: true, account: info.account || null, error: info.error || null });
+  } catch (err) {
+    console.error('[ai/instagram/status] erro:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

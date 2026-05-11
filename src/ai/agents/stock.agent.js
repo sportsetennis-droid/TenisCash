@@ -14,6 +14,7 @@ async function stockAgent({ task, context, objective, createdById }) {
       campaignOpportunities: [],
       nextAction: 'Revisar estoque manualmente.',
     },
+    maxTokens: 2000,
     createdById,
   });
 }
