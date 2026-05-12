@@ -567,9 +567,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
 <!-- MODAL: DETALHE DE ORQUESTRAÇÃO -->
 <div class="detail-modal" id="ai-orch-modal">
-  <div class="detail-content" style="max-width:900px">
+  <div class="detail-content" style="max-width:1100px;max-height:92vh;font-size:14px;line-height:1.5">
     <button type="button" class="detail-close" id="ai-orch-modal-close">✕</button>
-    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">DETALHE DA ORQUESTRAÇÃO</div>
+    <div style="font-family:Orbitron;font-size:16px;letter-spacing:3px;color:var(--orange)">DETALHE DA ORQUESTRAÇÃO</div>
     <div id="ai-orch-modal-body" style="margin-top:14px"></div>
   </div>
 </div>
@@ -2999,17 +2999,219 @@ async function aiShowOrch(id) {
   const data = await api('/admin/ai/orchestrations/' + id);
   if (data.error) { alert('Erro: ' + data.error); return; }
   const o = data.orchestration;
+  const result = o.result || {};
+  const materials = result.readyMaterials || {};
   const body = document.getElementById('ai-orch-modal-body');
-  body.innerHTML = `
-    <div><strong>Objetivo:</strong> ${escapeHtml(o.objective || '')}</div>
-    <div style="font-size:11px;color:var(--text2);margin-top:4px">Status: ${escapeHtml(o.status)} — ${new Date(o.createdAt).toLocaleString('pt-BR')}</div>
-    <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">Tarefas (${(o.tasks||[]).length})</h4>
-    <ul style="padding-left:18px;font-size:12px">${(o.tasks||[]).map(t => `<li><strong>${escapeHtml(t.agentCode)}</strong> — ${escapeHtml(t.status)} — ${escapeHtml(t.task||'').slice(0,120)}</li>`).join('')}</ul>
-    <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:14px 0 6px">Aprovações (${(o.approvals||[]).length})</h4>
-    <ul style="padding-left:18px;font-size:12px">${(o.approvals||[]).map(a => `<li>[${escapeHtml(a.status)}] ${escapeHtml(a.title)} — <code>${escapeHtml(a.type)}</code></li>`).join('')}</ul>
-    <details style="margin-top:14px"><summary style="cursor:pointer">Resultado completo (JSON)</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:400px;overflow:auto">${escapeHtml(JSON.stringify(o.result || {}, null, 2))}</pre></details>
-  `;
-  document.getElementById('ai-orch-modal').style.display = 'flex';
+
+  let html = '';
+
+  // Cabeçalho grande
+  html += `<div style="margin-bottom:18px">`;
+  html += `<div style="font-size:18px;font-weight:700;margin-bottom:6px">${escapeHtml(o.objective || '')}</div>`;
+  html += `<div style="font-size:13px;color:var(--text2)">Status: <strong>${escapeHtml(o.status)}</strong> · ${new Date(o.createdAt).toLocaleString('pt-BR')}</div>`;
+  html += `</div>`;
+
+  // Plano consolidado
+  if (result.consolidatedPlan) {
+    html += `<div style="background:rgba(255,109,0,0.06);border:1px solid rgba(255,109,0,0.3);border-radius:10px;padding:14px;margin-bottom:18px">`;
+    html += `<div style="font-family:Orbitron;font-size:13px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">📋 PLANO CONSOLIDADO</div>`;
+    html += `<div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${escapeHtml(result.consolidatedPlan)}</div>`;
+    html += `</div>`;
+  }
+
+  // Aprovações
+  if (Array.isArray(o.approvals) && o.approvals.length) {
+    html += `<div style="margin-bottom:18px">`;
+    html += `<div style="font-family:Orbitron;font-size:13px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">✅ APROVAÇÕES (${o.approvals.length})</div>`;
+    o.approvals.forEach(a => {
+      const color = a.status === 'executed' ? '#7b7' : a.status === 'approved' ? '#5b9' : a.status === 'rejected' ? '#e35' : '#e90';
+      html += `<div style="border-left:3px solid ${color};padding:10px 12px;margin-bottom:6px;background:rgba(255,255,255,0.02)">`;
+      html += `<div style="font-size:14px;font-weight:600">${escapeHtml(a.title)}</div>`;
+      html += `<div style="font-size:12px;color:var(--text2);margin-top:4px">Status: <strong>${escapeHtml(a.status)}</strong> · Tipo: <code>${escapeHtml(a.type)}</code> · Risco: ${escapeHtml(a.riskLevel || '-')}</div>`;
+      if (a.description) html += `<div style="font-size:13px;color:var(--text2);margin-top:6px">${escapeHtml(a.description)}</div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Cards por agente
+  html += `<div style="font-family:Orbitron;font-size:13px;letter-spacing:2px;color:var(--orange);margin:18px 0 10px">🤖 RESULTADO DE CADA AGENTE</div>`;
+
+  const agentTitles = {
+    'stock-agent': '📦 Estoque',
+    'finance-agent': '💰 Financeiro',
+    'marketing-agent': '📣 Marketing',
+    'sales-agent': '🎯 Vendas',
+    'whatsapp-agent': '💬 WhatsApp',
+    'report-agent': '📊 Relatório',
+    'operations-agent': '⚙ Operação',
+    'partner-agent': '🤝 Parceiros',
+    'product-agent': '🛍 Produto',
+    'design-brief-agent': '🎨 Briefing Visual',
+    'safety-agent': '🛡 Segurança',
+  };
+
+  Object.keys(materials).forEach(code => {
+    const m = materials[code];
+    if (!m) return;
+    const title = agentTitles[code] || code;
+    html += `<div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,0.02)">`;
+    html += `<div style="font-size:15px;font-weight:700;color:var(--orange);margin-bottom:10px">${title}</div>`;
+
+    if (m._degraded) {
+      html += `<div style="font-size:13px;color:#e90;background:rgba(233,144,0,0.1);padding:8px;border-radius:6px;margin-bottom:8px">⚠ Este agente falhou. Motivo: ${escapeHtml(m._error || 'desconhecido')}</div>`;
+    }
+
+    html += renderAgentDetail(code, m);
+    html += `</div>`;
+  });
+
+  // Próxima ação
+  if (result.nextRecommendedAction) {
+    html += `<div style="border:2px solid var(--orange);border-radius:10px;padding:14px;margin-top:14px;background:rgba(255,109,0,0.06)">`;
+    html += `<div style="font-family:Orbitron;font-size:13px;letter-spacing:2px;color:var(--orange);margin-bottom:6px">▶ PRÓXIMA AÇÃO</div>`;
+    html += `<div style="font-size:14px">${escapeHtml(result.nextRecommendedAction)}</div>`;
+    html += `</div>`;
+  }
+
+  body.innerHTML = html;
+  document.getElementById('ai-orch-modal').classList.add('show');
+}
+
+function aiKV(label, value) {
+  if (!value || (Array.isArray(value) && !value.length)) return '';
+  return `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">${escapeHtml(label)}</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap">${escapeHtml(String(value))}</div></div>`;
+}
+
+function aiList(label, arr, formatter) {
+  if (!Array.isArray(arr) || !arr.length) return '';
+  let html = `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:4px">${escapeHtml(label)}</div><ul style="padding-left:18px;font-size:14px;line-height:1.5;margin:0">`;
+  arr.forEach(item => { html += `<li>${formatter ? formatter(item) : escapeHtml(String(item))}</li>`; });
+  html += `</ul></div>`;
+  return html;
+}
+
+function aiCopyButton(text) {
+  const id = 'cp-' + Math.random().toString(36).slice(2, 8);
+  return `<button type="button" class="btn" style="font-size:11px;margin-top:4px" onclick="navigator.clipboard.writeText(document.getElementById('${id}').textContent); this.textContent='✓ Copiado';">📋 Copiar</button><pre id="${id}" style="display:none">${escapeHtml(text)}</pre>`;
+}
+
+function renderAgentDetail(code, m) {
+  let h = '';
+  if (m.summary) h += aiKV('Resumo', m.summary);
+
+  if (code === 'stock-agent') {
+    h += aiList('Produtos recomendados', m.recommendedProducts, p => `<strong>${escapeHtml(p.sku || '')}</strong> ${escapeHtml(p.name || '')} — ${escapeHtml(p.reason || '')}`);
+    h += aiList('Riscos de estoque', m.stockRisks);
+    h += aiList('Oportunidades de campanha', m.campaignOpportunities);
+  }
+
+  if (code === 'finance-agent') {
+    h += aiList('Notas de margem', m.marginNotes);
+    if (m.safeDiscountSuggestion) {
+      const d = m.safeDiscountSuggestion;
+      h += aiKV('Desconto sugerido', `${d.maxDiscountPct || '-'}% · ${d.type || ''}\n${d.rationale || ''}`);
+      h += aiList('Condições', d.conditions);
+    }
+    h += aiList('Riscos financeiros', m.financialRisks);
+  }
+
+  if (code === 'marketing-agent') {
+    h += aiKV('Nome da campanha', m.campaignName);
+    h += aiKV('Conceito principal', m.mainConcept);
+    h += aiKV('Frase principal', m.mainPhrase);
+    if (m.instagramCaption) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Legenda Instagram</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.instagramCaption)}</div>${aiCopyButton(m.instagramCaption)}</div>`;
+    }
+    h += aiList('Stories', m.stories, s => `${escapeHtml(s.type || '')}: ${escapeHtml(s.text || s)}`);
+    if (m.videoScript) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Roteiro de vídeo</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.videoScript)}</div>${aiCopyButton(m.videoScript)}</div>`;
+    }
+    h += aiKV('Vitrine de loja', m.storeCallout);
+    if (m.whatsappVariation) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Variação WhatsApp</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.whatsappVariation)}</div>${aiCopyButton(m.whatsappVariation)}</div>`;
+    }
+  }
+
+  if (code === 'sales-agent') {
+    h += aiKV('Script de venda', m.salesScript);
+    h += aiList('Perguntas de abertura', m.openingQuestions);
+    h += aiList('Tratamento de objeções', m.objectionHandling, x => `<strong>"${escapeHtml(x.objection || '')}"</strong><br>→ ${escapeHtml(x.response || '')}`);
+    h += aiKV('Frase de fechamento', m.closingLine);
+    h += aiKV('Meta sugerida do dia', m.dailyGoalSuggestion);
+  }
+
+  if (code === 'whatsapp-agent') {
+    if (m.individualMessage) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Mensagem individual</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.individualMessage)}</div>${aiCopyButton(m.individualMessage)}</div>`;
+    }
+    if (m.campaignMessage) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Mensagem de campanha (envio em massa)</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.campaignMessage)}</div>${aiCopyButton(m.campaignMessage)}</div>`;
+    }
+    if (m.followUpMessage) {
+      h += `<div style="margin-bottom:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Follow-up</div><div style="font-size:14px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(m.followUpMessage)}</div>${aiCopyButton(m.followUpMessage)}</div>`;
+    }
+  }
+
+  if (code === 'report-agent') {
+    h += aiList('Métricas principais', m.keyMetrics, x => `<strong>${escapeHtml(x.label || '')}:</strong> ${escapeHtml(x.value || '')}`);
+    h += aiList('Problemas encontrados', m.problemsFound);
+    h += aiList('Oportunidades', m.opportunities);
+  }
+
+  if (code === 'operations-agent') {
+    h += aiList('Checklist', m.checklist);
+    h += aiList('Tarefas da equipe', m.teamTasks, x => `<strong>${escapeHtml(x.role || '')}:</strong> ${escapeHtml(x.task || '')} ${x.when ? `(${escapeHtml(x.when)})` : ''}`);
+    h += aiList('Rotina da loja', m.storeRoutine);
+    h += aiList('Timeline de execução', m.executionTimeline, x => `<strong>${escapeHtml(x.time || '')}:</strong> ${escapeHtml(x.action || '')}`);
+  }
+
+  if (code === 'partner-agent') {
+    h += aiKV('Campanha de parceiro', m.partnerCampaign);
+    h += aiKV('Texto pra parceiro divulgar', m.partnerPostText);
+    h += aiKV('Meta do parceiro', m.partnerGoal);
+    h += aiKV('Notas de comissão', m.commissionNotes);
+  }
+
+  if (code === 'product-agent') {
+    h += aiList('Recomendações de produto', m.productRecommendations, p => `<strong>${escapeHtml(p.sku || '')}</strong> ${escapeHtml(p.name || '')} — ${escapeHtml(p.forWhom || '')} — ${escapeHtml(p.reason || '')}`);
+    h += aiList('Lacunas no catálogo', m.productGaps);
+    h += aiList('Melhorias sugeridas', m.catalogImprovements);
+  }
+
+  if (code === 'design-brief-agent') {
+    ['feed', 'story'].forEach(kind => {
+      const b = m[kind];
+      if (!b) return;
+      const label = kind === 'feed' ? '📷 Feed (1080x1080)' : '📱 Story (1080x1920)';
+      h += `<div style="border:1px solid rgba(255,109,0,0.3);border-radius:8px;padding:10px;margin-bottom:10px">`;
+      h += `<div style="font-weight:600;margin-bottom:6px">${label}</div>`;
+      h += aiKV('Composição', b.composition);
+      h += aiKV('Sujeito principal', b.mainSubject);
+      h += aiKV('Fundo', b.background);
+      h += aiKV('Mood', b.mood);
+      h += aiList('Texto na arte', b.textOverlay, t => `<strong>${escapeHtml(t.position || '')}:</strong> ${escapeHtml(t.text || '')}`);
+      h += aiList('Evitar', b.avoid);
+      if (b.promptForAI) {
+        h += `<div style="margin-top:8px"><div style="font-size:11px;letter-spacing:1px;color:var(--text2);margin-bottom:2px">Prompt pra claude.ai/design</div><div style="font-size:13px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px">${escapeHtml(b.promptForAI)}</div>${aiCopyButton(b.promptForAI)}</div>`;
+      }
+      if (b.canvaInstructions) h += aiKV('Instruções pra Canva', b.canvaInstructions);
+      h += `</div>`;
+    });
+  }
+
+  if (code === 'safety-agent') {
+    h += aiKV('Aprovado pelo Safety?', m.approved ? 'Sim' : 'Não');
+    h += aiKV('Nível de risco', m.riskLevel);
+    h += aiList('Riscos identificados', m.risks, r => `<strong>${escapeHtml(r.type || '')}:</strong> ${escapeHtml(r.description || '')}`);
+    h += aiList('Validações humanas necessárias', m.requiredHumanValidation);
+  }
+
+  if (m.nextAction) {
+    h += `<div style="margin-top:10px;padding:8px;background:rgba(255,109,0,0.08);border-radius:6px;font-size:13px"><strong>▶ Próxima ação:</strong> ${escapeHtml(m.nextAction)}</div>`;
+  }
+
+  return h || '<div style="color:var(--text2);font-size:13px">Sem dados estruturados deste agente.</div>';
 }
 
 async function loadAIAgents() {
