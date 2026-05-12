@@ -487,8 +487,8 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
-    <div class="action-btn" onclick="alert('Em breve: Carteira do vendedor')"><span>💳</span><span>Carteira</span></div>
-    <div class="action-btn" onclick="alert('Em breve: CRM de clientes')"><span>👥</span><span>CRM</span></div>
+    <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
+    <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
     <div class="action-btn" onclick="alert('Em breve: Vendas')"><span>🧾</span><span>Vendas</span></div>
   </div>
 
@@ -624,6 +624,39 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div id="msg-new-error"></div>
     <button type="button" class="btn-primary" id="msg-new-send">ENVIAR</button>
   </div>
+</div>
+
+<!-- SELLER PORTFOLIO (Carteira do Vendedor) -->
+<div id="seller-portfolio" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Minha Carteira</p></div>
+  <div id="sp-dashboard-wrap" style="margin-top:14px"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+    <button type="button" class="tab-btn active js-sp-tab" data-tab="customers" style="padding:10px 12px">CLIENTES</button>
+    <button type="button" class="tab-btn js-sp-tab" data-tab="tasks" style="padding:10px 12px">TAREFAS</button>
+    <button type="button" class="tab-btn js-sp-tab" data-tab="interactions" style="padding:10px 12px">INTERAÇÕES</button>
+  </div>
+  <div id="sp-content-wrap" style="margin-top:12px"></div>
+</div>
+
+<!-- SELLER WEEKLY INTERVIEW -->
+<div id="seller-interview" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Entrevista Semanal</p></div>
+  <div id="si-intro" style="margin-top:14px;font-size:13px;color:rgba(255,255,255,0.85);line-height:1.5">
+    Responda no seu ritmo. Suas respostas viram insights pra a equipe. Pode salvar rascunho.
+  </div>
+  <div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div><label class="input-label">HUMOR (0-10)</label><input id="si-mood" class="input-field" type="number" min="0" max="10" placeholder="0-10"></div>
+    <div><label class="input-label">CONFIANÇA</label><input id="si-confidence" class="input-field" type="number" min="0" max="10" placeholder="0-10"></div>
+    <div><label class="input-label">ENERGIA DE VENDA</label><input id="si-energy" class="input-field" type="number" min="0" max="10" placeholder="0-10"></div>
+  </div>
+  <label class="input-label">OBJETIVO DA PRÓXIMA SEMANA</label>
+  <textarea id="si-objective" class="input-field" rows="2" placeholder="Ex.: bater meta de tênis de corrida"></textarea>
+  <div id="si-questions-wrap" style="margin-top:18px"></div>
+  <div style="display:flex;gap:10px;margin-top:18px">
+    <button type="button" class="btn-secondary" id="si-save-draft" style="margin-top:0;flex:1">SALVAR RASCUNHO</button>
+    <button type="button" class="btn-primary" id="si-submit" style="margin-top:0;flex:1">ENVIAR</button>
+  </div>
+  <div id="si-status" style="margin-top:14px;font-size:13px"></div>
 </div>
 
 <!-- POPUP PENDÊNCIAS (após entrada) -->
@@ -1130,7 +1163,7 @@ function showScreen(id) {
   const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor'];
-  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
@@ -1170,6 +1203,8 @@ function showScreen(id) {
   if (id === 'partner-home') loadPartnerHome();
   if (id === 'partner-sales') loadPartnerSalesScreen();
   if (id === 'partner-redeem') initPartnerRedeem();
+  if (id === 'seller-portfolio') initSellerPortfolio();
+  if (id === 'seller-interview') initSellerInterview();
 }
 
 if (!window._tcUiNavBound) {
@@ -3590,6 +3625,204 @@ async function confirmPartnerRedeem() {
     wire();
   }
 })();
+
+// ==================== SELLER PORTFOLIO (Carteira) ====================
+let _spInit = false;
+let _spTab = 'customers';
+async function initSellerPortfolio() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  if (!_spInit) {
+    _spInit = true;
+    document.querySelectorAll('#seller-portfolio .js-sp-tab').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('#seller-portfolio .js-sp-tab').forEach(b => {
+          b.classList.remove('active');
+          b.style.background = 'rgba(255,255,255,0.1)';
+          b.style.color = 'rgba(255,255,255,0.6)';
+        });
+        btn.classList.add('active');
+        btn.style.background = '#fff';
+        btn.style.color = '#FF6D00';
+        _spTab = btn.dataset.tab;
+        loadSpContent();
+      };
+    });
+  }
+  loadSpDashboard();
+  loadSpContent();
+}
+async function loadSpDashboard() {
+  const wrap = document.getElementById('sp-dashboard-wrap');
+  const data = await api('/seller/portfolio/dashboard');
+  if (data.error) { wrap.innerHTML = `<div class="error-msg">${data.error}</div>`; return; }
+  const s = data.stats || {};
+  wrap.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center">
+      <p style="font-size:10px;letter-spacing:1.5px;opacity:.6">CLIENTES</p>
+      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px">${s.totalCustomers||0}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center">
+      <p style="font-size:10px;letter-spacing:1.5px;opacity:.6">CHAMAR HOJE</p>
+      <p style="font-size:22px;font-family:'Orbitron';color:#FFD54F;margin-top:4px">${s.customersToCallToday||0}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center">
+      <p style="font-size:10px;letter-spacing:1.5px;opacity:.6">INATIVOS</p>
+      <p style="font-size:22px;font-family:'Orbitron';margin-top:4px">${s.inactiveCustomers||0}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center">
+      <p style="font-size:10px;letter-spacing:1.5px;opacity:.6">RECOMPRA</p>
+      <p style="font-size:22px;font-family:'Orbitron';color:#8BFF8B;margin-top:4px">${s.rebuyOpportunities||0}</p>
+    </div>
+  </div>`;
+}
+async function loadSpContent() {
+  const wrap = document.getElementById('sp-content-wrap');
+  wrap.innerHTML = '<p style="opacity:.6">Carregando...</p>';
+  if (_spTab === 'customers') {
+    const data = await api('/seller/portfolio/customers');
+    if (data.error) { wrap.innerHTML = `<p class="error-msg">${data.error}</p>`; return; }
+    const list = data.customers || [];
+    if (!list.length) {
+      wrap.innerHTML = '<p style="opacity:.6;margin-top:10px">Sem clientes na carteira ainda. Atribua um cliente.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    list.forEach(c => {
+      const div = document.createElement('div');
+      div.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px;margin-top:8px';
+      const priorityColor = c.priority === 'URGENT' ? '#FF5252' : c.priority === 'HIGH' ? '#FFD54F' : 'rgba(255,255,255,0.6)';
+      div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <p style="font-weight:700;font-size:13px">${c.customerId}</p>
+          <p style="font-size:11px;opacity:.7;margin-top:2px">Status: <strong>${c.relationshipStatus}</strong></p>
+        </div>
+        <span style="color:${priorityColor};font-size:10px;letter-spacing:1px;font-weight:700">${c.priority}</span>
+      </div>
+      ${c.nextAction ? `<p style="font-size:12px;margin-top:8px"><strong>Próxima:</strong> ${c.nextAction}</p>` : ''}
+      ${c.notes ? `<p style="font-size:11px;opacity:.7;margin-top:4px">${c.notes}</p>` : ''}`;
+      wrap.appendChild(div);
+    });
+  } else if (_spTab === 'tasks') {
+    const data = await api('/seller/portfolio/tasks');
+    if (data.error) { wrap.innerHTML = `<p class="error-msg">${data.error}</p>`; return; }
+    const list = data.tasks || [];
+    if (!list.length) {
+      wrap.innerHTML = '<p style="opacity:.6;margin-top:10px">Sem tarefas pendentes.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    list.forEach(t => {
+      const div = document.createElement('div');
+      div.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px;margin-top:8px';
+      div.innerHTML = `<p style="font-weight:700;font-size:13px">${t.title}</p>
+      <p style="font-size:11px;opacity:.7;margin-top:2px">${t.type} • ${t.priority} • ${t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR') : 'sem prazo'}</p>
+      ${t.description ? `<p style="font-size:12px;margin-top:6px">${t.description}</p>` : ''}`;
+      wrap.appendChild(div);
+    });
+  } else {
+    const data = await api('/seller/portfolio/interactions');
+    if (data.error) { wrap.innerHTML = `<p class="error-msg">${data.error}</p>`; return; }
+    const list = data.interactions || [];
+    if (!list.length) {
+      wrap.innerHTML = '<p style="opacity:.6;margin-top:10px">Sem interações registradas.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    list.forEach(i => {
+      const div = document.createElement('div');
+      div.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px;margin-top:8px';
+      div.innerHTML = `<p style="font-weight:700;font-size:12px">${i.interactionType} via ${i.channel}</p>
+      <p style="font-size:11px;opacity:.6;margin-top:2px">${new Date(i.createdAt).toLocaleString('pt-BR')}</p>
+      ${i.summary ? `<p style="font-size:12px;margin-top:6px">${i.summary}</p>` : ''}`;
+      wrap.appendChild(div);
+    });
+  }
+}
+
+// ==================== ENTREVISTA SEMANAL (vendedor) ====================
+let _siInit = false;
+let _siInterview = null;
+let _siAnswers = {};
+async function initSellerInterview() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  if (!_siInit) {
+    _siInit = true;
+    document.getElementById('si-save-draft').onclick = () => siSave(false);
+    document.getElementById('si-submit').onclick = () => siSave(true);
+  }
+  await siLoad();
+}
+async function siLoad() {
+  document.getElementById('si-status').innerHTML = 'Carregando...';
+  const [tmpl, current] = await Promise.all([
+    api('/seller/interview/template'),
+    api('/seller/interview/current'),
+  ]);
+  if (current.error) { document.getElementById('si-status').innerHTML = `<span style="color:#FF5252">${current.error}</span>`; return; }
+  _siInterview = current.interview;
+  _siAnswers = {};
+  (current.interview?.answers || []).forEach(a => { _siAnswers[a.questionKey] = a.answerText || ''; });
+
+  document.getElementById('si-mood').value = current.interview?.moodScore ?? '';
+  document.getElementById('si-confidence').value = current.interview?.confidenceScore ?? '';
+  document.getElementById('si-energy').value = current.interview?.salesEnergyScore ?? '';
+  document.getElementById('si-objective').value = current.interview?.mainObjective ?? '';
+
+  const wrap = document.getElementById('si-questions-wrap');
+  wrap.innerHTML = '';
+  (tmpl.groups || []).forEach(g => {
+    const section = document.createElement('div');
+    section.style.marginTop = '24px';
+    const h = document.createElement('p');
+    h.style.cssText = 'font-size:14px;font-weight:700;margin-bottom:8px;color:rgba(255,255,255,0.95);padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.15)';
+    h.textContent = g.label;
+    section.appendChild(h);
+    (g.questions || []).forEach(q => {
+      const lbl = document.createElement('label');
+      lbl.className = 'input-label';
+      lbl.style.fontSize = '12px';
+      lbl.textContent = q.text;
+      const ta = document.createElement('textarea');
+      ta.className = 'input-field';
+      ta.rows = 2;
+      ta.dataset.qkey = q.key;
+      ta.value = _siAnswers[q.key] || '';
+      ta.placeholder = 'Resposta...';
+      ta.style.marginTop = '4px';
+      ta.oninput = () => { _siAnswers[q.key] = ta.value; };
+      section.appendChild(lbl);
+      section.appendChild(ta);
+    });
+    wrap.appendChild(section);
+  });
+
+  if (_siInterview?.status === 'SUBMITTED') {
+    document.getElementById('si-status').innerHTML = '<span style="color:#8BFF8B">✓ Já enviada esta semana. Pode editar e reenviar.</span>';
+  } else {
+    document.getElementById('si-status').innerHTML = '';
+  }
+}
+async function siSave(submit) {
+  if (!_siInterview) return;
+  const answers = Object.keys(_siAnswers).map(k => ({ questionKey: k, answerText: _siAnswers[k] }));
+  const payload = {
+    answers,
+    moodScore: document.getElementById('si-mood').value || null,
+    confidenceScore: document.getElementById('si-confidence').value || null,
+    salesEnergyScore: document.getElementById('si-energy').value || null,
+    mainObjective: document.getElementById('si-objective').value || null,
+  };
+  document.getElementById('si-status').innerHTML = 'Salvando...';
+  const r = await api('/seller/interview/' + _siInterview.id + '/answers', 'PUT', payload);
+  if (r.error) { document.getElementById('si-status').innerHTML = `<span style="color:#FF5252">${r.error}</span>`; return; }
+  if (submit) {
+    const sub = await api('/seller/interview/' + _siInterview.id + '/submit', 'POST', {});
+    if (sub.error) { document.getElementById('si-status').innerHTML = `<span style="color:#FF5252">${sub.error}</span>`; return; }
+    document.getElementById('si-status').innerHTML = `<span style="color:#8BFF8B">✓ Entrevista enviada. ${sub.insightsCount} insight(s) gerado(s).</span>`;
+  } else {
+    document.getElementById('si-status').innerHTML = '<span style="color:#FFD54F">✓ Rascunho salvo.</span>';
+  }
+}
 </script>
 </body>
 </html>

@@ -238,6 +238,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('xml',this)">XML NF-e</button>
     <button class="tab" onclick="switchTab('recs',this)">Recomendações</button>
     <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
+    <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
+    <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
+    <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
+    <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -659,6 +663,79 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div id="ns-events-wrap"></div>
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">LOGS DE SYNC</h4>
   <div id="ns-logs-wrap"></div>
+</div>
+
+<!-- FINANCEIRO -->
+<div class="section" id="tab-financial" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Financeiro</span>
+    <button type="button" class="refresh-btn" id="fin-refresh">↻</button>
+  </div>
+  <div id="fin-dashboard-wrap" style="margin-bottom:18px"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <button type="button" class="tab active js-fin-sub" data-fin-sub="payable">Contas a Pagar</button>
+    <button type="button" class="tab js-fin-sub" data-fin-sub="receivable">Contas a Receber</button>
+  </div>
+  <div id="fin-actions" style="margin-bottom:12px">
+    <button type="button" class="btn btn-primary" id="fin-new">+ Nova conta</button>
+  </div>
+  <div id="fin-list-wrap"></div>
+</div>
+
+<!-- FORNECEDORES -->
+<div class="section" id="tab-suppliers" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Fornecedores</span>
+    <button type="button" class="refresh-btn" id="sup-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <input class="search-box" id="sup-search" placeholder="Buscar nome, CNPJ ou representante...">
+    <button type="button" class="btn btn-primary" id="sup-search-btn">Buscar</button>
+    <button type="button" class="btn btn-primary" id="sup-new">+ Novo fornecedor</button>
+  </div>
+  <div id="sup-list-wrap"></div>
+</div>
+
+<!-- CAMPANHAS -->
+<div class="section" id="tab-campaigns" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Campanhas</span>
+    <button type="button" class="refresh-btn" id="cmp-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <button type="button" class="btn btn-primary" id="cmp-new">+ Nova campanha</button>
+    <select class="search-box" id="cmp-filter-status">
+      <option value="">Todos status</option>
+      <option>DRAFT</option><option>ACTIVE</option><option>FINISHED</option><option>CANCELLED</option>
+    </select>
+    <button type="button" class="btn" id="cmp-filter-btn">Filtrar</button>
+  </div>
+  <div id="cmp-list-wrap"></div>
+</div>
+
+<!-- ESTOQUE -->
+<div class="section" id="tab-inventory" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Estoque</span>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn btn-primary" id="inv-reclassify">Reclassificar lifecycle</button>
+      <button type="button" class="refresh-btn" id="inv-refresh">↻</button>
+    </div>
+  </div>
+  <div id="inv-dashboard-wrap" style="margin-bottom:18px"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <input class="search-box" id="inv-brand" placeholder="Marca...">
+    <input class="search-box" id="inv-category" placeholder="Categoria...">
+    <select class="search-box" id="inv-lifecycle">
+      <option value="">Todo lifecycle</option>
+      <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
+      <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
+      <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
+    </select>
+    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
+    <button type="button" class="btn btn-primary" id="inv-filter">Filtrar</button>
+  </div>
+  <div id="inv-list-wrap"></div>
 </div>
 
 <!-- MODAL: DETALHE DE ORQUESTRAÇÃO -->
@@ -2528,7 +2605,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -2545,6 +2622,10 @@ function switchTab(tab, btn) {
   if (tab === 'xml') { initXmlTab(); }
   if (tab === 'recs') { initRecsTab(); }
   if (tab === 'ns') { initNsTab(); }
+  if (tab === 'financial') { initFinancialTab(); }
+  if (tab === 'suppliers') { initSuppliersTab(); }
+  if (tab === 'campaigns') { initCampaignsTab(); }
+  if (tab === 'inventory') { initInventoryTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
@@ -3702,6 +3783,270 @@ async function loadNsLogs() {
   let html = '<table><thead><tr><th>Tipo</th><th>Entidade</th><th>Status</th><th>Mensagem</th><th>Quando</th></tr></thead><tbody>';
   list.forEach(l => {
     html += `<tr><td>${escapeHtml(l.type)}</td><td>${escapeHtml(l.entity)}</td><td>${escapeHtml(l.status)}</td><td style="font-size:12px">${escapeHtml(l.message||'')}</td><td style="font-size:11px;color:var(--text2)">${new Date(l.createdAt).toLocaleString('pt-BR')}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ==================== FINANCEIRO ====================
+let _finInit = false;
+let _finSub = 'payable';
+async function initFinancialTab() {
+  if (!_finInit) {
+    _finInit = true;
+    document.getElementById('fin-refresh').onclick = () => { loadFinDashboard(); loadFinList(); };
+    document.getElementById('fin-new').onclick = finNew;
+    document.querySelectorAll('.js-fin-sub').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.js-fin-sub').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _finSub = btn.dataset.finSub;
+        loadFinList();
+      };
+    });
+  }
+  loadFinDashboard();
+  loadFinList();
+}
+async function loadFinDashboard() {
+  const wrap = document.getElementById('fin-dashboard-wrap');
+  const data = await api('/admin/financial/dashboard');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+    <div class="stat-card stat-orange"><div class="stat-label">A PAGAR PENDENTE</div><div class="stat-value">R$ ${Number(data.payable?.totalPending||0).toFixed(2)}</div><div class="stat-sub">${data.payable?.countPending||0} conta(s)</div></div>
+    <div class="stat-card"><div class="stat-label">VENCIDAS</div><div class="stat-value" style="color:#e35">R$ ${Number(data.payable?.overdueTotal||0).toFixed(2)}</div><div class="stat-sub">${data.payable?.overdueCount||0} conta(s)</div></div>
+    <div class="stat-card"><div class="stat-label">VENCEM EM 7 DIAS</div><div class="stat-value" style="color:#e90">${data.payable?.dueSoonCount||0}</div></div>
+    <div class="stat-card"><div class="stat-label">A RECEBER PENDENTE</div><div class="stat-value">R$ ${Number(data.receivable?.totalPending||0).toFixed(2)}</div><div class="stat-sub">${data.receivable?.countPending||0} conta(s)</div></div>
+  </div>`;
+}
+async function loadFinList() {
+  const wrap = document.getElementById('fin-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/financial/' + _finSub);
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.accounts || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Sem contas.</div>'; return; }
+  const labelAction = _finSub === 'payable' ? 'Pagar' : 'Receber';
+  let html = '<table><thead><tr><th>Descrição</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Categoria</th><th></th></tr></thead><tbody>';
+  list.forEach(a => {
+    const overdue = a.status === 'PENDING' && new Date(a.dueDate) < new Date();
+    html += `<tr>
+      <td>${escapeHtml(a.description)}</td>
+      <td>R$ ${Number(a.amount).toFixed(2)}</td>
+      <td style="color:${overdue?'#e35':'inherit'}">${new Date(a.dueDate).toLocaleDateString('pt-BR')}</td>
+      <td>${escapeHtml(a.status)}</td>
+      <td>${escapeHtml(a.category||'')}</td>
+      <td>${a.status==='PENDING' ? `<button type="button" class="btn btn-primary" onclick="finMarkDone('${a.id}')">${labelAction}</button>` : ''} <button type="button" class="btn" onclick="finDelete('${a.id}')">Excluir</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function finNew() {
+  const description = prompt('Descrição:');
+  if (!description) return;
+  const amount = prompt('Valor R$:');
+  if (!amount) return;
+  const dueDate = prompt('Vencimento (YYYY-MM-DD):');
+  if (!dueDate) return;
+  const data = await api('/admin/financial/' + _finSub, 'POST', { description, amount, dueDate });
+  if (data.error) { alert(data.error); return; }
+  loadFinList();
+  loadFinDashboard();
+}
+async function finMarkDone(id) {
+  const path = _finSub === 'payable' ? '/pay' : '/receive';
+  await api('/admin/financial/' + _finSub + '/' + id + path, 'POST', {});
+  loadFinList();
+  loadFinDashboard();
+}
+async function finDelete(id) {
+  if (!confirm('Excluir conta?')) return;
+  await api('/admin/financial/' + _finSub + '/' + id, 'DELETE');
+  loadFinList();
+  loadFinDashboard();
+}
+
+// ==================== FORNECEDORES ====================
+let _supInit = false;
+async function initSuppliersTab() {
+  if (!_supInit) {
+    _supInit = true;
+    document.getElementById('sup-refresh').onclick = loadSuppliers;
+    document.getElementById('sup-search-btn').onclick = loadSuppliers;
+    document.getElementById('sup-new').onclick = supplierNew;
+  }
+  loadSuppliers();
+}
+async function loadSuppliers() {
+  const wrap = document.getElementById('sup-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const search = document.getElementById('sup-search').value.trim();
+  const qs = search ? '?search=' + encodeURIComponent(search) : '';
+  const data = await api('/admin/suppliers' + qs);
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.suppliers || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum fornecedor.</div>'; return; }
+  let html = '<table><thead><tr><th>Nome</th><th>CNPJ</th><th>Representante</th><th>Telefone</th><th>Markup médio</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  list.forEach(s => {
+    html += `<tr>
+      <td><strong>${escapeHtml(s.companyName)}</strong></td>
+      <td>${escapeHtml(s.cnpj||'—')}</td>
+      <td>${escapeHtml(s.representativeName||'—')}</td>
+      <td>${escapeHtml(s.phone||'—')}</td>
+      <td>${s.averageMarkup != null ? Number(s.averageMarkup).toFixed(1)+'%' : '—'}</td>
+      <td>${s.active ? '✓' : '—'}</td>
+      <td><button type="button" class="btn" onclick="supplierEdit('${s.id}')">Editar</button> <button type="button" class="btn" onclick="supplierDelete('${s.id}')">Remover</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function supplierNew() {
+  const companyName = prompt('Nome da empresa:');
+  if (!companyName) return;
+  const cnpj = prompt('CNPJ (opcional):') || null;
+  const phone = prompt('Telefone (opcional):') || null;
+  const data = await api('/admin/suppliers', 'POST', { companyName, cnpj, phone });
+  if (data.error) { alert(data.error); return; }
+  loadSuppliers();
+}
+async function supplierEdit(id) {
+  const data = await api('/admin/suppliers/' + id);
+  if (data.error) { alert(data.error); return; }
+  const s = data.supplier;
+  const newName = prompt('Nome:', s.companyName);
+  if (!newName) return;
+  const newMarkup = prompt('Markup médio % (opcional):', s.averageMarkup || '');
+  const payload = { companyName: newName };
+  if (newMarkup) payload.averageMarkup = newMarkup;
+  await api('/admin/suppliers/' + id, 'PUT', payload);
+  loadSuppliers();
+}
+async function supplierDelete(id) {
+  if (!confirm('Desativar fornecedor?')) return;
+  await api('/admin/suppliers/' + id, 'DELETE');
+  loadSuppliers();
+}
+
+// ==================== CAMPANHAS ====================
+let _cmpInit = false;
+async function initCampaignsTab() {
+  if (!_cmpInit) {
+    _cmpInit = true;
+    document.getElementById('cmp-refresh').onclick = loadCampaigns;
+    document.getElementById('cmp-filter-btn').onclick = loadCampaigns;
+    document.getElementById('cmp-new').onclick = campaignNew;
+  }
+  loadCampaigns();
+}
+async function loadCampaigns() {
+  const wrap = document.getElementById('cmp-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const status = document.getElementById('cmp-filter-status').value;
+  const qs = status ? '?status=' + encodeURIComponent(status) : '';
+  const data = await api('/admin/campaigns' + qs);
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.campaigns || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma campanha.</div>'; return; }
+  let html = '<table><thead><tr><th>Nome</th><th>Canal</th><th>Status</th><th>Período</th><th>Orçamento</th><th>Receita</th><th>ROI</th><th>Clientes</th><th>Produtos</th><th></th></tr></thead><tbody>';
+  list.forEach(c => {
+    html += `<tr>
+      <td><strong>${escapeHtml(c.name)}</strong></td>
+      <td>${escapeHtml(c.channel||'—')}</td>
+      <td>${escapeHtml(c.status)}</td>
+      <td style="font-size:11px;color:var(--text2)">${c.startDate ? new Date(c.startDate).toLocaleDateString('pt-BR') : '—'} → ${c.endDate ? new Date(c.endDate).toLocaleDateString('pt-BR') : '—'}</td>
+      <td>${c.budget != null ? 'R$ '+Number(c.budget).toFixed(2) : '—'}</td>
+      <td>R$ ${Number(c.generatedRevenue||0).toFixed(2)}</td>
+      <td>${c.roi != null ? Number(c.roi).toFixed(2) : '—'}</td>
+      <td>${c._count?.customers || 0}</td>
+      <td>${c._count?.products || 0}</td>
+      <td><button type="button" class="btn" onclick="campaignActivate('${c.id}')">Ativar</button> <button type="button" class="btn" onclick="campaignDelete('${c.id}')">Excluir</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function campaignNew() {
+  const name = prompt('Nome da campanha:');
+  if (!name) return;
+  const channel = prompt('Canal (INSTAGRAM, WHATSAPP, LOJA_FISICA, NUVEMSHOP, MIX):', 'WHATSAPP');
+  const data = await api('/admin/campaigns', 'POST', { name, channel, status: 'DRAFT' });
+  if (data.error) { alert(data.error); return; }
+  loadCampaigns();
+}
+async function campaignActivate(id) {
+  await api('/admin/campaigns/' + id, 'PUT', { status: 'ACTIVE', startDate: new Date().toISOString() });
+  loadCampaigns();
+}
+async function campaignDelete(id) {
+  if (!confirm('Excluir campanha?')) return;
+  await api('/admin/campaigns/' + id, 'DELETE');
+  loadCampaigns();
+}
+
+// ==================== ESTOQUE ====================
+let _invInit = false;
+async function initInventoryTab() {
+  if (!_invInit) {
+    _invInit = true;
+    document.getElementById('inv-refresh').onclick = () => { loadInvDashboard(); loadInvProducts(); };
+    document.getElementById('inv-filter').onclick = loadInvProducts;
+    document.getElementById('inv-reclassify').onclick = async () => {
+      if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
+      const r = await api('/admin/inventory/reclassify', 'POST', {});
+      if (r.error) { alert(r.error); return; }
+      alert(`Pronto. ${r.totalProducts} produtos avaliados. Criados: ${r.created}, atualizados: ${r.updated}.`);
+      loadInvDashboard();
+      loadInvProducts();
+    };
+  }
+  loadInvDashboard();
+  loadInvProducts();
+}
+async function loadInvDashboard() {
+  const wrap = document.getElementById('inv-dashboard-wrap');
+  const data = await api('/admin/inventory/dashboard');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const lc = data.lifecycleDistribution || {};
+  const lcHtml = Object.keys(lc).map(k => `<span class="pill" style="margin-right:6px">${escapeHtml(k)}: ${lc[k]}</span>`).join('');
+  wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
+    <div class="stat-card stat-orange"><div class="stat-label">PRODUTOS ATIVOS</div><div class="stat-value">${data.stats?.totalActiveProducts||0}</div></div>
+    <div class="stat-card"><div class="stat-label">SKU BAIXO ESTOQUE</div><div class="stat-value" style="color:#e90">${data.stats?.lowStockSkus||0}</div></div>
+    <div class="stat-card"><div class="stat-label">VALOR EM ESTOQUE</div><div class="stat-value" style="font-size:22px">R$ ${Number(data.stats?.totalStockValue||0).toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-label">COM LIFECYCLE</div><div class="stat-value">${data.stats?.productsWithLifecycle||0}</div></div>
+  </div>
+  ${lcHtml ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Distribuição:</div><div>${lcHtml}</div>` : ''}`;
+}
+async function loadInvProducts() {
+  const wrap = document.getElementById('inv-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const qs = new URLSearchParams();
+  const brand = document.getElementById('inv-brand').value.trim();
+  const category = document.getElementById('inv-category').value.trim();
+  const lifecycleStatus = document.getElementById('inv-lifecycle').value;
+  const lowStock = document.getElementById('inv-lowstock').checked;
+  if (brand) qs.set('brand', brand);
+  if (category) qs.set('category', category);
+  if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
+  if (lowStock) qs.set('lowStock', 'true');
+  const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.products || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
+  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
+  list.forEach(p => {
+    const lc = p.lifecycle?.lifecycleStatus || '—';
+    const days = p.lifecycle?.daysInStock != null ? p.lifecycle.daysInStock : '—';
+    html += `<tr>
+      <td><code>${escapeHtml(p.sku)}</code></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.brand||'')}</td>
+      <td>R$ ${Number(p.price||0).toFixed(2)}</td>
+      <td>${p.totalStock}</td>
+      <td>${escapeHtml(lc)}</td>
+      <td>${days}</td>
+    </tr>`;
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
