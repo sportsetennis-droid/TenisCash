@@ -2834,6 +2834,27 @@ function renderOrchestrationResult(r) {
     html += `<div style="margin-top:10px;font-size:13px"><strong>Próxima ação:</strong> ${escapeHtml(r.nextRecommendedAction)}</div>`;
   }
 
+  // Painel destacado para o Design Brief, se houver
+  const brief = (r.readyMaterials || {})['design-brief-agent'];
+  if (brief && (brief.feed || brief.story)) {
+    html += `<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 6px;color:var(--orange)">🎨 BRIEFING VISUAL</h4>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
+    ['feed', 'story'].forEach(kind => {
+      const b = brief[kind];
+      if (!b) return;
+      html += `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:rgba(255,109,0,0.04)">`;
+      html += `<div style="font-weight:bold;margin-bottom:6px">${kind === 'feed' ? '📷 Feed (1080x1080)' : '📱 Story (1080x1920)'}</div>`;
+      if (b.composition) html += `<div style="font-size:12px;margin-bottom:6px"><strong>Composição:</strong> ${escapeHtml(b.composition)}</div>`;
+      if (b.mood) html += `<div style="font-size:12px;margin-bottom:6px"><strong>Mood:</strong> ${escapeHtml(b.mood)}</div>`;
+      if (b.promptForAI) {
+        const promptId = 'brief-prompt-' + kind + '-' + Math.random().toString(36).slice(2, 8);
+        html += `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:var(--orange)">📋 Ver prompt pra claude.ai/design (clique pra copiar)</summary><pre id="${promptId}" style="white-space:pre-wrap;font-size:11px;background:var(--bg);padding:8px;border-radius:6px;margin-top:4px;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent); this.style.borderLeft='3px solid #7b7';">${escapeHtml(b.promptForAI)}</pre></details>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
   html += `<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">Ver materiais por agente (JSON)</summary><pre style="white-space:pre-wrap;font-size:11px;max-height:400px;overflow:auto">${escapeHtml(JSON.stringify(r.readyMaterials || {}, null, 2))}</pre></details>`;
 
   html += `</div>`;
@@ -2843,27 +2864,66 @@ function renderOrchestrationResult(r) {
 async function loadAIApprovals() {
   const wrap = document.getElementById('ai-approvals-wrap');
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
-  const data = await api('/admin/ai/approvals/pending');
-  if (data.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error)}</div>`; return; }
-  const list = data.approvals || [];
-  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma aprovação pendente.</div>'; return; }
+  // pegamos pendentes + recentes aprovadas pra mostrar botão executar
+  const [pending, history] = await Promise.all([
+    api('/admin/ai/approvals/pending'),
+    api('/admin/ai/orchestrations?limit=5'),
+  ]);
+  if (pending.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(pending.error)}</div>`; return; }
+  // tenta também juntar aprovadas/executadas das últimas orquestrações
+  let approved = [];
+  if (history.orchestrations) {
+    for (const o of history.orchestrations.slice(0, 5)) {
+      const full = await api('/admin/ai/orchestrations/' + o.id);
+      if (full.orchestration && Array.isArray(full.orchestration.approvals)) {
+        for (const a of full.orchestration.approvals) {
+          if (a.status === 'approved' || a.status === 'executed') approved.push(a);
+        }
+      }
+    }
+  }
 
-  let html = '<table><thead><tr><th>Risco</th><th>Tipo</th><th>Título</th><th>Descrição</th><th>Criada</th><th>Ações</th></tr></thead><tbody>';
-  list.forEach(a => {
-    html += `<tr>
-      <td><span style="font-weight:bold;color:${a.riskLevel === 'high' ? '#e35' : a.riskLevel === 'medium' ? '#e90' : '#7b7'}">${escapeHtml(a.riskLevel || 'medium')}</span></td>
-      <td><code>${escapeHtml(a.type || '')}</code></td>
-      <td>${escapeHtml(a.title || '')}</td>
-      <td style="font-size:12px;color:var(--text2);max-width:280px">${escapeHtml(a.description || '')}</td>
-      <td style="font-size:11px;color:var(--text2)">${new Date(a.createdAt).toLocaleString('pt-BR')}</td>
-      <td>
-        <button type="button" class="btn btn-primary" onclick="aiDecide('${a.id}','approved')" style="margin-right:4px">Aprovar</button>
-        <button type="button" class="btn" onclick="aiDecide('${a.id}','correction_requested')" style="margin-right:4px">Pedir correção</button>
-        <button type="button" class="btn" onclick="aiDecide('${a.id}','rejected')">Recusar</button>
-      </td>
-    </tr>`;
-  });
-  html += '</tbody></table>';
+  let html = '';
+  const list = pending.approvals || [];
+  if (list.length) {
+    html += '<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:0 0 8px">PENDENTES</h4>';
+    html += '<table><thead><tr><th>Risco</th><th>Tipo</th><th>Título</th><th>Descrição</th><th>Criada</th><th>Ações</th></tr></thead><tbody>';
+    list.forEach(a => {
+      html += `<tr>
+        <td><span style="font-weight:bold;color:${a.riskLevel === 'high' ? '#e35' : a.riskLevel === 'medium' ? '#e90' : '#7b7'}">${escapeHtml(a.riskLevel || 'medium')}</span></td>
+        <td><code>${escapeHtml(a.type || '')}</code></td>
+        <td>${escapeHtml(a.title || '')}</td>
+        <td style="font-size:12px;color:var(--text2);max-width:280px">${escapeHtml(a.description || '')}</td>
+        <td style="font-size:11px;color:var(--text2)">${new Date(a.createdAt).toLocaleString('pt-BR')}</td>
+        <td>
+          <button type="button" class="btn btn-primary" onclick="aiDecide('${a.id}','approved')" style="margin-right:4px">Aprovar</button>
+          <button type="button" class="btn" onclick="aiDecide('${a.id}','correction_requested')" style="margin-right:4px">Pedir correção</button>
+          <button type="button" class="btn" onclick="aiDecide('${a.id}','rejected')">Recusar</button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div class="muted">Nenhuma aprovação pendente.</div>';
+  }
+
+  if (approved.length) {
+    html += '<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">APROVADAS — PRONTAS PARA EXECUTAR</h4>';
+    html += '<table><thead><tr><th>Tipo</th><th>Título</th><th>Status</th><th>Decidida</th><th>Ações</th></tr></thead><tbody>';
+    approved.forEach(a => {
+      const canExecute = a.status === 'approved' && (a.type === 'whatsapp_bulk' || a.type === 'whatsapp_single');
+      const executedBadge = a.status === 'executed' ? '<span style="color:#7b7">✓ executada</span>' : escapeHtml(a.status);
+      html += `<tr>
+        <td><code>${escapeHtml(a.type || '')}</code></td>
+        <td>${escapeHtml(a.title || '')}</td>
+        <td>${executedBadge}</td>
+        <td style="font-size:11px;color:var(--text2)">${a.decidedAt ? new Date(a.decidedAt).toLocaleString('pt-BR') : '—'}</td>
+        <td>${canExecute ? `<button type="button" class="btn btn-primary" onclick="aiExecuteApproval('${a.id}','${escapeHtml(a.type)}')">▶ Executar</button>` : '—'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
   wrap.innerHTML = html;
 }
 
@@ -2872,6 +2932,46 @@ async function aiDecide(approvalId, decision) {
   const data = await api(`/admin/ai/approvals/${approvalId}/decision`, 'POST', { decision, note });
   if (data.error) { alert('Erro: ' + data.error); return; }
   loadAIApprovals();
+}
+
+async function aiExecuteApproval(approvalId, type) {
+  if (type === 'whatsapp_bulk') {
+    const scope = prompt(
+      'Quem deve receber a campanha?\n\n'
+      + 'Digite uma das opções:\n'
+      + '  all          → todos os clientes ativos\n'
+      + '  with_balance → só clientes com saldo T$\n'
+      + '  inactive     → clientes inativos (60+ dias)\n'
+      + '  recent_buyers → compradores recentes (30 dias)',
+      'with_balance'
+    );
+    if (!scope) return;
+    // mostra prévia
+    const preview = await api(`/admin/ai/approvals/${approvalId}/preview-recipients?scope=${encodeURIComponent(scope)}&limit=200`);
+    if (preview.error) { alert('Erro: ' + preview.error); return; }
+    const confirmed = confirm(
+      `Vai disparar para ${preview.total} pessoa(s).\n\n`
+      + `Exemplos: ${(preview.recipients || []).slice(0, 5).map(r => r.name || r.phone).join(', ')}\n\n`
+      + 'Confirma envio? (Z-API vai mandar 1 msg a cada 1.5s)'
+    );
+    if (!confirmed) return;
+    const result = await api(`/admin/ai/approvals/${approvalId}/execute`, 'POST', { scope, limit: 200 });
+    if (result.error) { alert('Erro: ' + result.error); return; }
+    const d = result.detail || {};
+    alert(`Campanha enviada!\n\nTotal: ${d.total}\nEnviadas: ${d.sent}\nFalharam: ${d.failed}`);
+    loadAIApprovals();
+    return;
+  }
+  if (type === 'whatsapp_single') {
+    const phone = prompt('Telefone do destinatário (com DDD):');
+    if (!phone) return;
+    const result = await api(`/admin/ai/approvals/${approvalId}/execute`, 'POST', { phone });
+    if (result.error) { alert('Erro: ' + result.error); return; }
+    alert(result.ok ? 'Mensagem enviada.' : `Falha: ${result.error || 'erro desconhecido'}`);
+    loadAIApprovals();
+    return;
+  }
+  alert('Execução automática só está disponível pra WhatsApp por enquanto. Para os outros tipos, execute manualmente.');
 }
 
 async function loadAIHistory() {
