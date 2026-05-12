@@ -801,3 +801,760 @@ model UserAction {
   @@index([userId, status])
   @@index([status, createdAt])
 }
+
+// ============================================================
+// TENISCASH OS — ERP/CRM/Operacional integrado
+// ============================================================
+// Conjunto de módulos:
+//   - Etiquetas (PDF)
+//   - Curadoria Exposta
+//   - Carteira do Vendedor + Entrevista Semanal
+//   - XML NF-e (entrada fiscal)
+//   - Recomendações por regra
+//   - Nuvemshop (canal)
+//   - Ciclo de vida de produto / Inventário avançado
+
+// ============================================================
+// ETIQUETAS
+// ============================================================
+
+model LabelTemplate {
+  id                String   @id @default(cuid())
+  name              String
+  type              String // PRODUCT | PRICE | PROMOTIONAL | SHELF | ORDER_PICKING | SHIPPING | INVENTORY
+  widthMm           Float
+  heightMm          Float
+  columns           Int      @default(1)
+  rows              Int      @default(1)
+  paperSize         String   @default("A4") // A4 | THERMAL
+  marginTopMm       Float    @default(0)
+  marginLeftMm      Float    @default(0)
+  gapHorizontalMm   Float    @default(0)
+  gapVerticalMm     Float    @default(0)
+  showLogo          Boolean  @default(true)
+  showPrice         Boolean  @default(true)
+  showPromotionalPrice Boolean @default(false)
+  showBarcode       Boolean  @default(true)
+  showQRCode        Boolean  @default(false)
+  showSku           Boolean  @default(true)
+  showProductName   Boolean  @default(true)
+  showBrand         Boolean  @default(true)
+  showModel         Boolean  @default(false)
+  showSize          Boolean  @default(false)
+  showColor         Boolean  @default(false)
+  showStore         Boolean  @default(false)
+  layoutConfig      Json?
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  batches LabelBatch[]
+}
+
+model LabelBatch {
+  id          String   @id @default(cuid())
+  name        String
+  templateId  String
+  createdById String?
+  storeId     String?
+  status      String   @default("DRAFT") // DRAFT | GENERATED | PRINTED | CANCELLED
+  totalLabels Int      @default(0)
+  pdfUrl      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template LabelTemplate @relation(fields: [templateId], references: [id])
+  items    LabelItem[]
+  prints   LabelPrintLog[]
+
+  @@index([status, createdAt])
+  @@index([storeId])
+}
+
+model LabelItem {
+  id              String   @id @default(cuid())
+  labelBatchId    String
+  productId       String?
+  inventoryId     String?
+  quantity        Int      @default(1)
+  price           Float?
+  promotionalPrice Float?
+  barcode         String?
+  qrCodeValue     String?
+  customText      String?
+  createdAt       DateTime @default(now())
+
+  batch LabelBatch @relation(fields: [labelBatchId], references: [id], onDelete: Cascade)
+
+  @@index([labelBatchId])
+}
+
+model LabelPrintLog {
+  id           String   @id @default(cuid())
+  labelBatchId String
+  printedById  String?
+  printedAt    DateTime @default(now())
+  printerName  String?
+  copies       Int      @default(1)
+  notes        String?
+
+  batch LabelBatch @relation(fields: [labelBatchId], references: [id], onDelete: Cascade)
+
+  @@index([labelBatchId])
+}
+
+// ============================================================
+// CURADORIA EXPOSTA
+// ============================================================
+
+model StoreCuration {
+  id                  String   @id @default(cuid())
+  name                String
+  storeId             String
+  storeDNA            String?
+  theme               String?
+  commercialObjective String?
+  startDate           DateTime?
+  endDate             DateTime?
+  status              String   @default("DRAFT") // DRAFT | SETUP | ACTIVE | FINISHED | CANCELLED
+  responsibleUserId   String?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  items     StoreCurationItem[]
+  checklist StoreCurationChecklist[]
+  photos    StoreCurationPhoto[]
+  result    StoreCurationResult?
+
+  @@index([storeId, status])
+  @@index([status, startDate])
+}
+
+model StoreCurationZone {
+  id          String   @id @default(cuid())
+  storeId     String
+  name        String
+  type        String // WINDOW | ENTRANCE | CENTRAL_TABLE | LEFT_WALL | RIGHT_WALL | RACK | CHECKOUT | PROMOTIONAL_AREA | FOOTBALL_AREA | RUNNING_AREA | WOMEN_AREA | MEN_AREA | OTHER
+  description String?
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items StoreCurationItem[]
+  photos StoreCurationPhoto[]
+
+  @@index([storeId, type])
+}
+
+model StoreCurationItem {
+  id              String   @id @default(cuid())
+  curationId      String
+  productId       String?
+  inventoryId     String?
+  zoneId          String?
+  commercialRole  String? // HERO_PRODUCT | ENTRY_PRODUCT | MARGIN_PRODUCT | FAST_TURNOVER | SLOW_MOVING | DESIRE_PRODUCT | CAMPAIGN_PRODUCT | COMPLEMENTARY_PRODUCT | REBUY_PRODUCT | CONTENT_PRODUCT
+  displayPriority Int      @default(0)
+  storytellingText String?
+  priceStrategy   String?
+  expectedGoal    String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  curation StoreCuration      @relation(fields: [curationId], references: [id], onDelete: Cascade)
+  zone     StoreCurationZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@index([curationId])
+  @@index([productId])
+  @@index([zoneId])
+}
+
+model StoreCurationChecklist {
+  id                String   @id @default(cuid())
+  curationId        String
+  task              String
+  responsibleUserId String?
+  dueDate           DateTime?
+  status            String   @default("PENDING") // PENDING | IN_PROGRESS | DONE | CANCELLED
+  completedAt       DateTime?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  curation StoreCuration @relation(fields: [curationId], references: [id], onDelete: Cascade)
+
+  @@index([curationId, status])
+}
+
+model StoreCurationPhoto {
+  id            String   @id @default(cuid())
+  curationId    String
+  zoneId        String?
+  uploadedById  String?
+  imageUrl      String
+  caption       String?
+  createdAt     DateTime @default(now())
+
+  curation StoreCuration      @relation(fields: [curationId], references: [id], onDelete: Cascade)
+  zone     StoreCurationZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@index([curationId])
+}
+
+model StoreCurationResult {
+  id                  String   @id @default(cuid())
+  curationId          String   @unique
+  revenueGenerated    Float    @default(0)
+  itemsSold           Int      @default(0)
+  conversionRate      Float?
+  topSellingProducts  Json?
+  slowProducts        Json?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  curation StoreCuration @relation(fields: [curationId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// CARTEIRA DO VENDEDOR
+// ============================================================
+
+model SellerPortfolio {
+  id          String   @id @default(cuid())
+  sellerId    String
+  storeId     String?
+  name        String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sellerId])
+}
+
+model SellerCustomerAssignment {
+  id                 String    @id @default(cuid())
+  sellerId           String
+  customerId         String // pode ser User.id OU SellerClient.id (versão atual usa SellerClient)
+  storeId            String?
+  relationshipStatus String    @default("NEW_LEAD") // NEW_LEAD | ATTENDED | BUYER | ALMOST_BOUGHT | RECURRING | INACTIVE | VIP | PRICE_SENSITIVE | HIGH_INTENT | REBUY_OPPORTUNITY | LOST
+  priority           String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  nextAction         String?
+  nextActionDate     DateTime?
+  potentialValue     Float?
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([sellerId, relationshipStatus])
+  @@index([sellerId, priority])
+  @@index([customerId])
+}
+
+model CustomerInteraction {
+  id              String    @id @default(cuid())
+  customerId      String
+  sellerId        String
+  storeId         String?
+  channel         String // WHATSAPP | PHONE | INSTAGRAM | IN_STORE | NUVEMSHOP | APP | OTHER
+  interactionType String // FIRST_CONTACT | FOLLOW_UP | POST_SALE | REBUY | COMPLAINT | PRODUCT_INTEREST | PRICE_NEGOTIATION | VISIT_INVITATION
+  productId       String?
+  summary         String?
+  result          String?
+  nextAction      String?
+  nextActionDate  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([sellerId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model SellerTask {
+  id          String    @id @default(cuid())
+  sellerId    String
+  customerId  String?
+  storeId     String?
+  title       String
+  description String?
+  type        String // CALL_CUSTOMER | SEND_WHATSAPP | INVITE_TO_STORE | SEND_PROMOTION | FOLLOW_UP | POST_SALE | REACTIVATE_CUSTOMER | SEND_PRODUCT
+  priority    String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  dueDate     DateTime?
+  status      String    @default("TODO") // TODO | IN_PROGRESS | DONE | CANCELLED
+  result      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([sellerId, status])
+  @@index([dueDate, status])
+}
+
+// ============================================================
+// ENTREVISTA SEMANAL
+// ============================================================
+
+model SellerWeeklyInterview {
+  id                 String    @id @default(cuid())
+  sellerId           String
+  storeId            String?
+  weekStartDate      DateTime
+  weekEndDate        DateTime
+  status             String    @default("DRAFT") // DRAFT | SUBMITTED | REVIEWED | ARCHIVED
+  moodScore          Int?
+  confidenceScore    Int?
+  salesEnergyScore   Int?
+  mainObjective      String?
+  summary            String?
+  aiAnalysis         String?
+  managerNotes       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  submittedAt        DateTime?
+
+  answers SellerInterviewAnswer[]
+  insights SellerInsight[]
+
+  @@unique([sellerId, weekStartDate])
+  @@index([sellerId, weekStartDate])
+  @@index([status, weekStartDate])
+}
+
+model SellerInterviewAnswer {
+  id           String   @id @default(cuid())
+  interviewId  String
+  questionKey  String
+  questionText String
+  answerText   String?
+  category     String // PERSONAL_STATE | SELLER_PROFILE | CUSTOMER_INSIGHT | PRODUCT_DEMAND | SOCIAL_TRENDS | STORE_EXPOSURE | COMPETITION | IDEAS
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  interview SellerWeeklyInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([interviewId])
+  @@index([category])
+}
+
+model SellerInsight {
+  id                 String   @id @default(cuid())
+  sellerId           String
+  storeId            String?
+  interviewId        String?
+  type               String // CUSTOMER_OPPORTUNITY | PRODUCT_DEMAND | MISSING_PRODUCT | PRICE_OBJECTION | SOCIAL_TREND | STORE_DISPLAY | CAMPAIGN_IDEA | TRAINING_NEED | TEAM_ALERT
+  title              String
+  description        String?
+  priority           String   @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  relatedProductId   String?
+  relatedCustomerId  String?
+  relatedCampaignId  String?
+  status             String   @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  interview SellerWeeklyInterview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+
+  @@index([status, priority])
+  @@index([type, status])
+  @@index([sellerId, createdAt])
+}
+
+model SellerMoodLog {
+  id              String   @id @default(cuid())
+  sellerId        String
+  storeId         String?
+  date            DateTime @default(now())
+  moodScore       Int?
+  confidenceScore Int?
+  energyScore     Int?
+  stressLevel     Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([sellerId, date])
+}
+
+model SellerProductFeedback {
+  id              String   @id @default(cuid())
+  sellerId        String
+  storeId         String?
+  productId       String
+  weekStartDate   DateTime
+  impactScore     Int?
+  demandScore     Int?
+  objectionScore  Int?
+  customerReaction String?
+  feedback        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId, weekStartDate])
+  @@index([sellerId, weekStartDate])
+}
+
+model SellerTrendReport {
+  id              String   @id @default(cuid())
+  sellerId        String
+  storeId         String?
+  weekStartDate   DateTime
+  source          String? // INSTAGRAM | TIKTOK | YOUTUBE | LOJA_CONCORRENTE | CLIENTE | OUTRO
+  trendName       String
+  description     String?
+  relatedBrand    String?
+  relatedProduct  String?
+  socialNetwork   String?
+  potentialImpact String?
+  createdAt       DateTime @default(now())
+
+  @@index([weekStartDate])
+  @@index([sellerId])
+}
+
+// ============================================================
+// XML NF-e (importação fiscal)
+// ============================================================
+
+model XmlExportJob {
+  id              String    @id @default(cuid())
+  name            String
+  type            String // FULL_BACKUP | PRODUCTS | INVENTORY | CUSTOMERS | SALES | FINANCE | SUPPLIERS | CAMPAIGNS | CURATION | SELLER_PORTFOLIO | SELLER_INTERVIEWS | NUVEMSHOP | LABELS | TENISCASH
+  module          String?
+  status          String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  requestedById   String?
+  storeId         String?
+  dateFrom        DateTime?
+  dateTo          DateTime?
+  filters         Json?
+  totalRecords    Int       @default(0)
+  fileUrl         String?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  errorMessage    String?
+
+  @@index([status, createdAt])
+}
+
+model XmlImportJob {
+  id                       String    @id @default(cuid())
+  name                     String
+  type                     String // NFE_ENTRY | PRODUCTS | INVENTORY | CUSTOMERS | SALES | SUPPLIERS
+  status                   String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  uploadedById             String?
+  fileUrl                  String?
+  originalFileName         String?
+  totalItems               Int       @default(0)
+  processedItems           Int       @default(0)
+  createdProducts          Int       @default(0)
+  updatedProducts          Int       @default(0)
+  createdInventoryEntries  Int       @default(0)
+  errorMessage             String?
+  createdAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  fiscalDocuments XmlFiscalDocument[]
+
+  @@index([status, createdAt])
+  @@index([type])
+}
+
+model XmlFiscalDocument {
+  id            String    @id @default(cuid())
+  importJobId   String?
+  accessKey     String?   @unique
+  number        String?
+  series        String?
+  issuerCnpj    String?
+  issuerName    String?
+  recipientCnpj String?
+  issueDate     DateTime?
+  totalValue    Float?
+  icmsValue     Float?
+  ipiValue      Float?
+  pisValue      Float?
+  cofinsValue   Float?
+  rawXmlUrl     String?
+  supplierId    String?
+  status        String    @default("imported") // imported | matched | partial | rejected
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  importJob XmlImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  items     XmlFiscalItem[]
+
+  @@index([supplierId])
+  @@index([status, issueDate])
+}
+
+model XmlFiscalItem {
+  id                 String   @id @default(cuid())
+  fiscalDocumentId   String
+  productId          String?
+  supplierCode       String?
+  description        String
+  ean                String?
+  ncm                String?
+  cfop               String?
+  cst                String?
+  unit               String?
+  quantity           Float    @default(0)
+  unitValue          Float    @default(0)
+  totalValue         Float    @default(0)
+  icmsValue          Float?
+  ipiValue           Float?
+  pisValue           Float?
+  cofinsValue        Float?
+  matchStatus        String   @default("pending") // pending | matched | new_product | ignored
+  createdAt          DateTime @default(now())
+
+  fiscalDocument XmlFiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([fiscalDocumentId])
+  @@index([productId])
+}
+
+// ============================================================
+// NUVEMSHOP
+// ============================================================
+
+model NuvemshopConnection {
+  id                String   @id @default(cuid())
+  storeId           String?  @unique
+  nuvemshopUserId   String   @unique
+  accessToken       String
+  scope             String?
+  status            String   @default("active") // active | revoked | error
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model NuvemshopWebhookEvent {
+  id                  String    @id @default(cuid())
+  event               String
+  nuvemshopResourceId String?
+  payload             Json?
+  processed           Boolean   @default(false)
+  processedAt         DateTime?
+  error               String?
+  createdAt           DateTime  @default(now())
+
+  @@index([event, processed])
+  @@index([processed, createdAt])
+}
+
+model NuvemshopSyncLog {
+  id        String   @id @default(cuid())
+  type      String // import | export | webhook
+  entity    String // product | order | customer | inventory
+  status    String // ok | error
+  message   String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, createdAt])
+}
+
+model NuvemshopProductMapping {
+  id                  String   @id @default(cuid())
+  localProductId      String   @unique
+  nuvemshopProductId  String
+  syncStatus          String   @default("synced")
+  lastSyncedAt        DateTime @default(now())
+
+  @@index([nuvemshopProductId])
+}
+
+model NuvemshopVariantMapping {
+  id                  String   @id @default(cuid())
+  localInventoryId    String   @unique
+  localProductId      String
+  nuvemshopProductId  String
+  nuvemshopVariantId  String
+  sku                 String?
+  barcode             String?
+  lastSyncedAt        DateTime @default(now())
+
+  @@index([nuvemshopVariantId])
+}
+
+model NuvemshopOrderMapping {
+  id                String   @id @default(cuid())
+  saleId            String?  @unique
+  nuvemshopOrderId  String   @unique
+  payload           Json?
+  createdAt         DateTime @default(now())
+}
+
+model NuvemshopCustomerMapping {
+  id                   String   @id @default(cuid())
+  customerId           String?  @unique
+  nuvemshopCustomerId  String   @unique
+  createdAt            DateTime @default(now())
+}
+
+// ============================================================
+// AI / Regras de Recomendação operacional
+// ============================================================
+
+model AiRecommendation {
+  id                  String    @id @default(cuid())
+  type                String // SALES_ACTION | INVENTORY_RISK | REBUY | CLEARANCE | CUSTOMER_REACTIVATION | SELLER_TASK | CURATION_SUGGESTION | FINANCE_ALERT | CAMPAIGN_IDEA | NUVEMSHOP_ALERT | XML_IMPORT_ALERT
+  title               String
+  description         String?
+  priority            String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  relatedStoreId      String?
+  relatedProductId    String?
+  relatedCustomerId   String?
+  relatedSellerId     String?
+  relatedCampaignId   String?
+  status              String    @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
+  createdAt           DateTime  @default(now())
+  resolvedAt          DateTime?
+
+  @@index([status, priority])
+  @@index([type, status])
+  @@index([createdAt])
+}
+
+// ============================================================
+// CICLO DE VIDA DE PRODUTO (extensão do Product atual)
+// ============================================================
+
+model ProductLifecycle {
+  id                  String    @id @default(cuid())
+  productId           String    @unique
+  storeId             String?
+  launchDate          DateTime?
+  purchaseDate        DateTime?
+  stockEntryDate      DateTime?
+  storeEntryDate      DateTime?
+  firstSaleDate       DateTime?
+  lastSaleDate        DateTime?
+  soldOutDate         DateTime?
+  lifecycleStatus     String    @default("NEW") // NEW | TESTING | FAST_TURNOVER | NORMAL_TURNOVER | SLOW_TURNOVER | STUCK | CLEARANCE | SOLD_OUT | REBUY | DO_NOT_REBUY
+  daysUntilFirstSale  Int?
+  daysToSellOut       Int?
+  daysInStock         Int?
+  lastEvaluatedAt     DateTime  @default(now())
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([lifecycleStatus])
+  @@index([storeId, lifecycleStatus])
+}
+
+// ============================================================
+// FORNECEDORES (TenisCash OS — separado do Partner do programa)
+// ============================================================
+
+model Supplier {
+  id                  String   @id @default(cuid())
+  companyName         String
+  cnpj                String?  @unique
+  representativeName  String?
+  phone               String?
+  email               String?
+  suppliedBrands      Json?
+  commercialTerms     String?
+  averageMarkup       Float?
+  paymentDeadline     Int?
+  notes               String?
+  profitabilityRating Int? // 1..5
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([active])
+}
+
+// ============================================================
+// FINANCEIRO (contas a pagar / receber)
+// ============================================================
+
+model AccountPayable {
+  id          String    @id @default(cuid())
+  supplierId  String?
+  description String
+  amount      Float
+  dueDate     DateTime
+  paidDate    DateTime?
+  status      String    @default("PENDING") // PENDING | PAID | OVERDUE | CANCELLED
+  category    String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, dueDate])
+  @@index([supplierId])
+}
+
+model AccountReceivable {
+  id           String    @id @default(cuid())
+  customerId   String?
+  saleId       String?
+  description  String
+  amount       Float
+  dueDate      DateTime
+  receivedDate DateTime?
+  status       String    @default("PENDING") // PENDING | PAID | OVERDUE | CANCELLED
+  category     String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, dueDate])
+  @@index([customerId])
+}
+
+// ============================================================
+// CAMPANHAS (marketing/ativação)
+// ============================================================
+
+model Campaign {
+  id               String    @id @default(cuid())
+  name             String
+  channel          String? // INSTAGRAM | WHATSAPP | LOJA_FISICA | NUVEMSHOP | MIX
+  storeId          String?
+  budget           Float?
+  startDate        DateTime?
+  endDate          DateTime?
+  generatedRevenue Float     @default(0)
+  roi              Float?
+  status           String    @default("DRAFT") // DRAFT | ACTIVE | FINISHED | CANCELLED
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  customers CampaignCustomer[]
+  products  CampaignProduct[]
+
+  @@index([status, startDate])
+  @@index([storeId])
+}
+
+model CampaignCustomer {
+  id         String   @id @default(cuid())
+  campaignId String
+  customerId String
+  status     String   @default("targeted") // targeted | contacted | converted | lost
+  createdAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, customerId])
+  @@index([campaignId])
+}
+
+model CampaignProduct {
+  id         String   @id @default(cuid())
+  campaignId String
+  productId  String
+  role       String? // hero | complement | clearance
+  createdAt  DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, productId])
+  @@index([campaignId])
+}

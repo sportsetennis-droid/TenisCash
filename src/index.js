@@ -19,6 +19,13 @@ const adminCatalogRoutes = require('./routes/adminCatalog');
 const partnersRoutes = require('./routes/partners');
 const adminAIRoutes = require('./ai/orchestrator/orchestrator.routes');
 const lifeRoutes = require('./routes/life');
+const labelsRoutes = require('./routes/labels');
+const curationRoutes = require('./routes/curation');
+const sellerPortfolioRoutes = require('./routes/sellerPortfolio');
+const weeklyInterviewRoutes = require('./routes/weeklyInterview');
+const xmlImportRoutes = require('./routes/xmlImport');
+const recommendationsRoutes = require('./routes/recommendations');
+const nuvemshopRoutes = require('./routes/nuvemshop');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -61,6 +68,13 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/admin/catalog', adminCatalogRoutes);
 app.use('/api/admin/ai', adminAIRoutes);
 app.use('/api/life', lifeRoutes);
+app.use('/api/admin/labels', labelsRoutes);
+app.use('/api/admin/curation', curationRoutes);
+app.use('/api/seller/portfolio', sellerPortfolioRoutes);
+app.use('/api/seller/interview', weeklyInterviewRoutes);
+app.use('/api/admin/xml', xmlImportRoutes);
+app.use('/api/admin/recommendations', recommendationsRoutes);
+app.use('/api', nuvemshopRoutes);
 app.use('/api', partnersRoutes);
 
 // Health check

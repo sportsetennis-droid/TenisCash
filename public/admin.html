@@ -232,6 +232,12 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('partners',this)">Parceiros</button>
     <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
+    <button class="tab" onclick="switchTab('labels',this)">Etiquetas</button>
+    <button class="tab" onclick="switchTab('curation',this)">Curadoria</button>
+    <button class="tab" onclick="switchTab('interview',this)">Entrevistas</button>
+    <button class="tab" onclick="switchTab('xml',this)">XML NF-e</button>
+    <button class="tab" onclick="switchTab('recs',this)">Recomendações</button>
+    <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -563,6 +569,96 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
     <div id="ai-agents-wrap"><div class="loading-spinner">Carregando...</div></div>
   </div>
+</div>
+
+<!-- ETIQUETAS -->
+<div class="section" id="tab-labels" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Etiquetas</span>
+    <button type="button" class="refresh-btn" id="labels-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <select class="search-box" id="labels-template" style="min-width:280px"></select>
+    <input class="search-box" id="labels-search" placeholder="Buscar produtos por nome ou SKU..." style="min-width:240px">
+    <button type="button" class="btn btn-primary" id="labels-search-btn">Buscar</button>
+    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
+    <input type="number" class="search-box" id="labels-qty" placeholder="Qtd por produto" value="1" min="1" style="width:140px">
+    <button type="button" class="btn btn-primary" id="labels-create-batch">Gerar lote</button>
+  </div>
+  <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e busque produtos.</div></div>
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">LOTES GERADOS</h4>
+  <div id="labels-batches-wrap"></div>
+</div>
+
+<!-- CURADORIA EXPOSTA -->
+<div class="section" id="tab-curation" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Curadoria Exposta</span>
+    <button type="button" class="refresh-btn" id="curation-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <button type="button" class="btn btn-primary" id="curation-new">+ Nova Curadoria</button>
+    <select class="search-box" id="curation-filter-store"><option value="">Todas as lojas</option></select>
+    <select class="search-box" id="curation-filter-status">
+      <option value="">Todos status</option>
+      <option>DRAFT</option><option>SETUP</option><option>ACTIVE</option><option>FINISHED</option>
+    </select>
+    <button type="button" class="btn btn-primary" id="curation-filter-btn">Filtrar</button>
+  </div>
+  <div id="curation-list-wrap"></div>
+</div>
+
+<!-- ENTREVISTA SEMANAL — relatório admin -->
+<div class="section" id="tab-interview" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Entrevistas Semanais</span>
+    <button type="button" class="refresh-btn" id="interview-refresh">↻</button>
+  </div>
+  <div id="interview-report-wrap"><div class="loading-spinner">Carregando relatório da semana...</div></div>
+</div>
+
+<!-- XML NF-e -->
+<div class="section" id="tab-xml" style="display:none">
+  <div class="section-head">
+    <span class="section-title">XML NF-e</span>
+    <button type="button" class="refresh-btn" id="xml-refresh">↻</button>
+  </div>
+  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <label style="font-size:12px;letter-spacing:2px;color:var(--text2)">UPLOAD DE XML DE NF-e (entrada)</label>
+    <input type="file" id="xml-file" accept=".xml" style="display:block;margin-top:8px;color:var(--text)">
+    <button type="button" class="btn btn-primary" id="xml-upload-btn" style="margin-top:10px">Importar XML</button>
+    <div id="xml-upload-result" style="margin-top:10px;font-size:13px"></div>
+  </div>
+  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+    <a href="/api/admin/xml/export/products" target="_blank" class="btn">Exportar produtos.xml</a>
+  </div>
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">XMLS IMPORTADOS</h4>
+  <div id="xml-docs-wrap"></div>
+</div>
+
+<!-- RECOMENDAÇÕES -->
+<div class="section" id="tab-recs" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Recomendações Operacionais</span>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="btn btn-primary" id="recs-run">Rodar motor de regras</button>
+      <button type="button" class="refresh-btn" id="recs-refresh">↻</button>
+    </div>
+  </div>
+  <div id="recs-list-wrap"><div class="loading-spinner">Carregando...</div></div>
+</div>
+
+<!-- NUVEMSHOP -->
+<div class="section" id="tab-ns" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Nuvemshop</span>
+    <button type="button" class="refresh-btn" id="ns-refresh">↻</button>
+  </div>
+  <div id="ns-status-wrap"></div>
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">EVENTOS DE WEBHOOK</h4>
+  <div id="ns-events-wrap"></div>
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">LOGS DE SYNC</h4>
+  <div id="ns-logs-wrap"></div>
 </div>
 
 <!-- MODAL: DETALHE DE ORQUESTRAÇÃO -->
@@ -2432,12 +2528,23 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
+  const extraTabs = ['labels','curation','interview','xml','recs','ns'];
+  extraTabs.forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = tab === t ? 'block' : 'none';
+  });
   if (tab === 'sellers') { loadStores(); loadSellers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
   if (tab === 'messages') { initAdminMessagesUI(); }
   if (tab === 'catalog') { initAdminCatalogTab(); }
   if (tab === 'partners') { initAdminPartnersTab(); }
   if (tab === 'aiCenter') { initAdminAICenter(); }
+  if (tab === 'labels') { initLabelsTab(); }
+  if (tab === 'curation') { initCurationTab(); }
+  if (tab === 'interview') { initInterviewTab(); }
+  if (tab === 'xml') { initXmlTab(); }
+  if (tab === 'recs') { initRecsTab(); }
+  if (tab === 'ns') { initNsTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
@@ -3223,6 +3330,378 @@ async function loadAIAgents() {
   let html = '<table><thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Descrição</th></tr></thead><tbody>';
   list.forEach(a => {
     html += `<tr><td><code>${escapeHtml(a.code)}</code></td><td>${escapeHtml(a.name||'')}</td><td>${escapeHtml(a.category||'')}</td><td>${escapeHtml(a.description||'')}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ==================== ETIQUETAS ====================
+let _labelsInit = false;
+let _labelsSelected = {}; // {productId: qty}
+async function initLabelsTab() {
+  if (!_labelsInit) {
+    _labelsInit = true;
+    document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); };
+    document.getElementById('labels-search-btn').onclick = labelsSearchProducts;
+    document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
+  }
+  await loadLabelTemplates();
+  loadLabelBatches();
+}
+async function loadLabelTemplates() {
+  const sel = document.getElementById('labels-template');
+  const data = await api('/admin/labels/templates');
+  if (data.error) { sel.innerHTML = '<option>Erro</option>'; return; }
+  sel.innerHTML = (data.templates || []).map(t => `<option value="${t.id}">${escapeHtml(t.name)} — ${t.type}</option>`).join('');
+}
+async function labelsSearchProducts() {
+  const wrap = document.getElementById('labels-products-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Buscando...</div>';
+  const search = document.getElementById('labels-search').value.trim();
+  const data = await api('/admin/catalog/products?' + (search ? 'search=' + encodeURIComponent(search) : ''));
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const products = data.products || [];
+  if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
+  let html = '<table><thead><tr><th></th><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  products.forEach(p => {
+    const sel = _labelsSelected[p.id] ? 'checked' : '';
+    html += `<tr>
+      <td><input type="checkbox" data-pid="${p.id}" class="js-lbl-check" ${sel}></td>
+      <td><code>${escapeHtml(p.sku)}</code></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.brand||'')}</td>
+      <td>R$ ${Number(p.price||0).toFixed(2)}</td>
+      <td>${p.promoPrice ? 'R$ '+Number(p.promoPrice).toFixed(2) : '—'}</td>
+      <td><input type="number" min="1" value="${_labelsSelected[p.id] || 1}" data-pid="${p.id}" class="js-lbl-qty" style="width:60px;padding:4px"></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-lbl-check').forEach(c => {
+    c.onchange = (e) => {
+      const id = c.dataset.pid;
+      if (c.checked) {
+        const qtyInp = wrap.querySelector(`.js-lbl-qty[data-pid="${id}"]`);
+        _labelsSelected[id] = parseInt(qtyInp?.value || 1, 10);
+      } else delete _labelsSelected[id];
+    };
+  });
+  wrap.querySelectorAll('.js-lbl-qty').forEach(i => {
+    i.onchange = () => {
+      const id = i.dataset.pid;
+      if (_labelsSelected[id] != null) _labelsSelected[id] = parseInt(i.value, 10) || 1;
+    };
+  });
+}
+async function labelsCreateBatch() {
+  const templateId = document.getElementById('labels-template').value;
+  const usePromo = document.getElementById('labels-use-promo').checked;
+  const defaultQty = parseInt(document.getElementById('labels-qty').value, 10) || 1;
+  const productIds = Object.keys(_labelsSelected);
+  if (!productIds.length) { alert('Selecione pelo menos 1 produto'); return; }
+  const data = await api('/admin/labels/batches/quick', 'POST', {
+    templateId, productIds, quantityPerProduct: defaultQty, usePromo,
+  });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  alert('Lote criado: ' + data.batch.totalLabels + ' etiquetas. Abrindo PDF...');
+  window.open('/api/admin/labels/batches/' + data.batch.id + '/pdf', '_blank');
+  _labelsSelected = {};
+  loadLabelBatches();
+}
+async function loadLabelBatches() {
+  const wrap = document.getElementById('labels-batches-wrap');
+  const data = await api('/admin/labels/batches');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.batches || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum lote ainda.</div>'; return; }
+  let html = '<table><thead><tr><th>Nome</th><th>Template</th><th>Etiquetas</th><th>Status</th><th>Quando</th><th></th></tr></thead><tbody>';
+  list.forEach(b => {
+    html += `<tr>
+      <td>${escapeHtml(b.name)}</td>
+      <td>${escapeHtml(b.template?.name||'')}</td>
+      <td>${b.totalLabels}</td>
+      <td>${escapeHtml(b.status)}</td>
+      <td style="font-size:11px;color:var(--text2)">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
+      <td><a href="/api/admin/labels/batches/${b.id}/pdf" target="_blank" class="btn">Ver PDF</a></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ==================== CURADORIA ====================
+let _curationInit = false;
+async function initCurationTab() {
+  if (!_curationInit) {
+    _curationInit = true;
+    document.getElementById('curation-refresh').onclick = loadCurations;
+    document.getElementById('curation-filter-btn').onclick = loadCurations;
+    document.getElementById('curation-new').onclick = curationCreatePrompt;
+    // popular select de lojas
+    try {
+      const sd = await api('/stores');
+      const sel = document.getElementById('curation-filter-store');
+      (sd.stores||[]).forEach(s => {
+        const o = document.createElement('option'); o.value = s.id; o.textContent = (s.code||'')+' — '+(s.name||''); sel.appendChild(o);
+      });
+    } catch(e){}
+  }
+  loadCurations();
+}
+async function curationCreatePrompt() {
+  const sd = await api('/stores');
+  const stores = sd.stores || [];
+  if (!stores.length) { alert('Cadastre uma loja primeiro'); return; }
+  const name = prompt('Nome da curadoria (ex: "Vitrine Verão 2026"):');
+  if (!name) return;
+  const storeOpts = stores.map((s,i) => `${i+1}: ${s.code} — ${s.name}`).join('\n');
+  const choice = prompt(`Qual loja?\n\n${storeOpts}`, '1');
+  const idx = parseInt(choice, 10) - 1;
+  if (!(idx >= 0 && idx < stores.length)) return;
+  const data = await api('/admin/curation', 'POST', { name, storeId: stores[idx].id, status: 'DRAFT' });
+  if (data.error) { alert(data.error); return; }
+  loadCurations();
+}
+async function loadCurations() {
+  const wrap = document.getElementById('curation-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const storeId = document.getElementById('curation-filter-store').value;
+  const status = document.getElementById('curation-filter-status').value;
+  const qs = new URLSearchParams();
+  if (storeId) qs.set('storeId', storeId);
+  if (status) qs.set('status', status);
+  const data = await api('/admin/curation' + (qs.toString() ? '?'+qs : ''));
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.curations || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma curadoria. Clique em "+ Nova Curadoria".</div>'; return; }
+  let html = '<table><thead><tr><th>Nome</th><th>Loja</th><th>Status</th><th>Itens</th><th>Tarefas</th><th>Início</th><th></th></tr></thead><tbody>';
+  list.forEach(c => {
+    html += `<tr>
+      <td><strong>${escapeHtml(c.name)}</strong></td>
+      <td>${escapeHtml(c.storeId)}</td>
+      <td>${escapeHtml(c.status)}</td>
+      <td>${c._count?.items || 0}</td>
+      <td>${c._count?.checklist || 0}</td>
+      <td style="font-size:11px;color:var(--text2)">${c.startDate ? new Date(c.startDate).toLocaleDateString('pt-BR') : '—'}</td>
+      <td><button type="button" class="btn" onclick="curationActivate('${c.id}')">Ativar</button> <button type="button" class="btn" onclick="curationDelete('${c.id}')">Excluir</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function curationActivate(id) {
+  await api('/admin/curation/' + id, 'PUT', { status: 'ACTIVE', startDate: new Date().toISOString() });
+  loadCurations();
+}
+async function curationDelete(id) {
+  if (!confirm('Excluir curadoria?')) return;
+  await api('/admin/curation/' + id, 'DELETE');
+  loadCurations();
+}
+
+// ==================== ENTREVISTA SEMANAL ====================
+let _interviewInit = false;
+async function initInterviewTab() {
+  if (!_interviewInit) {
+    _interviewInit = true;
+    document.getElementById('interview-refresh').onclick = loadInterviewReport;
+  }
+  loadInterviewReport();
+}
+async function loadInterviewReport() {
+  const wrap = document.getElementById('interview-report-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/seller/interview/_admin/report');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">
+    <div class="stat-card"><div class="stat-label">SEMANA</div><div class="stat-value" style="font-size:14px">${new Date(data.weekStartDate).toLocaleDateString('pt-BR')}</div></div>
+    <div class="stat-card stat-orange"><div class="stat-label">ENVIADAS</div><div class="stat-value">${data.counts?.submitted || 0}</div></div>
+    <div class="stat-card"><div class="stat-label">PENDENTES</div><div class="stat-value">${data.counts?.pending || 0}</div></div>
+    <div class="stat-card"><div class="stat-label">HUMOR MÉDIO</div><div class="stat-value">${data.averages?.mood ? Number(data.averages.mood).toFixed(1) : '—'}</div></div>
+    <div class="stat-card"><div class="stat-label">CONFIANÇA</div><div class="stat-value">${data.averages?.confidence ? Number(data.averages.confidence).toFixed(1) : '—'}</div></div>
+    <div class="stat-card"><div class="stat-label">ENERGIA</div><div class="stat-value">${data.averages?.salesEnergy ? Number(data.averages.salesEnergy).toFixed(1) : '—'}</div></div>
+  </div>`;
+  const insights = data.recentInsights || [];
+  if (insights.length) {
+    html += '<h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:0 0 8px">INSIGHTS RECENTES</h4>';
+    html += '<table><thead><tr><th>Tipo</th><th>Título</th><th>Descrição</th><th>Prioridade</th><th>Status</th></tr></thead><tbody>';
+    insights.forEach(i => {
+      html += `<tr><td><code>${escapeHtml(i.type)}</code></td><td>${escapeHtml(i.title)}</td><td>${escapeHtml((i.description||'').slice(0,160))}</td><td>${escapeHtml(i.priority)}</td><td>${escapeHtml(i.status)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div class="muted">Sem insights ainda. Vendedores precisam enviar suas entrevistas semanais.</div>';
+  }
+  wrap.innerHTML = html;
+}
+
+// ==================== XML NF-e ====================
+let _xmlInit = false;
+async function initXmlTab() {
+  if (!_xmlInit) {
+    _xmlInit = true;
+    document.getElementById('xml-upload-btn').onclick = xmlUpload;
+    document.getElementById('xml-refresh').onclick = loadXmlDocs;
+  }
+  loadXmlDocs();
+}
+async function xmlUpload() {
+  const fileInp = document.getElementById('xml-file');
+  const file = fileInp.files && fileInp.files[0];
+  if (!file) { alert('Selecione um arquivo XML'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  const result = document.getElementById('xml-upload-result');
+  result.innerHTML = 'Importando...';
+  try {
+    const res = await fetch(API + '/admin/xml/nfe/import', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd,
+    });
+    const data = await res.json();
+    if (data.error) { result.innerHTML = `<span style="color:#e35">${escapeHtml(data.error)}</span>`; return; }
+    result.innerHTML = `<span style="color:#7b7">✓ Importado: ${data.itemsCount} itens, ${data.matched} matched, ${data.newProductsHint} novos.</span>
+      <button type="button" class="btn" onclick="xmlApply('${data.documentId}')" style="margin-left:8px">Criar produtos novos</button>`;
+    loadXmlDocs();
+  } catch (e) {
+    result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(e.message)}</span>`;
+  }
+}
+async function xmlApply(docId) {
+  const r = await api('/admin/xml/nfe/' + docId + '/apply', 'POST', {});
+  if (r.error) { alert(r.error); return; }
+  alert(`Produtos criados: ${r.createdProducts}, atualizados: ${r.updatedProducts}`);
+  loadXmlDocs();
+}
+async function loadXmlDocs() {
+  const wrap = document.getElementById('xml-docs-wrap');
+  const data = await api('/admin/xml/nfe');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const docs = data.documents || [];
+  if (!docs.length) { wrap.innerHTML = '<div class="muted">Nenhum XML importado.</div>'; return; }
+  let html = '<table><thead><tr><th>Nº</th><th>Emissor</th><th>Data</th><th>Total</th><th>Itens</th><th>Status</th></tr></thead><tbody>';
+  docs.forEach(d => {
+    html += `<tr>
+      <td>${escapeHtml(d.number||'')}/${escapeHtml(d.series||'')}</td>
+      <td>${escapeHtml(d.issuerName||'')}</td>
+      <td>${d.issueDate ? new Date(d.issueDate).toLocaleDateString('pt-BR') : '—'}</td>
+      <td>R$ ${Number(d.totalValue||0).toFixed(2)}</td>
+      <td>${d._count?.items || 0}</td>
+      <td>${escapeHtml(d.status||'')}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ==================== RECOMENDAÇÕES ====================
+let _recsInit = false;
+async function initRecsTab() {
+  if (!_recsInit) {
+    _recsInit = true;
+    document.getElementById('recs-run').onclick = async () => {
+      const r = await api('/admin/recommendations/run', 'POST', {});
+      if (r.error) { alert(r.error); return; }
+      alert(`${r.total} recomendações criadas. Detalhes:\n${JSON.stringify(r.byRule, null, 2)}`);
+      loadRecs();
+    };
+    document.getElementById('recs-refresh').onclick = loadRecs;
+  }
+  loadRecs();
+}
+async function loadRecs() {
+  const wrap = document.getElementById('recs-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/recommendations');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.recommendations || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Sem recomendações abertas. Clique em "Rodar motor de regras" para gerar.</div>'; return; }
+  let html = '<table><thead><tr><th>Prioridade</th><th>Tipo</th><th>Título</th><th>Descrição</th><th>Quando</th><th></th></tr></thead><tbody>';
+  list.forEach(r => {
+    const color = r.priority === 'URGENT' ? '#e35' : r.priority === 'HIGH' ? '#e90' : '#7b7';
+    html += `<tr>
+      <td><span style="color:${color};font-weight:bold">${escapeHtml(r.priority)}</span></td>
+      <td><code>${escapeHtml(r.type)}</code></td>
+      <td>${escapeHtml(r.title)}</td>
+      <td style="font-size:12px;color:var(--text2);max-width:340px">${escapeHtml((r.description||'').slice(0,180))}</td>
+      <td style="font-size:11px;color:var(--text2)">${new Date(r.createdAt).toLocaleString('pt-BR')}</td>
+      <td><button type="button" class="btn" onclick="recsResolve('${r.id}')">Resolver</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function recsResolve(id) {
+  await api('/admin/recommendations/' + id, 'PUT', { status: 'RESOLVED' });
+  loadRecs();
+}
+
+// ==================== NUVEMSHOP ====================
+let _nsInit = false;
+async function initNsTab() {
+  if (!_nsInit) {
+    _nsInit = true;
+    document.getElementById('ns-refresh').onclick = loadNsAll;
+  }
+  loadNsAll();
+}
+async function loadNsAll() {
+  await Promise.all([loadNsStatus(), loadNsEvents(), loadNsLogs()]);
+}
+async function loadNsStatus() {
+  const wrap = document.getElementById('ns-status-wrap');
+  const data = await api('/admin/nuvemshop/status');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  if (!data.configured) {
+    wrap.innerHTML = `<div style="background:rgba(233,144,0,0.08);border:1px solid rgba(233,144,0,0.3);border-radius:10px;padding:14px">
+      <strong>⚠ Não configurado.</strong> Setar no Railway:<br>
+      <code>NUVEMSHOP_CLIENT_ID</code>, <code>NUVEMSHOP_CLIENT_SECRET</code>, <code>NUVEMSHOP_REDIRECT_URI</code>
+    </div>`;
+    return;
+  }
+  if (!data.connected) {
+    wrap.innerHTML = `<div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <strong>Configurado, mas sem conta conectada.</strong><br>
+      <a href="${data.authUrl}" target="_blank" class="btn btn-primary" style="margin-top:10px;display:inline-block">Conectar conta Nuvemshop</a>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = `<div style="background:rgba(76,175,80,0.08);border:1px solid rgba(76,175,80,0.3);border-radius:10px;padding:14px">
+    <strong>✓ Conectado.</strong><br>
+    Conta: <code>${escapeHtml(data.connection.nuvemshopUserId)}</code><br>
+    Scope: ${escapeHtml(data.connection.scope || '—')}<br>
+    Desde: ${new Date(data.connection.createdAt).toLocaleString('pt-BR')}
+  </div>`;
+}
+async function loadNsEvents() {
+  const wrap = document.getElementById('ns-events-wrap');
+  const data = await api('/admin/nuvemshop/webhook-events');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.events || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum evento ainda.</div>'; return; }
+  let html = '<table><thead><tr><th>Evento</th><th>Resource</th><th>Processado</th><th>Erro</th><th>Quando</th></tr></thead><tbody>';
+  list.forEach(e => {
+    html += `<tr>
+      <td><code>${escapeHtml(e.event)}</code></td>
+      <td>${escapeHtml(e.nuvemshopResourceId||'')}</td>
+      <td>${e.processed ? '✓' : '⏳'}</td>
+      <td style="color:#e35;font-size:11px">${escapeHtml(e.error||'')}</td>
+      <td style="font-size:11px;color:var(--text2)">${new Date(e.createdAt).toLocaleString('pt-BR')}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+async function loadNsLogs() {
+  const wrap = document.getElementById('ns-logs-wrap');
+  const data = await api('/admin/nuvemshop/sync-logs');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.logs || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum log.</div>'; return; }
+  let html = '<table><thead><tr><th>Tipo</th><th>Entidade</th><th>Status</th><th>Mensagem</th><th>Quando</th></tr></thead><tbody>';
+  list.forEach(l => {
+    html += `<tr><td>${escapeHtml(l.type)}</td><td>${escapeHtml(l.entity)}</td><td>${escapeHtml(l.status)}</td><td style="font-size:12px">${escapeHtml(l.message||'')}</td><td style="font-size:11px;color:var(--text2)">${new Date(l.createdAt).toLocaleString('pt-BR')}</td></tr>`;
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
