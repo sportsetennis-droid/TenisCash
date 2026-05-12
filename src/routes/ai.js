@@ -94,7 +94,8 @@ function requireAuth(req, res, next) {
 
 function resolveUserType(role) {
   if (role === 'seller') return 'seller';
-  if (role === 'user') return 'client';
+  // Qualquer outro usuário logado (user, partner, admin, superadmin) entra como 'client'
+  if (role === 'user' || role === 'partner' || role === 'admin' || role === 'superadmin') return 'client';
   return 'guest';
 }
 
