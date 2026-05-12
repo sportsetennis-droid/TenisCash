@@ -1184,13 +1184,30 @@ if (!window._tcUiNavBound) {
       return;
     }
     const navItem = ev.target.closest('.bottom-nav .nav-item');
-    if (!navItem) return;
-    if (navItem.getAttribute('data-nav') === 'seller-wallet') {
-      alert('Em breve: Carteira do vendedor');
+    if (navItem) {
+      if (navItem.getAttribute('data-nav') === 'seller-wallet') {
+        alert('Em breve: Carteira do vendedor');
+        return;
+      }
+      const s = navItem.getAttribute('data-screen');
+      if (s) showScreen(s);
       return;
     }
-    const s = navItem.getAttribute('data-screen');
-    if (s) showScreen(s);
+    // Qualquer outro elemento com data-screen (botões dentro de telas, ex.: partner home)
+    const screenEl = ev.target.closest('[data-screen]');
+    if (screenEl) {
+      const s = screenEl.getAttribute('data-screen');
+      if (s) {
+        ev.preventDefault();
+        showScreen(s);
+      }
+      return;
+    }
+    // Botões com data-nav genérico
+    const navEl = ev.target.closest('[data-nav]');
+    if (navEl && navEl.getAttribute('data-nav') === 'seller-wallet') {
+      alert('Em breve: Carteira do vendedor');
+    }
   });
 }
 
