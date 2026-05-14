@@ -189,10 +189,12 @@ adminRouter.post('/import/orders', async (_req, res) => {
 // PUSH: TenisCash → Nuvemshop
 adminRouter.post('/push/products', async (req, res) => {
   try {
-    const { onlyMissing, limit } = req.body || {};
+    const { onlyMissing, limit, withImageOnly, supplierCnpj } = req.body || {};
     const result = await handlers.pushAllProducts({
       onlyMissing: onlyMissing !== false,
       limit: limit ? parseInt(limit, 10) : 1000,
+      withImageOnly: !!withImageOnly,
+      supplierCnpj: supplierCnpj || null,
     });
     res.json(result);
   } catch (err) {

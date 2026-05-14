@@ -803,6 +803,18 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
   <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
   <div id="img-enrich-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+
+  <!-- Ação: subir pra Nuvemshop os que JÁ TÊM IMAGEM -->
+  <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;background:rgba(255,153,0,0.04)">
+    <div style="font-family:Orbitron;font-size:12px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">📤 PUBLICAR NA NUVEMSHOP</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Sobe pra Nuvemshop só os produtos que JÁ TÊM imagem selecionada (e ainda não foram enviados). Respeita o filtro de CNPJ acima, se preenchido.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="number" class="search-box" id="img-push-limit" placeholder="Limite" value="50" min="1" max="500" style="width:100px">
+      <button type="button" class="btn btn-primary" id="img-push-btn">📤 Subir com imagem pra Nuvemshop</button>
+    </div>
+    <div id="img-push-result" style="font-size:13px;color:var(--text2);margin-top:8px"></div>
+  </div>
+
   <div id="img-products-wrap"></div>
 </div>
 
@@ -4208,6 +4220,7 @@ async function initImagesTab() {
     document.getElementById('img-load-btn').onclick = loadPendingImages;
     document.getElementById('img-enrich-btn').onclick = imgEnrichBySupplier;
     document.getElementById('img-diagnose-btn').onclick = imgDiagnose;
+    document.getElementById('img-push-btn').onclick = imgPushToNuvemshop;
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4378,6 +4391,25 @@ function imgUpdateConfirmButton(productId) {
   btn.textContent = `Salvar ${n} selecionada${n === 1 ? '' : 's'}`;
   btn.disabled = n === 0;
   btn.style.opacity = n === 0 ? '0.5' : '1';
+}
+
+async function imgPushToNuvemshop() {
+  const limit = parseInt(document.getElementById('img-push-limit').value, 10) || 50;
+  const supplierCnpj = document.getElementById('img-filter-supplier').value.trim() || null;
+  const result = document.getElementById('img-push-result');
+  const cnpjMsg = supplierCnpj ? ` do CNPJ ${supplierCnpj}` : '';
+  if (!confirm(`Vai subir até ${limit} produtos COM imagem${cnpjMsg} (que ainda não estão na Nuvemshop). Pode demorar ~300ms por produto. Confirma?`)) return;
+  result.innerHTML = '<span style="color:var(--text2)">Subindo... aguarda.</span>';
+  const body = { onlyMissing: true, withImageOnly: true, limit };
+  if (supplierCnpj) body.supplierCnpj = supplierCnpj;
+  const data = await api('/admin/nuvemshop/push/products', 'POST', body);
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  let msg = `<span style="color:#7b7">✓ ${data.total} processados — ${data.created} novos, ${data.updated} atualizados, ${data.failed} falhas.</span>`;
+  if (data.errors && data.errors.length) {
+    msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
+  }
+  result.innerHTML = msg;
+  loadPendingImages();
 }
 
 async function imgConfirmSelection(productId) {

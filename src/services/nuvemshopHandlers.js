@@ -763,7 +763,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
   return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id };
 }
 
-async function pushAllProducts({ onlyMissing = true, limit = 1000 } = {}) {
+async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly = false, supplierCnpj = null } = {}) {
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão Nuvemshop ativa');
 
@@ -774,6 +774,12 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000 } = {}) {
     const mapped = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
     const mappedIds = mapped.map((m) => m.localProductId);
     if (mappedIds.length) where.id = { notIn: mappedIds };
+  }
+  if (withImageOnly) {
+    where.imageUrl = { not: null };
+  }
+  if (supplierCnpj) {
+    where.aiContext = { path: ['supplierCnpj'], equals: String(supplierCnpj) };
   }
 
   const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
