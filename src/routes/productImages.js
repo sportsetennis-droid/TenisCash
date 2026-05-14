@@ -15,6 +15,38 @@ router.get('/status', (_req, res) => {
   res.json({ configured: gis.isConfigured() });
 });
 
+// Diagnóstico: testa busca crua sem searchType=image
+router.get('/diagnose', async (_req, res) => {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    const cseId = process.env.GOOGLE_CSE_ID;
+    if (!apiKey || !cseId) {
+      return res.json({ ok: false, error: 'env vars não setadas', hasKey: !!apiKey, hasCseId: !!cseId });
+    }
+    const cseIdLen = cseId.length;
+
+    // Teste 1: busca web simples (sem imagem)
+    const url1 = `https://customsearch.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cseId}&q=converse`;
+    const r1 = await fetch(url1);
+    const d1 = await r1.json();
+
+    // Teste 2: busca de imagem
+    const url2 = `https://customsearch.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cseId}&q=converse&searchType=image`;
+    const r2 = await fetch(url2);
+    const d2 = await r2.json();
+
+    res.json({
+      cseIdLength: cseIdLen,
+      cseIdPreview: cseId.slice(0, 4) + '...' + cseId.slice(-4),
+      keyPreview: apiKey.slice(0, 6) + '...',
+      testWeb: { status: r1.status, error: d1.error?.message || null, hasItems: !!d1.items?.length },
+      testImage: { status: r2.status, error: d2.error?.message || null, errorDetail: d2.error?.errors || null, hasItems: !!d2.items?.length },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Busca candidatas de imagem pra um produto
 router.get('/search/:productId', async (req, res) => {
   try {
