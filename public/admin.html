@@ -788,6 +788,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="refresh-btn" id="img-refresh">↻</button>
   </div>
   <div id="img-google-status" style="margin-bottom:12px;font-size:12px;color:var(--text2)"></div>
+  <div style="margin-bottom:12px">
+    <button type="button" class="btn" id="img-diagnose-btn">🔍 Diagnosticar Google API</button>
+    <span id="img-diagnose-result" style="font-size:12px;margin-left:8px"></span>
+  </div>
 
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <input class="search-box" id="img-filter-brand" placeholder="Filtrar por marca (ex: Converse)" style="min-width:220px">
@@ -4203,6 +4207,7 @@ async function initImagesTab() {
     document.getElementById('img-refresh').onclick = loadPendingImages;
     document.getElementById('img-load-btn').onclick = loadPendingImages;
     document.getElementById('img-enrich-btn').onclick = imgEnrichBySupplier;
+    document.getElementById('img-diagnose-btn').onclick = imgDiagnose;
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4299,6 +4304,13 @@ async function imgRunSearch(productId) {
   });
   html += '</div>';
   wrap.innerHTML = html;
+}
+
+async function imgDiagnose() {
+  const result = document.getElementById('img-diagnose-result');
+  result.innerHTML = '<span style="color:var(--text2)">Testando...</span>';
+  const data = await api('/admin/product-images/diagnose');
+  result.innerHTML = '<pre style="font-size:11px;background:var(--bg);padding:10px;border-radius:6px;display:block;margin-top:8px;overflow:auto">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
 }
 
 async function imgEnrichBySupplier() {
