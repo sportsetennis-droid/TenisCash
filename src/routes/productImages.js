@@ -155,17 +155,40 @@ router.get('/search/:productId', async (req, res) => {
     }
 
     const queryOverride = req.query.q;
-    let query = queryOverride || gis.buildProductQuery({
-      brand: product.brand,
-      supplierRef,
-      model: product.name,
-      color: ctx.color,
-      category: product.category,
-    });
-
-    // Filtro de site separado — não substitui a query principal,
-    // só restringe ao domínio (ex: site:converse.com.br).
     const siteFilter = (req.query.site || '').trim().toLowerCase();
+
+    // Estratégia de busca:
+    //  - Se filtrando pelo site oficial Converse, NÃO usa a referência (a Converse
+    //    não indexa o cProd em página pública). Usa o nome descritivo do produto
+    //    que aparece literal nas páginas (ex: "Chuck Taylor All Star Branco Lilás").
+    //  - Caso contrário (busca ampla ou outro site), usa marca + "ref" entre aspas.
+    const isOfficialConverse = siteFilter && /(^|\.)converse\.com(\.br)?$/.test(siteFilter);
+
+    let query;
+    if (queryOverride) {
+      query = queryOverride;
+    } else if (isOfficialConverse) {
+      // Query descritiva — usa nome completo do produto + cor pra match no site oficial
+      const parts = [];
+      // Remove prefixo "Tênis " redundante (a Converse só vende tênis no site)
+      const cleanName = (product.name || '').replace(/^t[eê]nis\s+/i, '').trim();
+      if (product.brand && !/converse/i.test(cleanName)) parts.push(product.brand);
+      if (cleanName) parts.push(cleanName);
+      if (ctx.color && !cleanName.toLowerCase().includes(String(ctx.color).toLowerCase())) {
+        parts.push(ctx.color);
+      }
+      query = parts.join(' ').trim();
+    } else {
+      query = gis.buildProductQuery({
+        brand: product.brand,
+        supplierRef,
+        model: product.name,
+        color: ctx.color,
+        category: product.category,
+      });
+    }
+
+    // Anexa o filtro de site (sem substituir a query)
     if (siteFilter && /^[a-z0-9.\-]+\.[a-z]{2,}$/.test(siteFilter)) {
       query = `${query} site:${siteFilter}`.trim();
     }
