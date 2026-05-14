@@ -15,6 +15,31 @@ router.get('/status', (_req, res) => {
   res.json({ configured: gis.isConfigured() });
 });
 
+// Teste de chave/CSE arbitrário — recebe via query string. Útil pra debug.
+router.get('/test-key', async (req, res) => {
+  try {
+    const apiKey = req.query.key;
+    const cseId = req.query.cx;
+    if (!apiKey || !cseId) {
+      return res.json({ error: 'Passe ?key=AIza...&cx=... na URL' });
+    }
+    const url = `https://customsearch.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cseId}&q=converse&searchType=image`;
+    const r = await fetch(url);
+    const d = await r.json();
+    res.json({
+      status: r.status,
+      ok: r.ok,
+      error: d.error?.message || null,
+      errorDetail: d.error?.errors || null,
+      hasItems: !!d.items?.length,
+      itemCount: d.items?.length || 0,
+      firstItem: d.items?.[0] ? { url: d.items[0].link, source: d.items[0].displayLink } : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Diagnóstico: testa busca crua sem searchType=image
 router.get('/diagnose', async (_req, res) => {
   try {
