@@ -379,6 +379,83 @@ router.post('/import-description/:productId', async (req, res) => {
   }
 });
 
+// Bulk: AUTO-importa a 1ª imagem da busca em massa pra produtos sem imageUrl
+// Pega o 1º resultado do Serper e salva direto. Risco: imagem pode estar errada.
+// Usuário pode revisar depois clicando no produto na aba Imagens.
+router.post('/auto-image-bulk', async (req, res) => {
+  try {
+    if (!gis.isConfigured()) {
+      return res.status(400).json({ error: 'Provider de busca não configurado' });
+    }
+    const { supplierCnpj, limit = 200, picks = 5 } = req.body || {};
+    if (!supplierCnpj) return res.status(400).json({ error: 'supplierCnpj obrigatório' });
+
+    const products = await prisma.product.findMany({
+      where: {
+        active: true,
+        imageUrl: null,
+        aiContext: { path: ['supplierCnpj'], equals: String(supplierCnpj) },
+      },
+      take: parseInt(limit, 10) || 200,
+    });
+
+    let ok = 0, failed = 0, syncedToNs = 0;
+    const errors = [];
+
+    for (const product of products) {
+      try {
+        const ctx = (() => {
+          try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
+          catch (_) { return {}; }
+        })();
+        const supplierRef = ctx.supplierRef || null;
+        const query = gis.buildProductQuery({
+          brand: product.brand,
+          supplierRef,
+          model: product.name,
+          color: ctx.color,
+          category: product.category,
+        });
+        const result = await gis.searchImages(query, { count: parseInt(picks, 10) || 5 });
+        if (!result.ok || !result.items?.length) {
+          failed++;
+          errors.push({ sku: product.sku, reason: 'sem resultados', query });
+          continue;
+        }
+        const first = result.items[0];
+        const extras = result.items.slice(1, parseInt(picks, 10) || 5).map((i) => i.url).filter(Boolean);
+
+        await prisma.product.update({
+          where: { id: product.id },
+          data: {
+            imageUrl: first.url,
+            imageUrls: extras.length ? extras : undefined,
+          },
+        });
+        ok++;
+        const sync = await syncToNuvemshopIfMapped(product.id);
+        if (sync.synced) syncedToNs++;
+        await new Promise((r) => setTimeout(r, 250));
+      } catch (err) {
+        failed++;
+        errors.push({ sku: product.sku, reason: err.message });
+      }
+    }
+
+    res.json({
+      ok: true,
+      total: products.length,
+      succeeded: ok,
+      failed,
+      syncedToNuvemshop: syncedToNs,
+      errors: errors.slice(0, 20),
+    });
+  } catch (err) {
+    console.error('[auto-image-bulk] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Bulk: importa descrição/imagens pra TODOS os produtos de um fornecedor
 router.post('/import-description-bulk', async (req, res) => {
   try {

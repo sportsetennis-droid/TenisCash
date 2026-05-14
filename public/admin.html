@@ -812,6 +812,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="btn btn-primary" id="img-load-btn">Carregar produtos pendentes</button>
     <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
     <button type="button" class="btn" id="img-import-desc-btn">📥 Importar descrições do converse.com.br</button>
+    <button type="button" class="btn" id="img-auto-image-btn">🤖 Auto-importar imagens (1ª opção)</button>
   </div>
 
   <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
@@ -4721,6 +4722,7 @@ async function initImagesTab() {
     document.getElementById('img-diagnose-btn').onclick = imgDiagnose;
     document.getElementById('img-push-btn').onclick = imgPushToNuvemshop;
     document.getElementById('img-import-desc-btn').onclick = imgImportDescriptionBulk;
+    document.getElementById('img-auto-image-btn').onclick = imgAutoImageBulk;
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4946,6 +4948,27 @@ async function imgImportDescription(productId) {
       </details>`;
   }
   if (typeof loadPipelineStatus === 'function') loadPipelineStatus();
+}
+
+async function imgAutoImageBulk() {
+  const cnpj = document.getElementById('img-filter-supplier').value.trim();
+  if (!cnpj) { alert('Informe o CNPJ do fornecedor no filtro pra rodar em massa'); return; }
+  if (!confirm(`Vai buscar imagens automaticamente pra TODOS os produtos do CNPJ ${cnpj} que não têm imagem. Pega a 1ª opção que o buscador retornar (pode estar errada — você revisa depois). Confirma?`)) return;
+  const result = document.getElementById('img-enrich-result');
+  result.innerHTML = '<span style="color:var(--orange)">Buscando imagens... ~300ms por produto, pode demorar.</span>';
+  const data = await api('/admin/product-images/auto-image-bulk', 'POST', {
+    supplierCnpj: cnpj,
+    limit: 500,
+    picks: 5,
+  });
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  let msg = `<span style="color:#7b7">✓ ${data.succeeded}/${data.total} produtos com imagem importada. ${data.failed} falhas. ${data.syncedToNuvemshop || 0} sincronizados Nuvemshop.</span>`;
+  if (data.errors?.length) {
+    msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
+  }
+  result.innerHTML = msg;
+  loadPipelineStatus();
+  loadPendingImages();
 }
 
 async function imgImportDescriptionBulk() {
