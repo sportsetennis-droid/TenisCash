@@ -182,6 +182,68 @@ router.get('/search/:productId', async (req, res) => {
   }
 });
 
+// Status geral do pipeline (Catálogo → Estoque → Imagem → Nuvemshop)
+// Aceita ?supplierCnpj=XXX pra filtrar por fornecedor.
+router.get('/pipeline-status', async (req, res) => {
+  try {
+    const { supplierCnpj } = req.query;
+    const baseWhere = { active: true };
+    if (supplierCnpj) {
+      baseWhere.aiContext = { path: ['supplierCnpj'], equals: String(supplierCnpj) };
+    }
+
+    const [
+      totalCatalog,
+      withStock,
+      withImage,
+      withMapping,
+      stockSum,
+    ] = await Promise.all([
+      prisma.product.count({ where: baseWhere }),
+      prisma.product.count({
+        where: { ...baseWhere, sizes: { some: { stock: { gt: 0 } } } },
+      }),
+      prisma.product.count({ where: { ...baseWhere, imageUrl: { not: null } } }),
+      prisma.product.count({
+        where: {
+          ...baseWhere,
+          // Produtos com mapping Nuvemshop ativo. JoinRaw porque mapping é em outra tabela.
+          id: {
+            in: (
+              await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } })
+            ).map((m) => m.localProductId),
+          },
+        },
+      }),
+      prisma.productSize.aggregate({
+        _sum: { stock: true },
+        where: supplierCnpj
+          ? {
+              product: {
+                active: true,
+                aiContext: { path: ['supplierCnpj'], equals: String(supplierCnpj) },
+              },
+            }
+          : { product: { active: true } },
+      }),
+    ]);
+
+    res.json({
+      supplierCnpj: supplierCnpj || null,
+      catalog: totalCatalog,
+      withStock,
+      stockTotal: stockSum._sum.stock || 0,
+      withImage,
+      pushedToNuvemshop: withMapping,
+      readyToPush: Math.max(0, withImage - withMapping),
+      pendingImage: Math.max(0, totalCatalog - withImage),
+    });
+  } catch (err) {
+    console.error('[pipeline-status] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Seleciona uma imagem como principal do produto
 router.post('/select/:productId', async (req, res) => {
   try {

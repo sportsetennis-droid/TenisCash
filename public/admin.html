@@ -788,6 +788,17 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="refresh-btn" id="img-refresh">↻</button>
   </div>
   <div id="img-google-status" style="margin-bottom:12px;font-size:12px;color:var(--text2)"></div>
+
+  <!-- Pipeline de status: Catálogo → Estoque → Imagem → Nuvemshop -->
+  <div id="img-pipeline" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;background:rgba(255,255,255,0.02)">
+    <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:var(--text2);margin-bottom:10px">📊 PIPELINE — FLUXO DO PRODUTO NO SISTEMA</div>
+    <div id="img-pipeline-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div class="loading-spinner">Carregando...</div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-top:10px">
+      Mesmo registro de produto vive em todas as etapas. NF-e cria o produto no Catálogo + Estoque automaticamente. Imagem e Nuvemshop são curados aqui.
+    </div>
+  </div>
   <div style="margin-bottom:12px">
     <button type="button" class="btn" id="img-diagnose-btn">🔍 Diagnosticar Google API</button>
     <span id="img-diagnose-result" style="font-size:12px;margin-left:8px"></span>
@@ -4224,6 +4235,8 @@ async function initImagesTab() {
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
+    // Recarrega pipeline ao mudar o CNPJ
+    document.getElementById('img-filter-supplier').addEventListener('blur', loadPipelineStatus);
   }
   // Verifica status do provider de busca
   const status = await api('/admin/product-images/status');
@@ -4233,7 +4246,28 @@ async function initImagesTab() {
   } else {
     stEl.innerHTML = '<span style="color:#e35">⚠ Nenhuma chave de busca configurada. Configure BRAVE_API_KEY ou GOOGLE_API_KEY + GOOGLE_CSE_ID no Railway.</span>';
   }
+  loadPipelineStatus();
   loadPendingImages();
+}
+
+async function loadPipelineStatus() {
+  const wrap = document.getElementById('img-pipeline-cards');
+  const cnpj = document.getElementById('img-filter-supplier')?.value.trim();
+  const qs = cnpj ? '?supplierCnpj=' + encodeURIComponent(cnpj) : '';
+  const data = await api('/admin/product-images/pipeline-status' + qs);
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35;font-size:12px">${escapeHtml(data.error)}</div>`; return; }
+  const card = (label, value, hint, color) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;background:rgba(0,0,0,0.25)">
+      <div style="font-size:10px;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase;margin-bottom:4px">${label}</div>
+      <div style="font-family:Orbitron;font-size:22px;font-weight:700;color:${color || 'var(--text)'}">${value}</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:2px">${hint}</div>
+    </div>`;
+  wrap.innerHTML =
+    card('📦 Catálogo', data.catalog, cnpj ? 'produtos do fornecedor' : 'total de produtos ativos', '#7ad') +
+    card('📊 Com estoque', `${data.withStock}`, `${data.stockTotal} un. totais`, '#7b7') +
+    card('🖼️ Com imagem', data.withImage, `${data.pendingImage} pendentes`, data.withImage > 0 ? '#fa3' : 'var(--text2)') +
+    card('🛒 Na Nuvemshop', data.pushedToNuvemshop, `${data.readyToPush} prontos pra subir`, data.pushedToNuvemshop > 0 ? '#9c6' : 'var(--text2)') +
+    card('🎯 Prontos', data.readyToPush, 'imagem ✓ • Nuvemshop ✗', data.readyToPush > 0 ? 'var(--orange)' : 'var(--text2)');
 }
 
 async function loadPendingImages() {
@@ -4409,6 +4443,7 @@ async function imgPushToNuvemshop() {
     msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
   }
   result.innerHTML = msg;
+  loadPipelineStatus();
   loadPendingImages();
 }
 
@@ -4422,6 +4457,7 @@ async function imgConfirmSelection(productId) {
   if (data.error) { alert('Erro: ' + data.error); return; }
   document.getElementById('img-review-modal').classList.remove('show');
   _imgSelection[productId] = new Set();
+  loadPipelineStatus();
   loadPendingImages();
 }
 
