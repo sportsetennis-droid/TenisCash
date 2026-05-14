@@ -77,6 +77,7 @@ router.get('/supplier/:cnpj/products', async (req, res) => {
         id: true, sku: true, name: true, brand: true, category: true,
         costPrice: true, markupPercent: true, price: true, promoPrice: true,
         imageUrl: true, aiContext: true,
+        sizes: { select: { size: true, stock: true } },
       },
       orderBy: { name: 'asc' },
     });

@@ -301,6 +301,7 @@ router.get('/pending', async (req, res) => {
       select: {
         id: true, sku: true, name: true, brand: true, category: true,
         price: true, aiContext: true, createdAt: true,
+        sizes: { select: { size: true, stock: true } },
       },
     });
 

@@ -2630,23 +2630,57 @@ function productCtx(p) {
   return ctx || {};
 }
 
-// Helper: combina gender + ageGroup em um dos 6 rótulos padronizados:
-//   masculino adulto / masculino infantil / feminino adulto / feminino infantil /
-//   unissex adulto / unissex infantil
-// Se não houver ageGroup, infere do nome (juvenil/kid/infantil → infantil; default adulto).
+// Helper: infere "genero adulto/infantil" usando a grade de TAMANHOS e a COR.
+// Regras (BR):
+//   - Tamanho ≤ 33 ............ infantil; cor define gênero (m/f), neutra = unissex
+//   - Tamanhos só 34-39 ....... feminino adulto
+//   - Tamanhos só 40+ ......... masculino adulto
+//   - Tamanhos cruzam ≤39 E ≥40  unissex adulto (grade vai do feminino ao masculino)
+// Fallback: aiContext.gender + ageGroup + nome do produto.
+function inferGenderFromColor(color) {
+  if (!color) return null;
+  const c = color.toString().toLowerCase();
+  if (/rosa|lil[áa]s|pink|f[úu]csia|salm[ãa]o|p[êe]ssego|coral|magenta|lavanda|violeta|ameixa|malva/.test(c)) return 'feminino';
+  if (/preto|marinho|chumbo|grafite|verde\s*militar|vermelho\s*escuro|cinza\s*escuro|caqui/.test(c)) return 'masculino';
+  return null;
+}
+
 function productGenderLabel(p) {
   if (!p) return '';
   const ctx = productCtx(p);
+
+  // 1. Tamanhos numéricos
+  const sizesArr = Array.isArray(p.sizes) ? p.sizes : [];
+  const nums = sizesArr
+    .map((s) => parseInt(typeof s === 'string' ? s : s?.size, 10))
+    .filter((n) => !isNaN(n) && n > 0);
+  if (nums.length) {
+    const minS = Math.min(...nums);
+    const maxS = Math.max(...nums);
+    // INFANTIL: tudo até 33
+    if (maxS <= 33) {
+      const colorGender = inferGenderFromColor(ctx.color);
+      return (colorGender || 'unissex') + ' infantil';
+    }
+    // ADULTO: cruza feminino → masculino?
+    if (minS <= 39 && maxS >= 40) return 'unissex adulto';
+    if (maxS <= 39) return 'feminino adulto';
+    if (minS >= 40) return 'masculino adulto';
+    // sobra caso degenerado — usa cor como desempate
+    const cg = inferGenderFromColor(ctx.color);
+    return (cg || 'unissex') + ' adulto';
+  }
+
+  // 2. Fallback: aiContext
   let gender = (ctx.gender || p.gender || '').toString().toLowerCase().trim();
   let age = (ctx.ageGroup || p.ageGroup || '').toString().toLowerCase().trim();
   if (!age) {
     const txt = (p.name || '').toLowerCase();
     age = /juvenil|infantil|kid|kids|child|crian/.test(txt) ? 'infantil' : 'adulto';
   }
-  if (/^(masculino|homem|m\b|male)/i.test(gender)) gender = 'masculino';
-  else if (/^(feminino|mulher|f\b|female)/i.test(gender)) gender = 'feminino';
-  else if (/^(unissex|unisex|u\b)/i.test(gender)) gender = 'unissex';
-  else if (!gender) return '';
+  if (/masculino|homem/i.test(gender)) gender = 'masculino';
+  else if (/feminino|mulher/i.test(gender)) gender = 'feminino';
+  else if (/unissex|unisex/i.test(gender)) gender = 'unissex';
   else return '';
   return `${gender} ${age}`;
 }
