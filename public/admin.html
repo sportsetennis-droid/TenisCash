@@ -2816,7 +2816,8 @@ async function saveDescEdit() {
   result.innerHTML = '<span style="color:var(--orange)">Salvando...</span>';
   const data = await api('/admin/products/' + _descEditCurrentId + '/description', 'POST', { description: desc });
   if (data.error) { result.innerHTML = '<span style="color:#e35">Erro: ' + escapeHtml(data.error) + '</span>'; return; }
-  result.innerHTML = '<span style="color:#7b7">✓ Salvo</span>';
+  const syncMsg = data.nuvemshop?.synced ? ' • Nuvemshop atualizado' : '';
+  result.innerHTML = '<span style="color:#7b7">✓ Salvo' + syncMsg + '</span>';
   // Refresh da tabela ativa (qualquer função registrada)
   if (typeof _descEditOnSaved === 'function') _descEditOnSaved();
   else {
@@ -2825,6 +2826,7 @@ async function saveDescEdit() {
     if (typeof refreshAdminCatalog === 'function' && document.getElementById('tab-catalog')?.style.display !== 'none') refreshAdminCatalog();
     if (_markupSelectedCnpj && typeof loadMarkupProducts === 'function') loadMarkupProducts(_markupSelectedCnpj);
   }
+  if (typeof loadPipelineStatus === 'function') loadPipelineStatus();
   setTimeout(closeDescEdit, 500);
 }
 
@@ -4735,6 +4737,7 @@ async function loadPipelineStatus() {
     card('📦 Catálogo', data.catalog, cnpj ? 'produtos do fornecedor' : 'total de produtos ativos', '#7ad') +
     card('📊 Com estoque', `${data.withStock}`, `${data.stockTotal} un. totais`, '#7b7') +
     card('🖼️ Com imagem', data.withImage, `${data.pendingImage} pendentes`, data.withImage > 0 ? '#fa3' : 'var(--text2)') +
+    card('📝 Com descrição', data.withDescription ?? 0, `${data.pendingDescription ?? 0} pendentes`, (data.withDescription ?? 0) > 0 ? '#c9c' : 'var(--text2)') +
     card('🛒 Na Nuvemshop', data.pushedToNuvemshop, `${data.readyToPush} prontos pra subir`, data.pushedToNuvemshop > 0 ? '#9c6' : 'var(--text2)') +
     card('🎯 Prontos', data.readyToPush, 'imagem ✓ • Nuvemshop ✗', data.readyToPush > 0 ? 'var(--orange)' : 'var(--text2)');
 }
@@ -4924,6 +4927,7 @@ async function imgImportDescription(productId) {
         <div style="padding:8px;background:rgba(0,0,0,0.3);border-radius:6px;margin-top:4px;white-space:pre-wrap;color:var(--text)">${escapeHtml(data.description)}</div>
       </details>`;
   }
+  if (typeof loadPipelineStatus === 'function') loadPipelineStatus();
 }
 
 async function imgImportDescriptionBulk() {
@@ -4945,6 +4949,7 @@ async function imgImportDescriptionBulk() {
     msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
   }
   result.innerHTML = msg;
+  loadPipelineStatus();
   loadPendingImages();
 }
 

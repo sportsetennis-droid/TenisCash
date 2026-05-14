@@ -236,6 +236,7 @@ router.get('/pipeline-status', async (req, res) => {
       totalCatalog,
       withStock,
       withImage,
+      withDescription,
       withMapping,
       stockSum,
     ] = await Promise.all([
@@ -244,6 +245,7 @@ router.get('/pipeline-status', async (req, res) => {
         where: { ...baseWhere, sizes: { some: { stock: { gt: 0 } } } },
       }),
       prisma.product.count({ where: { ...baseWhere, imageUrl: { not: null } } }),
+      prisma.product.count({ where: { ...baseWhere, longDescription: { not: null } } }),
       prisma.product.count({
         where: {
           ...baseWhere,
@@ -274,9 +276,11 @@ router.get('/pipeline-status', async (req, res) => {
       withStock,
       stockTotal: stockSum._sum.stock || 0,
       withImage,
+      withDescription,
       pushedToNuvemshop: withMapping,
       readyToPush: Math.max(0, withImage - withMapping),
       pendingImage: Math.max(0, totalCatalog - withImage),
+      pendingDescription: Math.max(0, totalCatalog - withDescription),
     });
   } catch (err) {
     console.error('[pipeline-status] erro:', err);
