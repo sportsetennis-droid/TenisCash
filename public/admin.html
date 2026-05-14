@@ -4276,7 +4276,13 @@ async function imgRunSearch(productId) {
   wrap.innerHTML = '<div class="loading-spinner">Buscando no Google...</div>';
   const qOverride = document.getElementById('img-search-q-' + productId).value.trim();
   const data = await api('/admin/product-images/search/' + productId + (qOverride ? '?q=' + encodeURIComponent(qOverride) : ''));
-  if (!data.ok) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error||'busca falhou')}</div>`; return; }
+  if (!data.ok) {
+    let msg = `<div style="color:#e35">Erro: ${escapeHtml(data.error||'busca falhou')}</div>`;
+    if (data.detail) msg += `<pre style="font-size:11px;color:var(--text2);margin-top:6px">${escapeHtml(JSON.stringify(data.detail, null, 2))}</pre>`;
+    if (data.query) msg += `<div style="font-size:11px;color:var(--text2);margin-top:4px">Query usada: <code>${escapeHtml(data.query)}</code></div>`;
+    wrap.innerHTML = msg;
+    return;
+  }
   const items = data.items || [];
   if (!items.length) { wrap.innerHTML = '<div class="muted">Nenhuma imagem encontrada.</div>'; return; }
 
