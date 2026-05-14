@@ -242,6 +242,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
     <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
+    <button class="tab" onclick="switchTab('images',this)">Imagens</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -778,6 +779,33 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="btn btn-primary" id="inv-filter">Filtrar</button>
   </div>
   <div id="inv-list-wrap"></div>
+</div>
+
+<!-- IMAGENS — revisão e seleção de imagem do produto -->
+<div class="section" id="tab-images" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Imagens — Revisão e Seleção</span>
+    <button type="button" class="refresh-btn" id="img-refresh">↻</button>
+  </div>
+  <div id="img-google-status" style="margin-bottom:12px;font-size:12px;color:var(--text2)"></div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <input class="search-box" id="img-filter-brand" placeholder="Filtrar por marca (ex: Converse)" style="min-width:220px">
+    <input class="search-box" id="img-filter-supplier" placeholder="CNPJ fornecedor (opcional)" style="min-width:240px">
+    <input type="number" class="search-box" id="img-filter-limit" placeholder="Limite" value="20" min="1" max="200" style="width:100px">
+    <button type="button" class="btn btn-primary" id="img-load-btn">Carregar produtos pendentes</button>
+  </div>
+
+  <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+  <div id="img-products-wrap"></div>
+</div>
+
+<!-- MODAL: revisão de imagem de UM produto -->
+<div class="detail-modal" id="img-review-modal">
+  <div class="detail-content" style="max-width:980px">
+    <button type="button" class="detail-close" id="img-modal-close">✕</button>
+    <div id="img-review-body"></div>
+  </div>
 </div>
 
 <!-- MODAL: DETALHE DE ORQUESTRAÇÃO -->
@@ -2647,7 +2675,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -2668,6 +2696,7 @@ function switchTab(tab, btn) {
   if (tab === 'suppliers') { initSuppliersTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
+  if (tab === 'images') { initImagesTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
@@ -4160,6 +4189,115 @@ async function loadInvProducts() {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// ==================== IMAGENS — REVISÃO E SELEÇÃO ====================
+let _imgInit = false;
+let _imgPendingProducts = [];
+
+async function initImagesTab() {
+  if (!_imgInit) {
+    _imgInit = true;
+    document.getElementById('img-refresh').onclick = loadPendingImages;
+    document.getElementById('img-load-btn').onclick = loadPendingImages;
+    document.getElementById('img-modal-close').onclick = () => {
+      document.getElementById('img-review-modal').classList.remove('show');
+    };
+  }
+  // Verifica status do Google
+  const status = await api('/admin/product-images/status');
+  const stEl = document.getElementById('img-google-status');
+  if (status.configured) {
+    stEl.innerHTML = '<span style="color:#7b7">✓ Google Custom Search configurado</span>';
+  } else {
+    stEl.innerHTML = '<span style="color:#e35">⚠ GOOGLE_API_KEY ou GOOGLE_CSE_ID não configuradas no Railway. Configure pra usar a busca de imagens.</span>';
+  }
+  loadPendingImages();
+}
+
+async function loadPendingImages() {
+  const wrap = document.getElementById('img-products-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+
+  const qs = new URLSearchParams();
+  const brand = document.getElementById('img-filter-brand').value.trim();
+  const supplier = document.getElementById('img-filter-supplier').value.trim();
+  const limit = document.getElementById('img-filter-limit').value || 20;
+  if (brand) qs.set('brand', brand);
+  if (supplier) qs.set('supplierCnpj', supplier);
+  qs.set('limit', limit);
+
+  const data = await api('/admin/product-images/pending?' + qs.toString());
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  _imgPendingProducts = data.products || [];
+
+  document.getElementById('img-stats').innerHTML =
+    `<strong>${_imgPendingProducts.length}</strong> produtos sendo exibidos • <strong>${data.totalPending}</strong> total pendente de imagem`;
+
+  if (!_imgPendingProducts.length) { wrap.innerHTML = '<div class="muted">Nenhum produto pendente com esses filtros.</div>'; return; }
+
+  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Categoria</th><th></th></tr></thead><tbody>';
+  _imgPendingProducts.forEach(p => {
+    html += `<tr>
+      <td><code>${escapeHtml(p.sku)}</code></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.brand||'')}</td>
+      <td>${escapeHtml(p.category||'')}</td>
+      <td><button type="button" class="btn btn-primary" onclick="imgOpenReview('${p.id}')">Buscar imagem</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function imgOpenReview(productId) {
+  const product = _imgPendingProducts.find(p => p.id === productId);
+  if (!product) return;
+  const modal = document.getElementById('img-review-modal');
+  const body = document.getElementById('img-review-body');
+  modal.classList.add('show');
+  body.innerHTML = `<div style="font-family:Orbitron;font-size:14px;letter-spacing:2px;color:var(--orange)">REVISAR IMAGEM</div>
+    <div style="margin-top:10px"><strong>${escapeHtml(product.name)}</strong></div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escapeHtml(product.brand||'')} · SKU ${escapeHtml(product.sku)}</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <input class="search-box" id="img-search-q-${productId}" placeholder="Sobrescrever query (opcional)" style="flex:1">
+      <button type="button" class="btn btn-primary" onclick="imgRunSearch('${productId}')">Buscar</button>
+    </div>
+    <div id="img-results-${productId}"><div class="loading-spinner">Buscando...</div></div>`;
+  // Roda busca inicial automaticamente
+  imgRunSearch(productId);
+}
+
+async function imgRunSearch(productId) {
+  const wrap = document.getElementById('img-results-' + productId);
+  wrap.innerHTML = '<div class="loading-spinner">Buscando no Google...</div>';
+  const qOverride = document.getElementById('img-search-q-' + productId).value.trim();
+  const data = await api('/admin/product-images/search/' + productId + (qOverride ? '?q=' + encodeURIComponent(qOverride) : ''));
+  if (!data.ok) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error||'busca falhou')}</div>`; return; }
+  const items = data.items || [];
+  if (!items.length) { wrap.innerHTML = '<div class="muted">Nenhuma imagem encontrada.</div>'; return; }
+
+  let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Query usada: <code>${escapeHtml(data.query)}</code></div>`;
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
+  items.forEach((it, i) => {
+    html += `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(255,255,255,0.03)">
+      <a href="${escapeHtml(it.url)}" target="_blank">
+        <img src="${escapeHtml(it.thumbnailUrl||it.url)}" style="width:100%;height:160px;object-fit:contain;background:#fff;border-radius:6px" onerror="this.style.opacity=0.3">
+      </a>
+      <div style="font-size:10px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.source||'')}</div>
+      <button type="button" class="btn btn-primary" style="width:100%;margin-top:6px;font-size:11px" onclick="imgSelect('${productId}','${encodeURIComponent(it.url)}')">Selecionar</button>
+    </div>`;
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+async function imgSelect(productId, urlEncoded) {
+  const imageUrl = decodeURIComponent(urlEncoded);
+  const data = await api('/admin/product-images/select/' + productId, 'POST', { imageUrl });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  document.getElementById('img-review-modal').classList.remove('show');
+  loadPendingImages();
 }
 
 </script>

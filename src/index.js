@@ -30,6 +30,7 @@ const financialRoutes = require('./routes/financial');
 const suppliersRoutes = require('./routes/suppliers');
 const campaignsRoutes = require('./routes/campaigns');
 const inventoryRoutes = require('./routes/inventory');
+const productImagesRoutes = require('./routes/productImages');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -82,6 +83,7 @@ app.use('/api/admin/financial', financialRoutes);
 app.use('/api/admin/suppliers', suppliersRoutes);
 app.use('/api/admin/campaigns', campaignsRoutes);
 app.use('/api/admin/inventory', inventoryRoutes);
+app.use('/api/admin/product-images', productImagesRoutes);
 app.use('/api', nuvemshopRoutes);
 app.use('/api', partnersRoutes);
 
