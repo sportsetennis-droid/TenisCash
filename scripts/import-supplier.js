@@ -170,11 +170,22 @@ async function main() {
     const baseSku = g.variants[0].ean || g.variants[0].sku;
     const sku = `${cnpj.slice(-4)}-${baseSku}`.slice(0, 64);
 
-    // Referência do fornecedor (cProd da NF-e) — identificador único do modelo
-    // ex: "CT00010001" pra Chuck Taylor. Pega do primeiro variant que tenha sku
-    // não-EAN (cProd geralmente vem em supplierCode, não EAN).
+    // Referência do fornecedor — tenta 3 fontes em ordem:
+    //   1) cProd alfanumérico (não-EAN). Ex: "CT00010001" pra Converse
+    //   2) "REF: XYZ1234" no nome do produto. Ex: ALPAR/Adidas usa esse padrão
+    //   3) Código no início do nome (2-4 letras + 4-12 dígitos)
+    let supplierRef = null;
     const refCandidate = g.variants.find((v) => v.sku && !/^\d{12,14}$/.test(v.sku));
-    const supplierRef = refCandidate ? String(refCandidate.sku).toUpperCase() : null;
+    if (refCandidate) supplierRef = String(refCandidate.sku).toUpperCase();
+    if (!supplierRef) {
+      const raw = g.variants[0]?.rawName || g.cleanName || '';
+      const m1 = raw.match(/REF:\s*([A-Z]{2,4}\d{3,12})/i);
+      if (m1) supplierRef = m1[1].toUpperCase();
+      else {
+        const m2 = raw.match(/\b([A-Z]{2,4}\d{4,12})\b/);
+        if (m2) supplierRef = m2[1];
+      }
+    }
 
     // Custo médio ponderado pela quantidade — base pro markup
     let totalQty = 0, totalCost = 0;
