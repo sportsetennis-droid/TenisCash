@@ -20,23 +20,37 @@ function isConfigured() {
  * @param {Object} opts - { count: 5, safe: 'active' | 'off', imgSize: 'large' | 'medium' }
  * @returns {Promise<{ok, items, error}>}
  */
+function sanitizeQuery(q) {
+  // Remove caracteres que podem quebrar Google search
+  return String(q || '')
+    .replace(/[\/\\]/g, ' ')      // barras viram espaço
+    .replace(/[^\w\sÀ-ÿ\-]/g, ' ') // só letras, números, acentos e hífen
+    .replace(/\s+/g, ' ')           // colapsa espaços
+    .trim()
+    .slice(0, 100);                 // limite 100 chars (Google aceita mais mas garante)
+}
+
 async function searchImages(query, opts = {}) {
   if (!isConfigured()) {
     return { ok: false, items: [], error: 'GOOGLE_API_KEY ou GOOGLE_CSE_ID não configuradas' };
   }
-  if (!query || !query.trim()) {
-    return { ok: false, items: [], error: 'query é obrigatória' };
+  const cleanQ = sanitizeQuery(query);
+  if (!cleanQ) {
+    return { ok: false, items: [], error: 'query é obrigatória ou ficou vazia após sanitização' };
   }
 
   const params = new URLSearchParams({
     key: API_KEY,
     cx: CSE_ID,
-    q: query.trim(),
+    q: cleanQ,
     searchType: 'image',
     num: String(Math.min(Math.max(opts.count || 5, 1), 10)),
     safe: opts.safe || 'active',
-    imgSize: opts.imgSize || 'large',
   });
+  // imgSize é opcional, se aceita: huge, icon, large, medium, small, xlarge, xxlarge
+  if (opts.imgSize && ['huge','icon','large','medium','small','xlarge','xxlarge'].includes(opts.imgSize)) {
+    params.set('imgSize', opts.imgSize);
+  }
 
   try {
     const url = `${ENDPOINT}?${params.toString()}`;
@@ -46,7 +60,9 @@ async function searchImages(query, opts = {}) {
       return {
         ok: false,
         items: [],
+        query: cleanQ,
         error: `[Google ${res.status}] ${data.error?.message || JSON.stringify(data).slice(0, 200)}`,
+        detail: data.error?.errors || null,
       };
     }
     const items = (data.items || []).map((it) => ({
