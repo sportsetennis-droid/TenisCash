@@ -21,13 +21,13 @@ function isConfigured() {
  * @returns {Promise<{ok, items, error}>}
  */
 function sanitizeQuery(q) {
-  // Remove caracteres que podem quebrar Google search
+  // Remove caracteres que podem quebrar Google search (mas preserva aspas pra match exato)
   return String(q || '')
-    .replace(/[\/\\]/g, ' ')      // barras viram espaço
-    .replace(/[^\w\sÀ-ÿ\-]/g, ' ') // só letras, números, acentos e hífen
-    .replace(/\s+/g, ' ')           // colapsa espaços
+    .replace(/[\/\\]/g, ' ')        // barras viram espaço
+    .replace(/[^\w\sÀ-ÿ\-"]/g, ' ') // letras, números, acentos, hífen, aspas
+    .replace(/\s+/g, ' ')            // colapsa espaços
     .trim()
-    .slice(0, 100);                 // limite 100 chars (Google aceita mais mas garante)
+    .slice(0, 100);                  // limite 100 chars
 }
 
 async function searchImages(query, opts = {}) {
@@ -87,14 +87,20 @@ async function searchImages(query, opts = {}) {
  * @returns {string}
  */
 function buildProductQuery(product) {
+  // Quando temos a ref do fornecedor (cProd), usa query enxuta com ref entre aspas
+  if (product.supplierRef) {
+    const parts = [];
+    if (product.brand) parts.push(product.brand);
+    parts.push(`"${product.supplierRef}"`);
+    if (product.color) parts.push(product.color);
+    return parts.join(' ').trim();
+  }
+
   const parts = [];
   if (product.brand) parts.push(product.brand);
-  // Referência do fornecedor (cProd da NF-e) — identificador único do modelo
-  if (product.supplierRef) parts.push(product.supplierRef);
   if (product.model) parts.push(product.model);
   if (product.color) parts.push(product.color);
   if (!parts.length && product.name) parts.push(product.name);
-  // Adiciona "tênis" se for calçado pra melhorar relevância
   if (product.category && /tenis|sapato|calc/i.test(product.category)) {
     if (!parts.join(' ').toLowerCase().includes('tenis')) parts.push('tênis');
   }

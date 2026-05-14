@@ -16,7 +16,7 @@ function isConfigured() {
 function sanitizeQuery(q) {
   return String(q || '')
     .replace(/[\/\\]/g, ' ')
-    .replace(/[^\w\sÀ-ÿ\-]/g, ' ')
+    .replace(/[^\w\sÀ-ÿ\-"]/g, ' ') // preserva aspas duplas pra match exato
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 100);
@@ -84,11 +84,19 @@ async function searchImages(query, opts = {}) {
 }
 
 function buildProductQuery(product) {
+  // Quando temos a referência do fornecedor (cProd da NF-e, ex: "CT00010001"),
+  // ela já identifica o modelo exato. Query enxuta: marca + "ref" (com aspas
+  // pra forçar match exato) + cor. Sem repetir o nome completo do produto.
+  if (product.supplierRef) {
+    const parts = [];
+    if (product.brand) parts.push(product.brand);
+    parts.push(`"${product.supplierRef}"`);
+    if (product.color) parts.push(product.color);
+    return parts.join(' ').trim();
+  }
+
   const parts = [];
   if (product.brand) parts.push(product.brand);
-  // Referência do fornecedor (cProd da NF-e) — é o identificador único do modelo,
-  // ex: "CT00010001". Coloca antes do model pra forçar match exato no buscador.
-  if (product.supplierRef) parts.push(product.supplierRef);
   if (product.model) parts.push(product.model);
   if (product.color) parts.push(product.color);
   if (!parts.length && product.name) parts.push(product.name);

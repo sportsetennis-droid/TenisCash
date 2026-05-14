@@ -4258,13 +4258,20 @@ async function loadPendingImages() {
   wrap.innerHTML = html;
 }
 
+// Estado de seleção múltipla por produto
+const _imgSelection = {}; // { [productId]: Set<url> }
+
 async function imgOpenReview(productId) {
   const product = _imgPendingProducts.find(p => p.id === productId);
   if (!product) return;
+  _imgSelection[productId] = new Set(); // reseta seleção ao abrir
   const modal = document.getElementById('img-review-modal');
   const body = document.getElementById('img-review-body');
   modal.classList.add('show');
-  body.innerHTML = `<div style="font-family:Orbitron;font-size:14px;letter-spacing:2px;color:var(--orange)">REVISAR IMAGEM</div>
+  body.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-family:Orbitron;font-size:14px;letter-spacing:2px;color:var(--orange)">REVISAR IMAGEM</div>
+      <button type="button" class="btn btn-primary" id="img-confirm-${productId}" onclick="imgConfirmSelection('${productId}')" disabled style="opacity:0.5">Salvar 0 selecionadas</button>
+    </div>
     <div style="margin-top:10px"><strong>${escapeHtml(product.name)}</strong></div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escapeHtml(product.brand||'')} · SKU ${escapeHtml(product.sku)}</div>
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
@@ -4280,6 +4287,7 @@ async function imgOpenReview(productId) {
       <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','mercadolivre.com.br')">Mercado Livre</button>
       <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','')">Em tudo</button>
     </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Clique nas imagens pra selecionar. A primeira selecionada vira a capa, as outras viram fotos adicionais.</div>
     <div id="img-results-${productId}"><div class="loading-spinner">Buscando...</div></div>`;
   // Roda busca inicial automaticamente
   imgRunSearch(productId);
@@ -4312,16 +4320,63 @@ async function imgRunSearch(productId) {
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Query usada: <code>${escapeHtml(data.query)}</code></div>`;
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">';
   items.forEach((it, i) => {
-    html += `<div style="border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(255,255,255,0.03)">
-      <a href="${escapeHtml(it.url)}" target="_blank">
-        <img src="${escapeHtml(it.thumbnailUrl||it.url)}" style="width:100%;height:160px;object-fit:contain;background:#fff;border-radius:6px" onerror="this.style.opacity=0.3">
-      </a>
+    const urlEnc = encodeURIComponent(it.url);
+    const selected = _imgSelection[productId]?.has(it.url);
+    html += `<div id="img-card-${productId}-${i}" data-url="${escapeHtml(it.url)}" onclick="imgToggleSelect('${productId}', this)"
+      style="cursor:pointer;position:relative;border:2px solid ${selected ? 'var(--orange)' : 'var(--border)'};border-radius:8px;padding:8px;background:${selected ? 'rgba(255,153,0,0.12)' : 'rgba(255,255,255,0.03)'};transition:all .15s">
+      <div style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:${selected ? 'var(--orange)' : 'rgba(0,0,0,0.6)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;border:1px solid #fff">${selected ? '✓' : ''}</div>
+      <img src="${escapeHtml(it.thumbnailUrl||it.url)}" style="width:100%;height:160px;object-fit:contain;background:#fff;border-radius:6px;pointer-events:none" onerror="this.style.opacity=0.3">
       <div style="font-size:10px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.source||'')}</div>
-      <button type="button" class="btn btn-primary" style="width:100%;margin-top:6px;font-size:11px" onclick="imgSelect('${productId}','${encodeURIComponent(it.url)}')">Selecionar</button>
+      <a href="${escapeHtml(it.url)}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:var(--orange)">abrir original</a>
     </div>`;
   });
   html += '</div>';
   wrap.innerHTML = html;
+  imgUpdateConfirmButton(productId);
+}
+
+function imgToggleSelect(productId, cardEl) {
+  const url = cardEl.getAttribute('data-url');
+  if (!_imgSelection[productId]) _imgSelection[productId] = new Set();
+  const sel = _imgSelection[productId];
+  if (sel.has(url)) {
+    sel.delete(url);
+    cardEl.style.border = '2px solid var(--border)';
+    cardEl.style.background = 'rgba(255,255,255,0.03)';
+    const check = cardEl.querySelector('div');
+    check.style.background = 'rgba(0,0,0,0.6)';
+    check.textContent = '';
+  } else {
+    sel.add(url);
+    cardEl.style.border = '2px solid var(--orange)';
+    cardEl.style.background = 'rgba(255,153,0,0.12)';
+    const check = cardEl.querySelector('div');
+    check.style.background = 'var(--orange)';
+    check.textContent = '✓';
+  }
+  imgUpdateConfirmButton(productId);
+}
+
+function imgUpdateConfirmButton(productId) {
+  const btn = document.getElementById('img-confirm-' + productId);
+  if (!btn) return;
+  const n = _imgSelection[productId]?.size || 0;
+  btn.textContent = `Salvar ${n} selecionada${n === 1 ? '' : 's'}`;
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '0.5' : '1';
+}
+
+async function imgConfirmSelection(productId) {
+  const sel = _imgSelection[productId];
+  if (!sel || sel.size === 0) return;
+  const urls = Array.from(sel);
+  const imageUrl = urls[0];
+  const additionalImages = urls.slice(1);
+  const data = await api('/admin/product-images/select/' + productId, 'POST', { imageUrl, additionalImages });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  document.getElementById('img-review-modal').classList.remove('show');
+  _imgSelection[productId] = new Set();
+  loadPendingImages();
 }
 
 async function imgDiagnose() {
