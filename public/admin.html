@@ -1513,7 +1513,7 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusIcon = enriched
@@ -1526,6 +1526,7 @@ async function loadCatalogProductsAdmin() {
       + '<td>' + escapeHtml(p.sku) + '</td>'
       + genderCell(p)
       + '<td>' + escapeHtml(p.name) + '</td>'
+      + sizesCell(p)
       + '<td>' + escapeHtml(p.brand) + '</td>'
       + refCell(p)
       + sportCell(p)
@@ -2705,6 +2706,35 @@ function sportCell(p) {
     : '<td style="color:var(--text2)">—</td>';
 }
 
+// Helper: monta rótulo de grade de tamanhos (ex: "33-44", "P,M,G", "34")
+function productSizesLabel(p) {
+  const arr = Array.isArray(p && p.sizes) ? p.sizes : [];
+  const raw = arr.map((s) => (typeof s === 'string' ? s : s && s.size)).filter(Boolean);
+  if (!raw.length) return '';
+  const nums = raw.map((s) => parseInt(s, 10)).filter((n) => !isNaN(n));
+  if (nums.length === raw.length) {
+    const mn = Math.min(...nums), mx = Math.max(...nums);
+    return mn === mx ? String(mn) : `${mn}-${mx}`;
+  }
+  const order = ['PP','P','M','G','GG','XG','XXG'];
+  const uniq = [...new Set(raw.map((s) => String(s).toUpperCase()))];
+  uniq.sort((a, b) => {
+    const ai = order.indexOf(a), bi = order.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+  return uniq.join(', ');
+}
+
+function sizesCell(p) {
+  const s = productSizesLabel(p);
+  return s
+    ? `<td style="font-size:11px;color:var(--text2);white-space:nowrap">${escapeHtml(s)}</td>`
+    : '<td style="color:var(--text2)">—</td>';
+}
+
 function escapeJs(str) {
   return String(str)
     .replaceAll('\\\\', '\\\\\\\\')
@@ -3676,7 +3706,7 @@ async function labelsSearchProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const products = data.products || [];
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
     const sel = _labelsSelected[p.id] ? 'checked' : '';
     html += `<tr>
@@ -3684,6 +3714,7 @@ async function labelsSearchProducts() {
       <td><code>${escapeHtml(p.sku)}</code></td>
       ${genderCell(p)}
       <td>${escapeHtml(p.name)}</td>
+      ${sizesCell(p)}
       <td>${escapeHtml(p.brand||'')}</td>
       ${refCell(p)}
       ${sportCell(p)}
@@ -4339,7 +4370,7 @@ async function loadInvProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
   list.forEach(p => {
     const lc = p.lifecycle?.lifecycleStatus || '—';
     const days = p.lifecycle?.daysInStock != null ? p.lifecycle.daysInStock : '—';
@@ -4347,6 +4378,7 @@ async function loadInvProducts() {
       <td><code>${escapeHtml(p.sku)}</code></td>
       ${genderCell(p)}
       <td>${escapeHtml(p.name)}</td>
+      ${sizesCell(p)}
       <td>${escapeHtml(p.brand||'')}</td>
       ${refCell(p)}
       ${sportCell(p)}
@@ -4444,7 +4476,7 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
@@ -4457,6 +4489,7 @@ async function loadMarkupProducts(cnpj) {
       <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
       ${genderCell(p)}
       <td>${escapeHtml(p.name)}</td>
+      ${sizesCell(p)}
       <td>${escapeHtml(p.brand||'')}</td>
       ${refCell(p)}
       ${sportCell(p)}
@@ -4582,12 +4615,13 @@ async function loadPendingImages() {
 
   if (!_imgPendingProducts.length) { wrap.innerHTML = '<div class="muted">Nenhum produto pendente com esses filtros.</div>'; return; }
 
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th></th></tr></thead><tbody>';
   _imgPendingProducts.forEach(p => {
     html += `<tr>
       <td><code>${escapeHtml(p.sku)}</code></td>
       ${genderCell(p)}
       <td>${escapeHtml(p.name)}</td>
+      ${sizesCell(p)}
       <td>${escapeHtml(p.brand||'')}</td>
       ${refCell(p)}
       ${sportCell(p)}
