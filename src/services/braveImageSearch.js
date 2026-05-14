@@ -43,7 +43,7 @@ async function searchImages(query, opts = {}) {
     count: String(Math.min(Math.max(opts.count || 5, 1), 50)),
     safesearch: opts.safesearch || 'strict',
     country: opts.country || 'BR',
-    search_lang: opts.search_lang || 'pt',
+    search_lang: opts.search_lang || 'pt-br',
   });
 
   try {
