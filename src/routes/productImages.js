@@ -10,6 +10,7 @@ const serperGis = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
 const { scrapeProductPage } = require('../services/productPageScraper');
 const nsHandlers = require('../services/nuvemshopHandlers');
+const { getSupplierMeta, siteForSupplier, brandForSupplier } = require('../services/supplierOfficialSites');
 
 // Helper: re-empurra produto pra Nuvemshop se já tem mapping
 async function syncToNuvemshopIfMapped(productId) {
@@ -44,6 +45,12 @@ router.use(adminMiddleware);
 // Status da configuração (Google ou Brave conforme env)
 router.get('/status', (_req, res) => {
   res.json({ configured: gis.isConfigured(), provider: providerName });
+});
+
+// Metadados de um fornecedor (site oficial, marca, etc.)
+router.get('/supplier-meta/:cnpj', (req, res) => {
+  const meta = getSupplierMeta(req.params.cnpj);
+  res.json({ cnpj: req.params.cnpj, meta: meta || null });
 });
 
 // Teste de chave/CSE arbitrário — recebe via query string. Útil pra debug.
@@ -387,8 +394,12 @@ router.post('/auto-image-bulk', async (req, res) => {
     if (!gis.isConfigured()) {
       return res.status(400).json({ error: 'Provider de busca não configurado' });
     }
-    const { supplierCnpj, limit = 200, picks = 5 } = req.body || {};
+    const { supplierCnpj, limit = 200, picks = 5, site: siteOverride } = req.body || {};
     if (!supplierCnpj) return res.status(400).json({ error: 'supplierCnpj obrigatório' });
+
+    // Site oficial do fornecedor (mapa centralizado), com override possível via body
+    const supplierMeta = getSupplierMeta(supplierCnpj);
+    const officialSite = (siteOverride || (supplierMeta && supplierMeta.site) || '').trim().toLowerCase();
 
     const products = await prisma.product.findMany({
       where: {
@@ -409,13 +420,21 @@ router.post('/auto-image-bulk', async (req, res) => {
           catch (_) { return {}; }
         })();
         const supplierRef = ctx.supplierRef || null;
-        const query = gis.buildProductQuery({
-          brand: product.brand,
+        // Constrói query — limpa o nome dos slashs da NF-e e usa a marca do fornecedor se a do produto for genérica
+        const cleanName = (product.name || '').replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
+        const brandToUse = (supplierMeta && supplierMeta.brand)
+          || (/A\s*DEFINIR|^$/i.test(product.brand || '') ? null : product.brand)
+          || product.brand;
+        let query = gis.buildProductQuery({
+          brand: brandToUse,
           supplierRef,
-          model: product.name,
+          model: cleanName || product.name,
           color: ctx.color,
           category: product.category,
         });
+        if (officialSite && /^[a-z0-9.\-]+\.[a-z]{2,}$/.test(officialSite)) {
+          query = `${query} site:${officialSite}`.trim();
+        }
         const result = await gis.searchImages(query, { count: parseInt(picks, 10) || 5 });
         if (!result.ok || !result.items?.length) {
           failed++;
