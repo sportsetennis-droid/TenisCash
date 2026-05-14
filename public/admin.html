@@ -1513,7 +1513,7 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusIcon = enriched
@@ -1531,6 +1531,7 @@ async function loadCatalogProductsAdmin() {
       + refCell(p)
       + sportCell(p)
       + '<td>' + escapeHtml(cat) + '</td>'
+      + locationCell(p)
       + '<td>R$ ' + Number(p.price).toFixed(2) + '</td>'
       + '<td>' + (p.active ? 'sim' : 'não') + '</td>'
       + '<td>';
@@ -2735,6 +2736,51 @@ function sizesCell(p) {
     : '<td style="color:var(--text2)">—</td>';
 }
 
+// Localização — opções fixas das lojas + fábrica/CD
+const PRODUCT_LOCATIONS = [
+  'Praia do Bessa',
+  'Praia de Tambaú',
+  'Rainha da Borborema',
+  'Tambiá',
+  'Baratão dos esportes',
+  'Fábrica',
+];
+
+function productLocation(p) {
+  if (!p) return '';
+  const ctx = productCtx(p);
+  return (ctx.location || p.location || '').toString();
+}
+
+function locationCell(p) {
+  const cur = productLocation(p);
+  const id = (p && p.id) || '';
+  const options = ['<option value="">—</option>']
+    .concat(PRODUCT_LOCATIONS.map((loc) => `<option value="${escapeHtml(loc)}"${loc === cur ? ' selected' : ''}>${escapeHtml(loc)}</option>`))
+    .join('');
+  return `<td style="white-space:nowrap"><select data-product-id="${id}" class="js-product-location" style="font-size:11px;padding:3px 6px;background:rgba(0,0,0,0.4);color:var(--text);border:1px solid var(--border);border-radius:4px">${options}</select></td>`;
+}
+
+// Handler global: ao mudar uma <select.js-product-location>, salva no backend
+document.addEventListener('change', async (ev) => {
+  const sel = ev.target.closest && ev.target.closest('.js-product-location');
+  if (!sel) return;
+  const id = sel.getAttribute('data-product-id');
+  const location = sel.value;
+  sel.disabled = true;
+  const prevBg = sel.style.background;
+  sel.style.background = 'rgba(255,153,0,0.2)';
+  try {
+    const data = await api('/admin/products/' + id + '/location', 'POST', { location });
+    if (data.error) { alert('Erro ao salvar localização: ' + data.error); }
+    else { sel.style.background = 'rgba(123,187,123,0.2)'; setTimeout(() => { sel.style.background = prevBg; }, 600); }
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  } finally {
+    sel.disabled = false;
+  }
+});
+
 function escapeJs(str) {
   return String(str)
     .replaceAll('\\\\', '\\\\\\\\')
@@ -3706,7 +3752,7 @@ async function labelsSearchProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const products = data.products || [];
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
     const sel = _labelsSelected[p.id] ? 'checked' : '';
     html += `<tr>
@@ -3719,6 +3765,7 @@ async function labelsSearchProducts() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${locationCell(p)}
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.promoPrice ? 'R$ '+Number(p.promoPrice).toFixed(2) : '—'}</td>
       <td><input type="number" min="1" value="${_labelsSelected[p.id] || 1}" data-pid="${p.id}" class="js-lbl-qty" style="width:60px;padding:4px"></td>
@@ -4370,7 +4417,7 @@ async function loadInvProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
   list.forEach(p => {
     const lc = p.lifecycle?.lifecycleStatus || '—';
     const days = p.lifecycle?.daysInStock != null ? p.lifecycle.daysInStock : '—';
@@ -4383,6 +4430,7 @@ async function loadInvProducts() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${locationCell(p)}
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.totalStock}</td>
       <td>${escapeHtml(lc)}</td>
@@ -4476,7 +4524,7 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
@@ -4494,6 +4542,7 @@ async function loadMarkupProducts(cnpj) {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${locationCell(p)}
       <td>${cost}</td>
       <td>${overrideMarkup}</td>
       <td><strong>${effMarkup}</strong></td>
@@ -4615,7 +4664,7 @@ async function loadPendingImages() {
 
   if (!_imgPendingProducts.length) { wrap.innerHTML = '<div class="muted">Nenhum produto pendente com esses filtros.</div>'; return; }
 
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th></th></tr></thead><tbody>';
   _imgPendingProducts.forEach(p => {
     html += `<tr>
       <td><code>${escapeHtml(p.sku)}</code></td>
@@ -4626,6 +4675,7 @@ async function loadPendingImages() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${locationCell(p)}
       <td><button type="button" class="btn btn-primary" onclick="imgOpenReview('${p.id}')">Buscar imagem</button></td>
     </tr>`;
   });
