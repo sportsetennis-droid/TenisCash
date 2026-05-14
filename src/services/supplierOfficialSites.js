@@ -17,24 +17,25 @@ const SUPPLIER_META = {
     brand: "Lets Gym",
     notes: 'Plataforma PopStore; produtos abrem em modal, sem URL própria por produto',
   },
-  // Recco — moda íntima/lingerie
+  // Recco → marca Alto Giro
   '76795418000102': {
-    site: 'recco.com.br',
-    brand: 'Recco',
+    site: 'altogiro.com.br',
+    brand: 'Alto Giro',
   },
-  // Hope — lingerie
+  // Hope → linha Hope Resort (beachwear/moda praia)
   '03007414000130': {
-    site: 'hopelingerie.com.br',
-    brand: 'Hope',
+    site: 'hoperesort.com.br',
+    brand: 'Hope Resort',
   },
-  // Filo / Top Confeccoes — geralmente B2B, sem site forte de consumidor
+  // Filo SA → marca Body for Sure
   '30535975002390': {
-    site: null,
-    brand: 'Filo',
+    site: 'bodyforsure.com.br',
+    brand: 'Body for Sure',
   },
+  // Top Confecções Votuporanga → marca Caju Brasil
   '07458302000157': {
-    site: null,
-    brand: null, // marca varia
+    site: 'cajubrasil.com.br',
+    brand: 'Caju Brasil',
   },
   // FILA Brasil
   '41923935000208': {
