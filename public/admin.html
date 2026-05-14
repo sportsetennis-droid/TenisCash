@@ -813,6 +813,19 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
     <button type="button" class="btn" id="img-import-desc-btn">📥 Importar descrições do converse.com.br</button>
     <button type="button" class="btn" id="img-auto-image-btn">🤖 Auto-importar imagens (1ª opção)</button>
+    <button type="button" class="btn btn-primary" id="img-ai-curate-btn" style="background:var(--orange);color:#000;font-weight:bold">🧠 Curar com IA (imagem + descrição + Nuvemshop)</button>
+  </div>
+  <!-- progresso da curadoria IA -->
+  <div id="ai-curate-progress" style="display:none;border:1px solid var(--orange);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(255,153,0,0.05)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span id="ai-curate-status" style="font-weight:bold">Aguardando...</span>
+      <button type="button" class="btn" id="ai-curate-stop" style="font-size:11px">Parar</button>
+    </div>
+    <div style="background:rgba(0,0,0,0.4);border-radius:6px;height:18px;overflow:hidden;margin-bottom:6px">
+      <div id="ai-curate-bar" style="background:var(--orange);height:100%;width:0%;transition:width .2s"></div>
+    </div>
+    <div id="ai-curate-counters" style="font-size:11px;color:var(--text2);margin-bottom:8px"></div>
+    <div id="ai-curate-log" style="max-height:240px;overflow-y:auto;font-size:11px;font-family:monospace;background:rgba(0,0,0,0.5);padding:8px;border-radius:6px"></div>
   </div>
 
   <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
@@ -4723,6 +4736,8 @@ async function initImagesTab() {
     document.getElementById('img-push-btn').onclick = imgPushToNuvemshop;
     document.getElementById('img-import-desc-btn').onclick = imgImportDescriptionBulk;
     document.getElementById('img-auto-image-btn').onclick = imgAutoImageBulk;
+    document.getElementById('img-ai-curate-btn').onclick = imgAiCurate;
+    document.getElementById('ai-curate-stop').onclick = () => { _aiCurateStop = true; };
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4948,6 +4963,89 @@ async function imgImportDescription(productId) {
       </details>`;
   }
   if (typeof loadPipelineStatus === 'function') loadPipelineStatus();
+}
+
+let _aiCurateStop = false;
+
+async function imgAiCurate() {
+  const cnpj = document.getElementById('img-filter-supplier').value.trim();
+  if (!cnpj) { alert('Informe o CNPJ do fornecedor no filtro pra rodar a curadoria IA'); return; }
+
+  // Verifica integrações
+  const status = await api('/admin/ai-curation/status');
+  if (!status.serperImage) { alert('SERPER_API_KEY não configurada — sem busca de imagem'); return; }
+  if (!status.vision) {
+    if (!confirm('ANTHROPIC_API_KEY não está configurada. Sem ela, a IA não vai pontuar/escolher a melhor imagem (pega a 1ª). Continuar mesmo assim?')) return;
+  }
+
+  if (!confirm(`O agente vai curar TODOS os produtos do CNPJ ${cnpj}: buscar imagem no site oficial, validar com IA visual, baixar descrição, sincronizar Nuvemshop. Pode demorar (~5 segundos por produto). Confirma?`)) return;
+
+  _aiCurateStop = false;
+  const progressEl = document.getElementById('ai-curate-progress');
+  const statusEl = document.getElementById('ai-curate-status');
+  const barEl = document.getElementById('ai-curate-bar');
+  const countersEl = document.getElementById('ai-curate-counters');
+  const logEl = document.getElementById('ai-curate-log');
+  progressEl.style.display = 'block';
+  logEl.innerHTML = '';
+
+  // Pega fila
+  statusEl.textContent = 'Carregando fila...';
+  const queue = await api('/admin/ai-curation/queue/' + cnpj);
+  if (!queue.products?.length) {
+    statusEl.textContent = 'Nada pra curar (todos completos).';
+    return;
+  }
+  const total = queue.products.length;
+  let processed = 0, imageOk = 0, descOk = 0, nsOk = 0, errors = 0;
+  let totalCostBRL = 0;
+  const startedAt = Date.now();
+
+  function updateCounters() {
+    const pct = Math.round((processed / total) * 100);
+    barEl.style.width = pct + '%';
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    const avg = processed > 0 ? Math.round((elapsed / processed) * 10) / 10 : 0;
+    const remaining = avg > 0 ? Math.round(avg * (total - processed)) : '?';
+    countersEl.innerHTML = `<strong>${processed}/${total}</strong> processados • <span style="color:#9c6">${imageOk} imagens</span> • <span style="color:#c9c">${descOk} descrições</span> • <span style="color:#7b7">${nsOk} Nuvemshop</span> • <span style="color:#e35">${errors} falhas</span> • Custo: R$ ${totalCostBRL.toFixed(2)} • ${elapsed}s rodando • ~${remaining}s restantes`;
+  }
+
+  function appendLog(html) {
+    logEl.innerHTML += html + '<br>';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  statusEl.textContent = `Curando ${total} produtos...`;
+  updateCounters();
+
+  for (const p of queue.products) {
+    if (_aiCurateStop) {
+      appendLog('<span style="color:#fa3">⏸️ Parado pelo usuário</span>');
+      break;
+    }
+    try {
+      const r = await api('/admin/ai-curation/product/' + p.id, 'POST', {});
+      const imgIcon = r.steps?.image?.ok ? '✓' : '✗';
+      const descIcon = r.steps?.description?.ok ? '✓' : '✗';
+      const nsIcon = r.steps?.nuvemshop?.synced ? '✓' : '·';
+      const imgScore = r.steps?.image?.score != null ? ` (score ${r.steps.image.score})` : '';
+      if (r.steps?.image?.ok) imageOk++;
+      if (r.steps?.description?.ok) descOk++;
+      if (r.steps?.nuvemshop?.synced) nsOk++;
+      if (r.error) errors++;
+      totalCostBRL += r.costBRL || 0;
+      appendLog(`<code>${escapeHtml(p.sku)}</code> img${imgIcon}${imgScore} desc${descIcon} ns${nsIcon} — ${escapeHtml((p.name||'').slice(0,60))}`);
+    } catch (err) {
+      errors++;
+      appendLog(`<code>${escapeHtml(p.sku)}</code> <span style="color:#e35">ERRO: ${escapeHtml(err.message)}</span>`);
+    }
+    processed++;
+    updateCounters();
+  }
+
+  statusEl.textContent = `✅ Concluído: ${processed}/${total}. Custo total: R$ ${totalCostBRL.toFixed(2)}`;
+  loadPipelineStatus();
+  loadPendingImages();
 }
 
 async function imgAutoImageBulk() {
