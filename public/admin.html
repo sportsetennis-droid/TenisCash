@@ -4260,11 +4260,18 @@ async function loadPendingImages() {
 
 // Estado de seleção múltipla por produto
 const _imgSelection = {}; // { [productId]: Set<url> }
+const _imgSite = {};      // { [productId]: 'converse.com.br' | null }
 
 async function imgOpenReview(productId) {
   const product = _imgPendingProducts.find(p => p.id === productId);
   if (!product) return;
   _imgSelection[productId] = new Set(); // reseta seleção ao abrir
+  // Para Converse, default = site oficial (lá tem todos os modelos por ref)
+  if (product.brand && /converse|all\s*star/i.test(product.brand)) {
+    _imgSite[productId] = 'converse.com.br';
+  } else {
+    _imgSite[productId] = null;
+  }
   const modal = document.getElementById('img-review-modal');
   const body = document.getElementById('img-review-body');
   modal.classList.add('show');
@@ -4289,24 +4296,32 @@ async function imgOpenReview(productId) {
     </div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Clique nas imagens pra selecionar. A primeira selecionada vira a capa, as outras viram fotos adicionais.</div>
     <div id="img-results-${productId}"><div class="loading-spinner">Buscando...</div></div>`;
-  // Roda busca inicial automaticamente
-  imgRunSearch(productId);
+  // Aplica highlight do site default (Converse → converse.com.br) e roda busca
+  imgSearchSite(productId, _imgSite[productId] || '');
 }
 
 async function imgSearchSite(productId, domain) {
-  const inp = document.getElementById('img-search-q-' + productId);
-  const currentQ = inp.value.trim();
-  // Remove qualquer site: anterior
-  const baseQ = currentQ.replace(/\s*site:\S+/gi, '').trim();
-  inp.value = domain ? `${baseQ} site:${domain}`.trim() : baseQ;
+  _imgSite[productId] = domain || null;
+  // Destaca visualmente o botão ativo (procura pela exata string do onclick)
+  document.querySelectorAll(`[onclick*="imgSearchSite('${productId}'"]`).forEach((btn) => {
+    const isActive = btn.getAttribute('onclick').includes(`'${domain || ''}'`);
+    btn.style.background = isActive ? 'var(--orange)' : '';
+    btn.style.color = isActive ? '#000' : '';
+    btn.style.fontWeight = isActive ? 'bold' : '';
+  });
   imgRunSearch(productId);
 }
 
 async function imgRunSearch(productId) {
   const wrap = document.getElementById('img-results-' + productId);
-  wrap.innerHTML = '<div class="loading-spinner">Buscando no Google...</div>';
+  wrap.innerHTML = '<div class="loading-spinner">Buscando imagens...</div>';
   const qOverride = document.getElementById('img-search-q-' + productId).value.trim();
-  const data = await api('/admin/product-images/search/' + productId + (qOverride ? '?q=' + encodeURIComponent(qOverride) : ''));
+  const site = _imgSite[productId];
+  const params = new URLSearchParams();
+  if (qOverride) params.set('q', qOverride);
+  if (site) params.set('site', site);
+  const url = '/admin/product-images/search/' + productId + (params.toString() ? '?' + params.toString() : '');
+  const data = await api(url);
   if (!data.ok) {
     let msg = `<div style="color:#e35">Erro: ${escapeHtml(data.error||'busca falhou')}</div>`;
     if (data.detail) msg += `<pre style="font-size:11px;color:var(--text2);margin-top:6px">${escapeHtml(JSON.stringify(data.detail, null, 2))}</pre>`;

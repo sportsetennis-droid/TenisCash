@@ -123,13 +123,20 @@ router.get('/search/:productId', async (req, res) => {
     }
 
     const queryOverride = req.query.q;
-    const query = queryOverride || gis.buildProductQuery({
+    let query = queryOverride || gis.buildProductQuery({
       brand: product.brand,
       supplierRef,
       model: product.name,
       color: ctx.color,
       category: product.category,
     });
+
+    // Filtro de site separado — não substitui a query principal,
+    // só restringe ao domínio (ex: site:converse.com.br).
+    const siteFilter = (req.query.site || '').trim().toLowerCase();
+    if (siteFilter && /^[a-z0-9.\-]+\.[a-z]{2,}$/.test(siteFilter)) {
+      query = `${query} site:${siteFilter}`.trim();
+    }
 
     const result = await gis.searchImages(query, {
       count: parseInt(req.query.count || '5', 10),

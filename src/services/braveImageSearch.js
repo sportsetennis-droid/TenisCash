@@ -16,10 +16,10 @@ function isConfigured() {
 function sanitizeQuery(q) {
   return String(q || '')
     .replace(/[\/\\]/g, ' ')
-    .replace(/[^\w\sÀ-ÿ\-"]/g, ' ') // preserva aspas duplas pra match exato
+    .replace(/[^\w\sÀ-ÿ\-".:]/g, ' ') // preserva aspas, pontos e ":" (pra site:dominio.com)
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100);
+    .slice(0, 120);
 }
 
 /**

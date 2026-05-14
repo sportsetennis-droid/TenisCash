@@ -21,13 +21,13 @@ function isConfigured() {
  * @returns {Promise<{ok, items, error}>}
  */
 function sanitizeQuery(q) {
-  // Remove caracteres que podem quebrar Google search (mas preserva aspas pra match exato)
+  // Preserva aspas (match exato), ponto e ":" (pra operador site:dominio.com)
   return String(q || '')
-    .replace(/[\/\\]/g, ' ')        // barras viram espaço
-    .replace(/[^\w\sÀ-ÿ\-"]/g, ' ') // letras, números, acentos, hífen, aspas
-    .replace(/\s+/g, ' ')            // colapsa espaços
+    .replace(/[\/\\]/g, ' ')
+    .replace(/[^\w\sÀ-ÿ\-".:]/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 100);                  // limite 100 chars
+    .slice(0, 120);
 }
 
 async function searchImages(query, opts = {}) {
