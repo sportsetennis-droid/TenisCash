@@ -4266,12 +4266,11 @@ async function imgOpenReview(productId) {
   const product = _imgPendingProducts.find(p => p.id === productId);
   if (!product) return;
   _imgSelection[productId] = new Set(); // reseta seleção ao abrir
-  // Para Converse, default = site oficial (lá tem todos os modelos por ref)
-  if (product.brand && /converse|all\s*star/i.test(product.brand)) {
-    _imgSite[productId] = 'converse.com.br';
-  } else {
-    _imgSite[productId] = null;
-  }
+  // Default: busca ampla (sem filtro de site). A referencia do fornecedor
+  // (cProd da NF-e) costuma ser indexada por revendedores (Centauro, Netshoes,
+  // Mercado Livre) mas NAO pelo site oficial converse.com.br, que so usa
+  // URLs por categoria. Usuario pode clicar nos botoes pra restringir site.
+  _imgSite[productId] = null;
   const modal = document.getElementById('img-review-modal');
   const body = document.getElementById('img-review-body');
   modal.classList.add('show');
