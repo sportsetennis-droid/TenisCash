@@ -794,9 +794,11 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <input class="search-box" id="img-filter-supplier" placeholder="CNPJ fornecedor (opcional)" style="min-width:240px">
     <input type="number" class="search-box" id="img-filter-limit" placeholder="Limite" value="20" min="1" max="200" style="width:100px">
     <button type="button" class="btn btn-primary" id="img-load-btn">Carregar produtos pendentes</button>
+    <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
   </div>
 
   <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+  <div id="img-enrich-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
   <div id="img-products-wrap"></div>
 </div>
 
@@ -4200,6 +4202,7 @@ async function initImagesTab() {
     _imgInit = true;
     document.getElementById('img-refresh').onclick = loadPendingImages;
     document.getElementById('img-load-btn').onclick = loadPendingImages;
+    document.getElementById('img-enrich-btn').onclick = imgEnrichBySupplier;
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4290,6 +4293,18 @@ async function imgRunSearch(productId) {
   });
   html += '</div>';
   wrap.innerHTML = html;
+}
+
+async function imgEnrichBySupplier() {
+  const cnpj = document.getElementById('img-filter-supplier').value.trim();
+  if (!cnpj) { alert('Informe o CNPJ do fornecedor no filtro pra enriquecer os produtos dele'); return; }
+  if (!confirm(`Vai rodar IA em todos os produtos do CNPJ ${cnpj}. Custo estimado: ~R$ 0,01 por produto. Pode levar alguns minutos. Confirma?`)) return;
+  const result = document.getElementById('img-enrich-result');
+  result.innerHTML = '<span style="color:var(--text2)">Rodando IA... aguarda...</span>';
+  const data = await api('/admin/product-images/enrich-supplier/' + encodeURIComponent(cnpj), 'POST', {});
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  result.innerHTML = `<span style="color:#7b7">✓ ${data.enriched}/${data.total} enriquecidos. ${data.failed} falhas. Custo: R$ ${Number(data.totalCostBRL||0).toFixed(2)}</span>`;
+  loadPendingImages();
 }
 
 async function imgSelect(productId, urlEncoded) {

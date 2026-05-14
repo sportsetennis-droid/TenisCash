@@ -119,4 +119,60 @@ router.get('/pending', async (req, res) => {
   }
 });
 
+// Enriquece com IA produtos de um fornecedor (preenche brand/model/color/cleanName)
+router.post('/enrich-supplier/:cnpj', async (req, res) => {
+  try {
+    const { extractFromName } = require('../services/productEnrichmentAI');
+    const supplier = await prisma.supplier.findUnique({ where: { cnpj: req.params.cnpj } });
+    const supplierName = supplier?.companyName || '';
+
+    // Pega todos os produtos do fornecedor (via aiContext.supplierCnpj)
+    const all = await prisma.product.findMany({
+      where: { active: true },
+      take: 5000,
+    });
+    const matching = all.filter((p) => {
+      try {
+        const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext;
+        return ctx?.supplierCnpj === req.params.cnpj;
+      } catch (_) { return false; }
+    });
+
+    let enriched = 0;
+    let failed = 0;
+    let totalCost = 0;
+    for (const p of matching) {
+      try {
+        const result = await extractFromName(p.name, supplierName);
+        if (!result.ok) { failed++; continue; }
+        const d = result.data;
+        totalCost += result.cost || 0;
+        const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
+        ctx.color = d.color || ctx.color;
+        ctx.gender = d.gender || ctx.gender;
+        ctx.sport = d.sport || ctx.sport;
+        await prisma.product.update({
+          where: { id: p.id },
+          data: {
+            name: d.cleanName || p.name,
+            brand: d.brand || p.brand,
+            category: d.category || p.category,
+            subcategory: d.subcategory || p.subcategory,
+            aiContext: ctx,
+          },
+        });
+        enriched++;
+        await new Promise((r) => setTimeout(r, 200));
+      } catch (err) {
+        failed++;
+      }
+    }
+
+    res.json({ total: matching.length, enriched, failed, totalCostBRL: totalCost });
+  } catch (err) {
+    console.error('[enrich-supplier] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

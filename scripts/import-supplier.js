@@ -107,24 +107,50 @@ async function main() {
   }
   console.log(`Total de linhas (variantes brutas): ${allItems.length}`);
 
-  // 4. IA extrai estrutura
-  console.log(`\nRodando IA pra estruturar... (1s por item)`);
+  // 4. IA extrai estrutura (se chave disponível). Senão, usa parser simples.
+  const useAI = !!process.env.ANTHROPIC_API_KEY;
+  console.log(`\nModo: ${useAI ? 'COM IA (estrutura limpa)' : 'SEM IA (parser regex simples)'}\n`);
+
+  function simpleParse(rawName) {
+    // Regex simples pra extrair tamanho do final ("...BRANCO 38")
+    const m = rawName.match(/^(.*?)\s+(\d{2,3}|PP|P|M|G|GG|XG|XXG|XS|S|L|XL|XXL)\s*$/i);
+    let baseName = rawName, size = '';
+    if (m) { baseName = m[1].trim(); size = m[2]; }
+    // Tenta extrair cor (última palavra com /)
+    const colorMatch = baseName.match(/([A-Z]+(?:\/[A-Z]+)+)/);
+    const color = colorMatch ? colorMatch[1] : '';
+    const baseKey = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 80);
+    return {
+      brand: '',
+      model: '',
+      color,
+      size,
+      gender: null,
+      category: 'tenis',
+      subcategory: null,
+      sport: null,
+      cleanName: baseName,
+      baseProductKey: baseKey,
+    };
+  }
+
   const enriched = [];
   let totalCostAI = 0;
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
-    process.stdout.write(`\r  ${i + 1}/${allItems.length} ${item.rawName.slice(0, 50)}                    `);
-    const result = await extractFromName(item.rawName, firstNote.issuerName);
-    totalCostAI += result.cost || 0;
-    enriched.push({
-      ...item,
-      data: result.ok ? result.data : null,
-      _error: result.ok ? null : result.error,
-    });
-    // Delay pra não bater rate limit Anthropic
-    await new Promise((r) => setTimeout(r, 200));
+    process.stdout.write(`\r  ${i + 1}/${allItems.length}                                              `);
+    let data;
+    if (useAI) {
+      const result = await extractFromName(item.rawName, firstNote.issuerName);
+      totalCostAI += result.cost || 0;
+      data = result.ok ? result.data : null;
+      await new Promise((r) => setTimeout(r, 200));
+    } else {
+      data = simpleParse(item.rawName);
+    }
+    enriched.push({ ...item, data });
   }
-  console.log(`\n✓ IA terminou. Custo total: R$ ${totalCostAI.toFixed(2)}\n`);
+  console.log(`\n✓ Processamento terminou. ${useAI ? 'Custo IA: R$ ' + totalCostAI.toFixed(2) : 'Sem IA (sem custo)'}\n`);
 
   // 5. Agrupa por baseProductKey
   const groups = groupVariantsByBase(enriched.filter((e) => e.data));
