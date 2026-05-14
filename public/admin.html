@@ -2743,15 +2743,33 @@ function productDescription(p) {
   return (p && (p.longDescription || p.shortDescription)) || '';
 }
 
+// Tira HTML pra preview/tooltip (mantém só texto)
+function stripHtml(s) {
+  return String(s || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function descCell(p) {
-  const desc = productDescription(p);
+  const descRaw = productDescription(p);
   const id = (p && p.id) || '';
   const safeId = escapeHtml(id);
-  if (!desc) {
+  if (!descRaw) {
     return `<td><button type="button" onclick="editProductDescription('${safeId}')" style="border:1px dashed var(--border);background:transparent;color:var(--text2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;white-space:nowrap">+ adicionar</button></td>`;
   }
-  const preview = desc.length > 60 ? desc.slice(0, 60) + '…' : desc;
-  return `<td style="max-width:220px"><span title="${escapeHtml(desc)}" onclick="editProductDescription('${safeId}')" style="cursor:pointer;font-size:11px;color:var(--text2);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(preview)}</span></td>`;
+  const descText = stripHtml(descRaw);
+  const preview = descText.length > 60 ? descText.slice(0, 60) + '…' : descText;
+  const tooltip = descText.length > 600 ? descText.slice(0, 600) + '…' : descText;
+  return `<td style="max-width:220px"><span title="${escapeHtml(tooltip)}" onclick="editProductDescription('${safeId}')" style="cursor:pointer;font-size:11px;color:#7b7;display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">✓ ${escapeHtml(preview)}</span></td>`;
 }
 
 let _descEditCurrentId = null;
