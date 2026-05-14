@@ -4212,13 +4212,13 @@ async function initImagesTab() {
       document.getElementById('img-review-modal').classList.remove('show');
     };
   }
-  // Verifica status do Google
+  // Verifica status do provider de busca
   const status = await api('/admin/product-images/status');
   const stEl = document.getElementById('img-google-status');
   if (status.configured) {
-    stEl.innerHTML = '<span style="color:#7b7">✓ Google Custom Search configurado</span>';
+    stEl.innerHTML = `<span style="color:#7b7">✓ Provider de busca configurado: <strong>${escapeHtml(status.provider || 'google')}</strong></span>`;
   } else {
-    stEl.innerHTML = '<span style="color:#e35">⚠ GOOGLE_API_KEY ou GOOGLE_CSE_ID não configuradas no Railway. Configure pra usar a busca de imagens.</span>';
+    stEl.innerHTML = '<span style="color:#e35">⚠ Nenhuma chave de busca configurada. Configure BRAVE_API_KEY ou GOOGLE_API_KEY + GOOGLE_CSE_ID no Railway.</span>';
   }
   loadPendingImages();
 }

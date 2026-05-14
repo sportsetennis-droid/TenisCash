@@ -4,15 +4,20 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
-const gis = require('../services/googleImageSearch');
+const googleGis = require('../services/googleImageSearch');
+const braveGis = require('../services/braveImageSearch');
+
+// Escolhe o provider conforme env: prioriza Brave se BRAVE_API_KEY existir; senão Google.
+const gis = braveGis.isConfigured() ? braveGis : googleGis;
+const providerName = braveGis.isConfigured() ? 'brave' : 'google';
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
-// Status da configuração Google
+// Status da configuração (Google ou Brave conforme env)
 router.get('/status', (_req, res) => {
-  res.json({ configured: gis.isConfigured() });
+  res.json({ configured: gis.isConfigured(), provider: providerName });
 });
 
 // Teste de chave/CSE arbitrário — recebe via query string. Útil pra debug.
@@ -40,28 +45,45 @@ router.get('/test-key', async (req, res) => {
   }
 });
 
-// Diagnóstico: testa busca crua sem searchType=image
+// Diagnóstico: testa o provider ativo (Google ou Brave)
 router.get('/diagnose', async (_req, res) => {
   try {
+    if (providerName === 'brave') {
+      const apiKey = process.env.BRAVE_API_KEY;
+      if (!apiKey) return res.json({ provider: 'brave', error: 'BRAVE_API_KEY não setada' });
+      const result = await braveGis.searchImages('converse chuck taylor', { count: 3 });
+      res.json({
+        provider: 'brave',
+        keyPreview: apiKey.slice(0, 6) + '...',
+        keyLength: apiKey.length,
+        testImage: {
+          ok: result.ok,
+          error: result.error || null,
+          itemCount: result.items?.length || 0,
+          firstItem: result.items?.[0] ? {
+            source: result.items[0].source,
+            title: result.items[0].title?.slice(0, 80),
+          } : null,
+        },
+      });
+      return;
+    }
+
+    // fallback: diagnose Google
     const apiKey = process.env.GOOGLE_API_KEY;
     const cseId = process.env.GOOGLE_CSE_ID;
     if (!apiKey || !cseId) {
-      return res.json({ ok: false, error: 'env vars não setadas', hasKey: !!apiKey, hasCseId: !!cseId });
+      return res.json({ provider: 'google', error: 'env vars não setadas', hasKey: !!apiKey, hasCseId: !!cseId });
     }
-    const cseIdLen = cseId.length;
-
-    // Teste 1: busca web simples (sem imagem)
     const url1 = `https://customsearch.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cseId}&q=converse`;
     const r1 = await fetch(url1);
     const d1 = await r1.json();
-
-    // Teste 2: busca de imagem
     const url2 = `https://customsearch.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cseId}&q=converse&searchType=image`;
     const r2 = await fetch(url2);
     const d2 = await r2.json();
-
     res.json({
-      cseIdLength: cseIdLen,
+      provider: 'google',
+      cseIdLength: cseId.length,
       cseIdPreview: cseId.slice(0, 4) + '...' + cseId.slice(-4),
       keyPreview: apiKey.slice(0, 6) + '...',
       testWeb: { status: r1.status, error: d1.error?.message || null, hasItems: !!d1.items?.length },
