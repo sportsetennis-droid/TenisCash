@@ -86,6 +86,9 @@ async function searchImages(query, opts = {}) {
 function buildProductQuery(product) {
   const parts = [];
   if (product.brand) parts.push(product.brand);
+  // Referência do fornecedor (cProd da NF-e) — é o identificador único do modelo,
+  // ex: "CT00010001". Coloca antes do model pra forçar match exato no buscador.
+  if (product.supplierRef) parts.push(product.supplierRef);
   if (product.model) parts.push(product.model);
   if (product.color) parts.push(product.color);
   if (!parts.length && product.name) parts.push(product.name);

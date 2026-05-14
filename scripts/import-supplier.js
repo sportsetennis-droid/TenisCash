@@ -170,6 +170,12 @@ async function main() {
     const baseSku = g.variants[0].ean || g.variants[0].sku;
     const sku = `${cnpj.slice(-4)}-${baseSku}`.slice(0, 64);
 
+    // Referência do fornecedor (cProd da NF-e) — identificador único do modelo
+    // ex: "CT00010001" pra Chuck Taylor. Pega do primeiro variant que tenha sku
+    // não-EAN (cProd geralmente vem em supplierCode, não EAN).
+    const refCandidate = g.variants.find((v) => v.sku && !/^\d{12,14}$/.test(v.sku));
+    const supplierRef = refCandidate ? String(refCandidate.sku).toUpperCase() : null;
+
     const productData = {
       name: g.cleanName || `${g.brand} ${g.model} ${g.color}`.trim(),
       brand: g.brand || 'A DEFINIR',
@@ -181,6 +187,7 @@ async function main() {
       source: 'nfe-import',
       aiContext: {
         supplierCnpj: cnpj,
+        supplierRef,
         baseProductKey: g.baseKey,
         gender: g.gender,
         sport: g.sport,

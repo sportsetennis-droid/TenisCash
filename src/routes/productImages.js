@@ -108,9 +108,24 @@ router.get('/search/:productId', async (req, res) => {
       } catch (_) { return {}; }
     })();
 
+    // Extrai a referência do fornecedor (cProd da NF-e). Prioridade:
+    //   1. ctx.supplierRef (futuras importações salvam explícito)
+    //   2. ctx.baseProductKey (importações antigas — extrai por regex)
+    //   3. product.sku após o "-" do CNPJ (ex: "0750-CT00010001" → "CT00010001")
+    let supplierRef = ctx.supplierRef || null;
+    if (!supplierRef && ctx.baseProductKey) {
+      const m = String(ctx.baseProductKey).match(/([a-z]{2,4}\d{6,12})/i);
+      if (m) supplierRef = m[1].toUpperCase();
+    }
+    if (!supplierRef && product.sku) {
+      const m = String(product.sku).match(/-([A-Za-z]{2,4}\d{6,12})/);
+      if (m) supplierRef = m[1].toUpperCase();
+    }
+
     const queryOverride = req.query.q;
     const query = queryOverride || gis.buildProductQuery({
       brand: product.brand,
+      supplierRef,
       model: product.name,
       color: ctx.color,
       category: product.category,
