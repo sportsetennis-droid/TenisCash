@@ -646,9 +646,16 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
     seo_title: ptObj(seoTitle),
     seo_description: ptObj(seoDescription),
-    tags: [localProduct.brand, localProduct.category, localProduct.subcategory]
+    tags: [
+      localProduct.brand,
+      localProduct.category,
+      localProduct.subcategory,
+      opts.gender,
+      ...(Array.isArray(opts.extraTags) ? opts.extraTags : []),
+    ]
       .filter(Boolean)
       .map((s) => String(s).toLowerCase())
+      .filter((v, i, a) => a.indexOf(v) === i)
       .join(','),
   };
 
@@ -669,18 +676,39 @@ async function pushProductToNuvemshop(localProductId, connection) {
     where: { localProductId: product.id },
   });
 
-  // Mapeia categoria do produto local pra ID na Nuvemshop (cria se não existir)
+  // 1ª opção: aiContext.nuvemshopMapping (preenchido por IA via enrich-mappings)
+  // 2ª opção: fallback por nome (cria categoria se não existir)
   const categoryIds = [];
-  if (product.category) {
-    const catId = await findOrCreateCategory(connection, product.category);
-    if (catId) categoryIds.push(catId);
-  }
-  if (product.subcategory) {
-    const subId = await findOrCreateCategory(connection, product.subcategory);
-    if (subId && !categoryIds.includes(subId)) categoryIds.push(subId);
+  let aiTags = [];
+  let aiGender = null;
+
+  const aiCtx = (() => {
+    try {
+      if (!product.aiContext) return null;
+      return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext;
+    } catch (_) { return null; }
+  })();
+  const aiMapping = aiCtx?.nuvemshopMapping;
+  if (aiMapping && Array.isArray(aiMapping.categoryIds) && aiMapping.categoryIds.length) {
+    categoryIds.push(...aiMapping.categoryIds);
+    if (Array.isArray(aiMapping.tags)) aiTags = aiMapping.tags;
+    if (aiMapping.gender) aiGender = aiMapping.gender;
+  } else {
+    if (product.category) {
+      const catId = await findOrCreateCategory(connection, product.category);
+      if (catId) categoryIds.push(catId);
+    }
+    if (product.subcategory) {
+      const subId = await findOrCreateCategory(connection, product.subcategory);
+      if (subId && !categoryIds.includes(subId)) categoryIds.push(subId);
+    }
   }
 
-  const payload = buildNuvemshopProductPayload(product, product.sizes || [], { categoryIds });
+  const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
+    categoryIds,
+    extraTags: aiTags,
+    gender: aiGender,
+  });
 
   let nsProduct;
   let action;

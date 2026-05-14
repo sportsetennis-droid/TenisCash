@@ -6,6 +6,7 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const ns = require('../services/nuvemshop');
 const handlers = require('../services/nuvemshopHandlers');
+const aiMatcher = require('../services/aiCategoryMatcher');
 
 const router = express.Router();
 
@@ -215,6 +216,34 @@ adminRouter.post('/push/stock/:id', async (req, res) => {
     const result = await handlers.pushStockUpdate(req.params.id);
     res.json(result);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI: Mapear produtos locais às categorias da Nuvemshop com IA
+adminRouter.post('/enrich-mappings', async (req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!connection) return res.status(400).json({ error: 'Sem conexão Nuvemshop ativa' });
+    // Carrega categorias da Nuvemshop
+    const cats = await ns.fetchAllPages(connection, '/categories', { perPage: 100, max: 500 });
+    const flatCats = cats.map((c) => ({
+      id: c.id,
+      name: (typeof c.name === 'object' ? c.name.pt : c.name) || '',
+      parentId: c.parent || null,
+    }));
+    if (!flatCats.length) {
+      return res.status(400).json({ error: 'Nenhuma categoria encontrada na Nuvemshop. Crie a árvore lá primeiro.' });
+    }
+    const { limit, force } = req.body || {};
+    const result = await aiMatcher.enrichProductsForNuvemshop(flatCats, {
+      limit: limit ? parseInt(limit, 10) : 1000,
+      force: !!force,
+      delayMs: 600,
+    });
+    res.json({ ...result, totalCategories: flatCats.length });
+  } catch (err) {
+    console.error('[enrich-mappings] erro:', err);
     res.status(500).json({ error: err.message });
   }
 });

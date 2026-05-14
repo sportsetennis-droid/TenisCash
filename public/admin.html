@@ -669,13 +669,28 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div id="ns-import-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
 
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px;color:var(--orange)">SUBIR CATÁLOGO (TenisCash → Nuvemshop)</h4>
-  <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Envia produtos do TenisCash pra Nuvemshop como produtos ocultos (você publica depois pelo painel da Nuvemshop).</p>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-    <button type="button" class="btn btn-primary" id="ns-push-missing">Subir só os NÃO sincronizados</button>
-    <button type="button" class="btn" id="ns-push-all">Subir todos (atualiza existentes)</button>
-    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px">Limite: <input type="number" id="ns-push-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Envia produtos do TenisCash pra Nuvemshop. <strong style="color:var(--orange)">Recomendação:</strong> primeiro use "Mapear com IA" pra classificar produtos nas categorias da Nuvemshop, depois suba.</p>
+
+  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🤖 PASSO 1: MAPEAR COM IA</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Pra cada produto, a IA escolhe gênero (Feminino/Masculino/Menina/Menino), modelo específico e família (Corrida/Performance/Casual) baseado no nome e marca.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-primary" id="ns-enrich-btn">Mapear com IA</button>
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px">Limite: <input type="number" id="ns-enrich-limit" value="20" min="1" max="1000" style="width:80px;padding:4px"></label>
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="ns-enrich-force"> Re-mapear já feitos</label>
+    </div>
+    <div id="ns-enrich-result" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
   </div>
-  <div id="ns-push-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+
+  <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🚀 PASSO 2: SUBIR PRA NUVEMSHOP</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-primary" id="ns-push-missing">Subir só os NÃO sincronizados</button>
+      <button type="button" class="btn" id="ns-push-all">Subir todos (atualiza existentes)</button>
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px">Limite: <input type="number" id="ns-push-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
+    </div>
+    <div id="ns-push-result" style="font-size:13px;color:var(--text2);margin-top:8px"></div>
+  </div>
 
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">EVENTOS DE WEBHOOK</h4>
   <div id="ns-events-wrap"></div>
@@ -3756,6 +3771,7 @@ async function initNsTab() {
     document.getElementById('ns-import-orders').onclick = () => nsImport('orders');
     document.getElementById('ns-push-missing').onclick = () => nsPush(true);
     document.getElementById('ns-push-all').onclick = () => nsPush(false);
+    document.getElementById('ns-enrich-btn').onclick = nsEnrich;
     document.querySelectorAll('.js-ns-map').forEach(btn => {
       btn.onclick = () => nsLoadMappings(btn.dataset.kind);
     });
@@ -3770,6 +3786,20 @@ async function nsImport(kind) {
   if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
   result.innerHTML = `<span style="color:#7b7">✓ ${labelMap[kind]} importados: ${JSON.stringify(data)}</span>`;
   loadNsAll();
+}
+async function nsEnrich() {
+  const result = document.getElementById('ns-enrich-result');
+  const limit = parseInt(document.getElementById('ns-enrich-limit').value, 10) || 20;
+  const force = document.getElementById('ns-enrich-force').checked;
+  if (!confirm(`Mapear ${limit} produtos com IA. Cada um leva ~1s. Custo estimado: ~R$ ${(limit*0.01).toFixed(2)}. Confirma?`)) return;
+  result.innerHTML = `Rodando IA em ${limit} produtos... pode demorar.`;
+  const data = await api('/admin/nuvemshop/enrich-mappings', 'POST', { limit, force });
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  let msg = `<span style="color:#7b7">✓ ${data.processed} produtos mapeados, ${data.withCategory} com categoria. Custo: R$ ${Number(data.totalCostBRL||0).toFixed(2)}.</span>`;
+  if (data.errors?.length) {
+    msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
+  }
+  result.innerHTML = msg;
 }
 async function nsPush(onlyMissing) {
   const result = document.getElementById('ns-push-result');
