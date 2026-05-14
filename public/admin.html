@@ -4848,8 +4848,10 @@ async function imgOpenReview(productId) {
       <input class="search-box" id="img-search-q-${productId}" placeholder="Sobrescrever query (opcional)" style="flex:1">
       <button type="button" class="btn btn-primary" onclick="imgRunSearch('${productId}')">Buscar</button>
       <button type="button" class="btn" style="white-space:nowrap" onclick="imgImportDescription('${productId}')">📥 Descrição oficial</button>
+      <button type="button" class="btn btn-primary" style="white-space:nowrap;background:var(--orange);color:#000;font-weight:bold" onclick="imgCurateOne('${productId}')">🧠 Curar esse com IA</button>
     </div>
     <div id="img-import-result-${productId}" style="font-size:11px;color:var(--text2);margin-bottom:6px"></div>
+    <div id="img-curate-one-result-${productId}" style="font-size:11px;margin-bottom:6px"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px;color:var(--text2)">
       <span style="align-self:center">🔍 Site:</span>
       <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','converse.com.br')">Converse Oficial</button>
@@ -4944,6 +4946,47 @@ function imgUpdateConfirmButton(productId) {
   btn.textContent = `Salvar ${n} selecionada${n === 1 ? '' : 's'}`;
   btn.disabled = n === 0;
   btn.style.opacity = n === 0 ? '0.5' : '1';
+}
+
+async function imgCurateOne(productId) {
+  const resultEl = document.getElementById('img-curate-one-result-' + productId);
+  if (!resultEl) return;
+  resultEl.innerHTML = '<span style="color:var(--orange)">🧠 Curando... pode demorar uns 10-15 segundos (busca imagens + vision + descrição + Nuvemshop)</span>';
+  const startedAt = Date.now();
+  try {
+    const r = await api('/admin/ai-curation/product/' + productId, 'POST', {});
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    if (r.error) {
+      resultEl.innerHTML = `<span style="color:#e35">❌ Erro: ${escapeHtml(r.error)} (${elapsed}s)</span>`;
+      return;
+    }
+    const img = r.steps?.image || {};
+    const desc = r.steps?.description || {};
+    const ns = r.steps?.nuvemshop || {};
+    const bd = r.brandDiscovery || {};
+
+    let html = `<div style="padding:10px;background:rgba(0,0,0,0.4);border-radius:6px;border:1px solid var(--orange)">`;
+    html += `<div style="font-weight:bold;color:var(--orange);margin-bottom:8px">✅ Curadoria completa em ${elapsed}s (custo R$ ${(r.costBRL||0).toFixed(3)})</div>`;
+    if (bd.site || bd.canonical) {
+      html += `<div style="color:#c9c;margin-bottom:6px">🔍 Brand discovery: <strong>${escapeHtml(bd.canonical||'')}</strong> → <code>${escapeHtml(bd.site||'(sem site)')}</code> (confiança ${bd.confidence}/10)</div>`;
+    }
+    html += `<div style="margin-bottom:6px">🖼️ Imagem: ${img.ok ? '<span style="color:#7b7">✓ score '+img.score+'</span>' : '<span style="color:#e35">✗ '+escapeHtml(img.reason||'falhou')+'</span>'}</div>`;
+    if (img.url) html += `<div style="font-size:10px;color:var(--text2);margin-bottom:6px">URL: <a href="${escapeHtml(img.url)}" target="_blank" style="color:var(--orange)">${escapeHtml(img.url.slice(0,80))}</a> ${img.extras ? '(+ '+img.extras+' extras)' : ''}</div>`;
+    if (img.reason && img.ok) html += `<div style="font-size:10px;color:var(--text2);margin-bottom:6px">Motivo IA: "${escapeHtml(img.reason)}"</div>`;
+
+    html += `<div style="margin-bottom:6px">📝 Descrição: ${desc.ok ? '<span style="color:#7b7">✓ '+(desc.length||'?')+' chars ('+escapeHtml(desc.source||'?')+')</span>' : '<span style="color:#e35">✗ '+escapeHtml(desc.reason||'falhou')+'</span>'}</div>`;
+    if (desc.url) html += `<div style="font-size:10px;color:var(--text2);margin-bottom:6px">Página: <a href="${escapeHtml(desc.url)}" target="_blank" style="color:var(--orange)">${escapeHtml(desc.url.slice(0,80))}</a></div>`;
+    if (desc.triedQueries) html += `<div style="font-size:10px;color:var(--text2);margin-bottom:6px">Tentou: <code>${desc.triedQueries.map(q=>escapeHtml(q)).join(' | ')}</code></div>`;
+
+    html += `<div>🛒 Nuvemshop: ${ns.synced ? '<span style="color:#7b7">✓ '+escapeHtml(ns.action||'')+'</span>' : '<span style="color:var(--text2)">'+escapeHtml(ns.reason||'-')+'</span>'}</div>`;
+    html += '</div>';
+
+    resultEl.innerHTML = html;
+    // Recarrega a imagem mostrada no modal pra ver a nova selecionada
+    imgRunSearch(productId);
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:#e35">❌ ${escapeHtml(err.message)}</span>`;
+  }
 }
 
 async function imgImportDescription(productId) {

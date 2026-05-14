@@ -166,7 +166,7 @@ async function curateProduct(productId, opts = {}) {
             url: chosen.url,
             score: chosen._score,
             reason: chosen._reason || null,
-            candidates: ranked.length,
+            candidates: rankedScored.length,
             extras: extras.length,
           };
           report.costBRL += visionCost;
@@ -174,7 +174,7 @@ async function curateProduct(productId, opts = {}) {
           report.steps.image = {
             ok: false,
             reason: `melhor score (${chosen._score}) abaixo do mínimo (${minScore})`,
-            candidates: ranked.length,
+            candidates: rankedScored.length,
             topScore: chosen._score,
           };
           report.costBRL += visionCost;
@@ -187,17 +187,35 @@ async function curateProduct(productId, opts = {}) {
     }
 
     // ============ 2. DESCRIÇÃO ============
-    if (!opts.skipDescription && !product.longDescription && officialSite && serperWeb.isConfigured()) {
+    if (!opts.skipDescription && !product.longDescription && serperWeb.isConfigured()) {
       const queryParts = [];
       if (brandToUse) queryParts.push(brandToUse);
       if (cleanName) queryParts.push(cleanName);
       if (ctx.color && !cleanName.toLowerCase().includes(String(ctx.color).toLowerCase())) {
         queryParts.push(ctx.color);
       }
-      const descQuery = queryParts.join(' ') + ' site:' + officialSite;
-      const search = await serperWeb.searchWeb(descQuery, { count: 5 });
-      const siteRe = new RegExp(officialSite.replace(/\./g, '\\.') + '(/|$)', 'i');
-      const productUrl = (search.results || []).find((r) => siteRe.test(r.url || ''))?.url;
+      const baseQuery = queryParts.join(' ');
+
+      // Tentativa 1: site oficial (se temos)
+      let productUrl = null;
+      let triedQueries = [];
+      if (officialSite) {
+        const q1 = `${baseQuery} site:${officialSite}`;
+        triedQueries.push(q1);
+        const r1 = await serperWeb.searchWeb(q1, { count: 5 });
+        const siteRe = new RegExp(officialSite.replace(/\./g, '\\.') + '(/|$)', 'i');
+        productUrl = (r1.results || []).find((r) => siteRe.test(r.url || ''))?.url || null;
+      }
+
+      // Tentativa 2: busca ampla — qualquer página com nome+marca, prioriza páginas que tenham
+      // descrição estruturada (e-commerce). Filtra fora redes sociais e marketplaces ruins.
+      if (!productUrl) {
+        triedQueries.push(baseQuery);
+        const r2 = await serperWeb.searchWeb(baseQuery, { count: 10 });
+        const blacklist = /facebook|instagram|tiktok|youtube|pinterest|twitter|wikipedia/i;
+        const candidates = (r2.results || []).filter((r) => !blacklist.test(r.url || ''));
+        productUrl = candidates[0]?.url || null;
+      }
 
       if (productUrl) {
         const scraped = await scrapeProductPage(productUrl);
@@ -211,17 +229,15 @@ async function curateProduct(productId, opts = {}) {
               shortDescription: shortBase ? (shortBase.length > 200 ? shortBase.slice(0, 200) + '…' : shortBase) : null,
             },
           });
-          report.steps.description = { ok: true, url: productUrl, length: longDesc.length };
+          report.steps.description = { ok: true, url: productUrl, length: longDesc.length, source: officialSite ? 'site oficial' : 'busca ampla' };
         } else {
-          report.steps.description = { ok: false, reason: 'página sem descrição extraível', url: productUrl };
+          report.steps.description = { ok: false, reason: 'página sem descrição extraível', url: productUrl, triedQueries };
         }
       } else {
-        report.steps.description = { ok: false, reason: 'nenhuma página do site oficial encontrada', query: descQuery };
+        report.steps.description = { ok: false, reason: 'nenhuma página relevante encontrada', triedQueries };
       }
     } else if (product.longDescription) {
       report.steps.description = { ok: true, reason: 'já tinha descrição' };
-    } else if (!officialSite) {
-      report.steps.description = { ok: false, reason: 'sem site oficial mapeado pro fornecedor' };
     }
 
     // ============ 3. NUVEMSHOP ============
