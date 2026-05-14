@@ -45,6 +45,85 @@ router.post('/product/:id', async (req, res) => {
   }
 });
 
+// Resumo GLOBAL de pendências por fornecedor — pra o agente autônomo
+// saber por onde começar e o que falta em todo o catálogo.
+router.get('/pending-summary', async (_req, res) => {
+  try {
+    // Agrupa produtos pendentes (sem imagem OU sem descrição) por supplierCnpj.
+    const pending = await prisma.product.findMany({
+      where: {
+        active: true,
+        OR: [{ imageUrl: null }, { longDescription: null }],
+      },
+      select: { id: true, aiContext: true, imageUrl: true, longDescription: true, brand: true },
+    });
+    const bySupplier = new Map();
+    for (const p of pending) {
+      const ctx = (() => {
+        try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); }
+        catch (_) { return {}; }
+      })();
+      const cnpj = ctx.supplierCnpj || 'sem-cnpj';
+      const entry = bySupplier.get(cnpj) || { cnpj, pending: 0, missingImage: 0, missingDesc: 0, brands: new Set() };
+      entry.pending++;
+      if (!p.imageUrl) entry.missingImage++;
+      if (!p.longDescription) entry.missingDesc++;
+      if (p.brand) entry.brands.add(p.brand);
+      bySupplier.set(cnpj, entry);
+    }
+    // Vira array + enriquece com nome do fornecedor
+    const cnpjs = [...bySupplier.keys()].filter((c) => c !== 'sem-cnpj');
+    const suppliers = await prisma.supplier.findMany({
+      where: { cnpj: { in: cnpjs } },
+      select: { cnpj: true, companyName: true, averageMarkup: true },
+    });
+    const supplierByCnpj = Object.fromEntries(suppliers.map((s) => [s.cnpj, s]));
+
+    const list = [...bySupplier.values()]
+      .map((e) => ({
+        cnpj: e.cnpj,
+        companyName: supplierByCnpj[e.cnpj]?.companyName || (e.cnpj === 'sem-cnpj' ? 'Sem CNPJ' : e.cnpj),
+        pending: e.pending,
+        missingImage: e.missingImage,
+        missingDesc: e.missingDesc,
+        brands: [...e.brands].slice(0, 3),
+      }))
+      .sort((a, b) => b.pending - a.pending);
+
+    res.json({ totalPending: pending.length, suppliers: list });
+  } catch (err) {
+    console.error('[ai-curation/pending-summary] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fila GLOBAL — todos os produtos pendentes em TODOS os fornecedores
+router.get('/queue-all', async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany({
+      where: {
+        active: true,
+        OR: [{ imageUrl: null }, { longDescription: null }],
+      },
+      select: { id: true, sku: true, name: true, brand: true, imageUrl: true, longDescription: true, aiContext: true },
+      orderBy: [{ brand: 'asc' }, { name: 'asc' }],
+    });
+    const enriched = products.map((p) => {
+      let ctx = {};
+      try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch (_) {}
+      return {
+        id: p.id, sku: p.sku, name: p.name, brand: p.brand,
+        supplierCnpj: ctx.supplierCnpj || null,
+        missingImage: !p.imageUrl,
+        missingDesc: !p.longDescription,
+      };
+    });
+    res.json({ total: enriched.length, products: enriched });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Lista de produtos pendentes de curadoria pra um fornecedor
 router.get('/queue/:cnpj', async (req, res) => {
   try {

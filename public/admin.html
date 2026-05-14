@@ -813,7 +813,8 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
     <button type="button" class="btn" id="img-import-desc-btn">📥 Importar descrições do converse.com.br</button>
     <button type="button" class="btn" id="img-auto-image-btn">🤖 Auto-importar imagens (1ª opção)</button>
-    <button type="button" class="btn btn-primary" id="img-ai-curate-btn" style="background:var(--orange);color:#000;font-weight:bold">🧠 Curar com IA (imagem + descrição + Nuvemshop)</button>
+    <button type="button" class="btn btn-primary" id="img-ai-curate-btn" style="background:var(--orange);color:#000;font-weight:bold">🧠 Curar com IA (CNPJ filtrado)</button>
+    <button type="button" class="btn btn-primary" id="img-ai-curate-all-btn" style="background:#9c6;color:#000;font-weight:bold">🤖 Curadoria Autônoma TOTAL (todos fornecedores)</button>
   </div>
   <!-- progresso da curadoria IA -->
   <div id="ai-curate-progress" style="display:none;border:1px solid var(--orange);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(255,153,0,0.05)">
@@ -4737,6 +4738,7 @@ async function initImagesTab() {
     document.getElementById('img-import-desc-btn').onclick = imgImportDescriptionBulk;
     document.getElementById('img-auto-image-btn').onclick = imgAutoImageBulk;
     document.getElementById('img-ai-curate-btn').onclick = imgAiCurate;
+    document.getElementById('img-ai-curate-all-btn').onclick = imgAiCurateAll;
     document.getElementById('ai-curate-stop').onclick = () => { _aiCurateStop = true; };
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
@@ -5044,6 +5046,85 @@ async function imgAiCurate() {
   }
 
   statusEl.textContent = `✅ Concluído: ${processed}/${total}. Custo total: R$ ${totalCostBRL.toFixed(2)}`;
+  loadPipelineStatus();
+  loadPendingImages();
+}
+
+async function imgAiCurateAll() {
+  // 1. Pega o resumo de todos os fornecedores com pendência
+  const summary = await api('/admin/ai-curation/pending-summary');
+  if (summary.error) { alert('Erro: ' + summary.error); return; }
+  if (!summary.totalPending) { alert('Nenhum produto pendente — tudo já curado!'); return; }
+
+  // Mostra um sumário pro usuário confirmar
+  const lines = summary.suppliers.slice(0, 20).map((s) =>
+    `  ${s.companyName.padEnd(35).slice(0,35)} — ${String(s.pending).padStart(4)} pendentes (${s.missingImage} sem img, ${s.missingDesc} sem desc)`
+  ).join('\n');
+  const msg = `O agente vai curar AUTONOMAMENTE ${summary.totalPending} produtos em ${summary.suppliers.length} fornecedores:\n\n${lines}\n\nPra cada produto sem site mapeado, ele DESCOBRE o site oficial via IA, busca imagem, valida visualmente, baixa descrição, e sincroniza Nuvemshop.\n\nTempo estimado: ~${Math.ceil(summary.totalPending * 5 / 60)} min. Custo estimado: R$ ${(summary.totalPending * 0.03).toFixed(2)}.\n\nConfirma?`;
+  if (!confirm(msg)) return;
+
+  _aiCurateStop = false;
+  const progressEl = document.getElementById('ai-curate-progress');
+  const statusEl = document.getElementById('ai-curate-status');
+  const barEl = document.getElementById('ai-curate-bar');
+  const countersEl = document.getElementById('ai-curate-counters');
+  const logEl = document.getElementById('ai-curate-log');
+  progressEl.style.display = 'block';
+  logEl.innerHTML = '';
+
+  statusEl.textContent = 'Carregando fila global...';
+  const queue = await api('/admin/ai-curation/queue-all');
+  if (!queue.products?.length) { statusEl.textContent = 'Nada pra curar'; return; }
+  const total = queue.products.length;
+  let processed = 0, imageOk = 0, descOk = 0, nsOk = 0, errors = 0;
+  let totalCostBRL = 0;
+  const startedAt = Date.now();
+
+  function updateCounters() {
+    const pct = Math.round((processed / total) * 100);
+    barEl.style.width = pct + '%';
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    const avg = processed > 0 ? Math.round((elapsed / processed) * 10) / 10 : 0;
+    const remaining = avg > 0 ? Math.round(avg * (total - processed)) : '?';
+    countersEl.innerHTML = `<strong>${processed}/${total}</strong> processados • <span style="color:#9c6">${imageOk} imagens</span> • <span style="color:#c9c">${descOk} descrições</span> • <span style="color:#7b7">${nsOk} Nuvemshop</span> • <span style="color:#e35">${errors} falhas</span> • Custo: R$ ${totalCostBRL.toFixed(2)} • ${elapsed}s rodando • ~${remaining}s restantes`;
+  }
+  function appendLog(html) {
+    logEl.innerHTML += html + '<br>';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  statusEl.textContent = `Curando ${total} produtos em modo autônomo...`;
+  updateCounters();
+
+  let currentBrand = null;
+  for (const p of queue.products) {
+    if (_aiCurateStop) { appendLog('<span style="color:#fa3">⏸️ Parado pelo usuário</span>'); break; }
+    if (p.brand !== currentBrand) {
+      currentBrand = p.brand;
+      appendLog(`<div style="color:var(--orange);margin-top:6px;font-weight:bold">━━ ${escapeHtml(currentBrand || 'sem marca')} ━━</div>`);
+    }
+    try {
+      const r = await api('/admin/ai-curation/product/' + p.id, 'POST', {});
+      const imgIcon = r.steps?.image?.ok ? '✓' : '✗';
+      const descIcon = r.steps?.description?.ok ? '✓' : '✗';
+      const nsIcon = r.steps?.nuvemshop?.synced ? '✓' : '·';
+      const score = r.steps?.image?.score != null ? `s${r.steps.image.score}` : '-';
+      const brandDisc = r.brandDiscovery ? ` [→${r.brandDiscovery.site || 'sem site'}]` : '';
+      if (r.steps?.image?.ok) imageOk++;
+      if (r.steps?.description?.ok) descOk++;
+      if (r.steps?.nuvemshop?.synced) nsOk++;
+      if (r.error) errors++;
+      totalCostBRL += r.costBRL || 0;
+      appendLog(`<code>${escapeHtml(p.sku)}</code> img${imgIcon}(${score}) desc${descIcon} ns${nsIcon}${brandDisc} — ${escapeHtml((p.name||'').slice(0,55))}`);
+    } catch (err) {
+      errors++;
+      appendLog(`<code>${escapeHtml(p.sku)}</code> <span style="color:#e35">ERRO: ${escapeHtml(err.message)}</span>`);
+    }
+    processed++;
+    updateCounters();
+  }
+
+  statusEl.textContent = `✅ Curadoria autônoma concluída: ${processed}/${total}. Custo total: R$ ${totalCostBRL.toFixed(2)}`;
   loadPipelineStatus();
   loadPendingImages();
 }

@@ -16,6 +16,7 @@ const serperWeb = require('./serperWebSearch');
 const { scrapeProductPage } = require('./productPageScraper');
 const { pickBestImage, isConfigured: visionConfigured } = require('./visionValidator');
 const { getSupplierMeta } = require('./supplierOfficialSites');
+const { discoverBrandSite, isConfigured: brandDiscoveryConfigured } = require('./brandDiscovery');
 const nsHandlers = require('./nuvemshopHandlers');
 
 function parseCtx(p) {
@@ -66,8 +67,20 @@ async function curateProduct(productId, opts = {}) {
     const ctx = parseCtx(product);
     const supplierCnpj = ctx.supplierCnpj;
     const supplierMeta = getSupplierMeta(supplierCnpj);
-    const officialSite = supplierMeta?.site || null;
-    const brandToUse = supplierMeta?.brand || product.brand;
+    let officialSite = supplierMeta?.site || null;
+    let brandToUse = supplierMeta?.brand || product.brand;
+
+    // Se NÃO tem site mapeado E temos a IA, tenta descobrir o site oficial
+    // pela marca + categoria. Cache por marca evita pagar várias vezes.
+    if (!officialSite && brandDiscoveryConfigured() && brandToUse && !/^(A\s*DEFINIR|-+|sem\s*marca)?$/i.test(brandToUse.trim())) {
+      const disc = await discoverBrandSite(brandToUse, product.category);
+      if (disc.ok) {
+        if (disc.site && disc.confidence >= 7) officialSite = disc.site;
+        if (disc.brandCanonical) brandToUse = disc.brandCanonical;
+        report.brandDiscovery = { site: disc.site, confidence: disc.confidence, canonical: disc.brandCanonical, source: disc.source || 'ai' };
+        report.costBRL += disc.cost?.brl || 0;
+      }
+    }
 
     const cleanName = (product.name || '').replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
     const productInfo = {
