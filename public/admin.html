@@ -1514,7 +1514,7 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusIcon = enriched
@@ -1532,6 +1532,7 @@ async function loadCatalogProductsAdmin() {
       + refCell(p)
       + sportCell(p)
       + '<td>' + escapeHtml(cat) + '</td>'
+      + descCell(p)
       + locationCell(p)
       + '<td>R$ ' + Number(p.price).toFixed(2) + '</td>'
       + '<td>' + (p.active ? 'sim' : 'não') + '</td>'
@@ -2737,6 +2738,96 @@ function sizesCell(p) {
     : '<td style="color:var(--text2)">—</td>';
 }
 
+// Descrição técnica — célula clicável que abre modal de edição
+function productDescription(p) {
+  return (p && (p.longDescription || p.shortDescription)) || '';
+}
+
+function descCell(p) {
+  const desc = productDescription(p);
+  const id = (p && p.id) || '';
+  const safeId = escapeHtml(id);
+  if (!desc) {
+    return `<td><button type="button" onclick="editProductDescription('${safeId}')" style="border:1px dashed var(--border);background:transparent;color:var(--text2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;white-space:nowrap">+ adicionar</button></td>`;
+  }
+  const preview = desc.length > 60 ? desc.slice(0, 60) + '…' : desc;
+  return `<td style="max-width:220px"><span title="${escapeHtml(desc)}" onclick="editProductDescription('${safeId}')" style="cursor:pointer;font-size:11px;color:var(--text2);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(preview)}</span></td>`;
+}
+
+let _descEditCurrentId = null;
+let _descEditOnSaved = null;
+
+async function editProductDescription(productId, onSaved) {
+  _descEditCurrentId = productId;
+  _descEditOnSaved = onSaved || null;
+  let modal = document.getElementById('product-desc-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'product-desc-modal';
+    modal.className = 'detail-modal';
+    modal.innerHTML = `
+      <div class="detail-content" style="max-width:640px">
+        <button type="button" class="detail-close" onclick="closeDescEdit()">✕</button>
+        <div style="font-family:Orbitron;font-size:14px;letter-spacing:2px;color:var(--orange);margin-bottom:6px">EDITAR DESCRIÇÃO TÉCNICA</div>
+        <div id="desc-modal-product-info" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+        <textarea id="desc-modal-textarea" placeholder="Descrição técnica do produto (materiais, tecnologia, características, modo de uso, cuidados...)" style="width:100%;min-height:240px;padding:10px;background:rgba(0,0,0,0.4);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+        <div id="desc-modal-result" style="font-size:11px;color:var(--text2);margin-top:8px;min-height:14px"></div>
+        <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px;align-items:center">
+          <button type="button" class="btn" id="desc-modal-clear">🗑 Limpar</button>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn" onclick="closeDescEdit()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="desc-modal-save">Salvar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('desc-modal-save').addEventListener('click', saveDescEdit);
+    document.getElementById('desc-modal-clear').addEventListener('click', () => {
+      document.getElementById('desc-modal-textarea').value = '';
+    });
+  }
+  // Busca a descrição atual do produto
+  document.getElementById('desc-modal-textarea').value = 'Carregando...';
+  document.getElementById('desc-modal-textarea').disabled = true;
+  document.getElementById('desc-modal-product-info').textContent = '';
+  document.getElementById('desc-modal-result').textContent = '';
+  modal.classList.add('show');
+  const data = await api('/admin/catalog/products/' + productId);
+  if (data && data.product) {
+    document.getElementById('desc-modal-textarea').value = data.product.longDescription || '';
+    document.getElementById('desc-modal-product-info').innerHTML = `<strong>${escapeHtml(data.product.name)}</strong> · SKU ${escapeHtml(data.product.sku)}`;
+  } else {
+    document.getElementById('desc-modal-textarea').value = '';
+  }
+  document.getElementById('desc-modal-textarea').disabled = false;
+  document.getElementById('desc-modal-textarea').focus();
+}
+
+function closeDescEdit() {
+  const m = document.getElementById('product-desc-modal');
+  if (m) m.classList.remove('show');
+  _descEditCurrentId = null;
+}
+
+async function saveDescEdit() {
+  if (!_descEditCurrentId) return;
+  const desc = document.getElementById('desc-modal-textarea').value;
+  const result = document.getElementById('desc-modal-result');
+  result.innerHTML = '<span style="color:var(--orange)">Salvando...</span>';
+  const data = await api('/admin/products/' + _descEditCurrentId + '/description', 'POST', { description: desc });
+  if (data.error) { result.innerHTML = '<span style="color:#e35">Erro: ' + escapeHtml(data.error) + '</span>'; return; }
+  result.innerHTML = '<span style="color:#7b7">✓ Salvo</span>';
+  // Refresh da tabela ativa (qualquer função registrada)
+  if (typeof _descEditOnSaved === 'function') _descEditOnSaved();
+  else {
+    // Tenta atualizar tabelas conhecidas
+    if (typeof loadPendingImages === 'function' && document.getElementById('tab-images')?.style.display !== 'none') loadPendingImages();
+    if (typeof refreshAdminCatalog === 'function' && document.getElementById('tab-catalog')?.style.display !== 'none') refreshAdminCatalog();
+    if (_markupSelectedCnpj && typeof loadMarkupProducts === 'function') loadMarkupProducts(_markupSelectedCnpj);
+  }
+  setTimeout(closeDescEdit, 500);
+}
+
 // Localização — opções fixas das lojas + fábrica/CD
 const PRODUCT_LOCATIONS = [
   'Praia do Bessa',
@@ -3753,7 +3844,7 @@ async function labelsSearchProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const products = data.products || [];
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
     const sel = _labelsSelected[p.id] ? 'checked' : '';
     html += `<tr>
@@ -3766,6 +3857,7 @@ async function labelsSearchProducts() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${descCell(p)}
       ${locationCell(p)}
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.promoPrice ? 'R$ '+Number(p.promoPrice).toFixed(2) : '—'}</td>
@@ -4418,7 +4510,7 @@ async function loadInvProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
   list.forEach(p => {
     const lc = p.lifecycle?.lifecycleStatus || '—';
     const days = p.lifecycle?.daysInStock != null ? p.lifecycle.daysInStock : '—';
@@ -4431,6 +4523,7 @@ async function loadInvProducts() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${descCell(p)}
       ${locationCell(p)}
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.totalStock}</td>
@@ -4525,7 +4618,7 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
@@ -4543,6 +4636,7 @@ async function loadMarkupProducts(cnpj) {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${descCell(p)}
       ${locationCell(p)}
       <td>${cost}</td>
       <td>${overrideMarkup}</td>
@@ -4666,7 +4760,7 @@ async function loadPendingImages() {
 
   if (!_imgPendingProducts.length) { wrap.innerHTML = '<div class="muted">Nenhum produto pendente com esses filtros.</div>'; return; }
 
-  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Localização</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th></th></tr></thead><tbody>';
   _imgPendingProducts.forEach(p => {
     html += `<tr>
       <td><code>${escapeHtml(p.sku)}</code></td>
@@ -4677,6 +4771,7 @@ async function loadPendingImages() {
       ${refCell(p)}
       ${sportCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      ${descCell(p)}
       ${locationCell(p)}
       <td><button type="button" class="btn btn-primary" onclick="imgOpenReview('${p.id}')">Buscar imagem</button></td>
     </tr>`;

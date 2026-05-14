@@ -45,6 +45,26 @@ router.post('/:id/location', async (req, res) => {
   }
 });
 
+// Atualiza descrição técnica (longDescription + shortDescription derivado)
+router.post('/:id/description', async (req, res) => {
+  try {
+    const { description } = req.body || {};
+    const desc = description == null ? null : String(description).trim();
+    const data = {
+      longDescription: desc || null,
+      shortDescription: desc ? (desc.length > 200 ? desc.slice(0, 200) + '…' : desc) : null,
+    };
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data,
+    });
+    res.json({ ok: true, product: { id: product.id, longDescription: product.longDescription, shortDescription: product.shortDescription } });
+  } catch (err) {
+    console.error('[products/description] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Atualiza gênero / esporte / ageGroup / cor em aiContext
 router.post('/:id/classification', async (req, res) => {
   try {

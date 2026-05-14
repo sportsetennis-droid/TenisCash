@@ -94,6 +94,8 @@ router.get('/products', async (req, res) => {
           sport: ctx.sport || null,
           color: ctx.color || null,
           location: ctx.location || null,
+          longDescription: p.longDescription || null,
+          shortDescription: p.shortDescription || null,
           price: p.price,
           promoPrice: p.promoPrice,
           totalStock,
