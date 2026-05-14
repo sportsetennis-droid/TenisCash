@@ -54,9 +54,32 @@ router.get('/test-key', async (req, res) => {
   }
 });
 
-// Diagnóstico: testa o provider ativo (Google ou Brave)
+// Diagnóstico: testa o provider ativo (Serper, Brave ou Google)
 router.get('/diagnose', async (_req, res) => {
   try {
+    if (providerName === 'serper') {
+      const apiKey = process.env.SERPER_API_KEY;
+      if (!apiKey) return res.json({ provider: 'serper', error: 'SERPER_API_KEY não setada' });
+      const result = await serperGis.searchImages('Converse "CK13120001"', { count: 5 });
+      res.json({
+        provider: 'serper',
+        keyPreview: apiKey.slice(0, 6) + '...',
+        keyLength: apiKey.length,
+        testQuery: 'Converse "CK13120001"',
+        testImage: {
+          ok: result.ok,
+          error: result.error || null,
+          itemCount: result.items?.length || 0,
+          firstItems: (result.items || []).slice(0, 3).map((it) => ({
+            source: it.source,
+            title: it.title?.slice(0, 80),
+            pageUrl: it.pageUrl?.slice(0, 100),
+          })),
+        },
+      });
+      return;
+    }
+
     if (providerName === 'brave') {
       const apiKey = process.env.BRAVE_API_KEY;
       if (!apiKey) return res.json({ provider: 'brave', error: 'BRAVE_API_KEY não setada' });
