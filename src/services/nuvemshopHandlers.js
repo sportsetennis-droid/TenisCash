@@ -533,6 +533,172 @@ async function importRecentOrders({ max = 200 } = {}) {
   return { total: orders.length, synced };
 }
 
+// =====================================================================
+// PUSH: TenisCash → Nuvemshop (cria/atualiza produtos no e-commerce)
+// =====================================================================
+
+function ptObj(v) {
+  // Nuvemshop usa multi-idioma: {pt: "..."}
+  if (v == null) return null;
+  return { pt: String(v) };
+}
+
+function buildNuvemshopProductPayload(localProduct, sizes) {
+  // Variants — uma por tamanho
+  const variants = (sizes && sizes.length ? sizes : [{ size: 'único', stock: 0 }]).map((s) => ({
+    price: String(Number(localProduct.price || 0).toFixed(2)),
+    promotional_price: localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
+    stock_management: true,
+    stock: parseInt(s.stock || 0, 10),
+    sku: s.barcode || `${localProduct.sku}-${s.size}`,
+    barcode: s.barcode || null,
+    values: [{ pt: String(s.size || 'único') }],
+  }));
+
+  const payload = {
+    name: ptObj(localProduct.name),
+    description: ptObj(localProduct.longDescription || localProduct.shortDescription || localProduct.name),
+    brand: localProduct.brand || null,
+    published: localProduct.active !== false,
+    free_shipping: false,
+    variants,
+    attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
+  };
+
+  if (localProduct.imageUrl) {
+    payload.images = [{ src: localProduct.imageUrl }];
+  }
+
+  return payload;
+}
+
+async function pushProductToNuvemshop(localProductId, connection) {
+  const product = await prisma.product.findUnique({
+    where: { id: localProductId },
+    include: { sizes: true },
+  });
+  if (!product) throw new Error(`Produto ${localProductId} não encontrado`);
+
+  const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
+    where: { localProductId: product.id },
+  });
+
+  const payload = buildNuvemshopProductPayload(product, product.sizes || []);
+
+  let nsProduct;
+  let action;
+  if (existingMapping) {
+    // Atualiza existente
+    nsProduct = await ns.nuvemshopApi(
+      connection,
+      'PUT',
+      `/products/${existingMapping.nuvemshopProductId}`,
+      payload,
+    );
+    await prisma.nuvemshopProductMapping.update({
+      where: { id: existingMapping.id },
+      data: { lastSyncedAt: new Date(), syncStatus: 'synced' },
+    });
+    action = 'updated';
+  } else {
+    nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
+    await prisma.nuvemshopProductMapping.create({
+      data: {
+        localProductId: product.id,
+        nuvemshopProductId: String(nsProduct.id),
+        syncStatus: 'synced',
+        lastSyncedAt: new Date(),
+      },
+    });
+    action = 'created';
+  }
+
+  // Cria mapeamento de variants (precisa buscar o produto criado pra pegar IDs)
+  if (action === 'created' && Array.isArray(nsProduct.variants)) {
+    for (let i = 0; i < nsProduct.variants.length; i++) {
+      const nsVar = nsProduct.variants[i];
+      const localSize = (product.sizes || [])[i];
+      if (localSize) {
+        try {
+          await prisma.nuvemshopVariantMapping.create({
+            data: {
+              localInventoryId: localSize.id,
+              localProductId: product.id,
+              nuvemshopProductId: String(nsProduct.id),
+              nuvemshopVariantId: String(nsVar.id),
+              sku: nsVar.sku || null,
+              barcode: nsVar.barcode || null,
+            },
+          });
+        } catch (_) { /* mapping pode já existir */ }
+      }
+    }
+  }
+
+  return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id };
+}
+
+async function pushAllProducts({ onlyMissing = true, limit = 1000 } = {}) {
+  const connection = await getConnection();
+  if (!connection) throw new Error('Sem conexão Nuvemshop ativa');
+
+  // Quais produtos pushar?
+  let where = { active: true };
+  if (onlyMissing) {
+    // Pega só os que NÃO têm mapping ainda
+    const mapped = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+    const mappedIds = mapped.map((m) => m.localProductId);
+    if (mappedIds.length) where.id = { notIn: mappedIds };
+  }
+
+  const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
+  let created = 0;
+  let updated = 0;
+  let failed = 0;
+  const errors = [];
+
+  for (const p of products) {
+    try {
+      const r = await pushProductToNuvemshop(p.id, connection);
+      if (r.action === 'created') created++;
+      else updated++;
+      // Delay pequeno pra não estourar rate limit
+      await new Promise((res) => setTimeout(res, 200));
+    } catch (err) {
+      failed++;
+      errors.push({ sku: p.sku, error: err.message });
+      await logSync('product', 'error', `Push ${p.sku}: ${err.message}`);
+    }
+  }
+
+  await logSync('product', 'ok', `Push catálogo TenisCash → Nuvemshop: ${products.length} total, ${created} novos, ${updated} atualizados, ${failed} falhas`);
+  return { total: products.length, created, updated, failed, errors: errors.slice(0, 20) };
+}
+
+async function pushStockUpdate(localProductId) {
+  const product = await prisma.product.findUnique({
+    where: { id: localProductId },
+    include: { sizes: true },
+  });
+  if (!product) throw new Error('Produto não encontrado');
+  const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId } });
+  if (!mapping) throw new Error('Produto sem mapping com Nuvemshop');
+  const connection = await getConnection();
+  if (!connection) throw new Error('Sem conexão Nuvemshop ativa');
+
+  let updates = 0;
+  for (const s of product.sizes || []) {
+    const vMapping = await prisma.nuvemshopVariantMapping.findFirst({
+      where: { localInventoryId: s.id },
+    });
+    if (!vMapping) continue;
+    await ns.updateVariantStock(connection, vMapping.nuvemshopProductId, vMapping.nuvemshopVariantId, s.stock || 0);
+    updates++;
+  }
+  await logSync('product', 'ok', `Stock push ${product.sku}: ${updates} variants atualizados`);
+  return { updates };
+}
+
 module.exports = {
   processWebhookEvent,
   importAllProducts,
@@ -541,4 +707,7 @@ module.exports = {
   upsertLocalProduct,
   upsertLocalCustomer,
   upsertSaleFromOrder,
+  pushProductToNuvemshop,
+  pushAllProducts,
+  pushStockUpdate,
 };

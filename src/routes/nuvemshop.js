@@ -185,6 +185,40 @@ adminRouter.post('/import/orders', async (_req, res) => {
   }
 });
 
+// PUSH: TenisCash → Nuvemshop
+adminRouter.post('/push/products', async (req, res) => {
+  try {
+    const { onlyMissing, limit } = req.body || {};
+    const result = await handlers.pushAllProducts({
+      onlyMissing: onlyMissing !== false,
+      limit: limit ? parseInt(limit, 10) : 1000,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/push/products/:id', async (req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!connection) return res.status(400).json({ error: 'Sem conexão Nuvemshop ativa' });
+    const result = await handlers.pushProductToNuvemshop(req.params.id, connection);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/push/stock/:id', async (req, res) => {
+  try {
+    const result = await handlers.pushStockUpdate(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Re-processa eventos falhos
 adminRouter.post('/webhook-events/:id/retry', async (req, res) => {
   try {

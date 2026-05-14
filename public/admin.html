@@ -660,13 +660,22 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   </div>
   <div id="ns-status-wrap"></div>
 
-  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">IMPORTAÇÃO INICIAL</h4>
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">IMPORTAR (Nuvemshop → TenisCash)</h4>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
     <button type="button" class="btn btn-primary" id="ns-import-products">Importar produtos</button>
     <button type="button" class="btn btn-primary" id="ns-import-customers">Importar clientes</button>
     <button type="button" class="btn btn-primary" id="ns-import-orders">Importar pedidos recentes</button>
   </div>
   <div id="ns-import-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px;color:var(--orange)">SUBIR CATÁLOGO (TenisCash → Nuvemshop)</h4>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Envia produtos do TenisCash pra Nuvemshop como produtos ocultos (você publica depois pelo painel da Nuvemshop).</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <button type="button" class="btn btn-primary" id="ns-push-missing">Subir só os NÃO sincronizados</button>
+    <button type="button" class="btn" id="ns-push-all">Subir todos (atualiza existentes)</button>
+    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px">Limite: <input type="number" id="ns-push-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
+  </div>
+  <div id="ns-push-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
 
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">EVENTOS DE WEBHOOK</h4>
   <div id="ns-events-wrap"></div>
@@ -3745,6 +3754,8 @@ async function initNsTab() {
     document.getElementById('ns-import-products').onclick = () => nsImport('products');
     document.getElementById('ns-import-customers').onclick = () => nsImport('customers');
     document.getElementById('ns-import-orders').onclick = () => nsImport('orders');
+    document.getElementById('ns-push-missing').onclick = () => nsPush(true);
+    document.getElementById('ns-push-all').onclick = () => nsPush(false);
     document.querySelectorAll('.js-ns-map').forEach(btn => {
       btn.onclick = () => nsLoadMappings(btn.dataset.kind);
     });
@@ -3758,6 +3769,21 @@ async function nsImport(kind) {
   const data = await api('/admin/nuvemshop/import/' + kind, 'POST', {});
   if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
   result.innerHTML = `<span style="color:#7b7">✓ ${labelMap[kind]} importados: ${JSON.stringify(data)}</span>`;
+  loadNsAll();
+}
+async function nsPush(onlyMissing) {
+  const result = document.getElementById('ns-push-result');
+  const limit = parseInt(document.getElementById('ns-push-limit').value, 10) || 50;
+  const verb = onlyMissing ? 'novos' : 'todos os';
+  if (!confirm(`Vai subir ${verb} produtos do TenisCash pra Nuvemshop (limite ${limit}). Pode demorar. Confirma?`)) return;
+  result.innerHTML = `Subindo ${verb} produtos... aguarda (cada produto ~300ms)`;
+  const data = await api('/admin/nuvemshop/push/products', 'POST', { onlyMissing, limit });
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  let msg = `<span style="color:#7b7">✓ Push concluído: ${data.total} produtos processados — ${data.created} criados, ${data.updated} atualizados, ${data.failed} falhas.</span>`;
+  if (data.errors && data.errors.length) {
+    msg += '<details style="margin-top:8px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
+  }
+  result.innerHTML = msg;
   loadNsAll();
 }
 async function nsLoadMappings(kind) {
