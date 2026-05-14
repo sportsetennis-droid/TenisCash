@@ -189,4 +189,62 @@ router.post('/supplier/:cnpj', async (req, res) => {
   }
 });
 
+// Conserta produtos que tem imageUrl mas estao SEM imageUrls extras (efeito
+// colateral do early stop do vision). Busca rapida no Serper e adiciona ate
+// 5 fotos extras, sem rodar vision de novo.
+router.post('/fix-missing-extras', async (req, res) => {
+  try {
+    if (!serperImg.isConfigured()) return res.status(400).json({ error: 'Serper não configurado' });
+    const { supplierCnpj, limit = 500 } = req.body || {};
+    const { getSupplierMeta } = require('../services/supplierOfficialSites');
+
+    const where = {
+      active: true,
+      imageUrl: { not: null },
+      OR: [{ imageUrls: { equals: null } }, { imageUrls: { equals: [] } }],
+    };
+    if (supplierCnpj) where.aiContext = { path: ['supplierCnpj'], equals: String(supplierCnpj) };
+
+    const products = await prisma.product.findMany({ where, take: parseInt(limit, 10) || 500 });
+    let ok = 0, skipped = 0;
+    for (const product of products) {
+      const ctx = (() => {
+        try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
+        catch (_) { return {}; }
+      })();
+      const supplierMeta = getSupplierMeta(ctx.supplierCnpj);
+      const officialSite = supplierMeta?.site || null;
+      const brandToUse = supplierMeta?.brand || product.brand;
+      const cleanName = (product.name || '').replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
+
+      let query = serperImg.buildProductQuery({
+        brand: brandToUse,
+        supplierRef: ctx.supplierRef,
+        model: cleanName,
+        color: ctx.color,
+        category: product.category,
+      });
+      if (officialSite) query = `${query} site:${officialSite}`.trim();
+
+      const result = await serperImg.searchImages(query, { count: 8 });
+      if (!result.ok || !result.items?.length) { skipped++; continue; }
+
+      const extras = result.items
+        .map((it) => it.url)
+        .filter((u) => u && u !== product.imageUrl)
+        .slice(0, 5);
+      if (!extras.length) { skipped++; continue; }
+
+      await prisma.product.update({ where: { id: product.id }, data: { imageUrls: extras } });
+      ok++;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    res.json({ ok: true, total: products.length, completed: ok, skipped });
+  } catch (err) {
+    console.error('[ai-curation/fix-missing-extras] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

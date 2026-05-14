@@ -119,17 +119,17 @@ async function curateProduct(productId, opts = {}) {
       if (searchResult.items?.length) {
         const candidates = searchResult.items;
         let chosen = candidates[0];
-        let ranked = candidates.map((c, i) => ({ ...c, _score: candidates.length - i }));
+        let rankedScored = candidates.map((c, i) => ({ ...c, _score: candidates.length - i }));
         let visionCost = 0;
 
         if (visionConfigured()) {
-          // pontua com vision, pega a melhor
+          // pontua com vision, pega a melhor (com early stop pra economizar custo)
           const r = await pickBestImage(candidates, productInfo, {
             earlyStopScore: 9,
             maxCalls: Math.min(candidates.length, opts.imageCandidates || 8),
           });
           if (r.ranked.length) {
-            ranked = r.ranked;
+            rankedScored = r.ranked;
             chosen = r.ranked[0];
             visionCost = r.totalCostBRL || 0;
           }
@@ -140,7 +140,23 @@ async function curateProduct(productId, opts = {}) {
         const acceptable = !visionConfigured() || (chosen._score || 0) >= minScore;
 
         if (acceptable && chosen.url) {
-          const extras = ranked.slice(1, 6).map((c) => c.url).filter((u) => u && u !== chosen.url);
+          // Junta as analisadas (sem a escolhida) + as não-analisadas (ordem do Serper).
+          // Garante até 5 extras mesmo quando early stop terminou cedo.
+          const seen = new Set([chosen.url]);
+          const extras = [];
+          for (const c of rankedScored) {
+            if (c.url && !seen.has(c.url) && extras.length < 5) {
+              extras.push(c.url);
+              seen.add(c.url);
+            }
+          }
+          for (const c of candidates) {
+            if (extras.length >= 5) break;
+            if (c.url && !seen.has(c.url)) {
+              extras.push(c.url);
+              seen.add(c.url);
+            }
+          }
           await prisma.product.update({
             where: { id: product.id },
             data: { imageUrl: chosen.url, imageUrls: extras.length ? extras : undefined },

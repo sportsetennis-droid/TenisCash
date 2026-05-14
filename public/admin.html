@@ -815,6 +815,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="btn" id="img-auto-image-btn">🤖 Auto-importar imagens (1ª opção)</button>
     <button type="button" class="btn btn-primary" id="img-ai-curate-btn" style="background:var(--orange);color:#000;font-weight:bold">🧠 Curar com IA (CNPJ filtrado)</button>
     <button type="button" class="btn btn-primary" id="img-ai-curate-all-btn" style="background:#9c6;color:#000;font-weight:bold">🤖 Curadoria Autônoma TOTAL (todos fornecedores)</button>
+    <button type="button" class="btn" id="img-fix-extras-btn">🖼 Completar fotos extras (5 por produto)</button>
   </div>
   <!-- progresso da curadoria IA -->
   <div id="ai-curate-progress" style="display:none;border:1px solid var(--orange);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(255,153,0,0.05)">
@@ -4739,6 +4740,7 @@ async function initImagesTab() {
     document.getElementById('img-auto-image-btn').onclick = imgAutoImageBulk;
     document.getElementById('img-ai-curate-btn').onclick = imgAiCurate;
     document.getElementById('img-ai-curate-all-btn').onclick = imgAiCurateAll;
+    document.getElementById('img-fix-extras-btn').onclick = imgFixExtras;
     document.getElementById('ai-curate-stop').onclick = () => { _aiCurateStop = true; };
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
@@ -5048,6 +5050,17 @@ async function imgAiCurate() {
   statusEl.textContent = `✅ Concluído: ${processed}/${total}. Custo total: R$ ${totalCostBRL.toFixed(2)}`;
   loadPipelineStatus();
   loadPendingImages();
+}
+
+async function imgFixExtras() {
+  const cnpj = document.getElementById('img-filter-supplier').value.trim();
+  const body = cnpj ? { supplierCnpj: cnpj, limit: 1000 } : { limit: 1000 };
+  const result = document.getElementById('img-enrich-result');
+  if (!confirm(cnpj ? `Completar fotos extras dos produtos do CNPJ ${cnpj} que só têm a principal?` : 'Completar fotos extras de TODOS os produtos que só têm a foto principal? Pode demorar.')) return;
+  result.innerHTML = '<span style="color:var(--orange)">Buscando fotos extras...</span>';
+  const data = await api('/admin/ai-curation/fix-missing-extras', 'POST', body);
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  result.innerHTML = `<span style="color:#7b7">✓ ${data.completed}/${data.total} produtos com fotos extras adicionadas. ${data.skipped} pulados.</span>`;
 }
 
 async function imgAiCurateAll() {
