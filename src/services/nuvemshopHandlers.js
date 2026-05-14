@@ -629,8 +629,9 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     } catch (_) {}
   }
 
-  // Descrição: prioriza longa, depois curta, depois nome
-  const description = localProduct.longDescription || localProduct.shortDescription || localProduct.name;
+  // Descrição: prioriza longa, depois curta. NÃO cai pro nome (causa duplicação no Nuvemshop).
+  // Se nenhuma das duas existe, manda string vazia (Nuvemshop aceita).
+  const description = localProduct.longDescription || localProduct.shortDescription || '';
 
   // SEO baseado em marca + nome
   const seoTitle = `${localProduct.brand || ''} ${localProduct.name}`.trim().slice(0, 70);

@@ -9,6 +9,21 @@ const braveGis = require('../services/braveImageSearch');
 const serperGis = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
 const { scrapeProductPage } = require('../services/productPageScraper');
+const nsHandlers = require('../services/nuvemshopHandlers');
+
+// Helper: re-empurra produto pra Nuvemshop se já tem mapping
+async function syncToNuvemshopIfMapped(productId) {
+  try {
+    const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: productId } });
+    if (!mapping) return { synced: false, reason: 'sem mapping' };
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!connection) return { synced: false, reason: 'sem conexão' };
+    const result = await nsHandlers.pushProductToNuvemshop(productId, connection);
+    return { synced: true, action: result.action };
+  } catch (err) {
+    return { synced: false, error: err.message };
+  }
+}
 
 // Prioridade: Serper (Google real) > Brave > Google Custom Search
 // Serper devolve os mesmos resultados que o Google.com, que indexa
@@ -337,6 +352,8 @@ router.post('/import-description/:productId', async (req, res) => {
     }
 
     const updated = await prisma.product.update({ where: { id: product.id }, data });
+    // Auto-sync pra Nuvemshop se já tem espelho
+    const nsSync = await syncToNuvemshopIfMapped(updated.id);
     res.json({
       ok: true,
       productUrl,
@@ -345,6 +362,7 @@ router.post('/import-description/:productId', async (req, res) => {
       description: scraped.description,
       images: scraped.images,
       product: { id: updated.id, sku: updated.sku, longDescription: updated.longDescription, imageUrl: updated.imageUrl },
+      nuvemshop: nsSync,
     });
   } catch (err) {
     console.error('[import-description] erro:', err);
@@ -369,6 +387,7 @@ router.post('/import-description-bulk', async (req, res) => {
     const products = await prisma.product.findMany({ where, take: parseInt(limit, 10) || 200 });
 
     let ok = 0, failed = 0;
+    let syncedToNs = 0;
     const errors = [];
 
     for (const product of products) {
@@ -403,7 +422,10 @@ router.post('/import-description-bulk', async (req, res) => {
         }
         await prisma.product.update({ where: { id: product.id }, data });
         ok++;
-        // pequeno delay pra não martelar Serper/Converse
+        // Auto-sync pra Nuvemshop se já tem espelho lá
+        const sync = await syncToNuvemshopIfMapped(product.id);
+        if (sync.synced) syncedToNs++;
+        // pequeno delay pra não martelar Serper/Converse/Nuvemshop
         await new Promise((r) => setTimeout(r, 300));
       } catch (err) {
         failed++;
@@ -411,7 +433,7 @@ router.post('/import-description-bulk', async (req, res) => {
       }
     }
 
-    res.json({ ok: true, total: products.length, succeeded: ok, failed, errors: errors.slice(0, 20) });
+    res.json({ ok: true, total: products.length, succeeded: ok, failed, syncedToNuvemshop: syncedToNs, errors: errors.slice(0, 20) });
   } catch (err) {
     console.error('[import-description-bulk] erro:', err);
     res.status(500).json({ error: err.message });

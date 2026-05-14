@@ -5,6 +5,22 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const nsHandlers = require('../services/nuvemshopHandlers');
+
+// Helper: se o produto já tem espelho na Nuvemshop, re-empurra com os dados atualizados.
+async function syncToNuvemshopIfMapped(productId) {
+  try {
+    const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: productId } });
+    if (!mapping) return { synced: false, reason: 'sem mapping' };
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!connection) return { synced: false, reason: 'sem conexão' };
+    const result = await nsHandlers.pushProductToNuvemshop(productId, connection);
+    return { synced: true, action: result.action, nuvemshopProductId: result.nuvemshopProductId };
+  } catch (err) {
+    console.error('[sync-to-ns] erro:', err);
+    return { synced: false, error: err.message };
+  }
+}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -46,6 +62,7 @@ router.post('/:id/location', async (req, res) => {
 });
 
 // Atualiza descrição técnica (longDescription + shortDescription derivado)
+// E se o produto já está na Nuvemshop, atualiza lá também.
 router.post('/:id/description', async (req, res) => {
   try {
     const { description } = req.body || {};
@@ -58,7 +75,12 @@ router.post('/:id/description', async (req, res) => {
       where: { id: req.params.id },
       data,
     });
-    res.json({ ok: true, product: { id: product.id, longDescription: product.longDescription, shortDescription: product.shortDescription } });
+    const nsSync = await syncToNuvemshopIfMapped(product.id);
+    res.json({
+      ok: true,
+      product: { id: product.id, longDescription: product.longDescription, shortDescription: product.shortDescription },
+      nuvemshop: nsSync,
+    });
   } catch (err) {
     console.error('[products/description] erro:', err);
     res.status(500).json({ error: err.message });
