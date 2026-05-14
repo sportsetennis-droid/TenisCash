@@ -4843,7 +4843,11 @@ async function imgOpenReview(productId) {
       <button type="button" class="btn btn-primary" id="img-confirm-${productId}" onclick="imgConfirmSelection('${productId}')" disabled style="opacity:0.5">Salvar 0 selecionadas</button>
     </div>
     <div style="margin-top:10px"><strong>${escapeHtml(product.name)}</strong></div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escapeHtml(product.brand||'')} · SKU ${escapeHtml(product.sku)}</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+      ${escapeHtml(product.brand||'(sem marca)')} ·
+      ${productRef(product) ? `Ref <code style="color:var(--orange);font-size:11px">${escapeHtml(productRef(product))}</code> ·` : '<span style="color:#e35">SEM REF</span> ·'}
+      SKU ${escapeHtml(product.sku)}
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <input class="search-box" id="img-search-q-${productId}" placeholder="Sobrescrever query (opcional)" style="flex:1">
       <button type="button" class="btn btn-primary" onclick="imgRunSearch('${productId}')">Buscar</button>
