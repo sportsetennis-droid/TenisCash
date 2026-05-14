@@ -51,22 +51,7 @@ async function seed() {
   }
   console.log('Regras de marca configuradas:', brands.length);
 
-  // Promo inicial — só cria se não existir (evita duplicar a cada deploy)
-  const existingPromo = await prisma.promo.findFirst({ where: { title: 'Inauguração TenisCash' } });
-  if (!existingPromo) {
-    await prisma.promo.create({
-      data: {
-        title: 'Inauguração TenisCash',
-        description: 'TenisCash vale até 30% em toda a loja na semana de lançamento',
-        percentage: 30,
-        scope: 'all',
-        endsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 dias
-      }
-    }).catch(() => {});
-    console.log('Promo de inauguração criada');
-  } else {
-    console.log('Promo de inauguração já existe — não duplicando');
-  }
+  // (Promo "Inauguração TenisCash" foi removida do seed em 2026-05 — não recriar)
 
   console.log('\n✅ Seed completo!');
   console.log('Login admin: 83999990001 / PIN: 1234');
