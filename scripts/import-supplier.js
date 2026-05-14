@@ -176,12 +176,23 @@ async function main() {
     const refCandidate = g.variants.find((v) => v.sku && !/^\d{12,14}$/.test(v.sku));
     const supplierRef = refCandidate ? String(refCandidate.sku).toUpperCase() : null;
 
+    // Custo médio ponderado pela quantidade — base pro markup
+    let totalQty = 0, totalCost = 0;
+    for (const v of g.variants) {
+      const c = Number(v.cost) || 0;
+      const q = Number(v.qty) || 0;
+      totalQty += q;
+      totalCost += c * q;
+    }
+    const avgCost = totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : null;
+
     const productData = {
       name: g.cleanName || `${g.brand} ${g.model} ${g.color}`.trim(),
       brand: g.brand || 'A DEFINIR',
       category: g.category || 'tenis',
       subcategory: g.subcategory || null,
       price: 0, // será definido depois com markup
+      costPrice: avgCost,
       shortDescription: g.cleanName || null,
       active: true,
       source: 'nfe-import',

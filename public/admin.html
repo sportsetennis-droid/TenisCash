@@ -243,6 +243,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
+    <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -827,6 +828,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   </div>
 
   <div id="img-products-wrap"></div>
+</div>
+
+<!-- MARKUP & PREÇOS — gestão de custo, markup e preço de venda -->
+<div class="section" id="tab-markup" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Markup &amp; Preços</span>
+    <button type="button" class="refresh-btn" id="markup-refresh">↻</button>
+  </div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+    Preço de venda = Custo × (1 + Markup ÷ 100). O markup pode ser definido por fornecedor (vale pra todos os produtos dele) ou por produto (sobrescreve o do fornecedor). Mudar aqui já atualiza no Catálogo, no Estoque e na próxima sincronia com Nuvemshop.
+  </div>
+
+  <!-- TABELA POR FORNECEDOR -->
+  <div style="font-family:Orbitron;font-size:12px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">FORNECEDORES</div>
+  <div id="markup-suppliers-wrap"><div class="loading-spinner">Carregando...</div></div>
+
+  <!-- DETALHE: PRODUTOS DE UM FORNECEDOR -->
+  <div id="markup-products-section" style="margin-top:24px;display:none">
+    <div style="font-family:Orbitron;font-size:12px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">PRODUTOS DO FORNECEDOR <span id="markup-products-supplier-name"></span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <button type="button" class="btn" id="markup-products-close">← Voltar pra lista de fornecedores</button>
+      <button type="button" class="btn btn-primary" id="markup-recompute-supplier">🔄 Recalcular preços do fornecedor</button>
+    </div>
+    <div id="markup-products-wrap"></div>
+  </div>
 </div>
 
 <!-- MODAL: revisão de imagem de UM produto -->
@@ -2704,7 +2730,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images','markup'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -2726,6 +2752,7 @@ function switchTab(tab, btn) {
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'images') { initImagesTab(); }
+  if (tab === 'markup') { initMarkupTab(); }
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
@@ -4218,6 +4245,151 @@ async function loadInvProducts() {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// ==================== MARKUP & PREÇOS ====================
+let _markupInit = false;
+let _markupSelectedCnpj = null;
+
+async function initMarkupTab() {
+  if (!_markupInit) {
+    _markupInit = true;
+    document.getElementById('markup-refresh').onclick = loadMarkupSuppliers;
+    document.getElementById('markup-products-close').onclick = () => {
+      document.getElementById('markup-products-section').style.display = 'none';
+      _markupSelectedCnpj = null;
+    };
+    document.getElementById('markup-recompute-supplier').onclick = recomputeSupplierPrices;
+  }
+  loadMarkupSuppliers();
+}
+
+async function loadMarkupSuppliers() {
+  const wrap = document.getElementById('markup-suppliers-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/markup/summary');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.suppliers || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum fornecedor cadastrado.</div>'; return; }
+  let html = '<table><thead><tr><th>Fornecedor</th><th>CNPJ</th><th>Produtos</th><th>Com custo</th><th>Custo médio</th><th>Markup atual</th><th>Preço médio</th><th>Ações</th></tr></thead><tbody>';
+  list.forEach(s => {
+    const markup = s.markup != null ? `${s.markup}%` : '—';
+    const avgCost = s.avgCost != null ? `R$ ${Number(s.avgCost).toFixed(2)}` : '—';
+    const avgPrice = s.avgPrice != null && s.avgPrice > 0 ? `R$ ${Number(s.avgPrice).toFixed(2)}` : '—';
+    html += `<tr>
+      <td><strong>${escapeHtml(s.companyName)}</strong></td>
+      <td><code style="font-size:11px">${escapeHtml(s.cnpj)}</code></td>
+      <td>${s.productCount}</td>
+      <td>${s.withCost} / ${s.productCount}</td>
+      <td>${avgCost}</td>
+      <td><strong style="color:${s.markup ? 'var(--orange)' : 'var(--text2)'}">${markup}</strong></td>
+      <td>${avgPrice}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 8px" onclick="setSupplierMarkup('${s.cnpj}','${escapeHtml(s.companyName).replace(/'/g,"\\'")}')">Definir markup</button>
+        <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="openMarkupProducts('${s.cnpj}','${escapeHtml(s.companyName).replace(/'/g,"\\'")}')">Ver produtos</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function setSupplierMarkup(cnpj, companyName) {
+  const input = prompt(`Definir markup pra "${companyName}" (CNPJ ${cnpj})\n\nDigite a % de markup (ex: 80 para custo × 1.8):`);
+  if (input === null) return;
+  const markup = parseFloat(input.replace(',', '.'));
+  if (isNaN(markup) || markup < 0) { alert('Markup inválido. Use um número positivo (ex: 80)'); return; }
+  if (!confirm(`Aplicar ${markup}% de markup em TODOS os produtos do fornecedor que ainda não têm markup individual? Vai recalcular o preço de venda de cada um.`)) {
+    // Só salva o markup, sem aplicar
+    const data = await api('/admin/markup/supplier/' + cnpj, 'POST', { markup, applyToProducts: false });
+    if (data.error) { alert('Erro: ' + data.error); return; }
+    alert(`Markup ${markup}% salvo. Nenhum produto recalculado.`);
+    loadMarkupSuppliers();
+    return;
+  }
+  const data = await api('/admin/markup/supplier/' + cnpj, 'POST', { markup, applyToProducts: true });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  alert(`✓ Markup ${markup}% aplicado. ${data.applied} produtos com preço recalculado.`);
+  loadMarkupSuppliers();
+  if (_markupSelectedCnpj === cnpj) loadMarkupProducts(cnpj);
+}
+
+async function openMarkupProducts(cnpj, name) {
+  _markupSelectedCnpj = cnpj;
+  document.getElementById('markup-products-supplier-name').textContent = name;
+  document.getElementById('markup-products-section').style.display = 'block';
+  loadMarkupProducts(cnpj);
+  document.getElementById('markup-products-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function loadMarkupProducts(cnpj) {
+  const wrap = document.getElementById('markup-products-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/markup/supplier/' + cnpj + '/products');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const products = data.products || [];
+  const supMarkup = data.supplier?.averageMarkup;
+  let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
+  html += '<table><thead><tr><th>SKU</th><th>Nome</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  products.forEach(p => {
+    const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
+    const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
+    const effMarkup = p.effectiveMarkup != null ? `${p.effectiveMarkup}%` : '—';
+    const price = p.price > 0 ? `R$ ${Number(p.price).toFixed(2)}` : '<span style="color:#e35">R$ 0,00</span>';
+    const computedDiff = p.computedPrice != null && Math.abs((p.computedPrice || 0) - (p.price || 0)) > 0.01
+      ? `<div style="font-size:10px;color:var(--text2)">→ deveria ser R$ ${Number(p.computedPrice).toFixed(2)}</div>`
+      : '';
+    html += `<tr>
+      <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${cost}</td>
+      <td>${overrideMarkup}</td>
+      <td><strong>${effMarkup}</strong></td>
+      <td>${price}${computedDiff}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 8px" onclick="editProductMarkup('${p.id}','${escapeHtml(p.name).replace(/'/g,"\\'")}',${p.costPrice ?? 'null'},${p.markupPercent ?? 'null'})">Editar</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function editProductMarkup(id, name, currentCost, currentMarkup) {
+  const newCost = prompt(`Custo do produto "${name}":\n(Atual: ${currentCost != null ? 'R$ ' + Number(currentCost).toFixed(2) : 'sem custo'})\n\nDeixe vazio pra não mudar.`, currentCost != null ? Number(currentCost).toFixed(2) : '');
+  if (newCost === null) return;
+  const newMarkup = prompt(`Markup individual (override) pra "${name}":\n(Atual: ${currentMarkup != null ? currentMarkup + '%' : '— (usa o do fornecedor)'})\n\nDigite "X" pra remover o override (volta a usar o do fornecedor). Vazio = não mudar.`, currentMarkup != null ? String(currentMarkup) : '');
+  if (newMarkup === null) return;
+
+  const body = {};
+  if (newCost.trim() !== '') {
+    const c = parseFloat(newCost.replace(',', '.'));
+    if (isNaN(c) || c < 0) { alert('Custo inválido'); return; }
+    body.costPrice = c;
+  }
+  if (newMarkup.trim() === 'X' || newMarkup.trim() === 'x') {
+    body.markup = null;
+  } else if (newMarkup.trim() !== '') {
+    const m = parseFloat(newMarkup.replace(',', '.'));
+    if (isNaN(m) || m < 0) { alert('Markup inválido'); return; }
+    body.markup = m;
+  }
+  if (Object.keys(body).length === 0) return;
+
+  const data = await api('/admin/markup/product/' + id, 'POST', body);
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  if (_markupSelectedCnpj) loadMarkupProducts(_markupSelectedCnpj);
+  loadMarkupSuppliers();
+}
+
+async function recomputeSupplierPrices() {
+  if (!_markupSelectedCnpj) return;
+  if (!confirm('Recalcular preço de venda de TODOS os produtos do fornecedor com custo e markup definidos?')) return;
+  const data = await api('/admin/markup/recompute-all', 'POST', { supplierCnpj: _markupSelectedCnpj });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+  alert(`✓ ${data.updated} de ${data.total} produtos recalculados.`);
+  loadMarkupProducts(_markupSelectedCnpj);
+  loadMarkupSuppliers();
 }
 
 // ==================== IMAGENS — REVISÃO E SELEÇÃO ====================

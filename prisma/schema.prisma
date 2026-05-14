@@ -249,8 +249,10 @@ model Product {
   imageUrl  String?
   imageUrls Json?
 
-  price      Float
-  promoPrice Float?
+  price         Float
+  promoPrice    Float?
+  costPrice     Float?  // custo unitário (média ponderada das NF-es). Usado pra calcular preço via markup.
+  markupPercent Float?  // override por produto. null = herda markup do Supplier (averageMarkup).
 
   active   Boolean @default(true)
   featured Boolean @default(false)
