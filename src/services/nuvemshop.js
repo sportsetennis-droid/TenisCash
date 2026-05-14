@@ -68,9 +68,62 @@ async function nuvemshopApi(connection, method, path, body = null) {
   return data;
 }
 
+// =====================================================================
+// API helpers de alto nível
+// =====================================================================
+
+async function fetchAllPages(connection, path, { perPage = 50, max = 1000 } = {}) {
+  const items = [];
+  let page = 1;
+  while (items.length < max) {
+    const sep = path.includes('?') ? '&' : '?';
+    const data = await nuvemshopApi(connection, 'GET', `${path}${sep}per_page=${perPage}&page=${page}`);
+    if (!Array.isArray(data) || data.length === 0) break;
+    items.push(...data);
+    if (data.length < perPage) break;
+    page += 1;
+  }
+  return items.slice(0, max);
+}
+
+async function listProducts(connection, opts = {}) {
+  return fetchAllPages(connection, '/products', opts);
+}
+
+async function listOrders(connection, opts = {}) {
+  return fetchAllPages(connection, '/orders', opts);
+}
+
+async function listCustomers(connection, opts = {}) {
+  return fetchAllPages(connection, '/customers', opts);
+}
+
+async function getProduct(connection, productId) {
+  return nuvemshopApi(connection, 'GET', `/products/${productId}`);
+}
+
+async function getOrder(connection, orderId) {
+  return nuvemshopApi(connection, 'GET', `/orders/${orderId}`);
+}
+
+async function getCustomer(connection, customerId) {
+  return nuvemshopApi(connection, 'GET', `/customers/${customerId}`);
+}
+
+async function updateVariantStock(connection, productId, variantId, stock) {
+  return nuvemshopApi(connection, 'PUT', `/products/${productId}/variants/${variantId}`, { stock });
+}
+
 module.exports = {
   isConfigured,
   buildAuthUrl,
   exchangeCode,
   nuvemshopApi,
+  listProducts,
+  listOrders,
+  listCustomers,
+  getProduct,
+  getOrder,
+  getCustomer,
+  updateVariantStock,
 };

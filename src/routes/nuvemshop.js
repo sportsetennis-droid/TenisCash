@@ -5,6 +5,7 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const ns = require('../services/nuvemshop');
+const handlers = require('../services/nuvemshopHandlers');
 
 const router = express.Router();
 
@@ -139,27 +140,94 @@ async function processWebhook(eventId) {
   const evt = await prisma.nuvemshopWebhookEvent.findUnique({ where: { id: eventId } });
   if (!evt || evt.processed) return;
   try {
-    // TODO: implementar handlers por tipo (order/paid, product/updated, etc.)
-    // Por enquanto só marca como processado e cria log
-    await prisma.nuvemshopSyncLog.create({
-      data: {
-        type: 'webhook',
-        entity: evt.event.split('/')[0] || 'unknown',
-        status: 'ok',
-        message: 'Webhook recebido (processamento detalhado pendente)',
-        payload: evt.payload,
-      },
-    });
+    await handlers.processWebhookEvent(evt);
     await prisma.nuvemshopWebhookEvent.update({
       where: { id: eventId },
       data: { processed: true, processedAt: new Date() },
     });
   } catch (err) {
+    console.error('[webhook process] erro:', err);
     await prisma.nuvemshopWebhookEvent.update({
       where: { id: eventId },
       data: { error: err.message },
     });
   }
 }
+
+// =====================================================================
+// IMPORT ROUTES (admin)
+// =====================================================================
+
+adminRouter.post('/import/products', async (_req, res) => {
+  try {
+    const result = await handlers.importAllProducts({ max: 1000 });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/import/customers', async (_req, res) => {
+  try {
+    const result = await handlers.importAllCustomers({ max: 1000 });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/import/orders', async (_req, res) => {
+  try {
+    const result = await handlers.importRecentOrders({ max: 200 });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Re-processa eventos falhos
+adminRouter.post('/webhook-events/:id/retry', async (req, res) => {
+  try {
+    const evt = await prisma.nuvemshopWebhookEvent.findUnique({ where: { id: req.params.id } });
+    if (!evt) return res.status(404).json({ error: 'Evento não encontrado' });
+    await prisma.nuvemshopWebhookEvent.update({
+      where: { id: evt.id },
+      data: { processed: false, error: null },
+    });
+    await handlers.processWebhookEvent(evt);
+    await prisma.nuvemshopWebhookEvent.update({
+      where: { id: evt.id },
+      data: { processed: true, processedAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mapeamentos para debug
+adminRouter.get('/mappings/products', async (_req, res) => {
+  const list = await prisma.nuvemshopProductMapping.findMany({
+    orderBy: { lastSyncedAt: 'desc' },
+    take: 100,
+  });
+  res.json({ mappings: list });
+});
+
+adminRouter.get('/mappings/customers', async (_req, res) => {
+  const list = await prisma.nuvemshopCustomerMapping.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  res.json({ mappings: list });
+});
+
+adminRouter.get('/mappings/orders', async (_req, res) => {
+  const list = await prisma.nuvemshopOrderMapping.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  res.json({ mappings: list });
+});
 
 module.exports = router;

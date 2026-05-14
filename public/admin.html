@@ -659,8 +659,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button type="button" class="refresh-btn" id="ns-refresh">↻</button>
   </div>
   <div id="ns-status-wrap"></div>
+
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">IMPORTAÇÃO INICIAL</h4>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <button type="button" class="btn btn-primary" id="ns-import-products">Importar produtos</button>
+    <button type="button" class="btn btn-primary" id="ns-import-customers">Importar clientes</button>
+    <button type="button" class="btn btn-primary" id="ns-import-orders">Importar pedidos recentes</button>
+  </div>
+  <div id="ns-import-result" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">EVENTOS DE WEBHOOK</h4>
   <div id="ns-events-wrap"></div>
+
+  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">MAPEAMENTOS</h4>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <button type="button" class="btn js-ns-map" data-kind="products">Produtos</button>
+    <button type="button" class="btn js-ns-map" data-kind="customers">Clientes</button>
+    <button type="button" class="btn js-ns-map" data-kind="orders">Pedidos</button>
+  </div>
+  <div id="ns-mappings-wrap"></div>
+
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">LOGS DE SYNC</h4>
   <div id="ns-logs-wrap"></div>
 </div>
@@ -3724,8 +3742,44 @@ async function initNsTab() {
   if (!_nsInit) {
     _nsInit = true;
     document.getElementById('ns-refresh').onclick = loadNsAll;
+    document.getElementById('ns-import-products').onclick = () => nsImport('products');
+    document.getElementById('ns-import-customers').onclick = () => nsImport('customers');
+    document.getElementById('ns-import-orders').onclick = () => nsImport('orders');
+    document.querySelectorAll('.js-ns-map').forEach(btn => {
+      btn.onclick = () => nsLoadMappings(btn.dataset.kind);
+    });
   }
   loadNsAll();
+}
+async function nsImport(kind) {
+  const labelMap = { products: 'produtos', customers: 'clientes', orders: 'pedidos' };
+  const result = document.getElementById('ns-import-result');
+  result.innerHTML = `Importando ${labelMap[kind]}... (pode levar alguns minutos pra base grande)`;
+  const data = await api('/admin/nuvemshop/import/' + kind, 'POST', {});
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  result.innerHTML = `<span style="color:#7b7">✓ ${labelMap[kind]} importados: ${JSON.stringify(data)}</span>`;
+  loadNsAll();
+}
+async function nsLoadMappings(kind) {
+  const wrap = document.getElementById('ns-mappings-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/nuvemshop/mappings/' + kind);
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.mappings || [];
+  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum mapeamento.</div>'; return; }
+  let html = '<table><thead><tr><th>Local ID</th><th>Nuvemshop ID</th><th>Status/Quando</th></tr></thead><tbody>';
+  list.forEach(m => {
+    const localId = m.localProductId || m.customerId || m.saleId || m.localInventoryId || '—';
+    const nsId = m.nuvemshopProductId || m.nuvemshopCustomerId || m.nuvemshopOrderId || '—';
+    const when = m.lastSyncedAt || m.createdAt;
+    html += `<tr>
+      <td style="font-size:11px"><code>${escapeHtml(localId)}</code></td>
+      <td><code>${escapeHtml(nsId)}</code></td>
+      <td style="font-size:11px;color:var(--text2)">${when ? new Date(when).toLocaleString('pt-BR') : '—'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
 }
 async function loadNsAll() {
   await Promise.all([loadNsStatus(), loadNsEvents(), loadNsLogs()]);
