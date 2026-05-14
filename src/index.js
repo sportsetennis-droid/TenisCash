@@ -43,18 +43,25 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({ limit: '1mb' }));
 
-// Rate limiting global
+// Rate limiting global — generoso pra não travar admin trabalhando em massa,
+// mas o suficiente pra bloquear scripts maliciosos.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 100,
+  max: 3000, // ~3 req/seg sustentado por 15 min
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Pula rotas administrativas internas com auth (já protegidas via authMiddleware+adminMiddleware)
+  skip: (req) => /^\/api\/admin\//.test(req.path),
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' }
 });
 app.use('/api/', limiter);
 
-// Rate limiting mais restrito para auth
+// Rate limiting mais restrito SÓ para login (anti força-bruta)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Muitas tentativas de login. Aguarde 15 minutos.' }
 });
 app.use('/api/auth/', authLimiter);
