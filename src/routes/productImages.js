@@ -87,34 +87,33 @@ router.delete('/select/:productId', async (req, res) => {
 router.get('/pending', async (req, res) => {
   try {
     const { brand, limit, supplierCnpj } = req.query;
+    const take = Math.min(parseInt(limit || '50', 10), 500);
+
     const where = {
       active: true,
       imageUrl: null,
       ...(brand ? { brand: { contains: String(brand), mode: 'insensitive' } } : {}),
+      // Filtro por supplierCnpj usando JSON path do Prisma/Postgres
+      ...(supplierCnpj
+        ? { aiContext: { path: ['supplierCnpj'], equals: String(supplierCnpj) } }
+        : {}),
     };
+
     let products = await prisma.product.findMany({
       where,
-      take: Math.min(parseInt(limit || '50', 10), 200),
-      orderBy: { createdAt: 'asc' },
+      take,
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true, sku: true, name: true, brand: true, category: true,
         price: true, aiContext: true, createdAt: true,
       },
     });
 
-    // Filtro adicional por supplierCnpj (vem do aiContext)
-    if (supplierCnpj) {
-      products = products.filter((p) => {
-        try {
-          const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext;
-          return ctx?.supplierCnpj === supplierCnpj;
-        } catch (_) { return false; }
-      });
-    }
-
     const totalPending = await prisma.product.count({ where: { active: true, imageUrl: null } });
-    res.json({ products, totalPending });
+    const filteredCount = await prisma.product.count({ where });
+    res.json({ products, totalPending, filteredCount });
   } catch (err) {
+    console.error('[product-images/pending] erro:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -126,16 +125,12 @@ router.post('/enrich-supplier/:cnpj', async (req, res) => {
     const supplier = await prisma.supplier.findUnique({ where: { cnpj: req.params.cnpj } });
     const supplierName = supplier?.companyName || '';
 
-    // Pega todos os produtos do fornecedor (via aiContext.supplierCnpj)
-    const all = await prisma.product.findMany({
-      where: { active: true },
+    const matching = await prisma.product.findMany({
+      where: {
+        active: true,
+        aiContext: { path: ['supplierCnpj'], equals: req.params.cnpj },
+      },
       take: 5000,
-    });
-    const matching = all.filter((p) => {
-      try {
-        const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext;
-        return ctx?.supplierCnpj === req.params.cnpj;
-      } catch (_) { return false; }
     });
 
     let enriched = 0;
