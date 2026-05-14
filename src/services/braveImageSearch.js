@@ -85,13 +85,12 @@ async function searchImages(query, opts = {}) {
 
 function buildProductQuery(product) {
   // Quando temos a referência do fornecedor (cProd da NF-e, ex: "CT00010001"),
-  // ela já identifica o modelo exato. Query enxuta: marca + "ref" (com aspas
-  // pra forçar match exato) + cor. Sem repetir o nome completo do produto.
+  // ela já identifica o modelo exato. Query mínima: marca + "ref" (com aspas
+  // pra forçar match exato). Sem cor, sem nome — a ref já carrega tudo.
   if (product.supplierRef) {
     const parts = [];
     if (product.brand) parts.push(product.brand);
     parts.push(`"${product.supplierRef}"`);
-    if (product.color) parts.push(product.color);
     return parts.join(' ').trim();
   }
 

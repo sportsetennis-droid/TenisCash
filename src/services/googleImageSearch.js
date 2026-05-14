@@ -92,7 +92,6 @@ function buildProductQuery(product) {
     const parts = [];
     if (product.brand) parts.push(product.brand);
     parts.push(`"${product.supplierRef}"`);
-    if (product.color) parts.push(product.color);
     return parts.join(' ').trim();
   }
 
