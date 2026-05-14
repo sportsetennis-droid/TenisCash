@@ -340,10 +340,15 @@ router.post('/import-description/:productId', async (req, res) => {
       return res.json({ ok: false, error: 'Página encontrada mas sem descrição extraível', productUrl, query: searchQuery });
     }
 
-    // Salva no banco
+    // Salva no banco — usa o HTML formatado se disponível (renderiza bonito na Nuvemshop),
+    // senão usa o texto plano. Overview (curto) vira shortDescription se existir.
+    const longDesc = scraped.descriptionHtml || scraped.description;
+    const shortBase = scraped.overview || scraped.description;
     const data = {
-      longDescription: scraped.description,
-      shortDescription: scraped.description.length > 200 ? scraped.description.slice(0, 200) + '…' : scraped.description,
+      longDescription: longDesc,
+      shortDescription: shortBase
+        ? (shortBase.length > 200 ? shortBase.slice(0, 200) + '…' : shortBase)
+        : null,
     };
     // Se o produto não tem imagem ainda, ou replaceImages=true, traz as imagens também
     if (replaceImages || !product.imageUrl) {
@@ -412,9 +417,13 @@ router.post('/import-description-bulk', async (req, res) => {
         const scraped = await scrapeProductPage(productUrl);
         if (!scraped.ok || !scraped.description) { failed++; errors.push({ sku: product.sku, reason: 'sem descrição', productUrl }); continue; }
 
+        const longDesc = scraped.descriptionHtml || scraped.description;
+        const shortBase = scraped.overview || scraped.description;
         const data = {
-          longDescription: scraped.description,
-          shortDescription: scraped.description.length > 200 ? scraped.description.slice(0, 200) + '…' : scraped.description,
+          longDescription: longDesc,
+          shortDescription: shortBase
+            ? (shortBase.length > 200 ? shortBase.slice(0, 200) + '…' : shortBase)
+            : null,
         };
         if (replaceImages || !product.imageUrl) {
           if (scraped.mainImage) data.imageUrl = scraped.mainImage;
