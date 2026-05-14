@@ -74,9 +74,9 @@ router.get('/supplier/:cnpj/products', async (req, res) => {
         aiContext: { path: ['supplierCnpj'], equals: cnpj },
       },
       select: {
-        id: true, sku: true, name: true, brand: true,
+        id: true, sku: true, name: true, brand: true, category: true,
         costPrice: true, markupPercent: true, price: true, promoPrice: true,
-        imageUrl: true,
+        imageUrl: true, aiContext: true,
       },
       orderBy: { name: 'asc' },
     });

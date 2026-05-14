@@ -78,12 +78,17 @@ router.get('/products', async (req, res) => {
       .map((p) => {
         const totalStock = (p.sizes || []).reduce((s, x) => s + (x.stock || 0), 0);
         const lifecycle = lcByProductId[p.id] || null;
+        const ctx = (() => {
+          try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); }
+          catch (_) { return {}; }
+        })();
         return {
           id: p.id,
           sku: p.sku,
           name: p.name,
           brand: p.brand,
           category: p.category,
+          supplierRef: ctx.supplierRef || null,
           price: p.price,
           promoPrice: p.promoPrice,
           totalStock,

@@ -1513,7 +1513,7 @@ async function loadCatalogProductsAdmin() {
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state">Nenhum produto</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Nome</th><th>Marca</th><th>Categoria</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>Status</th><th>SKU</th><th>Nome</th><th>Referência</th><th>Categoria</th><th>Marca</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody>';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusIcon = enriched
@@ -1525,8 +1525,9 @@ async function loadCatalogProductsAdmin() {
       + '<td>' + statusIcon + '</td>'
       + '<td>' + escapeHtml(p.sku) + '</td>'
       + '<td>' + escapeHtml(p.name) + '</td>'
-      + '<td>' + escapeHtml(p.brand) + '</td>'
+      + refCell(p)
       + '<td>' + escapeHtml(cat) + '</td>'
+      + '<td>' + escapeHtml(p.brand) + '</td>'
       + '<td>R$ ' + Number(p.price).toFixed(2) + '</td>'
       + '<td>' + (p.active ? 'sim' : 'não') + '</td>'
       + '<td>';
@@ -2599,6 +2600,25 @@ function escapeHtml(str) {
     .replaceAll("'", '&#039;');
 }
 
+// Helper: extrai referência do fornecedor (cProd da NF-e) de qualquer produto.
+// Aceita formato com aiContext (json ou string) OU campo supplierRef direto.
+function productRef(p) {
+  if (!p) return '';
+  if (p.supplierRef) return p.supplierRef;
+  let ctx = p.aiContext;
+  if (!ctx) return '';
+  if (typeof ctx === 'string') { try { ctx = JSON.parse(ctx); } catch (_) { return ''; } }
+  return ctx.supplierRef || '';
+}
+
+// Helper: renderiza <td> de referência (cinza se vazio)
+function refCell(p) {
+  const r = productRef(p);
+  return r
+    ? `<td><code style="font-size:11px;color:var(--orange)">${escapeHtml(r)}</code></td>`
+    : '<td style="color:var(--text2)">—</td>';
+}
+
 function escapeJs(str) {
   return String(str)
     .replaceAll('\\\\', '\\\\\\\\')
@@ -3570,13 +3590,15 @@ async function labelsSearchProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const products = data.products || [];
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th></th><th>SKU</th><th>Nome</th><th>Referência</th><th>Categoria</th><th>Marca</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
     const sel = _labelsSelected[p.id] ? 'checked' : '';
     html += `<tr>
       <td><input type="checkbox" data-pid="${p.id}" class="js-lbl-check" ${sel}></td>
       <td><code>${escapeHtml(p.sku)}</code></td>
       <td>${escapeHtml(p.name)}</td>
+      ${refCell(p)}
+      <td>${escapeHtml(p.category||'')}</td>
       <td>${escapeHtml(p.brand||'')}</td>
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.promoPrice ? 'R$ '+Number(p.promoPrice).toFixed(2) : '—'}</td>
@@ -4229,13 +4251,15 @@ async function loadInvProducts() {
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Referência</th><th>Categoria</th><th>Marca</th><th>Preço</th><th>Estoque</th><th>Lifecycle</th><th>Dias</th></tr></thead><tbody>';
   list.forEach(p => {
     const lc = p.lifecycle?.lifecycleStatus || '—';
     const days = p.lifecycle?.daysInStock != null ? p.lifecycle.daysInStock : '—';
     html += `<tr>
       <td><code>${escapeHtml(p.sku)}</code></td>
       <td>${escapeHtml(p.name)}</td>
+      ${refCell(p)}
+      <td>${escapeHtml(p.category||'')}</td>
       <td>${escapeHtml(p.brand||'')}</td>
       <td>R$ ${Number(p.price||0).toFixed(2)}</td>
       <td>${p.totalStock}</td>
@@ -4330,7 +4354,7 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Nome</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>SKU</th><th>Nome</th><th>Referência</th><th>Categoria</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
@@ -4342,6 +4366,8 @@ async function loadMarkupProducts(cnpj) {
     html += `<tr>
       <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
       <td>${escapeHtml(p.name)}</td>
+      ${refCell(p)}
+      <td>${escapeHtml(p.category||'')}</td>
       <td>${cost}</td>
       <td>${overrideMarkup}</td>
       <td><strong>${effMarkup}</strong></td>
@@ -4463,13 +4489,14 @@ async function loadPendingImages() {
 
   if (!_imgPendingProducts.length) { wrap.innerHTML = '<div class="muted">Nenhum produto pendente com esses filtros.</div>'; return; }
 
-  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Marca</th><th>Categoria</th><th></th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>SKU</th><th>Nome</th><th>Referência</th><th>Categoria</th><th>Marca</th><th></th></tr></thead><tbody>';
   _imgPendingProducts.forEach(p => {
     html += `<tr>
       <td><code>${escapeHtml(p.sku)}</code></td>
       <td>${escapeHtml(p.name)}</td>
-      <td>${escapeHtml(p.brand||'')}</td>
+      ${refCell(p)}
       <td>${escapeHtml(p.category||'')}</td>
+      <td>${escapeHtml(p.brand||'')}</td>
       <td><button type="button" class="btn btn-primary" onclick="imgOpenReview('${p.id}')">Buscar imagem</button></td>
     </tr>`;
   });
