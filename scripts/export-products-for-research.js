@@ -23,6 +23,7 @@ function parseArgs() {
   for (const a of args) {
     if (a.startsWith('--cnpj=')) out.cnpj = a.split('=')[1];
     else if (a === '--only-missing') out.onlyMissing = true;
+    else if (a === '--all') out.onlyMissing = false;
     else if (a.startsWith('--out=')) out.out = a.split('=')[1];
   }
   return out;
@@ -31,7 +32,8 @@ function parseArgs() {
 async function main() {
   const args = parseArgs();
   const cnpj = args.cnpj || null;
-  const onlyMissing = args.onlyMissing !== false; // default true
+  // Default: só sem descrição. Use --all pra incluir os já preenchidos.
+  const onlyMissing = args.onlyMissing !== false;
   const outPath = args.out || path.join(process.cwd(), 'products-research.json');
 
   console.log(`\n=== Export produtos pra pesquisa de descrição ===`);
