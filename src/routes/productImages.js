@@ -6,10 +6,19 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const googleGis = require('../services/googleImageSearch');
 const braveGis = require('../services/braveImageSearch');
+const serperGis = require('../services/serperImageSearch');
 
-// Escolhe o provider conforme env: prioriza Brave se BRAVE_API_KEY existir; senão Google.
-const gis = braveGis.isConfigured() ? braveGis : googleGis;
-const providerName = braveGis.isConfigured() ? 'brave' : 'google';
+// Prioridade: Serper (Google real) > Brave > Google Custom Search
+// Serper devolve os mesmos resultados que o Google.com, que indexa
+// converse.com.br profundo. Brave indexa pouco esse tipo de site.
+let gis, providerName;
+if (serperGis.isConfigured()) {
+  gis = serperGis; providerName = 'serper';
+} else if (braveGis.isConfigured()) {
+  gis = braveGis; providerName = 'brave';
+} else {
+  gis = googleGis; providerName = 'google';
+}
 
 const router = express.Router();
 router.use(authMiddleware);
