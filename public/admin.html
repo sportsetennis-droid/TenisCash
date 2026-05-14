@@ -4267,12 +4267,30 @@ async function imgOpenReview(productId) {
   body.innerHTML = `<div style="font-family:Orbitron;font-size:14px;letter-spacing:2px;color:var(--orange)">REVISAR IMAGEM</div>
     <div style="margin-top:10px"><strong>${escapeHtml(product.name)}</strong></div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escapeHtml(product.brand||'')} · SKU ${escapeHtml(product.sku)}</div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <input class="search-box" id="img-search-q-${productId}" placeholder="Sobrescrever query (opcional)" style="flex:1">
       <button type="button" class="btn btn-primary" onclick="imgRunSearch('${productId}')">Buscar</button>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px;color:var(--text2)">
+      <span style="align-self:center">🔍 Site:</span>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','allstar.com.br')">All Star Oficial</button>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','converse.com')">Converse.com</button>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','netshoes.com.br')">Netshoes</button>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','centauro.com.br')">Centauro</button>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','mercadolivre.com.br')">Mercado Livre</button>
+      <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','')">Em tudo</button>
+    </div>
     <div id="img-results-${productId}"><div class="loading-spinner">Buscando...</div></div>`;
   // Roda busca inicial automaticamente
+  imgRunSearch(productId);
+}
+
+async function imgSearchSite(productId, domain) {
+  const inp = document.getElementById('img-search-q-' + productId);
+  const currentQ = inp.value.trim();
+  // Remove qualquer site: anterior
+  const baseQ = currentQ.replace(/\s*site:\S+/gi, '').trim();
+  inp.value = domain ? `${baseQ} site:${domain}`.trim() : baseQ;
   imgRunSearch(productId);
 }
 
