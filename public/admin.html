@@ -811,6 +811,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <input type="number" class="search-box" id="img-filter-limit" placeholder="Limite" value="20" min="1" max="200" style="width:100px">
     <button type="button" class="btn btn-primary" id="img-load-btn">Carregar produtos pendentes</button>
     <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
+    <button type="button" class="btn" id="img-import-desc-btn">📥 Importar descrições do converse.com.br</button>
   </div>
 
   <div id="img-stats" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
@@ -4605,6 +4606,7 @@ async function initImagesTab() {
     document.getElementById('img-enrich-btn').onclick = imgEnrichBySupplier;
     document.getElementById('img-diagnose-btn').onclick = imgDiagnose;
     document.getElementById('img-push-btn').onclick = imgPushToNuvemshop;
+    document.getElementById('img-import-desc-btn').onclick = imgImportDescriptionBulk;
     document.getElementById('img-modal-close').onclick = () => {
       document.getElementById('img-review-modal').classList.remove('show');
     };
@@ -4708,7 +4710,9 @@ async function imgOpenReview(productId) {
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
       <input class="search-box" id="img-search-q-${productId}" placeholder="Sobrescrever query (opcional)" style="flex:1">
       <button type="button" class="btn btn-primary" onclick="imgRunSearch('${productId}')">Buscar</button>
+      <button type="button" class="btn" style="white-space:nowrap" onclick="imgImportDescription('${productId}')">📥 Descrição oficial</button>
     </div>
+    <div id="img-import-result-${productId}" style="font-size:11px;color:var(--text2);margin-bottom:6px"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px;color:var(--text2)">
       <span style="align-self:center">🔍 Site:</span>
       <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="imgSearchSite('${productId}','converse.com.br')">Converse Oficial</button>
@@ -4803,6 +4807,50 @@ function imgUpdateConfirmButton(productId) {
   btn.textContent = `Salvar ${n} selecionada${n === 1 ? '' : 's'}`;
   btn.disabled = n === 0;
   btn.style.opacity = n === 0 ? '0.5' : '1';
+}
+
+async function imgImportDescription(productId) {
+  const result = document.getElementById('img-import-result-' + productId);
+  if (result) result.innerHTML = '<span style="color:var(--orange)">Buscando página oficial no converse.com.br...</span>';
+  const data = await api('/admin/product-images/import-description/' + productId, 'POST', {
+    site: 'converse.com.br',
+    replaceImages: false,
+  });
+  if (!data.ok) {
+    const msg = `<span style="color:#e35">❌ ${escapeHtml(data.error || 'falhou')}</span>`
+      + (data.query ? `<div>Query: <code>${escapeHtml(data.query)}</code></div>` : '')
+      + (data.attemptedResults ? `<div>URLs tentadas: ${data.attemptedResults.map(u => escapeHtml(u)).join(', ')}</div>` : '');
+    if (result) result.innerHTML = msg;
+    return;
+  }
+  if (result) {
+    result.innerHTML = `<span style="color:#7b7">✓ Descrição importada de <a href="${escapeHtml(data.productUrl)}" target="_blank" style="color:var(--orange)">${escapeHtml(data.productUrl)}</a></span>
+      <details style="margin-top:6px"><summary style="cursor:pointer">Ver descrição</summary>
+        <div style="padding:8px;background:rgba(0,0,0,0.3);border-radius:6px;margin-top:4px;white-space:pre-wrap;color:var(--text)">${escapeHtml(data.description)}</div>
+      </details>`;
+  }
+}
+
+async function imgImportDescriptionBulk() {
+  const cnpj = document.getElementById('img-filter-supplier').value.trim();
+  if (!cnpj) { alert('Informe o CNPJ do fornecedor no filtro pra rodar em massa'); return; }
+  const replace = confirm(`Importar descrição oficial do converse.com.br pra todos os produtos do CNPJ ${cnpj} que ainda NÃO têm descrição.\n\nClique OK = só produtos sem descrição. Cancel = não rodar.`);
+  if (!replace) return;
+  const result = document.getElementById('img-enrich-result');
+  result.innerHTML = '<span style="color:var(--orange)">Importando descrições... pode demorar (1 produto ≈ 1-2s)</span>';
+  const data = await api('/admin/product-images/import-description-bulk', 'POST', {
+    supplierCnpj: cnpj,
+    site: 'converse.com.br',
+    onlyMissing: true,
+    replaceImages: false,
+  });
+  if (data.error) { result.innerHTML = `<span style="color:#e35">Erro: ${escapeHtml(data.error)}</span>`; return; }
+  let msg = `<span style="color:#7b7">✓ ${data.succeeded}/${data.total} descrições importadas. ${data.failed} falhas.</span>`;
+  if (data.errors?.length) {
+    msg += '<details style="margin-top:6px"><summary style="cursor:pointer">Ver erros</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(data.errors, null, 2)) + '</pre></details>';
+  }
+  result.innerHTML = msg;
+  loadPendingImages();
 }
 
 async function imgPushToNuvemshop() {

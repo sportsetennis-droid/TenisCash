@@ -7,6 +7,8 @@ const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const googleGis = require('../services/googleImageSearch');
 const braveGis = require('../services/braveImageSearch');
 const serperGis = require('../services/serperImageSearch');
+const serperWeb = require('../services/serperWebSearch');
+const { scrapeProductPage } = require('../services/productPageScraper');
 
 // Prioridade: Serper (Google real) > Brave > Google Custom Search
 // Serper devolve os mesmos resultados que o Google.com, que indexa
@@ -263,6 +265,155 @@ router.get('/pipeline-status', async (req, res) => {
     });
   } catch (err) {
     console.error('[pipeline-status] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Importa a descrição oficial da página do produto no converse.com.br
+// Fluxo: monta query descritiva → web search → acha URL converse.com.br →
+//        fetch da página → extrai descrição/título/imagens → salva no produto
+router.post('/import-description/:productId', async (req, res) => {
+  try {
+    if (!serperWeb.isConfigured()) {
+      return res.status(400).json({ error: 'SERPER_API_KEY não configurada — necessária pra busca web' });
+    }
+    const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    const ctx = (() => {
+      try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
+      catch (_) { return {}; }
+    })();
+
+    // Permite override de URL via body (se o usuário já souber qual página)
+    const { url: urlOverride, site: siteOverride, replaceImages } = req.body || {};
+    const site = (siteOverride || 'converse.com.br').toLowerCase();
+
+    let productUrl = urlOverride || null;
+    let searchQuery = null;
+
+    if (!productUrl) {
+      // Constrói query descritiva: marca + nome (sem prefixo "Tênis") + cor
+      const cleanName = (product.name || '').replace(/^t[eê]nis\s+/i, '').trim();
+      const parts = [];
+      if (product.brand && !new RegExp(product.brand, 'i').test(cleanName)) parts.push(product.brand);
+      if (cleanName) parts.push(cleanName);
+      if (ctx.color && !cleanName.toLowerCase().includes(String(ctx.color).toLowerCase())) {
+        parts.push(ctx.color);
+      }
+      searchQuery = parts.join(' ') + ' site:' + site;
+
+      const search = await serperWeb.searchWeb(searchQuery, { count: 10 });
+      if (!search.ok) return res.json({ ok: false, error: search.error, query: searchQuery });
+
+      // Pega a primeira URL desse domínio
+      const siteRe = new RegExp(site.replace(/\./g, '\\.') + '(/|$)', 'i');
+      productUrl = (search.results || []).find((r) => siteRe.test(r.url || ''))?.url || null;
+      if (!productUrl) {
+        return res.json({
+          ok: false,
+          error: `Nenhuma página de ${site} encontrada`,
+          query: searchQuery,
+          attemptedResults: (search.results || []).slice(0, 5).map((r) => r.url),
+        });
+      }
+    }
+
+    const scraped = await scrapeProductPage(productUrl);
+    if (!scraped.ok) return res.json({ ok: false, error: scraped.error, productUrl, query: searchQuery });
+    if (!scraped.description) {
+      return res.json({ ok: false, error: 'Página encontrada mas sem descrição extraível', productUrl, query: searchQuery });
+    }
+
+    // Salva no banco
+    const data = {
+      longDescription: scraped.description,
+      shortDescription: scraped.description.length > 200 ? scraped.description.slice(0, 200) + '…' : scraped.description,
+    };
+    // Se o produto não tem imagem ainda, ou replaceImages=true, traz as imagens também
+    if (replaceImages || !product.imageUrl) {
+      if (scraped.mainImage) data.imageUrl = scraped.mainImage;
+      if (scraped.images && scraped.images.length) data.imageUrls = scraped.images.slice(0, 8);
+    }
+
+    const updated = await prisma.product.update({ where: { id: product.id }, data });
+    res.json({
+      ok: true,
+      productUrl,
+      query: searchQuery,
+      title: scraped.title,
+      description: scraped.description,
+      images: scraped.images,
+      product: { id: updated.id, sku: updated.sku, longDescription: updated.longDescription, imageUrl: updated.imageUrl },
+    });
+  } catch (err) {
+    console.error('[import-description] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk: importa descrição/imagens pra TODOS os produtos de um fornecedor
+router.post('/import-description-bulk', async (req, res) => {
+  try {
+    if (!serperWeb.isConfigured()) {
+      return res.status(400).json({ error: 'SERPER_API_KEY não configurada' });
+    }
+    const { supplierCnpj, site = 'converse.com.br', replaceImages = false, onlyMissing = true, limit = 200 } = req.body || {};
+    if (!supplierCnpj) return res.status(400).json({ error: 'supplierCnpj obrigatório' });
+
+    const where = {
+      active: true,
+      aiContext: { path: ['supplierCnpj'], equals: String(supplierCnpj) },
+      ...(onlyMissing ? { longDescription: null } : {}),
+    };
+    const products = await prisma.product.findMany({ where, take: parseInt(limit, 10) || 200 });
+
+    let ok = 0, failed = 0;
+    const errors = [];
+
+    for (const product of products) {
+      try {
+        // Reusa a mesma lógica via fetch interno? Não — inline pra não fazer round-trip.
+        const ctx = (() => {
+          try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
+          catch (_) { return {}; }
+        })();
+        const cleanName = (product.name || '').replace(/^t[eê]nis\s+/i, '').trim();
+        const parts = [];
+        if (product.brand && !new RegExp(product.brand, 'i').test(cleanName)) parts.push(product.brand);
+        if (cleanName) parts.push(cleanName);
+        if (ctx.color && !cleanName.toLowerCase().includes(String(ctx.color).toLowerCase())) parts.push(ctx.color);
+        const q = parts.join(' ') + ' site:' + site;
+
+        const search = await serperWeb.searchWeb(q, { count: 5 });
+        const siteRe = new RegExp(site.replace(/\./g, '\\.') + '(/|$)', 'i');
+        const productUrl = (search.results || []).find((r) => siteRe.test(r.url || ''))?.url;
+        if (!productUrl) { failed++; errors.push({ sku: product.sku, reason: 'sem URL', query: q }); continue; }
+
+        const scraped = await scrapeProductPage(productUrl);
+        if (!scraped.ok || !scraped.description) { failed++; errors.push({ sku: product.sku, reason: 'sem descrição', productUrl }); continue; }
+
+        const data = {
+          longDescription: scraped.description,
+          shortDescription: scraped.description.length > 200 ? scraped.description.slice(0, 200) + '…' : scraped.description,
+        };
+        if (replaceImages || !product.imageUrl) {
+          if (scraped.mainImage) data.imageUrl = scraped.mainImage;
+          if (scraped.images && scraped.images.length) data.imageUrls = scraped.images.slice(0, 8);
+        }
+        await prisma.product.update({ where: { id: product.id }, data });
+        ok++;
+        // pequeno delay pra não martelar Serper/Converse
+        await new Promise((r) => setTimeout(r, 300));
+      } catch (err) {
+        failed++;
+        errors.push({ sku: product.sku, reason: err.message });
+      }
+    }
+
+    res.json({ ok: true, total: products.length, succeeded: ok, failed, errors: errors.slice(0, 20) });
+  } catch (err) {
+    console.error('[import-description-bulk] erro:', err);
     res.status(500).json({ error: err.message });
   }
 });
