@@ -167,7 +167,60 @@ async function scrapeProductPage(url) {
       }
     }
 
-    // Fallback final pro caso de outros sites (não Magento)
+    // 3ª — Vtex: <div class="vtex-store-components-X-x-productDescriptionText">
+    if (!descriptionHtml) {
+      const vtexRe = /<div[^>]+class="[^"]*productDescriptionText[^"]*"[^>]*>([\s\S]*?)<\/div>/i;
+      const vtexMatch = html.match(vtexRe);
+      if (vtexMatch) {
+        descriptionHtml = cleanProductHtml(vtexMatch[1]);
+        descriptionPlain = htmlToPlainText(descriptionHtml);
+      }
+    }
+    // Vtex alt: <div data-testid="product-description"> ou class*="ProductDescription"
+    if (!descriptionHtml) {
+      const altRe = /<(?:div|section)[^>]+(?:data-testid="product-description"|class="[^"]*ProductDescription[^"]*"|id="description")[^>]*>([\s\S]{50,5000}?)<\/(?:div|section)>/i;
+      const m = html.match(altRe);
+      if (m) {
+        const cleaned = cleanProductHtml(m[1]);
+        if (cleaned.length > 50) {
+          descriptionHtml = cleaned;
+          descriptionPlain = htmlToPlainText(cleaned);
+        }
+      }
+    }
+
+    // 4ª — Shopify: <div class="product__description"> ou <div class="product-single__description">
+    if (!descriptionHtml) {
+      const shopRe = /<div[^>]+class="[^"]*product(?:-single)?__description[^"]*"[^>]*>([\s\S]*?)<\/div>/i;
+      const m = html.match(shopRe);
+      if (m) {
+        descriptionHtml = cleanProductHtml(m[1]);
+        descriptionPlain = htmlToPlainText(descriptionHtml);
+      }
+    }
+
+    // 5ª — WooCommerce: #tab-description ou .woocommerce-product-details__short-description
+    if (!descriptionHtml) {
+      const wcRe = /<(?:div|section)[^>]+(?:id="tab-description"|class="[^"]*woocommerce-(?:Tabs-panel--description|product-details__short-description)[^"]*")[^>]*>([\s\S]{50,8000}?)<\/(?:div|section)>/i;
+      const m = html.match(wcRe);
+      if (m) {
+        descriptionHtml = cleanProductHtml(m[1]);
+        descriptionPlain = htmlToPlainText(descriptionHtml);
+      }
+    }
+
+    // 6ª — JSON-LD com description rica (pode ter HTML embutido)
+    if (!descriptionHtml && jsonDesc && jsonDesc.length > 80) {
+      // Se a description do JSON-LD tem tags HTML, usa como descriptionHtml
+      if (/<\w+/.test(jsonDesc)) {
+        descriptionHtml = cleanProductHtml(jsonDesc);
+        descriptionPlain = htmlToPlainText(descriptionHtml);
+      } else {
+        descriptionPlain = decodeHtml(jsonDesc);
+      }
+    }
+
+    // Fallback final pro caso de outros sites (sem nenhum bloco identificado)
     if (!descriptionPlain) {
       descriptionPlain = decodeHtml(jsonDesc || ogDesc || metaDesc);
     }
