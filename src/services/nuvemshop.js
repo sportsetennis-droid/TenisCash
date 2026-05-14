@@ -119,6 +119,7 @@ module.exports = {
   buildAuthUrl,
   exchangeCode,
   nuvemshopApi,
+  fetchAllPages,
   listProducts,
   listOrders,
   listCustomers,

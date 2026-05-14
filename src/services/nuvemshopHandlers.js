@@ -543,7 +543,67 @@ function ptObj(v) {
   return { pt: String(v) };
 }
 
-function buildNuvemshopProductPayload(localProduct, sizes) {
+// =====================================================================
+// Cache de categorias e marcas da Nuvemshop (evita N+1 lookups)
+// =====================================================================
+
+let _nsCategoryCache = null;
+let _nsBrandCache = null;
+
+async function loadNsCategories(connection) {
+  if (_nsCategoryCache) return _nsCategoryCache;
+  const cats = await ns.fetchAllPages(connection, '/categories', { perPage: 100, max: 500 });
+  _nsCategoryCache = cats.map((c) => ({
+    id: c.id,
+    name: (typeof c.name === 'object' ? c.name.pt : c.name) || '',
+    parentId: c.parent || null,
+    handle: c.handle || null,
+  }));
+  return _nsCategoryCache;
+}
+
+async function loadNsBrands(connection) {
+  // Nuvemshop não tem endpoint público de brands separado em todas as versões da API.
+  // Brands são strings no produto. Mantemos só "produto.brand" como string mesmo.
+  if (_nsBrandCache) return _nsBrandCache;
+  _nsBrandCache = [];
+  return _nsBrandCache;
+}
+
+function clearNsCache() {
+  _nsCategoryCache = null;
+  _nsBrandCache = null;
+}
+
+function normalize(s) {
+  return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+async function findOrCreateCategory(connection, name) {
+  if (!name) return null;
+  const cats = await loadNsCategories(connection);
+  const target = normalize(name);
+  // Match por nome completo OU por último segmento (Tênis/Corrida → Corrida)
+  let match = cats.find((c) => normalize(c.name) === target);
+  if (!match) {
+    const lastSeg = name.split('/').pop();
+    match = cats.find((c) => normalize(c.name) === normalize(lastSeg));
+  }
+  if (match) return match.id;
+  // Cria nova categoria raiz
+  try {
+    const created = await ns.nuvemshopApi(connection, 'POST', '/categories', {
+      name: ptObj(name),
+    });
+    _nsCategoryCache.push({ id: created.id, name, parentId: null, handle: created.handle });
+    return created.id;
+  } catch (err) {
+    await logSync('category', 'error', `Falha criar categoria "${name}": ${err.message}`);
+    return null;
+  }
+}
+
+function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   // Variants — uma por tamanho
   const variants = (sizes && sizes.length ? sizes : [{ size: 'único', stock: 0 }]).map((s) => ({
     price: String(Number(localProduct.price || 0).toFixed(2)),
@@ -555,19 +615,45 @@ function buildNuvemshopProductPayload(localProduct, sizes) {
     values: [{ pt: String(s.size || 'único') }],
   }));
 
+  // Coleta TODAS as imagens disponíveis
+  const allImages = [];
+  if (localProduct.imageUrl) allImages.push({ src: localProduct.imageUrl });
+  if (localProduct.imageUrls) {
+    try {
+      const arr = typeof localProduct.imageUrls === 'string'
+        ? JSON.parse(localProduct.imageUrls)
+        : localProduct.imageUrls;
+      if (Array.isArray(arr)) {
+        arr.forEach((u) => { if (u && !allImages.find((i) => i.src === u)) allImages.push({ src: u }); });
+      }
+    } catch (_) {}
+  }
+
+  // Descrição: prioriza longa, depois curta, depois nome
+  const description = localProduct.longDescription || localProduct.shortDescription || localProduct.name;
+
+  // SEO baseado em marca + nome
+  const seoTitle = `${localProduct.brand || ''} ${localProduct.name}`.trim().slice(0, 70);
+  const seoDescription = (description || '').slice(0, 160);
+
   const payload = {
     name: ptObj(localProduct.name),
-    description: ptObj(localProduct.longDescription || localProduct.shortDescription || localProduct.name),
+    description: ptObj(description),
     brand: localProduct.brand || null,
     published: localProduct.active !== false,
     free_shipping: false,
     variants,
     attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
+    seo_title: ptObj(seoTitle),
+    seo_description: ptObj(seoDescription),
+    tags: [localProduct.brand, localProduct.category, localProduct.subcategory]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase())
+      .join(','),
   };
 
-  if (localProduct.imageUrl) {
-    payload.images = [{ src: localProduct.imageUrl }];
-  }
+  if (allImages.length) payload.images = allImages;
+  if (Array.isArray(opts.categoryIds) && opts.categoryIds.length) payload.categories = opts.categoryIds;
 
   return payload;
 }
@@ -583,7 +669,18 @@ async function pushProductToNuvemshop(localProductId, connection) {
     where: { localProductId: product.id },
   });
 
-  const payload = buildNuvemshopProductPayload(product, product.sizes || []);
+  // Mapeia categoria do produto local pra ID na Nuvemshop (cria se não existir)
+  const categoryIds = [];
+  if (product.category) {
+    const catId = await findOrCreateCategory(connection, product.category);
+    if (catId) categoryIds.push(catId);
+  }
+  if (product.subcategory) {
+    const subId = await findOrCreateCategory(connection, product.subcategory);
+    if (subId && !categoryIds.includes(subId)) categoryIds.push(subId);
+  }
+
+  const payload = buildNuvemshopProductPayload(product, product.sizes || [], { categoryIds });
 
   let nsProduct;
   let action;
