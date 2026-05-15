@@ -92,6 +92,8 @@ async function curateProduct(productId, opts = {}) {
 
     // ============ 1. IMAGEM ============
     if (!opts.skipImage && !product.imageUrl) {
+      const debugLog = (msg) => { if (opts.verbose) console.log(`[curate ${product.sku}] ${msg}`); };
+
       let imgQuery = serperImg.buildProductQuery({
         brand: brandToUse,
         supplierRef: ctx.supplierRef,
@@ -99,21 +101,35 @@ async function curateProduct(productId, opts = {}) {
         color: ctx.color,
         category: product.category,
       });
+      const queryBase = imgQuery;
       if (officialSite) imgQuery = `${imgQuery} site:${officialSite}`.trim();
 
-      const searchResult = await serperImg.searchImages(imgQuery, { count: opts.imageCandidates || 8 });
+      debugLog('IMG query 1: ' + imgQuery);
+      let searchResult = await serperImg.searchImages(imgQuery, { count: opts.imageCandidates || 8 });
+      report.steps.image = { query: imgQuery };
 
       if (!searchResult.ok || !searchResult.items?.length) {
-        // Fallback: busca ampla sem site filter
-        const broadQuery = serperImg.buildProductQuery({
-          brand: brandToUse,
-          supplierRef: ctx.supplierRef,
-          model: cleanName,
-          color: ctx.color,
-          category: product.category,
+        debugLog(`IMG fallback (sem site): ${queryBase}`);
+        const broad = await serperImg.searchImages(queryBase, { count: opts.imageCandidates || 8 });
+        if (broad.ok && broad.items?.length) {
+          searchResult = broad;
+          report.steps.image.query = queryBase;
+          report.steps.image.fallback = 'busca ampla';
+        }
+      }
+
+      // 2º fallback: só marca + nome (sem ref), pra refs muito específicas que falham
+      if ((!searchResult.ok || !searchResult.items?.length) && ctx.supplierRef) {
+        const noRefQuery = serperImg.buildProductQuery({
+          brand: brandToUse, model: cleanName, color: ctx.color, category: product.category,
         });
-        const broad = await serperImg.searchImages(broadQuery, { count: opts.imageCandidates || 8 });
-        if (broad.ok && broad.items?.length) searchResult.items = broad.items;
+        debugLog(`IMG fallback (sem ref): ${noRefQuery}`);
+        const noRef = await serperImg.searchImages(noRefQuery, { count: opts.imageCandidates || 8 });
+        if (noRef.ok && noRef.items?.length) {
+          searchResult = noRef;
+          report.steps.image.query = noRefQuery;
+          report.steps.image.fallback = 'sem ref';
+        }
       }
 
       if (searchResult.items?.length) {
@@ -121,23 +137,32 @@ async function curateProduct(productId, opts = {}) {
         let chosen = candidates[0];
         let rankedScored = candidates.map((c, i) => ({ ...c, _score: candidates.length - i }));
         let visionCost = 0;
+        let visionAllFailed = false;
 
         if (visionConfigured()) {
-          // pontua com vision, pega a melhor (com early stop pra economizar custo)
+          debugLog(`Vision analisando ${candidates.length} candidatas...`);
           const r = await pickBestImage(candidates, productInfo, {
             earlyStopScore: 9,
             maxCalls: Math.min(candidates.length, opts.imageCandidates || 8),
           });
           if (r.ranked.length) {
             rankedScored = r.ranked;
-            chosen = r.ranked[0];
+            // Detecta caso: TODAS deram erro de análise → não confiar no score
+            const scoredWithFail = rankedScored.filter((c) => c._reason && c._reason.includes('falhou ao analisar'));
+            visionAllFailed = scoredWithFail.length === rankedScored.length;
+            chosen = visionAllFailed ? candidates[0] : r.ranked[0];
             visionCost = r.totalCostBRL || 0;
+            if (visionAllFailed) {
+              debugLog('Vision falhou em todas — usando 1ª do Serper como fallback');
+            } else {
+              debugLog(`Vision: melhor score = ${chosen._score}, motivo: ${chosen._reason}`);
+            }
           }
         }
 
-        // Só salva se score >= minScore (ou se sem vision, sempre salva)
-        const minScore = opts.minScore ?? 5;
-        const acceptable = !visionConfigured() || (chosen._score || 0) >= minScore;
+        // Salva se: sem vision, ou vision-fail-total (usa Serper), ou score >= minScore
+        const minScore = opts.minScore ?? 4;  // antes era 5, baixei pra 4
+        const acceptable = !visionConfigured() || visionAllFailed || (chosen._score || 0) >= minScore;
 
         if (acceptable && chosen.url) {
           // Junta as analisadas (sem a escolhida) + as não-analisadas (ordem do Serper).
