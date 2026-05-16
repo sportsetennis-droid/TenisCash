@@ -726,9 +726,15 @@ async function showStoreSelector() {
 
   try {
     const d = await api('/api/seller/stores');
+    const stores = d.stores || [];
+    // Se a conta tem apenas UMA loja (institucional ou vendedor restrito), pula seletor
+    if (stores.length === 1 && (me.role === 'store' || me.role === 'seller')) {
+      selectStore(stores[0]);
+      return;
+    }
     const list = document.getElementById('storeList');
     const defaultStoreId = me.storeId;
-    list.innerHTML = (d.stores || []).map(s => {
+    list.innerHTML = stores.map(s => {
       const isDefault = s.id === defaultStoreId;
       return `
         <button class="store-card" onclick='selectStore(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
@@ -768,6 +774,19 @@ function showApp() {
     el.style.display = isStore ? 'none' : 'block';
   });
   document.getElementById('dashboardTitle').textContent = isStore ? 'Hoje na loja' : 'Seu dia';
+
+  // Esconder botão "trocar loja" quando a conta é restrita a uma loja
+  const lockedToOneStore = (me.role === 'store' || me.role === 'seller');
+  document.querySelectorAll('[title="Trocar loja"]').forEach(el => {
+    el.style.display = lockedToOneStore ? 'none' : '';
+  });
+  // Nome da loja também não é mais clicável quando travado
+  const topStore = document.getElementById('topStoreName');
+  if (lockedToOneStore) {
+    topStore.style.textDecoration = 'none';
+    topStore.style.cursor = 'default';
+    topStore.onclick = null;
+  }
 
   goPage('dashboard');
   loadVendors();
@@ -1161,18 +1180,17 @@ function setInvMode(mode) {
 }
 
 async function populateInvStoreSelect() {
-  console.log('[populateInvStoreSelect] start');
   try {
     const d = await api('/api/seller/stores');
-    console.log('[populateInvStoreSelect] got', d);
+    const stores = d.stores || [];
     const sel = document.getElementById('invStoreSelect');
-    if (!sel) { console.error('select element not found'); return; }
-    sel.innerHTML = '<option value="">— escolha a loja —</option>' + (d.stores || []).map(s =>
-      `<option value="${s.id}">${s.name}</option>`
-    ).join('');
+    if (!sel) return;
+    const lockedToOne = stores.length === 1 && (me.role === 'store' || me.role === 'seller');
+    sel.innerHTML = (lockedToOne ? '' : '<option value="">— escolha a loja —</option>') +
+      stores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     if (activeStore?.id) sel.value = activeStore.id;
-    console.log('[populateInvStoreSelect] done, options:', sel.options.length);
-  } catch (e) { console.error('[populateInvStoreSelect] ERROR:', e); }
+    if (lockedToOne) sel.disabled = true;
+  } catch (e) { console.error(e); }
 }
 
 let invSearchTimer;
@@ -1367,15 +1385,17 @@ async function doClockIn(type) {
 let rankInited = false;
 async function initRanking() {
   if (!rankInited) {
-    // Popula seletor de lojas (já tem em activeStore mas a lista completa vem do endpoint)
     try {
       const d = await api('/api/seller/stores');
       const sel = document.getElementById('rankStore');
-      const opts = ['<option value="all">Todas as lojas</option>'];
-      (d.stores || []).forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
+      const stores = d.stores || [];
+      const lockedToOne = stores.length === 1 && (me.role === 'store' || me.role === 'seller');
+      const opts = lockedToOne ? [] : ['<option value="all">Todas as lojas</option>'];
+      stores.forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
       sel.innerHTML = opts.join('');
-      // Default: loja ativa
       if (activeStore?.id) sel.value = activeStore.id;
+      // Se conta restrita, esconde o dropdown (já tá no escopo da loja)
+      if (lockedToOne) sel.disabled = true;
     } catch (e) { console.error(e); }
     // Datas custom: defaults úteis
     const today = new Date();
@@ -1504,11 +1524,13 @@ async function initCrm() {
     try {
       const d = await api('/api/seller/stores');
       crmAllStores = d.stores || [];
+      const lockedToOne = crmAllStores.length === 1 && (me.role === 'store' || me.role === 'seller');
       const storeSel = document.getElementById('crmStore');
-      storeSel.innerHTML = '<option value="all">Todas as lojas</option>' + crmAllStores.map(s =>
-        `<option value="${s.id}">${s.name}</option>`
-      ).join('');
+      const opts = lockedToOne ? [] : ['<option value="all">Todas as lojas</option>'];
+      crmAllStores.forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
+      storeSel.innerHTML = opts.join('');
       if (activeStore?.id) storeSel.value = activeStore.id;
+      if (lockedToOne) storeSel.disabled = true;
     } catch (e) { console.error('initCrm stores:', e); }
   }
   await onCrmStoreChange();

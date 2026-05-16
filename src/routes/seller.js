@@ -1,5 +1,5 @@
 const express = require('express');
-const { authMiddleware, prisma } = require('../middleware');
+const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 
 const router = express.Router();
 
@@ -9,6 +9,9 @@ function sellerOnly(req, res, next) {
   }
   next();
 }
+
+// Aplica scope em todas as rotas do seller
+router.use(authMiddleware, storeScope);
 
 function recifeDayBounds(now = new Date()) {
   // Recife é UTC-3 (sem DST)
@@ -110,10 +113,12 @@ function summarizeToday(clockIns, now = new Date()) {
 // BATER PONTO COMO VENDEDOR (a partir do PDV institucional)
 // Operador escolhe o vendedor, vendedor digita PIN pessoal pra confirmar
 // =====================================================================
-router.post('/clockin-as', authMiddleware, sellerOnly, async (req, res) => {
+router.post('/clockin-as', sellerOnly, async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
-    const { vendorId, pin, type, latitude, longitude, storeId, note } = req.body || {};
+    const { vendorId, pin, type, latitude, longitude, note } = req.body || {};
+    let { storeId } = req.body || {};
+    if (req.scope?.isStoreLocked) storeId = req.scope.storeId;
 
     if (!vendorId) return res.status(400).json({ error: 'Selecione o vendedor' });
     if (!pin) return res.status(400).json({ error: 'Vendedor precisa digitar PIN' });
@@ -132,6 +137,10 @@ router.post('/clockin-as', authMiddleware, sellerOnly, async (req, res) => {
     });
     if (!vendor || !vendor.active) return res.status(404).json({ error: 'Vendedor não encontrado' });
     if (vendor.role !== 'seller') return res.status(400).json({ error: 'Selecionado não é vendedor' });
+    // Lock: PDV institucional só bate ponto de vendedor da PRÓPRIA loja
+    if (req.scope?.isStoreLocked && vendor.storeId !== req.scope.storeId) {
+      return res.status(403).json({ error: 'Vendedor não pertence a esta loja' });
+    }
 
     // Confere PIN do vendedor (não do operador logado)
     const ok = await bcrypt.compare(pin, vendor.pin || '');
@@ -344,10 +353,13 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 // VENDEDORES DA LOJA — pra escolher quem atendeu o cliente no PDV
 // =====================================================================
-router.get('/store-sellers', authMiddleware, sellerOnly, async (req, res) => {
+router.get('/store-sellers', sellerOnly, async (req, res) => {
   try {
-    const storeId = req.query.storeId;
+    let storeId = req.query.storeId;
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
+    // Lock: conta institucional/vendedor só lista vendedores da PRÓPRIA loja
+    storeId = enforceStoreId(req, storeId);
+    if (!storeId) return res.status(403).json({ error: 'Operador sem loja vinculada' });
 
     const sellers = await prisma.user.findMany({
       where: { role: 'seller', active: true, storeId },
@@ -363,10 +375,16 @@ router.get('/store-sellers', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 // LISTA LOJAS — pra escolher onde está trabalhando hoje
 // =====================================================================
-router.get('/stores', authMiddleware, sellerOnly, async (_req, res) => {
+router.get('/stores', sellerOnly, async (req, res) => {
   try {
+    const where = { active: true };
+    // Conta institucional + vendedor → vê só a própria loja
+    if (req.scope?.isStoreLocked || req.scope?.isSellerLocked) {
+      if (!req.scope.storeId) return res.json({ stores: [] });
+      where.id = req.scope.storeId;
+    }
     const stores = await prisma.store.findMany({
-      where: { active: true },
+      where,
       orderBy: { code: 'asc' },
       select: { id: true, name: true, code: true, city: true, mall: true, latitude: true, longitude: true },
     });
@@ -379,7 +397,7 @@ router.get('/stores', authMiddleware, sellerOnly, async (_req, res) => {
 // =====================================================================
 // DASHBOARD DO VENDEDOR — KPIs do dia/mês
 // =====================================================================
-router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
+router.get('/dashboard', sellerOnly, async (req, res) => {
   try {
     const operator = await prisma.user.findUnique({
       where: { id: req.userId },
@@ -391,7 +409,7 @@ router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
 
     // Escopo: se logado é STORE (PDV), agrega por LOJA. Se é seller individual, por vendedor.
     const isStoreAccount = operator?.role === 'store';
-    const storeId = req.query.storeId || operator?.storeId;
+    const storeId = enforceStoreId(req, req.query.storeId) || operator?.storeId;
 
     const baseWhere = isStoreAccount
       ? { storeId } // dados da loja inteira
@@ -486,10 +504,16 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     if (seller.role !== 'seller' && seller.role !== 'admin') return res.status(400).json({ error: 'Vendedor deve ter perfil de seller' });
 
     // Loja ativa: enviada pelo frontend. Fallback: loja do operador.
-    const activeStoreId = storeId || operator.storeId;
+    // Lock: conta institucional sempre vende NA PRÓPRIA loja
+    let activeStoreId = storeId || operator.storeId;
+    if (req.scope?.isStoreLocked) activeStoreId = req.scope.storeId;
     if (activeStoreId) {
       const exists = await prisma.store.findUnique({ where: { id: activeStoreId } });
       if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });
+    }
+    // Vendedor escolhido precisa ser DA loja ativa (anti tunneling)
+    if (req.scope?.isStoreLocked && seller.storeId && seller.storeId !== activeStoreId) {
+      return res.status(403).json({ error: 'Vendedor escolhido não pertence a esta loja' });
     }
 
     // Busca produtos pra montar SaleItems
@@ -640,9 +664,13 @@ router.get('/sales', authMiddleware, sellerOnly, async (req, res) => {
 //   from    — YYYY-MM-DD (se period=custom)
 //   to      — YYYY-MM-DD (se period=custom)
 // =====================================================================
-router.get('/rankings', authMiddleware, sellerOnly, async (req, res) => {
+router.get('/rankings', sellerOnly, async (req, res) => {
   try {
-    const storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
+    let storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
+    // Lock: conta institucional/vendedor só vê ranking da PRÓPRIA loja
+    if (req.scope?.isStoreLocked || req.scope?.isSellerLocked) {
+      storeId = req.scope.storeId;
+    }
     const period = req.query.period || 'month';
 
     // Resolve range de datas
@@ -804,11 +832,12 @@ router.get('/inventory/check', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // Busca PRODUTOS com estoque em uma loja específica
-router.get('/inventory/by-store', authMiddleware, sellerOnly, async (req, res) => {
+router.get('/inventory/by-store', sellerOnly, async (req, res) => {
   try {
-    const storeId = req.query.storeId;
+    let storeId = req.query.storeId;
     const q = (req.query.q || '').trim();
     const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    storeId = enforceStoreId(req, storeId);
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
 
     // Acha productSizeIds com stock > 0 nessa loja
@@ -864,10 +893,19 @@ router.get('/inventory/by-store', authMiddleware, sellerOnly, async (req, res) =
 // PIN inicial = últimos 4 dígitos do telefone. Cliente troca depois.
 // Se sellerId vier, ja vincula na carteira do vendedor.
 // =====================================================================
-router.post('/customer/quick-register', authMiddleware, sellerOnly, async (req, res) => {
+router.post('/customer/quick-register', sellerOnly, async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
-    const { name, phone, cpf, email, sellerId, storeId, notes } = req.body || {};
+    const { name, phone, cpf, email, sellerId, notes } = req.body || {};
+    let { storeId } = req.body || {};
+    if (req.scope?.isStoreLocked) storeId = req.scope.storeId;
+    // Lock: vendedor escolhido tem que ser DA loja
+    if (req.scope?.isStoreLocked && sellerId) {
+      const v = await prisma.user.findUnique({ where: { id: sellerId }, select: { storeId: true } });
+      if (v && v.storeId !== req.scope.storeId) {
+        return res.status(403).json({ error: 'Vendedor não pertence a esta loja' });
+      }
+    }
 
     if (!name || !phone) return res.status(400).json({ error: 'Nome e telefone obrigatórios' });
     const cleanPhone = String(phone).replace(/\D/g, '');

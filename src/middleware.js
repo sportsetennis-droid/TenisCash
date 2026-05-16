@@ -28,4 +28,33 @@ function adminMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, adminMiddleware, JWT_SECRET, prisma };
+// =====================================================================
+// Isolamento por loja: garante que conta institucional (role=store) ou
+// vendedor (role=seller) so' acesse dados da PRÓPRIA loja. Admin e
+// superadmin passam livre. Carrega o operator do banco e expoe
+// req.scope = { storeId, isStoreLocked, isSellerLocked }
+// =====================================================================
+async function storeScope(req, _res, next) {
+  if (!req.userId) return next();
+  try {
+    const u = await prisma.user.findUnique({ where: { id: req.userId }, select: { id: true, role: true, storeId: true } });
+    req.operator = u;
+    req.scope = {
+      storeId: u?.storeId || null,
+      isStoreLocked: u?.role === 'store',
+      isSellerLocked: u?.role === 'seller',
+      isAdmin: u?.role === 'admin' || u?.role === 'superadmin',
+    };
+  } catch (_) {
+    req.scope = { storeId: null, isStoreLocked: false, isSellerLocked: false, isAdmin: false };
+  }
+  next();
+}
+
+// Helper pra forçar storeId quando role=store
+function enforceStoreId(req, requestedStoreId) {
+  if (req.scope?.isStoreLocked) return req.scope.storeId;
+  return requestedStoreId || null;
+}
+
+module.exports = { authMiddleware, adminMiddleware, storeScope, enforceStoreId, JWT_SECRET, prisma };
