@@ -541,6 +541,10 @@ function goPage(pageId) {
   if (pageId === 'ranking') initRanking();
   if (pageId === 'messages') loadMessages();
   if (pageId === 'catalog') onCatalogSearch();
+  if (pageId === 'inventory') {
+    const sel = document.getElementById('invStoreSelect');
+    if (sel && sel.options.length <= 1) populateInvStoreSelect();
+  }
 }
 
 // ============== DASHBOARD ==============
@@ -779,7 +783,11 @@ function setInvMode(mode) {
   document.getElementById('invModeStorePane').style.display = isProd ? 'none' : 'block';
   document.getElementById('invDetails').innerHTML = '';
 
-  if (!isProd && !document.getElementById('invStoreSelect').children.length > 1) populateInvStoreSelect();
+  // Sempre repopula o dropdown ao entrar no modo store (e quando ainda só tem a opção placeholder)
+  if (!isProd) {
+    const sel = document.getElementById('invStoreSelect');
+    if (sel.options.length <= 1) populateInvStoreSelect();
+  }
 }
 
 async function populateInvStoreSelect() {
