@@ -4,8 +4,8 @@ const { authMiddleware, prisma } = require('../middleware');
 const router = express.Router();
 
 function sellerOnly(req, res, next) {
-  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
-    return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
+  if (!['seller', 'admin', 'superadmin', 'store'].includes(req.userRole)) {
+    return res.status(403).json({ error: 'Acesso restrito ao vendedor / loja' });
   }
   next();
 }
@@ -251,7 +251,26 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // =====================================================================
-// LISTA LOJAS — pra vendedor escolher onde está trabalhando hoje
+// VENDEDORES DA LOJA — pra escolher quem atendeu o cliente no PDV
+// =====================================================================
+router.get('/store-sellers', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const storeId = req.query.storeId;
+    if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
+
+    const sellers = await prisma.user.findMany({
+      where: { role: 'seller', active: true, storeId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, employeeCode: true },
+    });
+    res.json({ sellers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// LISTA LOJAS — pra escolher onde está trabalhando hoje
 // =====================================================================
 router.get('/stores', authMiddleware, sellerOnly, async (_req, res) => {
   try {
@@ -271,46 +290,65 @@ router.get('/stores', authMiddleware, sellerOnly, async (_req, res) => {
 // =====================================================================
 router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
   try {
-    const userId = req.userId;
+    const operator = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: { store: true },
+    });
     const { startUtc: todayStart, endUtc: todayEnd } = recifeDayBounds(new Date());
-
-    // Início do mês
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [salesToday, salesMonth, commissionsPending, commissionsPaidMonth, me] = await Promise.all([
+    // Escopo: se logado é STORE (PDV), agrega por LOJA. Se é seller individual, por vendedor.
+    const isStoreAccount = operator?.role === 'store';
+    const storeId = req.query.storeId || operator?.storeId;
+
+    const baseWhere = isStoreAccount
+      ? { storeId } // dados da loja inteira
+      : { sellerId: operator.id }; // dados do vendedor pessoal
+
+    const [salesToday, salesMonth, topSellersToday] = await Promise.all([
       prisma.sale.aggregate({
         _sum: { totalAmount: true, tcEarned: true },
         _count: { _all: true },
-        where: { sellerId: userId, createdAt: { gte: todayStart, lt: todayEnd } },
+        where: { ...baseWhere, createdAt: { gte: todayStart, lt: todayEnd } },
       }),
       prisma.sale.aggregate({
         _sum: { totalAmount: true, tcEarned: true },
         _count: { _all: true },
-        where: { sellerId: userId, createdAt: { gte: monthStart } },
+        where: { ...baseWhere, createdAt: { gte: monthStart } },
       }),
-      prisma.saleCommission.aggregate({
-        _sum: { amount: true },
+      isStoreAccount ? prisma.sale.groupBy({
+        by: ['sellerId'],
+        _sum: { totalAmount: true },
         _count: { _all: true },
-        where: { sellerId: userId, status: 'pending' },
-      }),
-      prisma.saleCommission.aggregate({
-        _sum: { amount: true },
-        where: { sellerId: userId, status: 'paid', paidAt: { gte: monthStart } },
-      }),
-      prisma.user.findUnique({
-        where: { id: userId },
-        include: { store: true },
-      }),
+        where: { storeId, createdAt: { gte: todayStart, lt: todayEnd } },
+        orderBy: { _sum: { totalAmount: 'desc' } },
+        take: 5,
+      }) : Promise.resolve([]),
     ]);
 
+    // Resolve nomes dos top vendedores do dia
+    let topSellers = [];
+    if (topSellersToday.length) {
+      const ids = topSellersToday.map(t => t.sellerId);
+      const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+      const userMap = new Map(users.map(u => [u.id, u.name]));
+      topSellers = topSellersToday.map(t => ({
+        sellerId: t.sellerId,
+        name: userMap.get(t.sellerId) || '?',
+        salesCount: t._count._all,
+        salesAmount: t._sum.totalAmount || 0,
+      }));
+    }
+
     res.json({
-      seller: {
-        id: me?.id,
-        name: me?.name,
-        employeeCode: me?.employeeCode,
-        store: me?.store ? { id: me.store.id, name: me.store.name, code: me.store.code } : null,
+      operator: {
+        id: operator?.id,
+        name: operator?.name,
+        role: operator?.role,
+        store: operator?.store ? { id: operator.store.id, name: operator.store.name, code: operator.store.code } : null,
       },
+      scope: isStoreAccount ? 'store' : 'seller',
       today: {
         salesCount: salesToday._count._all || 0,
         salesAmount: salesToday._sum.totalAmount || 0,
@@ -321,14 +359,10 @@ router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
         salesAmount: salesMonth._sum.totalAmount || 0,
         cashbackGiven: salesMonth._sum.tcEarned || 0,
       },
-      commissions: {
-        pendingCount: commissionsPending._count._all || 0,
-        pendingAmount: commissionsPending._sum.amount || 0,
-        paidThisMonth: commissionsPaidMonth._sum.amount || 0,
-      },
+      topSellersToday: topSellers,
     });
   } catch (err) {
-    console.error('Erro dashboard vendedor:', err);
+    console.error('Erro dashboard:', err);
     res.status(500).json({ error: 'Erro ao carregar dashboard' });
   }
 });
@@ -338,22 +372,30 @@ router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
   try {
-    const sellerId = req.userId;
-    const { customerPhone, items, paymentMethod, tcUsed, note, storeId } = req.body || {};
+    const operatorId = req.userId; // quem operou o PDV (loja ou vendedor)
+    const { customerPhone, items, paymentMethod, tcUsed, note, storeId, vendorId } = req.body || {};
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos 1 item' });
     }
 
-    const seller = await prisma.user.findUnique({
-      where: { id: sellerId },
+    const operator = await prisma.user.findUnique({
+      where: { id: operatorId },
       include: { store: true },
     });
-    if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado' });
+    if (!operator) return res.status(404).json({ error: 'Operador não encontrado' });
 
-    // Loja ativa: enviada pelo frontend (vendedor pode estar cobrindo outra loja).
-    // Fallback: loja padrão do cadastro.
-    const activeStoreId = storeId || seller.storeId;
+    // Vendedor da comissão: vem do frontend (PDV institucional escolhe quem atendeu).
+    // Se NÃO veio (login pessoal de vendedor antigo), assume o próprio logado.
+    const sellerId = vendorId || (operator.role === 'seller' ? operator.id : null);
+    if (!sellerId) return res.status(400).json({ error: 'Informe o vendedor (vendorId) da venda' });
+
+    const seller = await prisma.user.findUnique({ where: { id: sellerId } });
+    if (!seller || !seller.active) return res.status(400).json({ error: 'Vendedor inválido ou inativo' });
+    if (seller.role !== 'seller' && seller.role !== 'admin') return res.status(400).json({ error: 'Vendedor deve ter perfil de seller' });
+
+    // Loja ativa: enviada pelo frontend. Fallback: loja do operador.
+    const activeStoreId = storeId || operator.storeId;
     if (activeStoreId) {
       const exists = await prisma.store.findUnique({ where: { id: activeStoreId } });
       if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });

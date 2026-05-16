@@ -179,24 +179,23 @@
     </div>
   </div>
 
-  <nav class="nav">
+  <nav class="nav" id="mainNav">
     <button class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')">Início</button>
     <button class="nav-item" data-page="sell" onclick="goPage('sell')">Vender</button>
     <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Catálogo</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
-    <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
-    <button class="nav-item" data-page="commissions" onclick="goPage('commissions')">Comissões</button>
+    <button class="nav-item nav-seller-only" data-page="clockin" onclick="goPage('clockin')" style="display:none;">Ponto</button>
+    <button class="nav-item nav-seller-only" data-page="commissions" onclick="goPage('commissions')" style="display:none;">Comissões</button>
     <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
   </nav>
 
   <!-- DASHBOARD -->
   <div class="page show" id="page-dashboard">
-    <h2 class="page-title">Seu dia</h2>
-    <div class="grid grid-4">
+    <h2 class="page-title" id="dashboardTitle">Hoje na loja</h2>
+    <div class="grid grid-3">
       <div class="card"><div class="card-title">Vendas hoje</div><div class="card-value" id="kpiSalesToday">—</div></div>
       <div class="card"><div class="card-title">Valor hoje</div><div class="card-value" id="kpiAmountToday">—</div></div>
       <div class="card"><div class="card-title">Cashback dado</div><div class="card-value" id="kpiCashbackToday">—</div></div>
-      <div class="card"><div class="card-title">Comissão pendente</div><div class="card-value" id="kpiCommissionPending">—</div></div>
     </div>
 
     <h3 style="margin-top:24px;margin-bottom:12px;font-size:16px;">Mês atual</h3>
@@ -206,9 +205,13 @@
       <div class="card"><div class="card-title">Cashback mês</div><div class="card-value" id="kpiCashbackMonth">—</div></div>
     </div>
 
+    <div id="topSellersBlock" style="margin-top:24px;display:none;">
+      <h3 style="margin-bottom:12px;font-size:16px;">Top vendedores hoje</h3>
+      <div id="topSellersList"></div>
+    </div>
+
     <div style="margin-top:24px;">
       <button class="btn btn-small" onclick="goPage('sell')">+ Nova venda</button>
-      <button class="btn btn-secondary btn-small" onclick="goPage('clockin')" style="margin-left:8px;">Bater ponto</button>
     </div>
   </div>
 
@@ -229,6 +232,12 @@
       <div id="cartEmpty" style="text-align:center;color:#8e8e93;padding:20px;">Vazio. Adicione produtos buscando acima.</div>
 
       <div style="border-top:1px solid #e5e5ea;margin-top:12px;padding-top:12px;">
+        <div class="form-group" id="sellVendorGroup">
+          <label>Vendedor que atendeu *</label>
+          <select id="sellVendor" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+            <option value="">— selecione —</option>
+          </select>
+        </div>
         <div class="form-group">
           <label>Cliente (telefone TenisCash)</label>
           <input type="tel" id="sellCustomerPhone" placeholder="83912345678" oninput="onCustomerLookup()">
@@ -420,7 +429,29 @@ function showApp() {
   document.getElementById('appWrap').classList.add('show');
   document.getElementById('topSellerName').textContent = me.name;
   document.getElementById('topStoreName').textContent = activeStore ? activeStore.name : '(escolha loja)';
+
+  // Login institucional (role=store) esconde "Ponto" e "Comissões" (são pessoais).
+  const isStore = me.role === 'store';
+  document.querySelectorAll('.nav-seller-only').forEach(el => {
+    el.style.display = isStore ? 'none' : 'block';
+  });
+  document.getElementById('dashboardTitle').textContent = isStore ? 'Hoje na loja' : 'Seu dia';
+
   goPage('dashboard');
+  loadVendors();
+}
+
+async function loadVendors() {
+  if (!activeStore?.id) return;
+  try {
+    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    const sel = document.getElementById('sellVendor');
+    sel.innerHTML = '<option value="">— selecione —</option>' + (d.sellers || []).map(s =>
+      `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
+    ).join('');
+    // Se é login pessoal de vendedor, pré-seleciona ele mesmo
+    if (me.role === 'seller') sel.value = me.id;
+  } catch (e) { console.error('loadVendors:', e); }
 }
 
 // ============== API HELPER ==============
@@ -453,15 +484,32 @@ function fmt(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', cur
 
 async function loadDashboard() {
   try {
-    const d = await api('/api/seller/dashboard');
-    document.getElementById('topStoreName').textContent = d.seller?.store?.name || '—';
+    const storeQ = activeStore?.id ? '?storeId=' + activeStore.id : '';
+    const d = await api('/api/seller/dashboard' + storeQ);
+    if (activeStore) document.getElementById('topStoreName').textContent = activeStore.name;
     document.getElementById('kpiSalesToday').textContent = d.today.salesCount;
     document.getElementById('kpiAmountToday').textContent = fmt(d.today.salesAmount);
     document.getElementById('kpiCashbackToday').textContent = fmt(d.today.cashbackGiven);
-    document.getElementById('kpiCommissionPending').textContent = fmt(d.commissions.pendingAmount);
     document.getElementById('kpiSalesMonth').textContent = d.month.salesCount;
     document.getElementById('kpiAmountMonth').textContent = fmt(d.month.salesAmount);
     document.getElementById('kpiCashbackMonth').textContent = fmt(d.month.cashbackGiven);
+
+    // Top vendedores do dia (só em login institucional)
+    const block = document.getElementById('topSellersBlock');
+    if (d.scope === 'store' && d.topSellersToday?.length) {
+      block.style.display = 'block';
+      document.getElementById('topSellersList').innerHTML = d.topSellersToday.map((s, i) => `
+        <div class="list-item">
+          <div class="list-item-main">
+            <div class="list-item-title">${i + 1}. ${s.name}</div>
+            <div class="list-item-sub">${s.salesCount} venda${s.salesCount > 1 ? 's' : ''}</div>
+          </div>
+          <div class="list-item-right"><strong>${fmt(s.salesAmount)}</strong></div>
+        </div>
+      `).join('');
+    } else {
+      block.style.display = 'none';
+    }
   } catch (e) { console.error(e); }
 }
 
@@ -573,6 +621,8 @@ document.addEventListener('input', e => { if (e.target.id === 'sellTcUsed') upda
 
 async function finalizeSale() {
   if (!cart.length) return;
+  const vendorId = document.getElementById('sellVendor').value;
+  if (!vendorId) { alert('Selecione o vendedor que atendeu o cliente.'); return; }
   if (!confirm('Confirmar venda de ' + cart.length + ' itens?')) return;
   const btn = document.getElementById('sellFinalize');
   btn.disabled = true; btn.textContent = 'Processando...';
@@ -585,6 +635,7 @@ async function finalizeSale() {
         paymentMethod: document.getElementById('sellPayment').value,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
         storeId: activeStore?.id,
+        vendorId,
       }),
     });
     alert(`✓ Venda registrada!\n\nTotal: ${fmt(r.totalAmount)}\nCashback dado: ${fmt(r.tcEarned)}\nComissões: ${r.commissionsCreated}`);
@@ -594,6 +645,7 @@ async function finalizeSale() {
     document.getElementById('sellTcUsed').value = 0;
     document.getElementById('sellSearchInput').value = '';
     document.getElementById('sellSearchResults').innerHTML = '';
+    // Mantém vendedor selecionado (mesmo atendente pode fechar várias seguidas)
     renderCart();
     loadDashboard();
   } catch (e) {
