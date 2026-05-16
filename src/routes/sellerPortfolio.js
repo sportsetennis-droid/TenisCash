@@ -74,10 +74,7 @@ router.get('/dashboard', requireSeller, async (req, res) => {
 // Clientes da carteira — filtros opcionais: sellerId, storeId, status, priority
 router.get('/customers', requireSeller, async (req, res) => {
   try {
-    const { status, priority, limit, sellerId } = req.query;
-    let { storeId } = req.query;
-    // Lock: conta institucional ou vendedor → escopo da própria loja
-    if (req.scope?.isStoreLocked) storeId = req.scope.storeId;
+    const { status, priority, limit, sellerId, storeId } = req.query;
     const where = {
       ...(sellerId ? { sellerId } : {}),
       ...(storeId && storeId !== 'all' ? { storeId } : {}),
@@ -125,8 +122,7 @@ router.get('/customers', requireSeller, async (req, res) => {
 // Dashboard agregado por LOJA (somando vendedores da loja)
 router.get('/store-dashboard', requireSeller, async (req, res) => {
   try {
-    let storeId = req.query.storeId;
-    if (req.scope?.isStoreLocked) storeId = req.scope.storeId;
+    const storeId = req.query.storeId;
     if (!storeId || storeId === 'all') return res.status(400).json({ error: 'storeId é obrigatório' });
 
     const where = { storeId };
@@ -170,9 +166,6 @@ router.get('/store-dashboard', requireSeller, async (req, res) => {
 // Dashboard agregado GERAL (todas as lojas) — apenas admin
 router.get('/global-dashboard', requireSeller, async (req, res) => {
   try {
-    if (req.scope?.isStoreLocked || req.scope?.isSellerLocked) {
-      return res.status(403).json({ error: 'Dashboard global é restrito a administradores' });
-    }
     const [total, callToday, inactive, rebuy, byStore, stores] = await Promise.all([
       prisma.sellerCustomerAssignment.count(),
       prisma.sellerCustomerAssignment.count({ where: { nextActionDate: { lte: new Date() }, relationshipStatus: { not: 'LOST' } } }),
@@ -201,7 +194,6 @@ router.post('/customers', requireSeller, async (req, res) => {
   try {
     const data = req.body || {};
     const sellerId = data.sellerId || req.userId;
-    if (req.scope?.isStoreLocked) data.storeId = req.scope.storeId;
     if (!data.customerId) return res.status(400).json({ error: 'customerId é obrigatório' });
     const assignment = await prisma.sellerCustomerAssignment.create({
       data: {
@@ -242,7 +234,6 @@ router.post('/interactions', requireSeller, async (req, res) => {
   try {
     const data = req.body || {};
     const sellerId = data.sellerId || req.userId;
-    if (req.scope?.isStoreLocked) data.storeId = req.scope.storeId;
     if (!data.customerId || !data.channel || !data.interactionType) {
       return res.status(400).json({ error: 'customerId, channel e interactionType são obrigatórios' });
     }
@@ -303,7 +294,6 @@ router.post('/tasks', requireSeller, async (req, res) => {
   try {
     const data = req.body || {};
     const sellerId = data.sellerId || req.userId;
-    if (req.scope?.isStoreLocked) data.storeId = req.scope.storeId;
     if (!data.title || !data.type) return res.status(400).json({ error: 'title e type são obrigatórios' });
     const task = await prisma.sellerTask.create({
       data: {

@@ -382,6 +382,40 @@
       <div id="topSellersList" class="grid grid-2"></div>
     </div>
 
+    <!-- BUSCA DE VENDAS -->
+    <h3 class="section-title"><span class="section-title-icon">📋</span>Vendas da loja</h3>
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Vendedor</label>
+          <select id="salesFilterVendor" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;" onchange="loadSalesList()">
+            <option value="">Todos vendedores</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">De</label>
+          <input type="date" id="salesFilterFrom" onchange="loadSalesList()" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Até</label>
+          <input type="date" id="salesFilterTo" onchange="loadSalesList()" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Buscar produto</label>
+          <input type="text" id="salesFilterQ" placeholder="nome, marca…" oninput="loadSalesList()" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-small" onclick="setSalesRange('today')">Hoje</button>
+        <button class="btn btn-secondary btn-small" onclick="setSalesRange('week')">7 dias</button>
+        <button class="btn btn-secondary btn-small" onclick="setSalesRange('month')">Este mês</button>
+        <button class="btn btn-secondary btn-small" onclick="setSalesRange('all')">Tudo</button>
+      </div>
+    </div>
+
+    <div class="grid grid-3" id="salesTotals" style="margin-bottom:14px;"></div>
+    <div id="salesList"></div>
+
     <div style="margin-top:24px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-small" onclick="goPage('sell')">＋ Nova venda</button>
       <button class="btn btn-secondary btn-small" onclick="goPage('crm')">👥 Abrir CRM</button>
@@ -727,10 +761,10 @@ async function showStoreSelector() {
   try {
     const d = await api('/api/seller/stores');
     const stores = d.stores || [];
-    // Se a conta tem apenas UMA loja (institucional ou vendedor restrito), pula seletor
-    if (stores.length === 1 && (me.role === 'store' || me.role === 'seller')) {
-      selectStore(stores[0]);
-      return;
+    // Conta institucional (role=store) ou vendedor pessoal pula direto pra loja padrão
+    if ((me.role === 'store' || me.role === 'seller') && me.storeId) {
+      const own = stores.find(s => s.id === me.storeId);
+      if (own) { selectStore(own); return; }
     }
     const list = document.getElementById('storeList');
     const defaultStoreId = me.storeId;
@@ -879,6 +913,114 @@ document.addEventListener('click', e => {
 // ============== DASHBOARD ==============
 function fmt(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0); }
 
+async function loadSalesVendors() {
+  if (!activeStore?.id) return;
+  try {
+    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    const sel = document.getElementById('salesFilterVendor');
+    sel.innerHTML = '<option value="">Todos vendedores</option>' + (d.sellers || []).map(s =>
+      `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
+    ).join('');
+  } catch (e) { console.error(e); }
+}
+
+function setSalesRange(range) {
+  const from = document.getElementById('salesFilterFrom');
+  const to = document.getElementById('salesFilterTo');
+  const today = new Date();
+  const fmtDate = d => d.toISOString().slice(0, 10);
+  if (range === 'today') {
+    from.value = to.value = fmtDate(today);
+  } else if (range === 'week') {
+    const w = new Date(today.getTime() - 6 * 86400000);
+    from.value = fmtDate(w); to.value = fmtDate(today);
+  } else if (range === 'month') {
+    from.value = fmtDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    to.value = fmtDate(today);
+  } else {
+    from.value = ''; to.value = '';
+  }
+  loadSalesList();
+}
+
+let _salesLoadTimer;
+async function loadSalesList() {
+  clearTimeout(_salesLoadTimer);
+  _salesLoadTimer = setTimeout(async () => {
+    const params = [];
+    const vendor = document.getElementById('salesFilterVendor').value;
+    const from = document.getElementById('salesFilterFrom').value;
+    const to = document.getElementById('salesFilterTo').value;
+    const q = document.getElementById('salesFilterQ').value.trim();
+    if (vendor) params.push('sellerId=' + vendor);
+    if (from) params.push('from=' + from);
+    if (to) params.push('to=' + to);
+    if (q.length >= 2) params.push('q=' + encodeURIComponent(q));
+    params.push('limit=100');
+
+    try {
+      const d = await api('/api/seller/sales?' + params.join('&'));
+      // KPIs
+      document.getElementById('salesTotals').innerHTML = `
+        <div class="kpi-card"><div class="kpi-icon orange">📋</div><div class="kpi-content"><div class="kpi-title">Vendas</div><div class="kpi-value">${d.totals.count}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon green">💰</div><div class="kpi-content"><div class="kpi-title">Valor total</div><div class="kpi-value">${fmt(d.totals.totalAmount)}</div></div></div>
+        <div class="kpi-card"><div class="kpi-icon blue">🎁</div><div class="kpi-content"><div class="kpi-title">Cashback gerado</div><div class="kpi-value">${fmt(d.totals.tcEarned)}</div></div></div>
+      `;
+
+      // Lista
+      if (!d.sales.length) {
+        document.getElementById('salesList').innerHTML = '<div class="card"><p style="text-align:center;color:var(--text-muted);padding:20px;">Nenhuma venda no filtro.</p></div>';
+        return;
+      }
+      document.getElementById('salesList').innerHTML = `
+        <table class="modern">
+          <thead><tr>
+            <th>Data</th>
+            <th>Vendedor</th>
+            <th>Itens</th>
+            <th style="text-align:right;">TC usado</th>
+            <th style="text-align:right;">Cashback</th>
+            <th style="text-align:right;">Total</th>
+          </tr></thead>
+          <tbody>
+            ${d.sales.map(s => {
+              const dt = new Date(s.createdAt);
+              const data = dt.toLocaleDateString('pt-BR');
+              const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+              const itemsLabel = s.items.slice(0, 2).map(i => i.productName).join(' · ') + (s.items.length > 2 ? ` (+${s.items.length - 2})` : '');
+              return `
+                <tr class="clickable" onclick="showSaleDetail('${s.id}')">
+                  <td><strong>${data}</strong><br><span style="font-size:11px;color:var(--text-muted);">${hora}</span></td>
+                  <td>
+                    <div class="row">
+                      <div class="avatar avatar-sm ${avatarColor(s.sellerName)}">${initials(s.sellerName)}</div>
+                      <div><div style="font-weight:600;font-size:13px;">${s.sellerName}</div></div>
+                    </div>
+                  </td>
+                  <td style="font-size:12px;">${itemsLabel || '—'}</td>
+                  <td style="text-align:right;color:var(--text-muted);">${s.tcUsed > 0 ? '−' + fmt(s.tcUsed) : '—'}</td>
+                  <td style="text-align:right;color:var(--success);">${s.tcEarned > 0 ? '+' + fmt(s.tcEarned) : '—'}</td>
+                  <td style="text-align:right;font-weight:700;color:var(--primary);">${fmt(s.totalAmount)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (e) {
+      document.getElementById('salesList').innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+    }
+  }, 200);
+}
+
+function showSaleDetail(saleId) {
+  // Modal simples com detalhes (busca já tem tudo, mostra direto)
+  const list = document.getElementById('salesList');
+  const row = list.querySelector(`tr[onclick*="${saleId}"]`);
+  // Pra MVP: mostra alert. Pode evoluir pra modal completo depois.
+  alert('Detalhes da venda ' + saleId.slice(0, 8) + ' — em breve modal completo.');
+}
+
 async function loadDashboard() {
   try {
     const storeQ = activeStore?.id ? '?storeId=' + activeStore.id : '';
@@ -890,6 +1032,16 @@ async function loadDashboard() {
     document.getElementById('kpiSalesMonth').textContent = d.month.salesCount;
     document.getElementById('kpiAmountMonth').textContent = fmt(d.month.salesAmount);
     document.getElementById('kpiCashbackMonth').textContent = fmt(d.month.cashbackGiven);
+
+    // Carrega filtros de vendas + lista (default = mês atual)
+    if (!document.getElementById('salesFilterVendor').options.length || document.getElementById('salesFilterVendor').options.length === 1) {
+      await loadSalesVendors();
+    }
+    if (!document.getElementById('salesFilterFrom').value && !document.getElementById('salesFilterTo').value) {
+      setSalesRange('month');
+    } else {
+      loadSalesList();
+    }
 
     // Top vendedores do dia (só em login institucional)
     const block = document.getElementById('topSellersBlock');
@@ -1182,14 +1334,11 @@ function setInvMode(mode) {
 async function populateInvStoreSelect() {
   try {
     const d = await api('/api/seller/stores');
-    const stores = d.stores || [];
     const sel = document.getElementById('invStoreSelect');
     if (!sel) return;
-    const lockedToOne = stores.length === 1 && (me.role === 'store' || me.role === 'seller');
-    sel.innerHTML = (lockedToOne ? '' : '<option value="">— escolha a loja —</option>') +
-      stores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    sel.innerHTML = '<option value="">— escolha a loja —</option>' +
+      (d.stores || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     if (activeStore?.id) sel.value = activeStore.id;
-    if (lockedToOne) sel.disabled = true;
   } catch (e) { console.error(e); }
 }
 
@@ -1388,14 +1537,10 @@ async function initRanking() {
     try {
       const d = await api('/api/seller/stores');
       const sel = document.getElementById('rankStore');
-      const stores = d.stores || [];
-      const lockedToOne = stores.length === 1 && (me.role === 'store' || me.role === 'seller');
-      const opts = lockedToOne ? [] : ['<option value="all">Todas as lojas</option>'];
-      stores.forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
+      const opts = ['<option value="all">Todas as lojas</option>'];
+      (d.stores || []).forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
       sel.innerHTML = opts.join('');
       if (activeStore?.id) sel.value = activeStore.id;
-      // Se conta restrita, esconde o dropdown (já tá no escopo da loja)
-      if (lockedToOne) sel.disabled = true;
     } catch (e) { console.error(e); }
     // Datas custom: defaults úteis
     const today = new Date();
@@ -1519,18 +1664,14 @@ let crmAllStores = [];
 let crmAllSellersByStore = {}; // { storeId: [sellers] }
 
 async function initCrm() {
-  // Popula loja (1ª vez)
   if (!crmAllStores.length) {
     try {
       const d = await api('/api/seller/stores');
       crmAllStores = d.stores || [];
-      const lockedToOne = crmAllStores.length === 1 && (me.role === 'store' || me.role === 'seller');
       const storeSel = document.getElementById('crmStore');
-      const opts = lockedToOne ? [] : ['<option value="all">Todas as lojas</option>'];
-      crmAllStores.forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
-      storeSel.innerHTML = opts.join('');
+      storeSel.innerHTML = '<option value="all">Todas as lojas</option>' +
+        crmAllStores.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
       if (activeStore?.id) storeSel.value = activeStore.id;
-      if (lockedToOne) storeSel.disabled = true;
     } catch (e) { console.error('initCrm stores:', e); }
   }
   await onCrmStoreChange();

@@ -355,11 +355,8 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 router.get('/store-sellers', sellerOnly, async (req, res) => {
   try {
-    let storeId = req.query.storeId;
+    const storeId = req.query.storeId;
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
-    // Lock: conta institucional/vendedor só lista vendedores da PRÓPRIA loja
-    storeId = enforceStoreId(req, storeId);
-    if (!storeId) return res.status(403).json({ error: 'Operador sem loja vinculada' });
 
     const sellers = await prisma.user.findMany({
       where: { role: 'seller', active: true, storeId },
@@ -375,16 +372,10 @@ router.get('/store-sellers', sellerOnly, async (req, res) => {
 // =====================================================================
 // LISTA LOJAS — pra escolher onde está trabalhando hoje
 // =====================================================================
-router.get('/stores', sellerOnly, async (req, res) => {
+router.get('/stores', sellerOnly, async (_req, res) => {
   try {
-    const where = { active: true };
-    // Conta institucional + vendedor → vê só a própria loja
-    if (req.scope?.isStoreLocked || req.scope?.isSellerLocked) {
-      if (!req.scope.storeId) return res.json({ stores: [] });
-      where.id = req.scope.storeId;
-    }
     const stores = await prisma.store.findMany({
-      where,
+      where: { active: true },
       orderBy: { code: 'asc' },
       select: { id: true, name: true, code: true, city: true, mall: true, latitude: true, longitude: true },
     });
@@ -407,9 +398,10 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Escopo: se logado é STORE (PDV), agrega por LOJA. Se é seller individual, por vendedor.
+    // Escopo: se logado é STORE (PDV), agrega VENDAS da PRÓPRIA loja.
     const isStoreAccount = operator?.role === 'store';
-    const storeId = enforceStoreId(req, req.query.storeId) || operator?.storeId;
+    // VENDAS: forçamos sempre a loja do operador (cada loja vê só as suas vendas)
+    const storeId = isStoreAccount ? operator.storeId : (req.query.storeId || operator?.storeId);
 
     const baseWhere = isStoreAccount
       ? { storeId } // dados da loja inteira
@@ -636,19 +628,74 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // =====================================================================
-// MINHAS VENDAS — histórico do vendedor
+// HISTÓRICO DE VENDAS — com filtros (vendedor, datas)
+// LOCK por loja: cada loja só vê as próprias vendas
 // =====================================================================
-router.get('/sales', authMiddleware, sellerOnly, async (req, res) => {
+router.get('/sales', sellerOnly, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const { sellerId, from, to, q } = req.query;
+
+    const where = {};
+    // VENDAS travadas por loja (regra do dono)
+    if (req.scope?.isStoreLocked) where.storeId = req.scope.storeId;
+    else if (req.query.storeId) where.storeId = req.query.storeId;
+
+    if (sellerId) where.sellerId = sellerId;
+    if (req.scope?.isSellerLocked) where.sellerId = req.userId; // vendedor pessoal só vê próprias
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from + 'T00:00:00-03:00');
+      if (to) where.createdAt.lt = new Date(to + 'T23:59:59-03:00');
+    }
+
     const sales = await prisma.sale.findMany({
-      where: { sellerId: req.userId },
+      where,
       include: { items: true },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    res.json({ sales });
+
+    // Filtro full-text simples no client da lista
+    let filtered = sales;
+    if (q && q.length >= 2) {
+      const qLower = q.toLowerCase();
+      filtered = sales.filter(s =>
+        s.items.some(i =>
+          (i.productName || '').toLowerCase().includes(qLower) ||
+          (i.brand || '').toLowerCase().includes(qLower)
+        ) ||
+        (s.note || '').toLowerCase().includes(qLower) ||
+        s.id.toLowerCase().includes(qLower)
+      );
+    }
+
+    // Enriquecer com nome do vendedor
+    const sellerIds = [...new Set(filtered.map(s => s.sellerId))];
+    const sellersDb = await prisma.user.findMany({
+      where: { id: { in: sellerIds } },
+      select: { id: true, name: true, employeeCode: true },
+    });
+    const sMap = new Map(sellersDb.map(s => [s.id, s]));
+
+    const enriched = filtered.map(s => ({
+      ...s,
+      sellerName: sMap.get(s.sellerId)?.name || '?',
+      sellerCode: sMap.get(s.sellerId)?.employeeCode || null,
+    }));
+
+    // Totais
+    const totals = {
+      count: enriched.length,
+      totalAmount: enriched.reduce((sum, s) => sum + (s.totalAmount || 0), 0),
+      tcEarned: enriched.reduce((sum, s) => sum + (s.tcEarned || 0), 0),
+      tcUsed: enriched.reduce((sum, s) => sum + (s.tcUsed || 0), 0),
+    };
+
+    res.json({ sales: enriched, totals });
   } catch (err) {
+    console.error('Erro /sales:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -666,11 +713,7 @@ router.get('/sales', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 router.get('/rankings', sellerOnly, async (req, res) => {
   try {
-    let storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
-    // Lock: conta institucional/vendedor só vê ranking da PRÓPRIA loja
-    if (req.scope?.isStoreLocked || req.scope?.isSellerLocked) {
-      storeId = req.scope.storeId;
-    }
+    const storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
     const period = req.query.period || 'month';
 
     // Resolve range de datas
@@ -834,10 +877,9 @@ router.get('/inventory/check', authMiddleware, sellerOnly, async (req, res) => {
 // Busca PRODUTOS com estoque em uma loja específica
 router.get('/inventory/by-store', sellerOnly, async (req, res) => {
   try {
-    let storeId = req.query.storeId;
+    const storeId = req.query.storeId;
     const q = (req.query.q || '').trim();
     const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
-    storeId = enforceStoreId(req, storeId);
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
 
     // Acha productSizeIds com stock > 0 nessa loja
