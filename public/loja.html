@@ -223,6 +223,18 @@
   .summary-row .label { color: var(--text-soft); }
   .summary-row .value { font-weight: 700; }
 
+  /* Ações rápidas (Dashboard) — destaque no topo */
+  .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .quick-action { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: var(--radius); background: white; border: 1.5px solid var(--border-soft); cursor: pointer; transition: all 0.15s; text-align: left; }
+  .quick-action:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: var(--primary); }
+  .quick-action.primary { background: var(--gradient); color: white; border-color: transparent; box-shadow: 0 8px 20px rgba(255,109,0,0.25); }
+  .quick-action.primary:hover { box-shadow: 0 12px 28px rgba(255,109,0,0.4); }
+  .qa-icon { font-size: 32px; line-height: 1; flex-shrink: 0; }
+  .qa-content { flex: 1; min-width: 0; }
+  .qa-title { font-size: 16px; font-weight: 700; line-height: 1.2; }
+  .qa-sub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+  .quick-action.primary .qa-sub { opacity: 0.9; }
+
   /* Sell screen: linhas com 2 colunas lado a lado */
   .sell-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
   .sticky-cart { position: sticky; top: 110px; max-height: calc(100vh - 130px); display: flex; flex-direction: column; }
@@ -328,6 +340,38 @@
     <h2 class="page-title" id="dashboardTitle">Hoje na loja</h2>
     <p class="page-subtitle">Visão geral em tempo real</p>
 
+    <!-- AÇÕES RÁPIDAS — destaque no topo -->
+    <div class="quick-actions">
+      <button class="quick-action primary" onclick="goPage('sell')">
+        <div class="qa-icon">🛒</div>
+        <div class="qa-content">
+          <div class="qa-title">Nova venda</div>
+          <div class="qa-sub">Iniciar atendimento</div>
+        </div>
+      </button>
+      <button class="quick-action" onclick="goPage('crm')">
+        <div class="qa-icon">👥</div>
+        <div class="qa-content">
+          <div class="qa-title">CRM</div>
+          <div class="qa-sub">Carteira de clientes</div>
+        </div>
+      </button>
+      <button class="quick-action" onclick="goPage('inventory')">
+        <div class="qa-icon">📦</div>
+        <div class="qa-content">
+          <div class="qa-title">Estoque</div>
+          <div class="qa-sub">Consultar disponibilidade</div>
+        </div>
+      </button>
+      <button class="quick-action" onclick="goPage('clockin')">
+        <div class="qa-icon">⏰</div>
+        <div class="qa-content">
+          <div class="qa-title">Bater ponto</div>
+          <div class="qa-sub">Entrada / saída</div>
+        </div>
+      </button>
+    </div>
+
     <div class="grid grid-3">
       <div class="kpi-card">
         <div class="kpi-icon orange">🛒</div>
@@ -415,12 +459,6 @@
 
     <div class="grid grid-3" id="salesTotals" style="margin-bottom:14px;"></div>
     <div id="salesList"></div>
-
-    <div style="margin-top:24px;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-small" onclick="goPage('sell')">＋ Nova venda</button>
-      <button class="btn btn-secondary btn-small" onclick="goPage('crm')">👥 Abrir CRM</button>
-      <button class="btn btn-secondary btn-small" onclick="goPage('inventory')">📦 Consultar estoque</button>
-    </div>
   </div>
 
   <!-- VENDER -->
