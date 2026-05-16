@@ -12,8 +12,8 @@ const router = express.Router();
 router.use(authMiddleware);
 
 function requireSeller(req, res, next) {
-  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
-    return res.status(403).json({ error: 'Acesso restrito a vendedores' });
+  if (!['seller', 'admin', 'superadmin', 'store'].includes(req.userRole)) {
+    return res.status(403).json({ error: 'Acesso restrito a vendedores / loja' });
   }
   next();
 }
@@ -95,8 +95,8 @@ router.get('/customers', requireSeller, async (req, res) => {
 
 router.post('/customers', requireSeller, async (req, res) => {
   try {
-    const sellerId = req.userId;
     const data = req.body || {};
+    const sellerId = data.sellerId || req.userId;
     if (!data.customerId) return res.status(400).json({ error: 'customerId é obrigatório' });
     const assignment = await prisma.sellerCustomerAssignment.create({
       data: {
@@ -135,8 +135,8 @@ router.put('/customers/:id', requireSeller, async (req, res) => {
 // Interações
 router.post('/interactions', requireSeller, async (req, res) => {
   try {
-    const sellerId = req.userId;
     const data = req.body || {};
+    const sellerId = data.sellerId || req.userId;
     if (!data.customerId || !data.channel || !data.interactionType) {
       return res.status(400).json({ error: 'customerId, channel e interactionType são obrigatórios' });
     }
@@ -195,8 +195,8 @@ router.get('/tasks', requireSeller, async (req, res) => {
 
 router.post('/tasks', requireSeller, async (req, res) => {
   try {
-    const sellerId = req.userId;
     const data = req.body || {};
+    const sellerId = data.sellerId || req.userId;
     if (!data.title || !data.type) return res.status(400).json({ error: 'title e type são obrigatórios' });
     const task = await prisma.sellerTask.create({
       data: {

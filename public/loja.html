@@ -187,6 +187,7 @@
     <button class="nav-item" data-page="sell" onclick="goPage('sell')">Vender</button>
     <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Curadoria</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
+    <button class="nav-item" data-page="crm" onclick="goPage('crm')">CRM</button>
     <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
     <button class="nav-item" data-page="ranking" onclick="goPage('ranking')">Ranking</button>
     <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
@@ -334,6 +335,35 @@
     <div class="card" style="margin-top:12px;">
       <h3 style="margin-bottom:8px;">Pontos batidos hoje</h3>
       <div id="clockToday" style="font-size:13px;color:#8e8e93;">—</div>
+    </div>
+  </div>
+
+  <!-- CRM -->
+  <div class="page" id="page-crm">
+    <h2 class="page-title">CRM — Carteira de clientes</h2>
+    <p class="page-subtitle">Veja clientes do vendedor, registre interações e crie tarefas.</p>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Vendedor</label>
+        <select id="crmVendor" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;" onchange="loadCrmDashboard()">
+          <option value="">— selecione —</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="crmDashboard"></div>
+
+    <div id="crmCustomers" style="margin-top:16px;"></div>
+
+    <div id="crmDetail" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- NOVA INTERAÇÃO/TAREFA MODAL -->
+  <div class="modal-bg" id="crmActionModal">
+    <div class="modal">
+      <button class="modal-close" onclick="document.getElementById('crmActionModal').classList.remove('show')">×</button>
+      <div id="crmActionContent"></div>
     </div>
   </div>
 
@@ -548,6 +578,7 @@ function goPage(pageId) {
     const sel = document.getElementById('invStoreSelect');
     if (sel && sel.options.length <= 1) populateInvStoreSelect();
   }
+  if (pageId === 'crm') initCrm();
 }
 
 // ============== DASHBOARD ==============
@@ -1084,6 +1115,273 @@ async function loadRanking() {
   } catch (e) {
     document.getElementById('rankingTable').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
   }
+}
+
+// ============== CRM ==============
+let crmInited = false;
+let crmCurrentVendor = null;
+
+async function initCrm() {
+  if (!crmInited) {
+    try {
+      const d = await api('/api/seller/store-sellers?storeId=' + (activeStore?.id || ''));
+      const sel = document.getElementById('crmVendor');
+      sel.innerHTML = '<option value="">— selecione —</option>' + (d.sellers || []).map(s =>
+        `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
+      ).join('');
+      if (me.role === 'seller') sel.value = me.id;
+      crmInited = true;
+    } catch (e) { console.error('initCrm:', e); }
+  }
+  if (document.getElementById('crmVendor').value) loadCrmDashboard();
+}
+
+async function loadCrmDashboard() {
+  const vendorId = document.getElementById('crmVendor').value;
+  crmCurrentVendor = vendorId;
+  document.getElementById('crmCustomers').innerHTML = '';
+  document.getElementById('crmDetail').innerHTML = '';
+  if (!vendorId) {
+    document.getElementById('crmDashboard').innerHTML = '<p style="color:#8e8e93;text-align:center;padding:20px;">Selecione um vendedor</p>';
+    return;
+  }
+
+  try {
+    const d = await api('/api/seller/portfolio/dashboard?sellerId=' + vendorId);
+    document.getElementById('crmDashboard').innerHTML = `
+      <div class="grid grid-4">
+        <div class="card"><div class="card-title">Clientes</div><div class="card-value">${d.stats.totalCustomers}</div></div>
+        <div class="card"><div class="card-title">Ligar hoje</div><div class="card-value" style="color:#FF6D00">${d.stats.customersToCallToday}</div></div>
+        <div class="card"><div class="card-title">Inativos</div><div class="card-value">${d.stats.inactiveCustomers}</div></div>
+        <div class="card"><div class="card-title">Recompra</div><div class="card-value" style="color:#0a843d">${d.stats.rebuyOpportunities}</div></div>
+      </div>
+      <div class="grid grid-2" style="margin-top:16px;">
+        <div class="card">
+          <h3 style="margin-bottom:8px;font-size:15px;">Tarefas a fazer (${d.tasks.length})</h3>
+          ${d.tasks.length ? d.tasks.map(t => `
+            <div style="padding:8px 0;border-bottom:1px solid #f5f5f7;font-size:13px;">
+              <div style="font-weight:600;">${t.title}</div>
+              <div style="font-size:11px;color:#8e8e93;">${t.type} · ${t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR') : 'sem prazo'} · ${t.priority}</div>
+            </div>
+          `).join('') : '<p style="color:#8e8e93;font-size:13px;">Sem tarefas pendentes.</p>'}
+          <button class="btn btn-small" onclick="openCrmTaskModal()" style="margin-top:8px;">+ Nova tarefa</button>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:8px;font-size:15px;">Últimas interações</h3>
+          ${d.recentInteractions.length ? d.recentInteractions.slice(0, 6).map(i => `
+            <div style="padding:8px 0;border-bottom:1px solid #f5f5f7;font-size:13px;">
+              <div style="font-weight:600;">${i.interactionType} · ${i.channel}</div>
+              <div style="font-size:11px;color:#8e8e93;">${new Date(i.createdAt).toLocaleString('pt-BR')}${i.result ? ' · ' + i.result : ''}</div>
+              ${i.summary ? `<div style="font-size:12px;margin-top:2px;">${i.summary}</div>` : ''}
+            </div>
+          `).join('') : '<p style="color:#8e8e93;font-size:13px;">Sem interações registradas.</p>'}
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-small" onclick="loadCrmCustomers()">📋 Ver lista de clientes</button>
+        <button class="btn btn-secondary btn-small" onclick="openCrmInteractionModal()" style="margin-left:8px;">+ Nova interação</button>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('crmDashboard').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+  }
+}
+
+async function loadCrmCustomers() {
+  if (!crmCurrentVendor) return;
+  try {
+    const d = await api('/api/seller/portfolio/customers?sellerId=' + crmCurrentVendor);
+    const customers = d.customers || [];
+    if (!customers.length) {
+      document.getElementById('crmCustomers').innerHTML = '<div class="card"><p style="color:#8e8e93;text-align:center;">Esse vendedor ainda não tem clientes na carteira.</p></div>';
+      return;
+    }
+    document.getElementById('crmCustomers').innerHTML = `
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="background:#f5f5f7;">
+            <th style="padding:10px;text-align:left;font-size:12px;color:#8e8e93;">Cliente</th>
+            <th style="padding:10px;text-align:center;font-size:12px;color:#8e8e93;">Status</th>
+            <th style="padding:10px;text-align:center;font-size:12px;color:#8e8e93;">Prioridade</th>
+            <th style="padding:10px;text-align:center;font-size:12px;color:#8e8e93;">Próxima ação</th>
+            <th style="padding:10px;text-align:right;font-size:12px;color:#8e8e93;">Valor potencial</th>
+          </tr></thead>
+          <tbody>
+            ${customers.map(c => {
+              const statusColor = c.relationshipStatus === 'LOST' ? '#d70015' : c.relationshipStatus === 'REBUY_OPPORTUNITY' ? '#0a843d' : '#FF6D00';
+              return `
+                <tr>
+                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;">
+                    <div style="font-weight:600;">${c.customerName || c.customerId.slice(0,8)}</div>
+                    <div style="font-size:11px;color:#8e8e93;">${c.customerPhone || ''}</div>
+                  </td>
+                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;">
+                    <span class="pill" style="background:${statusColor}20;color:${statusColor};">${c.relationshipStatus}</span>
+                  </td>
+                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;font-weight:600;">${c.priority}</td>
+                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;font-size:13px;">
+                    ${c.nextActionDate ? new Date(c.nextActionDate).toLocaleDateString('pt-BR') : '—'}<br>
+                    <span style="font-size:11px;color:#8e8e93;">${c.nextAction || ''}</span>
+                  </td>
+                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;">${c.potentialValue ? fmt(c.potentialValue) : '—'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('crmCustomers').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+  }
+}
+
+function openCrmTaskModal() {
+  if (!crmCurrentVendor) { alert('Selecione um vendedor antes'); return; }
+  document.getElementById('crmActionContent').innerHTML = `
+    <h3 class="modal-title">+ Nova tarefa</h3>
+    <div class="form-group">
+      <label>Título *</label>
+      <input id="taskTitle" type="text" placeholder="Ex: Ligar pra Maria sobre tênis novo">
+    </div>
+    <div class="form-group">
+      <label>Tipo *</label>
+      <select id="taskType" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+        <option value="CALL">Ligar</option>
+        <option value="MESSAGE">Enviar mensagem</option>
+        <option value="VISIT">Visita</option>
+        <option value="FOLLOWUP">Follow-up</option>
+        <option value="OTHER">Outro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Prioridade</label>
+      <select id="taskPriority" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+        <option value="LOW">Baixa</option>
+        <option value="MEDIUM" selected>Média</option>
+        <option value="HIGH">Alta</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Prazo (opcional)</label>
+      <input id="taskDueDate" type="date">
+    </div>
+    <div class="form-group">
+      <label>Descrição</label>
+      <textarea id="taskDescription" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;min-height:60px;"></textarea>
+    </div>
+    <button class="btn" onclick="saveCrmTask()">Salvar</button>
+  `;
+  document.getElementById('crmActionModal').classList.add('show');
+}
+
+async function saveCrmTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  const type = document.getElementById('taskType').value;
+  if (!title || !type) { alert('Título e tipo são obrigatórios'); return; }
+  try {
+    await api('/api/seller/portfolio/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        sellerId: crmCurrentVendor,
+        storeId: activeStore?.id,
+        title,
+        type,
+        priority: document.getElementById('taskPriority').value,
+        dueDate: document.getElementById('taskDueDate').value || null,
+        description: document.getElementById('taskDescription').value || null,
+      }),
+    });
+    alert('✓ Tarefa criada');
+    document.getElementById('crmActionModal').classList.remove('show');
+    loadCrmDashboard();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function openCrmInteractionModal() {
+  if (!crmCurrentVendor) { alert('Selecione um vendedor antes'); return; }
+  document.getElementById('crmActionContent').innerHTML = `
+    <h3 class="modal-title">+ Nova interação</h3>
+    <p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">Telefone do cliente (vai buscar no TenisCash):</p>
+    <div class="form-group">
+      <label>Telefone do cliente *</label>
+      <input id="intCustomerPhone" type="tel" placeholder="83912345678" oninput="lookupIntCustomer()">
+      <div id="intCustomerInfo" style="margin-top:6px;font-size:13px;"></div>
+    </div>
+    <div class="form-group">
+      <label>Canal *</label>
+      <select id="intChannel" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+        <option value="WHATSAPP">WhatsApp</option>
+        <option value="CALL">Ligação</option>
+        <option value="STORE">Atendimento na loja</option>
+        <option value="EMAIL">E-mail</option>
+        <option value="OTHER">Outro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Tipo *</label>
+      <select id="intType" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+        <option value="INITIAL">Primeiro contato</option>
+        <option value="FOLLOWUP">Follow-up</option>
+        <option value="SALE">Venda</option>
+        <option value="SUPPORT">Suporte</option>
+        <option value="REBUY">Recompra</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Resultado</label>
+      <input id="intResult" type="text" placeholder="Ex: Vai pensar / Comprou / Não respondeu">
+    </div>
+    <div class="form-group">
+      <label>Resumo / Observação</label>
+      <textarea id="intSummary" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;min-height:60px;"></textarea>
+    </div>
+    <button class="btn" onclick="saveCrmInteraction()">Salvar</button>
+  `;
+  document.getElementById('crmActionModal').classList.add('show');
+}
+
+let intLookupTimer, intCustomerData = null;
+function lookupIntCustomer() {
+  clearTimeout(intLookupTimer);
+  const phone = document.getElementById('intCustomerPhone').value.replace(/\D/g, '');
+  const info = document.getElementById('intCustomerInfo');
+  if (phone.length < 10) { intCustomerData = null; info.innerHTML = ''; return; }
+  intLookupTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/seller/customer/lookup?phone=' + phone);
+      if (d.customer) {
+        intCustomerData = d.customer;
+        info.innerHTML = `✓ ${d.customer.name} — saldo TenisCash: ${fmt(d.customer.balance)}`;
+        info.style.color = '#0a843d';
+      } else {
+        intCustomerData = null;
+        info.innerHTML = '✗ Telefone não cadastrado no TenisCash';
+        info.style.color = '#d70015';
+      }
+    } catch (e) {}
+  }, 300);
+}
+
+async function saveCrmInteraction() {
+  if (!intCustomerData?.id) { alert('Cliente não identificado. Cadastre primeiro no TenisCash.'); return; }
+  try {
+    await api('/api/seller/portfolio/interactions', {
+      method: 'POST',
+      body: JSON.stringify({
+        sellerId: crmCurrentVendor,
+        customerId: intCustomerData.id,
+        storeId: activeStore?.id,
+        channel: document.getElementById('intChannel').value,
+        interactionType: document.getElementById('intType').value,
+        result: document.getElementById('intResult').value || null,
+        summary: document.getElementById('intSummary').value || null,
+      }),
+    });
+    alert('✓ Interação registrada');
+    document.getElementById('crmActionModal').classList.remove('show');
+    loadCrmDashboard();
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
 // ============== MENSAGENS ==============
