@@ -23,20 +23,10 @@ function isConfigured() {
  *   - isCorrectProduct: true/false
  *   - colorMatches: true/false
  */
-async function scoreImageMatch(imageUrl, product) {
-  if (!isConfigured()) {
-    return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
-  }
-  if (!imageUrl) return { ok: false, error: 'imageUrl obrigatório' };
+// Sistema cacheável (não muda entre chamadas) — economia ~80-90% em tokens repetidos
+const CACHED_SYSTEM = `Você é um validador de qualidade de imagens de produto pra e-commerce esportivo.
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const userPrompt = `Analise a imagem e julgue se ela é apropriada como FOTO PRINCIPAL deste produto de e-commerce:
-
-Produto: ${product.name || '(sem nome)'}
-Marca: ${product.brand || '(sem marca)'}
-Cor declarada: ${product.color || '(qualquer)'}
-Categoria: ${product.category || '(qualquer)'}
+Sua função: ANALISA UMA imagem e julga se ela é apropriada como FOTO PRINCIPAL.
 
 Critérios pra ser FOTO PRINCIPAL boa:
 - Mostra o produto inteiro, em fundo limpo (preferência branco) ou foto de catálogo
@@ -59,10 +49,30 @@ Escala de score:
 - 1-4: produto similar mas errado, ou foto ruim
 - 0: não é o produto / banner / logo / genérico`;
 
+async function scoreImageMatch(imageUrl, product) {
+  if (!isConfigured()) {
+    return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
+  }
+  if (!imageUrl) return { ok: false, error: 'imageUrl obrigatório' };
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Só o trecho específico do produto vai variar — o resto é cacheado.
+  const userPrompt = `Produto: ${product.name || '(sem nome)'}
+Marca: ${product.brand || '(sem marca)'}
+Cor declarada: ${product.color || '(qualquer)'}
+Categoria: ${product.category || '(qualquer)'}
+
+Analise a imagem acima e devolva o JSON.`;
+
   try {
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 300,
+      // System prompt com cache_control: economiza 80-90% nas chamadas seguintes
+      system: [
+        { type: 'text', text: CACHED_SYSTEM, cache_control: { type: 'ephemeral' } },
+      ],
       messages: [
         {
           role: 'user',
