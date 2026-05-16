@@ -223,6 +223,16 @@
   .summary-row .label { color: var(--text-soft); }
   .summary-row .value { font-weight: 700; }
 
+  /* Árvore de filtros (chips hierárquicos) */
+  .filter-tree { display: flex; flex-direction: column; gap: 10px; }
+  .filter-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .filter-row-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; margin-right: 4px; min-width: 80px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); transition: all 0.15s; user-select: none; }
+  .chip:hover { border-color: var(--primary); color: var(--primary); }
+  .chip.active { background: var(--gradient); border-color: transparent; color: white; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
+  .chip-clear { background: transparent; border: 1px dashed var(--border); color: var(--text-muted); font-size: 12px; padding: 5px 10px; }
+  .chip-clear:hover { color: var(--danger); border-color: var(--danger); }
+
   /* Ações rápidas (Dashboard) — destaque no topo */
   .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
   .quick-action { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: var(--radius); background: white; border: 1.5px solid var(--border-soft); cursor: pointer; transition: all 0.15s; text-align: left; }
@@ -540,12 +550,13 @@
   <!-- CURADORIA (ex-Catálogo) -->
   <div class="page" id="page-catalog">
     <h2 class="page-title">Curadoria</h2>
-    <p class="page-subtitle">Tudo que está cadastrado e curado na rede (com foto, descrição, preço).</p>
+    <p class="page-subtitle">Catálogo da rede. Navegue pela árvore ou busque livremente.</p>
 
     <div class="card" style="margin-bottom:14px;">
-      <div class="search-bar" style="margin-bottom:0;">
+      <div id="catalogTree"></div>
+      <div class="search-bar" style="margin:14px 0 0;">
         <span style="font-size:18px;">🔍</span>
-        <input type="text" id="catSearchInput" placeholder="Buscar por nome, marca ou código…" oninput="onCatalogSearch()">
+        <input type="text" id="catSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onCatalogSearch()">
       </div>
     </div>
 
@@ -565,8 +576,9 @@
 
       <!-- MODO A: busca produto, ve estoque global -->
       <div id="invModeProductPane">
+        <div id="inventoryTree" style="margin-bottom:12px;"></div>
         <div class="search-bar">
-          <input type="text" id="invSearchInput" placeholder="Nome, marca ou código…" oninput="onInventorySearch()">
+          <input type="text" id="invSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onInventorySearch()">
         </div>
         <div id="invResults" class="grid grid-3"></div>
       </div>
@@ -715,6 +727,65 @@ let activeStore = JSON.parse(localStorage.getItem('loja_activeStore') || 'null')
 let me = null;
 let cart = [];
 let customer = null;
+
+// ============== ÁRVORE DE PRODUTOS Sports & Tennis ==============
+const PRODUCT_TREE = {
+  'Tênis': {
+    icon: '👟',
+    genders: {
+      'Feminino': {
+        'Corrida': ['máximo conforto', 'confortável', 'velocidade', 'custo benefício', 'super treino', 'pau pra toda obra', 'maratona'],
+        'Caminhada / Treino leve': [],
+        'LifeStyle': ['premium', 'clássico', 'casual'],
+        'Recuperação': [],
+        'Musculação / CrossFit / Hyrox': ['pro', 'intermediário', 'custo benefício'],
+        'Streetwear': [],
+        'Sapatilha': [],
+      },
+      'Masculino': {
+        'Corrida': ['máximo conforto', 'confortável', 'velocidade', 'custo benefício', 'super treino', 'pau pra toda obra', 'maratona'],
+        'Caminhada / Treino leve': [],
+        'LifeStyle': ['premium', 'clássico', 'casual'],
+        'Recuperação': [],
+        'Musculação / CrossFit / Hyrox': ['pro', 'intermediário', 'custo benefício'],
+        'Streetwear': [],
+        'Sapatilha': [],
+      },
+      'Inf. M': {
+        'LifeStyle': ['clássico', 'casual'],
+      },
+      'Inf. F': {
+        'LifeStyle': ['clássico', 'casual'],
+      },
+    },
+  },
+  'Chuteira': {
+    icon: '⚽',
+    modalities: {
+      'Futsal': ['entrada', 'custo benefício', 'treino', 'pro'],
+      'Society': ['entrada', 'custo benefício', 'treino', 'pro'],
+      'Campo': ['entrada', 'custo benefício', 'treino', 'pro'],
+    },
+  },
+};
+
+// Estado do filtro hierárquico (compartilhado entre Curadoria e Estoque)
+let _filterType = null;     // 'Tênis' | 'Chuteira'
+let _filterGender = null;   // 'Feminino' | 'Masculino' | 'Inf. M' | 'Inf. F'
+let _filterCategory = null; // 'Corrida' | 'LifeStyle' | 'Futsal' | etc
+let _filterTier = null;     // 'máximo conforto' | 'premium' | etc
+
+function buildFilterQuery() {
+  return [_filterType, _filterGender, _filterCategory, _filterTier]
+    .filter(Boolean).map(t => t.toLowerCase()).join(' ');
+}
+
+function resetFilters(deep = true) {
+  if (deep) _filterType = null;
+  _filterGender = null;
+  _filterCategory = null;
+  _filterTier = null;
+}
 
 // ============== HELPERS VISUAIS ==============
 function initials(name) {
@@ -934,10 +1005,14 @@ function goPage(pageId) {
   if (pageId === 'clockin') loadClockin();
   if (pageId === 'ranking') initRanking();
   if (pageId === 'messages') loadMessages();
-  if (pageId === 'catalog') onCatalogSearch();
+  if (pageId === 'catalog') {
+    renderFilterTree('catalogTree', 'onCatalogSearch');
+    onCatalogSearch();
+  }
   if (pageId === 'inventory') {
     const sel = document.getElementById('invStoreSelect');
     if (sel && sel.options.length <= 1) populateInvStoreSelect();
+    renderFilterTree('inventoryTree', 'onInventorySearchFromTree');
   }
   if (pageId === 'crm') initCrm();
   if (pageId === 'sell' && !document.querySelectorAll('#sellVendorCards .vendor-card').length) loadVendors();
@@ -1301,18 +1376,141 @@ async function finalizeSale() {
   }
 }
 
-// ============== CATÁLOGO ==============
+// ============== CATÁLOGO / CURADORIA ==============
+function renderFilterTree(containerId, onChange) {
+  const c = document.getElementById(containerId);
+  if (!c) return;
+
+  const rows = [];
+  // Linha 1: Tipo
+  rows.push(`
+    <div class="filter-row">
+      <span class="filter-row-label">Produto</span>
+      ${Object.keys(PRODUCT_TREE).map(t => `
+        <button class="chip ${_filterType === t ? 'active' : ''}" onclick="pickFilter('type','${t}','${containerId}')">${PRODUCT_TREE[t].icon} ${t}</button>
+      `).join('')}
+    </div>
+  `);
+
+  // Linha 2: Gênero (só pra Tênis) ou Modalidade (Chuteira)
+  if (_filterType === 'Tênis') {
+    const genders = Object.keys(PRODUCT_TREE['Tênis'].genders);
+    rows.push(`
+      <div class="filter-row">
+        <span class="filter-row-label">Categoria</span>
+        ${genders.map(g => `
+          <button class="chip ${_filterGender === g ? 'active' : ''}" onclick="pickFilter('gender','${g}','${containerId}')">${g}</button>
+        `).join('')}
+      </div>
+    `);
+
+    if (_filterGender) {
+      const cats = Object.keys(PRODUCT_TREE['Tênis'].genders[_filterGender] || {});
+      rows.push(`
+        <div class="filter-row">
+          <span class="filter-row-label">Modalidade</span>
+          ${cats.map(c => `
+            <button class="chip ${_filterCategory === c ? 'active' : ''}" onclick="pickFilter('category','${c.replace(/'/g, "\\'")}','${containerId}')">${c}</button>
+          `).join('')}
+        </div>
+      `);
+      if (_filterCategory) {
+        const tiers = PRODUCT_TREE['Tênis'].genders[_filterGender][_filterCategory] || [];
+        if (tiers.length) {
+          rows.push(`
+            <div class="filter-row">
+              <span class="filter-row-label">Tier</span>
+              ${tiers.map(t => `
+                <button class="chip ${_filterTier === t ? 'active' : ''}" onclick="pickFilter('tier','${t.replace(/'/g, "\\'")}','${containerId}')">${t}</button>
+              `).join('')}
+            </div>
+          `);
+        }
+      }
+    }
+  } else if (_filterType === 'Chuteira') {
+    const modalities = Object.keys(PRODUCT_TREE['Chuteira'].modalities);
+    rows.push(`
+      <div class="filter-row">
+        <span class="filter-row-label">Modalidade</span>
+        ${modalities.map(m => `
+          <button class="chip ${_filterCategory === m ? 'active' : ''}" onclick="pickFilter('category','${m}','${containerId}')">${m}</button>
+        `).join('')}
+      </div>
+    `);
+    if (_filterCategory) {
+      const tiers = PRODUCT_TREE['Chuteira'].modalities[_filterCategory] || [];
+      if (tiers.length) {
+        rows.push(`
+          <div class="filter-row">
+            <span class="filter-row-label">Tier</span>
+            ${tiers.map(t => `
+              <button class="chip ${_filterTier === t ? 'active' : ''}" onclick="pickFilter('tier','${t.replace(/'/g, "\\'")}','${containerId}')">${t}</button>
+            `).join('')}
+          </div>
+        `);
+      }
+    }
+  }
+
+  // Botão limpar (se há algum filtro ativo)
+  if (_filterType) {
+    rows.push(`
+      <div class="filter-row">
+        <button class="chip chip-clear" onclick="clearFilters('${containerId}')">✕ Limpar filtros</button>
+      </div>
+    `);
+  }
+
+  c.innerHTML = `<div class="filter-tree">${rows.join('')}</div>`;
+  if (typeof window[onChange] === 'function') window[onChange]();
+}
+
+function pickFilter(level, value, containerId) {
+  if (level === 'type') {
+    if (_filterType === value) _filterType = null;
+    else { _filterType = value; }
+    _filterGender = _filterCategory = _filterTier = null;
+  } else if (level === 'gender') {
+    _filterGender = _filterGender === value ? null : value;
+    _filterCategory = _filterTier = null;
+  } else if (level === 'category') {
+    _filterCategory = _filterCategory === value ? null : value;
+    _filterTier = null;
+  } else if (level === 'tier') {
+    _filterTier = _filterTier === value ? null : value;
+  }
+  const handler = containerId === 'catalogTree' ? 'onCatalogSearch' : 'onInventorySearchFromTree';
+  renderFilterTree(containerId, handler);
+}
+
+function clearFilters(containerId) {
+  resetFilters(true);
+  const handler = containerId === 'catalogTree' ? 'onCatalogSearch' : 'onInventorySearchFromTree';
+  renderFilterTree(containerId, handler);
+}
+
 let catSearchTimer;
 async function onCatalogSearch() {
   clearTimeout(catSearchTimer);
-  const q = document.getElementById('catSearchInput').value;
+  const free = document.getElementById('catSearchInput').value.trim();
+  const tree = buildFilterQuery();
+  const q = [tree, free].filter(Boolean).join(' ').trim();
   catSearchTimer = setTimeout(async () => {
     try {
       const path = q ? '/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=24' : '/api/catalog/products?limit=24';
       const d = await api(path);
       renderCatalog(d.products || d.items || []);
     } catch (e) { console.error(e); }
-  }, 250);
+  }, 200);
+}
+
+function onInventorySearchFromTree() {
+  // Modo A: dispara busca via query da árvore
+  const tree = buildFilterQuery();
+  if (!tree) return;
+  document.getElementById('invSearchInput').value = tree;
+  onInventorySearch();
 }
 
 function renderCatalog(products) {
