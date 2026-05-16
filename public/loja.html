@@ -338,7 +338,7 @@ async function doLogin() {
     const r = await fetch(API + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, pin }),
+      body: JSON.stringify({ phone, password: pin }),
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Erro ao entrar'; errEl.classList.add('show'); return; }
