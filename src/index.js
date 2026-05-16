@@ -116,6 +116,12 @@ app.get('/api/health', (req, res) => {
 // Servir frontend (produção)
 const path = require('path');
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Rota amigável: teniscash.com.br/loja → portal das lojas
+app.get('/loja', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/loja.html'));
+});
+// Fallback SPA → app cliente
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
