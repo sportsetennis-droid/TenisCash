@@ -71,25 +71,122 @@ router.get('/dashboard', requireSeller, async (req, res) => {
   }
 });
 
-// Clientes da carteira
+// Clientes da carteira — filtros opcionais: sellerId, storeId, status, priority
 router.get('/customers', requireSeller, async (req, res) => {
   try {
-    const sellerId = req.query.sellerId || req.userId;
-    const { status, priority, limit } = req.query;
+    const { status, priority, limit, storeId, sellerId } = req.query;
     const where = {
-      sellerId,
+      ...(sellerId ? { sellerId } : {}),
+      ...(storeId && storeId !== 'all' ? { storeId } : {}),
       ...(status ? { relationshipStatus: status } : {}),
       ...(priority ? { priority } : {}),
     };
+    // Se NAO veio sellerId nem storeId, usar o logado (fallback antigo pro PWA mobile)
+    if (!where.sellerId && !where.storeId && req.userRole === 'seller') where.sellerId = req.userId;
+
     const customers = await prisma.sellerCustomerAssignment.findMany({
       where,
       orderBy: [{ priority: 'desc' }, { nextActionDate: 'asc' }],
       take: Math.min(parseInt(limit, 10) || 100, 500),
     });
+
+    // Enriquecer com nome do cliente (User TenisCash) e nome do vendedor
+    if (customers.length) {
+      const customerIds = [...new Set(customers.map(c => c.customerId))];
+      const sellerIds = [...new Set(customers.map(c => c.sellerId))];
+      const [users, sellers] = await Promise.all([
+        prisma.user.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true, phone: true, email: true, balance: true } }),
+        prisma.user.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true, employeeCode: true } }),
+      ]);
+      const uMap = new Map(users.map(u => [u.id, u]));
+      const sMap = new Map(sellers.map(s => [s.id, s]));
+      customers.forEach(c => {
+        const u = uMap.get(c.customerId);
+        const s = sMap.get(c.sellerId);
+        c.customerName = u?.name || null;
+        c.customerPhone = u?.phone || null;
+        c.customerEmail = u?.email || null;
+        c.customerBalance = u?.balance || 0;
+        c.sellerName = s?.name || null;
+        c.sellerCode = s?.employeeCode || null;
+      });
+    }
+
     res.json({ customers });
   } catch (err) {
     console.error('[seller/portfolio/customers] erro:', err);
     res.status(500).json({ error: 'Erro ao listar clientes' });
+  }
+});
+
+// Dashboard agregado por LOJA (somando vendedores da loja)
+router.get('/store-dashboard', requireSeller, async (req, res) => {
+  try {
+    const storeId = req.query.storeId;
+    if (!storeId || storeId === 'all') return res.status(400).json({ error: 'storeId é obrigatório' });
+
+    const where = { storeId };
+    const [total, callToday, inactive, rebuy, sellers, pendingTasks, recentInteractions] = await Promise.all([
+      prisma.sellerCustomerAssignment.count({ where }),
+      prisma.sellerCustomerAssignment.count({ where: { ...where, nextActionDate: { lte: new Date() }, relationshipStatus: { not: 'LOST' } } }),
+      prisma.sellerCustomerAssignment.count({ where: { ...where, relationshipStatus: 'INACTIVE' } }),
+      prisma.sellerCustomerAssignment.count({ where: { ...where, relationshipStatus: 'REBUY_OPPORTUNITY' } }),
+      prisma.user.findMany({ where: { role: 'seller', active: true, storeId }, select: { id: true, name: true, employeeCode: true } }),
+      prisma.sellerTask.count({ where: { storeId, status: { in: ['TODO', 'IN_PROGRESS'] } } }),
+      prisma.customerInteraction.findMany({ where: { storeId }, orderBy: { createdAt: 'desc' }, take: 8 }),
+    ]);
+
+    // Contagem de clientes por vendedor da loja
+    const byVendor = await prisma.sellerCustomerAssignment.groupBy({
+      by: ['sellerId'],
+      where,
+      _count: { _all: true },
+    });
+    const vendorMap = new Map(sellers.map(s => [s.id, s]));
+    const perSeller = byVendor.map(v => ({
+      sellerId: v.sellerId,
+      name: vendorMap.get(v.sellerId)?.name || '(removido)',
+      employeeCode: vendorMap.get(v.sellerId)?.employeeCode || null,
+      customerCount: v._count._all,
+    })).sort((a, b) => b.customerCount - a.customerCount);
+
+    res.json({
+      stats: { totalCustomers: total, customersToCallToday: callToday, inactiveCustomers: inactive, rebuyOpportunities: rebuy },
+      pendingTasks,
+      recentInteractions,
+      perSeller,
+      sellersCount: sellers.length,
+    });
+  } catch (err) {
+    console.error('[seller/portfolio/store-dashboard] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dashboard agregado GERAL (todas as lojas)
+router.get('/global-dashboard', requireSeller, async (req, res) => {
+  try {
+    const [total, callToday, inactive, rebuy, byStore, stores] = await Promise.all([
+      prisma.sellerCustomerAssignment.count(),
+      prisma.sellerCustomerAssignment.count({ where: { nextActionDate: { lte: new Date() }, relationshipStatus: { not: 'LOST' } } }),
+      prisma.sellerCustomerAssignment.count({ where: { relationshipStatus: 'INACTIVE' } }),
+      prisma.sellerCustomerAssignment.count({ where: { relationshipStatus: 'REBUY_OPPORTUNITY' } }),
+      prisma.sellerCustomerAssignment.groupBy({ by: ['storeId'], _count: { _all: true } }),
+      prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, code: true } }),
+    ]);
+    const sMap = new Map(stores.map(s => [s.id, s]));
+    const perStore = byStore.filter(b => b.storeId).map(b => ({
+      storeId: b.storeId,
+      name: sMap.get(b.storeId)?.name || '?',
+      code: sMap.get(b.storeId)?.code || '?',
+      customerCount: b._count._all,
+    })).sort((a, b) => b.customerCount - a.customerCount);
+    res.json({
+      stats: { totalCustomers: total, customersToCallToday: callToday, inactiveCustomers: inactive, rebuyOpportunities: rebuy },
+      perStore,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
