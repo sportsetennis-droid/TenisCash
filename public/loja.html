@@ -1177,9 +1177,10 @@ async function loadCrmDashboard() {
           `).join('') : '<p style="color:#8e8e93;font-size:13px;">Sem interações registradas.</p>'}
         </div>
       </div>
-      <div style="margin-top:16px;">
-        <button class="btn btn-small" onclick="loadCrmCustomers()">📋 Ver lista de clientes</button>
-        <button class="btn btn-secondary btn-small" onclick="openCrmInteractionModal()" style="margin-left:8px;">+ Nova interação</button>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-small" onclick="openCrmCustomerModal()">+ Novo cliente</button>
+        <button class="btn btn-secondary btn-small" onclick="loadCrmCustomers()">📋 Ver lista</button>
+        <button class="btn btn-secondary btn-small" onclick="openCrmInteractionModal()">+ Nova interação</button>
       </div>
     `;
   } catch (e) {
@@ -1234,6 +1235,63 @@ async function loadCrmCustomers() {
   } catch (e) {
     document.getElementById('crmCustomers').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
   }
+}
+
+function openCrmCustomerModal() {
+  if (!crmCurrentVendor) { alert('Selecione um vendedor antes (o cliente vai pra carteira dele)'); return; }
+  document.getElementById('crmActionContent').innerHTML = `
+    <h3 class="modal-title">+ Cadastrar cliente</h3>
+    <p style="font-size:12px;color:#8e8e93;margin-bottom:12px;">O cliente entra no TenisCash (programa de cashback) e na carteira do vendedor escolhido. PIN inicial = últimos 4 dígitos do telefone.</p>
+    <div class="form-group">
+      <label>Nome completo *</label>
+      <input id="newCustName" type="text" placeholder="Ex: Maria Silva">
+    </div>
+    <div class="form-group">
+      <label>Telefone (com DDD) *</label>
+      <input id="newCustPhone" type="tel" placeholder="83912345678" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label>CPF (opcional)</label>
+      <input id="newCustCpf" type="text" placeholder="000.000.000-00" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label>E-mail (opcional)</label>
+      <input id="newCustEmail" type="email" placeholder="maria@email.com">
+    </div>
+    <div class="form-group">
+      <label>Observação (opcional)</label>
+      <textarea id="newCustNotes" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;min-height:60px;" placeholder="Ex: Procurando tênis pra corrida, calça 38"></textarea>
+    </div>
+    <button class="btn" onclick="saveNewCustomer()">Cadastrar</button>
+  `;
+  document.getElementById('crmActionModal').classList.add('show');
+}
+
+async function saveNewCustomer() {
+  const name = document.getElementById('newCustName').value.trim();
+  const phone = document.getElementById('newCustPhone').value.trim();
+  if (!name || !phone) { alert('Nome e telefone são obrigatórios'); return; }
+  try {
+    const r = await api('/api/seller/customer/quick-register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        phone,
+        cpf: document.getElementById('newCustCpf').value || null,
+        email: document.getElementById('newCustEmail').value || null,
+        notes: document.getElementById('newCustNotes').value || null,
+        sellerId: crmCurrentVendor,
+        storeId: activeStore?.id,
+      }),
+    });
+    if (r.existing) {
+      alert(`Cliente ${r.user.name} já estava cadastrado. Agora também tá na carteira do vendedor.`);
+    } else {
+      alert(`✓ Cliente ${r.user.name} cadastrado!\n\n${r.pinHint}`);
+    }
+    document.getElementById('crmActionModal').classList.remove('show');
+    loadCrmDashboard();
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
 function openCrmTaskModal() {

@@ -858,6 +858,98 @@ router.get('/inventory/by-store', authMiddleware, sellerOnly, async (req, res) =
 // =====================================================================
 // BUSCA CLIENTE TenisCash por telefone (autocomplete pro PDV)
 // =====================================================================
+// =====================================================================
+// CADASTRO RÁPIDO DE CLIENTE — pelo CRM/PDV (sem fluxo SMS completo)
+// =====================================================================
+// PIN inicial = últimos 4 dígitos do telefone. Cliente troca depois.
+// Se sellerId vier, ja vincula na carteira do vendedor.
+// =====================================================================
+router.post('/customer/quick-register', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { name, phone, cpf, email, sellerId, storeId, notes } = req.body || {};
+
+    if (!name || !phone) return res.status(400).json({ error: 'Nome e telefone obrigatórios' });
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    if (cleanPhone.length < 10) return res.status(400).json({ error: 'Telefone inválido' });
+    const cleanCpf = cpf ? String(cpf).replace(/\D/g, '') : null;
+    if (cleanCpf && cleanCpf.length !== 11) return res.status(400).json({ error: 'CPF inválido' });
+
+    // Já existe?
+    const existing = await prisma.user.findUnique({ where: { phone: cleanPhone } });
+    if (existing) {
+      // Se ja existe E quer atribuir a um vendedor, ainda permite
+      if (sellerId) {
+        const existingAssign = await prisma.sellerCustomerAssignment.findFirst({
+          where: { sellerId, customerId: existing.id },
+        });
+        if (existingAssign) {
+          await prisma.sellerCustomerAssignment.update({
+            where: { id: existingAssign.id },
+            data: { storeId: storeId || existingAssign.storeId, notes: notes || existingAssign.notes },
+          });
+        } else {
+          await prisma.sellerCustomerAssignment.create({
+            data: { sellerId, customerId: existing.id, storeId: storeId || null, relationshipStatus: 'NEW_LEAD', priority: 'MEDIUM', notes: notes || null },
+          });
+        }
+      }
+      return res.json({
+        ok: true,
+        existing: true,
+        user: { id: existing.id, name: existing.name, phone: existing.phone, balance: existing.balance },
+        pinHint: 'Cliente já cadastrado — usar PIN que ele já tem',
+      });
+    }
+
+    // PIN inicial: últimos 4 dígitos do telefone
+    const initialPin = cleanPhone.slice(-4);
+    const hashedPin = await bcrypt.hash(initialPin, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        phone: cleanPhone,
+        email: email || null,
+        cpf: cleanCpf,
+        pin: hashedPin,
+        role: 'user',
+        active: true,
+        profileComplete: false,
+        lgpdAccepted: false,
+      },
+    });
+
+    // Se vendedor informado, ja cria a relacao na carteira
+    let assignment = null;
+    if (sellerId) {
+      try {
+        assignment = await prisma.sellerCustomerAssignment.create({
+          data: {
+            sellerId,
+            customerId: user.id,
+            storeId: storeId || null,
+            relationshipStatus: 'NEW_LEAD',
+            priority: 'MEDIUM',
+            notes: notes || null,
+          },
+        });
+      } catch (e) { /* ignora duplicidade */ }
+    }
+
+    res.json({
+      ok: true,
+      existing: false,
+      user: { id: user.id, name: user.name, phone: user.phone, balance: 0 },
+      assignment,
+      pinHint: `PIN inicial: ${initialPin} (últimos 4 do telefone). Avise o cliente pra trocar.`,
+    });
+  } catch (err) {
+    console.error('Erro quick-register:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/customer/lookup', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const phone = String(req.query.phone || '').replace(/\D/g, '');
