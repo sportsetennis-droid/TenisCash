@@ -9,122 +9,223 @@
 <title>Portal Sports & Tennis — Lojas</title>
 <link rel="manifest" href="/manifest.json">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; }
+  :root {
+    --primary: #FF6D00;
+    --primary-dark: #e55f00;
+    --primary-light: #FFE5D0;
+    --bg: #f5f5f7;
+    --bg-soft: #fafafa;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --text-muted: #8e8e93;
+    --text-soft: #6e6e73;
+    --border: #e5e5ea;
+    --border-soft: #f0f0f3;
+    --success: #0a843d;
+    --success-bg: #e8f7ee;
+    --danger: #d70015;
+    --danger-bg: #fff1f0;
+    --warning: #b06b00;
+    --warning-bg: #fff8e0;
+    --info: #0066cc;
+    --info-bg: #e3f2fd;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.05);
+    --shadow-hover: 0 8px 24px rgba(255,109,0,0.15), 0 4px 8px rgba(0,0,0,0.06);
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-sm: 8px;
+    --gradient: linear-gradient(135deg, #FF6D00 0%, #FF9248 100%);
+    --gradient-success: linear-gradient(135deg, #0a843d 0%, #2bb678 100%);
+    --gradient-info: linear-gradient(135deg, #0066cc 0%, #4d94ff 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
   /* Login */
-  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
-  .login-card { background: white; border-radius: 16px; padding: 32px; width: 100%; max-width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); }
-  .login-logo { text-align: center; margin-bottom: 24px; }
-  .login-logo h1 { font-size: 24px; color: #FF6D00; margin-bottom: 4px; }
-  .login-logo p { font-size: 13px; color: #8e8e93; }
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: linear-gradient(135deg, #fff 0%, #FFE5D0 100%); }
+  .login-card { background: white; border-radius: 20px; padding: 36px 32px; width: 100%; max-width: 400px; box-shadow: var(--shadow-lg); }
+  .login-logo { text-align: center; margin-bottom: 28px; }
+  .login-logo h1 { font-size: 26px; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; font-weight: 800; }
+  .login-logo p { font-size: 13px; color: var(--text-muted); }
   .form-group { margin-bottom: 16px; }
-  .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #3a3a3c; }
-  .form-group input { width: 100%; padding: 12px; border: 1px solid #d2d2d7; border-radius: 10px; font-size: 16px; }
-  .form-group input:focus { outline: none; border-color: #FF6D00; }
-  .btn { width: 100%; padding: 14px; background: #FF6D00; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
-  .btn:hover { background: #e55f00; }
-  .btn:disabled { background: #c7c7cc; cursor: not-allowed; }
-  .btn-secondary { background: #e5e5ea; color: #1d1d1f; }
-  .btn-secondary:hover { background: #d2d2d7; }
-  .btn-small { width: auto; padding: 8px 14px; font-size: 13px; }
-  .err { background: #fff1f0; color: #d70015; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: none; }
+  .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-soft); }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; transition: all 0.15s; background: white; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+  .btn { width: 100%; padding: 14px; background: var(--gradient); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.1s, box-shadow 0.15s; box-shadow: 0 4px 12px rgba(255,109,0,0.25); }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,109,0,0.35); }
+  .btn:disabled { background: #c7c7cc; cursor: not-allowed; box-shadow: none; }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); box-shadow: none; }
+  .btn-secondary:hover:not(:disabled) { background: var(--bg); border-color: var(--primary); color: var(--primary); transform: none; box-shadow: none; }
+  .btn-small { width: auto; padding: 8px 16px; font-size: 13px; }
+  .btn-icon { background: transparent; border: none; padding: 8px; cursor: pointer; font-size: 18px; color: var(--text); border-radius: 8px; transition: background 0.15s; }
+  .btn-icon:hover { background: var(--bg); }
+  .err { background: var(--danger-bg); color: var(--danger); padding: 12px 14px; border-radius: 10px; margin-bottom: 12px; font-size: 13px; display: none; border-left: 3px solid var(--danger); }
   .err.show { display: block; }
-  .ok { background: #e8f7ee; color: #0a843d; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: none; }
-  .ok.show { display: block; }
+
+  /* Top bar */
+  .topbar { background: white; border-bottom: 1px solid var(--border-soft); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .topbar-logo { font-weight: 800; color: var(--primary); font-size: 20px; letter-spacing: -0.5px; }
+  .topbar-store { font-size: 12px; color: var(--text-muted); }
+  .topbar-right { display: flex; align-items: center; gap: 4px; }
 
   /* App */
   .app-wrap { display: none; }
   .app-wrap.show { display: block; }
 
-  /* Top bar */
-  .topbar { background: white; border-bottom: 1px solid #e5e5ea; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-  .topbar-left { display: flex; align-items: center; gap: 12px; }
-  .topbar-logo { font-weight: 700; color: #FF6D00; font-size: 18px; }
-  .topbar-store { font-size: 12px; color: #8e8e93; }
-  .topbar-right { display: flex; align-items: center; gap: 8px; }
-  .seller-badge { background: #f5f5f7; padding: 6px 12px; border-radius: 20px; font-size: 13px; }
-  .btn-icon { background: transparent; border: none; padding: 8px; cursor: pointer; font-size: 18px; color: #1d1d1f; }
-
   /* Nav */
-  .nav { display: flex; background: white; border-bottom: 1px solid #e5e5ea; overflow-x: auto; scrollbar-width: none; position: sticky; top: 52px; z-index: 99; }
+  .nav { display: flex; background: white; border-bottom: 1px solid var(--border-soft); overflow-x: auto; scrollbar-width: none; position: sticky; top: 56px; z-index: 99; padding: 0 8px; }
   .nav::-webkit-scrollbar { display: none; }
-  .nav-item { padding: 14px 18px; background: none; border: none; cursor: pointer; font-size: 14px; color: #8e8e93; border-bottom: 3px solid transparent; white-space: nowrap; }
-  .nav-item:hover { color: #1d1d1f; }
-  .nav-item.active { color: #FF6D00; border-bottom-color: #FF6D00; font-weight: 600; }
+  .nav-item { padding: 16px 18px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--text-muted); border-bottom: 3px solid transparent; white-space: nowrap; font-weight: 500; transition: color 0.15s; }
+  .nav-item:hover { color: var(--text); }
+  .nav-item.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 
   /* Pages */
-  .page { display: none; padding: 16px; max-width: 1200px; margin: 0 auto; }
-  .page.show { display: block; }
-  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 16px; }
-  .page-subtitle { font-size: 13px; color: #8e8e93; margin-bottom: 16px; }
+  .page { display: none; padding: 20px; max-width: 1300px; margin: 0 auto; }
+  .page.show { display: block; animation: fadeIn 0.2s ease-out; }
+  .page-title { font-size: 24px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .page-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-  /* Cards & grids */
-  .grid { display: grid; gap: 12px; }
+  /* Grids */
+  .grid { display: grid; gap: 14px; }
   .grid-2 { grid-template-columns: repeat(2, 1fr); }
-  .grid-3 { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
   .grid-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-  .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-  .card-title { font-size: 12px; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-  .card-value { font-size: 24px; font-weight: 700; }
-  .card-sub { font-size: 12px; color: #8e8e93; margin-top: 4px; }
 
-  /* Lists */
-  .list-item { background: white; padding: 14px 16px; border-radius: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
-  .list-item:hover { background: #fafafa; }
+  /* Card base */
+  .card { background: white; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, transform 0.1s; border: 1px solid var(--border-soft); }
+  .card:hover { box-shadow: var(--shadow-md); }
+
+  /* KPI card (Dashboard) — com gradient na borda esquerda + ícone */
+  .kpi-card { background: white; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); display: flex; align-items: center; gap: 14px; transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .kpi-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .kpi-icon.orange { background: var(--primary-light); color: var(--primary); }
+  .kpi-icon.green { background: var(--success-bg); color: var(--success); }
+  .kpi-icon.blue { background: var(--info-bg); color: var(--info); }
+  .kpi-icon.yellow { background: var(--warning-bg); color: var(--warning); }
+  .kpi-icon.red { background: var(--danger-bg); color: var(--danger); }
+  .kpi-content { flex: 1; min-width: 0; }
+  .kpi-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; margin-bottom: 4px; }
+  .kpi-value { font-size: 24px; font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
+  .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+  .card-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: 600; }
+  .card-value { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+  .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .section-title { font-size: 16px; font-weight: 700; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+  .section-title-icon { font-size: 20px; }
+
+  /* AVATARES (clientes, vendedores) */
+  .avatar { width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: white; flex-shrink: 0; text-transform: uppercase; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  .avatar-sm { width: 32px; height: 32px; font-size: 12px; }
+  .avatar-lg { width: 64px; height: 64px; font-size: 22px; }
+  .avatar-1 { background: linear-gradient(135deg, #FF6D00, #FF9248); }
+  .avatar-2 { background: linear-gradient(135deg, #0066cc, #4d94ff); }
+  .avatar-3 { background: linear-gradient(135deg, #0a843d, #2bb678); }
+  .avatar-4 { background: linear-gradient(135deg, #b06b00, #f0b146); }
+  .avatar-5 { background: linear-gradient(135deg, #8a2be2, #b370ff); }
+  .avatar-6 { background: linear-gradient(135deg, #d70015, #ff5566); }
+
+  /* Person card (cliente / vendedor) */
+  .person-card { background: white; border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); display: flex; align-items: center; gap: 14px; cursor: pointer; transition: transform 0.1s, box-shadow 0.15s; }
+  .person-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+  .person-info { flex: 1; min-width: 0; }
+  .person-name { font-size: 15px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person-stats { font-size: 13px; font-weight: 700; color: var(--text); text-align: right; }
+  .person-stats small { display: block; font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+
+  /* Lists / list-item */
+  .list-item { background: white; padding: 14px 16px; border-radius: var(--radius); margin-bottom: 10px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: transform 0.1s, box-shadow 0.15s; border: 1px solid var(--border-soft); }
+  .list-item:hover { transform: translateX(2px); box-shadow: var(--shadow-md); }
   .list-item-main { flex: 1; min-width: 0; }
   .list-item-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-  .list-item-sub { font-size: 12px; color: #8e8e93; }
+  .list-item-sub { font-size: 12px; color: var(--text-muted); }
   .list-item-right { text-align: right; font-size: 13px; }
-  .pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-  .pill-green { background: #e8f7ee; color: #0a843d; }
-  .pill-yellow { background: #fff8e0; color: #b06b00; }
-  .pill-orange { background: #fff1e0; color: #c25800; }
+
+  /* Pills / badges */
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 600; }
+  .pill-green { background: var(--success-bg); color: var(--success); }
+  .pill-yellow { background: var(--warning-bg); color: var(--warning); }
+  .pill-orange { background: var(--primary-light); color: var(--primary); }
+  .pill-red { background: var(--danger-bg); color: var(--danger); }
+  .pill-blue { background: var(--info-bg); color: var(--info); }
+  .pill-gray { background: var(--bg); color: var(--text-soft); }
 
   /* Product card */
-  .product-card { background: white; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.1s; }
-  .product-card:hover { transform: translateY(-2px); }
-  .product-img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #f5f5f7; }
-  .product-info { padding: 10px; }
-  .product-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 32px; }
-  .product-brand { font-size: 10px; color: #8e8e93; text-transform: uppercase; margin-top: 2px; }
-  .product-price { font-size: 14px; font-weight: 700; color: #FF6D00; margin-top: 4px; }
+  .product-card { background: white; border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; border: 1px solid var(--border-soft); display: flex; flex-direction: column; }
+  .product-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+  .product-img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg); }
+  .product-info { padding: 12px; flex: 1; display: flex; flex-direction: column; }
+  .product-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 34px; line-height: 1.3; }
+  .product-brand { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; letter-spacing: 0.3px; font-weight: 600; }
+  .product-price { font-size: 16px; font-weight: 800; color: var(--primary); margin-top: auto; padding-top: 6px; }
+  .product-badge { display: inline-block; padding: 2px 8px; background: var(--success-bg); color: var(--success); font-size: 10px; font-weight: 700; border-radius: 8px; margin-top: 4px; }
+
+  /* Store card */
+  .store-card { background: white; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); border: 1.5px solid var(--border-soft); cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; gap: 8px; text-align: left; width: 100%; }
+  .store-card:hover { border-color: var(--primary); box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+  .store-card .store-icon { font-size: 28px; margin-bottom: 4px; }
+  .store-card .store-name { font-weight: 700; font-size: 15px; }
+  .store-card .store-meta { font-size: 12px; color: var(--text-muted); }
+  .store-card .store-tag { display: inline-block; padding: 2px 8px; background: var(--primary-light); color: var(--primary); font-size: 10px; font-weight: 700; border-radius: 6px; margin-top: 4px; width: fit-content; }
 
   /* Modal */
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
-  .modal-bg.show { display: flex; }
-  .modal { background: white; border-radius: 16px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px; }
-  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
-  .modal-close { float: right; cursor: pointer; font-size: 22px; color: #8e8e93; background: none; border: none; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+  .modal-bg.show { display: flex; animation: fadeIn 0.2s ease-out; }
+  .modal { background: white; border-radius: var(--radius-lg); max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: var(--shadow-lg); }
+  .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
+  .modal-close { float: right; cursor: pointer; font-size: 24px; color: var(--text-muted); background: none; border: none; line-height: 1; padding: 0 4px; }
+  .modal-close:hover { color: var(--text); }
 
   /* Cart */
-  .cart-item { display: flex; align-items: center; gap: 8px; padding: 10px; background: #f5f5f7; border-radius: 8px; margin-bottom: 6px; }
-  .cart-item-info { flex: 1; }
-  .cart-item-name { font-size: 13px; font-weight: 600; }
-  .cart-item-sub { font-size: 11px; color: #8e8e93; }
-  .qty-controls { display: flex; align-items: center; gap: 4px; }
-  .qty-btn { background: white; border: 1px solid #d2d2d7; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .cart-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-soft); border-radius: var(--radius-sm); margin-bottom: 8px; border: 1px solid var(--border-soft); }
+  .cart-item-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: white; border: 1px solid var(--border-soft); }
+  .cart-item-info { flex: 1; min-width: 0; }
+  .cart-item-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cart-item-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .qty-controls { display: flex; align-items: center; gap: 4px; background: white; border-radius: 8px; padding: 2px; border: 1px solid var(--border); }
+  .qty-btn { background: transparent; border: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 700; color: var(--text); transition: background 0.15s; }
+  .qty-btn:hover { background: var(--bg); }
 
   /* Search */
-  .search-bar { background: white; border: 1px solid #d2d2d7; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  .search-bar input { flex: 1; border: none; outline: none; font-size: 14px; }
+  .search-bar { background: white; border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; transition: all 0.15s; }
+  .search-bar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+  .search-bar input { flex: 1; border: none; outline: none; font-size: 14px; background: transparent; }
 
   /* Clock buttons */
   .clock-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
-  .clock-btn { padding: 24px; border: 2px solid #e5e5ea; border-radius: 12px; background: white; cursor: pointer; text-align: center; font-size: 14px; font-weight: 600; }
-  .clock-btn:hover { border-color: #FF6D00; }
-  .clock-btn.active { border-color: #FF6D00; background: #FF6D00; color: white; }
-  .clock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .clock-btn { padding: 24px 16px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; cursor: pointer; text-align: center; font-size: 14px; font-weight: 600; transition: all 0.15s; }
+  .clock-btn:hover:not(:disabled) { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .clock-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Avatar helper text */
+  .row { display: flex; align-items: center; gap: 12px; }
+
+  /* Table polidas */
+  table.modern { width: 100%; border-collapse: separate; border-spacing: 0; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); }
+  table.modern thead tr { background: var(--bg-soft); }
+  table.modern th { padding: 12px 14px; text-align: left; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+  table.modern td { padding: 14px; border-bottom: 1px solid var(--border-soft); font-size: 13px; vertical-align: middle; }
+  table.modern tbody tr:last-child td { border-bottom: none; }
+  table.modern tbody tr { transition: background 0.1s; }
+  table.modern tbody tr:hover { background: var(--bg-soft); }
+  table.modern tbody tr.clickable { cursor: pointer; }
 
   /* Mobile adjustments */
   @media (max-width: 600px) {
-    .topbar { padding: 10px 12px; }
-    .topbar-logo { font-size: 16px; }
-    .seller-badge { display: none; }
-    .nav-item { padding: 12px 14px; font-size: 13px; }
-    .page { padding: 12px; }
-    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .topbar { padding: 10px 14px; }
+    .topbar-logo { font-size: 18px; }
+    .nav-item { padding: 14px; font-size: 13px; }
+    .page { padding: 14px; }
+    .grid-2 { grid-template-columns: 1fr; }
     .grid-3 { grid-template-columns: repeat(2, 1fr); }
+    .kpi-value { font-size: 20px; }
+    .kpi-icon { width: 40px; height: 40px; font-size: 20px; }
   }
 </style>
 </head>
@@ -161,8 +262,8 @@
       <p id="storeSelectHello">—</p>
     </div>
     <div id="storeSelectErr" class="err"></div>
-    <div id="storeList"></div>
-    <button class="btn btn-secondary" onclick="logout()" style="margin-top:12px;">Sair</button>
+    <div id="storeList" style="display:grid;gap:10px;"></div>
+    <button class="btn btn-secondary" onclick="logout()" style="margin-top:16px;">Sair</button>
   </div>
 </div>
 
@@ -196,26 +297,66 @@
   <!-- DASHBOARD -->
   <div class="page show" id="page-dashboard">
     <h2 class="page-title" id="dashboardTitle">Hoje na loja</h2>
+    <p class="page-subtitle">Visão geral em tempo real</p>
+
     <div class="grid grid-3">
-      <div class="card"><div class="card-title">Vendas hoje</div><div class="card-value" id="kpiSalesToday">—</div></div>
-      <div class="card"><div class="card-title">Valor hoje</div><div class="card-value" id="kpiAmountToday">—</div></div>
-      <div class="card"><div class="card-title">Cashback dado</div><div class="card-value" id="kpiCashbackToday">—</div></div>
+      <div class="kpi-card">
+        <div class="kpi-icon orange">🛒</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Vendas hoje</div>
+          <div class="kpi-value" id="kpiSalesToday">—</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon green">💰</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Valor hoje</div>
+          <div class="kpi-value" id="kpiAmountToday">—</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon blue">🎁</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Cashback dado</div>
+          <div class="kpi-value" id="kpiCashbackToday">—</div>
+        </div>
+      </div>
     </div>
 
-    <h3 style="margin-top:24px;margin-bottom:12px;font-size:16px;">Mês atual</h3>
+    <h3 class="section-title"><span class="section-title-icon">📅</span>Mês atual</h3>
     <div class="grid grid-3">
-      <div class="card"><div class="card-title">Vendas mês</div><div class="card-value" id="kpiSalesMonth">—</div></div>
-      <div class="card"><div class="card-title">Valor mês</div><div class="card-value" id="kpiAmountMonth">—</div></div>
-      <div class="card"><div class="card-title">Cashback mês</div><div class="card-value" id="kpiCashbackMonth">—</div></div>
+      <div class="kpi-card">
+        <div class="kpi-icon orange">📦</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Vendas mês</div>
+          <div class="kpi-value" id="kpiSalesMonth">—</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon green">💵</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Valor mês</div>
+          <div class="kpi-value" id="kpiAmountMonth">—</div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon yellow">⭐</div>
+        <div class="kpi-content">
+          <div class="kpi-title">Cashback mês</div>
+          <div class="kpi-value" id="kpiCashbackMonth">—</div>
+        </div>
+      </div>
     </div>
 
-    <div id="topSellersBlock" style="margin-top:24px;display:none;">
-      <h3 style="margin-bottom:12px;font-size:16px;">Top vendedores hoje</h3>
-      <div id="topSellersList"></div>
+    <div id="topSellersBlock" style="display:none;">
+      <h3 class="section-title"><span class="section-title-icon">🏆</span>Top vendedores hoje</h3>
+      <div id="topSellersList" class="grid grid-2"></div>
     </div>
 
-    <div style="margin-top:24px;">
-      <button class="btn btn-small" onclick="goPage('sell')">+ Nova venda</button>
+    <div style="margin-top:24px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-small" onclick="goPage('sell')">＋ Nova venda</button>
+      <button class="btn btn-secondary btn-small" onclick="goPage('crm')">👥 Abrir CRM</button>
+      <button class="btn btn-secondary btn-small" onclick="goPage('inventory')">📦 Consultar estoque</button>
     </div>
   </div>
 
@@ -441,6 +582,24 @@ let me = null;
 let cart = [];
 let customer = null;
 
+// ============== HELPERS VISUAIS ==============
+function initials(name) {
+  if (!name) return '?';
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function avatarColor(name) {
+  if (!name) return 'avatar-1';
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return 'avatar-' + (Math.abs(hash) % 6 + 1);
+}
+function storeIcon(code) {
+  const map = { LOJA01: '🏖️', LOJA02: '🏝️', LOJA03: '👑', LOJA04: '🧬' };
+  return map[code] || '🏬';
+}
+
 // ============== AUTH ==============
 async function doLogin() {
   const phone = document.getElementById('loginPhone').value.replace(/\D/g, '');
@@ -510,12 +669,14 @@ async function showStoreSelector() {
     list.innerHTML = (d.stores || []).map(s => {
       const isDefault = s.id === defaultStoreId;
       return `
-        <button class="clock-btn" style="text-align:left;width:100%;margin-bottom:8px;display:block;padding:14px 16px;" onclick='selectStore(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
-          <div style="font-weight:600;font-size:15px;">${s.name} ${isDefault ? '<span style="font-size:11px;color:#FF6D00;">· sua loja padrão</span>' : ''}</div>
-          <div style="font-size:12px;color:#8e8e93;margin-top:2px;">${s.mall || ''} · ${s.city || ''}</div>
+        <button class="store-card" onclick='selectStore(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
+          <div class="store-icon">${storeIcon(s.code)}</div>
+          <div class="store-name">${s.name}</div>
+          <div class="store-meta">${s.mall || ''} · ${s.city || ''}</div>
+          ${isDefault ? '<span class="store-tag">SUA LOJA PADRÃO</span>' : ''}
         </button>
       `;
-    }).join('') || '<p style="color:#8e8e93;text-align:center;">Sem lojas ativas. Avise o gerente.</p>';
+    }).join('') || '<p style="color:var(--text-muted);text-align:center;">Sem lojas ativas. Avise o gerente.</p>';
   } catch (e) {
     document.getElementById('storeSelectErr').textContent = 'Erro ao listar lojas: ' + e.message;
     document.getElementById('storeSelectErr').classList.add('show');
@@ -612,15 +773,19 @@ async function loadDashboard() {
     const block = document.getElementById('topSellersBlock');
     if (d.scope === 'store' && d.topSellersToday?.length) {
       block.style.display = 'block';
-      document.getElementById('topSellersList').innerHTML = d.topSellersToday.map((s, i) => `
-        <div class="list-item">
-          <div class="list-item-main">
-            <div class="list-item-title">${i + 1}. ${s.name}</div>
-            <div class="list-item-sub">${s.salesCount} venda${s.salesCount > 1 ? 's' : ''}</div>
+      document.getElementById('topSellersList').innerHTML = d.topSellersToday.map((s, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+        return `
+          <div class="person-card">
+            <div class="avatar ${avatarColor(s.name)}">${initials(s.name)}</div>
+            <div class="person-info">
+              <div class="person-name">${medal} ${s.name}</div>
+              <div class="person-meta">${s.salesCount} venda${s.salesCount > 1 ? 's' : ''}</div>
+            </div>
+            <div class="person-stats">${fmt(s.salesAmount)}<small>total</small></div>
           </div>
-          <div class="list-item-right"><strong>${fmt(s.salesAmount)}</strong></div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     } else {
       block.style.display = 'none';
     }
@@ -643,23 +808,24 @@ async function onSellSearch() {
 
 function renderSellResults(products) {
   const el = document.getElementById('sellSearchResults');
-  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8e8e93;padding:20px;">Nada encontrado</div>'; return; }
+  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado</div>'; return; }
   el.innerHTML = products.map(p => `
-    <div class="product-card" onclick="addToCart('${p.id}','${(p.name || '').replace(/'/g, "\\'")}','${(p.brand || '').replace(/'/g, "\\'")}',${p.promoPrice || p.price})">
-      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+    <div class="product-card" onclick="addToCart('${p.id}','${(p.name || '').replace(/'/g, "\\'")}','${(p.brand || '').replace(/'/g, "\\'")}',${p.promoPrice || p.price},'${(p.imageUrl || '').replace(/'/g, "\\'")}')">
+      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
       <div class="product-info">
         <div class="product-brand">${p.brand || ''}</div>
         <div class="product-name">${p.name || ''}</div>
         <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+        <span class="product-badge">+ Adicionar</span>
       </div>
     </div>
   `).join('');
 }
 
-function addToCart(productId, name, brand, price) {
+function addToCart(productId, name, brand, price, imageUrl) {
   const existing = cart.find(i => i.productId === productId);
   if (existing) existing.quantity++;
-  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1 });
+  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1, imageUrl });
   renderCart();
 }
 
@@ -681,13 +847,14 @@ function renderCart() {
   empty.style.display = 'none';
   list.innerHTML = cart.map((it, i) => `
     <div class="cart-item">
+      <img class="cart-item-img" src="${it.imageUrl || ''}" onerror="this.style.opacity='0.3'">
       <div class="cart-item-info">
         <div class="cart-item-name">${it.name}</div>
-        <div class="cart-item-sub">${it.brand} — ${fmt(it.unitPrice)}</div>
+        <div class="cart-item-sub">${it.brand} · ${fmt(it.unitPrice)} × ${it.quantity} = <strong>${fmt(it.unitPrice * it.quantity)}</strong></div>
       </div>
       <div class="qty-controls">
         <button class="qty-btn" onclick="changeQty(${i},-1)">−</button>
-        <span style="min-width:24px;text-align:center;">${it.quantity}</span>
+        <span style="min-width:28px;text-align:center;font-weight:600;">${it.quantity}</span>
         <button class="qty-btn" onclick="changeQty(${i},1)">+</button>
       </div>
     </div>
@@ -785,17 +952,21 @@ async function onCatalogSearch() {
 
 function renderCatalog(products) {
   const el = document.getElementById('catalogResults');
-  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8e8e93;padding:20px;">Nada encontrado</div>'; return; }
-  el.innerHTML = products.map(p => `
-    <div class="product-card" onclick="showProduct('${p.id}')">
-      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
-      <div class="product-info">
-        <div class="product-brand">${p.brand || ''}</div>
-        <div class="product-name">${p.name || ''}</div>
-        <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado</div>'; return; }
+  el.innerHTML = products.map(p => {
+    const hasPromo = p.promoPrice && p.promoPrice < p.price;
+    return `
+      <div class="product-card" onclick="showProduct('${p.id}')">
+        <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
+        <div class="product-info">
+          <div class="product-brand">${p.brand || ''}</div>
+          <div class="product-name">${p.name || ''}</div>
+          <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+          ${hasPromo ? `<div style="font-size:11px;color:var(--text-muted);text-decoration:line-through;">${fmt(p.price)}</div>` : ''}
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function showProduct(id) {
@@ -922,20 +1093,20 @@ async function loadStoreInventory() {
   try {
     const d = await api(`/api/seller/inventory/by-store?storeId=${storeId}&q=${encodeURIComponent(q)}&limit=50`);
     if (!d.products?.length) {
-      el.innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Nada encontrado nessa loja.</p>';
+      el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado nessa loja.</p>';
       return;
     }
     el.innerHTML = `
-      <p style="font-size:13px;color:#8e8e93;margin-bottom:8px;">Mostrando ${d.count} produtos · ${d.totalSkus} SKUs com estoque nessa loja</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.count} produtos · ${d.totalSkus} SKUs com estoque</p>
       <div class="grid grid-3">
         ${d.products.map(p => `
           <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
-            <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+            <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
             <div class="product-info">
               <div class="product-brand">${p.brand || ''}</div>
               <div class="product-name">${p.name || ''}</div>
               <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
-              <div style="font-size:11px;color:#0a843d;font-weight:600;margin-top:4px;">${p.totalStock} un. em estoque</div>
+              <span class="product-badge">📦 ${p.totalStock} un.</span>
             </div>
           </div>
         `).join('')}
@@ -1080,50 +1251,88 @@ async function loadRanking() {
   try {
     const d = await api('/api/seller/rankings?' + qs);
 
-    // Totais (4 cards)
+    // Totais (4 KPI cards)
     document.getElementById('rankingTotals').innerHTML = `
-      <div class="card"><div class="card-title">Vendedores</div><div class="card-value">${d.totals.sellersCount}</div></div>
-      <div class="card"><div class="card-title">Vendas (qtd)</div><div class="card-value">${d.totals.salesCount}</div></div>
-      <div class="card"><div class="card-title">Valor total</div><div class="card-value">${fmt(d.totals.salesAmount)}</div></div>
-      <div class="card"><div class="card-title">Comissão gerada</div><div class="card-value">${fmt(d.totals.commissionAmount)}</div></div>
-    `;
-
-    // Tabela
-    if (!d.ranking.length) {
-      document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Sem vendas no período.</p>';
-      return;
-    }
-    const rows = d.ranking.map(r => {
-      const medal = r.position === 1 ? '🥇' : r.position === 2 ? '🥈' : r.position === 3 ? '🥉' : `#${r.position}`;
-      return `
-        <tr>
-          <td style="padding:10px;border-bottom:1px solid #f5f5f7;font-weight:600;width:50px;text-align:center;">${medal}</td>
-          <td style="padding:10px;border-bottom:1px solid #f5f5f7;">
-            <div style="font-weight:600;">${r.name}</div>
-            <div style="font-size:12px;color:#8e8e93;">${r.store?.name || '—'}${r.employeeCode ? ' · ' + r.employeeCode : ''}</div>
-          </td>
-          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;">${r.salesCount}</td>
-          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${fmt(r.salesAmount)}</td>
-          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;color:#FF6D00;font-weight:600;">${fmt(r.commissionAmount)}</td>
-        </tr>
-      `;
-    }).join('');
-    document.getElementById('rankingTable').innerHTML = `
-      <div class="card" style="padding:0;overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:#f5f5f7;">
-              <th style="padding:12px;text-align:center;font-size:12px;color:#8e8e93;text-transform:uppercase;">Pos.</th>
-              <th style="padding:12px;text-align:left;font-size:12px;color:#8e8e93;text-transform:uppercase;">Vendedor</th>
-              <th style="padding:12px;text-align:center;font-size:12px;color:#8e8e93;text-transform:uppercase;">Vendas</th>
-              <th style="padding:12px;text-align:right;font-size:12px;color:#8e8e93;text-transform:uppercase;">Valor total</th>
-              <th style="padding:12px;text-align:right;font-size:12px;color:#8e8e93;text-transform:uppercase;">Comissão</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+      <div class="kpi-card">
+        <div class="kpi-icon blue">👤</div>
+        <div class="kpi-content"><div class="kpi-title">Vendedores</div><div class="kpi-value">${d.totals.sellersCount}</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon orange">🛒</div>
+        <div class="kpi-content"><div class="kpi-title">Vendas</div><div class="kpi-value">${d.totals.salesCount}</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon green">💰</div>
+        <div class="kpi-content"><div class="kpi-title">Valor total</div><div class="kpi-value">${fmt(d.totals.salesAmount)}</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon yellow">💎</div>
+        <div class="kpi-content"><div class="kpi-title">Comissão</div><div class="kpi-value">${fmt(d.totals.commissionAmount)}</div></div>
       </div>
     `;
+
+    if (!d.ranking.length) {
+      document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:24px;">Sem vendas no período.</p>';
+      return;
+    }
+
+    // Top 3 destaque + resto em grid
+    const top3 = d.ranking.slice(0, 3);
+    const rest = d.ranking.slice(3);
+    const top3Html = top3.length ? `
+      <h3 class="section-title"><span class="section-title-icon">🏆</span>Top 3 do período</h3>
+      <div class="grid grid-3">
+        ${top3.map(r => {
+          const medal = r.position === 1 ? '🥇' : r.position === 2 ? '🥈' : '🥉';
+          return `
+            <div class="person-card" style="flex-direction:column;text-align:center;padding:20px;">
+              <div style="font-size:32px;">${medal}</div>
+              <div class="avatar avatar-lg ${avatarColor(r.name)}">${initials(r.name)}</div>
+              <div class="person-name" style="text-align:center;margin-top:8px;">${r.name}</div>
+              <div class="person-meta" style="text-align:center;">${r.store?.name || ''}</div>
+              <div style="margin-top:10px;text-align:center;">
+                <div style="font-size:20px;font-weight:800;color:var(--primary);">${fmt(r.salesAmount)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${r.salesCount} vendas · ${fmt(r.commissionAmount)} comissão</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    const restHtml = rest.length ? `
+      <h3 class="section-title"><span class="section-title-icon">📊</span>Restante</h3>
+      <table class="modern">
+        <thead><tr>
+          <th style="width:50px;text-align:center;">Pos.</th>
+          <th>Vendedor</th>
+          <th style="text-align:center;">Vendas</th>
+          <th style="text-align:right;">Valor total</th>
+          <th style="text-align:right;">Comissão</th>
+        </tr></thead>
+        <tbody>
+          ${rest.map(r => `
+            <tr>
+              <td style="text-align:center;font-weight:700;color:var(--text-muted);">#${r.position}</td>
+              <td>
+                <div class="row">
+                  <div class="avatar avatar-sm ${avatarColor(r.name)}">${initials(r.name)}</div>
+                  <div>
+                    <div style="font-weight:600;">${r.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${r.store?.name || '—'}</div>
+                  </div>
+                </div>
+              </td>
+              <td style="text-align:center;">${r.salesCount}</td>
+              <td style="text-align:right;font-weight:700;">${fmt(r.salesAmount)}</td>
+              <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commissionAmount)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : '';
+
+    document.getElementById('rankingTable').innerHTML = top3Html + restHtml;
   } catch (e) {
     document.getElementById('rankingTable').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
   }
@@ -1203,13 +1412,25 @@ async function loadCrmDashboard() {
 
     // KPIs comuns
     const kpis = `
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">📍 ${scopeLabel}</p>
       <div class="grid grid-4">
-        <div class="card"><div class="card-title">Clientes</div><div class="card-value">${d.stats.totalCustomers}</div></div>
-        <div class="card"><div class="card-title">Ligar hoje</div><div class="card-value" style="color:#FF6D00">${d.stats.customersToCallToday}</div></div>
-        <div class="card"><div class="card-title">Inativos</div><div class="card-value">${d.stats.inactiveCustomers}</div></div>
-        <div class="card"><div class="card-title">Recompra</div><div class="card-value" style="color:#0a843d">${d.stats.rebuyOpportunities}</div></div>
+        <div class="kpi-card">
+          <div class="kpi-icon blue">👥</div>
+          <div class="kpi-content"><div class="kpi-title">Clientes</div><div class="kpi-value">${d.stats.totalCustomers}</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon orange">📞</div>
+          <div class="kpi-content"><div class="kpi-title">Ligar hoje</div><div class="kpi-value">${d.stats.customersToCallToday}</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon yellow">😴</div>
+          <div class="kpi-content"><div class="kpi-title">Inativos</div><div class="kpi-value">${d.stats.inactiveCustomers}</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon green">🔥</div>
+          <div class="kpi-content"><div class="kpi-title">Recompra</div><div class="kpi-value">${d.stats.rebuyOpportunities}</div></div>
+        </div>
       </div>
-      <p style="font-size:13px;color:#8e8e93;margin-top:8px;">Escopo: <strong>${scopeLabel}</strong></p>
     `;
 
     // Painel especifico
@@ -1241,42 +1462,34 @@ async function loadCrmDashboard() {
       `;
     } else if (storeId !== 'all' && d.perSeller) {
       detail = `
-        <div class="card" style="margin-top:16px;">
-          <h3 style="margin-bottom:8px;font-size:15px;">Vendedores da loja (${d.sellersCount})</h3>
-          <table style="width:100%;border-collapse:collapse;">
-            <thead><tr style="background:#f5f5f7;">
-              <th style="padding:8px 10px;text-align:left;font-size:12px;">Vendedor</th>
-              <th style="padding:8px 10px;text-align:right;font-size:12px;">Clientes na carteira</th>
-            </tr></thead>
-            <tbody>
-              ${d.perSeller.map(v => `
-                <tr style="cursor:pointer;" onclick="document.getElementById('crmVendor').value='${v.sellerId}';loadCrmDashboard();">
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;">${v.name}${v.employeeCode ? ' <span style=color:#8e8e93;font-size:11px>· '+v.employeeCode+'</span>' : ''}</td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${v.customerCount}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+        <h3 class="section-title"><span class="section-title-icon">👤</span>Vendedores da loja (${d.sellersCount})</h3>
+        <div class="grid grid-2">
+          ${d.perSeller.map(v => `
+            <div class="person-card" onclick="document.getElementById('crmVendor').value='${v.sellerId}';loadCrmDashboard();">
+              <div class="avatar ${avatarColor(v.name)}">${initials(v.name)}</div>
+              <div class="person-info">
+                <div class="person-name">${v.name}</div>
+                <div class="person-meta">${v.employeeCode || ''}</div>
+              </div>
+              <div class="person-stats">${v.customerCount}<small>clientes</small></div>
+            </div>
+          `).join('')}
         </div>
       `;
     } else if (storeId === 'all' && d.perStore) {
       detail = `
-        <div class="card" style="margin-top:16px;">
-          <h3 style="margin-bottom:8px;font-size:15px;">Carteira por loja</h3>
-          <table style="width:100%;border-collapse:collapse;">
-            <thead><tr style="background:#f5f5f7;">
-              <th style="padding:8px 10px;text-align:left;font-size:12px;">Loja</th>
-              <th style="padding:8px 10px;text-align:right;font-size:12px;">Clientes</th>
-            </tr></thead>
-            <tbody>
-              ${d.perStore.map(s => `
-                <tr style="cursor:pointer;" onclick="document.getElementById('crmStore').value='${s.storeId}';onCrmStoreChange();">
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;">${s.name} <span style="color:#8e8e93;font-size:11px;">· ${s.code}</span></td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${s.customerCount}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+        <h3 class="section-title"><span class="section-title-icon">🏬</span>Carteira por loja</h3>
+        <div class="grid grid-2">
+          ${d.perStore.map(s => `
+            <button class="store-card" onclick="document.getElementById('crmStore').value='${s.storeId}';onCrmStoreChange();">
+              <div class="store-icon">${storeIcon(s.code)}</div>
+              <div class="store-name">${s.name}</div>
+              <div class="store-meta">${s.code}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                <span class="store-tag">${s.customerCount} clientes</span>
+              </div>
+            </button>
+          `).join('')}
         </div>
       `;
     }
@@ -1301,36 +1514,37 @@ async function loadCrmCustomers() {
       document.getElementById('crmCustomers').innerHTML = '<div class="card"><p style="color:#8e8e93;text-align:center;">Sem clientes nesse escopo.</p></div>';
       return;
     }
+    const statusPillMap = {
+      LOST: 'pill-red',
+      REBUY_OPPORTUNITY: 'pill-green',
+      VIP: 'pill-blue',
+      RECURRING: 'pill-green',
+      NEW_LEAD: 'pill-orange',
+      INACTIVE: 'pill-gray',
+      ALMOST_BOUGHT: 'pill-yellow',
+      BUYER: 'pill-blue',
+      ATTENDED: 'pill-gray',
+      HIGH_INTENT: 'pill-orange',
+      PRICE_SENSITIVE: 'pill-yellow',
+    };
     document.getElementById('crmCustomers').innerHTML = `
-      <div class="card" style="padding:0;overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;">
-          <thead><tr style="background:#f5f5f7;">
-            <th style="padding:10px;text-align:left;font-size:12px;color:#8e8e93;">Cliente</th>
-            <th style="padding:10px;text-align:left;font-size:12px;color:#8e8e93;">Vendedor</th>
-            <th style="padding:10px;text-align:center;font-size:12px;color:#8e8e93;">Status</th>
-            <th style="padding:10px;text-align:center;font-size:12px;color:#8e8e93;">Prior.</th>
-            <th style="padding:10px;text-align:right;font-size:12px;color:#8e8e93;">Saldo TC</th>
-          </tr></thead>
-          <tbody>
-            ${customers.map(c => {
-              const sc = c.relationshipStatus === 'LOST' ? '#d70015' : c.relationshipStatus === 'REBUY_OPPORTUNITY' ? '#0a843d' : '#FF6D00';
-              return `
-                <tr>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;">
-                    <div style="font-weight:600;">${c.customerName || '?'}</div>
-                    <div style="font-size:11px;color:#8e8e93;">${c.customerPhone || ''}</div>
-                  </td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;font-size:13px;">${c.sellerName || '?'}</td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;">
-                    <span class="pill" style="background:${sc}20;color:${sc};">${c.relationshipStatus}</span>
-                  </td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;font-weight:600;">${c.priority}</td>
-                  <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;">${fmt(c.customerBalance || 0)}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
+      <h3 class="section-title"><span class="section-title-icon">👥</span>Clientes (${customers.length})</h3>
+      <div class="grid grid-2">
+        ${customers.map(c => `
+          <div class="person-card">
+            <div class="avatar ${avatarColor(c.customerName)}">${initials(c.customerName)}</div>
+            <div class="person-info">
+              <div class="person-name">${c.customerName || '?'}</div>
+              <div class="person-meta">📱 ${c.customerPhone || '—'}</div>
+              <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="pill ${statusPillMap[c.relationshipStatus] || 'pill-gray'}">${c.relationshipStatus}</span>
+                <span class="pill pill-gray">${c.priority}</span>
+              </div>
+              <div class="person-meta" style="margin-top:6px;">Atendido por: <strong>${c.sellerName || '?'}</strong></div>
+            </div>
+            <div class="person-stats">${fmt(c.customerBalance || 0)}<small>TenisCash</small></div>
+          </div>
+        `).join('')}
       </div>
     `;
   } catch (e) {
