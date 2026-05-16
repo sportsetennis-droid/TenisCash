@@ -1521,6 +1521,7 @@ async function onCatalogSearch() {
       if (_filterGender) params.push('gender=' + encodeURIComponent(_filterGender));
       if (_filterCategory) params.push('modality=' + encodeURIComponent(_filterCategory));
       if (_filterTier) params.push('tier=' + encodeURIComponent(_filterTier));
+      if (_filterSize) params.push('size=' + encodeURIComponent(_filterSize));
       const d = await api('/api/catalog/products?' + params.join('&'));
       renderCatalog(d.products || d.items || []);
     } catch (e) { console.error(e); }

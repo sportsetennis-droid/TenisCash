@@ -39,6 +39,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const gender = String(req.query.gender || '').trim();
     const modality = String(req.query.modality || '').trim();
     const tier = String(req.query.tier || '').trim();
+    const size = String(req.query.size || '').trim();
     const aiFilters = [];
     if (type) aiFilters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
     if (gender) aiFilters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
@@ -50,6 +51,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       ...(aiFilters.length ? { AND: aiFilters } : {}),
+      // Tamanho: filtra produtos que TÊM esse tamanho cadastrado em ProductSize
+      ...(size ? { sizes: { some: { size } } } : {}),
       ...(search
         ? {
             OR: [
