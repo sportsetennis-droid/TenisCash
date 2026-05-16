@@ -250,5 +250,292 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
   }
 });
 
+// =====================================================================
+// DASHBOARD DO VENDEDOR — KPIs do dia/mês
+// =====================================================================
+router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { startUtc: todayStart, endUtc: todayEnd } = recifeDayBounds(new Date());
+
+    // Início do mês
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [salesToday, salesMonth, commissionsPending, commissionsPaidMonth, me] = await Promise.all([
+      prisma.sale.aggregate({
+        _sum: { totalAmount: true, tcEarned: true },
+        _count: { _all: true },
+        where: { sellerId: userId, createdAt: { gte: todayStart, lt: todayEnd } },
+      }),
+      prisma.sale.aggregate({
+        _sum: { totalAmount: true, tcEarned: true },
+        _count: { _all: true },
+        where: { sellerId: userId, createdAt: { gte: monthStart } },
+      }),
+      prisma.saleCommission.aggregate({
+        _sum: { amount: true },
+        _count: { _all: true },
+        where: { sellerId: userId, status: 'pending' },
+      }),
+      prisma.saleCommission.aggregate({
+        _sum: { amount: true },
+        where: { sellerId: userId, status: 'paid', paidAt: { gte: monthStart } },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: { store: true },
+      }),
+    ]);
+
+    res.json({
+      seller: {
+        id: me?.id,
+        name: me?.name,
+        employeeCode: me?.employeeCode,
+        store: me?.store ? { id: me.store.id, name: me.store.name, code: me.store.code } : null,
+      },
+      today: {
+        salesCount: salesToday._count._all || 0,
+        salesAmount: salesToday._sum.totalAmount || 0,
+        cashbackGiven: salesToday._sum.tcEarned || 0,
+      },
+      month: {
+        salesCount: salesMonth._count._all || 0,
+        salesAmount: salesMonth._sum.totalAmount || 0,
+        cashbackGiven: salesMonth._sum.tcEarned || 0,
+      },
+      commissions: {
+        pendingCount: commissionsPending._count._all || 0,
+        pendingAmount: commissionsPending._sum.amount || 0,
+        paidThisMonth: commissionsPaidMonth._sum.amount || 0,
+      },
+    });
+  } catch (err) {
+    console.error('Erro dashboard vendedor:', err);
+    res.status(500).json({ error: 'Erro ao carregar dashboard' });
+  }
+});
+
+// =====================================================================
+// REGISTRAR VENDA — vendedor fecha venda + cliente ganha cashback
+// =====================================================================
+router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const sellerId = req.userId;
+    const { customerPhone, items, paymentMethod, tcUsed, note } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Informe ao menos 1 item' });
+    }
+
+    const seller = await prisma.user.findUnique({
+      where: { id: sellerId },
+      include: { store: true },
+    });
+    if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado' });
+
+    // Busca produtos pra montar SaleItems
+    const productIds = items.map(i => i.productId).filter(Boolean);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      include: { sizes: true },
+    });
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    let totalAmount = 0;
+    const saleItemsData = items.map(item => {
+      const p = productMap.get(item.productId);
+      if (!p) throw new Error(`Produto ${item.productId} não encontrado`);
+      const qty = parseInt(item.quantity || 1, 10);
+      const unit = parseFloat(item.unitPrice || p.promoPrice || p.price);
+      const total = unit * qty;
+      totalAmount += total;
+      return {
+        productId: p.id,
+        productName: p.name,
+        brand: p.brand || 'SEM MARCA',
+        category: p.category || null,
+        size: item.size || null,
+        quantity: qty,
+        unitPrice: unit,
+        totalPrice: total,
+      };
+    });
+
+    // Cliente (opcional): busca por telefone
+    let customer = null;
+    if (customerPhone) {
+      customer = await prisma.user.findUnique({ where: { phone: String(customerPhone) } });
+    }
+
+    // TenisCash usado (consome saldo do cliente)
+    const tcConsumed = customer && tcUsed > 0 ? Math.min(parseFloat(tcUsed), customer.balance || 0) : 0;
+
+    // Cashback ganho (4% do total — pode virar config no futuro)
+    const tcEarned = customer ? Math.round((totalAmount - tcConsumed) * 0.04 * 100) / 100 : 0;
+
+    // Transação atômica: cria venda + items + atualiza saldo do cliente
+    const result = await prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.create({
+        data: {
+          sellerId,
+          storeId: seller.storeId,
+          totalAmount,
+          tcUsed: tcConsumed,
+          tcEarned,
+          paymentMethod: paymentMethod || 'unknown',
+          status: 'completed',
+          note: note || null,
+          items: { create: saleItemsData },
+        },
+        include: { items: true },
+      });
+
+      // Atualiza saldo do cliente (deduz tcUsed, soma tcEarned)
+      if (customer) {
+        await tx.user.update({
+          where: { id: customer.id },
+          data: { balance: { increment: tcEarned - tcConsumed } },
+        });
+        await tx.transaction.create({
+          data: {
+            type: 'sale',
+            amount: tcEarned - tcConsumed,
+            description: `Venda #${sale.id.slice(0, 8)} — ${seller.name}`,
+            receiverId: customer.id,
+            balanceAfter: (customer.balance || 0) + (tcEarned - tcConsumed),
+            metadata: JSON.stringify({ saleId: sale.id, tcUsed: tcConsumed, tcEarned }),
+          },
+        });
+      }
+
+      // Calcula comissão por marca
+      const itemsByBrand = new Map();
+      for (const it of saleItemsData) {
+        itemsByBrand.set(it.brand, (itemsByBrand.get(it.brand) || 0) + it.totalPrice);
+      }
+      const brandCommissions = await tx.brandCommission.findMany({
+        where: { brand: { in: [...itemsByBrand.keys()] }, active: true },
+      });
+      const commissionsData = [];
+      for (const bc of brandCommissions) {
+        const brandSale = itemsByBrand.get(bc.brand) || 0;
+        if (brandSale > 0) {
+          commissionsData.push({
+            saleId: sale.id,
+            sellerId,
+            brand: bc.brand,
+            saleAmount: brandSale,
+            pct: bc.commissionPct,
+            amount: Math.round(brandSale * bc.commissionPct / 100 * 100) / 100,
+          });
+        }
+      }
+      if (commissionsData.length) {
+        await tx.saleCommission.createMany({ data: commissionsData });
+      }
+
+      return { sale, commissionsCount: commissionsData.length };
+    });
+
+    res.json({
+      ok: true,
+      saleId: result.sale.id,
+      totalAmount,
+      tcUsed: tcConsumed,
+      tcEarned,
+      commissionsCreated: result.commissionsCount,
+      customer: customer ? { id: customer.id, name: customer.name, newBalance: (customer.balance || 0) + (tcEarned - tcConsumed) } : null,
+    });
+  } catch (err) {
+    console.error('Erro registrar venda:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// MINHAS VENDAS — histórico do vendedor
+// =====================================================================
+router.get('/sales', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    const sales = await prisma.sale.findMany({
+      where: { sellerId: req.userId },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    res.json({ sales });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// MINHAS COMISSÕES — histórico de comissões
+// =====================================================================
+router.get('/commissions', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const status = req.query.status; // pending | paid | all
+    const where = { sellerId: req.userId };
+    if (status && status !== 'all') where.status = status;
+    const commissions = await prisma.saleCommission.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: { sale: { select: { totalAmount: true, createdAt: true } } },
+    });
+    res.json({ commissions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// ESTOQUE ENTRE LOJAS — vendedor consulta disponibilidade em outras unidades
+// =====================================================================
+router.get('/inventory/check', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const productId = req.query.productId;
+    if (!productId) return res.status(400).json({ error: 'productId é obrigatório' });
+
+    const sizes = await prisma.productSize.findMany({
+      where: { productId },
+      orderBy: { size: 'asc' },
+    });
+
+    // Sem multi-loja por tamanho ainda; retorna estoque agregado por tamanho.
+    res.json({
+      productId,
+      sizes: sizes.map(s => ({
+        size: s.size,
+        barcode: s.barcode,
+        stock: s.stock || 0,
+      })),
+      totalStock: sizes.reduce((sum, s) => sum + (s.stock || 0), 0),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// BUSCA CLIENTE TenisCash por telefone (autocomplete pro PDV)
+// =====================================================================
+router.get('/customer/lookup', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const phone = String(req.query.phone || '').replace(/\D/g, '');
+    if (phone.length < 10) return res.json({ customer: null });
+    const customer = await prisma.user.findUnique({
+      where: { phone },
+      select: { id: true, name: true, phone: true, balance: true, profileComplete: true },
+    });
+    res.json({ customer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 

@@ -604,16 +604,22 @@ async function findOrCreateCategory(connection, name) {
 }
 
 function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
-  // Variants — uma por tamanho
-  const variants = (sizes && sizes.length ? sizes : [{ size: 'único', stock: 0 }]).map((s) => ({
-    price: String(Number(localProduct.price || 0).toFixed(2)),
-    promotional_price: localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
-    stock_management: true,
-    stock: parseInt(s.stock || 0, 10),
-    sku: s.barcode || `${localProduct.sku}-${s.size}`,
-    barcode: s.barcode || null,
-    values: [{ pt: String(s.size || 'único') }],
-  }));
+  const hasSizes = sizes && sizes.length > 0;
+  // Variants — uma por tamanho. Se produto não tem variação (acessório, bola, etc.),
+  // cria 1 variant ÚNICA sem `values` (Nuvemshop exige variants.values.length === attributes.length).
+  const variants = (hasSizes ? sizes : [{ size: null, stock: 0, barcode: null }]).map((s) => {
+    const v = {
+      price: String(Number(localProduct.price || 0).toFixed(2)),
+      promotional_price: localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
+      stock_management: true,
+      stock: parseInt(s.stock || 0, 10),
+      sku: s.barcode || (hasSizes ? `${localProduct.sku}-${s.size}` : localProduct.sku),
+      barcode: s.barcode || null,
+    };
+    // Só inclui values se tiver attributes (i.e., tiver tamanhos)
+    if (hasSizes) v.values = [{ pt: String(s.size) }];
+    return v;
+  });
 
   // Coleta TODAS as imagens disponíveis
   const allImages = [];

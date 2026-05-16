@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal Sports & Tennis — Lojas</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; }
+
+  /* Login */
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .login-card { background: white; border-radius: 16px; padding: 32px; width: 100%; max-width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.08); }
+  .login-logo { text-align: center; margin-bottom: 24px; }
+  .login-logo h1 { font-size: 24px; color: #FF6D00; margin-bottom: 4px; }
+  .login-logo p { font-size: 13px; color: #8e8e93; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #3a3a3c; }
+  .form-group input { width: 100%; padding: 12px; border: 1px solid #d2d2d7; border-radius: 10px; font-size: 16px; }
+  .form-group input:focus { outline: none; border-color: #FF6D00; }
+  .btn { width: 100%; padding: 14px; background: #FF6D00; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #e55f00; }
+  .btn:disabled { background: #c7c7cc; cursor: not-allowed; }
+  .btn-secondary { background: #e5e5ea; color: #1d1d1f; }
+  .btn-secondary:hover { background: #d2d2d7; }
+  .btn-small { width: auto; padding: 8px 14px; font-size: 13px; }
+  .err { background: #fff1f0; color: #d70015; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: none; }
+  .err.show { display: block; }
+  .ok { background: #e8f7ee; color: #0a843d; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; display: none; }
+  .ok.show { display: block; }
+
+  /* App */
+  .app-wrap { display: none; }
+  .app-wrap.show { display: block; }
+
+  /* Top bar */
+  .topbar { background: white; border-bottom: 1px solid #e5e5ea; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-logo { font-weight: 700; color: #FF6D00; font-size: 18px; }
+  .topbar-store { font-size: 12px; color: #8e8e93; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .seller-badge { background: #f5f5f7; padding: 6px 12px; border-radius: 20px; font-size: 13px; }
+  .btn-icon { background: transparent; border: none; padding: 8px; cursor: pointer; font-size: 18px; color: #1d1d1f; }
+
+  /* Nav */
+  .nav { display: flex; background: white; border-bottom: 1px solid #e5e5ea; overflow-x: auto; scrollbar-width: none; position: sticky; top: 52px; z-index: 99; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-item { padding: 14px 18px; background: none; border: none; cursor: pointer; font-size: 14px; color: #8e8e93; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .nav-item:hover { color: #1d1d1f; }
+  .nav-item.active { color: #FF6D00; border-bottom-color: #FF6D00; font-weight: 600; }
+
+  /* Pages */
+  .page { display: none; padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .page.show { display: block; }
+  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+  .page-subtitle { font-size: 13px; color: #8e8e93; margin-bottom: 16px; }
+
+  /* Cards & grids */
+  .grid { display: grid; gap: 12px; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .card-title { font-size: 12px; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .card-value { font-size: 24px; font-weight: 700; }
+  .card-sub { font-size: 12px; color: #8e8e93; margin-top: 4px; }
+
+  /* Lists */
+  .list-item { background: white; padding: 14px 16px; border-radius: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+  .list-item:hover { background: #fafafa; }
+  .list-item-main { flex: 1; min-width: 0; }
+  .list-item-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .list-item-sub { font-size: 12px; color: #8e8e93; }
+  .list-item-right { text-align: right; font-size: 13px; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .pill-green { background: #e8f7ee; color: #0a843d; }
+  .pill-yellow { background: #fff8e0; color: #b06b00; }
+  .pill-orange { background: #fff1e0; color: #c25800; }
+
+  /* Product card */
+  .product-card { background: white; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.1s; }
+  .product-card:hover { transform: translateY(-2px); }
+  .product-img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #f5f5f7; }
+  .product-info { padding: 10px; }
+  .product-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 32px; }
+  .product-brand { font-size: 10px; color: #8e8e93; text-transform: uppercase; margin-top: 2px; }
+  .product-price { font-size: 14px; font-weight: 700; color: #FF6D00; margin-top: 4px; }
+
+  /* Modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+  .modal-bg.show { display: flex; }
+  .modal { background: white; border-radius: 16px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 20px; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+  .modal-close { float: right; cursor: pointer; font-size: 22px; color: #8e8e93; background: none; border: none; }
+
+  /* Cart */
+  .cart-item { display: flex; align-items: center; gap: 8px; padding: 10px; background: #f5f5f7; border-radius: 8px; margin-bottom: 6px; }
+  .cart-item-info { flex: 1; }
+  .cart-item-name { font-size: 13px; font-weight: 600; }
+  .cart-item-sub { font-size: 11px; color: #8e8e93; }
+  .qty-controls { display: flex; align-items: center; gap: 4px; }
+  .qty-btn { background: white; border: 1px solid #d2d2d7; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+
+  /* Search */
+  .search-bar { background: white; border: 1px solid #d2d2d7; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .search-bar input { flex: 1; border: none; outline: none; font-size: 14px; }
+
+  /* Clock buttons */
+  .clock-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
+  .clock-btn { padding: 24px; border: 2px solid #e5e5ea; border-radius: 12px; background: white; cursor: pointer; text-align: center; font-size: 14px; font-weight: 600; }
+  .clock-btn:hover { border-color: #FF6D00; }
+  .clock-btn.active { border-color: #FF6D00; background: #FF6D00; color: white; }
+  .clock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Mobile adjustments */
+  @media (max-width: 600px) {
+    .topbar { padding: 10px 12px; }
+    .topbar-logo { font-size: 16px; }
+    .seller-badge { display: none; }
+    .nav-item { padding: 12px 14px; font-size: 13px; }
+    .page { padding: 12px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginWrap" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <h1>Sports &amp; Tennis</h1>
+      <p>Portal das Lojas</p>
+    </div>
+    <div id="loginErr" class="err"></div>
+    <div class="form-group">
+      <label>Telefone (com DDD)</label>
+      <input type="tel" id="loginPhone" placeholder="83912345678" autocomplete="tel">
+    </div>
+    <div class="form-group">
+      <label>PIN (4 dígitos)</label>
+      <input type="password" id="loginPin" placeholder="••••" maxlength="6" inputmode="numeric">
+    </div>
+    <button class="btn" id="loginBtn" onclick="doLogin()">Entrar</button>
+    <p style="text-align:center; font-size:12px; color:#8e8e93; margin-top:16px;">
+      Acesso restrito a funcionários cadastrados
+    </p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appWrap" class="app-wrap">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">S&amp;T</div>
+      <div>
+        <div style="font-size:14px;font-weight:600" id="topSellerName">—</div>
+        <div class="topbar-store" id="topStoreName">—</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="seller-badge" id="topRoleBadge">vendedor</span>
+      <button class="btn-icon" onclick="logout()" title="Sair">⎋</button>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')">Início</button>
+    <button class="nav-item" data-page="sell" onclick="goPage('sell')">Vender</button>
+    <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Catálogo</button>
+    <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
+    <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
+    <button class="nav-item" data-page="commissions" onclick="goPage('commissions')">Comissões</button>
+    <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <div class="page show" id="page-dashboard">
+    <h2 class="page-title">Seu dia</h2>
+    <div class="grid grid-4">
+      <div class="card"><div class="card-title">Vendas hoje</div><div class="card-value" id="kpiSalesToday">—</div></div>
+      <div class="card"><div class="card-title">Valor hoje</div><div class="card-value" id="kpiAmountToday">—</div></div>
+      <div class="card"><div class="card-title">Cashback dado</div><div class="card-value" id="kpiCashbackToday">—</div></div>
+      <div class="card"><div class="card-title">Comissão pendente</div><div class="card-value" id="kpiCommissionPending">—</div></div>
+    </div>
+
+    <h3 style="margin-top:24px;margin-bottom:12px;font-size:16px;">Mês atual</h3>
+    <div class="grid grid-3">
+      <div class="card"><div class="card-title">Vendas mês</div><div class="card-value" id="kpiSalesMonth">—</div></div>
+      <div class="card"><div class="card-title">Valor mês</div><div class="card-value" id="kpiAmountMonth">—</div></div>
+      <div class="card"><div class="card-title">Cashback mês</div><div class="card-value" id="kpiCashbackMonth">—</div></div>
+    </div>
+
+    <div style="margin-top:24px;">
+      <button class="btn btn-small" onclick="goPage('sell')">+ Nova venda</button>
+      <button class="btn btn-secondary btn-small" onclick="goPage('clockin')" style="margin-left:8px;">Bater ponto</button>
+    </div>
+  </div>
+
+  <!-- VENDER -->
+  <div class="page" id="page-sell">
+    <h2 class="page-title">Nova venda</h2>
+    <p class="page-subtitle">Adicione produtos, identifique o cliente e finalize.</p>
+
+    <div class="search-bar">
+      <input type="text" id="sellSearchInput" placeholder="Buscar produto por nome, marca ou código…" oninput="onSellSearch()">
+      <button class="btn btn-small" onclick="onSellSearch()">Buscar</button>
+    </div>
+    <div id="sellSearchResults" class="grid grid-3" style="margin-bottom:20px;"></div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;">Carrinho</h3>
+      <div id="cartList"></div>
+      <div id="cartEmpty" style="text-align:center;color:#8e8e93;padding:20px;">Vazio. Adicione produtos buscando acima.</div>
+
+      <div style="border-top:1px solid #e5e5ea;margin-top:12px;padding-top:12px;">
+        <div class="form-group">
+          <label>Cliente (telefone TenisCash)</label>
+          <input type="tel" id="sellCustomerPhone" placeholder="83912345678" oninput="onCustomerLookup()">
+          <div id="sellCustomerInfo" style="margin-top:8px;font-size:13px;"></div>
+        </div>
+        <div class="form-group">
+          <label>Forma de pagamento</label>
+          <select id="sellPayment" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+            <option value="pix">PIX</option>
+            <option value="credit_card">Crédito</option>
+            <option value="debit_card">Débito</option>
+            <option value="cash">Dinheiro</option>
+            <option value="other">Outro</option>
+          </select>
+        </div>
+        <div class="form-group" id="sellTcUsedGroup" style="display:none;">
+          <label>TenisCash a usar (R$)</label>
+          <input type="number" id="sellTcUsed" step="0.01" value="0">
+        </div>
+        <div id="sellSummary" style="font-size:14px;margin-bottom:12px;"></div>
+        <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled>Finalizar venda</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CATÁLOGO -->
+  <div class="page" id="page-catalog">
+    <h2 class="page-title">Catálogo</h2>
+    <div class="search-bar">
+      <input type="text" id="catSearchInput" placeholder="Buscar produto…" oninput="onCatalogSearch()">
+    </div>
+    <div id="catalogResults" class="grid grid-3"></div>
+  </div>
+
+  <!-- ESTOQUE -->
+  <div class="page" id="page-inventory">
+    <h2 class="page-title">Consultar estoque</h2>
+    <p class="page-subtitle">Busque um produto pra ver quantos estão disponíveis por tamanho.</p>
+    <div class="search-bar">
+      <input type="text" id="invSearchInput" placeholder="Buscar produto…" oninput="onInventorySearch()">
+    </div>
+    <div id="invResults" class="grid grid-3"></div>
+    <div id="invDetails" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- PONTO -->
+  <div class="page" id="page-clockin">
+    <h2 class="page-title">Ponto digital</h2>
+    <p class="page-subtitle">Bater entrada, saída, intervalo. GPS obrigatório.</p>
+    <div class="card">
+      <div id="clockStatus" style="font-size:14px;margin-bottom:12px;">Carregando...</div>
+      <div class="clock-grid" id="clockButtons"></div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <h3 style="margin-bottom:8px;">Pontos batidos hoje</h3>
+      <div id="clockToday"></div>
+    </div>
+  </div>
+
+  <!-- COMISSÕES -->
+  <div class="page" id="page-commissions">
+    <h2 class="page-title">Minhas comissões</h2>
+    <div style="margin-bottom:12px;">
+      <button class="btn btn-small" onclick="loadCommissions('pending')">Pendentes</button>
+      <button class="btn btn-secondary btn-small" onclick="loadCommissions('paid')" style="margin-left:8px;">Pagas</button>
+      <button class="btn btn-secondary btn-small" onclick="loadCommissions('all')" style="margin-left:8px;">Todas</button>
+    </div>
+    <div id="commissionsList"></div>
+  </div>
+
+  <!-- MENSAGENS -->
+  <div class="page" id="page-messages">
+    <h2 class="page-title">Mensagens da gerência</h2>
+    <div id="messagesList"></div>
+  </div>
+</div>
+
+<!-- MODAL DE PRODUTO -->
+<div class="modal-bg" id="productModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div id="productModalContent"></div>
+  </div>
+</div>
+
+<script>
+// ============== ESTADO ==============
+const API = '';
+let token = localStorage.getItem('loja_token') || null;
+let me = null;
+let cart = [];
+let customer = null;
+
+// ============== AUTH ==============
+async function doLogin() {
+  const phone = document.getElementById('loginPhone').value.replace(/\D/g, '');
+  const pin = document.getElementById('loginPin').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.classList.remove('show');
+
+  if (!phone || phone.length < 10) { errEl.textContent = 'Telefone inválido'; errEl.classList.add('show'); return; }
+  if (!pin) { errEl.textContent = 'Informe o PIN'; errEl.classList.add('show'); return; }
+
+  document.getElementById('loginBtn').disabled = true;
+  try {
+    const r = await fetch(API + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, pin }),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Erro ao entrar'; errEl.classList.add('show'); return; }
+    if (data.user.role !== 'seller' && data.user.role !== 'admin' && data.user.role !== 'superadmin') {
+      errEl.textContent = 'Esta área é só pra funcionários da loja'; errEl.classList.add('show'); return;
+    }
+    token = data.token;
+    localStorage.setItem('loja_token', token);
+    me = data.user;
+    showApp();
+  } catch (e) {
+    errEl.textContent = 'Erro de rede'; errEl.classList.add('show');
+  } finally {
+    document.getElementById('loginBtn').disabled = false;
+  }
+}
+
+function logout() {
+  localStorage.removeItem('loja_token');
+  token = null; me = null;
+  document.getElementById('appWrap').classList.remove('show');
+  document.getElementById('loginWrap').style.display = 'flex';
+}
+
+async function checkSession() {
+  if (!token) return;
+  try {
+    const r = await fetch(API + '/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) { logout(); return; }
+    const data = await r.json();
+    me = data.user || data;
+    if (me.role !== 'seller' && me.role !== 'admin' && me.role !== 'superadmin') { logout(); return; }
+    showApp();
+  } catch (e) { logout(); }
+}
+
+function showApp() {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('appWrap').classList.add('show');
+  document.getElementById('topSellerName').textContent = me.name;
+  document.getElementById('topRoleBadge').textContent = me.role;
+  loadDashboard();
+}
+
+// ============== API HELPER ==============
+async function api(path, opts = {}) {
+  const headers = opts.headers || {};
+  headers['Content-Type'] = 'application/json';
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) { logout(); throw new Error('Sessão expirada'); }
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || `Erro ${r.status}`); }
+  return r.json();
+}
+
+// ============== NAV ==============
+function goPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + pageId).classList.add('show');
+  document.querySelector(`.nav-item[data-page="${pageId}"]`).classList.add('active');
+
+  if (pageId === 'dashboard') loadDashboard();
+  if (pageId === 'clockin') loadClockin();
+  if (pageId === 'commissions') loadCommissions('pending');
+  if (pageId === 'messages') loadMessages();
+  if (pageId === 'catalog') onCatalogSearch();
+}
+
+// ============== DASHBOARD ==============
+function fmt(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0); }
+
+async function loadDashboard() {
+  try {
+    const d = await api('/api/seller/dashboard');
+    document.getElementById('topStoreName').textContent = d.seller?.store?.name || '—';
+    document.getElementById('kpiSalesToday').textContent = d.today.salesCount;
+    document.getElementById('kpiAmountToday').textContent = fmt(d.today.salesAmount);
+    document.getElementById('kpiCashbackToday').textContent = fmt(d.today.cashbackGiven);
+    document.getElementById('kpiCommissionPending').textContent = fmt(d.commissions.pendingAmount);
+    document.getElementById('kpiSalesMonth').textContent = d.month.salesCount;
+    document.getElementById('kpiAmountMonth').textContent = fmt(d.month.salesAmount);
+    document.getElementById('kpiCashbackMonth').textContent = fmt(d.month.cashbackGiven);
+  } catch (e) { console.error(e); }
+}
+
+// ============== VENDER ==============
+let sellSearchTimer;
+async function onSellSearch() {
+  clearTimeout(sellSearchTimer);
+  const q = document.getElementById('sellSearchInput').value;
+  if (!q || q.length < 2) { document.getElementById('sellSearchResults').innerHTML = ''; return; }
+  sellSearchTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=12');
+      renderSellResults(d.products || d.items || []);
+    } catch (e) { console.error(e); }
+  }, 250);
+}
+
+function renderSellResults(products) {
+  const el = document.getElementById('sellSearchResults');
+  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8e8e93;padding:20px;">Nada encontrado</div>'; return; }
+  el.innerHTML = products.map(p => `
+    <div class="product-card" onclick="addToCart('${p.id}','${(p.name || '').replace(/'/g, "\\'")}','${(p.brand || '').replace(/'/g, "\\'")}',${p.promoPrice || p.price})">
+      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+      <div class="product-info">
+        <div class="product-brand">${p.brand || ''}</div>
+        <div class="product-name">${p.name || ''}</div>
+        <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addToCart(productId, name, brand, price) {
+  const existing = cart.find(i => i.productId === productId);
+  if (existing) existing.quantity++;
+  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1 });
+  renderCart();
+}
+
+function changeQty(idx, delta) {
+  cart[idx].quantity += delta;
+  if (cart[idx].quantity <= 0) cart.splice(idx, 1);
+  renderCart();
+}
+
+function renderCart() {
+  const list = document.getElementById('cartList');
+  const empty = document.getElementById('cartEmpty');
+  if (!cart.length) {
+    list.innerHTML = ''; empty.style.display = 'block';
+    document.getElementById('sellFinalize').disabled = true;
+    document.getElementById('sellSummary').innerHTML = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = cart.map((it, i) => `
+    <div class="cart-item">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${it.name}</div>
+        <div class="cart-item-sub">${it.brand} — ${fmt(it.unitPrice)}</div>
+      </div>
+      <div class="qty-controls">
+        <button class="qty-btn" onclick="changeQty(${i},-1)">−</button>
+        <span style="min-width:24px;text-align:center;">${it.quantity}</span>
+        <button class="qty-btn" onclick="changeQty(${i},1)">+</button>
+      </div>
+    </div>
+  `).join('');
+  updateSummary();
+  document.getElementById('sellFinalize').disabled = false;
+}
+
+function updateSummary() {
+  const total = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
+  const tcEarned = customer ? Math.round((total - tcUsed) * 0.04 * 100) / 100 : 0;
+  document.getElementById('sellSummary').innerHTML = `
+    <div>Total: <strong>${fmt(total)}</strong></div>
+    ${customer ? `<div>TenisCash usado: ${fmt(tcUsed)}</div><div>Cashback que cliente vai ganhar: <strong>${fmt(tcEarned)}</strong></div>` : '<div style="color:#8e8e93;">Sem cliente identificado — venda sem cashback</div>'}
+  `;
+}
+
+let customerLookupTimer;
+function onCustomerLookup() {
+  clearTimeout(customerLookupTimer);
+  const phone = document.getElementById('sellCustomerPhone').value.replace(/\D/g, '');
+  const infoEl = document.getElementById('sellCustomerInfo');
+  const tcGroup = document.getElementById('sellTcUsedGroup');
+  if (phone.length < 10) { customer = null; infoEl.innerHTML = ''; tcGroup.style.display = 'none'; updateSummary(); return; }
+  customerLookupTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/seller/customer/lookup?phone=' + phone);
+      customer = d.customer;
+      if (customer) {
+        infoEl.innerHTML = `✓ ${customer.name} — saldo TenisCash: <strong>${fmt(customer.balance)}</strong>`;
+        infoEl.style.color = '#0a843d';
+        tcGroup.style.display = 'block';
+      } else {
+        infoEl.innerHTML = '✗ Cliente não cadastrado no TenisCash';
+        infoEl.style.color = '#d70015';
+        tcGroup.style.display = 'none';
+      }
+      updateSummary();
+    } catch (e) { console.error(e); }
+  }, 300);
+}
+
+document.addEventListener('input', e => { if (e.target.id === 'sellTcUsed') updateSummary(); });
+
+async function finalizeSale() {
+  if (!cart.length) return;
+  if (!confirm('Confirmar venda de ' + cart.length + ' itens?')) return;
+  const btn = document.getElementById('sellFinalize');
+  btn.disabled = true; btn.textContent = 'Processando...';
+  try {
+    const r = await api('/api/seller/sale', {
+      method: 'POST',
+      body: JSON.stringify({
+        customerPhone: customer?.phone || null,
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
+        paymentMethod: document.getElementById('sellPayment').value,
+        tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
+      }),
+    });
+    alert(`✓ Venda registrada!\n\nTotal: ${fmt(r.totalAmount)}\nCashback dado: ${fmt(r.tcEarned)}\nComissões: ${r.commissionsCreated}`);
+    cart = []; customer = null;
+    document.getElementById('sellCustomerPhone').value = '';
+    document.getElementById('sellCustomerInfo').innerHTML = '';
+    document.getElementById('sellTcUsed').value = 0;
+    document.getElementById('sellSearchInput').value = '';
+    document.getElementById('sellSearchResults').innerHTML = '';
+    renderCart();
+    loadDashboard();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Finalizar venda';
+  }
+}
+
+// ============== CATÁLOGO ==============
+let catSearchTimer;
+async function onCatalogSearch() {
+  clearTimeout(catSearchTimer);
+  const q = document.getElementById('catSearchInput').value;
+  catSearchTimer = setTimeout(async () => {
+    try {
+      const path = q ? '/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=24' : '/api/catalog/products?limit=24';
+      const d = await api(path);
+      renderCatalog(d.products || d.items || []);
+    } catch (e) { console.error(e); }
+  }, 250);
+}
+
+function renderCatalog(products) {
+  const el = document.getElementById('catalogResults');
+  if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8e8e93;padding:20px;">Nada encontrado</div>'; return; }
+  el.innerHTML = products.map(p => `
+    <div class="product-card" onclick="showProduct('${p.id}')">
+      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+      <div class="product-info">
+        <div class="product-brand">${p.brand || ''}</div>
+        <div class="product-name">${p.name || ''}</div>
+        <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function showProduct(id) {
+  try {
+    const d = await api('/api/catalog/products/' + id);
+    const p = d.product || d;
+    const sizes = (p.sizes || []).map(s => `<li>${s.size} — estoque: ${s.stock || 0}</li>`).join('');
+    document.getElementById('productModalContent').innerHTML = `
+      <h3 class="modal-title">${p.name}</h3>
+      <img src="${p.imageUrl || ''}" style="width:100%;max-height:280px;object-fit:contain;background:#f5f5f7;border-radius:8px;margin-bottom:12px;" onerror="this.style.display='none'">
+      <div style="font-size:13px;color:#8e8e93;">${p.brand || ''} · ${p.category || ''}</div>
+      <div style="font-size:22px;font-weight:700;color:#FF6D00;margin:8px 0;">${fmt(p.promoPrice || p.price)}</div>
+      <div style="font-size:13px;">${p.shortDescription || p.longDescription || ''}</div>
+      ${sizes ? `<h4 style="margin-top:12px;margin-bottom:6px;">Tamanhos</h4><ul style="padding-left:20px;">${sizes}</ul>` : ''}
+    `;
+    document.getElementById('productModal').classList.add('show');
+  } catch (e) { alert(e.message); }
+}
+
+function closeModal() { document.getElementById('productModal').classList.remove('show'); }
+
+// ============== ESTOQUE ==============
+let invSearchTimer;
+async function onInventorySearch() {
+  clearTimeout(invSearchTimer);
+  const q = document.getElementById('invSearchInput').value;
+  if (!q || q.length < 2) return;
+  invSearchTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=12');
+      const products = d.products || d.items || [];
+      document.getElementById('invResults').innerHTML = products.map(p => `
+        <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
+          <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+          <div class="product-info">
+            <div class="product-brand">${p.brand || ''}</div>
+            <div class="product-name">${p.name || ''}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) { console.error(e); }
+  }, 250);
+}
+
+async function checkInventory(id, name) {
+  try {
+    const d = await api('/api/seller/inventory/check?productId=' + id);
+    document.getElementById('invDetails').innerHTML = `
+      <div class="card">
+        <h3 style="margin-bottom:8px;">${name}</h3>
+        <p class="page-subtitle">Estoque total: ${d.totalStock || 0} un.</p>
+        ${(d.sizes || []).length ? `
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+            <thead><tr style="background:#f5f5f7;text-align:left;">
+              <th style="padding:6px 10px;font-size:12px;">Tamanho</th>
+              <th style="padding:6px 10px;font-size:12px;">Código de barras</th>
+              <th style="padding:6px 10px;font-size:12px;text-align:right;">Estoque</th>
+            </tr></thead>
+            <tbody>
+              ${d.sizes.map(s => `<tr><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;">${s.size}</td><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;font-family:monospace;">${s.barcode || '—'}</td><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${s.stock || 0}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        ` : '<p style="color:#8e8e93;">Sem variação de tamanho.</p>'}
+      </div>
+    `;
+  } catch (e) { alert(e.message); }
+}
+
+// ============== PONTO ==============
+async function loadClockin() {
+  try {
+    const d = await api('/api/seller/clockin/today');
+    const s = d.summary;
+    document.getElementById('clockStatus').innerHTML = `
+      Trabalhado: <strong>${Math.floor(s.workedMinutes / 60)}h ${s.workedMinutes % 60}min</strong> ·
+      Intervalo: <strong>${Math.floor(s.breakMinutes / 60)}h ${s.breakMinutes % 60}min</strong>
+    `;
+    const allowed = new Set(s.allowedNext);
+    const types = [
+      { type: 'entry', label: '🟢 Entrada' },
+      { type: 'break_start', label: '☕ Início intervalo' },
+      { type: 'break_end', label: '✓ Fim intervalo' },
+      { type: 'exit', label: '🔴 Saída' },
+    ];
+    document.getElementById('clockButtons').innerHTML = types.map(t =>
+      `<button class="clock-btn" ${allowed.has(t.type) ? '' : 'disabled'} onclick="doClockIn('${t.type}')">${t.label}</button>`
+    ).join('');
+    document.getElementById('clockToday').innerHTML = d.points.length
+      ? d.points.map(p => `<div style="padding:6px 0;border-bottom:1px solid #f5f5f7;font-size:13px;">${new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} — ${p.type}</div>`).join('')
+      : '<p style="color:#8e8e93;">Nenhum ponto batido hoje.</p>';
+  } catch (e) { console.error(e); }
+}
+
+async function doClockIn(type) {
+  if (!navigator.geolocation) { alert('Seu navegador não tem GPS'); return; }
+  if (!confirm('Confirmar bater ponto: ' + type + '?')) return;
+  navigator.geolocation.getCurrentPosition(async pos => {
+    try {
+      await api('/api/seller/clockin', {
+        method: 'POST',
+        body: JSON.stringify({
+          type,
+          storeId: me.storeId,
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        }),
+      });
+      loadClockin();
+    } catch (e) { alert('Erro: ' + e.message); }
+  }, err => { alert('Não conseguimos pegar GPS: ' + err.message); });
+}
+
+// ============== COMISSÕES ==============
+async function loadCommissions(status) {
+  try {
+    const d = await api('/api/seller/commissions?status=' + status);
+    document.getElementById('commissionsList').innerHTML = (d.commissions || []).map(c => `
+      <div class="list-item">
+        <div class="list-item-main">
+          <div class="list-item-title">${c.brand} — ${fmt(c.amount)}</div>
+          <div class="list-item-sub">Venda ${fmt(c.saleAmount)} × ${c.pct}% · ${new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
+        </div>
+        <div class="list-item-right">
+          <span class="pill ${c.status === 'paid' ? 'pill-green' : 'pill-yellow'}">${c.status === 'paid' ? 'paga' : 'pendente'}</span>
+        </div>
+      </div>
+    `).join('') || '<p style="color:#8e8e93;text-align:center;padding:20px;">Nenhuma comissão.</p>';
+  } catch (e) { console.error(e); }
+}
+
+// ============== MENSAGENS ==============
+async function loadMessages() {
+  try {
+    const d = await api('/api/messages/inbox');
+    document.getElementById('messagesList').innerHTML = (d.messages || []).map(m => `
+      <div class="list-item">
+        <div class="list-item-main">
+          <div class="list-item-title">${m.subject || '(sem assunto)'}</div>
+          <div class="list-item-sub">${m.body?.slice(0, 80) || ''}</div>
+        </div>
+        <div class="list-item-right">
+          <div style="font-size:11px;color:#8e8e93;">${new Date(m.createdAt).toLocaleDateString('pt-BR')}</div>
+        </div>
+      </div>
+    `).join('') || '<p style="color:#8e8e93;text-align:center;padding:20px;">Sem mensagens.</p>';
+  } catch (e) {
+    document.getElementById('messagesList').innerHTML = '<p style="color:#8e8e93;text-align:center;padding:20px;">Mensagens indisponíveis.</p>';
+  }
+}
+
+// ============== START ==============
+checkSession();
+
+// Esconde login se já tem sessão (cosmético)
+if (!token) document.getElementById('loginWrap').style.display = 'flex';
+</script>
+</body>
+</html>
