@@ -185,7 +185,7 @@
     <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Catálogo</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
     <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
-    <button class="nav-item nav-seller-only" data-page="commissions" onclick="goPage('commissions')" style="display:none;">Comissões</button>
+    <button class="nav-item" data-page="ranking" onclick="goPage('ranking')">Ranking</button>
     <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
   </nav>
 
@@ -309,15 +309,42 @@
     </div>
   </div>
 
-  <!-- COMISSÕES -->
-  <div class="page" id="page-commissions">
-    <h2 class="page-title">Minhas comissões</h2>
-    <div style="margin-bottom:12px;">
-      <button class="btn btn-small" onclick="loadCommissions('pending')">Pendentes</button>
-      <button class="btn btn-secondary btn-small" onclick="loadCommissions('paid')" style="margin-left:8px;">Pagas</button>
-      <button class="btn btn-secondary btn-small" onclick="loadCommissions('all')" style="margin-left:8px;">Todas</button>
+  <!-- RANKING -->
+  <div class="page" id="page-ranking">
+    <h2 class="page-title">Ranking de vendas</h2>
+    <p class="page-subtitle">Ordenado por valor de vendas. Mostra comissão gerada no período.</p>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Loja</label>
+          <select id="rankStore" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;" onchange="loadRanking()">
+            <option value="all">Todas as lojas</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Período</label>
+          <select id="rankPeriod" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;" onchange="onRankPeriodChange()">
+            <option value="today">Hoje</option>
+            <option value="yesterday">Ontem</option>
+            <option value="month" selected>Mês atual</option>
+            <option value="last_month">Mês passado</option>
+            <option value="custom">Personalizado</option>
+          </select>
+        </div>
+        <div id="rankCustomGroup" style="display:none;">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">De / Até</label>
+          <div style="display:flex;gap:4px;">
+            <input type="date" id="rankFrom" style="flex:1;padding:9px;border:1px solid #d2d2d7;border-radius:8px;">
+            <input type="date" id="rankTo" style="flex:1;padding:9px;border:1px solid #d2d2d7;border-radius:8px;">
+          </div>
+          <button class="btn btn-small" style="margin-top:6px;width:100%;" onclick="loadRanking()">Aplicar</button>
+        </div>
+      </div>
     </div>
-    <div id="commissionsList"></div>
+
+    <div class="grid grid-4" id="rankingTotals" style="margin-bottom:16px;"></div>
+    <div id="rankingTable"></div>
   </div>
 
   <!-- MENSAGENS -->
@@ -486,7 +513,7 @@ function goPage(pageId) {
 
   if (pageId === 'dashboard') loadDashboard();
   if (pageId === 'clockin') loadClockin();
-  if (pageId === 'commissions') loadCommissions('pending');
+  if (pageId === 'ranking') initRanking();
   if (pageId === 'messages') loadMessages();
   if (pageId === 'catalog') onCatalogSearch();
 }
@@ -852,22 +879,97 @@ async function doClockIn(type) {
   }, err => { alert('Não conseguimos pegar GPS: ' + err.message); });
 }
 
-// ============== COMISSÕES ==============
-async function loadCommissions(status) {
+// ============== RANKING ==============
+let rankInited = false;
+async function initRanking() {
+  if (!rankInited) {
+    // Popula seletor de lojas (já tem em activeStore mas a lista completa vem do endpoint)
+    try {
+      const d = await api('/api/seller/stores');
+      const sel = document.getElementById('rankStore');
+      const opts = ['<option value="all">Todas as lojas</option>'];
+      (d.stores || []).forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
+      sel.innerHTML = opts.join('');
+      // Default: loja ativa
+      if (activeStore?.id) sel.value = activeStore.id;
+    } catch (e) { console.error(e); }
+    // Datas custom: defaults úteis
+    const today = new Date();
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    document.getElementById('rankFrom').value = monthAgo.toISOString().slice(0, 10);
+    document.getElementById('rankTo').value = today.toISOString().slice(0, 10);
+    rankInited = true;
+  }
+  loadRanking();
+}
+
+function onRankPeriodChange() {
+  const period = document.getElementById('rankPeriod').value;
+  document.getElementById('rankCustomGroup').style.display = period === 'custom' ? 'block' : 'none';
+  if (period !== 'custom') loadRanking();
+}
+
+async function loadRanking() {
+  const storeId = document.getElementById('rankStore').value;
+  const period = document.getElementById('rankPeriod').value;
+  let qs = `storeId=${storeId}&period=${period}`;
+  if (period === 'custom') {
+    const from = document.getElementById('rankFrom').value;
+    const to = document.getElementById('rankTo').value;
+    if (!from || !to) { alert('Informe as duas datas'); return; }
+    qs += `&from=${from}&to=${to}`;
+  }
+  document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
   try {
-    const d = await api('/api/seller/commissions?status=' + status);
-    document.getElementById('commissionsList').innerHTML = (d.commissions || []).map(c => `
-      <div class="list-item">
-        <div class="list-item-main">
-          <div class="list-item-title">${c.brand} — ${fmt(c.amount)}</div>
-          <div class="list-item-sub">Venda ${fmt(c.saleAmount)} × ${c.pct}% · ${new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
-        </div>
-        <div class="list-item-right">
-          <span class="pill ${c.status === 'paid' ? 'pill-green' : 'pill-yellow'}">${c.status === 'paid' ? 'paga' : 'pendente'}</span>
-        </div>
+    const d = await api('/api/seller/rankings?' + qs);
+
+    // Totais (4 cards)
+    document.getElementById('rankingTotals').innerHTML = `
+      <div class="card"><div class="card-title">Vendedores</div><div class="card-value">${d.totals.sellersCount}</div></div>
+      <div class="card"><div class="card-title">Vendas (qtd)</div><div class="card-value">${d.totals.salesCount}</div></div>
+      <div class="card"><div class="card-title">Valor total</div><div class="card-value">${fmt(d.totals.salesAmount)}</div></div>
+      <div class="card"><div class="card-title">Comissão gerada</div><div class="card-value">${fmt(d.totals.commissionAmount)}</div></div>
+    `;
+
+    // Tabela
+    if (!d.ranking.length) {
+      document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Sem vendas no período.</p>';
+      return;
+    }
+    const rows = d.ranking.map(r => {
+      const medal = r.position === 1 ? '🥇' : r.position === 2 ? '🥈' : r.position === 3 ? '🥉' : `#${r.position}`;
+      return `
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid #f5f5f7;font-weight:600;width:50px;text-align:center;">${medal}</td>
+          <td style="padding:10px;border-bottom:1px solid #f5f5f7;">
+            <div style="font-weight:600;">${r.name}</div>
+            <div style="font-size:12px;color:#8e8e93;">${r.store?.name || '—'}${r.employeeCode ? ' · ' + r.employeeCode : ''}</div>
+          </td>
+          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:center;">${r.salesCount}</td>
+          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${fmt(r.salesAmount)}</td>
+          <td style="padding:10px;border-bottom:1px solid #f5f5f7;text-align:right;color:#FF6D00;font-weight:600;">${fmt(r.commissionAmount)}</td>
+        </tr>
+      `;
+    }).join('');
+    document.getElementById('rankingTable').innerHTML = `
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f5f5f7;">
+              <th style="padding:12px;text-align:center;font-size:12px;color:#8e8e93;text-transform:uppercase;">Pos.</th>
+              <th style="padding:12px;text-align:left;font-size:12px;color:#8e8e93;text-transform:uppercase;">Vendedor</th>
+              <th style="padding:12px;text-align:center;font-size:12px;color:#8e8e93;text-transform:uppercase;">Vendas</th>
+              <th style="padding:12px;text-align:right;font-size:12px;color:#8e8e93;text-transform:uppercase;">Valor total</th>
+              <th style="padding:12px;text-align:right;font-size:12px;color:#8e8e93;text-transform:uppercase;">Comissão</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
       </div>
-    `).join('') || '<p style="color:#8e8e93;text-align:center;padding:20px;">Nenhuma comissão.</p>';
-  } catch (e) { console.error(e); }
+    `;
+  } catch (e) {
+    document.getElementById('rankingTable').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+  }
 }
 
 // ============== MENSAGENS ==============

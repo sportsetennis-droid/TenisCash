@@ -630,6 +630,117 @@ router.get('/sales', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // =====================================================================
+// RANKING DE VENDAS — por vendedor, com filtros loja + periodo
+// =====================================================================
+// Retorna ranking ordenado por valor de vendas. Cada linha tem:
+//   sellerId, name, storeName, salesCount, salesAmount, commissionAmount
+// Filtros:
+//   storeId — UUID da loja, ou "all" pra todas
+//   period  — "today" | "yesterday" | "month" | "last_month" | "custom"
+//   from    — YYYY-MM-DD (se period=custom)
+//   to      — YYYY-MM-DD (se period=custom)
+// =====================================================================
+router.get('/rankings', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
+    const period = req.query.period || 'month';
+
+    // Resolve range de datas
+    const now = new Date();
+    let startUtc, endUtc;
+    if (period === 'today') {
+      const r = recifeDayBounds(now); startUtc = r.startUtc; endUtc = r.endUtc;
+    } else if (period === 'yesterday') {
+      const r = recifeDayBounds(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+      startUtc = r.startUtc; endUtc = r.endUtc;
+    } else if (period === 'month') {
+      startUtc = new Date(now.getFullYear(), now.getMonth(), 1);
+      endUtc = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    } else if (period === 'last_month') {
+      startUtc = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endUtc = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (period === 'custom') {
+      if (!req.query.from || !req.query.to) return res.status(400).json({ error: 'Informe from e to no formato YYYY-MM-DD' });
+      startUtc = new Date(req.query.from + 'T00:00:00-03:00');
+      endUtc = new Date(req.query.to + 'T23:59:59-03:00');
+    } else {
+      return res.status(400).json({ error: 'period inválido' });
+    }
+
+    // Filtro de vendas
+    const saleWhere = { createdAt: { gte: startUtc, lt: endUtc } };
+    if (storeId) saleWhere.storeId = storeId;
+
+    // Agrega vendas por vendedor
+    const salesAgg = await prisma.sale.groupBy({
+      by: ['sellerId'],
+      _sum: { totalAmount: true, tcEarned: true, tcUsed: true },
+      _count: { _all: true },
+      where: saleWhere,
+      orderBy: { _sum: { totalAmount: 'desc' } },
+    });
+
+    // Agrega comissões por vendedor (mesmo periodo)
+    const commWhere = { createdAt: { gte: startUtc, lt: endUtc } };
+    if (storeId) {
+      // Comissões não têm storeId, mas todas vêm de Sales — filtra via saleId in sales of store
+      const saleIds = (await prisma.sale.findMany({ where: { storeId }, select: { id: true } })).map(s => s.id);
+      commWhere.saleId = { in: saleIds.length ? saleIds : ['__none__'] };
+    }
+    const commAgg = await prisma.saleCommission.groupBy({
+      by: ['sellerId'],
+      _sum: { amount: true },
+      where: commWhere,
+    });
+    const commBySeller = new Map(commAgg.map(c => [c.sellerId, c._sum.amount || 0]));
+
+    // Nomes + loja dos vendedores
+    const sellerIds = salesAgg.map(s => s.sellerId);
+    const sellers = await prisma.user.findMany({
+      where: { id: { in: sellerIds } },
+      select: { id: true, name: true, employeeCode: true, store: { select: { id: true, name: true, code: true } } },
+    });
+    const sellerMap = new Map(sellers.map(s => [s.id, s]));
+
+    const ranking = salesAgg.map((s, i) => {
+      const u = sellerMap.get(s.sellerId);
+      return {
+        position: i + 1,
+        sellerId: s.sellerId,
+        name: u?.name || '(removido)',
+        employeeCode: u?.employeeCode || null,
+        store: u?.store ? { id: u.store.id, name: u.store.name, code: u.store.code } : null,
+        salesCount: s._count._all || 0,
+        salesAmount: Math.round((s._sum.totalAmount || 0) * 100) / 100,
+        cashbackGiven: Math.round((s._sum.tcEarned || 0) * 100) / 100,
+        commissionAmount: Math.round((commBySeller.get(s.sellerId) || 0) * 100) / 100,
+      };
+    });
+
+    // Totais
+    const totals = {
+      salesCount: ranking.reduce((sum, r) => sum + r.salesCount, 0),
+      salesAmount: Math.round(ranking.reduce((sum, r) => sum + r.salesAmount, 0) * 100) / 100,
+      cashbackGiven: Math.round(ranking.reduce((sum, r) => sum + r.cashbackGiven, 0) * 100) / 100,
+      commissionAmount: Math.round(ranking.reduce((sum, r) => sum + r.commissionAmount, 0) * 100) / 100,
+      sellersCount: ranking.length,
+    };
+
+    res.json({
+      period,
+      from: startUtc.toISOString(),
+      to: endUtc.toISOString(),
+      storeId: storeId || 'all',
+      ranking,
+      totals,
+    });
+  } catch (err) {
+    console.error('Erro rankings:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
 // MINHAS COMISSÕES — histórico de comissões
 // =====================================================================
 router.get('/commissions', authMiddleware, sellerOnly, async (req, res) => {
