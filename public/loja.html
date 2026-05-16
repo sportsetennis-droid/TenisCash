@@ -150,6 +150,19 @@
   </div>
 </div>
 
+<!-- SELEÇÃO DE LOJA -->
+<div id="storeSelectWrap" class="login-wrap" style="display:none;">
+  <div class="login-card" style="max-width: 460px;">
+    <div class="login-logo">
+      <h1>Em qual loja você está hoje?</h1>
+      <p id="storeSelectHello">—</p>
+    </div>
+    <div id="storeSelectErr" class="err"></div>
+    <div id="storeList"></div>
+    <button class="btn btn-secondary" onclick="logout()" style="margin-top:12px;">Sair</button>
+  </div>
+</div>
+
 <!-- APP -->
 <div id="appWrap" class="app-wrap">
   <div class="topbar">
@@ -157,11 +170,11 @@
       <div class="topbar-logo">S&amp;T</div>
       <div>
         <div style="font-size:14px;font-weight:600" id="topSellerName">—</div>
-        <div class="topbar-store" id="topStoreName">—</div>
+        <div class="topbar-store" id="topStoreName" onclick="changeStore()" style="cursor:pointer;text-decoration:underline;" title="Trocar de loja">—</div>
       </div>
     </div>
     <div class="topbar-right">
-      <span class="seller-badge" id="topRoleBadge">vendedor</span>
+      <button class="btn-icon" onclick="changeStore()" title="Trocar loja">🏬</button>
       <button class="btn-icon" onclick="logout()" title="Sair">⎋</button>
     </div>
   </div>
@@ -305,6 +318,7 @@
 // ============== ESTADO ==============
 const API = '';
 let token = localStorage.getItem('loja_token') || null;
+let activeStore = JSON.parse(localStorage.getItem('loja_activeStore') || 'null');
 let me = null;
 let cart = [];
 let customer = null;
@@ -334,7 +348,7 @@ async function doLogin() {
     token = data.token;
     localStorage.setItem('loja_token', token);
     me = data.user;
-    showApp();
+    showStoreSelector();
   } catch (e) {
     errEl.textContent = 'Erro de rede'; errEl.classList.add('show');
   } finally {
@@ -344,8 +358,10 @@ async function doLogin() {
 
 function logout() {
   localStorage.removeItem('loja_token');
-  token = null; me = null;
+  localStorage.removeItem('loja_activeStore');
+  token = null; me = null; activeStore = null;
   document.getElementById('appWrap').classList.remove('show');
+  document.getElementById('storeSelectWrap').style.display = 'none';
   document.getElementById('loginWrap').style.display = 'flex';
 }
 
@@ -357,16 +373,54 @@ async function checkSession() {
     const data = await r.json();
     me = data.user || data;
     if (me.role !== 'seller' && me.role !== 'admin' && me.role !== 'superadmin') { logout(); return; }
-    showApp();
+    if (activeStore) showApp();
+    else showStoreSelector();
   } catch (e) { logout(); }
+}
+
+async function showStoreSelector() {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('appWrap').classList.remove('show');
+  document.getElementById('storeSelectWrap').style.display = 'flex';
+  document.getElementById('storeSelectHello').textContent = `Olá, ${me.name}`;
+  document.getElementById('storeSelectErr').classList.remove('show');
+
+  try {
+    const d = await api('/api/seller/stores');
+    const list = document.getElementById('storeList');
+    const defaultStoreId = me.storeId;
+    list.innerHTML = (d.stores || []).map(s => {
+      const isDefault = s.id === defaultStoreId;
+      return `
+        <button class="clock-btn" style="text-align:left;width:100%;margin-bottom:8px;display:block;padding:14px 16px;" onclick='selectStore(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
+          <div style="font-weight:600;font-size:15px;">${s.name} ${isDefault ? '<span style="font-size:11px;color:#FF6D00;">· sua loja padrão</span>' : ''}</div>
+          <div style="font-size:12px;color:#8e8e93;margin-top:2px;">${s.mall || ''} · ${s.city || ''}</div>
+        </button>
+      `;
+    }).join('') || '<p style="color:#8e8e93;text-align:center;">Sem lojas ativas. Avise o gerente.</p>';
+  } catch (e) {
+    document.getElementById('storeSelectErr').textContent = 'Erro ao listar lojas: ' + e.message;
+    document.getElementById('storeSelectErr').classList.add('show');
+  }
+}
+
+function selectStore(store) {
+  activeStore = store;
+  localStorage.setItem('loja_activeStore', JSON.stringify(store));
+  showApp();
+}
+
+function changeStore() {
+  showStoreSelector();
 }
 
 function showApp() {
   document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('storeSelectWrap').style.display = 'none';
   document.getElementById('appWrap').classList.add('show');
   document.getElementById('topSellerName').textContent = me.name;
-  document.getElementById('topRoleBadge').textContent = me.role;
-  loadDashboard();
+  document.getElementById('topStoreName').textContent = activeStore ? activeStore.name : '(escolha loja)';
+  goPage('dashboard');
 }
 
 // ============== API HELPER ==============
@@ -530,6 +584,7 @@ async function finalizeSale() {
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
         paymentMethod: document.getElementById('sellPayment').value,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
+        storeId: activeStore?.id,
       }),
     });
     alert(`✓ Venda registrada!\n\nTotal: ${fmt(r.totalAmount)}\nCashback dado: ${fmt(r.tcEarned)}\nComissões: ${r.commissionsCreated}`);
@@ -677,7 +732,7 @@ async function doClockIn(type) {
         method: 'POST',
         body: JSON.stringify({
           type,
-          storeId: me.storeId,
+          storeId: activeStore?.id || me.storeId,
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
         }),

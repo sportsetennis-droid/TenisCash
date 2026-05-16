@@ -251,6 +251,22 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // =====================================================================
+// LISTA LOJAS — pra vendedor escolher onde está trabalhando hoje
+// =====================================================================
+router.get('/stores', authMiddleware, sellerOnly, async (_req, res) => {
+  try {
+    const stores = await prisma.store.findMany({
+      where: { active: true },
+      orderBy: { code: 'asc' },
+      select: { id: true, name: true, code: true, city: true, mall: true, latitude: true, longitude: true },
+    });
+    res.json({ stores });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
 // DASHBOARD DO VENDEDOR — KPIs do dia/mês
 // =====================================================================
 router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
@@ -323,7 +339,7 @@ router.get('/dashboard', authMiddleware, sellerOnly, async (req, res) => {
 router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const sellerId = req.userId;
-    const { customerPhone, items, paymentMethod, tcUsed, note } = req.body || {};
+    const { customerPhone, items, paymentMethod, tcUsed, note, storeId } = req.body || {};
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos 1 item' });
@@ -334,6 +350,14 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       include: { store: true },
     });
     if (!seller) return res.status(404).json({ error: 'Vendedor não encontrado' });
+
+    // Loja ativa: enviada pelo frontend (vendedor pode estar cobrindo outra loja).
+    // Fallback: loja padrão do cadastro.
+    const activeStoreId = storeId || seller.storeId;
+    if (activeStoreId) {
+      const exists = await prisma.store.findUnique({ where: { id: activeStoreId } });
+      if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });
+    }
 
     // Busca produtos pra montar SaleItems
     const productIds = items.map(i => i.productId).filter(Boolean);
@@ -380,7 +404,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const sale = await tx.sale.create({
         data: {
           sellerId,
-          storeId: seller.storeId,
+          storeId: activeStoreId,
           totalAmount,
           tcUsed: tcConsumed,
           tcEarned,
