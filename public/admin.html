@@ -4395,24 +4395,82 @@ async function loadSuppliers() {
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   const search = document.getElementById('sup-search').value.trim();
   const qs = search ? '?search=' + encodeURIComponent(search) : '';
-  const data = await api('/admin/suppliers' + qs);
+
+  // Busca em paralelo: fornecedores + resumo de markup (que inclui contagem de produtos)
+  const [data, mkSummary] = await Promise.all([
+    api('/admin/suppliers' + qs),
+    api('/admin/markup/summary').catch(() => ({ suppliers: [] })),
+  ]);
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.suppliers || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhum fornecedor.</div>'; return; }
-  let html = '<table><thead><tr><th>Nome</th><th>CNPJ</th><th>Representante</th><th>Telefone</th><th>Markup médio</th><th>Ativo</th><th></th></tr></thead><tbody>';
+
+  // Mapeia: cnpj → { productCount, withCost, avgCost }
+  const mkMap = {};
+  (mkSummary.suppliers || []).forEach(s => { mkMap[s.cnpj] = s; });
+
+  let html = '<table><thead><tr><th>Nome</th><th>CNPJ</th><th>Produtos</th><th>Custo médio</th><th>Markup</th><th>Tel.</th><th>Ativo</th><th>Ações</th></tr></thead><tbody>';
   list.forEach(s => {
+    const mk = (s.cnpj && mkMap[s.cnpj]) || {};
+    const productCount = mk.productCount || 0;
+    const avgCost = mk.avgCost != null ? 'R$ ' + Number(mk.avgCost).toFixed(2) : '—';
+    const markupTxt = s.averageMarkup != null
+      ? `<strong style="color:var(--orange)">${Number(s.averageMarkup).toFixed(0)}%</strong>`
+      : '<span style="color:var(--text2)">— sem markup</span>';
+    const safeId = escapeHtml(s.id);
+    const safeCnpj = s.cnpj ? escapeHtml(s.cnpj) : '';
+    const setMarkupBtn = s.cnpj
+      ? `<button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:var(--orange);color:#000;font-weight:bold" onclick="supplierSetMarkup('${safeId}','${safeCnpj}','${escapeHtml(s.companyName).replace(/'/g,"\\\\'")}','${s.averageMarkup||''}')">${s.averageMarkup != null ? '✏️ Editar' : '➕ Definir'} Markup</button>`
+      : '<span style="color:var(--text2);font-size:11px">precisa CNPJ</span>';
+
     html += `<tr>
       <td><strong>${escapeHtml(s.companyName)}</strong></td>
-      <td>${escapeHtml(s.cnpj||'—')}</td>
-      <td>${escapeHtml(s.representativeName||'—')}</td>
-      <td>${escapeHtml(s.phone||'—')}</td>
-      <td>${s.averageMarkup != null ? Number(s.averageMarkup).toFixed(1)+'%' : '—'}</td>
+      <td><code style="font-size:11px">${escapeHtml(s.cnpj||'—')}</code></td>
+      <td>${productCount > 0 ? productCount : '<span style="color:var(--text2)">—</span>'}</td>
+      <td>${avgCost}</td>
+      <td>${markupTxt}<br>${setMarkupBtn}</td>
+      <td style="font-size:11px">${escapeHtml(s.phone||'—')}</td>
       <td>${s.active ? '✓' : '—'}</td>
-      <td><button type="button" class="btn" onclick="supplierEdit('${s.id}')">Editar</button> <button type="button" class="btn" onclick="supplierDelete('${s.id}')">Remover</button></td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="supplierEdit('${safeId}')">Editar</button>
+        <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="supplierDelete('${safeId}')">Remover</button>
+      </td>
     </tr>`;
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// Setar/atualizar markup do fornecedor + opcionalmente recalcular preços
+async function supplierSetMarkup(supplierId, cnpj, companyName, currentMarkup) {
+  const cur = currentMarkup && currentMarkup !== 'null' ? currentMarkup : '';
+  const input = prompt(
+    `Markup % pra "${companyName}":\n\n` +
+    `Ex: 80 = preço será custo × 1.8 (lucro 80% sobre o custo)\n` +
+    `Ex: 160 = preço será custo × 2.6 (lucro 160% sobre o custo)\n\n` +
+    `(Atual: ${cur ? cur + '%' : 'sem markup'})`,
+    cur
+  );
+  if (input === null) return;
+  const markup = parseFloat(String(input).replace(',', '.'));
+  if (isNaN(markup) || markup < 0) { alert('Markup inválido. Use número positivo.'); return; }
+
+  // Pergunta se aplica nos produtos
+  const apply = confirm(
+    `Markup ${markup}% será salvo no fornecedor.\n\n` +
+    `Quer APLICAR esse markup em todos os produtos dele AGORA?\n` +
+    `(Vai recalcular o preço de venda como custo × ${(1 + markup/100).toFixed(2)})\n\n` +
+    `OK = sim, aplicar agora\nCancelar = só salvar, não recalcular`
+  );
+
+  const data = await api('/admin/markup/supplier/' + cnpj, 'POST', { markup, applyToProducts: apply });
+  if (data.error) { alert('Erro: ' + data.error); return; }
+
+  const msg = apply
+    ? `✓ Markup ${markup}% salvo + ${data.applied || 0} preços recalculados`
+    : `✓ Markup ${markup}% salvo (sem recalcular preços)`;
+  alert(msg);
+  loadSuppliers();
 }
 async function supplierNew() {
   const companyName = prompt('Nome da empresa:');
