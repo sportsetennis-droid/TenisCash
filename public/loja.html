@@ -769,8 +769,12 @@ const PRODUCT_TREE = {
   },
 };
 
+// Tamanhos disponíveis (cobre infantil 26-32 + adulto 33-46)
+const SIZE_LIST = ['26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46'];
+
 // Estado do filtro hierárquico (compartilhado entre Curadoria e Estoque)
 let _filterType = null;     // 'Tênis' | 'Chuteira'
+let _filterSize = null;     // '33' .. '46'
 let _filterGender = null;   // 'Feminino' | 'Masculino' | 'Inf. M' | 'Inf. F'
 let _filterCategory = null; // 'Corrida' | 'LifeStyle' | 'Futsal' | etc
 let _filterTier = null;     // 'máximo conforto' | 'premium' | etc
@@ -782,6 +786,7 @@ function buildFilterQuery() {
 
 function resetFilters(deep = true) {
   if (deep) _filterType = null;
+  _filterSize = null;
   _filterGender = null;
   _filterCategory = null;
   _filterTier = null;
@@ -1392,6 +1397,18 @@ function renderFilterTree(containerId, onChange) {
     </div>
   `);
 
+  // Linha 1.5: Tamanho (só aparece depois de escolher tipo)
+  if (_filterType) {
+    rows.push(`
+      <div class="filter-row">
+        <span class="filter-row-label">Tamanho</span>
+        ${SIZE_LIST.map(s => `
+          <button class="chip ${_filterSize === s ? 'active' : ''}" onclick="pickFilter('size','${s}','${containerId}')">${s}</button>
+        `).join('')}
+      </div>
+    `);
+  }
+
   // Linha 2: Gênero (só pra Tênis) ou Modalidade (Chuteira)
   if (_filterType === 'Tênis') {
     const genders = Object.keys(PRODUCT_TREE['Tênis'].genders);
@@ -1470,7 +1487,9 @@ function pickFilter(level, value, containerId) {
   if (level === 'type') {
     if (_filterType === value) _filterType = null;
     else { _filterType = value; }
-    _filterGender = _filterCategory = _filterTier = null;
+    _filterSize = _filterGender = _filterCategory = _filterTier = null;
+  } else if (level === 'size') {
+    _filterSize = _filterSize === value ? null : value;
   } else if (level === 'gender') {
     _filterGender = _filterGender === value ? null : value;
     _filterCategory = _filterTier = null;
