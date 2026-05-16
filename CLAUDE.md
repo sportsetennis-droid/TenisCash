@@ -1,10 +1,17 @@
-# Central IA — Sports & Tennis (TenisCash)
+# Sports & Tennis — Ecossistema unificado (TenisCash + APEX)
 
 ## Identidade do projeto
 
-Rede de varejo esportivo Sports & Tennis (4 lojas físicas + ecommerce Nuvemshop) com sede em João Pessoa/PB, operada pelo dono Douglas Bernardo.
+Ecossistema único composto por:
 
-Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS, Anthropic SDK ready. Frontend admin em vanilla HTML/JS em `public/admin.html`. App cliente em PWA. Integração com Nuvemshop OAuth, Meta API, WhatsApp Business (em migração pra Cloud API).
+1. **Rede de varejo Sports & Tennis** — 4 lojas físicas em João Pessoa/PB (Bessa, Tambaú, Rainha da Borborema, Tambiá) + ecommerce Nuvemshop. Dono: Douglas Bernardo.
+2. **TenisCash (loyalty)** — cashback, programa de parceiros, carteira do cliente.
+3. **Central IA (18 agentes + 6 skills)** — gestão operacional do varejo (estoque, preço, marketing, vendas, WhatsApp, conteúdo, etc.). Entrada via `retail-orchestrator`.
+4. **APEX (app esportivo)** — rastreamento de atividade, coach IA, social, gamificação. Concorrente direto de Strava/NRC/Adidas Running, com diferencial: loja física + cashback real.
+
+**TUDO É UM SÓ PROJETO.** Mesmo banco, mesmo backend, mesmo User. O cliente da loja é o atleta do app é o membro do TenisCash. Compra na loja → ganha cashback. Treina no app → ganha badge → recebe cashback. Volta na loja → usa cashback. Loop fechado.
+
+Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS, Anthropic SDK. Frontend admin em vanilla HTML/JS em `public/admin.html`. App cliente em PWA (curto prazo) → iOS/watchOS + Android/Wear OS nativos via KMP (médio prazo). Integração com Nuvemshop OAuth, Meta API, WhatsApp Business (em migração pra Cloud API).
 
 ## Regras globais — NUNCA VIOLAR
 
@@ -58,16 +65,39 @@ retail-orchestrator (entrada de TODA demanda)
 
 - Mix: tênis esportivo, calçados, roupas técnicas, acessórios
 - Clientes: atletas amadores, clubes, escolas, consumidor final
-- Canais: lojas físicas (Bessa, Tambaú, Rainha da Borborema, Tambiá), Baratão dos Esportes (outra empresa), WhatsApp, Instagram (@sportsetennis 5.866 seguidores), Nuvemshop
-- KPI prioritário: margem bruta, giro de estoque, NPS, ticket médio, conversão online
+- Canais: lojas físicas (Bessa, Tambaú, Rainha da Borborema, Tambiá), Baratão dos Esportes (outra empresa), WhatsApp, Instagram (@sportsetennis 5.866 seguidores), Nuvemshop, **app APEX (em construção)**
+- KPI prioritário varejo: margem bruta, giro de estoque, NPS, ticket médio, conversão online
+- KPI prioritário APEX (futuro): DAU, retenção D7/D30, conversão premium, tempo médio de atividade/semana, **% atletas APEX que viram compradores na loja** (loop fechado)
+
+## Loop econômico unificado
+
+```
+COMPRA NA LOJA → TenisCash creditado em User.balance
+                 ↓
+ABRE APP APEX → registra atividade (Activity)
+                 ↓
+DESBLOQUEIA BADGE (BadgeEarned)
+                 ↓
+BadgeEarned.cashbackAwarded → User.balance += valor
+                 ↓
+PRÓXIMA COMPRA → usa TenisCash → desconto
+                 ↓
+LOOP FECHADO → retenção crescente, dependência do ecossistema
+```
+
+Esse loop é o diferencial vs Strava/NRC. Eles dependem de patrocínio. Nós temos canal de venda próprio.
 
 ## Sistemas conectados
 
-- **Banco**: PostgreSQL Railway. Tabelas relevantes — `Product`, `ProductSize`, `Supplier`, `NuvemshopProductMapping`, `User`, `Sale`, etc.
+- **Banco**: PostgreSQL Railway. Tabelas relevantes:
+  - Varejo: `Product`, `ProductSize`, `Supplier`, `NuvemshopProductMapping`, `User`, `Sale`, `Partner`, `Transaction`, `Campaign`, etc.
+  - APEX (app esportivo): `AthleteProfile`, `Activity`, `ActivityLap`, `ActivityPhoto`, `Route`, `Segment`, `SegmentEffort`, `Club`, `ClubMembership`, `Challenge`, `ChallengeParticipation`, `TrainingPlan`, `Workout`, `UserPlan`, `BadgeEarned`, `LiveTrackingSession`, `SafetyContact`, `DeviceConnection`, `Consent`.
 - **Nuvemshop**: OAuth ativa, push/pull funcionando. Loja: `sportstennis2.lojavirtualnuvem.com.br`
 - **Meta**: Page Sports & Tennis, Instagram @sportsetennis, WhatsApp +55 83 9671-3153, Business Manager 31915792481369241, Ad Account act_750101118074129
 - **IA**: Anthropic Claude (vision + texto), Serper (Google search), Brave (alt search)
 - **Curadoria**: Agente curador opera via `/admin/ai-curation/product/:id` — 6.170 produtos curados de 7.093
+- **APEX backend**: serviços em `src/services/activityIngest.js` e `src/services/aiCoach.js`; rotas em `src/routes/activities.js` e `src/routes/coach.js`.
+- **APEX infra futura (não em produção)**: PostGIS, ClickHouse (streams 1Hz), Kafka (event bus), S3 (FIT/GPX), apps mobile nativos.
 
 ## Cadência diária recomendada
 

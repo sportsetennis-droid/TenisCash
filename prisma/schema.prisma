@@ -85,6 +85,22 @@ model User {
   // Programa de Parceiros
   partner              Partner?      @relation("partner")
   partnerSalesAsSeller PartnerSale[] @relation("partnerSaleSeller")
+
+  // ===== APEX SPORT (app esportivo unificado ao TenisCash) =====
+  // O cliente da loja Sports & Tennis é o mesmo atleta do app.
+  // Ele compra na loja, treina no app, ganha TenisCash, gasta na próxima compra.
+  athleteProfile          AthleteProfile?
+  deviceConnections       DeviceConnection[]
+  activities              Activity[]
+  routes                  Route[]
+  segmentEfforts          SegmentEffort[]
+  clubMemberships         ClubMembership[]
+  challengeParticipations ChallengeParticipation[]
+  userPlans               UserPlan[]
+  safetyContacts          SafetyContact[]
+  badges                  BadgeEarned[]
+  consents                Consent[]
+  liveTrackingSessions    LiveTrackingSession[]    @relation("liveTrackingOwner")
 }
 
 // ============================================================
@@ -251,8 +267,8 @@ model Product {
 
   price         Float
   promoPrice    Float?
-  costPrice     Float?  // custo unitário (média ponderada das NF-es). Usado pra calcular preço via markup.
-  markupPercent Float?  // override por produto. null = herda markup do Supplier (averageMarkup).
+  costPrice     Float? // custo unitário (média ponderada das NF-es). Usado pra calcular preço via markup.
+  markupPercent Float? // override por produto. null = herda markup do Supplier (averageMarkup).
 
   active   Boolean @default(true)
   featured Boolean @default(false)
@@ -821,34 +837,34 @@ model UserAction {
 // ============================================================
 
 model LabelTemplate {
-  id                String   @id @default(cuid())
-  name              String
-  type              String // PRODUCT | PRICE | PROMOTIONAL | SHELF | ORDER_PICKING | SHIPPING | INVENTORY
-  widthMm           Float
-  heightMm          Float
-  columns           Int      @default(1)
-  rows              Int      @default(1)
-  paperSize         String   @default("A4") // A4 | THERMAL
-  marginTopMm       Float    @default(0)
-  marginLeftMm      Float    @default(0)
-  gapHorizontalMm   Float    @default(0)
-  gapVerticalMm     Float    @default(0)
-  showLogo          Boolean  @default(true)
-  showPrice         Boolean  @default(true)
-  showPromotionalPrice Boolean @default(false)
-  showBarcode       Boolean  @default(true)
-  showQRCode        Boolean  @default(false)
-  showSku           Boolean  @default(true)
-  showProductName   Boolean  @default(true)
-  showBrand         Boolean  @default(true)
-  showModel         Boolean  @default(false)
-  showSize          Boolean  @default(false)
-  showColor         Boolean  @default(false)
-  showStore         Boolean  @default(false)
-  layoutConfig      Json?
-  isDefault         Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  name                 String
+  type                 String // PRODUCT | PRICE | PROMOTIONAL | SHELF | ORDER_PICKING | SHIPPING | INVENTORY
+  widthMm              Float
+  heightMm             Float
+  columns              Int      @default(1)
+  rows                 Int      @default(1)
+  paperSize            String   @default("A4") // A4 | THERMAL
+  marginTopMm          Float    @default(0)
+  marginLeftMm         Float    @default(0)
+  gapHorizontalMm      Float    @default(0)
+  gapVerticalMm        Float    @default(0)
+  showLogo             Boolean  @default(true)
+  showPrice            Boolean  @default(true)
+  showPromotionalPrice Boolean  @default(false)
+  showBarcode          Boolean  @default(true)
+  showQRCode           Boolean  @default(false)
+  showSku              Boolean  @default(true)
+  showProductName      Boolean  @default(true)
+  showBrand            Boolean  @default(true)
+  showModel            Boolean  @default(false)
+  showSize             Boolean  @default(false)
+  showColor            Boolean  @default(false)
+  showStore            Boolean  @default(false)
+  layoutConfig         Json?
+  isDefault            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   batches LabelBatch[]
 }
@@ -865,7 +881,7 @@ model LabelBatch {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  template LabelTemplate @relation(fields: [templateId], references: [id])
+  template LabelTemplate   @relation(fields: [templateId], references: [id])
   items    LabelItem[]
   prints   LabelPrintLog[]
 
@@ -874,17 +890,17 @@ model LabelBatch {
 }
 
 model LabelItem {
-  id              String   @id @default(cuid())
-  labelBatchId    String
-  productId       String?
-  inventoryId     String?
-  quantity        Int      @default(1)
-  price           Float?
+  id               String   @id @default(cuid())
+  labelBatchId     String
+  productId        String?
+  inventoryId      String?
+  quantity         Int      @default(1)
+  price            Float?
   promotionalPrice Float?
-  barcode         String?
-  qrCodeValue     String?
-  customText      String?
-  createdAt       DateTime @default(now())
+  barcode          String?
+  qrCodeValue      String?
+  customText       String?
+  createdAt        DateTime @default(now())
 
   batch LabelBatch @relation(fields: [labelBatchId], references: [id], onDelete: Cascade)
 
@@ -910,7 +926,7 @@ model LabelPrintLog {
 // ============================================================
 
 model StoreCuration {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   name                String
   storeId             String
   storeDNA            String?
@@ -918,11 +934,11 @@ model StoreCuration {
   commercialObjective String?
   startDate           DateTime?
   endDate             DateTime?
-  status              String   @default("DRAFT") // DRAFT | SETUP | ACTIVE | FINISHED | CANCELLED
+  status              String    @default("DRAFT") // DRAFT | SETUP | ACTIVE | FINISHED | CANCELLED
   responsibleUserId   String?
   notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   items     StoreCurationItem[]
   checklist StoreCurationChecklist[]
@@ -943,26 +959,26 @@ model StoreCurationZone {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  items StoreCurationItem[]
+  items  StoreCurationItem[]
   photos StoreCurationPhoto[]
 
   @@index([storeId, type])
 }
 
 model StoreCurationItem {
-  id              String   @id @default(cuid())
-  curationId      String
-  productId       String?
-  inventoryId     String?
-  zoneId          String?
-  commercialRole  String? // HERO_PRODUCT | ENTRY_PRODUCT | MARGIN_PRODUCT | FAST_TURNOVER | SLOW_MOVING | DESIRE_PRODUCT | CAMPAIGN_PRODUCT | COMPLEMENTARY_PRODUCT | REBUY_PRODUCT | CONTENT_PRODUCT
-  displayPriority Int      @default(0)
+  id               String   @id @default(cuid())
+  curationId       String
+  productId        String?
+  inventoryId      String?
+  zoneId           String?
+  commercialRole   String? // HERO_PRODUCT | ENTRY_PRODUCT | MARGIN_PRODUCT | FAST_TURNOVER | SLOW_MOVING | DESIRE_PRODUCT | CAMPAIGN_PRODUCT | COMPLEMENTARY_PRODUCT | REBUY_PRODUCT | CONTENT_PRODUCT
+  displayPriority  Int      @default(0)
   storytellingText String?
-  priceStrategy   String?
-  expectedGoal    String?
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  priceStrategy    String?
+  expectedGoal     String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   curation StoreCuration      @relation(fields: [curationId], references: [id], onDelete: Cascade)
   zone     StoreCurationZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
@@ -973,16 +989,16 @@ model StoreCurationItem {
 }
 
 model StoreCurationChecklist {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   curationId        String
   task              String
   responsibleUserId String?
   dueDate           DateTime?
-  status            String   @default("PENDING") // PENDING | IN_PROGRESS | DONE | CANCELLED
+  status            String    @default("PENDING") // PENDING | IN_PROGRESS | DONE | CANCELLED
   completedAt       DateTime?
   notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   curation StoreCuration @relation(fields: [curationId], references: [id], onDelete: Cascade)
 
@@ -990,13 +1006,13 @@ model StoreCurationChecklist {
 }
 
 model StoreCurationPhoto {
-  id            String   @id @default(cuid())
-  curationId    String
-  zoneId        String?
-  uploadedById  String?
-  imageUrl      String
-  caption       String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  curationId   String
+  zoneId       String?
+  uploadedById String?
+  imageUrl     String
+  caption      String?
+  createdAt    DateTime @default(now())
 
   curation StoreCuration      @relation(fields: [curationId], references: [id], onDelete: Cascade)
   zone     StoreCurationZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
@@ -1005,16 +1021,16 @@ model StoreCurationPhoto {
 }
 
 model StoreCurationResult {
-  id                  String   @id @default(cuid())
-  curationId          String   @unique
-  revenueGenerated    Float    @default(0)
-  itemsSold           Int      @default(0)
-  conversionRate      Float?
-  topSellingProducts  Json?
-  slowProducts        Json?
-  notes               String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  curationId         String   @unique
+  revenueGenerated   Float    @default(0)
+  itemsSold          Int      @default(0)
+  conversionRate     Float?
+  topSellingProducts Json?
+  slowProducts       Json?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   curation StoreCuration @relation(fields: [curationId], references: [id], onDelete: Cascade)
 }
@@ -1098,24 +1114,24 @@ model SellerTask {
 // ============================================================
 
 model SellerWeeklyInterview {
-  id                 String    @id @default(cuid())
-  sellerId           String
-  storeId            String?
-  weekStartDate      DateTime
-  weekEndDate        DateTime
-  status             String    @default("DRAFT") // DRAFT | SUBMITTED | REVIEWED | ARCHIVED
-  moodScore          Int?
-  confidenceScore    Int?
-  salesEnergyScore   Int?
-  mainObjective      String?
-  summary            String?
-  aiAnalysis         String?
-  managerNotes       String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  submittedAt        DateTime?
+  id               String    @id @default(cuid())
+  sellerId         String
+  storeId          String?
+  weekStartDate    DateTime
+  weekEndDate      DateTime
+  status           String    @default("DRAFT") // DRAFT | SUBMITTED | REVIEWED | ARCHIVED
+  moodScore        Int?
+  confidenceScore  Int?
+  salesEnergyScore Int?
+  mainObjective    String?
+  summary          String?
+  aiAnalysis       String?
+  managerNotes     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  submittedAt      DateTime?
 
-  answers SellerInterviewAnswer[]
+  answers  SellerInterviewAnswer[]
   insights SellerInsight[]
 
   @@unique([sellerId, weekStartDate])
@@ -1140,20 +1156,20 @@ model SellerInterviewAnswer {
 }
 
 model SellerInsight {
-  id                 String   @id @default(cuid())
-  sellerId           String
-  storeId            String?
-  interviewId        String?
-  type               String // CUSTOMER_OPPORTUNITY | PRODUCT_DEMAND | MISSING_PRODUCT | PRICE_OBJECTION | SOCIAL_TREND | STORE_DISPLAY | CAMPAIGN_IDEA | TRAINING_NEED | TEAM_ALERT
-  title              String
-  description        String?
-  priority           String   @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
-  relatedProductId   String?
-  relatedCustomerId  String?
-  relatedCampaignId  String?
-  status             String   @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  sellerId          String
+  storeId           String?
+  interviewId       String?
+  type              String // CUSTOMER_OPPORTUNITY | PRODUCT_DEMAND | MISSING_PRODUCT | PRICE_OBJECTION | SOCIAL_TREND | STORE_DISPLAY | CAMPAIGN_IDEA | TRAINING_NEED | TEAM_ALERT
+  title             String
+  description       String?
+  priority          String   @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  relatedProductId  String?
+  relatedCustomerId String?
+  relatedCampaignId String?
+  status            String   @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   interview SellerWeeklyInterview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
 
@@ -1178,18 +1194,18 @@ model SellerMoodLog {
 }
 
 model SellerProductFeedback {
-  id              String   @id @default(cuid())
-  sellerId        String
-  storeId         String?
-  productId       String
-  weekStartDate   DateTime
-  impactScore     Int?
-  demandScore     Int?
-  objectionScore  Int?
+  id               String   @id @default(cuid())
+  sellerId         String
+  storeId          String?
+  productId        String
+  weekStartDate    DateTime
+  impactScore      Int?
+  demandScore      Int?
+  objectionScore   Int?
   customerReaction String?
-  feedback        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  feedback         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([productId, weekStartDate])
   @@index([sellerId, weekStartDate])
@@ -1218,41 +1234,41 @@ model SellerTrendReport {
 // ============================================================
 
 model XmlExportJob {
-  id              String    @id @default(cuid())
-  name            String
-  type            String // FULL_BACKUP | PRODUCTS | INVENTORY | CUSTOMERS | SALES | FINANCE | SUPPLIERS | CAMPAIGNS | CURATION | SELLER_PORTFOLIO | SELLER_INTERVIEWS | NUVEMSHOP | LABELS | TENISCASH
-  module          String?
-  status          String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
-  requestedById   String?
-  storeId         String?
-  dateFrom        DateTime?
-  dateTo          DateTime?
-  filters         Json?
-  totalRecords    Int       @default(0)
-  fileUrl         String?
-  createdAt       DateTime  @default(now())
-  completedAt     DateTime?
-  errorMessage    String?
+  id            String    @id @default(cuid())
+  name          String
+  type          String // FULL_BACKUP | PRODUCTS | INVENTORY | CUSTOMERS | SALES | FINANCE | SUPPLIERS | CAMPAIGNS | CURATION | SELLER_PORTFOLIO | SELLER_INTERVIEWS | NUVEMSHOP | LABELS | TENISCASH
+  module        String?
+  status        String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  requestedById String?
+  storeId       String?
+  dateFrom      DateTime?
+  dateTo        DateTime?
+  filters       Json?
+  totalRecords  Int       @default(0)
+  fileUrl       String?
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+  errorMessage  String?
 
   @@index([status, createdAt])
 }
 
 model XmlImportJob {
-  id                       String    @id @default(cuid())
-  name                     String
-  type                     String // NFE_ENTRY | PRODUCTS | INVENTORY | CUSTOMERS | SALES | SUPPLIERS
-  status                   String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
-  uploadedById             String?
-  fileUrl                  String?
-  originalFileName         String?
-  totalItems               Int       @default(0)
-  processedItems           Int       @default(0)
-  createdProducts          Int       @default(0)
-  updatedProducts          Int       @default(0)
-  createdInventoryEntries  Int       @default(0)
-  errorMessage             String?
-  createdAt                DateTime  @default(now())
-  completedAt              DateTime?
+  id                      String    @id @default(cuid())
+  name                    String
+  type                    String // NFE_ENTRY | PRODUCTS | INVENTORY | CUSTOMERS | SALES | SUPPLIERS
+  status                  String    @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  uploadedById            String?
+  fileUrl                 String?
+  originalFileName        String?
+  totalItems              Int       @default(0)
+  processedItems          Int       @default(0)
+  createdProducts         Int       @default(0)
+  updatedProducts         Int       @default(0)
+  createdInventoryEntries Int       @default(0)
+  errorMessage            String?
+  createdAt               DateTime  @default(now())
+  completedAt             DateTime?
 
   fiscalDocuments XmlFiscalDocument[]
 
@@ -1281,7 +1297,7 @@ model XmlFiscalDocument {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  importJob XmlImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  importJob XmlImportJob?   @relation(fields: [importJobId], references: [id], onDelete: SetNull)
   items     XmlFiscalItem[]
 
   @@index([supplierId])
@@ -1289,25 +1305,25 @@ model XmlFiscalDocument {
 }
 
 model XmlFiscalItem {
-  id                 String   @id @default(cuid())
-  fiscalDocumentId   String
-  productId          String?
-  supplierCode       String?
-  description        String
-  ean                String?
-  ncm                String?
-  cfop               String?
-  cst                String?
-  unit               String?
-  quantity           Float    @default(0)
-  unitValue          Float    @default(0)
-  totalValue         Float    @default(0)
-  icmsValue          Float?
-  ipiValue           Float?
-  pisValue           Float?
-  cofinsValue        Float?
-  matchStatus        String   @default("pending") // pending | matched | new_product | ignored
-  createdAt          DateTime @default(now())
+  id               String   @id @default(cuid())
+  fiscalDocumentId String
+  productId        String?
+  supplierCode     String?
+  description      String
+  ean              String?
+  ncm              String?
+  cfop             String?
+  cst              String?
+  unit             String?
+  quantity         Float    @default(0)
+  unitValue        Float    @default(0)
+  totalValue       Float    @default(0)
+  icmsValue        Float?
+  ipiValue         Float?
+  pisValue         Float?
+  cofinsValue      Float?
+  matchStatus      String   @default("pending") // pending | matched | new_product | ignored
+  createdAt        DateTime @default(now())
 
   fiscalDocument XmlFiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
 
@@ -1320,14 +1336,14 @@ model XmlFiscalItem {
 // ============================================================
 
 model NuvemshopConnection {
-  id                String   @id @default(cuid())
-  storeId           String?  @unique
-  nuvemshopUserId   String   @unique
-  accessToken       String
-  scope             String?
-  status            String   @default("active") // active | revoked | error
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id              String   @id @default(cuid())
+  storeId         String?  @unique
+  nuvemshopUserId String   @unique
+  accessToken     String
+  scope           String?
+  status          String   @default("active") // active | revoked | error
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model NuvemshopWebhookEvent {
@@ -1357,41 +1373,41 @@ model NuvemshopSyncLog {
 }
 
 model NuvemshopProductMapping {
-  id                  String   @id @default(cuid())
-  localProductId      String   @unique
-  nuvemshopProductId  String
-  syncStatus          String   @default("synced")
-  lastSyncedAt        DateTime @default(now())
+  id                 String   @id @default(cuid())
+  localProductId     String   @unique
+  nuvemshopProductId String
+  syncStatus         String   @default("synced")
+  lastSyncedAt       DateTime @default(now())
 
   @@index([nuvemshopProductId])
 }
 
 model NuvemshopVariantMapping {
-  id                  String   @id @default(cuid())
-  localInventoryId    String   @unique
-  localProductId      String
-  nuvemshopProductId  String
-  nuvemshopVariantId  String
-  sku                 String?
-  barcode             String?
-  lastSyncedAt        DateTime @default(now())
+  id                 String   @id @default(cuid())
+  localInventoryId   String   @unique
+  localProductId     String
+  nuvemshopProductId String
+  nuvemshopVariantId String
+  sku                String?
+  barcode            String?
+  lastSyncedAt       DateTime @default(now())
 
   @@index([nuvemshopVariantId])
 }
 
 model NuvemshopOrderMapping {
-  id                String   @id @default(cuid())
-  saleId            String?  @unique
-  nuvemshopOrderId  String   @unique
-  payload           Json?
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  saleId           String?  @unique
+  nuvemshopOrderId String   @unique
+  payload          Json?
+  createdAt        DateTime @default(now())
 }
 
 model NuvemshopCustomerMapping {
-  id                   String   @id @default(cuid())
-  customerId           String?  @unique
-  nuvemshopCustomerId  String   @unique
-  createdAt            DateTime @default(now())
+  id                  String   @id @default(cuid())
+  customerId          String?  @unique
+  nuvemshopCustomerId String   @unique
+  createdAt           DateTime @default(now())
 }
 
 // ============================================================
@@ -1399,19 +1415,19 @@ model NuvemshopCustomerMapping {
 // ============================================================
 
 model AiRecommendation {
-  id                  String    @id @default(cuid())
-  type                String // SALES_ACTION | INVENTORY_RISK | REBUY | CLEARANCE | CUSTOMER_REACTIVATION | SELLER_TASK | CURATION_SUGGESTION | FINANCE_ALERT | CAMPAIGN_IDEA | NUVEMSHOP_ALERT | XML_IMPORT_ALERT
-  title               String
-  description         String?
-  priority            String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
-  relatedStoreId      String?
-  relatedProductId    String?
-  relatedCustomerId   String?
-  relatedSellerId     String?
-  relatedCampaignId   String?
-  status              String    @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
-  createdAt           DateTime  @default(now())
-  resolvedAt          DateTime?
+  id                String    @id @default(cuid())
+  type              String // SALES_ACTION | INVENTORY_RISK | REBUY | CLEARANCE | CUSTOMER_REACTIVATION | SELLER_TASK | CURATION_SUGGESTION | FINANCE_ALERT | CAMPAIGN_IDEA | NUVEMSHOP_ALERT | XML_IMPORT_ALERT
+  title             String
+  description       String?
+  priority          String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  relatedStoreId    String?
+  relatedProductId  String?
+  relatedCustomerId String?
+  relatedSellerId   String?
+  relatedCampaignId String?
+  status            String    @default("OPEN") // OPEN | IN_REVIEW | ACTION_CREATED | RESOLVED | ARCHIVED
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
 
   @@index([status, priority])
   @@index([type, status])
@@ -1423,24 +1439,24 @@ model AiRecommendation {
 // ============================================================
 
 model ProductLifecycle {
-  id                  String    @id @default(cuid())
-  productId           String    @unique
-  storeId             String?
-  launchDate          DateTime?
-  purchaseDate        DateTime?
-  stockEntryDate      DateTime?
-  storeEntryDate      DateTime?
-  firstSaleDate       DateTime?
-  lastSaleDate        DateTime?
-  soldOutDate         DateTime?
-  lifecycleStatus     String    @default("NEW") // NEW | TESTING | FAST_TURNOVER | NORMAL_TURNOVER | SLOW_TURNOVER | STUCK | CLEARANCE | SOLD_OUT | REBUY | DO_NOT_REBUY
-  daysUntilFirstSale  Int?
-  daysToSellOut       Int?
-  daysInStock         Int?
-  lastEvaluatedAt     DateTime  @default(now())
-  notes               String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  productId          String    @unique
+  storeId            String?
+  launchDate         DateTime?
+  purchaseDate       DateTime?
+  stockEntryDate     DateTime?
+  storeEntryDate     DateTime?
+  firstSaleDate      DateTime?
+  lastSaleDate       DateTime?
+  soldOutDate        DateTime?
+  lifecycleStatus    String    @default("NEW") // NEW | TESTING | FAST_TURNOVER | NORMAL_TURNOVER | SLOW_TURNOVER | STUCK | CLEARANCE | SOLD_OUT | REBUY | DO_NOT_REBUY
+  daysUntilFirstSale Int?
+  daysToSellOut      Int?
+  daysInStock        Int?
+  lastEvaluatedAt    DateTime  @default(now())
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([lifecycleStatus])
   @@index([storeId, lifecycleStatus])
@@ -1559,4 +1575,352 @@ model CampaignProduct {
 
   @@unique([campaignId, productId])
   @@index([campaignId])
+}
+
+// ============================================================
+// APEX SPORT — APP ESPORTIVO (unificado ao TenisCash)
+// ============================================================
+// O atleta é o mesmo User da loja Sports & Tennis. Não duplicamos identidade.
+// Aqui fica o domínio de atividade física, treino, social, gamificação.
+// PostGIS / ClickHouse / Kafka não estão configurados ainda — modelos prontos
+// pra quando o cluster vier no ar. Streams de GPS/HR ficam fora deste schema
+// (ClickHouse), só sumários ficam aqui.
+// ============================================================
+
+model AthleteProfile {
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username        String?  @unique // handle do atleta no app
+  goals           Json? // {target_distance, target_race, ...}
+  experienceLevel String? // beginner | intermediate | advanced
+  zones           Json? // HR zones, pace zones, power zones
+  privacyDefaults Json? // visibility default por tipo de atividade
+  birthYear       Int?
+  sex             String? // M | F | NB | UNSPECIFIED
+  // weight/height já existem em User (weight, height) — reusamos
+  bio             String?
+  avatarUrl       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Consent {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope     String // health_data, location_history, heatmap_optin, marketing, ...
+  granted   Boolean
+  version   String
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId, scope])
+}
+
+model DeviceConnection {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        String // apple_health, health_connect, garmin, polar, oura, whoop
+  externalUserId  String
+  accessTokenRef  String? // referencia pro vault, NÃO o token em si
+  refreshTokenRef String?
+  scopes          String[]
+  status          String    @default("active")
+  connectedAt     DateTime  @default(now())
+  lastSyncAt      DateTime?
+
+  @@unique([provider, externalUserId])
+  @@index([userId])
+}
+
+model Activity {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  sportType      String // RUN, RIDE, SWIM, WALK, HIKE, TRAIL, STRENGTH, YOGA, TENNIS, PADEL ...
+  startedAt      DateTime
+  endedAt        DateTime?
+  elapsedTimeS   Int
+  movingTimeS    Int
+  distanceM      Float?
+  elevationGainM Float?
+  elevationLossM Float?
+  avgHeartRate   Int?
+  maxHeartRate   Int?
+  avgPace        Float? // sec/km
+  maxSpeed       Float? // m/s
+  avgPower       Float? // watts (ciclismo)
+  calories       Int?
+  trainingLoad   Float?
+  hrTSS          Float?
+
+  summaryPolyline String? @db.Text // versão simplificada pra display
+
+  visibility    String  @default("followers") // public | followers | clubs | private
+  deviceSource  String? // phone, apple_watch, garmin_fenix, etc.
+  rawPayloadRef String? // referência pra FIT/GPX original em S3
+
+  startPrivacyRadiusM Int @default(250)
+  endPrivacyRadiusM   Int @default(250)
+
+  processingState String   @default("pending") // pending | processing | done | failed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  laps                 ActivityLap[]
+  photos               ActivityPhoto[]
+  segmentEfforts       SegmentEffort[]
+  liveTrackingSessions LiveTrackingSession[]
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([sportType, startedAt])
+}
+
+model ActivityLap {
+  id           String   @id @default(cuid())
+  activityId   String
+  activity     Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  lapNumber    Int
+  startedAt    DateTime
+  elapsedTimeS Int
+  distanceM    Float?
+  avgPace      Float?
+  avgHeartRate Int?
+}
+
+model ActivityPhoto {
+  id         String    @id @default(cuid())
+  activityId String
+  activity   Activity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  imageUrl   String
+  takenAt    DateTime?
+  latitude   Float?
+  longitude  Float?
+}
+
+model Route {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id])
+  name           String
+  sportType      String
+  distanceM      Float
+  elevationGainM Float
+  polyline       String   @db.Text
+  visibility     String   @default("public")
+  source         String? // imported_gpx | created | suggested
+  createdAt      DateTime @default(now())
+
+  routePoints RoutePoint[]
+
+  @@index([ownerId])
+  @@index([sportType])
+}
+
+model RoutePoint {
+  id        String @id @default(cuid())
+  routeId   String
+  route     Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  sequence  Int
+  latitude  Float
+  longitude Float
+  altitudeM Float?
+
+  @@unique([routeId, sequence])
+}
+
+model Segment {
+  id                String   @id @default(cuid())
+  name              String
+  sportType         String
+  polyline          String   @db.Text
+  distanceM         Float
+  elevationGainM    Float
+  visibility        String   @default("public")
+  verificationState String   @default("auto") // auto | community | reviewed | rejected
+  geomHash          String? // hash da geometria pra dedup
+  createdAt         DateTime @default(now())
+
+  efforts SegmentEffort[]
+
+  @@index([sportType])
+  @@index([geomHash])
+}
+
+model SegmentEffort {
+  id           String   @id @default(cuid())
+  segmentId    String
+  segment      Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  activityId   String
+  activity     Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  athleteId    String
+  athlete      User     @relation(fields: [athleteId], references: [id])
+  elapsedMs    Int // tempo em ms
+  startedAt    DateTime
+  avgHeartRate Int?
+  avgPower     Float?
+  rankType     String   @default("user") // user | club | local | global
+  flaggedFraud Boolean  @default(false)
+
+  @@index([segmentId, elapsedMs])
+  @@index([athleteId])
+}
+
+model Club {
+  id           String   @id @default(cuid())
+  ownerId      String
+  name         String
+  description  String?  @db.Text
+  sportScope   String? // all | running | cycling | tennis | padel ...
+  privacyLevel String   @default("public") // public | private | invite_only
+  city         String?
+  state        String?
+  country      String   @default("BR")
+  // Vinculação opcional à loja Sports & Tennis (clubes patrocinados/eventos)
+  storeId      String?
+  createdAt    DateTime @default(now())
+
+  memberships ClubMembership[]
+
+  @@index([city])
+  @@index([sportScope])
+  @@index([storeId])
+}
+
+model ClubMembership {
+  id       String   @id @default(cuid())
+  clubId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("member") // owner | admin | member
+  joinedAt DateTime @default(now())
+
+  @@unique([clubId, userId])
+}
+
+model Challenge {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  ruleType    String // distance | time | elevation | streak | social | purchase
+  ruleConfig  Json // { target_distance_m, target_streak_days, target_cashback, ... }
+  startsAt    DateTime
+  endsAt      DateTime
+  prizeType   String? // badge | premium_month | merch | teniscash | discount_coupon
+  prizeValue  Float? // valor em TenisCash ou desconto se prizeType bater
+  sponsorId   String? // ID de marca / fornecedor patrocinador
+  visibility  String   @default("public")
+  createdAt   DateTime @default(now())
+
+  participations ChallengeParticipation[]
+}
+
+model ChallengeParticipation {
+  id            String    @id @default(cuid())
+  challengeId   String
+  challenge     Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progressValue Float     @default(0) // depende do ruleType
+  completedAt   DateTime?
+  joinedAt      DateTime  @default(now())
+
+  @@unique([challengeId, userId])
+}
+
+model TrainingPlan {
+  id            String   @id @default(cuid())
+  goalType      String // 5k, 10k, 21k, 42k, tennis_endurance, padel_strength, custom
+  level         String // beginner | intermediate | advanced
+  durationWeeks Int
+  authorId      String?
+  version       String   @default("1.0")
+  isOfficial    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  workouts  Workout[]
+  userPlans UserPlan[]
+}
+
+model Workout {
+  id              String       @id @default(cuid())
+  planId          String
+  plan            TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  weekNumber      Int
+  dayOfWeek       Int // 1-7
+  workoutType     String // easy | tempo | intervals | long | rest | cross
+  targetDistanceM Float?
+  targetDurationS Int?
+  description     String?      @db.Text
+
+  steps WorkoutStep[]
+}
+
+model WorkoutStep {
+  id          String  @id @default(cuid())
+  workoutId   String
+  workout     Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  sequence    Int
+  stepType    String // warmup | main | recovery | cooldown
+  durationS   Int?
+  distanceM   Float?
+  targetZone  String? // Z1 | Z2 | Z3 | Z4 | Z5
+  repetitions Int?
+
+  @@unique([workoutId, sequence])
+}
+
+model UserPlan {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           TrainingPlan @relation(fields: [planId], references: [id])
+  startedAt      DateTime
+  endsAt         DateTime
+  status         String       @default("active") // active | completed | abandoned
+  adherenceScore Float? // 0-100 % de aderência
+}
+
+model SafetyContact {
+  id               String  @id @default(cuid())
+  userId           String
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  phone            String?
+  email            String?
+  relationship     String?
+  notifyOnLive     Boolean @default(true)
+  notifyOnDistress Boolean @default(true)
+}
+
+model LiveTrackingSession {
+  id             String    @id @default(cuid())
+  activityId     String
+  activity       Activity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  ownerId        String
+  owner          User      @relation("liveTrackingOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  shareTokenHash String    @unique // hash do token, NÃO o token cru
+  startedAt      DateTime  @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  viewerCount    Int       @default(0)
+
+  @@index([expiresAt])
+}
+
+model BadgeEarned {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeKey        String // "5k_club", "marathon", "100km_month", "first_purchase_apex", ...
+  earnedAt        DateTime @default(now())
+  xpAwarded       Int      @default(0)
+  // TenisCash creditado por badge (loop economia loja↔app)
+  cashbackAwarded Float    @default(0)
+  metadata        Json?
+
+  @@unique([userId, badgeKey])
 }

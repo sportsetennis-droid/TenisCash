@@ -1,9 +1,12 @@
 // =====================================================================
-// APEX SPORT — AI Coach Service
+// APEX COACH — Coach IA do app esportivo (unificado ao TenisCash)
 // =====================================================================
 // Coach conversacional baseado em Claude.
-// Inputs: histórico de atividades, dados de wearable, objetivos.
-// Outputs: briefing diário, ajuste de plano, análise pós-treino.
+// Inputs: histórico de atividades, dados de wearable, objetivos do atleta.
+// Outputs: briefing diário, ajuste de plano, análise pós-treino, chat.
+//
+// O mesmo atleta da loja Sports & Tennis recebe coaching aqui.
+// Insights são personalizados com base no User + AthleteProfile + Activity.
 // =====================================================================
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -12,17 +15,18 @@ const MODEL = process.env.APEX_COACH_MODEL || 'claude-sonnet-4-5-20251029';
 
 function isConfigured() { return !!process.env.ANTHROPIC_API_KEY; }
 
-const COACH_SYSTEM = `Você é o APEX COACH — assistente esportivo conversacional pro APEX SPORT app.
+const COACH_SYSTEM = `Você é o APEX COACH — assistente esportivo conversacional do app Sports & Tennis / APEX SPORT.
 
 Sua função: ajudar atletas amadores e intermediários a treinarem melhor, recuperarem melhor, e atingirem objetivos.
 
 REGRAS:
 - Você dá insights de TREINO, não diagnóstico médico
-- Sempre rotule: "isso é uma sugestão de treino, não orientação médica. Em caso de dor ou sintoma, procure um profissional de saúde"
+- Sempre rotule no final: "Isso é uma sugestão de treino, não orientação médica. Em caso de dor ou sintoma, procure um profissional de saúde."
 - Use linguagem direta, PT-BR informal mas técnico quando preciso
 - Adapte tom ao nível do atleta (beginner = mais didático; advanced = mais técnico)
 - Personalize com dados do usuário se disponíveis (idade, peso, HRV, sono, carga)
 - Nunca prescreva calorias / dieta sem disclaimer de nutricionista
+- Pode sugerir produtos da loja Sports & Tennis quando fizer sentido (ex: "tênis com mais amortecimento pra longão"), sem empurrar venda
 
 Estilo:
 - Frases curtas
@@ -30,9 +34,6 @@ Estilo:
 - Nunca repete o que o usuário disse
 - Pergunta antes de assumir`;
 
-/**
- * Briefing diário pro usuário, baseado em score de recuperação.
- */
 async function dailyBriefing({ userName, recoveryScore, lastActivity, weeklyLoad, weather, todayWorkout }) {
   if (!isConfigured()) return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -63,9 +64,6 @@ Gere briefing curto (4-6 linhas) com:
   }
 }
 
-/**
- * Análise pós-treino — explica o que aconteceu + recomenda próximo passo.
- */
 async function postWorkoutAnalysis({ activity, comparison }) {
   if (!isConfigured()) return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -98,9 +96,6 @@ Análise em 3 partes:
   }
 }
 
-/**
- * Chat livre — usuário manda pergunta, coach responde com contexto.
- */
 async function chat({ userMessage, userContext, history = [] }) {
   if (!isConfigured()) return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
