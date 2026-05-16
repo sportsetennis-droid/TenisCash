@@ -184,7 +184,7 @@
     <button class="nav-item" data-page="sell" onclick="goPage('sell')">Vender</button>
     <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Catálogo</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
-    <button class="nav-item nav-seller-only" data-page="clockin" onclick="goPage('clockin')" style="display:none;">Ponto</button>
+    <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
     <button class="nav-item nav-seller-only" data-page="commissions" onclick="goPage('commissions')" style="display:none;">Comissões</button>
     <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
   </nav>
@@ -285,15 +285,27 @@
 
   <!-- PONTO -->
   <div class="page" id="page-clockin">
-    <h2 class="page-title">Ponto digital</h2>
-    <p class="page-subtitle">Bater entrada, saída, intervalo. GPS obrigatório.</p>
+    <h2 class="page-title">Bater ponto</h2>
+    <p class="page-subtitle">Vendedor escolhe seu nome, digita PIN pessoal e bate. GPS obrigatório.</p>
+
     <div class="card">
-      <div id="clockStatus" style="font-size:14px;margin-bottom:12px;">Carregando...</div>
+      <div class="form-group">
+        <label>Vendedor</label>
+        <select id="clockVendor" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;font-size:16px;" onchange="onClockVendorChange()">
+          <option value="">— selecione —</option>
+        </select>
+      </div>
+      <div class="form-group" id="clockPinGroup" style="display:none;">
+        <label>PIN do vendedor</label>
+        <input type="password" id="clockPin" placeholder="••••" maxlength="6" inputmode="numeric" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;letter-spacing:6px;">
+      </div>
+      <div id="clockStatus" style="font-size:14px;margin-bottom:12px;color:#8e8e93;">Selecione vendedor pra ver pontos do dia</div>
       <div class="clock-grid" id="clockButtons"></div>
     </div>
+
     <div class="card" style="margin-top:12px;">
       <h3 style="margin-bottom:8px;">Pontos batidos hoje</h3>
-      <div id="clockToday"></div>
+      <div id="clockToday" style="font-size:13px;color:#8e8e93;">—</div>
     </div>
   </div>
 
@@ -752,8 +764,33 @@ async function checkInventory(id, name) {
 
 // ============== PONTO ==============
 async function loadClockin() {
+  // Popula dropdown com vendedores da loja ativa
+  if (!activeStore?.id) return;
   try {
-    const d = await api('/api/seller/clockin/today');
+    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    const sel = document.getElementById('clockVendor');
+    sel.innerHTML = '<option value="">— selecione —</option>' + (d.sellers || []).map(s =>
+      `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
+    ).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function onClockVendorChange() {
+  const vendorId = document.getElementById('clockVendor').value;
+  const pinGroup = document.getElementById('clockPinGroup');
+  if (!vendorId) {
+    pinGroup.style.display = 'none';
+    document.getElementById('clockStatus').textContent = 'Selecione vendedor pra ver pontos do dia';
+    document.getElementById('clockButtons').innerHTML = '';
+    document.getElementById('clockToday').innerHTML = '—';
+    return;
+  }
+  pinGroup.style.display = 'block';
+  document.getElementById('clockPin').value = '';
+  document.getElementById('clockPin').focus();
+
+  try {
+    const d = await api('/api/seller/clockin/today-of?vendorId=' + vendorId);
     const s = d.summary;
     document.getElementById('clockStatus').innerHTML = `
       Trabalhado: <strong>${Math.floor(s.workedMinutes / 60)}h ${s.workedMinutes % 60}min</strong> ·
@@ -776,21 +813,33 @@ async function loadClockin() {
 }
 
 async function doClockIn(type) {
+  const vendorId = document.getElementById('clockVendor').value;
+  const pin = document.getElementById('clockPin').value;
+  if (!vendorId) { alert('Selecione o vendedor.'); return; }
+  if (!pin) { alert('Digite o PIN do vendedor.'); document.getElementById('clockPin').focus(); return; }
   if (!navigator.geolocation) { alert('Seu navegador não tem GPS'); return; }
   if (!confirm('Confirmar bater ponto: ' + type + '?')) return;
+
   navigator.geolocation.getCurrentPosition(async pos => {
     try {
-      await api('/api/seller/clockin', {
+      const r = await api('/api/seller/clockin-as', {
         method: 'POST',
         body: JSON.stringify({
+          vendorId,
+          pin,
           type,
-          storeId: activeStore?.id || me.storeId,
+          storeId: activeStore?.id,
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
         }),
       });
-      loadClockin();
-    } catch (e) { alert('Erro: ' + e.message); }
+      alert(`✓ Ponto registrado: ${r.vendor.name} — ${type}`);
+      document.getElementById('clockPin').value = '';
+      // Recarrega histórico
+      onClockVendorChange();
+    } catch (e) {
+      alert('Erro: ' + e.message);
+    }
   }, err => { alert('Não conseguimos pegar GPS: ' + err.message); });
 }
 

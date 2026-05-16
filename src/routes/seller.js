@@ -106,6 +106,97 @@ function summarizeToday(clockIns, now = new Date()) {
   };
 }
 
+// =====================================================================
+// BATER PONTO COMO VENDEDOR (a partir do PDV institucional)
+// Operador escolhe o vendedor, vendedor digita PIN pessoal pra confirmar
+// =====================================================================
+router.post('/clockin-as', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { vendorId, pin, type, latitude, longitude, storeId, note } = req.body || {};
+
+    if (!vendorId) return res.status(400).json({ error: 'Selecione o vendedor' });
+    if (!pin) return res.status(400).json({ error: 'Vendedor precisa digitar PIN' });
+
+    const allowed = new Set(['entry', 'break_start', 'break_end', 'exit']);
+    if (!type || !allowed.has(type)) {
+      return res.status(400).json({ error: 'Tipo inválido' });
+    }
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return res.status(400).json({ error: 'GPS obrigatório' });
+    }
+
+    const vendor = await prisma.user.findUnique({
+      where: { id: vendorId },
+      include: { store: true },
+    });
+    if (!vendor || !vendor.active) return res.status(404).json({ error: 'Vendedor não encontrado' });
+    if (vendor.role !== 'seller') return res.status(400).json({ error: 'Selecionado não é vendedor' });
+
+    // Confere PIN do vendedor (não do operador logado)
+    const ok = await bcrypt.compare(pin, vendor.pin || '');
+    if (!ok) return res.status(401).json({ error: 'PIN incorreto' });
+
+    const finalStoreId = storeId || vendor.storeId;
+
+    // Estado anterior do dia
+    const now = new Date();
+    const { startUtc, endUtc } = recifeDayBounds(now);
+    const today = await prisma.clockIn.findMany({
+      where: { userId: vendor.id, timestamp: { gte: startUtc, lt: endUtc } },
+      orderBy: { timestamp: 'asc' },
+      select: { id: true, type: true, timestamp: true },
+    });
+    const summary = summarizeToday(today, now).summary;
+    if (!summary.allowedNext.includes(type)) {
+      return res.status(400).json({ error: `Ação "${type}" não permitida agora. Disponível: ${summary.allowedNext.join(', ')}` });
+    }
+
+    const created = await prisma.clockIn.create({
+      data: {
+        userId: vendor.id,
+        storeId: finalStoreId,
+        type,
+        latitude,
+        longitude,
+        note: note || null,
+      },
+    });
+
+    res.json({
+      ok: true,
+      clockInId: created.id,
+      vendor: { id: vendor.id, name: vendor.name },
+      type,
+      at: created.timestamp,
+    });
+  } catch (err) {
+    console.error('Erro clockin-as:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// PONTO DO DIA — opcionalmente de um vendedor específico (PDV usa)
+// =====================================================================
+router.get('/clockin/today-of', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const vendorId = req.query.vendorId;
+    if (!vendorId) return res.status(400).json({ error: 'vendorId obrigatório' });
+
+    const now = new Date();
+    const { startUtc, endUtc } = recifeDayBounds(now);
+    const items = await prisma.clockIn.findMany({
+      where: { userId: vendorId, timestamp: { gte: startUtc, lt: endUtc } },
+      orderBy: { timestamp: 'asc' },
+      select: { id: true, type: true, timestamp: true },
+    });
+    res.json(summarizeToday(items, now));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const { type, storeId, latitude, longitude, note } = req.body || {};
