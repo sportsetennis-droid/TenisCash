@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="0">
 <title>Portal Sports & Tennis — Lojas</title>
 <link rel="manifest" href="/manifest.json">
 <style>
@@ -783,22 +786,23 @@ function setInvMode(mode) {
   document.getElementById('invModeStorePane').style.display = isProd ? 'none' : 'block';
   document.getElementById('invDetails').innerHTML = '';
 
-  // Sempre repopula o dropdown ao entrar no modo store (e quando ainda só tem a opção placeholder)
-  if (!isProd) {
-    const sel = document.getElementById('invStoreSelect');
-    if (sel.options.length <= 1) populateInvStoreSelect();
-  }
+  // Sempre repopula o dropdown ao entrar no modo store
+  if (!isProd) populateInvStoreSelect();
 }
 
 async function populateInvStoreSelect() {
+  console.log('[populateInvStoreSelect] start');
   try {
     const d = await api('/api/seller/stores');
+    console.log('[populateInvStoreSelect] got', d);
     const sel = document.getElementById('invStoreSelect');
+    if (!sel) { console.error('select element not found'); return; }
     sel.innerHTML = '<option value="">— escolha a loja —</option>' + (d.stores || []).map(s =>
       `<option value="${s.id}">${s.name}</option>`
     ).join('');
     if (activeStore?.id) sel.value = activeStore.id;
-  } catch (e) { console.error(e); }
+    console.log('[populateInvStoreSelect] done, options:', sel.options.length);
+  } catch (e) { console.error('[populateInvStoreSelect] ERROR:', e); }
 }
 
 let invSearchTimer;
