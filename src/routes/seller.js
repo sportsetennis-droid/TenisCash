@@ -763,26 +763,93 @@ router.get('/commissions', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 // ESTOQUE ENTRE LOJAS — vendedor consulta disponibilidade em outras unidades
 // =====================================================================
+// Estoque de um produto em TODAS as lojas (matriz tamanho × loja)
 router.get('/inventory/check', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const productId = req.query.productId;
     if (!productId) return res.status(400).json({ error: 'productId é obrigatório' });
 
-    const sizes = await prisma.productSize.findMany({
-      where: { productId },
-      orderBy: { size: 'asc' },
-    });
+    const [sizes, stores] = await Promise.all([
+      prisma.productSize.findMany({
+        where: { productId },
+        orderBy: { size: 'asc' },
+        include: {
+          storeStocks: { include: { store: { select: { id: true, name: true, code: true } } } },
+        },
+      }),
+      prisma.store.findMany({ where: { active: true }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } }),
+    ]);
 
-    // Sem multi-loja por tamanho ainda; retorna estoque agregado por tamanho.
-    res.json({
-      productId,
-      sizes: sizes.map(s => ({
+    const result = sizes.map(s => {
+      const byStore = {};
+      stores.forEach(st => { byStore[st.id] = 0; });
+      s.storeStocks.forEach(ss => { byStore[ss.storeId] = ss.stock; });
+      return {
         size: s.size,
         barcode: s.barcode,
-        stock: s.stock || 0,
-      })),
-      totalStock: sizes.reduce((sum, s) => sum + (s.stock || 0), 0),
+        stocksByStore: byStore,
+        totalStock: Object.values(byStore).reduce((a, b) => a + b, 0),
+      };
     });
+
+    res.json({
+      productId,
+      stores,
+      sizes: result,
+      totalStock: result.reduce((sum, s) => sum + s.totalStock, 0),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Busca PRODUTOS com estoque em uma loja específica
+router.get('/inventory/by-store', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const storeId = req.query.storeId;
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
+
+    // Acha productSizeIds com stock > 0 nessa loja
+    const stocks = await prisma.storeStock.findMany({
+      where: { storeId, stock: { gt: 0 } },
+      select: { productSizeId: true, stock: true },
+      take: 5000, // limite de segurança
+    });
+
+    if (!stocks.length) return res.json({ products: [], totalSkus: 0 });
+
+    // Pega os ProductSize → resolve produto
+    const sizes = await prisma.productSize.findMany({
+      where: { id: { in: stocks.map(s => s.productSizeId) } },
+      include: {
+        product: {
+          select: { id: true, sku: true, name: true, brand: true, category: true, price: true, promoPrice: true, imageUrl: true, active: true },
+        },
+      },
+    });
+
+    // Agrupa por produto, calcula estoque total no escopo da loja
+    const byProduct = new Map();
+    sizes.forEach(s => {
+      if (!s.product || !s.product.active) return;
+      if (q) {
+        const hay = `${s.product.name} ${s.product.brand} ${s.product.sku}`.toLowerCase();
+        if (!hay.includes(q.toLowerCase())) return;
+      }
+      const stockHere = stocks.find(x => x.productSizeId === s.id)?.stock || 0;
+      const cur = byProduct.get(s.product.id) || { ...s.product, sizes: [], totalStock: 0 };
+      cur.sizes.push({ size: s.size, barcode: s.barcode, stock: stockHere });
+      cur.totalStock += stockHere;
+      byProduct.set(s.product.id, cur);
+    });
+
+    const products = [...byProduct.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, limit);
+
+    res.json({ products, totalSkus: stocks.length, count: products.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -182,7 +182,7 @@
   <nav class="nav" id="mainNav">
     <button class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')">Início</button>
     <button class="nav-item" data-page="sell" onclick="goPage('sell')">Vender</button>
-    <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Catálogo</button>
+    <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Curadoria</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
     <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
     <button class="nav-item" data-page="ranking" onclick="goPage('ranking')">Ranking</button>
@@ -263,24 +263,49 @@
     </div>
   </div>
 
-  <!-- CATÁLOGO -->
+  <!-- CURADORIA (ex-Catálogo) -->
   <div class="page" id="page-catalog">
-    <h2 class="page-title">Catálogo</h2>
+    <h2 class="page-title">Curadoria</h2>
+    <p class="page-subtitle">Tudo que está cadastrado e curado na rede (com foto, descrição, preço).</p>
     <div class="search-bar">
-      <input type="text" id="catSearchInput" placeholder="Buscar produto…" oninput="onCatalogSearch()">
+      <input type="text" id="catSearchInput" placeholder="Buscar por nome, marca ou código…" oninput="onCatalogSearch()">
     </div>
     <div id="catalogResults" class="grid grid-3"></div>
   </div>
 
-  <!-- ESTOQUE -->
+  <!-- ESTOQUE — busca global + busca por loja -->
   <div class="page" id="page-inventory">
-    <h2 class="page-title">Consultar estoque</h2>
-    <p class="page-subtitle">Busque um produto pra ver quantos estão disponíveis por tamanho.</p>
-    <div class="search-bar">
-      <input type="text" id="invSearchInput" placeholder="Buscar produto…" oninput="onInventorySearch()">
+    <h2 class="page-title">Estoque</h2>
+    <p class="page-subtitle">Busque um produto e veja em quais lojas está disponível, ou escolha uma loja e veja o estoque dela.</p>
+
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-small" id="invModeA" onclick="setInvMode('product')">🔎 Busca por produto</button>
+        <button class="btn btn-secondary btn-small" id="invModeB" onclick="setInvMode('store')">🏬 Estoque de uma loja</button>
+      </div>
+
+      <!-- MODO A: busca produto, ve estoque global -->
+      <div id="invModeProductPane">
+        <div class="search-bar">
+          <input type="text" id="invSearchInput" placeholder="Nome, marca ou código…" oninput="onInventorySearch()">
+        </div>
+        <div id="invResults" class="grid grid-3"></div>
+      </div>
+
+      <!-- MODO B: escolhe loja, lista produtos com estoque la -->
+      <div id="invModeStorePane" style="display:none;">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <select id="invStoreSelect" style="flex:1;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+            <option value="">— escolha a loja —</option>
+          </select>
+          <input type="text" id="invStoreQ" placeholder="Filtrar dentro da loja…" style="flex:1;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
+          <button class="btn btn-small" onclick="loadStoreInventory()">Buscar</button>
+        </div>
+        <div id="invStoreResults"></div>
+      </div>
     </div>
-    <div id="invResults" class="grid grid-3"></div>
-    <div id="invDetails" style="margin-top:16px;"></div>
+
+    <div id="invDetails"></div>
   </div>
 
   <!-- PONTO -->
@@ -743,6 +768,31 @@ async function showProduct(id) {
 function closeModal() { document.getElementById('productModal').classList.remove('show'); }
 
 // ============== ESTOQUE ==============
+let invMode = 'product'; // 'product' | 'store'
+
+function setInvMode(mode) {
+  invMode = mode;
+  const isProd = mode === 'product';
+  document.getElementById('invModeA').className = isProd ? 'btn btn-small' : 'btn btn-secondary btn-small';
+  document.getElementById('invModeB').className = isProd ? 'btn btn-secondary btn-small' : 'btn btn-small';
+  document.getElementById('invModeProductPane').style.display = isProd ? 'block' : 'none';
+  document.getElementById('invModeStorePane').style.display = isProd ? 'none' : 'block';
+  document.getElementById('invDetails').innerHTML = '';
+
+  if (!isProd && !document.getElementById('invStoreSelect').children.length > 1) populateInvStoreSelect();
+}
+
+async function populateInvStoreSelect() {
+  try {
+    const d = await api('/api/seller/stores');
+    const sel = document.getElementById('invStoreSelect');
+    sel.innerHTML = '<option value="">— escolha a loja —</option>' + (d.stores || []).map(s =>
+      `<option value="${s.id}">${s.name}</option>`
+    ).join('');
+    if (activeStore?.id) sel.value = activeStore.id;
+  } catch (e) { console.error(e); }
+}
+
 let invSearchTimer;
 async function onInventorySearch() {
   clearTimeout(invSearchTimer);
@@ -768,25 +818,77 @@ async function onInventorySearch() {
 async function checkInventory(id, name) {
   try {
     const d = await api('/api/seller/inventory/check?productId=' + id);
+    const stores = d.stores || [];
+
+    // Cabeçalho: tamanho + uma coluna por loja + total
+    const head = `<tr style="background:#f5f5f7;">
+      <th style="padding:8px 10px;text-align:left;font-size:12px;">Tamanho</th>
+      <th style="padding:8px 10px;text-align:left;font-size:12px;">Código</th>
+      ${stores.map(s => `<th style="padding:8px 10px;text-align:center;font-size:12px;">${s.code}</th>`).join('')}
+      <th style="padding:8px 10px;text-align:right;font-size:12px;">Total</th>
+    </tr>`;
+
+    const rows = (d.sizes || []).map(s => {
+      const cells = stores.map(st => {
+        const v = s.stocksByStore?.[st.id] || 0;
+        const color = v > 0 ? '#0a843d' : '#c7c7cc';
+        return `<td style="padding:8px 10px;text-align:center;border-bottom:1px solid #f5f5f7;color:${color};font-weight:${v > 0 ? '600' : '400'}">${v}</td>`;
+      }).join('');
+      return `<tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;font-weight:600;">${s.size}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;font-family:monospace;font-size:12px;">${s.barcode || '—'}</td>
+        ${cells}
+        <td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:700;">${s.totalStock}</td>
+      </tr>`;
+    }).join('');
+
     document.getElementById('invDetails').innerHTML = `
-      <div class="card">
+      <div class="card" style="margin-top:16px;">
         <h3 style="margin-bottom:8px;">${name}</h3>
-        <p class="page-subtitle">Estoque total: ${d.totalStock || 0} un.</p>
-        ${(d.sizes || []).length ? `
-          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
-            <thead><tr style="background:#f5f5f7;text-align:left;">
-              <th style="padding:6px 10px;font-size:12px;">Tamanho</th>
-              <th style="padding:6px 10px;font-size:12px;">Código de barras</th>
-              <th style="padding:6px 10px;font-size:12px;text-align:right;">Estoque</th>
-            </tr></thead>
-            <tbody>
-              ${d.sizes.map(s => `<tr><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;">${s.size}</td><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;font-family:monospace;">${s.barcode || '—'}</td><td style="padding:8px 10px;border-bottom:1px solid #f5f5f7;text-align:right;font-weight:600;">${s.stock || 0}</td></tr>`).join('')}
-            </tbody>
+        <p class="page-subtitle">Estoque total na rede: <strong>${d.totalStock} un.</strong></p>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;min-width:520px;">
+            <thead>${head}</thead>
+            <tbody>${rows || '<tr><td colspan="999" style="padding:20px;text-align:center;color:#8e8e93;">Sem tamanhos cadastrados</td></tr>'}</tbody>
           </table>
-        ` : '<p style="color:#8e8e93;">Sem variação de tamanho.</p>'}
+        </div>
+        <p style="font-size:11px;color:#8e8e93;margin-top:8px;">LOJA01: Bessa · LOJA02: Tambaú · LOJA03: Rainha · LOJA04: DNA</p>
       </div>
     `;
   } catch (e) { alert(e.message); }
+}
+
+async function loadStoreInventory() {
+  const storeId = document.getElementById('invStoreSelect').value;
+  const q = document.getElementById('invStoreQ').value;
+  if (!storeId) { alert('Escolha a loja'); return; }
+  const el = document.getElementById('invStoreResults');
+  el.innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
+  try {
+    const d = await api(`/api/seller/inventory/by-store?storeId=${storeId}&q=${encodeURIComponent(q)}&limit=50`);
+    if (!d.products?.length) {
+      el.innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Nada encontrado nessa loja.</p>';
+      return;
+    }
+    el.innerHTML = `
+      <p style="font-size:13px;color:#8e8e93;margin-bottom:8px;">Mostrando ${d.count} produtos · ${d.totalSkus} SKUs com estoque nessa loja</p>
+      <div class="grid grid-3">
+        ${d.products.map(p => `
+          <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
+            <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+            <div class="product-info">
+              <div class="product-brand">${p.brand || ''}</div>
+              <div class="product-name">${p.name || ''}</div>
+              <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+              <div style="font-size:11px;color:#0a843d;font-weight:600;margin-top:4px;">${p.totalStock} un. em estoque</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+  }
 }
 
 // ============== PONTO ==============
