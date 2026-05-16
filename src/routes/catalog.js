@@ -27,17 +27,29 @@ function optionalCatalogAuth(req, res, next) {
 
 router.get('/products', optionalCatalogAuth, async (req, res) => {
   try {
-    const search = String(req.query.search || '').trim();
+    const search = String(req.query.search || req.query.q || '').trim();
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
     const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
-    const pageSize = Math.min(30, Math.max(1, parseInt(req.query.pageSize || '12', 10) || 12));
+    const pageSize = Math.min(40, Math.max(1, parseInt(req.query.pageSize || req.query.limit || '12', 10) || 12));
     const skip = (page - 1) * pageSize;
+
+    // Filtros estruturados da árvore Sports & Tennis (aiContext.classification)
+    const type = String(req.query.type || '').trim();
+    const gender = String(req.query.gender || '').trim();
+    const modality = String(req.query.modality || '').trim();
+    const tier = String(req.query.tier || '').trim();
+    const aiFilters = [];
+    if (type) aiFilters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
+    if (gender) aiFilters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
+    if (modality) aiFilters.push({ aiContext: { path: ['classification', 'modality'], equals: modality } });
+    if (tier) aiFilters.push({ aiContext: { path: ['classification', 'tier'], equals: tier } });
 
     const where = {
       active: true,
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
+      ...(aiFilters.length ? { AND: aiFilters } : {}),
       ...(search
         ? {
             OR: [

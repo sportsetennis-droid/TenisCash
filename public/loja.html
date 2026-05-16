@@ -1513,12 +1513,15 @@ let catSearchTimer;
 async function onCatalogSearch() {
   clearTimeout(catSearchTimer);
   const free = document.getElementById('catSearchInput').value.trim();
-  const tree = buildFilterQuery();
-  const q = [tree, free].filter(Boolean).join(' ').trim();
   catSearchTimer = setTimeout(async () => {
     try {
-      const path = q ? '/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=24' : '/api/catalog/products?limit=24';
-      const d = await api(path);
+      const params = ['limit=24'];
+      if (free) params.push('q=' + encodeURIComponent(free));
+      if (_filterType) params.push('type=' + encodeURIComponent(_filterType));
+      if (_filterGender) params.push('gender=' + encodeURIComponent(_filterGender));
+      if (_filterCategory) params.push('modality=' + encodeURIComponent(_filterCategory));
+      if (_filterTier) params.push('tier=' + encodeURIComponent(_filterTier));
+      const d = await api('/api/catalog/products?' + params.join('&'));
       renderCatalog(d.products || d.items || []);
     } catch (e) { console.error(e); }
   }, 200);
