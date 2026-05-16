@@ -223,6 +223,14 @@
   .summary-row .label { color: var(--text-soft); }
   .summary-row .value { font-weight: 700; }
 
+  /* Sell screen: linhas com 2 colunas lado a lado */
+  .sell-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+  .sticky-cart { position: sticky; top: 110px; max-height: calc(100vh - 130px); display: flex; flex-direction: column; }
+  @media (max-width: 900px) {
+    .sell-row { grid-template-columns: 1fr; }
+    .sticky-cart { position: static; max-height: none; }
+  }
+
   /* Avatar helper text */
   .row { display: flex; align-items: center; gap: 12px; }
 
@@ -384,73 +392,76 @@
   <!-- VENDER -->
   <div class="page" id="page-sell">
     <h2 class="page-title">Nova venda</h2>
-    <p class="page-subtitle">Adicione produtos, escolha vendedor, identifique cliente, finalize.</p>
+    <p class="page-subtitle">Busque produtos, monte carrinho, escolha vendedor + cliente, finalize.</p>
 
-    <!-- CARD: Buscar produto -->
-    <div class="card" style="margin-bottom:14px;">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔎</span>Buscar produto</h3>
-      <div class="search-bar" style="margin-bottom:0;">
-        <span style="font-size:18px;">🔍</span>
-        <input type="text" id="sellSearchInput" placeholder="Nome, marca, código de barras…" oninput="onSellSearch()">
-      </div>
-      <div id="sellSearchResults" class="grid grid-3" style="margin-top:14px;"></div>
-    </div>
-
-    <!-- CARD: Carrinho -->
-    <div class="card" style="margin-bottom:14px;">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🛒</span>Carrinho <span id="cartCount" style="font-size:13px;color:var(--text-muted);font-weight:500;"></span></h3>
-      <div id="cartList"></div>
-      <div id="cartEmpty" style="text-align:center;color:var(--text-muted);padding:24px;font-size:14px;">🛒 Vazio. Adicione produtos buscando acima.</div>
-    </div>
-
-    <!-- CARD: Vendedor que atendeu -->
-    <div class="card" style="margin-bottom:14px;">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">👤</span>Quem atendeu o cliente *</h3>
-      <div id="sellVendorCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
-      <select id="sellVendor" style="display:none;"></select>
-    </div>
-
-    <!-- CARD: Cliente TenisCash -->
-    <div class="card" style="margin-bottom:14px;">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">📱</span>Cliente TenisCash</h3>
-      <div class="form-group" style="margin-bottom:0;">
-        <input type="tel" id="sellCustomerPhone" placeholder="Telefone com DDD (ex: 83912345678)" oninput="onCustomerLookup()" style="font-size:16px;">
-        <div id="sellCustomerInfo" style="margin-top:10px;font-size:14px;"></div>
-        <div id="sellTcUsedGroup" style="display:none;margin-top:12px;">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">TenisCash a usar (R$)</label>
-          <input type="number" id="sellTcUsed" step="0.01" value="0" style="font-size:16px;">
+    <!-- LINHA 1: Buscar produto | Carrinho (lado a lado) -->
+    <div class="sell-row" style="margin-bottom:14px;">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔎</span>Buscar produto</h3>
+        <div class="search-bar" style="margin-bottom:0;">
+          <span style="font-size:18px;">🔍</span>
+          <input type="text" id="sellSearchInput" placeholder="Nome, marca, código de barras…" oninput="onSellSearch()">
         </div>
+        <div id="sellSearchResults" class="grid grid-2" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="card sticky-cart">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🛒</span>Carrinho <span id="cartCount" style="font-size:13px;color:var(--text-muted);font-weight:500;"></span></h3>
+        <div id="cartList" style="max-height:480px;overflow-y:auto;"></div>
+        <div id="cartEmpty" style="text-align:center;color:var(--text-muted);padding:32px 16px;font-size:14px;">🛒 Vazio. Clique em um produto à esquerda pra adicionar.</div>
       </div>
     </div>
 
-    <!-- CARD: Forma de pagamento (botões grandes) -->
-    <div class="card" style="margin-bottom:14px;">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">💳</span>Forma de pagamento</h3>
-      <div id="sellPaymentCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">
-        <div class="payment-card active" data-method="pix" onclick="selectPayment('pix')">
-          <div class="payment-icon">⚡</div><div class="payment-label">PIX</div>
-        </div>
-        <div class="payment-card" data-method="credit_card" onclick="selectPayment('credit_card')">
-          <div class="payment-icon">💳</div><div class="payment-label">Crédito</div>
-        </div>
-        <div class="payment-card" data-method="debit_card" onclick="selectPayment('debit_card')">
-          <div class="payment-icon">💲</div><div class="payment-label">Débito</div>
-        </div>
-        <div class="payment-card" data-method="cash" onclick="selectPayment('cash')">
-          <div class="payment-icon">💵</div><div class="payment-label">Dinheiro</div>
-        </div>
-        <div class="payment-card" data-method="other" onclick="selectPayment('other')">
-          <div class="payment-icon">📝</div><div class="payment-label">Outro</div>
+    <!-- LINHA 2: Vendedor | Cliente (lado a lado) -->
+    <div class="sell-row" style="margin-bottom:14px;">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">👤</span>Quem atendeu o cliente *</h3>
+        <div id="sellVendorCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;"></div>
+        <select id="sellVendor" style="display:none;"></select>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">📱</span>Cliente TenisCash</h3>
+        <div class="form-group" style="margin-bottom:0;">
+          <input type="tel" id="sellCustomerPhone" placeholder="Telefone com DDD (ex: 83912345678)" oninput="onCustomerLookup()" style="font-size:16px;">
+          <div id="sellCustomerInfo" style="margin-top:10px;font-size:14px;"></div>
+          <div id="sellTcUsedGroup" style="display:none;margin-top:12px;">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">TenisCash a usar (R$)</label>
+            <input type="number" id="sellTcUsed" step="0.01" value="0" style="font-size:16px;">
+          </div>
         </div>
       </div>
-      <select id="sellPayment" style="display:none;"><option value="pix">PIX</option></select>
     </div>
 
-    <!-- CARD: Resumo + Finalizar -->
-    <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFF5EB 100%);border:2px solid var(--primary-light);">
-      <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">✅</span>Resumo da venda</h3>
-      <div id="sellSummary" style="margin-bottom:16px;"></div>
-      <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled style="font-size:16px;padding:16px;">Finalizar venda</button>
+    <!-- LINHA 3: Pagamento | Resumo (lado a lado) -->
+    <div class="sell-row">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">💳</span>Forma de pagamento</h3>
+        <div id="sellPaymentCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
+          <div class="payment-card active" data-method="pix" onclick="selectPayment('pix')">
+            <div class="payment-icon">⚡</div><div class="payment-label">PIX</div>
+          </div>
+          <div class="payment-card" data-method="credit_card" onclick="selectPayment('credit_card')">
+            <div class="payment-icon">💳</div><div class="payment-label">Crédito</div>
+          </div>
+          <div class="payment-card" data-method="debit_card" onclick="selectPayment('debit_card')">
+            <div class="payment-icon">💲</div><div class="payment-label">Débito</div>
+          </div>
+          <div class="payment-card" data-method="cash" onclick="selectPayment('cash')">
+            <div class="payment-icon">💵</div><div class="payment-label">Dinheiro</div>
+          </div>
+          <div class="payment-card" data-method="other" onclick="selectPayment('other')">
+            <div class="payment-icon">📝</div><div class="payment-label">Outro</div>
+          </div>
+        </div>
+        <select id="sellPayment" style="display:none;"><option value="pix">PIX</option></select>
+      </div>
+
+      <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFF5EB 100%);border:2px solid var(--primary-light);">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">✅</span>Resumo</h3>
+        <div id="sellSummary" style="margin-bottom:16px;"></div>
+        <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled style="font-size:16px;padding:16px;">Finalizar venda</button>
+      </div>
     </div>
   </div>
 
