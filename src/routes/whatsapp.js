@@ -4,6 +4,7 @@ const { sendCustomMessage, isMetaWhatsAppConfigured, formatPhoneBR } = require('
 const { authMiddleware, adminMiddleware } = require('../middleware');
 
 const router = express.Router();
+const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
 
 function verifySignature(rawBody, signatureHeader, appSecret) {
   if (!rawBody || !signatureHeader || !appSecret) return false;
@@ -17,7 +18,7 @@ router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  const expectedToken = process.env.META_WHATSAPP_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN;
+  const expectedToken = process.env.META_WHATSAPP_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN;
 
   if (mode === 'subscribe' && token && challenge && expectedToken && token === expectedToken) {
     return res.status(200).send(challenge);
