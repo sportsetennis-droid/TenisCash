@@ -244,7 +244,6 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
-    <button class="tab" onclick="switchTab('classification',this)">Classificação IA</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -767,20 +766,78 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <button type="button" class="refresh-btn" id="inv-refresh">↻</button>
     </div>
   </div>
-  <div id="inv-dashboard-wrap" style="margin-bottom:18px"></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-    <input class="search-box" id="inv-brand" placeholder="Marca...">
-    <input class="search-box" id="inv-category" placeholder="Categoria...">
-    <select class="search-box" id="inv-lifecycle">
-      <option value="">Todo lifecycle</option>
-      <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
-      <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
-      <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
-    </select>
-    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
-    <button type="button" class="btn btn-primary" id="inv-filter">Filtrar</button>
+
+  <!-- Sub-abas: Estoque | Classificação IA -->
+  <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+    <button type="button" class="btn" id="inv-sub-stock" onclick="switchInvSub('stock')" style="background:var(--orange);color:#000;font-weight:bold;border-radius:8px 8px 0 0;border-bottom:none;">📦 Estoque</button>
+    <button type="button" class="btn" id="inv-sub-cls" onclick="switchInvSub('cls')" style="border-radius:8px 8px 0 0;border-bottom:none;">🏷️ Classificação IA</button>
   </div>
-  <div id="inv-list-wrap"></div>
+
+  <!-- SUB-ABA: ESTOQUE (original) -->
+  <div id="inv-sub-stock-pane">
+    <div id="inv-dashboard-wrap" style="margin-bottom:18px"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <input class="search-box" id="inv-brand" placeholder="Marca...">
+      <input class="search-box" id="inv-category" placeholder="Categoria...">
+      <select class="search-box" id="inv-lifecycle">
+        <option value="">Todo lifecycle</option>
+        <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
+        <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
+        <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
+      </select>
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
+      <button type="button" class="btn btn-primary" id="inv-filter">Filtrar</button>
+    </div>
+    <div id="inv-list-wrap"></div>
+  </div>
+
+  <!-- SUB-ABA: CLASSIFICAÇÃO IA -->
+  <div id="inv-sub-cls-pane" style="display:none;">
+    <div id="cls-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px;"></div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;padding:14px;background:#fff;border-radius:10px;border:1px solid var(--border);">
+      <div>
+        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIPO</label>
+        <select id="cls-f-type" class="form-input" onchange="loadClsProducts()">
+          <option value="">Todos</option>
+          <option value="Tênis">Tênis</option>
+          <option value="Chuteira">Chuteira</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">GÊNERO</label>
+        <select id="cls-f-gender" class="form-input" onchange="loadClsProducts()">
+          <option value="">Todos</option>
+          <option value="Feminino">Feminino</option>
+          <option value="Masculino">Masculino</option>
+          <option value="Inf. M">Inf. M</option>
+          <option value="Inf. F">Inf. F</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MODALIDADE</label>
+        <select id="cls-f-modality" class="form-input" onchange="loadClsProducts()">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">BUSCAR</label>
+        <input type="text" id="cls-f-q" class="form-input" placeholder="nome, sku, marca" oninput="debounceClsLoad()">
+      </div>
+      <div>
+        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">FILTRO ESPECIAL</label>
+        <select id="cls-f-special" class="form-input" onchange="loadClsProducts()">
+          <option value="">— nenhum —</option>
+          <option value="unclassified">Não classificados</option>
+          <option value="lowConfidence">Baixa confiança (&lt;70%)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="cls-products" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;"></div>
+    <button id="cls-loadmore" class="btn btn-secondary" style="margin-top:12px;display:none;" onclick="loadMoreCls()">Carregar mais</button>
+  </div>
 </div>
 
 <!-- IMAGENS — revisão e seleção de imagem do produto -->
@@ -1135,59 +1192,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </div>
 
 <!-- ============================================================ -->
-<!-- ABA CLASSIFICAÇÃO IA — revisar e editar tipo/genero/modalidade/tier -->
-<!-- ============================================================ -->
-<div class="section" id="tab-classification" style="display:none">
-  <div class="section-head">
-    <h2>Classificação IA — revisão e edição</h2>
-    <p class="muted">Revise e corrija a classificação automática dos produtos na árvore Sports & Tennis.</p>
-  </div>
-
-  <div id="cls-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px;"></div>
-
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;padding:14px;background:#fff;border-radius:10px;border:1px solid var(--border);">
-    <div>
-      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIPO</label>
-      <select id="cls-f-type" class="form-input" onchange="loadClsProducts()">
-        <option value="">Todos</option>
-        <option value="Tênis">Tênis</option>
-        <option value="Chuteira">Chuteira</option>
-        <option value="Outro">Outro</option>
-      </select>
-    </div>
-    <div>
-      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">GÊNERO</label>
-      <select id="cls-f-gender" class="form-input" onchange="loadClsProducts()">
-        <option value="">Todos</option>
-        <option value="Feminino">Feminino</option>
-        <option value="Masculino">Masculino</option>
-        <option value="Inf. M">Inf. M</option>
-        <option value="Inf. F">Inf. F</option>
-      </select>
-    </div>
-    <div>
-      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MODALIDADE</label>
-      <select id="cls-f-modality" class="form-input" onchange="loadClsProducts()">
-        <option value="">Todas</option>
-      </select>
-    </div>
-    <div>
-      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">BUSCAR</label>
-      <input type="text" id="cls-f-q" class="form-input" placeholder="nome, sku, marca" oninput="debounceClsLoad()">
-    </div>
-    <div>
-      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">FILTRO ESPECIAL</label>
-      <select id="cls-f-special" class="form-input" onchange="loadClsProducts()">
-        <option value="">— nenhum —</option>
-        <option value="unclassified">Não classificados</option>
-        <option value="lowConfidence">Baixa confiança (&lt;70%)</option>
-      </select>
-    </div>
-  </div>
-
-  <div id="cls-products" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;"></div>
-  <button id="cls-loadmore" class="btn btn-secondary" style="margin-top:12px;display:none;" onclick="loadMoreCls()">Carregar mais</button>
-</div>
+<!-- (Aba "Classificação IA" foi movida pra dentro do Estoque como sub-aba) -->
 
 <!-- Modal de edição -->
 <div id="cls-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
@@ -5660,17 +5665,34 @@ async function reclassifyWithAI() {
   } catch (e) { alert('Erro: ' + (e.message || e)); }
 }
 
-// Hook switchTab pra carregar quando entrar na aba
-(function hookClsTab() {
-  const orig = window.switchTab;
-  window.switchTab = function(name, btn) {
-    if (typeof orig === 'function') orig(name, btn);
-    if (name === 'classification') {
-      loadClsStats();
-      loadClsProducts();
-    }
-  };
-})();
+// Sub-abas dentro de Estoque (Estoque | Classificação IA)
+function switchInvSub(which) {
+  const stockBtn = document.getElementById('inv-sub-stock');
+  const clsBtn = document.getElementById('inv-sub-cls');
+  const stockPane = document.getElementById('inv-sub-stock-pane');
+  const clsPane = document.getElementById('inv-sub-cls-pane');
+  if (which === 'cls') {
+    clsBtn.style.background = 'var(--orange)';
+    clsBtn.style.color = '#000';
+    clsBtn.style.fontWeight = 'bold';
+    stockBtn.style.background = '';
+    stockBtn.style.color = '';
+    stockBtn.style.fontWeight = '';
+    stockPane.style.display = 'none';
+    clsPane.style.display = 'block';
+    loadClsStats();
+    loadClsProducts();
+  } else {
+    stockBtn.style.background = 'var(--orange)';
+    stockBtn.style.color = '#000';
+    stockBtn.style.fontWeight = 'bold';
+    clsBtn.style.background = '';
+    clsBtn.style.color = '';
+    clsBtn.style.fontWeight = '';
+    stockPane.style.display = 'block';
+    clsPane.style.display = 'none';
+  }
+}
 
 </script>
 </body>
