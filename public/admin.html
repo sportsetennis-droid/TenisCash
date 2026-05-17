@@ -224,7 +224,8 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
   <!-- TABS -->
   <div class="tabs">
-    <button class="tab active" onclick="switchTab('users',this)">Usuários</button>
+    <button class="tab active" onclick="switchTab('home',this)">🏠 Início</button>
+    <button class="tab" onclick="switchTab('users',this)">Usuários</button>
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
@@ -246,8 +247,228 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
   </div>
 
+  <!-- HOME / HUB SECTION -->
+  <div class="section" id="tab-home">
+    <style>
+      .hub-header { background: linear-gradient(135deg, #FF6D00 0%, #FF9248 100%); border-radius: 16px; padding: 28px; color: white; margin-bottom: 24px; }
+      .hub-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px; }
+      .hub-header p { font-size: 14px; opacity: 0.92; margin: 0; }
+      .hub-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 18px; }
+      .hub-stat { background: rgba(255,255,255,0.15); border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+      .hub-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; }
+      .hub-stat-value { font-size: 22px; font-weight: 800; margin-top: 2px; }
+      .hub-cat-title { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text2); font-weight: 700; margin: 26px 0 12px; display: flex; align-items: center; gap: 8px; }
+      .hub-cat-title::after { content: ''; flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
+      .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+      .hub-card { background: #fff; border: 1.5px solid var(--border); border-radius: 14px; padding: 18px; cursor: pointer; transition: all 0.18s; display: flex; flex-direction: column; gap: 6px; text-align: left; position: relative; overflow: hidden; }
+      .hub-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--cat-color, #FF6D00); opacity: 0; transition: opacity 0.15s; }
+      .hub-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(255,109,0,0.15); border-color: var(--cat-color, #FF6D00); }
+      .hub-card:hover::before { opacity: 1; }
+      .hub-card-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
+      .hub-card-title { font-size: 15px; font-weight: 700; color: var(--text); margin-top: 4px; }
+      .hub-card-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
+      .hub-card-badge { display: inline-block; padding: 2px 8px; background: var(--cat-bg, #FFE5D0); color: var(--cat-color, #FF6D00); font-size: 10px; font-weight: 700; border-radius: 8px; margin-top: 6px; align-self: flex-start; }
+    </style>
+
+    <div class="hub-header">
+      <h1>Olá, Douglas 👋</h1>
+      <p>Painel administrativo Sports & Tennis · TenisCash</p>
+      <div class="hub-stats" id="hub-stats">
+        <div class="hub-stat"><div class="hub-stat-label">Produtos ativos</div><div class="hub-stat-value" id="hs-products">—</div></div>
+        <div class="hub-stat"><div class="hub-stat-label">Estoque (un.)</div><div class="hub-stat-value" id="hs-stock">—</div></div>
+        <div class="hub-stat"><div class="hub-stat-label">Clientes TenisCash</div><div class="hub-stat-value" id="hs-users">—</div></div>
+        <div class="hub-stat"><div class="hub-stat-label">Na Nuvemshop</div><div class="hub-stat-value" id="hs-nuvemshop">—</div></div>
+      </div>
+    </div>
+
+    <!-- CATEGORIA: GESTÃO -->
+    <div class="hub-cat-title">👥 Gestão de Pessoas</div>
+    <div class="hub-grid" style="--cat-color:#0066cc;--cat-bg:#e3f2fd;">
+      <button class="hub-card" onclick="switchTabByName('users')">
+        <div class="hub-card-icon">👤</div>
+        <div class="hub-card-title">Usuários</div>
+        <div class="hub-card-desc">Clientes do TenisCash, vendedores, admins</div>
+        <span class="hub-card-badge">CRM</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('sellers')">
+        <div class="hub-card-icon">💼</div>
+        <div class="hub-card-title">Vendedores</div>
+        <div class="hub-card-desc">Cadastro, comissão, performance por loja</div>
+        <span class="hub-card-badge">EQUIPE</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('partners')">
+        <div class="hub-card-icon">🤝</div>
+        <div class="hub-card-title">Parceiros</div>
+        <div class="hub-card-desc">Programa de afiliados + cupons</div>
+        <span class="hub-card-badge">AFILIADOS</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('clockin')">
+        <div class="hub-card-icon">⏰</div>
+        <div class="hub-card-title">Ponto Digital</div>
+        <div class="hub-card-desc">Horas trabalhadas + GPS por vendedor</div>
+        <span class="hub-card-badge">HR</span>
+      </button>
+    </div>
+
+    <!-- CATEGORIA: PRODUTOS -->
+    <div class="hub-cat-title">📦 Produtos e Estoque</div>
+    <div class="hub-grid" style="--cat-color:#FF6D00;--cat-bg:#FFE5D0;">
+      <button class="hub-card" onclick="switchTabByName('catalog')">
+        <div class="hub-card-icon">📚</div>
+        <div class="hub-card-title">Catálogo</div>
+        <div class="hub-card-desc">Todos os produtos cadastrados</div>
+        <span class="hub-card-badge" id="hub-products-count">—</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('inventory')">
+        <div class="hub-card-icon">📊</div>
+        <div class="hub-card-title">Estoque</div>
+        <div class="hub-card-desc">Movimentação + Classificação IA</div>
+        <span class="hub-card-badge">CONTAGEM</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('images')">
+        <div class="hub-card-icon">🖼️</div>
+        <div class="hub-card-title">Imagens</div>
+        <div class="hub-card-desc">Revisar e selecionar foto do produto</div>
+        <span class="hub-card-badge">CURADORIA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('markup')">
+        <div class="hub-card-icon">💰</div>
+        <div class="hub-card-title">Markup & Preços</div>
+        <div class="hub-card-desc">Margem, custo, preço de venda</div>
+        <span class="hub-card-badge">FINANCEIRO</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('suppliers')">
+        <div class="hub-card-icon">🏭</div>
+        <div class="hub-card-title">Fornecedores</div>
+        <div class="hub-card-desc">Marcas, contatos, markup por origem</div>
+        <span class="hub-card-badge">SUPPLY</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('xml')">
+        <div class="hub-card-icon">📄</div>
+        <div class="hub-card-title">XML NF-e</div>
+        <div class="hub-card-desc">Importar notas fiscais dos fornecedores</div>
+        <span class="hub-card-badge">FISCAL</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('labels')">
+        <div class="hub-card-icon">🏷️</div>
+        <div class="hub-card-title">Etiquetas</div>
+        <div class="hub-card-desc">Imprimir preço + código de barras</div>
+        <span class="hub-card-badge">LOJA</span>
+      </button>
+    </div>
+
+    <!-- CATEGORIA: VENDAS -->
+    <div class="hub-cat-title">🛒 Vendas e Marketing</div>
+    <div class="hub-grid" style="--cat-color:#0a843d;--cat-bg:#e8f7ee;">
+      <button class="hub-card" onclick="switchTabByName('transactions')">
+        <div class="hub-card-icon">💳</div>
+        <div class="hub-card-title">Transações</div>
+        <div class="hub-card-desc">Movimentação TenisCash (cashback)</div>
+        <span class="hub-card-badge">FINANCEIRO</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('campaigns')">
+        <div class="hub-card-icon">📢</div>
+        <div class="hub-card-title">Campanhas</div>
+        <div class="hub-card-desc">Promoções por produto e cliente</div>
+        <span class="hub-card-badge">MARKETING</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('recs')">
+        <div class="hub-card-icon">🎯</div>
+        <div class="hub-card-title">Recomendações</div>
+        <div class="hub-card-desc">IA sugere produto pra cliente</div>
+        <span class="hub-card-badge">IA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('curation')">
+        <div class="hub-card-icon">✨</div>
+        <div class="hub-card-title">Curadoria</div>
+        <div class="hub-card-desc">Enriquecimento automático de produtos</div>
+        <span class="hub-card-badge">IA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('interview')">
+        <div class="hub-card-icon">📝</div>
+        <div class="hub-card-title">Entrevistas</div>
+        <div class="hub-card-desc">Perfil esportivo do cliente</div>
+        <span class="hub-card-badge">CRM</span>
+      </button>
+    </div>
+
+    <!-- CATEGORIA: INTEGRAÇÕES -->
+    <div class="hub-cat-title">🌐 Integrações e Operações</div>
+    <div class="hub-grid" style="--cat-color:#8a2be2;--cat-bg:#f3e5ff;">
+      <button class="hub-card" onclick="switchTabByName('ns')">
+        <div class="hub-card-icon">🛍️</div>
+        <div class="hub-card-title">Nuvemshop</div>
+        <div class="hub-card-desc">E-commerce: OAuth, push/pull, webhooks</div>
+        <span class="hub-card-badge">ECOMMERCE</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('financial')">
+        <div class="hub-card-icon">📊</div>
+        <div class="hub-card-title">Financeiro</div>
+        <div class="hub-card-desc">Contas a pagar e a receber</div>
+        <span class="hub-card-badge">CAIXA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('messages')">
+        <div class="hub-card-icon">💬</div>
+        <div class="hub-card-title">Mensagens</div>
+        <div class="hub-card-desc">Chat interno: anúncios, demandas, inbox</div>
+        <span class="hub-card-badge">COMUNICAÇÃO</span>
+      </button>
+    </div>
+
+    <!-- CATEGORIA: IA -->
+    <div class="hub-cat-title">🤖 Inteligência Artificial</div>
+    <div class="hub-grid" style="--cat-color:#d70015;--cat-bg:#fff1f0;">
+      <button class="hub-card" onclick="switchTabByName('aiCenter')">
+        <div class="hub-card-icon">🧠</div>
+        <div class="hub-card-title">Central IA</div>
+        <div class="hub-card-desc">Orquestrador dos 18 agentes Sports & Tennis</div>
+        <span class="hub-card-badge">PRINCIPAL</span>
+      </button>
+    </div>
+
+    <script>
+      function switchTabByName(name) {
+        const btn = document.querySelector(`.tab[onclick*="switchTab('${name}'"]`);
+        if (btn) btn.click();
+      }
+      async function loadHubStats() {
+        try {
+          const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const r = await fetch('/api/admin/classification/stats', { headers }).then(r => r.json()).catch(() => ({}));
+          if (r.total !== undefined) document.getElementById('hs-products').textContent = r.total.toLocaleString('pt-BR');
+
+          const u = await fetch('/api/admin/users?limit=1', { headers }).then(r => r.json()).catch(() => ({}));
+          if (u.total !== undefined) document.getElementById('hs-users').textContent = u.total.toLocaleString('pt-BR');
+
+          const ns = await fetch('/api/admin/nuvemshop/mappings/products', { headers }).then(r => r.json()).catch(() => ({}));
+          if (Array.isArray(ns.mappings) || Array.isArray(ns)) {
+            const arr = ns.mappings || ns;
+            document.getElementById('hs-nuvemshop').textContent = arr.length.toLocaleString('pt-BR');
+          }
+
+          // Estoque: estimativa via inventory dashboard se existir
+          if (typeof window.invSafeFetch === 'function') {
+            try { /* no-op */ } catch {}
+          }
+
+          if (r.total) document.getElementById('hub-products-count').textContent = r.total + ' itens';
+        } catch (e) { console.warn('hub stats:', e.message); }
+      }
+      // Hook pra carregar quando abrir o Hub
+      (function(){
+        const orig = window.switchTab;
+        window.switchTab = function(name, btn) {
+          if (typeof orig === 'function') orig(name, btn);
+          if (name === 'home') loadHubStats();
+        };
+      })();
+      // Carrega no boot
+      setTimeout(loadHubStats, 800);
+    </script>
+  </div>
+
   <!-- USERS SECTION -->
-  <div class="section" id="tab-users">
+  <div class="section" id="tab-users" style="display:none">
     <div class="section-head">
       <span class="section-title">Usuários Cadastrados</span>
       <input class="search-box" id="user-search" placeholder="Buscar por nome, telefone, email..." oninput="searchUsers()">
@@ -3136,7 +3357,9 @@ async function loadTransactions() {
 // TABS
 function switchTab(tab, btn) {
   document.querySelectorAll('.tabs > .tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
+  const homeEl = document.getElementById('tab-home');
+  if (homeEl) homeEl.style.display = tab === 'home' ? 'block' : 'none';
   document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
   document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
