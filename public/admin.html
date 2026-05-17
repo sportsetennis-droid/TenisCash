@@ -160,6 +160,8 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   .stats-grid{grid-template-columns:1fr}
 }
 </style>
+<link rel="stylesheet" href="/_design-system.css">
+<script src="/_design-system.js"></script>
 </head>
 <body>
 
@@ -1029,12 +1031,13 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div id="inv-sub-cls-pane" style="display:none;">
     <style>
       .cls-search-bar { background: linear-gradient(135deg,#fff,#FFF5EB); border: 2px solid #FFE5D0; border-radius: 16px; padding: 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
-      .cls-search-bar input { flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; font-size: 16px; background: white; }
+      .cls-search-bar input { flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; font-size: 16px; background: white; color: #1d1d1f !important; }
+      .cls-search-bar input::placeholder { color: #8e8e93; }
       .cls-search-bar input:focus { outline: none; border-color: #FF6D00; box-shadow: 0 0 0 3px #FFE5D0; }
       .cls-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-      .cls-chip { padding: 8px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); transition: all 0.15s; user-select: none; }
-      .cls-chip:hover { border-color: #FF6D00; color: #FF6D00; }
-      .cls-chip.active { background: linear-gradient(135deg,#FF6D00,#FF9248); border-color: transparent; color: white; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
+      .cls-chip { padding: 8px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; color: #1d1d1f !important; transition: all 0.15s; user-select: none; white-space: nowrap; }
+      .cls-chip:hover { border-color: #FF6D00; color: #FF6D00 !important; }
+      .cls-chip.active { background: linear-gradient(135deg,#FF6D00,#FF9248); border-color: transparent; color: white !important; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
       .cls-chip .cnt { font-size: 11px; opacity: 0.7; margin-left: 4px; }
       .cls-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: all 0.15s; display: flex; flex-direction: column; }
       .cls-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08); }
@@ -1112,12 +1115,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
 
     <!-- CHIPS MARCA + ESPECIAL -->
+    <!-- CHIPS MARCA (dinâmico, com nomes visíveis) -->
+    <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Marca</div>
+    <div class="cls-chips" id="cls-chips-brand" style="margin-bottom:14px;">
+      <button class="cls-chip active" data-val="" onclick="setClsChip('brand','')">Todas</button>
+    </div>
+    <input type="hidden" id="cls-f-brand" value="">
+    <datalist id="cls-brands-list"></datalist>
+
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
-      <div style="flex:1;min-width:220px;">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Marca</div>
-        <input type="text" id="cls-f-brand" class="form-input" placeholder="ex: ADIDAS, NIKE..." oninput="debounceClsLoad()" list="cls-brands-list" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;width:100%;">
-        <datalist id="cls-brands-list"></datalist>
-      </div>
       <div style="flex:1;min-width:200px;">
         <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Status</div>
         <div class="cls-chips" style="margin:0;">
@@ -5878,7 +5884,7 @@ async function loadClsStats() {
 
 // CHIPS de filtro
 function setClsChip(field, value) {
-  const map = { type: 'cls-f-type', gender: 'cls-f-gender', modality: 'cls-f-modality', special: 'cls-f-special' };
+  const map = { type: 'cls-f-type', gender: 'cls-f-gender', modality: 'cls-f-modality', special: 'cls-f-special', brand: 'cls-f-brand' };
   document.getElementById(map[field]).value = value;
   // Atualiza visual dos chips do grupo (busca por onclick parsing)
   const fieldQuoted = "'" + field + "'";
@@ -5917,6 +5923,17 @@ let _clsRowCache = {};
 
 async function loadClsProducts(append) {
   await clsLoadTree();
+  // Pré-popula chips de modalidade (se há tipo selecionado mas chips vazios — primeira carga async)
+  const curType = document.getElementById('cls-f-type').value;
+  if (curType && clsTree?.modalities?.[curType]) {
+    const modRow = document.getElementById('cls-modality-row');
+    const modChips = document.getElementById('cls-chips-modality');
+    if (modRow && modChips && modChips.children.length === 0) {
+      modRow.style.display = 'block';
+      modChips.innerHTML = '<button class="cls-chip active" data-val="" onclick="setClsChip(\'modality\',\'\')">Todas</button>' +
+        clsTree.modalities[curType].map(m => '<button class="cls-chip" data-val="' + m + '" onclick="setClsChip(\'modality\',\'' + m.replace(/'/g,"\\'") + '\')">' + m + '</button>').join('');
+    }
+  }
   const type = document.getElementById('cls-f-type').value;
   const gender = document.getElementById('cls-f-gender').value;
   const modality = document.getElementById('cls-f-modality').value;
@@ -6174,6 +6191,13 @@ async function populateBrandsList() {
     const d = await api('/admin/classification/brands');
     if (d.brands) {
       document.getElementById('cls-brands-list').innerHTML = d.brands.map(b => `<option value="${b.replace(/"/g, '&quot;')}">`).join('');
+      // Renderiza CHIPS de marca tambem
+      const wrap = document.getElementById('cls-chips-brand');
+      if (wrap) {
+        const selected = document.getElementById('cls-f-brand').value || '';
+        wrap.innerHTML = '<button class="cls-chip ' + (selected === '' ? 'active' : '') + '" data-val="" onclick="setClsChip(\'brand\',\'\')">Todas</button>' +
+          d.brands.map(b => '<button class="cls-chip ' + (selected === b ? 'active' : '') + '" data-val="' + b.replace(/"/g,'&quot;') + '" onclick="setClsChip(\'brand\',\'' + b.replace(/'/g, "\\'") + '\')">' + b + '</button>').join('');
+      }
     }
   } catch (e) { console.warn('brands:', e.message); }
 }
