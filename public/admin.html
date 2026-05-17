@@ -2028,12 +2028,13 @@ async function loadCatalogProductsAdmin() {
     const cls = ctx.classification || {};
     const desc = (p.shortDescription || '').trim();
 
-    // Tamanhos agrupados por LOJA
+    // Tamanhos agrupados por LOJA (com nome completo)
     const byStore = {};
     (p.sizes || []).forEach(sz => {
       (sz.storeStocks || []).forEach(ss => {
         const code = ss.store?.code || '?';
-        if (!byStore[code]) byStore[code] = { color: storeColors[code] || '#8e8e93', items: [] };
+        const storeName = ss.store?.name || code;
+        if (!byStore[code]) byStore[code] = { color: storeColors[code] || '#8e8e93', name: storeName, items: [] };
         const qty = ss.stock || 0;
         for (let i = 0; i < qty; i++) byStore[code].items.push(sz.size);
       });
@@ -2088,35 +2089,41 @@ async function loadCatalogProductsAdmin() {
     if (cls.tier) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ' + escapeHtml(cls.tier) + '</span>';
     if (metaPills) html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + metaPills + '</div>';
 
-    // TAMANHOS POR LOJA
+    // TAMANHOS POR LOJA (bloco destacado, fonte maior, nome completo da loja)
     const storesArr = Object.keys(byStore).sort();
     if (storesArr.length) {
-      html += '<div style="margin-top:4px;padding:8px;background:#fafafa;border-radius:8px;border:1px solid #e5e5ea;">';
-      html += '<div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:6px;">📦 Tamanhos por loja</div>';
+      const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
+      html += '<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFF5EB);border-radius:10px;border:2px solid #FFE5D0;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+      html += '<div style="font-size:11px;color:#FF6D00;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>';
+      html += '<div style="font-size:12px;color:#1d1d1f;font-weight:800;">' + totalUn + ' un. total</div>';
+      html += '</div>';
       storesArr.forEach(code => {
         const info = byStore[code];
-        // Agrupa tamanho × quantidade
         const counts = {};
         info.items.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
         const sortedSizes = Object.keys(counts).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
         const pillsHtml = sortedSizes.map(sz => {
           const qty = counts[sz];
-          return '<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:white;border:1.5px solid ' + info.color + ';border-radius:8px;font-size:11px;font-weight:700;color:#1d1d1f;">'
-            + sz + (qty > 1 ? '<span style="background:' + info.color + ';color:white;padding:1px 5px;border-radius:6px;font-size:9px;margin-left:2px;">×' + qty + '</span>' : '')
+          return '<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:white;border:2px solid ' + info.color + ';border-radius:10px;font-size:14px;font-weight:800;color:#1d1d1f;">'
+            + sz + (qty > 1 ? '<span style="background:' + info.color + ';color:white;padding:2px 7px;border-radius:7px;font-size:11px;font-weight:700;">×' + qty + '</span>' : '')
             + '</span>';
         }).join('');
-        html += '<div style="margin-bottom:8px;">';
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;">';
-        html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + info.color + ';"></span>';
-        html += '<strong style="color:' + info.color + ';">' + code + '</strong>';
-        html += '<span style="color:#8e8e93;font-weight:600;">(' + info.items.length + ' un.)</span>';
+        html += '<div style="margin-bottom:10px;padding:10px;background:white;border-radius:8px;border-left:4px solid ' + info.color + ';">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+        html += '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + info.color + ';flex-shrink:0;"></span>';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="font-size:13px;font-weight:800;color:' + info.color + ';line-height:1.2;">' + escapeHtml(code) + '</div>';
+        html += '<div style="font-size:11px;color:#8e8e93;font-weight:600;line-height:1.2;">' + escapeHtml(info.name) + '</div>';
         html += '</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + pillsHtml + '</div>';
+        html += '<span style="font-size:13px;font-weight:800;color:' + info.color + ';background:' + info.color + '15;padding:3px 10px;border-radius:8px;flex-shrink:0;">' + info.items.length + ' un.</span>';
+        html += '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + pillsHtml + '</div>';
         html += '</div>';
       });
       html += '</div>';
     } else {
-      html += '<div style="margin-top:4px;padding:8px;background:#fff1f0;border-radius:8px;font-size:11px;color:#d70015;text-align:center;">⚠ Nenhuma loja vinculada</div>';
+      html += '<div style="margin-top:8px;padding:14px;background:#fff1f0;border-radius:10px;border:2px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">⚠ Nenhuma loja vinculada — clique em Editar pra adicionar estoque</div>';
     }
 
     // Status + Ativo
@@ -2259,11 +2266,12 @@ function _catRenderUnits() {
   const stores = _catStoresCache || [];
   const storeOpts = stores.map(s => '<option value="' + s.id + '" data-code="' + s.code + '">' + s.code + ' — ' + s.name + '</option>').join('');
 
-  let html = '<div style="display:grid;grid-template-columns:120px 1fr 40px;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
+  // 3 colunas: TAMANHO | LOJA | EXCLUIR (largura 60px sticky pra nunca cortar)
+  let html = '<div style="display:grid;grid-template-columns:110px 1fr 60px;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
   // Header
-  html += '<div style="padding:8px 12px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;text-align:center;border-right:1px solid #e5e5ea;">TAMANHO</div>';
-  html += '<div style="padding:8px 12px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;border-right:1px solid #e5e5ea;">LOJA</div>';
-  html += '<div style="padding:8px;background:#f5f5f7;"></div>';
+  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;text-align:center;border-right:1px solid #e5e5ea;">TAMANHO</div>';
+  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;border-right:1px solid #e5e5ea;">LOJA</div>';
+  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#d70015;font-weight:700;letter-spacing:1px;text-align:center;">REMOVER</div>';
   // Linhas com EDIÇÃO INLINE
   sorted.forEach((u, idx) => {
     const code = u.storeCode || 'L?';
@@ -2274,14 +2282,16 @@ function _catRenderUnits() {
     html += '</div>';
     html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;gap:8px;border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
     html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>';
-    html += '<select onchange="catEditUnitStore(' + u._idx + ', this.value, this.selectedOptions[0].dataset.code, this.selectedOptions[0].textContent)" style="flex:1;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:13px;color:#1d1d1f;background:white;">';
+    html += '<select onchange="catEditUnitStore(' + u._idx + ', this.value, this.selectedOptions[0].dataset.code, this.selectedOptions[0].textContent)" style="flex:1;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:13px;color:#1d1d1f;background:white;min-width:0;">';
     stores.forEach(s => {
       const sel = s.id === u.storeId ? ' selected' : '';
       html += '<option value="' + s.id + '" data-code="' + s.code + '"' + sel + '>' + s.code + ' — ' + s.name + '</option>';
     });
     html += '</select>';
     html += '</div>';
-    html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;justify-content:center;border-top:1px solid #f0f0f3;"><button type="button" onclick="catRemoveUnit(' + u._idx + ')" style="width:28px;height:28px;border-radius:50%;background:#fff1f0;color:#d70015;border:1px solid #d70015;cursor:pointer;font-size:14px;font-weight:700;line-height:1;">×</button></div>';
+    html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;justify-content:center;border-top:1px solid #f0f0f3;">';
+    html += '<button type="button" onclick="catRemoveUnit(' + u._idx + ')" title="Excluir unidade" style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#d70015,#ff5566);color:white;border:none;cursor:pointer;font-size:18px;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(215,0,21,0.3);">🗑</button>';
+    html += '</div>';
   });
   html += '</div>';
 
