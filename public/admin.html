@@ -1014,71 +1014,161 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
   <!-- SUB-ABA: CLASSIFICAÇÃO IA -->
   <div id="inv-sub-cls-pane" style="display:none;">
-    <div id="cls-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px;"></div>
+    <style>
+      .cls-search-bar { background: linear-gradient(135deg,#fff,#FFF5EB); border: 2px solid #FFE5D0; border-radius: 16px; padding: 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
+      .cls-search-bar input { flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; font-size: 16px; background: white; }
+      .cls-search-bar input:focus { outline: none; border-color: #FF6D00; box-shadow: 0 0 0 3px #FFE5D0; }
+      .cls-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+      .cls-chip { padding: 8px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); transition: all 0.15s; user-select: none; }
+      .cls-chip:hover { border-color: #FF6D00; color: #FF6D00; }
+      .cls-chip.active { background: linear-gradient(135deg,#FF6D00,#FF9248); border-color: transparent; color: white; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
+      .cls-chip .cnt { font-size: 11px; opacity: 0.7; margin-left: 4px; }
+      .cls-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: all 0.15s; display: flex; flex-direction: column; }
+      .cls-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08); }
+      .cls-card-img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #f5f5f7; padding: 6px; }
+      .cls-card-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+      .cls-card-brand { display: inline-block; padding: 3px 10px; background: linear-gradient(135deg,#1d1d1f,#3a3a3c); color: white; font-size: 11px; font-weight: 800; border-radius: 6px; letter-spacing: 0.5px; align-self: flex-start; }
+      .cls-card-brand.empty { background: #f5f5f7; color: #d70015; border: 1px dashed #d70015; }
+      .cls-card-name { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 34px; }
+      .cls-card-sku { font-size: 11px; color: var(--text2); font-family: monospace; }
+      .cls-card-sizes { font-size: 11px; color: var(--text2); }
+      .cls-card-sizes strong { color: var(--text); font-weight: 700; }
+      .cls-card-tags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; }
+      .cls-pill { padding: 3px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px; }
+      .cls-pill-type { background: #FFE5D0; color: #FF6D00; }
+      .cls-pill-gender { background: #e3f2fd; color: #0066cc; }
+      .cls-pill-modality { background: #f0f0f3; color: #1d1d1f; }
+      .cls-pill-tier { background: #f5f5f7; color: #8e8e93; }
+      .cls-pill-empty { background: #fff1f0; color: #d70015; border: 1px dashed #d70015; }
+      .cls-card-conf { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700; align-self: flex-start; }
+      .cls-card-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--border); }
+      .cls-card-actions button { flex: 1; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: white; transition: all 0.15s; }
+      .cls-card-actions button.primary { background: linear-gradient(135deg,#FF6D00,#FF9248); color: white; border-color: transparent; }
+      .cls-card-actions button:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+      .cls-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+      .cls-kpi { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+      .cls-kpi-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+      .cls-kpi-content { flex: 1; min-width: 0; }
+      .cls-kpi-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+      .cls-kpi-value { font-size: 22px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;padding:14px;background:#fff;border-radius:10px;border:1px solid var(--border);">
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIPO</label>
-        <select id="cls-f-type" class="form-input" onchange="loadClsProducts()">
-          <option value="">Todos</option>
-          <option value="Tênis">Tênis</option>
-          <option value="Chuteira">Chuteira</option>
-          <option value="Outro">Outro</option>
-        </select>
-      </div>
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">GÊNERO</label>
-        <select id="cls-f-gender" class="form-input" onchange="loadClsProducts()">
-          <option value="">Todos</option>
-          <option value="Feminino">Feminino</option>
-          <option value="Masculino">Masculino</option>
-          <option value="Inf. M">Inf. M</option>
-          <option value="Inf. F">Inf. F</option>
-        </select>
-      </div>
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MODALIDADE</label>
-        <select id="cls-f-modality" class="form-input" onchange="loadClsProducts()">
-          <option value="">Todas</option>
-        </select>
-      </div>
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">BUSCAR</label>
-        <input type="text" id="cls-f-q" class="form-input" placeholder="nome, sku, marca" oninput="debounceClsLoad()">
-      </div>
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MARCA</label>
-        <input type="text" id="cls-f-brand" class="form-input" placeholder="ex: ADIDAS" oninput="debounceClsLoad()" list="cls-brands-list">
+      /* Modal de edição */
+      .cls-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+      .cls-modal-bg.show { display: flex; }
+      .cls-modal { background: white; border-radius: 16px; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; }
+      .cls-modal h3 { margin: 0 0 16px; font-size: 20px; font-weight: 800; }
+      .cls-modal-head { display: flex; gap: 14px; padding: 14px; background: #f5f5f7; border-radius: 12px; margin-bottom: 16px; }
+      .cls-modal-head img { width: 80px; height: 80px; object-fit: contain; background: white; border-radius: 8px; }
+      .cls-modal label { display: block; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; margin-top: 12px; }
+      .cls-modal input, .cls-modal select { width: 100%; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; }
+      .cls-modal input:focus, .cls-modal select:focus { outline: none; border-color: #FF6D00; box-shadow: 0 0 0 3px #FFE5D0; }
+    </style>
+
+    <!-- BARRA DE BUSCA GRANDE -->
+    <div class="cls-search-bar">
+      <span style="font-size:22px;">🔎</span>
+      <input type="text" id="cls-f-q" placeholder="Buscar produto por nome, marca, SKU..." oninput="debounceClsLoad()">
+    </div>
+
+    <!-- KPIs -->
+    <div class="cls-kpi-grid" id="cls-stats"></div>
+
+    <!-- CHIPS TIPO -->
+    <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Filtrar por tipo</div>
+    <div class="cls-chips" id="cls-chips-type">
+      <button class="cls-chip active" data-val="" onclick="setClsChip('type','')">Todos</button>
+      <button class="cls-chip" data-val="Tênis" onclick="setClsChip('type','Tênis')">👟 Tênis</button>
+      <button class="cls-chip" data-val="Chuteira" onclick="setClsChip('type','Chuteira')">⚽ Chuteira</button>
+      <button class="cls-chip" data-val="Outro" onclick="setClsChip('type','Outro')">📦 Outro</button>
+    </div>
+
+    <!-- CHIPS GÊNERO -->
+    <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Categoria (gênero)</div>
+    <div class="cls-chips" id="cls-chips-gender">
+      <button class="cls-chip active" data-val="" onclick="setClsChip('gender','')">Todos</button>
+      <button class="cls-chip" data-val="Feminino" onclick="setClsChip('gender','Feminino')">Feminino</button>
+      <button class="cls-chip" data-val="Masculino" onclick="setClsChip('gender','Masculino')">Masculino</button>
+      <button class="cls-chip" data-val="Inf. M" onclick="setClsChip('gender','Inf. M')">Inf. M</button>
+      <button class="cls-chip" data-val="Inf. F" onclick="setClsChip('gender','Inf. F')">Inf. F</button>
+    </div>
+
+    <!-- CHIPS MODALIDADE (dinâmico) -->
+    <div id="cls-modality-row" style="display:none;">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Modalidade</div>
+      <div class="cls-chips" id="cls-chips-modality"></div>
+    </div>
+
+    <!-- CHIPS MARCA + ESPECIAL -->
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Marca</div>
+        <input type="text" id="cls-f-brand" class="form-input" placeholder="ex: ADIDAS, NIKE..." oninput="debounceClsLoad()" list="cls-brands-list" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;width:100%;">
         <datalist id="cls-brands-list"></datalist>
       </div>
-      <div>
-        <label class="muted" style="font-size:11px;letter-spacing:1.5px;">FILTRO ESPECIAL</label>
-        <select id="cls-f-special" class="form-input" onchange="loadClsProducts()">
-          <option value="">— nenhum —</option>
-          <option value="unclassified">Não classificados</option>
-          <option value="lowConfidence">Baixa confiança (&lt;70%)</option>
-        </select>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Status</div>
+        <div class="cls-chips" style="margin:0;">
+          <button class="cls-chip active" data-val="" onclick="setClsChip('special','')">Todos</button>
+          <button class="cls-chip" data-val="unclassified" onclick="setClsChip('special','unclassified')">Sem classificação</button>
+          <button class="cls-chip" data-val="lowConfidence" onclick="setClsChip('special','lowConfidence')">Baixa confiança</button>
+        </div>
       </div>
     </div>
 
-    <!-- Tabela editável -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto;">
-      <table id="cls-products" style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-          <tr style="background:#f5f5f7;">
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:280px;">Produto</th>
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:130px;">Marca</th>
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:110px;">Tamanhos</th>
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:130px;">Categoria</th>
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:180px;">Modalidade</th>
-            <th style="padding:10px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);min-width:160px;">Especialidade</th>
-            <th style="padding:10px;text-align:center;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="cls-tbody"></tbody>
-      </table>
+    <!-- Selects escondidos (compat com loadClsProducts) -->
+    <select id="cls-f-type" style="display:none;"></select>
+    <select id="cls-f-gender" style="display:none;"></select>
+    <select id="cls-f-modality" style="display:none;"></select>
+    <select id="cls-f-special" style="display:none;"></select>
+
+    <!-- Grid de cards -->
+    <div id="cls-products" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;"></div>
+    <div style="text-align:center;margin-top:16px;">
+      <button id="cls-loadmore" class="btn btn-secondary" style="display:none;" onclick="loadMoreCls()">+ Carregar mais</button>
     </div>
-    <button id="cls-loadmore" class="btn btn-secondary" style="margin-top:12px;display:none;" onclick="loadMoreCls()">Carregar mais</button>
+
+    <!-- MODAL DE EDIÇÃO -->
+    <div class="cls-modal-bg" id="cls-edit-modal" onclick="if(event.target===this)closeClsModal()">
+      <div class="cls-modal">
+        <h3>✎ Editar produto</h3>
+        <div class="cls-modal-head" id="cls-edit-head"></div>
+        <label>Marca *</label>
+        <input type="text" id="cls-edit-brand" list="cls-brands-list" placeholder="ex: ADIDAS">
+        <label>Tipo</label>
+        <select id="cls-edit-type" onchange="onClsEditTypeChange()">
+          <option value="">— sem tipo —</option>
+          <option value="Tênis">👟 Tênis</option>
+          <option value="Chuteira">⚽ Chuteira</option>
+          <option value="Outro">📦 Outro</option>
+        </select>
+        <div id="cls-edit-genderGroup">
+          <label>Categoria (gênero)</label>
+          <select id="cls-edit-gender">
+            <option value="">—</option>
+            <option value="Feminino">Feminino</option>
+            <option value="Masculino">Masculino</option>
+            <option value="Inf. M">Inf. M</option>
+            <option value="Inf. F">Inf. F</option>
+          </select>
+        </div>
+        <div id="cls-edit-modalityGroup">
+          <label>Modalidade</label>
+          <select id="cls-edit-modality" onchange="onClsEditModalityChange()">
+            <option value="">—</option>
+          </select>
+        </div>
+        <div id="cls-edit-tierGroup">
+          <label>Especialidade</label>
+          <select id="cls-edit-tier">
+            <option value="">—</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:18px;">
+          <button class="btn btn-primary" onclick="saveClsEditModal()" style="flex:1;">💾 Salvar</button>
+          <button class="btn" onclick="closeClsModal()">Cancelar</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -5723,36 +5813,46 @@ async function loadClsStats() {
     const d = await api('/admin/classification/stats');
     const s = document.getElementById('cls-stats');
     s.innerHTML = `
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Total ativos</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.total}</div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Classificados</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#0a843d;">${d.classified} <span style="font-size:14px;color:var(--text2);">(${d.progressPct}%)</span></div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Pendentes</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#FF6D00;">${d.pending}</div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Baixa confiança</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#d70015;">${d.lowConfidenceCount}</div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Tênis</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Tênis'] || 0}</div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Chuteira</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Chuteira'] || 0}</div>
-      </div>
-      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Outros</div>
-        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Outro'] || 0}</div>
-      </div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#e3f2fd;color:#0066cc;">📦</div><div class="cls-kpi-content"><div class="cls-kpi-label">Ativos</div><div class="cls-kpi-value">${d.total}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#e8f7ee;color:#0a843d;">✓</div><div class="cls-kpi-content"><div class="cls-kpi-label">Classificados</div><div class="cls-kpi-value" style="color:#0a843d;">${d.classified} <span style="font-size:12px;color:var(--text2);font-weight:600;">${d.progressPct}%</span></div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#fff1e0;color:#FF6D00;">⏳</div><div class="cls-kpi-content"><div class="cls-kpi-label">Pendentes</div><div class="cls-kpi-value" style="color:#FF6D00;">${d.pending}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#fff1f0;color:#d70015;">⚠</div><div class="cls-kpi-content"><div class="cls-kpi-label">Baixa confiança</div><div class="cls-kpi-value" style="color:#d70015;">${d.lowConfidenceCount}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#FFE5D0;color:#FF6D00;">👟</div><div class="cls-kpi-content"><div class="cls-kpi-label">Tênis</div><div class="cls-kpi-value">${d.byType['Tênis'] || 0}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#f0e5ff;color:#8a2be2;">⚽</div><div class="cls-kpi-content"><div class="cls-kpi-label">Chuteira</div><div class="cls-kpi-value">${d.byType['Chuteira'] || 0}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#f5f5f7;color:#1d1d1f;">📦</div><div class="cls-kpi-content"><div class="cls-kpi-label">Outros</div><div class="cls-kpi-value">${d.byType['Outro'] || 0}</div></div></div>
     `;
   } catch (e) { console.error(e); }
+}
+
+// CHIPS de filtro
+function setClsChip(field, value) {
+  const map = { type: 'cls-f-type', gender: 'cls-f-gender', modality: 'cls-f-modality', special: 'cls-f-special' };
+  document.getElementById(map[field]).value = value;
+  // Atualiza visual dos chips do grupo (busca por onclick parsing)
+  const fieldQuoted = "'" + field + "'";
+  document.querySelectorAll('.cls-chip[data-val]').forEach(c => {
+    const onClick = c.getAttribute('onclick') || '';
+    if (onClick.indexOf('setClsChip(' + fieldQuoted) === 0) {
+      c.classList.toggle('active', c.dataset.val === value);
+    }
+  });
+  // Atualiza chips de gênero/modalidade visíveis conforme tipo
+  if (field === 'type') {
+    document.getElementById('cls-chips-gender').style.display = value === 'Tênis' ? 'flex' : 'none';
+    const modRow = document.getElementById('cls-modality-row');
+    const modChips = document.getElementById('cls-chips-modality');
+    if (value && clsTree?.modalities?.[value]) {
+      modRow.style.display = 'block';
+      modChips.innerHTML = '<button class="cls-chip active" data-val="" onclick="setClsChip(\'modality\',\'\')">Todas</button>' +
+        clsTree.modalities[value].map(m => `<button class="cls-chip" data-val="${m}" onclick="setClsChip('modality','${m.replace(/'/g, "\\'")}')">${m}</button>`).join('');
+      // Limpa modalidade selecionada quando troca tipo
+      document.getElementById('cls-f-modality').value = '';
+    } else {
+      modRow.style.display = 'none';
+      document.getElementById('cls-f-modality').value = '';
+    }
+  }
+  loadClsProducts();
 }
 
 function debounceClsLoad() {
@@ -5794,22 +5894,104 @@ async function loadClsProducts(append) {
   clsNextCursor = d.nextCursor;
   document.getElementById('cls-loadmore').style.display = clsNextCursor ? 'inline-block' : 'none';
 
-  const tbody = document.getElementById('cls-tbody');
-  const rowsHtml = (d.products || []).map(p => {
+  const container = document.getElementById('cls-products');
+  const html = (d.products || []).map(p => {
     _clsRowCache[p.id] = p;
-    return renderClsRow(p);
+    return renderClsCard(p);
   }).join('');
 
-  if (append) tbody.insertAdjacentHTML('beforeend', rowsHtml);
-  else tbody.innerHTML = rowsHtml || '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text2);">Nenhum produto encontrado.</td></tr>';
+  if (append) container.insertAdjacentHTML('beforeend', html);
+  else container.innerHTML = html || '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text2);">Nenhum produto encontrado.</div>';
 
-  // Popula datalist de marcas (uma vez)
   if (!append && !document.getElementById('cls-brands-list').children.length) {
     populateBrandsList();
   }
 }
 
-function renderClsRow(p) {
+function renderClsCard(p) {
+  const c = p.classification || {};
+  const sizes = (p.sizes || []).map(s => s.size).filter(Boolean).slice(0, 8).join(', ') || '—';
+  const sizeCount = (p.sizes || []).length;
+  const conf = c.confidence != null ? Math.round(c.confidence * 100) : null;
+  const confColor = conf == null ? '#8e8e93' : conf >= 80 ? '#0a843d' : conf >= 60 ? '#b06b00' : '#d70015';
+  const confBg = conf == null ? '#f5f5f7' : conf >= 80 ? '#e8f7ee' : conf >= 60 ? '#fff8e0' : '#fff1f0';
+  const brandText = (p.brand || '').trim();
+  const hasBrand = brandText && brandText !== 'A DEFINIR';
+
+  return `
+    <div class="cls-card">
+      <img class="cls-card-img" src="${p.imageUrl || ''}" onerror="this.style.opacity='0.3'">
+      <div class="cls-card-body">
+        <div class="cls-card-brand ${hasBrand ? '' : 'empty'}">${hasBrand ? brandText : '⚠ SEM MARCA'}</div>
+        <div class="cls-card-name">${p.name || '?'}</div>
+        <div class="cls-card-sku">${p.sku}</div>
+        <div class="cls-card-sizes">Tamanhos: <strong>${sizes}</strong>${sizeCount > 8 ? ' +' + (sizeCount - 8) : ''}</div>
+        <div class="cls-card-tags">
+          ${c.type ? `<span class="cls-pill cls-pill-type">${c.type}</span>` : '<span class="cls-pill cls-pill-empty">Sem tipo</span>'}
+          ${c.gender ? `<span class="cls-pill cls-pill-gender">${c.gender}</span>` : ''}
+          ${c.modality ? `<span class="cls-pill cls-pill-modality">${c.modality}</span>` : ''}
+          ${c.tier ? `<span class="cls-pill cls-pill-tier">${c.tier}</span>` : ''}
+          ${conf != null ? `<span class="cls-card-conf" style="background:${confBg};color:${confColor};">${conf}%</span>` : ''}
+          ${c.manualEdit ? '<span class="cls-card-conf" style="background:#e8f7ee;color:#0a843d;">✓ humano</span>' : ''}
+        </div>
+        <div class="cls-card-actions">
+          <button class="primary" onclick="openClsModal('${p.id}')">✎ Editar</button>
+          <button onclick="reclassifyClsRow('${p.id}')" title="IA reclassificar">🤖</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Modal de edição (substitui edição inline)
+let _clsModalId = null;
+function openClsModal(pid) {
+  const p = _clsRowCache[pid];
+  if (!p) return;
+  _clsModalId = pid;
+  const c = p.classification || {};
+  document.getElementById('cls-edit-head').innerHTML = `
+    <img src="${p.imageUrl || ''}" onerror="this.style.opacity='0.3'">
+    <div style="min-width:0;flex:1;">
+      <div style="font-weight:700;font-size:14px;line-height:1.3;">${p.name || '?'}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px;font-family:monospace;">${p.sku}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px;">Tamanhos: ${(p.sizes || []).map(s => s.size).filter(Boolean).join(', ') || '—'}</div>
+    </div>
+  `;
+  document.getElementById('cls-edit-brand').value = p.brand && p.brand !== 'A DEFINIR' ? p.brand : '';
+  document.getElementById('cls-edit-type').value = c.type || '';
+  onClsEditTypeChange();
+  document.getElementById('cls-edit-gender').value = c.gender || '';
+  document.getElementById('cls-edit-modality').value = c.modality || '';
+  onClsEditModalityChange();
+  document.getElementById('cls-edit-tier').value = c.tier || '';
+  document.getElementById('cls-edit-modal').classList.add('show');
+}
+
+function closeClsModal() {
+  document.getElementById('cls-edit-modal').classList.remove('show');
+  _clsModalId = null;
+}
+
+async function saveClsEditModal() {
+  if (!_clsModalId) return;
+  const payload = {
+    brand: document.getElementById('cls-edit-brand').value.trim() || null,
+    type: document.getElementById('cls-edit-type').value || null,
+    gender: document.getElementById('cls-edit-gender').value || null,
+    modality: document.getElementById('cls-edit-modality').value || null,
+    tier: document.getElementById('cls-edit-tier').value || null,
+  };
+  try {
+    await api('/admin/classification/' + _clsModalId, 'PATCH', payload);
+    closeClsModal();
+    loadClsProducts();
+    loadClsStats();
+  } catch (e) { alert('Erro: ' + (e.message || e)); }
+}
+
+// (renderClsRow obsoleta — substituida por renderClsCard. Mantido vazio pra compat.)
+function _obsoleteRenderClsRow(p) {
   const c = p.classification || {};
   const sizes = (p.sizes || []).map(s => s.size).filter(Boolean).join(', ') || '—';
   const tree = clsTree || {};
@@ -5923,19 +6105,14 @@ async function saveClsRow(pid) {
 }
 
 async function reclassifyClsRow(pid) {
-  if (!confirm('Pedir pra IA reclassificar este produto?')) return;
+  if (!confirm('Pedir pra IA reclassificar este produto? (usa créditos Anthropic)')) return;
   try {
     const r = await api('/admin/classification/' + pid + '/reclassify', 'POST');
     if (r.classification) {
-      const row = document.querySelector(`tr[data-pid="${pid}"]`);
-      row.querySelector('.cls-type-row').value = r.classification.type || '';
-      onClsRowTypeChange(pid);
-      row.querySelector('.cls-gender').value = r.classification.gender || '';
-      row.querySelector('.cls-modality').value = r.classification.modality || '';
-      onClsRowModalityChange(pid);
-      row.querySelector('.cls-tier').value = r.classification.tier || '';
-      row.style.background = '#fff8e0';
-      setTimeout(() => row.style.background = '', 1500);
+      // Atualiza no cache + re-renderiza só o card
+      if (_clsRowCache[pid]) _clsRowCache[pid].classification = r.classification;
+      loadClsProducts();
+      loadClsStats();
     }
   } catch (e) { alert('Erro: ' + (e.message || e)); }
 }
