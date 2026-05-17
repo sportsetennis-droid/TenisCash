@@ -39,6 +39,7 @@ const orchestratorRoutes = require('./routes/orchestrator');
 const activitiesRoutes = require('./routes/activities');
 const coachRoutes = require('./routes/coach');
 const adminClassificationRoutes = require('./routes/adminClassification');
+const whatsappRoutes = require('./routes/whatsapp');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -47,7 +48,14 @@ const PORT = process.env.PORT || 3000;
 // Segurança
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => {
+    if (req.originalUrl && req.originalUrl.startsWith('/api/whatsapp/webhook')) {
+      req.rawBody = buf;
+    }
+  },
+}));
 
 // Rate limiting global — generoso pra não travar admin trabalhando em massa,
 // mas o suficiente pra bloquear scripts maliciosos.
@@ -107,6 +115,7 @@ app.use('/api/admin/orchestrator', orchestratorRoutes);
 app.use('/api/admin/classification', adminClassificationRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api', nuvemshopRoutes);
 app.use('/api', partnersRoutes);
 

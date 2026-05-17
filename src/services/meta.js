@@ -9,11 +9,13 @@
 //   META_PAGE_TOKEN           - token de página (long-lived, daquela page)
 //   META_INSTAGRAM_ID         - id do Instagram Business (vinculado à page)
 //   META_WHATSAPP_BUSINESS_ID - id da WhatsApp Business Account
+//   META_WHATSAPP_ACCESS_TOKEN - token da Cloud API do WhatsApp
+//   META_WHATSAPP_PHONE_NUMBER_ID - id do numero remetente do WhatsApp
 //   META_BUSINESS_ID          - id do Business Manager (BM)
 //   META_AD_ACCOUNT_ID        - id da conta de anúncios (ex: act_750101118074129)
 // =====================================================================
 
-const GRAPH = 'https://graph.facebook.com/v22.0';
+const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v22.0'}`;
 
 function isConfigured() {
   return !!process.env.META_USER_TOKEN;
@@ -100,7 +102,10 @@ async function postToInstagram({ imageUrl, caption }) {
 // =====================================================================
 async function sendWhatsAppMessage({ phoneNumberId, to, text, template, components }) {
   // Precisa ter um phone_number_id da WBA. Pega via listWhatsAppPhones.
-  const pageToken = process.env.META_PAGE_TOKEN;
+  const pageToken = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_PAGE_TOKEN;
+  const senderPhoneNumberId = phoneNumberId || process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!pageToken) throw new Error('META_WHATSAPP_ACCESS_TOKEN nao configurado');
+  if (!senderPhoneNumberId) throw new Error('META_WHATSAPP_PHONE_NUMBER_ID nao configurado');
   const body = template
     ? {
         messaging_product: 'whatsapp',
@@ -114,7 +119,7 @@ async function sendWhatsAppMessage({ phoneNumberId, to, text, template, componen
         type: 'text',
         text: { body: text },
       };
-  const res = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
+  const res = await fetch(`${GRAPH}/${senderPhoneNumberId}/messages`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${pageToken}`,
@@ -130,7 +135,7 @@ async function sendWhatsAppMessage({ phoneNumberId, to, text, template, componen
 }
 
 async function listWhatsAppPhones() {
-  const wba = process.env.META_WHATSAPP_BUSINESS_ID;
+  const wba = process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID;
   return graphApi(`/${wba}/phone_numbers`);
 }
 
