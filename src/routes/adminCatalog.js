@@ -90,7 +90,10 @@ router.get('/products', adminOnly, async (req, res) => {
       orderBy: [{ updatedAt: 'desc' }],
       take: 500,
       include: {
-        sizes: { orderBy: { size: 'asc' } },
+        sizes: {
+          orderBy: { size: 'asc' },
+          include: { storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } } },
+        },
         createdBy: { select: { id: true, name: true } },
       },
     });

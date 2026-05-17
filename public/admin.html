@@ -2002,9 +2002,10 @@ async function loadCatalogProductsAdmin() {
   const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px;color:var(--text2);">Nenhum produto</div>'; return; }
 
-  // Layout em cards padrão (igual Estoque)
+  // Layout em cards padrão com Nome + Descrição + Categoria + Especialidade + Tamanhos por LOJA
+  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
   let html = '<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">' + rows.length + ' produtos</p>';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">';
   rows.forEach(function (p) {
     const enriched = !!(p.imageUrl && p.shortDescription);
     const statusBadge = enriched
@@ -2012,23 +2013,70 @@ async function loadCatalogProductsAdmin() {
       : '<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⚠ FALTANTE</span>';
     const brandText = (p.brand || '').trim();
     const hasBrand = brandText && brandText !== 'A DEFINIR';
-    const sizesArr = (p.sizes || []).map(s => s.size).filter(Boolean);
-    const sizesStr = sizesArr.slice(0, 6).join(', ') + (sizesArr.length > 6 ? ' +' + (sizesArr.length - 6) : '');
     const cat = (p.category || '') + (p.subcategory ? ' / ' + p.subcategory : '');
+    // Pega classificação se houver
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    const cls = ctx.classification || {};
+    const desc = (p.shortDescription || '').trim();
+
+    // Tamanhos agrupados por LOJA
+    const byStore = {};
+    (p.sizes || []).forEach(sz => {
+      (sz.storeStocks || []).forEach(ss => {
+        const code = ss.store?.code || '?';
+        if (!byStore[code]) byStore[code] = { color: storeColors[code] || '#8e8e93', items: [] };
+        const qty = ss.stock || 0;
+        for (let i = 0; i < qty; i++) byStore[code].items.push(sz.size);
+      });
+    });
+
     html += '<div style="background:white;border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 12px 28px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
     html += '<img src="' + (p.imageUrl || '') + '" style="width:100%;aspect-ratio:4/3;object-fit:contain;background:#f5f5f7;padding:6px;" onerror="this.style.opacity=\'0.3\'">';
     html += '<div style="padding:14px;display:flex;flex-direction:column;gap:8px;flex:1;">';
-    // Marca em destaque + Preço
+    // Marca + Preço
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">'
       + '<span style="padding:3px 10px;background:' + (hasBrand ? 'linear-gradient(135deg,#1d1d1f,#3a3a3c)' : '#f5f5f7') + ';color:' + (hasBrand ? 'white' : '#d70015') + ';font-size:11px;font-weight:800;border-radius:6px;letter-spacing:0.5px;' + (hasBrand ? '' : 'border:1px dashed #d70015;') + '">' + (hasBrand ? escapeHtml(brandText) : '⚠ SEM MARCA') + '</span>'
       + '<span style="font-size:14px;font-weight:800;color:#FF6D00;">R$ ' + Number(p.price || 0).toFixed(2) + '</span>'
       + '</div>';
-    html += '<div style="font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:34px;">' + escapeHtml(p.name || '?') + '</div>';
+    // Nome
+    html += '<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">' + escapeHtml(p.name || '?') + '</div>';
+    // SKU
     html += '<div style="font-size:11px;color:var(--text2);font-family:monospace;">' + escapeHtml(p.sku || '') + '</div>';
-    html += '<div style="font-size:11px;color:var(--text2);">Tam: <strong style="color:var(--text);">' + (sizesStr || '—') + '</strong></div>';
-    if (cat) html += '<div style="font-size:11px;color:var(--text2);">' + escapeHtml(cat) + '</div>';
+    // Descrição
+    if (desc) html += '<div style="font-size:11px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml(desc) + '</div>';
+    // Categoria + Especialidade em pills
+    let metaPills = '';
+    if (cat) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#f5f5f7;color:#1d1d1f;border-radius:6px;font-weight:600;">📂 ' + escapeHtml(cat) + '</span>';
+    if (cls.type) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#FFE5D0;color:#FF6D00;border-radius:6px;font-weight:700;">' + escapeHtml(cls.type) + '</span>';
+    if (cls.gender) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#e3f2fd;color:#0066cc;border-radius:6px;font-weight:700;">' + escapeHtml(cls.gender) + '</span>';
+    if (cls.modality) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#f0f0f3;color:#1d1d1f;border-radius:6px;font-weight:600;">' + escapeHtml(cls.modality) + '</span>';
+    if (cls.tier) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ' + escapeHtml(cls.tier) + '</span>';
+    if (metaPills) html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + metaPills + '</div>';
+
+    // TAMANHOS POR LOJA
+    const storesArr = Object.keys(byStore).sort();
+    if (storesArr.length) {
+      html += '<div style="margin-top:4px;padding:8px;background:#fafafa;border-radius:8px;border:1px solid #e5e5ea;">';
+      html += '<div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:6px;">📦 Tamanhos por loja</div>';
+      storesArr.forEach(code => {
+        const info = byStore[code];
+        const sizes = info.items.slice().sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0)).join(', ');
+        html += '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;font-size:11px;">';
+        html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + info.color + ';margin-top:5px;flex-shrink:0;"></span>';
+        html += '<strong style="color:' + info.color + ';min-width:50px;">' + code + ':</strong>';
+        html += '<span style="color:#1d1d1f;flex:1;">' + sizes + '</span>';
+        html += '<span style="color:#8e8e93;font-weight:600;">(' + info.items.length + ')</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="margin-top:4px;padding:8px;background:#fff1f0;border-radius:8px;font-size:11px;color:#d70015;text-align:center;">⚠ Nenhuma loja vinculada</div>';
+    }
+
+    // Status + Ativo
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">' + statusBadge;
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
+    // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
       + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>'
       + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
@@ -2081,18 +2129,40 @@ function _catRenderUnits() {
   empty.style.display = 'none';
   summary.style.display = 'block';
   const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
-  wrap.innerHTML = _catUnits.map((u, i) => {
+
+  // Ordena por tamanho (numérico) depois por loja
+  const sorted = _catUnits.map((u, i) => ({ ...u, _idx: i })).sort((a, b) => {
+    const sa = parseInt(a.size, 10) || 0;
+    const sb = parseInt(b.size, 10) || 0;
+    if (sa !== sb) return sa - sb;
+    return (a.storeCode || '').localeCompare(b.storeCode || '');
+  });
+
+  // Layout COLUNA: 2 colunas (Tamanho | Loja), uma linha por unidade
+  wrap.style.display = 'block';
+  wrap.style.gridTemplateColumns = '';
+
+  let html = '<div style="display:grid;grid-template-columns:90px 1fr 40px;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
+  // Header
+  html += '<div style="padding:8px 12px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;text-align:center;border-right:1px solid #e5e5ea;">TAMANHO</div>';
+  html += '<div style="padding:8px 12px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;border-right:1px solid #e5e5ea;">LOJA</div>';
+  html += '<div style="padding:8px;background:#f5f5f7;"></div>';
+  // Linhas
+  sorted.forEach((u, idx) => {
     const code = u.storeCode || 'L?';
     const color = storeColors[code] || '#8e8e93';
-    return '<div style="background:white;border:2px solid ' + color + ';border-radius:10px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;">'
-      + '<button type="button" onclick="catRemoveUnit(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#d70015;color:white;border:none;cursor:pointer;font-size:11px;font-weight:700;line-height:1;">×</button>'
-      + '<div style="font-size:22px;font-weight:800;color:#1d1d1f;line-height:1;">' + escapeHtml(u.size) + '</div>'
-      + '<div style="font-size:9px;font-weight:700;color:' + color + ';letter-spacing:0.5px;">' + escapeHtml(code) + '</div>'
-      + '</div>';
-  }).join('');
-  // Sumário por tamanho × loja
-  const byKey = {};
-  _catUnits.forEach(u => { const k = u.size + '|' + (u.storeCode || ''); byKey[k] = (byKey[k] || 0) + 1; });
+    const bg = idx % 2 === 0 ? 'white' : '#fafafa';
+    html += '<div style="padding:12px;background:' + bg + ';font-size:20px;font-weight:800;color:#1d1d1f;text-align:center;border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">' + escapeHtml(u.size) + '</div>';
+    html += '<div style="padding:12px;background:' + bg + ';display:flex;align-items:center;gap:8px;border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
+    html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';"></span>';
+    html += '<span style="font-size:13px;font-weight:700;color:' + color + ';">' + escapeHtml(code) + '</span>';
+    html += '<span style="font-size:12px;color:#8e8e93;">' + escapeHtml((u.storeName || '').replace(code + ' — ', '')) + '</span>';
+    html += '</div>';
+    html += '<div style="padding:12px;background:' + bg + ';display:flex;align-items:center;justify-content:center;border-top:1px solid #f0f0f3;"><button type="button" onclick="catRemoveUnit(' + u._idx + ')" style="width:24px;height:24px;border-radius:50%;background:#fff1f0;color:#d70015;border:1px solid #d70015;cursor:pointer;font-size:12px;font-weight:700;line-height:1;">×</button></div>';
+  });
+  html += '</div>';
+
+  wrap.innerHTML = html;
   summary.innerHTML = 'Total: <strong style="color:#1d1d1f;">' + _catUnits.length + ' unidades</strong>';
 }
 
