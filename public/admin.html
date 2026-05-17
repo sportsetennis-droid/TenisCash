@@ -2040,8 +2040,12 @@ async function loadCatalogProductsAdmin() {
       + '</div>';
     // Nome
     html += '<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">' + escapeHtml(p.name || '?') + '</div>';
-    // SKU
-    html += '<div style="font-size:11px;color:var(--text2);font-family:monospace;">' + escapeHtml(p.sku || '') + '</div>';
+    // SKU + Referência (em linha)
+    const ref = ctx.supplierRef || '';
+    html += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);font-family:monospace;">'
+      + '<span title="SKU">📋 ' + escapeHtml(p.sku || '') + '</span>'
+      + (ref ? '<span title="Referência do fornecedor" style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ' + escapeHtml(ref) + '</span>' : '')
+      + '</div>';
     // Descrição
     if (desc) html += '<div style="font-size:11px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml(desc) + '</div>';
     // Categoria + Especialidade em pills
@@ -5414,7 +5418,10 @@ async function loadInvProducts() {
                 <span style="font-size:14px;font-weight:800;color:#FF6D00;">R$ ${Number(p.price||0).toFixed(2)}</span>
               </div>
               <div style="font-size:13px;font-weight:600;line-height:1.3;color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:34px;">${escapeHtml(p.name||'?')}</div>
-              <div style="font-size:11px;color:var(--text2);font-family:monospace;">${escapeHtml(p.sku||'')}</div>
+              <div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--text2);font-family:monospace;">
+                <span>📋 ${escapeHtml(p.sku||'')}</span>
+                ${(() => { try { const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); return ctx.supplierRef ? '<span style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ' + escapeHtml(ctx.supplierRef) + '</span>' : ''; } catch (e) { return ''; } })()}
+              </div>
               <div style="font-size:11px;color:var(--text2);">Tam: <strong style="color:var(--text);">${sizesStr || '—'}</strong></div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 10px;background:${stockBg};border-radius:8px;">
                 <span style="font-size:11px;color:${stockColor};font-weight:700;">ESTOQUE</span>
@@ -6294,7 +6301,11 @@ function renderClsCard(p) {
       <div class="cls-card-body">
         <div class="cls-card-brand ${hasBrand ? '' : 'empty'}">${hasBrand ? brandText : '⚠ SEM MARCA'}</div>
         <div class="cls-card-name">${p.name || '?'}</div>
-        <div class="cls-card-sku">${p.sku}</div>
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">
+          <div class="cls-card-sku">📋 ${p.sku}</div>
+          ${p.supplierRef ? '<span style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;font-size:10px;font-family:monospace;">REF: ' + p.supplierRef + '</span>' : ''}
+        </div>
+        ${p.shortDescription ? '<div style="font-size:11px;color:#8e8e93;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + p.shortDescription + '</div>' : ''}
         <div class="cls-card-sizes">Tamanhos: <strong>${sizes}</strong>${sizeCount > 8 ? ' +' + (sizeCount - 8) : ''}</div>
         <div class="cls-card-tags">
           ${c.type ? `<span class="cls-pill cls-pill-type">${c.type}</span>` : '<span class="cls-pill cls-pill-empty">Sem tipo</span>'}

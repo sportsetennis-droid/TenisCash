@@ -73,7 +73,7 @@ router.get('/products', async (req, res) => {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, sku: true, name: true, brand: true, category: true, subcategory: true,
-        imageUrl: true, price: true, promoPrice: true, aiContext: true,
+        shortDescription: true, imageUrl: true, price: true, promoPrice: true, aiContext: true,
         sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } },
       },
     });
@@ -90,6 +90,8 @@ router.get('/products', async (req, res) => {
         imageUrl: p.imageUrl, price: p.price, promoPrice: p.promoPrice,
         sizes: p.sizes || [],
         classification: cls,
+        supplierRef: ctx?.supplierRef || null,
+        shortDescription: p.shortDescription || null,
       };
     });
 
