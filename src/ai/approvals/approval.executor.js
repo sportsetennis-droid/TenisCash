@@ -4,7 +4,7 @@
 // Quando o admin aprova uma AIApproval, este módulo:
 //   1. Olha o tipo (whatsapp_bulk, instagram_feed, instagram_story, ...)
 //   2. Pega o payload da aprovação
-//   3. Executa a ação real (Z-API, Meta Graph API, etc.)
+//   3. Executa a ação real (Meta WhatsApp Cloud API, Meta Graph API, etc.)
 //   4. Marca como 'executed' + registra resultado
 // =====================================================================
 
@@ -43,7 +43,7 @@ async function pickRecipientsForCampaign({ scope, storeId, limit = 200 } = {}) {
  * executeApproval — dispara a ação real para uma aprovação.
  *
  * Tipos suportados nesta versão:
- *   - whatsapp_bulk      → envia campanha via Z-API
+ *   - whatsapp_bulk      → envia campanha via Meta WhatsApp Cloud API
  *   - whatsapp_single    → envia mensagem individual
  *   - instagram_feed     → posta no feed (precisa imageUrl no payload)
  *   - instagram_story    → posta story (precisa imageUrl no payload)

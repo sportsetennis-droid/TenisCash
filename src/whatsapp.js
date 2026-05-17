@@ -1,7 +1,3 @@
-const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
-const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
-const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
-
 const META_WA_API_VERSION = process.env.META_WHATSAPP_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0';
 const META_WA_ACCESS_TOKEN = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_PAGE_TOKEN;
 const META_WA_PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -20,7 +16,7 @@ async function sendMetaWhatsAppPayload(payload) {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${META_WA_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${META_WA_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ messaging_product: 'whatsapp', ...payload }),
@@ -69,66 +65,37 @@ async function sendMetaCode(phone, code) {
   );
 }
 
-// Armazena códigos temporários em memória (expira em 10 min)
+// Armazena codigos temporarios em memoria (expira em 10 min)
 const verificationCodes = new Map();
 
 function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 dígitos
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 async function sendVerificationCode(phone) {
   const code = generateCode();
-  
-  // Formata telefone pro padrão internacional (55 + DDD + número)
-  let formattedPhone = phone.replace(/\D/g, '');
-  if (!formattedPhone.startsWith('55')) {
-    formattedPhone = '55' + formattedPhone;
+
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) {
+    return { success: false, message: 'Telefone invalido' };
   }
 
-  // Salva código com expiração de 10 minutos
   verificationCodes.set(phone, {
     code,
     expiresAt: Date.now() + 10 * 60 * 1000,
     attempts: 0,
   });
 
-  if (isMetaWhatsAppConfigured()) {
-    const metaResult = await sendMetaCode(formattedPhone, code);
-    if (metaResult.ok) {
-      return { success: true, message: 'Código enviado por WhatsApp', provider: 'meta', messageId: metaResult.messageId };
-    }
-    console.error('Meta WhatsApp response:', metaResult);
-    return { success: false, message: metaResult.error || 'Erro ao enviar mensagem pela Meta WhatsApp' };
+  if (!isMetaWhatsAppConfigured()) {
+    return { success: false, message: 'Meta WhatsApp nao configurado' };
   }
 
-  // Envia via Z-API
-  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-  
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Client-Token': ZAPI_CLIENT_TOKEN
-      },
-      body: JSON.stringify({
-        phone: formattedPhone,
-        message: `🏃 *TenisCash - Sports & Tennis*\n\nSeu código de verificação é:\n\n*${code}*\n\nEsse código expira em 10 minutos.\n\nSe você não solicitou este código, ignore esta mensagem.`
-      })
-    });
-
-    const data = await response.json();
-    
-    if (data.zapiMessageId || data.messageId) {
-      return { success: true, message: 'Código enviado por WhatsApp' };
-    } else {
-      console.error('Z-API response:', data);
-      return { success: false, message: 'Erro ao enviar mensagem. Verifique se o número tem WhatsApp.' };
-    }
-  } catch (err) {
-    console.error('Erro Z-API:', err);
-    return { success: false, message: 'Erro ao enviar código de verificação' };
+  const metaResult = await sendMetaCode(formattedPhone, code);
+  if (metaResult.ok) {
+    return { success: true, message: 'Codigo enviado por WhatsApp', provider: 'meta', messageId: metaResult.messageId };
   }
+  console.error('Meta WhatsApp response:', metaResult);
+  return { success: false, message: metaResult.error || 'Erro ao enviar mensagem pela Meta WhatsApp' };
 }
 
 // Telefones verificados temporariamente (expira em 15 min)
@@ -136,31 +103,29 @@ const verifiedPhones = new Map();
 
 function verifyCode(phone, code) {
   const stored = verificationCodes.get(phone);
-  
+
   if (!stored) {
-    // Checa se já foi verificado
     if (verifiedPhones.has(phone)) {
       return { valid: true };
     }
-    return { valid: false, message: 'Código não encontrado. Solicite um novo.' };
+    return { valid: false, message: 'Codigo nao encontrado. Solicite um novo.' };
   }
 
   if (Date.now() > stored.expiresAt) {
     verificationCodes.delete(phone);
-    return { valid: false, message: 'Código expirado. Solicite um novo.' };
+    return { valid: false, message: 'Codigo expirado. Solicite um novo.' };
   }
 
   stored.attempts++;
   if (stored.attempts > 5) {
     verificationCodes.delete(phone);
-    return { valid: false, message: 'Muitas tentativas. Solicite um novo código.' };
+    return { valid: false, message: 'Muitas tentativas. Solicite um novo codigo.' };
   }
 
   if (stored.code !== code) {
-    return { valid: false, message: 'Código incorreto. Tente novamente.' };
+    return { valid: false, message: 'Codigo incorreto. Tente novamente.' };
   }
 
-  // Código válido - marca como verificado por 15 minutos
   verificationCodes.delete(phone);
   verifiedPhones.set(phone, { expiresAt: Date.now() + 15 * 60 * 1000 });
   return { valid: true };
@@ -180,7 +145,7 @@ function clearVerified(phone) {
   verifiedPhones.delete(phone);
 }
 
-// Limpa códigos expirados a cada 5 minutos
+// Limpa codigos expirados a cada 5 minutos.
 setInterval(() => {
   const now = Date.now();
   for (const [phone, data] of verificationCodes.entries()) {
@@ -191,7 +156,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // =====================================================================
-// CAMPANHA — envio em lote via Z-API com throttling e log
+// CAMPANHA - envio em lote via Meta WhatsApp Cloud API com throttling e log
 // =====================================================================
 
 function formatPhoneBR(raw) {
@@ -203,43 +168,26 @@ function formatPhoneBR(raw) {
 }
 
 async function sendCustomMessage(phone, message) {
-  if (isMetaWhatsAppConfigured()) {
-    const out = await sendMetaText(phone, message);
-    if (out.ok) return { ok: true, provider: 'meta', messageId: out.messageId };
-    return { ok: false, provider: 'meta', error: out.error || 'Falha no envio Meta WhatsApp' };
+  if (!isMetaWhatsAppConfigured()) {
+    return { ok: false, provider: 'meta', error: 'Meta WhatsApp nao configurado' };
   }
 
-  if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN || !ZAPI_CLIENT_TOKEN) {
-    return { ok: false, error: 'Z-API não configurada' };
-  }
   const formattedPhone = formatPhoneBR(phone);
-  if (!formattedPhone) return { ok: false, error: 'Telefone inválido' };
-  if (!message || !String(message).trim()) return { ok: false, error: 'Mensagem vazia' };
+  if (!formattedPhone) return { ok: false, provider: 'meta', error: 'Telefone invalido' };
+  if (!message || !String(message).trim()) return { ok: false, provider: 'meta', error: 'Mensagem vazia' };
 
-  const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
-      body: JSON.stringify({ phone: formattedPhone, message: String(message) }),
-    });
-    const data = await response.json();
-    if (data.zapiMessageId || data.messageId) {
-      return { ok: true, messageId: data.zapiMessageId || data.messageId };
-    }
-    return { ok: false, error: data.error || data.message || 'Falha no envio Z-API' };
-  } catch (err) {
-    return { ok: false, error: err.message || 'Erro de conexão Z-API' };
-  }
+  const out = await sendMetaText(formattedPhone, message);
+  if (out.ok) return { ok: true, provider: 'meta', messageId: out.messageId };
+  return { ok: false, provider: 'meta', error: out.error || 'Falha no envio Meta WhatsApp' };
 }
 
 /**
- * sendCampaignBatch — envia para uma lista de telefones com throttling.
- * Retorna sumário { total, sent, failed, errors[] }.
+ * sendCampaignBatch - envia para uma lista de telefones com throttling.
+ * Retorna sumario { total, sent, failed, errors[] }.
  *
  * @param {Object} opts
  * @param {string[]} opts.phones - lista de telefones (qualquer formato BR)
- * @param {string} opts.message - texto único OU template com placeholders {{name}}
+ * @param {string} opts.message - texto unico OU template com placeholders {{name}}
  * @param {Array} [opts.recipients] - alternativa: [{phone, name}] para personalizar {{name}}
  * @param {number} [opts.delayMs=1500] - delay entre envios
  */

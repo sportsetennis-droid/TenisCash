@@ -3929,7 +3929,7 @@ async function aiExecuteApproval(approvalId, type) {
     const confirmed = confirm(
       `Vai disparar para ${preview.total} pessoa(s).\n\n`
       + `Exemplos: ${(preview.recipients || []).slice(0, 5).map(r => r.name || r.phone).join(', ')}\n\n`
-      + 'Confirma envio? (Z-API vai mandar 1 msg a cada 1.5s)'
+      + 'Confirma envio? (Meta WhatsApp vai mandar 1 msg a cada 1.5s)'
     );
     if (!confirmed) return;
     const result = await api(`/admin/ai/approvals/${approvalId}/execute`, 'POST', { scope, limit: 200 });
