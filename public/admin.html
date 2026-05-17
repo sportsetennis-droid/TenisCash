@@ -1528,7 +1528,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)">
     </div>
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">DESCRIÇÃO CURTA</label>
-    <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px"></textarea>
+    <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px" placeholder="Frase curta que aparece em destaque (até 200 caracteres)"></textarea>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">📋 DESCRIÇÃO TÉCNICA / ESPECIFICAÇÕES</label>
+    <textarea class="form-input" id="cat-p-long" rows="6" style="margin-top:6px;font-family:monospace;font-size:13px;line-height:1.5;" placeholder="Material, tecnologia, peso, drop, sistema de amortecimento, indicações de uso, certificações, recomendações, observações...&#10;&#10;Ex:&#10;• Cabedal: malha engineered mesh&#10;• Solado: borracha de alta abrasão&#10;• Peso: 285g (tam 41)&#10;• Drop: 10mm&#10;• Pisada neutra&#10;• Indicado pra corridas até 10km"></textarea>
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">📸 FOTOS DO PRODUTO</label>
     <div id="cat-p-photos-wrap" style="margin-top:8px;padding:12px;background:#f5f5f7;border-radius:10px;border:1px solid #e5e5ea;">
       <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -2131,8 +2134,11 @@ async function loadCatalogProductsAdmin() {
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
     // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
-      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>'
-      + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
+      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>';
+    if (p.longDescription) {
+      html += '<button type="button" onclick="catShowSpecs(\'' + p.id + '\')" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Ver descrição técnica">📋</button>';
+    }
+    html += '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
       + '<button type="button" class="js-cat-del" data-id="' + p.id + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);color:#d70015;font-size:12px;cursor:pointer;" title="Excluir">🗑</button>'
       + '</div>';
     html += '</div></div>';
@@ -2154,6 +2160,36 @@ async function loadCatalogProductsAdmin() {
     btn.addEventListener('click', function () { enrichOneProduct(btn); });
   });
 }
+
+// ===== MODAL DE ESPECIFICAÇÕES TÉCNICAS (visualização) =====
+window.catShowSpecs = async function(productId) {
+  const data = await api('/admin/catalog/products/' + encodeURIComponent(productId));
+  if (data.error) { alert(data.error); return; }
+  const p = data.product;
+  // Cria modal flutuante
+  let modal = document.getElementById('cat-specs-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cat-specs-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = '<div style="background:white;border-radius:16px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;color:#1d1d1f;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;">'
+    + '<div><h3 style="margin:0;font-size:20px;font-weight:800;">📋 Especificações Técnicas</h3>'
+    + '<div style="font-size:13px;color:#8e8e93;margin-top:4px;">' + escapeHtml(p.name || '') + '</div></div>'
+    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;">×</button>'
+    + '</div>'
+    + (p.shortDescription ? '<div style="padding:12px 14px;background:#FFF5EB;border-left:3px solid #FF6D00;border-radius:8px;font-size:14px;color:#1d1d1f;line-height:1.5;margin-bottom:14px;">' + escapeHtml(p.shortDescription) + '</div>' : '')
+    + '<div style="padding:16px;background:#fafafa;border-radius:10px;border:1px solid #e5e5ea;font-family:monospace;font-size:13px;line-height:1.6;color:#1d1d1f;white-space:pre-wrap;word-wrap:break-word;">'
+    + (p.longDescription ? escapeHtml(p.longDescription) : '<span style="color:#8e8e93;">Sem descrição técnica.</span>')
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:18px;">'
+    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove();openCatProductModal(\'' + p.id + '\')" style="flex:1;padding:11px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">✎ Editar produto</button>'
+    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 18px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;color:#1d1d1f;">Fechar</button>'
+    + '</div></div>';
+};
 
 // ===== CARROSSEL DE FOTOS (card de produto) =====
 window.crslNav = function(id, dir) {
@@ -2375,6 +2411,7 @@ async function openCatProductModal(id) {
     document.getElementById('cat-p-price').value = '';
     document.getElementById('cat-p-promo').value = '';
     document.getElementById('cat-p-short').value = '';
+    document.getElementById('cat-p-long').value = '';
     document.getElementById('cat-p-img').value = '';
     document.getElementById('cat-p-sizes').value = '';
     document.getElementById('cat-p-active').checked = true;
@@ -2394,6 +2431,7 @@ async function openCatProductModal(id) {
   document.getElementById('cat-p-price').value = p.price;
   document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
   document.getElementById('cat-p-short').value = p.shortDescription || '';
+  document.getElementById('cat-p-long').value = p.longDescription || '';
   document.getElementById('cat-p-img').value = p.imageUrl || '';
   document.getElementById('cat-p-active').checked = p.active !== false;
   document.getElementById('cat-p-featured').checked = !!p.featured;
@@ -2463,6 +2501,7 @@ async function catProductSave() {
     price: parseFloat(document.getElementById('cat-p-price').value),
     promoPrice: document.getElementById('cat-p-promo').value ? parseFloat(document.getElementById('cat-p-promo').value) : null,
     shortDescription: document.getElementById('cat-p-short').value.trim() || null,
+    longDescription: document.getElementById('cat-p-long').value.trim() || null,
     imageUrl: (_catPhotos[0]?.url || document.getElementById('cat-p-img').value.trim() || null),
     imageUrls: _catPhotos.slice(1).map(p => p.url).filter(Boolean),
     active: document.getElementById('cat-p-active').checked,
