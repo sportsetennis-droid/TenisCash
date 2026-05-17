@@ -38,6 +38,7 @@ const anthropicToolsRoutes = require('./routes/anthropicTools');
 const orchestratorRoutes = require('./routes/orchestrator');
 const activitiesRoutes = require('./routes/activities');
 const coachRoutes = require('./routes/coach');
+const adminClassificationRoutes = require('./routes/adminClassification');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -103,6 +104,7 @@ app.use('/api/admin/products', productsRoutes);
 app.use('/api/admin/ai-curation', aiCurationRoutes);
 app.use('/api/admin/anthropic-tools', anthropicToolsRoutes);
 app.use('/api/admin/orchestrator', orchestratorRoutes);
+app.use('/api/admin/classification', adminClassificationRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api', nuvemshopRoutes);

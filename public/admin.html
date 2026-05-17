@@ -244,6 +244,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
+    <button class="tab" onclick="switchTab('classification',this)">Classificação IA</button>
   </div>
 
   <!-- USERS SECTION -->
@@ -1130,6 +1131,108 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
     <div id="cat-p-error" style="margin-top:10px"></div>
     <button type="button" class="btn btn-primary" id="cat-p-save" style="margin-top:14px;width:100%">SALVAR</button>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ABA CLASSIFICAÇÃO IA — revisar e editar tipo/genero/modalidade/tier -->
+<!-- ============================================================ -->
+<div class="section" id="tab-classification" style="display:none">
+  <div class="section-head">
+    <h2>Classificação IA — revisão e edição</h2>
+    <p class="muted">Revise e corrija a classificação automática dos produtos na árvore Sports & Tennis.</p>
+  </div>
+
+  <div id="cls-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px;"></div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;padding:14px;background:#fff;border-radius:10px;border:1px solid var(--border);">
+    <div>
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIPO</label>
+      <select id="cls-f-type" class="form-input" onchange="loadClsProducts()">
+        <option value="">Todos</option>
+        <option value="Tênis">Tênis</option>
+        <option value="Chuteira">Chuteira</option>
+        <option value="Outro">Outro</option>
+      </select>
+    </div>
+    <div>
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">GÊNERO</label>
+      <select id="cls-f-gender" class="form-input" onchange="loadClsProducts()">
+        <option value="">Todos</option>
+        <option value="Feminino">Feminino</option>
+        <option value="Masculino">Masculino</option>
+        <option value="Inf. M">Inf. M</option>
+        <option value="Inf. F">Inf. F</option>
+      </select>
+    </div>
+    <div>
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MODALIDADE</label>
+      <select id="cls-f-modality" class="form-input" onchange="loadClsProducts()">
+        <option value="">Todas</option>
+      </select>
+    </div>
+    <div>
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">BUSCAR</label>
+      <input type="text" id="cls-f-q" class="form-input" placeholder="nome, sku, marca" oninput="debounceClsLoad()">
+    </div>
+    <div>
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">FILTRO ESPECIAL</label>
+      <select id="cls-f-special" class="form-input" onchange="loadClsProducts()">
+        <option value="">— nenhum —</option>
+        <option value="unclassified">Não classificados</option>
+        <option value="lowConfidence">Baixa confiança (&lt;70%)</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="cls-products" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;"></div>
+  <button id="cls-loadmore" class="btn btn-secondary" style="margin-top:12px;display:none;" onclick="loadMoreCls()">Carregar mais</button>
+</div>
+
+<!-- Modal de edição -->
+<div id="cls-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:white;border-radius:16px;max-width:520px;width:100%;padding:24px;max-height:90vh;overflow-y:auto;">
+    <h3 id="cls-modal-title" style="margin:0 0 12px;">Editar classificação</h3>
+    <div id="cls-modal-product" style="display:flex;gap:12px;align-items:center;padding:10px;background:#f5f5f7;border-radius:10px;margin-bottom:16px;"></div>
+
+    <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIPO *</label>
+    <select id="cls-edit-type" class="form-input" onchange="onClsEditTypeChange()">
+      <option value="">— sem tipo —</option>
+      <option value="Tênis">Tênis</option>
+      <option value="Chuteira">Chuteira</option>
+      <option value="Outro">Outro</option>
+    </select>
+
+    <div id="cls-edit-genderGroup" style="margin-top:10px;">
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">GÊNERO</label>
+      <select id="cls-edit-gender" class="form-input">
+        <option value="">—</option>
+        <option value="Feminino">Feminino</option>
+        <option value="Masculino">Masculino</option>
+        <option value="Inf. M">Inf. M</option>
+        <option value="Inf. F">Inf. F</option>
+      </select>
+    </div>
+
+    <div id="cls-edit-modalityGroup" style="margin-top:10px;">
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">MODALIDADE</label>
+      <select id="cls-edit-modality" class="form-input" onchange="onClsEditModalityChange()">
+        <option value="">—</option>
+      </select>
+    </div>
+
+    <div id="cls-edit-tierGroup" style="margin-top:10px;">
+      <label class="muted" style="font-size:11px;letter-spacing:1.5px;">TIER</label>
+      <select id="cls-edit-tier" class="form-input">
+        <option value="">—</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="saveClsEdit()" style="flex:1;">💾 Salvar</button>
+      <button class="btn btn-secondary" onclick="reclassifyWithAI()" title="Pede pra IA classificar de novo">🤖 IA novamente</button>
+      <button class="btn btn-secondary" onclick="closeClsModal()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -5351,6 +5454,223 @@ async function imgSelect(productId, urlEncoded) {
   document.getElementById('img-review-modal').classList.remove('show');
   loadPendingImages();
 }
+
+// ============================================================
+// CLASSIFICAÇÃO IA — revisão e edição
+// ============================================================
+let clsTree = null;
+let clsNextCursor = null;
+let clsLoadDebounce;
+
+async function clsLoadTree() {
+  if (clsTree) return clsTree;
+  const r = await api('/admin/classification/tree');
+  clsTree = r;
+  return r;
+}
+
+async function loadClsStats() {
+  try {
+    const d = await api('/admin/classification/stats');
+    const s = document.getElementById('cls-stats');
+    s.innerHTML = `
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Total ativos</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.total}</div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Classificados</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#0a843d;">${d.classified} <span style="font-size:14px;color:var(--text2);">(${d.progressPct}%)</span></div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Pendentes</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#FF6D00;">${d.pending}</div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Baixa confiança</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;color:#d70015;">${d.lowConfidenceCount}</div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Tênis</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Tênis'] || 0}</div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Chuteira</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Chuteira'] || 0}</div>
+      </div>
+      <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;">Outros</div>
+        <div style="font-size:24px;font-weight:700;margin-top:4px;">${d.byType['Outro'] || 0}</div>
+      </div>
+    `;
+  } catch (e) { console.error(e); }
+}
+
+function debounceClsLoad() {
+  clearTimeout(clsLoadDebounce);
+  clsLoadDebounce = setTimeout(loadClsProducts, 300);
+}
+
+async function loadClsProducts(append) {
+  await clsLoadTree();
+  const type = document.getElementById('cls-f-type').value;
+  const gender = document.getElementById('cls-f-gender').value;
+  const modality = document.getElementById('cls-f-modality').value;
+  const q = document.getElementById('cls-f-q').value;
+  const special = document.getElementById('cls-f-special').value;
+
+  // Popula modalidade quando muda o tipo
+  if (type && clsTree.modalities[type]) {
+    const mSel = document.getElementById('cls-f-modality');
+    if (mSel.options.length <= 1 || mSel.dataset.forType !== type) {
+      mSel.innerHTML = '<option value="">Todas</option>' + clsTree.modalities[type].map(m => `<option value="${m}">${m}</option>`).join('');
+      mSel.dataset.forType = type;
+    }
+  }
+
+  const params = ['limit=30'];
+  if (type) params.push('type=' + encodeURIComponent(type));
+  if (gender) params.push('gender=' + encodeURIComponent(gender));
+  if (modality) params.push('modality=' + encodeURIComponent(modality));
+  if (q) params.push('q=' + encodeURIComponent(q));
+  if (special === 'unclassified') params.push('unclassified=1');
+  if (special === 'lowConfidence') params.push('lowConfidence=1');
+  if (append && clsNextCursor) params.push('cursor=' + clsNextCursor);
+
+  const d = await api('/admin/classification/products?' + params.join('&'));
+  clsNextCursor = d.nextCursor;
+  document.getElementById('cls-loadmore').style.display = clsNextCursor ? 'inline-block' : 'none';
+
+  const container = document.getElementById('cls-products');
+  const html = (d.products || []).map(p => {
+    const c = p.classification || {};
+    const conf = c.confidence != null ? Math.round(c.confidence * 100) : null;
+    const confColor = conf >= 80 ? '#0a843d' : conf >= 60 ? '#b06b00' : '#d70015';
+    const confBadge = conf != null ? `<span style="background:${confColor}20;color:${confColor};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">${conf}% confiança</span>` : '<span style="background:#f5f5f7;color:#8e8e93;padding:2px 8px;border-radius:10px;font-size:10px;">não classificado</span>';
+    const editBadge = c.manualEdit ? '<span style="background:#e8f7ee;color:#0a843d;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">✓ humano</span>' : '';
+    return `
+      <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;gap:12px;">
+        <img src="${p.imageUrl || ''}" style="width:80px;height:80px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;" onerror="this.style.opacity='0.3'">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;line-height:1.3;margin-bottom:4px;">${p.name || '?'}</div>
+          <div style="font-size:11px;color:var(--text2);">${p.brand || ''} · ${p.sku}</div>
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
+            ${c.type ? `<span style="background:#FFE5D0;color:#FF6D00;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${c.type}</span>` : ''}
+            ${c.gender ? `<span style="background:#e3f2fd;color:#0066cc;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${c.gender}</span>` : ''}
+            ${c.modality ? `<span style="background:#f5f5f7;color:#1d1d1f;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${c.modality}</span>` : ''}
+            ${c.tier ? `<span style="background:#f5f5f7;color:#8e8e93;padding:2px 8px;border-radius:10px;font-size:11px;">${c.tier}</span>` : ''}
+            ${confBadge} ${editBadge}
+          </div>
+          <button class="btn btn-primary" style="margin-top:8px;font-size:12px;padding:6px 12px;" onclick='openClsEdit(${JSON.stringify(p).replace(/'/g, "&#39;")})'>✎ Editar</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (append) container.innerHTML += html;
+  else container.innerHTML = html || '<p style="color:var(--text2);text-align:center;grid-column:1/-1;padding:20px;">Nenhum produto.</p>';
+}
+
+function loadMoreCls() { loadClsProducts(true); }
+
+let clsEditing = null;
+function openClsEdit(p) {
+  clsEditing = p;
+  document.getElementById('cls-modal-title').textContent = 'Editar classificação';
+  document.getElementById('cls-modal-product').innerHTML = `
+    <img src="${p.imageUrl || ''}" style="width:60px;height:60px;object-fit:contain;background:white;border-radius:8px;" onerror="this.style.opacity='0.3'">
+    <div>
+      <div style="font-weight:600;font-size:14px;">${p.name}</div>
+      <div style="font-size:12px;color:#8e8e93;">${p.brand || ''} · ${p.sku}</div>
+    </div>
+  `;
+  const c = p.classification || {};
+  document.getElementById('cls-edit-type').value = c.type || '';
+  onClsEditTypeChange();
+  document.getElementById('cls-edit-gender').value = c.gender || '';
+  document.getElementById('cls-edit-modality').value = c.modality || '';
+  onClsEditModalityChange();
+  document.getElementById('cls-edit-tier').value = c.tier || '';
+  document.getElementById('cls-modal').style.display = 'flex';
+}
+
+function closeClsModal() {
+  document.getElementById('cls-modal').style.display = 'none';
+  clsEditing = null;
+}
+
+function onClsEditTypeChange() {
+  const t = document.getElementById('cls-edit-type').value;
+  const mSel = document.getElementById('cls-edit-modality');
+  if (t && clsTree.modalities[t]) {
+    mSel.innerHTML = '<option value="">—</option>' + clsTree.modalities[t].map(m => `<option value="${m}">${m}</option>`).join('');
+    document.getElementById('cls-edit-modalityGroup').style.display = 'block';
+  } else {
+    mSel.innerHTML = '<option value="">—</option>';
+    document.getElementById('cls-edit-modalityGroup').style.display = t === 'Outro' ? 'none' : 'block';
+  }
+  document.getElementById('cls-edit-genderGroup').style.display = t === 'Tênis' ? 'block' : 'none';
+  onClsEditModalityChange();
+}
+
+function onClsEditModalityChange() {
+  const m = document.getElementById('cls-edit-modality').value;
+  const tSel = document.getElementById('cls-edit-tier');
+  if (m && clsTree.tiers[m]) {
+    tSel.innerHTML = '<option value="">—</option>' + clsTree.tiers[m].map(t => `<option value="${t}">${t}</option>`).join('');
+    document.getElementById('cls-edit-tierGroup').style.display = 'block';
+  } else {
+    tSel.innerHTML = '<option value="">—</option>';
+    document.getElementById('cls-edit-tierGroup').style.display = 'none';
+  }
+}
+
+async function saveClsEdit() {
+  if (!clsEditing) return;
+  const payload = {
+    type: document.getElementById('cls-edit-type').value || null,
+    gender: document.getElementById('cls-edit-gender').value || null,
+    modality: document.getElementById('cls-edit-modality').value || null,
+    tier: document.getElementById('cls-edit-tier').value || null,
+  };
+  try {
+    await api('/admin/classification/' + clsEditing.id, 'PATCH', payload);
+    closeClsModal();
+    loadClsProducts();
+    loadClsStats();
+  } catch (e) {
+    alert('Erro: ' + (e.message || e));
+  }
+}
+
+async function reclassifyWithAI() {
+  if (!clsEditing) return;
+  if (!confirm('Pedir à IA pra classificar de novo? Vai sobrescrever a edição atual.')) return;
+  try {
+    const r = await api('/admin/classification/' + clsEditing.id + '/reclassify', 'POST');
+    if (r.classification) {
+      document.getElementById('cls-edit-type').value = r.classification.type || '';
+      onClsEditTypeChange();
+      document.getElementById('cls-edit-gender').value = r.classification.gender || '';
+      document.getElementById('cls-edit-modality').value = r.classification.modality || '';
+      onClsEditModalityChange();
+      document.getElementById('cls-edit-tier').value = r.classification.tier || '';
+      alert('IA re-classificou. Revise e salve se OK.');
+    }
+  } catch (e) { alert('Erro: ' + (e.message || e)); }
+}
+
+// Hook switchTab pra carregar quando entrar na aba
+(function hookClsTab() {
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn) {
+    if (typeof orig === 'function') orig(name, btn);
+    if (name === 'classification') {
+      loadClsStats();
+      loadClsProducts();
+    }
+  };
+})();
 
 </script>
 </body>
