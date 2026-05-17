@@ -40,14 +40,38 @@ function findXmlFiles(rootDir) {
   return out;
 }
 
+// CNPJs do MESMO GRUPO empresarial — NUNCA tratar como fornecedor externo
+// (causa dupla contagem de estoque quando há transferência entre empresas)
+const BLOCKED_CNPJS = new Set([
+  '44052617000126', // Meta Esportes Ltda (Baratão dos Esportes)
+  // Adicione outros CNPJs do grupo aqui se aparecerem
+]);
+
+// CFOPs de TRANSFERÊNCIA entre filiais — NÃO somar estoque
+// (saída na origem, entrada no destino — produto já foi contado na compra original)
+const TRANSFER_CFOPS = new Set([
+  '5151', '5152', '5408', '5409', '5664', '5665', '5666',
+  '6151', '6152', '6408', '6409', '6664', '6665', '6666',
+  '1151', '1152', '1408', '1409', '1664', '1665', '1666',
+  '2151', '2152', '2408', '2409', '2664', '2665', '2666',
+]);
+
 async function main() {
   const cnpj = process.argv[2];
   const folder = process.argv[3];
   const dryRun = process.argv.includes('--dry-run');
+  const force = process.argv.includes('--force'); // pra sobrescrever bloqueio em casos especiais
 
   if (!cnpj || !folder) {
-    console.error('Uso: node scripts/import-supplier.js <CNPJ_14_DIGITOS> <PASTA_XMLS> [--dry-run]');
+    console.error('Uso: node scripts/import-supplier.js <CNPJ_14_DIGITOS> <PASTA_XMLS> [--dry-run] [--force]');
     process.exit(1);
+  }
+
+  if (BLOCKED_CNPJS.has(cnpj) && !force) {
+    console.error(`\n❌ BLOQUEADO: CNPJ ${cnpj} é empresa do MESMO GRUPO (transferência interna).`);
+    console.error('   Processar essa NF causaria dupla contagem de estoque.');
+    console.error('   Use --force se tem certeza absoluta que é compra real.\n');
+    process.exit(2);
   }
 
   console.log(`\n=== Import Supplier ===`);
@@ -89,10 +113,16 @@ async function main() {
     }
   }
 
-  // 3. Junta TODOS os itens das NF-es desse fornecedor
+  // 3. Junta TODOS os itens das NF-es desse fornecedor — IGNORA transferências
   const allItems = [];
+  let skippedTransfer = 0;
   for (const n of supplierNotes) {
     for (const it of n.parsed.items) {
+      // Pula CFOPs de transferência interna (não conta no estoque — já entrou na origem)
+      if (it.cfop && TRANSFER_CFOPS.has(String(it.cfop))) {
+        skippedTransfer++;
+        continue;
+      }
       allItems.push({
         sku: it.supplierCode || it.ean || `noref-${allItems.length}`,
         rawName: it.description,
@@ -101,11 +131,13 @@ async function main() {
         qty: it.quantity,
         ncm: it.ncm,
         unit: it.unit,
+        cfop: it.cfop,
         noteNumber: n.parsed.number,
       });
     }
   }
   console.log(`Total de linhas (variantes brutas): ${allItems.length}`);
+  if (skippedTransfer) console.log(`⚠️  ${skippedTransfer} itens IGNORADOS (CFOP de transferência interna — não somar estoque)`);
 
   // 4. IA extrai estrutura (se chave disponível). Senão, usa parser simples.
   const useAI = !!process.env.ANTHROPIC_API_KEY;
