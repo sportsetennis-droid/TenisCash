@@ -1436,7 +1436,7 @@ function renderFilterTree(containerId, onChange) {
         if (tiers.length) {
           rows.push(`
             <div class="filter-row">
-              <span class="filter-row-label">Tier</span>
+              <span class="filter-row-label">Especialidade</span>
               ${tiers.map(t => `
                 <button class="chip ${_filterTier === t ? 'active' : ''}" onclick="pickFilter('tier','${t.replace(/'/g, "\\'")}','${containerId}')">${t}</button>
               `).join('')}
@@ -1460,7 +1460,7 @@ function renderFilterTree(containerId, onChange) {
       if (tiers.length) {
         rows.push(`
           <div class="filter-row">
-            <span class="filter-row-label">Tier</span>
+            <span class="filter-row-label">Especialidade</span>
             ${tiers.map(t => `
               <button class="chip ${_filterTier === t ? 'active' : ''}" onclick="pickFilter('tier','${t.replace(/'/g, "\\'")}','${containerId}')">${t}</button>
             `).join('')}

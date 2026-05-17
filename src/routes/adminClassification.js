@@ -32,14 +32,16 @@ const VALID = {
 // GET /api/admin/classification/tree → devolve a árvore pro front montar dropdowns
 router.get('/tree', (_req, res) => res.json(VALID));
 
-// GET /api/admin/classification/products?type=&gender=&modality=&tier=&q=&unclassified=&limit=
+// GET /api/admin/classification/products?type=&gender=&modality=&tier=&especialidade=&brand=&q=&unclassified=&limit=
 router.get('/products', async (req, res) => {
   try {
-    const { type, gender, modality, tier, q } = req.query;
+    const { type, gender, modality, brand, q } = req.query;
+    // Aceita 'tier' OU 'especialidade' (alias)
+    const tier = req.query.tier || req.query.especialidade;
     const unclassified = req.query.unclassified === '1' || req.query.unclassified === 'true';
     const lowConfidence = req.query.lowConfidence === '1' || req.query.lowConfidence === 'true';
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-    const cursor = req.query.cursor; // pagination
+    const cursor = req.query.cursor;
 
     const filters = [];
     if (type) filters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
@@ -51,13 +53,18 @@ router.get('/products', async (req, res) => {
       { aiContext: { path: ['classification'], equals: null } },
     ] });
 
-    const where = { active: true, ...(filters.length ? { AND: filters } : {}), ...(q ? {
-      OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { sku: { contains: q, mode: 'insensitive' } },
-        { brand: { contains: q, mode: 'insensitive' } },
-      ],
-    } : {}) };
+    const where = {
+      active: true,
+      ...(filters.length ? { AND: filters } : {}),
+      ...(brand ? { brand: { contains: brand, mode: 'insensitive' } } : {}),
+      ...(q ? {
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { sku: { contains: q, mode: 'insensitive' } },
+          { brand: { contains: q, mode: 'insensitive' } },
+        ],
+      } : {}),
+    };
 
     const products = await prisma.product.findMany({
       where,
@@ -67,6 +74,7 @@ router.get('/products', async (req, res) => {
       select: {
         id: true, sku: true, name: true, brand: true, category: true, subcategory: true,
         imageUrl: true, price: true, promoPrice: true, aiContext: true,
+        sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } },
       },
     });
 
@@ -80,6 +88,7 @@ router.get('/products', async (req, res) => {
       return {
         id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category,
         imageUrl: p.imageUrl, price: p.price, promoPrice: p.promoPrice,
+        sizes: p.sizes || [],
         classification: cls,
       };
     });
@@ -98,13 +107,13 @@ router.get('/products', async (req, res) => {
 });
 
 // PATCH /api/admin/classification/:productId
-// Body: { type, gender, modality, tier }  (qualquer um pode ser null pra limpar)
+// Body: { type, gender, modality, tier|especialidade, brand }
 router.patch('/:productId', async (req, res) => {
   try {
-    const { type, gender, modality, tier } = req.body || {};
+    const { type, gender, modality, brand } = req.body || {};
+    const tier = req.body?.tier ?? req.body?.especialidade ?? null;
 
-    // Validações
-    if (type !== null && type !== undefined && !VALID.types.includes(type)) {
+    if (type !== null && type !== undefined && type !== '' && !VALID.types.includes(type)) {
       return res.status(400).json({ error: 'type inválido' });
     }
     if (gender && !VALID.genders.includes(gender)) {
@@ -114,12 +123,12 @@ router.patch('/:productId', async (req, res) => {
       return res.status(400).json({ error: `modality inválida pra ${type}` });
     }
     if (tier && modality && VALID.tiers[modality] && !VALID.tiers[modality].includes(tier)) {
-      return res.status(400).json({ error: `tier inválido pra modalidade ${modality}` });
+      return res.status(400).json({ error: `especialidade inválida pra modalidade ${modality}` });
     }
 
     const p = await prisma.product.findUnique({
       where: { id: req.params.productId },
-      select: { id: true, aiContext: true },
+      select: { id: true, aiContext: true, brand: true },
     });
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
 
@@ -133,20 +142,37 @@ router.patch('/:productId', async (req, res) => {
       gender: gender || null,
       modality: modality || null,
       tier: tier || null,
-      confidence: 1, // editado por humano = certeza total
+      confidence: 1,
       classifiedAt: new Date().toISOString(),
       manualEdit: true,
       editedBy: req.userId,
     };
 
-    await prisma.product.update({
-      where: { id: p.id },
-      data: { aiContext: { ...existingCtx, classification: newClassification } },
-    });
+    const updateData = { aiContext: { ...existingCtx, classification: newClassification } };
+    // Marca editável (vai no campo brand do Product, não no aiContext)
+    if (brand !== undefined && brand !== null) {
+      updateData.brand = String(brand).trim() || 'A DEFINIR';
+    }
 
-    res.json({ ok: true, classification: newClassification });
+    await prisma.product.update({ where: { id: p.id }, data: updateData });
+
+    res.json({ ok: true, classification: newClassification, brand: updateData.brand || p.brand });
   } catch (err) {
     console.error('classification PATCH', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /brands — lista de marcas distintas pra autocomplete
+router.get('/brands', async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT DISTINCT brand FROM "Product"
+      WHERE active = true AND brand IS NOT NULL AND brand != 'A DEFINIR'
+      ORDER BY brand ASC
+    `;
+    res.json({ brands: rows.map(r => r.brand) });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
