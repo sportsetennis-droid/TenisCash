@@ -222,8 +222,21 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     </div>
   </div>
 
-  <!-- TABS -->
-  <div class="tabs">
+  <style>
+    /* Botão "voltar pro Hub" injetado no topo de cada section */
+    .hub-back-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 16px; background: linear-gradient(135deg, #FF6D00, #FF9248);
+      color: white; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      margin-bottom: 18px; transition: all 0.15s;
+      box-shadow: 0 4px 12px rgba(255,109,0,0.25);
+    }
+    .hub-back-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,109,0,0.4); }
+  </style>
+
+  <!-- TABS (escondida — navegação é via cards do Hub) -->
+  <div class="tabs" style="display:none;">
     <button class="tab active" onclick="switchTab('home',this)">🏠 Início</button>
     <button class="tab" onclick="switchTab('users',this)">Usuários</button>
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
@@ -3471,6 +3484,22 @@ function switchTab(tab, btn) {
   if (btn) btn.classList.add('active');
   const homeEl = document.getElementById('tab-home');
   if (homeEl) homeEl.style.display = tab === 'home' ? 'block' : 'none';
+  // Injeta/remove botão "← Voltar" no topo de cada section (exceto home)
+  setTimeout(() => {
+    document.querySelectorAll('.section').forEach(s => {
+      const existing = s.querySelector('.hub-back-btn');
+      if (s.id === 'tab-home') { if (existing) existing.remove(); return; }
+      if (s.style.display === 'block' && !existing) {
+        const btn2 = document.createElement('button');
+        btn2.className = 'hub-back-btn';
+        btn2.innerHTML = '← Voltar ao Início';
+        btn2.onclick = () => switchTabByName('home');
+        s.insertBefore(btn2, s.firstChild);
+      }
+    });
+  }, 50);
+  // Rola pro topo
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
   document.getElementById('tab-transactions').style.display = tab === 'transactions' ? 'block' : 'none';
   document.getElementById('tab-sellers').style.display = tab === 'sellers' ? 'block' : 'none';
