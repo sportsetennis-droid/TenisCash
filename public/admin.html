@@ -1531,8 +1531,20 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px"></textarea>
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">URL IMAGEM</label>
     <input class="form-input" id="cat-p-img" style="margin-top:6px">
-    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">TAMANHOS (um por linha: 38|5)</label>
-    <textarea class="form-input" id="cat-p-sizes" rows="4" placeholder="38|5&#10;39|3" style="margin-top:6px"></textarea>
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">UNIDADES EM ESTOQUE (1 quadrado = 1 unidade física)</label>
+    <div id="cat-p-units-wrap" style="margin-top:8px;padding:12px;background:#f5f5f7;border-radius:10px;border:1px solid #e5e5ea;">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:1;min-width:90px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">TAMANHO</label><input type="text" id="cat-p-new-size" placeholder="38" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
+        <div style="flex:2;min-width:150px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">LOJA</label><select id="cat-p-new-store" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"><option value="">— escolha —</option></select></div>
+        <div style="flex:1;min-width:80px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">QTD</label><input type="number" id="cat-p-new-qty" value="1" min="1" max="50" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
+        <button type="button" id="cat-p-add-unit" style="padding:9px 14px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
+      </div>
+      <div id="cat-p-units-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;"></div>
+      <div id="cat-p-units-empty" style="text-align:center;padding:14px;color:#8e8e93;font-size:12px;">Nenhuma unidade. Adicione acima.</div>
+      <div id="cat-p-units-summary" style="margin-top:10px;padding-top:10px;border-top:1px dashed #e5e5ea;font-size:11px;color:#8e8e93;display:none;"></div>
+    </div>
+    <!-- Mantém textarea oculto pra compat com save -->
+    <textarea id="cat-p-sizes" style="display:none;"></textarea>
     <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
       <label style="font-size:13px;color:var(--text2)"><input type="checkbox" id="cat-p-active" checked> Ativo</label>
       <label style="font-size:13px;color:var(--text2)"><input type="checkbox" id="cat-p-featured"> Destaque</label>
@@ -2042,9 +2054,96 @@ async function loadCatalogProductsAdmin() {
   });
 }
 
-function openCatProductModal(id) {
+// ===== UNIDADES (1 quadrado = 1 unidade física) =====
+let _catUnits = []; // [{ size, storeId, storeCode, storeName }]
+let _catStoresCache = null;
+
+async function _catLoadStores() {
+  if (_catStoresCache) return _catStoresCache;
+  try {
+    const r = await api('/stores');
+    _catStoresCache = r.stores || r || [];
+  } catch (e) { _catStoresCache = []; }
+  return _catStoresCache;
+}
+
+function _catRenderUnits() {
+  const wrap = document.getElementById('cat-p-units-grid');
+  const empty = document.getElementById('cat-p-units-empty');
+  const summary = document.getElementById('cat-p-units-summary');
+  if (!wrap) return;
+  if (!_catUnits.length) {
+    wrap.innerHTML = '';
+    empty.style.display = 'block';
+    summary.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  summary.style.display = 'block';
+  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
+  wrap.innerHTML = _catUnits.map((u, i) => {
+    const code = u.storeCode || 'L?';
+    const color = storeColors[code] || '#8e8e93';
+    return '<div style="background:white;border:2px solid ' + color + ';border-radius:10px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;">'
+      + '<button type="button" onclick="catRemoveUnit(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#d70015;color:white;border:none;cursor:pointer;font-size:11px;font-weight:700;line-height:1;">×</button>'
+      + '<div style="font-size:22px;font-weight:800;color:#1d1d1f;line-height:1;">' + escapeHtml(u.size) + '</div>'
+      + '<div style="font-size:9px;font-weight:700;color:' + color + ';letter-spacing:0.5px;">' + escapeHtml(code) + '</div>'
+      + '</div>';
+  }).join('');
+  // Sumário por tamanho × loja
+  const byKey = {};
+  _catUnits.forEach(u => { const k = u.size + '|' + (u.storeCode || ''); byKey[k] = (byKey[k] || 0) + 1; });
+  summary.innerHTML = 'Total: <strong style="color:#1d1d1f;">' + _catUnits.length + ' unidades</strong>';
+}
+
+window.catRemoveUnit = function(idx) {
+  _catUnits.splice(idx, 1);
+  _catRenderUnits();
+};
+
+async function _catSetupUnitsForm() {
+  const stores = await _catLoadStores();
+  const sel = document.getElementById('cat-p-new-store');
+  if (sel && sel.options.length <= 1) {
+    sel.innerHTML = '<option value="">— escolha —</option>' + stores.map(s =>
+      '<option value="' + s.id + '" data-code="' + s.code + '">' + s.code + ' — ' + s.name + '</option>'
+    ).join('');
+  }
+  const addBtn = document.getElementById('cat-p-add-unit');
+  if (addBtn && !addBtn._wired) {
+    addBtn._wired = true;
+    addBtn.onclick = () => {
+      const size = document.getElementById('cat-p-new-size').value.trim();
+      const storeId = document.getElementById('cat-p-new-store').value;
+      const qty = parseInt(document.getElementById('cat-p-new-qty').value, 10) || 1;
+      if (!size) { alert('Informe o tamanho'); return; }
+      if (!storeId) { alert('Escolha a loja'); return; }
+      const storeOpt = document.getElementById('cat-p-new-store').selectedOptions[0];
+      const storeCode = storeOpt.dataset.code;
+      const storeName = storeOpt.textContent;
+      for (let i = 0; i < qty; i++) {
+        _catUnits.push({ size, storeId, storeCode, storeName });
+      }
+      _catRenderUnits();
+      _catSyncTextarea();
+      document.getElementById('cat-p-new-size').value = '';
+      document.getElementById('cat-p-new-size').focus();
+    };
+  }
+}
+
+function _catSyncTextarea() {
+  // Agrega por tamanho (compat com backend antigo): "38|3\n39|2"
+  const byTam = {};
+  _catUnits.forEach(u => { byTam[u.size] = (byTam[u.size] || 0) + 1; });
+  document.getElementById('cat-p-sizes').value = Object.keys(byTam).map(s => s + '|' + byTam[s]).join('\n');
+}
+
+async function openCatProductModal(id) {
   document.getElementById('cat-p-error').innerHTML = '';
   document.getElementById('cat-product-modal').classList.add('show');
+  _catUnits = [];
+  await _catSetupUnitsForm();
   if (!id) {
     document.getElementById('cat-p-id').value = '';
     document.getElementById('cat-p-sku').value = '';
@@ -2058,24 +2157,44 @@ function openCatProductModal(id) {
     document.getElementById('cat-p-sizes').value = '';
     document.getElementById('cat-p-active').checked = true;
     document.getElementById('cat-p-featured').checked = false;
+    _catRenderUnits();
     return;
   }
-  api('/admin/catalog/products/' + encodeURIComponent(id)).then(function (data) {
-    if (data.error) { alert(data.error); return; }
-    const p = data.product;
-    document.getElementById('cat-p-id').value = p.id;
-    document.getElementById('cat-p-sku').value = p.sku;
-    document.getElementById('cat-p-name').value = p.name;
-    document.getElementById('cat-p-brand').value = p.brand;
-    document.getElementById('cat-p-category').value = p.category;
-    document.getElementById('cat-p-price').value = p.price;
-    document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
-    document.getElementById('cat-p-short').value = p.shortDescription || '';
-    document.getElementById('cat-p-img').value = p.imageUrl || '';
-    document.getElementById('cat-p-sizes').value = (p.sizes || []).map(function (s) { return s.size + '|' + s.stock; }).join('\n');
-    document.getElementById('cat-p-active').checked = p.active !== false;
-    document.getElementById('cat-p-featured').checked = !!p.featured;
+  const data = await api('/admin/catalog/products/' + encodeURIComponent(id));
+  if (data.error) { alert(data.error); return; }
+  const p = data.product;
+  document.getElementById('cat-p-id').value = p.id;
+  document.getElementById('cat-p-sku').value = p.sku;
+  document.getElementById('cat-p-name').value = p.name;
+  document.getElementById('cat-p-brand').value = p.brand;
+  document.getElementById('cat-p-category').value = p.category;
+  document.getElementById('cat-p-price').value = p.price;
+  document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
+  document.getElementById('cat-p-short').value = p.shortDescription || '';
+  document.getElementById('cat-p-img').value = p.imageUrl || '';
+  document.getElementById('cat-p-active').checked = p.active !== false;
+  document.getElementById('cat-p-featured').checked = !!p.featured;
+  // Carrega unidades a partir de storeStocks (cada storeStock vira N unidades)
+  const stores = await _catLoadStores();
+  const storeMap = {}; stores.forEach(s => storeMap[s.id] = s);
+  (p.sizes || []).forEach(sz => {
+    // Backend pode ter retornado storeStocks dentro de cada size — se não, fallback pra stock agregado
+    if (sz.storeStocks && sz.storeStocks.length) {
+      sz.storeStocks.forEach(ss => {
+        const st = storeMap[ss.storeId] || {};
+        for (let i = 0; i < (ss.stock || 0); i++) {
+          _catUnits.push({ size: sz.size, storeId: ss.storeId, storeCode: st.code || '?', storeName: (st.code || '?') + ' — ' + (st.name || '') });
+        }
+      });
+    } else {
+      // Sem storeStocks → marca como sem loja vinculada
+      for (let i = 0; i < (sz.stock || 0); i++) {
+        _catUnits.push({ size: sz.size, storeId: '', storeCode: '?', storeName: 'Sem loja' });
+      }
+    }
   });
+  _catRenderUnits();
+  _catSyncTextarea();
 }
 
 async function catProductSave() {
@@ -2088,6 +2207,19 @@ async function catProductSave() {
     const p = line.trim().split('|');
     if (p[0]) sizes.push({ size: p[0].trim(), stock: parseInt(p[1], 10) || 0 });
   });
+  // Se temos _catUnits, ele tem prioridade (formato novo). Senão usa textarea.
+  if (Array.isArray(_catUnits) && _catUnits.length > 0) {
+    // Agrega: por (size, storeId) → quantidade
+    sizes.length = 0;
+    const agg = {};
+    _catUnits.forEach(u => {
+      const key = u.size + '||' + (u.storeId || '');
+      agg[key] = agg[key] || { size: u.size, storeId: u.storeId || null, stock: 0 };
+      agg[key].stock++;
+    });
+    Object.values(agg).forEach(v => sizes.push(v));
+  }
+
   const body = {
     sku: document.getElementById('cat-p-sku').value.trim(),
     name: document.getElementById('cat-p-name').value.trim(),
@@ -2099,7 +2231,7 @@ async function catProductSave() {
     imageUrl: document.getElementById('cat-p-img').value.trim() || null,
     active: document.getElementById('cat-p-active').checked,
     featured: document.getElementById('cat-p-featured').checked,
-    sizes: sizes,
+    sizes: sizes, // novo formato: [{ size, storeId, stock }]
   };
   let r;
   if (id) r = await api('/admin/catalog/products/' + encodeURIComponent(id), 'PUT', body);

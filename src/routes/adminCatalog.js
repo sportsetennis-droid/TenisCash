@@ -47,7 +47,12 @@ router.get('/products/:id', adminOnly, async (req, res) => {
   try {
     const p = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { sizes: { orderBy: { size: 'asc' } } },
+      include: {
+        sizes: {
+          orderBy: { size: 'asc' },
+          include: { storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } } },
+        },
+      },
     });
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
     res.json({ product: p });
@@ -185,17 +190,49 @@ router.put('/products/:id', adminOnly, async (req, res) => {
       ...(b.source != null ? { source: String(b.source).slice(0, 32) } : {}),
     };
 
+    let sizesWithStore = null;
     if (Array.isArray(b.sizes)) {
-      await prisma.productSize.deleteMany({ where: { productId: id } });
-      data.sizes = {
-        create: b.sizes
-          .filter((s) => s && s.size)
-          .map((s) => ({
-            size: String(s.size),
-            stock: Math.max(0, parseInt(s.stock, 10) || 0),
-            barcode: s.barcode ? String(s.barcode) : null,
+      // Detecta formato novo (com storeId) vs antigo (apenas size+stock)
+      const hasStoreInfo = b.sizes.some((s) => s && s.storeId);
+
+      if (hasStoreInfo) {
+        // FORMATO NOVO: agrega por size, mas guarda os storeStocks pra criar depois
+        const bySizeStore = new Map();
+        const sizesSet = new Map();
+        b.sizes.filter((s) => s && s.size).forEach((s) => {
+          const sz = String(s.size);
+          const qty = Math.max(0, parseInt(s.stock, 10) || 0);
+          if (qty === 0) return;
+          // Acumula no tamanho (total)
+          sizesSet.set(sz, (sizesSet.get(sz) || 0) + qty);
+          // Acumula por loja
+          if (s.storeId) {
+            const key = sz + '||' + s.storeId;
+            bySizeStore.set(key, { size: sz, storeId: s.storeId, stock: (bySizeStore.get(key)?.stock || 0) + qty });
+          }
+        });
+        // Apaga sizes anteriores (cascade apaga StoreStock por causa do onDelete: Cascade)
+        await prisma.productSize.deleteMany({ where: { productId: id } });
+        data.sizes = {
+          create: [...sizesSet.entries()].map(([sz, total]) => ({
+            size: sz,
+            stock: total,
+            barcode: null,
           })),
-      };
+        };
+        sizesWithStore = [...bySizeStore.values()];
+      } else {
+        await prisma.productSize.deleteMany({ where: { productId: id } });
+        data.sizes = {
+          create: b.sizes
+            .filter((s) => s && s.size)
+            .map((s) => ({
+              size: String(s.size),
+              stock: Math.max(0, parseInt(s.stock, 10) || 0),
+              barcode: s.barcode ? String(s.barcode) : null,
+            })),
+        };
+      }
     }
 
     const product = await prisma.product.update({
@@ -203,6 +240,18 @@ router.put('/products/:id', adminOnly, async (req, res) => {
       data,
       include: { sizes: true },
     });
+
+    // Cria StoreStocks (formato novo)
+    if (sizesWithStore && sizesWithStore.length) {
+      for (const ss of sizesWithStore) {
+        const ps = product.sizes.find((x) => x.size === ss.size);
+        if (!ps) continue;
+        await prisma.storeStock.create({
+          data: { storeId: ss.storeId, productSizeId: ps.id, stock: ss.stock },
+        }).catch(() => {});
+      }
+    }
+
     res.json({ product });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'SKU já cadastrado' });
