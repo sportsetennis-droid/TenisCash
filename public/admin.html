@@ -3671,29 +3671,38 @@ async function loadAdminMessages() {
   const msgs = data.messages || [];
   if (!msgs.length) { wrap.innerHTML = '<div class="empty-state">Nenhuma mensagem encontrada</div>'; return; }
 
-  let html = '<table><thead><tr><th>TIPO</th><th>TÍTULO</th><th>DE</th><th>PARA</th><th>STATUS</th><th>PRAZO</th><th>DATA</th><th>AÇÕES</th></tr></thead><tbody>';
+  const typeIcons = { request: '📋', demand: '⚡', announcement: '📢', message: '💬' };
+  const priColors = { high: '#d70015', medium: '#b06b00', low: '#0066cc' };
+
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + msgs.length + ' mensagens</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;">';
   msgs.forEach(m => {
     const d = new Date(m.createdAt);
     const date = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const due = m.dueDate ? new Date(m.dueDate).toLocaleDateString('pt-BR') + ' ' + new Date(m.dueDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+    const due = m.dueDate ? new Date(m.dueDate).toLocaleDateString('pt-BR') : null;
     const from = m.from?.name || '—';
-    const to = m.to?.name || (m.toStore ? (m.toStore.code + ' — ' + m.toStore.name) : (m.toAll ? 'TODAS' : '—'));
-    const pr = m.priority ? ('<span class="pill">' + escapeHtml(m.priority) + '</span>') : '';
+    const to = m.to?.name || (m.toStore ? m.toStore.name : (m.toAll ? 'TODAS' : '—'));
+    const icon = typeIcons[m.type] || '✉️';
+    const priColor = priColors[m.priority] || '#8e8e93';
     const act = (m.type === 'request' && (m.status === 'sent' || m.status === 'read'))
-      ? ('<button class="btn js-reply" data-id="' + m.id + '" data-title="' + escapeHtml(m.title||'') + '">Responder</button>')
-      : '—';
-    html += '<tr>';
-    html += '<td style="font-size:11px;color:var(--text2)">' + escapeHtml(m.type) + ' ' + pr + '</td>';
-    html += '<td>' + escapeHtml(m.title || '—') + '<div class="sub" style="margin-top:4px">' + escapeHtml((m.content||'').slice(0,80)) + '</div></td>';
-    html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(from) + '</td>';
-    html += '<td style="font-size:12px;color:var(--text2)">' + escapeHtml(to) + '</td>';
-    html += '<td><span class="pill">' + escapeHtml(m.status || '—') + '</span></td>';
-    html += '<td style="font-size:11px;color:var(--text2)">' + escapeHtml(due) + '</td>';
-    html += '<td style="font-size:11px;color:var(--text3)">' + escapeHtml(date) + '</td>';
-    html += '<td>' + act + '</td>';
-    html += '</tr>';
+      ? '<button class="js-reply" data-id="' + m.id + '" data-title="' + escapeHtml(m.title||'') + '" style="padding:6px 12px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">↩ Responder</button>'
+      : '';
+    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:14px;display:flex;gap:12px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
+    html += '<div style="width:40px;height:40px;border-radius:10px;background:#f5f5f7;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + icon + '</div>';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">';
+    html += '<span style="font-size:14px;font-weight:700;color:#1d1d1f;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(m.title || '—') + '</span>';
+    if (m.priority) html += '<span style="font-size:9px;padding:1px 6px;background:' + priColor + '20;color:' + priColor + ';border-radius:6px;font-weight:700;">' + escapeHtml(m.priority).toUpperCase() + '</span>';
+    html += '<span style="font-size:9px;padding:1px 6px;background:#f5f5f7;color:#8e8e93;border-radius:6px;font-weight:700;">' + escapeHtml(m.status || '').toUpperCase() + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:#1d1d1f;margin-bottom:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml((m.content||'').slice(0,140)) + '</div>';
+    html += '<div style="font-size:11px;color:#8e8e93;">De: <strong>' + escapeHtml(from) + '</strong> → ' + escapeHtml(to) + '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
+    html += '<span style="font-size:10px;color:#8e8e93;">' + escapeHtml(date) + (due ? ' · prazo ' + due : '') + '</span>';
+    html += act;
+    html += '</div></div></div>';
   });
-  html += '</tbody></table>';
+  html += '</div>';
   wrap.innerHTML = html;
   Array.from(wrap.querySelectorAll('.js-reply')).forEach(btn => {
     btn.addEventListener('click', function () {
@@ -4509,20 +4518,29 @@ async function loadCurations() {
   const data = await api('/admin/curation' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.curations || [];
-  if (!list.length) { wrap.innerHTML = '<div class="muted">Nenhuma curadoria. Clique em "+ Nova Curadoria".</div>'; return; }
-  let html = '<table><thead><tr><th>Nome</th><th>Loja</th><th>Status</th><th>Itens</th><th>Tarefas</th><th>Início</th><th></th></tr></thead><tbody>';
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhuma curadoria. Clique em "+ Nova Curadoria".</div>'; return; }
+  const statusColors = { DRAFT: '#8e8e93', ACTIVE: '#0a843d', PAUSED: '#b06b00', COMPLETED: '#0066cc' };
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' curadorias</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
   list.forEach(c => {
-    html += `<tr>
-      <td><strong>${escapeHtml(c.name)}</strong></td>
-      <td>${escapeHtml(c.storeId)}</td>
-      <td>${escapeHtml(c.status)}</td>
-      <td>${c._count?.items || 0}</td>
-      <td>${c._count?.checklist || 0}</td>
-      <td style="font-size:11px;color:var(--text2)">${c.startDate ? new Date(c.startDate).toLocaleDateString('pt-BR') : '—'}</td>
-      <td><button type="button" class="btn" onclick="curationActivate('${c.id}')">Ativar</button> <button type="button" class="btn" onclick="curationDelete('${c.id}')">Excluir</button></td>
-    </tr>`;
+    const sc = statusColors[c.status] || '#8e8e93';
+    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+    html += '<div style="font-size:14px;font-weight:700;color:#1d1d1f;flex:1;">' + escapeHtml(c.name) + '</div>';
+    html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(c.status) + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#8e8e93;">🏬 ' + escapeHtml(c.storeId || '—') + '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0;border-top:1px dashed #e5e5ea;border-bottom:1px dashed #e5e5ea;">';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:18px;font-weight:800;color:#FF6D00;">' + (c._count?.items || 0) + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Tarefas</div><div style="font-size:18px;font-weight:800;color:#1d1d1f;">' + (c._count?.checklist || 0) + '</div></div>';
+    html += '</div>';
+    if (c.startDate) html += '<div style="font-size:11px;color:#8e8e93;">📅 ' + new Date(c.startDate).toLocaleDateString('pt-BR') + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:4px;">';
+    html += '<button onclick="curationActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
+    html += '<button onclick="curationDelete(\'' + c.id + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;">🗑</button>';
+    html += '</div></div>';
   });
-  html += '</tbody></table>';
+  html += '</div>';
   wrap.innerHTML = html;
 }
 async function curationActivate(id) {
@@ -4652,20 +4670,25 @@ async function loadRecs() {
   const data = await api('/admin/recommendations');
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.recommendations || [];
-  if (!list.length) { wrap.innerHTML = '<div class="muted">Sem recomendações abertas. Clique em "Rodar motor de regras" para gerar.</div>'; return; }
-  let html = '<table><thead><tr><th>Prioridade</th><th>Tipo</th><th>Título</th><th>Descrição</th><th>Quando</th><th></th></tr></thead><tbody>';
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Sem recomendações abertas. Clique em "Rodar motor" pra gerar.</div>'; return; }
+  const priColors = { URGENT: '#d70015', HIGH: '#b06b00', MEDIUM: '#0066cc', LOW: '#8e8e93' };
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' recomendações</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;">';
   list.forEach(r => {
-    const color = r.priority === 'URGENT' ? '#e35' : r.priority === 'HIGH' ? '#e90' : '#7b7';
-    html += `<tr>
-      <td><span style="color:${color};font-weight:bold">${escapeHtml(r.priority)}</span></td>
-      <td><code>${escapeHtml(r.type)}</code></td>
-      <td>${escapeHtml(r.title)}</td>
-      <td style="font-size:12px;color:var(--text2);max-width:340px">${escapeHtml((r.description||'').slice(0,180))}</td>
-      <td style="font-size:11px;color:var(--text2)">${new Date(r.createdAt).toLocaleString('pt-BR')}</td>
-      <td><button type="button" class="btn" onclick="recsResolve('${r.id}')">Resolver</button></td>
-    </tr>`;
+    const c = priColors[r.priority] || '#8e8e93';
+    html += '<div style="background:white;border:1px solid #e5e5ea;border-left:4px solid ' + c + ';border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">';
+    html += '<span style="font-size:10px;padding:3px 8px;background:' + c + '20;color:' + c + ';border-radius:6px;font-weight:700;letter-spacing:0.5px;">' + escapeHtml(r.priority) + '</span>';
+    html += '<code style="font-size:10px;color:#8e8e93;">' + escapeHtml(r.type) + '</code>';
+    html += '</div>';
+    html += '<div style="font-size:14px;font-weight:700;color:#1d1d1f;">' + escapeHtml(r.title) + '</div>';
+    html += '<div style="font-size:12px;color:#1d1d1f;line-height:1.4;">' + escapeHtml((r.description||'').slice(0,200)) + '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e5e5ea;">';
+    html += '<span style="font-size:10px;color:#8e8e93;">' + new Date(r.createdAt).toLocaleString('pt-BR') + '</span>';
+    html += '<button onclick="recsResolve(\'' + r.id + '\')" style="padding:6px 14px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">✓ Resolver</button>';
+    html += '</div></div>';
   });
-  html += '</tbody></table>';
+  html += '</div>';
   wrap.innerHTML = html;
 }
 async function recsResolve(id) {
