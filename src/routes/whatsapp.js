@@ -42,9 +42,12 @@ router.post('/webhook', (req, res) => {
 });
 
 router.get('/status', authMiddleware, adminMiddleware, (_req, res) => {
+  const metaConfigured = isMetaWhatsAppConfigured();
+
   res.json({
-    provider: isMetaWhatsAppConfigured() ? 'meta' : 'zapi',
-    metaConfigured: isMetaWhatsAppConfigured(),
+    provider: 'meta',
+    ready: metaConfigured,
+    metaConfigured,
     phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID || null,
     businessId: process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID || null,
     webhookUrl: '/api/whatsapp/webhook',
