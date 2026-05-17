@@ -2421,24 +2421,39 @@ async function loadAdminPartnersList() {
   const data = await api('/admin/partners' + (q.toString() ? '?' + q.toString() : ''));
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(data.error) + '</div>'; return; }
   const list = data.partners || [];
-  if (!list.length) { wrap.innerHTML = '<div class="empty-state">Nenhum parceiro</div>'; return; }
-  let html = '<table><thead><tr><th>Cupom</th><th>Parceiro</th><th>Tipo</th><th>%Desc</th><th>%Com</th><th>Vendas</th><th>Comissão T$</th><th>Tier</th><th>Status</th><th></th></tr></thead><tbody>';
-  list.forEach(function (p) {
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum parceiro</div>'; return; }
+  const tierColors = { BRONZE: '#b08d57', SILVER: '#a0a0a0', GOLD: '#d4af37', DIAMOND: '#0066cc' };
+  const statusColors = { ACTIVE: '#0a843d', PAUSED: '#b06b00', INACTIVE: '#8e8e93' };
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' parceiros</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;">';
+  list.forEach(p => {
     const u = p.user || {};
-    html += '<tr>'
-      + '<td><strong>' + escapeHtml(p.couponCode) + '</strong></td>'
-      + '<td>' + escapeHtml(u.name || '—') + '<br><span class="note">' + escapeHtml(u.phone || '—') + '</span></td>'
-      + '<td>' + escapeHtml(p.type) + '</td>'
-      + '<td>' + Number(p.discountPct).toFixed(1) + '%</td>'
-      + '<td>' + Number(p.commissionPct).toFixed(1) + '%</td>'
-      + '<td>' + (p.totalSales || 0) + '</td>'
-      + '<td>' + Number(p.totalCommission || 0).toFixed(2) + '</td>'
-      + '<td>' + escapeHtml(p.tier) + '</td>'
-      + '<td>' + escapeHtml(p.status) + '</td>'
-      + '<td><button type="button" class="btn js-prt-edit" data-id="' + p.id + '">Editar</button></td>'
-      + '</tr>';
+    const tc = tierColors[p.tier] || '#8e8e93';
+    const sc = statusColors[p.status] || '#8e8e93';
+    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<div style="font-size:18px;font-weight:800;color:#FF6D00;font-family:monospace;letter-spacing:1px;">' + escapeHtml(p.couponCode) + '</div>';
+    html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(p.status) + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;font-weight:600;color:#1d1d1f;">' + escapeHtml(u.name || '—') + '</div>';
+    html += '<div style="font-size:11px;color:#8e8e93;">📱 ' + escapeHtml(u.phone || '—') + '</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center;">';
+    html += '<span style="font-size:10px;padding:3px 8px;background:' + tc + '20;color:' + tc + ';border-radius:6px;font-weight:700;">🏆 ' + escapeHtml(p.tier) + '</span>';
+    html += '<span style="font-size:10px;color:#8e8e93;">' + escapeHtml(p.type) + '</span>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px 0;border-top:1px dashed #e5e5ea;">';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Desc</div><div style="font-size:13px;font-weight:700;color:#FF6D00;">' + Number(p.discountPct).toFixed(0) + '%</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Com.</div><div style="font-size:13px;font-weight:700;">' + Number(p.commissionPct).toFixed(0) + '%</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Vendas</div><div style="font-size:13px;font-weight:700;">' + (p.totalSales||0) + '</div></div>';
+    html += '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<span style="font-size:11px;color:#8e8e93;">Comissão acum.</span>';
+    html += '<span style="font-size:15px;font-weight:800;color:#0a843d;">T$ ' + Number(p.totalCommission||0).toFixed(2) + '</span>';
+    html += '</div>';
+    html += '<button class="js-prt-edit" data-id="' + p.id + '" style="padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">✎ Editar</button>';
+    html += '</div>';
   });
-  html += '</tbody></table>';
+  html += '</div>';
   wrap.innerHTML = html;
   wrap.querySelectorAll('.js-prt-edit').forEach(function (btn) {
     btn.addEventListener('click', function () { openPartnerModal(btn.getAttribute('data-id')); });
