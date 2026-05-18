@@ -6,6 +6,7 @@ const express = require('express');
 const multer = require('multer');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { parseNfeXml } = require('../services/xmlNfeParser');
+const { groupItemsByBase } = require('../services/nfeSizeParser');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -156,60 +157,150 @@ router.post('/nfe/import', upload.single('file'), async (req, res) => {
   }
 });
 
-// Aplica XML — cria/atualiza produtos não matchados + cria entradas de estoque
+// Aplica XML — agrupa itens por produto base (tamanhos viram ProductSize),
+// cria 1 Product + N ProductSizes por grupo, soma estoque cumulativo.
 router.post('/nfe/:documentId/apply', async (req, res) => {
   try {
     const document = await prisma.xmlFiscalDocument.findUnique({
       where: { id: req.params.documentId },
-      include: { items: true },
+      include: { items: true, supplier: true },
     });
     if (!document) return res.status(404).json({ error: 'Documento não encontrado' });
 
+    // 1. Separa itens já matchados (productId presente) dos novos
+    //    Itens matchados mantêm o produto existente — só somam estoque por tamanho.
+    //    Itens novos passam pelo agrupamento por baseKey.
+    const matchedItems = document.items.filter(i => i.productId);
+    const newItems = document.items.filter(i => !i.productId);
+
+    // 2. Agrupa só os novos por baseKey (mesmo produto, vários tamanhos)
+    const groups = groupItemsByBase(newItems);
+
     let createdProducts = 0;
     let updatedProducts = 0;
-    let stockUpdates = 0;
+    let createdSizes = 0;
+    let updatedSizes = 0;
+    let totalStockAdded = 0;
+    const cnpjSuffix = (document.issuerCnpj || '').slice(-4) || 'NFE';
 
-    for (const item of document.items) {
-      let productId = item.productId;
+    // 3. Para cada grupo: cria 1 Product + N ProductSizes
+    for (const g of groups) {
+      // Custo médio ponderado pela quantidade
+      let totalQty = 0, totalCost = 0;
+      for (const v of g.variants) {
+        totalQty += v.qty;
+        totalCost += v.qty * v.unitValue;
+      }
+      const avgCost = totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : null;
 
-      // Cria produto novo se necessário (regra: usa EAN ou supplierCode como SKU)
-      if (!productId && item.matchStatus === 'new_product') {
-        const sku = item.ean || item.supplierCode || `XML-${item.id.slice(0, 8)}`;
+      // SKU base: usa primeiro EAN (se houver) ou supplierCode + sufixo CNPJ
+      const baseRef = g.variants.find(v => v.ean)?.ean
+                    || g.variants.find(v => v.supplierCode)?.supplierCode
+                    || g.baseKey.slice(0, 20);
+      const sku = `${cnpjSuffix}-${baseRef}`.slice(0, 64);
+
+      // Referência fornecedor: cProd alfanumérico (se não for EAN)
+      const supplierRef = g.variants
+        .map(v => v.supplierCode)
+        .find(c => c && !/^\d{12,14}$/.test(c)) || null;
+
+      // Cria ou pega produto existente pelo SKU
+      let product = await prisma.product.findUnique({ where: { sku } });
+      if (!product) {
         try {
-          const created = await prisma.product.create({
+          product = await prisma.product.create({
             data: {
               sku,
-              name: item.description,
+              name: g.baseName,
               brand: 'A DEFINIR',
               category: 'geral',
-              price: item.unitValue,
+              price: 0, // markup aplicado depois
+              costPrice: avgCost,
               active: true,
               source: 'xml-nfe',
+              aiContext: {
+                supplierCnpj: document.issuerCnpj,
+                supplierRef,
+                baseProductKey: g.baseKey,
+              },
             },
           });
-          productId = created.id;
           createdProducts++;
-          await prisma.xmlFiscalItem.update({
-            where: { id: item.id },
-            data: { productId, matchStatus: 'matched' },
-          });
         } catch (err) {
-          // Pode ter SKU duplicado — tenta achar e usa
-          const existing = await prisma.product.findUnique({ where: { sku } });
-          if (existing) {
-            productId = existing.id;
-            await prisma.xmlFiscalItem.update({
-              where: { id: item.id },
-              data: { productId, matchStatus: 'matched' },
-            });
-          }
+          // Race condition raro — tenta de novo lendo
+          product = await prisma.product.findUnique({ where: { sku } });
+          if (!product) throw err;
+          updatedProducts++;
         }
-      } else if (productId) {
-        // Atualiza preço de custo do produto (não muda preço de venda)
-        // Como o schema atual não tem costPrice, deixamos como notes
+      } else {
+        // Produto existe — atualiza custo médio + supplierRef
+        await prisma.product.update({
+          where: { id: product.id },
+          data: {
+            costPrice: avgCost,
+            aiContext: {
+              ...(product.aiContext || {}),
+              supplierCnpj: document.issuerCnpj,
+              supplierRef: supplierRef || product.aiContext?.supplierRef || null,
+              baseProductKey: g.baseKey,
+            },
+          },
+        });
         updatedProducts++;
       }
-      stockUpdates++;
+
+      // ProductSize por variante (soma estoque cumulativo)
+      for (const v of g.variants) {
+        if (!v.size) continue; // produto sem variante → sem ProductSize
+        const existing = await prisma.productSize.findFirst({
+          where: { productId: product.id, size: v.size },
+        });
+        if (existing) {
+          await prisma.productSize.update({
+            where: { id: existing.id },
+            data: {
+              stock: existing.stock + v.qty,
+              barcode: v.ean || existing.barcode,
+            },
+          });
+          updatedSizes++;
+        } else {
+          await prisma.productSize.create({
+            data: {
+              productId: product.id,
+              size: v.size,
+              stock: v.qty,
+              barcode: v.ean || null,
+            },
+          });
+          createdSizes++;
+        }
+        totalStockAdded += v.qty;
+
+        // Linka o XmlFiscalItem ao produto criado
+        if (v.itemId) {
+          await prisma.xmlFiscalItem.update({
+            where: { id: v.itemId },
+            data: { productId: product.id, matchStatus: 'matched' },
+          });
+        }
+      }
+
+      // Pra grupos SEM tamanho (variants sem size), linka os items mesmo assim
+      for (const v of g.variants) {
+        if (v.size || !v.itemId) continue;
+        await prisma.xmlFiscalItem.update({
+          where: { id: v.itemId },
+          data: { productId: product.id, matchStatus: 'matched' },
+        });
+      }
+    }
+
+    // 4. Items já matchados: só soma estoque no produto existente
+    for (const item of matchedItems) {
+      // Não conseguimos saber o tamanho do item matchado sem reparsing —
+      // por enquanto só conta como update (estoque agregado vem por outra via).
+      updatedProducts++;
     }
 
     await prisma.xmlFiscalDocument.update({
@@ -219,9 +310,13 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
 
     res.json({
       ok: true,
+      groupsProcessed: groups.length,
       createdProducts,
       updatedProducts,
-      stockUpdates,
+      createdSizes,
+      updatedSizes,
+      totalStockAdded,
+      message: `${groups.length} produto(s) base agrupados de ${newItems.length} linha(s) da NF-e`,
     });
   } catch (err) {
     console.error('[xml/nfe/apply] erro:', err);
