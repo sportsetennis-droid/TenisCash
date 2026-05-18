@@ -118,18 +118,20 @@ function drawFakeBarcode(doc, value, x, y, w, h) {
 }
 
 async function drawQR(doc, value, x, y, size) {
+  const v = String(value || '').trim();
+  if (!v) { console.warn('[drawQR] valor vazio, pulando'); return; }
   try {
-    const dataUrl = await QRCode.toDataURL(String(value || ''), {
-      width: 512,                  // alta resolução pra impressão nítida
-      margin: 1,                   // quiet zone (necessária pra leitura)
-      errorCorrectionLevel: 'M',   // 15% correção — bom equilíbrio
+    const dataUrl = await QRCode.toDataURL(v, {
+      width: 1024,                 // resolução máxima pra impressão nítida
+      margin: 4,                   // quiet zone = 4 módulos (padrão recomendado QR ISO)
+      errorCorrectionLevel: 'H',   // 30% correção — tolerante a ruído de impressão
       color: { dark: '#000000', light: '#FFFFFF' },
     });
     const b64 = dataUrl.split(',')[1];
     const buf = Buffer.from(b64, 'base64');
     doc.image(buf, x, y, { width: size, height: size });
   } catch (e) {
-    console.error('[drawQR]', e?.message);
+    console.error('[drawQR] erro gerando QR pra "' + v.slice(0, 60) + '":', e?.message);
   }
 }
 
@@ -139,15 +141,15 @@ async function drawQR(doc, value, x, y, size) {
 function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   const WHITE = '#FFFFFF';
   const padX = mm(1.5);
-  // QR ocupa quase toda altura, mínimo 13mm, máximo 27mm
-  const qrSize = Math.min(mm(27), Math.max(mm(13), h - mm(2)));
-  const qrInsetY = (h - qrSize) / 2; // centraliza verticalmente
-  const qrPad = mm(1); // padding branco em volta do QR
-  const qrCardSize = qrSize + qrPad * 2;
-  const qrCardX = x + w - qrCardSize - mm(1);
+  // Card branco ocupa quase toda altura, com 0.5mm de gap das bordas da etiqueta
+  const cardGap = mm(0.5);
+  const qrCardSize = Math.min(mm(27), h - cardGap * 2);
+  const qrCardX = x + w - qrCardSize - mm(0.5);
   const qrCardY = y + (h - qrCardSize) / 2;
-  const qrX = qrCardX + qrPad;
-  const qrY = qrCardY + qrPad;
+  // QR ocupa o card todo (qrCode já tem margin:4 internos = quiet zone)
+  const qrSize = qrCardSize;
+  const qrX = qrCardX;
+  const qrY = qrCardY;
 
   // Zona do preço — destaque grande, branco bold
   const priceW = mm(36);
