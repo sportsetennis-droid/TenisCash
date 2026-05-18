@@ -2332,31 +2332,30 @@ function _catRenderUnits() {
   const stores = _catStoresCache || [];
   const storeOpts = stores.map(s => '<option value="' + s.id + '" data-code="' + s.code + '">' + s.code + ' — ' + s.name + '</option>').join('');
 
-  // 3 colunas: TAMANHO | LOJA | EXCLUIR (largura 60px sticky pra nunca cortar)
-  let html = '<div style="display:grid;grid-template-columns:110px 1fr 60px;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
+  // 2 colunas: TAMANHO | LOJA+REMOVER (botão 🗑 dentro da célula da loja, garante visibilidade)
+  let html = '<div style="display:grid;grid-template-columns:90px 1fr;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
   // Header
   html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;text-align:center;border-right:1px solid #e5e5ea;">TAMANHO</div>';
-  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;border-right:1px solid #e5e5ea;">LOJA</div>';
-  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#d70015;font-weight:700;letter-spacing:1px;text-align:center;">REMOVER</div>';
+  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">LOJA · AÇÕES</div>';
   // Linhas com EDIÇÃO INLINE
   sorted.forEach((u, idx) => {
     const code = u.storeCode || 'L?';
     const color = storeColors[code] || '#8e8e93';
     const bg = idx % 2 === 0 ? 'white' : '#fafafa';
+    // Coluna TAMANHO
     html += '<div style="padding:8px;background:' + bg + ';border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
     html += '<input type="text" value="' + escapeHtml(u.size) + '" onchange="catEditUnitSize(' + u._idx + ', this.value)" style="width:100%;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:18px;font-weight:800;color:#1d1d1f;text-align:center;background:white;">';
     html += '</div>';
-    html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;gap:8px;border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
+    // Coluna LOJA + BOTÃO 🗑 (juntos pra nunca cortar)
+    html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;gap:8px;border-top:1px solid #f0f0f3;">';
     html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>';
-    html += '<select onchange="catEditUnitStore(' + u._idx + ', this.value, this.selectedOptions[0].dataset.code, this.selectedOptions[0].textContent)" style="flex:1;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:13px;color:#1d1d1f;background:white;min-width:0;">';
+    html += '<select onchange="catEditUnitStore(' + u._idx + ', this.value, this.selectedOptions[0].dataset.code, this.selectedOptions[0].textContent)" style="flex:1;min-width:0;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:13px;color:#1d1d1f;background:white;">';
     stores.forEach(s => {
       const sel = s.id === u.storeId ? ' selected' : '';
       html += '<option value="' + s.id + '" data-code="' + s.code + '"' + sel + '>' + s.code + ' — ' + s.name + '</option>';
     });
     html += '</select>';
-    html += '</div>';
-    html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;justify-content:center;border-top:1px solid #f0f0f3;">';
-    html += '<button type="button" onclick="catRemoveUnit(' + u._idx + ')" title="Excluir unidade" style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#d70015,#ff5566);color:white;border:none;cursor:pointer;font-size:18px;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(215,0,21,0.3);">🗑</button>';
+    html += '<button type="button" onclick="catRemoveUnit(' + u._idx + ')" title="Excluir unidade" style="flex-shrink:0;width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#d70015,#ff5566);color:white;border:none;cursor:pointer;font-size:16px;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(215,0,21,0.3);display:flex;align-items:center;justify-content:center;">🗑</button>';
     html += '</div>';
   });
   html += '</div>';
