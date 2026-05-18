@@ -158,10 +158,10 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   const qrX = qrCardX;
   const qrY = qrCardY;
 
-  // Zona do preço — destaque grande, branco bold
-  const priceW = mm(36);
-  const priceX = qrCardX - priceW - mm(1.5);
-  const textW = priceX - x - padX - mm(1.5);
+  // Zona do preço — destaque grande, branco bold (espaço aumentado pra caber "R$ 1.999,99")
+  const priceW = mm(42);
+  const priceX = qrCardX - priceW - mm(1);
+  const textW = priceX - x - padX - mm(1);
 
   const isTall = h >= mm(18);
   const yOffset = isTall ? mm(1.8) : mm(1);
@@ -198,20 +198,34 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     .text(tags, x + padX, y + yOffset + lineGap, { width: textW, height: tagFs * 1.3, ellipsis: true, lineBreak: false });
 
   // ===== PREÇO (centro) — branco, MUITO grande, destaque máximo
+  // Auto-shrink: começa em priceFsMax e reduz até caber em priceW numa linha só
   const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
   const showPrice = usePromo ? item.promotionalPrice : item.price;
+  const fitFontSize = (text, maxW, maxFs, minFs) => {
+    doc.font('Helvetica-Bold');
+    for (let fs = maxFs; fs >= minFs; fs -= 0.5) {
+      doc.fontSize(fs);
+      if (doc.widthOfString(text) <= maxW) return fs;
+    }
+    return minFs;
+  };
   if (showPrice != null) {
-    const priceFs = isTall ? 20 : 14;
+    const priceFsMax = isTall ? 20 : 14;
+    const priceFsMin = 9;
+    const priceStr = fmtBRL(showPrice);
+    const priceFs = fitFontSize(priceStr, priceW - mm(2), priceFsMax, priceFsMin);
     if (usePromo && item.price) {
-      doc.fontSize(7).fillColor(WHITE).font('Helvetica')
-        .text(fmtBRL(item.price), priceX, y + yOffset, { width: priceW, align: 'center', strike: true });
+      const origStr = fmtBRL(item.price);
+      const origFs = fitFontSize(origStr, priceW - mm(2), 7, 5);
+      doc.fontSize(origFs).fillColor(WHITE).font('Helvetica')
+        .text(origStr, priceX, y + yOffset, { width: priceW, align: 'center', strike: true, lineBreak: false, height: origFs * 1.3 });
       doc.fontSize(priceFs).fillColor(WHITE).font('Helvetica-Bold')
-        .text(fmtBRL(showPrice), priceX, y + yOffset + mm(4.5), { width: priceW, align: 'center', lineBreak: false });
+        .text(priceStr, priceX, y + yOffset + mm(4.5), { width: priceW, align: 'center', lineBreak: false, height: priceFs * 1.3 });
     } else {
       // Centraliza verticalmente o preço
       const priceY = y + (h - priceFs * 0.7) / 2 - mm(0.5);
       doc.fontSize(priceFs).fillColor(WHITE).font('Helvetica-Bold')
-        .text(fmtBRL(showPrice), priceX, priceY, { width: priceW, align: 'center', lineBreak: false });
+        .text(priceStr, priceX, priceY, { width: priceW, align: 'center', lineBreak: false, height: priceFs * 1.3 });
     }
   }
 
