@@ -848,6 +848,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;opacity:0.9;">🛒 CARRINHO DE ETIQUETAS</div>
       <div id="labels-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Nenhuma etiqueta selecionada</div>
     </div>
+    <button type="button" id="labels-cart-add-all" style="padding:8px 14px;background:rgba(255,255,255,0.25);color:white;border:1px solid rgba(255,255,255,0.5);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">+1 em todos produtos visíveis</button>
     <button type="button" id="labels-cart-show" style="padding:8px 14px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">📋 Ver lista</button>
     <button type="button" id="labels-cart-clear" style="padding:8px 14px;background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;cursor:pointer;">Limpar</button>
     <button type="button" id="labels-create-batch" style="padding:10px 18px;background:white;color:#FF6D00;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">📄 GERAR PDF A4</button>
@@ -5140,6 +5141,10 @@ async function initLabelsTab() {
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
     document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
+    document.getElementById('labels-cart-add-all').onclick = () => {
+      // Clica em "+1 de tudo" pra cada card visível
+      document.querySelectorAll('#labels-products-wrap .js-lbl-add-all').forEach(btn => btn.click());
+    };
     // PSBar padronizada — sincroniza com labels-search (hidden)
     if (window.PSBar) {
       await PSBar.mount('lbl', 'psbar-lbl', {
@@ -5376,16 +5381,20 @@ async function labelsSearchProducts() {
           </div>
         </div>
         <div style="border-top:1px dashed #e5e5ea;padding-top:8px;">
-          <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;margin-bottom:6px;">ETIQUETAS POR TAMANHO</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">ETIQUETAS POR TAMANHO (clique pra +1)</div>
+            ${sizes.length ? `<button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:4px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ 1 de tudo</button>` : ''}
+          </div>
           ${sizes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;">${sizes.map(s => `
-            <div style="background:${s.qty > 0 ? '#FFE5D0' : '#f5f5f7'};border:1.5px solid ${s.qty > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:8px;padding:6px;text-align:center;">
+            <div class="js-lbl-sz-card" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" style="background:${s.qty > 0 ? '#FFE5D0' : '#f5f5f7'};border:1.5px solid ${s.qty > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:8px;padding:6px;text-align:center;cursor:pointer;user-select:none;transition:transform .1s;" title="Clique pra +1 etiqueta. Shift+clique pra -1.">
               <div style="font-size:14px;font-weight:800;color:#1d1d1f;">${escapeHtml(s.size)}</div>
               <div style="font-size:9px;color:#8e8e93;margin-bottom:4px;">est: ${s.stock}</div>
-              <input type="number" min="0" max="200" value="${s.qty}" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" class="js-lbl-sz-qty" style="width:100%;padding:3px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
+              <input type="number" min="0" max="200" value="${s.qty}" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" class="js-lbl-sz-qty" onclick="event.stopPropagation()" style="width:100%;padding:3px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
             </div>`).join('')}</div>`
           : `<div style="display:flex;gap:6px;align-items:center;">
               <span style="font-size:11px;color:#8e8e93;">Sem tamanhos cadastrados — etiquetas genéricas:</span>
               <input type="number" min="0" max="200" value="${sel.sizes?._any || 0}" data-pid="${p.id}" data-size="_any" class="js-lbl-sz-qty" style="width:80px;padding:5px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
+              <button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:5px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+1</button>
             </div>`}
         </div>
         ${totalThis > 0 ? `<div style="font-size:11px;color:#FF6D00;font-weight:700;text-align:right;">${totalThis} etiquetas selecionadas neste produto</div>` : ''}
@@ -5394,7 +5403,51 @@ async function labelsSearchProducts() {
   html += '</div>';
   wrap.innerHTML = html;
 
-  // Bind dos inputs de tamanho
+  // Helper interno: aplica delta a um (pid, size)
+  function _lblBump(pid, size, delta) {
+    if (!_lblSel[pid]) _lblSel[pid] = { sizes: {} };
+    const cur = _lblSel[pid].sizes[size] || 0;
+    const next = Math.max(0, cur + delta);
+    if (next === 0) delete _lblSel[pid].sizes[size];
+    else _lblSel[pid].sizes[size] = next;
+    if (!Object.keys(_lblSel[pid].sizes).length) delete _lblSel[pid];
+    // Atualiza input visual sem re-renderizar tudo
+    const input = wrap.querySelector(`.js-lbl-sz-qty[data-pid="${pid}"][data-size="${size}"]`);
+    if (input) input.value = next;
+    // Atualiza highlight do card
+    const card = wrap.querySelector(`.js-lbl-sz-card[data-pid="${pid}"][data-size="${size}"]`);
+    if (card) {
+      card.style.background = next > 0 ? '#FFE5D0' : '#f5f5f7';
+      card.style.borderColor = next > 0 ? '#FF6D00' : '#e5e5ea';
+    }
+    _lblUpdateCart();
+  }
+
+  // Click no card de tamanho → +1 (shift = -1)
+  wrap.querySelectorAll('.js-lbl-sz-card').forEach(card => {
+    card.onclick = (e) => {
+      const pid = card.dataset.pid;
+      const size = card.dataset.size;
+      _lblBump(pid, size, e.shiftKey ? -1 : 1);
+    };
+  });
+
+  // Botão "+ 1 de tudo" no produto
+  wrap.querySelectorAll('.js-lbl-add-all').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const pid = btn.dataset.pid;
+      const prod = _lblCacheProducts[pid];
+      const prodSizes = (prod?.sizes || []).map(s => s.size).filter(Boolean);
+      if (prodSizes.length) {
+        prodSizes.forEach(sz => _lblBump(pid, sz, 1));
+      } else {
+        _lblBump(pid, '_any', 1);
+      }
+    };
+  });
+
+  // Bind dos inputs de tamanho (digitação direta)
   wrap.querySelectorAll('.js-lbl-sz-qty').forEach(input => {
     input.onchange = input.oninput = () => {
       const pid = input.dataset.pid;
@@ -5404,6 +5457,12 @@ async function labelsSearchProducts() {
       if (qty === 0) delete _lblSel[pid].sizes[size];
       else _lblSel[pid].sizes[size] = qty;
       if (!Object.keys(_lblSel[pid].sizes).length) delete _lblSel[pid];
+      // Atualiza highlight do card pai
+      const card = input.closest('.js-lbl-sz-card');
+      if (card) {
+        card.style.background = qty > 0 ? '#FFE5D0' : '#f5f5f7';
+        card.style.borderColor = qty > 0 ? '#FF6D00' : '#e5e5ea';
+      }
       _lblUpdateCart();
     };
   });
