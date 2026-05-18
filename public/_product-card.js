@@ -23,7 +23,7 @@
 
 (function () {
   const PCard = {};
-  const DEFAULT_STORE_COLORS = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
+  const DEFAULT_STORE_COLORS = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2', LOJA05: '#d70015', LOJA06: '#1d1d1f' };
 
   function esc(s) {
     if (s == null) return '';

@@ -1,5 +1,5 @@
 // prisma/seed-stores.js
-// Roda UMA VEZ pra cadastrar as 4 lojas no banco
+// Roda UMA VEZ pra cadastrar as 6 lojas no banco
 // Comando: node prisma/seed-stores.js
 
 const { PrismaClient } = require('@prisma/client');
@@ -46,6 +46,26 @@ const stores = [
     latitude: -7.1163828,
     longitude: -34.8798557,
   },
+  {
+    code: 'LOJA05',
+    name: 'Baratão dos Esportes',
+    dna: 'Outlet',
+    mall: 'Loja de Rua',
+    city: 'João Pessoa',
+    state: 'PB',
+    latitude: -7.1195,
+    longitude: -34.8450,
+  },
+  {
+    code: 'LOJA06',
+    name: 'Fábrica',
+    dna: 'Estoque / Fardamentos',
+    mall: 'Galpão Industrial',
+    city: 'João Pessoa',
+    state: 'PB',
+    latitude: -7.1430,
+    longitude: -34.8810,
+  },
 ];
 
 async function main() {
@@ -65,7 +85,7 @@ async function main() {
     }
   }
 
-  console.log('\nPronto. 4 lojas cadastradas.');
+  console.log('\nPronto. ' + stores.length + ' lojas cadastradas.');
   console.log('Lista:');
   const all = await prisma.store.findMany({ orderBy: { code: 'asc' } });
   all.forEach(s => {

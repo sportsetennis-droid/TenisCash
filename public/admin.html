@@ -2179,7 +2179,7 @@ async function loadCatalogProductsAdmin() {
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px;color:var(--text2);">Nenhum produto</div>'; return; }
 
   // Layout em cards padrão com Nome + Descrição + Categoria + Especialidade + Tamanhos por LOJA
-  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
+  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2', LOJA05: '#d70015', LOJA06: '#1d1d1f' };
   let html = '<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">' + rows.length + ' produtos</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">';
   rows.forEach(function (p) {
@@ -2479,7 +2479,7 @@ function _catRenderUnits() {
   }
   empty.style.display = 'none';
   summary.style.display = 'block';
-  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
+  const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2', LOJA05: '#d70015', LOJA06: '#1d1d1f' };
 
   // Ordena por tamanho (numérico) depois por loja
   const sorted = _catUnits.map((u, i) => ({ ...u, _idx: i })).sort((a, b) => {

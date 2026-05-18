@@ -3,7 +3,7 @@
 // =====================================================================
 
 const BRAND_BASE = `
-A marca principal é Sports & Tennis (rede de 4 lojas em Paraíba/Brasil — Bessa LOJA01 DNA Masculino, Tambaú LOJA02 DNA Feminino, Campina Grande LOJA03 DNA Futebol, Tambiá LOJA04 DNA Geral).
+A rede tem 6 lojas em Paraíba/Brasil — Bessa LOJA01 DNA Masculino, Tambaú LOJA02 DNA Feminino, Campina Grande LOJA03 DNA Futebol, Tambiá LOJA04 DNA Geral, Baratão dos Esportes LOJA05 (outlet), Fábrica LOJA06 (estoque / fardamentos).
 
 TenisCash é a MOEDA/CARTEIRA/BENEFÍCIO/CASHBACK (saldo T$) da Sports & Tennis. NUNCA chame outros módulos de "TenisCash X" — eles são "Sports & Tennis X".
 

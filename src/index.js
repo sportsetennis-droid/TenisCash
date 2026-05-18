@@ -192,7 +192,7 @@ app.get('/p/:id', async (req, res) => {
     } catch {}
 
     // Tamanhos por loja
-    const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2' };
+    const storeColors = { LOJA01: '#0066cc', LOJA02: '#0a843d', LOJA03: '#b06b00', LOJA04: '#8a2be2', LOJA05: '#d70015', LOJA06: '#1d1d1f' };
     const byStore = {};
     (p.sizes || []).forEach(sz => {
       (sz.storeStocks || []).forEach(ss => {
