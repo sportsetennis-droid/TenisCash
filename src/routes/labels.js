@@ -247,13 +247,13 @@ router.post('/batches/quick', async (req, res) => {
       const byId = Object.fromEntries(products.map(p => [p.id, p]));
       items = selections.filter(s => s.productId && byId[s.productId]).map(s => {
         const p = byId[s.productId];
+        // OBS: LabelItem (Prisma) não tem campo "size" — guardamos no customText
         return {
           productId: p.id,
           quantity: Math.max(1, parseInt(s.quantity, 10) || 1),
           price: p.price,
           promotionalPrice: usePromo ? p.promoPrice : null,
           barcode: p.sku,
-          size: s.size || null,
           customText: s.size ? ('Tam: ' + s.size) : null,
         };
       });
