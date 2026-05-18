@@ -1764,6 +1764,31 @@ async function api(path, method='GET', body=null) {
   }
 }
 
+// Abre URL autenticada (binária: PDF/imagem) em nova aba via blob.
+// Necessário porque window.open() não envia Authorization header.
+async function openAuthedFile(path) {
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const url = path.startsWith('http') ? path : (API + path);
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      let msg = 'Erro ' + r.status;
+      try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+      alert('Não foi possível abrir o arquivo: ' + msg);
+      return;
+    }
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    // Revoga após 60s pra liberar memória mas dar tempo do browser abrir
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (e) {
+    alert('Erro ao abrir arquivo: ' + e.message);
+  }
+}
+window.openAuthedFile = openAuthedFile;
+
 // LOGIN
 async function doAdminLogin() {
   const input = document.getElementById('admin-phone').value.trim();
@@ -5440,7 +5465,7 @@ async function labelsCreateBatch() {
   });
   if (data.error) { alert('Erro: ' + data.error); return; }
   // Abre PDF
-  window.open('/api/admin/labels/batches/' + data.batch.id + '/pdf', '_blank');
+  openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf');
   // Limpa carrinho
   _lblSel = {};
   _labelsSelected = {};
@@ -5462,7 +5487,7 @@ async function loadLabelBatches() {
       <td>${b.totalLabels}</td>
       <td>${escapeHtml(b.status)}</td>
       <td style="font-size:11px;color:var(--text2)">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
-      <td><a href="/api/admin/labels/batches/${b.id}/pdf" target="_blank" class="btn">Ver PDF</a></td>
+      <td><button type="button" class="btn" onclick="openAuthedFile('/admin/labels/batches/${b.id}/pdf')">Ver PDF</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
