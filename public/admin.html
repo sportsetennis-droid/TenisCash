@@ -162,6 +162,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </style>
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js"></script>
+<script src="/_product-search-bar.js"></script>
 </head>
 <body>
 
@@ -824,15 +825,17 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <span class="section-title">Etiquetas</span>
     <button type="button" class="refresh-btn" id="labels-refresh">↻</button>
   </div>
+  <!-- Barra de busca padrão -->
+  <div id="psbar-lbl"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
-    <input class="search-box" id="labels-search" placeholder="Buscar produtos por nome ou SKU..." style="min-width:240px">
-    <button type="button" class="btn btn-primary" id="labels-search-btn">Buscar</button>
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
     <input type="number" class="search-box" id="labels-qty" placeholder="Qtd por produto" value="1" min="1" style="width:140px">
     <button type="button" class="btn btn-primary" id="labels-create-batch">Gerar lote</button>
   </div>
-  <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e busque produtos.</div></div>
+  <!-- Compat: hidden mapeado pela PSBar (lbl-q) -->
+  <input type="hidden" id="labels-search">
+  <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e use a busca acima.</div></div>
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">LOTES GERADOS</h4>
   <div id="labels-batches-wrap"></div>
 </div>
@@ -1017,9 +1020,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <!-- SUB-ABA: ESTOQUE (original) -->
   <div id="inv-sub-stock-pane">
     <div id="inv-dashboard-wrap" style="margin-bottom:18px"></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-      <input class="search-box" id="inv-brand" placeholder="Marca...">
-      <input class="search-box" id="inv-category" placeholder="Categoria...">
+    <!-- Barra de busca padrão (Marca/Categoria/Fornecedor/Gênero/Modalidade/Especialidade) -->
+    <div id="psbar-inv"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
       <select class="search-box" id="inv-lifecycle">
         <option value="">Todo lifecycle</option>
         <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
@@ -1027,8 +1030,11 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
       </select>
       <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
-      <button type="button" class="btn btn-primary" id="inv-filter">Filtrar</button>
+      <button type="button" class="btn btn-primary" id="inv-filter">Aplicar lifecycle</button>
     </div>
+    <!-- Compat: hidden inputs alimentados pela PSBar -->
+    <input type="hidden" id="inv-brand">
+    <input type="hidden" id="inv-category">
     <div id="inv-list-wrap"></div>
   </div>
 
@@ -1219,9 +1225,12 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <span id="img-diagnose-result" style="font-size:12px;margin-left:8px"></span>
   </div>
 
+  <!-- Barra de busca padrão -->
+  <div id="psbar-img"></div>
+  <!-- Compat: hidden alimentados pela PSBar -->
+  <input type="hidden" id="img-filter-brand">
+  <input type="hidden" id="img-filter-supplier">
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-    <input class="search-box" id="img-filter-brand" placeholder="Filtrar por marca (ex: Converse)" style="min-width:220px">
-    <input class="search-box" id="img-filter-supplier" placeholder="CNPJ fornecedor (opcional)" style="min-width:240px">
     <input type="number" class="search-box" id="img-filter-limit" placeholder="Limite" value="20" min="1" max="200" style="width:100px">
     <button type="button" class="btn btn-primary" id="img-load-btn">Carregar produtos pendentes</button>
     <button type="button" class="btn" id="img-enrich-btn">🤖 Enriquecer com IA (marca/cor)</button>
@@ -5070,8 +5079,16 @@ async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
     document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); };
-    document.getElementById('labels-search-btn').onclick = labelsSearchProducts;
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
+    // PSBar padronizada — sincroniza com labels-search (hidden)
+    if (window.PSBar) {
+      await PSBar.mount('lbl', 'psbar-lbl', {
+        onSearch: (f) => {
+          document.getElementById('labels-search').value = f.search || '';
+          labelsSearchProducts();
+        },
+      });
+    }
   }
   await loadLabelTemplates();
   loadLabelBatches();
@@ -5085,10 +5102,16 @@ async function loadLabelTemplates() {
 async function labelsSearchProducts() {
   const wrap = document.getElementById('labels-products-wrap');
   wrap.innerHTML = '<div class="loading-spinner">Buscando...</div>';
-  const search = document.getElementById('labels-search').value.trim();
-  const data = await api('/admin/catalog/products?' + (search ? 'search=' + encodeURIComponent(search) : ''));
+  const f = (window.PSBar && PSBar.getFilters('lbl')) || { search: document.getElementById('labels-search').value.trim() };
+  const q = new URLSearchParams();
+  if (f.search) q.set('search', f.search);
+  if (f.brand) q.set('brand', f.brand);
+  if (f.category) q.set('category', f.category);
+  const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  const products = data.products || [];
+  let products = data.products || [];
+  // Filtro em memória pros campos extras (fornecedor, gênero, modalidade, especialidade)
+  if (window.PSBar) products = PSBar.filterInMemory(products, f);
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
   let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
@@ -5816,6 +5839,16 @@ async function initInventoryTab() {
     _invInit = true;
     document.getElementById('inv-refresh').onclick = () => { loadInvDashboard(); loadInvProducts(); };
     document.getElementById('inv-filter').onclick = loadInvProducts;
+    // PSBar padronizada — alimenta inv-brand/inv-category (hidden) e dispara busca
+    if (window.PSBar) {
+      await PSBar.mount('inv', 'psbar-inv', {
+        onSearch: (f) => {
+          document.getElementById('inv-brand').value = f.brand || '';
+          document.getElementById('inv-category').value = f.category || '';
+          loadInvProducts();
+        },
+      });
+    }
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
       const r = await api('/admin/inventory/reclassify', 'POST', {});
@@ -5856,7 +5889,12 @@ async function loadInvProducts() {
   if (lowStock) qs.set('lowStock', 'true');
   const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  const list = data.products || [];
+  let list = data.products || [];
+  // Filtragem em memória pelos filtros extras da PSBar (gênero/modalidade/tier/fornecedor/q)
+  if (window.PSBar) {
+    const f = PSBar.getFilters('inv');
+    list = PSBar.filterInMemory(list, { search: f.search, supplier: f.supplier, gender: f.gender, modality: f.modality, tier: f.tier });
+  }
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
 
   const html = `
@@ -6069,6 +6107,17 @@ async function initImagesTab() {
     document.getElementById('img-refresh').onclick = loadPendingImages;
     document.getElementById('img-load-btn').onclick = loadPendingImages;
     document.getElementById('img-enrich-btn').onclick = imgEnrichBySupplier;
+    // PSBar padronizada — alimenta img-filter-brand + img-filter-supplier (hidden)
+    if (window.PSBar) {
+      await PSBar.mount('img', 'psbar-img', {
+        onSearch: (f) => {
+          document.getElementById('img-filter-brand').value = f.brand || '';
+          // img-filter-supplier era o CNPJ; PSBar devolve CNPJ no value
+          document.getElementById('img-filter-supplier').value = f.supplier || '';
+          loadPendingImages();
+        },
+      });
+    }
     document.getElementById('img-diagnose-btn').onclick = imgDiagnose;
     document.getElementById('img-push-btn').onclick = imgPushToNuvemshop;
     document.getElementById('img-import-desc-btn').onclick = imgImportDescriptionBulk;

@@ -280,6 +280,7 @@
 </style>
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js"></script>
+<script src="/_product-search-bar.js"></script>
 </head>
 <body>
 
@@ -560,6 +561,8 @@
         <span style="font-size:18px;">🔍</span>
         <input type="text" id="catSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onCatalogSearch()">
       </div>
+      <!-- Filtros padrão (Marca/Categoria/Gênero/Modalidade/Especialidade) — mesma da admin -->
+      <div id="psbar-loja" style="margin-top:14px;"></div>
     </div>
 
     <div id="catalogResults" class="grid grid-3"></div>
@@ -1015,6 +1018,17 @@ function goPage(pageId) {
   if (pageId === 'catalog') {
     renderFilterTree('catalogTree', 'onCatalogSearch');
     onCatalogSearch();
+    // PSBar padrão da loja (modo público — sem fornecedor)
+    if (window.PSBar && !window._psLojaMounted) {
+      PSBar.mount('loja', 'psbar-loja', {
+        publicMode: true,
+        theme: 'light',
+        showSupplier: false,
+        onSearch: () => onCatalogSearch(),
+        onClear: () => onCatalogSearch(),
+      });
+      window._psLojaMounted = true;
+    }
   }
   if (pageId === 'inventory') {
     const sel = document.getElementById('invStoreSelect');
@@ -1515,17 +1529,28 @@ let catSearchTimer;
 async function onCatalogSearch() {
   clearTimeout(catSearchTimer);
   const free = document.getElementById('catSearchInput').value.trim();
+  // PSBar (busca padrão) — sobrepõe filtros explícitos quando informada
+  const ps = (window.PSBar && PSBar.getFilters('loja')) || {};
   catSearchTimer = setTimeout(async () => {
     try {
       const params = ['limit=24'];
-      if (free) params.push('q=' + encodeURIComponent(free));
+      const search = ps.search || free;
+      if (search) params.push('q=' + encodeURIComponent(search));
       if (_filterType) params.push('type=' + encodeURIComponent(_filterType));
-      if (_filterGender) params.push('gender=' + encodeURIComponent(_filterGender));
-      if (_filterCategory) params.push('modality=' + encodeURIComponent(_filterCategory));
-      if (_filterTier) params.push('tier=' + encodeURIComponent(_filterTier));
+      const gender = ps.gender || _filterGender;
+      if (gender) params.push('gender=' + encodeURIComponent(gender));
+      const modality = ps.modality || _filterCategory;
+      if (modality) params.push('modality=' + encodeURIComponent(modality));
+      const tier = ps.tier || _filterTier;
+      if (tier) params.push('tier=' + encodeURIComponent(tier));
       if (_filterSize) params.push('size=' + encodeURIComponent(_filterSize));
+      if (ps.brand) params.push('brand=' + encodeURIComponent(ps.brand));
+      if (ps.category) params.push('category=' + encodeURIComponent(ps.category));
       const d = await api('/api/catalog/products?' + params.join('&'));
-      renderCatalog(d.products || d.items || []);
+      let products = d.products || d.items || [];
+      // Filtragem em memória (caso o backend não suporte algum filtro)
+      if (window.PSBar) products = PSBar.filterInMemory(products, ps);
+      renderCatalog(products);
     } catch (e) { console.error(e); }
   }, 200);
 }

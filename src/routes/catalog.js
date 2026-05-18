@@ -134,6 +134,39 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
   }
 });
 
+// GET /api/catalog/form-options — opções do filtro padrão da loja (público)
+router.get('/form-options', optionalCatalogAuth, async (_req, res) => {
+  try {
+    const [brandRows, catRows] = await Promise.all([
+      prisma.$queryRaw`SELECT DISTINCT brand FROM "Product" WHERE active=true AND brand IS NOT NULL AND brand!='' AND brand!='A DEFINIR' ORDER BY brand ASC`,
+      prisma.$queryRaw`SELECT DISTINCT category FROM "Product" WHERE active=true AND category IS NOT NULL AND category!='' ORDER BY category ASC`,
+    ]);
+    res.json({
+      brands: brandRows.map(r => r.brand),
+      categories: catRows.map(r => r.category),
+      genders: ['Homem', 'Mulher', 'Menino', 'Menina'],
+      tree: {
+        types: ['Tênis', 'Chuteira', 'Outro'],
+        modalities: {
+          'Tênis': ['Corrida', 'Caminhada / Treino leve', 'LifeStyle', 'Recuperação', 'Musculação / CrossFit / Hyrox', 'Streetwear', 'Sapatilha'],
+          'Chuteira': ['Futsal', 'Society', 'Campo'],
+        },
+        tiers: {
+          'Corrida': ['máximo conforto', 'confortável', 'velocidade', 'custo benefício', 'super treino', 'pau pra toda obra', 'maratona'],
+          'LifeStyle': ['premium', 'clássico', 'casual'],
+          'Musculação / CrossFit / Hyrox': ['pro', 'intermediário', 'custo benefício'],
+          'Futsal': ['entrada', 'custo benefício', 'treino', 'pro'],
+          'Society': ['entrada', 'custo benefício', 'treino', 'pro'],
+          'Campo': ['entrada', 'custo benefício', 'treino', 'pro'],
+        },
+      },
+    });
+  } catch (err) {
+    console.error('catalog/form-options', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/brands', optionalCatalogAuth, async (req, res) => {
   try {
     const rows = await prisma.product.findMany({
