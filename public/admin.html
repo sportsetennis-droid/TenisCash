@@ -2187,9 +2187,8 @@ window.catShowSpecs = async function(productId) {
     + '<div style="padding:16px;background:#fafafa;border-radius:10px;border:1px solid #e5e5ea;font-family:monospace;font-size:13px;line-height:1.6;color:#1d1d1f;white-space:pre-wrap;word-wrap:break-word;">'
     + (p.longDescription ? escapeHtml(p.longDescription) : '<span style="color:#8e8e93;">Sem descrição técnica.</span>')
     + '</div>'
-    + '<div style="display:flex;gap:8px;margin-top:18px;">'
-    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove();openCatProductModal(\'' + p.id + '\')" style="flex:1;padding:11px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">✎ Editar produto</button>'
-    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 18px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;color:#1d1d1f;">Fechar</button>'
+    + '<div style="display:flex;justify-content:flex-end;margin-top:18px;">'
+    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 24px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Fechar</button>'
     + '</div></div>';
 };
 

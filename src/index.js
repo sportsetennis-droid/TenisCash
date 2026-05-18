@@ -211,9 +211,20 @@ app.get('/p/:id', async (req, res) => {
   .header h1{font-size:18px;font-weight:800;}
   .header p{font-size:12px;opacity:0.9;margin-top:2px;}
   .card{background:white;border-radius:14px;overflow:hidden;margin-bottom:14px;box-shadow:0 4px 12px rgba(0,0,0,0.04);}
-  .photo{width:100%;aspect-ratio:1;background:#f5f5f7;object-fit:contain;padding:12px;}
-  .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;padding:8px;}
-  .photos img{width:100%;aspect-ratio:1;object-fit:contain;background:#f5f5f7;border-radius:8px;padding:4px;}
+  /* CARROSSEL */
+  .crsl{position:relative;width:100%;aspect-ratio:1;background:#f5f5f7;}
+  .crsl img.crsl-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:12px;display:none}
+  .crsl img.crsl-img.active{display:block}
+  .crsl-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:2;-webkit-tap-highlight-color:transparent;}
+  .crsl-arrow:active{background:#FFE5D0;}
+  .crsl-arrow.prev{left:10px}
+  .crsl-arrow.next{right:10px}
+  .crsl-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:white;font-size:12px;font-weight:700;padding:4px 12px;border-radius:14px;z-index:2;}
+  .thumbs{display:flex;gap:6px;padding:8px;overflow-x:auto;scrollbar-width:none;}
+  .thumbs::-webkit-scrollbar{display:none}
+  .thumb{flex-shrink:0;width:64px;height:64px;border:2px solid #e5e5ea;border-radius:8px;cursor:pointer;padding:3px;background:#f5f5f7;transition:all 0.15s;}
+  .thumb.active{border-color:#FF6D00;box-shadow:0 0 0 2px rgba(255,109,0,0.2);}
+  .thumb img{width:100%;height:100%;object-fit:contain;}
   .info{padding:18px;}
   .brand{display:inline-block;padding:4px 12px;background:linear-gradient(135deg,#1d1d1f,#3a3a3c);color:white;font-size:12px;font-weight:800;border-radius:8px;letter-spacing:0.5px;}
   .price{font-size:28px;font-weight:800;color:#FF6D00;margin-top:8px;}
@@ -238,8 +249,21 @@ app.get('/p/:id', async (req, res) => {
     <div class="header"><h1>🏪 Sports & Tennis</h1><p>Informações do produto</p></div>
 
     <div class="card">
-      ${photos.length ? `<img class="photo" src="${esc(photos[0])}" onerror="this.style.opacity='0.3'">` : ''}
-      ${photos.length > 1 ? `<div class="photos">${photos.slice(1).map(u => `<img src="${esc(u)}" onerror="this.style.opacity='0.3'">`).join('')}</div>` : ''}
+      ${photos.length ? `
+        <div class="crsl" id="crsl">
+          ${photos.map((u, i) => `<img class="crsl-img${i === 0 ? ' active' : ''}" data-idx="${i}" src="${esc(u)}" onerror="this.style.opacity='0.3'">`).join('')}
+          ${photos.length > 1 ? `
+            <button class="crsl-arrow prev" onclick="crslNav(-1)">‹</button>
+            <button class="crsl-arrow next" onclick="crslNav(1)">›</button>
+            <div class="crsl-counter"><span id="crsl-idx">1</span> / ${photos.length}</div>
+          ` : ''}
+        </div>
+        ${photos.length > 1 ? `
+          <div class="thumbs">
+            ${photos.map((u, i) => `<button class="thumb${i === 0 ? ' active' : ''}" data-idx="${i}" onclick="crslGo(${i})"><img src="${esc(u)}" onerror="this.style.opacity='0.3'"></button>`).join('')}
+          </div>
+        ` : ''}
+      ` : ''}
 
       <div class="info">
         ${!ctx.deactivatedReason ? `<span class="brand">${esc(p.brand || 'A DEFINIR')}</span>` : ''}
@@ -264,6 +288,35 @@ app.get('/p/:id', async (req, res) => {
 
     <div class="footer">teniscash.com.br · Sports &amp; Tennis</div>
   </div>
+  <script>
+  (function(){
+    const total = ${photos.length};
+    if (total <= 1) return;
+    let cur = 0;
+    function update() {
+      document.querySelectorAll('.crsl-img').forEach((el, i) => el.classList.toggle('active', i === cur));
+      document.querySelectorAll('.thumb').forEach((el, i) => el.classList.toggle('active', i === cur));
+      const c = document.getElementById('crsl-idx'); if (c) c.textContent = (cur + 1);
+    }
+    window.crslNav = function(dir) { cur = (cur + dir + total) % total; update(); };
+    window.crslGo = function(idx) { cur = idx; update(); };
+    // Swipe touch
+    let startX = 0, dx = 0;
+    const crsl = document.getElementById('crsl');
+    if (crsl) {
+      crsl.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; dx = 0; }, { passive: true });
+      crsl.addEventListener('touchmove', (e) => { dx = e.touches[0].clientX - startX; }, { passive: true });
+      crsl.addEventListener('touchend', () => {
+        if (Math.abs(dx) > 50) crslNav(dx < 0 ? 1 : -1);
+      });
+    }
+    // Keyboard
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') crslNav(-1);
+      if (e.key === 'ArrowRight') crslNav(1);
+    });
+  })();
+  </script>
 </body>
 </html>`;
     res.send(html);
