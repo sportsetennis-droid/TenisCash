@@ -138,7 +138,8 @@ router.get('/products', adminOnly, async (req, res) => {
     const where = {
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
-      ...(active === 'true' ? { active: true } : active === 'false' ? { active: false } : {}),
+      // Default: só ativos. Pra ver inativos use ?active=false. Pra todos use ?active=all
+      ...(active === 'all' ? {} : active === 'false' ? { active: false } : { active: true }),
       ...(featured === 'true' ? { featured: true } : {}),
       ...(search
         ? {

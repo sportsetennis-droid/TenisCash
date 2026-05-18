@@ -138,17 +138,47 @@ app.get('/p/:id', async (req, res) => {
   try {
     const { PrismaClient } = require('@prisma/client');
     const prismaP = new PrismaClient();
-    const p = await prismaP.product.findFirst({
-      where: { id: req.params.id, active: true },
-      include: {
-        sizes: {
-          orderBy: { size: 'asc' },
-          include: { storeStocks: { include: { store: { select: { code: true, name: true } } } } },
-        },
+    const id = req.params.id;
+    console.log('[/p/:id] lookup id=' + id);
+
+    const includeOpts = {
+      sizes: {
+        orderBy: { size: 'asc' },
+        include: { storeStocks: { include: { store: { select: { code: true, name: true } } } } },
       },
+    };
+
+    // 1ª tentativa: busca por id (ativo OU inativo)
+    let p = await prismaP.product.findUnique({
+      where: { id },
+      include: includeOpts,
     });
+
+    // 2ª tentativa: busca por SKU (talvez QR carregou SKU em vez de id)
     if (!p) {
-      return res.status(404).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h1>Produto não encontrado</h1></body></html>');
+      p = await prismaP.product.findFirst({
+        where: { sku: id, active: true },
+        include: includeOpts,
+      });
+    }
+
+    // 3ª: produto está inativo mas foi unificado → redireciona pro canônico
+    if (p && p.active === false) {
+      let ctxObj = {};
+      try { ctxObj = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch {}
+      const unifiedInto = ctxObj.unifiedInto;
+      if (unifiedInto) {
+        console.log('[/p/:id] produto unificado → redirecionando pra ' + unifiedInto);
+        return res.redirect(302, '/p/' + unifiedInto);
+      }
+    }
+
+    if (!p) {
+      console.warn('[/p/:id] não encontrado: ' + id);
+      return res.status(404).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h1>Produto não encontrado</h1><p style="color:#888;font-size:12px;">ID: ' + String(id).replace(/[<>]/g, '') + '</p></body></html>');
+    }
+    if (p.active === false) {
+      return res.status(410).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h1>Produto fora de linha</h1><p>Esse produto não está mais ativo no catálogo.</p></body></html>');
     }
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
