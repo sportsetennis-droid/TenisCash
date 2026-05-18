@@ -92,7 +92,14 @@ function defaultTemplates() {
 
 function fmtBRL(n) {
   if (n == null) return '';
-  return 'R$ ' + Number(n).toFixed(2).replace('.', ',');
+  try {
+    return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  } catch {
+    // Fallback se Intl falhar: formato manual com ponto de milhar
+    const fixed = Number(n).toFixed(2);
+    const [int, dec] = fixed.split('.');
+    return 'R$ ' + int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dec;
+  }
 }
 
 // Renderiza algo que parece código de barras (visual). Para etiqueta real
@@ -308,6 +315,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const doc = new PDFDocument({
     size: layoutW,
     margins: { top: 0, left: 0, right: 0, bottom: 0 },
+    bufferPages: true, // permite switchToPage no segundo pass dos QRs
   });
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -339,10 +347,14 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const rows = t.rows || 1;
   const perPage = cols * rows;
 
-  const qrJobs = []; // {item, x, y, size}
+  const qrJobs = []; // {item, x, y, size, pageIndex}
+  let currentPageIndex = 0;
 
   for (let i = 0; i < flat.length; i++) {
-    if (i > 0 && i % perPage === 0) doc.addPage({ size: layoutW, margins: { top: 0, left: 0, right: 0, bottom: 0 } });
+    if (i > 0 && i % perPage === 0) {
+      doc.addPage({ size: layoutW, margins: { top: 0, left: 0, right: 0, bottom: 0 } });
+      currentPageIndex++;
+    }
     const slot = i % perPage;
     const col = slot % cols;
     const row = Math.floor(slot / cols);
@@ -362,14 +374,15 @@ async function generateLabelsPDF({ template, items, storeName }) {
     }
     drawLabelContent(doc, flat[i], t, x, y, labelW, labelH);
     if (flat[i]._qrPos) {
-      qrJobs.push({ item: flat[i], ...flat[i]._qrPos });
+      qrJobs.push({ item: flat[i], pageIndex: currentPageIndex, ...flat[i]._qrPos });
       delete flat[i]._qrPos;
     }
     doc.restore();
   }
 
-  // Renderizar QR codes assincronamente (PDFKit aceita imagens síncronas via buffer)
+  // Renderizar QR codes — switchToPage pra garantir QR na página certa
   for (const job of qrJobs) {
+    doc.switchToPage(job.pageIndex);
     await drawQR(doc, job.item.qrCodeValue, job.x, job.y, job.size);
   }
 

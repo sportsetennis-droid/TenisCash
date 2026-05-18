@@ -157,8 +157,17 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const cls = ctx.classification || {};
       // Mapeia gênero pra label curta de etiqueta
       const genderLabel = { 'Masculino': 'HOMEM', 'Feminino': 'MULHER', 'Inf. M': 'MENINO', 'Inf. F': 'MENINA' }[cls.gender] || cls.gender || '';
+      // Tamanho: extrai do customText ("Tam: 38") ou it.size se houver
+      let sizeStr = it.size || null;
+      if (!sizeStr && it.customText) {
+        const m = String(it.customText).match(/Tam[:\s]+([\w\d\/\-]+)/i);
+        if (m) sizeStr = m[1];
+      }
+      // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
+      const baseName = p ? p.name : (it.customText || '');
+      const finalName = sizeStr ? `${baseName} • TAM ${sizeStr}` : baseName;
       return {
-        name: p ? p.name : (it.customText || ''),
+        name: finalName,
         brand: p ? p.brand : '',
         sku: p ? p.sku : '',
         supplierRef: ctx.supplierRef || null,
@@ -166,7 +175,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         category: p ? p.category : '',
         modality: cls.modality || '',
         tier: cls.tier || '',
-        size: it.size || null,
+        size: sizeStr,
         price: it.price != null ? it.price : (p ? p.price : null),
         promotionalPrice: it.promotionalPrice != null ? it.promotionalPrice : (p ? p.promoPrice : null),
         barcode: it.barcode || (p ? p.sku : null),
