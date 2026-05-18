@@ -164,8 +164,6 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   const textW = priceX - x - padX - mm(1);
 
   const isTall = h >= mm(18);
-  const yOffset = isTall ? mm(1.8) : mm(1);
-  const lineGap = isTall ? mm(9) : mm(6);
 
   // Helper: trunca string respeitando limite de chars (com … no fim)
   const truncate = (s, max) => {
@@ -173,18 +171,23 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     return t.length > max ? t.slice(0, max - 1) + '…' : t;
   };
 
-  // ===== NOME (linha 1) — branco bold, truncado pra caber numa linha só
-  // Em 11pt bold sobre ~70mm de largura → ~36-40 chars cabem
+  // Helper: mede altura real de um texto multilinha (em pontos)
+  const measureBlock = (text, fs, font, maxW) => {
+    doc.font(font).fontSize(fs);
+    const w = doc.widthOfString(text);
+    const lines = Math.max(1, Math.ceil(w / maxW));
+    return { lines, height: lines * fs * 1.15 };
+  };
+
+  // ===== NOME (1 linha) — branco bold, trunca com …
   const rawName = String(item.name || '').toUpperCase();
   const nameFs = isTall ? 11 : 8;
   const nameMaxChars = isTall ? 38 : 50;
   const name = truncate(rawName, nameMaxChars);
-  doc.fontSize(nameFs).fillColor(WHITE).font('Helvetica-Bold')
-    .text(name, x + padX, y + yOffset, { width: textW, height: nameFs * 1.3, ellipsis: true, lineBreak: false });
 
-  // ===== TAGS (linha 2): REF • Gen • Cat • Mod • Esp — branco regular, truncada
+  // ===== TAGS — até 2 linhas, ellipsis se passar
   const ref = String(item.supplierRef || item.sku || '').toUpperCase();
-  const rawTags = [
+  const tags = [
     ref ? 'REF ' + ref : null,
     item.gender || null,
     item.category || null,
@@ -192,10 +195,30 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     item.tier || null,
   ].filter(Boolean).join(' • ');
   const tagFs = isTall ? 8 : 6.5;
-  const tagMaxChars = isTall ? 60 : 75;
-  const tags = truncate(rawTags, tagMaxChars);
+
+  // Mede pra calcular distribuição vertical do bloco (nome + gap + tags)
+  const nameBlock = { lines: 1, height: nameFs * 1.15 };
+  const tagBlock = measureBlock(tags, tagFs, 'Helvetica', textW);
+  const tagsMaxLines = 2;
+  const tagsLines = Math.min(tagBlock.lines, tagsMaxLines);
+  const tagsHeight = tagsLines * tagFs * 1.15;
+  const blockGap = mm(1.5);
+  const totalBlockH = nameBlock.height + blockGap + tagsHeight;
+  // Centraliza verticalmente
+  const blockY = y + Math.max(mm(1), (h - totalBlockH) / 2);
+
+  // Desenha NOME
+  doc.fontSize(nameFs).fillColor(WHITE).font('Helvetica-Bold')
+    .text(name, x + padX, blockY, { width: textW, height: nameBlock.height, ellipsis: true, lineBreak: false });
+
+  // Desenha TAGS (até 2 linhas)
   doc.fontSize(tagFs).fillColor(WHITE).font('Helvetica')
-    .text(tags, x + padX, y + yOffset + lineGap, { width: textW, height: tagFs * 1.3, ellipsis: true, lineBreak: false });
+    .text(tags, x + padX, blockY + nameBlock.height + blockGap, {
+      width: textW,
+      height: tagsHeight + 1,    // tolera 1pt de folga
+      ellipsis: true,
+      lineBreak: true,           // permite quebra de linha
+    });
 
   // ===== PREÇO (centro) — branco, MUITO grande, destaque máximo
   // Auto-shrink: começa em priceFsMax e reduz até caber em priceW numa linha só
