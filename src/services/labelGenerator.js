@@ -18,15 +18,15 @@ function mm(x) { return x * MM_TO_PT; }
 
 function defaultTemplates() {
   return {
-    st_13x15: {
+    st_13x20: {
       type: 'PRODUCT',
-      name: 'S&T Etiqueta 13x1,5cm (18 por A4)',
+      name: 'S&T Etiqueta 13x2cm (13 por A4)',
       paperSize: 'A4',
       widthMm: 130,
-      heightMm: 15,
+      heightMm: 20,
       columns: 1,
-      rows: 18,
-      marginTopMm: 11,
+      rows: 13,
+      marginTopMm: 13,
       marginLeftMm: 40,
       gapHorizontalMm: 0,
       gapVerticalMm: 0,
@@ -119,31 +119,47 @@ function drawFakeBarcode(doc, value, x, y, w, h) {
 
 async function drawQR(doc, value, x, y, size) {
   try {
-    const dataUrl = await QRCode.toDataURL(String(value || ''), { width: 256, margin: 0 });
+    const dataUrl = await QRCode.toDataURL(String(value || ''), {
+      width: 512,                  // alta resolução pra impressão nítida
+      margin: 1,                   // quiet zone (necessária pra leitura)
+      errorCorrectionLevel: 'M',   // 15% correção — bom equilíbrio
+      color: { dark: '#000000', light: '#FFFFFF' },
+    });
     const b64 = dataUrl.split(',')[1];
     const buf = Buffer.from(b64, 'base64');
     doc.image(buf, x, y, { width: size, height: size });
-  } catch (_) { /* ignore */ }
+  } catch (e) {
+    console.error('[drawQR]', e?.message);
+  }
 }
 
-// ===== Layout HORIZONTAL 130x15mm (S&T) =====
-// |  Nome • Ref • Gen • Cat • Mod • Esp    |   R$ XXX,XX   |  [QR]  |
+// ===== Layout HORIZONTAL S&T (130mm × 15-25mm) =====
+// |  NOME (grande, negrito)                    [QR]       |
+// |  REF • Gen • Cat • Mod • Esp     R$ XXX,XX  []        |
+// QR escala com a altura disponível (máx 27mm).
 function drawLabelHorizontal(doc, item, template, x, y, w, h) {
-  // 3 zonas: esquerda (texto), meio (preço), direita (QR)
-  const padX = mm(2);
-  const qrSize = h - mm(2);
-  const qrX = x + w - qrSize - mm(2);
-  const priceW = mm(28);
+  const padX = mm(1.5);
+  // QR ocupa quase toda altura, mínimo 13mm, máximo 27mm
+  const qrSize = Math.min(mm(27), Math.max(mm(13), h - mm(1.5)));
+  const qrInsetY = (h - qrSize) / 2; // centraliza verticalmente
+  const qrX = x + w - qrSize - mm(1.5);
+  // Zona do preço — calculada baseada na altura disponível
+  const priceW = mm(32);
   const priceX = qrX - priceW - mm(2);
   const textW = priceX - x - padX - mm(2);
 
-  // Linha de cima: NOME (negrito) + Ref
-  const name = String(item.name || '').toUpperCase();
-  const ref = String(item.supplierRef || item.sku || '').toUpperCase();
-  doc.fontSize(8).fillColor('#1d1d1f').font('Helvetica-Bold')
-    .text(name, x + padX, y + mm(1.5), { width: textW, ellipsis: true, lineBreak: false });
+  const isTall = h >= mm(18); // layout em 2 linhas reais quando ≥18mm
+  const yOffset = isTall ? mm(1.5) : mm(1);
+  const lineGap = isTall ? mm(9) : mm(6);
 
-  // Linha de baixo: REF • GEN • CAT • MOD • ESP
+  // ===== NOME (linha 1) — fonte maior se etiqueta for mais alta
+  const name = String(item.name || '').toUpperCase();
+  const nameFs = isTall ? 11 : 8;
+  doc.fontSize(nameFs).fillColor('#1d1d1f').font('Helvetica-Bold')
+    .text(name, x + padX, y + yOffset, { width: textW, ellipsis: true, lineBreak: false });
+
+  // ===== TAGS (linha 2): REF • GEN • CAT • MOD • ESP
+  const ref = String(item.supplierRef || item.sku || '').toUpperCase();
   const tags = [
     ref ? 'REF ' + ref : null,
     item.gender || null,
@@ -151,34 +167,37 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     item.modality || null,
     item.tier || null,
   ].filter(Boolean).join(' • ');
-  doc.fontSize(6.5).fillColor('#555').font('Helvetica')
-    .text(tags, x + padX, y + mm(7.5), { width: textW, ellipsis: true, lineBreak: false });
+  const tagFs = isTall ? 8 : 6.5;
+  doc.fontSize(tagFs).fillColor('#555').font('Helvetica')
+    .text(tags, x + padX, y + yOffset + lineGap, { width: textW, ellipsis: true, lineBreak: false });
 
-  // PREÇO em destaque (centralizado na zona do preço)
+  // ===== PREÇO (centro) — destaque grande
   const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
   const showPrice = usePromo ? item.promotionalPrice : item.price;
   if (showPrice != null) {
+    const priceFs = isTall ? 16 : 13;
     if (usePromo && item.price) {
-      doc.fontSize(6).fillColor('#888').font('Helvetica')
-        .text(fmtBRL(item.price), priceX, y + mm(1.5), { width: priceW, align: 'center', strike: true });
-      doc.fontSize(13).fillColor('#FF6D00').font('Helvetica-Bold')
-        .text(fmtBRL(showPrice), priceX, y + mm(5.5), { width: priceW, align: 'center', lineBreak: false });
+      doc.fontSize(7).fillColor('#888').font('Helvetica')
+        .text(fmtBRL(item.price), priceX, y + yOffset, { width: priceW, align: 'center', strike: true });
+      doc.fontSize(priceFs).fillColor('#FF6D00').font('Helvetica-Bold')
+        .text(fmtBRL(showPrice), priceX, y + yOffset + mm(4.5), { width: priceW, align: 'center', lineBreak: false });
     } else {
-      doc.fontSize(13).fillColor('#000').font('Helvetica-Bold')
-        .text(fmtBRL(showPrice), priceX, y + mm(4), { width: priceW, align: 'center', lineBreak: false });
+      const priceY = isTall ? (y + (h - mm(priceFs * 0.4)) / 2 - mm(2)) : (y + mm(4));
+      doc.fontSize(priceFs).fillColor('#000').font('Helvetica-Bold')
+        .text(fmtBRL(showPrice), priceX, priceY, { width: priceW, align: 'center', lineBreak: false });
     }
   }
 
-  // Marca posição do QR (renderizado em outra passada)
+  // Marca posição do QR (renderizado em outra passada, com alta resolução)
   if (item.qrCodeValue) {
-    item._qrPos = { x: qrX, y: y + mm(1), size: qrSize };
+    item._qrPos = { x: qrX, y: y + qrInsetY, size: qrSize };
   }
 }
 
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
-  // Detecta layout S&T 130x15mm
-  if (Math.round(t.widthMm) === 130 && Math.round(t.heightMm) === 15) {
+  // Detecta layout S&T (largura 130mm + altura 15-27mm) → usa horizontal com QR
+  if (Math.round(t.widthMm) === 130 && t.heightMm >= 14 && t.heightMm <= 27) {
     return drawLabelHorizontal(doc, item, template, x, y, w, h);
   }
   let cursor = y + mm(2);

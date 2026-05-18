@@ -16,8 +16,8 @@ async function ensureDefaultTemplates() {
   for (const key of Object.keys(defaults)) {
     const def = defaults[key];
     const existing = await prisma.labelTemplate.findFirst({ where: { name: def.name } });
-    // Template S&T 130x15mm tem layout horizontal especial: QR ON, barcode OFF
-    const isST = Math.round(def.widthMm) === 130 && Math.round(def.heightMm) === 15;
+    // Template S&T 130mm de largura (qualquer altura 14-27mm) tem layout horizontal especial: QR ON, barcode OFF
+    const isST = Math.round(def.widthMm) === 130 && def.heightMm >= 14 && def.heightMm <= 27;
     const wantedData = {
       name: def.name,
       type: def.type,

@@ -5156,10 +5156,12 @@ async function initLabelsTab() {
     }
   }
   await loadLabelTemplates();
-  // Auto-seleciona o template S&T 13x1,5cm se existir
+  // Auto-seleciona o template S&T (prefere 2cm > 1,5cm)
   const sel = document.getElementById('labels-template');
   if (sel) {
-    const stOpt = [...sel.options].find(o => /S&T|13x1,5|13x15/i.test(o.textContent));
+    const opts = [...sel.options];
+    const stOpt = opts.find(o => /S&T.*2cm|13x2/i.test(o.textContent))
+              || opts.find(o => /S&T|13x1,5|13x15/i.test(o.textContent));
     if (stOpt) sel.value = stOpt.value;
   }
   _lblUpdateCart();
