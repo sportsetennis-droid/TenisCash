@@ -12,7 +12,7 @@ async function designBriefAgent({ task, context, objective, createdById }) {
       campaignName: '',
       feed: {
         format: 'Instagram Feed 1080x1080',
-        palette: ['#FF6D00', '#111111', '#FFFFFF'],
+        palette: ['#E5571E', '#111111', '#FFFFFF'],
         typography: { title: 'Orbitron Bold', body: 'Chakra Petch' },
         composition: 'Briefing visual indisponível — pedir manualmente ao designer.',
         mainSubject: '',
@@ -26,7 +26,7 @@ async function designBriefAgent({ task, context, objective, createdById }) {
       },
       story: {
         format: 'Instagram Story 1080x1920',
-        palette: ['#FF6D00', '#111111', '#FFFFFF'],
+        palette: ['#E5571E', '#111111', '#FFFFFF'],
         typography: { title: 'Orbitron Bold', body: 'Chakra Petch' },
         composition: 'Briefing visual indisponível — pedir manualmente ao designer.',
         mainSubject: '',

@@ -4,10 +4,10 @@
    ===================================================================== */
 
 :root {
-  --ds-primary: #FF6D00;
+  --ds-primary: #E5571E;
   --ds-primary-dark: #e55f00;
-  --ds-primary-light: #FFE5D0;
-  --ds-gradient: linear-gradient(135deg, #FF6D00 0%, #FF9248 100%);
+  --ds-primary-light: #FCDAC4;
+  --ds-gradient: linear-gradient(135deg, #E5571E 0%, #EE7240 100%);
   --ds-success: #0a843d;
   --ds-success-bg: #e8f7ee;
   --ds-warning: #b06b00;
@@ -28,7 +28,7 @@
   --ds-shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
   --ds-shadow-md: 0 8px 24px rgba(0,0,0,0.08);
   --ds-shadow-lg: 0 16px 40px rgba(0,0,0,0.12);
-  --ds-shadow-orange: 0 8px 24px rgba(255,109,0,0.25);
+  --ds-shadow-orange: 0 8px 24px rgba(229,87,30,0.25);
 }
 
 /* === CARD BASE === */
@@ -69,13 +69,13 @@
 /* === CHIPS DE FILTRO — cor preta fixa pra não conflitar com tema escuro === */
 .ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--ds-border); cursor: pointer; font-size: 13px; font-weight: 600; color: #1d1d1f !important; transition: all 0.15s; user-select: none; white-space: nowrap; }
 .ds-chip:hover { border-color: var(--ds-primary); color: var(--ds-primary) !important; }
-.ds-chip.active { background: var(--ds-gradient); border-color: transparent; color: white !important; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
+.ds-chip.active { background: var(--ds-gradient); border-color: transparent; color: white !important; box-shadow: 0 2px 8px rgba(229,87,30,0.3); }
 .ds-chip-cnt { font-size: 11px; opacity: 0.7; margin-left: 4px; font-weight: 500; }
 .ds-chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .ds-chips-label { font-size: 11px; color: var(--ds-text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
 
 /* === SEARCH BAR === */
-.ds-search { background: linear-gradient(135deg, white, #FFF5EB); border: 2px solid var(--ds-primary-light); border-radius: 16px; padding: 16px 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
+.ds-search { background: linear-gradient(135deg, white, #FFEBDC); border: 2px solid var(--ds-primary-light); border-radius: 16px; padding: 16px 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
 .ds-search input { flex: 1; padding: 12px 14px; border: 1px solid var(--ds-border); border-radius: 10px; font-size: 15px; background: white; color: #1d1d1f !important; }
 .ds-search input::placeholder { color: var(--ds-text-muted); }
 .ds-search input:focus { outline: none; border-color: var(--ds-primary); box-shadow: 0 0 0 3px var(--ds-primary-light); }
@@ -103,6 +103,6 @@
 /* === BOTÕES === */
 .ds-btn { padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
 .ds-btn-primary { background: var(--ds-gradient); color: white; box-shadow: var(--ds-shadow-orange); }
-.ds-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(255,109,0,0.4); }
+.ds-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(229,87,30,0.4); }
 .ds-btn-secondary { background: white; color: var(--ds-text); border: 1px solid var(--ds-border); }
 .ds-btn-secondary:hover { border-color: var(--ds-primary); color: var(--ds-primary); }

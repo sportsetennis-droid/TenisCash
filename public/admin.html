@@ -13,8 +13,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#FFF5EB;--card:#ffffff;--border:#FFE5D0;--orange:#FF6D00;--orange2:#E05A0A;--green:#0a843d;--red:#d70015;--text:#1d1d1f;--text2:#6e6e73;--text3:#a1a1a6}
-body{font-family:'Chakra Petch',sans-serif;background:linear-gradient(135deg,#FFF5EB 0%,#FFE5D0 50%,#FFD4B3 100%);background-attachment:fixed;color:var(--text);min-height:100vh}
+:root{--bg:#FFEBDC;--card:#ffffff;--border:#FCDAC4;--orange:#E5571E;--orange2:#C04816;--green:#0a843d;--red:#d70015;--text:#1d1d1f;--text2:#6e6e73;--text3:#a1a1a6}
+body{font-family:'Chakra Petch',sans-serif;background:linear-gradient(135deg,#FFEBDC 0%,#FCDAC4 50%,#FAC5A0 100%);background-attachment:fixed;color:var(--text);min-height:100vh}
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .login-box{width:100%;max-width:380px;text-align:center}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;background:rgba(255,109,0,0.1)}
@@ -230,7 +230,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     /* Botão "voltar pro Hub" injetado no topo de cada section */
     .hub-back-btn {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 10px 16px; background: linear-gradient(135deg, #FF6D00, #FF9248);
+      padding: 10px 16px; background: linear-gradient(135deg, #E5571E, #EE7240);
       color: white; border: none; border-radius: 10px;
       font-size: 14px; font-weight: 600; cursor: pointer;
       margin-bottom: 18px; transition: all 0.15s;
@@ -267,7 +267,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- HOME / HUB SECTION -->
   <div class="section" id="tab-home">
     <style>
-      .hub-header { background: linear-gradient(135deg, #FF6D00 0%, #FF9248 100%); border-radius: 16px; padding: 28px; color: white; margin-bottom: 24px; }
+      .hub-header { background: linear-gradient(135deg, #E5571E 0%, #EE7240 100%); border-radius: 16px; padding: 28px; color: white; margin-bottom: 24px; }
       .hub-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px; }
       .hub-header p { font-size: 14px; opacity: 0.92; margin: 0; }
       .hub-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 18px; }
@@ -278,13 +278,13 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       .hub-cat-title::after { content: ''; flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
       .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
       .hub-card { background: #fff; border: 1.5px solid var(--border); border-radius: 14px; padding: 18px; cursor: pointer; transition: all 0.18s; display: flex; flex-direction: column; gap: 6px; text-align: left; position: relative; overflow: hidden; }
-      .hub-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--cat-color, #FF6D00); opacity: 0; transition: opacity 0.15s; }
-      .hub-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(255,109,0,0.15); border-color: var(--cat-color, #FF6D00); }
+      .hub-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--cat-color, #E5571E); opacity: 0; transition: opacity 0.15s; }
+      .hub-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(255,109,0,0.15); border-color: var(--cat-color, #E5571E); }
       .hub-card:hover::before { opacity: 1; }
       .hub-card-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
       .hub-card-title { font-size: 15px; font-weight: 700; color: var(--text); margin-top: 4px; }
       .hub-card-desc { font-size: 12px; color: var(--text2); line-height: 1.4; }
-      .hub-card-badge { display: inline-block; padding: 2px 8px; background: var(--cat-bg, #FFE5D0); color: var(--cat-color, #FF6D00); font-size: 10px; font-weight: 700; border-radius: 8px; margin-top: 6px; align-self: flex-start; }
+      .hub-card-badge { display: inline-block; padding: 2px 8px; background: var(--cat-bg, #FCDAC4); color: var(--cat-color, #E5571E); font-size: 10px; font-weight: 700; border-radius: 8px; margin-top: 6px; align-self: flex-start; }
     </style>
 
     <div class="hub-header">
@@ -329,7 +329,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
     <!-- CATEGORIA: PRODUTOS -->
     <div class="hub-cat-title">📦 Produtos e Estoque</div>
-    <div class="hub-grid" style="--cat-color:#FF6D00;--cat-bg:#FFE5D0;">
+    <div class="hub-grid" style="--cat-color:#E5571E;--cat-bg:#FCDAC4;">
       <button class="hub-card" onclick="switchTabByName('catalog')">
         <div class="hub-card-icon">📚</div>
         <div class="hub-card-title">Catálogo</div>
@@ -843,7 +843,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <input type="hidden" id="labels-qty" value="1">
 
   <!-- CARRINHO de etiquetas selecionadas -->
-  <div id="labels-cart" style="position:sticky;top:10px;z-index:20;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#FF6D00,#FF9248);border-radius:14px;color:white;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-shadow:0 6px 18px rgba(255,109,0,0.25);">
+  <div id="labels-cart" style="position:sticky;top:10px;z-index:20;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#E5571E,#EE7240);border-radius:14px;color:white;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-shadow:0 6px 18px rgba(255,109,0,0.25);">
     <div style="flex:1;min-width:200px;">
       <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;opacity:0.9;">🛒 CARRINHO DE ETIQUETAS</div>
       <div id="labels-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Nenhuma etiqueta selecionada</div>
@@ -851,7 +851,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" id="labels-cart-add-all" style="padding:8px 14px;background:rgba(255,255,255,0.25);color:white;border:1px solid rgba(255,255,255,0.5);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">+1 em todos produtos visíveis</button>
     <button type="button" id="labels-cart-show" style="padding:8px 14px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">📋 Ver lista</button>
     <button type="button" id="labels-cart-clear" style="padding:8px 14px;background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;cursor:pointer;">Limpar</button>
-    <button type="button" id="labels-create-batch" style="padding:10px 18px;background:white;color:#FF6D00;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">📄 GERAR PDF A4</button>
+    <button type="button" id="labels-create-batch" style="padding:10px 18px;background:white;color:#E5571E;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">📄 GERAR PDF A4</button>
   </div>
 
   <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e use a busca acima.</div></div>
@@ -1080,14 +1080,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- SUB-ABA: CLASSIFICAÇÃO IA -->
   <div id="inv-sub-cls-pane" style="display:none;">
     <style>
-      .cls-search-bar { background: linear-gradient(135deg,#fff,#FFF5EB); border: 2px solid #FFE5D0; border-radius: 16px; padding: 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
+      .cls-search-bar { background: linear-gradient(135deg,#fff,#FFEBDC); border: 2px solid #FCDAC4; border-radius: 16px; padding: 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
       .cls-search-bar input { flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; font-size: 16px; background: white; color: #1d1d1f !important; }
       .cls-search-bar input::placeholder { color: #8e8e93; }
-      .cls-search-bar input:focus { outline: none; border-color: #FF6D00; box-shadow: 0 0 0 3px #FFE5D0; }
+      .cls-search-bar input:focus { outline: none; border-color: #E5571E; box-shadow: 0 0 0 3px #FCDAC4; }
       .cls-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
       .cls-chip { padding: 8px 14px; border-radius: 20px; background: white; border: 1.5px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; color: #1d1d1f !important; transition: all 0.15s; user-select: none; white-space: nowrap; }
-      .cls-chip:hover { border-color: #FF6D00; color: #FF6D00 !important; }
-      .cls-chip.active { background: linear-gradient(135deg,#FF6D00,#FF9248); border-color: transparent; color: white !important; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
+      .cls-chip:hover { border-color: #E5571E; color: #E5571E !important; }
+      .cls-chip.active { background: linear-gradient(135deg,#E5571E,#EE7240); border-color: transparent; color: white !important; box-shadow: 0 2px 8px rgba(255,109,0,0.3); }
       .cls-chip .cnt { font-size: 11px; opacity: 0.7; margin-left: 4px; }
       .cls-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: all 0.15s; display: flex; flex-direction: column; }
       .cls-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.08); }
@@ -1101,7 +1101,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       .cls-card-sizes strong { color: var(--text); font-weight: 700; }
       .cls-card-tags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; }
       .cls-pill { padding: 3px 8px; border-radius: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px; }
-      .cls-pill-type { background: #FFE5D0; color: #FF6D00; }
+      .cls-pill-type { background: #FCDAC4; color: #E5571E; }
       .cls-pill-gender { background: #e3f2fd; color: #0066cc; }
       .cls-pill-modality { background: #f0f0f3; color: #1d1d1f; }
       .cls-pill-tier { background: #f5f5f7; color: #8e8e93; }
@@ -1109,7 +1109,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       .cls-card-conf { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700; align-self: flex-start; }
       .cls-card-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px dashed var(--border); }
       .cls-card-actions button { flex: 1; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: white; transition: all 0.15s; }
-      .cls-card-actions button.primary { background: linear-gradient(135deg,#FF6D00,#FF9248); color: white; border-color: transparent; }
+      .cls-card-actions button.primary { background: linear-gradient(135deg,#E5571E,#EE7240); color: white; border-color: transparent; }
       .cls-card-actions button:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
       .cls-kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
       .cls-kpi { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
@@ -1127,7 +1127,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       .cls-modal-head img { width: 80px; height: 80px; object-fit: contain; background: white; border-radius: 8px; }
       .cls-modal label { display: block; font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; margin-top: 12px; }
       .cls-modal input, .cls-modal select { width: 100%; padding: 11px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; }
-      .cls-modal input:focus, .cls-modal select:focus { outline: none; border-color: #FF6D00; box-shadow: 0 0 0 3px #FFE5D0; }
+      .cls-modal input:focus, .cls-modal select:focus { outline: none; border-color: #E5571E; box-shadow: 0 0 0 3px #FCDAC4; }
     </style>
 
     <!-- BARRA DE BUSCA GRANDE -->
@@ -1600,7 +1600,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">CATEGORIA</label>
           <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
             <select class="form-input" id="cat-p-category" style="flex:1;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">— escolha —</option></select>
-            <button type="button" onclick="catFormAddNew('category')" title="Adicionar nova categoria" style="padding:8px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
+            <button type="button" onclick="catFormAddNew('category')" title="Adicionar nova categoria" style="padding:8px 10px;background:#E5571E;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
           </div>
         </div>
         <div>
@@ -1631,7 +1631,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">MARCA</label>
           <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
             <select class="form-input" id="cat-p-brand" style="flex:1;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">— escolha —</option></select>
-            <button type="button" onclick="catFormAddNew('brand')" title="Adicionar nova marca" style="padding:8px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
+            <button type="button" onclick="catFormAddNew('brand')" title="Adicionar nova marca" style="padding:8px 10px;background:#E5571E;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
           </div>
         </div>
         <div>
@@ -1658,7 +1658,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div id="cat-p-photos-wrap" style="margin-top:8px;padding:12px;background:#f5f5f7;border-radius:10px;border:1px solid #e5e5ea;">
       <div style="display:flex;gap:8px;margin-bottom:10px;">
         <input type="text" id="cat-p-new-photo" placeholder="Cole URL da foto e clique Adicionar" style="flex:1;padding:9px 12px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:13px;">
-        <button type="button" id="cat-p-add-photo" style="padding:9px 14px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
+        <button type="button" id="cat-p-add-photo" style="padding:9px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
       </div>
       <div id="cat-p-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;"></div>
       <div id="cat-p-photos-empty" style="text-align:center;padding:14px;color:#8e8e93;font-size:12px;">Nenhuma foto. Adicione a URL acima.</div>
@@ -1671,7 +1671,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="flex:1;min-width:90px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">TAMANHO</label><input type="text" id="cat-p-new-size" placeholder="38" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
         <div style="flex:2;min-width:150px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">LOJA</label><select id="cat-p-new-store" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"><option value="">— escolha —</option></select></div>
         <div style="flex:1;min-width:80px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">QTD</label><input type="number" id="cat-p-new-qty" value="1" min="1" max="50" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
-        <button type="button" id="cat-p-add-unit" style="padding:9px 14px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
+        <button type="button" id="cat-p-add-unit" style="padding:9px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
       </div>
       <div id="cat-p-units-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;"></div>
       <div id="cat-p-units-empty" style="text-align:center;padding:14px;color:#8e8e93;font-size:12px;">Nenhuma unidade. Adicione acima.</div>
@@ -2232,7 +2232,7 @@ async function loadCatalogProductsAdmin() {
     // Marca + Preço
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">'
       + '<span style="padding:3px 10px;background:' + (hasBrand ? 'linear-gradient(135deg,#1d1d1f,#3a3a3c)' : '#f5f5f7') + ';color:' + (hasBrand ? 'white' : '#d70015') + ';font-size:11px;font-weight:800;border-radius:6px;letter-spacing:0.5px;' + (hasBrand ? '' : 'border:1px dashed #d70015;') + '">' + (hasBrand ? escapeHtml(brandText) : '⚠ SEM MARCA') + '</span>'
-      + '<span style="font-size:14px;font-weight:800;color:#FF6D00;">R$ ' + Number(p.price || 0).toFixed(2) + '</span>'
+      + '<span style="font-size:14px;font-weight:800;color:#E5571E;">R$ ' + Number(p.price || 0).toFixed(2) + '</span>'
       + '</div>';
     // Nome
     html += '<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">' + escapeHtml(p.name || '?') + '</div>';
@@ -2240,11 +2240,11 @@ async function loadCatalogProductsAdmin() {
     const ref = ctx.supplierRef || '';
     html += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);font-family:monospace;">'
       + '<span title="SKU">📋 ' + escapeHtml(p.sku || '') + '</span>'
-      + (ref ? '<span title="Referência do fornecedor" style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ' + escapeHtml(ref) + '</span>' : '')
+      + (ref ? '<span title="Referência do fornecedor" style="background:#FCDAC4;color:#E5571E;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ' + escapeHtml(ref) + '</span>' : '')
       + '</div>';
     // Botão "Ver descrição técnica" logo abaixo da referência (só se houver)
     if (p.longDescription) {
-      html += '<button type="button" onclick="catShowSpecs(\'' + p.id + '\')" style="padding:7px 10px;background:#fff;border:1.5px solid #FF6D00;color:#FF6D00;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">📋 Ver descrição técnica</button>';
+      html += '<button type="button" onclick="catShowSpecs(\'' + p.id + '\')" style="padding:7px 10px;background:#fff;border:1.5px solid #E5571E;color:#E5571E;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">📋 Ver descrição técnica</button>';
     }
     // Descrição
     if (desc) html += '<div style="font-size:11px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml(desc) + '</div>';
@@ -2254,7 +2254,7 @@ async function loadCatalogProductsAdmin() {
     const typeNorm = (cls.type || '').toLowerCase().replace(/[^a-z]/g, '');
     const catIsRedundant = catNorm && typeNorm && (catNorm === typeNorm || catNorm.includes(typeNorm) || typeNorm.includes(catNorm));
     if (cat && !catIsRedundant) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#f5f5f7;color:#1d1d1f;border-radius:6px;font-weight:600;">📂 ' + escapeHtml(cat) + '</span>';
-    if (cls.type) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#FFE5D0;color:#FF6D00;border-radius:6px;font-weight:700;">' + escapeHtml(cls.type) + '</span>';
+    if (cls.type) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#FCDAC4;color:#E5571E;border-radius:6px;font-weight:700;">' + escapeHtml(cls.type) + '</span>';
     if (cls.gender) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#e3f2fd;color:#0066cc;border-radius:6px;font-weight:700;">' + escapeHtml(cls.gender) + '</span>';
     if (cls.modality) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#f0f0f3;color:#1d1d1f;border-radius:6px;font-weight:600;">' + escapeHtml(cls.modality) + '</span>';
     if (cls.tier) metaPills += '<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ' + escapeHtml(cls.tier) + '</span>';
@@ -2264,9 +2264,9 @@ async function loadCatalogProductsAdmin() {
     const storesArr = Object.keys(byStore).sort();
     if (storesArr.length) {
       const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
-      html += '<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFF5EB);border-radius:10px;border:2px solid #FFE5D0;">';
+      html += '<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFEBDC);border-radius:10px;border:2px solid #FCDAC4;">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
-      html += '<div style="font-size:11px;color:#FF6D00;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>';
+      html += '<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>';
       html += '<div style="font-size:12px;color:#1d1d1f;font-weight:800;">' + totalUn + ' un. total</div>';
       html += '</div>';
       storesArr.forEach(code => {
@@ -2302,7 +2302,7 @@ async function loadCatalogProductsAdmin() {
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
     // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
-      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>'
+      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>'
       + '<button type="button" onclick="catShowQRCode(\'' + p.id + '\')" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:14px;cursor:pointer;" title="Gerar QR Code do produto">📱</button>'
       + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
       + '<button type="button" class="js-cat-del" data-id="' + p.id + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);color:#d70015;font-size:12px;cursor:pointer;" title="Excluir">🗑</button>'
@@ -2347,12 +2347,12 @@ window.catShowSpecs = async function(productId) {
     + '<div style="font-size:13px;color:#8e8e93;margin-top:4px;">' + escapeHtml(p.name || '') + '</div></div>'
     + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;">×</button>'
     + '</div>'
-    + (p.shortDescription ? '<div style="padding:12px 14px;background:#FFF5EB;border-left:3px solid #FF6D00;border-radius:8px;font-size:14px;color:#1d1d1f;line-height:1.5;margin-bottom:14px;">' + escapeHtml(p.shortDescription) + '</div>' : '')
+    + (p.shortDescription ? '<div style="padding:12px 14px;background:#FFEBDC;border-left:3px solid #E5571E;border-radius:8px;font-size:14px;color:#1d1d1f;line-height:1.5;margin-bottom:14px;">' + escapeHtml(p.shortDescription) + '</div>' : '')
     + '<div style="padding:16px;background:#fafafa;border-radius:10px;border:1px solid #e5e5ea;font-family:monospace;font-size:13px;line-height:1.6;color:#1d1d1f;white-space:pre-wrap;word-wrap:break-word;">'
     + (p.longDescription ? escapeHtml(p.longDescription) : '<span style="color:#8e8e93;">Sem descrição técnica.</span>')
     + '</div>'
     + '<div style="display:flex;justify-content:flex-end;margin-top:18px;">'
-    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 24px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Fechar</button>'
+    + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 24px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Fechar</button>'
     + '</div></div>';
 };
 
@@ -2379,7 +2379,7 @@ window.catShowQRCode = function(productId) {
     + '<div style="font-size:11px;color:#8e8e93;margin-bottom:10px;font-family:monospace;word-break:break-all;background:#fafafa;padding:8px;border-radius:6px;">' + url + '</div>'
     + '<p style="font-size:12px;color:#1d1d1f;line-height:1.5;margin:14px 0;">Aponta a câmera no QR Code pra ver foto, marca, descrição, especialidade e estoque por loja deste produto. Use em etiqueta, vitrine, anúncio.</p>'
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-    + '<a href="' + qrUrl + '" download="qrcode-' + productId + '.png" target="_blank" style="flex:1;padding:11px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;text-align:center;">⬇ Baixar PNG</a>'
+    + '<a href="' + qrUrl + '" download="qrcode-' + productId + '.png" target="_blank" style="flex:1;padding:11px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;text-align:center;">⬇ Baixar PNG</a>'
     + '<a href="' + url + '" target="_blank" style="padding:11px 16px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;color:#1d1d1f;display:inline-block;text-align:center;">🔗 Abrir página</a>'
     + '<button onclick="navigator.clipboard.writeText(\'' + url + '\').then(()=>this.textContent=\'✓ Copiado\')" style="padding:11px 16px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;color:#1d1d1f;">📋 Copiar URL</button>'
     + '</div></div>';
@@ -2414,11 +2414,11 @@ function _catRenderPhotos() {
   empty.style.display = 'none';
   wrap.innerHTML = _catPhotos.map((ph, i) => {
     const isPrimary = i === 0;
-    return '<div style="position:relative;background:white;border:2px solid ' + (isPrimary ? '#FF6D00' : '#e5e5ea') + ';border-radius:10px;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;">'
+    return '<div style="position:relative;background:white;border:2px solid ' + (isPrimary ? '#E5571E' : '#e5e5ea') + ';border-radius:10px;overflow:hidden;aspect-ratio:1;display:flex;align-items:center;justify-content:center;">'
       + '<img src="' + escapeHtml(ph.url) + '" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.opacity=\'0.3\'">'
-      + (isPrimary ? '<span style="position:absolute;top:4px;left:4px;background:#FF6D00;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;">★ PRINCIPAL</span>' : '')
+      + (isPrimary ? '<span style="position:absolute;top:4px;left:4px;background:#E5571E;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;">★ PRINCIPAL</span>' : '')
       + '<div style="position:absolute;bottom:4px;left:4px;right:4px;display:flex;gap:3px;">'
-      + (!isPrimary ? '<button type="button" onclick="catSetPrimary(' + i + ')" title="Definir como principal" style="flex:1;padding:3px;background:rgba(255,255,255,0.95);border:1px solid #FF6D00;border-radius:5px;color:#FF6D00;font-size:10px;font-weight:700;cursor:pointer;">★</button>' : '')
+      + (!isPrimary ? '<button type="button" onclick="catSetPrimary(' + i + ')" title="Definir como principal" style="flex:1;padding:3px;background:rgba(255,255,255,0.95);border:1px solid #E5571E;border-radius:5px;color:#E5571E;font-size:10px;font-weight:700;cursor:pointer;">★</button>' : '')
       + '<button type="button" onclick="catRemovePhoto(' + i + ')" title="Remover" style="padding:3px 6px;background:rgba(255,255,255,0.95);border:1px solid #d70015;border-radius:5px;color:#d70015;font-size:10px;font-weight:700;cursor:pointer;">×</button>'
       + '</div></div>';
   }).join('');
@@ -3171,7 +3171,7 @@ async function loadAdminPartnersList() {
     const sc = statusColors[p.status] || '#8e8e93';
     html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-    html += '<div style="font-size:18px;font-weight:800;color:#FF6D00;font-family:monospace;letter-spacing:1px;">' + escapeHtml(p.couponCode) + '</div>';
+    html += '<div style="font-size:18px;font-weight:800;color:#E5571E;font-family:monospace;letter-spacing:1px;">' + escapeHtml(p.couponCode) + '</div>';
     html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(p.status) + '</span>';
     html += '</div>';
     html += '<div style="font-size:13px;font-weight:600;color:#1d1d1f;">' + escapeHtml(u.name || '—') + '</div>';
@@ -3181,7 +3181,7 @@ async function loadAdminPartnersList() {
     html += '<span style="font-size:10px;color:#8e8e93;">' + escapeHtml(p.type) + '</span>';
     html += '</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px 0;border-top:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Desc</div><div style="font-size:13px;font-weight:700;color:#FF6D00;">' + Number(p.discountPct).toFixed(0) + '%</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Desc</div><div style="font-size:13px;font-weight:700;color:#E5571E;">' + Number(p.discountPct).toFixed(0) + '%</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Com.</div><div style="font-size:13px;font-weight:700;">' + Number(p.commissionPct).toFixed(0) + '%</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Vendas</div><div style="font-size:13px;font-weight:700;">' + (p.totalSales||0) + '</div></div>';
     html += '</div>';
@@ -3189,7 +3189,7 @@ async function loadAdminPartnersList() {
     html += '<span style="font-size:11px;color:#8e8e93;">Comissão acum.</span>';
     html += '<span style="font-size:15px;font-weight:800;color:#0a843d;">T$ ' + Number(p.totalCommission||0).toFixed(2) + '</span>';
     html += '</div>';
-    html += '<button class="js-prt-edit" data-id="' + p.id + '" style="padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">✎ Editar</button>';
+    html += '<button class="js-prt-edit" data-id="' + p.id + '" style="padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">✎ Editar</button>';
     html += '</div>';
   });
   html += '</div>';
@@ -3569,9 +3569,9 @@ function renderUsersTable(users) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
   function avatarColor(name) {
-    if (!name) return '#FF6D00';
+    if (!name) return '#E5571E';
     let h = 0; for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-    const palette = ['linear-gradient(135deg,#FF6D00,#FF9248)','linear-gradient(135deg,#0066cc,#4d94ff)','linear-gradient(135deg,#0a843d,#2bb678)','linear-gradient(135deg,#b06b00,#f0b146)','linear-gradient(135deg,#8a2be2,#b370ff)','linear-gradient(135deg,#d70015,#ff5566)'];
+    const palette = ['linear-gradient(135deg,#E5571E,#EE7240)','linear-gradient(135deg,#0066cc,#4d94ff)','linear-gradient(135deg,#0a843d,#2bb678)','linear-gradient(135deg,#b06b00,#f0b146)','linear-gradient(135deg,#8a2be2,#b370ff)','linear-gradient(135deg,#d70015,#ff5566)'];
     return palette[Math.abs(h) % palette.length];
   }
 
@@ -3582,7 +3582,7 @@ function renderUsersTable(users) {
     const roleBg = u.role === 'superadmin' ? '#fff1f0' : u.role === 'admin' ? '#fff8e0' : u.role === 'seller' ? '#e3f2fd' : '#f5f5f7';
     const roleColor = u.role === 'superadmin' ? '#d70015' : u.role === 'admin' ? '#b06b00' : u.role === 'seller' ? '#0066cc' : '#8e8e93';
     const opacity = !u.active ? 'opacity:0.5;' : '';
-    html += '<div class="js-user-row" data-user-id="' + u.id + '" style="' + opacity + 'background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\';this.style.borderColor=\'#FF6D00\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\';this.style.borderColor=\'#e5e5ea\'">';
+    html += '<div class="js-user-row" data-user-id="' + u.id + '" style="' + opacity + 'background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\';this.style.borderColor=\'#E5571E\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\';this.style.borderColor=\'#e5e5ea\'">';
     html += '<div style="width:48px;height:48px;border-radius:50%;background:' + avatarColor(u.name) + ';color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;text-transform:uppercase;">' + initials(u.name) + '</div>';
     html += '<div style="flex:1;min-width:0;">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;"><span style="font-weight:700;font-size:14px;color:#1d1d1f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (u.name || '—') + '</span>';
@@ -3590,7 +3590,7 @@ function renderUsersTable(users) {
     html += '<div style="font-size:12px;color:#8e8e93;font-family:monospace;margin-bottom:6px;">📱 ' + (u.phone || '—') + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e5e5ea;">';
     html += '<span style="font-size:11px;color:#8e8e93;">' + date + '</span>';
-    html += '<span style="font-size:14px;font-weight:800;color:#FF6D00;">T$ ' + (u.balance || 0).toFixed(2) + '</span>';
+    html += '<span style="font-size:14px;font-weight:800;color:#E5571E;">T$ ' + (u.balance || 0).toFixed(2) + '</span>';
     html += '</div>';
     if (u.profileComplete) html += '<span style="display:inline-block;margin-top:4px;padding:1px 6px;background:#e8f7ee;color:#0a843d;font-size:10px;border-radius:6px;font-weight:700;">✓ PERFIL OK</span>';
     if (!u.active) html += '<span style="display:inline-block;margin-top:4px;padding:1px 6px;background:#fff1f0;color:#d70015;font-size:10px;border-radius:6px;font-weight:700;">✗ INATIVO</span>';
@@ -3701,7 +3701,7 @@ async function loadSellers() {
   if (sellers.length === 0) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum vendedor cadastrado ainda</div>'; return; }
 
   function ini(n){if(!n)return '?';const p=String(n).trim().split(/\s+/);return (p.length===1?p[0].slice(0,2):p[0][0]+p[p.length-1][0]).toUpperCase();}
-  function avC(n){let h=0;for(let i=0;i<(n||'').length;i++)h=n.charCodeAt(i)+((h<<5)-h);const c=['#FF6D00,#FF9248','#0066cc,#4d94ff','#0a843d,#2bb678','#b06b00,#f0b146','#8a2be2,#b370ff'];return 'linear-gradient(135deg,'+c[Math.abs(h)%c.length]+')';}
+  function avC(n){let h=0;for(let i=0;i<(n||'').length;i++)h=n.charCodeAt(i)+((h<<5)-h);const c=['#E5571E,#EE7240','#0066cc,#4d94ff','#0a843d,#2bb678','#b06b00,#f0b146','#8a2be2,#b370ff'];return 'linear-gradient(135deg,'+c[Math.abs(h)%c.length]+')';}
 
   let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + sellers.length + ' vendedores</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
@@ -3713,7 +3713,7 @@ async function loadSellers() {
     html += '<div style="width:48px;height:48px;border-radius:50%;background:' + avC(s.name) + ';color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">' + ini(s.name) + '</div>';
     html += '<div style="flex:1;min-width:0;">';
     html += '<div style="font-weight:700;font-size:14px;color:#1d1d1f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(s.name || '—') + '</div>';
-    if (s.employeeCode) html += '<div style="font-size:10px;font-weight:700;color:#FF6D00;background:#FFE5D0;padding:2px 8px;border-radius:6px;display:inline-block;margin-top:3px;letter-spacing:0.5px;">' + escapeHtml(s.employeeCode) + '</div>';
+    if (s.employeeCode) html += '<div style="font-size:10px;font-weight:700;color:#E5571E;background:#FCDAC4;padding:2px 8px;border-radius:6px;display:inline-block;margin-top:3px;letter-spacing:0.5px;">' + escapeHtml(s.employeeCode) + '</div>';
     html += '</div></div>';
     html += '<div style="font-size:12px;color:#8e8e93;">📱 ' + escapeHtml(s.phone || '—') + '</div>';
     if (storeLabel !== '—') html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#f5f5f7;border-radius:8px;">🏬 <strong>' + escapeHtml(storeCode) + '</strong> ' + escapeHtml(storeLabel) + '</div>';
@@ -4440,7 +4440,7 @@ async function loadAdminMessages() {
     const icon = typeIcons[m.type] || '✉️';
     const priColor = priColors[m.priority] || '#8e8e93';
     const act = (m.type === 'request' && (m.status === 'sent' || m.status === 'read'))
-      ? '<button class="js-reply" data-id="' + m.id + '" data-title="' + escapeHtml(m.title||'') + '" style="padding:6px 12px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">↩ Responder</button>'
+      ? '<button class="js-reply" data-id="' + m.id + '" data-title="' + escapeHtml(m.title||'') + '" style="padding:6px 12px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">↩ Responder</button>'
       : '';
     html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:14px;display:flex;gap:12px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
     html += '<div style="width:40px;height:40px;border-radius:10px;background:#f5f5f7;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + icon + '</div>';
@@ -5245,7 +5245,7 @@ async function stkLoadProducts() {
     html += `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">`;
     if (cls.gender) html += `<span style="background:#e3f2fd;color:#0066cc;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.gender)}</span>`;
     if (p.category) html += `<span style="background:#f5f5f7;color:#1d1d1f;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(p.category)}</span>`;
-    if (cls.modality) html += `<span style="background:#FFE5D0;color:#FF6D00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>`;
+    if (cls.modality) html += `<span style="background:#FCDAC4;color:#E5571E;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>`;
     if (cls.tier) html += `<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.tier)}</span>`;
     html += '</div></div></div>';
     // Grid de contagem por tamanho
@@ -5367,7 +5367,7 @@ async function labelsSearchProducts() {
     const priceStr = 'R$ ' + Number(p.promoPrice || p.price || 0).toFixed(2).replace('.', ',');
 
     html += `
-      <div style="background:white;border:1.5px solid ${totalThis > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;${totalThis > 0 ? 'box-shadow:0 6px 18px rgba(255,109,0,0.15);' : ''}">
+      <div style="background:white;border:1.5px solid ${totalThis > 0 ? '#E5571E' : '#e5e5ea'};border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;${totalThis > 0 ? 'box-shadow:0 6px 18px rgba(255,109,0,0.15);' : ''}">
         <div style="display:flex;gap:10px;align-items:flex-start;">
           ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;">` : '<div style="width:60px;height:60px;background:#f5f5f7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📦</div>'}
           <div style="flex:1;min-width:0;">
@@ -5376,19 +5376,19 @@ async function labelsSearchProducts() {
             <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">
               ${cls.gender ? `<span style="background:#e3f2fd;color:#0066cc;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.gender)}</span>` : ''}
               ${p.category ? `<span style="background:#f5f5f7;color:#1d1d1f;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(p.category)}</span>` : ''}
-              ${cls.modality ? `<span style="background:#FFE5D0;color:#FF6D00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>` : ''}
+              ${cls.modality ? `<span style="background:#FCDAC4;color:#E5571E;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>` : ''}
               ${cls.tier ? `<span style="background:#f5f5f7;color:#8e8e93;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.tier)}</span>` : ''}
             </div>
-            <div style="font-size:18px;font-weight:800;color:#FF6D00;margin-top:6px;">${priceStr}</div>
+            <div style="font-size:18px;font-weight:800;color:#E5571E;margin-top:6px;">${priceStr}</div>
           </div>
         </div>
         <div style="border-top:1px dashed #e5e5ea;padding-top:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">ETIQUETAS POR TAMANHO (clique pra +1)</div>
-            ${sizes.length ? `<button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:4px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ 1 de tudo</button>` : ''}
+            ${sizes.length ? `<button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:4px 10px;background:#E5571E;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ 1 de tudo</button>` : ''}
           </div>
           ${sizes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;">${sizes.map(s => `
-            <div class="js-lbl-sz-card" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" style="background:${s.qty > 0 ? '#FFE5D0' : '#f5f5f7'};border:1.5px solid ${s.qty > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:8px;padding:6px;text-align:center;cursor:pointer;user-select:none;transition:transform .1s;" title="Clique pra +1 etiqueta. Shift+clique pra -1.">
+            <div class="js-lbl-sz-card" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" style="background:${s.qty > 0 ? '#FCDAC4' : '#f5f5f7'};border:1.5px solid ${s.qty > 0 ? '#E5571E' : '#e5e5ea'};border-radius:8px;padding:6px;text-align:center;cursor:pointer;user-select:none;transition:transform .1s;" title="Clique pra +1 etiqueta. Shift+clique pra -1.">
               <div style="font-size:14px;font-weight:800;color:#1d1d1f;">${escapeHtml(s.size)}</div>
               <div style="font-size:9px;color:#8e8e93;margin-bottom:4px;">est: ${s.stock}</div>
               <input type="number" min="0" max="200" value="${s.qty}" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" class="js-lbl-sz-qty" onclick="event.stopPropagation()" style="width:100%;padding:3px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
@@ -5396,10 +5396,10 @@ async function labelsSearchProducts() {
           : `<div style="display:flex;gap:6px;align-items:center;">
               <span style="font-size:11px;color:#8e8e93;">Sem tamanhos cadastrados — etiquetas genéricas:</span>
               <input type="number" min="0" max="200" value="${sel.sizes?._any || 0}" data-pid="${p.id}" data-size="_any" class="js-lbl-sz-qty" style="width:80px;padding:5px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
-              <button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:5px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+1</button>
+              <button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:5px 10px;background:#E5571E;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+1</button>
             </div>`}
         </div>
-        ${totalThis > 0 ? `<div style="font-size:11px;color:#FF6D00;font-weight:700;text-align:right;">${totalThis} etiquetas selecionadas neste produto</div>` : ''}
+        ${totalThis > 0 ? `<div style="font-size:11px;color:#E5571E;font-weight:700;text-align:right;">${totalThis} etiquetas selecionadas neste produto</div>` : ''}
       </div>`;
   });
   html += '</div>';
@@ -5419,8 +5419,8 @@ async function labelsSearchProducts() {
     // Atualiza highlight do card
     const card = wrap.querySelector(`.js-lbl-sz-card[data-pid="${pid}"][data-size="${size}"]`);
     if (card) {
-      card.style.background = next > 0 ? '#FFE5D0' : '#f5f5f7';
-      card.style.borderColor = next > 0 ? '#FF6D00' : '#e5e5ea';
+      card.style.background = next > 0 ? '#FCDAC4' : '#f5f5f7';
+      card.style.borderColor = next > 0 ? '#E5571E' : '#e5e5ea';
     }
     _lblUpdateCart();
   }
@@ -5462,8 +5462,8 @@ async function labelsSearchProducts() {
       // Atualiza highlight do card pai
       const card = input.closest('.js-lbl-sz-card');
       if (card) {
-        card.style.background = qty > 0 ? '#FFE5D0' : '#f5f5f7';
-        card.style.borderColor = qty > 0 ? '#FF6D00' : '#e5e5ea';
+        card.style.background = qty > 0 ? '#FCDAC4' : '#f5f5f7';
+        card.style.borderColor = qty > 0 ? '#E5571E' : '#e5e5ea';
       }
       _lblUpdateCart();
     };
@@ -5612,12 +5612,12 @@ async function loadCurations() {
     html += '</div>';
     html += '<div style="font-size:11px;color:#8e8e93;">🏬 ' + escapeHtml(c.storeId || '—') + '</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0;border-top:1px dashed #e5e5ea;border-bottom:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:18px;font-weight:800;color:#FF6D00;">' + (c._count?.items || 0) + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:18px;font-weight:800;color:#E5571E;">' + (c._count?.items || 0) + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Tarefas</div><div style="font-size:18px;font-weight:800;color:#1d1d1f;">' + (c._count?.checklist || 0) + '</div></div>';
     html += '</div>';
     if (c.startDate) html += '<div style="font-size:11px;color:#8e8e93;">📅 ' + new Date(c.startDate).toLocaleDateString('pt-BR') + '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
-    html += '<button onclick="curationActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
+    html += '<button onclick="curationActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
     html += '<button onclick="curationDelete(\'' + c.id + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;">🗑</button>';
     html += '</div></div>';
   });
@@ -5729,7 +5729,7 @@ async function loadXmlDocs() {
     html += '</div></div>';
     html += '<div style="font-size:12px;color:#1d1d1f;">' + escapeHtml(d.issuerName||'') + '</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0;border-top:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Total</div><div style="font-size:15px;font-weight:700;color:#FF6D00;">R$ ' + Number(d.totalValue||0).toFixed(2) + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Total</div><div style="font-size:15px;font-weight:700;color:#E5571E;">R$ ' + Number(d.totalValue||0).toFixed(2) + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:15px;font-weight:700;">' + (d._count?.items || 0) + '</div></div>';
     html += '</div>';
     html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;align-self:flex-start;">' + escapeHtml(d.status||'').toUpperCase() + '</span>';
@@ -5775,7 +5775,7 @@ async function loadRecs() {
     html += '<div style="font-size:12px;color:#1d1d1f;line-height:1.4;">' + escapeHtml((r.description||'').slice(0,200)) + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e5e5ea;">';
     html += '<span style="font-size:10px;color:#8e8e93;">' + new Date(r.createdAt).toLocaleString('pt-BR') + '</span>';
-    html += '<button onclick="recsResolve(\'' + r.id + '\')" style="padding:6px 14px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">✓ Resolver</button>';
+    html += '<button onclick="recsResolve(\'' + r.id + '\')" style="padding:6px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">✓ Resolver</button>';
     html += '</div></div>';
   });
   html += '</div>';
@@ -5977,10 +5977,10 @@ async function loadFinList() {
     if (a.category) html += '<div style="font-size:11px;color:#8e8e93;">📁 ' + escapeHtml(a.category) + '</div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e5e5ea;">';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Vencimento</div><div style="font-size:12px;color:' + sc + ';font-weight:700;">' + new Date(a.dueDate).toLocaleDateString('pt-BR') + '</div></div>';
-    html += '<div style="font-size:18px;font-weight:800;color:#FF6D00;">R$ ' + Number(a.amount).toFixed(2) + '</div>';
+    html += '<div style="font-size:18px;font-weight:800;color:#E5571E;">R$ ' + Number(a.amount).toFixed(2) + '</div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
-    if (a.status === 'PENDING') html += '<button onclick="finMarkDone(\'' + a.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">' + labelAction + '</button>';
+    if (a.status === 'PENDING') html += '<button onclick="finMarkDone(\'' + a.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">' + labelAction + '</button>';
     html += '<button onclick="finDelete(\'' + a.id + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;">🗑</button>';
     html += '</div></div>';
   });
@@ -6061,10 +6061,10 @@ async function loadSuppliers() {
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Produtos</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (productCount || '—') + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Custo méd.</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (avgCost !== '—' ? 'R$ ' + avgCost : '—') + '</div></div>';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Markup</div><div style="font-size:14px;font-weight:700;color:' + (markupVal ? '#FF6D00' : '#d70015') + ';margin-top:2px;">' + (markupVal || '—') + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Markup</div><div style="font-size:14px;font-weight:700;color:' + (markupVal ? '#E5571E' : '#d70015') + ';margin-top:2px;">' + (markupVal || '—') + '</div></div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
-    if (s.cnpj) html += '<button onclick="supplierSetMarkup(\'' + safeId + '\',\'' + safeCnpj + '\',\'' + escapeHtml(s.companyName).replace(/'/g,"\\\\'") + '\',\'' + (s.averageMarkup||'') + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">' + (s.averageMarkup != null ? '✏️ Markup' : '➕ Markup') + '</button>';
+    if (s.cnpj) html += '<button onclick="supplierSetMarkup(\'' + safeId + '\',\'' + safeCnpj + '\',\'' + escapeHtml(s.companyName).replace(/'/g,"\\\\'") + '\',\'' + (s.averageMarkup||'') + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">' + (s.averageMarkup != null ? '✏️ Markup' : '➕ Markup') + '</button>';
     html += '<button onclick="supplierEdit(\'' + safeId + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:11px;cursor:pointer;">✎</button>';
     html += '<button onclick="supplierDelete(\'' + safeId + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:11px;color:#d70015;cursor:pointer;">🗑</button>';
     html += '</div>';
@@ -6170,12 +6170,12 @@ async function loadCampaigns() {
     if (c.channel) html += '<div style="font-size:11px;color:#8e8e93;">' + escapeHtml(c.channel) + '</div>';
     if (c.startDate || c.endDate) html += '<div style="font-size:11px;color:#8e8e93;">📅 ' + (c.startDate ? new Date(c.startDate).toLocaleDateString('pt-BR') : '—') + ' → ' + (c.endDate ? new Date(c.endDate).toLocaleDateString('pt-BR') : '—') + '</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px 0;border-top:1px dashed #e5e5ea;border-bottom:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Receita</div><div style="font-size:13px;font-weight:700;color:#FF6D00;">R$ ' + Number(c.generatedRevenue||0).toFixed(0) + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Receita</div><div style="font-size:13px;font-weight:700;color:#E5571E;">R$ ' + Number(c.generatedRevenue||0).toFixed(0) + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">ROI</div><div style="font-size:13px;font-weight:700;color:' + (c.roi > 1 ? '#0a843d' : '#1d1d1f') + ';">' + (c.roi != null ? Number(c.roi).toFixed(2) : '—') + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Clientes</div><div style="font-size:13px;font-weight:700;">' + (c._count?.customers || 0) + '</div></div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
-    html += '<button onclick="campaignActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
+    html += '<button onclick="campaignActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
     html += '<button onclick="campaignDelete(\'' + c.id + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;">🗑</button>';
     html += '</div></div>';
   });
@@ -6273,7 +6273,7 @@ async function loadInvProducts() {
   const lcColors = {
     NEW: '#0066cc', NORMAL_TURNOVER: '#0a843d', FAST_TURNOVER: '#0a843d',
     SLOW_TURNOVER: '#b06b00', STUCK: '#d70015', SOLD_OUT: '#8e8e93',
-    CLEARANCE: '#FF6D00', REBUY: '#0066cc', DO_NOT_REBUY: '#d70015',
+    CLEARANCE: '#E5571E', REBUY: '#0066cc', DO_NOT_REBUY: '#d70015',
   };
   wrap.innerHTML = (window.PCard
     ? PCard.renderGrid(list, { actions: 'admin' })
@@ -7051,9 +7051,9 @@ async function loadClsStats() {
     s.innerHTML = `
       <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#e3f2fd;color:#0066cc;">📦</div><div class="cls-kpi-content"><div class="cls-kpi-label">Ativos</div><div class="cls-kpi-value">${d.total}</div></div></div>
       <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#e8f7ee;color:#0a843d;">✓</div><div class="cls-kpi-content"><div class="cls-kpi-label">Classificados</div><div class="cls-kpi-value" style="color:#0a843d;">${d.classified} <span style="font-size:12px;color:var(--text2);font-weight:600;">${d.progressPct}%</span></div></div></div>
-      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#fff1e0;color:#FF6D00;">⏳</div><div class="cls-kpi-content"><div class="cls-kpi-label">Pendentes</div><div class="cls-kpi-value" style="color:#FF6D00;">${d.pending}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#fff1e0;color:#E5571E;">⏳</div><div class="cls-kpi-content"><div class="cls-kpi-label">Pendentes</div><div class="cls-kpi-value" style="color:#E5571E;">${d.pending}</div></div></div>
       <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#fff1f0;color:#d70015;">⚠</div><div class="cls-kpi-content"><div class="cls-kpi-label">Baixa confiança</div><div class="cls-kpi-value" style="color:#d70015;">${d.lowConfidenceCount}</div></div></div>
-      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#FFE5D0;color:#FF6D00;">👟</div><div class="cls-kpi-content"><div class="cls-kpi-label">Tênis</div><div class="cls-kpi-value">${d.byType['Tênis'] || 0}</div></div></div>
+      <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#FCDAC4;color:#E5571E;">👟</div><div class="cls-kpi-content"><div class="cls-kpi-label">Tênis</div><div class="cls-kpi-value">${d.byType['Tênis'] || 0}</div></div></div>
       <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#f0e5ff;color:#8a2be2;">⚽</div><div class="cls-kpi-content"><div class="cls-kpi-label">Chuteira</div><div class="cls-kpi-value">${d.byType['Chuteira'] || 0}</div></div></div>
       <div class="cls-kpi"><div class="cls-kpi-icon" style="background:#f5f5f7;color:#1d1d1f;">📦</div><div class="cls-kpi-content"><div class="cls-kpi-label">Outros</div><div class="cls-kpi-value">${d.byType['Outro'] || 0}</div></div></div>
     `;
@@ -7173,7 +7173,7 @@ function renderClsCard(p) {
         <div class="cls-card-name">${p.name || '?'}</div>
         <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">
           <div class="cls-card-sku">📋 ${p.sku}</div>
-          ${p.supplierRef ? '<span style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;font-size:10px;font-family:monospace;">REF: ' + p.supplierRef + '</span>' : ''}
+          ${p.supplierRef ? '<span style="background:#FCDAC4;color:#E5571E;padding:1px 6px;border-radius:4px;font-weight:700;font-size:10px;font-family:monospace;">REF: ' + p.supplierRef + '</span>' : ''}
         </div>
         ${p.shortDescription ? '<div style="font-size:11px;color:#8e8e93;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + p.shortDescription + '</div>' : ''}
         <div class="cls-card-sizes">Tamanhos: <strong>${sizes}</strong>${sizeCount > 8 ? ' +' + (sizeCount - 8) : ''}</div>

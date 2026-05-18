@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#FF6D00">
+<meta name="theme-color" content="#E5571E">
 <title>TenisCash</title>
 <link rel="manifest" href="/manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:'Chakra Petch',sans-serif;background:#FF6D00;color:#fff;min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
+body{font-family:'Chakra Petch',sans-serif;background:#E5571E;color:#fff;min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
 input,select,textarea{font-family:'Chakra Petch',sans-serif}
 input::placeholder{color:rgba(255,255,255,0.35)}
 ::-webkit-scrollbar{width:0}
@@ -50,7 +50,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .input-row .input-field{flex:1}
 .input-amount-wrap{display:flex;align-items:center;gap:8px;margin-top:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px}
 .input-amount{flex:1;background:transparent;border:none;color:#fff;font-size:34px;font-family:'Orbitron';font-weight:900;outline:none;width:100%}
-.btn-primary{width:100%;padding:16px;margin-top:24px;background:#fff;border:none;border-radius:14px;color:#FF6D00;font-size:15px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px}
+.btn-primary{width:100%;padding:16px;margin-top:24px;background:#fff;border:none;border-radius:14px;color:#E5571E;font-size:15px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px}
 .btn-outline{margin-top:24px;padding:14px 40px;background:transparent;border:2px solid #fff;border-radius:12px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'}
 .btn-secondary{width:100%;padding:14px;margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:14px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px}
 .success-circle{width:80px;height:80px;border-radius:50%;margin:0 auto 20px;background:rgba(255,255,255,0.15);border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:36px}
@@ -58,7 +58,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .qr-img{width:100%;height:100%;object-fit:contain}
 .promo-card{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
 .promo-badge{background:#fff;border-radius:12px;padding:10px 16px;min-width:50px;text-align:center}
-.promo-badge span{font-family:'Orbitron';font-size:18px;font-weight:900;color:#FF6D00}
+.promo-badge span{font-family:'Orbitron';font-size:18px;font-weight:900;color:#E5571E}
 .profile-avatar{width:80px;height:80px;border-radius:50%;margin:0 auto 16px;background:rgba(255,255,255,0.12);border:3px solid #fff;display:flex;align-items:center;justify-content:center}
 .profile-item{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}
 .badge{display:inline-block;padding:5px 16px;background:rgba(255,255,255,0.12);border-radius:20px;border:1px solid rgba(255,255,255,0.15);margin-top:8px}
@@ -72,13 +72,13 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.1);margin-bottom:20px}
 .tab-switch{display:flex;gap:0;margin-bottom:30px;width:100%}
 .tab-btn{flex:1;padding:12px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:14px;font-weight:600;letter-spacing:1px}
-.tab-btn.active{background:#fff;color:#FF6D00;border-radius:10px}
+.tab-btn.active{background:#fff;color:#E5571E;border-radius:10px}
 .tab-btn:not(.active){background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px}
 .error-msg{background:rgba(255,0,0,0.2);border:1px solid rgba(255,0,0,0.4);border-radius:10px;padding:12px;margin-top:10px;font-size:13px;text-align:center}
 .loading{text-align:center;padding:40px;color:rgba(255,255,255,0.5)}
 .chip-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .chip{padding:8px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);transition:all .2s}
-.chip.selected{background:#fff;color:#FF6D00;border-color:#fff;font-weight:700}
+.chip.selected{background:#fff;color:#E5571E;border-color:#fff;font-weight:700}
 .section-header{font-size:16px;font-weight:700;margin-top:24px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.15)}
 .bonus-banner{background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:20px;margin:20px 0;text-align:center}
 .bonus-banner .amount{font-family:'Orbitron';font-size:36px;font-weight:900}
@@ -113,7 +113,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
     <div id="login-form" style="width:100%">
       <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">TELEFONE</button>
+        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#E5571E;border-radius:10px">TELEFONE</button>
         <button id="login-tab-email" onclick="setLoginTab('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">E-MAIL</button>
       </div>
       <div id="login-phone-field">
@@ -135,7 +135,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <div id="reg-method-choice" style="margin-bottom:16px">
         <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:12px">Cadastrar com:</p>
         <div style="display:flex;gap:8px">
-          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">📱 TELEFONE</button>
+          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#E5571E;border-radius:10px">📱 TELEFONE</button>
           <button id="reg-tab-email" onclick="setRegisterMethod('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">✉️ E-MAIL</button>
         </div>
       </div>
@@ -656,9 +656,9 @@ function setLoginTab(tab) {
   document.getElementById('login-phone-field').style.display = tab === 'phone' ? 'block' : 'none';
   document.getElementById('login-email-field').style.display = tab === 'email' ? 'block' : 'none';
   document.getElementById('login-tab-phone').style.background = tab === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#E5571E' : 'rgba(255,255,255,0.6)';
   document.getElementById('login-tab-email').style.background = tab === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#E5571E' : 'rgba(255,255,255,0.6)';
 }
 
 async function doLogin() {
@@ -693,9 +693,9 @@ function setRegisterMethod(method) {
   document.getElementById('reg-step1-phone').style.display = method === 'phone' ? 'block' : 'none';
   document.getElementById('reg-step1-email').style.display = method === 'email' ? 'block' : 'none';
   document.getElementById('reg-tab-phone').style.background = method === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#E5571E' : 'rgba(255,255,255,0.6)';
   document.getElementById('reg-tab-email').style.background = method === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#E5571E' : 'rgba(255,255,255,0.6)';
 }
 
 async function sendEmailRegisterCode() {

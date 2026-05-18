@@ -143,7 +143,7 @@ async function drawQR(doc, value, x, y, size) {
 }
 
 // ===== Layout HORIZONTAL S&T (130mm × 15-27mm) — FUNDO LARANJA =====
-// Fundo: laranja (#FF6D00) pintado em generateLabelsPDF antes desta função
+// Fundo: laranja (#E5571E) pintado em generateLabelsPDF antes desta função
 // Texto: branco. Preço: branco bem grande. QR: card branco atrás pra contraste.
 function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   const WHITE = '#FFFFFF';
@@ -296,7 +296,7 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
   if (t.type === 'PROMOTIONAL') {
     // Placa grande de promo: preço gigante
     if (item.promotionalPrice != null) {
-      doc.fontSize(34).fillColor('#FF6D00')
+      doc.fontSize(34).fillColor('#E5571E')
         .text(fmtBRL(item.promotionalPrice), padX, y + h * 0.45, { width: innerW, align: 'center' });
       if (item.price != null && item.price > item.promotionalPrice) {
         doc.fontSize(10).fillColor('#888')
@@ -312,7 +312,7 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
         doc.fontSize(7).fillColor('#888')
           .text(fmtBRL(item.price), padX, cursor, { width: innerW, strike: true });
         cursor += 8;
-        doc.fontSize(12).fillColor('#FF6D00')
+        doc.fontSize(12).fillColor('#E5571E')
           .text(fmtBRL(item.promotionalPrice), padX, cursor, { width: innerW });
         cursor += 14;
       } else {
@@ -402,7 +402,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
     // Layout S&T: fundo laranja sólido (130mm × 14-27mm)
     const isST = Math.round(t.widthMm) === 130 && t.heightMm >= 14 && t.heightMm <= 27;
     if (isST) {
-      doc.rect(x, y, labelW, labelH).fillColor('#FF6D00').fill();
+      doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
     } else {
       doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
     }

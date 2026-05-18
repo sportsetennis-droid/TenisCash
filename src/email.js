@@ -23,7 +23,7 @@ async function sendEmailCode(email) {
       to: email,
       subject: `Seu codigo TenisCash: ${code}`,
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:30px;background:#FF6D00;border-radius:16px;color:#fff;text-align:center">
+        <div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:30px;background:#E5571E;border-radius:16px;color:#fff;text-align:center">
           <h2 style="margin:0 0 8px;letter-spacing:4px">TENISCASH</h2>
           <p style="font-size:12px;opacity:0.7;margin:0 0 24px">SPORTS E TENNIS</p>
           <p style="font-size:14px;margin:0 0 16px">Seu codigo de verificacao:</p>

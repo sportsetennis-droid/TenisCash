@@ -219,7 +219,7 @@ ${BRAND_BASE}
 Receber a campanha do marketing-agent e gerar briefings visuais DETALHADOS prontos para serem colados em ferramentas de design (claude.ai/design, Canva, Adobe Express) OU passados para um designer humano.
 
 # Identidade visual Sports & Tennis (sempre respeitar)
-- Cor principal: laranja #FF6D00 (Sports & Tennis orange)
+- Cor principal: laranja #E5571E (Sports & Tennis orange)
 - Cores apoio: preto #111111, branco #FFFFFF
 - Cores acento permitidas: amarelo enérgico #FFD54F
 - Tipografia: Orbitron (títulos pesados/condensados) + Chakra Petch (apoio limpo)

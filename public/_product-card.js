@@ -137,10 +137,10 @@
       if (hasPromo) {
         html += `<div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1;">`;
         html += `<span style="font-size:11px;color:#8e8e93;text-decoration:line-through;">${fmtBRL(p.price)}</span>`;
-        html += `<span style="font-size:16px;font-weight:800;color:#FF6D00;">${fmtBRL(p.promoPrice)}</span>`;
+        html += `<span style="font-size:16px;font-weight:800;color:#E5571E;">${fmtBRL(p.promoPrice)}</span>`;
         html += `</div>`;
       } else {
-        html += `<span style="font-size:16px;font-weight:800;color:#FF6D00;">${fmtBRL(showPrice)}</span>`;
+        html += `<span style="font-size:16px;font-weight:800;color:#E5571E;">${fmtBRL(showPrice)}</span>`;
       }
     }
     html += '</div>';
@@ -151,12 +151,12 @@
     // SKU + REF
     html += `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2, #8e8e93);font-family:monospace;flex-wrap:wrap;">`;
     if (p.sku) html += `<span title="SKU">📋 ${esc(p.sku)}</span>`;
-    if (ref) html += `<span title="Referência do fornecedor" style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ${esc(ref)}</span>`;
+    if (ref) html += `<span title="Referência do fornecedor" style="background:#FCDAC4;color:#E5571E;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ${esc(ref)}</span>`;
     html += '</div>';
 
     // Botão specs
     if (actions === 'admin' && p.longDescription) {
-      html += `<button type="button" onclick="event.stopPropagation();catShowSpecs && catShowSpecs('${p.id}')" style="padding:7px 10px;background:#fff;border:1.5px solid #FF6D00;color:#FF6D00;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">📋 Ver descrição técnica</button>`;
+      html += `<button type="button" onclick="event.stopPropagation();catShowSpecs && catShowSpecs('${p.id}')" style="padding:7px 10px;background:#fff;border:1.5px solid #E5571E;color:#E5571E;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">📋 Ver descrição técnica</button>`;
     }
 
     // Descrição
@@ -168,7 +168,7 @@
     const typeNorm = (cls.type || '').toLowerCase().replace(/[^a-z]/g, '');
     const catIsRedundant = catNorm && typeNorm && (catNorm === typeNorm || catNorm.includes(typeNorm) || typeNorm.includes(catNorm));
     if (cat && !catIsRedundant) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#f5f5f7;color:#1d1d1f;border-radius:6px;font-weight:600;">📂 ${esc(cat)}</span>`;
-    if (cls.type) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#FFE5D0;color:#FF6D00;border-radius:6px;font-weight:700;">${esc(cls.type)}</span>`;
+    if (cls.type) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#FCDAC4;color:#E5571E;border-radius:6px;font-weight:700;">${esc(cls.type)}</span>`;
     if (genderLabel) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#e3f2fd;color:#0066cc;border-radius:6px;font-weight:700;">${esc(genderLabel)}</span>`;
     if (cls.modality) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#f0f0f3;color:#1d1d1f;border-radius:6px;font-weight:600;">${esc(cls.modality)}</span>`;
     if (cls.tier) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ${esc(cls.tier)}</span>`;
@@ -179,9 +179,9 @@
       const storesArr = Object.keys(byStore).sort();
       if (storesArr.length) {
         const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
-        html += `<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFF5EB);border-radius:10px;border:2px solid #FFE5D0;">`;
+        html += `<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFEBDC);border-radius:10px;border:2px solid #FCDAC4;">`;
         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">`;
-        html += `<div style="font-size:11px;color:#FF6D00;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>`;
+        html += `<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>`;
         html += `<div style="font-size:12px;color:#1d1d1f;font-weight:800;">${totalUn} un. total</div>`;
         html += '</div>';
         storesArr.forEach(code => {
@@ -225,14 +225,14 @@
       html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">${statusBadge}`;
       html += `<span style="font-size:10px;color:${p.active === false ? '#d70015' : '#0a843d'};font-weight:700;">${p.active === false ? '○ Inativo' : '● Ativo'}</span></div>`;
       html += `<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border, #e5e5ea);">`;
-      html += `<button type="button" onclick="event.stopPropagation();openCatProductModal && openCatProductModal('${p.id}')" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>`;
+      html += `<button type="button" onclick="event.stopPropagation();openCatProductModal && openCatProductModal('${p.id}')" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>`;
       html += `<button type="button" onclick="event.stopPropagation();catShowQRCode && catShowQRCode('${p.id}')" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border, #e5e5ea);font-size:14px;cursor:pointer;" title="QR Code">📱</button>`;
       html += '</div>';
     } else if (actions === 'count') {
       // Modo Contagem: input pra contar
       html += `<div style="margin-top:auto;padding-top:8px;border-top:1px dashed var(--border, #e5e5ea);display:flex;gap:6px;align-items:center;">`;
       html += `<label style="font-size:11px;color:#8e8e93;font-weight:700;">CONTADO:</label>`;
-      html += `<input type="number" min="0" placeholder="0" data-pid="${p.id}" class="js-pcard-count" style="flex:1;padding:8px;border:1.5px solid #FF6D00;border-radius:8px;font-size:14px;font-weight:700;background:white;color:#1d1d1f;text-align:center;">`;
+      html += `<input type="number" min="0" placeholder="0" data-pid="${p.id}" class="js-pcard-count" style="flex:1;padding:8px;border:1.5px solid #E5571E;border-radius:8px;font-size:14px;font-weight:700;background:white;color:#1d1d1f;text-align:center;">`;
       html += '</div>';
     }
 

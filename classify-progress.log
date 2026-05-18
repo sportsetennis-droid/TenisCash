@@ -1,0 +1,1738 @@
+[2026-05-16 23:37:44] Progresso anterior: 0 ok, 0 falhas
+[2026-05-16 23:37:57] A classificar: 7093 produtos
+[2026-05-16 23:38:39]   Progresso: 50/7093 (50 ok / 0 fail) · 1.2/s · ETA 100min
+[2026-05-16 23:38:39]   Tipos: Tênis=13 · Chuteira=3 · Outro=34
+[2026-05-16 23:39:16]   Progresso: 100/7093 (100 ok / 0 fail) · 1.3/s · ETA 92min
+[2026-05-16 23:39:16]   Tipos: Tênis=46 · Chuteira=3 · Outro=51
+[2026-05-16 23:39:58]   Progresso: 150/7093 (150 ok / 0 fail) · 1.2/s · ETA 94min
+[2026-05-16 23:39:58]   Tipos: Tênis=62 · Chuteira=5 · Outro=83
+[2026-05-16 23:40:59]   Progresso: 200/7093 (200 ok / 0 fail) · 1.1/s · ETA 105min
+[2026-05-16 23:40:59]   Tipos: Tênis=93 · Chuteira=13 · Outro=94
+[2026-05-16 23:41:58]   Progresso: 250/7093 (250 ok / 0 fail) · 1.0/s · ETA 110min
+[2026-05-16 23:41:58]   Tipos: Tênis=94 · Chuteira=13 · Outro=143
+[2026-05-16 23:42:59]   Progresso: 300/7093 (300 ok / 0 fail) · 1.0/s · ETA 114min
+[2026-05-16 23:42:59]   Tipos: Tênis=122 · Chuteira=14 · Outro=164
+[2026-05-16 23:43:58]   Progresso: 350/7093 (350 ok / 0 fail) · 1.0/s · ETA 116min
+[2026-05-16 23:43:58]   Tipos: Tênis=137 · Chuteira=41 · Outro=172
+[2026-05-16 23:44:59]   Progresso: 400/7093 (400 ok / 0 fail) · 0.9/s · ETA 118min
+[2026-05-16 23:44:59]   Tipos: Tênis=147 · Chuteira=66 · Outro=187
+[2026-05-16 23:45:59]   Progresso: 450/7093 (450 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:45:59]   Tipos: Tênis=197 · Chuteira=66 · Outro=187
+[2026-05-16 23:46:58]   Progresso: 500/7093 (500 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:46:58]   Tipos: Tênis=247 · Chuteira=66 · Outro=187
+[2026-05-16 23:47:58]   Progresso: 550/7093 (550 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:47:58]   Tipos: Tênis=249 · Chuteira=66 · Outro=235
+[2026-05-16 23:48:58]   Progresso: 600/7093 (600 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:48:58]   Tipos: Tênis=249 · Chuteira=66 · Outro=285
+[2026-05-16 23:49:58]   Progresso: 650/7093 (650 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:49:58]   Tipos: Tênis=249 · Chuteira=66 · Outro=335
+[2026-05-16 23:50:58]   Progresso: 700/7093 (700 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:50:58]   Tipos: Tênis=252 · Chuteira=66 · Outro=382
+[2026-05-16 23:51:59]   Progresso: 750/7093 (750 ok / 0 fail) · 0.9/s · ETA 119min
+[2026-05-16 23:51:59]   Tipos: Tênis=253 · Chuteira=66 · Outro=431
+[2026-05-16 23:52:59]   Progresso: 800/7093 (800 ok / 0 fail) · 0.9/s · ETA 118min
+[2026-05-16 23:52:59]   Tipos: Tênis=253 · Chuteira=66 · Outro=481
+[2026-05-16 23:53:58]   Progresso: 850/7093 (850 ok / 0 fail) · 0.9/s · ETA 118min
+[2026-05-16 23:53:58]   Tipos: Tênis=254 · Chuteira=66 · Outro=530
+[2026-05-16 23:54:59]   Progresso: 900/7093 (900 ok / 0 fail) · 0.9/s · ETA 117min
+[2026-05-16 23:54:59]   Tipos: Tênis=255 · Chuteira=66 · Outro=579
+[2026-05-16 23:55:59]   Progresso: 950/7093 (950 ok / 0 fail) · 0.9/s · ETA 117min
+[2026-05-16 23:55:59]   Tipos: Tênis=255 · Chuteira=66 · Outro=629
+[2026-05-16 23:56:58]   Progresso: 1000/7093 (1000 ok / 0 fail) · 0.9/s · ETA 116min
+[2026-05-16 23:56:58]   Tipos: Tênis=263 · Chuteira=66 · Outro=671
+[2026-05-16 23:57:58]   Progresso: 1050/7093 (1050 ok / 0 fail) · 0.9/s · ETA 115min
+[2026-05-16 23:57:58]   Tipos: Tênis=294 · Chuteira=66 · Outro=690
+[2026-05-16 23:58:58]   Progresso: 1100/7093 (1100 ok / 0 fail) · 0.9/s · ETA 115min
+[2026-05-16 23:58:58]   Tipos: Tênis=302 · Chuteira=66 · Outro=732
+[2026-05-16 23:59:59]   Progresso: 1150/7093 (1150 ok / 0 fail) · 0.9/s · ETA 114min
+[2026-05-16 23:59:59]   Tipos: Tênis=348 · Chuteira=66 · Outro=736
+[2026-05-17 00:00:59]   Progresso: 1200/7093 (1200 ok / 0 fail) · 0.9/s · ETA 113min
+[2026-05-17 00:00:59]   Tipos: Tênis=351 · Chuteira=66 · Outro=783
+[2026-05-17 00:01:58]   Progresso: 1250/7093 (1250 ok / 0 fail) · 0.9/s · ETA 112min
+[2026-05-17 00:01:58]   Tipos: Tênis=351 · Chuteira=69 · Outro=830
+[2026-05-17 00:02:59]   Progresso: 1300/7093 (1300 ok / 0 fail) · 0.9/s · ETA 112min
+[2026-05-17 00:02:59]   Tipos: Tênis=369 · Chuteira=69 · Outro=862
+[2026-05-17 00:03:59]   Progresso: 1350/7093 (1350 ok / 0 fail) · 0.9/s · ETA 111min
+[2026-05-17 00:03:59]   Tipos: Tênis=419 · Chuteira=69 · Outro=862
+[2026-05-17 00:04:58]   Progresso: 1400/7093 (1400 ok / 0 fail) · 0.9/s · ETA 110min
+[2026-05-17 00:04:58]   Tipos: Tênis=437 · Chuteira=69 · Outro=894
+[2026-05-17 00:05:58]   Progresso: 1450/7093 (1450 ok / 0 fail) · 0.9/s · ETA 109min
+[2026-05-17 00:05:58]   Tipos: Tênis=447 · Chuteira=73 · Outro=930
+[2026-05-17 00:06:58]   Progresso: 1500/7093 (1500 ok / 0 fail) · 0.9/s · ETA 108min
+[2026-05-17 00:06:58]   Tipos: Tênis=450 · Chuteira=73 · Outro=977
+[2026-05-17 00:07:59]   Progresso: 1550/7093 (1550 ok / 0 fail) · 0.9/s · ETA 107min
+[2026-05-17 00:07:59]   Tipos: Tênis=466 · Chuteira=73 · Outro=1011
+[2026-05-17 00:09:00]   Progresso: 1600/7093 (1600 ok / 0 fail) · 0.9/s · ETA 107min
+[2026-05-17 00:09:00]   Tipos: Tênis=466 · Chuteira=89 · Outro=1045
+[2026-05-17 00:09:59]   Progresso: 1650/7093 (1650 ok / 0 fail) · 0.9/s · ETA 106min
+[2026-05-17 00:09:59]   Tipos: Tênis=477 · Chuteira=91 · Outro=1082
+[2026-05-17 00:10:59]   Progresso: 1700/7093 (1700 ok / 0 fail) · 0.9/s · ETA 105min
+[2026-05-17 00:10:59]   Tipos: Tênis=490 · Chuteira=91 · Outro=1119
+[2026-05-17 00:11:59]   Progresso: 1750/7093 (1750 ok / 0 fail) · 0.9/s · ETA 104min
+[2026-05-17 00:11:59]   Tipos: Tênis=490 · Chuteira=91 · Outro=1169
+[2026-05-17 00:12:58]   Progresso: 1800/7093 (1800 ok / 0 fail) · 0.9/s · ETA 103min
+[2026-05-17 00:12:58]   Tipos: Tênis=490 · Chuteira=91 · Outro=1219
+[2026-05-17 00:13:58]   Progresso: 1850/7093 (1850 ok / 0 fail) · 0.9/s · ETA 102min
+[2026-05-17 00:13:58]   Tipos: Tênis=490 · Chuteira=91 · Outro=1269
+[2026-05-17 00:14:59]   Progresso: 1900/7093 (1900 ok / 0 fail) · 0.9/s · ETA 101min
+[2026-05-17 00:14:59]   Tipos: Tênis=497 · Chuteira=91 · Outro=1312
+[2026-05-17 00:15:58]   Progresso: 1950/7093 (1950 ok / 0 fail) · 0.9/s · ETA 100min
+[2026-05-17 00:15:58]   Tipos: Tênis=502 · Chuteira=91 · Outro=1357
+[2026-05-17 00:16:58]   Progresso: 2000/7093 (2000 ok / 0 fail) · 0.9/s · ETA 99min
+[2026-05-17 00:16:58]   Tipos: Tênis=532 · Chuteira=94 · Outro=1374
+[2026-05-17 00:18:01]   Progresso: 2050/7093 (2050 ok / 0 fail) · 0.9/s · ETA 99min
+[2026-05-17 00:18:01]   Tipos: Tênis=543 · Chuteira=100 · Outro=1407
+[2026-05-17 00:18:59]   Progresso: 2100/7093 (2100 ok / 0 fail) · 0.9/s · ETA 98min
+[2026-05-17 00:18:59]   Tipos: Tênis=561 · Chuteira=101 · Outro=1438
+[2026-05-17 00:19:58]   Progresso: 2150/7093 (2150 ok / 0 fail) · 0.9/s · ETA 97min
+[2026-05-17 00:19:58]   Tipos: Tênis=566 · Chuteira=101 · Outro=1483
+[2026-05-17 00:20:59]   Progresso: 2200/7093 (2200 ok / 0 fail) · 0.9/s · ETA 96min
+[2026-05-17 00:20:59]   Tipos: Tênis=576 · Chuteira=101 · Outro=1523
+[2026-05-17 00:21:59]   Progresso: 2250/7093 (2250 ok / 0 fail) · 0.9/s · ETA 95min
+[2026-05-17 00:21:59]   Tipos: Tênis=588 · Chuteira=101 · Outro=1561
+[2026-05-17 00:22:59]   Progresso: 2300/7093 (2300 ok / 0 fail) · 0.9/s · ETA 94min
+[2026-05-17 00:22:59]   Tipos: Tênis=594 · Chuteira=101 · Outro=1605
+[2026-05-17 00:23:59]   Progresso: 2350/7093 (2350 ok / 0 fail) · 0.9/s · ETA 93min
+[2026-05-17 00:23:59]   Tipos: Tênis=597 · Chuteira=101 · Outro=1652
+[2026-05-17 00:24:59]   Progresso: 2400/7093 (2400 ok / 0 fail) · 0.9/s · ETA 92min
+[2026-05-17 00:24:59]   Tipos: Tênis=618 · Chuteira=125 · Outro=1657
+[2026-05-17 00:25:58]   Progresso: 2450/7093 (2450 ok / 0 fail) · 0.9/s · ETA 91min
+[2026-05-17 00:25:58]   Tipos: Tênis=668 · Chuteira=125 · Outro=1657
+[2026-05-17 00:26:59]   Progresso: 2500/7093 (2500 ok / 0 fail) · 0.8/s · ETA 90min
+[2026-05-17 00:26:59]   Tipos: Tênis=702 · Chuteira=125 · Outro=1673
+[2026-05-17 00:27:59]   Progresso: 2550/7093 (2550 ok / 0 fail) · 0.8/s · ETA 89min
+[2026-05-17 00:27:59]   Tipos: Tênis=709 · Chuteira=125 · Outro=1716
+[2026-05-17 00:29:00]   Progresso: 2600/7093 (2600 ok / 0 fail) · 0.8/s · ETA 88min
+[2026-05-17 00:29:00]   Tipos: Tênis=710 · Chuteira=125 · Outro=1765
+[2026-05-17 00:29:59]   Progresso: 2650/7093 (2650 ok / 0 fail) · 0.8/s · ETA 87min
+[2026-05-17 00:29:59]   Tipos: Tênis=710 · Chuteira=125 · Outro=1815
+[2026-05-17 00:30:59]   Progresso: 2700/7093 (2700 ok / 0 fail) · 0.8/s · ETA 86min
+[2026-05-17 00:30:59]   Tipos: Tênis=750 · Chuteira=125 · Outro=1825
+[2026-05-17 00:31:58]   Progresso: 2750/7093 (2750 ok / 0 fail) · 0.8/s · ETA 85min
+[2026-05-17 00:31:58]   Tipos: Tênis=760 · Chuteira=144 · Outro=1846
+[2026-05-17 00:32:58]   Progresso: 2800/7093 (2800 ok / 0 fail) · 0.8/s · ETA 84min
+[2026-05-17 00:32:58]   Tipos: Tênis=763 · Chuteira=144 · Outro=1893
+[2026-05-17 00:33:58]   Progresso: 2850/7093 (2850 ok / 0 fail) · 0.8/s · ETA 83min
+[2026-05-17 00:33:58]   Tipos: Tênis=764 · Chuteira=144 · Outro=1942
+[2026-05-17 00:34:59]   Progresso: 2900/7093 (2900 ok / 0 fail) · 0.8/s · ETA 82min
+[2026-05-17 00:34:59]   Tipos: Tênis=794 · Chuteira=145 · Outro=1961
+[2026-05-17 00:35:59]   Progresso: 2950/7093 (2950 ok / 0 fail) · 0.8/s · ETA 82min
+[2026-05-17 00:35:59]   Tipos: Tênis=832 · Chuteira=145 · Outro=1973
+[2026-05-17 00:36:59]   Progresso: 3000/7093 (3000 ok / 0 fail) · 0.8/s · ETA 81min
+[2026-05-17 00:36:59]   Tipos: Tênis=872 · Chuteira=145 · Outro=1983
+[2026-05-17 00:37:58]   Progresso: 3050/7093 (3050 ok / 0 fail) · 0.8/s · ETA 80min
+[2026-05-17 00:37:58]   Tipos: Tênis=883 · Chuteira=148 · Outro=2019
+[2026-05-17 00:38:59]   Progresso: 3100/7093 (3100 ok / 0 fail) · 0.8/s · ETA 79min
+[2026-05-17 00:38:59]   Tipos: Tênis=910 · Chuteira=150 · Outro=2040
+[2026-05-17 00:39:59]   Progresso: 3150/7093 (3150 ok / 0 fail) · 0.8/s · ETA 78min
+[2026-05-17 00:39:59]   Tipos: Tênis=945 · Chuteira=157 · Outro=2048
+[2026-05-17 00:40:59]   Progresso: 3200/7093 (3200 ok / 0 fail) · 0.8/s · ETA 77min
+[2026-05-17 00:40:59]   Tipos: Tênis=990 · Chuteira=162 · Outro=2048
+[2026-05-17 00:41:59]   Progresso: 3250/7093 (3250 ok / 0 fail) · 0.8/s · ETA 76min
+[2026-05-17 00:41:59]   Tipos: Tênis=1032 · Chuteira=162 · Outro=2056
+[2026-05-17 00:42:58]   Progresso: 3300/7093 (3300 ok / 0 fail) · 0.8/s · ETA 75min
+[2026-05-17 00:42:58]   Tipos: Tênis=1043 · Chuteira=174 · Outro=2083
+[2026-05-17 00:43:58]   Progresso: 3350/7093 (3350 ok / 0 fail) · 0.8/s · ETA 74min
+[2026-05-17 00:43:58]   Tipos: Tênis=1062 · Chuteira=174 · Outro=2114
+[2026-05-17 00:45:00]   Progresso: 3400/7093 (3400 ok / 0 fail) · 0.8/s · ETA 73min
+[2026-05-17 00:45:00]   Tipos: Tênis=1097 · Chuteira=180 · Outro=2123
+[2026-05-17 00:45:59]   Progresso: 3450/7093 (3450 ok / 0 fail) · 0.8/s · ETA 72min
+[2026-05-17 00:45:59]   Tipos: Tênis=1097 · Chuteira=180 · Outro=2173
+[2026-05-17 00:46:58]   Progresso: 3500/7093 (3500 ok / 0 fail) · 0.8/s · ETA 71min
+[2026-05-17 00:46:58]   Tipos: Tênis=1110 · Chuteira=183 · Outro=2207
+[2026-05-17 00:47:58]   Progresso: 3550/7093 (3550 ok / 0 fail) · 0.8/s · ETA 70min
+[2026-05-17 00:47:58]   Tipos: Tênis=1113 · Chuteira=183 · Outro=2254
+[2026-05-17 00:48:58]   Progresso: 3600/7093 (3600 ok / 0 fail) · 0.8/s · ETA 69min
+[2026-05-17 00:48:58]   Tipos: Tênis=1113 · Chuteira=183 · Outro=2304
+[2026-05-17 00:49:59]   Progresso: 3650/7093 (3650 ok / 0 fail) · 0.8/s · ETA 68min
+[2026-05-17 00:49:59]   Tipos: Tênis=1128 · Chuteira=186 · Outro=2336
+[2026-05-17 00:50:59]   Progresso: 3700/7093 (3700 ok / 0 fail) · 0.8/s · ETA 67min
+[2026-05-17 00:50:59]   Tipos: Tênis=1147 · Chuteira=188 · Outro=2365
+[2026-05-17 00:51:58]   Progresso: 3750/7093 (3750 ok / 0 fail) · 0.8/s · ETA 66min
+[2026-05-17 00:51:58]   Tipos: Tênis=1173 · Chuteira=193 · Outro=2384
+[2026-05-17 00:52:58]   Progresso: 3800/7093 (3800 ok / 0 fail) · 0.8/s · ETA 65min
+[2026-05-17 00:52:58]   Tipos: Tênis=1196 · Chuteira=200 · Outro=2404
+[2026-05-17 00:53:58]   Progresso: 3850/7093 (3850 ok / 0 fail) · 0.8/s · ETA 64min
+[2026-05-17 00:53:58]   Tipos: Tênis=1213 · Chuteira=200 · Outro=2437
+[2026-05-17 00:54:59]   Progresso: 3900/7093 (3900 ok / 0 fail) · 0.8/s · ETA 63min
+[2026-05-17 00:54:59]   Tipos: Tênis=1238 · Chuteira=207 · Outro=2455
+[2026-05-17 00:55:59]   Progresso: 3950/7093 (3950 ok / 0 fail) · 0.8/s · ETA 62min
+[2026-05-17 00:55:59]   Tipos: Tênis=1238 · Chuteira=257 · Outro=2455
+[2026-05-17 00:56:58]   Progresso: 4000/7093 (4000 ok / 0 fail) · 0.8/s · ETA 61min
+[2026-05-17 00:56:58]   Tipos: Tênis=1238 · Chuteira=307 · Outro=2455
+[2026-05-17 00:57:59]   Progresso: 4050/7093 (4050 ok / 0 fail) · 0.8/s · ETA 60min
+[2026-05-17 00:57:59]   Tipos: Tênis=1238 · Chuteira=357 · Outro=2455
+[2026-05-17 00:58:58]   Progresso: 4100/7093 (4100 ok / 0 fail) · 0.8/s · ETA 59min
+[2026-05-17 00:58:58]   Tipos: Tênis=1238 · Chuteira=391 · Outro=2471
+[2026-05-17 00:59:58]   Progresso: 4150/7093 (4150 ok / 0 fail) · 0.8/s · ETA 58min
+[2026-05-17 00:59:58]   Tipos: Tênis=1238 · Chuteira=425 · Outro=2487
+[2026-05-17 01:00:58]   Progresso: 4200/7093 (4200 ok / 0 fail) · 0.8/s · ETA 57min
+[2026-05-17 01:00:58]   Tipos: Tênis=1238 · Chuteira=470 · Outro=2492
+[2026-05-17 01:01:58]   Progresso: 4250/7093 (4250 ok / 0 fail) · 0.8/s · ETA 56min
+[2026-05-17 01:01:58]   Tipos: Tênis=1268 · Chuteira=486 · Outro=2496
+[2026-05-17 01:02:59]   Progresso: 4300/7093 (4300 ok / 0 fail) · 0.8/s · ETA 55min
+[2026-05-17 01:02:59]   Tipos: Tênis=1268 · Chuteira=536 · Outro=2496
+[2026-05-17 01:03:58]   Progresso: 4350/7093 (4350 ok / 0 fail) · 0.8/s · ETA 54min
+[2026-05-17 01:03:58]   Tipos: Tênis=1268 · Chuteira=586 · Outro=2496
+[2026-05-17 01:04:59]   Progresso: 4400/7093 (4400 ok / 0 fail) · 0.8/s · ETA 53min
+[2026-05-17 01:04:59]   Tipos: Tênis=1268 · Chuteira=636 · Outro=2496
+[2026-05-17 01:05:58]   Progresso: 4450/7093 (4450 ok / 0 fail) · 0.8/s · ETA 52min
+[2026-05-17 01:05:58]   Tipos: Tênis=1268 · Chuteira=686 · Outro=2496
+[2026-05-17 01:06:59]   Progresso: 4500/7093 (4500 ok / 0 fail) · 0.8/s · ETA 51min
+[2026-05-17 01:06:59]   Tipos: Tênis=1268 · Chuteira=736 · Outro=2496
+[2026-05-17 01:07:58]   Progresso: 4550/7093 (4550 ok / 0 fail) · 0.8/s · ETA 50min
+[2026-05-17 01:07:58]   Tipos: Tênis=1275 · Chuteira=779 · Outro=2496
+[2026-05-17 01:08:58]   Progresso: 4600/7093 (4600 ok / 0 fail) · 0.8/s · ETA 49min
+[2026-05-17 01:08:58]   Tipos: Tênis=1317 · Chuteira=779 · Outro=2504
+[2026-05-17 01:09:58]   Progresso: 4650/7093 (4650 ok / 0 fail) · 0.8/s · ETA 48min
+[2026-05-17 01:09:58]   Tipos: Tênis=1367 · Chuteira=779 · Outro=2504
+[2026-05-17 01:10:58]   Progresso: 4700/7093 (4700 ok / 0 fail) · 0.8/s · ETA 47min
+[2026-05-17 01:10:58]   Tipos: Tênis=1409 · Chuteira=779 · Outro=2512
+[2026-05-17 01:11:59]   Progresso: 4750/7093 (4750 ok / 0 fail) · 0.8/s · ETA 46min
+[2026-05-17 01:11:59]   Tipos: Tênis=1431 · Chuteira=779 · Outro=2540
+[2026-05-17 01:12:58]   Progresso: 4800/7093 (4800 ok / 0 fail) · 0.8/s · ETA 45min
+[2026-05-17 01:12:58]   Tipos: Tênis=1481 · Chuteira=779 · Outro=2540
+[2026-05-17 01:13:58]   Progresso: 4850/7093 (4850 ok / 0 fail) · 0.8/s · ETA 44min
+[2026-05-17 01:13:58]   Tipos: Tênis=1531 · Chuteira=779 · Outro=2540
+[2026-05-17 01:14:59]   Progresso: 4900/7093 (4900 ok / 0 fail) · 0.8/s · ETA 43min
+[2026-05-17 01:14:59]   Tipos: Tênis=1581 · Chuteira=779 · Outro=2540
+[2026-05-17 01:15:58]   Progresso: 4950/7093 (4950 ok / 0 fail) · 0.8/s · ETA 42min
+[2026-05-17 01:15:58]   Tipos: Tênis=1631 · Chuteira=779 · Outro=2540
+[2026-05-17 01:16:59]   Progresso: 5000/7093 (5000 ok / 0 fail) · 0.8/s · ETA 41min
+[2026-05-17 01:16:59]   Tipos: Tênis=1681 · Chuteira=779 · Outro=2540
+[2026-05-17 01:17:59]   Progresso: 5050/7093 (5050 ok / 0 fail) · 0.8/s · ETA 40min
+[2026-05-17 01:17:59]   Tipos: Tênis=1731 · Chuteira=779 · Outro=2540
+[2026-05-17 01:18:59]   Progresso: 5100/7093 (5100 ok / 0 fail) · 0.8/s · ETA 39min
+[2026-05-17 01:18:59]   Tipos: Tênis=1781 · Chuteira=779 · Outro=2540
+[2026-05-17 01:19:58]   Progresso: 5150/7093 (5150 ok / 0 fail) · 0.8/s · ETA 38min
+[2026-05-17 01:19:58]   Tipos: Tênis=1797 · Chuteira=813 · Outro=2540
+[2026-05-17 01:20:58]   Progresso: 5200/7093 (5200 ok / 0 fail) · 0.8/s · ETA 38min
+[2026-05-17 01:20:58]   Tipos: Tênis=1842 · Chuteira=818 · Outro=2540
+[2026-05-17 01:21:58]   Progresso: 5250/7093 (5250 ok / 0 fail) · 0.8/s · ETA 37min
+[2026-05-17 01:21:58]   Tipos: Tênis=1860 · Chuteira=850 · Outro=2540
+[2026-05-17 01:22:59]   Progresso: 5300/7093 (5300 ok / 0 fail) · 0.8/s · ETA 36min
+[2026-05-17 01:22:59]   Tipos: Tênis=1898 · Chuteira=850 · Outro=2552
+[2026-05-17 01:24:00]   Progresso: 5350/7093 (5350 ok / 0 fail) · 0.8/s · ETA 35min
+[2026-05-17 01:24:00]   Tipos: Tênis=1905 · Chuteira=873 · Outro=2572
+[2026-05-17 01:24:58]   Progresso: 5400/7093 (5400 ok / 0 fail) · 0.8/s · ETA 34min
+[2026-05-17 01:24:58]   Tipos: Tênis=1906 · Chuteira=873 · Outro=2621
+[2026-05-17 01:25:58]   Progresso: 5450/7093 (5450 ok / 0 fail) · 0.8/s · ETA 33min
+[2026-05-17 01:25:58]   Tipos: Tênis=1914 · Chuteira=873 · Outro=2663
+[2026-05-17 01:26:58]   Progresso: 5500/7093 (5500 ok / 0 fail) · 0.8/s · ETA 32min
+[2026-05-17 01:26:58]   Tipos: Tênis=1927 · Chuteira=873 · Outro=2700
+[2026-05-17 01:27:58]   Progresso: 5550/7093 (5550 ok / 0 fail) · 0.8/s · ETA 31min
+[2026-05-17 01:27:58]   Tipos: Tênis=1931 · Chuteira=873 · Outro=2746
+[2026-05-17 01:28:58]   Progresso: 5600/7093 (5600 ok / 0 fail) · 0.8/s · ETA 30min
+[2026-05-17 01:28:58]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2795
+  ✗ 0100-9526541: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9526542: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10295113: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10295114: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934386: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934387: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934388: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934389: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:29:51]   Progresso: 5650/7093 (5642 ok / 8 fail) · 0.8/s · ETA 29min
+[2026-05-17 01:29:51]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0100-10934390: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934392: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934393: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934394: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10934395: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-8492210: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-8492211: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-8492212: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10943863: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-8492213: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-8492214: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10988989: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103132: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103133: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103135: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103136: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11103137: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490114: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490115: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490116: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490117: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490118: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490119: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490120: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490121: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9490122: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688741: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688744: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688745: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688746: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688749: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-7688750: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10140876: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10140877: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10140878: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10280524: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10280526: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10280528: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-10280529: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9580430: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9580431: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9580432: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9580433: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9580434: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850846: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850847: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850848: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850849: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:30:09]   Progresso: 5700/7093 (5642 ok / 58 fail) · 0.8/s · ETA 27min
+[2026-05-17 01:30:09]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0100-9850850: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850851: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850852: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850853: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11649825: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850854: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9850855: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-1672925.136247.232406.252983: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4843284: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4843285: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4843286: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4843287: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4843288: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11649819: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-11680751: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-5759147: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-5759149: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881916: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881917: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881918: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881919: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881920: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881921: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881953: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881954: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881955: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881956: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881957: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-9881958: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740508: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740509: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740511: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740510: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740512: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740493: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-AR886708-2: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740495: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740496: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0100-4740497: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-CALBFBR-ALLBLACK-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-CALBFBR-GRAY-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-CTLBFBR-ALLBLACK-M: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-CTLBFBR-GRAY-GG: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-FBRFLYR-BLACK-V4-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-FBRFLYR-BW-V4-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-MALBFBR-ALLBLACK-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-MALBFBR-GRAY-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-MEIAIIF-BLACK-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-MEIAIIF-WHITE-G: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-OCMXGRIPF-BLACK: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:30:28]   Progresso: 5750/7093 (5642 ok / 108 fail) · 0.9/s · ETA 26min
+[2026-05-17 01:30:28]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0110-OCMXGRIPF-CLEAR: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-PABFBR-BLACK: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-PABFBR-GRAY: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-PADPLSF-CP-33/34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-PADPLSF-CP-36/37/38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-PADPLSF-CP-40/41/42: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0104-V2-44/45/46: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0896-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0896-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0896-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0896-V2-44/45/46: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0998-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0998-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0998-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0998-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-0998-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-8183-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-8183-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-8183-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-8183-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLACK-V2-44/45/46: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLUE-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLUE-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLUE-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLBLUE-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLRED-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLRED-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLRED-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMUL-ALLRED-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-0104-V2-44/45/46: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-ALLBLACK-V2-34/35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-ALLBLACK-V2-36/37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-ALLBLACK-V2-38/39: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-ALLBLACK-V2-40/41: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBMULC-ALLBLACK-V2-42/43: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:30:45]   Progresso: 5800/7093 (5642 ok / 158 fail) · 0.9/s · ETA 25min
+[2026-05-17 01:30:45]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0110-SFBRBIN-0998-18/19: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-20/21: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-22/23: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-24/25: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-26/27: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-28/29: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-30/31: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-0998-32/33: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-18/19: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-20/21: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-22/23: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-24/25: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-26/27: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-28/29: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-32/33: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SFBRBIN-8192-30/31: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SLIDEFBR-WHITE-37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SLIDEFBR-BLACK-37: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SOXFUT-0997-L: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-SOXFUT-0998-L: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFBU-BLACK-34: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFBU-WHITE-34: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFER-BLACK-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFER-WHITE-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFERS-BLACK-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-TFERS-WHITE-35: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424845: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424166: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424173: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424357: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424401: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424418: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422728: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422759: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426115: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426153: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426207: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426146: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426276: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426801: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426320: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426238: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424425: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424432: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424456: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424494: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424524: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424531: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421745: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421783: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:31:03]   Progresso: 5850/7093 (5642 ok / 208 fail) · 0.9/s · ETA 24min
+[2026-05-17 01:31:03]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0140-7898654421820: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654423008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428027: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428010: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422452: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422421: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422360: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424630: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424678: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424685: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424708: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424722: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654424739: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422926: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422902: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422896: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422933: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422544: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422575: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654425163: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422605: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654427815: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654422636: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421097: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421141: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429833: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421660: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421707: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421264: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421301: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421349: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654421387: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654426856: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654427181: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428492: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428591: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428195: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428249: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428294: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428393: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428447: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428836: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429437: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429482: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654428935: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429581: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429536: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429635: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429680: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:31:20]   Progresso: 5900/7093 (5642 ok / 258 fail) · 0.9/s · ETA 23min
+[2026-05-17 01:31:20]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0140-7898654429734: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0140-7898654429789: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908425138083: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908425138724: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908425142776: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908425143568: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891356400: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891356004: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891392514: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891356325: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891347057: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891346647: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891347132: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891346722: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891339557: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891311959: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891315605: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891325352: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908766299832: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891373124: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891379386: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891301134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891308805: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891300045: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0393-7908891302162: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538425497: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538425435: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538425671: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538425558: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538426159: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538426098: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538423394: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538423691: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538423936: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538652053: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538428801: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538428818: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538583494: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538583500: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538429020: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538429037: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538429143: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538429150: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538583531: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538583548: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538675229: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538530719: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538581506: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538581629: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538581704: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:31:37]   Progresso: 5950/7093 (5642 ok / 308 fail) · 0.9/s · ETA 22min
+[2026-05-17 01:31:37]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0113-7909538590980: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538648810: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538644058: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538644065: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538649893: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538649909: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538644096: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538644102: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538651391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538646137: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538652176: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538646502: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538422977: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538422854: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538422793: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538422915: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538648094: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538423332: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538581346: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538424599: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538582459: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0113-7909538425732: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342696816: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342614414: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342614452: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342482495: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342696885: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7891523518058: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342482549: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342555649: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342376374: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7891523518157: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342476258: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342476265: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585325: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342613844: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342721006: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342726476: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342632135: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342726384: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342628008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342602503: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342602497: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342602534: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342473509: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342433855: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342627186: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342673268: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342370105: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342543486: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:31:54]   Progresso: 6000/7093 (5642 ok / 358 fail) · 0.9/s · ETA 21min
+[2026-05-17 01:31:54]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 2909-7909342702128: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585042: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585059: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585066: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585073: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634818: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634801: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634795: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634825: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342635051: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342635044: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342635037: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342635068: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634979: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634962: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634955: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342634986: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342527394: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342527356: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526403: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526410: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526427: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526434: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342468987: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342468994: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342469007: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342469014: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342732644: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342732637: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342732620: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342732651: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342730589: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342730572: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342730565: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342730596: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342730619: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342476975: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342042545: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342042538: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342042521: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342685322: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342599766: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342527233: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526366: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526373: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526380: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526397: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526281: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526298: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342526304: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:32:11]   Progresso: 6050/7093 (5642 ok / 408 fail) · 0.9/s · ETA 20min
+[2026-05-17 01:32:11]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 2909-7909342526311: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342571908: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342571915: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342571885: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342571892: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342398499: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342398451: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342398376: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342557162: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342557155: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342557148: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342557179: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342731333: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342530783: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342530790: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342530776: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342530806: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342732675: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585004: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585011: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585028: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342585035: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629098: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629081: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629074: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629104: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629036: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629029: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629012: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342629043: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342731319: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342731302: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342731296: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342731326: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342531599: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342531582: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342531575: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 2909-7909342531605: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392679203: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392670989: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392670606: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392670286: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392997581: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392671337: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392679142: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392908686: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7891186043157: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392206140: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392995037: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392655030: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:32:29]   Progresso: 6100/7093 (5642 ok / 458 fail) · 0.9/s · ETA 19min
+[2026-05-17 01:32:29]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0169-7909392362464: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392654705: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392376287: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392363232: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7891186818335: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7891186196662: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392576595: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392461211: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392867785: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392613399: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392780022: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392614143: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392553220: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392625989: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392624876: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392992289: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392997970: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0169-7909392772966: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-221145: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246838: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-248858: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-247010: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-208993: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-190806: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246415: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-07890002466651: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-217264: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-07890002187501: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-07890002468631: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-247977: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209210: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209510: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-248362: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-224384: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-227931: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-238527: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-227902: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185374: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-190779: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-247000: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209032: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-233934: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-200193: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209207: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246474: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185670: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-217191: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-219621: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-217809: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:32:49]   Progresso: 6150/7093 (5642 ok / 508 fail) · 0.9/s · ETA 18min
+[2026-05-17 01:32:49]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0174-190886: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-192974: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-217119: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185436: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-190951: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-248387: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246695: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185527: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-225380: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-248945: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-227671: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-210575: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-201857: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-212557: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-206697: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-220529: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185584: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-185495: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-07890002245201: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246460: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-233896: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-233903: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-233897: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-217107: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-208953: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-209066: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-234005: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-224425: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246921: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246832: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246631: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246639: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-246703: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-253109: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-260578: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-259172: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-257850: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-257839: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-264222: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-257317: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-257417: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-07890002571171: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-254979: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-257124: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-260588: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-265725: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-266703: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-259814: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-267276: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-266442: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:33:06]   Progresso: 6200/7093 (5642 ok / 558 fail) · 0.9/s · ETA 17min
+[2026-05-17 01:33:06]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0174-265691: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-265622: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-266780: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-271530: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-265830: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-266873: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-273434: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-271461: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-271716: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-272145: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-272271: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-273096: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-275556: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-273087: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-280554: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-281688: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-280732: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-278001: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-280872: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-277308: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-278421: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-277315: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0174-279651: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505519252: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505519092: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505471789: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505471833: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505489630: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496713: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496614: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496669: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496867: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496515: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505434333: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505434364: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505406194: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505408082: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505470416: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505508515: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505492364: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505492432: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505507105: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505470997: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505470904: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494467: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494658: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494603: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494757: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494702: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494924: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:33:24]   Progresso: 6250/7093 (5642 ok / 608 fail) · 0.9/s · ETA 16min
+[2026-05-17 01:33:24]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0256-7908505495051: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505494955: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505495204: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505495167: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505495679: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505496027: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505495969: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505495877: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908356665207: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505550781: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505550842: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505492494: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505498731: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505498595: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505525499: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505583123: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7908505583079: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7899623231761: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0256-7899623231754: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578649108: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578649214: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578649528: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578653112: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578653198: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578653426: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578668901: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578669069: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578669274: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578677026: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578697260: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578685519: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578685731: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578685939: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578686516: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578686660: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578687131: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578687513: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578687230: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908937812228: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908937812334: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578637181: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578637303: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578637372: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578637495: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578638539: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578639284: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0182-7908578696591: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291009719: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291014171: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291009801: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:33:41]   Progresso: 6300/7093 (5642 ok / 658 fail) · 0.9/s · ETA 15min
+[2026-05-17 01:33:41]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0101-7900291013501: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011644: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013624: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291009771: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291012702: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291012528: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291008415: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013303: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013051: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291014102: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013105: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291008552: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291008521: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291008477: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291008804: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013716: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291010654: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291010692: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291010739: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291020240: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291020257: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291014010: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291020202: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291020219: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013747: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011101: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011361: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291010890: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011170: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011514: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291011248: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0101-7900291013983: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-7908440899426: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-7908440885146: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-7908440885115: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200143715369: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200143729502: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-8053840251837: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-7908796705747: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161760136: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200143660317: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161249594: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161330896: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161268960: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161274343: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161241093: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0733-1200161309267: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929804145: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929804138: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7891872221685: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:33:59]   Progresso: 6350/7093 (5642 ok / 708 fail) · 0.9/s · ETA 14min
+[2026-05-17 01:33:59]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 1322-7891872221715: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7891872221753: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7891872221616: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7891872221708: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929804121: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929804114: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7891872221739: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7893659965300: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929699529: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7893659667549: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929699987: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756484077: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756484008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929909550: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756197229: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929187309: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7893659807273: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7893659740822: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756821520: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756821537: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756239332: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756197342: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756197281: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756116510: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756005975: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929504403: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894756239240: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929504410: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929459246: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 1322-7894929458959: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438023: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438061: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438177: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700421: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434001: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434216: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434230: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700308: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438221: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438283: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438290: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438306: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438313: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438450: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438467: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438481: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336438474: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700032: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700049: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:34:17]   Progresso: 6400/7093 (5642 ok / 758 fail) · 0.9/s · ETA 13min
+[2026-05-17 01:34:17]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0280-7908192700056: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192704290: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192704306: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700247: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700254: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700285: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700315: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192701756: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192701800: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700339: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192701817: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702043: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702050: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702067: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192704320: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192704283: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336430386: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192704979: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336432434: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336430577: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336431659: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336432465: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336432854: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336432779: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434827: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434834: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336437729: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336437712: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700469: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700612: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700919: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192700780: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192701039: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192701114: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702555: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702562: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702609: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702616: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702692: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702708: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7908192702999: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434049: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434056: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434063: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434117: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434124: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434131: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0280-7898336434148: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403619488: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403619563: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:34:34]   Progresso: 6450/7093 (5642 ok / 808 fail) · 0.9/s · ETA 12min
+[2026-05-17 01:34:34]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0145-7909403619594: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403629197: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403752260: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403752468: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403808073: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403808189: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403624277: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403624338: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403624499: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403624550: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403481610: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403481504: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403503565: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403626486: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0145-7909403816078: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189802: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189819: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189826: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189833: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189840: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189857: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189864: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189871: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190006: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190013: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190020: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190037: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190044: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190051: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190068: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190075: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190105: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190112: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190129: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190136: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711190143: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188270: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188287: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188294: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188300: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188317: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188324: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711181998: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711182001: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711182018: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711182025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711182032: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711182049: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711175034: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711175041: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:34:51]   Progresso: 6500/7093 (5642 ok / 858 fail) · 0.9/s · ETA 11min
+[2026-05-17 01:34:51]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0152-7909711175058: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711175065: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711175072: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711175089: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159744: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159751: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159768: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159775: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159782: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711159799: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711186498: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711186504: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711186511: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711186528: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711186535: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188690: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188706: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188713: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188720: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188737: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188744: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188560: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188577: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188584: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188591: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188607: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188614: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161723: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161730: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161747: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161754: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161761: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161778: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711160177: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711160184: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161686: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161693: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161709: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711161716: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711999814: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711999807: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188058: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188065: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188072: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711188089: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711185965: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189741: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0152-7909711189796: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751578875: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751944793: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:35:08]   Progresso: 6550/7093 (5642 ok / 908 fail) · 0.9/s · ETA 10min
+[2026-05-17 01:35:08]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0207-198720185098: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-198720137400: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751912365: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751912471: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751930550: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751929943: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751894296: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751568937: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751568418: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-193128187699: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-193128187729: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751569439: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751569842: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751568647: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751569019: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751852609: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751853521: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751266208: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751579506: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751707831: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751407236: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751755696: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751755566: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751714204: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751196741: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751925297: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751698726: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751698733: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751182553: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0207-195751182560: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632978962: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632979006: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632978290: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632978481: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632979570: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632980071: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632978580: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632979020: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632982068: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632982105: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632980163: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-198632980200: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894756415941: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894756190138: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894756489942: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7892841704482: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7892841704628: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894929032234: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894929033347: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196884944803: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:35:25]   Progresso: 6600/7093 (5642 ok / 958 fail) · 0.9/s · ETA 9min
+[2026-05-17 01:35:25]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0102-196884944841: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196884944889: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196884944063: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196884944605: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196885893650: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196885893698: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196885893735: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196885893216: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-196885893254: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0102-7894929626921: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-1200143729007: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-1200143715765: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-1200143707418: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-1200161015366: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-1200143703458: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-0843275138319: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-0843275138449: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-0843275138906: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-197225734114: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0148-4061617834873: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392659533: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392689028: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392666319: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392935200: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392958247: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392759172: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392853658: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392932476: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392835999: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392376157: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392376225: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0572-7909392552339: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215840: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215833: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215826: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215819: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215802: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215796: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205770429: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769744: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769775: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769751: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769867: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769874: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769898: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769881: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769829: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769843: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0619205769850: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0074468906822: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:35:42]   Progresso: 6650/7093 (5642 ok / 1008 fail) · 0.9/s · ETA 8min
+[2026-05-17 01:35:42]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0170-0074468906839: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0074468906846: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215970: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215963: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215956: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430087226: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430087141: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430087110: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430087134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0074468906945: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0074468906952: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0074468906969: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215253: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215260: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215284: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215277: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215130: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215147: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215161: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215154: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215178: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215185: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215208: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215192: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215215: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215222: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215239: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215086: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215246: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215093: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215109: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215116: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086816: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086823: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086830: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086779: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086786: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086809: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086793: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086731: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086748: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086755: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086762: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086694: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086700: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086724: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0631430086717: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215789: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215772: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215741: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:36:00]   Progresso: 6700/7093 (5642 ok / 1058 fail) · 0.9/s · ETA 7min
+[2026-05-17 01:36:00]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0170-0040141215758: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0170-0040141215765: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526687: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526694: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526700: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526717: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526731: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526724: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526748: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526755: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526847: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526854: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526861: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526878: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526922: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526939: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526946: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526953: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527042: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527059: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527073: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526885: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527066: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526892: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526908: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956526915: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528407: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528414: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528421: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528438: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528360: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528377: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528384: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527127: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527141: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527158: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527080: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527097: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527103: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527110: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528605: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528612: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528629: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528636: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528568: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528575: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528582: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528599: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:36:18]   Progresso: 6750/7093 (5642 ok / 1108 fail) · 1.0/s · ETA 6min
+[2026-05-17 01:36:18]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0270-7908956528803: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528810: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528827: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528834: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528766: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528773: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528780: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956528797: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527769: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527776: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527783: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527790: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527684: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527691: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527707: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527714: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527806: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527813: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527820: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956527837: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0270-7908956547385: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394532128: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394530926: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394593754: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394593808: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394548112: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394548136: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394548143: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394600834: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394600872: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394583991: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394584011: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394515886: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394586589: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394606393: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394510652: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394614459: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394614497: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394516951: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394440836: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394440874: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394440898: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394440911: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394440850: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394579482: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394579543: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394579642: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0622-0195394579727: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793440: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793457: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:36:35]   Progresso: 6800/7093 (5642 ok / 1158 fail) · 1.0/s · ETA 5min
+[2026-05-17 01:36:35]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0127-7909943793464: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793471: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929894: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929900: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943816941: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943816958: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943816965: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943617432: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943816972: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943617449: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943617456: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943617463: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943478606: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943478613: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943908103: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943865574: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943865581: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943865598: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943865604: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909526926395: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909526926401: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909526926425: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909526926418: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943860920: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943860913: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943860937: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733606: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733620: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733613: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943772384: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733637: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943772391: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943772407: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929917: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943772414: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929924: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929863: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929870: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943929887: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943816996: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943817009: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733569: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733576: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733583: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943733590: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793211: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793228: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793235: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943793242: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819263: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:36:52]   Progresso: 6850/7093 (5642 ok / 1208 fail) · 1.0/s · ETA 4min
+[2026-05-17 01:36:52]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0127-7909943819270: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819287: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943734436: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943734443: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943734450: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943734467: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819355: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819362: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819379: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943819386: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943478590: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943908110: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943908127: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0127-7909943908134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187645702: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187645719: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187645726: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187645733: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187080619: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187666325: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187597780: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187080206: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556961: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187674306: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187670704: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187671497: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187674313: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187670711: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187671503: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187050483: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187645993: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187646006: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187646013: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187516088: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187618928: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187643784: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187557067: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187519980: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187671961: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187537038: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187555674: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187555650: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187555667: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187671954: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187646426: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429142: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429135: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187616375: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429128: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429159: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:37:09]   Progresso: 6900/7093 (5642 ok / 1258 fail) · 1.0/s · ETA 3min
+[2026-05-17 01:37:09]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0132-7894187429111: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187618645: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187538127: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187538134: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187538141: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187538158: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187538165: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429173: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429197: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429180: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187429166: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187641346: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556862: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556909: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556893: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556886: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187556879: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187519171: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187647638: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187647645: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187635826: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187674726: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0132-7894187647874: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500018: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500032: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500049: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500155: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500162: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500179: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500186: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273503385: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273503408: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273503415: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500957: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500940: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500971: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500995: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273501015: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273501008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68J/253: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68A/253: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68J/254: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68A/254: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68J/255: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68A/255: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68J/257: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68A/257: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68J/258: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-VS68A/258: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:37:26]   Progresso: 6950/7093 (5642 ok / 1308 fail) · 1.0/s · ETA 2min
+[2026-05-17 01:37:26]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0110-7908273504702: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504719: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504733: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504740: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504764: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504771: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504788: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504801: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504795: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504849: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504818: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504856: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505044: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505099: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505037: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505082: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504627: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504634: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273501923: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273503064: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273503088: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505228: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505235: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505242: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505259: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505730: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273505747: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7899806927894: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504382: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504399: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273504405: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0110-7908273500988: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001021: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001022: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001023: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001024: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I001026: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002021: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002022: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002023: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002024: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I002026: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I004022: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I004023: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I004024: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I004025: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIRF01I004026: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-IKMJJAULSBC03: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:37:43]   Progresso: 7000/7093 (5642 ok / 1358 fail) · 1.0/s · ETA 2min
+[2026-05-17 01:37:43]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0164-IKMJJAULSBC04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-IKMJJAULSBC05: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-IKMJJAULSPR03: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-IKMJJAULSPR04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSBC02: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-IKMJJAULSPR05: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSBC04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSBC07: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSBC10: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSPR01: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSPR02: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSPR04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSPR07: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJAULSPR10: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLABC02: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLABC04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLABC07: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLABC10: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAAZ02: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAAZ04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAAZ07: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAAZ10: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAPR02: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAPR04: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAPR07: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-UKMJJACLAPR10: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0001003: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0001005: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0001008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0002003: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0002005: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0002008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0002011: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0003003: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0003005: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0003008: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0164-KIM10U0003011: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132294915: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132869618: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7909960863621: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132810306: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132051891: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132242503: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0319-7900132242459: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352267: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354070: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351536: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352083: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352090: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352106: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:38:00]   Progresso: 7050/7093 (5642 ok / 1408 fail) · 1.0/s · ETA 1min
+[2026-05-17 01:38:00]   Tipos: Tênis=1932 · Chuteira=873 · Outro=2837
+  ✗ 0222-7898511353721: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357019: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357026: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353707: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354018: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354087: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355275: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353974: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353981: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353998: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351611: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351628: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351680: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351697: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351703: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353691: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351277: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353745: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353752: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511353769: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511351505: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354551: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354698: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511354735: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357132: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511356364: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357163: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352311: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511352861: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355770: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355626: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355619: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355787: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355237: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355244: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355251: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355640: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355282: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355299: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511355657: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357743: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511357750: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+  ✗ 0222-7898511356975: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your cred
+[2026-05-17 01:38:14] === FINAL ===
+[2026-05-17 01:38:14] Total: 7093 · OK: 5642 · Falhas: 1451 · Tempo: 120.3min
+[2026-05-17 01:38:14] Distribuição: Tênis=1932 · Chuteira=873 · Outro=2837

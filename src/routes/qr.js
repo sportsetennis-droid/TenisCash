@@ -30,7 +30,7 @@ router.get('/generate', authMiddleware, async (req, res) => {
     const qrImage = await QRCode.toDataURL(qrCode, {
       width: 300,
       margin: 2,
-      color: { dark: '#FF6D00', light: '#FFFFFF' }
+      color: { dark: '#E5571E', light: '#FFFFFF' }
     });
 
     res.json({

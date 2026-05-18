@@ -90,7 +90,7 @@
       show('showModality') ? `<select class="psbar-input" id="${prefix}-modality" style="min-width:140px;padding:9px;border:1.5px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${inputColor};font-size:13px;">${placeholder('Modalidade')}</select>` : '',
       show('showTier') ? `<select class="psbar-input" id="${prefix}-tier" style="min-width:140px;padding:9px;border:1.5px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${inputColor};font-size:13px;">${placeholder('Especialidade')}</select>` : '',
       show('showStore', false) ? `<select class="psbar-input" id="${prefix}-store" style="min-width:130px;padding:9px;border:1.5px solid ${inputBorder};border-radius:8px;background:${inputBg};color:${inputColor};font-size:13px;">${placeholder('Loja')}</select>` : '',
-      `<button type="button" id="${prefix}-search-btn" style="padding:9px 16px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🔎 Buscar</button>`,
+      `<button type="button" id="${prefix}-search-btn" style="padding:9px 16px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🔎 Buscar</button>`,
       `<button type="button" id="${prefix}-clear-btn" title="Limpar filtros" style="padding:9px 12px;background:transparent;color:${inputColor};border:1.5px solid ${inputBorder};border-radius:8px;font-size:13px;cursor:pointer;">✕</button>`,
       opts.extraButtons || '',
       '</div>',

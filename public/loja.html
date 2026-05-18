@@ -11,10 +11,10 @@
 <link rel="manifest" href="/manifest.json">
 <style>
   :root {
-    --primary: #FF6D00;
+    --primary: #E5571E;
     --primary-dark: #e55f00;
-    --primary-light: #FFE5D0;
-    --bg: #FFF5EB;
+    --primary-light: #FCDAC4;
+    --bg: #FFEBDC;
     --bg-soft: #FFFAF2;
     --surface: #ffffff;
     --text: #1d1d1f;
@@ -37,15 +37,15 @@
     --radius: 12px;
     --radius-lg: 16px;
     --radius-sm: 8px;
-    --gradient: linear-gradient(135deg, #FF6D00 0%, #FF9248 100%);
+    --gradient: linear-gradient(135deg, #E5571E 0%, #EE7240 100%);
     --gradient-success: linear-gradient(135deg, #0a843d 0%, #2bb678 100%);
     --gradient-info: linear-gradient(135deg, #0066cc 0%, #4d94ff 100%);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #FFF5EB 0%, #FFE5D0 100%); background-attachment: fixed; color: var(--text); min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #FFEBDC 0%, #FCDAC4 100%); background-attachment: fixed; color: var(--text); min-height: 100vh; }
 
   /* Login */
-  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: linear-gradient(135deg, #fff 0%, #FFE5D0 100%); }
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: linear-gradient(135deg, #fff 0%, #FCDAC4 100%); }
   .login-card { background: white; border-radius: 20px; padding: 36px 32px; width: 100%; max-width: 400px; box-shadow: var(--shadow-lg); }
   .login-logo { text-align: center; margin-bottom: 28px; }
   .login-logo h1 { font-size: 26px; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; font-weight: 800; }
@@ -124,7 +124,7 @@
   .avatar { width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: white; flex-shrink: 0; text-transform: uppercase; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
   .avatar-sm { width: 32px; height: 32px; font-size: 12px; }
   .avatar-lg { width: 64px; height: 64px; font-size: 22px; }
-  .avatar-1 { background: linear-gradient(135deg, #FF6D00, #FF9248); }
+  .avatar-1 { background: linear-gradient(135deg, #E5571E, #EE7240); }
   .avatar-2 { background: linear-gradient(135deg, #0066cc, #4d94ff); }
   .avatar-3 { background: linear-gradient(135deg, #0a843d, #2bb678); }
   .avatar-4 { background: linear-gradient(135deg, #b06b00, #f0b146); }
@@ -207,7 +207,7 @@
   /* Payment & Vendor chip cards */
   .payment-card, .vendor-card { padding: 16px 14px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; cursor: pointer; text-align: center; transition: all 0.15s; user-select: none; }
   .payment-card:hover, .vendor-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
-  .payment-card.active, .vendor-card.active { border-color: var(--primary); background: linear-gradient(135deg,#FFF5EB 0%,#FFE5D0 100%); box-shadow: 0 4px 12px rgba(255,109,0,0.15); }
+  .payment-card.active, .vendor-card.active { border-color: var(--primary); background: linear-gradient(135deg,#FFEBDC 0%,#FCDAC4 100%); box-shadow: 0 4px 12px rgba(255,109,0,0.15); }
   .payment-icon { font-size: 28px; margin-bottom: 4px; }
   .payment-label { font-size: 13px; font-weight: 700; color: var(--text); }
 
@@ -543,7 +543,7 @@
         <select id="sellPayment" style="display:none;"><option value="pix">PIX</option></select>
       </div>
 
-      <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFF5EB 100%);border:2px solid var(--primary-light);">
+      <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFEBDC 100%);border:2px solid var(--primary-light);">
         <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">✅</span>Resumo</h3>
         <div id="sellSummary" style="margin-bottom:16px;"></div>
         <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled style="font-size:16px;padding:16px;">Finalizar venda</button>
@@ -1601,7 +1601,7 @@ async function showProduct(id) {
       <h3 class="modal-title">${p.name}</h3>
       <img src="${p.imageUrl || ''}" style="width:100%;max-height:280px;object-fit:contain;background:#f5f5f7;border-radius:8px;margin-bottom:12px;" onerror="this.style.display='none'">
       <div style="font-size:13px;color:#8e8e93;">${p.brand || ''} · ${p.category || ''}</div>
-      <div style="font-size:22px;font-weight:700;color:#FF6D00;margin:8px 0;">${fmt(p.promoPrice || p.price)}</div>
+      <div style="font-size:22px;font-weight:700;color:#E5571E;margin:8px 0;">${fmt(p.promoPrice || p.price)}</div>
       <div style="font-size:13px;">${p.shortDescription || p.longDescription || ''}</div>
       ${sizes ? `<h4 style="margin-top:12px;margin-bottom:6px;">Tamanhos</h4><ul style="padding-left:20px;">${sizes}</ul>` : ''}
     `;

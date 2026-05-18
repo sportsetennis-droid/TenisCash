@@ -10,14 +10,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#FF6D00">
+<meta name="theme-color" content="#E5571E">
 <meta name="description" content="TenisCash, programa de benefícios da Sports & Tennis operado por Meta Esportes LTDA, CNPJ 44.052.617/0001-26, em João Pessoa/PB.">
 <title>TenisCash</title>
 <link rel="manifest" href="/manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:'Chakra Petch',sans-serif;background:#FF6D00;color:#fff;min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
+body{font-family:'Chakra Petch',sans-serif;background:#E5571E;color:#fff;min-height:100vh;max-width:430px;margin:0 auto;overflow-x:hidden}
 input,select,textarea{font-family:'Chakra Petch',sans-serif}
 input::placeholder{color:rgba(255,255,255,0.35)}
 ::-webkit-scrollbar{width:0}
@@ -57,7 +57,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .input-row .input-field{flex:1}
 .input-amount-wrap{display:flex;align-items:center;gap:8px;margin-top:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px}
 .input-amount{flex:1;background:transparent;border:none;color:#fff;font-size:34px;font-family:'Orbitron';font-weight:900;outline:none;width:100%}
-.btn-primary{width:100%;padding:16px;margin-top:24px;background:#fff;border:none;border-radius:14px;color:#FF6D00;font-size:15px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px}
+.btn-primary{width:100%;padding:16px;margin-top:24px;background:#fff;border:none;border-radius:14px;color:#E5571E;font-size:15px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';letter-spacing:2px}
 .btn-outline{margin-top:24px;padding:14px 40px;background:transparent;border:2px solid #fff;border-radius:12px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch'}
 .btn-secondary{width:100%;padding:14px;margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:14px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px}
 .success-circle{width:80px;height:80px;border-radius:50%;margin:0 auto 20px;background:rgba(255,255,255,0.15);border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:36px}
@@ -65,7 +65,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .qr-img{width:100%;height:100%;object-fit:contain}
 .promo-card{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
 .promo-badge{background:#fff;border-radius:12px;padding:10px 16px;min-width:50px;text-align:center}
-.promo-badge span{font-family:'Orbitron';font-size:18px;font-weight:900;color:#FF6D00}
+.promo-badge span{font-family:'Orbitron';font-size:18px;font-weight:900;color:#E5571E}
 .profile-avatar{width:80px;height:80px;border-radius:50%;margin:0 auto 16px;background:rgba(255,255,255,0.12);border:3px solid #fff;display:flex;align-items:center;justify-content:center}
 .profile-item{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.08);cursor:pointer}
 .badge{display:inline-block;padding:5px 16px;background:rgba(255,255,255,0.12);border-radius:20px;border:1px solid rgba(255,255,255,0.15);margin-top:8px}
@@ -86,13 +86,13 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.1);margin-bottom:20px}
 .tab-switch{display:flex;gap:0;margin-bottom:30px;width:100%}
 .tab-btn{flex:1;padding:12px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:14px;font-weight:600;letter-spacing:1px}
-.tab-btn.active{background:#fff;color:#FF6D00;border-radius:10px}
+.tab-btn.active{background:#fff;color:#E5571E;border-radius:10px}
 .tab-btn:not(.active){background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px}
 .error-msg{background:rgba(255,0,0,0.2);border:1px solid rgba(255,0,0,0.4);border-radius:10px;padding:12px;margin-top:10px;font-size:13px;text-align:center}
 .loading{text-align:center;padding:40px;color:rgba(255,255,255,0.5)}
 .chip-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .chip{padding:8px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.05);transition:all .2s}
-.chip.selected{background:#fff;color:#FF6D00;border-color:#fff;font-weight:700}
+.chip.selected{background:#fff;color:#E5571E;border-color:#fff;font-weight:700}
 .section-header{font-size:16px;font-weight:700;margin-top:24px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.15)}
 .bonus-banner{background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:20px;margin:20px 0;text-align:center}
 .bonus-banner .amount{font-family:'Orbitron';font-size:36px;font-weight:900}
@@ -107,10 +107,10 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .msg-picker-item:hover{background:rgba(255,255,255,0.08)}
 .msg-picker-item .sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:4px}
 .ai-consultor-head{font-family:'Orbitron';font-size:15px;font-weight:800;letter-spacing:1px;margin:8px 0 4px;text-align:center}
-.ai-chat-log{min-height:200px;max-height:calc(100vh - 320px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:10px 6px 14px 0;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;scrollbar-color:#FF6D00 rgba(255,255,255,0.08)}
+.ai-chat-log{min-height:200px;max-height:calc(100vh - 320px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:10px 6px 14px 0;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;scrollbar-color:#E5571E rgba(255,255,255,0.08)}
 .ai-chat-log::-webkit-scrollbar{width:8px}
 .ai-chat-log::-webkit-scrollbar-track{background:rgba(255,255,255,0.08);border-radius:8px}
-.ai-chat-log::-webkit-scrollbar-thumb{background:#FF6D00;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.ai-chat-log::-webkit-scrollbar-thumb{background:#E5571E;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .ai-chat-log::-webkit-scrollbar-thumb:hover{background:#fff}
 .ai-msg-user{align-self:flex-end;max-width:90%;background:rgba(255,255,255,0.22);padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:14px;line-height:1.35}
 .ai-msg-bot{align-self:flex-start;max-width:94%;background:rgba(0,0,0,0.2);padding:10px 14px;border-radius:14px 14px 14px 4px;font-size:14px;line-height:1.35;border:1px solid rgba(255,255,255,0.12)}
@@ -119,7 +119,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .ai-input-row{display:flex;gap:8px;margin-top:6px;align-items:stretch}
 .ai-input-row input{flex:1}
 .catalog-search-btn{margin-left:auto;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:'Chakra Petch';display:inline-flex;align-items:center;gap:6px}
-.catalog-search-btn:hover{background:#fff;color:#FF6D00}
+.catalog-search-btn:hover{background:#fff;color:#E5571E}
 .prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
 .prod-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0}
 .prod-thumb{width:76px;height:76px;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -131,9 +131,9 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .prod-thumb-large.placeholder{border:1px dashed rgba(255,255,255,0.2)}
 .prod-thumb-large .prod-thumb-ico{font-size:60px;opacity:0.5}
 .prod-card .pinfo{flex:1;min-width:0}
-.prod-card .pprice{font-family:'Orbitron';font-size:14px;font-weight:900;color:#FF6D00;margin-top:4px}
+.prod-card .pprice{font-family:'Orbitron';font-size:14px;font-weight:900;color:#E5571E;margin-top:4px}
 .prod-card .pbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.prod-card .pbtns button{font-size:11px;padding:7px 10px;border-radius:10px;border:none;cursor:pointer;background:#fff;color:#FF6D00;font-weight:700;font-family:'Chakra Petch'}
+.prod-card .pbtns button{font-size:11px;padding:7px 10px;border-radius:10px;border:none;cursor:pointer;background:#fff;color:#E5571E;font-weight:700;font-family:'Chakra Petch'}
 </style>
 </head>
 <body>
@@ -162,7 +162,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
     <div id="login-form" style="width:100%">
       <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">TELEFONE</button>
+        <button id="login-tab-phone" onclick="setLoginTab('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#E5571E;border-radius:10px">TELEFONE</button>
         <button id="login-tab-email" onclick="setLoginTab('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">E-MAIL</button>
       </div>
       <div id="login-phone-field">
@@ -184,7 +184,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <div id="reg-method-choice" style="margin-bottom:16px">
         <p style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-bottom:12px">Cadastrar com:</p>
         <div style="display:flex;gap:8px">
-          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#FF6D00;border-radius:10px">📱 TELEFONE</button>
+          <button id="reg-tab-phone" onclick="setRegisterMethod('phone')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:#fff;color:#E5571E;border-radius:10px">📱 TELEFONE</button>
           <button id="reg-tab-email" onclick="setRegisterMethod('email')" style="flex:1;padding:10px;border:none;cursor:pointer;font-family:'Chakra Petch';font-size:12px;font-weight:600;letter-spacing:1px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border-radius:10px">✉️ E-MAIL</button>
         </div>
       </div>
@@ -508,7 +508,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
         <p style="font-size:13px;font-weight:700;letter-spacing:1px">PONTO DIGITAL</p>
         <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px">Registrar entrada, pausa e saída</p>
       </div>
-      <button onclick="showScreen('seller-clock')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#FF6D00;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
+      <button onclick="showScreen('seller-clock')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#E5571E;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
     </div>
   </div>
 </div>
@@ -575,7 +575,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
   <div id="seller-messages-top" style="margin-top:14px"></div>
   <div id="seller-messages-list" style="margin-top:10px"></div>
-  <button type="button" id="seller-msg-new-btn" style="position:fixed;right:calc(50% - 215px + 18px);bottom:92px;width:54px;height:54px;border-radius:50%;border:none;background:#fff;color:#FF6D00;font-size:26px;font-weight:900;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.25)">+</button>
+  <button type="button" id="seller-msg-new-btn" style="position:fixed;right:calc(50% - 215px + 18px);bottom:92px;width:54px;height:54px;border-radius:50%;border:none;background:#fff;color:#E5571E;font-size:26px;font-weight:900;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.25)">+</button>
 </div>
 
 <!-- SELLER MESSAGE DETAIL -->
@@ -927,14 +927,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
   <!-- CARD DUPLO DE SALDO: COMISSÃO (parceiro) + CASHBACK (cliente) -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
-    <div style="background:linear-gradient(135deg,#E05A0A,#A03E00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
+    <div style="background:linear-gradient(135deg,#C04816,#A03E00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
       <div>
         <p style="font-size:10px;letter-spacing:2px;opacity:.85">SALDO COMISSÃO</p>
         <h2 style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px;line-height:1.05">T$ <span id="partner-balance">0,00</span></h2>
       </div>
       <p style="font-size:10px;opacity:.85;margin-top:6px;line-height:1.3">Tier <strong id="partner-tier">bronze</strong> • <strong id="partner-rank">—</strong><br>Use pra trocar por produtos</p>
     </div>
-    <div style="background:linear-gradient(135deg,#FF8A33,#FF6D00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
+    <div style="background:linear-gradient(135deg,#FF8A33,#E5571E);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
       <div>
         <p style="font-size:10px;letter-spacing:2px;opacity:.85">SALDO CASHBACK</p>
         <h2 style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px;line-height:1.05">T$ <span id="partner-cashback-balance">0,00</span></h2>
@@ -955,14 +955,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
     <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px;text-align:center">
       <p style="font-size:9px;letter-spacing:1.5px;opacity:.6">TIER</p>
-      <p style="font-size:14px;font-family:'Orbitron';margin-top:6px;text-transform:uppercase;color:#FF6D00"><span id="partner-tier-2">bronze</span></p>
+      <p style="font-size:14px;font-family:'Orbitron';margin-top:6px;text-transform:uppercase;color:#E5571E"><span id="partner-tier-2">bronze</span></p>
     </div>
   </div>
 
   <!-- CUPOM EM DESTAQUE -->
   <div id="partner-coupon-card" style="background:rgba(255,109,0,0.1);border:1px solid rgba(255,109,0,0.4);border-radius:14px;padding:14px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div>
-      <p style="font-size:10px;letter-spacing:2px;color:#FF6D00">SEU CUPOM</p>
+      <p style="font-size:10px;letter-spacing:2px;color:#E5571E">SEU CUPOM</p>
       <p id="partner-coupon-code" style="font-size:24px;font-family:'Orbitron';font-weight:900;margin-top:4px">—</p>
       <p style="font-size:11px;opacity:.7;margin-top:2px"><span id="partner-coupon-discount">5</span>% de desconto pro cliente • <span id="partner-coupon-commission">3</span>% pra você</p>
     </div>
@@ -1694,9 +1694,9 @@ function setLoginTab(tab) {
   document.getElementById('login-phone-field').style.display = tab === 'phone' ? 'block' : 'none';
   document.getElementById('login-email-field').style.display = tab === 'email' ? 'block' : 'none';
   document.getElementById('login-tab-phone').style.background = tab === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-phone').style.color = tab === 'phone' ? '#E5571E' : 'rgba(255,255,255,0.6)';
   document.getElementById('login-tab-email').style.background = tab === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('login-tab-email').style.color = tab === 'email' ? '#E5571E' : 'rgba(255,255,255,0.6)';
 }
 
 async function doLogin() {
@@ -1731,9 +1731,9 @@ function setRegisterMethod(method) {
   document.getElementById('reg-step1-phone').style.display = method === 'phone' ? 'block' : 'none';
   document.getElementById('reg-step1-email').style.display = method === 'email' ? 'block' : 'none';
   document.getElementById('reg-tab-phone').style.background = method === 'phone' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-phone').style.color = method === 'phone' ? '#E5571E' : 'rgba(255,255,255,0.6)';
   document.getElementById('reg-tab-email').style.background = method === 'email' ? '#fff' : 'rgba(255,255,255,0.1)';
-  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#FF6D00' : 'rgba(255,255,255,0.6)';
+  document.getElementById('reg-tab-email').style.color = method === 'email' ? '#E5571E' : 'rgba(255,255,255,0.6)';
 }
 
 async function sendEmailRegisterCode() {
@@ -2144,7 +2144,7 @@ async function refreshSellerMessageBadge() {
   if (badge.n <= 0) { el.style.display = 'none'; return; }
   el.textContent = String(badge.n);
   el.style.display = 'inline-block';
-  el.style.background = badge.urgent ? '#FF5252' : (badge.high ? '#FF6D00' : '#FFD54F');
+  el.style.background = badge.urgent ? '#FF5252' : (badge.high ? '#E5571E' : '#FFD54F');
   el.style.color = badge.urgent || badge.high ? '#fff' : '#111';
 }
 
@@ -3178,7 +3178,7 @@ async function loadPartnerHome() {
       v.textContent = 'R$ ' + fmtBRL(s.saleAmount);
       const c = document.createElement('div');
       c.style.fontFamily = 'Orbitron';
-      c.style.color = '#FF6D00';
+      c.style.color = '#E5571E';
       c.style.fontWeight = '900';
       c.style.fontSize = '13px';
       c.textContent = '+ T$ ' + fmtBRL(s.commissionT);
@@ -3218,7 +3218,7 @@ async function loadPartnerCashbackMovements() {
     left.appendChild(desc); left.appendChild(dt);
     const right = document.createElement('div');
     const negative = (t.type || '').includes('out') || t.type === 'used' || t.type === 'admin_debit';
-    right.style.cssText = 'font-family:Orbitron;font-weight:900;font-size:13px;color:' + (negative ? '#FF5252' : '#FF6D00');
+    right.style.cssText = 'font-family:Orbitron;font-weight:900;font-size:13px;color:' + (negative ? '#FF5252' : '#E5571E');
     right.textContent = (negative ? '- ' : '+ ') + 'T$ ' + fmtBRL(t.amount);
     row.appendChild(left); row.appendChild(right);
     wrap.appendChild(row);
@@ -3286,7 +3286,7 @@ function flashFeedback(msg) {
   if (!el) {
     el = document.createElement('div');
     el.id = 'tc-flash';
-    el.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#FF6D00;color:#fff;padding:12px 20px;border-radius:30px;font-family:Chakra Petch;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:opacity .25s';
+    el.style.cssText = 'position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#E5571E;color:#fff;padding:12px 20px;border-radius:30px;font-family:Chakra Petch;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4);transition:opacity .25s';
     document.body.appendChild(el);
   }
   el.textContent = msg;
@@ -3323,7 +3323,7 @@ async function loadPartnerSalesScreen() {
   summary.innerHTML = '<p style="font-size:11px;opacity:.7;letter-spacing:2px">PERÍODO</p>'
     + '<p style="margin-top:6px"><span style="opacity:.7">Vendas:</span> <strong>' + sales.length + '</strong> &nbsp;•&nbsp; '
     + '<span style="opacity:.7">Receita:</span> <strong>R$ ' + fmtBRL(totalRevenue) + '</strong> &nbsp;•&nbsp; '
-    + '<span style="opacity:.7">Comissão:</span> <strong style="color:#FF6D00">T$ ' + fmtBRL(totalCommission) + '</strong></p>';
+    + '<span style="opacity:.7">Comissão:</span> <strong style="color:#E5571E">T$ ' + fmtBRL(totalCommission) + '</strong></p>';
   wrap.appendChild(summary);
 
   sales.forEach(function (s) {
@@ -3345,7 +3345,7 @@ async function loadPartnerSalesScreen() {
     r.style.cssText = 'font-size:12px;opacity:.75';
     r.textContent = 'R$ ' + fmtBRL(s.saleAmount);
     const com = document.createElement('div');
-    com.style.cssText = 'font-family:Orbitron;color:#FF6D00;font-weight:900;font-size:14px';
+    com.style.cssText = 'font-family:Orbitron;color:#E5571E;font-weight:900;font-size:14px';
     com.textContent = '+ T$ ' + fmtBRL(s.commissionT);
     right.appendChild(r); right.appendChild(com);
     top.appendChild(left); top.appendChild(right);
@@ -3458,7 +3458,7 @@ function renderPartnerRedeemCart() {
     name.style.fontSize = '13px';
     name.textContent = it.qty + 'x ' + (it.name || it.sku);
     const price = document.createElement('div');
-    price.style.cssText = 'font-family:Orbitron;color:#FF6D00;font-weight:700';
+    price.style.cssText = 'font-family:Orbitron;color:#E5571E;font-weight:700';
     price.textContent = 'T$ ' + fmtBRL((it.priceT || 0) * (it.qty || 1));
     const rem = document.createElement('button');
     rem.type = 'button';
@@ -3649,7 +3649,7 @@ async function initSellerPortfolio() {
         });
         btn.classList.add('active');
         btn.style.background = '#fff';
-        btn.style.color = '#FF6D00';
+        btn.style.color = '#E5571E';
         _spTab = btn.dataset.tab;
         loadSpContent();
       };

@@ -99,7 +99,7 @@ router.get('/nuvemshop/oauth/callback', async (req, res) => {
 
     res.send(`
       <html><body style="font-family:sans-serif;padding:30px">
-        <h1 style="color:#FF6D00">✓ Nuvemshop conectado!</h1>
+        <h1 style="color:#E5571E">✓ Nuvemshop conectado!</h1>
         <p>Conta ${userId} vinculada ao TenisCash.</p>
         <p><a href="/admin.html">Voltar ao admin</a></p>
       </body></html>

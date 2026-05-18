@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#FF6D00">
+<meta name="theme-color" content="#E5571E">
 <title>TenisCash</title>
 <link rel="manifest" href="/manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-body { font-family:'Chakra Petch',sans-serif; background:#FF6D00; color:#fff; min-height:100vh; max-width:430px; margin:0 auto; overflow-x:hidden; }
+body { font-family:'Chakra Petch',sans-serif; background:#E5571E; color:#fff; min-height:100vh; max-width:430px; margin:0 auto; overflow-x:hidden; }
 input { font-family:'Chakra Petch',sans-serif; }
 input::placeholder { color:rgba(255,255,255,0.35); }
 ::-webkit-scrollbar { width:0; }
@@ -48,7 +48,7 @@ input::placeholder { color:rgba(255,255,255,0.35); }
 .input-field { width:100%; padding:16px; margin-top:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; color:#fff; font-size:16px; outline:none; }
 .input-amount-wrap { display:flex; align-items:center; gap:8px; margin-top:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:12px; padding:12px 16px; }
 .input-amount { flex:1; background:transparent; border:none; color:#fff; font-size:34px; font-family:'Orbitron'; font-weight:900; outline:none; width:100%; }
-.btn-primary { width:100%; padding:18px; margin-top:30px; background:#fff; border:none; border-radius:14px; color:#FF6D00; font-size:15px; font-weight:700; cursor:pointer; font-family:'Chakra Petch'; letter-spacing:2px; box-shadow:0 4px 20px rgba(0,0,0,0.15); }
+.btn-primary { width:100%; padding:18px; margin-top:30px; background:#fff; border:none; border-radius:14px; color:#E5571E; font-size:15px; font-weight:700; cursor:pointer; font-family:'Chakra Petch'; letter-spacing:2px; box-shadow:0 4px 20px rgba(0,0,0,0.15); }
 .btn-outline { margin-top:30px; padding:14px 40px; background:transparent; border:2px solid #fff; border-radius:12px; color:#fff; font-size:14px; font-weight:600; cursor:pointer; font-family:'Chakra Petch'; }
 .success-circle { width:80px; height:80px; border-radius:50%; margin:0 auto 20px; background:rgba(255,255,255,0.15); border:3px solid #fff; display:flex; align-items:center; justify-content:center; font-size:36px; }
 .qr-box { width:220px; height:220px; margin:0 auto; background:#fff; border-radius:16px; padding:16px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 30px rgba(0,0,0,0.2); }
@@ -56,7 +56,7 @@ input::placeholder { color:rgba(255,255,255,0.35); }
 .promo-card { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:16px; padding:20px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
 .promo-card.inactive { opacity:0.5; border-color:rgba(255,255,255,0.06); }
 .promo-badge { background:#fff; border-radius:12px; padding:10px 16px; min-width:50px; text-align:center; box-shadow:0 2px 12px rgba(0,0,0,0.15); }
-.promo-badge span { font-family:'Orbitron'; font-size:18px; font-weight:900; color:#FF6D00; }
+.promo-badge span { font-family:'Orbitron'; font-size:18px; font-weight:900; color:#E5571E; }
 .profile-avatar { width:80px; height:80px; border-radius:50%; margin:0 auto 16px; background:rgba(255,255,255,0.12); border:3px solid #fff; display:flex; align-items:center; justify-content:center; }
 .profile-item { display:flex; align-items:center; gap:14px; padding:16px 0; border-bottom:1px solid rgba(255,255,255,0.08); cursor:pointer; }
 .badge { display:inline-block; padding:5px 16px; background:rgba(255,255,255,0.12); border-radius:20px; border:1px solid rgba(255,255,255,0.15); margin-top:8px; }
@@ -70,7 +70,7 @@ input::placeholder { color:rgba(255,255,255,0.35); }
 .login-logo { width:80px; height:80px; border-radius:50%; border:3px solid #fff; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.1); margin-bottom:20px; }
 .tab-switch { display:flex; gap:0; margin-bottom:30px; width:100%; }
 .tab-btn { flex:1; padding:12px; border:none; cursor:pointer; font-family:'Chakra Petch'; font-size:14px; font-weight:600; letter-spacing:1px; }
-.tab-btn.active { background:#fff; color:#FF6D00; border-radius:10px; }
+.tab-btn.active { background:#fff; color:#E5571E; border-radius:10px; }
 .tab-btn:not(.active) { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.6); border-radius:10px; }
 .error-msg { background:rgba(255,0,0,0.2); border:1px solid rgba(255,0,0,0.4); border-radius:10px; padding:12px; margin-top:10px; font-size:13px; text-align:center; }
 .loading { text-align:center; padding:40px; color:rgba(255,255,255,0.5); }
@@ -186,7 +186,7 @@ input::placeholder { color:rgba(255,255,255,0.35); }
   <div class="back-header"><span class="back-arrow" onclick="showScreen('home')">←</span><p style="font-size:18px;font-weight:700">Receber</p></div>
   <div style="text-align:center;margin-top:40px">
     <p style="color:rgba(255,255,255,0.85);font-size:13px;letter-spacing:2px;margin-bottom:20px">SEU CÓDIGO PARA RECEBER</p>
-    <div class="qr-box"><div style="width:100%;height:100%;background:repeating-conic-gradient(#FF6D00 0% 25%,#fff 0% 50%) 0 0/20px 20px;border-radius:8px"></div></div>
+    <div class="qr-box"><div style="width:100%;height:100%;background:repeating-conic-gradient(#E5571E 0% 25%,#fff 0% 50%) 0 0/20px 20px;border-radius:8px"></div></div>
     <p style="font-size:14px;font-weight:600;margin-top:20px" id="recv-name"></p>
     <p style="color:rgba(255,255,255,0.5);font-size:12px" id="recv-phone"></p>
     <p style="color:rgba(255,255,255,0.25);font-size:11px;margin-top:20px">Mostre este código para receber TenisCash</p>

@@ -237,7 +237,7 @@ app.get('/p/:id', async (req, res) => {
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;line-height:1.5}
   .container{max-width:680px;margin:0 auto;padding:16px;}
-  .header{background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;padding:16px 20px;border-radius:14px;margin-bottom:14px;text-align:center;box-shadow:0 8px 24px rgba(255,109,0,0.25);}
+  .header{background:linear-gradient(135deg,#E5571E,#EE7240);color:white;padding:16px 20px;border-radius:14px;margin-bottom:14px;text-align:center;box-shadow:0 8px 24px rgba(229,87,30,0.25);}
   .header h1{font-size:18px;font-weight:800;}
   .header p{font-size:12px;opacity:0.9;margin-top:2px;}
   .card{background:white;border-radius:14px;overflow:hidden;margin-bottom:14px;box-shadow:0 4px 12px rgba(0,0,0,0.04);}
@@ -246,24 +246,24 @@ app.get('/p/:id', async (req, res) => {
   .crsl img.crsl-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:12px;display:none}
   .crsl img.crsl-img.active{display:block}
   .crsl-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:2;-webkit-tap-highlight-color:transparent;}
-  .crsl-arrow:active{background:#FFE5D0;}
+  .crsl-arrow:active{background:#FCDAC4;}
   .crsl-arrow.prev{left:10px}
   .crsl-arrow.next{right:10px}
   .crsl-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:white;font-size:12px;font-weight:700;padding:4px 12px;border-radius:14px;z-index:2;}
   .thumbs{display:flex;gap:6px;padding:8px;overflow-x:auto;scrollbar-width:none;}
   .thumbs::-webkit-scrollbar{display:none}
   .thumb{flex-shrink:0;width:64px;height:64px;border:2px solid #e5e5ea;border-radius:8px;cursor:pointer;padding:3px;background:#f5f5f7;transition:all 0.15s;}
-  .thumb.active{border-color:#FF6D00;box-shadow:0 0 0 2px rgba(255,109,0,0.2);}
+  .thumb.active{border-color:#E5571E;box-shadow:0 0 0 2px rgba(229,87,30,0.2);}
   .thumb img{width:100%;height:100%;object-fit:contain;}
   .info{padding:18px;}
   .brand{display:inline-block;padding:4px 12px;background:linear-gradient(135deg,#1d1d1f,#3a3a3c);color:white;font-size:12px;font-weight:800;border-radius:8px;letter-spacing:0.5px;}
-  .price{font-size:28px;font-weight:800;color:#FF6D00;margin-top:8px;}
+  .price{font-size:28px;font-weight:800;color:#E5571E;margin-top:8px;}
   .name{font-size:20px;font-weight:700;color:#1d1d1f;line-height:1.3;margin-top:8px;}
   .sku{font-size:12px;color:#8e8e93;font-family:monospace;margin-top:6px;}
-  .ref{display:inline-block;background:#FFE5D0;color:#FF6D00;padding:3px 10px;border-radius:6px;font-weight:700;font-size:11px;font-family:monospace;margin-top:6px;}
+  .ref{display:inline-block;background:#FCDAC4;color:#E5571E;padding:3px 10px;border-radius:6px;font-weight:700;font-size:11px;font-family:monospace;margin-top:6px;}
   .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
   .pill{padding:5px 10px;border-radius:8px;font-size:11px;font-weight:700;}
-  .pill-type{background:#FFE5D0;color:#FF6D00;}
+  .pill-type{background:#FCDAC4;color:#E5571E;}
   .pill-gender{background:#e3f2fd;color:#0066cc;}
   .pill-modality{background:#f0f0f3;color:#1d1d1f;}
   .pill-tier{background:#fff8e0;color:#b06b00;}
