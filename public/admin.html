@@ -14,7 +14,20 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#FFEBDC;--card:#ffffff;--border:#FCDAC4;--orange:#E5571E;--orange2:#C04816;--green:#0a843d;--red:#d70015;--text:#1d1d1f;--text2:#6e6e73;--text3:#a1a1a6}
-body{font-family:'Chakra Petch',sans-serif;background:linear-gradient(135deg,#FFEBDC 0%,#FCDAC4 50%,#FAC5A0 100%);background-attachment:fixed;color:var(--text);min-height:100vh}
+body{font-family:'Chakra Petch',sans-serif;background:linear-gradient(135deg,#E5571E 0%,#EE7240 100%);background-attachment:fixed;color:#fff;min-height:100vh}
+/* Textos top-level (fora de cards) ficam brancos no fundo laranja */
+body > .section-title, body > .section-head .section-title, .section-head .section-title, .section-head{color:#fff}
+.section-title{color:#fff}
+/* Logo header */
+body > div[style*="font-family:Orbitron"]:not(.detail-content *){color:#fff}
+.muted{color:rgba(255,255,255,0.75)}
+.note{color:rgba(255,255,255,0.85)}
+/* Tabs no topo (fora de cards) */
+.tab{color:rgba(255,255,255,0.85);border-color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.1)}
+.tab:hover:not(.active){color:#fff;border-color:#fff;background:rgba(255,255,255,0.2)}
+.tab.active{background:#fff;color:#E5571E;border-color:#fff}
+.refresh-btn{color:#fff;border-color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.1)}
+.refresh-btn:hover{background:rgba(255,255,255,0.2);border-color:#fff;color:#fff}
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .login-box{width:100%;max-width:380px;text-align:center}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;background:rgba(255,109,0,0.1)}

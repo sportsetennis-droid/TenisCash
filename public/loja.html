@@ -42,7 +42,11 @@
     --gradient-info: linear-gradient(135deg, #0066cc 0%, #4d94ff 100%);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #FFEBDC 0%, #FCDAC4 100%); background-attachment: fixed; color: var(--text); min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #E5571E 0%, #EE7240 100%); background-attachment: fixed; color: #fff; min-height: 100vh; }
+  /* Textos top-level (fora de cards) ficam brancos no fundo laranja */
+  .page-title, .page-subtitle, body > h1, body > h2, body > h3 { color: #fff !important; }
+  .page-title { color: #fff !important; text-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .page-subtitle { color: rgba(255,255,255,0.9) !important; }
 
   /* Login */
   .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: linear-gradient(135deg, #fff 0%, #FCDAC4 100%); }
