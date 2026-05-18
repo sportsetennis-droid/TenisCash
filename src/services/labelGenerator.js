@@ -133,32 +133,38 @@ async function drawQR(doc, value, x, y, size) {
   }
 }
 
-// ===== Layout HORIZONTAL S&T (130mm × 15-25mm) =====
-// |  NOME (grande, negrito)                    [QR]       |
-// |  REF • Gen • Cat • Mod • Esp     R$ XXX,XX  []        |
-// QR escala com a altura disponível (máx 27mm).
+// ===== Layout HORIZONTAL S&T (130mm × 15-27mm) — FUNDO LARANJA =====
+// Fundo: laranja (#FF6D00) pintado em generateLabelsPDF antes desta função
+// Texto: branco. Preço: branco bem grande. QR: card branco atrás pra contraste.
 function drawLabelHorizontal(doc, item, template, x, y, w, h) {
+  const WHITE = '#FFFFFF';
   const padX = mm(1.5);
   // QR ocupa quase toda altura, mínimo 13mm, máximo 27mm
-  const qrSize = Math.min(mm(27), Math.max(mm(13), h - mm(1.5)));
+  const qrSize = Math.min(mm(27), Math.max(mm(13), h - mm(2)));
   const qrInsetY = (h - qrSize) / 2; // centraliza verticalmente
-  const qrX = x + w - qrSize - mm(1.5);
-  // Zona do preço — calculada baseada na altura disponível
-  const priceW = mm(32);
-  const priceX = qrX - priceW - mm(2);
-  const textW = priceX - x - padX - mm(2);
+  const qrPad = mm(1); // padding branco em volta do QR
+  const qrCardSize = qrSize + qrPad * 2;
+  const qrCardX = x + w - qrCardSize - mm(1);
+  const qrCardY = y + (h - qrCardSize) / 2;
+  const qrX = qrCardX + qrPad;
+  const qrY = qrCardY + qrPad;
 
-  const isTall = h >= mm(18); // layout em 2 linhas reais quando ≥18mm
-  const yOffset = isTall ? mm(1.5) : mm(1);
+  // Zona do preço — destaque grande, branco bold
+  const priceW = mm(36);
+  const priceX = qrCardX - priceW - mm(1.5);
+  const textW = priceX - x - padX - mm(1.5);
+
+  const isTall = h >= mm(18);
+  const yOffset = isTall ? mm(1.8) : mm(1);
   const lineGap = isTall ? mm(9) : mm(6);
 
-  // ===== NOME (linha 1) — fonte maior se etiqueta for mais alta
+  // ===== NOME (linha 1) — branco bold
   const name = String(item.name || '').toUpperCase();
   const nameFs = isTall ? 11 : 8;
-  doc.fontSize(nameFs).fillColor('#1d1d1f').font('Helvetica-Bold')
+  doc.fontSize(nameFs).fillColor(WHITE).font('Helvetica-Bold')
     .text(name, x + padX, y + yOffset, { width: textW, ellipsis: true, lineBreak: false });
 
-  // ===== TAGS (linha 2): REF • GEN • CAT • MOD • ESP
+  // ===== TAGS (linha 2): REF • Gen • Cat • Mod • Esp — branco regular
   const ref = String(item.supplierRef || item.sku || '').toUpperCase();
   const tags = [
     ref ? 'REF ' + ref : null,
@@ -168,29 +174,33 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     item.tier || null,
   ].filter(Boolean).join(' • ');
   const tagFs = isTall ? 8 : 6.5;
-  doc.fontSize(tagFs).fillColor('#555').font('Helvetica')
+  doc.fontSize(tagFs).fillColor(WHITE).font('Helvetica')
     .text(tags, x + padX, y + yOffset + lineGap, { width: textW, ellipsis: true, lineBreak: false });
 
-  // ===== PREÇO (centro) — destaque grande
+  // ===== PREÇO (centro) — branco, MUITO grande, destaque máximo
   const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
   const showPrice = usePromo ? item.promotionalPrice : item.price;
   if (showPrice != null) {
-    const priceFs = isTall ? 16 : 13;
+    const priceFs = isTall ? 20 : 14;
     if (usePromo && item.price) {
-      doc.fontSize(7).fillColor('#888').font('Helvetica')
+      doc.fontSize(7).fillColor(WHITE).font('Helvetica')
         .text(fmtBRL(item.price), priceX, y + yOffset, { width: priceW, align: 'center', strike: true });
-      doc.fontSize(priceFs).fillColor('#FF6D00').font('Helvetica-Bold')
+      doc.fontSize(priceFs).fillColor(WHITE).font('Helvetica-Bold')
         .text(fmtBRL(showPrice), priceX, y + yOffset + mm(4.5), { width: priceW, align: 'center', lineBreak: false });
     } else {
-      const priceY = isTall ? (y + (h - mm(priceFs * 0.4)) / 2 - mm(2)) : (y + mm(4));
-      doc.fontSize(priceFs).fillColor('#000').font('Helvetica-Bold')
+      // Centraliza verticalmente o preço
+      const priceY = y + (h - priceFs * 0.7) / 2 - mm(0.5);
+      doc.fontSize(priceFs).fillColor(WHITE).font('Helvetica-Bold')
         .text(fmtBRL(showPrice), priceX, priceY, { width: priceW, align: 'center', lineBreak: false });
     }
   }
 
-  // Marca posição do QR (renderizado em outra passada, com alta resolução)
+  // ===== CARD BRANCO atrás do QR (contraste sobre fundo laranja)
+  doc.rect(qrCardX, qrCardY, qrCardSize, qrCardSize)
+    .fillColor(WHITE).fill();
+  // Marca posição do QR pra render assíncrono em cima do card branco
   if (item.qrCodeValue) {
-    item._qrPos = { x: qrX, y: y + qrInsetY, size: qrSize };
+    item._qrPos = { x: qrX, y: qrY, size: qrSize };
   }
 }
 
@@ -327,9 +337,15 @@ async function generateLabelsPDF({ template, items, storeName }) {
     const y = marginY + row * (labelH + gapY);
 
     doc.save();
-    doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
+    // Layout S&T: fundo laranja sólido (130mm × 14-27mm)
+    const isST = Math.round(t.widthMm) === 130 && t.heightMm >= 14 && t.heightMm <= 27;
+    if (isST) {
+      doc.rect(x, y, labelW, labelH).fillColor('#FF6D00').fill();
+    } else {
+      doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
+    }
     if (storeName && t.showStore) {
-      doc.fontSize(6).fillColor('#aaa').text(storeName, x + mm(1), y + mm(1));
+      doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
     }
     drawLabelContent(doc, flat[i], t, x, y, labelW, labelH);
     if (flat[i]._qrPos) {
