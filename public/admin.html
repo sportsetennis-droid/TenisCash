@@ -830,11 +830,22 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
-    <input type="number" class="search-box" id="labels-qty" placeholder="Qtd por produto" value="1" min="1" style="width:140px">
-    <button type="button" class="btn btn-primary" id="labels-create-batch">Gerar lote</button>
   </div>
-  <!-- Compat: hidden mapeado pela PSBar (lbl-q) -->
+  <!-- Compat: hidden -->
   <input type="hidden" id="labels-search">
+  <input type="hidden" id="labels-qty" value="1">
+
+  <!-- CARRINHO de etiquetas selecionadas -->
+  <div id="labels-cart" style="position:sticky;top:10px;z-index:20;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#FF6D00,#FF9248);border-radius:14px;color:white;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-shadow:0 6px 18px rgba(255,109,0,0.25);">
+    <div style="flex:1;min-width:200px;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;opacity:0.9;">🛒 CARRINHO DE ETIQUETAS</div>
+      <div id="labels-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Nenhuma etiqueta selecionada</div>
+    </div>
+    <button type="button" id="labels-cart-show" style="padding:8px 14px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">📋 Ver lista</button>
+    <button type="button" id="labels-cart-clear" style="padding:8px 14px;background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;cursor:pointer;">Limpar</button>
+    <button type="button" id="labels-create-batch" style="padding:10px 18px;background:white;color:#FF6D00;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">📄 GERAR PDF A4</button>
+  </div>
+
   <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e use a busca acima.</div></div>
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">LOTES GERADOS</h4>
   <div id="labels-batches-wrap"></div>
@@ -5065,12 +5076,17 @@ async function loadAIAgents() {
 
 // ==================== ETIQUETAS ====================
 let _labelsInit = false;
-let _labelsSelected = {}; // {productId: qty}
+let _labelsSelected = {}; // legacy
+// Novo estado: { productId: { product, sizes: {'39': 2, '40': 1, _any: 0} } }
+let _lblSel = {};
+let _lblCacheProducts = {};
 async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
     document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); };
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
+    document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
+    document.getElementById('labels-cart-show').onclick = _lblShowCart;
     // PSBar padronizada — sincroniza com labels-search (hidden)
     if (window.PSBar) {
       await PSBar.mount('lbl', 'psbar-lbl', {
@@ -5082,6 +5098,13 @@ async function initLabelsTab() {
     }
   }
   await loadLabelTemplates();
+  // Auto-seleciona o template S&T 13x1,5cm se existir
+  const sel = document.getElementById('labels-template');
+  if (sel) {
+    const stOpt = [...sel.options].find(o => /S&T|13x1,5|13x15/i.test(o.textContent));
+    if (stOpt) sel.value = stOpt.value;
+  }
+  _lblUpdateCart();
   loadLabelBatches();
 }
 async function loadLabelTemplates() {
@@ -5105,59 +5128,136 @@ async function labelsSearchProducts() {
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const products = data.products || [];
-  if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
+  if (!products.length) { wrap.innerHTML = '<div class="muted" style="padding:30px;text-align:center;">Nenhum produto encontrado.</div>'; return; }
+
+  // Cacheia produtos pra uso ao gerar lote
+  products.forEach(p => { _lblCacheProducts[p.id] = p; });
+
+  // Cards
+  let html = `<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">${products.length} produtos. Clique nos tamanhos pra adicionar etiquetas.</p>`;
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">';
   products.forEach(p => {
-    const sel = _labelsSelected[p.id] ? 'checked' : '';
-    html += `<tr>
-      <td><input type="checkbox" data-pid="${p.id}" class="js-lbl-check" ${sel}></td>
-      <td><code>${escapeHtml(p.sku)}</code></td>
-      ${genderCell(p)}
-      <td>${escapeHtml(p.name)}</td>
-      ${sizesCell(p)}
-      <td>${escapeHtml(p.brand||'')}</td>
-      ${refCell(p)}
-      ${sportCell(p)}
-      <td>${escapeHtml(p.category||'')}</td>
-      ${descCell(p)}
-      ${locationCell(p)}
-      <td>R$ ${Number(p.price||0).toFixed(2)}</td>
-      <td>${p.promoPrice ? 'R$ '+Number(p.promoPrice).toFixed(2) : '—'}</td>
-      <td><input type="number" min="1" value="${_labelsSelected[p.id] || 1}" data-pid="${p.id}" class="js-lbl-qty" style="width:60px;padding:4px"></td>
-    </tr>`;
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    const cls = ctx.classification || {};
+    const ref = ctx.supplierRef || p.sku;
+    const sel = _lblSel[p.id] || { sizes: {} };
+    const totalThis = Object.values(sel.sizes || {}).reduce((s,n) => s + (n || 0), 0);
+    const sizes = (p.sizes || []).map(s => ({ size: s.size, stock: s.stock || 0, qty: sel.sizes?.[s.size] || 0 }));
+    const priceStr = 'R$ ' + Number(p.promoPrice || p.price || 0).toFixed(2).replace('.', ',');
+
+    html += `
+      <div style="background:white;border:1.5px solid ${totalThis > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;${totalThis > 0 ? 'box-shadow:0 6px 18px rgba(255,109,0,0.15);' : ''}">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;">` : '<div style="width:60px;height:60px;background:#f5f5f7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📦</div>'}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#1d1d1f;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${escapeHtml(p.name)}</div>
+            <div style="font-size:10px;color:#8e8e93;margin-top:3px;font-family:monospace;">REF ${escapeHtml(ref)}</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">
+              ${cls.gender ? `<span style="background:#e3f2fd;color:#0066cc;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.gender)}</span>` : ''}
+              ${p.category ? `<span style="background:#f5f5f7;color:#1d1d1f;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(p.category)}</span>` : ''}
+              ${cls.modality ? `<span style="background:#FFE5D0;color:#FF6D00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>` : ''}
+              ${cls.tier ? `<span style="background:#f5f5f7;color:#8e8e93;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.tier)}</span>` : ''}
+            </div>
+            <div style="font-size:18px;font-weight:800;color:#FF6D00;margin-top:6px;">${priceStr}</div>
+          </div>
+        </div>
+        <div style="border-top:1px dashed #e5e5ea;padding-top:8px;">
+          <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;margin-bottom:6px;">ETIQUETAS POR TAMANHO</div>
+          ${sizes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;">${sizes.map(s => `
+            <div style="background:${s.qty > 0 ? '#FFE5D0' : '#f5f5f7'};border:1.5px solid ${s.qty > 0 ? '#FF6D00' : '#e5e5ea'};border-radius:8px;padding:6px;text-align:center;">
+              <div style="font-size:14px;font-weight:800;color:#1d1d1f;">${escapeHtml(s.size)}</div>
+              <div style="font-size:9px;color:#8e8e93;margin-bottom:4px;">est: ${s.stock}</div>
+              <input type="number" min="0" max="200" value="${s.qty}" data-pid="${p.id}" data-size="${escapeHtml(s.size)}" class="js-lbl-sz-qty" style="width:100%;padding:3px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
+            </div>`).join('')}</div>`
+          : `<div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:11px;color:#8e8e93;">Sem tamanhos cadastrados — etiquetas genéricas:</span>
+              <input type="number" min="0" max="200" value="${sel.sizes?._any || 0}" data-pid="${p.id}" data-size="_any" class="js-lbl-sz-qty" style="width:80px;padding:5px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
+            </div>`}
+        </div>
+        ${totalThis > 0 ? `<div style="font-size:11px;color:#FF6D00;font-weight:700;text-align:right;">${totalThis} etiquetas selecionadas neste produto</div>` : ''}
+      </div>`;
   });
-  html += '</tbody></table>';
+  html += '</div>';
   wrap.innerHTML = html;
-  wrap.querySelectorAll('.js-lbl-check').forEach(c => {
-    c.onchange = (e) => {
-      const id = c.dataset.pid;
-      if (c.checked) {
-        const qtyInp = wrap.querySelector(`.js-lbl-qty[data-pid="${id}"]`);
-        _labelsSelected[id] = parseInt(qtyInp?.value || 1, 10);
-      } else delete _labelsSelected[id];
+
+  // Bind dos inputs de tamanho
+  wrap.querySelectorAll('.js-lbl-sz-qty').forEach(input => {
+    input.onchange = input.oninput = () => {
+      const pid = input.dataset.pid;
+      const size = input.dataset.size;
+      const qty = Math.max(0, parseInt(input.value, 10) || 0);
+      if (!_lblSel[pid]) _lblSel[pid] = { sizes: {} };
+      if (qty === 0) delete _lblSel[pid].sizes[size];
+      else _lblSel[pid].sizes[size] = qty;
+      if (!Object.keys(_lblSel[pid].sizes).length) delete _lblSel[pid];
+      _lblUpdateCart();
     };
   });
-  wrap.querySelectorAll('.js-lbl-qty').forEach(i => {
-    i.onchange = () => {
-      const id = i.dataset.pid;
-      if (_labelsSelected[id] != null) _labelsSelected[id] = parseInt(i.value, 10) || 1;
-    };
+}
+
+function _lblUpdateCart() {
+  const summary = document.getElementById('labels-cart-summary');
+  if (!summary) return;
+  let totalLabels = 0;
+  let totalProducts = 0;
+  Object.values(_lblSel).forEach(s => {
+    const sum = Object.values(s.sizes || {}).reduce((a,b) => a + (b || 0), 0);
+    if (sum > 0) totalProducts++;
+    totalLabels += sum;
   });
+  // Rerender só dos cards (atualiza visual do produto selecionado) — re-aplica style sem refazer tudo
+  document.querySelectorAll('#labels-products-wrap > div > div').forEach(card => {});
+  if (totalLabels === 0) summary.textContent = 'Nenhuma etiqueta selecionada';
+  else {
+    const folhas = Math.ceil(totalLabels / 18);
+    summary.textContent = `${totalLabels} etiqueta${totalLabels > 1 ? 's' : ''} • ${totalProducts} produto${totalProducts > 1 ? 's' : ''} • ${folhas} folha${folhas > 1 ? 's' : ''} A4`;
+  }
+}
+
+function _lblShowCart() {
+  const items = [];
+  Object.entries(_lblSel).forEach(([pid, s]) => {
+    const p = _lblCacheProducts[pid];
+    if (!p) return;
+    Object.entries(s.sizes || {}).forEach(([size, qty]) => {
+      if (qty > 0) items.push({ name: p.name, size: size === '_any' ? '—' : size, qty, sku: p.sku });
+    });
+  });
+  if (!items.length) { alert('Carrinho vazio'); return; }
+  let txt = 'CARRINHO (' + items.reduce((s,i) => s + i.qty, 0) + ' etiquetas):\n\n';
+  items.forEach(i => { txt += `• ${i.name} [${i.size}] x ${i.qty}\n`; });
+  alert(txt);
 }
 async function labelsCreateBatch() {
   const templateId = document.getElementById('labels-template').value;
   const usePromo = document.getElementById('labels-use-promo').checked;
-  const defaultQty = parseInt(document.getElementById('labels-qty').value, 10) || 1;
-  const productIds = Object.keys(_labelsSelected);
-  if (!productIds.length) { alert('Selecione pelo menos 1 produto'); return; }
+  // Constrói selections do novo estado
+  const selections = [];
+  Object.entries(_lblSel).forEach(([pid, s]) => {
+    Object.entries(s.sizes || {}).forEach(([size, qty]) => {
+      if (qty > 0) selections.push({ productId: pid, size: size === '_any' ? null : size, quantity: qty });
+    });
+  });
+  // Fallback: estado legacy (_labelsSelected)
+  if (!selections.length) {
+    Object.entries(_labelsSelected || {}).forEach(([pid, qty]) => {
+      if (qty > 0) selections.push({ productId: pid, quantity: qty });
+    });
+  }
+  if (!selections.length) { alert('Selecione pelo menos 1 etiqueta. Use os campos de quantidade por tamanho em cada card.'); return; }
+  if (!templateId) { alert('Escolha um template (recomendado: "S&T Etiqueta 13x1,5cm")'); return; }
   const data = await api('/admin/labels/batches/quick', 'POST', {
-    templateId, productIds, quantityPerProduct: defaultQty, usePromo,
+    templateId, selections, usePromo,
   });
   if (data.error) { alert('Erro: ' + data.error); return; }
-  alert('Lote criado: ' + data.batch.totalLabels + ' etiquetas. Abrindo PDF...');
+  // Abre PDF
   window.open('/api/admin/labels/batches/' + data.batch.id + '/pdf', '_blank');
+  // Limpa carrinho
+  _lblSel = {};
   _labelsSelected = {};
+  _lblUpdateCart();
   loadLabelBatches();
+  labelsSearchProducts();
 }
 async function loadLabelBatches() {
   const wrap = document.getElementById('labels-batches-wrap');

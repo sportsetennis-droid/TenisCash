@@ -18,6 +18,19 @@ function mm(x) { return x * MM_TO_PT; }
 
 function defaultTemplates() {
   return {
+    st_13x15: {
+      type: 'PRODUCT',
+      name: 'S&T Etiqueta 13x1,5cm (18 por A4)',
+      paperSize: 'A4',
+      widthMm: 130,
+      heightMm: 15,
+      columns: 1,
+      rows: 18,
+      marginTopMm: 11,
+      marginLeftMm: 40,
+      gapHorizontalMm: 0,
+      gapVerticalMm: 0,
+    },
     a4_65: {
       type: 'PRODUCT',
       name: 'A4 65 etiquetas (5x13)',
@@ -113,8 +126,61 @@ async function drawQR(doc, value, x, y, size) {
   } catch (_) { /* ignore */ }
 }
 
+// ===== Layout HORIZONTAL 130x15mm (S&T) =====
+// |  Nome • Ref • Gen • Cat • Mod • Esp    |   R$ XXX,XX   |  [QR]  |
+function drawLabelHorizontal(doc, item, template, x, y, w, h) {
+  // 3 zonas: esquerda (texto), meio (preço), direita (QR)
+  const padX = mm(2);
+  const qrSize = h - mm(2);
+  const qrX = x + w - qrSize - mm(2);
+  const priceW = mm(28);
+  const priceX = qrX - priceW - mm(2);
+  const textW = priceX - x - padX - mm(2);
+
+  // Linha de cima: NOME (negrito) + Ref
+  const name = String(item.name || '').toUpperCase();
+  const ref = String(item.supplierRef || item.sku || '').toUpperCase();
+  doc.fontSize(8).fillColor('#1d1d1f').font('Helvetica-Bold')
+    .text(name, x + padX, y + mm(1.5), { width: textW, ellipsis: true, lineBreak: false });
+
+  // Linha de baixo: REF • GEN • CAT • MOD • ESP
+  const tags = [
+    ref ? 'REF ' + ref : null,
+    item.gender || null,
+    item.category || null,
+    item.modality || null,
+    item.tier || null,
+  ].filter(Boolean).join(' • ');
+  doc.fontSize(6.5).fillColor('#555').font('Helvetica')
+    .text(tags, x + padX, y + mm(7.5), { width: textW, ellipsis: true, lineBreak: false });
+
+  // PREÇO em destaque (centralizado na zona do preço)
+  const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
+  const showPrice = usePromo ? item.promotionalPrice : item.price;
+  if (showPrice != null) {
+    if (usePromo && item.price) {
+      doc.fontSize(6).fillColor('#888').font('Helvetica')
+        .text(fmtBRL(item.price), priceX, y + mm(1.5), { width: priceW, align: 'center', strike: true });
+      doc.fontSize(13).fillColor('#FF6D00').font('Helvetica-Bold')
+        .text(fmtBRL(showPrice), priceX, y + mm(5.5), { width: priceW, align: 'center', lineBreak: false });
+    } else {
+      doc.fontSize(13).fillColor('#000').font('Helvetica-Bold')
+        .text(fmtBRL(showPrice), priceX, y + mm(4), { width: priceW, align: 'center', lineBreak: false });
+    }
+  }
+
+  // Marca posição do QR (renderizado em outra passada)
+  if (item.qrCodeValue) {
+    item._qrPos = { x: qrX, y: y + mm(1), size: qrSize };
+  }
+}
+
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
+  // Detecta layout S&T 130x15mm
+  if (Math.round(t.widthMm) === 130 && Math.round(t.heightMm) === 15) {
+    return drawLabelHorizontal(doc, item, template, x, y, w, h);
+  }
   let cursor = y + mm(2);
   const padX = x + mm(2);
   const innerW = w - mm(4);

@@ -16,34 +16,38 @@ async function ensureDefaultTemplates() {
   for (const key of Object.keys(defaults)) {
     const def = defaults[key];
     const existing = await prisma.labelTemplate.findFirst({ where: { name: def.name } });
+    // Template S&T 130x15mm tem layout horizontal especial: QR ON, barcode OFF
+    const isST = Math.round(def.widthMm) === 130 && Math.round(def.heightMm) === 15;
+    const wantedData = {
+      name: def.name,
+      type: def.type,
+      paperSize: def.paperSize,
+      widthMm: def.widthMm,
+      heightMm: def.heightMm,
+      columns: def.columns || 1,
+      rows: def.rows || 1,
+      marginTopMm: def.marginTopMm || 0,
+      marginLeftMm: def.marginLeftMm || 0,
+      gapHorizontalMm: def.gapHorizontalMm || 0,
+      gapVerticalMm: def.gapVerticalMm || 0,
+      showLogo: true,
+      showPrice: true,
+      showPromotionalPrice: isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE',
+      showBarcode: isST ? false : def.type !== 'PROMOTIONAL',
+      showQRCode: isST ? true : false,
+      showSku: true,
+      showProductName: true,
+      showBrand: true,
+      showSize: def.type === 'PRODUCT',
+      showColor: def.type === 'PRODUCT',
+      showStore: false,
+      isDefault: true,
+    };
     if (!existing) {
-      await prisma.labelTemplate.create({
-        data: {
-          name: def.name,
-          type: def.type,
-          paperSize: def.paperSize,
-          widthMm: def.widthMm,
-          heightMm: def.heightMm,
-          columns: def.columns || 1,
-          rows: def.rows || 1,
-          marginTopMm: def.marginTopMm || 0,
-          marginLeftMm: def.marginLeftMm || 0,
-          gapHorizontalMm: def.gapHorizontalMm || 0,
-          gapVerticalMm: def.gapVerticalMm || 0,
-          showLogo: true,
-          showPrice: true,
-          showPromotionalPrice: def.type === 'PROMOTIONAL' || def.type === 'PRICE',
-          showBarcode: def.type !== 'PROMOTIONAL',
-          showQRCode: false,
-          showSku: true,
-          showProductName: true,
-          showBrand: true,
-          showSize: def.type === 'PRODUCT',
-          showColor: def.type === 'PRODUCT',
-          showStore: false,
-          isDefault: true,
-        },
-      });
+      await prisma.labelTemplate.create({ data: wantedData });
+    } else if (isST && (existing.showQRCode === false || existing.showBarcode === true)) {
+      // Atualiza template S&T pré-existente pra usar o layout correto
+      await prisma.labelTemplate.update({ where: { id: existing.id }, data: { showQRCode: true, showBarcode: false } });
     }
   }
 }
@@ -140,16 +144,33 @@ router.get('/batches/:id/pdf', async (req, res) => {
       : [];
     const byId = Object.fromEntries(products.map((p) => [p.id, p]));
 
+    // Base URL pra QRs apontarem pra página pública do produto
+    const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+
     const items = batch.items.map((it) => {
       const p = it.productId ? byId[it.productId] : null;
+      const ctx = (() => {
+        if (!p) return {};
+        try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); }
+        catch { return {}; }
+      })();
+      const cls = ctx.classification || {};
+      // Mapeia gênero pra label curta de etiqueta
+      const genderLabel = { 'Masculino': 'HOMEM', 'Feminino': 'MULHER', 'Inf. M': 'MENINO', 'Inf. F': 'MENINA' }[cls.gender] || cls.gender || '';
       return {
         name: p ? p.name : (it.customText || ''),
         brand: p ? p.brand : '',
         sku: p ? p.sku : '',
+        supplierRef: ctx.supplierRef || null,
+        gender: genderLabel,
+        category: p ? p.category : '',
+        modality: cls.modality || '',
+        tier: cls.tier || '',
+        size: it.size || null,
         price: it.price != null ? it.price : (p ? p.price : null),
         promotionalPrice: it.promotionalPrice != null ? it.promotionalPrice : (p ? p.promoPrice : null),
         barcode: it.barcode || (p ? p.sku : null),
-        qrCodeValue: it.qrCodeValue || null,
+        qrCodeValue: it.qrCodeValue || (p ? `${baseUrl}/p/${p.id}` : null),
         quantity: it.quantity || 1,
       };
     });
@@ -209,21 +230,46 @@ router.delete('/batches/:id', async (req, res) => {
   }
 });
 
-// Cria lote rápido a partir de filtros de produto
+// Cria lote rápido a partir de filtros de produto.
+// Aceita 2 formatos:
+//   1) { productIds: [...], quantityPerProduct: N }  (legado)
+//   2) { selections: [{ productId, size?, quantity }] } (novo — por tamanho)
 router.post('/batches/quick', async (req, res) => {
   try {
-    const { templateId, name, productIds, quantityPerProduct, usePromo } = req.body || {};
+    const { templateId, name, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
-    if (!Array.isArray(productIds) || !productIds.length) return res.status(400).json({ error: 'productIds é obrigatório' });
 
-    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
-    const items = products.map((p) => ({
-      productId: p.id,
-      quantity: parseInt(quantityPerProduct, 10) || 1,
-      price: p.price,
-      promotionalPrice: usePromo ? p.promoPrice : null,
-      barcode: p.sku,
-    }));
+    let items = [];
+    if (Array.isArray(selections) && selections.length) {
+      // Formato novo: lista de seleções com size opcional + qty
+      const uniqueIds = [...new Set(selections.map(s => s.productId).filter(Boolean))];
+      const products = await prisma.product.findMany({ where: { id: { in: uniqueIds } } });
+      const byId = Object.fromEntries(products.map(p => [p.id, p]));
+      items = selections.filter(s => s.productId && byId[s.productId]).map(s => {
+        const p = byId[s.productId];
+        return {
+          productId: p.id,
+          quantity: Math.max(1, parseInt(s.quantity, 10) || 1),
+          price: p.price,
+          promotionalPrice: usePromo ? p.promoPrice : null,
+          barcode: p.sku,
+          size: s.size || null,
+          customText: s.size ? ('Tam: ' + s.size) : null,
+        };
+      });
+    } else if (Array.isArray(productIds) && productIds.length) {
+      const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+      items = products.map((p) => ({
+        productId: p.id,
+        quantity: parseInt(quantityPerProduct, 10) || 1,
+        price: p.price,
+        promotionalPrice: usePromo ? p.promoPrice : null,
+        barcode: p.sku,
+      }));
+    } else {
+      return res.status(400).json({ error: 'Envie productIds ou selections' });
+    }
+    if (!items.length) return res.status(400).json({ error: 'Nenhum item gerado' });
     const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0);
     const batch = await prisma.labelBatch.create({
       data: {
