@@ -13,8 +13,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#111;--card:#1a1a1a;--border:#2a2a2a;--orange:#FF6D00;--orange2:#E05A0A;--green:#4CAF50;--red:#FF5252;--text:#fff;--text2:rgba(255,255,255,0.6);--text3:rgba(255,255,255,0.3)}
-body{font-family:'Chakra Petch',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+:root{--bg:#FFF5EB;--card:#ffffff;--border:#FFE5D0;--orange:#FF6D00;--orange2:#E05A0A;--green:#0a843d;--red:#d70015;--text:#1d1d1f;--text2:#6e6e73;--text3:#a1a1a6}
+body{font-family:'Chakra Petch',sans-serif;background:linear-gradient(135deg,#FFF5EB 0%,#FFE5D0 50%,#FFD4B3 100%);background-attachment:fixed;color:var(--text);min-height:100vh}
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .login-box{width:100%;max-width:380px;text-align:center}
 .login-logo{width:80px;height:80px;border-radius:50%;border:3px solid var(--orange);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;background:rgba(255,109,0,0.1)}
@@ -49,17 +49,17 @@ body{font-family:'Chakra Petch',sans-serif;background:var(--bg);color:var(--text
 .section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:20px}
 .section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .section-title{font-size:16px;font-weight:700;letter-spacing:1px}
-.search-box{padding:10px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:'Chakra Petch';outline:none;width:260px}
+.search-box{padding:10px 16px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:'Chakra Petch';outline:none;width:260px}
 .search-box:focus{border-color:var(--orange)}
 .search-box::placeholder{color:var(--text3)}
 
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:11px;letter-spacing:2px;color:var(--text3);padding:10px 12px;border-bottom:1px solid var(--border)}
-td{padding:12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)}
-tr:hover td{background:rgba(255,255,255,0.02)}
+td{padding:12px;font-size:13px;border-bottom:1px solid rgba(0,0,0,0.04)}
+tr:hover td{background:rgba(0,0,0,0.02)}
 .badge-role{display:inline-block;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:1px}
 .badge-admin{background:rgba(255,109,0,0.15);color:var(--orange);border:1px solid rgba(255,109,0,0.3)}
-.badge-user{background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border)}
+.badge-user{background:rgba(0,0,0,0.05);color:var(--text2);border:1px solid var(--border)}
 .badge-super{background:rgba(76,175,80,0.15);color:var(--green);border:1px solid rgba(76,175,80,0.3)}
 .amount-pos{color:var(--green);font-family:'Orbitron';font-size:12px}
 .amount-neg{color:var(--red);font-family:'Orbitron';font-size:12px}
@@ -86,13 +86,13 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .btn-danger{border-color:rgba(255,82,82,0.35);color:rgba(255,82,82,0.9)}
 .btn-danger:hover{border-color:var(--red);color:var(--red)}
 .form-grid{display:grid;grid-template-columns:1.2fr 1fr auto;gap:10px}
-.form-input{padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:13px;font-family:'Chakra Petch';outline:none;width:100%}
+.form-input{padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;font-family:'Chakra Petch';outline:none;width:100%}
 .form-input:focus{border-color:var(--orange)}
 .picker{position:relative}
 .picker-list{position:absolute;top:44px;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;max-height:240px;overflow:auto;z-index:20}
-.picker-item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer}
-.picker-item:hover{background:rgba(255,255,255,0.03)}
-.picker-item strong{color:#fff}
+.picker-item{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.06);cursor:pointer}
+.picker-item:hover{background:rgba(0,0,0,0.03)}
+.picker-item strong{color:var(--text)}
 .picker-item .sub{font-size:11px;color:var(--text2);margin-top:4px}
 .note{font-size:12px;color:var(--text2);line-height:1.5;margin-top:10px}
 .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;border:1px solid var(--border);color:var(--text2)}
@@ -123,10 +123,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .enrich-cat-input{width:100%}
 .enrich-progress{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
 .enrich-progress h4{font-family:Orbitron;letter-spacing:2px;font-size:13px;color:var(--orange);margin:0 0 10px}
-.enrich-bar{height:10px;background:rgba(255,255,255,0.05);border-radius:6px;overflow:hidden;margin:6px 0 10px;border:1px solid var(--border)}
+.enrich-bar{height:10px;background:rgba(0,0,0,0.05);border-radius:6px;overflow:hidden;margin:6px 0 10px;border:1px solid var(--border)}
 .enrich-bar-fill{height:100%;background:linear-gradient(90deg,var(--orange),#FFB269);transition:width .4s ease}
 .enrich-progress .enrich-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:8px;font-size:12px}
-.enrich-progress .enrich-stat{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.enrich-progress .enrich-stat{background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
 .enrich-progress .enrich-stat strong{display:block;font-family:Orbitron;color:var(--orange);font-size:16px;margin-top:2px}
 .enrich-progress .enrich-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .enrich-progress .enrich-errors{max-height:160px;overflow:auto;background:rgba(255,82,82,0.06);border:1px solid rgba(255,82,82,0.25);border-radius:10px;padding:8px 12px;font-size:12px;color:#FFB3B3;margin-top:10px}
@@ -134,7 +134,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .product-status{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:13px;margin-right:6px}
 .product-status.ok{background:rgba(76,175,80,0.18);color:#A8FFB0}
 .product-status.miss{background:rgba(255,109,0,0.18);color:var(--orange)}
-.admin-prod-thumb{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:8px;background:rgba(255,255,255,0.04);overflow:hidden;border:1px solid var(--border)}
+.admin-prod-thumb{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:8px;background:rgba(0,0,0,0.04);overflow:hidden;border:1px solid var(--border)}
 .admin-prod-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .admin-prod-thumb.placeholder{border:1px dashed rgba(255,255,255,0.18);color:var(--text3);font-size:18px}
 
@@ -143,7 +143,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .detail-content{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:30px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto}
 .detail-close{float:right;font-size:20px;cursor:pointer;color:var(--text2);background:none;border:none}
 .detail-close:hover{color:#fff}
-.detail-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px}
+.detail-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.05);font-size:13px}
 .detail-row .label{color:var(--text3);font-size:11px;letter-spacing:1px}
 .detail-row .value{text-align:right}
 
@@ -519,7 +519,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <button class="refresh-btn" onclick="loadSellers()">↻</button>
     </div>
 
-    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:16px">
+    <div style="background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:14px;padding:16px">
       <div style="font-size:12px;letter-spacing:2px;color:var(--text3);margin-bottom:10px">TORNAR VENDEDOR</div>
 
       <div class="form-grid">
@@ -967,7 +967,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div id="ns-enrich-result" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
   </div>
 
-  <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
+  <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
     <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🚀 PASSO 2: SUBIR PRA NUVEMSHOP</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button type="button" class="btn btn-primary" id="ns-push-missing">Subir só os NÃO sincronizados</button>
@@ -1250,7 +1250,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div id="img-google-status" style="margin-bottom:12px;font-size:12px;color:var(--text2)"></div>
 
   <!-- Pipeline de status: Catálogo → Estoque → Imagem → Nuvemshop -->
-  <div id="img-pipeline" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;background:rgba(255,255,255,0.02)">
+  <div id="img-pipeline" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;background:rgba(0,0,0,0.02)">
     <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:var(--text2);margin-bottom:10px">📊 PIPELINE — FLUXO DO PRODUTO NO SISTEMA</div>
     <div id="img-pipeline-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
       <div class="loading-spinner">Carregando...</div>
@@ -3829,7 +3829,7 @@ async function openClockinSeller(userId, name, period) {
     html += '<div class="empty-state" style="padding:20px">Sem registros no período</div>';
   } else {
     days.forEach(d => {
-      html += '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px;margin-bottom:10px;background:rgba(255,255,255,0.02)">';
+      html += '<div style="border:1px solid rgba(0,0,0,0.06);border-radius:12px;padding:14px;margin-bottom:10px;background:rgba(0,0,0,0.02)">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
       html += '<div style="font-weight:800">' + escapeHtml(d.date) + '</div>';
       html += '<div style="font-family:Orbitron;color:#fff">' + formatHM(d.summary?.workedMinutes) + '</div>';
@@ -3838,7 +3838,7 @@ async function openClockinSeller(userId, name, period) {
       html += '<div style="margin-top:10px">';
       (d.points || []).forEach(p => {
         const t = new Date(p.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">';
+        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.05)">';
         html += '<span style="font-size:12px;color:var(--text2)">' + escapeHtml(p.type) + '</span>';
         html += '<span style="font-family:Orbitron;font-size:12px">' + t + '</span>';
         html += '</div>';
@@ -4925,7 +4925,7 @@ async function aiShowOrch(id) {
     html += `<div style="font-family:Orbitron;font-size:13px;letter-spacing:2px;color:var(--orange);margin-bottom:8px">✅ APROVAÇÕES (${o.approvals.length})</div>`;
     o.approvals.forEach(a => {
       const color = a.status === 'executed' ? '#7b7' : a.status === 'approved' ? '#5b9' : a.status === 'rejected' ? '#e35' : '#e90';
-      html += `<div style="border-left:3px solid ${color};padding:10px 12px;margin-bottom:6px;background:rgba(255,255,255,0.02)">`;
+      html += `<div style="border-left:3px solid ${color};padding:10px 12px;margin-bottom:6px;background:rgba(0,0,0,0.02)">`;
       html += `<div style="font-size:14px;font-weight:600">${escapeHtml(a.title)}</div>`;
       html += `<div style="font-size:12px;color:var(--text2);margin-top:4px">Status: <strong>${escapeHtml(a.status)}</strong> · Tipo: <code>${escapeHtml(a.type)}</code> · Risco: ${escapeHtml(a.riskLevel || '-')}</div>`;
       if (a.description) html += `<div style="font-size:13px;color:var(--text2);margin-top:6px">${escapeHtml(a.description)}</div>`;
@@ -4955,7 +4955,7 @@ async function aiShowOrch(id) {
     const m = materials[code];
     if (!m) return;
     const title = agentTitles[code] || code;
-    html += `<div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,0.02)">`;
+    html += `<div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:rgba(0,0,0,0.02)">`;
     html += `<div style="font-size:15px;font-weight:700;color:var(--orange);margin-bottom:10px">${title}</div>`;
 
     if (m._degraded) {
@@ -6645,7 +6645,7 @@ async function imgRunSearch(productId) {
     const urlEnc = encodeURIComponent(it.url);
     const selected = _imgSelection[productId]?.has(it.url);
     html += `<div id="img-card-${productId}-${i}" data-url="${escapeHtml(it.url)}" onclick="imgToggleSelect('${productId}', this)"
-      style="cursor:pointer;position:relative;border:2px solid ${selected ? 'var(--orange)' : 'var(--border)'};border-radius:8px;padding:8px;background:${selected ? 'rgba(255,153,0,0.12)' : 'rgba(255,255,255,0.03)'};transition:all .15s">
+      style="cursor:pointer;position:relative;border:2px solid ${selected ? 'var(--orange)' : 'var(--border)'};border-radius:8px;padding:8px;background:${selected ? 'rgba(255,153,0,0.12)' : 'rgba(0,0,0,0.03)'};transition:all .15s">
       <div style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:${selected ? 'var(--orange)' : 'rgba(0,0,0,0.6)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;border:1px solid #fff">${selected ? '✓' : ''}</div>
       <img src="${escapeHtml(it.thumbnailUrl||it.url)}" style="width:100%;height:160px;object-fit:contain;background:#fff;border-radius:6px;pointer-events:none" onerror="this.style.opacity=0.3">
       <div style="font-size:10px;color:var(--text2);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.source||'')}</div>
@@ -6664,7 +6664,7 @@ function imgToggleSelect(productId, cardEl) {
   if (sel.has(url)) {
     sel.delete(url);
     cardEl.style.border = '2px solid var(--border)';
-    cardEl.style.background = 'rgba(255,255,255,0.03)';
+    cardEl.style.background = 'rgba(0,0,0,0.03)';
     const check = cardEl.querySelector('div');
     check.style.background = 'rgba(0,0,0,0.6)';
     check.textContent = '';
