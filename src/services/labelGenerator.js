@@ -158,15 +158,24 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   const yOffset = isTall ? mm(1.8) : mm(1);
   const lineGap = isTall ? mm(9) : mm(6);
 
-  // ===== NOME (linha 1) — branco bold
-  const name = String(item.name || '').toUpperCase();
-  const nameFs = isTall ? 11 : 8;
-  doc.fontSize(nameFs).fillColor(WHITE).font('Helvetica-Bold')
-    .text(name, x + padX, y + yOffset, { width: textW, ellipsis: true, lineBreak: false });
+  // Helper: trunca string respeitando limite de chars (com … no fim)
+  const truncate = (s, max) => {
+    const t = String(s || '');
+    return t.length > max ? t.slice(0, max - 1) + '…' : t;
+  };
 
-  // ===== TAGS (linha 2): REF • Gen • Cat • Mod • Esp — branco regular
+  // ===== NOME (linha 1) — branco bold, truncado pra caber numa linha só
+  // Em 11pt bold sobre ~70mm de largura → ~36-40 chars cabem
+  const rawName = String(item.name || '').toUpperCase();
+  const nameFs = isTall ? 11 : 8;
+  const nameMaxChars = isTall ? 38 : 50;
+  const name = truncate(rawName, nameMaxChars);
+  doc.fontSize(nameFs).fillColor(WHITE).font('Helvetica-Bold')
+    .text(name, x + padX, y + yOffset, { width: textW, height: nameFs * 1.3, ellipsis: true, lineBreak: false });
+
+  // ===== TAGS (linha 2): REF • Gen • Cat • Mod • Esp — branco regular, truncada
   const ref = String(item.supplierRef || item.sku || '').toUpperCase();
-  const tags = [
+  const rawTags = [
     ref ? 'REF ' + ref : null,
     item.gender || null,
     item.category || null,
@@ -174,8 +183,10 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     item.tier || null,
   ].filter(Boolean).join(' • ');
   const tagFs = isTall ? 8 : 6.5;
+  const tagMaxChars = isTall ? 60 : 75;
+  const tags = truncate(rawTags, tagMaxChars);
   doc.fontSize(tagFs).fillColor(WHITE).font('Helvetica')
-    .text(tags, x + padX, y + yOffset + lineGap, { width: textW, ellipsis: true, lineBreak: false });
+    .text(tags, x + padX, y + yOffset + lineGap, { width: textW, height: tagFs * 1.3, ellipsis: true, lineBreak: false });
 
   // ===== PREÇO (centro) — branco, MUITO grande, destaque máximo
   const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
