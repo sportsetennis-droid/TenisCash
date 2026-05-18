@@ -208,20 +208,64 @@ router.put('/lifecycle/:productId', async (req, res) => {
   }
 });
 
-// Ajuste manual de estoque (de tamanho específico)
+// Ajuste manual de estoque.
+// Aceita 2 modos:
+//   1) Clássico: { productSizeId, delta, reason } — soma delta no ProductSize.stock
+//   2) Contagem física: { productId, productSizeId|size, storeId, newStock, previousStock, reason }
+//      — atualiza StoreStock daquela loja (cria se não existir) e recalcula
+//      o stock agregado em ProductSize somando todas as lojas.
 router.post('/adjust', async (req, res) => {
   try {
-    const { productSizeId, delta, reason } = req.body || {};
+    const { productSizeId, delta, reason, storeId, newStock, productId, size } = req.body || {};
+
+    // Modo Contagem Física (com storeId)
+    if (storeId != null) {
+      if (newStock == null) return res.status(400).json({ error: 'newStock é obrigatório no modo contagem' });
+      let psId = productSizeId;
+      // Se não veio productSizeId mas veio size + productId, acha
+      if (!psId && productId && size) {
+        const found = await prisma.productSize.findFirst({ where: { productId, size: String(size) } });
+        if (!found) return res.status(404).json({ error: 'ProductSize não encontrado pra esse productId+size' });
+        psId = found.id;
+      }
+      if (!psId) return res.status(400).json({ error: 'productSizeId ou productId+size é obrigatório' });
+
+      const newQty = Math.max(0, parseInt(newStock, 10) || 0);
+      // Upsert StoreStock
+      const existing = await prisma.storeStock.findFirst({ where: { productSizeId: psId, storeId } });
+      let storeStock;
+      if (existing) {
+        storeStock = await prisma.storeStock.update({ where: { id: existing.id }, data: { stock: newQty } });
+      } else {
+        storeStock = await prisma.storeStock.create({ data: { productSizeId: psId, storeId, stock: newQty } });
+      }
+      // Recalcula stock agregado em ProductSize.stock somando todas as lojas
+      const allStocks = await prisma.storeStock.findMany({ where: { productSizeId: psId } });
+      const totalAgg = allStocks.reduce((s, x) => s + (x.stock || 0), 0);
+      await prisma.productSize.update({ where: { id: psId }, data: { stock: totalAgg } });
+
+      return res.json({
+        ok: true,
+        productSizeId: psId,
+        storeId,
+        newStockInStore: newQty,
+        totalStockAgg: totalAgg,
+        reason: reason || null,
+      });
+    }
+
+    // Modo Clássico (sem storeId) — só ajuste no ProductSize agregado
     if (!productSizeId || delta == null) return res.status(400).json({ error: 'productSizeId e delta são obrigatórios' });
-    const size = await prisma.productSize.findUnique({ where: { id: productSizeId } });
-    if (!size) return res.status(404).json({ error: 'Tamanho não encontrado' });
-    const newStock = Math.max(0, (size.stock || 0) + parseInt(delta, 10));
+    const sizeRec = await prisma.productSize.findUnique({ where: { id: productSizeId } });
+    if (!sizeRec) return res.status(404).json({ error: 'Tamanho não encontrado' });
+    const newStockClassic = Math.max(0, (sizeRec.stock || 0) + parseInt(delta, 10));
     const updated = await prisma.productSize.update({
       where: { id: productSizeId },
-      data: { stock: newStock },
+      data: { stock: newStockClassic },
     });
-    res.json({ size: updated, previousStock: size.stock, delta: parseInt(delta, 10), reason: reason || null });
+    res.json({ size: updated, previousStock: sizeRec.stock, delta: parseInt(delta, 10), reason: reason || null });
   } catch (err) {
+    console.error('[inventory/adjust]', err);
     res.status(500).json({ error: 'Erro ao ajustar estoque', detail: err.message });
   }
 });

@@ -372,6 +372,12 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div class="hub-card-desc">Imprimir preço + código de barras</div>
         <span class="hub-card-badge">LOJA</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('stocktake')">
+        <div class="hub-card-icon">📋</div>
+        <div class="hub-card-title">Contagem</div>
+        <div class="hub-card-desc">Inventário físico com cards + ajuste por loja</div>
+        <span class="hub-card-badge">ESTOQUE</span>
+      </button>
     </div>
 
     <!-- CATEGORIA: VENDAS -->
@@ -850,6 +856,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <div id="labels-products-wrap"><div class="loading-spinner">Selecione um template e use a busca acima.</div></div>
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">LOTES GERADOS</h4>
   <div id="labels-batches-wrap"></div>
+</div>
+
+<!-- CONTAGEM (Inventário Físico) -->
+<div class="section" id="tab-stocktake" style="display:none">
+  <div class="section-head">
+    <span class="section-title">📋 Contagem de Estoque</span>
+    <button type="button" class="refresh-btn" id="stk-refresh">↻</button>
+  </div>
+  <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">Conta o estoque físico, compara com o sistema e gera ajustes por loja.</p>
+  <div id="psbar-stk"></div>
+  <!-- Painel sticky com totais -->
+  <div id="stk-cart" style="position:sticky;top:10px;z-index:20;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#0066cc,#3b8dd4);border-radius:14px;color:white;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-shadow:0 6px 18px rgba(0,102,204,0.25);">
+    <div style="flex:1;min-width:200px;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;opacity:0.9;">📋 SESSÃO DE CONTAGEM</div>
+      <div id="stk-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Selecione uma loja e busque produtos</div>
+    </div>
+    <select id="stk-store" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.15);color:white;font-size:13px;font-weight:600;"><option value="">— escolha a loja —</option></select>
+    <button type="button" id="stk-save" style="padding:10px 18px;background:white;color:#0066cc;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">💾 SALVAR AJUSTES</button>
+  </div>
+  <div id="stk-list-wrap"><div class="loading-spinner">Buscando produtos...</div></div>
 </div>
 
 <!-- CURADORIA EXPOSTA -->
@@ -4253,7 +4279,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images','markup'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images','markup','stocktake'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -4274,6 +4300,7 @@ function switchTab(tab, btn) {
   if (tab === 'suppliers') { initSuppliersTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
+  if (tab === 'stocktake') { initStocktakeTab(); }
   if (tab === 'images') { initImagesTab(); }
   if (tab === 'markup') { initMarkupTab(); }
 }
@@ -5084,7 +5111,7 @@ let _lblCacheProducts = {};
 async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
-    document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); };
+    document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); labelsSearchProducts(); };
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
     document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
@@ -5106,7 +5133,168 @@ async function initLabelsTab() {
     if (stOpt) sel.value = stOpt.value;
   }
   _lblUpdateCart();
+  // Auto-carrega produtos pra cards já aparecerem (sem precisar buscar)
+  labelsSearchProducts();
   loadLabelBatches();
+}
+
+// ==================== CONTAGEM (STOCKTAKE) ====================
+let _stkInit = false;
+let _stkCounts = {}; // { 'productSizeId|storeId': { productId, size, storeId, counted, expected } }
+
+async function initStocktakeTab() {
+  if (!_stkInit) {
+    _stkInit = true;
+    document.getElementById('stk-refresh').onclick = stkLoadProducts;
+    document.getElementById('stk-save').onclick = stkSaveAdjustments;
+    // Popula seletor de loja
+    try {
+      const data = await api('/stores');
+      const stores = data.stores || [];
+      const sel = document.getElementById('stk-store');
+      sel.innerHTML = '<option value="">— escolha a loja —</option>' + stores.map(s => `<option value="${s.id}" data-code="${s.code}">${s.code} — ${s.name}</option>`).join('');
+      sel.onchange = () => { _stkCounts = {}; stkLoadProducts(); };
+    } catch (e) { console.warn('stocktake stores', e); }
+    if (window.PSBar) {
+      await PSBar.mount('stk', 'psbar-stk', {
+        onSearch: () => stkLoadProducts(),
+      });
+    }
+  }
+  stkUpdateSummary();
+  stkLoadProducts();
+}
+
+async function stkLoadProducts() {
+  const wrap = document.getElementById('stk-list-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Buscando produtos...</div>';
+  const storeId = document.getElementById('stk-store').value;
+  const f = window.PSBar ? PSBar.getFilters('stk') : {};
+  const qs = new URLSearchParams();
+  if (f.search) qs.set('search', f.search);
+  if (f.brand) qs.set('brand', f.brand);
+  if (f.category) qs.set('category', f.category);
+  if (f.gender) qs.set('gender', f.gender);
+  if (f.modality) qs.set('modality', f.modality);
+  if (f.tier) qs.set('tier', f.tier);
+  if (f.supplier) qs.set('supplier', f.supplier);
+  const data = await api('/admin/catalog/products?' + qs.toString());
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const products = data.products || [];
+  if (!products.length) { wrap.innerHTML = '<div class="muted" style="padding:30px;text-align:center;">Nenhum produto.</div>'; return; }
+
+  let html = `<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">${products.length} produtos${storeId ? ' • ajustando estoque da loja selecionada' : ' • escolha uma loja pra contar'}</p>`;
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">';
+  products.forEach(p => {
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    const cls = ctx.classification || {};
+    const ref = ctx.supplierRef || p.sku;
+    // Cada tamanho do produto: expected = stock atual nesta loja
+    const rows = (p.sizes || []).map(sz => {
+      let expected = 0;
+      let psId = sz.id;
+      if (storeId) {
+        const ss = (sz.storeStocks || []).find(s => s.storeId === storeId || s.store?.id === storeId);
+        expected = ss?.stock || 0;
+      } else {
+        expected = sz.stock || 0;
+      }
+      const key = (psId || sz.size) + '|' + (storeId || 'all');
+      const counted = _stkCounts[key]?.counted;
+      return { size: sz.size, expected, key, counted, productSizeId: psId };
+    });
+
+    html += `<div style="background:white;border:1.5px solid #e5e5ea;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">`;
+    html += `<div style="display:flex;gap:10px;align-items:flex-start;">`;
+    html += p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;">` : `<div style="width:60px;height:60px;background:#f5f5f7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📦</div>`;
+    html += `<div style="flex:1;min-width:0;">`;
+    html += `<div style="font-size:13px;font-weight:700;color:#1d1d1f;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${escapeHtml(p.name)}</div>`;
+    html += `<div style="font-size:10px;color:#8e8e93;margin-top:3px;font-family:monospace;">REF ${escapeHtml(ref)}</div>`;
+    html += `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">`;
+    if (cls.gender) html += `<span style="background:#e3f2fd;color:#0066cc;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.gender)}</span>`;
+    if (p.category) html += `<span style="background:#f5f5f7;color:#1d1d1f;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(p.category)}</span>`;
+    if (cls.modality) html += `<span style="background:#FFE5D0;color:#FF6D00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.modality)}</span>`;
+    if (cls.tier) html += `<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;">${escapeHtml(cls.tier)}</span>`;
+    html += '</div></div></div>';
+    // Grid de contagem por tamanho
+    html += `<div style="border-top:1px dashed #e5e5ea;padding-top:8px;">`;
+    html += `<div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;margin-bottom:6px;">SISTEMA / CONTADO POR TAMANHO</div>`;
+    if (rows.length) {
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px;">`;
+      rows.forEach(r => {
+        const diff = (r.counted != null) ? (r.counted - r.expected) : null;
+        const diffColor = diff == null ? '#8e8e93' : diff === 0 ? '#0a843d' : diff > 0 ? '#0066cc' : '#d70015';
+        const bg = r.counted != null ? '#e3f2fd' : '#f5f5f7';
+        const border = r.counted != null ? '#0066cc' : '#e5e5ea';
+        html += `<div style="background:${bg};border:1.5px solid ${border};border-radius:8px;padding:6px;text-align:center;">`;
+        html += `<div style="font-size:14px;font-weight:800;color:#1d1d1f;">${escapeHtml(r.size)}</div>`;
+        html += `<div style="font-size:9px;color:#8e8e93;margin-bottom:4px;">sistema: <b>${r.expected}</b></div>`;
+        html += `<input type="number" min="0" max="999" value="${r.counted != null ? r.counted : ''}" placeholder="?" data-pid="${p.id}" data-size="${escapeHtml(r.size)}" data-psid="${r.productSizeId || ''}" data-expected="${r.expected}" class="js-stk-cnt" style="width:100%;padding:3px;border:1px solid #e5e5ea;border-radius:5px;font-size:13px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">`;
+        if (diff != null) html += `<div style="font-size:10px;font-weight:700;color:${diffColor};margin-top:3px;">${diff > 0 ? '+' : ''}${diff}</div>`;
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="muted" style="font-size:11px;text-align:center;padding:6px;">Sem tamanhos cadastrados.</div>';
+    }
+    html += '</div></div>';
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  // Bind inputs de contagem
+  wrap.querySelectorAll('.js-stk-cnt').forEach(input => {
+    input.onchange = input.oninput = () => {
+      const pid = input.dataset.pid;
+      const size = input.dataset.size;
+      const psid = input.dataset.psid;
+      const expected = parseInt(input.dataset.expected, 10) || 0;
+      const key = (psid || size) + '|' + (storeId || 'all');
+      const v = input.value;
+      if (v === '' || v == null) delete _stkCounts[key];
+      else _stkCounts[key] = { productId: pid, productSizeId: psid, size, storeId, expected, counted: parseInt(v, 10) || 0 };
+      stkUpdateSummary();
+    };
+  });
+}
+
+function stkUpdateSummary() {
+  const sum = document.getElementById('stk-cart-summary');
+  if (!sum) return;
+  const entries = Object.values(_stkCounts);
+  if (!entries.length) { sum.textContent = 'Selecione uma loja e busque produtos'; return; }
+  let diffs = 0, exact = 0, total = entries.length;
+  entries.forEach(e => { if ((e.counted - e.expected) === 0) exact++; else diffs++; });
+  sum.textContent = `${total} itens contados • ${exact} OK • ${diffs} divergências`;
+}
+
+async function stkSaveAdjustments() {
+  const entries = Object.values(_stkCounts);
+  if (!entries.length) { alert('Nada contado ainda.'); return; }
+  const storeId = document.getElementById('stk-store').value;
+  if (!storeId) { alert('Escolha uma loja antes de salvar.'); return; }
+  if (!confirm(`Confirmar ajuste de ${entries.length} itens nesta loja? O estoque será atualizado.`)) return;
+  // Estratégia: pra cada entrada, faz PUT no produto setando o novo stock daquele tamanho/loja
+  let ok = 0, fail = 0;
+  for (const e of entries) {
+    try {
+      // POST /admin/inventory/adjust { productId, productSizeId, storeId, newStock, reason }
+      const r = await api('/admin/inventory/adjust', 'POST', {
+        productId: e.productId,
+        productSizeId: e.productSizeId || null,
+        size: e.size,
+        storeId,
+        newStock: e.counted,
+        previousStock: e.expected,
+        reason: 'Contagem física',
+      });
+      if (r.error) fail++; else ok++;
+    } catch (_) { fail++; }
+  }
+  alert(`Ajustes salvos: ${ok} sucesso, ${fail} falhas`);
+  _stkCounts = {};
+  stkLoadProducts();
+  stkUpdateSummary();
 }
 async function loadLabelTemplates() {
   const sel = document.getElementById('labels-template');
