@@ -2078,6 +2078,10 @@ async function loadCatalogProductsAdmin() {
       + '<span title="SKU">📋 ' + escapeHtml(p.sku || '') + '</span>'
       + (ref ? '<span title="Referência do fornecedor" style="background:#FFE5D0;color:#FF6D00;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ' + escapeHtml(ref) + '</span>' : '')
       + '</div>';
+    // Botão "Ver descrição técnica" logo abaixo da referência (só se houver)
+    if (p.longDescription) {
+      html += '<button type="button" onclick="catShowSpecs(\'' + p.id + '\')" style="padding:7px 10px;background:#fff;border:1.5px solid #FF6D00;color:#FF6D00;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">📋 Ver descrição técnica</button>';
+    }
     // Descrição
     if (desc) html += '<div style="font-size:11px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml(desc) + '</div>';
     // Categoria + Especialidade em pills (evita duplicação se "tenis" == cls.type "Tênis")
@@ -2134,11 +2138,9 @@ async function loadCatalogProductsAdmin() {
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
     // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
-      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>';
-    if (p.longDescription) {
-      html += '<button type="button" onclick="catShowSpecs(\'' + p.id + '\')" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Ver descrição técnica">📋</button>';
-    }
-    html += '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
+      + '<button type="button" class="js-cat-edit" data-id="' + p.id + '" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button>'
+      + '<button type="button" onclick="catShowQRCode(\'' + p.id + '\')" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:14px;cursor:pointer;" title="Gerar QR Code do produto">📱</button>'
+      + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
       + '<button type="button" class="js-cat-del" data-id="' + p.id + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);color:#d70015;font-size:12px;cursor:pointer;" title="Excluir">🗑</button>'
       + '</div>';
     html += '</div></div>';
@@ -2188,6 +2190,35 @@ window.catShowSpecs = async function(productId) {
     + '<div style="display:flex;gap:8px;margin-top:18px;">'
     + '<button onclick="document.getElementById(\'cat-specs-modal\').remove();openCatProductModal(\'' + p.id + '\')" style="flex:1;padding:11px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">✎ Editar produto</button>'
     + '<button onclick="document.getElementById(\'cat-specs-modal\').remove()" style="padding:11px 18px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;color:#1d1d1f;">Fechar</button>'
+    + '</div></div>';
+};
+
+// ===== QR CODE DO PRODUTO =====
+window.catShowQRCode = function(productId) {
+  const url = window.location.origin + '/p/' + productId;
+  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(url);
+  let modal = document.getElementById('cat-qr-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cat-qr-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = '<div style="background:white;border-radius:16px;max-width:480px;width:100%;padding:24px;color:#1d1d1f;text-align:center;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+    + '<h3 style="margin:0;font-size:18px;font-weight:800;text-align:left;">📱 QR Code do Produto</h3>'
+    + '<button onclick="document.getElementById(\'cat-qr-modal\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;">×</button>'
+    + '</div>'
+    + '<div style="padding:16px;background:#f5f5f7;border-radius:12px;margin-bottom:14px;">'
+    + '<img src="' + qrUrl + '" alt="QR Code" style="width:100%;max-width:320px;border-radius:8px;">'
+    + '</div>'
+    + '<div style="font-size:11px;color:#8e8e93;margin-bottom:10px;font-family:monospace;word-break:break-all;background:#fafafa;padding:8px;border-radius:6px;">' + url + '</div>'
+    + '<p style="font-size:12px;color:#1d1d1f;line-height:1.5;margin:14px 0;">Aponta a câmera no QR Code pra ver foto, marca, descrição, especialidade e estoque por loja deste produto. Use em etiqueta, vitrine, anúncio.</p>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    + '<a href="' + qrUrl + '" download="qrcode-' + productId + '.png" target="_blank" style="flex:1;padding:11px;background:linear-gradient(135deg,#FF6D00,#FF9248);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;text-align:center;">⬇ Baixar PNG</a>'
+    + '<a href="' + url + '" target="_blank" style="padding:11px 16px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;text-decoration:none;color:#1d1d1f;display:inline-block;text-align:center;">🔗 Abrir página</a>'
+    + '<button onclick="navigator.clipboard.writeText(\'' + url + '\').then(()=>this.textContent=\'✓ Copiado\')" style="padding:11px 16px;background:white;border:1px solid #e5e5ea;border-radius:10px;font-size:13px;cursor:pointer;color:#1d1d1f;">📋 Copiar URL</button>'
     + '</div></div>';
 };
 
