@@ -645,10 +645,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div id="cat-panel-prod">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
         <button type="button" class="btn btn-primary enrich-cta" id="cat-btn-enrich-open">🤖 Enriquecer com IA</button>
-        <input class="search-box" id="cat-filter-search" placeholder="Buscar nome/SKU..." style="width:220px">
-        <input class="search-box" id="cat-filter-brand" placeholder="Marca" style="width:140px">
-        <input class="search-box" id="cat-filter-category" placeholder="Categoria" style="width:140px">
+        <input class="search-box" id="cat-filter-search" placeholder="🔍 Buscar tudo (nome, SKU, ref...)" style="width:240px">
+        <select class="search-box" id="cat-filter-brand" style="width:150px"><option value="">Marca</option></select>
+        <select class="search-box" id="cat-filter-category" style="width:150px"><option value="">Categoria</option></select>
+        <select class="search-box" id="cat-filter-supplier" style="width:170px"><option value="">Fornecedor</option></select>
+        <select class="search-box" id="cat-filter-gender" style="width:120px"><option value="">Gênero</option><option value="Masculino">Homem</option><option value="Feminino">Mulher</option><option value="Inf. M">Menino</option><option value="Inf. F">Menina</option></select>
+        <select class="search-box" id="cat-filter-modality" style="width:170px"><option value="">Modalidade</option></select>
+        <select class="search-box" id="cat-filter-tier" style="width:150px"><option value="">Especialidade</option></select>
         <button type="button" class="btn btn-primary" id="cat-btn-filter">Filtrar</button>
+        <button type="button" class="btn" id="cat-btn-clear-filter" title="Limpar filtros">✕</button>
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
         <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
       </div>
@@ -1509,23 +1514,92 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
 <!-- CATÁLOGO: NOVO / EDITAR PRODUTO -->
 <div class="detail-modal" id="cat-product-modal">
-  <div class="detail-content" style="max-width:560px">
+  <div class="detail-content" style="max-width:680px">
     <button type="button" class="detail-close" id="cat-product-modal-close">✕</button>
     <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">PRODUTO</div>
     <input type="hidden" id="cat-p-id">
-    <label class="muted" style="display:block;margin-top:12px;font-size:11px;letter-spacing:2px">SKU</label>
-    <input class="form-input" id="cat-p-sku" style="margin-top:6px">
-    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOME</label>
-    <input class="form-input" id="cat-p-name" style="margin-top:6px">
-    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">MARCA / CATEGORIA</label>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <input class="form-input" id="cat-p-brand" placeholder="Marca">
-      <input class="form-input" id="cat-p-category" placeholder="Categoria">
+
+    <!-- CARD 1: Identificação -->
+    <div style="margin-top:16px;padding:14px;background:linear-gradient(135deg,#f5f5f7,#fafafa);border-radius:12px;border:1px solid #e5e5ea;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">📦 IDENTIFICAÇÃO</div>
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">SKU</label>
+          <input class="form-input" id="cat-p-sku" placeholder="Ex: NIK-PEG40" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">PRODUTO (Nome)</label>
+          <input class="form-input" id="cat-p-name" placeholder="Ex: Tênis Nike Pegasus 40 Branco" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        </div>
+      </div>
     </div>
-    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">PREÇO / PROMO</label>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <input class="form-input" id="cat-p-price" type="number" step="0.01" placeholder="Preço">
-      <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)">
+
+    <!-- CARD 2: Classificação (Gênero → Categoria → Modalidade → Especialidade) -->
+    <div style="margin-top:12px;padding:14px;background:linear-gradient(135deg,#fff7eb,#fff);border-radius:12px;border:1px solid #ffe4bd;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">🏷️ CLASSIFICAÇÃO</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">GÊNERO</label>
+          <select class="form-input" id="cat-p-gender" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+            <option value="">— escolha —</option>
+            <option value="Masculino">Homem</option>
+            <option value="Feminino">Mulher</option>
+            <option value="Inf. M">Menino</option>
+            <option value="Inf. F">Menina</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">CATEGORIA</label>
+          <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
+            <select class="form-input" id="cat-p-category" style="flex:1;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">— escolha —</option></select>
+            <button type="button" onclick="catFormAddNew('category')" title="Adicionar nova categoria" style="padding:8px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">TIPO (pra Modalidade)</label>
+          <select class="form-input" id="cat-p-type" onchange="catFormOnTypeChange()" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+            <option value="">— escolha —</option>
+            <option value="Tênis">Tênis</option>
+            <option value="Chuteira">Chuteira</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">MODALIDADE</label>
+          <select class="form-input" id="cat-p-modality" onchange="catFormOnModalityChange()" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">—</option></select>
+        </div>
+        <div style="grid-column:span 2">
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">ESPECIALIDADE (tier)</label>
+          <select class="form-input" id="cat-p-tier" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">—</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 3: Marca + Fornecedor -->
+    <div style="margin-top:12px;padding:14px;background:linear-gradient(135deg,#ebf7ff,#fff);border-radius:12px;border:1px solid #bde0ff;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">🏢 MARCA / FORNECEDOR</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">MARCA</label>
+          <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
+            <select class="form-input" id="cat-p-brand" style="flex:1;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">— escolha —</option></select>
+            <button type="button" onclick="catFormAddNew('brand')" title="Adicionar nova marca" style="padding:8px 10px;background:#FF6D00;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">+</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">FORNECEDOR</label>
+          <select class="form-input" id="cat-p-supplier" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea"><option value="">— sem fornecedor —</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 4: Preços -->
+    <div style="margin-top:12px;padding:14px;background:#f5f5f7;border-radius:12px;border:1px solid #e5e5ea;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">💰 PREÇOS</div>
+      <div style="display:flex;gap:8px">
+        <input class="form-input" id="cat-p-price" type="number" step="0.01" placeholder="Preço normal" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+      </div>
     </div>
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">DESCRIÇÃO CURTA</label>
     <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px" placeholder="Frase curta que aparece em destaque (até 200 caracteres)"></textarea>
@@ -1735,6 +1809,13 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
+    const clearFilterBtn = document.getElementById('cat-btn-clear-filter');
+    if (clearFilterBtn) clearFilterBtn.addEventListener('click', function () {
+      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      loadCatalogProductsAdmin();
+    });
     document.getElementById('cat-btn-new').addEventListener('click', function () { openCatProductModal(null); });
     document.getElementById('cat-btn-autofill').addEventListener('click', async function () {
       const sku = prompt('SKU para pesquisa com IA:', '');
@@ -2002,16 +2083,35 @@ async function loadCatalogProductsAdmin() {
   const wrap = document.getElementById('cat-products-wrap');
   if (!wrap) return;
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  // Garante que os selects de filtro estão populados
+  if (!_catFormOpts) await catFormPopulateAllSelects();
   const q = new URLSearchParams();
   const s = document.getElementById('cat-filter-search').value.trim();
   const b = document.getElementById('cat-filter-brand').value.trim();
   const c = document.getElementById('cat-filter-category').value.trim();
+  const sup = document.getElementById('cat-filter-supplier')?.value.trim() || '';
+  const gen = document.getElementById('cat-filter-gender')?.value.trim() || '';
+  const mod = document.getElementById('cat-filter-modality')?.value.trim() || '';
+  const tier = document.getElementById('cat-filter-tier')?.value.trim() || '';
   if (s) q.set('search', s);
   if (b) q.set('brand', b);
   if (c) q.set('category', c);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
-  const rows = data.products || [];
+  let rows = data.products || [];
+  // Filtros em memória (backend não suporta direto): gênero, modalidade, tier, fornecedor
+  if (gen || mod || tier || sup) {
+    rows = rows.filter(p => {
+      let ctx = {};
+      try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch {}
+      const cls = ctx.classification || {};
+      if (gen && cls.gender !== gen) return false;
+      if (mod && cls.modality !== mod) return false;
+      if (tier && cls.tier !== tier) return false;
+      if (sup && ctx.supplierCnpj !== sup && ctx.supplierId !== sup) return false;
+      return true;
+    });
+  }
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px;color:var(--text2);">Nenhum produto</div>'; return; }
 
   // Layout em cards padrão com Nome + Descrição + Categoria + Especialidade + Tamanhos por LOJA
@@ -2424,6 +2524,93 @@ function _catSyncTextarea() {
   document.getElementById('cat-p-sizes').value = Object.keys(byTam).map(s => s + '|' + byTam[s]).join('\n');
 }
 
+// =====================================================================
+// Form Options — cache de marcas, categorias, fornecedores, lojas, árvore
+// =====================================================================
+let _catFormOpts = null; // { brands, categories, suppliers, stores, tree, genders }
+
+async function catFormLoadOptions(force = false) {
+  if (_catFormOpts && !force) return _catFormOpts;
+  try {
+    const data = await api('/admin/catalog/form-options');
+    if (data && !data.error) _catFormOpts = data;
+  } catch (e) { console.warn('form-options', e); }
+  return _catFormOpts || { brands: [], categories: [], suppliers: [], stores: [], tree: { types: [], modalities: {}, tiers: {} }, genders: [] };
+}
+
+function _catPopulateSelect(selectEl, items, valueOf, labelOf, keepFirst = true) {
+  if (!selectEl) return;
+  const current = selectEl.value;
+  const firstOpt = keepFirst && selectEl.options[0] ? selectEl.options[0].outerHTML : '';
+  selectEl.innerHTML = firstOpt;
+  items.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = valueOf ? valueOf(it) : it;
+    opt.textContent = labelOf ? labelOf(it) : it;
+    selectEl.appendChild(opt);
+  });
+  if (current) selectEl.value = current;
+}
+
+async function catFormPopulateAllSelects() {
+  const o = await catFormLoadOptions();
+  // Filtros do topo
+  _catPopulateSelect(document.getElementById('cat-filter-brand'), o.brands);
+  _catPopulateSelect(document.getElementById('cat-filter-category'), o.categories);
+  _catPopulateSelect(document.getElementById('cat-filter-supplier'), o.suppliers, s => s.cnpj || s.id, s => s.companyName);
+  // Modalidades do filtro: tudo de Tênis + Chuteira
+  const allMods = [...(o.tree.modalities['Tênis'] || []), ...(o.tree.modalities['Chuteira'] || [])];
+  _catPopulateSelect(document.getElementById('cat-filter-modality'), allMods);
+  // Tiers do filtro: todos os tiers únicos
+  const allTiers = [...new Set(Object.values(o.tree.tiers || {}).flat())];
+  _catPopulateSelect(document.getElementById('cat-filter-tier'), allTiers);
+  // Modal — Marca, Categoria, Fornecedor
+  _catPopulateSelect(document.getElementById('cat-p-brand'), o.brands);
+  _catPopulateSelect(document.getElementById('cat-p-category'), o.categories);
+  _catPopulateSelect(document.getElementById('cat-p-supplier'), o.suppliers, s => s.id, s => s.companyName);
+}
+
+function catFormOnTypeChange() {
+  const type = document.getElementById('cat-p-type').value;
+  const modalSel = document.getElementById('cat-p-modality');
+  const tierSel = document.getElementById('cat-p-tier');
+  modalSel.innerHTML = '<option value="">—</option>';
+  tierSel.innerHTML = '<option value="">—</option>';
+  if (!type || !_catFormOpts) return;
+  const mods = _catFormOpts.tree.modalities[type] || [];
+  mods.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; modalSel.appendChild(o); });
+}
+
+function catFormOnModalityChange() {
+  const mod = document.getElementById('cat-p-modality').value;
+  const tierSel = document.getElementById('cat-p-tier');
+  tierSel.innerHTML = '<option value="">—</option>';
+  if (!mod || !_catFormOpts) return;
+  const tiers = _catFormOpts.tree.tiers[mod] || [];
+  tiers.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; tierSel.appendChild(o); });
+}
+
+function catFormAddNew(kind) {
+  const label = kind === 'brand' ? 'nova marca' : 'nova categoria';
+  const val = (window.prompt('Digite o nome da ' + label + ':', '') || '').trim();
+  if (!val) return;
+  const sel = document.getElementById(kind === 'brand' ? 'cat-p-brand' : 'cat-p-category');
+  // Adiciona se não existe ainda
+  let opt = [...sel.options].find(o => o.value.toLowerCase() === val.toLowerCase());
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = val;
+    sel.appendChild(opt);
+    // Atualiza cache em memória pra próximas aberturas do form
+    if (_catFormOpts) {
+      const arr = kind === 'brand' ? _catFormOpts.brands : _catFormOpts.categories;
+      if (!arr.includes(val)) arr.push(val);
+    }
+  }
+  sel.value = val;
+}
+
 async function openCatProductModal(id) {
   document.getElementById('cat-p-error').innerHTML = '';
   document.getElementById('cat-product-modal').classList.add('show');
@@ -2431,6 +2618,11 @@ async function openCatProductModal(id) {
   _catPhotos = [];
   _catSetupPhotosForm();
   await _catSetupUnitsForm();
+  await catFormPopulateAllSelects();
+  // Limpa selects de classificação
+  ['cat-p-gender','cat-p-type','cat-p-modality','cat-p-tier','cat-p-supplier'].forEach(id2 => {
+    const el = document.getElementById(id2); if (el) el.value = '';
+  });
   if (!id) {
     document.getElementById('cat-p-id').value = '';
     document.getElementById('cat-p-sku').value = '';
@@ -2455,8 +2647,15 @@ async function openCatProductModal(id) {
   document.getElementById('cat-p-id').value = p.id;
   document.getElementById('cat-p-sku').value = p.sku;
   document.getElementById('cat-p-name').value = p.name;
-  document.getElementById('cat-p-brand').value = p.brand;
-  document.getElementById('cat-p-category').value = p.category;
+  // Marca/Categoria: se a opção não existe no select, adiciona on-the-fly
+  ['brand','category'].forEach(k => {
+    const sel = document.getElementById('cat-p-' + k);
+    const val = p[k] || '';
+    if (val && ![...sel.options].some(o => o.value === val)) {
+      const o = document.createElement('option'); o.value = val; o.textContent = val; sel.appendChild(o);
+    }
+    sel.value = val;
+  });
   document.getElementById('cat-p-price').value = p.price;
   document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
   document.getElementById('cat-p-short').value = p.shortDescription || '';
@@ -2464,6 +2663,23 @@ async function openCatProductModal(id) {
   document.getElementById('cat-p-img').value = p.imageUrl || '';
   document.getElementById('cat-p-active').checked = p.active !== false;
   document.getElementById('cat-p-featured').checked = !!p.featured;
+  // Classificação + Fornecedor — leem do aiContext
+  try {
+    const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
+    window._catLastLoadedAiContext = ctx; // pra preservar no save
+    const cls = ctx.classification || {};
+    if (cls.gender) document.getElementById('cat-p-gender').value = cls.gender;
+    if (cls.type) { document.getElementById('cat-p-type').value = cls.type; catFormOnTypeChange(); }
+    if (cls.modality) { document.getElementById('cat-p-modality').value = cls.modality; catFormOnModalityChange(); }
+    if (cls.tier) document.getElementById('cat-p-tier').value = cls.tier;
+    // Fornecedor: tenta supplierId primeiro, depois CNPJ
+    const supSel = document.getElementById('cat-p-supplier');
+    if (ctx.supplierId) supSel.value = ctx.supplierId;
+    else if (ctx.supplierCnpj && _catFormOpts) {
+      const sup = (_catFormOpts.suppliers || []).find(s => s.cnpj === ctx.supplierCnpj);
+      if (sup) supSel.value = sup.id;
+    }
+  } catch (e) { console.warn('aiContext parse', e); }
   // Carrega FOTOS: imagem principal + extras (imageUrls)
   _catPhotos = [];
   if (p.imageUrl) _catPhotos.push({ url: p.imageUrl });
@@ -2522,6 +2738,28 @@ async function catProductSave() {
     Object.values(agg).forEach(v => sizes.push(v));
   }
 
+  // Monta aiContext consolidando classificação + fornecedor (preserva o que já existe)
+  let existingCtx = {};
+  const existingCtxRaw = document.getElementById('cat-p-id').value ? (window._catLastLoadedAiContext || {}) : {};
+  try { existingCtx = typeof existingCtxRaw === 'string' ? JSON.parse(existingCtxRaw) : (existingCtxRaw || {}); } catch {}
+  const cls = {
+    ...(existingCtx.classification || {}),
+    type: document.getElementById('cat-p-type').value || null,
+    gender: document.getElementById('cat-p-gender').value || null,
+    modality: document.getElementById('cat-p-modality').value || null,
+    tier: document.getElementById('cat-p-tier').value || null,
+    confidence: 1,
+    classifiedAt: new Date().toISOString(),
+    manualEdit: true,
+  };
+  const supplierId = document.getElementById('cat-p-supplier').value || null;
+  let supplierCnpj = existingCtx.supplierCnpj || null;
+  if (supplierId && _catFormOpts) {
+    const sup = (_catFormOpts.suppliers || []).find(s => s.id === supplierId);
+    if (sup) supplierCnpj = sup.cnpj;
+  }
+  const aiContext = { ...existingCtx, classification: cls, supplierId, supplierCnpj };
+
   const body = {
     sku: document.getElementById('cat-p-sku').value.trim(),
     name: document.getElementById('cat-p-name').value.trim(),
@@ -2536,6 +2774,7 @@ async function catProductSave() {
     active: document.getElementById('cat-p-active').checked,
     featured: document.getElementById('cat-p-featured').checked,
     sizes: sizes, // novo formato: [{ size, storeId, stock }]
+    aiContext,
   };
   let r;
   if (id) r = await api('/admin/catalog/products/' + encodeURIComponent(id), 'PUT', body);

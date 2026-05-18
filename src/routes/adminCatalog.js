@@ -43,6 +43,52 @@ function parseJsonSafe(v) {
   }
 }
 
+// GET /api/admin/catalog/form-options
+// Devolve TUDO que o formulário de produto precisa em 1 só chamada:
+// marcas distintas, categorias distintas, fornecedores ativos, lojas, árvore IA.
+router.get('/form-options', adminOnly, async (_req, res) => {
+  try {
+    const [brandRows, catRows, suppliers, stores] = await Promise.all([
+      prisma.$queryRaw`SELECT DISTINCT brand FROM "Product" WHERE active=true AND brand IS NOT NULL AND brand!='' AND brand!='A DEFINIR' ORDER BY brand ASC`,
+      prisma.$queryRaw`SELECT DISTINCT category FROM "Product" WHERE active=true AND category IS NOT NULL AND category!='' ORDER BY category ASC`,
+      prisma.supplier.findMany({
+        where: { active: true },
+        select: { id: true, companyName: true, cnpj: true },
+        orderBy: { companyName: 'asc' },
+      }),
+      prisma.store.findMany({
+        select: { id: true, code: true, name: true },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
+    res.json({
+      brands: brandRows.map(r => r.brand),
+      categories: catRows.map(r => r.category),
+      suppliers,
+      stores,
+      genders: ['Homem', 'Mulher', 'Menino', 'Menina'],
+      tree: {
+        types: ['Tênis', 'Chuteira', 'Outro'],
+        modalities: {
+          'Tênis': ['Corrida', 'Caminhada / Treino leve', 'LifeStyle', 'Recuperação', 'Musculação / CrossFit / Hyrox', 'Streetwear', 'Sapatilha'],
+          'Chuteira': ['Futsal', 'Society', 'Campo'],
+        },
+        tiers: {
+          'Corrida': ['máximo conforto', 'confortável', 'velocidade', 'custo benefício', 'super treino', 'pau pra toda obra', 'maratona'],
+          'LifeStyle': ['premium', 'clássico', 'casual'],
+          'Musculação / CrossFit / Hyrox': ['pro', 'intermediário', 'custo benefício'],
+          'Futsal': ['entrada', 'custo benefício', 'treino', 'pro'],
+          'Society': ['entrada', 'custo benefício', 'treino', 'pro'],
+          'Campo': ['entrada', 'custo benefício', 'treino', 'pro'],
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[form-options]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/products/:id', adminOnly, async (req, res) => {
   try {
     const p = await prisma.product.findUnique({
