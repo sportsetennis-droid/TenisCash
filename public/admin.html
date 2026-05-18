@@ -2105,22 +2105,13 @@ async function loadCatalogProductsAdmin() {
   if (s) q.set('search', s);
   if (b) q.set('brand', b);
   if (c) q.set('category', c);
+  if (gen) q.set('gender', gen);
+  if (mod) q.set('modality', mod);
+  if (tier) q.set('tier', tier);
+  if (sup) q.set('supplier', sup);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
-  let rows = data.products || [];
-  // Filtros em memória (backend não suporta direto): gênero, modalidade, tier, fornecedor
-  if (gen || mod || tier || sup) {
-    rows = rows.filter(p => {
-      let ctx = {};
-      try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch {}
-      const cls = ctx.classification || {};
-      if (gen && cls.gender !== gen) return false;
-      if (mod && cls.modality !== mod) return false;
-      if (tier && cls.tier !== tier) return false;
-      if (sup && ctx.supplierCnpj !== sup && ctx.supplierId !== sup) return false;
-      return true;
-    });
-  }
+  const rows = data.products || [];
   if (!rows.length) { wrap.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px;color:var(--text2);">Nenhum produto</div>'; return; }
 
   // Layout em cards padrão com Nome + Descrição + Categoria + Especialidade + Tamanhos por LOJA
@@ -5107,11 +5098,13 @@ async function labelsSearchProducts() {
   if (f.search) q.set('search', f.search);
   if (f.brand) q.set('brand', f.brand);
   if (f.category) q.set('category', f.category);
+  if (f.gender) q.set('gender', f.gender);
+  if (f.modality) q.set('modality', f.modality);
+  if (f.tier) q.set('tier', f.tier);
+  if (f.supplier) q.set('supplier', f.supplier);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  let products = data.products || [];
-  // Filtro em memória pros campos extras (fornecedor, gênero, modalidade, especialidade)
-  if (window.PSBar) products = PSBar.filterInMemory(products, f);
+  const products = data.products || [];
   if (!products.length) { wrap.innerHTML = '<div class="muted">Nenhum produto.</div>'; return; }
   let html = '<table><thead><tr><th></th><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Preço</th><th>Promo</th><th>Selecionar</th></tr></thead><tbody>';
   products.forEach(p => {
@@ -5887,14 +5880,18 @@ async function loadInvProducts() {
   if (category) qs.set('category', category);
   if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
   if (lowStock) qs.set('lowStock', 'true');
-  const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
-  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  let list = data.products || [];
-  // Filtragem em memória pelos filtros extras da PSBar (gênero/modalidade/tier/fornecedor/q)
+  // Filtros extras da PSBar: mandados direto pro backend
   if (window.PSBar) {
     const f = PSBar.getFilters('inv');
-    list = PSBar.filterInMemory(list, { search: f.search, supplier: f.supplier, gender: f.gender, modality: f.modality, tier: f.tier });
+    if (f.search) qs.set('search', f.search);
+    if (f.supplier) qs.set('supplier', f.supplier);
+    if (f.gender) qs.set('gender', f.gender);
+    if (f.modality) qs.set('modality', f.modality);
+    if (f.tier) qs.set('tier', f.tier);
   }
+  const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
+  const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
 
   const html = `

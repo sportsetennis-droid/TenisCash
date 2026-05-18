@@ -55,16 +55,35 @@ router.get('/dashboard', async (_req, res) => {
 // Lista produtos com info de lifecycle e estoque
 router.get('/products', async (req, res) => {
   try {
-    const { lifecycleStatus, brand, category, lowStock } = req.query;
+    const { lifecycleStatus, brand, category, lowStock, search, gender, modality, tier, supplier } = req.query;
+    const jsonFilters = [];
+    if (gender) jsonFilters.push({ aiContext: { path: ['classification', 'gender'], equals: String(gender) } });
+    if (modality) jsonFilters.push({ aiContext: { path: ['classification', 'modality'], equals: String(modality) } });
+    if (tier) jsonFilters.push({ aiContext: { path: ['classification', 'tier'], equals: String(tier) } });
+    if (supplier) {
+      jsonFilters.push({
+        OR: [
+          { aiContext: { path: ['supplierCnpj'], equals: String(supplier) } },
+          { aiContext: { path: ['supplierId'], equals: String(supplier) } },
+        ],
+      });
+    }
     const where = {
       active: true,
-      ...(brand ? { brand: { contains: brand, mode: 'insensitive' } } : {}),
-      ...(category ? { category: { contains: category, mode: 'insensitive' } } : {}),
+      ...(brand ? { brand: { equals: String(brand), mode: 'insensitive' } } : {}),
+      ...(category ? { category: { equals: String(category), mode: 'insensitive' } } : {}),
+      ...(search ? {
+        OR: [
+          { name: { contains: String(search), mode: 'insensitive' } },
+          { sku: { contains: String(search), mode: 'insensitive' } },
+        ],
+      } : {}),
+      ...(jsonFilters.length ? { AND: jsonFilters } : {}),
     };
     const products = await prisma.product.findMany({
       where,
       include: { sizes: true },
-      take: 200,
+      take: 500,
       orderBy: { name: 'asc' },
     });
 

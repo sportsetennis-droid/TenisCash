@@ -113,12 +113,31 @@ router.get('/products', adminOnly, async (req, res) => {
     const search = String(req.query.search || '').trim();
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
+    const gender = String(req.query.gender || '').trim();
+    const modality = String(req.query.modality || '').trim();
+    const tier = String(req.query.tier || req.query.especialidade || '').trim();
+    const supplier = String(req.query.supplier || '').trim(); // CNPJ ou supplierId
     const active = req.query.active;
     const featured = req.query.featured;
 
+    // Filtros JSON em aiContext (suportados nativamente pelo Postgres via Prisma)
+    const jsonFilters = [];
+    if (gender) jsonFilters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
+    if (modality) jsonFilters.push({ aiContext: { path: ['classification', 'modality'], equals: modality } });
+    if (tier) jsonFilters.push({ aiContext: { path: ['classification', 'tier'], equals: tier } });
+    if (supplier) {
+      // Aceita CNPJ (14 dígitos) ou supplierId. Tenta os 2 campos.
+      jsonFilters.push({
+        OR: [
+          { aiContext: { path: ['supplierCnpj'], equals: supplier } },
+          { aiContext: { path: ['supplierId'], equals: supplier } },
+        ],
+      });
+    }
+
     const where = {
-      ...(brand ? { brand: { contains: brand, mode: 'insensitive' } } : {}),
-      ...(category ? { category: { contains: category, mode: 'insensitive' } } : {}),
+      ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
+      ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       ...(active === 'true' ? { active: true } : active === 'false' ? { active: false } : {}),
       ...(featured === 'true' ? { featured: true } : {}),
       ...(search
@@ -129,6 +148,7 @@ router.get('/products', adminOnly, async (req, res) => {
             ],
           }
         : {}),
+      ...(jsonFilters.length ? { AND: jsonFilters } : {}),
     };
 
     const products = await prisma.product.findMany({

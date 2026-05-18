@@ -1547,9 +1547,7 @@ async function onCatalogSearch() {
       if (ps.brand) params.push('brand=' + encodeURIComponent(ps.brand));
       if (ps.category) params.push('category=' + encodeURIComponent(ps.category));
       const d = await api('/api/catalog/products?' + params.join('&'));
-      let products = d.products || d.items || [];
-      // Filtragem em memória (caso o backend não suporte algum filtro)
-      if (window.PSBar) products = PSBar.filterInMemory(products, ps);
+      const products = d.products || d.items || [];
       renderCatalog(products);
     } catch (e) { console.error(e); }
   }, 200);
