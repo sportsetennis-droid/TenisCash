@@ -17,7 +17,12 @@ const baseProductSelect = {
 };
 
 function formatProductCard(p) {
-  const sizes = (p.sizes || []).map((s) => ({ size: s.size, stock: s.stock }));
+  // Mantém storeStocks se vierem incluídos (PCard usa)
+  const sizes = (p.sizes || []).map((s) => ({
+    size: s.size,
+    stock: s.stock,
+    ...(s.storeStocks ? { storeStocks: s.storeStocks } : {}),
+  }));
   const availableSizes = sizes.filter((s) => (s.stock || 0) > 0);
   const stockTotal = sizes.reduce((acc, s) => acc + (s.stock || 0), 0);
   return {
@@ -28,9 +33,12 @@ function formatProductCard(p) {
     category: p.category,
     subcategory: p.subcategory,
     shortDescription: p.shortDescription,
+    longDescription: p.longDescription || null,
     price: p.price,
     promoPrice: p.promoPrice,
     imageUrl: p.imageUrl,
+    imageUrls: p.imageUrls || null,
+    aiContext: p.aiContext || null,
     featured: p.featured,
     sizes,
     availableSizes,

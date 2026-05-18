@@ -82,7 +82,12 @@ router.get('/products', async (req, res) => {
     };
     const products = await prisma.product.findMany({
       where,
-      include: { sizes: true },
+      include: {
+        sizes: {
+          orderBy: { size: 'asc' },
+          include: { storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } } },
+        },
+      },
       take: 500,
       orderBy: { name: 'asc' },
     });

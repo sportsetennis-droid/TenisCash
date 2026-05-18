@@ -281,6 +281,7 @@
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js"></script>
 <script src="/_product-search-bar.js"></script>
+<script src="/_product-card.js"></script>
 </head>
 <body>
 
@@ -1564,6 +1565,16 @@ function onInventorySearchFromTree() {
 function renderCatalog(products) {
   const el = document.getElementById('catalogResults');
   if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado</div>'; return; }
+  if (window.PCard) {
+    el.innerHTML = PCard.renderGrid(products, {
+      actions: 'public',
+      onClick: "showProduct('%id%')",
+      showCount: false,
+      minWidth: '260px',
+    });
+    return;
+  }
+  // Fallback simples se PCard não carregar
   el.innerHTML = products.map(p => {
     const hasPromo = p.promoPrice && p.promoPrice < p.price;
     return `
@@ -1633,17 +1644,27 @@ async function onInventorySearch() {
   if (!q || q.length < 2) return;
   invSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=12');
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=24');
       const products = d.products || d.items || [];
-      document.getElementById('invResults').innerHTML = products.map(p => `
-        <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
-          <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
-          <div class="product-info">
-            <div class="product-brand">${p.brand || ''}</div>
-            <div class="product-name">${p.name || ''}</div>
+      const el = document.getElementById('invResults');
+      if (window.PCard) {
+        el.innerHTML = PCard.renderGrid(products, {
+          actions: 'public',
+          onClick: "checkInventory('%id%','')",
+          showCount: false,
+          minWidth: '260px',
+        });
+      } else {
+        el.innerHTML = products.map(p => `
+          <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
+            <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.display='none'">
+            <div class="product-info">
+              <div class="product-brand">${p.brand || ''}</div>
+              <div class="product-name">${p.name || ''}</div>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `).join('');
+      }
     } catch (e) { console.error(e); }
   }, 250);
 }

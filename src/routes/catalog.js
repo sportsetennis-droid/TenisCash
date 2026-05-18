@@ -79,11 +79,21 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
           category: true,
           subcategory: true,
           shortDescription: true,
+          longDescription: true,
           price: true,
           promoPrice: true,
           imageUrl: true,
+          imageUrls: true,
+          aiContext: true,
           featured: true,
-          sizes: { select: { size: true, stock: true } },
+          sizes: {
+            orderBy: { size: 'asc' },
+            select: {
+              size: true,
+              stock: true,
+              storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } },
+            },
+          },
         },
       }),
     ]);
