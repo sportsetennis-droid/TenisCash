@@ -246,6 +246,128 @@ router.post('/emit-nfe55', async (req, res) => {
 });
 
 // ============================================================
+// Finalizar NFe modelo 55 que foi pré-criada como draft (vinda de webhook
+// Nuvemshop). Pega o draft, monta items do Sale, customer do payload e
+// emite via emitNFe55. 1-click pra operadora.
+// ============================================================
+router.post('/finalize-nfe-draft/:id', async (req, res) => {
+  try {
+    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const doc = await prisma.fiscalDocument.findUnique({
+      where: { id: req.params.id },
+      include: {
+        issuer: true,
+        sale: { include: { items: { include: { product: true } } } },
+      },
+    });
+    if (!doc) return res.status(404).json({ error: 'FiscalDocument não encontrado' });
+    if (doc.docType !== 'NFE') return res.status(400).json({ error: 'Endpoint só pra NFe modelo 55 (draft.docType=NFE)' });
+    if (doc.status !== 'draft') return res.status(400).json({ error: 'Documento não está em draft (atual: ' + doc.status + ')' });
+    if (!doc.sale?.items?.length) return res.status(400).json({ error: 'Draft sem itens vinculados (sale.items vazia)' });
+
+    const issuer = doc.issuer;
+    if (!issuer.active) return res.status(400).json({ error: 'Emissor inativo' });
+
+    const pfxPath = pfxPathFor(issuer.cnpj);
+    const pfxSenha = pfxSenhaFor(issuer.cnpj);
+    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+
+    // Items vindos da Sale
+    const items = doc.sale.items.map((si) => ({
+      sku: si.product?.sku || si.productId,
+      name: si.product?.name || 'Produto',
+      ncm: si.product?.ncm || '64041100',
+      cfop: si.product?.cfop || null, // emitNFe55 escolhe 5102/6102 conforme UF
+      unidade: si.product?.unidade || 'UN',
+      qty: si.quantity,
+      unitPrice: si.unitPrice,
+      ean: si.product?.ean || null,
+    }));
+
+    // Customer reconstruído do payload do webhook
+    const recipientPayload = doc.payload?.recipient || {};
+    const addrSrc = recipientPayload.address || {};
+    if (!doc.recipientCnpjCpf) {
+      return res.status(400).json({ error: 'Draft sem CPF/CNPJ do destinatário — necessário pra NFe 55' });
+    }
+    const customer = {
+      cpfCnpj: doc.recipientCnpjCpf,
+      name: doc.recipientName || recipientPayload.name,
+      email: doc.recipientEmail || recipientPayload.email,
+      addr: addrSrc.street ? {
+        xLgr: addrSrc.street,
+        nro: addrSrc.number || 'S/N',
+        xCpl: addrSrc.complement,
+        xBairro: addrSrc.neighborhood,
+        xMun: addrSrc.city,
+        UF: addrSrc.state,
+        CEP: addrSrc.zip,
+        cMun: addrSrc.cityCode, // emitNFe55 cai em 2507507 (JP) se vazio
+      } : null,
+      indPres: 2, // operação não-presencial pela internet
+    };
+
+    // Pagamento — Nuvemshop normalmente é cartão online; pega gateway pra tPag adequado
+    const payment = {
+      tPag: doc.paymentMethod || '99', // 99=outros se não souber
+      valor: doc.totalValue,
+      modFrete: 2, // por conta do destinatário (e-commerce)
+      xPed: doc.payload?.orderNumber ? String(doc.payload.orderNumber) : null,
+      nuvemshopOrderId: doc.payload?.orderId || null,
+    };
+
+    // Marca processing antes de chamar SEFAZ (idempotência)
+    await prisma.fiscalDocument.update({
+      where: { id: doc.id },
+      data: { status: 'processing' },
+    });
+
+    const { emitNFe55 } = await getSefazDirect();
+    const result = await emitNFe55({
+      issuer, pfxPath, pfxSenha, items, customer, payment,
+      nNF: doc.number || issuer.nfeNextNumber,
+    });
+
+    const updated = await prisma.fiscalDocument.update({
+      where: { id: doc.id },
+      data: {
+        status: result.ok ? 'authorized' : 'rejected',
+        accessKey: result.accessKey,
+        protocol: result.protocol,
+        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
+        xmlContent: result.xmlSigned,
+        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+      },
+    });
+    if (result.ok) {
+      // Só bumpa o counter se usamos o número do issuer
+      if ((doc.number || 0) === issuer.nfeNextNumber) {
+        await prisma.fiscalIssuer.update({
+          where: { id: issuer.id },
+          data: { nfeNextNumber: issuer.nfeNextNumber + 1 },
+        });
+      }
+    }
+
+    res.json({
+      ok: result.ok,
+      documentId: updated.id,
+      accessKey: result.accessKey,
+      protocol: result.protocol,
+      status: result.status,
+      motivo: result.motivo,
+      rejectReason: result.ok ? null : result.motivo,
+      error: result.ok ? null : result.motivo,
+    });
+  } catch (err) {
+    console.error('[fiscal/finalize-nfe-draft]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // DANFE PDF — gera localmente a partir do XML autorizado (acessível por seller)
 // ============================================================
 let _spedPdf = null;

@@ -5541,6 +5541,7 @@ async function loadFiscalDocs() {
         ${d.rejectReason ? `<div style="font-size:11px;color:#d70015;background:#fff1f0;padding:6px 10px;border-radius:6px;">❌ ${escapeHtml(d.rejectReason)}</div>` : ''}
         ${d.protocol ? `<div style="font-size:10px;color:var(--text2);">Protocolo: ${d.protocol}</div>` : ''}
         <div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);flex-wrap:wrap;">
+          ${d.status === 'draft' && d.docType === 'NFE' ? `<button onclick="fiscalEmitNfeDraft('${d.id}')" style="flex:1;padding:8px;background:linear-gradient(135deg,#0a843d,#10a050);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;">⚡ Emitir NFe agora</button>` : ''}
           ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="openAuthedFile('/admin/fiscal/documents/${d.id}/danfe')" style="flex:1;padding:8px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;">📄 DANFE</button>` : ''}
           ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="window.open('/api/admin/fiscal/documents/${d.id}/print','_blank','width=420,height=700')" style="padding:8px 10px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;">🖨️</button>` : ''}
           ${d.status === 'authorized' ? `<button onclick="fiscalCancelDoc('${d.id}', '${escapeHtml((d.accessKey||'').slice(-8))}')" style="padding:8px 10px;background:white;border:1px solid #d70015;color:#d70015;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">🚫 Cancelar</button>` : ''}
@@ -5549,6 +5550,26 @@ async function loadFiscalDocs() {
   });
   html += '</div>';
   wrap.innerHTML = html;
+}
+
+async function fiscalEmitNfeDraft(docId) {
+  if (!confirm('Emitir essa NFe modelo 55 (B2B/ecommerce) na SEFAZ-PB agora?\n\nVai consumir o próximo número da série. Se rejeitar, fica com status "rejected" e o número segue válido pra retentar.')) return;
+  const btn = event && event.currentTarget;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo...'; }
+  try {
+    const r = await api('/admin/fiscal/finalize-nfe-draft/' + docId, 'POST', {});
+    if (r.ok) {
+      alert('✅ NFe autorizada!\n\nChave: ' + r.accessKey + '\nProtocolo: ' + r.protocol);
+      loadFiscalDocs();
+    } else {
+      alert('❌ ' + (r.motivo || r.error || 'Falha na emissão') + '\n\nStatus SEFAZ: ' + (r.status || '?'));
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Emitir NFe agora'; }
+      loadFiscalDocs();
+    }
+  } catch (e) {
+    alert('Erro de rede: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Emitir NFe agora'; }
+  }
 }
 
 async function fiscalCancelDoc(docId, chaveTail) {
