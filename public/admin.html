@@ -397,6 +397,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Setup cupom fiscal NFCe em cada PC da loja</div>
         <span class="hub-card-badge">FISCAL</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('fiscal')">
+        <div class="hub-card-icon">📜</div>
+        <div class="hub-card-title">Notas Fiscais</div>
+        <div class="hub-card-desc">NFCe + NFe emitidas, cancelar, reimprimir DANFE</div>
+        <span class="hub-card-badge">FISCAL</span>
+      </button>
     </div>
 
     <!-- CATEGORIA: VENDAS -->
@@ -896,6 +902,34 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" id="stk-save" style="padding:10px 18px;background:white;color:#0066cc;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:0.5px;">💾 SALVAR AJUSTES</button>
   </div>
   <div id="stk-list-wrap"><div class="loading-spinner">Buscando produtos...</div></div>
+</div>
+
+<!-- FISCAL — Lista NFCe/NFe emitidas + ações -->
+<div class="section" id="tab-fiscal" style="display:none">
+  <div class="section-head">
+    <span class="section-title">📜 Notas Fiscais</span>
+    <button type="button" class="refresh-btn" id="fiscal-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <select class="search-box" id="fiscal-filter-issuer" style="width:240px"><option value="">Todas as empresas</option></select>
+    <select class="search-box" id="fiscal-filter-type" style="width:150px">
+      <option value="">Todos os tipos</option>
+      <option value="NFCE">NFCe</option>
+      <option value="NFE">NFe</option>
+      <option value="CTE">CTe</option>
+    </select>
+    <select class="search-box" id="fiscal-filter-status" style="width:160px">
+      <option value="">Todos os status</option>
+      <option value="authorized">Autorizada</option>
+      <option value="rejected">Rejeitada</option>
+      <option value="cancelled">Cancelada</option>
+      <option value="processing">Processando</option>
+    </select>
+    <input class="search-box" id="fiscal-filter-search" placeholder="Chave, nome do destinatário..." style="width:300px">
+    <button type="button" class="btn btn-primary" id="fiscal-btn-filter">Filtrar</button>
+  </div>
+  <div id="fiscal-stats" style="margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;"></div>
+  <div id="fiscal-list-wrap"><div class="loading-spinner">Carregando documentos fiscais...</div></div>
 </div>
 
 <!-- CURADORIA EXPOSTA -->
@@ -4366,7 +4400,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images','markup','stocktake'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','campaigns','inventory','images','markup','stocktake','fiscal'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -4388,6 +4422,7 @@ function switchTab(tab, btn) {
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'stocktake') { initStocktakeTab(); }
+  if (tab === 'fiscal') { initFiscalTab(); }
   if (tab === 'images') { initImagesTab(); }
   if (tab === 'markup') { initMarkupTab(); }
 }
@@ -5389,6 +5424,128 @@ async function stkSaveAdjustments() {
   stkLoadProducts();
   stkUpdateSummary();
 }
+
+// ==================== FISCAL (NFCe/NFe) ====================
+let _fiscalInit = false;
+async function initFiscalTab() {
+  if (!_fiscalInit) {
+    _fiscalInit = true;
+    document.getElementById('fiscal-refresh').onclick = loadFiscalDocs;
+    document.getElementById('fiscal-btn-filter').onclick = loadFiscalDocs;
+    // Popula filtro de emissor
+    try {
+      const r = await api('/admin/fiscal/issuers');
+      const sel = document.getElementById('fiscal-filter-issuer');
+      sel.innerHTML = '<option value="">Todas as empresas</option>' +
+        (r.issuers || []).map(i => `<option value="${i.id}">${escapeHtml(i.fantasyName || i.companyName)} (${i.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5')})</option>`).join('');
+    } catch (_) {}
+  }
+  loadFiscalDocs();
+}
+
+async function loadFiscalDocs() {
+  const wrap = document.getElementById('fiscal-list-wrap');
+  const stats = document.getElementById('fiscal-stats');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  stats.innerHTML = '';
+  const qs = new URLSearchParams();
+  const issuerId = document.getElementById('fiscal-filter-issuer').value;
+  const docType = document.getElementById('fiscal-filter-type').value;
+  const status = document.getElementById('fiscal-filter-status').value;
+  const search = document.getElementById('fiscal-filter-search').value.trim();
+  if (issuerId) qs.set('issuerId', issuerId);
+  if (docType) qs.set('docType', docType);
+  if (status) qs.set('status', status);
+  if (search) qs.set('search', search);
+  const data = await api('/admin/fiscal/documents?' + qs.toString());
+  if (data.error) { wrap.innerHTML = `<div style="color:#d70015">${escapeHtml(data.error)}</div>`; return; }
+  const docs = data.documents || [];
+
+  // Stats
+  const total = docs.length;
+  const auth = docs.filter(d => d.status === 'authorized').length;
+  const cancel = docs.filter(d => d.status === 'cancelled').length;
+  const rej = docs.filter(d => d.status === 'rejected').length;
+  const sumValor = docs.filter(d => d.status === 'authorized').reduce((s, d) => s + (d.totalValue || 0), 0);
+  stats.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:14px;border:1px solid var(--border);">
+      <div style="font-size:10px;color:var(--text2);letter-spacing:1px;font-weight:700;">TOTAL</div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);">${total}</div>
+    </div>
+    <div style="background:#e8f7ee;border-radius:12px;padding:14px;border:1px solid #0a843d;">
+      <div style="font-size:10px;color:#0a843d;letter-spacing:1px;font-weight:700;">AUTORIZADAS</div>
+      <div style="font-size:22px;font-weight:800;color:#0a843d;">${auth}</div>
+    </div>
+    <div style="background:#fff8e0;border-radius:12px;padding:14px;border:1px solid #b06b00;">
+      <div style="font-size:10px;color:#b06b00;letter-spacing:1px;font-weight:700;">CANCELADAS</div>
+      <div style="font-size:22px;font-weight:800;color:#b06b00;">${cancel}</div>
+    </div>
+    <div style="background:#fff1f0;border-radius:12px;padding:14px;border:1px solid #d70015;">
+      <div style="font-size:10px;color:#d70015;letter-spacing:1px;font-weight:700;">REJEITADAS</div>
+      <div style="font-size:22px;font-weight:800;color:#d70015;">${rej}</div>
+    </div>
+    <div style="background:linear-gradient(135deg,#E5571E,#EE7240);border-radius:12px;padding:14px;color:white;">
+      <div style="font-size:10px;letter-spacing:1px;font-weight:700;opacity:0.9;">VALOR AUTORIZADO</div>
+      <div style="font-size:22px;font-weight:800;">R$ ${sumValor.toFixed(2)}</div>
+    </div>
+  `;
+
+  if (!docs.length) { wrap.innerHTML = '<div class="empty-state" style="text-align:center;padding:40px;color:var(--text2);">Nenhum documento fiscal</div>'; return; }
+
+  // Cards
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;">';
+  const statusColors = {
+    authorized: { bg: '#e8f7ee', fg: '#0a843d', label: '✅ AUTORIZADA' },
+    cancelled:  { bg: '#fff8e0', fg: '#b06b00', label: '🚫 CANCELADA' },
+    rejected:   { bg: '#fff1f0', fg: '#d70015', label: '❌ REJEITADA' },
+    processing: { bg: '#f5f5f7', fg: '#8e8e93', label: '⏳ PROCESSANDO' },
+    draft:      { bg: '#f5f5f7', fg: '#8e8e93', label: '📝 RASCUNHO' },
+    error:      { bg: '#fff1f0', fg: '#d70015', label: '⚠ ERRO' },
+  };
+  docs.forEach(d => {
+    const st = statusColors[d.status] || { bg: '#f5f5f7', fg: '#8e8e93', label: d.status };
+    const dt = new Date(d.createdAt).toLocaleString('pt-BR');
+    const chave = d.accessKey ? d.accessKey.match(/.{1,4}/g).join(' ') : '—';
+    const issuerName = d.issuer ? escapeHtml(d.issuer.companyName) : '—';
+    const issuerCnpj = d.issuer ? d.issuer.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5') : '';
+    html += `
+      <div style="background:white;border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-weight:800;font-size:13px;color:${st.fg};background:${st.bg};padding:3px 10px;border-radius:6px;">${st.label}</span>
+          <span style="font-weight:800;font-size:11px;background:var(--border);color:var(--text);padding:3px 10px;border-radius:6px;">${d.docType}</span>
+          <span style="font-size:11px;color:var(--text2);font-family:monospace;">${dt}</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);">${issuerName}</div>
+        <div style="font-size:11px;color:var(--text2);font-family:monospace;">${issuerCnpj}</div>
+        <div style="display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--text);background:#f5f5f7;padding:8px 10px;border-radius:8px;">
+          <span><strong>Nº ${d.number}</strong> · série ${d.serie}</span>
+          <span style="color:#E5571E;font-weight:800;">R$ ${Number(d.totalValue||0).toFixed(2)}</span>
+        </div>
+        ${d.accessKey ? `<div style="font-size:9px;color:var(--text2);font-family:monospace;line-height:1.4;word-break:break-all;background:#f5f5f7;padding:6px;border-radius:6px;">${chave}</div>` : ''}
+        ${d.recipientName ? `<div style="font-size:11px;color:var(--text2);">📦 ${escapeHtml(d.recipientName)}</div>` : ''}
+        ${d.rejectReason ? `<div style="font-size:11px;color:#d70015;background:#fff1f0;padding:6px 10px;border-radius:6px;">❌ ${escapeHtml(d.rejectReason)}</div>` : ''}
+        ${d.protocol ? `<div style="font-size:10px;color:var(--text2);">Protocolo: ${d.protocol}</div>` : ''}
+        <div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);flex-wrap:wrap;">
+          ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="openAuthedFile('/admin/fiscal/documents/${d.id}/danfe')" style="flex:1;padding:8px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;">📄 DANFE</button>` : ''}
+          ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="window.open('/api/admin/fiscal/documents/${d.id}/print','_blank','width=420,height=700')" style="padding:8px 10px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;">🖨️</button>` : ''}
+          ${d.status === 'authorized' ? `<button onclick="fiscalCancelDoc('${d.id}', '${escapeHtml((d.accessKey||'').slice(-8))}')" style="padding:8px 10px;background:white;border:1px solid #d70015;color:#d70015;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">🚫 Cancelar</button>` : ''}
+        </div>
+      </div>`;
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+async function fiscalCancelDoc(docId, chaveTail) {
+  const reason = prompt('Motivo do cancelamento (mín 15 caracteres):\n\nEx: Erro de digitação no valor da venda');
+  if (!reason) return;
+  if (reason.length < 15) { alert('Motivo precisa ter no mínimo 15 caracteres.'); return; }
+  if (!confirm('Cancelar NFCe terminada em ...' + chaveTail + '?\n\nSEFAZ aceita cancelamento até 24h após autorização.')) return;
+  const r = await api('/admin/fiscal/documents/' + docId + '/cancel', 'POST', { reason });
+  if (r.ok) { alert('✅ NFCe cancelada na SEFAZ.'); loadFiscalDocs(); }
+  else alert('❌ ' + (r.error || 'Falha no cancelamento') + '\n\n' + (r.detail ? JSON.stringify(r.detail).slice(0,200) : ''));
+}
+
 async function loadLabelTemplates() {
   const sel = document.getElementById('labels-template');
   const data = await api('/admin/labels/templates');

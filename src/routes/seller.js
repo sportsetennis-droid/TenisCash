@@ -612,14 +612,129 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       return { sale, commissionsCount: commissionsData.length };
     });
 
+    // ===== EMISSÃO AUTOMÁTICA DE NFCe =====
+    // Tenta emitir cupom fiscal automaticamente se a loja tem FiscalIssuer
+    // com CSC cadastrado. Se faltar dados ou der erro fiscal, a venda é
+    // SALVA mesmo assim — operador pode emitir manualmente depois pela tela.
+    let fiscalResult = null;
+    try {
+      const store = activeStoreId ? await prisma.store.findUnique({
+        where: { id: activeStoreId },
+        include: { fiscalIssuer: true },
+      }) : null;
+
+      if (store?.fiscalIssuer?.csc && !req.body.skipFiscal) {
+        const issuer = store.fiscalIssuer;
+        const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
+        const tPag = tPagMap[paymentMethod] || '99';
+        // Pra cartão sem cAut, pula a emissão automática (operador digita depois)
+        const isCard = tPag === '03' || tPag === '04';
+        if (!isCard || req.body.cardAuthCode) {
+          const fiscalDoc = await prisma.fiscalDocument.create({
+            data: {
+              issuerId: issuer.id,
+              docType: 'NFCE',
+              serie: issuer.nfceSerie || 1,
+              number: issuer.nfceNextNumber,
+              status: 'processing',
+              totalValue: totalAmount,
+              saleId: result.sale.id,
+              productIds: saleItemsData.map(i => i.productId),
+              emittedById: operatorId,
+              paymentMethod: tPag,
+              paymentBrand: req.body.cardBrand || null,
+              paymentAcquirer: req.body.acquirerKey || null,
+              paymentAuthCode: req.body.cardAuthCode || null,
+              paymentTpIntegra: req.body.tpIntegra || (isCard ? 2 : null),
+            },
+          });
+
+          // Pega produtos completos pra ter NCM/CFOP
+          const fullProducts = await prisma.product.findMany({
+            where: { id: { in: saleItemsData.map(i => i.productId) } },
+          });
+          const productById = Object.fromEntries(fullProducts.map(p => [p.id, p]));
+          const fiscalItems = saleItemsData.map(si => {
+            const p = productById[si.productId] || {};
+            return {
+              sku: p.sku || si.productId,
+              name: si.productName,
+              ncm: p.ncm || '64041100',
+              cfop: p.cfop || '5102',
+              unidade: p.unidade || 'UN',
+              qty: si.quantity,
+              unitPrice: si.unitPrice,
+            };
+          });
+
+          // Resolve PFX (hardcode pra Meta Esportes — todos os 6 CNPJs filiais
+          // usam o mesmo cert raiz se for emitido pra empresa)
+          const pfxPath = 'C:\\Chianca\\NFe_Emissao001\\Certificado2026.pfx';
+          const pfxSenha = '123456';
+
+          // Dynamic import do service ESM
+          const { emitNFCe } = await import('../services/fiscalSefazDirect.mjs');
+          const r = await emitNFCe({
+            issuer, pfxPath, pfxSenha,
+            items: fiscalItems,
+            payment: {
+              tPag, valor: totalAmount,
+              acquirerKey: req.body.acquirerKey,
+              tBand: req.body.cardBrand,
+              cAut: req.body.cardAuthCode,
+              tpIntegra: req.body.tpIntegra || (isCard ? 2 : null),
+            },
+            nNF: issuer.nfceNextNumber,
+          });
+
+          // Atualiza doc
+          await prisma.fiscalDocument.update({
+            where: { id: fiscalDoc.id },
+            data: {
+              status: r.ok ? 'authorized' : 'rejected',
+              accessKey: r.accessKey,
+              protocol: r.protocol,
+              rejectReason: r.ok ? null : (r.motivo || 'Erro desconhecido'),
+              xmlContent: r.xmlSigned,
+              response: { status: r.status, motivo: r.motivo, raw: r.rawResponse?.slice(0, 4000) },
+            },
+          });
+
+          if (r.ok) {
+            await prisma.fiscalIssuer.update({
+              where: { id: issuer.id },
+              data: { nfceNextNumber: issuer.nfceNextNumber + 1 },
+            });
+          }
+
+          fiscalResult = {
+            ok: r.ok,
+            documentId: fiscalDoc.id,
+            accessKey: r.accessKey,
+            protocol: r.protocol,
+            error: r.ok ? null : r.motivo,
+          };
+        } else {
+          fiscalResult = { skipped: true, reason: 'Cartão sem código autorização — emitir manualmente após digitar cAut' };
+        }
+      } else {
+        fiscalResult = { skipped: true, reason: store?.fiscalIssuer ? 'Sem CSC cadastrado' : 'Loja sem emissor fiscal' };
+      }
+    } catch (err) {
+      console.error('[NFCe auto] erro:', err.message);
+      fiscalResult = { ok: false, error: err.message };
+    }
+
     res.json({
       ok: true,
       saleId: result.sale.id,
+      id: result.sale.id,
       totalAmount,
       tcUsed: tcConsumed,
       tcEarned,
       commissionsCreated: result.commissionsCount,
       customer: customer ? { id: customer.id, name: customer.name, newBalance: (customer.balance || 0) + (tcEarned - tcConsumed) } : null,
+      fiscal: fiscalResult,
     });
   } catch (err) {
     console.error('Erro registrar venda:', err);

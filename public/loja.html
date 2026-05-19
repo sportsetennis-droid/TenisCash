@@ -1515,21 +1515,57 @@ async function finalizeSale() {
   const btn = document.getElementById('sellFinalize');
   btn.disabled = true; btn.textContent = 'Processando...';
   try {
+    // Dados de cartão (Decreto SEFAZ-PB 43.077/2022)
+    const paymentMethod = document.getElementById('sellPayment').value;
+    const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
+    const cardData = isCard ? {
+      acquirerKey: document.getElementById('sellCardAcquirer').value,
+      cardBrand: document.getElementById('sellCardBrand').value,
+      cardAuthCode: document.getElementById('sellCardAuthCode').value.trim(),
+      tpIntegra: 2, // POS standalone (não TEF integrado)
+    } : {};
+
     const r = await api('/api/seller/sale', {
       method: 'POST',
       body: JSON.stringify({
         customerPhone: customer?.phone || null,
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
-        paymentMethod: document.getElementById('sellPayment').value,
+        paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
         storeId: activeStore?.id,
         vendorId,
+        ...cardData,
       }),
     });
-    // Mostra bloco pra emitir cupom fiscal — não limpa carrinho ainda
-    // (operador pode digitar cAut do cartão antes de emitir)
+    // Backend já tenta emitir NFCe automática se loja tem CSC + dados de cartão
+    const fiscal = r.fiscal;
     showNfceBlock(r);
-    // Notifica sucesso
+    const result = document.getElementById('sellNfceResult');
+    const status = document.getElementById('sellNfceStatus');
+    if (fiscal?.ok && fiscal.accessKey) {
+      // 🎉 EMITIDA AUTOMATICAMENTE
+      status.innerHTML = '<strong style="color:#0a843d">✅ NFCe AUTORIZADA automaticamente</strong>';
+      result.innerHTML = `<div style="background:white;padding:10px;border-radius:8px;border:2px solid #0a843d;">
+        <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ ${fiscal.accessKey ? fiscal.accessKey.slice(-12) : ''}</div>
+        <div style="font-family:monospace;font-size:11px;word-break:break-all;">${fiscal.accessKey || ''}</div>
+        <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${fiscal.protocol || '-'}</div>
+        <button onclick="window.open('/api/admin/fiscal/documents/${fiscal.documentId}/print','_blank','width=420,height=700')" style="margin-top:8px;width:100%;padding:10px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:800;cursor:pointer;font-size:14px;">🖨️ IMPRIMIR DANFE AGORA</button>
+      </div>`;
+      // Auto-abre janela de impressão (operador só confirma)
+      setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print', '_blank', 'width=420,height=700'), 500);
+      // Limpa carrinho automaticamente — venda completa
+      cart = []; customer = null;
+      document.getElementById('sellCustomerPhone').value = '';
+      document.getElementById('sellCustomerInfo').innerHTML = '';
+      document.getElementById('sellTcUsed').value = 0;
+      document.getElementById('sellSearchInput').value = '';
+      document.getElementById('sellSearchResults').innerHTML = '';
+      renderCart();
+    } else if (fiscal?.skipped) {
+      status.innerHTML = '<strong style="color:#b06b00">⚠ ' + (fiscal.reason || 'Emissão pulada') + '</strong>';
+    } else if (fiscal && !fiscal.ok) {
+      status.innerHTML = '<strong style="color:#d70015">❌ NFCe rejeitada: ' + (fiscal.error || 'erro') + '</strong>';
+    }
     const summary = `✓ Venda registrada! Total: ${fmt(r.totalAmount)} | Cashback: ${fmt(r.tcEarned)} | Comissões: ${r.commissionsCreated}`;
     document.getElementById('sellSummary').insertAdjacentHTML('afterbegin',
       `<div style="background:#e8f7ee;color:#0a843d;padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;font-weight:600;">${summary}</div>`);
