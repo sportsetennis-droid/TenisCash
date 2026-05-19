@@ -361,6 +361,66 @@ async function upsertSaleFromOrder(nsOrder) {
     }
   }
 
+  // ===== PRÉ-EMISSÃO NFe MODELO 55 (Nuvemshop usa LOJA04 /0004-79) =====
+  // Cria FiscalDocument em status 'draft' linkado à Sale + dados completos
+  // do destinatário. Operador finaliza emissão pela aba Fiscal do admin
+  // (ou em job batch). Mantém venda livre de bloqueio se faltar dado fiscal.
+  try {
+    if (nsOrder.payment_status === 'paid' && sale) {
+      const issuer = await prisma.fiscalIssuer.findUnique({
+        where: { cnpj: '44052617000479' }, // LOJA04 Ecommerce
+      });
+      if (issuer && issuer.active) {
+        // Recipient = cliente do pedido Nuvemshop
+        const c = nsOrder.customer || {};
+        const addr = (nsOrder.shipping_address || {});
+        const recipientName = c.name || (c.first_name || '') + ' ' + (c.last_name || '');
+        const recipientDoc = (c.identification || '').replace(/\D/g, '');
+        const fiscalDoc = await prisma.fiscalDocument.create({
+          data: {
+            issuerId: issuer.id,
+            docType: 'NFE',
+            serie: issuer.nfeSerie || 1,
+            number: issuer.nfeNextNumber,
+            status: 'draft', // aguardando emissão manual ou job
+            recipientName: recipientName.trim() || 'CONSUMIDOR',
+            recipientCnpjCpf: recipientDoc || null,
+            recipientEmail: c.email || null,
+            totalValue: parseFloat(nsOrder.total) || 0,
+            productsValue: parseFloat(nsOrder.subtotal) || 0,
+            freightValue: parseFloat(nsOrder.shipping_cost_customer) || 0,
+            saleId: sale.id,
+            productIds: (nsOrder.products || []).map(p => String(p.product_id)),
+            payload: {
+              source: 'nuvemshop-webhook',
+              orderId: nsOrder.id,
+              orderNumber: nsOrder.number,
+              recipient: {
+                name: recipientName.trim(),
+                cpfCnpj: recipientDoc,
+                email: c.email,
+                phone: c.phone,
+                address: {
+                  street: addr.address,
+                  number: addr.number,
+                  complement: addr.floor || null,
+                  neighborhood: addr.locality,
+                  city: addr.city,
+                  state: addr.province,
+                  zip: (addr.zipcode || '').replace(/\D/g, ''),
+                },
+              },
+            },
+          },
+        });
+        await logSync('fiscal', 'ok', `order/paid ${nsOrder.id} → FiscalDocument NFe draft criada (id=${fiscalDoc.id})`);
+      }
+    }
+  } catch (err) {
+    console.error('[fiscal pre-emission NS]', err.message);
+    await logSync('fiscal', 'error', `order/paid ${nsOrder.id} pré-emissão NFe falhou: ${err.message}`);
+  }
+
   return sale;
 }
 
