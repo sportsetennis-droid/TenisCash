@@ -545,6 +545,58 @@
           </div>
         </div>
         <select id="sellPayment" style="display:none;"><option value="pix">PIX</option></select>
+
+        <!-- Dados do cartão (Decreto SEFAZ-PB 43.077/2022) — aparece só pra crédito/débito -->
+        <div id="sellCardDetails" style="display:none;margin-top:14px;padding:12px;background:#FFEBDC;border-radius:10px;border:1px solid #FCDAC4;">
+          <div style="font-size:11px;font-weight:700;color:#E5571E;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
+              <select id="sellCardAcquirer" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
+                <option value="STONE">Stone</option>
+                <option value="CIELO">Cielo</option>
+                <option value="REDE">Rede</option>
+                <option value="GETNET">GetNet</option>
+                <option value="PAGSEGURO">PagSeguro</option>
+                <option value="MERCADO_PAGO">Mercado Pago</option>
+                <option value="SAFRAPAY">Safrapay</option>
+                <option value="BIN">Banco Inter / BIN</option>
+                <option value="SIPAG">Sipag</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">BANDEIRA</label>
+              <select id="sellCardBrand" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
+                <option value="01">Visa</option>
+                <option value="02">Mastercard</option>
+                <option value="03">American Express</option>
+                <option value="06">Elo</option>
+                <option value="07">Hipercard</option>
+                <option value="05">Diners Club</option>
+                <option value="14">Discover</option>
+                <option value="18">JCB</option>
+                <option value="04">Sorocred</option>
+                <option value="99">Outros</option>
+              </select>
+            </div>
+            <div style="grid-column:span 2;">
+              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">CÓDIGO DE AUTORIZAÇÃO (do recibo da maquininha)</label>
+              <input type="text" id="sellCardAuthCode" placeholder="Ex: 123456" maxlength="20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:14px;font-family:monospace;font-weight:700;margin-top:4px;">
+            </div>
+          </div>
+          <p style="font-size:10px;color:#6e6e73;margin-top:8px;line-height:1.4;">Aprovou na maquininha → digita aqui o número que veio no recibo (Auth, NSU ou Aprovação).</p>
+        </div>
+
+        <!-- Emissão NFCe (após venda) -->
+        <div id="sellNfceWrap" style="display:none;margin-top:14px;padding:14px;background:#e8f7ee;border-radius:10px;border:2px solid #0a843d;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-size:20px;">📜</span>
+            <span style="font-weight:800;color:#0a843d;">Emitir cupom fiscal (NFCe)</span>
+          </div>
+          <div id="sellNfceStatus" style="font-size:13px;color:#1d1d1f;margin-bottom:10px;">Aguardando finalizar venda…</div>
+          <button class="btn" id="sellEmitNfce" onclick="emitNfceFromSale()" disabled style="width:100%;padding:12px;background:linear-gradient(135deg,#0a843d,#2bb678);color:white;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;">📄 EMITIR CUPOM NA SEFAZ</button>
+          <div id="sellNfceResult" style="margin-top:10px;font-size:12px;"></div>
+        </div>
       </div>
 
       <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFEBDC 100%);border:2px solid var(--primary-light);">
@@ -996,6 +1048,68 @@ function selectPayment(method) {
   document.querySelectorAll('#sellPaymentCards .payment-card').forEach(el => {
     el.classList.toggle('active', el.dataset.method === method);
   });
+  // Mostra detalhes do cartão se crédito/débito (Decreto SEFAZ-PB)
+  const needsCard = method === 'credit_card' || method === 'debit_card';
+  document.getElementById('sellCardDetails').style.display = needsCard ? 'block' : 'none';
+}
+
+// Após finalizar venda, mostra bloco de NFCe (e habilita o botão)
+function showNfceBlock(sale) {
+  window._lastSaleForNfce = sale;
+  const wrap = document.getElementById('sellNfceWrap');
+  const btn = document.getElementById('sellEmitNfce');
+  const status = document.getElementById('sellNfceStatus');
+  if (!wrap) return;
+  wrap.style.display = 'block';
+  btn.disabled = false;
+  status.textContent = 'Venda #' + (sale.id || sale.saleId || '?').slice(0, 8) + ' finalizada. Pronta pra emitir cupom fiscal.';
+  document.getElementById('sellNfceResult').innerHTML = '';
+}
+
+async function emitNfceFromSale() {
+  const sale = window._lastSaleForNfce;
+  if (!sale) { alert('Sem venda finalizada'); return; }
+  const btn = document.getElementById('sellEmitNfce');
+  const result = document.getElementById('sellNfceResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ Emitindo na SEFAZ-PB…';
+  result.innerHTML = '';
+  try {
+    const method = document.getElementById('sellPayment').value;
+    const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
+    const payload = {
+      saleId: sale.id || sale.saleId,
+      paymentMethod: tPagMap[method] || '99',
+    };
+    if (method === 'credit_card' || method === 'debit_card') {
+      payload.acquirerKey = document.getElementById('sellCardAcquirer').value;
+      payload.cardBrand = document.getElementById('sellCardBrand').value;
+      payload.cardAuthCode = document.getElementById('sellCardAuthCode').value.trim() || '000000';
+      if (!payload.cardAuthCode || payload.cardAuthCode === '000000') {
+        if (!confirm('Você não digitou o código de autorização da maquininha. Continuar mesmo assim? (vai usar 000000)')) {
+          btn.disabled = false; btn.textContent = '📄 EMITIR CUPOM NA SEFAZ'; return;
+        }
+      }
+    }
+    const r = await api('/api/admin/fiscal/emit-nfce-from-sale', { method: 'POST', body: JSON.stringify(payload) });
+    if (r.ok && r.accessKey) {
+      result.innerHTML = `<div style="background:white;padding:10px;border-radius:8px;border:2px solid #0a843d;">
+        <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ NFCe AUTORIZADA</div>
+        <div style="font-family:monospace;font-size:11px;word-break:break-all;">${r.accessKey}</div>
+        <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${r.protocol}</div>
+        <button onclick="window.open('/api/admin/fiscal/documents/${r.documentId}/danfe','_blank')" style="margin-top:8px;padding:8px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir DANFE</button>
+      </div>`;
+      btn.style.display = 'none';
+    } else {
+      result.innerHTML = `<div style="background:#fff1f0;padding:10px;border-radius:8px;color:#d70015;font-size:12px;">❌ ${r.error || r.rejectReason || 'Erro desconhecido'}</div>`;
+      btn.disabled = false;
+      btn.textContent = '🔄 TENTAR NOVAMENTE';
+    }
+  } catch (e) {
+    result.innerHTML = `<div style="background:#fff1f0;padding:10px;border-radius:8px;color:#d70015;font-size:12px;">❌ ${e.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = '🔄 TENTAR NOVAMENTE';
+  }
 }
 
 // ============== API HELPER ==============
@@ -1387,15 +1501,13 @@ async function finalizeSale() {
         vendorId,
       }),
     });
-    alert(`✓ Venda registrada!\n\nTotal: ${fmt(r.totalAmount)}\nCashback dado: ${fmt(r.tcEarned)}\nComissões: ${r.commissionsCreated}`);
-    cart = []; customer = null;
-    document.getElementById('sellCustomerPhone').value = '';
-    document.getElementById('sellCustomerInfo').innerHTML = '';
-    document.getElementById('sellTcUsed').value = 0;
-    document.getElementById('sellSearchInput').value = '';
-    document.getElementById('sellSearchResults').innerHTML = '';
-    // Mantém vendedor selecionado (mesmo atendente pode fechar várias seguidas)
-    renderCart();
+    // Mostra bloco pra emitir cupom fiscal — não limpa carrinho ainda
+    // (operador pode digitar cAut do cartão antes de emitir)
+    showNfceBlock(r);
+    // Notifica sucesso
+    const summary = `✓ Venda registrada! Total: ${fmt(r.totalAmount)} | Cashback: ${fmt(r.tcEarned)} | Comissões: ${r.commissionsCreated}`;
+    document.getElementById('sellSummary').insertAdjacentHTML('afterbegin',
+      `<div style="background:#e8f7ee;color:#0a843d;padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;font-weight:600;">${summary}</div>`);
     loadDashboard();
   } catch (e) {
     alert('Erro: ' + e.message);

@@ -6,11 +6,145 @@
 // =====================================================================
 
 const express = require('express');
+const path = require('node:path');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const fiscal = require('../services/fiscalApi');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+// Dynamic import do módulo ESM fiscalSefazDirect (Node permite via import())
+let _sefazDirect = null;
+async function getSefazDirect() {
+  if (!_sefazDirect) _sefazDirect = await import('../services/fiscalSefazDirect.mjs');
+  return _sefazDirect;
+}
+
+// PFX path por CNPJ (resolve a partir do disco do servidor)
+function pfxPathFor(cnpj) {
+  // Convenção: o admin coloca em /c/Chianca/NFe_Emissao001/Certificado2026.pfx
+  // Em produção pode-se mapear pra storage seguro via env
+  if (cnpj === '44052617000126') return 'C:\\Chianca\\NFe_Emissao001\\Certificado2026.pfx';
+  return process.env['PFX_PATH_' + cnpj] || null;
+}
+function pfxSenhaFor(cnpj) {
+  if (cnpj === '44052617000126') return '123456';
+  return process.env['PFX_SENHA_' + cnpj] || null;
+}
+
+// ============================================================
+// Emissão NFCe a partir de uma Sale finalizada (vendedor pode usar)
+// ============================================================
+router.post('/emit-nfce-from-sale', async (req, res) => {
+  try {
+    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const { saleId, paymentMethod, acquirerKey, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
+    if (!saleId) return res.status(400).json({ error: 'saleId obrigatório' });
+
+    const sale = await prisma.sale.findUnique({
+      where: { id: saleId },
+      include: { items: { include: { product: true } }, store: true },
+    });
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    // Resolve issuer pela loja (ou hardcode Meta Esportes por enquanto)
+    // TODO: vincular Store → FiscalIssuer
+    const issuer = await prisma.fiscalIssuer.findFirst({
+      where: { active: true, cnpj: '44052617000126' }, // Meta Esportes default
+    });
+    if (!issuer) return res.status(400).json({ error: 'Sem emissor fiscal ativo' });
+
+    const pfxPath = pfxPathFor(issuer.cnpj);
+    const pfxSenha = pfxSenhaFor(issuer.cnpj);
+    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+
+    // Items
+    const items = sale.items.map((si) => ({
+      sku: si.product?.sku || si.productId,
+      name: si.product?.name || 'Produto',
+      ncm: si.product?.ncm || '64041100',
+      cfop: si.product?.cfop || '5102',
+      unidade: si.product?.unidade || 'UN',
+      qty: si.quantity,
+      unitPrice: si.unitPrice,
+    }));
+
+    // Pagamento
+    const tPagMap = paymentMethod || '01';
+    const payment = {
+      tPag: tPagMap,
+      valor: sale.totalAmount,
+      acquirerKey,
+      tBand: cardBrand,
+      cAut: cardAuthCode,
+      tpIntegra: tpIntegra || 2,
+    };
+
+    // Pre-cria doc em processing
+    const doc = await prisma.fiscalDocument.create({
+      data: {
+        issuerId: issuer.id,
+        docType: 'NFCE',
+        serie: issuer.nfceSerie || 1,
+        number: issuer.nfceNextNumber,
+        status: 'processing',
+        totalValue: sale.totalAmount,
+        saleId: sale.id,
+        productIds: items.map(i => i.sku),
+        emittedById: req.userId,
+        paymentMethod: tPagMap,
+        paymentBrand: cardBrand || null,
+        paymentAcquirer: acquirerKey || null,
+        paymentAuthCode: cardAuthCode || null,
+        paymentTpIntegra: tpIntegra || null,
+      },
+    });
+
+    // Emite
+    const { emitNFCe } = await getSefazDirect();
+    const result = await emitNFCe({
+      issuer, pfxPath, pfxSenha, items, payment,
+      nNF: issuer.nfceNextNumber,
+    });
+
+    // Atualiza doc + numeração
+    const updated = await prisma.fiscalDocument.update({
+      where: { id: doc.id },
+      data: {
+        status: result.ok ? 'authorized' : 'rejected',
+        accessKey: result.accessKey,
+        protocol: result.protocol,
+        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
+        xmlContent: result.xmlSigned,
+        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+      },
+    });
+    if (result.ok) {
+      await prisma.fiscalIssuer.update({
+        where: { id: issuer.id },
+        data: { nfceNextNumber: issuer.nfceNextNumber + 1 },
+      });
+    }
+
+    res.json({
+      ok: result.ok,
+      documentId: updated.id,
+      accessKey: result.accessKey,
+      protocol: result.protocol,
+      status: result.status,
+      motivo: result.motivo,
+      rejectReason: result.ok ? null : result.motivo,
+      error: result.ok ? null : result.motivo,
+    });
+  } catch (err) {
+    console.error('[fiscal/emit-nfce-from-sale]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// As rotas a seguir são admin-only
 router.use(adminMiddleware);
 
 // ============================================================
