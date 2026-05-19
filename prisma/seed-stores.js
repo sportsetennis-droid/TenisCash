@@ -1,5 +1,12 @@
 // prisma/seed-stores.js
-// Roda UMA VEZ pra cadastrar as 6 lojas no banco
+// Cadastro idempotente das 6 Stores da rede Sports & Tennis, alinhado
+// com o número de filial do CNPJ Meta Esportes (44.052.617/000X-XX):
+//   /0001 → LOJA01 Baratão (matriz)
+//   /0002 → LOJA02 Bessa
+//   /0003 → LOJA03 Rainha (Campina Grande)
+//   /0004 → LOJA04 Ecommerce (Nuvemshop)
+//   /0005 → LOJA05 Tambaú
+//   /0006 → LOJA06 Tambiá (DNA Paraíba)
 // Comando: node prisma/seed-stores.js
 
 const { PrismaClient } = require('@prisma/client');
@@ -8,6 +15,16 @@ const prisma = new PrismaClient();
 const stores = [
   {
     code: 'LOJA01',
+    name: 'Baratão dos Esportes',
+    dna: 'Outlet',
+    mall: 'Loja de Rua',
+    city: 'João Pessoa',
+    state: 'PB',
+    latitude: -7.1195,
+    longitude: -34.8450,
+  },
+  {
+    code: 'LOJA02',
     name: 'Sports & Tennis Praia do Bessa',
     dna: 'Masculino',
     mall: 'Parahyba Mall',
@@ -15,16 +32,6 @@ const stores = [
     state: 'PB',
     latitude: -7.0812177,
     longitude: -34.8391033,
-  },
-  {
-    code: 'LOJA02',
-    name: 'Sports & Tennis Praia de Tambaú',
-    dna: 'Feminino',
-    mall: 'Pirâmide Shopping Tambaú',
-    city: 'João Pessoa',
-    state: 'PB',
-    latitude: -7.1147014,
-    longitude: -34.8238210,
   },
   {
     code: 'LOJA03',
@@ -38,33 +45,33 @@ const stores = [
   },
   {
     code: 'LOJA04',
-    name: 'Sports & Tennis DNA Paraíba',
+    name: 'Sports & Tennis (Ecommerce)',
+    dna: 'Ecommerce',
+    mall: 'Online — Nuvemshop',
+    city: 'João Pessoa',
+    state: 'PB',
+    latitude: -7.1430,
+    longitude: -34.8810,
+  },
+  {
+    code: 'LOJA05',
+    name: 'Sports & Tennis Praia de Tambaú',
+    dna: 'Feminino',
+    mall: 'Pirâmide Shopping Tambaú',
+    city: 'João Pessoa',
+    state: 'PB',
+    latitude: -7.1147014,
+    longitude: -34.8238210,
+  },
+  {
+    code: 'LOJA06',
+    name: 'Sports & Tennis Tambiá',
     dna: 'Geral',
     mall: 'Shopping Tambiá',
     city: 'João Pessoa',
     state: 'PB',
     latitude: -7.1163828,
     longitude: -34.8798557,
-  },
-  {
-    code: 'LOJA05',
-    name: 'Baratão dos Esportes',
-    dna: 'Outlet',
-    mall: 'Loja de Rua',
-    city: 'João Pessoa',
-    state: 'PB',
-    latitude: -7.1195,
-    longitude: -34.8450,
-  },
-  {
-    code: 'LOJA06',
-    name: 'Fábrica',
-    dna: 'Estoque / Fardamentos',
-    mall: 'Galpão Industrial',
-    city: 'João Pessoa',
-    state: 'PB',
-    latitude: -7.1430,
-    longitude: -34.8810,
   },
 ];
 

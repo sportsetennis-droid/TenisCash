@@ -868,7 +868,9 @@ function avatarColor(name) {
   return 'avatar-' + (Math.abs(hash) % 6 + 1);
 }
 function storeIcon(code) {
-  const map = { LOJA01: '🏖️', LOJA02: '🏝️', LOJA03: '👑', LOJA04: '🧬', LOJA05: '🛒', LOJA06: '🏭' };
+  // Nova ordem alinhada com CNPJ filial: LOJA01=Baratão (matriz /0001), LOJA02=Bessa /0002,
+  // LOJA03=Rainha /0003, LOJA04=Ecommerce /0004, LOJA05=Tambaú /0005, LOJA06=Tambiá /0006
+  const map = { LOJA01: '🛒', LOJA02: '🏖️', LOJA03: '👑', LOJA04: '🌐', LOJA05: '🏝️', LOJA06: '🧬' };
   return map[code] || '🏬';
 }
 
@@ -1845,7 +1847,7 @@ async function checkInventory(id, name) {
             <tbody>${rows || '<tr><td colspan="999" style="padding:20px;text-align:center;color:#8e8e93;">Sem tamanhos cadastrados</td></tr>'}</tbody>
           </table>
         </div>
-        <p style="font-size:11px;color:#8e8e93;margin-top:8px;">LOJA01: Bessa · LOJA02: Tambaú · LOJA03: Rainha · LOJA04: DNA · LOJA05: Baratão · LOJA06: Fábrica</p>
+        <p style="font-size:11px;color:#8e8e93;margin-top:8px;">LOJA01: Baratão · LOJA02: Bessa · LOJA03: Rainha · LOJA04: Ecommerce · LOJA05: Tambaú · LOJA06: Tambiá</p>
       </div>
     `;
   } catch (e) { alert(e.message); }

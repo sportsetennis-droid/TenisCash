@@ -3,7 +3,7 @@
 // =====================================================================
 
 const BRAND_BASE = `
-A rede tem 6 lojas em Paraíba/Brasil — Bessa LOJA01 DNA Masculino, Tambaú LOJA02 DNA Feminino, Campina Grande LOJA03 DNA Futebol, Tambiá LOJA04 DNA Geral, Baratão dos Esportes LOJA05 (outlet), Fábrica LOJA06 (estoque / fardamentos).
+A rede tem 6 lojas em Paraíba/Brasil — Baratão dos Esportes LOJA01 (matriz, outlet), Sports & Tennis Praia do Bessa LOJA02 DNA Masculino, Rainha da Borborema LOJA03 DNA Futebol (Campina Grande), Ecommerce LOJA04 (Nuvemshop online), Praia de Tambaú LOJA05 DNA Feminino, Tambiá LOJA06 DNA Geral.
 
 TenisCash é a MOEDA/CARTEIRA/BENEFÍCIO/CASHBACK (saldo T$) da Sports & Tennis. NUNCA chame outros módulos de "TenisCash X" — eles são "Sports & Tennis X".
 
