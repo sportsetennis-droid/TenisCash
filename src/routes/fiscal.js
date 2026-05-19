@@ -150,6 +150,102 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 });
 
 // ============================================================
+// Emissão NFe modelo 55 (B2C/B2B com destinatário) — payload livre.
+// Útil pra ecommerce Nuvemshop, vendas a clubes/escolas, B2B.
+// ============================================================
+router.post('/emit-nfe55', async (req, res) => {
+  try {
+    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const b = req.body || {};
+    const { issuerId, items, customer, payment, natOp, saleId, nuvemshopOrderId } = b;
+    if (!items?.length) return res.status(400).json({ error: 'items obrigatório' });
+    if (!customer?.cpfCnpj) return res.status(400).json({ error: 'customer.cpfCnpj obrigatório pra modelo 55' });
+    if (!payment) return res.status(400).json({ error: 'payment obrigatório' });
+
+    let issuer;
+    if (issuerId) {
+      issuer = await prisma.fiscalIssuer.findUnique({ where: { id: issuerId } });
+    } else {
+      // Default: Sports & Tennis ecommerce (filial 0004-79)
+      issuer = await prisma.fiscalIssuer.findFirst({
+        where: { cnpj: '44052617000479', active: true },
+      });
+    }
+    if (!issuer || !issuer.active) return res.status(400).json({ error: 'Emissor não encontrado/inativo' });
+
+    const pfxPath = pfxPathFor(issuer.cnpj);
+    const pfxSenha = pfxSenhaFor(issuer.cnpj);
+    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+
+    // Pre-cria doc em processing
+    const doc = await prisma.fiscalDocument.create({
+      data: {
+        issuerId: issuer.id,
+        docType: 'NFE',
+        serie: issuer.nfeSerie || 1,
+        number: issuer.nfeNextNumber,
+        status: 'processing',
+        totalValue: items.reduce((acc, i) => acc + (Number(i.qty) || 1) * (Number(i.unitPrice) || 0), 0),
+        saleId: saleId || null,
+        productIds: items.map(i => i.sku || i.id),
+        emittedById: req.userId,
+        recipientName: customer.name || null,
+        recipientCnpjCpf: String(customer.cpfCnpj).replace(/\D/g, ''),
+        recipientEmail: customer.email || null,
+        paymentMethod: payment.tPag || null,
+        paymentBrand: payment.tBand || null,
+        paymentAcquirer: payment.acquirerKey || null,
+        paymentAuthCode: payment.cAut || null,
+        paymentTpIntegra: payment.tpIntegra || null,
+        payload: nuvemshopOrderId ? { nuvemshopOrderId: String(nuvemshopOrderId) } : null,
+      },
+    });
+
+    const { emitNFe55 } = await getSefazDirect();
+    const result = await emitNFe55({
+      issuer, pfxPath, pfxSenha, items,
+      payment: { ...payment, nuvemshopOrderId },
+      customer, natOp,
+      nNF: issuer.nfeNextNumber,
+    });
+
+    const updated = await prisma.fiscalDocument.update({
+      where: { id: doc.id },
+      data: {
+        status: result.ok ? 'authorized' : 'rejected',
+        accessKey: result.accessKey,
+        protocol: result.protocol,
+        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
+        xmlContent: result.xmlSigned,
+        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+      },
+    });
+    if (result.ok) {
+      await prisma.fiscalIssuer.update({
+        where: { id: issuer.id },
+        data: { nfeNextNumber: issuer.nfeNextNumber + 1 },
+      });
+    }
+
+    res.json({
+      ok: result.ok,
+      documentId: updated.id,
+      accessKey: result.accessKey,
+      protocol: result.protocol,
+      status: result.status,
+      motivo: result.motivo,
+      rejectReason: result.ok ? null : result.motivo,
+      error: result.ok ? null : result.motivo,
+    });
+  } catch (err) {
+    console.error('[fiscal/emit-nfe55]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // DANFE PDF — gera localmente a partir do XML autorizado (acessível por seller)
 // ============================================================
 let _spedPdf = null;
