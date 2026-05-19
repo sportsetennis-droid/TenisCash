@@ -45,16 +45,21 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
-      include: { items: { include: { product: true } }, store: true },
+      include: {
+        items: { include: { product: true } },
+        store: { include: { fiscalIssuer: true } },
+      },
     });
     if (!sale) return res.status(404).json({ error: 'Venda não encontrada' });
 
-    // Resolve issuer pela loja (ou hardcode Meta Esportes por enquanto)
-    // TODO: vincular Store → FiscalIssuer
-    const issuer = await prisma.fiscalIssuer.findFirst({
-      where: { active: true, cnpj: '44052617000126' }, // Meta Esportes default
-    });
-    if (!issuer) return res.status(400).json({ error: 'Sem emissor fiscal ativo' });
+    // Resolve issuer pela loja da venda (Store → FiscalIssuer vinculado)
+    let issuer = sale.store?.fiscalIssuer;
+    if (!issuer) {
+      // Fallback: Baratão (matriz Meta Esportes) caso loja sem issuer vinculado
+      issuer = await prisma.fiscalIssuer.findUnique({ where: { cnpj: '44052617000126' } });
+    }
+    if (!issuer || !issuer.active) return res.status(400).json({ error: 'Loja sem emissor fiscal vinculado' });
+    if (!issuer.csc) return res.status(400).json({ error: 'Emissor ' + issuer.fantasyName + ' sem CSC cadastrado — gere no portal SEFAZ-PB primeiro' });
 
     const pfxPath = pfxPathFor(issuer.cnpj);
     const pfxSenha = pfxSenhaFor(issuer.cnpj);

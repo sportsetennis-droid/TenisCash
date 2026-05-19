@@ -185,6 +185,10 @@ model Store {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  // CNPJ que emite NFCe/NFe pelas vendas dessa loja
+  fiscalIssuerId String?
+  fiscalIssuer   FiscalIssuer? @relation(fields: [fiscalIssuerId], references: [id])
+
   sellers  User[]
   clockIns ClockIn[]
   messages Message[]    @relation("storeMessages")
@@ -1995,6 +1999,7 @@ model FiscalIssuer {
   updatedAt       DateTime @updatedAt
 
   documents       FiscalDocument[]
+  stores          Store[]
 
   @@index([cnpj])
   @@index([active])
