@@ -1943,3 +1943,126 @@ model BadgeEarned {
 
   @@unique([userId, badgeKey])
 }
+
+// ============================================================
+// FISCAL — Emissor de NF-e / NFC-e / CT-e via Brasil NFe API
+// ============================================================
+
+// 1 row por CNPJ emissor (Sports & Tennis, Meta Esportes, Meta Fardamentos, etc.)
+model FiscalIssuer {
+  id              String   @id @default(cuid())
+  cnpj            String   @unique
+  companyName     String
+  fantasyName     String?
+  ie              String?  // Inscrição Estadual
+  im              String?  // Inscrição Municipal
+  // Endereço (necessário pra cabeçalho NFe)
+  street          String?
+  number          String?
+  complement      String?
+  neighborhood    String?
+  cityCode        String?  // código IBGE 7 dígitos
+  city            String?
+  state           String?  // UF — PB
+  zip             String?
+  phone           String?
+  // Brasil NFe credenciais (homologação OU produção)
+  apiToken        String?  // token de API por CNPJ
+  environment     String   @default("homologation") // "homologation" | "production"
+  // Códigos NFCe
+  csc             String?  // Código de Segurança do Contribuinte
+  cscId           String?  // ID do CSC (1, 2, 3...)
+  // Regime tributário
+  crt             Int      @default(1) // 1=Simples Nacional, 2=SN excesso receita, 3=Regime Normal
+  // Numeração — controle interno
+  nfeSerie        Int      @default(1)
+  nfeNextNumber   Int      @default(1)
+  nfceSerie       Int      @default(1)
+  nfceNextNumber  Int      @default(1)
+  cteSerie        Int      @default(1)
+  cteNextNumber   Int      @default(1)
+  // Status
+  active          Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  documents       FiscalDocument[]
+
+  @@index([cnpj])
+  @@index([active])
+}
+
+// 1 row por documento fiscal emitido
+model FiscalDocument {
+  id              String   @id @default(cuid())
+  issuerId        String
+  issuer          FiscalIssuer @relation(fields: [issuerId], references: [id])
+
+  // Tipo do documento
+  docType         String   // "NFE" | "NFCE" | "CTE" | "MDFE" | "NFSE"
+  serie           Int
+  number          Int
+  // Identificadores SEFAZ
+  accessKey       String?  // 44 dígitos
+  protocol        String?  // protocolo de autorização SEFAZ
+  // Status fiscal
+  status          String   @default("draft") // draft | processing | authorized | rejected | cancelled | error
+  rejectReason    String?  // motivo de rejeição (se status=rejected)
+
+  // Brasil NFe id interno (pra consultas/cancelamento via API)
+  externalId      String?  @unique
+
+  // Conteúdo
+  recipientName   String?
+  recipientCnpjCpf String?
+  recipientEmail  String?
+  totalValue      Float?
+  productsValue   Float?
+  discountValue   Float?
+  freightValue    Float?
+
+  // Vínculos com sistema TenisCash
+  saleId          String?  // se foi gerado por uma venda
+  productIds      String[] // produtos vendidos (Json array)
+
+  // Documentos baixados/cacheados
+  xmlContent      String?  @db.Text // XML autorizado
+  danfeUrl        String?  // URL do DANFE PDF
+  pdfContent      Bytes?   // PDF DANFE (cache, opcional)
+
+  // Cancelamento (até 24h)
+  cancelledAt     DateTime?
+  cancelReason    String?
+  cancelProtocol  String?
+
+  // Carta de correção
+  correctionLetter Json? // { sequence, reason, protocol, date }
+
+  // Auditoria
+  payload         Json? // requisição enviada à Brasil NFe (pra debug)
+  response        Json? // resposta completa da Brasil NFe
+  emittedById     String? // userId do operador
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([issuerId, docType, serie, number])
+  @@index([accessKey])
+  @@index([saleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Log de webhooks recebidos da Brasil NFe (status updates)
+model FiscalWebhookLog {
+  id              String   @id @default(cuid())
+  externalId      String?  // id Brasil NFe
+  event           String   // "authorized" | "rejected" | "cancelled" etc
+  payload         Json
+  processed       Boolean  @default(false)
+  error           String?
+  receivedAt      DateTime @default(now())
+
+  @@index([externalId])
+  @@index([receivedAt])
+}
