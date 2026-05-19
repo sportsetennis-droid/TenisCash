@@ -144,6 +144,47 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
   }
 });
 
+// ============================================================
+// DANFE PDF — gera localmente a partir do XML autorizado (acessível por seller)
+// ============================================================
+let _spedPdf = null;
+async function getSpedPdf() {
+  if (!_spedPdf) _spedPdf = await import('node-sped-pdf');
+  return _spedPdf;
+}
+
+router.get('/documents/:id/danfe', async (req, res) => {
+  try {
+    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const doc = await prisma.fiscalDocument.findUnique({
+      where: { id: req.params.id },
+      include: { issuer: true },
+    });
+    if (!doc) return res.status(404).json({ error: 'Não encontrado' });
+    if (!doc.xmlContent) return res.status(400).json({ error: 'Documento sem XML armazenado' });
+    if (doc.status !== 'authorized') return res.status(400).json({ error: 'Documento não autorizado (status: ' + doc.status + ')' });
+
+    const { DANFCe, DANFe } = await getSpedPdf();
+    const fn = doc.docType === 'NFCE' ? DANFCe : DANFe;
+    const pdfBuffer = await fn({
+      xml: doc.xmlContent,
+      // logo: opcional — URL da logo Sports & Tennis se quiser
+    });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="danfe-${doc.docType}-${doc.number}.pdf"`,
+      'Cache-Control': 'private, max-age=300',
+    });
+    res.send(Buffer.from(pdfBuffer));
+  } catch (err) {
+    console.error('[fiscal/danfe]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // As rotas a seguir são admin-only
 router.use(adminMiddleware);
 
@@ -454,29 +495,7 @@ router.post('/documents/:id/cancel', async (req, res) => {
   }
 });
 
-// DANFE PDF (proxy autenticado)
-router.get('/documents/:id/danfe', async (req, res) => {
-  try {
-    const doc = await prisma.fiscalDocument.findUnique({
-      where: { id: req.params.id },
-      include: { issuer: true },
-    });
-    if (!doc) return res.status(404).json({ error: 'Não encontrado' });
-    if (!doc.externalId) return res.status(400).json({ error: 'Documento sem externalId — não foi emitido' });
-
-    let resp;
-    if (doc.docType === 'NFCE') resp = await fiscal.getNFCePdf(doc.issuer, doc.externalId);
-    else if (doc.docType === 'NFE') resp = await fiscal.getNFePdf(doc.issuer, doc.externalId);
-    else return res.status(400).json({ error: 'Tipo não tem DANFE' });
-
-    if (resp.pdf) {
-      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="danfe-${doc.number}.pdf"` });
-      return res.send(resp.pdf);
-    }
-    res.status(400).json({ error: 'Sem PDF retornado', detail: resp.data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// DANFE legado (Brasil NFe) — removido. A rota /documents/:id/danfe está
+// disponível antes do adminMiddleware acima usando node-sped-pdf local.
 
 module.exports = router;

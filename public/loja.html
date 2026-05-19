@@ -1097,7 +1097,7 @@ async function emitNfceFromSale() {
         <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ NFCe AUTORIZADA</div>
         <div style="font-family:monospace;font-size:11px;word-break:break-all;">${r.accessKey}</div>
         <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${r.protocol}</div>
-        <button onclick="window.open('/api/admin/fiscal/documents/${r.documentId}/danfe','_blank')" style="margin-top:8px;padding:8px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir DANFE</button>
+        <button onclick="openAuthedFile('/api/admin/fiscal/documents/${r.documentId}/danfe')" style="margin-top:8px;padding:8px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir DANFE</button>
       </div>`;
       btn.style.display = 'none';
     } else {
@@ -1109,6 +1109,29 @@ async function emitNfceFromSale() {
     result.innerHTML = `<div style="background:#fff1f0;padding:10px;border-radius:8px;color:#d70015;font-size:12px;">❌ ${e.message}</div>`;
     btn.disabled = false;
     btn.textContent = '🔄 TENTAR NOVAMENTE';
+  }
+}
+
+// Abre URL autenticada (PDF/binário) em nova aba via blob.
+// window.open() não envia Authorization header — precisa fetch + blob URL.
+async function openAuthedFile(path) {
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const url = path.startsWith('http') ? path : (API + path);
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      let msg = 'Erro ' + r.status;
+      try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+      alert('Não foi possível abrir o arquivo: ' + msg);
+      return;
+    }
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (e) {
+    alert('Erro ao abrir arquivo: ' + e.message);
   }
 }
 
