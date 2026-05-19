@@ -169,7 +169,9 @@ router.get('/documents/:id/danfe', async (req, res) => {
     });
     if (!doc) return res.status(404).json({ error: 'Não encontrado' });
     if (!doc.xmlContent) return res.status(400).json({ error: 'Documento sem XML armazenado' });
-    if (doc.status !== 'authorized') return res.status(400).json({ error: 'Documento não autorizado (status: ' + doc.status + ')' });
+    if (doc.status !== 'authorized' && doc.status !== 'cancelled') {
+      return res.status(400).json({ error: 'Documento não autorizado (status: ' + doc.status + ')' });
+    }
 
     const { DANFCe, DANFe } = await getSpedPdf();
     const fn = doc.docType === 'NFCE' ? DANFCe : DANFe;
@@ -186,6 +188,73 @@ router.get('/documents/:id/danfe', async (req, res) => {
     res.send(Buffer.from(pdfBuffer));
   } catch (err) {
     console.error('[fiscal/danfe]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-print: página HTML com PDF embed + window.print() automático.
+// Configurada pra Epson TM-T20 (largura 80mm, sem margem).
+// Acesso via token query param (impressora não consegue mandar header).
+router.get('/documents/:id/print', async (req, res) => {
+  try {
+    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const docId = req.params.id;
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Imprimindo DANFE...</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  @media print { body { margin: 0; padding: 0; } iframe { width: 100%; height: 100vh; border: 0; } }
+  body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background: #f5f5f7; }
+  .header { background: #E5571E; color: white; padding: 12px; text-align: center; font-weight: 700; }
+  .info { padding: 12px; background: white; font-size: 13px; color: #1d1d1f; }
+  iframe { width: 100%; height: calc(100vh - 100px); border: 0; display: block; }
+  button { padding: 10px 18px; background: #E5571E; color: white; border: 0; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 14px; }
+</style>
+</head><body>
+<div class="header">🖨️ Imprimindo na Epson TM-T20...</div>
+<div class="info" id="status">Carregando DANFE...</div>
+<iframe id="danfeFrame" name="danfeFrame"></iframe>
+<script>
+  (async () => {
+    const docId = ${JSON.stringify(docId)};
+    const token = localStorage.getItem('tc_admin_token') || localStorage.getItem('jwt') || '';
+    try {
+      const r = await fetch('/api/admin/fiscal/documents/' + docId + '/danfe', {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        document.getElementById('status').innerHTML = '<span style="color:#d70015">❌ ' + (e.error || 'Erro ' + r.status) + '</span>';
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const frame = document.getElementById('danfeFrame');
+      frame.src = url;
+      document.getElementById('status').innerHTML = '✅ DANFE carregado. Clique <button onclick="frame.contentWindow.focus();frame.contentWindow.print()">🖨️ IMPRIMIR AGORA</button> ou aperte Ctrl+P';
+      // Auto-print após carregar
+      frame.onload = () => {
+        setTimeout(() => {
+          try {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+          } catch (e) {
+            console.warn('Auto-print bloqueado:', e);
+          }
+        }, 500);
+      };
+    } catch (err) {
+      document.getElementById('status').innerHTML = '<span style="color:#d70015">❌ ' + err.message + '</span>';
+    }
+  })();
+</script>
+</body></html>`;
+    res.type('text/html').send(html);
+  } catch (err) {
+    console.error('[fiscal/print]', err);
     res.status(500).json({ error: err.message });
   }
 });

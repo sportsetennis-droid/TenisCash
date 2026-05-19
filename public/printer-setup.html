@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configurar Epson TM-T20 — Sports & Tennis</title>
+<style>
+  :root {
+    --primary: #E5571E;
+    --primary-light: #FCDAC4;
+    --bg: #FFEBDC;
+    --text: #1d1d1f;
+    --text-muted: #6e6e73;
+    --border: #FCDAC4;
+    --success: #0a843d;
+    --success-bg: #e8f7ee;
+    --danger: #d70015;
+    --danger-bg: #fff1f0;
+    --info: #0066cc;
+    --info-bg: #e3f2fd;
+    --warning: #b06b00;
+    --warning-bg: #fff8e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #E5571E 0%, #EE7240 100%); color: var(--text); min-height: 100vh; padding: 20px; line-height: 1.5; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .header { background: white; border-radius: 16px; padding: 24px 28px; box-shadow: 0 12px 32px rgba(0,0,0,0.1); margin-bottom: 18px; }
+  h1 { font-size: 26px; color: var(--primary); margin-bottom: 6px; letter-spacing: -0.5px; }
+  .subtitle { color: var(--text-muted); font-size: 14px; }
+  .step { background: white; border-radius: 14px; padding: 20px 24px; margin-bottom: 14px; border-left: 4px solid var(--primary); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+  .step-num { display: inline-block; background: var(--primary); color: white; width: 32px; height: 32px; border-radius: 50%; text-align: center; line-height: 32px; font-weight: 800; margin-right: 10px; vertical-align: middle; }
+  .step h2 { display: inline-block; font-size: 18px; vertical-align: middle; }
+  .step .body { padding-left: 44px; margin-top: 10px; font-size: 14px; color: var(--text); }
+  .step ul { margin: 8px 0 0 20px; }
+  .step li { margin-bottom: 4px; }
+  code, kbd { background: #f5f5f7; padding: 2px 7px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 13px; border: 1px solid #e5e5ea; }
+  .tag-key { background: var(--info-bg); color: var(--info); padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 12px; }
+  .alert { padding: 12px 16px; border-radius: 10px; margin: 10px 0; font-size: 13px; }
+  .alert-warn { background: var(--warning-bg); color: var(--warning); border-left: 3px solid var(--warning); }
+  .alert-success { background: var(--success-bg); color: var(--success); border-left: 3px solid var(--success); }
+  .alert-info { background: var(--info-bg); color: var(--info); border-left: 3px solid var(--info); }
+  a { color: var(--primary); text-decoration: none; font-weight: 700; }
+  a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #e5e5ea; text-align: left; font-size: 13px; }
+  th { background: #f5f5f7; font-weight: 700; }
+  .check { color: var(--success); font-weight: 800; }
+  .key-combo { display: inline-block; background: #1d1d1f; color: white; padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 12px; margin: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>🖨️ Configurar Epson TM-T20 — Cupom Fiscal NFCe</h1>
+    <div class="subtitle">Sports & Tennis · Faça em cada computador da loja onde a impressora está conectada (1 vez por PC, ~10 min)</div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">1</span><h2>Conectar e ligar a impressora</h2>
+    <div class="body">
+      <ul>
+        <li>Conecte o cabo <span class="tag-key">USB</span> da impressora ao PC</li>
+        <li>Conecte o cabo de alimentação e ligue a impressora (botão lateral)</li>
+        <li>Carregue uma bobina de papel térmico <span class="tag-key">80mm</span> (largura padrão)</li>
+        <li>Aguarde o LED <span style="color:var(--success);font-weight:700">verde</span> ficar fixo (pronto)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">2</span><h2>Baixar e instalar driver Epson</h2>
+    <div class="body">
+      <ul>
+        <li>Acesse o site oficial: <a href="https://download.epson-biz.com/modules/pos/index.php?page=single_soft&cid=4970&pcat=3&pid=36" target="_blank">Epson Advanced Printer Driver (APD)</a></li>
+        <li>Baixe a versão mais recente — <strong>APD v6.x</strong> ou superior</li>
+        <li>Execute o instalador como <span class="tag-key">administrador</span></li>
+        <li>Durante a instalação, selecione:
+          <ul>
+            <li>Modelo: <code>TM-T20II</code> (ou <code>TM-T20III</code> dependendo do seu)</li>
+            <li>Porta: <code>USB001</code> (detecta automaticamente)</li>
+            <li>Nome da impressora: <strong>EPSON TM-T20</strong></li>
+          </ul>
+        </li>
+        <li>Conclua e reinicie o PC se solicitado</li>
+      </ul>
+      <div class="alert alert-info">💡 Se o Windows já reconheceu a impressora como "Epson TM-T20 Receipt", o driver genérico está OK pra começar — você pode pular este passo. Mas o driver Epson APD oficial dá <strong>velocidade + qualidade melhor</strong>.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">3</span><h2>Configurar preferências de impressão</h2>
+    <div class="body">
+      <ul>
+        <li>No Windows: <kbd>Iniciar</kbd> → <kbd>Configurações</kbd> → <kbd>Bluetooth e dispositivos</kbd> → <kbd>Impressoras e scanners</kbd></li>
+        <li>Clique em <strong>EPSON TM-T20</strong> (ou o nome que apareceu)</li>
+        <li>Clique em <kbd>Preferências de impressão</kbd>:
+          <table>
+            <tr><th>Configuração</th><th>Valor</th></tr>
+            <tr><td>Tamanho do papel</td><td><strong>80mm × Recibo</strong> (ou <strong>Roll Paper 80×297mm</strong>)</td></tr>
+            <tr><td>Orientação</td><td>Retrato</td></tr>
+            <tr><td>Origem do papel</td><td>Roll Paper</td></tr>
+            <tr><td>Velocidade</td><td>Alta (200mm/s)</td></tr>
+            <tr><td>Densidade</td><td>Normal</td></tr>
+            <tr><td>Corte de papel</td><td><strong>Corte automático após documento</strong></td></tr>
+            <tr><td>Acionar gaveta</td><td>(se tiver) Antes da impressão</td></tr>
+          </table>
+        </li>
+        <li><strong>Salve como impressora padrão</strong> do PC (botão direito → "Definir como padrão")</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">4</span><h2>Configurar o navegador (Chrome ou Edge)</h2>
+    <div class="body">
+      <ul>
+        <li>Abra o Chrome/Edge em qualquer página e aperte <kbd>Ctrl + P</kbd></li>
+        <li>No painel de impressão:
+          <ul>
+            <li><strong>Destino:</strong> EPSON TM-T20</li>
+            <li><strong>Páginas:</strong> Todas</li>
+            <li><strong>Margens:</strong> <code>Nenhuma</code></li>
+            <li><strong>Escala:</strong> 100%</li>
+            <li>Em <strong>Mais configurações</strong>:
+              <ul>
+                <li>✅ Apenas o conteúdo (sem cabeçalho/rodapé do navegador)</li>
+                <li>❌ Desmarque "Gráficos de fundo" (texto mais limpo)</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+        <li>Após o primeiro print, o Chrome lembra essas configurações</li>
+      </ul>
+      <div class="alert alert-info">💡 <strong>Dica avançada:</strong> Use o atalho silencioso do Chrome — adicione a flag <code>--kiosk-printing</code> no atalho do Chrome. Assim qualquer <code>window.print()</code> imprime instantaneamente sem mostrar o diálogo.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">5</span><h2>Testar impressão</h2>
+    <div class="body">
+      <ul>
+        <li>Abra o portal TenisCash: <a href="/loja" target="_blank">/loja</a></li>
+        <li>Faça uma <strong>venda de teste</strong> (1 item, R$ 1,00)</li>
+        <li>Após finalizar, clique em <strong>"🖨️ Imprimir DANFE"</strong></li>
+        <li>O navegador deve enviar pra Epson TM-T20 e cortar automaticamente</li>
+      </ul>
+      <div class="alert alert-success">✅ Se imprimiu certo, você está pronto pra vender com NFCe automática.</div>
+      <div class="alert alert-warn">⚠️ Se não imprimiu: 1) verifique que a Epson é a padrão; 2) reinicie o serviço de impressão (services.msc → Print Spooler → Reiniciar); 3) reinstale o driver Epson APD.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">6</span><h2>Para velocidade máxima — Chrome em modo Kiosk Print</h2>
+    <div class="body">
+      <p>Pra eliminar o diálogo de impressão (cupom sai instantâneo após emitir NFCe):</p>
+      <ul>
+        <li>Crie um atalho do Chrome na área de trabalho</li>
+        <li>Clique direito → <strong>Propriedades</strong></li>
+        <li>No campo <strong>Destino</strong>, adicione no final:
+          <div style="margin-top:6px;background:#1d1d1f;color:#fff;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:12px;overflow-x:auto;">"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --new-window https://tenis.cash/loja</div>
+        </li>
+        <li>Salve. Use SEMPRE esse atalho pra abrir a loja</li>
+        <li>Agora <code>window.print()</code> envia direto pra impressora padrão sem diálogo</li>
+      </ul>
+      <div class="alert alert-warn">⚠️ Funciona <strong>SÓ se a impressora padrão for a Epson TM-T20</strong>. Se a padrão for outra (ex: salvar PDF), vai cuspir o cupom no lugar errado.</div>
+    </div>
+  </div>
+
+  <div class="step" style="border-color: var(--success); background: var(--success-bg);">
+    <span class="step-num" style="background: var(--success);">✓</span><h2 style="color: var(--success)">Pronto. Cada PC configurado uma vez serve pra sempre.</h2>
+    <div class="body">
+      <p>Replicar nas <strong>6 lojas</strong>: faça esse passo-a-passo em cada PC de caixa. Total: ~1 hora pra rede inteira.</p>
+      <p style="margin-top:10px;">Dúvidas? <a href="https://download.epson-biz.com/modules/pos/index.php?page=prod&pcat=3&pid=36" target="_blank">Manual oficial Epson TM-T20</a> ou pede pro técnico da loja.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
