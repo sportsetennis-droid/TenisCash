@@ -114,6 +114,100 @@ async function findProduct(ext) {
       if (candidates[0]) return { ...candidates[0], matchedBy: 'name_fuzzy' };
     }
   }
+
+  // 6) ALIAS de marca pelo modelo — Vision retornou OUTRO mas o modelo
+  //    revela a marca real. Tenta brand_inferred + modelo.
+  if (ext.modelo && (!ext.marca || ext.marca === 'OUTRO')) {
+    const modelUpper = ext.modelo.toUpperCase();
+    const BRAND_BY_MODEL = [
+      // Brooks
+      [/GLYCERIN|ADRENALINE|GHOST|HYPERION|LAUNCH|REVEL|CALDERA|CASCADIA/, 'BROOKS'],
+      // Asics
+      [/GEL[- ]?(CUMULUS|NIMBUS|KAYANO|EXCITE|CONTEND|SUPERIOR|VENTURE|TARTHER|PULSE|SOLUTION)/, 'ASICS'],
+      // Reebok (Nano é o tênis crossfit oficial)
+      [/^NANO\b|NANO COURT|FLOATRIDE|ENERGY RUN|REEBOK |ULTRA FLASH|CLASSIC LEATHER/, 'REEBOK'],
+      // Under Armour
+      [/\bUA\b|UNDER ARMOUR|TRIBASE|HOVR|CHARGED |PROJECT ROCK/, 'UNDER ARMOUR'],
+      // Hoka
+      [/CLIFTON|BONDI|MACH|RINCON|SPEEDGOAT|CHALLENGER|ARAHI|MORE V/, 'HOKA'],
+      // Mizuno
+      [/WAVE (RIDER|INSPIRE|SKY|HORIZON|REBELLION|PROPHECY|MOMENTUM)|CREATION/, 'MIZUNO'],
+      // New Balance
+      [/FRESH FOAM|FUELCELL|\b860\b|\b1080\b|\b574\b/, 'NEW BALANCE'],
+      // Fiber (marca já existe no banco)
+      [/FIBER|SAPATILHA TRAINING|CHORA RECOVERY|ECHOA RECOVERY/, 'FIBER'],
+      // Olympikus
+      [/OLYMPIKUS|CORRE \d/, 'OLYMPIKUS'],
+      // Topper
+      [/DOMINATOR|FUSE II|FUSE III|KEEPER FSAL/, 'TOPPER'],
+      // Penalty
+      [/PENALTY|MAX 1000|S11 R/, 'PENALTY'],
+      // Salomon
+      [/SPEEDCROSS|XT[- ]\d|SENSE RIDE/, 'SALOMON'],
+    ];
+    for (const [pattern, brand] of BRAND_BY_MODEL) {
+      if (pattern.test(modelUpper)) {
+        const modelTokens = ext.modelo.split(/[\s\-_/]+/).filter(t => t.length >= 3).slice(0, 3);
+        if (modelTokens.length) {
+          const candidates = await prisma.product.findMany({
+            where: {
+              active: true,
+              brand: { contains: brand, mode: 'insensitive' },
+              AND: modelTokens.map(t => ({ name: { contains: t, mode: 'insensitive' } })),
+            },
+            select: { id: true, sku: true, name: true, brand: true },
+            take: 1,
+          });
+          if (candidates[0]) return { ...candidates[0], matchedBy: 'brand_alias_' + brand.split(' ')[0].toLowerCase() };
+        }
+        break; // pattern bateu mas não achou — não tenta outras
+      }
+    }
+  }
+
+  // 7) MODEL_ONLY — ignora marca, tenta achar produto que tenha 2+ tokens
+  //    do modelo no nome. Mais permissivo, pode dar falso positivo então
+  //    requer modelo com >=2 tokens significativos.
+  if (ext.modelo) {
+    const modelTokens = ext.modelo.split(/[\s\-_/]+/)
+      .filter(t => t.length >= 4 && !/^(WOMEN|MEN|FEMININO|MASCULINO|UNISEX|SHOES|TENIS|TENNIS|SOCCER|SOCIETY|RUNNING|TRAINING|SAPATILHA|W|M)$/i.test(t))
+      .slice(0, 4);
+    if (modelTokens.length >= 2) {
+      const candidates = await prisma.product.findMany({
+        where: {
+          active: true,
+          AND: modelTokens.map(t => ({ name: { contains: t, mode: 'insensitive' } })),
+        },
+        select: { id: true, sku: true, name: true, brand: true },
+        take: 1,
+      });
+      if (candidates[0]) return { ...candidates[0], matchedBy: 'model_only' };
+    }
+  }
+
+  // 8) CODE LOOSE — substring do código alfanumérico (mín 6 chars consecutivos).
+  //    Cobre códigos NIKE tipo "HM6804.005" → procura "HM6804" no banco.
+  if (ref) {
+    const refAlnum = ref.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (refAlnum.length >= 6) {
+      // Tenta substring inicial (primeiros 6-8 chars)
+      for (const len of [8, 7, 6]) {
+        if (refAlnum.length < len) continue;
+        const sub = refAlnum.slice(0, len);
+        const rows = await prisma.$queryRaw`
+          SELECT id, sku, name, brand
+          FROM "Product"
+          WHERE active = true
+            AND (
+              UPPER(REPLACE(REPLACE(name, '.', ''), ' ', '')) LIKE ${'%' + sub + '%'}
+              OR UPPER(REPLACE("aiContext"->>'supplierRef', '.', '')) LIKE ${sub + '%'}
+            )
+          LIMIT 1`;
+        if (rows && rows[0]) return { ...rows[0], matchedBy: 'code_loose_' + len };
+      }
+    }
+  }
+
   return null;
 }
 
