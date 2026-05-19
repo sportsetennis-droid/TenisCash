@@ -46,8 +46,14 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
-// Segurança
-app.use(helmet({ contentSecurityPolicy: false }));
+// Segurança — referrer policy ajustada pra CDNs externos (moovin/vtex/simplo7
+// bloqueiam hotlink quando Referer está vazio). 'strict-origin-when-cross-origin'
+// envia só o origin pra HTTPS, o suficiente pros CDNs liberarem a imagem.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({
   limit: '1mb',

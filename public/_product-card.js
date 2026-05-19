@@ -149,7 +149,7 @@
     html += placeholderSvg;
     if (hasPhotos) {
       photos.forEach((url, idx) => {
-        html += `<img class="crsl-img" src="${esc(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="PCard.imgFail(this)">`;
+        html += `<img class="crsl-img" src="${esc(url)}" referrerpolicy="no-referrer-when-downgrade" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="PCard.imgFail(this)">`;
       });
     }
     if (photos.length > 1) {
