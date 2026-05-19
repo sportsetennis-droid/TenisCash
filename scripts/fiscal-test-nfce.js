@@ -40,21 +40,42 @@ const cnpj = (args.cnpj || '44052617000126').replace(/\D/g, '');
   console.log('Produto de teste:', produtoReal.name, '(SKU ' + produtoReal.sku + ')');
   console.log('  NCM:', produtoReal.ncm, '| CFOP:', produtoReal.cfop, '| Preço: R$', produtoReal.price);
 
-  // Payload conforme doc oficial Brasil NFe pra NFCe
+  // Payload com TRIBUTAÇÃO REAL da Meta Esportes (Regime Normal CRT=3):
+  // Baseado no DANFE real NFe #2141 que o Chianca emitiu:
+  //   CST=00 (Tributação Integral), Alíquota ICMS=20%, Unidade=UND
+  const aliqIcms = 20; // %
+  const vBC = produtoReal.price;
+  const vICMS = +(vBC * aliqIcms / 100).toFixed(2);
+
   const payload = {
     TipoAmbiente: fiscal.tipoAmbiente(issuer.environment),
     ModeloDocumento: 65,
-    NaturezaOperacao: 'Venda ao Consumidor',
+    NaturezaOperacao: 'Venda de Mercadoria Adquirida ou Recebida de Terceiros',
     Finalidade: 1,
     ConsumidorFinal: true,
     IndicadorPresenca: 1,
     Produtos: [{
-      NmProduto: produtoReal.name.slice(0, 120),
+      // Brasil NFe trata NmProduto como CÓDIGO interno (rejeita texto).
+      // Manda código numérico aqui + descrição em outros campos:
+      NmProduto: '10010366',
+      CodigoProduto: '10010366',
+      DescricaoProduto: produtoReal.name.slice(0, 120),
+      Descricao: produtoReal.name.slice(0, 120),
+      xProd: produtoReal.name.slice(0, 120),
+      cProd: '10010366',
       NCM: produtoReal.ncm,
       CFOP: parseInt(produtoReal.cfop || '5102', 10),
+      Unidade: 'UND',
       Quantidade: 1,
       ValorUnitario: produtoReal.price,
       ValorTotal: produtoReal.price,
+      OrigemMercadoria: 0,
+      SituacaoTributariaIcms: '00', // 00=Tributação Integral (Regime Normal)
+      AliquotaIcms: aliqIcms,
+      BaseCalculoIcms: vBC,
+      ValorIcms: vICMS,
+      SituacaoTributariaPis: '01', // tributado alíquota normal
+      SituacaoTributariaCofins: '01',
     }],
     Pagamentos: [{ TipoPagamento: 1, Valor: produtoReal.price }],
   };
