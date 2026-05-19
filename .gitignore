@@ -4,3 +4,11 @@ node_modules/
 .DS_Store
 push-nuvemshop.log
 scripts/.push-progress.json
+
+# Fiscal — NUNCA committar (certificados privados, XMLs fiscais autorizados)
+tmp/
+*.pfx
+*.pem
+*.key
+certificados/
+certs/
