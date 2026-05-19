@@ -134,7 +134,18 @@ app.get('/api/health', (req, res) => {
 
 // Servir frontend (produção)
 const path = require('path');
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), {
+  // ETag pro browser revalidar; imagens estáticas cacheiam normal,
+  // arquivos com ?v=NNN são cacheados forever (immutable).
+  etag: true,
+  lastModified: true,
+  setHeaders(res, filePath, stat) {
+    // JS/CSS sem query string → must-revalidate; com query string → immutable
+    if (/\.(js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
+  },
+}));
 
 // Rota amigável: teniscash.com.br/loja → portal das lojas
 app.get('/loja', (req, res) => {
