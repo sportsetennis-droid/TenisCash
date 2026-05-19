@@ -2033,6 +2033,13 @@ model FiscalDocument {
   saleId          String?  // se foi gerado por uma venda
   productIds      String[] // produtos vendidos (Json array)
 
+  // Dados de pagamento (Decreto SEFAZ-PB 43.077/2022)
+  paymentMethod   String?  // tPag: 01=Dinheiro, 03=Crédito, 04=Débito, 17=PIX
+  paymentBrand    String?  // tBand: 01=Visa, 02=Master, etc
+  paymentAcquirer String?  // CNPJ da adquirente (Stone, Cielo, etc)
+  paymentAuthCode String?  // cAut: código de autorização da maquininha
+  paymentTpIntegra Int?    // 1=TEF integrado, 2=POS standalone
+
   // Documentos baixados/cacheados
   xmlContent      String?  @db.Text // XML autorizado
   danfeUrl        String?  // URL do DANFE PDF
