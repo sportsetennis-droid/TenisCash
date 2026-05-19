@@ -271,6 +271,13 @@ model Product {
   costPrice     Float? // custo unitário (média ponderada das NF-es). Usado pra calcular preço via markup.
   markupPercent Float? // override por produto. null = herda markup do Supplier (averageMarkup).
 
+  // Fiscal — usado na emissão de NFe/NFCe (campos obrigatórios pela SEFAZ)
+  ncm           String? // NCM (Nomenclatura Comum do Mercosul) — 8 dígitos
+  cest          String? // CEST (substituição tributária) — opcional
+  origem        Int     @default(0) // 0=Nacional, 1=Importação direta, 2=Importação adq merc nac, ...
+  cfop          String? // CFOP padrão — sobrescreve o do issuer se preenchido (formato 4 dígitos)
+  unidade       String  @default("UN") // unidade de medida fiscal
+
   active   Boolean @default(true)
   featured Boolean @default(false)
   source   String  @default("manual") // manual, csv, ai

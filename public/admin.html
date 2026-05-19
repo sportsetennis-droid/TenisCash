@@ -1662,6 +1662,36 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
       </div>
     </div>
+
+    <!-- CARD 5: Fiscal (NCM/CFOP/Unidade) -->
+    <div style="margin-top:12px;padding:14px;background:#f5f5f7;border-radius:12px;border:1px solid #e5e5ea;">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">📜 FISCAL (NFe / NFCe)</div>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr 0.8fr 0.8fr;gap:8px">
+        <div>
+          <label style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px">NCM (8 dígitos) *</label>
+          <input class="form-input" id="cat-p-ncm" maxlength="8" placeholder="64041100" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;margin-top:4px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px">CFOP padrão</label>
+          <input class="form-input" id="cat-p-cfop" maxlength="4" placeholder="5102" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;margin-top:4px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px">Unidade</label>
+          <input class="form-input" id="cat-p-unidade" maxlength="6" value="UN" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;margin-top:4px">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px">Origem</label>
+          <select class="form-input" id="cat-p-origem" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;margin-top:4px">
+            <option value="0">0 - Nacional</option>
+            <option value="1">1 - Importação direta</option>
+            <option value="2">2 - Importação adq. nac.</option>
+            <option value="3">3 - Nacional + Importação 40%</option>
+            <option value="6">6 - Estrangeira sem similar nacional</option>
+          </select>
+        </div>
+      </div>
+      <p style="font-size:10px;color:#8e8e93;margin-top:8px;line-height:1.4">NCM é obrigatório pra emissão de NFCe/NFe. CFOP padrão: 5102 (venda dentro do estado).</p>
+    </div>
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">DESCRIÇÃO CURTA</label>
     <textarea class="form-input" id="cat-p-short" rows="2" style="margin-top:6px" placeholder="Frase curta que aparece em destaque (até 200 caracteres)"></textarea>
 
@@ -2708,6 +2738,10 @@ async function openCatProductModal(id) {
     document.getElementById('cat-p-category').value = '';
     document.getElementById('cat-p-price').value = '';
     document.getElementById('cat-p-promo').value = '';
+    document.getElementById('cat-p-ncm').value = '';
+    document.getElementById('cat-p-cfop').value = '5102';
+    document.getElementById('cat-p-unidade').value = 'UN';
+    document.getElementById('cat-p-origem').value = '0';
     document.getElementById('cat-p-short').value = '';
     document.getElementById('cat-p-long').value = '';
     document.getElementById('cat-p-img').value = '';
@@ -2735,6 +2769,10 @@ async function openCatProductModal(id) {
   });
   document.getElementById('cat-p-price').value = p.price;
   document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
+  document.getElementById('cat-p-ncm').value = p.ncm || '';
+  document.getElementById('cat-p-cfop').value = p.cfop || '5102';
+  document.getElementById('cat-p-unidade').value = p.unidade || 'UN';
+  document.getElementById('cat-p-origem').value = String(p.origem != null ? p.origem : 0);
   document.getElementById('cat-p-short').value = p.shortDescription || '';
   document.getElementById('cat-p-long').value = p.longDescription || '';
   document.getElementById('cat-p-img').value = p.imageUrl || '';
@@ -2844,6 +2882,10 @@ async function catProductSave() {
     category: document.getElementById('cat-p-category').value.trim(),
     price: parseFloat(document.getElementById('cat-p-price').value),
     promoPrice: document.getElementById('cat-p-promo').value ? parseFloat(document.getElementById('cat-p-promo').value) : null,
+    ncm: document.getElementById('cat-p-ncm').value.trim() || null,
+    cfop: document.getElementById('cat-p-cfop').value.trim() || null,
+    unidade: document.getElementById('cat-p-unidade').value.trim() || 'UN',
+    origem: parseInt(document.getElementById('cat-p-origem').value, 10) || 0,
     shortDescription: document.getElementById('cat-p-short').value.trim() || null,
     longDescription: document.getElementById('cat-p-long').value.trim() || null,
     imageUrl: (_catPhotos[0]?.url || document.getElementById('cat-p-img').value.trim() || null),

@@ -28,7 +28,19 @@ const cnpj = (args.cnpj || '44052617000126').replace(/\D/g, '');
   console.log('Ambiente:', issuer.environment, '(TipoAmbiente=' + fiscal.tipoAmbiente(issuer.environment) + ')');
   console.log('Próximo número NFCe:', issuer.nfceNextNumber, '/ série', issuer.nfceSerie, '\n');
 
-  // Payload IDÊNTICO ao exemplo oficial da doc Brasil NFe pra NFCe
+  // Busca 1 produto ATIVO do catálogo com NCM cadastrado pra teste real
+  const produtoReal = await prisma.product.findFirst({
+    where: { active: true, ncm: { not: null }, price: { gt: 0 } },
+    select: { id: true, sku: true, name: true, ncm: true, cfop: true, price: true, unidade: true },
+  });
+  if (!produtoReal) {
+    console.error('Nenhum produto ativo com NCM cadastrado. Rode primeiro: node scripts/classify-ncm-products.js');
+    process.exit(1);
+  }
+  console.log('Produto de teste:', produtoReal.name, '(SKU ' + produtoReal.sku + ')');
+  console.log('  NCM:', produtoReal.ncm, '| CFOP:', produtoReal.cfop, '| Preço: R$', produtoReal.price);
+
+  // Payload conforme doc oficial Brasil NFe pra NFCe
   const payload = {
     TipoAmbiente: fiscal.tipoAmbiente(issuer.environment),
     ModeloDocumento: 65,
@@ -36,20 +48,15 @@ const cnpj = (args.cnpj || '44052617000126').replace(/\D/g, '');
     Finalidade: 1,
     ConsumidorFinal: true,
     IndicadorPresenca: 1,
-    Cliente: {
-      CpfCnpj: '12345678900',
-      NmCliente: 'João da Silva',
-      IndicadorIe: 9,
-    },
     Produtos: [{
-      NmProduto: 'Camiseta Algodão',
-      NCM: '61091000',
-      CFOP: 5102,
+      NmProduto: produtoReal.name.slice(0, 120),
+      NCM: produtoReal.ncm,
+      CFOP: parseInt(produtoReal.cfop || '5102', 10),
       Quantidade: 1,
-      ValorUnitario: 79.90,
-      ValorTotal: 79.90,
+      ValorUnitario: produtoReal.price,
+      ValorTotal: produtoReal.price,
     }],
-    Pagamentos: [{ TipoPagamento: 1, Valor: 79.90 }],
+    Pagamentos: [{ TipoPagamento: 1, Valor: produtoReal.price }],
   };
 
   console.log('Enviando pra Brasil NFe...\n');

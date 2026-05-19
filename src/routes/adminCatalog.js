@@ -202,6 +202,11 @@ router.post('/products', adminOnly, async (req, res) => {
         imageUrls: parseJsonSafe(b.imageUrls),
         price,
         promoPrice: b.promoPrice != null && b.promoPrice !== '' ? parseFloat(b.promoPrice) : null,
+        ncm: b.ncm ? String(b.ncm).replace(/\D/g, '').slice(0, 8) : null,
+        cest: b.cest ? String(b.cest).replace(/\D/g, '').slice(0, 7) : null,
+        cfop: b.cfop ? String(b.cfop).replace(/\D/g, '').slice(0, 4) : null,
+        origem: b.origem != null ? parseInt(b.origem, 10) || 0 : 0,
+        unidade: b.unidade ? String(b.unidade).slice(0, 6) : 'UN',
         active: b.active !== false,
         featured: !!b.featured,
         source: b.source ? String(b.source).slice(0, 32) : 'manual',
@@ -255,6 +260,11 @@ router.put('/products/:id', adminOnly, async (req, res) => {
       ...(b.promoPrice !== undefined
         ? { promoPrice: b.promoPrice != null && b.promoPrice !== '' ? parseFloat(b.promoPrice) : null }
         : {}),
+      ...(b.ncm !== undefined ? { ncm: b.ncm ? String(b.ncm).replace(/\D/g, '').slice(0, 8) : null } : {}),
+      ...(b.cest !== undefined ? { cest: b.cest ? String(b.cest).replace(/\D/g, '').slice(0, 7) : null } : {}),
+      ...(b.cfop !== undefined ? { cfop: b.cfop ? String(b.cfop).replace(/\D/g, '').slice(0, 4) : null } : {}),
+      ...(b.origem !== undefined ? { origem: parseInt(b.origem, 10) || 0 } : {}),
+      ...(b.unidade !== undefined ? { unidade: b.unidade ? String(b.unidade).slice(0, 6) : 'UN' } : {}),
       ...(b.active !== undefined ? { active: !!b.active } : {}),
       ...(b.featured !== undefined ? { featured: !!b.featured } : {}),
       ...(b.source != null ? { source: String(b.source).slice(0, 32) } : {}),
