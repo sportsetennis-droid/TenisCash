@@ -27,6 +27,16 @@ const NFE_PB_URLS = {
   production:   'https://nfe.sefaz.pb.gov.br/nfews/v2/services/NFeAutorizacao4',
 };
 
+// URLs de Recepção de Evento (cancelamento, carta de correção)
+const EVENT_URLS = {
+  // NFCe modelo 65 — SVRS
+  nfce_homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
+  nfce_production:   'https://nfce.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
+  // NFe modelo 55 — SEFAZ-PB
+  nfe_homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/RecepcaoEvento4',
+  nfe_production:   'https://nfe.sefaz.pb.gov.br/nfews/v2/services/RecepcaoEvento4',
+};
+
 // Cache PEM por CNPJ pra não reextrair toda emissão
 const _pemCache = new Map();
 
@@ -233,6 +243,117 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
   const ok = protStat === '100' || protStat === '150';
 
   return { ok, accessKey, protocol, status: protStat, motivo, xmlSigned, rawResponse: resp.body };
+}
+
+/**
+ * cancelDocument — cancela NFCe (modelo 65) ou NFe (modelo 55) na SEFAZ.
+ * Detecta automaticamente o modelo pela chave de acesso (chars 20-21).
+ * Roteia pra SVRS (65) ou SEFAZ-PB direto (55).
+ *
+ * @param {Object} args
+ * @param {Object} args.issuer — FiscalIssuer (precisa environment)
+ * @param {string} args.pfxPath / args.pfxSenha
+ * @param {string} args.accessKey — chave 44 dígitos
+ * @param {string} args.protocol — protocolo de autorização original
+ * @param {string} args.reason — justificativa (mín 15, máx 255 chars)
+ * @param {number} [args.nSeqEvento=1]
+ */
+export async function cancelDocument({ issuer, pfxPath, pfxSenha, accessKey, protocol, reason, nSeqEvento }) {
+  if (!accessKey || accessKey.length !== 44) throw new Error('Chave de acesso deve ter 44 dígitos');
+  if (!protocol) throw new Error('Protocolo de autorização obrigatório');
+  if (!reason || reason.length < 15) throw new Error('Motivo precisa ter no mínimo 15 caracteres');
+  if (reason.length > 255) reason = reason.slice(0, 255);
+
+  // Modelo está nos chars 20-21 da chave (mod=55 ou 65)
+  const mod = parseInt(accessKey.slice(20, 22), 10);
+  if (mod !== 55 && mod !== 65) throw new Error('Modelo inválido na chave: ' + mod);
+
+  const cnpj = accessKey.slice(6, 20);
+  const tpAmb = issuer.environment === 'production' ? 1 : 2;
+  const seq = nSeqEvento || 1;
+
+  // CSC só é necessário pra NFCe; pra NFe modelo 55 não usa
+  const toolsCfg = { mod, tpAmb, UF: 'PB', versao: '4.00', timeout: 30000, CNPJ: cnpj };
+  if (mod === 65) {
+    if (!issuer.csc) throw new Error('Issuer sem CSC (necessário pra NFCe)');
+    toolsCfg.CSC = issuer.csc;
+    toolsCfg.CSCid = issuer.cscId;
+  }
+  const tools = new Tools(toolsCfg, { pfx: pfxPath, senha: pfxSenha });
+
+  const cOrgao = '25'; // PB
+  const dhEvento = (() => {
+    const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    return d.toISOString().replace(/\.\d+Z$/, '-03:00');
+  })();
+  const idEvento = 'ID110111' + accessKey + String(seq).padStart(2, '0');
+
+  const envEventoObj = {
+    envEvento: {
+      '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
+      '@versao': '1.00',
+      idLote: '1',
+      evento: {
+        '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
+        '@versao': '1.00',
+        infEvento: {
+          '@Id': idEvento,
+          cOrgao, tpAmb, CNPJ: cnpj, chNFe: accessKey,
+          dhEvento, tpEvento: '110111', nSeqEvento: seq,
+          verEvento: '1.00',
+          detEvento: {
+            '@versao': '1.00',
+            descEvento: 'Cancelamento',
+            nProt: protocol,
+            xJust: reason,
+          },
+        },
+      },
+    },
+  };
+
+  const xmlEvento = await tools.json2xml(envEventoObj);
+  const xmlSigned = await tools.xmlSign(xmlEvento, { tag: 'infEvento' });
+  const inner = xmlSigned.replace(/^<\?xml[^>]*\?>\s*/, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
+  const soap =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">' +
+    '<soap:Body>' +
+    '<nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">' +
+    inner +
+    '</nfeDadosMsg></soap:Body></soap:Envelope>';
+
+  const pem = extractPem(pfxPath, pfxSenha, cnpj);
+
+  // Roteia URL por modelo + ambiente
+  const urlKey = (mod === 65 ? 'nfce_' : 'nfe_') + (tpAmb === 1 ? 'production' : 'homologation');
+  const url = new URL(EVENT_URLS[urlKey]);
+  const resp = await new Promise((res, rej) => {
+    const req = https.request({
+      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
+      cert: pem.cert, key: pem.key,
+      headers: {
+        'Content-Type': 'application/soap+xml; charset=utf-8',
+        'Content-Length': Buffer.byteLength(soap, 'utf8'),
+      },
+      rejectUnauthorized: false, timeout: 30000,
+    }, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => res({ status: r.statusCode, body: d })); });
+    req.on('error', rej);
+    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
+    req.write(soap); req.end();
+  });
+
+  // Parsea retorno do evento
+  const retMatch = resp.body.match(/<retEvento[\s\S]*?<infEvento>[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>[\s\S]*?(?:<nProt>(\d+)<\/nProt>)?/);
+  const loteMatch = resp.body.match(/<retEnvEvento[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>/);
+  const cStat = retMatch?.[1] || loteMatch?.[1];
+  const motivo = retMatch?.[2] || loteMatch?.[2];
+  const cancelProtocol = retMatch?.[3] || null;
+  // 135 = evento registrado e vinculado, 136 = vinculação não encontrada (mas registrado),
+  // 155 = cancelamento homologado fora do prazo
+  const ok = cStat === '135' || cStat === '136' || cStat === '155';
+
+  return { ok, cancelProtocol, status: cStat, motivo, xmlSigned, rawResponse: resp.body };
 }
 
 /**

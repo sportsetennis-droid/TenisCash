@@ -762,27 +762,41 @@ router.post('/documents/:id/cancel', async (req, res) => {
     });
     if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
     if (doc.status !== 'authorized') return res.status(400).json({ error: 'Só documentos autorizados podem ser cancelados (status atual: ' + doc.status + ')' });
+    if (!doc.accessKey || !doc.protocol) return res.status(400).json({ error: 'Documento sem chave/protocolo — não pode cancelar' });
+    if (doc.docType !== 'NFCE' && doc.docType !== 'NFE') return res.status(400).json({ error: 'Cancelamento direto SEFAZ suporta só NFCe e NFe (tipo: ' + doc.docType + ')' });
 
-    let resp;
-    if (doc.docType === 'NFCE') resp = await fiscal.cancelNFCe(doc.issuer, doc.externalId, reason);
-    else if (doc.docType === 'NFE') resp = await fiscal.cancelNFe(doc.issuer, doc.externalId, reason);
-    else if (doc.docType === 'CTE') resp = await fiscal.cancelCTe(doc.issuer, doc.externalId, reason);
-    else return res.status(400).json({ error: 'Tipo não suporta cancelamento via essa rota' });
+    const pfxPath = pfxPathFor(doc.issuer.cnpj);
+    const pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
+    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
 
-    if (resp.ok) {
+    const { cancelDocument } = await getSefazDirect();
+    const result = await cancelDocument({
+      issuer: doc.issuer, pfxPath, pfxSenha,
+      accessKey: doc.accessKey,
+      protocol: doc.protocol,
+      reason,
+    });
+
+    if (result.ok) {
       await prisma.fiscalDocument.update({
         where: { id: doc.id },
         data: {
           status: 'cancelled',
           cancelledAt: new Date(),
           cancelReason: reason,
-          cancelProtocol: resp.data?.protocolo || null,
+          cancelProtocol: result.cancelProtocol || null,
+          response: { ...(doc.response || {}), cancel: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) } },
         },
       });
-      return res.json({ ok: true });
+      return res.json({ ok: true, cancelProtocol: result.cancelProtocol, motivo: result.motivo });
     }
-    res.status(400).json({ error: resp.data?.message || 'Erro ao cancelar', detail: resp.data });
+    res.status(400).json({
+      error: result.motivo || 'Erro ao cancelar',
+      status: result.status,
+      detail: result.rawResponse?.slice(0, 1000),
+    });
   } catch (err) {
+    console.error('[fiscal/cancel]', err);
     res.status(500).json({ error: err.message });
   }
 });
