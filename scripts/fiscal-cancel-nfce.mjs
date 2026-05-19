@@ -43,36 +43,42 @@ const PFX_SENHA = '123456';
   })();
   const idEvento = 'ID110111' + CHAVE + '01';
 
-  const evento = {
-    '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
-    '@versao': '1.00',
-    infEvento: {
-      '@Id': idEvento,
-      cOrgao, tpAmb: 1, CNPJ: cnpj, chNFe: CHAVE,
-      dhEvento, tpEvento: '110111', nSeqEvento: 1,
-      verEvento: '1.00',
-      detEvento: {
+  // A lib espera estrutura { envEvento: { evento: { infEvento } } }
+  const envEventoObj = {
+    envEvento: {
+      '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
+      '@versao': '1.00',
+      idLote: '1',
+      evento: {
+        '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
         '@versao': '1.00',
-        descEvento: 'Cancelamento',
-        nProt: doc.protocol,
-        xJust: MOTIVO,
+        infEvento: {
+          '@Id': idEvento,
+          cOrgao, tpAmb: 1, CNPJ: cnpj, chNFe: CHAVE,
+          dhEvento, tpEvento: '110111', nSeqEvento: 1,
+          verEvento: '1.00',
+          detEvento: {
+            '@versao': '1.00',
+            descEvento: 'Cancelamento',
+            nProt: doc.protocol,
+            xJust: MOTIVO,
+          },
+        },
       },
     },
   };
 
-  // Usa lib pra assinar
-  const xmlEvento = await tools.json2xml({ evento });
+  const xmlEvento = await tools.json2xml(envEventoObj);
   const xmlSigned = await tools.xmlSign(xmlEvento, { tag: 'infEvento' });
 
-  const inner = xmlSigned.replace(/^<\?xml[^>]*\?>\s*/, '');
+  const inner = xmlSigned.replace(/^<\?xml[^>]*\?>\s*/, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
   const soap =
     '<?xml version="1.0" encoding="utf-8"?>' +
     '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">' +
     '<soap:Body>' +
     '<nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">' +
-    '<envEvento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">' +
-    '<idLote>1</idLote>' + inner +
-    '</envEvento></nfeDadosMsg></soap:Body></soap:Envelope>';
+    inner +
+    '</nfeDadosMsg></soap:Body></soap:Envelope>';
 
   // PEM
   const certDir = path.resolve('tmp/cert');
