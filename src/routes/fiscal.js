@@ -751,6 +751,74 @@ router.post('/nfe', async (req, res) => {
 // Cancelamento (até 24h após emissão)
 // ============================================================
 
+// ============================================================
+// Carta de Correção Eletrônica (CCe) — NFe modelo 55 apenas, até 30 dias
+// após emissão, até 20 CCe por NFe.
+// ============================================================
+router.post('/documents/:id/correction', async (req, res) => {
+  try {
+    const { correction } = req.body || {};
+    if (!correction || correction.length < 15) {
+      return res.status(400).json({ error: 'Texto da correção deve ter 15+ caracteres (regra SEFAZ)' });
+    }
+
+    const doc = await prisma.fiscalDocument.findUnique({
+      where: { id: req.params.id },
+      include: { issuer: true },
+    });
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
+    if (doc.docType !== 'NFE') return res.status(400).json({ error: 'CCe só pra NFe modelo 55 (NFCe não suporta)' });
+    if (doc.status !== 'authorized') return res.status(400).json({ error: 'Documento precisa estar autorizado (atual: ' + doc.status + ')' });
+    if (!doc.accessKey) return res.status(400).json({ error: 'Documento sem chave de acesso' });
+
+    // Verifica idade (30 dias máx)
+    const days = (Date.now() - new Date(doc.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (days > 30) return res.status(400).json({ error: 'CCe expirada — NFe tem ' + Math.floor(days) + ' dias (limite SEFAZ: 30)' });
+
+    // Determina próximo sequencial
+    const previous = Array.isArray(doc.correctionLetter) ? doc.correctionLetter : (doc.correctionLetter ? [doc.correctionLetter] : []);
+    const nSeq = previous.length + 1;
+    if (nSeq > 20) return res.status(400).json({ error: 'Limite de 20 CCe por NFe atingido' });
+
+    const pfxPath = pfxPathFor(doc.issuer.cnpj);
+    const pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
+    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+
+    const { sendCorrectionLetter } = await getSefazDirect();
+    const result = await sendCorrectionLetter({
+      issuer: doc.issuer, pfxPath, pfxSenha,
+      accessKey: doc.accessKey,
+      correction,
+      nSeqEvento: nSeq,
+    });
+
+    if (result.ok) {
+      const newEntry = {
+        sequence: nSeq,
+        reason: correction,
+        protocol: result.correctionProtocol,
+        date: new Date().toISOString(),
+        status: result.status,
+        motivo: result.motivo,
+      };
+      const newList = [...previous, newEntry];
+      await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: { correctionLetter: newList },
+      });
+      return res.json({ ok: true, sequence: nSeq, protocol: result.correctionProtocol, motivo: result.motivo });
+    }
+    res.status(400).json({
+      error: result.motivo || 'Erro ao enviar CCe',
+      status: result.status,
+      detail: result.rawResponse?.slice(0, 1000),
+    });
+  } catch (err) {
+    console.error('[fiscal/correction]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/documents/:id/cancel', async (req, res) => {
   try {
     const { reason } = req.body || {};

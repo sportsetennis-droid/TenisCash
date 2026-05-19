@@ -357,6 +357,113 @@ export async function cancelDocument({ issuer, pfxPath, pfxSenha, accessKey, pro
 }
 
 /**
+ * sendCorrectionLetter — envia Carta de Correção Eletrônica (CCe).
+ * Permite corrigir dados não-monetários da NFe (endereço, descrição de
+ * produto, natureza da operação, etc) até 30 dias após emissão.
+ *
+ * Limites SEFAZ (NÃO pode usar pra corrigir):
+ *  - Valores (vProd, vNF, base cálculo, alíquotas)
+ *  - CNPJ/CPF do emitente/destinatário
+ *  - Data, série, número
+ *  - CFOP (porque muda tributação)
+ *
+ * @param {Object} args
+ * @param {Object} args.issuer — FiscalIssuer (environment, csc se NFCe)
+ * @param {string} args.pfxPath / args.pfxSenha
+ * @param {string} args.accessKey — chave 44 dígitos
+ * @param {string} args.correction — texto da correção (15-1000 chars)
+ * @param {number} [args.nSeqEvento=1] — sequencial (máx 20 CCe por NFe)
+ */
+export async function sendCorrectionLetter({ issuer, pfxPath, pfxSenha, accessKey, correction, nSeqEvento }) {
+  if (!accessKey || accessKey.length !== 44) throw new Error('Chave deve ter 44 dígitos');
+  if (!correction || correction.length < 15) throw new Error('Correção precisa ter no mínimo 15 caracteres');
+  if (correction.length > 1000) correction = correction.slice(0, 1000);
+
+  const mod = parseInt(accessKey.slice(20, 22), 10);
+  if (mod !== 55 && mod !== 65) throw new Error('Modelo inválido na chave: ' + mod);
+  if (mod === 65) throw new Error('CCe não permitida pra NFCe (modelo 65) — apenas NFe');
+
+  const cnpj = accessKey.slice(6, 20);
+  const tpAmb = issuer.environment === 'production' ? 1 : 2;
+  const seq = nSeqEvento || 1;
+  if (seq > 20) throw new Error('Máximo 20 CCe por NFe (sequencial atual: ' + seq + ')');
+
+  const tools = new Tools({
+    mod: 55, tpAmb, UF: 'PB', versao: '4.00',
+    timeout: 30000, CNPJ: cnpj,
+  }, { pfx: pfxPath, senha: pfxSenha });
+
+  const cOrgao = '25';
+  const dhEvento = (() => {
+    const d = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    return d.toISOString().replace(/\.\d+Z$/, '-03:00');
+  })();
+  const idEvento = 'ID110110' + accessKey + String(seq).padStart(2, '0');
+
+  const envEventoObj = {
+    envEvento: {
+      '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
+      '@versao': '1.00',
+      idLote: '1',
+      evento: {
+        '@xmlns': 'http://www.portalfiscal.inf.br/nfe',
+        '@versao': '1.00',
+        infEvento: {
+          '@Id': idEvento,
+          cOrgao, tpAmb, CNPJ: cnpj, chNFe: accessKey,
+          dhEvento, tpEvento: '110110', nSeqEvento: seq,
+          verEvento: '1.00',
+          detEvento: {
+            '@versao': '1.00',
+            descEvento: 'Carta de Correcao',
+            xCorrecao: correction,
+            xCondUso: 'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.',
+          },
+        },
+      },
+    },
+  };
+
+  const xmlEvento = await tools.json2xml(envEventoObj);
+  const xmlSigned = await tools.xmlSign(xmlEvento, { tag: 'infEvento' });
+  const inner = xmlSigned.replace(/^<\?xml[^>]*\?>\s*/, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
+  const soap =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">' +
+    '<soap:Body>' +
+    '<nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">' +
+    inner +
+    '</nfeDadosMsg></soap:Body></soap:Envelope>';
+
+  const pem = extractPem(pfxPath, pfxSenha, cnpj);
+  const urlKey = 'nfe_' + (tpAmb === 1 ? 'production' : 'homologation');
+  const url = new URL(EVENT_URLS[urlKey]);
+  const resp = await new Promise((res, rej) => {
+    const req = https.request({
+      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
+      cert: pem.cert, key: pem.key,
+      headers: {
+        'Content-Type': 'application/soap+xml; charset=utf-8',
+        'Content-Length': Buffer.byteLength(soap, 'utf8'),
+      },
+      rejectUnauthorized: false, timeout: 30000,
+    }, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => res({ status: r.statusCode, body: d })); });
+    req.on('error', rej);
+    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
+    req.write(soap); req.end();
+  });
+
+  const retMatch = resp.body.match(/<retEvento[\s\S]*?<infEvento>[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>[\s\S]*?(?:<nProt>(\d+)<\/nProt>)?/);
+  const loteMatch = resp.body.match(/<retEnvEvento[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>/);
+  const cStat = retMatch?.[1] || loteMatch?.[1];
+  const motivo = retMatch?.[2] || loteMatch?.[2];
+  const correctionProtocol = retMatch?.[3] || null;
+  const ok = cStat === '135' || cStat === '136';
+
+  return { ok, correctionProtocol, status: cStat, motivo, nSeqEvento: seq, xmlSigned, rawResponse: resp.body };
+}
+
+/**
  * emitNFe55 — emite NFe modelo 55 (B2C/B2B com destinatário identificado)
  * direto na SEFAZ-PB. Útil pra vendas Nuvemshop, escolas, clubes.
  *

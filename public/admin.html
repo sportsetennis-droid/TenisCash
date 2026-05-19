@@ -5544,12 +5544,34 @@ async function loadFiscalDocs() {
           ${d.status === 'draft' && d.docType === 'NFE' ? `<button onclick="fiscalEmitNfeDraft('${d.id}')" style="flex:1;padding:8px;background:linear-gradient(135deg,#0a843d,#10a050);color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;">⚡ Emitir NFe agora</button>` : ''}
           ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="openAuthedFile('/admin/fiscal/documents/${d.id}/danfe')" style="flex:1;padding:8px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;">📄 DANFE</button>` : ''}
           ${(d.status === 'authorized' || d.status === 'cancelled') && d.xmlContent ? `<button onclick="window.open('/api/admin/fiscal/documents/${d.id}/print','_blank','width=420,height=700')" style="padding:8px 10px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;">🖨️</button>` : ''}
+          ${d.status === 'authorized' && d.docType === 'NFE' ? `<button onclick="fiscalCorrectionLetter('${d.id}')" style="padding:8px 10px;background:white;border:1px solid #b06b00;color:#b06b00;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;" title="Carta de Correção (até 30 dias)">✏️ CCe</button>` : ''}
           ${d.status === 'authorized' ? `<button onclick="fiscalCancelDoc('${d.id}', '${escapeHtml((d.accessKey||'').slice(-8))}')" style="padding:8px 10px;background:white;border:1px solid #d70015;color:#d70015;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">🚫 Cancelar</button>` : ''}
         </div>
       </div>`;
   });
   html += '</div>';
   wrap.innerHTML = html;
+}
+
+async function fiscalCorrectionLetter(docId) {
+  const correction = prompt('Texto da Carta de Correção (15-1000 caracteres):\n\n' +
+    'Use pra corrigir dados não-monetários:\n' +
+    ' • Endereço do destinatário digitado errado\n' +
+    ' • Descrição/nome de produto\n' +
+    ' • Natureza da operação\n\n' +
+    'NÃO use pra: valores, CNPJ/CPF, data/série/número, CFOP.\n\n' +
+    'Exemplo: "Onde se lê Rua das Flores 100, leia-se Rua das Flores 1000"');
+  if (!correction) return;
+  if (correction.length < 15) { alert('Mínimo 15 caracteres.'); return; }
+  if (correction.length > 1000) { alert('Máximo 1000 caracteres.'); return; }
+  if (!confirm('Enviar CCe à SEFAZ-PB?\n\nTexto:\n\n' + correction)) return;
+  const r = await api('/admin/fiscal/documents/' + docId + '/correction', 'POST', { correction });
+  if (r.ok) {
+    alert('✅ Carta de Correção #' + r.sequence + ' aceita!\nProtocolo: ' + r.protocol);
+    loadFiscalDocs();
+  } else {
+    alert('❌ ' + (r.error || 'Falha na CCe') + '\n\nStatus SEFAZ: ' + (r.status || '?'));
+  }
 }
 
 async function fiscalEmitNfeDraft(docId) {
