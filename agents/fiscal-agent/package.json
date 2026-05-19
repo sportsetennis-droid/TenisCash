@@ -1,0 +1,18 @@
+{
+  "name": "tenis-cash-fiscal-agent",
+  "version": "1.0.0",
+  "description": "Agente fiscal leve por loja — emite NFCe/NFe direto na SEFAZ-PB usando PFX local. Chamado pelo TenisCash central via Tailscale.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-sped-nfe": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
