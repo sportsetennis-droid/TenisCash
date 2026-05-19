@@ -372,4 +372,14 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
+
+  // Cron jobs em background
+  if (process.env.DISABLE_FISCAL_DRAFT_JOB !== '1') {
+    try {
+      const { startFiscalDraftJob } = require('./services/fiscalDraftJob');
+      startFiscalDraftJob();
+    } catch (e) {
+      console.error('[boot] falha ao iniciar fiscalDraftJob:', e.message);
+    }
+  }
 });
