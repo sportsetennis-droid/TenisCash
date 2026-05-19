@@ -6,22 +6,22 @@
 // armazenados em FiscalIssuer. Esse client recebe o issuer e monta os calls.
 // =====================================================================
 
-const BASE_URLS = {
-  homologation: 'https://hom.brasilnfe.com.br/v2', // homologação SEFAZ
-  production: 'https://api.brasilnfe.com.br/v2',   // produção
-};
+// Brasil NFe usa URL única + flag TipoAmbiente no payload:
+//   1 = produção, 2 = homologação
+// Auth: header "Token: <token>"
+const BASE_URL = 'https://api.brasilnfe.com.br';
 
-function getBaseUrl(env) {
-  return BASE_URLS[env === 'production' ? 'production' : 'homologation'];
+function tipoAmbiente(env) {
+  return env === 'production' ? 1 : 2;
 }
 
 async function callApi(issuer, method, path, body = null) {
   if (!issuer || !issuer.apiToken) {
     throw new Error('Issuer sem apiToken — configure o token Brasil NFe pra esse CNPJ');
   }
-  const url = getBaseUrl(issuer.environment) + path;
+  const url = BASE_URL + path;
   const headers = {
-    'Authorization': 'Bearer ' + issuer.apiToken,
+    'Token': issuer.apiToken,
     'Accept': 'application/json',
   };
   if (body && method !== 'GET') headers['Content-Type'] = 'application/json';
@@ -32,155 +32,147 @@ async function callApi(issuer, method, path, body = null) {
   const r = await fetch(url, opts);
   const ct = r.headers.get('content-type') || '';
 
-  // Resposta binária (PDF DANFE)
   if (ct.includes('application/pdf')) {
     const buf = Buffer.from(await r.arrayBuffer());
     return { ok: r.ok, status: r.status, pdf: buf };
   }
-  // Resposta JSON
   let data = null;
   try { data = await r.json(); } catch { /* sem corpo */ }
   return { ok: r.ok, status: r.status, data };
 }
 
-// ============================================================
-// NFCe — Nota Fiscal de Consumidor Eletrônica (venda presencial)
-// ============================================================
-// payload: { items, customer?, payment, total, ... }
-async function emitNFCe(issuer, payload) {
-  return callApi(issuer, 'POST', '/nfce', payload);
+// Endpoints reais Brasil NFe (PascalCase, mesmo path pra NFe/NFCe — diferencia
+// pelo campo ModeloDocumento: 55=NFe, 65=NFCe).
+async function enviarNotaFiscal(issuer, payload) {
+  return callApi(issuer, 'POST', '/services/Fiscal/EnviarNotaFiscal', payload);
 }
 
-async function getNFCe(issuer, externalId) {
-  return callApi(issuer, 'GET', '/nfce/' + externalId);
+async function consultarNotaFiscal(issuer, accessKey) {
+  return callApi(issuer, 'GET', '/services/Fiscal/ConsultarNotaFiscal/' + accessKey);
 }
 
-async function cancelNFCe(issuer, externalId, reason) {
-  return callApi(issuer, 'POST', '/nfce/' + externalId + '/cancel', { motivo: reason });
+async function cancelarNotaFiscal(issuer, accessKey, motivo) {
+  return callApi(issuer, 'POST', '/services/Fiscal/CancelarNotaFiscal', {
+    TipoAmbiente: tipoAmbiente(issuer.environment),
+    CnpjEmitente: issuer.cnpj,
+    ChaveAcesso: accessKey,
+    Motivo: motivo,
+  });
 }
 
-async function getNFCePdf(issuer, externalId) {
-  return callApi(issuer, 'GET', '/nfce/' + externalId + '/danfe');
+async function downloadDanfe(issuer, accessKey) {
+  return callApi(issuer, 'GET', '/services/Fiscal/DownloadDanfe/' + accessKey);
 }
 
-// ============================================================
-// NFe modelo 55 — venda online, B2B, transferência
-// ============================================================
-async function emitNFe(issuer, payload) {
-  return callApi(issuer, 'POST', '/nfe', payload);
+async function cartaCorrecao(issuer, accessKey, sequencia, correcao) {
+  return callApi(issuer, 'POST', '/services/Fiscal/CartaCorrecao', {
+    TipoAmbiente: tipoAmbiente(issuer.environment),
+    CnpjEmitente: issuer.cnpj,
+    ChaveAcesso: accessKey,
+    Sequencia: sequencia,
+    Correcao: correcao,
+  });
 }
 
-async function getNFe(issuer, externalId) {
-  return callApi(issuer, 'GET', '/nfe/' + externalId);
-}
-
-async function cancelNFe(issuer, externalId, reason) {
-  return callApi(issuer, 'POST', '/nfe/' + externalId + '/cancel', { motivo: reason });
-}
-
-async function getNFePdf(issuer, externalId) {
-  return callApi(issuer, 'GET', '/nfe/' + externalId + '/danfe');
-}
-
-// Carta de correção (até 30 dias após autorização, máx 20 sequências)
-async function correctionLetter(issuer, externalId, sequence, reason) {
-  return callApi(issuer, 'POST', '/nfe/' + externalId + '/cce', { sequencia: sequence, correcao: reason });
-}
-
-// ============================================================
-// CTe — Conhecimento de Transporte Eletrônico (transferência entre filiais)
-// ============================================================
-async function emitCTe(issuer, payload) {
-  return callApi(issuer, 'POST', '/cte', payload);
-}
-
-async function getCTe(issuer, externalId) {
-  return callApi(issuer, 'GET', '/cte/' + externalId);
-}
-
-async function cancelCTe(issuer, externalId, reason) {
-  return callApi(issuer, 'POST', '/cte/' + externalId + '/cancel', { motivo: reason });
-}
+// Aliases retrocompatíveis com fiscal.js
+const emitNFe = enviarNotaFiscal;
+const emitNFCe = enviarNotaFiscal;
+const emitCTe = enviarNotaFiscal; // CTe usa endpoint próprio (TODO ajustar)
+const getNFe = (i, k) => consultarNotaFiscal(i, k);
+const getNFCe = (i, k) => consultarNotaFiscal(i, k);
+const getCTe = (i, k) => consultarNotaFiscal(i, k);
+const cancelNFe = (i, k, m) => cancelarNotaFiscal(i, k, m);
+const cancelNFCe = (i, k, m) => cancelarNotaFiscal(i, k, m);
+const cancelCTe = (i, k, m) => cancelarNotaFiscal(i, k, m);
+const getNFePdf = (i, k) => downloadDanfe(i, k);
+const getNFCePdf = (i, k) => downloadDanfe(i, k);
+const correctionLetter = cartaCorrecao;
 
 // ============================================================
 // Builders — montam o payload no formato Brasil NFe
 // ============================================================
 
-// Helper: monta item da nota a partir de Sale.SaleItem + Product
+// Builder: item da nota fiscal no formato Brasil NFe (PascalCase)
 function buildItemFromProduct(product, qty, unitPrice, opts = {}) {
   const totalValue = +(qty * unitPrice).toFixed(2);
   return {
-    codigo: product.sku || product.id,
-    descricao: product.name,
-    ean: (product.sku && /^\d{12,14}$/.test(product.sku)) ? product.sku : 'SEM GTIN',
-    ncm: product.ncm || '64041100', // calçados esportivos default — TODO mapear NCM real
-    cfop: opts.cfop || '5102', // venda dentro do estado
-    unidade: 'UN',
-    quantidade: qty,
-    valor_unitario: unitPrice,
-    valor_total: totalValue,
-    // Impostos (preencher por regime CRT do issuer):
-    icms: opts.icms || { origem: 0, situacao_tributaria: '102' }, // SN sem permissão de crédito
-    pis: opts.pis || { situacao_tributaria: '49' }, // SN
-    cofins: opts.cofins || { situacao_tributaria: '49' },
+    NmProduto: (product.name || '').slice(0, 120),
+    CodigoProduto: product.sku || product.id,
+    Ean: (product.sku && /^\d{12,14}$/.test(product.sku)) ? product.sku : 'SEM GTIN',
+    NCM: product.ncm || '64041100',  // calçados esportivos default
+    CFOP: opts.cfop || '5102',       // venda dentro do estado
+    Unidade: 'UN',
+    Quantidade: qty,
+    ValorUnitario: unitPrice,
+    ValorTotal: totalValue,
+    OrigemMercadoria: 0,             // 0=Nacional
+    SituacaoTributariaIcms: opts.cstIcms || '102', // 102=SN sem crédito
+    SituacaoTributariaPis: opts.cstPis || '49',
+    SituacaoTributariaCofins: opts.cstCofins || '49',
   };
 }
 
-// Builder de payload NFCe (venda presencial → consumidor final)
+// Builder NFCe (modelo 65) - venda presencial consumidor final
 function buildNFCePayload(issuer, sale, items, payment) {
   return {
-    natureza_operacao: 'VENDA',
-    serie: issuer.nfceSerie,
-    numero: issuer.nfceNextNumber,
-    data_emissao: new Date().toISOString(),
-    presencial: 1, // 1=Operação presencial (NFCe)
-    finalidade: 1, // 1=NFe normal
-    consumidor_final: 1,
-    // Emitente vem do token
-    // Destinatário (opcional pra NFCe quando consumidor final sem CPF)
-    destinatario: sale.customerCpf ? {
-      cpf: sale.customerCpf,
-      nome: sale.customerName || 'CONSUMIDOR FINAL',
+    TipoAmbiente: tipoAmbiente(issuer.environment),
+    CnpjEmitente: issuer.cnpj,
+    ModeloDocumento: 65,
+    Serie: issuer.nfceSerie,
+    NumeroNotaFiscal: issuer.nfceNextNumber,
+    NaturezaOperacao: 'VENDA AO CONSUMIDOR',
+    TipoOperacao: 1,         // 1=Saída
+    FinalidadeNotaFiscal: 1, // 1=Normal
+    Presencial: 1,
+    ConsumidorFinal: 1,
+    DataEmissao: new Date().toISOString(),
+    Cliente: sale.customerCpf ? {
+      CpfCnpj: sale.customerCpf,
+      NmCliente: sale.customerName || 'CONSUMIDOR FINAL',
     } : null,
-    items,
-    pagamento: [{
-      forma: payment.method || '01', // 01=Dinheiro, 03=Cartão crédito, 04=Cartão débito, 17=PIX, 99=Outros
-      valor: payment.amount,
+    Produtos: items,
+    Pagamentos: [{
+      FormaPagamento: payment.method || '01',
+      ValorPagamento: payment.amount,
     }],
   };
 }
 
-// Builder de payload NFe modelo 55 (venda online ou B2B)
+// Builder NFe modelo 55 (online, B2B, transferência)
 function buildNFePayload(issuer, sale, items, recipient) {
   return {
-    natureza_operacao: sale.natureza || 'VENDA',
-    serie: issuer.nfeSerie,
-    numero: issuer.nfeNextNumber,
-    data_emissao: new Date().toISOString(),
-    finalidade: 1,
-    consumidor_final: recipient.cnpj ? 0 : 1,
-    presencial: 0, // operação não presencial (online)
-    destinatario: {
-      ...(recipient.cnpj ? { cnpj: recipient.cnpj } : { cpf: recipient.cpf }),
-      nome: recipient.name,
-      email: recipient.email,
-      endereco: recipient.address,
-      ie: recipient.ie || null,
+    TipoAmbiente: tipoAmbiente(issuer.environment),
+    CnpjEmitente: issuer.cnpj,
+    ModeloDocumento: 55,
+    Serie: issuer.nfeSerie,
+    NumeroNotaFiscal: issuer.nfeNextNumber,
+    NaturezaOperacao: sale.natureza || 'VENDA',
+    TipoOperacao: 1,
+    FinalidadeNotaFiscal: 1,
+    Presencial: 0,
+    ConsumidorFinal: recipient.cnpj ? 0 : 1,
+    DataEmissao: new Date().toISOString(),
+    Cliente: {
+      CpfCnpj: recipient.cnpj || recipient.cpf,
+      NmCliente: recipient.name,
+      Email: recipient.email,
+      InscricaoEstadual: recipient.ie || null,
+      Endereco: recipient.address || null,
     },
-    items,
-    pagamento: sale.payments || [{ forma: '99', valor: sale.total }],
+    Produtos: items,
+    Pagamentos: sale.payments || [{ FormaPagamento: '99', ValorPagamento: sale.total }],
   };
 }
 
 module.exports = {
-  // NFCe
+  // Endpoints reais Brasil NFe
+  enviarNotaFiscal, consultarNotaFiscal, cancelarNotaFiscal, downloadDanfe, cartaCorrecao,
+  // Aliases
   emitNFCe, getNFCe, cancelNFCe, getNFCePdf,
-  // NFe
   emitNFe, getNFe, cancelNFe, getNFePdf, correctionLetter,
-  // CTe
   emitCTe, getCTe, cancelCTe,
   // Builders
   buildItemFromProduct, buildNFCePayload, buildNFePayload,
   // Util
-  getBaseUrl,
+  tipoAmbiente, BASE_URL,
 };
