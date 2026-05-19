@@ -101,6 +101,12 @@ model User {
   badges                  BadgeEarned[]
   consents                Consent[]
   liveTrackingSessions    LiveTrackingSession[]    @relation("liveTrackingOwner")
+
+  // ===== Body Measurement / Size Recommendation =====
+  bodyScans               BodyScan[]
+  sizeRecommendations     SizeRecommendation[]
+  lastScanId              String?
+  lastScanAt              DateTime?
 }
 
 // ============================================================
@@ -296,8 +302,17 @@ model Product {
   trainings SellerTraining[]
   quizzes   Quiz[]
 
+  // ===== Size recommendation =====
+  // garmentType: "camisa" | "regata" | "calca" | "short" | "jaleco" | "moletom" | null
+  // garmentFit: "slim" | "regular" | "oversized" (default fit do modelo)
+  garmentType         String?
+  garmentFit          String?
+  sizeCharts          SizeChart[]
+  sizeRecommendations SizeRecommendation[]
+
   @@index([brand, category])
   @@index([active, featured])
+  @@index([garmentType])
 }
 
 model AIConversation {
@@ -1513,6 +1528,8 @@ model Supplier {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  sizeCharts SizeChart[]
+
   @@index([active])
 }
 
@@ -2084,4 +2101,129 @@ model FiscalWebhookLog {
 
   @@index([externalId])
   @@index([receivedAt])
+}
+
+// ============================================================
+// BODY MEASUREMENT / SIZE RECOMMENDATION
+// Captura medidas corporais via câmera (MediaPipe Pose) + altura/peso,
+// recomenda tamanho de vestuário (camisa, regata, calça, short, jaleco).
+// ============================================================
+
+model BodyScan {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  capturedAt DateTime @default(now())
+  source     String // "pwa_apex" | "nuvemshop_widget" | "in_store" | "whatsapp"
+
+  heightCm Float
+  weightKg Float?
+  sex      String? // "M" | "F" | "NB" — herdado de AthleteProfile/User
+
+  // Keypoints brutos MediaPipe (33 landmarks por vista). Cada landmark: {x, y, z, visibility}.
+  // Coordenadas normalizadas 0-1 relativas à imagem.
+  keypointsFront Json?
+  keypointsSide  Json?
+  keypointsBack  Json?
+
+  // Calibração: pixels por cm (derivado da altura conhecida vs altura em pixels)
+  scaleFactor Float?
+
+  // Qualidade geral do scan (0..1) — média visibility + simetria
+  confidence Float @default(0)
+
+  // Auditoria
+  reviewedByAi Boolean @default(false) // se passou por Claude Vision em fallback
+  reviewNotes  String?
+
+  // Privacidade: por default NÃO armazenamos fotos. Opt-in explícito.
+  photosStored Boolean @default(false)
+  photoUrls    Json? // [{url, view: "front"|"side"|"back"}]
+
+  createdAt    DateTime @default(now())
+  measurements BodyMeasurement[]
+
+  sizeRecommendations SizeRecommendation[]
+
+  @@index([userId])
+  @@index([capturedAt])
+}
+
+model BodyMeasurement {
+  id     String   @id @default(cuid())
+  scanId String
+  scan   BodyScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // measureType: "chest" | "waist" | "hip" | "shoulder" | "sleeve" | "inseam"
+  //            | "neck" | "thigh" | "torsoLength" | "armLength"
+  measureType String
+  valueCm     Float
+  confidence  Float  @default(0)
+
+  @@index([scanId, measureType])
+}
+
+model SizeChart {
+  id String @id @default(cuid())
+
+  // Escopo da tabela (do mais específico ao mais genérico)
+  brand       String?
+  garmentType String // "camisa" | "regata" | "calca" | "short" | "jaleco" | "moletom"
+  gender      String? // "M" | "F" | "U" (unissex)
+
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  productId  String?
+  product    Product?  @relation(fields: [productId], references: [id])
+
+  // Array de tamanhos: [{label:"M", chest_min:96, chest_max:100, torsoLength:70, sleeve:21, ...}, ...]
+  sizes Json
+
+  // Procedência
+  source    String // "manual" | "scraped" | "vision" | "import"
+  sourceUrl String?
+  status    String @default("pending_review") // "pending_review" | "approved" | "rejected"
+
+  reviewedBy String? // userId admin
+  reviewedAt DateTime?
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sizeRecommendations SizeRecommendation[]
+
+  @@index([brand, garmentType, gender])
+  @@index([productId])
+  @@index([status])
+}
+
+model SizeRecommendation {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  scanId      String
+  scan        BodyScan  @relation(fields: [scanId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  sizeChartId String
+  sizeChart   SizeChart @relation(fields: [sizeChartId], references: [id])
+
+  recommendedSize String // "M"
+  alternativeSize String? // "L" — se borderline
+  fitProfile      String  @default("regular") // "slim" | "regular" | "oversized"
+
+  scores    Json // {S:0.3, M:0.92, L:0.65, GG:0.1}
+  reasoning String? // explicação humana
+
+  // Feedback do cliente após compra (closing the loop)
+  actualBoughtSize String?
+  fitFeedback      String? // "perfect" | "tight" | "loose" | "returned"
+  feedbackAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([productId])
+  @@index([scanId])
 }

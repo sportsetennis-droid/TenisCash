@@ -733,6 +733,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div style="margin-top:30px">
     <div class="profile-item" id="prof-complete-btn" style="display:none" onclick="showScreen('complete-profile')"><span style="font-size:18px">🎁</span><span style="flex:1;font-size:14px;color:#FFD54F">Completar perfil e ganhar T$ 100</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('mydata')"><span style="font-size:18px">👤</span><span style="flex:1;font-size:14px">Dados pessoais</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
+    <div class="profile-item" onclick="showScreen('fit-camera')"><span style="font-size:18px">📐</span><span style="flex:1;font-size:14px">Descobrir meu tamanho</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('security')"><span style="font-size:18px">🔒</span><span style="flex:1;font-size:14px">Alterar senha</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('terms')"><span style="font-size:18px">📄</span><span style="flex:1;font-size:14px">Termos de uso</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
     <div class="profile-item" onclick="showScreen('privacy')"><span style="font-size:18px">🔐</span><span style="flex:1;font-size:14px">Política de privacidade</span><span style="color:rgba(255,255,255,0.25)">›</span></div>
@@ -750,6 +751,127 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 <div id="mydata" class="screen">
   <div class="back-header"><span class="back-arrow" onclick="showScreen('profile')">←</span><p style="font-size:18px;font-weight:700">Meus Dados</p></div>
   <div id="mydata-content" style="margin-top:16px"></div>
+</div>
+
+<!-- DESCOBRIR MEU TAMANHO (body scan via câmera) -->
+<div id="fit-camera" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="fitCameraBack()">←</span><p style="font-size:18px;font-weight:700">Descobrir meu tamanho</p></div>
+
+  <!-- Etapa 1: Intro + consentimento LGPD -->
+  <div id="fit-step-intro" class="fit-step" style="margin-top:20px">
+    <div style="text-align:center;margin-top:20px">
+      <div style="font-size:64px;margin-bottom:12px">📐</div>
+      <p style="font-size:22px;font-weight:700;margin-bottom:8px">Acerte o tamanho<br>de primeira</p>
+      <p style="color:rgba(255,255,255,0.7);font-size:14px;line-height:1.5;margin-top:12px">
+        Vamos usar a câmera do seu celular pra medir seu corpo e te indicar
+        o tamanho ideal de cada peça do nosso catálogo.
+      </p>
+    </div>
+    <div style="background:rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-top:24px">
+      <p style="font-size:13px;font-weight:700;letter-spacing:1px;margin-bottom:10px;color:#FFD54F">COMO FUNCIONA</p>
+      <p style="font-size:13px;color:rgba(255,255,255,0.85);line-height:1.6">
+        1. Você informa altura e peso<br>
+        2. Tira 3 fotos: frente, lateral, costas<br>
+        3. A IA calcula suas medidas em segundos<br>
+        4. A gente salva no seu perfil e usa em compras futuras
+      </p>
+    </div>
+    <div style="background:rgba(255,255,255,0.05);border-radius:14px;padding:14px;margin-top:14px;border:1px solid rgba(255,255,255,0.1)">
+      <p style="font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:8px;color:rgba(255,255,255,0.6)">🔒 PRIVACIDADE</p>
+      <p style="font-size:12px;color:rgba(255,255,255,0.7);line-height:1.5">
+        Suas fotos não são armazenadas. Só guardamos as medidas calculadas
+        (em centímetros), nunca as imagens. Você pode apagar tudo a qualquer momento.
+      </p>
+    </div>
+    <button class="btn-primary" style="margin-top:20px" onclick="fitStartFlow()">COMEÇAR</button>
+    <button class="btn-outline" style="margin-top:8px" onclick="showScreen('profile')">AGORA NÃO</button>
+  </div>
+
+  <!-- Etapa 2: Altura, peso, sexo -->
+  <div id="fit-step-inputs" class="fit-step" style="display:none;margin-top:20px">
+    <p style="font-size:16px;font-weight:600;margin-bottom:8px">Antes da captura</p>
+    <p style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">A altura é usada pra calibrar a escala da foto.</p>
+
+    <label class="input-label">ALTURA (cm)</label>
+    <input id="fit-height" class="input-field" type="number" placeholder="Ex: 175" inputmode="numeric">
+    <label class="input-label">PESO (kg)</label>
+    <input id="fit-weight" class="input-field" type="number" placeholder="Ex: 75" inputmode="decimal">
+    <label class="input-label">SEXO BIOLÓGICO</label>
+    <select id="fit-sex" class="input-field">
+      <option value="">Selecione</option>
+      <option value="M">Masculino</option>
+      <option value="F">Feminino</option>
+      <option value="NB">Prefiro não dizer</option>
+    </select>
+    <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:8px">Influencia a estimativa de circunferências (peito, cintura, quadril).</p>
+
+    <div id="fit-inputs-error" style="color:#FF6B6B;font-size:13px;margin-top:10px"></div>
+    <button class="btn-primary" style="margin-top:20px" onclick="fitInputsNext()">CONTINUAR</button>
+  </div>
+
+  <!-- Etapa 3: Captura (front, side, back) -->
+  <div id="fit-step-capture" class="fit-step" style="display:none;margin-top:16px">
+    <p style="font-size:14px;color:rgba(255,255,255,0.8);text-align:center;margin-bottom:10px">
+      Vista <strong>roupa justa</strong> (camiseta + short, ou similar)
+    </p>
+    <p id="fit-capture-label" style="font-size:18px;font-weight:700;text-align:center;color:#FFD54F">Passo 1 de 3: FRENTE</p>
+    <div id="fit-capture-instructions" style="font-size:13px;color:rgba(255,255,255,0.7);text-align:center;margin-top:6px">
+      Posicione o celular a 2-3 metros, na altura da cintura. Fique de pé reto, braços levemente afastados.
+    </div>
+
+    <div style="position:relative;margin-top:14px;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:9/16">
+      <video id="fit-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+      <canvas id="fit-canvas" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%"></canvas>
+      <!-- Overlay silhueta guia -->
+      <svg id="fit-silhouette" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0.4" viewBox="0 0 100 200" preserveAspectRatio="xMidYMid meet">
+        <!-- silhueta simplificada -->
+        <ellipse cx="50" cy="18" rx="9" ry="11" fill="none" stroke="#FFD54F" stroke-width="0.8"/>
+        <line x1="50" y1="29" x2="50" y2="32" stroke="#FFD54F" stroke-width="0.8"/>
+        <path d="M30 38 Q50 30 70 38 L72 75 L65 110 L60 175 L55 195 M30 38 L28 75 L35 110 L40 175 L45 195" fill="none" stroke="#FFD54F" stroke-width="0.8"/>
+        <line x1="30" y1="40" x2="20" y2="80" stroke="#FFD54F" stroke-width="0.8"/>
+        <line x1="20" y1="80" x2="18" y2="115" stroke="#FFD54F" stroke-width="0.8"/>
+        <line x1="70" y1="40" x2="80" y2="80" stroke="#FFD54F" stroke-width="0.8"/>
+        <line x1="80" y1="80" x2="82" y2="115" stroke="#FFD54F" stroke-width="0.8"/>
+      </svg>
+      <div id="fit-countdown" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Orbitron';font-size:80px;font-weight:900;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.6);display:none"></div>
+    </div>
+
+    <div id="fit-capture-status" style="font-size:12px;color:rgba(255,255,255,0.6);text-align:center;margin-top:8px;min-height:18px"></div>
+    <button id="fit-capture-btn" class="btn-primary" style="margin-top:10px" onclick="fitDoCapture()">📷 CAPTURAR</button>
+    <button class="btn-outline" style="margin-top:8px" onclick="fitCaptureSkipBack()">PULAR LATERAL/COSTAS</button>
+  </div>
+
+  <!-- Etapa 4: Processing -->
+  <div id="fit-step-processing" class="fit-step" style="display:none;text-align:center;margin-top:80px">
+    <div style="width:64px;height:64px;border:4px solid rgba(255,255,255,0.15);border-top-color:#FFD54F;border-radius:50%;margin:0 auto 24px;animation:fit-spin 0.8s linear infinite"></div>
+    <p style="font-size:18px;font-weight:700" id="fit-processing-msg">Calculando suas medidas...</p>
+    <p style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:8px">A IA está analisando os pontos do seu corpo</p>
+  </div>
+  <style>@keyframes fit-spin{to{transform:rotate(360deg)}}</style>
+
+  <!-- Etapa 5: Resultado -->
+  <div id="fit-step-result" class="fit-step" style="display:none;margin-top:16px">
+    <div style="text-align:center">
+      <div class="success-circle">✓</div>
+      <p style="font-size:22px;font-weight:700;margin-top:8px">Suas medidas</p>
+      <p id="fit-confidence" style="font-size:13px;color:rgba(255,255,255,0.6)"></p>
+    </div>
+    <div id="fit-result-list" style="margin-top:20px;background:rgba(255,255,255,0.06);border-radius:14px;padding:16px"></div>
+    <p style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:10px;text-align:center">
+      Agora, sempre que olhar um produto, mostraremos o tamanho ideal.
+    </p>
+    <button class="btn-primary" style="margin-top:16px" onclick="showScreen('profile')">PRONTO</button>
+    <button class="btn-outline" style="margin-top:8px" onclick="fitRetry()">REFAZER MEDIÇÃO</button>
+  </div>
+
+  <!-- Erro -->
+  <div id="fit-step-error" class="fit-step" style="display:none;margin-top:60px;text-align:center">
+    <div style="font-size:56px;margin-bottom:12px">⚠️</div>
+    <p style="font-size:18px;font-weight:700">Não consegui medir</p>
+    <p id="fit-error-msg" style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:8px;line-height:1.5"></p>
+    <button class="btn-primary" style="margin-top:20px" onclick="fitRetry()">TENTAR DE NOVO</button>
+    <button class="btn-outline" style="margin-top:8px" onclick="showScreen('profile')">VOLTAR</button>
+  </div>
 </div>
 
 <!-- SECURITY - Alterar Senha -->
@@ -1157,6 +1279,15 @@ function isPartner() {
 }
 
 function goHomeByRole() {
+  // Deep link: ?screen=fit-camera abre direto a captura (vindo do widget Nuvemshop)
+  try {
+    var qs = new URLSearchParams(location.search);
+    var target = qs.get('screen');
+    if (target === 'fit-camera') {
+      showScreen('fit-camera');
+      return;
+    }
+  } catch (_) {}
   if (isPartner()) showScreen('partner-home');
   else if (isSeller()) showScreen('seller-home');
   else showScreen('home');
@@ -1169,7 +1300,7 @@ function showScreen(id) {
   const navSeller = document.getElementById('bottomNavSeller');
   const navPartner = document.getElementById('bottomNavPartner');
 
-  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor'];
+  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','fit-camera'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile'];
@@ -3830,6 +3961,313 @@ async function siSave(submit) {
     document.getElementById('si-status').innerHTML = '<span style="color:#FFD54F">✓ Rascunho salvo.</span>';
   }
 }
+
+// =====================================================================
+// FIT-CAMERA — Body scan via MediaPipe Pose
+// =====================================================================
+// Captura front/side/back, extrai 33 keypoints localmente, envia ao
+// backend pra calcular medidas. Foto não sai do device por default.
+// =====================================================================
+
+const FIT = {
+  step: 'intro',
+  height: null, weight: null, sex: null,
+  currentView: 'front', // 'front' | 'side' | 'back'
+  keypoints: { front: null, side: null, back: null },
+  stream: null,
+  poseLandmarker: null,
+  mediaPipeReady: false,
+  mediaPipeLoadPromise: null,
+};
+
+function fitShowSubStep(name) {
+  document.querySelectorAll('#fit-camera .fit-step').forEach(el => el.style.display = 'none');
+  const el = document.getElementById('fit-step-' + name);
+  if (el) el.style.display = 'block';
+  FIT.step = name;
+}
+
+function fitCameraBack() {
+  // Cancela stream se ativo, e volta pra profile (ou pra etapa anterior)
+  fitStopCamera();
+  if (FIT.step === 'intro') return showScreen('profile');
+  // volta pra etapa anterior
+  const order = ['intro','inputs','capture','processing','result','error'];
+  const idx = order.indexOf(FIT.step);
+  if (idx > 0) fitShowSubStep(order[idx - 1]);
+  else showScreen('profile');
+}
+
+function fitStartFlow() {
+  // Pré-preenche altura/peso/sexo se já tiver no perfil
+  if (user) {
+    const h = parseInt(String(user.height || '').replace(/\D/g, ''));
+    if (h > 100 && h < 230) document.getElementById('fit-height').value = h;
+    const w = parseFloat(String(user.weight || '').replace(',', '.').replace(/[^\d.]/g, ''));
+    if (w > 30 && w < 200) document.getElementById('fit-weight').value = Math.round(w);
+  }
+  fitShowSubStep('inputs');
+}
+
+function fitInputsNext() {
+  const h = parseInt(document.getElementById('fit-height').value);
+  const w = parseFloat(document.getElementById('fit-weight').value);
+  const s = document.getElementById('fit-sex').value;
+  const err = document.getElementById('fit-inputs-error');
+  err.textContent = '';
+  if (!h || h < 100 || h > 230) { err.textContent = 'Informe sua altura em cm (100-230)'; return; }
+  if (w && (w < 30 || w > 200)) { err.textContent = 'Peso fora da faixa plausível (30-200kg)'; return; }
+  FIT.height = h; FIT.weight = w || null; FIT.sex = s || null;
+  FIT.currentView = 'front';
+  FIT.keypoints = { front: null, side: null, back: null };
+  fitShowSubStep('capture');
+  fitUpdateCaptureUI();
+  fitStartCamera();
+  fitLoadMediaPipe();
+}
+
+function fitUpdateCaptureUI() {
+  const label = document.getElementById('fit-capture-label');
+  const inst = document.getElementById('fit-capture-instructions');
+  if (FIT.currentView === 'front') {
+    label.textContent = 'Passo 1 de 3: FRENTE';
+    inst.innerHTML = 'Fique reto, braços levemente afastados do corpo. Toda a silhueta deve aparecer.';
+  } else if (FIT.currentView === 'side') {
+    label.textContent = 'Passo 2 de 3: LATERAL';
+    inst.innerHTML = 'Vire 90° (de lado pra câmera). Braços ao lado do corpo.';
+  } else {
+    label.textContent = 'Passo 3 de 3: COSTAS';
+    inst.innerHTML = 'Vire de costas. Mantenha a mesma distância.';
+  }
+}
+
+async function fitStartCamera() {
+  try {
+    if (FIT.stream) fitStopCamera();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    FIT.stream = stream;
+    const v = document.getElementById('fit-video');
+    v.srcObject = stream;
+    document.getElementById('fit-capture-status').textContent = 'Posicione-se e clique CAPTURAR';
+  } catch (err) {
+    fitShowError('Não consegui acessar a câmera. Permita o acesso nas configurações do navegador.');
+  }
+}
+
+function fitStopCamera() {
+  if (FIT.stream) {
+    FIT.stream.getTracks().forEach(t => t.stop());
+    FIT.stream = null;
+  }
+}
+
+// Carrega MediaPipe via CDN (lazy). Roda em paralelo com a câmera.
+async function fitLoadMediaPipe() {
+  if (FIT.mediaPipeLoadPromise) return FIT.mediaPipeLoadPromise;
+  FIT.mediaPipeLoadPromise = (async () => {
+    try {
+      // ESM import de CDN — funciona em Chrome/Safari modernos
+      const { PoseLandmarker, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      FIT.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
+          delegate: 'GPU',
+        },
+        runningMode: 'IMAGE',
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      FIT.mediaPipeReady = true;
+      console.log('[fit] MediaPipe pronto');
+    } catch (err) {
+      console.error('[fit] erro ao carregar MediaPipe', err);
+      FIT.mediaPipeReady = false;
+    }
+  })();
+  return FIT.mediaPipeLoadPromise;
+}
+
+async function fitDoCapture() {
+  const btn = document.getElementById('fit-capture-btn');
+  btn.disabled = true;
+  const status = document.getElementById('fit-capture-status');
+
+  // Contagem regressiva 3-2-1
+  const countdownEl = document.getElementById('fit-countdown');
+  countdownEl.style.display = 'block';
+  for (let i = 3; i >= 1; i--) {
+    countdownEl.textContent = String(i);
+    await new Promise(r => setTimeout(r, 800));
+  }
+  countdownEl.style.display = 'none';
+
+  // Garante MediaPipe carregado
+  status.textContent = 'Analisando...';
+  await fitLoadMediaPipe();
+  if (!FIT.mediaPipeReady) {
+    btn.disabled = false;
+    return fitShowError('Não consegui carregar o modelo de visão. Verifique sua conexão.');
+  }
+
+  // Captura frame do video
+  const video = document.getElementById('fit-video');
+  const canvas = document.getElementById('fit-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // Roda MediaPipe
+  let result;
+  try {
+    result = FIT.poseLandmarker.detect(canvas);
+  } catch (err) {
+    btn.disabled = false;
+    return fitShowError('Erro ao processar imagem: ' + err.message);
+  }
+
+  if (!result || !result.landmarks || result.landmarks.length === 0) {
+    btn.disabled = false;
+    status.textContent = 'Nenhum corpo detectado. Tente de novo com melhor iluminação.';
+    return;
+  }
+
+  // Converte landmarks pro formato esperado pelo backend
+  const kp = fitMapLandmarks(result.landmarks[0], result.worldLandmarks?.[0]);
+  FIT.keypoints[FIT.currentView] = kp;
+  console.log('[fit] keypoints capturados', FIT.currentView, Object.keys(kp).length, 'pontos');
+
+  btn.disabled = false;
+
+  // Próxima vista ou finaliza
+  if (FIT.currentView === 'front') {
+    FIT.currentView = 'side';
+    fitUpdateCaptureUI();
+    status.textContent = '✓ Frente capturada. Vire de lado.';
+  } else if (FIT.currentView === 'side') {
+    FIT.currentView = 'back';
+    fitUpdateCaptureUI();
+    status.textContent = '✓ Lateral capturada. Vire de costas.';
+  } else {
+    status.textContent = '✓ Costas capturada. Processando...';
+    await fitFinishScan();
+  }
+}
+
+function fitCaptureSkipBack() {
+  // Permite enviar com apenas a frente (modo express)
+  if (!FIT.keypoints.front) {
+    document.getElementById('fit-capture-status').textContent = 'Capture pelo menos a frente primeiro.';
+    return;
+  }
+  fitFinishScan();
+}
+
+const LM_NAMES = [
+  'nose','left_eye_inner','left_eye','left_eye_outer',
+  'right_eye_inner','right_eye','right_eye_outer',
+  'left_ear','right_ear','mouth_left','mouth_right',
+  'left_shoulder','right_shoulder','left_elbow','right_elbow',
+  'left_wrist','right_wrist','left_pinky','right_pinky',
+  'left_index','right_index','left_thumb','right_thumb',
+  'left_hip','right_hip','left_knee','right_knee',
+  'left_ankle','right_ankle','left_heel','right_heel',
+  'left_foot_index','right_foot_index',
+];
+
+function fitMapLandmarks(landmarks, worldLandmarks) {
+  const out = {};
+  for (let i = 0; i < LM_NAMES.length && i < landmarks.length; i++) {
+    const l = landmarks[i];
+    out[LM_NAMES[i]] = {
+      x: l.x, y: l.y, z: l.z ?? 0,
+      visibility: typeof l.visibility === 'number' ? l.visibility : 1,
+    };
+  }
+  return out;
+}
+
+async function fitFinishScan() {
+  fitStopCamera();
+  fitShowSubStep('processing');
+  document.getElementById('fit-processing-msg').textContent = 'Calculando suas medidas...';
+
+  try {
+    const r = await api('/measurement/scan', 'POST', {
+      heightCm: FIT.height,
+      weightKg: FIT.weight,
+      sex: FIT.sex,
+      keypointsFront: FIT.keypoints.front,
+      keypointsSide: FIT.keypoints.side,
+      keypointsBack: FIT.keypoints.back,
+      source: 'pwa_apex',
+    });
+    if (!r || r.error) {
+      return fitShowError(r?.error || 'Erro ao salvar medições');
+    }
+    fitRenderResult(r);
+  } catch (err) {
+    fitShowError(err.message || 'Erro de rede');
+  }
+}
+
+function fitRenderResult(r) {
+  fitShowSubStep('result');
+  const conf = Math.round((r.confidence || 0) * 100);
+  document.getElementById('fit-confidence').textContent = `Precisão estimada: ${conf}%`;
+
+  const list = document.getElementById('fit-result-list');
+  const labels = {
+    chest: 'Peito', waist: 'Cintura', hip: 'Quadril',
+    shoulder: 'Ombro', sleeve: 'Manga', inseam: 'Entrepernas',
+    neck: 'Pescoço', thigh: 'Coxa', torsoLength: 'Comprimento do tronco',
+  };
+  const order = ['chest','waist','hip','shoulder','sleeve','inseam','torsoLength','neck','thigh'];
+  list.innerHTML = '';
+  for (const k of order) {
+    const v = r.measurements[k];
+    if (v == null) continue;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08)';
+    row.innerHTML = `<span style="font-size:14px;color:rgba(255,255,255,0.85)">${labels[k] || k}</span><span style="font-family:'Orbitron';font-size:15px;font-weight:700;color:#FFD54F">${v.toFixed(1)} cm</span>`;
+    list.appendChild(row);
+  }
+}
+
+function fitShowError(msg) {
+  fitStopCamera();
+  fitShowSubStep('error');
+  document.getElementById('fit-error-msg').textContent = msg;
+}
+
+function fitRetry() {
+  FIT.currentView = 'front';
+  FIT.keypoints = { front: null, side: null, back: null };
+  fitShowSubStep('inputs');
+}
+
+// Hook no showScreen: ao entrar em fit-camera, garante etapa intro
+(function patchShowScreenForFit() {
+  const orig = window.showScreen;
+  if (!orig) return;
+  window.showScreen = function (id) {
+    if (id === 'fit-camera') {
+      // resetar fluxo
+      FIT.step = 'intro';
+      fitShowSubStep('intro');
+    } else if (FIT.stream) {
+      // saindo do fit-camera com câmera ligada — desliga
+      fitStopCamera();
+    }
+    return orig.apply(this, arguments);
+  };
+})();
 </script>
 </body>
 </html>
