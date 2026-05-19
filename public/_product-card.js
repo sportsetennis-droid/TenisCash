@@ -41,21 +41,44 @@
   // Mapeia gênero técnico → label visível
   const GENDER_LABEL = { 'Masculino': 'Homem', 'Feminino': 'Mulher', 'Inf. M': 'Menino', 'Inf. F': 'Menina' };
 
-  // Carousel navegável globalmente
+  // Carousel navegável globalmente — pula imgs que falharam
   PCard.crslNav = function (carouselId, dir) {
     const c = document.getElementById(carouselId);
     if (!c) return;
-    const total = parseInt(c.dataset.total, 10) || 1;
-    let idx = parseInt(c.dataset.idx, 10) || 0;
-    idx = (idx + dir + total) % total;
-    c.dataset.idx = String(idx);
-    c.querySelectorAll('.crsl-img').forEach(img => {
-      img.style.display = (parseInt(img.dataset.idx, 10) === idx) ? 'block' : 'none';
-    });
+    const imgs = Array.from(c.querySelectorAll('.crsl-img')).filter(i => !i.dataset.failed);
+    if (!imgs.length) return;
+    const currentIdx = imgs.findIndex(i => i.style.display === 'block');
+    let next = (currentIdx + dir + imgs.length) % imgs.length;
+    imgs.forEach((img, i) => { img.style.display = (i === next) ? 'block' : 'none'; });
     const counter = c.querySelector('.crsl-counter');
-    if (counter) counter.textContent = String(idx + 1);
+    if (counter) counter.textContent = String(next + 1);
+    const total = c.querySelector('.crsl-total');
+    if (total) total.textContent = String(imgs.length);
   };
   if (typeof window !== 'undefined') window.crslNav = window.crslNav || PCard.crslNav;
+
+  // Fallback de imagem: marca a img como falha e ativa a próxima do carrossel
+  PCard.imgFail = function (img) {
+    img.dataset.failed = '1';
+    img.style.display = 'none';
+    const c = img.closest('[id^="pcrsl-"]');
+    if (!c) return;
+    // Se era a img visível, ativa a próxima que não falhou
+    const goodImgs = Array.from(c.querySelectorAll('.crsl-img')).filter(i => !i.dataset.failed);
+    if (goodImgs.length) {
+      goodImgs.forEach((i, idx) => { i.style.display = idx === 0 ? 'block' : 'none'; });
+      const counter = c.querySelector('.crsl-counter');
+      if (counter) counter.textContent = '1';
+      const total = c.querySelector('.crsl-total');
+      if (total) total.textContent = String(goodImgs.length);
+    } else {
+      // Todas falharam — esconde controles do carrossel
+      c.querySelectorAll('.crsl-ctrl').forEach(b => b.style.display = 'none');
+      const badge = c.querySelector('.crsl-badge');
+      if (badge) badge.style.display = 'none';
+    }
+  };
+  if (typeof window !== 'undefined') window.PCard = window.PCard || PCard;
 
   /**
    * Renderiza UM card de produto.
@@ -121,18 +144,18 @@
     const placeholderSvg = `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f5f5f7,#ebebeb);color:#8e8e93;pointer-events:none;"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Sem foto</span></div>`;
 
     // CARROSSEL
-    html += `<div id="${carouselId}" data-idx="0" data-total="${photos.length}" style="position:relative;width:100%;aspect-ratio:4/3;background:#f5f5f7;">`;
-    // Placeholder sempre presente (z-index 0); imgs sobrepõem (z-index 1). Se img falhar, onerror remove a img → placeholder aparece.
+    html += `<div id="${carouselId}" style="position:relative;width:100%;aspect-ratio:4/3;background:#f5f5f7;">`;
+    // Placeholder sempre presente no fundo. Se TODAS as imgs falharem, ele aparece naturalmente.
     html += placeholderSvg;
     if (hasPhotos) {
       photos.forEach((url, idx) => {
-        html += `<img class="crsl-img" data-idx="${idx}" src="${esc(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="this.remove()">`;
+        html += `<img class="crsl-img" src="${esc(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="PCard.imgFail(this)">`;
       });
     }
     if (photos.length > 1) {
-      html += `<button type="button" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);">‹</button>`;
-      html += `<button type="button" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',1)" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);">›</button>`;
-      html += `<div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;"><span class="crsl-counter">1</span> / ${photos.length}</div>`;
+      html += `<button type="button" class="crsl-ctrl" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2;">‹</button>`;
+      html += `<button type="button" class="crsl-ctrl" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',1)" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2;">›</button>`;
+      html += `<div class="crsl-badge" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;z-index:2;"><span class="crsl-counter">1</span> / <span class="crsl-total">${photos.length}</span></div>`;
     }
     html += '</div>';
 
