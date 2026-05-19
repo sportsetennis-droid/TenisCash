@@ -123,19 +123,21 @@ async function findProduct(ext) {
       // Brooks
       [/GLYCERIN|ADRENALINE|GHOST|HYPERION|LAUNCH|REVEL|CALDERA|CASCADIA/, 'BROOKS'],
       // Asics
-      [/GEL[- ]?(CUMULUS|NIMBUS|KAYANO|EXCITE|CONTEND|SUPERIOR|VENTURE|TARTHER|PULSE|SOLUTION)/, 'ASICS'],
-      // Reebok (Nano é o tênis crossfit oficial)
-      [/^NANO\b|NANO COURT|FLOATRIDE|ENERGY RUN|REEBOK |ULTRA FLASH|CLASSIC LEATHER/, 'REEBOK'],
-      // Under Armour
-      [/\bUA\b|UNDER ARMOUR|TRIBASE|HOVR|CHARGED |PROJECT ROCK/, 'UNDER ARMOUR'],
+      [/GEL[- ]?(CUMULUS|NIMBUS|KAYANO|EXCITE|CONTEND|SUPERIOR|VENTURE|TARTHER|PULSE|SOLUTION)|JAPAN S/, 'ASICS'],
+      // Reebok (Nano = tênis crossfit oficial; ZIG, Club C, Prime Set, At Craze, Energen, Ultra Flash, Classic)
+      [/^NANO\b|NANO COURT|FLOATRIDE|ENERGY RUN|REEBOK |ULTRA FLASH|CLASSIC LEATHER|^ZIG |\bCLUB C\b|PRIME SET|AT CRAZE|ENERGEN|PREMIER ROAD/, 'REEBOK'],
+      // Under Armour (HOOPER, DOME, CHARGED, TRIBASE, HOVR, PROJECT ROCK, DE SLIGHT, CRAZE 3)
+      [/\bUA\b|UNDER ARMOUR|TRIBASE|HOVR|CHARGED|PROJECT ROCK|HOOPER|UA DOME|UA DE SLIGHT|UA CRAZE/, 'UNDER ARMOUR'],
       // Hoka
-      [/CLIFTON|BONDI|MACH|RINCON|SPEEDGOAT|CHALLENGER|ARAHI|MORE V/, 'HOKA'],
+      [/CLIFTON|BONDI|MACH|RINCON|SPEEDGOAT|CHALLENGER|ARAHI|MORE V|STREETRIDE/, 'HOKA'],
       // Mizuno
-      [/WAVE (RIDER|INSPIRE|SKY|HORIZON|REBELLION|PROPHECY|MOMENTUM)|CREATION/, 'MIZUNO'],
+      [/WAVE (RIDER|INSPIRE|SKY|HORIZON|REBELLION|PROPHECY|MOMENTUM)|CREATION|ENERGY LITE|ENERGEN LITE/, 'MIZUNO'],
       // New Balance
       [/FRESH FOAM|FUELCELL|\b860\b|\b1080\b|\b574\b/, 'NEW BALANCE'],
-      // Fiber (marca já existe no banco)
+      // Fiber
       [/FIBER|SAPATILHA TRAINING|CHORA RECOVERY|ECHOA RECOVERY/, 'FIBER'],
+      // Skechers (ARCH FIT, GO RUN, GO WALK, MAX CUSHIONING)
+      [/ARCH FIT|GO RUN|GO WALK|MAX CUSHIONING|SKECH-AIR/, 'SKECHERS'],
       // Olympikus
       [/OLYMPIKUS|CORRE \d/, 'OLYMPIKUS'],
       // Topper
@@ -144,6 +146,8 @@ async function findProduct(ext) {
       [/PENALTY|MAX 1000|S11 R/, 'PENALTY'],
       // Salomon
       [/SPEEDCROSS|XT[- ]\d|SENSE RIDE/, 'SALOMON'],
+      // Kappa
+      [/GREGA |GRESCA |GRASCA |KAPPA /, 'KAPPA'],
     ];
     for (const [pattern, brand] of BRAND_BY_MODEL) {
       if (pattern.test(modelUpper)) {
@@ -205,6 +209,30 @@ async function findProduct(ext) {
           LIMIT 1`;
         if (rows && rows[0]) return { ...rows[0], matchedBy: 'code_loose_' + len };
       }
+    }
+  }
+
+  // 9) MODEL_SINGLE — quando há marca extraída válida (não OUTRO) E modelo
+  //    com 1 token distinto >=5 chars, procura por esse token + marca.
+  //    Útil pra Nike "W NIKE VOMERO 18" → token "VOMERO" + brand NIKE
+  //    achar produto "TENIS NIKE VOMERO 18 MASCULINO" no banco.
+  if (ext.marca && ext.marca !== 'OUTRO' && ext.modelo) {
+    const GENERIC = /^(WOMEN|MEN|WOMENS|MENS|FEMININO|MASCULINO|UNISEX|UNISSEX|SHOES|TENIS|TENNIS|SOCCER|SOCIETY|RUNNING|TRAINING|SAPATILHA|CHUTEIRA|SANDALIA|CHINELO|\bW\b|\bM\b|\bJR\b|NIKE|ADIDAS|PUMA|FILA|UMBRO|TOPPER|MIZUNO|ASICS|BROOKS|REEBOK|EVOKE|KAPPA|CONVERSE|NEW|OLD|PRO|MAX|PLUS|ULTRA|ELITE)$/i;
+    const tokens = ext.modelo.split(/[\s\-_/]+/).filter(t => t.length >= 5 && !GENERIC.test(t));
+    // Pega o token mais distintivo (mais longo)
+    const distinctive = tokens.sort((a, b) => b.length - a.length)[0];
+    if (distinctive) {
+      const candidates = await prisma.product.findMany({
+        where: {
+          active: true,
+          brand: { contains: ext.marca, mode: 'insensitive' },
+          name: { contains: distinctive, mode: 'insensitive' },
+        },
+        select: { id: true, sku: true, name: true, brand: true },
+        take: 2,
+      });
+      // Só matcheia se EXISTE exatamente 1 candidato (sem ambiguidade)
+      if (candidates.length === 1) return { ...candidates[0], matchedBy: 'model_single' };
     }
   }
 
