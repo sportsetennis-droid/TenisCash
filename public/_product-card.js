@@ -108,7 +108,8 @@
       const extras = typeof p.imageUrls === 'string' ? JSON.parse(p.imageUrls) : (p.imageUrls || []);
       if (Array.isArray(extras)) extras.forEach(u => { if (u && !photos.includes(u)) photos.push(u); });
     } catch {}
-    if (!photos.length) photos = [''];
+    const hasPhotos = photos.length > 0;
+    if (!hasPhotos) photos = [''];
     const carouselId = 'pcrsl-' + p.id;
 
     let html = '';
@@ -116,11 +117,18 @@
     const clickAttr = onClick ? ` onclick="${onClick}"` : '';
     html += `<div style="${cardStyle}"${clickAttr} onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 12px 28px rgba(0,0,0,0.08)'" onmouseout="this.style.transform='';this.style.boxShadow=''">`;
 
+    // Placeholder visual SEMPRE atrás do carrossel — aparece quando não há foto OU img falha
+    const placeholderSvg = `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f5f5f7,#ebebeb);color:#8e8e93;pointer-events:none;"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Sem foto</span></div>`;
+
     // CARROSSEL
     html += `<div id="${carouselId}" data-idx="0" data-total="${photos.length}" style="position:relative;width:100%;aspect-ratio:4/3;background:#f5f5f7;">`;
-    photos.forEach((url, idx) => {
-      html += `<img class="crsl-img" data-idx="${idx}" src="${esc(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;display:${idx === 0 ? 'block' : 'none'};" onerror="this.style.opacity='0.3'">`;
-    });
+    // Placeholder sempre presente (z-index 0); imgs sobrepõem (z-index 1). Se img falhar, onerror remove a img → placeholder aparece.
+    html += placeholderSvg;
+    if (hasPhotos) {
+      photos.forEach((url, idx) => {
+        html += `<img class="crsl-img" data-idx="${idx}" src="${esc(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="this.remove()">`;
+      });
+    }
     if (photos.length > 1) {
       html += `<button type="button" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',-1)" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);">‹</button>`;
       html += `<button type="button" onclick="event.stopPropagation();PCard.crslNav('${carouselId}',1)" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);">›</button>`;

@@ -2760,7 +2760,22 @@ function catFormAddNew(kind) {
 
 async function openCatProductModal(id) {
   document.getElementById('cat-p-error').innerHTML = '';
-  document.getElementById('cat-product-modal').classList.add('show');
+  const _catModal = document.getElementById('cat-product-modal');
+  _catModal.classList.add('show');
+  // Garante close handlers (idempotente — funciona mesmo se initAdminCatalogTab ainda não rodou)
+  if (!_catModal.dataset.closeBound) {
+    _catModal.dataset.closeBound = '1';
+    const _close = () => _catModal.classList.remove('show');
+    const _x = document.getElementById('cat-product-modal-close');
+    if (_x) _x.addEventListener('click', _close);
+    // Click no overlay (fora do .detail-content)
+    _catModal.addEventListener('click', (e) => { if (e.target === _catModal) _close(); });
+    // ESC fecha
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _catModal.classList.contains('show')) _close(); });
+    // Save também precisa estar ligado fora da aba Catálogo
+    const _save = document.getElementById('cat-p-save');
+    if (_save && !_save.dataset.bound) { _save.dataset.bound = '1'; _save.addEventListener('click', catProductSave); }
+  }
   _catUnits = [];
   _catPhotos = [];
   _catSetupPhotosForm();
