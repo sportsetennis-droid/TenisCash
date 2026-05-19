@@ -149,7 +149,12 @@
     html += placeholderSvg;
     if (hasPhotos) {
       photos.forEach((url, idx) => {
-        html += `<img class="crsl-img" src="${esc(url)}" referrerpolicy="no-referrer-when-downgrade" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="PCard.imgFail(this)">`;
+        // loading="lazy" omitido propositalmente: com 500+ produtos × 5 imgs,
+        // IntersectionObserver do Chrome trava (não dispara load mesmo dentro
+        // da viewport). Imgs idx>0 ficam display:none e só geram request quando
+        // o usuário navega o carrossel.
+        const lazyAttr = idx === 0 ? '' : ' loading="lazy"';
+        html += `<img class="crsl-img" src="${esc(url)}" referrerpolicy="no-referrer-when-downgrade"${lazyAttr} style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#f5f5f7;display:${idx === 0 ? 'block' : 'none'};z-index:1;" onerror="PCard.imgFail(this)">`;
       });
     }
     if (photos.length > 1) {
