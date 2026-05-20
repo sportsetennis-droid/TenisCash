@@ -53,7 +53,7 @@ router.get('/form-options', adminOnly, async (_req, res) => {
       prisma.$queryRaw`SELECT DISTINCT category FROM "Product" WHERE active=true AND category IS NOT NULL AND category!='' ORDER BY category ASC`,
       prisma.supplier.findMany({
         where: { active: true },
-        select: { id: true, companyName: true, cnpj: true },
+        select: { id: true, companyName: true, cnpj: true, suppliedBrands: true },
         orderBy: { companyName: 'asc' },
       }),
       prisma.store.findMany({

@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520"></script>
-<script src="/_product-search-bar.js?v=20260520"></script>
-<script src="/_product-card.js?v=20260520"></script>
+<script src="/_design-system.js?v=20260520b"></script>
+<script src="/_product-search-bar.js?v=20260520b"></script>
+<script src="/_product-card.js?v=20260520b"></script>
 </head>
 <body>
 
@@ -2722,6 +2722,31 @@ async function catFormPopulateAllSelects() {
   _catPopulateSelect(document.getElementById('cat-p-brand'), o.brands);
   _catPopulateSelect(document.getElementById('cat-p-category'), o.categories);
   _catPopulateSelect(document.getElementById('cat-p-supplier'), o.suppliers, s => s.id, s => s.companyName);
+
+  // Vinculação automática: ao escolher marca, sugere fornecedor que atende essa marca
+  const brandSel = document.getElementById('cat-p-brand');
+  const supplierSel = document.getElementById('cat-p-supplier');
+  if (brandSel && supplierSel && !brandSel.dataset.brandLinkBound) {
+    brandSel.dataset.brandLinkBound = '1';
+    brandSel.addEventListener('change', () => {
+      // Não sobrescreve se já tem fornecedor escolhido
+      if (supplierSel.value) return;
+      const brand = (brandSel.value || '').trim();
+      if (!brand) return;
+      const brandUp = brand.toUpperCase();
+      // Procura fornecedor com essa marca na lista suppliedBrands
+      const match = (o.suppliers || []).find(sup =>
+        Array.isArray(sup.suppliedBrands) &&
+        sup.suppliedBrands.some(b => (b || '').toUpperCase() === brandUp)
+      );
+      if (match) {
+        supplierSel.value = match.id;
+        // Feedback visual rápido
+        supplierSel.style.background = '#FFEBDC';
+        setTimeout(() => { supplierSel.style.background = 'white'; }, 1200);
+      }
+    });
+  }
 }
 
 function catFormOnTypeChange() {
@@ -6341,6 +6366,15 @@ async function loadSuppliers() {
     html += '</div>';
     html += '<div style="font-size:11px;color:#8e8e93;font-family:monospace;">CNPJ: ' + escapeHtml(s.cnpj || '—') + '</div>';
     if (s.phone) html += '<div style="font-size:11px;color:#8e8e93;">📱 ' + escapeHtml(s.phone) + '</div>';
+    // Marcas atendidas
+    const brandsArr = Array.isArray(s.suppliedBrands) ? s.suppliedBrands : [];
+    if (brandsArr.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;">'
+        + brandsArr.map(b => '<span style="font-size:10px;padding:2px 7px;background:#FCDAC4;color:#E5571E;border-radius:6px;font-weight:700;">' + escapeHtml(b) + '</span>').join('')
+        + '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:#d70015;font-style:italic;">⚠ Sem marca vinculada</div>';
+    }
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Produtos</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (productCount || '—') + '</div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Custo méd.</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (avgCost !== '—' ? 'R$ ' + avgCost : '—') + '</div></div>';
@@ -6348,6 +6382,7 @@ async function loadSuppliers() {
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
     if (s.cnpj) html += '<button onclick="supplierSetMarkup(\'' + safeId + '\',\'' + safeCnpj + '\',\'' + escapeHtml(s.companyName).replace(/'/g,"\\\\'") + '\',\'' + (s.averageMarkup||'') + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">' + (s.averageMarkup != null ? '✏️ Markup' : '➕ Markup') + '</button>';
+    html += '<button onclick="supplierEditBrands(\'' + safeId + '\')" style="padding:8px 10px;background:white;border:1px solid #FCDAC4;color:#E5571E;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600;" title="Editar marcas">🏷️</button>';
     html += '<button onclick="supplierEdit(\'' + safeId + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:11px;cursor:pointer;">✎</button>';
     html += '<button onclick="supplierDelete(\'' + safeId + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:11px;color:#d70015;cursor:pointer;">🗑</button>';
     html += '</div>';
@@ -6412,6 +6447,32 @@ async function supplierEdit(id) {
 async function supplierDelete(id) {
   if (!confirm('Desativar fornecedor?')) return;
   await api('/admin/suppliers/' + id, 'DELETE');
+  loadSuppliers();
+}
+
+// Editor de marcas do fornecedor — uma marca por linha
+async function supplierEditBrands(id) {
+  const data = await api('/admin/suppliers/' + id);
+  if (data.error) { alert(data.error); return; }
+  const s = data.supplier;
+  const current = Array.isArray(s.suppliedBrands) ? s.suppliedBrands : [];
+  const input = prompt(
+    `Marcas atendidas por "${s.companyName}"\n\n` +
+    'Uma marca por linha. Em branco pra remover todas.\n\n' +
+    'Quando você cadastrar um produto com uma dessas marcas, o sistema sugere este fornecedor automaticamente.',
+    current.join('\n')
+  );
+  if (input === null) return;
+  const brands = input.split(/[\n,;]/).map(x => x.trim()).filter(Boolean);
+  // Dedup case-insensitive (mantém formato da primeira ocorrência)
+  const seen = new Set();
+  const dedup = brands.filter(b => {
+    const k = b.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  const r = await api('/admin/suppliers/' + id, 'PUT', { suppliedBrands: dedup });
+  if (r.error) { alert('Erro: ' + r.error); return; }
   loadSuppliers();
 }
 
