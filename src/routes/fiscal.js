@@ -61,9 +61,14 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
     if (!issuer || !issuer.active) return res.status(400).json({ error: 'Loja sem emissor fiscal vinculado' });
     if (!issuer.csc) return res.status(400).json({ error: 'Emissor ' + issuer.fantasyName + ' sem CSC cadastrado — gere no portal SEFAZ-PB primeiro' });
 
-    const pfxPath = pfxPathFor(issuer.cnpj);
-    const pfxSenha = pfxSenhaFor(issuer.cnpj);
-    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+    // PFX só é necessário se a loja NÃO usa fiscal agent (agente tem PFX local)
+    let pfxPath = null, pfxSenha = null;
+    const willUseAgent = sale.store?.fiscalAgentEnabled && sale.store?.fiscalAgentUrl;
+    if (!willUseAgent) {
+      pfxPath = pfxPathFor(issuer.cnpj);
+      pfxSenha = pfxSenhaFor(issuer.cnpj);
+      if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado e Store sem Fiscal Agent — configure fiscalAgentUrl+Token na loja' });
+    }
 
     // Items
     const items = sale.items.map((si) => ({
@@ -107,12 +112,23 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       },
     });
 
-    // Emite
-    const { emitNFCe } = await getSefazDirect();
-    const result = await emitNFCe({
-      issuer, pfxPath, pfxSenha, items, payment,
-      nNF: issuer.nfceNextNumber,
-    });
+    // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
+    let result;
+    const useAgent = sale.store?.fiscalAgentEnabled && sale.store?.fiscalAgentUrl;
+    if (useAgent) {
+      const agentClient = require('../services/fiscalAgentClient');
+      result = await agentClient.emitNFCe(sale.store, {
+        issuer,
+        items, payment,
+        nNF: issuer.nfceNextNumber,
+      });
+    } else {
+      const { emitNFCe } = await getSefazDirect();
+      result = await emitNFCe({
+        issuer, pfxPath, pfxSenha, items, payment,
+        nNF: issuer.nfceNextNumber,
+      });
+    }
 
     // Atualiza doc + numeração
     const updated = await prisma.fiscalDocument.update({

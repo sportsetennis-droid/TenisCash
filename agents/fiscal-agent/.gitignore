@@ -2,3 +2,11 @@
 agent-state.json
 agent.log
 node_modules/
+
+# Test agent dir
+.env
+agent.log
+agent-state.json
+tmp/
+test-emit.mjs
+debug-path.mjs

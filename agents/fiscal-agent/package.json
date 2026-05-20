@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "node-sped-nfe": "^1.5.0"
+    "node-sped-nfe": "^1.2.52"
   },
   "engines": {
     "node": ">=20"

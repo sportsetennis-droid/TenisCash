@@ -189,6 +189,13 @@ model Store {
   fiscalIssuerId String?
   fiscalIssuer   FiscalIssuer? @relation(fields: [fiscalIssuerId], references: [id])
 
+  // TenisCash Fiscal Agent — agente local que assina/envia NFCe usando o PFX
+  // físico da máquina da loja. Quando enabled, central roteia /emit-nfce
+  // via Tailscale em vez de tentar emitir do Railway.
+  fiscalAgentUrl     String? // ex: "http://100.91.132.63:8765"
+  fiscalAgentToken   String? // shared secret, header X-Agent-Token
+  fiscalAgentEnabled Boolean @default(false)
+
   sellers  User[]
   clockIns ClockIn[]
   messages Message[]    @relation("storeMessages")
