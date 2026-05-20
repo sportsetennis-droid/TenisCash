@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520h"></script>
-<script src="/_product-search-bar.js?v=20260520h"></script>
-<script src="/_product-card.js?v=20260520h"></script>
+<script src="/_design-system.js?v=20260520i"></script>
+<script src="/_product-search-bar.js?v=20260520i"></script>
+<script src="/_product-card.js?v=20260520i"></script>
 </head>
 <body>
 
@@ -271,6 +271,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
     <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
+    <button class="tab" onclick="switchTab('productImages',this)">Imagens</button>
     <button class="tab" onclick="switchTab('categories',this)">Categorias</button>
     <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
@@ -374,11 +375,17 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Marcas, contatos, markup por origem</div>
         <span class="hub-card-badge">SUPPLY</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('productImages')">
+        <div class="hub-card-icon">🖼️</div>
+        <div class="hub-card-title">Imagens</div>
+        <div class="hub-card-desc">Padronizar 4:5 + upload de fotos faltantes</div>
+        <span class="hub-card-badge">VISUAL</span>
+      </button>
       <button class="hub-card" onclick="switchTabByName('categories')">
         <div class="hub-card-icon">📂</div>
         <div class="hub-card-title">Categorias</div>
-        <div class="hub-card-desc">Árvore: Categoria → Sub → Modalidade → Especialidade</div>
-        <span class="hub-card-badge">CATÁLOGO</span>
+        <div class="hub-card-desc">Classificar produtos: cards visuais + bulk</div>
+        <span class="hub-card-badge">CLASSIF.</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('xml')">
         <div class="hub-card-icon">📄</div>
@@ -1084,17 +1091,121 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <!-- CATEGORIAS — árvore hierárquica -->
-<div class="section" id="tab-categories" style="display:none">
+<!-- IMAGENS — padronização 4:5 + upload -->
+<div class="section" id="tab-productImages" style="display:none">
   <div class="section-head">
-    <span class="section-title">📂 Categorias — árvore de classificação</span>
-    <button type="button" class="refresh-btn" id="cat-tree-refresh">↻</button>
+    <span class="section-title">🖼️ Imagens — padronização 4:5 (Instagram feed)</span>
+    <button type="button" class="refresh-btn" id="pi-refresh">↻</button>
   </div>
   <p class="note" style="margin-bottom:14px">
-    Estrutura: <strong>CATEGORIA</strong> → SUB-CATEGORIA (gênero) → MODALIDADE → ESPECIALIDADE.
-    Clica num nó pra ver produtos classificados nele, ou ➕ pra criar filho.
-    A classificação se reflete em <code>Product.category/subcategory</code> e <code>aiContext.classification.modality/tier</code>.
+    Todos os cards padronizados em <strong>4:5</strong> via CSS (object-fit). Pra cada produto você pode adicionar/trocar a imagem.
+    Upload novo é processado server-side pra 4:5. Lista filtrada por marca/fornecedor/status da imagem.
   </p>
-  <div id="cat-tree-wrap" style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;"></div>
+  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Marca</label>
+      <select id="pi-brand" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
+      <select id="pi-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Status</label>
+      <select id="pi-status" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="missing">⚠ Sem imagem</option>
+        <option value="has">✓ Com imagem</option>
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
+      <input id="pi-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
+    </div>
+  </div>
+  <div id="pi-stats" style="font-size:13px;color:#8e8e93;margin-bottom:10px;"></div>
+  <div id="pi-grid"></div>
+</div>
+
+<!-- CATEGORIAS — classificação de produtos com cards visuais -->
+<div class="section" id="tab-categories" style="display:none">
+  <div class="section-head">
+    <span class="section-title">📂 Categorias — classificar produtos</span>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn" id="cat-edit-tree-btn">⚙️ Editar árvore</button>
+      <button type="button" class="refresh-btn" id="cat-classify-refresh">↻</button>
+    </div>
+  </div>
+
+  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Marca</label>
+      <select id="cat-classify-brand" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
+      <select id="cat-classify-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Status</label>
+      <select id="cat-classify-status" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="unclassified">⚠ Sem classificação</option>
+        <option value="classified">✓ Classificados</option>
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
+      <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
+    </div>
+  </div>
+
+  <div style="background:linear-gradient(135deg,#fff7eb,#fff);border:1.5px solid #ffe4bd;border-radius:14px;padding:14px;margin-bottom:14px;">
+    <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#E5571E;margin-bottom:10px">🎯 APLICAR CLASSIFICAÇÃO NOS SELECIONADOS</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">1. Categoria</label>
+        <select id="cat-apply-category" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">2. Sub</label>
+        <select id="cat-apply-sub" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">3. Modalidade</label>
+        <select id="cat-apply-mod" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">4. Especialidade</label>
+        <select id="cat-apply-spec" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+      </div>
+      <button id="cat-apply-btn" class="btn btn-primary" style="height:42px;">✓ Aplicar</button>
+    </div>
+    <div id="cat-apply-info" style="margin-top:8px;font-size:12px;color:#8e8e93;">Selecione produtos abaixo. A classificação aplica o nó mais profundo escolhido + ancestrais.</div>
+  </div>
+
+  <div id="cat-classify-toolbar" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <div id="cat-classify-stats" style="font-size:13px;color:#8e8e93;"></div>
+    <div style="display:flex;gap:8px;">
+      <button id="cat-select-all-page" class="btn">Selecionar visíveis</button>
+      <button id="cat-clear-sel" class="btn">Limpar seleção</button>
+    </div>
+  </div>
+
+  <div id="cat-classify-grid"></div>
+
+  <!-- Modal editor da árvore (escondido) -->
+  <div id="cat-tree-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;z-index:10000;padding:16px;">
+    <div style="background:white;border-radius:16px;max-width:900px;width:100%;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="padding:18px 24px;border-bottom:1px solid #e5e5ea;display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:18px;font-weight:800;color:#1d1d1f;">⚙️ Editor da árvore de categorias</h3>
+        <button id="cat-tree-modal-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;">×</button>
+      </div>
+      <div style="overflow:auto;padding:16px 24px;flex:1;color:#1d1d1f;">
+        <div id="cat-tree-wrap"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- CAMPANHAS -->
@@ -4468,7 +4579,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','campaigns','inventory','images','markup','stocktake','fiscal'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','productImages','campaigns','inventory','images','markup','stocktake','fiscal'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -4488,6 +4599,7 @@ function switchTab(tab, btn) {
   if (tab === 'financial') { initFinancialTab(); }
   if (tab === 'suppliers') { initSuppliersTab(); }
   if (tab === 'categories') { initCategoriesTab(); }
+  if (tab === 'productImages') { initProductImagesTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'stocktake') { initStocktakeTab(); }
@@ -6854,17 +6966,315 @@ function supplierUnifyConfirm(supplierId, groups, onDone) {
   render();
 }
 
-// ==================== CATEGORIAS (árvore) ====================
+// ==================== IMAGENS (padronização 4:5) ====================
+let _piInit = false;
+let _piProducts = [];
+
+async function initProductImagesTab() {
+  if (!_piInit) {
+    _piInit = true;
+    document.getElementById('pi-refresh').onclick = loadProductImages;
+    ['pi-brand','pi-supplier','pi-status'].forEach(id => {
+      document.getElementById(id).addEventListener('change', renderProductImages);
+    });
+    document.getElementById('pi-search').addEventListener('input', () => {
+      clearTimeout(window._piT); window._piT = setTimeout(renderProductImages, 250);
+    });
+  }
+  await loadProductImages();
+}
+
+async function loadProductImages() {
+  const grid = document.getElementById('pi-grid');
+  grid.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const [fopts, prods] = await Promise.all([
+    api('/admin/catalog/form-options'),
+    api('/admin/inventory/products'),
+  ]);
+  if (fopts.error || prods.error) { grid.innerHTML = `<div style="color:#d70015">${fopts.error||prods.error}</div>`; return; }
+  _catPopulateSelect(document.getElementById('pi-brand'), fopts.brands || []);
+  _catPopulateSelect(document.getElementById('pi-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+  _piProducts = prods.products || [];
+  renderProductImages();
+}
+
+function renderProductImages() {
+  const grid = document.getElementById('pi-grid');
+  const brand = document.getElementById('pi-brand').value;
+  const supplier = document.getElementById('pi-supplier').value;
+  const status = document.getElementById('pi-status').value;
+  const search = (document.getElementById('pi-search').value || '').toLowerCase().trim();
+  const filtered = _piProducts.filter(p => {
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    if (brand && (p.brand || '').toLowerCase() !== brand.toLowerCase()) return false;
+    if (supplier && ctx.supplierCnpj !== supplier && ctx.supplierId !== supplier) return false;
+    const has = !!(p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls.length));
+    if (status === 'has' && !has) return false;
+    if (status === 'missing' && has) return false;
+    if (search) {
+      const ref = (ctx.supplierRef || '').toLowerCase();
+      if (!(p.name || '').toLowerCase().includes(search)
+          && !(p.sku || '').toLowerCase().includes(search)
+          && !ref.includes(search)) return false;
+    }
+    return true;
+  });
+  const totalHas = _piProducts.filter(p => !!(p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls.length))).length;
+  document.getElementById('pi-stats').innerHTML =
+    `<strong>${filtered.length}</strong> visíveis · <strong>${totalHas}</strong> com imagem · <strong>${_piProducts.length - totalHas}</strong> sem imagem (de ${_piProducts.length} total)`;
+  if (!filtered.length) { grid.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum produto</div>'; return; }
+  const visible = filtered.slice(0, 300);
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">';
+  visible.forEach(p => {
+    html += window.PCard ? PCard.render(p, { actions: 'public', showStock: false, onClick: `productImageEdit('${p.id}')` }) : '';
+  });
+  html += '</div>';
+  if (filtered.length > 300) html += `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 300 de ${filtered.length} — refine os filtros</div>`;
+  grid.innerHTML = html;
+}
+
+// Editor de imagem de um produto — link/upload
+async function productImageEdit(id) {
+  const data = await api('/admin/catalog/products/' + id);
+  if (data.error) { alert(data.error); return; }
+  const p = data.product;
+  const current = p.imageUrl || '';
+  const novo = prompt(
+    `Imagem de "${p.name}"\n\nCole uma URL de imagem (ou deixa em branco pra manter atual):\n\nAtual: ${current || '(sem imagem)'}\n\n(Card de upload com sharp 4:5 vem na próxima rodada — por enquanto cole URL.)`,
+    current
+  );
+  if (novo === null) return;
+  if (novo === current) return;
+  const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: novo || null });
+  if (r.error) { alert('Erro: ' + r.error); return; }
+  loadProductImages();
+}
+
+// ==================== CATEGORIAS (classificar produtos) ====================
 let _catTreeInit = false;
 let _catTreeData = null;
 const _catTreeExpanded = new Set();
+let _catClassifyProducts = [];
+let _catClassifySelected = new Set();
+let _catTreeFlat = []; // árvore flatten pra populating selects
 
 async function initCategoriesTab() {
   if (!_catTreeInit) {
     _catTreeInit = true;
-    document.getElementById('cat-tree-refresh').onclick = loadCategoryTree;
+    document.getElementById('cat-classify-refresh').onclick = loadCategoriesClassify;
+    document.getElementById('cat-edit-tree-btn').onclick = () => {
+      document.getElementById('cat-tree-modal').style.display = 'flex';
+      loadCategoryTree();
+    };
+    document.getElementById('cat-tree-modal-close').onclick = () => {
+      document.getElementById('cat-tree-modal').style.display = 'none';
+    };
+    document.getElementById('cat-tree-modal').onclick = (e) => {
+      if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
+    };
+    // Filtros
+    ['cat-classify-brand','cat-classify-supplier','cat-classify-status','cat-classify-search'].forEach(id => {
+      document.getElementById(id).addEventListener('change', renderCatClassifyGrid);
+    });
+    document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
+    // Selects encadeados
+    document.getElementById('cat-apply-category').addEventListener('change', _catApplyCascade);
+    document.getElementById('cat-apply-sub').addEventListener('change', _catApplyCascade);
+    document.getElementById('cat-apply-mod').addEventListener('change', _catApplyCascade);
+    document.getElementById('cat-apply-spec').addEventListener('change', _catApplyCascade);
+    document.getElementById('cat-apply-btn').addEventListener('click', _catApplyClassification);
+    document.getElementById('cat-select-all-page').addEventListener('click', () => {
+      _filteredCatProducts().forEach(p => _catClassifySelected.add(p.id));
+      renderCatClassifyGrid();
+    });
+    document.getElementById('cat-clear-sel').addEventListener('click', () => {
+      _catClassifySelected.clear();
+      renderCatClassifyGrid();
+    });
   }
-  loadCategoryTree();
+  await loadCategoriesClassify();
+}
+
+async function loadCategoriesClassify() {
+  // Carrega árvore + produtos + form-options em paralelo
+  const grid = document.getElementById('cat-classify-grid');
+  grid.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  _catClassifySelected.clear();
+  const [tree, fopts, prods] = await Promise.all([
+    api('/admin/categories/tree'),
+    api('/admin/catalog/form-options'),
+    api('/admin/inventory/products'),
+  ]);
+  if (tree.error || fopts.error || prods.error) {
+    grid.innerHTML = `<div style="color:#d70015;padding:20px;">${tree.error || fopts.error || prods.error}</div>`;
+    return;
+  }
+  _catTreeData = tree.tree || [];
+  _catTreeFlat = [];
+  function walkFlat(nodes, parent) {
+    nodes.forEach(n => { _catTreeFlat.push({ ...n, parent }); walkFlat(n.children || [], n); });
+  }
+  walkFlat(_catTreeData, null);
+
+  // Popula filtros
+  _catPopulateSelect(document.getElementById('cat-classify-brand'), fopts.brands || []);
+  _catPopulateSelect(document.getElementById('cat-classify-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+
+  // Popula select de categoria
+  const catSelect = document.getElementById('cat-apply-category');
+  catSelect.innerHTML = '<option value="">—</option>';
+  _catTreeData.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n.id; opt.textContent = n.name;
+    catSelect.appendChild(opt);
+  });
+
+  _catClassifyProducts = (prods.products || []).map(p => ({
+    id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category, subcategory: p.subcategory,
+    imageUrl: p.imageUrl, imageUrls: p.imageUrls,
+    aiContext: p.aiContext, price: p.price,
+    sizes: p.sizes,
+  }));
+  renderCatClassifyGrid();
+}
+
+function _filteredCatProducts() {
+  const brand = document.getElementById('cat-classify-brand').value;
+  const supplier = document.getElementById('cat-classify-supplier').value;
+  const status = document.getElementById('cat-classify-status').value;
+  const search = (document.getElementById('cat-classify-search').value || '').toLowerCase().trim();
+  return _catClassifyProducts.filter(p => {
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    const cls = ctx.classification || {};
+    const supCnpj = ctx.supplierCnpj || '';
+    const supId = ctx.supplierId || '';
+    if (brand && (p.brand || '').toLowerCase() !== brand.toLowerCase()) return false;
+    if (supplier && supCnpj !== supplier && supId !== supplier) return false;
+    if (status === 'unclassified') {
+      const isFull = p.category && p.subcategory && cls.modality && cls.tier;
+      if (isFull) return false;
+    } else if (status === 'classified') {
+      const isFull = p.category && p.subcategory && cls.modality && cls.tier;
+      if (!isFull) return false;
+    }
+    if (search) {
+      const ref = (ctx.supplierRef || '').toLowerCase();
+      if (!(p.name || '').toLowerCase().includes(search)
+          && !(p.sku || '').toLowerCase().includes(search)
+          && !ref.includes(search)
+          && !(p.brand || '').toLowerCase().includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+function renderCatClassifyGrid() {
+  const grid = document.getElementById('cat-classify-grid');
+  const filtered = _filteredCatProducts();
+  document.getElementById('cat-classify-stats').textContent =
+    `${filtered.length} produtos visíveis · ${_catClassifySelected.size} selecionados (de ${_catClassifyProducts.length} total)`;
+  if (!filtered.length) { grid.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum produto encontrado.</div>'; return; }
+
+  // Limita a 200 cards visíveis pra performance
+  const visible = filtered.slice(0, 200);
+  const moreText = filtered.length > 200 ? `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 200 de ${filtered.length} — refine os filtros pra ver os outros</div>` : '';
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">';
+  visible.forEach(p => {
+    const checked = _catClassifySelected.has(p.id);
+    const cardHtml = window.PCard ? PCard.render(p, { actions: 'public', showStock: false }) : `<div>${escapeHtml(p.name)}</div>`;
+    html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
+      <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
+      ${cardHtml}
+    </div>`;
+  });
+  html += '</div>' + moreText;
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('input[data-cid]').forEach(cb => {
+    cb.onclick = (e) => {
+      e.stopPropagation();
+      if (cb.checked) _catClassifySelected.add(cb.dataset.cid);
+      else _catClassifySelected.delete(cb.dataset.cid);
+      renderCatClassifyGrid();
+    };
+  });
+  grid.querySelectorAll('.cat-classify-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+      const id = card.dataset.pid;
+      if (_catClassifySelected.has(id)) _catClassifySelected.delete(id);
+      else _catClassifySelected.add(id);
+      renderCatClassifyGrid();
+    });
+  });
+}
+
+function _catChildrenOf(parentId) {
+  return _catTreeFlat.filter(n => (n.parentId || null) === (parentId || null));
+}
+
+function _catPopulateSelectOptions(sel, items, valOf, labelOf) {
+  // Mantém primeira option (placeholder)
+  const first = sel.options[0];
+  sel.innerHTML = '';
+  if (first) sel.appendChild(first);
+  items.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = valOf ? valOf(it) : it.id;
+    opt.textContent = labelOf ? labelOf(it) : it.name;
+    sel.appendChild(opt);
+  });
+}
+
+function _catApplyCascade() {
+  const catId = document.getElementById('cat-apply-category').value;
+  const subSel = document.getElementById('cat-apply-sub');
+  const modSel = document.getElementById('cat-apply-mod');
+  const specSel = document.getElementById('cat-apply-spec');
+  // Reset níveis abaixo
+  if (event && event.target && event.target.id === 'cat-apply-category') {
+    _catPopulateSelectOptions(subSel, catId ? _catChildrenOf(catId) : []);
+    subSel.disabled = !catId;
+    _catPopulateSelectOptions(modSel, []);
+    modSel.disabled = true;
+    _catPopulateSelectOptions(specSel, []);
+    specSel.disabled = true;
+  }
+  if (event && event.target && event.target.id === 'cat-apply-sub') {
+    const subId = subSel.value;
+    _catPopulateSelectOptions(modSel, subId ? _catChildrenOf(subId) : []);
+    modSel.disabled = !subId;
+    _catPopulateSelectOptions(specSel, []);
+    specSel.disabled = true;
+  }
+  if (event && event.target && event.target.id === 'cat-apply-mod') {
+    const modId = modSel.value;
+    _catPopulateSelectOptions(specSel, modId ? _catChildrenOf(modId) : []);
+    specSel.disabled = !modId;
+  }
+  // Atualiza info
+  const deepest = specSel.value || modSel.value || subSel.value || catId;
+  const info = document.getElementById('cat-apply-info');
+  if (!deepest) info.textContent = 'Selecione produtos abaixo. Escolha pelo menos a Categoria pra aplicar.';
+  else if (_catClassifySelected.size === 0) info.textContent = 'Nó selecionado: aplicará cadeia. Selecione produtos pra aplicar.';
+  else info.textContent = `Aplicará classificação a ${_catClassifySelected.size} produto(s).`;
+}
+
+async function _catApplyClassification() {
+  if (_catClassifySelected.size === 0) { alert('Selecione produtos.'); return; }
+  const specId = document.getElementById('cat-apply-spec').value;
+  const modId = document.getElementById('cat-apply-mod').value;
+  const subId = document.getElementById('cat-apply-sub').value;
+  const catId = document.getElementById('cat-apply-category').value;
+  const nodeId = specId || modId || subId || catId;
+  if (!nodeId) { alert('Escolha pelo menos a Categoria.'); return; }
+  if (!confirm(`Aplicar classificação a ${_catClassifySelected.size} produto(s)?`)) return;
+  const r = await api('/admin/categories/' + nodeId + '/assign-products', 'POST', { productIds: Array.from(_catClassifySelected) });
+  if (r.error) { alert('Erro: ' + r.error); return; }
+  alert('✓ ' + r.updated + ' produtos atualizados.');
+  _catClassifySelected.clear();
+  await loadCategoriesClassify();
 }
 
 async function loadCategoryTree() {
