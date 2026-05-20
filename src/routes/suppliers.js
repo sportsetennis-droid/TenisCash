@@ -96,6 +96,46 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Lista NFes do fornecedor com a marca atribuída
+router.get('/:id/nfes', async (req, res) => {
+  try {
+    const docs = await prisma.xmlFiscalDocument.findMany({
+      where: { supplierId: req.params.id },
+      orderBy: [{ issueDate: 'desc' }, { number: 'desc' }],
+      take: 500,
+      select: {
+        id: true, number: true, series: true, accessKey: true, issueDate: true,
+        totalValue: true, brand: true, brandSetAt: true, status: true,
+        _count: { select: { items: true } },
+      },
+    });
+    res.json({ nfes: docs.map(d => ({
+      id: d.id, number: d.number, series: d.series, accessKey: d.accessKey,
+      issueDate: d.issueDate, totalValue: d.totalValue,
+      brand: d.brand, brandSetAt: d.brandSetAt, status: d.status,
+      itemsCount: d._count.items,
+    })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar NFes', detail: err.message });
+  }
+});
+
+// Atribui marca em lote a várias NFes do fornecedor
+router.post('/:id/nfes/bulk-brand', async (req, res) => {
+  try {
+    const { nfeIds, brand } = req.body || {};
+    if (!Array.isArray(nfeIds) || !nfeIds.length) return res.status(400).json({ error: 'nfeIds obrigatório' });
+    const brandClean = (brand || '').trim() || null;
+    const r = await prisma.xmlFiscalDocument.updateMany({
+      where: { id: { in: nfeIds }, supplierId: req.params.id },
+      data: { brand: brandClean, brandSetAt: new Date(), brandSetById: req.userId || null },
+    });
+    res.json({ ok: true, updated: r.count, brand: brandClean });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao atribuir marca', detail: err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     // Soft delete (desativa)
