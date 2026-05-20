@@ -144,6 +144,134 @@ router.post('/:id/products/bulk-brand', async (req, res) => {
   }
 });
 
+// Sugere agrupamentos de unificação baseado em productIds selecionados.
+// Agrupa por (nome_limpo + supplierRef + brand) — nome_limpo = nome sem
+// sufixos comuns de tamanho/cor.
+router.post('/:id/products/suggest-unify', async (req, res) => {
+  try {
+    const { productIds } = req.body || {};
+    if (!Array.isArray(productIds) || !productIds.length) return res.status(400).json({ error: 'productIds obrigatório' });
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, active: true },
+      select: { id: true, sku: true, name: true, brand: true, imageUrl: true, imageUrls: true, aiContext: true, price: true,
+        sizes: { include: { storeStocks: { include: { store: { select: { code: true, name: true } } } } } } },
+    });
+    function cleanName(name) {
+      if (!name) return '';
+      return name
+        .replace(/-+\s*Tam[:.]?\s*[A-Z0-9./-]+/gi, '')   // -Tam:38 / -Tam: M / -Tam:38-43
+        .replace(/\s+\d{2}([,.]\d)?\s*$/i, '')           // "MODELO 38" no fim
+        .replace(/\s+-\s*$/, '')                          // hífen sobrando
+        .trim();
+    }
+    function getRef(p) {
+      try { return ((typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext)?.supplierRef || '').trim(); }
+      catch { return ''; }
+    }
+    const groups = {};
+    products.forEach(p => {
+      const cn = cleanName(p.name);
+      const ref = getRef(p);
+      const key = `${cn}||${ref}||${p.brand || ''}`;
+      if (!groups[key]) groups[key] = { masterName: cn, supplierRef: ref, brand: p.brand, products: [], imagesPool: [] };
+      groups[key].products.push({
+        id: p.id, sku: p.sku, name: p.name, price: p.price,
+        imageUrl: p.imageUrl, imageUrls: p.imageUrls,
+        sizes: (p.sizes || []).map(s => ({ size: s.size, stock: s.stock, storeStocks: s.storeStocks })),
+      });
+      if (p.imageUrl) groups[key].imagesPool.push(p.imageUrl);
+      try { (typeof p.imageUrls === 'string' ? JSON.parse(p.imageUrls) : (p.imageUrls || [])).forEach(u => { if (u && !groups[key].imagesPool.includes(u)) groups[key].imagesPool.push(u); }); } catch {}
+    });
+    res.json({ groups: Object.values(groups) });
+  } catch (err) {
+    console.error('[unify suggest]', err);
+    res.status(500).json({ error: 'Erro ao sugerir', detail: err.message });
+  }
+});
+
+// Executa unificação. Por grupo: cria Product mestre, cria ProductSize
+// pra cada size dos originais (move StoreStock), marca originais como
+// inactive + grava unifiedIntoId em aiContext.
+router.post('/:id/products/unify', async (req, res) => {
+  try {
+    const { groups } = req.body || {};
+    if (!Array.isArray(groups) || !groups.length) return res.status(400).json({ error: 'groups obrigatório' });
+    const results = [];
+    for (const g of groups) {
+      const { masterName, brand, supplierRef, imageUrl, imageUrls, productIds } = g;
+      if (!masterName || !Array.isArray(productIds) || productIds.length < 2) {
+        results.push({ ok: false, error: 'grupo inválido (precisa nome + 2+ produtos)' });
+        continue;
+      }
+      const originals = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        include: { sizes: { include: { storeStocks: true } } },
+      });
+      if (originals.length < 2) { results.push({ ok: false, error: 'menos de 2 originais encontrados' }); continue; }
+      const first = originals[0];
+      // Constrói aiContext mesclado (preserva supplierCnpj/supplierId)
+      const firstCtx = (() => { try { return typeof first.aiContext === 'string' ? JSON.parse(first.aiContext) : (first.aiContext || {}); } catch { return {}; } })();
+      const masterCtx = {
+        ...firstCtx,
+        supplierRef: supplierRef || firstCtx.supplierRef,
+        unifiedFromSkus: originals.map(o => o.sku),
+        unifiedFromIds: originals.map(o => o.id),
+        unifiedAt: new Date().toISOString(),
+      };
+      // Cria mestre
+      const newSku = `UNI-${first.sku || first.id}-${Date.now().toString(36).slice(-4)}`;
+      const master = await prisma.product.create({
+        data: {
+          sku: newSku,
+          name: masterName,
+          brand: brand || first.brand,
+          category: first.category,
+          subcategory: first.subcategory,
+          shortDescription: first.shortDescription,
+          longDescription: first.longDescription,
+          price: first.price,
+          promoPrice: first.promoPrice,
+          imageUrl: imageUrl || first.imageUrl,
+          imageUrls: Array.isArray(imageUrls) ? imageUrls : (first.imageUrls || []),
+          aiContext: masterCtx,
+          ncm: first.ncm,
+          cfop: first.cfop,
+          unidade: first.unidade,
+          active: true,
+        },
+      });
+      // Copia sizes dos originais
+      let movedSizes = 0;
+      for (const o of originals) {
+        for (const s of (o.sizes || [])) {
+          const ps = await prisma.productSize.create({
+            data: { productId: master.id, size: String(s.size), stock: s.stock || 0 },
+          });
+          if (s.storeStocks && s.storeStocks.length) {
+            await prisma.storeStock.updateMany({
+              where: { productSizeId: s.id },
+              data: { productSizeId: ps.id },
+            });
+          }
+          movedSizes++;
+        }
+      }
+      // Marca originais inactive + unifiedIntoId
+      for (const o of originals) {
+        const ctx = (() => { try { return typeof o.aiContext === 'string' ? JSON.parse(o.aiContext) : (o.aiContext || {}); } catch { return {}; } })();
+        ctx.unifiedIntoId = master.id;
+        ctx.unifiedAt = new Date().toISOString();
+        await prisma.product.update({ where: { id: o.id }, data: { active: false, aiContext: ctx } });
+      }
+      results.push({ ok: true, masterId: master.id, masterSku: master.sku, sourceCount: originals.length, movedSizes });
+    }
+    res.json({ ok: true, results });
+  } catch (err) {
+    console.error('[unify]', err);
+    res.status(500).json({ error: 'Erro ao unificar', detail: err.message });
+  }
+});
+
 // Lista NFes do fornecedor com a marca atribuída
 router.get('/:id/nfes', async (req, res) => {
   try {

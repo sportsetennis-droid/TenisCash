@@ -144,7 +144,7 @@
     const placeholderSvg = `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#f5f5f7,#ebebeb);color:#8e8e93;pointer-events:none;"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Sem foto</span></div>`;
 
     // CARROSSEL
-    html += `<div id="${carouselId}" style="position:relative;width:100%;aspect-ratio:4/3;background:#f5f5f7;">`;
+    html += `<div id="${carouselId}" style="position:relative;width:100%;aspect-ratio:4/5;background:#f5f5f7;">`;
     // Placeholder sempre presente no fundo. Se TODAS as imgs falharem, ele aparece naturalmente.
     html += placeholderSvg;
     if (hasPhotos) {
