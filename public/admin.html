@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520e"></script>
-<script src="/_product-search-bar.js?v=20260520e"></script>
-<script src="/_product-card.js?v=20260520e"></script>
+<script src="/_design-system.js?v=20260520f"></script>
+<script src="/_product-search-bar.js?v=20260520f"></script>
+<script src="/_product-card.js?v=20260520f"></script>
 </head>
 <body>
 
@@ -271,6 +271,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
     <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
+    <button class="tab" onclick="switchTab('categories',this)">Categorias</button>
     <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
@@ -372,6 +373,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-title">Fornecedores</div>
         <div class="hub-card-desc">Marcas, contatos, markup por origem</div>
         <span class="hub-card-badge">SUPPLY</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('categories')">
+        <div class="hub-card-icon">📂</div>
+        <div class="hub-card-title">Categorias</div>
+        <div class="hub-card-desc">Árvore: Categoria → Sub → Modalidade → Especialidade</div>
+        <span class="hub-card-badge">CATÁLOGO</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('xml')">
         <div class="hub-card-icon">📄</div>
@@ -1074,6 +1081,20 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" class="btn btn-primary" id="sup-new">+ Novo fornecedor</button>
   </div>
   <div id="sup-list-wrap"></div>
+</div>
+
+<!-- CATEGORIAS — árvore hierárquica -->
+<div class="section" id="tab-categories" style="display:none">
+  <div class="section-head">
+    <span class="section-title">📂 Categorias — árvore de classificação</span>
+    <button type="button" class="refresh-btn" id="cat-tree-refresh">↻</button>
+  </div>
+  <p class="note" style="margin-bottom:14px">
+    Estrutura: <strong>CATEGORIA</strong> → SUB-CATEGORIA (gênero) → MODALIDADE → ESPECIALIDADE.
+    Clica num nó pra ver produtos classificados nele, ou ➕ pra criar filho.
+    A classificação se reflete em <code>Product.category/subcategory</code> e <code>aiContext.classification.modality/tier</code>.
+  </p>
+  <div id="cat-tree-wrap" style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;"></div>
 </div>
 
 <!-- CAMPANHAS -->
@@ -4466,6 +4487,7 @@ function switchTab(tab, btn) {
   if (tab === 'ns') { initNsTab(); }
   if (tab === 'financial') { initFinancialTab(); }
   if (tab === 'suppliers') { initSuppliersTab(); }
+  if (tab === 'categories') { initCategoriesTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'stocktake') { initStocktakeTab(); }
@@ -6703,6 +6725,236 @@ async function supplierShowNFes(id) {
       products.forEach(p => { if (selected.has(p.id)) p.brand = brand; });
       selected.clear();
       render();
+    };
+  }
+  render();
+}
+
+// ==================== CATEGORIAS (árvore) ====================
+let _catTreeInit = false;
+let _catTreeData = null;
+const _catTreeExpanded = new Set();
+
+async function initCategoriesTab() {
+  if (!_catTreeInit) {
+    _catTreeInit = true;
+    document.getElementById('cat-tree-refresh').onclick = loadCategoryTree;
+  }
+  loadCategoryTree();
+}
+
+async function loadCategoryTree() {
+  const wrap = document.getElementById('cat-tree-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/categories/tree');
+  if (data.error) { wrap.innerHTML = `<div style="color:#d70015">${escapeHtml(data.error)}</div>`; return; }
+  _catTreeData = data.tree || [];
+  renderCategoryTree();
+}
+
+function _catLevelColor(level) {
+  return {
+    CATEGORY:    { bg:'linear-gradient(135deg,#E5571E,#EE7240)', fg:'white', icon:'📁' },
+    SUBCATEGORY: { bg:'#FCDAC4', fg:'#E5571E', icon:'👥' },
+    MODALITY:    { bg:'#e3f2fd', fg:'#0066cc', icon:'🏃' },
+    SPECIALTY:   { bg:'#fff8e0', fg:'#b06b00', icon:'⭐' },
+  }[level] || { bg:'#f5f5f7', fg:'#1d1d1f', icon:'•' };
+}
+
+function _catNextLevel(level) {
+  return { CATEGORY:'SUBCATEGORY', SUBCATEGORY:'MODALITY', MODALITY:'SPECIALTY', SPECIALTY:null }[level];
+}
+
+function renderCategoryTree() {
+  const wrap = document.getElementById('cat-tree-wrap');
+  if (!_catTreeData || _catTreeData.length === 0) {
+    wrap.innerHTML = '<div style="color:#8e8e93;padding:20px;text-align:center;">Nenhuma categoria. <button class="btn btn-primary" onclick="categoryCreateRoot()">+ Criar categoria raiz</button></div>';
+    return;
+  }
+  let html = '<div style="display:flex;gap:10px;margin-bottom:14px;"><button class="btn btn-primary" onclick="categoryCreateRoot()">+ Nova Categoria (raiz)</button></div>';
+  html += '<div style="display:flex;flex-direction:column;gap:6px;">';
+  function renderNode(n, depth) {
+    const c = _catLevelColor(n.level);
+    const indent = depth * 22;
+    const isExpanded = _catTreeExpanded.has(n.id);
+    const hasChildren = n.children && n.children.length > 0;
+    const nextLevel = _catNextLevel(n.level);
+    let out = '';
+    out += `<div data-cat-id="${n.id}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;margin-left:${indent}px;background:white;border-left:3px solid ${c.fg};border-radius:8px;border:1px solid #f0f0f0;">`;
+    out += `<button onclick="categoryToggle('${n.id}')" style="background:none;border:none;cursor:pointer;font-size:11px;color:#8e8e93;width:16px;">${hasChildren ? (isExpanded ? '▾' : '▸') : '·'}</button>`;
+    out += `<span style="padding:2px 7px;background:${c.bg};color:${c.fg};border-radius:6px;font-size:9px;font-weight:800;letter-spacing:0.5px;">${c.icon} ${n.level}</span>`;
+    out += `<span style="font-size:14px;font-weight:600;flex:1;color:#1d1d1f;">${escapeHtml(n.name)}</span>`;
+    out += `<span style="font-size:10px;color:#8e8e93;">${hasChildren ? n.children.length + ' filhos' : ''}</span>`;
+    out += '<div style="display:flex;gap:4px;">';
+    if (nextLevel) {
+      out += `<button onclick="categoryCreateChild('${n.id}','${nextLevel}','${escapeHtml(n.name).replace(/'/g,"\\\\'")}'_OR_NULL_)" style="padding:4px 8px;background:white;border:1px solid #e5e5ea;border-radius:6px;font-size:10px;cursor:pointer;" title="Adicionar ${nextLevel}">➕ ${nextLevel.slice(0,3)}</button>`;
+    }
+    out += `<button onclick="categoryShowProducts('${n.id}')" style="padding:4px 8px;background:white;border:1px solid #FCDAC4;color:#E5571E;border-radius:6px;font-size:10px;cursor:pointer;font-weight:600;" title="Ver/atribuir produtos">📋 Produtos</button>`;
+    out += `<button onclick="categoryRename('${n.id}')" style="padding:4px 8px;background:white;border:1px solid #e5e5ea;border-radius:6px;font-size:10px;cursor:pointer;">✎</button>`;
+    out += `<button onclick="categoryDelete('${n.id}')" style="padding:4px 8px;background:white;border:1px solid #e5e5ea;color:#d70015;border-radius:6px;font-size:10px;cursor:pointer;">🗑</button>`;
+    out += '</div></div>';
+    if (hasChildren && isExpanded) {
+      n.children.forEach(c => { out += renderNode(c, depth + 1); });
+    }
+    return out;
+  }
+  _catTreeData.forEach(n => { html += renderNode(n, 0); });
+  html += '</div>';
+  // Fix do _OR_NULL_ marker — substitui pela chamada apropriada
+  wrap.innerHTML = html.replace(/_OR_NULL_/g, '');
+}
+
+function categoryToggle(id) {
+  if (_catTreeExpanded.has(id)) _catTreeExpanded.delete(id);
+  else _catTreeExpanded.add(id);
+  renderCategoryTree();
+}
+
+async function categoryCreateRoot() {
+  const name = prompt('Nome da nova CATEGORIA (raiz):');
+  if (!name?.trim()) return;
+  const r = await api('/admin/categories', 'POST', { name: name.trim(), level: 'CATEGORY' });
+  if (r.error) { alert(r.error); return; }
+  loadCategoryTree();
+}
+
+async function categoryCreateChild(parentId, level) {
+  const name = prompt('Nome do novo ' + level + ':');
+  if (!name?.trim()) return;
+  const r = await api('/admin/categories', 'POST', { name: name.trim(), level, parentId });
+  if (r.error) { alert(r.error); return; }
+  _catTreeExpanded.add(parentId);
+  loadCategoryTree();
+}
+
+async function categoryRename(id) {
+  const all = _catFlatten(_catTreeData || []);
+  const cur = all.find(x => x.id === id);
+  const name = prompt('Renomear para:', cur?.name || '');
+  if (!name || !name.trim() || name === cur?.name) return;
+  const r = await api('/admin/categories/' + id, 'PUT', { name: name.trim() });
+  if (r.error) { alert(r.error); return; }
+  loadCategoryTree();
+}
+
+async function categoryDelete(id) {
+  const all = _catFlatten(_catTreeData || []);
+  const cur = all.find(x => x.id === id);
+  const childCount = cur?.children?.length || 0;
+  const msg = childCount > 0
+    ? `Excluir "${cur.name}" + ${childCount} filhos (cascata)?`
+    : `Excluir "${cur?.name}"?`;
+  if (!confirm(msg)) return;
+  const r = await api('/admin/categories/' + id, 'DELETE');
+  if (r.error) { alert(r.error); return; }
+  loadCategoryTree();
+}
+
+function _catFlatten(tree) {
+  const out = [];
+  function walk(n) { out.push(n); (n.children || []).forEach(walk); }
+  tree.forEach(walk);
+  return out;
+}
+
+// Modal pra ver/atribuir produtos a um nó
+async function categoryShowProducts(nodeId) {
+  const data = await api('/admin/categories/' + nodeId + '/products');
+  if (data.error) { alert(data.error); return; }
+  const node = data.node;
+  let products = data.products || [];
+  let selected = new Set();
+  let filterText = '';
+
+  document.getElementById('cat-prods-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cat-prods-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:10000;padding:16px;';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
+
+  function fmtBRL(v) { return v != null ? 'R$ ' + Number(v).toFixed(2) : '—'; }
+
+  function render() {
+    const t = filterText.toLowerCase();
+    const filtered = t ? products.filter(p => (p.name||'').toLowerCase().includes(t) || (p.sku||'').toLowerCase().includes(t) || (p.brand||'').toLowerCase().includes(t)) : products;
+    const allSelected = filtered.length > 0 && filtered.every(p => selected.has(p.id));
+    const c = _catLevelColor(node.level);
+
+    const rowsHtml = filtered.slice(0, 800).map(p => {
+      const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+      const cls = ctx.classification || {};
+      return `
+      <tr style="border-bottom:1px solid #f0f0f0;${selected.has(p.id)?'background:#FFF7EB;':''}">
+        <td style="padding:8px 6px;"><input type="checkbox" data-id="${escapeHtml(p.id)}" ${selected.has(p.id)?'checked':''} style="width:16px;height:16px;cursor:pointer;"></td>
+        <td style="padding:8px 6px;font-size:12px;font-weight:600;color:${p.brand?'#1d1d1f':'#d70015'};">${escapeHtml(p.brand || 'SEM MARCA')}</td>
+        <td style="padding:8px 6px;font-family:monospace;font-size:11px;color:#8e8e93;">${escapeHtml(p.sku || '—')}</td>
+        <td style="padding:8px 6px;font-size:12px;">${escapeHtml((p.name || '').slice(0,70))}</td>
+        <td style="padding:8px 6px;font-size:11px;color:#8e8e93;">${escapeHtml(p.category || '—')} / ${escapeHtml(p.subcategory || '—')}</td>
+        <td style="padding:8px 6px;font-size:11px;color:#8e8e93;">${escapeHtml(cls.modality || '—')} / ${escapeHtml(cls.tier || '—')}</td>
+        <td style="padding:8px 6px;text-align:right;font-size:12px;">${fmtBRL(p.price)}</td>
+      </tr>`;
+    }).join('');
+
+    modal.innerHTML = `
+      <div style="background:white;border-radius:16px;max-width:1200px;width:100%;max-height:94vh;overflow:hidden;display:flex;flex-direction:column;color:#1d1d1f;">
+        <div style="padding:20px 24px;border-bottom:1px solid #e5e5ea;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div>
+            <h3 style="margin:0;font-size:18px;font-weight:800;">${c.icon} Produtos em "${escapeHtml(node.name)}"</h3>
+            <div style="font-size:13px;color:#8e8e93;margin-top:4px;">
+              <span style="padding:2px 7px;background:${c.bg};color:${c.fg};border-radius:6px;font-size:10px;font-weight:800;">${node.level}</span>
+              · ${products.length} produtos classificados
+            </div>
+          </div>
+          <button id="cat-prods-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;line-height:1;">×</button>
+        </div>
+
+        <div style="padding:14px 24px;background:#f5f5f7;border-bottom:1px solid #e5e5ea;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input id="cat-prods-filter" type="text" placeholder="Filtrar nome / SKU / marca..." value="${escapeHtml(filterText)}" style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
+          <span style="font-size:12px;color:#8e8e93;font-weight:600;">Selecionados: ${selected.size}</span>
+          <button id="cat-prods-assign" style="padding:8px 14px;background:#0a843d;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">➕ Atribuir nós ${node.level === 'SPECIALTY' ? '(+ancestrais)' : ''} aos selecionados</button>
+        </div>
+
+        <div style="overflow:auto;flex:1;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead style="background:#f5f5f7;position:sticky;top:0;z-index:1;">
+              <tr>
+                <th style="padding:10px 6px;"><input type="checkbox" id="cat-prods-all" ${allSelected?'checked':''} style="width:16px;height:16px;cursor:pointer;"></th>
+                <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Marca</th>
+                <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">SKU</th>
+                <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Nome</th>
+                <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Cat / Sub</th>
+                <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Modalidade / Esp.</th>
+                <th style="padding:10px 6px;text-align:right;font-size:11px;text-transform:uppercase;color:#8e8e93;">Preço</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml || '<tr><td colspan="7" style="padding:30px;text-align:center;color:#8e8e93;">Nenhum produto classificado neste nó ainda.<br><br>Vai em "🏭 Fornecedores" → escolhe um fornecedor → 📋 → filtra produtos → atribui marca, depois volta aqui pra classificar.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    modal.querySelector('#cat-prods-close').onclick = () => modal.remove();
+    modal.querySelector('#cat-prods-filter').addEventListener('input', (e) => { filterText = e.target.value; render(); });
+    modal.querySelector('#cat-prods-all').onclick = (e) => {
+      const visible = filtered.slice(0, 800);
+      if (e.target.checked) visible.forEach(p => selected.add(p.id));
+      else visible.forEach(p => selected.delete(p.id));
+      render();
+    };
+    modal.querySelectorAll('tbody input[type=checkbox]').forEach(cb => {
+      cb.onclick = (e) => {
+        if (e.target.checked) selected.add(cb.dataset.id);
+        else selected.delete(cb.dataset.id);
+        render();
+      };
+    });
+    modal.querySelector('#cat-prods-assign').onclick = async () => {
+      if (selected.size === 0) { alert('Selecione produtos.'); return; }
+      if (!confirm(`Aplicar "${node.name}" + ancestrais a ${selected.size} produto(s)?`)) return;
+      const r = await api('/admin/categories/' + nodeId + '/assign-products', 'POST', { productIds: Array.from(selected) });
+      if (r.error) { alert('Erro: ' + r.error); return; }
+      alert('✓ ' + r.updated + ' produtos atualizados.\n\nAplicado: ' + JSON.stringify(r.applied, null, 2));
+      modal.remove();
     };
   }
   render();

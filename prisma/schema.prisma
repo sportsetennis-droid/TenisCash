@@ -1511,6 +1511,32 @@ model ProductLifecycle {
 // FORNECEDORES (TenisCash OS — separado do Partner do programa)
 // ============================================================
 
+// ============================================================
+// CATEGORIAS — árvore hierárquica (4 níveis)
+//   CATEGORY → SUBCATEGORY → MODALITY → SPECIALTY
+// Cada nível mapeia em campos do Product:
+//   CATEGORY    → Product.category
+//   SUBCATEGORY → Product.subcategory (gênero: Feminino/Homem/etc, ou "Tamanhos")
+//   MODALITY    → Product.aiContext.classification.modality
+//   SPECIALTY   → Product.aiContext.classification.tier
+// ============================================================
+model CategoryNode {
+  id        String   @id @default(cuid())
+  parentId  String?
+  parent    CategoryNode?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  CategoryNode[] @relation("CategoryTree")
+  name      String
+  level     String   // CATEGORY | SUBCATEGORY | MODALITY | SPECIALTY
+  position  Int      @default(0) // ordenação manual dentro do mesmo nível
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId, position])
+  @@index([level, active])
+}
+
 model Supplier {
   id                  String   @id @default(cuid())
   companyName         String
