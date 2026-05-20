@@ -96,6 +96,54 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Lista PRODUTOS do fornecedor (base real — XmlFiscalDocument está vazio)
+router.get('/:id/products', async (req, res) => {
+  try {
+    const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+    if (!supplier) return res.status(404).json({ error: 'Fornecedor não encontrado' });
+    // Match por supplierCnpj OU supplierId em aiContext
+    const products = await prisma.$queryRaw`
+      SELECT p.id, p.sku, p.name, p.brand, p.active, p.price,
+             p."aiContext"->>'supplierRef' AS "supplierRef",
+             p."updatedAt"
+      FROM "Product" p
+      WHERE (
+        p."aiContext"->>'supplierCnpj' = ${supplier.cnpj || ''}
+        OR p."aiContext"->>'supplierId' = ${supplier.id}
+      )
+      ORDER BY p.brand NULLS LAST, p.name ASC
+      LIMIT 2000`;
+    res.json({ products, supplier });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar produtos', detail: err.message });
+  }
+});
+
+// Atribui marca em lote a vários produtos do fornecedor
+router.post('/:id/products/bulk-brand', async (req, res) => {
+  try {
+    const { productIds, brand } = req.body || {};
+    if (!Array.isArray(productIds) || !productIds.length) return res.status(400).json({ error: 'productIds obrigatório' });
+    const brandClean = (brand || '').trim();
+    if (!brandClean) return res.status(400).json({ error: 'brand obrigatório (não vazio)' });
+    // Garante que os produtos pertencem ao fornecedor (por segurança)
+    const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
+    if (!supplier) return res.status(404).json({ error: 'Fornecedor não encontrado' });
+    const r = await prisma.$queryRaw`
+      UPDATE "Product"
+      SET brand = ${brandClean}, "updatedAt" = NOW()
+      WHERE id = ANY(${productIds}::text[])
+        AND (
+          "aiContext"->>'supplierCnpj' = ${supplier.cnpj || ''}
+          OR "aiContext"->>'supplierId' = ${supplier.id}
+        )
+      RETURNING id`;
+    res.json({ ok: true, updated: r.length, brand: brandClean });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao atribuir marca', detail: err.message });
+  }
+});
+
 // Lista NFes do fornecedor com a marca atribuída
 router.get('/:id/nfes', async (req, res) => {
   try {
