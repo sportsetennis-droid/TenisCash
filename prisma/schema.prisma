@@ -1337,6 +1337,10 @@ model XmlFiscalDocument {
   brand         String?
   brandSetById  String?   // userId que atribuiu
   brandSetAt    DateTime?
+  // Tipo da NFe: 'entrada' (compra de fornecedor), 'saida' (venda),
+  // 'transferencia' (matriz↔filial do mesmo grupo CNPJ raiz)
+  docType       String?   // entrada | saida | transferencia
+  recipientName String?   // nome do destinatário (pra mostrar na lista)
   status        String    @default("imported") // imported | matched | partial | rejected
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

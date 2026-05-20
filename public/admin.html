@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520i"></script>
-<script src="/_product-search-bar.js?v=20260520i"></script>
-<script src="/_product-card.js?v=20260520i"></script>
+<script src="/_design-system.js?v=20260520j"></script>
+<script src="/_product-search-bar.js?v=20260520j"></script>
+<script src="/_product-card.js?v=20260520j"></script>
 </head>
 <body>
 
@@ -976,19 +976,48 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <!-- XML NF-e -->
 <div class="section" id="tab-xml" style="display:none">
   <div class="section-head">
-    <span class="section-title">XML NF-e</span>
+    <span class="section-title">📄 XML NF-e — Lista completa de notas fiscais</span>
     <button type="button" class="refresh-btn" id="xml-refresh">↻</button>
   </div>
-  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
-    <label style="font-size:12px;letter-spacing:2px;color:var(--text2)">UPLOAD DE XML DE NF-e (entrada)</label>
-    <input type="file" id="xml-file" accept=".xml" style="display:block;margin-top:8px;color:var(--text)">
+
+  <!-- Upload -->
+  <details style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <summary style="cursor:pointer;font-size:12px;letter-spacing:2px;color:var(--text2);font-weight:700;">⬆️ IMPORTAR NOVO XML</summary>
+    <input type="file" id="xml-file" accept=".xml" style="display:block;margin-top:10px;color:var(--text)">
     <button type="button" class="btn btn-primary" id="xml-upload-btn" style="margin-top:10px">Importar XML</button>
     <div id="xml-upload-result" style="margin-top:10px;font-size:13px"></div>
+    <div style="margin-top:10px;font-size:12px;color:var(--text2);">Exportações: <a href="/api/admin/xml/export/products" target="_blank" style="color:var(--orange);">produtos.xml</a></div>
+  </details>
+
+  <!-- Stats cards -->
+  <div id="xml-stats-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;"></div>
+
+  <!-- Filtros -->
+  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Tipo</label>
+      <select id="xml-filter-type" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todos —</option>
+        <option value="entrada">📥 Entrada (compra)</option>
+        <option value="saida">📤 Saída (venda)</option>
+        <option value="transferencia">🔄 Transferência</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor (Supplier cadastrado)</label>
+      <select id="xml-filter-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">CNPJ emissor</label>
+      <select id="xml-filter-cnpj" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
+      <input id="xml-filter-search" class="form-input" placeholder="número, chave, CNPJ, nome..." style="margin-top:4px;background:white;color:#1d1d1f;">
+    </div>
   </div>
-  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-    <a href="/api/admin/xml/export/products" target="_blank" class="btn">Exportar produtos.xml</a>
-  </div>
-  <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:20px 0 8px">XMLS IMPORTADOS</h4>
+
+  <div id="xml-list-stats" style="font-size:13px;color:#8e8e93;margin-bottom:10px;"></div>
   <div id="xml-docs-wrap"></div>
 </div>
 
@@ -6114,13 +6143,124 @@ async function loadInterviewReport() {
 
 // ==================== XML NF-e ====================
 let _xmlInit = false;
+let _xmlAllNFes = [];
+let _xmlStats = null;
+
 async function initXmlTab() {
   if (!_xmlInit) {
     _xmlInit = true;
     document.getElementById('xml-upload-btn').onclick = xmlUpload;
-    document.getElementById('xml-refresh').onclick = loadXmlDocs;
+    document.getElementById('xml-refresh').onclick = loadXmlAll;
+    ['xml-filter-type','xml-filter-supplier','xml-filter-cnpj'].forEach(id =>
+      document.getElementById(id).addEventListener('change', renderXmlList)
+    );
+    document.getElementById('xml-filter-search').addEventListener('input', () => {
+      clearTimeout(window._xmlT); window._xmlT = setTimeout(renderXmlList, 250);
+    });
   }
-  loadXmlDocs();
+  await loadXmlAll();
+}
+
+async function loadXmlAll() {
+  const wrap = document.getElementById('xml-docs-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const [list, stats, supRes] = await Promise.all([
+    api('/admin/xml/nfes?limit=2000'),
+    api('/admin/xml/nfes/stats'),
+    api('/admin/suppliers'),
+  ]);
+  if (list.error) { wrap.innerHTML = `<div style="color:#d70015">${escapeHtml(list.error)}</div>`; return; }
+  _xmlAllNFes = list.nfes || [];
+  _xmlStats = stats || { byType: [], topIssuers: [] };
+  // Popula stats cards
+  const typeColors = { entrada: '#0a843d', saida: '#0066cc', transferencia: '#b06b00', unknown: '#8e8e93' };
+  const typeIcons = { entrada: '📥', saida: '📤', transferencia: '🔄', unknown: '⚪' };
+  const typeNames = { entrada: 'Entrada (compra)', saida: 'Saída (venda)', transferencia: 'Transferência', unknown: 'Sem tipo' };
+  let cardsHtml = '';
+  (_xmlStats.byType || []).forEach(t => {
+    const k = t.type || 'unknown';
+    cardsHtml += `<div style="background:white;border-radius:12px;padding:14px;border:1.5px solid ${typeColors[k]||'#e5e5ea'};">
+      <div style="font-size:10px;color:${typeColors[k]||'#8e8e93'};letter-spacing:1px;font-weight:700;">${typeIcons[k]||'•'} ${typeNames[k]||k}</div>
+      <div style="font-size:22px;font-weight:800;color:#1d1d1f;margin-top:4px;">${t.qty}</div>
+      <div style="font-size:11px;color:#8e8e93;margin-top:2px;">R$ ${Number(t.value||0).toFixed(0)}</div>
+    </div>`;
+  });
+  document.getElementById('xml-stats-cards').innerHTML = cardsHtml;
+  // Filtro: fornecedor
+  const supSel = document.getElementById('xml-filter-supplier');
+  supSel.innerHTML = '<option value="">— todos —</option>';
+  (supRes.suppliers || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.companyName;
+    supSel.appendChild(o);
+  });
+  // Filtro: CNPJ emissor (top emissores)
+  const cnpjSel = document.getElementById('xml-filter-cnpj');
+  cnpjSel.innerHTML = '<option value="">— todos —</option>';
+  (_xmlStats.topIssuers || []).forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.cnpj;
+    o.textContent = (t.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')) + ' — ' + (t.name || '').slice(0, 40) + ' (' + t.qty + ')';
+    cnpjSel.appendChild(o);
+  });
+  renderXmlList();
+}
+
+function renderXmlList() {
+  const wrap = document.getElementById('xml-docs-wrap');
+  const type = document.getElementById('xml-filter-type').value;
+  const supplierId = document.getElementById('xml-filter-supplier').value;
+  const cnpj = document.getElementById('xml-filter-cnpj').value;
+  const search = (document.getElementById('xml-filter-search').value || '').toLowerCase().trim();
+  const filtered = _xmlAllNFes.filter(n => {
+    if (type && n.docType !== type) return false;
+    if (supplierId && n.supplierId !== supplierId) return false;
+    if (cnpj && n.issuerCnpj !== cnpj) return false;
+    if (search) {
+      const blob = [n.number, n.accessKey, n.issuerName, n.recipientName, n.issuerCnpj, n.recipientCnpj].filter(Boolean).join(' ').toLowerCase();
+      if (!blob.includes(search)) return false;
+    }
+    return true;
+  });
+  const totalValue = filtered.reduce((s, n) => s + (n.totalValue || 0), 0);
+  const totalItems = filtered.reduce((s, n) => s + (n.itemsCount || 0), 0);
+  document.getElementById('xml-list-stats').innerHTML =
+    `<strong>${filtered.length}</strong> NFes visíveis · <strong>${totalItems}</strong> itens · <strong>R$ ${totalValue.toFixed(2)}</strong> total`;
+  if (!filtered.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhuma NFe encontrada.</div>'; return; }
+
+  const typeColors = { entrada: '#0a843d', saida: '#0066cc', transferencia: '#b06b00', unknown: '#8e8e93' };
+  const typeIcons = { entrada: '📥', saida: '📤', transferencia: '🔄', unknown: '⚪' };
+  const visible = filtered.slice(0, 400);
+  let html = '<div style="background:white;border-radius:12px;border:1px solid #e5e5ea;overflow:hidden;">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<thead style="background:#f5f5f7;"><tr>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Tipo</th>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Nº/Série</th>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Emissão</th>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Emissor (CNPJ)</th>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Destinatário</th>'
+    + '<th style="padding:10px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Marca</th>'
+    + '<th style="padding:10px;text-align:right;font-size:11px;text-transform:uppercase;color:#8e8e93;">Valor</th>'
+    + '<th style="padding:10px;text-align:center;font-size:11px;text-transform:uppercase;color:#8e8e93;">Itens</th>'
+    + '</tr></thead><tbody>';
+  visible.forEach(n => {
+    const t = n.docType || 'unknown';
+    const cnpjFmt = n.issuerCnpj ? n.issuerCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '—';
+    const destFmt = n.recipientCnpj ? n.recipientCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
+    html += `<tr style="border-top:1px solid #f0f0f0;">
+      <td style="padding:8px 10px;"><span style="padding:2px 7px;background:${typeColors[t]}20;color:${typeColors[t]};border-radius:6px;font-size:10px;font-weight:700;">${typeIcons[t]} ${escapeHtml(t)}</span></td>
+      <td style="padding:8px 10px;font-family:monospace;font-size:12px;"><strong>${escapeHtml(n.number||'?')}</strong>/${escapeHtml(n.series||'?')}</td>
+      <td style="padding:8px 10px;font-size:12px;">${n.issueDate ? new Date(n.issueDate).toLocaleDateString('pt-BR') : '—'}</td>
+      <td style="padding:8px 10px;font-size:12px;"><div style="font-weight:600;color:#1d1d1f;">${escapeHtml((n.issuerName||'').slice(0,35))}</div><div style="font-family:monospace;font-size:10px;color:#8e8e93;">${cnpjFmt}</div></td>
+      <td style="padding:8px 10px;font-size:12px;"><div style="color:#1d1d1f;">${escapeHtml((n.recipientName||'').slice(0,30))}</div><div style="font-family:monospace;font-size:10px;color:#8e8e93;">${destFmt}</div></td>
+      <td style="padding:8px 10px;font-size:12px;">${n.brand ? `<span style="padding:2px 7px;background:#FCDAC4;color:#E5571E;border-radius:6px;font-weight:700;">${escapeHtml(n.brand)}</span>` : '—'}</td>
+      <td style="padding:8px 10px;text-align:right;font-size:12px;font-weight:600;">R$ ${Number(n.totalValue||0).toFixed(2)}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:12px;color:#8e8e93;">${n.itemsCount || 0}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  if (filtered.length > 400) html += `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 400 de ${filtered.length} — refine os filtros</div>`;
+  wrap.innerHTML = html;
 }
 async function xmlUpload() {
   const fileInp = document.getElementById('xml-file');
@@ -6150,35 +6290,6 @@ async function xmlApply(docId) {
   if (r.error) { alert(r.error); return; }
   alert(`Produtos criados: ${r.createdProducts}, atualizados: ${r.updatedProducts}`);
   loadXmlDocs();
-}
-async function loadXmlDocs() {
-  const wrap = document.getElementById('xml-docs-wrap');
-  const data = await api('/admin/xml/nfe');
-  if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  const docs = data.documents || [];
-  if (!docs.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum XML importado.</div>'; return; }
-  const statusColors = { matched: '#0a843d', partial: '#b06b00', imported: '#0066cc', failed: '#d70015' };
-  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + docs.length + ' XMLs</p>';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;">';
-  docs.forEach(d => {
-    const sc = statusColors[d.status] || '#8e8e93';
-    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;">';
-    html += '<div style="display:flex;gap:8px;align-items:center;">';
-    html += '<div style="width:38px;height:38px;border-radius:10px;background:#f5f5f7;display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div>';
-    html += '<div style="flex:1;min-width:0;">';
-    html += '<div style="font-size:13px;font-weight:700;color:#1d1d1f;">NF ' + escapeHtml(d.number||'?') + '/' + escapeHtml(d.series||'?') + '</div>';
-    html += '<div style="font-size:11px;color:#8e8e93;">' + (d.issueDate ? new Date(d.issueDate).toLocaleDateString('pt-BR') : '—') + '</div>';
-    html += '</div></div>';
-    html += '<div style="font-size:12px;color:#1d1d1f;">' + escapeHtml(d.issuerName||'') + '</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0;border-top:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Total</div><div style="font-size:15px;font-weight:700;color:#E5571E;">R$ ' + Number(d.totalValue||0).toFixed(2) + '</div></div>';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:15px;font-weight:700;">' + (d._count?.items || 0) + '</div></div>';
-    html += '</div>';
-    html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;align-self:flex-start;">' + escapeHtml(d.status||'').toUpperCase() + '</span>';
-    html += '</div>';
-  });
-  html += '</div>';
-  wrap.innerHTML = html;
 }
 
 // ==================== RECOMENDAÇÕES ====================

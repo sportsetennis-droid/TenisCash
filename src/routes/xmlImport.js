@@ -17,6 +17,88 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
+// Lista NFes importadas com filtros (issuer cnpj, docType, supplier, search)
+router.get('/nfes', async (req, res) => {
+  try {
+    const { docType, supplierId, issuerCnpj, search, limit } = req.query;
+    const where = {};
+    if (docType) where.docType = String(docType);
+    if (supplierId) where.supplierId = String(supplierId);
+    if (issuerCnpj) where.issuerCnpj = String(issuerCnpj);
+    if (search) {
+      const s = String(search).trim();
+      where.OR = [
+        { number: { contains: s, mode: 'insensitive' } },
+        { accessKey: { contains: s } },
+        { issuerName: { contains: s, mode: 'insensitive' } },
+        { recipientName: { contains: s, mode: 'insensitive' } },
+        { issuerCnpj: { contains: s.replace(/\D/g, '') } },
+      ];
+    }
+    const docs = await prisma.xmlFiscalDocument.findMany({
+      where,
+      orderBy: [{ issueDate: 'desc' }, { number: 'desc' }],
+      take: Math.min(parseInt(limit, 10) || 500, 2000),
+      select: {
+        id: true, number: true, series: true, accessKey: true, docType: true,
+        issuerCnpj: true, issuerName: true, recipientCnpj: true, recipientName: true,
+        issueDate: true, totalValue: true, brand: true, supplierId: true, status: true,
+        _count: { select: { items: true } },
+      },
+    });
+    res.json({ nfes: docs.map(d => ({ ...d, itemsCount: d._count.items, _count: undefined })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar NFes', detail: err.message });
+  }
+});
+
+// Stats: contagens por tipo + top emissores
+router.get('/nfes/stats', async (req, res) => {
+  try {
+    const byType = await prisma.$queryRaw`
+      SELECT "docType" as type, COUNT(*)::int qty, COALESCE(SUM("totalValue"),0)::float value
+      FROM "XmlFiscalDocument" GROUP BY "docType" ORDER BY qty DESC`;
+    const topIssuers = await prisma.$queryRaw`
+      SELECT "issuerCnpj" as cnpj, "issuerName" as name, COUNT(*)::int qty,
+             COALESCE(SUM("totalValue"),0)::float value
+      FROM "XmlFiscalDocument"
+      WHERE "issuerCnpj" IS NOT NULL
+      GROUP BY "issuerCnpj", "issuerName"
+      ORDER BY qty DESC LIMIT 50`;
+    res.json({ byType, topIssuers });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro stats', detail: err.message });
+  }
+});
+
+// Detalhes de uma NFe (incluindo items)
+router.get('/nfes/:id', async (req, res) => {
+  try {
+    const doc = await prisma.xmlFiscalDocument.findUnique({
+      where: { id: req.params.id },
+      include: { items: { take: 200 }, supplier: { select: { id: true, companyName: true, suppliedBrands: true } } },
+    });
+    if (!doc) return res.status(404).json({ error: 'NFe não encontrada' });
+    res.json({ nfe: doc });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro', detail: err.message });
+  }
+});
+
+// Atualiza marca/tipo da NFe
+router.put('/nfes/:id', async (req, res) => {
+  try {
+    const { brand, docType } = req.body || {};
+    const data = {};
+    if (brand !== undefined) { data.brand = brand || null; data.brandSetAt = new Date(); data.brandSetById = req.userId || null; }
+    if (docType !== undefined) data.docType = docType || null;
+    const r = await prisma.xmlFiscalDocument.update({ where: { id: req.params.id }, data });
+    res.json({ nfe: r });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro', detail: err.message });
+  }
+});
+
 // Importação NF-e (upload de XML)
 router.post('/nfe/import', upload.single('file'), async (req, res) => {
   try {
