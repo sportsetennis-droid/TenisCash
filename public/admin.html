@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521B-0100"></script>
-<script src="/_product-search-bar.js?v=20260521B-0100"></script>
-<script src="/_product-card.js?v=20260521B-0100"></script>
+<script src="/_design-system.js?v=20260521C-1230"></script>
+<script src="/_product-search-bar.js?v=20260521C-1230"></script>
+<script src="/_product-card.js?v=20260521C-1230"></script>
 </head>
 <body>
 
@@ -7155,117 +7155,142 @@ function renderProductImages() {
   grid.innerHTML = html;
 }
 
-// Editor de imagem de um produto — upload do PC OU URL
+// Editor de imagem de um produto — multi-upload do PC com preview real do crop
 async function productImageEdit(id) {
   const data = await api('/admin/catalog/products/' + id);
   if (data.error) { alert(data.error); return; }
   const p = data.product;
   const current = p.imageUrl || '';
-  const currentIsDataUrl = current.startsWith('data:');
-  const currentPreview = current ? (currentIsDataUrl ? current : current) : '';
+  const currentExtras = Array.isArray(p.imageUrls) ? p.imageUrls : [];
 
-  // Cria modal
   document.getElementById('pi-edit-modal')?.remove();
   const modal = document.createElement('div');
   modal.id = 'pi-edit-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:white;max-width:560px;width:100%;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;max-height:90vh;">
-      <div style="padding:20px 24px;border-bottom:1px solid #e5e5ea;display:flex;justify-content:space-between;align-items:start;gap:12px;">
+    <div style="background:white;max-width:780px;width:100%;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;max-height:92vh;">
+      <div style="padding:18px 24px;border-bottom:1px solid #e5e5ea;display:flex;justify-content:space-between;align-items:start;gap:12px;">
         <div style="flex:1;min-width:0;">
-          <h3 style="margin:0;font-size:17px;font-weight:800;color:#1d1d1f;">🖼️ Imagem do produto</h3>
-          <div style="font-size:13px;color:#8e8e93;margin-top:4px;">${escapeHtml((p.name||'').slice(0,80))}</div>
+          <h3 style="margin:0;font-size:17px;font-weight:800;color:#1d1d1f;">🖼️ Imagens do produto</h3>
+          <div style="font-size:13px;color:#8e8e93;margin-top:4px;">${escapeHtml((p.name||'').slice(0,90))}</div>
         </div>
         <button id="pi-edit-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;line-height:1;">×</button>
       </div>
 
-      <div style="padding:20px 24px;overflow:auto;flex:1;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
-          <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8e8e93;font-weight:700;margin-bottom:6px;">Atual</div>
-            <div style="aspect-ratio:4/5;background:#f5f5f7;border:1px solid #e5e5ea;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-              ${currentPreview ? `<img src="${escapeHtml(currentPreview)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;">` : '<span style="color:#c7c7cc;font-size:11px;">SEM IMAGEM</span>'}
-            </div>
+      <div style="padding:18px 24px;overflow:auto;flex:1;">
+        ${(current || currentExtras.length) ? `
+        <div style="margin-bottom:18px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8e8e93;font-weight:700;margin-bottom:8px;">Imagens atuais</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">
+            ${current ? `<div style="position:relative;aspect-ratio:4/5;background:#f5f5f7;border:1.5px solid #E5571E;border-radius:8px;overflow:hidden;"><img src="${escapeHtml(current)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;"><span style="position:absolute;top:4px;left:4px;background:#E5571E;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;">PRINCIPAL</span></div>` : ''}
+            ${currentExtras.map(u => `<div style="aspect-ratio:4/5;background:#f5f5f7;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;"><img src="${escapeHtml(u)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;"></div>`).join('')}
           </div>
-          <div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8e8e93;font-weight:700;margin-bottom:6px;">Preview (4:5)</div>
-            <div id="pi-edit-preview" style="aspect-ratio:4/5;background:#f5f5f7;border:1.5px dashed #c7c7cc;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#c7c7cc;font-size:11px;text-align:center;padding:10px;">Escolha um arquivo<br>ou cole URL abaixo</div>
-          </div>
-        </div>
+        </div>` : ''}
 
         <div style="background:#f5f5f7;padding:14px;border-radius:10px;margin-bottom:14px;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">📤 Upload do computador</div>
-          <input type="file" id="pi-edit-file" accept="image/jpeg,image/png,image/webp,image/heic" style="width:100%;font-size:13px;">
-          <div style="font-size:11px;color:#8e8e93;margin-top:6px;">JPG/PNG/WebP até 15MB · será processado pra 800×1000 (4:5) WebP</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">📤 Upload do computador (várias fotos)</div>
+          <input type="file" id="pi-edit-file" accept="image/jpeg,image/png,image/webp,image/heic" multiple style="width:100%;font-size:13px;">
+          <div style="font-size:11px;color:#8e8e93;margin-top:6px;">Selecione até 10 imagens · JPG/PNG/WebP/HEIC até 15MB cada · cada uma é processada pra 800×1000 (4:5) WebP · 1ª foto vira principal</div>
+        </div>
+
+        <div id="pi-edit-previews" style="display:none;margin-bottom:14px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">Preview do corte real (4:5 — exatamente como vai ser salvo)</div>
+          <div id="pi-edit-previews-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;"></div>
         </div>
 
         <div style="background:#f5f5f7;padding:14px;border-radius:10px;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">🔗 Ou cole uma URL</div>
-          <input type="text" id="pi-edit-url" placeholder="https://exemplo.com/imagem.jpg" value="${escapeHtml(currentIsDataUrl ? '' : current)}" style="width:100%;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">🔗 Ou cole uma URL (única imagem)</div>
+          <input type="text" id="pi-edit-url" placeholder="https://exemplo.com/imagem.jpg" style="width:100%;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
         </div>
 
         <div id="pi-edit-status" style="margin-top:12px;font-size:12px;color:#8e8e93;display:none;"></div>
       </div>
 
       <div style="padding:14px 24px;border-top:1px solid #e5e5ea;background:#fafafa;display:flex;gap:8px;justify-content:flex-end;">
-        ${current ? '<button id="pi-edit-remove" style="padding:10px 16px;background:white;border:1.5px solid #d70015;color:#d70015;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🗑️ Remover</button>' : ''}
+        ${current ? '<button id="pi-edit-remove" style="padding:10px 16px;background:white;border:1.5px solid #d70015;color:#d70015;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🗑️ Remover todas</button>' : ''}
         <button id="pi-edit-cancel" style="padding:10px 16px;background:white;border:1.5px solid #e5e5ea;color:#1d1d1f;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">Cancelar</button>
-        <button id="pi-edit-save" style="padding:10px 18px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">Salvar</button>
+        <button id="pi-edit-save" disabled style="padding:10px 18px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;opacity:0.5;">Salvar</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
 
   const $file = modal.querySelector('#pi-edit-file');
   const $url = modal.querySelector('#pi-edit-url');
-  const $preview = modal.querySelector('#pi-edit-preview');
+  const $previews = modal.querySelector('#pi-edit-previews');
+  const $previewsGrid = modal.querySelector('#pi-edit-previews-grid');
   const $status = modal.querySelector('#pi-edit-status');
+  const $save = modal.querySelector('#pi-edit-save');
   const setStatus = (msg, color) => { $status.style.display='block'; $status.style.color=color||'#8e8e93'; $status.textContent=msg; };
+  let processedPreviews = null; // resultado do preview do servidor
 
-  // Preview ao escolher arquivo
-  $file.addEventListener('change', () => {
-    const f = $file.files[0];
-    if (!f) return;
-    if (f.size > 15 * 1024 * 1024) { alert('Arquivo > 15MB'); $file.value=''; return; }
-    const reader = new FileReader();
-    reader.onload = e => {
-      $preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
-      $url.value = ''; // limpa URL se subiu arquivo
-    };
-    reader.readAsDataURL(f);
+  // Quando escolhe arquivos: envia pro servidor em modo PREVIEW pra ver o crop real
+  $file.addEventListener('change', async () => {
+    const files = Array.from($file.files);
+    if (!files.length) return;
+    if (files.length > 10) { alert('Máximo 10 imagens por vez'); $file.value=''; return; }
+    setStatus(`Processando ${files.length} ${files.length>1?'imagens':'imagem'} pro preview…`, '#E5571E');
+    $previewsGrid.innerHTML = '<div style="grid-column:1/-1;color:#8e8e93;font-size:12px;padding:8px;">Aguarde…</div>';
+    $previews.style.display = 'block';
+    const fd = new FormData();
+    files.forEach(f => fd.append('files', f));
+    fd.append('mode', 'preview');
+    try {
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const resp = await fetch(API + '/admin/product-images/upload/' + id, { method: 'POST', body: fd, headers });
+      const r = await resp.json();
+      if (!resp.ok || r.error) { setStatus('Erro: ' + (r.error || resp.statusText), '#d70015'); return; }
+      processedPreviews = r.images.filter(x => !x.error);
+      $previewsGrid.innerHTML = r.images.map((img, i) => img.error
+        ? `<div style="aspect-ratio:4/5;border:1.5px solid #d70015;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#d70015;font-size:10px;padding:6px;text-align:center;">Erro: ${escapeHtml(img.error)}</div>`
+        : `<div style="position:relative;aspect-ratio:4/5;background:#f5f5f7;border:1.5px solid ${i===0?'#E5571E':'#e5e5ea'};border-radius:8px;overflow:hidden;"><img src="${img.dataUrl}" style="width:100%;height:100%;object-fit:cover;"><span style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:white;font-size:9px;padding:2px 5px;border-radius:4px;">${img.kb}KB</span>${i===0?'<span style="position:absolute;top:4px;left:4px;background:#E5571E;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;">PRINCIPAL</span>':''}</div>`
+      ).join('');
+      setStatus(`✓ ${processedPreviews.length} imagem(ns) processada(s). Confira o corte e clique Salvar.`, '#0a843d');
+      $save.disabled = false; $save.style.opacity = '1';
+      $url.value = '';
+    } catch (e) {
+      setStatus('Erro: ' + e.message, '#d70015');
+    }
   });
-  // Preview ao mudar URL
+
+  // URL alternativa
   $url.addEventListener('input', () => {
     const v = $url.value.trim();
     if (v && /^https?:\/\//.test(v)) {
-      $preview.innerHTML = `<img src="${escapeHtml(v)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='<span style=\\'color:#d70015;font-size:11px;\\'>URL inválida ou inacessível</span>'">`;
+      processedPreviews = null;
       $file.value = '';
+      $previews.style.display = 'none';
+      $save.disabled = false; $save.style.opacity = '1';
     } else if (!v) {
-      $preview.innerHTML = 'Escolha um arquivo<br>ou cole URL abaixo';
+      $save.disabled = true; $save.style.opacity = '0.5';
     }
   });
 
   modal.querySelector('#pi-edit-close').onclick = () => modal.remove();
   modal.querySelector('#pi-edit-cancel').onclick = () => modal.remove();
   modal.querySelector('#pi-edit-remove')?.addEventListener('click', async () => {
-    if (!confirm('Remover imagem deste produto?')) return;
-    const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: null });
+    if (!confirm('Remover TODAS as imagens deste produto?')) return;
+    const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: null, imageUrls: [] });
     if (r.error) { alert('Erro: ' + r.error); return; }
     modal.remove();
     loadProductImages();
   });
 
-  modal.querySelector('#pi-edit-save').onclick = async () => {
-    const f = $file.files[0];
-    if (f) {
-      setStatus('Processando imagem (4:5, webp)...', '#E5571E');
+  $save.onclick = async () => {
+    if (processedPreviews && processedPreviews.length) {
+      setStatus('Salvando…', '#E5571E');
+      const files = Array.from($file.files);
       const fd = new FormData();
-      fd.append('file', f);
+      files.forEach(f => fd.append('files', f));
+      fd.append('mode', 'save');
       try {
-        const resp = await fetch('/admin/product-images/upload/' + id, { method: 'POST', body: fd, credentials: 'same-origin' });
+        const headers = {};
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        const resp = await fetch(API + '/admin/product-images/upload/' + id, { method: 'POST', body: fd, headers });
         const r = await resp.json();
         if (!resp.ok || r.error) { setStatus('Erro: ' + (r.error || resp.statusText), '#d70015'); return; }
-        setStatus(`✓ Salva (${r.size.kb} KB ${r.dimensions} ${r.format})`, '#0a843d');
-        setTimeout(() => { modal.remove(); loadProductImages(); }, 600);
+        setStatus(`✓ Salvas ${r.count} imagem(ns)`, '#0a843d');
+        setTimeout(() => { modal.remove(); loadProductImages(); }, 500);
       } catch (e) {
         setStatus('Erro: ' + e.message, '#d70015');
       }
