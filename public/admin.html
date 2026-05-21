@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521E-1610"></script>
-<script src="/_product-search-bar.js?v=20260521E-1610"></script>
-<script src="/_product-card.js?v=20260521E-1610"></script>
+<script src="/_design-system.js?v=20260521F-1640"></script>
+<script src="/_product-search-bar.js?v=20260521F-1640"></script>
+<script src="/_product-card.js?v=20260521F-1640"></script>
 </head>
 <body>
 
@@ -1166,14 +1166,37 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     </div>
   </div>
 
-  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
     <div>
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Marca</label>
       <select id="cat-classify-brand" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
     </div>
     <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Categoria</label>
+      <select id="cat-classify-category" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todas —</option>
+        <option>Tênis</option><option>Chuteiras</option><option>Vestuário</option><option>Acessórios</option><option>Dropper</option>
+      </select>
+    </div>
+    <div>
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
       <select id="cat-classify-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Gênero</label>
+      <select id="cat-classify-gender" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todos —</option>
+        <option value="Masculino">Homem</option><option value="Feminino">Mulher</option>
+        <option value="Inf. M">Menino</option><option value="Inf. F">Menina</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Modalidade</label>
+      <select id="cat-classify-modality" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Especialidade</label>
+      <select id="cat-classify-tier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
     </div>
     <div>
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Status</label>
@@ -1183,7 +1206,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <option value="all">Todos</option>
       </select>
     </div>
-    <div>
+    <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
     </div>
@@ -7372,11 +7395,17 @@ async function initCategoriesTab() {
     document.getElementById('cat-tree-modal').onclick = (e) => {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
-    // Filtros
-    ['cat-classify-brand','cat-classify-supplier','cat-classify-status','cat-classify-search'].forEach(id => {
-      document.getElementById(id).addEventListener('change', renderCatClassifyGrid);
+    // Filtros (mesmos do card Estoque)
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-gender','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
+    // Popula Modalidade e Especialidade (mesmas listas do Estoque)
+    const _catMods = ['Corrida','Caminhada','LifeStyle','Recuperação Muscular','Musculação/Crossfit','Sapatilha','Sandálias','StreetWear','Futsal','Society','Campo'];
+    _catMods.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('cat-classify-modality').appendChild(o); });
+    const _catTiers = ['Iniciante','Casual','Confortável','Custo Benefício','Treino','Treino de Força','Profissional','Premium','Super Tênis','Super Trail','Super Leve','Super Amortecimento','Super Treino','Trail','Caminhada','Clássico','Sapatilha de Treino'];
+    _catTiers.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('cat-classify-tier').appendChild(o); });
     // Selects encadeados
     document.getElementById('cat-apply-category').addEventListener('change', _catApplyCascade);
     document.getElementById('cat-apply-sub').addEventListener('change', _catApplyCascade);
@@ -7440,7 +7469,11 @@ async function loadCategoriesClassify() {
 
 function _filteredCatProducts() {
   const brand = document.getElementById('cat-classify-brand').value;
+  const category = document.getElementById('cat-classify-category')?.value || '';
   const supplier = document.getElementById('cat-classify-supplier').value;
+  const gender = document.getElementById('cat-classify-gender')?.value || '';
+  const modality = document.getElementById('cat-classify-modality')?.value || '';
+  const tier = document.getElementById('cat-classify-tier')?.value || '';
   const status = document.getElementById('cat-classify-status').value;
   const search = (document.getElementById('cat-classify-search').value || '').toLowerCase().trim();
   return _catClassifyProducts.filter(p => {
@@ -7449,7 +7482,11 @@ function _filteredCatProducts() {
     const supCnpj = ctx.supplierCnpj || '';
     const supId = ctx.supplierId || '';
     if (brand && (p.brand || '').toLowerCase() !== brand.toLowerCase()) return false;
+    if (category && (p.category || '').toLowerCase() !== category.toLowerCase()) return false;
     if (supplier && supCnpj !== supplier && supId !== supplier) return false;
+    if (gender && (ctx.gender || cls.gender || '') !== gender) return false;
+    if (modality && (cls.modality || '') !== modality) return false;
+    if (tier && (cls.tier || '') !== tier) return false;
     if (status === 'unclassified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (isFull) return false;
