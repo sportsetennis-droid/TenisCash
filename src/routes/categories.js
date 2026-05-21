@@ -3,10 +3,42 @@
 // =====================================================================
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const nsHandlers = require('../services/nuvemshopHandlers');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
+
+// Sync background pra Nuvemshop apos classificacao em lote.
+// Fire-and-forget pra nao travar resposta HTTP em batches grandes.
+function scheduleNsSync(productIds) {
+  setImmediate(async () => {
+    try {
+      const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+      if (!conn) { console.log('[categories ns sync] sem conexao'); return; }
+      const mapped = await prisma.nuvemshopProductMapping.findMany({
+        where: { localProductId: { in: productIds } },
+        select: { localProductId: true },
+      });
+      const mappedIds = new Set(mapped.map(m => m.localProductId));
+      let ok = 0, fail = 0;
+      for (const pid of productIds) {
+        if (!mappedIds.has(pid)) continue;
+        try {
+          await nsHandlers.pushProductToNuvemshop(pid, conn);
+          ok++;
+        } catch (e) {
+          fail++;
+          console.error('[categories ns sync]', pid.slice(0,8), e.message);
+        }
+        await new Promise(r => setTimeout(r, 400));
+      }
+      console.log(`[categories ns sync] concluido: ${ok} ok, ${fail} falhas (${productIds.length - mappedIds.size} sem mapping)`);
+    } catch (err) {
+      console.error('[categories ns sync] erro fatal:', err.message);
+    }
+  });
+}
 
 // GET /tree — retorna árvore completa hierárquica
 router.get('/tree', async (req, res) => {
@@ -164,7 +196,9 @@ router.post('/:id/assign-products', async (req, res) => {
       });
       updated++;
     }
-    res.json({ ok: true, updated, applied: byLevel });
+    // Sync com Nuvemshop em background — não bloqueia resposta
+    scheduleNsSync(productIds);
+    res.json({ ok: true, updated, applied: byLevel, nuvemshop: 'queued' });
   } catch (err) {
     res.status(500).json({ error: 'Erro ao atribuir', detail: err.message });
   }

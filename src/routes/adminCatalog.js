@@ -3,6 +3,23 @@ const multer = require('multer');
 const Papa = require('papaparse');
 const Anthropic = require('@anthropic-ai/sdk');
 const { prisma, authMiddleware } = require('../middleware');
+const nsHandlers = require('../services/nuvemshopHandlers');
+
+// Sync com Nuvemshop se produto tem mapping. Fire-and-forget para nao
+// travar HTTP response em operações de classificação em lote.
+async function syncProductToNuvemshop(productId) {
+  try {
+    const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: productId } });
+    if (!mapping) return { synced: false, reason: 'sem mapping' };
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return { synced: false, reason: 'sem conexão' };
+    const r = await nsHandlers.pushProductToNuvemshop(productId, conn);
+    return { synced: true, action: r.action };
+  } catch (err) {
+    console.error('[adminCatalog ns sync]', err.message);
+    return { synced: false, error: err.message };
+  }
+}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -332,7 +349,10 @@ router.put('/products/:id', adminOnly, async (req, res) => {
       }
     }
 
-    res.json({ product });
+    // Sync automatica com Nuvemshop (se produto tem mapping)
+    const nsSync = await syncProductToNuvemshop(product.id);
+
+    res.json({ product, nuvemshop: nsSync });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'SKU já cadastrado' });
     console.error('admin catalog update', err);
