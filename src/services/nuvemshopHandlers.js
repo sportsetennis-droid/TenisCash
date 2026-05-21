@@ -664,6 +664,8 @@ async function findOrCreateCategory(connection, name) {
 }
 
 function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
+  // opts.mode: 'create' (default) inclui variants; 'update' omite (NS rejeita variants em PUT)
+  const mode = opts.mode || 'create';
   const hasSizes = sizes && sizes.length > 0;
   // Variants — uma por tamanho. Se produto não tem variação (acessório, bola, etc.),
   // cria 1 variant ÚNICA sem `values` (Nuvemshop exige variants.values.length === attributes.length).
@@ -709,7 +711,6 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     brand: localProduct.brand || null,
     published: localProduct.active !== false,
     free_shipping: false,
-    variants,
     attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
     seo_title: ptObj(seoTitle),
     seo_description: ptObj(seoDescription),
@@ -726,10 +727,56 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
       .join(','),
   };
 
-  if (allImages.length) payload.images = allImages;
+  // Variants e Images só no CREATE — Nuvemshop rejeita ambos em PUT /products/:id
+  // (422 "must not be present"). Pra UPDATE, usar endpoints separados:
+  // - variants: PUT /products/:id/variants/:vid
+  // - images: POST /products/:id/images (sem update direto — recria)
+  if (mode === 'create') {
+    payload.variants = variants;
+    if (allImages.length) payload.images = allImages;
+  }
   if (Array.isArray(opts.categoryIds) && opts.categoryIds.length) payload.categories = opts.categoryIds;
 
   return payload;
+}
+
+// Atualiza variants de um produto na Nuvemshop (chamado depois de PUT no produto)
+async function updateNuvemshopVariants(connection, nsProductId, localProduct, sizes) {
+  if (!sizes || !sizes.length) return { updated: 0, skipped: 0, errors: [] };
+
+  // Pega variants atuais da NS
+  let nsVariants;
+  try {
+    nsVariants = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/variants`);
+  } catch (e) {
+    return { updated: 0, skipped: 0, errors: [{ reason: 'failed to fetch variants: ' + e.message }] };
+  }
+  if (!Array.isArray(nsVariants)) return { updated: 0, skipped: 0, errors: [{ reason: 'unexpected response' }] };
+
+  const result = { updated: 0, skipped: 0, errors: [] };
+  for (const sz of sizes) {
+    // Match por SKU ou por valor de tamanho
+    const expectedSku = `${localProduct.sku}-${sz.size}`;
+    const nsVar = nsVariants.find(v =>
+      v.sku === expectedSku ||
+      v.sku === sz.barcode ||
+      (Array.isArray(v.values) && v.values.some(val => String(val?.pt || val).trim() === String(sz.size).trim()))
+    );
+    if (!nsVar) { result.skipped++; continue; }
+    const variantPayload = {
+      price: String(Number(localProduct.price || 0).toFixed(2)),
+      stock_management: true,
+      stock: parseInt(sz.stock || 0, 10),
+    };
+    if (localProduct.promoPrice != null) variantPayload.promotional_price = String(Number(localProduct.promoPrice).toFixed(2));
+    try {
+      await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${nsVar.id}`, variantPayload);
+      result.updated++;
+    } catch (e) {
+      result.errors.push({ variantId: nsVar.id, size: sz.size, error: e.message });
+    }
+  }
+  return result;
 }
 
 async function pushProductToNuvemshop(localProductId, connection) {
@@ -771,28 +818,31 @@ async function pushProductToNuvemshop(localProductId, connection) {
     }
   }
 
-  const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
-    categoryIds,
-    extraTags: aiTags,
-    gender: aiGender,
-  });
-
   let nsProduct;
   let action;
+  let variantSync = null;
   if (existingMapping) {
-    // Atualiza existente
+    // UPDATE — payload SEM variants (NS rejeita variants em PUT)
+    const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
+      categoryIds, extraTags: aiTags, gender: aiGender, mode: 'update',
+    });
     nsProduct = await ns.nuvemshopApi(
       connection,
       'PUT',
       `/products/${existingMapping.nuvemshopProductId}`,
       payload,
     );
+    // Atualiza variants separadamente via /products/:id/variants/:vid
+    variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, product.sizes || []);
     await prisma.nuvemshopProductMapping.update({
       where: { id: existingMapping.id },
       data: { lastSyncedAt: new Date(), syncStatus: 'synced' },
     });
     action = 'updated';
   } else {
+    const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
+      categoryIds, extraTags: aiTags, gender: aiGender, mode: 'create',
+    });
     nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
     await prisma.nuvemshopProductMapping.create({
       data: {
@@ -827,7 +877,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
     }
   }
 
-  return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id };
+  return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id, variantSync };
 }
 
 async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly = false, supplierCnpj = null } = {}) {
