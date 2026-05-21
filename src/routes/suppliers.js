@@ -96,21 +96,29 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Lista PRODUTOS do fornecedor (base real — XmlFiscalDocument está vazio)
+// Lista PRODUTOS do fornecedor (com unidades reais compradas via NFe entrada)
 router.get('/:id/products', async (req, res) => {
   try {
     const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
     if (!supplier) return res.status(404).json({ error: 'Fornecedor não encontrado' });
     // Match por supplierCnpj OU supplierId em aiContext
+    // LEFT JOIN com XmlFiscalItem pra somar unidades reais (docType=entrada)
     const products = await prisma.$queryRaw`
       SELECT p.id, p.sku, p.name, p.brand, p.active, p.price,
              p."aiContext"->>'supplierRef' AS "supplierRef",
-             p."updatedAt"
+             p."updatedAt",
+             COALESCE(SUM(CASE WHEN d."docType"='entrada' THEN i.quantity ELSE 0 END), 0)::float AS "unitsBought",
+             COALESCE(SUM(CASE WHEN d."docType"='entrada' THEN i."totalValue" ELSE 0 END), 0)::float AS "purchaseValue",
+             COUNT(CASE WHEN d."docType"='entrada' THEN 1 END)::int AS "nfeLines",
+             MAX(d."issueDate") FILTER (WHERE d."docType"='entrada') AS "lastPurchaseDate"
       FROM "Product" p
+      LEFT JOIN "XmlFiscalItem" i ON i."productId" = p.id
+      LEFT JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId"
       WHERE (
         p."aiContext"->>'supplierCnpj' = ${supplier.cnpj || ''}
         OR p."aiContext"->>'supplierId' = ${supplier.id}
       )
+      GROUP BY p.id, p.sku, p.name, p.brand, p.active, p.price, p."aiContext", p."updatedAt"
       ORDER BY p.brand NULLS LAST, p.name ASC
       LIMIT 2000`;
     res.json({ products, supplier });

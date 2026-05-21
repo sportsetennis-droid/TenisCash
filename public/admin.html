@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520M-2240"></script>
-<script src="/_product-search-bar.js?v=20260520M-2240"></script>
-<script src="/_product-card.js?v=20260520M-2240"></script>
+<script src="/_design-system.js?v=20260521A-0010"></script>
+<script src="/_product-search-bar.js?v=20260521A-0010"></script>
+<script src="/_product-card.js?v=20260521A-0010"></script>
 </head>
 <body>
 
@@ -6813,6 +6813,10 @@ async function supplierShowNFes(id) {
   let products = (prodData.products || []).map(p => ({
     id: p.id, sku: p.sku, name: p.name, brand: p.brand || null,
     price: p.price, supplierRef: p.supplierRef, active: p.active,
+    unitsBought: Math.round(p.unitsBought || 0),
+    purchaseValue: p.purchaseValue || 0,
+    nfeLines: p.nfeLines || 0,
+    lastPurchaseDate: p.lastPurchaseDate || null,
   }));
   const suppliedBrands = Array.isArray(s.suppliedBrands) ? s.suppliedBrands : [];
   let selected = new Set();
@@ -6856,6 +6860,7 @@ async function supplierShowNFes(id) {
         <td style="padding:8px 6px;font-family:monospace;font-size:11px;color:#8e8e93;">${escapeHtml(p.sku || '—')}</td>
         <td style="padding:8px 6px;font-size:12px;">${escapeHtml((p.name || '').slice(0, 70))}</td>
         <td style="padding:8px 6px;font-family:monospace;font-size:11px;color:#8e8e93;">${escapeHtml(p.supplierRef || '—')}</td>
+        <td style="padding:8px 6px;text-align:right;font-size:12px;font-weight:700;color:${p.unitsBought>0?'#0a843d':'#c7c7cc'};" title="${p.nfeLines||0} linha(s) em NFes${p.lastPurchaseDate?' · última compra '+new Date(p.lastPurchaseDate).toLocaleDateString('pt-BR'):''}">${p.unitsBought>0?p.unitsBought.toLocaleString('pt-BR'):'—'}</td>
         <td style="padding:8px 6px;text-align:right;font-size:12px;">${fmtBRL(p.price)}</td>
         <td style="padding:8px 6px;">
           ${p.brand
@@ -6864,7 +6869,7 @@ async function supplierShowNFes(id) {
         </td>
       </tr>`).join('');
 
-    const moreThan = filtered.length > 800 ? `<tr><td colspan="6" style="padding:10px;text-align:center;color:#8e8e93;font-size:11px;">Mostrando 800 de ${filtered.length} — refine o filtro pra ver os outros</td></tr>` : '';
+    const moreThan = filtered.length > 800 ? `<tr><td colspan="7" style="padding:10px;text-align:center;color:#8e8e93;font-size:11px;">Mostrando 800 de ${filtered.length} — refine o filtro pra ver os outros</td></tr>` : '';
 
     modal.innerHTML = `
       <div style="background:white;border-radius:16px;max-width:1200px;width:100%;max-height:94vh;overflow:hidden;display:flex;flex-direction:column;color:#1d1d1f;">
@@ -6902,11 +6907,12 @@ async function supplierShowNFes(id) {
                 <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">SKU</th>
                 <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Nome</th>
                 <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">REF</th>
+                <th style="padding:10px 6px;text-align:right;font-size:11px;text-transform:uppercase;color:#8e8e93;" title="Unidades reais compradas (NFe entrada)">QTD comprada</th>
                 <th style="padding:10px 6px;text-align:right;font-size:11px;text-transform:uppercase;color:#8e8e93;">Preço</th>
                 <th style="padding:10px 6px;text-align:left;font-size:11px;text-transform:uppercase;color:#8e8e93;">Marca atual</th>
               </tr>
             </thead>
-            <tbody>${rowsHtml || '<tr><td colspan="6" style="padding:30px;text-align:center;color:#8e8e93;">Nenhum produto encontrado</td></tr>'}${moreThan}</tbody>
+            <tbody>${rowsHtml || '<tr><td colspan="7" style="padding:30px;text-align:center;color:#8e8e93;">Nenhum produto encontrado</td></tr>'}${moreThan}</tbody>
           </table>
         </div>
       </div>`;
