@@ -55,8 +55,9 @@ router.get('/dashboard', async (_req, res) => {
 // Lista produtos com info de lifecycle e estoque
 router.get('/products', async (req, res) => {
   try {
-    const { lifecycleStatus, brand, category, lowStock, search, gender, modality, tier, supplier } = req.query;
+    const { lifecycleStatus, brand, category, subcategory, lowStock, search, gender, modality, tier, supplier } = req.query;
     const jsonFilters = [];
+    // Gender mantido pra retrocompat — novos clientes devem usar subcategory
     if (gender) jsonFilters.push({ aiContext: { path: ['classification', 'gender'], equals: String(gender) } });
     if (modality) jsonFilters.push({ aiContext: { path: ['classification', 'modality'], equals: String(modality) } });
     if (tier) jsonFilters.push({ aiContext: { path: ['classification', 'tier'], equals: String(tier) } });
@@ -72,6 +73,7 @@ router.get('/products', async (req, res) => {
       active: true,
       ...(brand ? { brand: { equals: String(brand), mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: String(category), mode: 'insensitive' } } : {}),
+      ...(subcategory ? { subcategory: { equals: String(subcategory), mode: 'insensitive' } } : {}),
       ...(search ? {
         OR: [
           { name: { contains: String(search), mode: 'insensitive' } },

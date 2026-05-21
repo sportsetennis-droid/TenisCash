@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521H-1810"></script>
-<script src="/_product-search-bar.js?v=20260521H-1810"></script>
-<script src="/_product-card.js?v=20260521H-1810"></script>
+<script src="/_design-system.js?v=20260521I-1850"></script>
+<script src="/_product-search-bar.js?v=20260521I-1850"></script>
+<script src="/_product-card.js?v=20260521I-1850"></script>
 </head>
 <body>
 
@@ -1183,14 +1183,15 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <select id="cat-classify-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
     </div>
     <div>
-      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Gênero</label>
-      <select id="cat-classify-gender" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
-        <option value="">— todos —</option>
-        <option value="Homem">Homem</option>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
+      <select id="cat-classify-subcategory" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todas —</option>
+        <option value="Feminino">Feminino</option>
         <option value="Mulher">Mulher</option>
-        <option value="Menino">Menino</option>
+        <option value="Homem">Homem</option>
         <option value="Menina">Menina</option>
-        <option value="Unissex">Unissex</option>
+        <option value="Menino">Menino</option>
+        <option value="Tamanhos">Tamanhos</option>
       </select>
     </div>
     <div>
@@ -1318,14 +1319,15 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <select id="inv-f-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
       </div>
       <div>
-        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Gênero</label>
-        <select id="inv-f-gender" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
-          <option value="">— todos —</option>
-          <option value="Homem">Homem</option>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
+        <select id="inv-f-subcategory" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">— todas —</option>
+          <option value="Feminino">Feminino</option>
           <option value="Mulher">Mulher</option>
-          <option value="Menino">Menino</option>
+          <option value="Homem">Homem</option>
           <option value="Menina">Menina</option>
-          <option value="Unissex">Unissex</option>
+          <option value="Menino">Menino</option>
+          <option value="Tamanhos">Tamanhos</option>
         </select>
       </div>
       <div>
@@ -7402,7 +7404,7 @@ async function initCategoriesTab() {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
     // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-gender','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
@@ -7488,7 +7490,7 @@ function _filteredCatProducts() {
   const brand = document.getElementById('cat-classify-brand').value;
   const category = document.getElementById('cat-classify-category')?.value || '';
   const supplier = document.getElementById('cat-classify-supplier').value;
-  const gender = document.getElementById('cat-classify-gender')?.value || '';
+  const subcategory = document.getElementById('cat-classify-subcategory')?.value || '';
   const modality = document.getElementById('cat-classify-modality')?.value || '';
   const tier = document.getElementById('cat-classify-tier')?.value || '';
   const status = document.getElementById('cat-classify-status').value;
@@ -7501,7 +7503,7 @@ function _filteredCatProducts() {
     if (brand && (p.brand || '').toLowerCase() !== brand.toLowerCase()) return false;
     if (category && (p.category || '').toLowerCase() !== category.toLowerCase()) return false;
     if (supplier && supCnpj !== supplier && supId !== supplier) return false;
-    if (gender && (ctx.gender || cls.gender || '') !== gender) return false;
+    if (subcategory && (p.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
     if (modality && (cls.modality || '') !== modality) return false;
     if (tier && (cls.tier || '') !== tier) return false;
     if (status === 'unclassified') {
@@ -7972,7 +7974,7 @@ async function initInventoryTab() {
     document.getElementById('inv-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadInvProducts(); });
     // Limpar
     document.getElementById('inv-clear').onclick = () => {
-      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-gender','inv-f-modality','inv-f-tier','inv-lifecycle'].forEach(id => document.getElementById(id).value = '');
+      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('inv-f-search').value = '';
       document.getElementById('inv-lowstock').checked = false;
       loadInvProducts();
@@ -8011,7 +8013,7 @@ async function loadInvProducts() {
   const brand = document.getElementById('inv-f-brand').value.trim();
   const category = document.getElementById('inv-f-category').value.trim();
   const supplier = document.getElementById('inv-f-supplier').value.trim();
-  const gender = document.getElementById('inv-f-gender').value.trim();
+  const subcategory = document.getElementById('inv-f-subcategory').value.trim();
   const modality = document.getElementById('inv-f-modality').value.trim();
   const tier = document.getElementById('inv-f-tier').value.trim();
   const search = document.getElementById('inv-f-search').value.trim();
@@ -8020,7 +8022,7 @@ async function loadInvProducts() {
   if (brand) qs.set('brand', brand);
   if (category) qs.set('category', category);
   if (supplier) qs.set('supplier', supplier);
-  if (gender) qs.set('gender', gender);
+  if (subcategory) qs.set('subcategory', subcategory);
   if (modality) qs.set('modality', modality);
   if (tier) qs.set('tier', tier);
   if (search) qs.set('search', search);
