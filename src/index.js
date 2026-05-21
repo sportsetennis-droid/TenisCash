@@ -28,6 +28,7 @@ const weeklyInterviewRoutes = require('./routes/weeklyInterview');
 const xmlImportRoutes = require('./routes/xmlImport');
 const recommendationsRoutes = require('./routes/recommendations');
 const nuvemshopRoutes = require('./routes/nuvemshop');
+const shippingRoutes = require('./routes/shipping');
 const financialRoutes = require('./routes/financial');
 const suppliersRoutes = require('./routes/suppliers');
 const categoriesRoutes = require('./routes/categories');
@@ -132,6 +133,7 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api', nuvemshopRoutes);
+app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
 
 // Health check

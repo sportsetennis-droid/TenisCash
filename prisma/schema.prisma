@@ -176,12 +176,15 @@ model Store {
   code      String   @unique
   dna       String? // Masculino, Feminino, Futebol, Geral
   mall      String? // Parahyba Mall, Pirâmide, Complexo K, Tambiá
-  address   String?
-  city      String?
-  state     String?
-  phone     String?
-  latitude  Float?
-  longitude Float?
+  address      String?
+  complement   String?
+  neighborhood String?
+  city         String?
+  state        String?
+  cep          String?
+  phone        String?
+  latitude     Float?
+  longitude    Float?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
