@@ -28,8 +28,11 @@ async function geocodeCep(cep) {
 
   try {
     // 1. ViaCEP pra obter logradouro+cidade+UF
+    // ViaCEP responde em latin-1 mas o header diz utf-8 — pegamos bytes e decodificamos manualmente
     const vcRes = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
-    const vc = await vcRes.json();
+    const vcBuf = await vcRes.arrayBuffer();
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    const vc = JSON.parse(decoder.decode(vcBuf));
     if (vc.erro) return null;
     const query = `${vc.logradouro || ''}, ${vc.localidade}, ${vc.uf}, Brasil`;
 
