@@ -3,7 +3,19 @@
 // =====================================================================
 
 const express = require('express');
+const multer = require('multer');
+const sharp = require('sharp');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+
+// Upload memory storage — limita 15MB por arquivo
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpe?g|png|webp|gif|heic|heif)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Tipo de arquivo não suportado. Use JPG/PNG/WebP.'));
+  },
+});
 const googleGis = require('../services/googleImageSearch');
 const braveGis = require('../services/braveImageSearch');
 const serperGis = require('../services/serperImageSearch');
@@ -671,5 +683,63 @@ router.post('/enrich-supplier/:cnpj', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// =====================================================================
+// UPLOAD de imagem do computador — processa pra 4:5 com sharp
+// =====================================================================
+// POST /admin/product-images/upload/:productId
+// FormData field: "file" (jpg/png/webp/heic)
+// Pipeline: original → resize cover 800x1000 (4:5) → webp q82 → data URL
+// Salva em Product.imageUrl + sincroniza Nuvemshop se mapeado.
+// =====================================================================
+router.post('/upload/:productId',
+  (req, res, next) => upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Arquivo > 15MB' });
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  }),
+  async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: 'Arquivo não enviado (campo "file")' });
+      }
+      const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+      if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+
+      // Processa: resize cover 800x1000 (4:5), webp q82
+      const processed = await sharp(req.file.buffer, { failOn: 'none' })
+        .rotate() // respeita EXIF orientation
+        .resize(800, 1000, { fit: 'cover', position: 'attention' })
+        .webp({ quality: 82 })
+        .toBuffer();
+
+      // Guarda como data URL (~50-80KB típico). Nuvemshop NÃO aceita data URL,
+      // então pra sync precisa de URL pública. Por ora salva data URL — o admin
+      // exibe e o gestor decide depois se quer fazer push pra storage externa.
+      const dataUrl = `data:image/webp;base64,${processed.toString('base64')}`;
+      const sizeKb = Math.round(processed.length / 1024);
+
+      await prisma.product.update({
+        where: { id: product.id },
+        data: { imageUrl: dataUrl },
+      });
+
+      res.json({
+        ok: true,
+        productId: product.id,
+        sku: product.sku,
+        size: { kb: sizeKb, bytes: processed.length },
+        dimensions: '800x1000 (4:5)',
+        format: 'webp',
+        imageUrl: dataUrl.slice(0, 80) + '...',
+      });
+    } catch (err) {
+      console.error('[product-images/upload] erro:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 module.exports = router;

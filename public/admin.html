@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521A-0010"></script>
-<script src="/_product-search-bar.js?v=20260521A-0010"></script>
-<script src="/_product-card.js?v=20260521A-0010"></script>
+<script src="/_design-system.js?v=20260521B-0100"></script>
+<script src="/_product-search-bar.js?v=20260521B-0100"></script>
+<script src="/_product-card.js?v=20260521B-0100"></script>
 </head>
 <body>
 
@@ -7155,21 +7155,132 @@ function renderProductImages() {
   grid.innerHTML = html;
 }
 
-// Editor de imagem de um produto — link/upload
+// Editor de imagem de um produto — upload do PC OU URL
 async function productImageEdit(id) {
   const data = await api('/admin/catalog/products/' + id);
   if (data.error) { alert(data.error); return; }
   const p = data.product;
   const current = p.imageUrl || '';
-  const novo = prompt(
-    `Imagem de "${p.name}"\n\nCole uma URL de imagem (ou deixa em branco pra manter atual):\n\nAtual: ${current || '(sem imagem)'}\n\n(Card de upload com sharp 4:5 vem na próxima rodada — por enquanto cole URL.)`,
-    current
-  );
-  if (novo === null) return;
-  if (novo === current) return;
-  const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: novo || null });
-  if (r.error) { alert('Erro: ' + r.error); return; }
-  loadProductImages();
+  const currentIsDataUrl = current.startsWith('data:');
+  const currentPreview = current ? (currentIsDataUrl ? current : current) : '';
+
+  // Cria modal
+  document.getElementById('pi-edit-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'pi-edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:white;max-width:560px;width:100%;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;max-height:90vh;">
+      <div style="padding:20px 24px;border-bottom:1px solid #e5e5ea;display:flex;justify-content:space-between;align-items:start;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <h3 style="margin:0;font-size:17px;font-weight:800;color:#1d1d1f;">🖼️ Imagem do produto</h3>
+          <div style="font-size:13px;color:#8e8e93;margin-top:4px;">${escapeHtml((p.name||'').slice(0,80))}</div>
+        </div>
+        <button id="pi-edit-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#8e8e93;line-height:1;">×</button>
+      </div>
+
+      <div style="padding:20px 24px;overflow:auto;flex:1;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8e8e93;font-weight:700;margin-bottom:6px;">Atual</div>
+            <div style="aspect-ratio:4/5;background:#f5f5f7;border:1px solid #e5e5ea;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+              ${currentPreview ? `<img src="${escapeHtml(currentPreview)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;">` : '<span style="color:#c7c7cc;font-size:11px;">SEM IMAGEM</span>'}
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8e8e93;font-weight:700;margin-bottom:6px;">Preview (4:5)</div>
+            <div id="pi-edit-preview" style="aspect-ratio:4/5;background:#f5f5f7;border:1.5px dashed #c7c7cc;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#c7c7cc;font-size:11px;text-align:center;padding:10px;">Escolha um arquivo<br>ou cole URL abaixo</div>
+          </div>
+        </div>
+
+        <div style="background:#f5f5f7;padding:14px;border-radius:10px;margin-bottom:14px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">📤 Upload do computador</div>
+          <input type="file" id="pi-edit-file" accept="image/jpeg,image/png,image/webp,image/heic" style="width:100%;font-size:13px;">
+          <div style="font-size:11px;color:#8e8e93;margin-top:6px;">JPG/PNG/WebP até 15MB · será processado pra 800×1000 (4:5) WebP</div>
+        </div>
+
+        <div style="background:#f5f5f7;padding:14px;border-radius:10px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">🔗 Ou cole uma URL</div>
+          <input type="text" id="pi-edit-url" placeholder="https://exemplo.com/imagem.jpg" value="${escapeHtml(currentIsDataUrl ? '' : current)}" style="width:100%;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
+        </div>
+
+        <div id="pi-edit-status" style="margin-top:12px;font-size:12px;color:#8e8e93;display:none;"></div>
+      </div>
+
+      <div style="padding:14px 24px;border-top:1px solid #e5e5ea;background:#fafafa;display:flex;gap:8px;justify-content:flex-end;">
+        ${current ? '<button id="pi-edit-remove" style="padding:10px 16px;background:white;border:1.5px solid #d70015;color:#d70015;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🗑️ Remover</button>' : ''}
+        <button id="pi-edit-cancel" style="padding:10px 16px;background:white;border:1.5px solid #e5e5ea;color:#1d1d1f;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">Cancelar</button>
+        <button id="pi-edit-save" style="padding:10px 18px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const $file = modal.querySelector('#pi-edit-file');
+  const $url = modal.querySelector('#pi-edit-url');
+  const $preview = modal.querySelector('#pi-edit-preview');
+  const $status = modal.querySelector('#pi-edit-status');
+  const setStatus = (msg, color) => { $status.style.display='block'; $status.style.color=color||'#8e8e93'; $status.textContent=msg; };
+
+  // Preview ao escolher arquivo
+  $file.addEventListener('change', () => {
+    const f = $file.files[0];
+    if (!f) return;
+    if (f.size > 15 * 1024 * 1024) { alert('Arquivo > 15MB'); $file.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      $preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+      $url.value = ''; // limpa URL se subiu arquivo
+    };
+    reader.readAsDataURL(f);
+  });
+  // Preview ao mudar URL
+  $url.addEventListener('input', () => {
+    const v = $url.value.trim();
+    if (v && /^https?:\/\//.test(v)) {
+      $preview.innerHTML = `<img src="${escapeHtml(v)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='<span style=\\'color:#d70015;font-size:11px;\\'>URL inválida ou inacessível</span>'">`;
+      $file.value = '';
+    } else if (!v) {
+      $preview.innerHTML = 'Escolha um arquivo<br>ou cole URL abaixo';
+    }
+  });
+
+  modal.querySelector('#pi-edit-close').onclick = () => modal.remove();
+  modal.querySelector('#pi-edit-cancel').onclick = () => modal.remove();
+  modal.querySelector('#pi-edit-remove')?.addEventListener('click', async () => {
+    if (!confirm('Remover imagem deste produto?')) return;
+    const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: null });
+    if (r.error) { alert('Erro: ' + r.error); return; }
+    modal.remove();
+    loadProductImages();
+  });
+
+  modal.querySelector('#pi-edit-save').onclick = async () => {
+    const f = $file.files[0];
+    if (f) {
+      setStatus('Processando imagem (4:5, webp)...', '#E5571E');
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const resp = await fetch('/admin/product-images/upload/' + id, { method: 'POST', body: fd, credentials: 'same-origin' });
+        const r = await resp.json();
+        if (!resp.ok || r.error) { setStatus('Erro: ' + (r.error || resp.statusText), '#d70015'); return; }
+        setStatus(`✓ Salva (${r.size.kb} KB ${r.dimensions} ${r.format})`, '#0a843d');
+        setTimeout(() => { modal.remove(); loadProductImages(); }, 600);
+      } catch (e) {
+        setStatus('Erro: ' + e.message, '#d70015');
+      }
+      return;
+    }
+    const urlVal = $url.value.trim();
+    if (urlVal && urlVal !== current) {
+      const r = await api('/admin/catalog/products/' + id, 'PATCH', { imageUrl: urlVal });
+      if (r.error) { setStatus('Erro: ' + r.error, '#d70015'); return; }
+      modal.remove();
+      loadProductImages();
+      return;
+    }
+    modal.remove();
+  };
 }
 
 // ==================== CATEGORIAS (classificar produtos) ====================
