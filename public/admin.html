@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521C-1230"></script>
-<script src="/_product-search-bar.js?v=20260521C-1230"></script>
-<script src="/_product-card.js?v=20260521C-1230"></script>
+<script src="/_design-system.js?v=20260521D-1530"></script>
+<script src="/_product-search-bar.js?v=20260521D-1530"></script>
+<script src="/_product-card.js?v=20260521D-1530"></script>
 </head>
 <body>
 
@@ -1273,19 +1273,61 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- SUB-ABA: ESTOQUE (original) -->
   <div id="inv-sub-stock-pane">
     <div id="inv-dashboard-wrap" style="margin-bottom:18px"></div>
-    <!-- Barra de busca padrão (Marca/Categoria/Fornecedor/Gênero/Modalidade/Especialidade) -->
-    <div id="psbar-inv"></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-      <select class="search-box" id="inv-lifecycle">
-        <option value="">Todo lifecycle</option>
-        <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
-        <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
-        <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
-      </select>
-      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
-      <button type="button" class="btn btn-primary" id="inv-filter">Aplicar lifecycle</button>
+
+    <!-- FILTROS ESTILO CATEGORIA — Marca/Categoria/Fornecedor/Gênero/Modalidade/Especialidade/Busca -->
+    <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Marca</label>
+        <select id="inv-f-brand" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Categoria</label>
+        <select id="inv-f-category" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">— todas —</option>
+          <option>Tênis</option><option>Chuteiras</option><option>Vestuário</option><option>Acessórios</option><option>Dropper</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
+        <select id="inv-f-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Gênero</label>
+        <select id="inv-f-gender" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">— todos —</option>
+          <option value="Masculino">Homem</option><option value="Feminino">Mulher</option>
+          <option value="Inf. M">Menino</option><option value="Inf. F">Menina</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Modalidade</label>
+        <select id="inv-f-modality" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Especialidade</label>
+        <select id="inv-f-tier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Lifecycle</label>
+        <select id="inv-lifecycle" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">Todo lifecycle</option>
+          <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
+          <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
+          <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
+        </select>
+      </div>
+      <div style="grid-column:span 2;">
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
+        <input id="inv-f-search" class="form-input" placeholder="nome / SKU / referência" style="margin-top:4px;background:white;color:#1d1d1f;">
+      </div>
+      <div style="display:flex;align-items:end;gap:6px;">
+        <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;height:38px;"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
+        <button type="button" id="inv-filter" style="flex:1;padding:9px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;height:38px;">🔎 Buscar</button>
+        <button type="button" id="inv-clear" title="Limpar" style="padding:9px 10px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;cursor:pointer;height:38px;">✕</button>
+      </div>
     </div>
-    <!-- Compat: hidden inputs alimentados pela PSBar -->
+
+    <!-- Compat: hidden inputs antigos (mantidos pra retrocompat) -->
     <input type="hidden" id="inv-brand">
     <input type="hidden" id="inv-category">
     <div id="inv-list-wrap"></div>
@@ -7827,16 +7869,39 @@ async function initInventoryTab() {
     _invInit = true;
     document.getElementById('inv-refresh').onclick = () => { loadInvDashboard(); loadInvProducts(); };
     document.getElementById('inv-filter').onclick = loadInvProducts;
-    // PSBar padronizada — alimenta inv-brand/inv-category (hidden) e dispara busca
-    if (window.PSBar) {
-      await PSBar.mount('inv', 'psbar-inv', {
-        onSearch: (f) => {
-          document.getElementById('inv-brand').value = f.brand || '';
-          document.getElementById('inv-category').value = f.category || '';
-          loadInvProducts();
-        },
-      });
-    }
+
+    // Popula selects de filtros (marca/fornecedor/modalidade/especialidade) via form-options
+    try {
+      const fopts = await api('/admin/catalog/form-options');
+      const pop = (id, items, valFn, labelFn) => {
+        const sel = document.getElementById(id);
+        (items || []).forEach(it => {
+          const v = typeof valFn === 'function' ? valFn(it) : (typeof it === 'string' ? it : it.value);
+          const t = typeof labelFn === 'function' ? labelFn(it) : (typeof it === 'string' ? it : (it.label || it.value));
+          if (!v) return;
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = t;
+          sel.appendChild(opt);
+        });
+      };
+      pop('inv-f-brand', fopts.brands);
+      pop('inv-f-supplier', fopts.suppliers, s => s.cnpj || s.id, s => s.companyName);
+      const allMods = ['Corrida','Caminhada','LifeStyle','Recuperação Muscular','Musculação/Crossfit','Sapatilha','Sandálias','StreetWear','Futsal','Society','Campo'];
+      allMods.forEach(m => { const o = document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('inv-f-modality').appendChild(o); });
+      const allTiers = ['Iniciante','Casual','Confortável','Custo Benefício','Treino','Treino de Força','Profissional','Premium','Super Tênis','Super Trail','Super Leve','Super Amortecimento','Super Treino','Trail','Caminhada','Clássico','Sapatilha de Treino'];
+      allTiers.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('inv-f-tier').appendChild(o); });
+    } catch (e) { console.warn('[inv] form-options falhou', e); }
+
+    // Buscar quando Enter no campo de texto
+    document.getElementById('inv-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadInvProducts(); });
+    // Limpar
+    document.getElementById('inv-clear').onclick = () => {
+      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-gender','inv-f-modality','inv-f-tier','inv-lifecycle'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('inv-f-search').value = '';
+      document.getElementById('inv-lowstock').checked = false;
+      loadInvProducts();
+    };
+
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
       const r = await api('/admin/inventory/reclassify', 'POST', {});
@@ -7867,23 +7932,27 @@ async function loadInvProducts() {
   const wrap = document.getElementById('inv-list-wrap');
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   const qs = new URLSearchParams();
-  const brand = document.getElementById('inv-brand').value.trim();
-  const category = document.getElementById('inv-category').value.trim();
+  const brand = document.getElementById('inv-f-brand').value.trim();
+  const category = document.getElementById('inv-f-category').value.trim();
+  const supplier = document.getElementById('inv-f-supplier').value.trim();
+  const gender = document.getElementById('inv-f-gender').value.trim();
+  const modality = document.getElementById('inv-f-modality').value.trim();
+  const tier = document.getElementById('inv-f-tier').value.trim();
+  const search = document.getElementById('inv-f-search').value.trim();
   const lifecycleStatus = document.getElementById('inv-lifecycle').value;
   const lowStock = document.getElementById('inv-lowstock').checked;
   if (brand) qs.set('brand', brand);
   if (category) qs.set('category', category);
+  if (supplier) qs.set('supplier', supplier);
+  if (gender) qs.set('gender', gender);
+  if (modality) qs.set('modality', modality);
+  if (tier) qs.set('tier', tier);
+  if (search) qs.set('search', search);
   if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
   if (lowStock) qs.set('lowStock', 'true');
-  // Filtros extras da PSBar: mandados direto pro backend
-  if (window.PSBar) {
-    const f = PSBar.getFilters('inv');
-    if (f.search) qs.set('search', f.search);
-    if (f.supplier) qs.set('supplier', f.supplier);
-    if (f.gender) qs.set('gender', f.gender);
-    if (f.modality) qs.set('modality', f.modality);
-    if (f.tier) qs.set('tier', f.tier);
-  }
+  // Espelha pros hidden inputs antigos pra retrocompat
+  document.getElementById('inv-brand').value = brand;
+  document.getElementById('inv-category').value = category;
   const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
   const list = data.products || [];
