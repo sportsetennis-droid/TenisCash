@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521K-2000"></script>
-<script src="/_product-search-bar.js?v=20260521K-2000"></script>
-<script src="/_product-card.js?v=20260521K-2000"></script>
+<script src="/_design-system.js?v=20260521L-2030"></script>
+<script src="/_product-search-bar.js?v=20260521L-2030"></script>
+<script src="/_product-card.js?v=20260521L-2030"></script>
 </head>
 <body>
 
@@ -3221,7 +3221,11 @@ async function catProductSave() {
   else r = await api('/admin/catalog/products', 'POST', body);
   if (r.error) { errEl.innerHTML = '<div class="login-error">' + r.error + '</div>'; return; }
   document.getElementById('cat-product-modal').classList.remove('show');
-  loadCatalogProductsAdmin();
+  // Refresh todos os cards relevantes (qualquer aba aberta vê o produto atualizado)
+  try { if (typeof loadCatalogProductsAdmin === 'function' && document.getElementById('tab-catalog')) loadCatalogProductsAdmin(); } catch {}
+  try { if (typeof loadInvProducts === 'function' && document.getElementById('inv-list-wrap')) loadInvProducts(); } catch {}
+  try { if (typeof loadProductImages === 'function' && document.getElementById('pi-grid')) loadProductImages(); } catch {}
+  try { if (typeof loadCategoriesClassify === 'function' && document.getElementById('cat-classify-grid')) loadCategoriesClassify(); } catch {}
 }
 
 function formatBytes(n) {
