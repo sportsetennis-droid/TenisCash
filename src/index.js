@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -46,6 +47,10 @@ const whatsappRoutes = require('./routes/whatsapp');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
+
+// Compressão gzip — reduz payload da listagem de produtos em ~70%
+// Threshold 1KB pra não desperdiçar CPU em respostas pequenas
+app.use(compression({ threshold: 1024 }));
 
 // Segurança — referrer policy ajustada pra CDNs externos (moovin/vtex/simplo7
 // bloqueiam hotlink quando Referer está vazio). 'strict-origin-when-cross-origin'

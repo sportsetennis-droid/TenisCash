@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521D-1530"></script>
-<script src="/_product-search-bar.js?v=20260521D-1530"></script>
-<script src="/_product-card.js?v=20260521D-1530"></script>
+<script src="/_design-system.js?v=20260521E-1610"></script>
+<script src="/_product-search-bar.js?v=20260521E-1610"></script>
+<script src="/_product-card.js?v=20260521E-1610"></script>
 </head>
 <body>
 
@@ -7958,31 +7958,59 @@ async function loadInvProducts() {
   const list = data.products || [];
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
 
-  // Usa PCard padronizado + adiciona badge de lifecycle no fim de cada card via post-processing
+  if (!window.PCard) { wrap.innerHTML = '<div class="muted">PCard não carregado</div>'; return; }
+  // Renderiza em chunks pra não travar o navegador com 7k+ cards
   const lcColors = {
     NEW: '#0066cc', NORMAL_TURNOVER: '#0a843d', FAST_TURNOVER: '#0a843d',
     SLOW_TURNOVER: '#b06b00', STUCK: '#d70015', SOLD_OUT: '#8e8e93',
     CLEARANCE: '#E5571E', REBUY: '#0066cc', DO_NOT_REBUY: '#d70015',
   };
-  wrap.innerHTML = (window.PCard
-    ? PCard.renderGrid(list, { actions: 'admin' })
-    : '<div class="muted">PCard não carregado</div>');
-  // Injeta badge de lifecycle dentro de cada card
-  list.forEach(p => {
+
+  const TOTAL = list.length;
+  const CHUNK = 60;
+  // Cabeçalho com contador
+  const headerHtml = `<div style="font-size:12px;color:#8e8e93;margin-bottom:8px;"><strong>${TOTAL}</strong> produto${TOTAL===1?'':'s'} encontrado${TOTAL===1?'':'s'}<span id="inv-loading-tail" style="margin-left:8px;color:#E5571E;"></span></div>`;
+  // Container do grid
+  wrap.innerHTML = headerHtml + '<div id="inv-grid-host" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;"></div>';
+  const host = document.getElementById('inv-grid-host');
+  const tail = document.getElementById('inv-loading-tail');
+
+  const injectBadge = (p) => {
     const lc = p.lifecycle?.lifecycleStatus;
     if (!lc) return;
     const days = p.lifecycle?.daysInStock;
     const lcColor = lcColors[lc] || '#8e8e93';
-    const cardId = 'pcrsl-' + p.id;
-    const card = document.getElementById(cardId)?.parentElement;
+    const card = document.getElementById('pcrsl-' + p.id)?.parentElement;
     if (!card) return;
     const body = card.querySelector('div[style*="padding:14px"]');
     if (!body) return;
     const badge = document.createElement('div');
     badge.style.cssText = 'display:flex;justify-content:space-between;font-size:11px;margin-top:auto;padding-top:6px;';
-    badge.innerHTML = `<span style="color:${lcColor};font-weight:700;background:${lcColor}20;padding:3px 8px;border-radius:6px;">${escapeHtml(lc)}</span><span style="color:var(--text2);">${days != null ? days + ' dias' : ''}</span>`;
+    badge.innerHTML = `<span style="color:${lcColor};font-weight:700;background:${lcColor}20;padding:3px 8px;border-radius:6px;">${escapeHtml(lc)}</span><span style="color:#8e8e93;">${days != null ? days + ' dias' : ''}</span>`;
     body.appendChild(badge);
-  });
+  };
+
+  let cursor = 0;
+  function renderChunk() {
+    const slice = list.slice(cursor, cursor + CHUNK);
+    if (!slice.length) { tail.textContent = ''; return; }
+    // PCard.renderGrid embrulha em div com grid; aqui só queremos os cards
+    const tmp = document.createElement('div');
+    tmp.innerHTML = PCard.renderGrid(slice, { actions: 'admin' });
+    const inner = tmp.firstElementChild;
+    if (inner) {
+      while (inner.firstChild) host.appendChild(inner.firstChild);
+    }
+    slice.forEach(injectBadge);
+    cursor += slice.length;
+    if (cursor < TOTAL) {
+      tail.textContent = `· carregando ${cursor}/${TOTAL}…`;
+      requestAnimationFrame(renderChunk);
+    } else {
+      tail.textContent = '';
+    }
+  }
+  renderChunk();
 }
 
 // ==================== MARKUP & PREÇOS ====================
