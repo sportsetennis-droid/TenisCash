@@ -663,6 +663,33 @@ async function findOrCreateCategory(connection, name) {
   }
 }
 
+// Versão hierárquica — match exige nome E parentId iguais.
+// Cria com parent se não existir. Permite que 'LifeStyle' apareça sob
+// Feminino/Homem/Menina/Menino sem colidir.
+async function findOrCreateCategoryWithParent(connection, name, parentId) {
+  if (!name) return null;
+  const cats = await loadNsCategories(connection);
+  const target = normalize(name);
+  // Match por nome E mesmo parent (parentId null se for raiz)
+  let match = cats.find((c) => normalize(c.name) === target && (c.parentId || null) === (parentId || null));
+  if (match) return match.id;
+  // Se não tem parent e existe categoria com mesmo nome em qualquer nível → reusa raiz se possível
+  if (!parentId) {
+    match = cats.find((c) => normalize(c.name) === target && !c.parentId);
+    if (match) return match.id;
+  }
+  try {
+    const body = { name: ptObj(name) };
+    if (parentId) body.parent = parentId;
+    const created = await ns.nuvemshopApi(connection, 'POST', '/categories', body);
+    _nsCategoryCache.push({ id: created.id, name, parentId: parentId || null, handle: created.handle });
+    return created.id;
+  } catch (err) {
+    await logSync('category', 'error', `Falha criar categoria "${name}" (parent=${parentId}): ${err.message}`);
+    return null;
+  }
+}
+
 function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   // opts.mode: 'create' (default) inclui variants; 'update' omite (NS rejeita variants em PUT)
   const mode = opts.mode || 'create';
@@ -719,6 +746,8 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
       localProduct.category,
       localProduct.subcategory,
       opts.gender,
+      opts.modality,
+      opts.tier,
       ...(Array.isArray(opts.extraTags) ? opts.extraTags : []),
     ]
       .filter(Boolean)
@@ -808,13 +837,27 @@ async function pushProductToNuvemshop(localProductId, connection) {
     if (Array.isArray(aiMapping.tags)) aiTags = aiMapping.tags;
     if (aiMapping.gender) aiGender = aiMapping.gender;
   } else {
+    // Constrói cadeia HIERÁRQUICA: Categoria > Subcategoria > Modalidade > Especialidade
+    // Cada nível tem como pai o nó anterior, evitando colisão de nomes
+    // (ex: 'LifeStyle' sob Feminino vs Homem vs Menina vs Menino).
+    const modality = aiCtx?.classification?.modality || null;
+    const tier = aiCtx?.classification?.tier || null;
+    let parentId = null;
     if (product.category) {
-      const catId = await findOrCreateCategory(connection, product.category);
-      if (catId) categoryIds.push(catId);
+      const catId = await findOrCreateCategoryWithParent(connection, product.category, null);
+      if (catId) { categoryIds.push(catId); parentId = catId; }
     }
-    if (product.subcategory) {
-      const subId = await findOrCreateCategory(connection, product.subcategory);
-      if (subId && !categoryIds.includes(subId)) categoryIds.push(subId);
+    if (product.subcategory && parentId) {
+      const subId = await findOrCreateCategoryWithParent(connection, product.subcategory, parentId);
+      if (subId) { categoryIds.push(subId); parentId = subId; }
+    }
+    if (modality && parentId) {
+      const modId = await findOrCreateCategoryWithParent(connection, modality, parentId);
+      if (modId) { categoryIds.push(modId); parentId = modId; }
+    }
+    if (tier && parentId) {
+      const tierId = await findOrCreateCategoryWithParent(connection, tier, parentId);
+      if (tierId) { categoryIds.push(tierId); }
     }
   }
 
@@ -824,7 +867,9 @@ async function pushProductToNuvemshop(localProductId, connection) {
   if (existingMapping) {
     // UPDATE — payload SEM variants (NS rejeita variants em PUT)
     const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
-      categoryIds, extraTags: aiTags, gender: aiGender, mode: 'update',
+      categoryIds, extraTags: aiTags, gender: aiGender,
+      modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
+      mode: 'update',
     });
     nsProduct = await ns.nuvemshopApi(
       connection,
@@ -841,7 +886,9 @@ async function pushProductToNuvemshop(localProductId, connection) {
     action = 'updated';
   } else {
     const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
-      categoryIds, extraTags: aiTags, gender: aiGender, mode: 'create',
+      categoryIds, extraTags: aiTags, gender: aiGender,
+      modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
+      mode: 'create',
     });
     nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
     await prisma.nuvemshopProductMapping.create({
