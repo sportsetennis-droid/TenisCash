@@ -74,10 +74,17 @@ router.get('/products', async (req, res) => {
       ...(brand ? { brand: { equals: String(brand), mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: String(category), mode: 'insensitive' } } : {}),
       ...(subcategory ? { subcategory: { equals: String(subcategory), mode: 'insensitive' } } : {}),
+      // Busca livre: nome, SKU, marca, categoria, subcategoria + modalidade/especialidade (JSON)
       ...(search ? {
         OR: [
           { name: { contains: String(search), mode: 'insensitive' } },
           { sku: { contains: String(search), mode: 'insensitive' } },
+          { brand: { contains: String(search), mode: 'insensitive' } },
+          { category: { contains: String(search), mode: 'insensitive' } },
+          { subcategory: { contains: String(search), mode: 'insensitive' } },
+          { aiContext: { path: ['classification', 'modality'], string_contains: String(search) } },
+          { aiContext: { path: ['classification', 'tier'], string_contains: String(search) } },
+          { aiContext: { path: ['supplierRef'], string_contains: String(search) } },
         ],
       } : {}),
       ...(jsonFilters.length ? { AND: jsonFilters } : {}),

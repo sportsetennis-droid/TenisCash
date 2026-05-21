@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521L-2030"></script>
-<script src="/_product-search-bar.js?v=20260521L-2030"></script>
-<script src="/_product-card.js?v=20260521L-2030"></script>
+<script src="/_design-system.js?v=20260521M-2100"></script>
+<script src="/_product-search-bar.js?v=20260521M-2100"></script>
+<script src="/_product-card.js?v=20260521M-2100"></script>
 </head>
 <body>
 
@@ -1349,7 +1349,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </div>
       <div style="grid-column:span 2;">
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
-        <input id="inv-f-search" class="form-input" placeholder="nome / SKU / referência" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <input id="inv-f-search" class="form-input" placeholder="nome / SKU / REF / marca / categoria / modalidade / especialidade" style="margin-top:4px;background:white;color:#1d1d1f;">
       </div>
       <div style="display:flex;align-items:end;gap:6px;">
         <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;height:38px;"><input type="checkbox" id="inv-lowstock"> Só baixo estoque</label>
@@ -7524,10 +7524,16 @@ function _filteredCatProducts() {
     }
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
+      const mod = (cls.modality || '').toLowerCase();
+      const ti = (cls.tier || '').toLowerCase();
       if (!(p.name || '').toLowerCase().includes(search)
           && !(p.sku || '').toLowerCase().includes(search)
           && !ref.includes(search)
-          && !(p.brand || '').toLowerCase().includes(search)) return false;
+          && !(p.brand || '').toLowerCase().includes(search)
+          && !(p.category || '').toLowerCase().includes(search)
+          && !(p.subcategory || '').toLowerCase().includes(search)
+          && !mod.includes(search)
+          && !ti.includes(search)) return false;
     }
     return true;
   });
