@@ -29,6 +29,21 @@ router.get('/summary', async (_req, res) => {
       where: { active: true, cnpj: { not: null } },
       orderBy: { companyName: 'asc' },
     });
+
+    // Agrega unidades reais compradas via NFe entrada, agrupado por CNPJ emissor
+    const nfeAgg = await prisma.$queryRaw`
+      SELECT d."issuerCnpj" as cnpj,
+             sum(i.quantity)::float as units,
+             sum(i."totalValue")::float as value,
+             count(i.id)::int as lines,
+             count(DISTINCT d.id)::int as nfes
+      FROM "XmlFiscalItem" i
+      JOIN "XmlFiscalDocument" d ON i."fiscalDocumentId"=d.id
+      WHERE d."docType"='entrada' AND d."issuerCnpj" IS NOT NULL
+      GROUP BY d."issuerCnpj"
+    `;
+    const nfeMap = Object.fromEntries(nfeAgg.map(r => [r.cnpj, r]));
+
     const rows = [];
     for (const s of suppliers) {
       const where = {
@@ -44,6 +59,7 @@ router.get('/summary', async (_req, res) => {
           where,
         }),
       ]);
+      const nfe = nfeMap[s.cnpj] || {};
       rows.push({
         supplierId: s.id,
         cnpj: s.cnpj,
@@ -54,6 +70,11 @@ router.get('/summary', async (_req, res) => {
         withPrice,
         avgCost: agg._avg.costPrice,
         avgPrice: agg._avg.price,
+        // Unidades reais compradas via NFe entrada
+        unitsBought: nfe.units || 0,
+        purchaseValue: nfe.value || 0,
+        nfeLines: nfe.lines || 0,
+        nfeCount: nfe.nfes || 0,
       });
     }
     res.json({ suppliers: rows });

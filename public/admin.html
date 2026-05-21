@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520k-1841"></script>
-<script src="/_product-search-bar.js?v=20260520k-1841"></script>
-<script src="/_product-card.js?v=20260520k-1841"></script>
+<script src="/_design-system.js?v=20260520L-2225"></script>
+<script src="/_product-search-bar.js?v=20260520L-2225"></script>
+<script src="/_product-card.js?v=20260520L-2225"></script>
 </head>
 <body>
 
@@ -6600,6 +6600,7 @@ async function loadSuppliers() {
   list.forEach(s => {
     const mk = (s.cnpj && mkMap[s.cnpj]) || {};
     const productCount = mk.productCount || 0;
+    const unitsBought = Math.round(mk.unitsBought || 0);
     const avgCost = mk.avgCost != null ? Number(mk.avgCost).toFixed(2) : '—';
     const markupVal = s.averageMarkup != null ? Number(s.averageMarkup).toFixed(0) + '%' : null;
     const safeId = escapeHtml(s.id);
@@ -6620,10 +6621,13 @@ async function loadSuppliers() {
     } else {
       html += '<div style="font-size:11px;color:#d70015;font-style:italic;">⚠ Sem marca vinculada</div>';
     }
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Produtos</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (productCount || '—') + '</div></div>';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Custo méd.</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;">' + (avgCost !== '—' ? 'R$ ' + avgCost : '—') + '</div></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Unidades</div><div style="font-size:14px;font-weight:700;color:#1d1d1f;margin-top:2px;" title="Unidades reais compradas em NFes entrada">' + (unitsBought ? unitsBought.toLocaleString('pt-BR') : '—') + '<span style="font-size:9px;color:#8e8e93;font-weight:500;margin-left:4px;">(' + productCount + ' refs)</span></div></div>';
     html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Markup</div><div style="font-size:14px;font-weight:700;color:' + (markupVal ? '#E5571E' : '#d70015') + ';margin-top:2px;">' + (markupVal || '—') + '</div></div>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:6px;">';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">Custo méd.</div><div style="font-size:13px;font-weight:600;color:#1d1d1f;margin-top:2px;">' + (avgCost !== '—' ? 'R$ ' + avgCost : '—') + '</div></div>';
+    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;letter-spacing:0.5px;">NFes</div><div style="font-size:13px;font-weight:600;color:#1d1d1f;margin-top:2px;">' + (mk.nfeCount || '—') + '</div></div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:4px;">';
     if (s.cnpj) html += '<button onclick="supplierSetMarkup(\'' + safeId + '\',\'' + safeCnpj + '\',\'' + escapeHtml(s.companyName).replace(/'/g,"\\\\'") + '\',\'' + (s.averageMarkup||'') + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;">' + (s.averageMarkup != null ? '✏️ Markup' : '➕ Markup') + '</button>';
