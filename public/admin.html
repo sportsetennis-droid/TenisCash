@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521I-1850"></script>
-<script src="/_product-search-bar.js?v=20260521I-1850"></script>
-<script src="/_product-card.js?v=20260521I-1850"></script>
+<script src="/_design-system.js?v=20260521J-1920"></script>
+<script src="/_product-search-bar.js?v=20260521J-1920"></script>
+<script src="/_product-card.js?v=20260521J-1920"></script>
 </head>
 <body>
 
@@ -7431,6 +7431,11 @@ async function initCategoriesTab() {
     document.getElementById('cat-apply-mod').addEventListener('change', _catApplyCascade);
     document.getElementById('cat-apply-spec').addEventListener('change', _catApplyCascade);
     document.getElementById('cat-apply-btn').addEventListener('click', _catApplyClassification);
+    // SYNC: quando muda os filtros do topo, popula o painel Aplicar automaticamente
+    ['cat-classify-category','cat-classify-subcategory','cat-classify-modality','cat-classify-tier'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', _catSyncFilterToApply);
+    });
     document.getElementById('cat-select-all-page').addEventListener('click', () => {
       _filteredCatProducts().forEach(p => _catClassifySelected.add(p.id));
       renderCatClassifyGrid();
@@ -7581,6 +7586,69 @@ function _catPopulateSelectOptions(sel, items, valOf, labelOf) {
     opt.textContent = labelOf ? labelOf(it) : it.name;
     sel.appendChild(opt);
   });
+}
+
+// Resolve filtros do topo (nomes) → IDs do CategoryNode, populando os selects do painel Aplicar
+function _catSyncFilterToApply() {
+  if (!Array.isArray(_catTreeFlat) || !_catTreeFlat.length) return;
+  const catName = document.getElementById('cat-classify-category')?.value || '';
+  const subName = document.getElementById('cat-classify-subcategory')?.value || '';
+  const modName = document.getElementById('cat-classify-modality')?.value || '';
+  const tierName = document.getElementById('cat-classify-tier')?.value || '';
+
+  const $cat = document.getElementById('cat-apply-category');
+  const $sub = document.getElementById('cat-apply-sub');
+  const $mod = document.getElementById('cat-apply-mod');
+  const $spec = document.getElementById('cat-apply-spec');
+
+  // 1) Categoria
+  if (catName) {
+    const catNode = _catTreeFlat.find(n => n.level === 'CATEGORY' && n.name === catName);
+    if (catNode) {
+      $cat.value = catNode.id;
+      _catPopulateSelectOptions($sub, _catChildrenOf(catNode.id));
+      $sub.disabled = false;
+    }
+  } else {
+    $cat.value = '';
+    _catPopulateSelectOptions($sub, []); $sub.disabled = true;
+    _catPopulateSelectOptions($mod, []); $mod.disabled = true;
+    _catPopulateSelectOptions($spec, []); $spec.disabled = true;
+  }
+
+  // 2) Subcategoria
+  if (subName && $cat.value) {
+    const subNode = _catTreeFlat.find(n => n.level === 'SUBCATEGORY' && n.name === subName && n.parent && n.parent.id === $cat.value);
+    if (subNode) {
+      $sub.value = subNode.id;
+      _catPopulateSelectOptions($mod, _catChildrenOf(subNode.id));
+      $mod.disabled = false;
+    }
+  }
+
+  // 3) Modalidade
+  if (modName && $sub.value) {
+    const modNode = _catTreeFlat.find(n => n.level === 'MODALITY' && n.name === modName && n.parent && n.parent.id === $sub.value);
+    if (modNode) {
+      $mod.value = modNode.id;
+      _catPopulateSelectOptions($spec, _catChildrenOf(modNode.id));
+      $spec.disabled = false;
+    }
+  }
+
+  // 4) Especialidade
+  if (tierName && $mod.value) {
+    const specNode = _catTreeFlat.find(n => n.level === 'SPECIALTY' && n.name === tierName && n.parent && n.parent.id === $mod.value);
+    if (specNode) $spec.value = specNode.id;
+  }
+
+  // Atualiza info do botão
+  const info = document.getElementById('cat-apply-info');
+  if (info) {
+    const path = [catName, subName, modName, tierName].filter(Boolean).join(' › ');
+    if (path) info.textContent = `Vai aplicar: ${path} em ${_catClassifySelected.size} produto(s).`;
+    else info.textContent = 'Selecione filtros acima ou escolha aqui o que aplicar.';
+  }
 }
 
 function _catApplyCascade() {
