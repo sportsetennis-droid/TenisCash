@@ -1,14 +1,13 @@
 // =====================================================================
-// seed-category-tree.js — cria a árvore inicial de categorias
+// seed-category-tree.js — arvore oficial v2 (ARQUITETURA DE CATEGORIAS.txt)
 // =====================================================================
-// Baseado no arquivo ARQUITETURA DE CATEGORIAS.txt do Douglas.
-// Estrutura: CATEGORY → SUBCATEGORY → MODALITY → SPECIALTY
-//
-// Idempotente: pula nó se já existe com mesmo (parentId, name, level).
+// Wipe + re-seed completo. Idempotente em re-runs.
+// Estrutura: CATEGORY -> SUBCATEGORY -> MODALITY -> SPECIALTY
+// Nivel SUBCATEGORY identifica genero (Feminino/Homem/Menina/Menino/Mulher/Tamanhos).
 // =====================================================================
 try {
   const env = require('fs').readFileSync('.env', 'utf8');
-  env.split('\n').forEach(l => {
+  env.split(/\r?\n/).forEach(l => {
     const m = l.match(/^([^=#]+)=(.*)$/);
     if (m) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '');
   });
@@ -17,105 +16,113 @@ try {
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Árvore literal (espelho do txt do Douglas)
+// Subramos comuns reutilizados
+const TENIS_ADULT_MODS = [
+  ['Corrida', ['Iniciante', 'Caminhada', 'Custo Benefício', 'Confortável', 'Trail', 'Super Amortecimento', 'Super Leve', 'Super Treino', 'Super Tênis', 'Super Trail']],
+  ['LifeStyle', ['Casual', 'Clássico', 'Premium']],
+  ['Musculação/Crossfit', ['Sapatilha de Treino', 'Treino Leve', 'Treino de Força', 'Treino Pro']],
+  ['Recuperação Muscular', []],
+  ['StreetWear', []],
+  ['Sandálias', []],
+];
+const TENIS_KID_MODS = [
+  ['LifeStyle', ['Casual', 'Clássico']], // 'Causal' do .txt corrigido pra 'Casual' (confirmado pelo Douglas)
+];
+const CHUTEIRA_MODS = [
+  ['Futsal', ['Iniciante', 'Treino', 'Profissional']],
+  ['Society', ['Iniciante', 'Treino', 'Profissional']],
+  ['Campo', ['Iniciante', 'Treino', 'Profissional']],
+];
+const ACESSORIOS_FULL = [
+  ['Meias', ['invisível', 'cano curto', 'cano médio', 'cano longo']],
+  ['Joelheira', []],
+  ['Cotoveleira', []],
+];
+const ACESSORIOS_MEIAS_ONLY = [
+  ['Meias', ['invisível', 'cano curto', 'cano médio', 'cano longo']],
+];
+
+// Arvore literal v2
 const TREE = [
   ['Tênis', [
     ['Tamanhos', []],
-    ['Feminino', [
-      ['Corrida', ['Iniciante', 'Caminhada', 'Custo Benefício', 'Confortável', 'Trail', 'Super Amortecimento', 'Super Leve', 'Super Treino', 'Super Tênis', 'Super Trail']],
-      ['LifeStyle', ['Casual', 'Clássico', 'Premium']],
-      ['Musculação/Crossfit', ['Sapatilha de Treino', 'Treino Leve', 'Treino de Força', 'Treino Pro']],
-      ['Recuperação Muscular', []],
-      ['StreetWear', []],
-      ['Sandálias', []],
-    ]],
-    ['Homem', [
-      ['Corrida', ['Iniciante', 'Caminhada', 'Custo Benefício', 'Confortável', 'Trail', 'Super Amortecimento', 'Super Leve', 'Super Treino', 'Super Tênis', 'Super Trail']],
-      ['LifeStyle', ['Casual', 'Clássico', 'Premium']],
-      ['Musculação/Crossfit', ['Sapatilha de Treino', 'Treino Leve', 'Treino de Força', 'Treino Pro']],
-      ['Recuperação Muscular', []],
-      ['StreetWear', []],
-      ['Sandálias', []],
-    ]],
-    ['Menina', [
-      ['LifeStyle', ['Casual', 'Clássico']],
-    ]],
-    ['Menino', [
-      ['LifeStyle', ['Casual', 'Clássico']],
-    ]],
+    ['Feminino', TENIS_ADULT_MODS],
+    ['Homem', TENIS_ADULT_MODS],
+    ['Menina', TENIS_KID_MODS],
+    ['Menino', TENIS_KID_MODS],
   ]],
   ['Chuteiras', [
     ['Tamanhos', []],
-    ['Homem', [
-      ['Futsal', ['Iniciante', 'Treino', 'Profissional']],
-      ['Society', ['Iniciante', 'Treino', 'Profissional']],
-      ['Campo', ['Iniciante', 'Treino', 'Profissional']],
-    ]],
-    ['Menino', [
-      ['Futsal', ['Iniciante', 'Treino', 'Profissional']],
-      ['Society', ['Iniciante', 'Treino', 'Profissional']],
-      ['Campo', ['Iniciante', 'Treino', 'Profissional']],
-    ]],
+    ['Homem', CHUTEIRA_MODS],
+    ['Menino', CHUTEIRA_MODS],
   ]],
   ['Vestuário', [
     ['Tamanhos', []],
-    ['Mulher', []],
-    ['Homem', []],
+    ['Mulher', [
+      ['Legging', []], ['Short', []], ['Bermuda', []], ['Saia', []],
+      ['Top', []], ['Camiseta', []], ['Regata', []],
+    ]],
+    ['Homem', [
+      ['Camiseta', []], ['Regata', []], ['Bermuda', []], ['Short', []], ['Calça', []],
+    ]],
+    ['Menina', []],
+    ['Menino', []],
   ]],
   ['Acessórios', [
-    ['Tamanhos', []],
-    ['Mulher', []],
-    ['Homem', []],
+    ['Tamanho', []],
+    ['Mulher', ACESSORIOS_FULL],
+    ['Homem', ACESSORIOS_FULL],
+    ['Menina', ACESSORIOS_MEIAS_ONLY],
+    ['Menino', ACESSORIOS_MEIAS_ONLY],
   ]],
   ['Dropper', []],
 ];
 
-async function ensure(parentId, name, level, position) {
-  // Idempotente: busca primeiro
-  const existing = await prisma.categoryNode.findFirst({
-    where: { parentId: parentId || null, name, level },
-  });
-  if (existing) return existing;
-  return prisma.categoryNode.create({
-    data: { parentId: parentId || null, name, level, position },
-  });
-}
+(async () => {
+  console.log('\n=== Wipe + seed CategoryNode (arvore v2) ===');
 
-async function walk(node, parentId, level) {
-  const [name, children] = Array.isArray(node) ? node : [node, []];
-  // children pode ser array de strings (folhas) ou array aninhado
-  const created = await ensure(parentId, name, level, 0);
-  if (!Array.isArray(children) || children.length === 0) return;
+  const before = await prisma.categoryNode.count();
+  await prisma.categoryNode.deleteMany({});
+  console.log('Removidos:', before, 'nos antigos');
 
-  const nextLevel = nextLevelOf(level);
-  for (let i = 0; i < children.length; i++) {
-    const c = children[i];
-    if (typeof c === 'string') {
-      await ensure(created.id, c, nextLevel, i);
-    } else {
-      await walk(c, created.id, nextLevel);
+  let created = 0;
+  async function insert(name, level, parentId) {
+    const node = await prisma.categoryNode.create({ data: { name, level, parentId } });
+    created++;
+    return node;
+  }
+
+  for (const [catName, subs] of TREE) {
+    const cat = await insert(catName, 'CATEGORY', null);
+    if (!Array.isArray(subs) || !subs.length) continue;
+    for (const subEntry of subs) {
+      if (typeof subEntry === 'string') {
+        await insert(subEntry, 'SUBCATEGORY', cat.id);
+        continue;
+      }
+      const [subName, mods] = subEntry;
+      const sub = await insert(subName, 'SUBCATEGORY', cat.id);
+      if (!Array.isArray(mods) || !mods.length) continue;
+      for (const modEntry of mods) {
+        if (typeof modEntry === 'string') {
+          await insert(modEntry, 'MODALITY', sub.id);
+          continue;
+        }
+        const [modName, specs] = modEntry;
+        const mod = await insert(modName, 'MODALITY', sub.id);
+        if (!Array.isArray(specs)) continue;
+        for (const specName of specs) {
+          await insert(specName, 'SPECIALTY', mod.id);
+        }
+      }
     }
   }
-}
 
-function nextLevelOf(level) {
-  if (level === 'CATEGORY') return 'SUBCATEGORY';
-  if (level === 'SUBCATEGORY') return 'MODALITY';
-  if (level === 'MODALITY') return 'SPECIALTY';
-  return 'SPECIALTY';
-}
+  console.log('Criados:', created, 'nos novos');
 
-(async () => {
-  console.log('Seed da árvore de categorias...');
-  for (let i = 0; i < TREE.length; i++) {
-    await walk(TREE[i], null, 'CATEGORY');
-  }
-  const total = await prisma.categoryNode.count();
-  console.log('✓ árvore criada. Total nós:', total);
-  // Mostra resumo
-  const byLevel = await prisma.$queryRaw`
-    SELECT level, COUNT(*)::int qty FROM "CategoryNode" GROUP BY level ORDER BY
-      CASE level WHEN 'CATEGORY' THEN 1 WHEN 'SUBCATEGORY' THEN 2 WHEN 'MODALITY' THEN 3 ELSE 4 END`;
-  byLevel.forEach(r => console.log('  ' + r.level + ':', r.qty));
+  const stats = await prisma.$queryRaw`SELECT level, count(*)::int as c FROM "CategoryNode" GROUP BY level ORDER BY 1`;
+  console.log('\nResumo por nivel:');
+  stats.forEach(s => console.log('  ' + s.level + ': ' + s.c));
+
   await prisma.$disconnect();
-})().catch(async (e) => { console.error('ERRO:', e); await prisma.$disconnect(); process.exit(1); });
+})().catch(async e => { console.error('FATAL:', e); await prisma.$disconnect(); process.exit(1); });

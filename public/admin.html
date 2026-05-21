@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521G-1720"></script>
-<script src="/_product-search-bar.js?v=20260521G-1720"></script>
-<script src="/_product-card.js?v=20260521G-1720"></script>
+<script src="/_design-system.js?v=20260521H-1810"></script>
+<script src="/_product-search-bar.js?v=20260521H-1810"></script>
+<script src="/_product-card.js?v=20260521H-1810"></script>
 </head>
 <body>
 
@@ -7407,10 +7407,21 @@ async function initCategoriesTab() {
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
-    // Popula Modalidade e Especialidade (mesmas listas do Estoque)
-    const _catMods = ['Corrida','Caminhada','LifeStyle','Recuperação Muscular','Musculação/Crossfit','Sapatilha','Sandálias','StreetWear','Futsal','Society','Campo'];
+    // Popula Modalidade e Especialidade — arvore v2 (mesma do Estoque)
+    const _catMods = [
+      'Corrida','LifeStyle','Musculação/Crossfit','Recuperação Muscular','StreetWear','Sandálias',
+      'Futsal','Society','Campo',
+      'Legging','Short','Bermuda','Saia','Top','Camiseta','Regata','Calça',
+      'Meias','Joelheira','Cotoveleira',
+    ];
     _catMods.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('cat-classify-modality').appendChild(o); });
-    const _catTiers = ['Iniciante','Casual','Confortável','Custo Benefício','Treino','Treino de Força','Profissional','Premium','Super Tênis','Super Trail','Super Leve','Super Amortecimento','Super Treino','Trail','Caminhada','Clássico','Sapatilha de Treino'];
+    const _catTiers = [
+      'Iniciante','Caminhada','Custo Benefício','Confortável','Trail','Super Amortecimento','Super Leve','Super Treino','Super Tênis','Super Trail',
+      'Casual','Clássico','Premium',
+      'Sapatilha de Treino','Treino Leve','Treino de Força','Treino Pro',
+      'Treino','Profissional',
+      'invisível','cano curto','cano médio','cano longo',
+    ];
     _catTiers.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('cat-classify-tier').appendChild(o); });
     // Selects encadeados
     document.getElementById('cat-apply-category').addEventListener('change', _catApplyCascade);
@@ -7929,9 +7940,31 @@ async function initInventoryTab() {
       };
       pop('inv-f-brand', fopts.brands);
       pop('inv-f-supplier', fopts.suppliers, s => s.cnpj || s.id, s => s.companyName);
-      const allMods = ['Corrida','Caminhada','LifeStyle','Recuperação Muscular','Musculação/Crossfit','Sapatilha','Sandálias','StreetWear','Futsal','Society','Campo'];
+      // Modalidades de TODAS as categorias (arvore v2)
+      const allMods = [
+        // Tênis
+        'Corrida','LifeStyle','Musculação/Crossfit','Recuperação Muscular','StreetWear','Sandálias',
+        // Chuteiras
+        'Futsal','Society','Campo',
+        // Vestuário
+        'Legging','Short','Bermuda','Saia','Top','Camiseta','Regata','Calça',
+        // Acessórios
+        'Meias','Joelheira','Cotoveleira',
+      ];
       allMods.forEach(m => { const o = document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('inv-f-modality').appendChild(o); });
-      const allTiers = ['Iniciante','Casual','Confortável','Custo Benefício','Treino','Treino de Força','Profissional','Premium','Super Tênis','Super Trail','Super Leve','Super Amortecimento','Super Treino','Trail','Caminhada','Clássico','Sapatilha de Treino'];
+      // Especialidades de TODAS as modalidades (arvore v2)
+      const allTiers = [
+        // Tênis Corrida
+        'Iniciante','Caminhada','Custo Benefício','Confortável','Trail','Super Amortecimento','Super Leve','Super Treino','Super Tênis','Super Trail',
+        // Tênis LifeStyle
+        'Casual','Clássico','Premium',
+        // Tênis Musculação/Crossfit
+        'Sapatilha de Treino','Treino Leve','Treino de Força','Treino Pro',
+        // Chuteiras
+        'Treino','Profissional',
+        // Acessórios Meias
+        'invisível','cano curto','cano médio','cano longo',
+      ];
       allTiers.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('inv-f-tier').appendChild(o); });
     } catch (e) { console.warn('[inv] form-options falhou', e); }
 
