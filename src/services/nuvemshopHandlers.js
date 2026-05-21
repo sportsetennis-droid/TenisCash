@@ -732,11 +732,22 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   const seoTitle = `${localProduct.brand || ''} ${localProduct.name}`.trim().slice(0, 70);
   const seoDescription = (description || '').slice(0, 160);
 
+  // Published = produto ativo E classificação completa (category válida + subcategory + modality + tier)
+  // Produtos sem classificação completa ficam ocultos pro cliente na loja online
+  const isFullyClassified = (
+    localProduct.active !== false
+    && localProduct.category
+    && localProduct.category !== 'A CLASSIFICAR'
+    && localProduct.subcategory
+    && opts.modality
+    && opts.tier
+  );
+
   const payload = {
     name: ptObj(localProduct.name),
     description: ptObj(description),
     brand: localProduct.brand || null,
-    published: localProduct.active !== false,
+    published: !!isFullyClassified,
     free_shipping: false,
     attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
     seo_title: ptObj(seoTitle),
