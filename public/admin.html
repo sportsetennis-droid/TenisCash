@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260520L-2225"></script>
-<script src="/_product-search-bar.js?v=20260520L-2225"></script>
-<script src="/_product-card.js?v=20260520L-2225"></script>
+<script src="/_design-system.js?v=20260520M-2240"></script>
+<script src="/_product-search-bar.js?v=20260520M-2240"></script>
+<script src="/_product-card.js?v=20260520M-2240"></script>
 </head>
 <body>
 
@@ -7101,7 +7101,7 @@ async function initProductImagesTab() {
 
 async function loadProductImages() {
   const grid = document.getElementById('pi-grid');
-  grid.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  grid.innerHTML = '<div class="loading-spinner">Carregando todos os produtos ativos...</div>';
   const [fopts, prods] = await Promise.all([
     api('/admin/catalog/form-options'),
     api('/admin/inventory/products'),
@@ -7110,6 +7110,7 @@ async function loadProductImages() {
   _catPopulateSelect(document.getElementById('pi-brand'), fopts.brands || []);
   _catPopulateSelect(document.getElementById('pi-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
   _piProducts = prods.products || [];
+  console.log('[imagens] carregados', _piProducts.length, 'produtos');
   renderProductImages();
 }
 

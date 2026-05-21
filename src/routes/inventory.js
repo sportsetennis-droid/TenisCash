@@ -88,7 +88,8 @@ router.get('/products', async (req, res) => {
           include: { storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } } },
         },
       },
-      take: 500,
+      // Limite alto suficiente pra cobrir todos ativos (~7.6k hoje). Sem cap "silencioso".
+      take: 20000,
       orderBy: { name: 'asc' },
     });
 
