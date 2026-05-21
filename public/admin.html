@@ -174,9 +174,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
-<script src="/_design-system.js?v=20260521J-1920"></script>
-<script src="/_product-search-bar.js?v=20260521J-1920"></script>
-<script src="/_product-card.js?v=20260521J-1920"></script>
+<script src="/_design-system.js?v=20260521K-2000"></script>
+<script src="/_product-search-bar.js?v=20260521K-2000"></script>
+<script src="/_product-card.js?v=20260521K-2000"></script>
 </head>
 <body>
 
@@ -8140,10 +8140,11 @@ async function loadInvProducts() {
   function renderChunk() {
     const slice = list.slice(cursor, cursor + CHUNK);
     if (!slice.length) { tail.textContent = ''; return; }
-    // PCard.renderGrid embrulha em div com grid; aqui só queremos os cards
+    // PCard.renderGrid retorna <p>contador</p><div grid>cards</div>
+    // showCount:false suprime o <p>, então firstElementChild é a div do grid.
     const tmp = document.createElement('div');
-    tmp.innerHTML = PCard.renderGrid(slice, { actions: 'admin' });
-    const inner = tmp.firstElementChild;
+    tmp.innerHTML = PCard.renderGrid(slice, { actions: 'admin', showCount: false });
+    const inner = tmp.querySelector('div'); // a div do grid (única div top-level)
     if (inner) {
       while (inner.firstChild) host.appendChild(inner.firstChild);
     }
