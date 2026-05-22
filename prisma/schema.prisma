@@ -2133,3 +2133,36 @@ model FiscalWebhookLog {
   @@index([externalId])
   @@index([receivedAt])
 }
+
+// =====================================================================
+// CONTAGEM POR BIPE — registro de cada produto bipado em /bipar.html
+// =====================================================================
+// Endpoint público: POST /api/public/stocktake/bipe
+// O vendedor seleciona loja + nome dele, bipa todos os produtos.
+// Cada bipe vira UMA linha aqui. Owner consulta no admin pra cruzar
+// com StoreStock e decidir o que fazer.
+// =====================================================================
+model StocktakeBipe {
+  id              String   @id @default(cuid())
+  barcode         String   // código bipado, exato como veio do leitor
+  storeId         String?  // FK Store (opcional pra resiliencia)
+  sellerId        String?  // FK User (vendedor que bipou)
+  sellerName      String?  // nome legível guardado no momento do bipe (caso seller deletado depois)
+  productId       String?  // FK Product, null se barcode não achou produto
+  productSizeId   String?  // FK ProductSize, null se não achou
+  productName     String?  // snapshot do nome
+  productSize     String?  // snapshot do tamanho
+  productBrand    String?  // snapshot da marca
+  found           Boolean  @default(false) // true se localizou produto no catálogo
+  duplicate       Boolean  @default(false) // true se o barcode existe em >1 produto (ambíguo)
+  ip              String?  // IP de quem bipou (auditoria)
+  userAgent       String?  // browser/dispositivo
+  applied         Boolean  @default(false) // true depois que owner aplicou no StoreStock
+  bipedAt         DateTime @default(now())
+
+  @@index([storeId, bipedAt])
+  @@index([sellerId, bipedAt])
+  @@index([barcode])
+  @@index([productId])
+  @@index([applied, bipedAt])
+}

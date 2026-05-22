@@ -6,214 +6,338 @@
 <title>Contagem por Bipe — Sports & Tennis</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; max-width: 800px; margin: 0 auto; min-height: 100vh; }
-  h1 { font-size: 22px; margin-bottom: 6px; color: #E5571E; }
-  p.sub { font-size: 13px; color: #666; margin-bottom: 18px; }
-  .bipe-box { background: #fff; border: 3px solid #E5571E; border-radius: 14px; padding: 24px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(229,87,30,0.15); }
-  .bipe-box label { display: block; font-size: 12px; letter-spacing: 1px; color: #E5571E; font-weight: 700; margin-bottom: 8px; }
-  #codigo { width: 100%; padding: 18px; font-size: 24px; font-family: 'SF Mono', Monaco, monospace; border: 2px solid #d2d2d7; border-radius: 10px; outline: none; transition: border 0.15s; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; max-width: 900px; margin: 0 auto; min-height: 100vh; }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #E5571E; }
+  p.sub { font-size: 12px; color: #666; margin-bottom: 16px; }
+
+  .setup { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px; border: 1px solid #e5e5ea; }
+  .setup-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .setup label { display: block; font-size: 11px; letter-spacing: 1px; color: #888; font-weight: 700; margin-bottom: 4px; text-transform: uppercase; }
+  .setup select { width: 100%; padding: 12px; font-size: 15px; border: 1.5px solid #d2d2d7; border-radius: 8px; background: #fff; cursor: pointer; }
+  .setup-status { font-size: 12px; padding: 8px 10px; border-radius: 6px; margin-top: 4px; }
+  .status-ok { background: #d1fae5; color: #065f46; }
+  .status-warn { background: #fef3c7; color: #92400e; }
+
+  .bipe-box { background: #fff; border: 3px solid #E5571E; border-radius: 14px; padding: 20px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(229,87,30,0.15); }
+  .bipe-box.locked { border-color: #d2d2d7; background: #f5f5f7; opacity: 0.6; pointer-events: none; }
+  .bipe-box label { display: block; font-size: 11px; letter-spacing: 1px; color: #E5571E; font-weight: 700; margin-bottom: 8px; }
+  #codigo { width: 100%; padding: 16px; font-size: 22px; font-family: 'SF Mono', Monaco, monospace; border: 2px solid #d2d2d7; border-radius: 10px; outline: none; transition: border 0.15s; }
   #codigo:focus { border-color: #E5571E; box-shadow: 0 0 0 4px rgba(229,87,30,0.15); }
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; }
-  .stat { background: #fff; padding: 14px 18px; border-radius: 10px; border: 1px solid #e5e5ea; }
-  .stat-label { font-size: 11px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
-  .stat-value { font-size: 28px; font-weight: 800; color: #E5571E; margin-top: 2px; }
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
-  .btn { padding: 12px 18px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  #codigo:disabled { background: #eee; cursor: not-allowed; }
+
+  .last-bipe { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; min-height: 60px; display: flex; align-items: center; gap: 12px; border: 1px solid #e5e5ea; }
+  .last-bipe img { width: 50px; height: 60px; object-fit: cover; border-radius: 6px; background: #eee; }
+  .last-bipe-info { flex: 1; min-width: 0; }
+  .last-bipe-info .name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .last-bipe-info .meta { font-size: 12px; color: #666; margin-top: 2px; }
+  .last-bipe.not-found { background: #fee; border-color: #d70015; }
+  .last-bipe.not-found .name { color: #d70015; }
+  .last-bipe.idle { background: #fafafc; color: #aaa; justify-content: center; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat { background: #fff; padding: 12px 14px; border-radius: 10px; border: 1px solid #e5e5ea; }
+  .stat-label { font-size: 10px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+  .stat-value { font-size: 24px; font-weight: 800; color: #E5571E; margin-top: 2px; }
+  .stat-value.green { color: #25d366; }
+  .stat-value.red { color: #d70015; }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .btn { padding: 10px 14px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
   .btn-primary { background: #25d366; color: #fff; }
   .btn-secondary { background: #fff; color: #1d1d1f; border: 1.5px solid #d2d2d7; }
   .btn-danger { background: #fff; color: #d70015; border: 1.5px solid #d70015; }
   .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
   .lista-wrap { background: #fff; border-radius: 12px; border: 1px solid #e5e5ea; overflow: hidden; }
-  .lista-head { padding: 12px 16px; border-bottom: 1px solid #e5e5ea; font-size: 12px; letter-spacing: 1px; color: #888; text-transform: uppercase; display: flex; justify-content: space-between; }
-  .lista { max-height: 60vh; overflow-y: auto; }
-  .item { padding: 10px 16px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: 'SF Mono', Monaco, monospace; font-size: 14px; }
+  .lista-head { padding: 10px 14px; border-bottom: 1px solid #e5e5ea; font-size: 11px; letter-spacing: 1px; color: #888; text-transform: uppercase; display: flex; justify-content: space-between; }
+  .lista { max-height: 50vh; overflow-y: auto; }
+  .item { padding: 8px 14px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
   .item:last-child { border-bottom: none; }
   .item:nth-child(odd) { background: #fafafc; }
-  .item .ts { font-size: 11px; color: #888; }
-  .item .codigo { flex: 1; word-break: break-all; }
-  .item .del { background: none; border: none; color: #d70015; cursor: pointer; font-size: 18px; padding: 0 4px; }
-  .empty { padding: 40px 20px; text-align: center; color: #888; font-size: 14px; }
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #25d366; color: #fff; padding: 12px 24px; border-radius: 24px; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
-  .toast.show { opacity: 1; }
-  @media (max-width: 480px) {
-    body { padding: 12px; }
+  .item.not-found { background: #fff5f5; }
+  .item .ts { font-size: 11px; color: #888; min-width: 60px; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .code { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; color: #555; }
+  .item .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .del { background: none; border: none; color: #d70015; cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .empty { padding: 30px 20px; text-align: center; color: #888; font-size: 14px; }
+
+  @media (max-width: 600px) {
+    body { padding: 10px; }
+    .setup-row { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .stat { padding: 8px 10px; }
+    .stat-value { font-size: 20px; }
     #codigo { font-size: 18px; padding: 14px; }
-    .stat-value { font-size: 22px; }
   }
 </style>
 </head>
 <body>
-  <h1>📦 Contagem por Bipe</h1>
-  <p class="sub">Bipe cada produto. Salva automático. Quando terminar, baixa o CSV e manda no WhatsApp.</p>
+  <h1>📦 Contagem por Bipe — Sports & Tennis</h1>
+  <p class="sub">Selecione a loja + vendedor. Bipe cada produto. Tudo entra direto no sistema.</p>
 
-  <div class="bipe-box">
-    <label for="codigo">CÓDIGO DE BARRAS</label>
-    <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Bipe ou digite aqui..." autofocus>
+  <div class="setup">
+    <div class="setup-row">
+      <div>
+        <label>LOJA</label>
+        <select id="loja"><option value="">Carregando...</option></select>
+      </div>
+      <div>
+        <label>VENDEDOR</label>
+        <select id="vendedor"><option value="">Selecione a loja primeiro</option></select>
+      </div>
+    </div>
+    <div id="setup-status" class="setup-status status-warn">⚠️ Selecione loja e vendedor antes de bipar</div>
   </div>
+
+  <div class="bipe-box locked" id="bipe-box">
+    <label for="codigo">CÓDIGO DE BARRAS</label>
+    <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Aguardando loja/vendedor..." disabled>
+  </div>
+
+  <div class="last-bipe idle" id="last-bipe">Aguardando primeiro bipe...</div>
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-label">Total Bipado</div>
-      <div class="stat-value" id="total">0</div>
+      <div class="stat-label">Total</div>
+      <div class="stat-value" id="stat-total">0</div>
     </div>
     <div class="stat">
-      <div class="stat-label">Códigos Únicos</div>
-      <div class="stat-value" id="unicos">0</div>
+      <div class="stat-label">Encontrados</div>
+      <div class="stat-value green" id="stat-found">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Não Achados</div>
+      <div class="stat-value red" id="stat-notfound">0</div>
     </div>
   </div>
 
   <div class="actions">
-    <button class="btn btn-primary" onclick="baixarCSV()">⬇️ Baixar CSV</button>
-    <button class="btn btn-secondary" onclick="baixarTXT()">📄 Baixar TXT</button>
-    <button class="btn btn-danger" onclick="limparTudo()">🗑 Limpar tudo</button>
+    <button class="btn btn-secondary" onclick="abrirContagem()">📋 Ver minha contagem do dia</button>
+    <button class="btn btn-danger" onclick="limparTela()">🗑 Limpar tela (não apaga do sistema)</button>
   </div>
 
   <div class="lista-wrap">
     <div class="lista-head">
-      <span>Últimos bipes</span>
+      <span>Bipes desta sessão</span>
       <span id="lista-count">0 itens</span>
     </div>
     <div class="lista" id="lista">
-      <div class="empty">Aguardando primeiro bipe...</div>
+      <div class="empty">Os bipes aparecerão aqui em tempo real</div>
     </div>
   </div>
 
-  <div class="toast" id="toast">Bipado!</div>
-
 <script>
-  const STORAGE_KEY = 'sports_tennis_bipes_v1';
-  let bipes = [];
+  const STORAGE_LOJA = 'sports_tennis_bipar_loja';
+  const STORAGE_VEND = 'sports_tennis_bipar_vendedor';
+  const STORAGE_VENDNAME = 'sports_tennis_bipar_vendedor_nome';
 
-  function loadBipes() {
+  let stores = [];
+  let sellers = [];
+  let bipes = []; // sessão local (memória)
+
+  async function carregarLojas() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      bipes = raw ? JSON.parse(raw) : [];
+      const r = await fetch('/api/stocktake/stores');
+      const d = await r.json();
+      stores = d.stores || [];
+      const sel = document.getElementById('loja');
+      sel.innerHTML = '<option value="">Selecione a loja</option>' + stores.map(s => `<option value="${s.id}">${s.name}${s.code ? ' (' + s.code + ')' : ''}</option>`).join('');
+      // restaura seleção
+      const savedLoja = localStorage.getItem(STORAGE_LOJA);
+      if (savedLoja) {
+        sel.value = savedLoja;
+        await carregarVendedores(savedLoja);
+      }
     } catch (e) {
-      bipes = [];
-    }
-    render();
-  }
-
-  function saveBipes() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(bipes));
-    } catch (e) {
-      console.error('Erro salvando:', e);
+      document.getElementById('loja').innerHTML = '<option>Erro ao carregar</option>';
+      console.error(e);
     }
   }
 
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 800);
-  }
-
-  function addBipe(code) {
-    code = String(code).trim();
-    if (!code) return;
-    bipes.push({ ts: new Date().toISOString(), code: code });
-    saveBipes();
-    render();
-    showToast('✓ ' + code);
-  }
-
-  function removeBipe(idx) {
-    if (!confirm('Remover este bipe?')) return;
-    bipes.splice(idx, 1);
-    saveBipes();
-    render();
-  }
-
-  function render() {
-    document.getElementById('total').textContent = bipes.length;
-    const unicos = new Set(bipes.map(b => b.code)).size;
-    document.getElementById('unicos').textContent = unicos;
-    document.getElementById('lista-count').textContent = bipes.length + ' itens';
-
-    const lista = document.getElementById('lista');
-    if (bipes.length === 0) {
-      lista.innerHTML = '<div class="empty">Aguardando primeiro bipe...</div>';
+  async function carregarVendedores(storeId) {
+    if (!storeId) {
+      document.getElementById('vendedor').innerHTML = '<option value="">Selecione a loja primeiro</option>';
       return;
     }
-    // Mostra do mais recente pro mais antigo, max 200 itens
-    const visiveis = bipes.slice().reverse().slice(0, 200);
+    try {
+      const r = await fetch('/api/stocktake/sellers?storeId=' + encodeURIComponent(storeId));
+      const d = await r.json();
+      sellers = d.sellers || [];
+      const sel = document.getElementById('vendedor');
+      sel.innerHTML = '<option value="">Selecione o vendedor</option>' + sellers.map(s => `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`).join('');
+      const savedVend = localStorage.getItem(STORAGE_VEND);
+      if (savedVend && sellers.find(s => s.id === savedVend)) {
+        sel.value = savedVend;
+      }
+      atualizarStatus();
+    } catch (e) {
+      document.getElementById('vendedor').innerHTML = '<option>Erro ao carregar</option>';
+    }
+  }
+
+  function atualizarStatus() {
+    const loja = document.getElementById('loja').value;
+    const vend = document.getElementById('vendedor').value;
+    const status = document.getElementById('setup-status');
+    const box = document.getElementById('bipe-box');
+    const input = document.getElementById('codigo');
+    if (loja && vend) {
+      const lojaNome = stores.find(s => s.id === loja)?.name || '';
+      const vendNome = sellers.find(s => s.id === vend)?.name || '';
+      status.className = 'setup-status status-ok';
+      status.textContent = '✓ Pronto: ' + vendNome + ' em ' + lojaNome;
+      box.classList.remove('locked');
+      input.disabled = false;
+      input.placeholder = 'Bipe ou digite aqui...';
+      setTimeout(() => input.focus(), 0);
+    } else {
+      status.className = 'setup-status status-warn';
+      status.textContent = '⚠️ Selecione loja e vendedor antes de bipar';
+      box.classList.add('locked');
+      input.disabled = true;
+      input.placeholder = 'Aguardando loja/vendedor...';
+    }
+  }
+
+  document.getElementById('loja').addEventListener('change', async (e) => {
+    const v = e.target.value;
+    localStorage.setItem(STORAGE_LOJA, v);
+    localStorage.removeItem(STORAGE_VEND);
+    await carregarVendedores(v);
+  });
+
+  document.getElementById('vendedor').addEventListener('change', (e) => {
+    const v = e.target.value;
+    localStorage.setItem(STORAGE_VEND, v);
+    const nome = sellers.find(s => s.id === v)?.name || '';
+    localStorage.setItem(STORAGE_VENDNAME, nome);
+    atualizarStatus();
+  });
+
+  async function enviarBipe(barcode) {
+    const storeId = document.getElementById('loja').value;
+    const sellerId = document.getElementById('vendedor').value;
+    const sellerName = localStorage.getItem(STORAGE_VENDNAME) || '';
+    if (!storeId || !sellerId) {
+      alert('Selecione loja e vendedor primeiro!');
+      return;
+    }
+    try {
+      const r = await fetch('/api/stocktake/bipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode, storeId, sellerId, sellerName }),
+      });
+      const d = await r.json();
+      const ts = new Date().toISOString();
+      const bipe = { ts, code: barcode, ...d };
+      bipes.push(bipe);
+      renderLast(bipe);
+      renderLista();
+      renderStats();
+    } catch (e) {
+      const bipe = { ts: new Date().toISOString(), code: barcode, found: false, error: e.message };
+      bipes.push(bipe);
+      renderLast(bipe);
+      renderLista();
+      renderStats();
+    }
+  }
+
+  function renderLast(bipe) {
+    const el = document.getElementById('last-bipe');
+    if (bipe.found && bipe.product) {
+      el.className = 'last-bipe';
+      el.innerHTML = `
+        ${bipe.product.imageUrl ? `<img src="${bipe.product.imageUrl}" onerror="this.style.display='none'">` : '<div style="width:50px;height:60px;background:#eee;border-radius:6px"></div>'}
+        <div class="last-bipe-info">
+          <div class="name">${bipe.product.name}</div>
+          <div class="meta">${bipe.product.brand || ''} · Tam ${bipe.product.size || '—'} · ${bipe.code}</div>
+        </div>
+      `;
+    } else {
+      el.className = 'last-bipe not-found';
+      el.innerHTML = `
+        <div style="width:50px;height:60px;background:#fff;border:1.5px solid #d70015;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#d70015;font-size:24px;font-weight:900">?</div>
+        <div class="last-bipe-info">
+          <div class="name">Produto não encontrado</div>
+          <div class="meta">${bipe.code} — bipe salvo no sistema pra revisão</div>
+        </div>
+      `;
+    }
+  }
+
+  function renderLista() {
+    const lista = document.getElementById('lista');
+    document.getElementById('lista-count').textContent = bipes.length + ' itens';
+    if (bipes.length === 0) {
+      lista.innerHTML = '<div class="empty">Os bipes aparecerão aqui em tempo real</div>';
+      return;
+    }
+    const visiveis = bipes.slice().reverse().slice(0, 100);
     lista.innerHTML = visiveis.map((b, idx) => {
       const realIdx = bipes.length - 1 - idx;
       const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      return `<div class="item">
+      const cls = b.found ? '' : 'not-found';
+      return `<div class="item ${cls}">
         <span class="ts">${hora}</span>
-        <span class="codigo">${b.code}</span>
-        <button class="del" onclick="removeBipe(${realIdx})" title="Remover">✕</button>
+        <span class="info">
+          <div class="name">${b.found && b.product ? b.product.name : '❌ Não encontrado'}</div>
+          <div class="code">${b.code}${b.product?.size ? ' · Tam ' + b.product.size : ''}</div>
+        </span>
+        <button class="del" onclick="removerBipe(${realIdx})" title="Remover da tela">✕</button>
       </div>`;
     }).join('');
   }
 
-  function csvEscape(v) {
-    const s = String(v == null ? '' : v);
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
+  function renderStats() {
+    document.getElementById('stat-total').textContent = bipes.length;
+    document.getElementById('stat-found').textContent = bipes.filter(b => b.found).length;
+    document.getElementById('stat-notfound').textContent = bipes.filter(b => !b.found).length;
   }
 
-  function baixarCSV() {
-    if (bipes.length === 0) { alert('Nenhum bipe pra exportar.'); return; }
-    const linhas = ['timestamp,codigo'];
-    bipes.forEach(b => linhas.push(csvEscape(b.ts) + ',' + csvEscape(b.code)));
-    const csv = linhas.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const data = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
-    download(blob, `bipes_${data}.csv`);
+  function removerBipe(idx) {
+    if (!confirm('Remover este bipe da tela?\n(O registro fica no sistema — pra apagar de verdade, peça ao admin.)')) return;
+    bipes.splice(idx, 1);
+    renderLista();
+    renderStats();
   }
 
-  function baixarTXT() {
-    if (bipes.length === 0) { alert('Nenhum bipe pra exportar.'); return; }
-    const txt = bipes.map(b => b.code).join('\n');
-    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-    const data = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
-    download(blob, `bipes_${data}.txt`);
-  }
-
-  function download(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-  }
-
-  function limparTudo() {
+  function limparTela() {
     if (bipes.length === 0) return;
-    if (!confirm(`Apagar TODOS os ${bipes.length} bipes? Não tem como desfazer.`)) return;
+    if (!confirm('Limpar a tela?\nOs bipes JÁ FORAM SALVOS no sistema. Esta ação só esconde da tela.')) return;
     bipes = [];
-    saveBipes();
-    render();
+    renderLista();
+    renderStats();
+    document.getElementById('last-bipe').className = 'last-bipe idle';
+    document.getElementById('last-bipe').textContent = 'Aguardando próximo bipe...';
   }
 
-  // Input handler: aceita Enter como confirmação (padrão de leitor USB)
+  function abrirContagem() {
+    alert('Pra ver a contagem completa do dia, peça ao admin.\nNo sistema admin: aba "Estoque" → "Bipes da Contagem".');
+  }
+
   const input = document.getElementById('codigo');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const v = input.value.trim();
       if (v) {
-        addBipe(v);
+        enviarBipe(v);
         input.value = '';
       }
     }
   });
 
-  // Mantém foco no campo (leitor USB precisa de foco pra "digitar")
+  // Mantém foco no campo (leitor USB precisa)
   document.addEventListener('click', (e) => {
-    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-    setTimeout(() => input.focus(), 0);
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.closest('button') || e.target.closest('select')) return;
+    if (!input.disabled) setTimeout(() => input.focus(), 0);
   });
-  window.addEventListener('focus', () => input.focus());
 
-  loadBipes();
+  carregarLojas();
 </script>
 </body>
 </html>

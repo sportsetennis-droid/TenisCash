@@ -44,6 +44,7 @@ const activitiesRoutes = require('./routes/activities');
 const coachRoutes = require('./routes/coach');
 const adminClassificationRoutes = require('./routes/adminClassification');
 const whatsappRoutes = require('./routes/whatsapp');
+const stocktakeRoutes = require('./routes/stocktake');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -132,6 +133,7 @@ app.use('/api/admin/classification', adminClassificationRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
