@@ -208,7 +208,11 @@
       box.classList.remove('locked');
       input.disabled = false;
       input.placeholder = 'Bipe ou digite aqui...';
-      setTimeout(() => input.focus(), 0);
+      // Só dá foco no input do bipe se o usuário NÃO estiver digitando em outro campo
+      const active = document.activeElement;
+      if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'SELECT') || active === input) {
+        setTimeout(() => input.focus(), 0);
+      }
     } else {
       status.className = 'setup-status status-warn';
       status.textContent = vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
@@ -363,9 +367,15 @@
     }
   });
 
-  // Mantém foco no campo (leitor USB precisa)
+  // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select
+  // Não rouba foco de inputs (vendedor-manual) nem dropdowns.
   document.addEventListener('click', (e) => {
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION' || e.target.closest('button') || e.target.closest('select')) return;
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' ||
+        e.target.tagName === 'OPTION' || e.target.tagName === 'INPUT' ||
+        e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
+    // Só pega foco se NENHUM outro input/select está focado
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT') && active !== input) return;
     if (!input.disabled) setTimeout(() => input.focus(), 0);
   });
 

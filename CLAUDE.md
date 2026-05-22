@@ -148,6 +148,21 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
 
+## REGRA PERMANENTE — Testar TUDO que for entregue (NUNCA QUEBRAR)
+
+Antes de declarar pronto qualquer feature/correção:
+1. **TESTAR no ambiente real** (preview/admin/site público) com cenários básicos
+2. Em UI: testar com foco, digitação, click em cada campo. Não confiar em "parece que funciona"
+3. Em backend: testar com curl/script o endpoint criado, NÃO só confiar no deploy ok
+4. Em fluxos com input+listeners: testar interação entre eles (typing + focus + click)
+5. Bugs que aparecem ao usuário em 30s de uso são MEUS — devia ter testado antes
+6. Se não der pra testar (depende de hardware do dono tipo leitor USB), avisar explicitamente: "testei via teclado, leitor USB precisa testar você"
+
+Padrão de comunicação:
+- "Pronto, testado X, Y, Z" — só depois de fato ter testado
+- "Pronto, falta testar X com você" — quando não consegui testar tudo
+- NUNCA "funciona" sem ter validado
+
 ## REGRA PERMANENTE — NFe (Classificação Entrada vs Transferência)
 
 **Entrada e Transferência NUNCA podem ficar juntas em nenhuma contagem, contador ou cálculo.**
