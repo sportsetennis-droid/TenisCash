@@ -97,4 +97,111 @@ router.post('/send-test', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// =====================================================================
+// EMBEDDED SIGNUP COEXISTENCE
+// Fluxo: usuario clica botao no admin -> FB.login abre popup Meta ->
+// usuario passa pelo wizard escolhendo "Use WhatsApp Business app" ->
+// Meta retorna `code` (curto, ~5s) -> trocamos por System User Token (~60d+) ->
+// salvamos em env vars / DB e atualizamos subscribed_apps.
+// =====================================================================
+
+router.get('/embedded-signup-config', authMiddleware, adminMiddleware, (_req, res) => {
+  const appId = process.env.META_APP_ID || '1971698716790878';
+  const configId = process.env.META_LOGIN_CONFIG_ID || '903001139468001';
+  const graphVersion = process.env.META_WHATSAPP_API_VERSION || 'v22.0';
+  res.json({
+    appId,
+    configId,
+    graphVersion,
+    callbackPath: '/api/whatsapp/embedded-signup-callback',
+    ready: !!(process.env.META_APP_SECRET),
+  });
+});
+
+router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { code, phone_number_id, waba_id, business_id } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'code ausente' });
+
+    const appId = process.env.META_APP_ID || '1971698716790878';
+    const appSecret = process.env.META_APP_SECRET;
+    const graphVersion = process.env.META_WHATSAPP_API_VERSION || 'v22.0';
+    if (!appSecret) {
+      return res.status(500).json({ error: 'META_APP_SECRET nao configurado no servidor (admin precisa setar no Railway)' });
+    }
+
+    // 1. Troca code por access_token (System User Token)
+    const tokenUrl = `https://graph.facebook.com/${graphVersion}/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&code=${encodeURIComponent(code)}`;
+    const tokenResp = await fetch(tokenUrl);
+    const tokenData = await tokenResp.json();
+    if (!tokenResp.ok || tokenData.error || !tokenData.access_token) {
+      return res.status(400).json({
+        error: 'Falha ao trocar code por token',
+        details: tokenData.error?.message || JSON.stringify(tokenData),
+      });
+    }
+
+    const accessToken = tokenData.access_token;
+    console.log(`[whatsapp/embedded-signup] token obtido | waba=${waba_id} | phone=${phone_number_id} | business=${business_id}`);
+
+    // 2. Subscribe webhook field `messages` na WABA com este token (idempotente)
+    let subscribed = false;
+    if (waba_id) {
+      try {
+        const subUrl = `https://graph.facebook.com/${graphVersion}/${waba_id}/subscribed_apps`;
+        const subResp = await fetch(subUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const subData = await subResp.json();
+        subscribed = !!subData.success;
+        console.log(`[whatsapp/embedded-signup] subscribe WABA ${waba_id}: ${JSON.stringify(subData)}`);
+      } catch (err) {
+        console.error('[whatsapp/embedded-signup] erro subscribe:', err.message);
+      }
+    }
+
+    // 3. Configura webhook URL no phone_number (importante pra Coexistence)
+    let webhookSet = false;
+    if (phone_number_id) {
+      try {
+        const cbUrl = process.env.META_WHATSAPP_WEBHOOK_URL || 'https://teniscash.com.br/api/whatsapp/webhook';
+        const verifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN;
+        const phoneUrl = `https://graph.facebook.com/${graphVersion}/${phone_number_id}`;
+        const phoneResp = await fetch(phoneUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            webhook_configuration: { override_callback_uri: cbUrl, verify_token: verifyToken },
+          }),
+        });
+        const phoneData = await phoneResp.json();
+        webhookSet = !!phoneData.success;
+        console.log(`[whatsapp/embedded-signup] phone webhook set: ${JSON.stringify(phoneData)}`);
+      } catch (err) {
+        console.error('[whatsapp/embedded-signup] erro webhook config:', err.message);
+      }
+    }
+
+    // 4. Retorna pro frontend (mascara token mas registra em log)
+    return res.json({
+      success: true,
+      tokenObtained: true,
+      tokenLength: accessToken.length,
+      tokenPreview: accessToken.substring(0, 12) + '...',
+      wabaId: waba_id,
+      phoneNumberId: phone_number_id,
+      businessId: business_id,
+      subscribed,
+      webhookSet,
+      nextStep: 'Token gerado. Copie do log do Railway e atualize META_USER_TOKEN/META_WHATSAPP_ACCESS_TOKEN nas env vars.',
+      // Em prod, idealmente persistimos em DB encrypted. Por ora logamos pro admin copiar.
+      tokenFull: accessToken,
+    });
+  } catch (err) {
+    console.error('[whatsapp/embedded-signup-callback]', err);
+    return res.status(500).json({ error: err.message || 'Erro no callback' });
+  }
+});
+
 module.exports = router;

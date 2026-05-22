@@ -277,6 +277,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
+    <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
   </div>
 
   <!-- HOME / HUB SECTION -->
@@ -474,6 +475,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-title">Mensagens</div>
         <div class="hub-card-desc">Chat interno: anúncios, demandas, inbox</div>
         <span class="hub-card-badge">COMUNICAÇÃO</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('whatsapp')">
+        <div class="hub-card-icon">🟢</div>
+        <div class="hub-card-title">WhatsApp</div>
+        <div class="hub-card-desc">Conectar número Sports & Tennis via Cloud API (Coexistence)</div>
+        <span class="hub-card-badge">CRM</span>
       </button>
     </div>
 
@@ -1620,6 +1627,171 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div id="markup-products-wrap"></div>
   </div>
 </div>
+
+<!-- WHATSAPP COEXISTENCE — Embedded Signup para vincular numero do app movel ao Cloud API -->
+<div class="section" id="tab-whatsapp" style="display:none">
+  <div class="section-head">
+    <span class="section-title">WhatsApp Cloud API + Coexistence</span>
+    <button type="button" class="refresh-btn" id="wa-coex-refresh" onclick="waCoexLoadStatus()">↻</button>
+  </div>
+
+  <div style="background:#FFEBDC;padding:14px;border-radius:8px;margin-bottom:18px;font-size:13px;line-height:1.5">
+    <strong>WhatsApp Coexistence</strong> permite que o número <strong>+55 83 9671-3153</strong> continue funcionando no app WhatsApp Business do celular E também receba/envie via Cloud API (este sistema TenisCash), simultaneamente. Mensagens espelham em tempo real.
+    <div style="margin-top:8px;color:var(--text2);font-size:12px">Pré-requisito: o app TenisCash CRM tem que estar publicado (✅), webhook configurado (✅), número no app Business (✅).</div>
+  </div>
+
+  <div id="wa-coex-status" style="margin-bottom:18px;padding:14px;background:#fff;border:1.5px solid var(--border);border-radius:10px">
+    <div class="loading-spinner">Verificando status...</div>
+  </div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    <button type="button" class="btn btn-primary" id="wa-coex-connect-btn" onclick="waCoexLaunch()" style="background:#25D366;border-color:#25D366;color:#fff">
+      🟢 Conectar WhatsApp Business app (Coexistence)
+    </button>
+    <button type="button" class="btn" onclick="waCoexTestSend()">📤 Testar envio</button>
+  </div>
+
+  <div id="wa-coex-log" style="background:#0a0a0a;color:#0f0;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;max-height:300px;overflow:auto;display:none"></div>
+</div>
+
+<!-- Facebook SDK loader -->
+<div id="fb-root"></div>
+<script>
+  // Initialize FB SDK quando user abrir a tab WhatsApp
+  window.waCoexConfig = null;
+  function waCoexLog(msg) {
+    const el = document.getElementById('wa-coex-log');
+    if (!el) return;
+    el.style.display = 'block';
+    el.innerHTML += '[' + new Date().toLocaleTimeString() + '] ' + msg + '<br>';
+    el.scrollTop = el.scrollHeight;
+  }
+  async function waCoexLoadConfig() {
+    if (window.waCoexConfig) return window.waCoexConfig;
+    try {
+      const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+      const r = await fetch('/api/whatsapp/embedded-signup-config', { headers });
+      const data = await r.json();
+      window.waCoexConfig = data;
+      return data;
+    } catch (e) {
+      waCoexLog('Erro carregando config: ' + e.message);
+      return null;
+    }
+  }
+  function waCoexInitFB(appId, graphVersion) {
+    if (window.FB) return;
+    window.fbAsyncInit = function() {
+      FB.init({ appId: appId, autoLogAppEvents: true, xfbml: true, version: graphVersion || 'v22.0' });
+      waCoexLog('FB SDK ready (appId=' + appId + ')');
+    };
+    const s = document.createElement('script');
+    s.async = true; s.defer = true; s.crossOrigin = 'anonymous';
+    s.src = 'https://connect.facebook.net/en_US/sdk.js';
+    document.head.appendChild(s);
+  }
+  async function waCoexLoadStatus() {
+    const div = document.getElementById('wa-coex-status');
+    div.innerHTML = '<div class="loading-spinner">Verificando...</div>';
+    try {
+      const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+      const cfg = await waCoexLoadConfig();
+      const r = await fetch('/api/whatsapp/status', { headers });
+      const status = await r.json();
+      const secretOk = cfg?.ready;
+      div.innerHTML = '<div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px">' +
+        '<strong>App ID:</strong><span>' + (cfg?.appId || '—') + '</span>' +
+        '<strong>Config ID (Embedded Signup):</strong><span>' + (cfg?.configId || '—') + '</span>' +
+        '<strong>APP_SECRET no servidor:</strong><span>' + (secretOk ? '✅ configurado' : '❌ FALTA — admin precisa setar META_APP_SECRET no Railway') + '</span>' +
+        '<strong>Phone Number ID:</strong><span>' + (status?.phoneNumberId || '—') + '</span>' +
+        '<strong>WABA ID:</strong><span>' + (status?.businessId || '—') + '</span>' +
+        '<strong>Provider ativo:</strong><span>' + (status?.metaConfigured ? '✅ Cloud API configurado' : '⚠️ pendente') + '</span>' +
+        '</div>';
+      if (cfg) waCoexInitFB(cfg.appId, cfg.graphVersion);
+    } catch (e) {
+      div.innerHTML = '<div style="color:red">Erro: ' + e.message + '</div>';
+    }
+  }
+  async function waCoexLaunch() {
+    const cfg = await waCoexLoadConfig();
+    if (!cfg) { alert('Erro carregando config'); return; }
+    if (!cfg.ready) {
+      alert('⚠️ META_APP_SECRET não está configurado no Railway. Sem ele, o callback OAuth não consegue trocar o code por token.\n\nPasso: vá em developers.facebook.com → app TenisCash CRM → Configurações → Básico → Mostrar chave secreta → cole no Railway env como META_APP_SECRET.');
+      return;
+    }
+    if (!window.FB) { waCoexLog('FB SDK ainda carregando, tente em 2s...'); waCoexInitFB(cfg.appId, cfg.graphVersion); return; }
+    waCoexLog('Abrindo Embedded Signup popup...');
+    FB.login(function(response) {
+      waCoexLog('FB.login response: status=' + response.status);
+      if (response.authResponse && response.authResponse.code) {
+        const code = response.authResponse.code;
+        waCoexLog('Code recebido (len=' + code.length + '), enviando ao backend...');
+        const headers = {
+          'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+          'Content-Type': 'application/json',
+        };
+        fetch('/api/whatsapp/embedded-signup-callback', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ code }),
+        })
+          .then(r => r.json())
+          .then(d => {
+            waCoexLog('Backend response: ' + JSON.stringify(d, null, 2));
+            if (d.success) {
+              waCoexLog('✅ SUCESSO. WABA=' + d.wabaId + ' Phone=' + d.phoneNumberId);
+              waCoexLog('⚠️ Copie do log do Railway o token e cole no env META_USER_TOKEN.');
+              waCoexLoadStatus();
+            } else {
+              waCoexLog('❌ ERRO: ' + (d.error || 'desconhecido'));
+            }
+          })
+          .catch(err => waCoexLog('❌ fetch err: ' + err.message));
+      } else {
+        waCoexLog('❌ Sem code no response. O usuário pode ter cancelado.');
+      }
+    }, {
+      config_id: cfg.configId,
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: {
+        setup: {},
+        featureType: 'whatsapp_business_app_onboarding',  // ativa Coexistence
+        sessionInfoVersion: '3',
+        version: 'v3',
+      },
+    });
+  }
+  async function waCoexTestSend() {
+    const phone = prompt('Telefone destino (com DDD, ex: 5583996713153):');
+    if (!phone) return;
+    const message = prompt('Mensagem:', 'Teste TenisCash Coexistence');
+    if (!message) return;
+    try {
+      const headers = {
+        'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+        'Content-Type': 'application/json',
+      };
+      const r = await fetch('/api/whatsapp/send-test', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ phone, message }),
+      });
+      const d = await r.json();
+      waCoexLog('Envio: ' + JSON.stringify(d));
+    } catch (e) {
+      waCoexLog('Erro envio: ' + e.message);
+    }
+  }
+  // Auto-load status quando user abre a tab whatsapp
+  (function() {
+    const origSwitchTab = window.switchTab;
+    window.switchTab = function(name, btn) {
+      if (typeof origSwitchTab === 'function') origSwitchTab(name, btn);
+      if (name === 'whatsapp') waCoexLoadStatus();
+    };
+  })();
+</script>
 
 <!-- MODAL: revisão de imagem de UM produto -->
 <div class="detail-modal" id="img-review-modal">
