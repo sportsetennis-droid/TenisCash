@@ -147,3 +147,19 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Use código quando relevante
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
+
+## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
+
+NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:
+1. Backup completo confirmado pelo dono (foto perfil, descrição, catálogo, etiquetas, conversas via "Configurações → Conversas → Backup")
+2. Validação prévia via Graph API de que existe caminho de re-registration ativo na Cloud API pra este número
+3. Confirmação que a empresa NÃO usa o app móvel pra atendimento (caso use, planejar janela de manutenção)
+
+Quando o owner do business é o mesmo do app Meta (caso TenisCash CRM + Sports & Tennis):
+- Embedded Signup Coexistence retorna "não pode integrar clientes no momento" (Meta self-onboarding bloqueado)
+- `/register` retorna "Register endpoint is not available for SMB businesses" enquanto número está em SMB
+- Apagar a conta SMB pode disparar deleção em cascata da WABA inteira E acionar review automático que vira REJECTED
+
+Caminho seguro pra mover SMB → Cloud API SEM perdas:
+- Chip novo dedicado pra Cloud API (zero risco no número existente)
+- OU contratar BSP (Wati, 360Dialog, Chakra) que já é Tech Provider verificado
