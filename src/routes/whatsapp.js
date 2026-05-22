@@ -27,18 +27,46 @@ router.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
-router.post('/webhook', (req, res) => {
-  const appSecret = process.env.META_WHATSAPP_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
-  const signature = req.get('x-hub-signature-256');
-  const signatureValid = appSecret ? verifySignature(req.rawBody, signature, appSecret) : false;
+router.post('/webhook', async (req, res) => {
+  // Responde rápido (Meta exige < 3s, senão desabilita webhook)
+  res.json({ received: true });
 
-  console.log('[whatsapp/webhook]', {
-    signatureValid,
-    object: req.body?.object,
-    entries: Array.isArray(req.body?.entry) ? req.body.entry.length : 0,
-  });
+  try {
+    const body = req.body || {};
+    if (body.object !== 'whatsapp_business_account') return;
 
-  return res.json({ received: true });
+    for (const entry of (body.entry || [])) {
+      for (const change of (entry.changes || [])) {
+        if (change.field !== 'messages') continue;
+        const value = change.value || {};
+        const messages = value.messages || [];
+        const contacts = value.contacts || [];
+
+        for (const msg of messages) {
+          const from = msg.from;
+          const profileName = contacts.find((c) => c.wa_id === from)?.profile?.name || 'cliente';
+          const text = msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || '(mídia/outro tipo)';
+          console.log(`[whatsapp/webhook] mensagem recebida | from=${from} (${profileName}) | type=${msg.type} | text="${text.slice(0, 120)}"`);
+
+          // Auto-resposta inicial
+          try {
+            const reply = `Olá ${profileName}! 👋\n\nRecebemos sua mensagem na Sports & Tennis. Em instantes um atendente vai te responder.\n\nEnquanto isso, dá uma olhada na nossa loja: https://www.sportsetennis.com.br`;
+            const r = await sendCustomMessage(from, reply);
+            console.log(`[whatsapp/webhook] auto-reply para ${from}: ${r.ok ? 'OK msgId=' + r.messageId : 'FAIL ' + r.error}`);
+          } catch (err) {
+            console.error(`[whatsapp/webhook] erro auto-reply ${from}:`, err.message);
+          }
+        }
+
+        // Statuses (sent/delivered/read/failed)
+        for (const st of (value.statuses || [])) {
+          console.log(`[whatsapp/webhook] status | id=${st.id} | status=${st.status} | recipient=${st.recipient_id}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[whatsapp/webhook] erro processando entry:', err);
+  }
 });
 
 router.get('/status', authMiddleware, adminMiddleware, (_req, res) => {

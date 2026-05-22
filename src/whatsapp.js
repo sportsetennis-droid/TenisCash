@@ -1,5 +1,6 @@
 const META_WA_API_VERSION = process.env.META_WHATSAPP_API_VERSION || process.env.META_GRAPH_VERSION || 'v22.0';
-const META_WA_ACCESS_TOKEN = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_PAGE_TOKEN;
+// Token: prioriza dedicado de WhatsApp, depois System User token (META_USER_TOKEN), depois Page Token
+const META_WA_ACCESS_TOKEN = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_USER_TOKEN || process.env.META_PAGE_TOKEN;
 const META_WA_PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID;
 const META_WA_CODE_TEMPLATE = process.env.META_WHATSAPP_CODE_TEMPLATE || process.env.WHATSAPP_CODE_TEMPLATE;
 const META_WA_CODE_TEMPLATE_LANG = process.env.META_WHATSAPP_CODE_TEMPLATE_LANG || 'pt_BR';
