@@ -1720,8 +1720,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       return;
     }
     // Estratégia: redirect na mesma tab (em vez de popup) pra evitar bloqueio.
-    // Quando voltar com ?code=XXX, waCoexHandleReturn() processa.
-    const redirectUri = window.location.origin + '/admin.html?wa_coex_return=1';
+    // Quando voltar com ?code=XXX&state=wa_coex_*, waCoexHandleReturn() processa.
+    // redirect_uri NÃO leva query (Meta modo estrito) — usamos state pra identificar.
+    const redirectUri = window.location.origin + '/admin.html';
     const extras = encodeURIComponent(JSON.stringify({
       setup: {},
       featureType: 'whatsapp_business_app_onboarding',  // Coexistence
@@ -1746,7 +1747,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   function waCoexHandleReturn() {
     const params = new URLSearchParams(window.location.search);
-    if (!params.get('wa_coex_return')) return;
+    const state = params.get('state') || '';
+    if (!state.startsWith('wa_coex_')) return;
     const code = params.get('code');
     const error = params.get('error');
     const errorMsg = params.get('error_description') || params.get('error_reason');
