@@ -29,7 +29,7 @@ const prisma = new PrismaClient();
 
   const mappings = await prisma.nuvemshopProductMapping.findMany({
     select: { localProductId: true, nuvemshopProductId: true },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { id: 'asc' },
   });
 
   console.log('Total mapeados na NS:', mappings.length);
