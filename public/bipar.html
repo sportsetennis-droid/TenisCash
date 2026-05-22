@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contagem por Bipe — Sports & Tennis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; max-width: 800px; margin: 0 auto; min-height: 100vh; }
+  h1 { font-size: 22px; margin-bottom: 6px; color: #E5571E; }
+  p.sub { font-size: 13px; color: #666; margin-bottom: 18px; }
+  .bipe-box { background: #fff; border: 3px solid #E5571E; border-radius: 14px; padding: 24px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(229,87,30,0.15); }
+  .bipe-box label { display: block; font-size: 12px; letter-spacing: 1px; color: #E5571E; font-weight: 700; margin-bottom: 8px; }
+  #codigo { width: 100%; padding: 18px; font-size: 24px; font-family: 'SF Mono', Monaco, monospace; border: 2px solid #d2d2d7; border-radius: 10px; outline: none; transition: border 0.15s; }
+  #codigo:focus { border-color: #E5571E; box-shadow: 0 0 0 4px rgba(229,87,30,0.15); }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; }
+  .stat { background: #fff; padding: 14px 18px; border-radius: 10px; border: 1px solid #e5e5ea; }
+  .stat-label { font-size: 11px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+  .stat-value { font-size: 28px; font-weight: 800; color: #E5571E; margin-top: 2px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .btn { padding: 12px 18px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+  .btn-primary { background: #25d366; color: #fff; }
+  .btn-secondary { background: #fff; color: #1d1d1f; border: 1.5px solid #d2d2d7; }
+  .btn-danger { background: #fff; color: #d70015; border: 1.5px solid #d70015; }
+  .btn:hover { opacity: 0.85; }
+  .lista-wrap { background: #fff; border-radius: 12px; border: 1px solid #e5e5ea; overflow: hidden; }
+  .lista-head { padding: 12px 16px; border-bottom: 1px solid #e5e5ea; font-size: 12px; letter-spacing: 1px; color: #888; text-transform: uppercase; display: flex; justify-content: space-between; }
+  .lista { max-height: 60vh; overflow-y: auto; }
+  .item { padding: 10px 16px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: 'SF Mono', Monaco, monospace; font-size: 14px; }
+  .item:last-child { border-bottom: none; }
+  .item:nth-child(odd) { background: #fafafc; }
+  .item .ts { font-size: 11px; color: #888; }
+  .item .codigo { flex: 1; word-break: break-all; }
+  .item .del { background: none; border: none; color: #d70015; cursor: pointer; font-size: 18px; padding: 0 4px; }
+  .empty { padding: 40px 20px; text-align: center; color: #888; font-size: 14px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #25d366; color: #fff; padding: 12px 24px; border-radius: 24px; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 480px) {
+    body { padding: 12px; }
+    #codigo { font-size: 18px; padding: 14px; }
+    .stat-value { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+  <h1>📦 Contagem por Bipe</h1>
+  <p class="sub">Bipe cada produto. Salva automático. Quando terminar, baixa o CSV e manda no WhatsApp.</p>
+
+  <div class="bipe-box">
+    <label for="codigo">CÓDIGO DE BARRAS</label>
+    <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Bipe ou digite aqui..." autofocus>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Bipado</div>
+      <div class="stat-value" id="total">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Códigos Únicos</div>
+      <div class="stat-value" id="unicos">0</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="baixarCSV()">⬇️ Baixar CSV</button>
+    <button class="btn btn-secondary" onclick="baixarTXT()">📄 Baixar TXT</button>
+    <button class="btn btn-danger" onclick="limparTudo()">🗑 Limpar tudo</button>
+  </div>
+
+  <div class="lista-wrap">
+    <div class="lista-head">
+      <span>Últimos bipes</span>
+      <span id="lista-count">0 itens</span>
+    </div>
+    <div class="lista" id="lista">
+      <div class="empty">Aguardando primeiro bipe...</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Bipado!</div>
+
+<script>
+  const STORAGE_KEY = 'sports_tennis_bipes_v1';
+  let bipes = [];
+
+  function loadBipes() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      bipes = raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      bipes = [];
+    }
+    render();
+  }
+
+  function saveBipes() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(bipes));
+    } catch (e) {
+      console.error('Erro salvando:', e);
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 800);
+  }
+
+  function addBipe(code) {
+    code = String(code).trim();
+    if (!code) return;
+    bipes.push({ ts: new Date().toISOString(), code: code });
+    saveBipes();
+    render();
+    showToast('✓ ' + code);
+  }
+
+  function removeBipe(idx) {
+    if (!confirm('Remover este bipe?')) return;
+    bipes.splice(idx, 1);
+    saveBipes();
+    render();
+  }
+
+  function render() {
+    document.getElementById('total').textContent = bipes.length;
+    const unicos = new Set(bipes.map(b => b.code)).size;
+    document.getElementById('unicos').textContent = unicos;
+    document.getElementById('lista-count').textContent = bipes.length + ' itens';
+
+    const lista = document.getElementById('lista');
+    if (bipes.length === 0) {
+      lista.innerHTML = '<div class="empty">Aguardando primeiro bipe...</div>';
+      return;
+    }
+    // Mostra do mais recente pro mais antigo, max 200 itens
+    const visiveis = bipes.slice().reverse().slice(0, 200);
+    lista.innerHTML = visiveis.map((b, idx) => {
+      const realIdx = bipes.length - 1 - idx;
+      const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return `<div class="item">
+        <span class="ts">${hora}</span>
+        <span class="codigo">${b.code}</span>
+        <button class="del" onclick="removeBipe(${realIdx})" title="Remover">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  function csvEscape(v) {
+    const s = String(v == null ? '' : v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function baixarCSV() {
+    if (bipes.length === 0) { alert('Nenhum bipe pra exportar.'); return; }
+    const linhas = ['timestamp,codigo'];
+    bipes.forEach(b => linhas.push(csvEscape(b.ts) + ',' + csvEscape(b.code)));
+    const csv = linhas.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const data = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
+    download(blob, `bipes_${data}.csv`);
+  }
+
+  function baixarTXT() {
+    if (bipes.length === 0) { alert('Nenhum bipe pra exportar.'); return; }
+    const txt = bipes.map(b => b.code).join('\n');
+    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+    const data = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
+    download(blob, `bipes_${data}.txt`);
+  }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }
+
+  function limparTudo() {
+    if (bipes.length === 0) return;
+    if (!confirm(`Apagar TODOS os ${bipes.length} bipes? Não tem como desfazer.`)) return;
+    bipes = [];
+    saveBipes();
+    render();
+  }
+
+  // Input handler: aceita Enter como confirmação (padrão de leitor USB)
+  const input = document.getElementById('codigo');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = input.value.trim();
+      if (v) {
+        addBipe(v);
+        input.value = '';
+      }
+    }
+  });
+
+  // Mantém foco no campo (leitor USB precisa de foco pra "digitar")
+  document.addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+    setTimeout(() => input.focus(), 0);
+  });
+  window.addEventListener('focus', () => input.focus());
+
+  loadBipes();
+</script>
+</body>
+</html>
