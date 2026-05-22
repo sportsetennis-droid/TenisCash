@@ -86,6 +86,7 @@
       <div>
         <label>VENDEDOR</label>
         <select id="vendedor"><option value="">Selecione a loja primeiro</option></select>
+        <input type="text" id="vendedor-manual" placeholder="Digite o nome do vendedor" style="width:100%;padding:12px;font-size:15px;border:1.5px solid #d2d2d7;border-radius:8px;margin-top:6px;display:none">
       </div>
     </div>
     <div id="setup-status" class="setup-status status-warn">⚠️ Selecione loja e vendedor antes de bipar</div>
@@ -166,9 +167,16 @@
       const d = await r.json();
       sellers = d.sellers || [];
       const sel = document.getElementById('vendedor');
-      sel.innerHTML = '<option value="">Selecione o vendedor</option>' + sellers.map(s => `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`).join('');
+      sel.innerHTML = '<option value="">Selecione o vendedor</option>'
+        + sellers.map(s => `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`).join('')
+        + '<option value="__manual__">✏️ Digitar manualmente...</option>';
       const savedVend = localStorage.getItem(STORAGE_VEND);
-      if (savedVend && sellers.find(s => s.id === savedVend)) {
+      if (savedVend === '__manual__') {
+        sel.value = '__manual__';
+        const manualInput = document.getElementById('vendedor-manual');
+        manualInput.style.display = 'block';
+        manualInput.value = localStorage.getItem(STORAGE_VENDNAME) || '';
+      } else if (savedVend && sellers.find(s => s.id === savedVend)) {
         sel.value = savedVend;
       }
       atualizarStatus();
@@ -180,12 +188,21 @@
   function atualizarStatus() {
     const loja = document.getElementById('loja').value;
     const vend = document.getElementById('vendedor').value;
+    const manualNome = document.getElementById('vendedor-manual').value.trim();
     const status = document.getElementById('setup-status');
     const box = document.getElementById('bipe-box');
     const input = document.getElementById('codigo');
-    if (loja && vend) {
+    let vendNome = '';
+    let temVendedor = false;
+    if (vend === '__manual__') {
+      vendNome = manualNome;
+      temVendedor = manualNome.length >= 2;
+    } else if (vend) {
+      vendNome = sellers.find(s => s.id === vend)?.name || '';
+      temVendedor = true;
+    }
+    if (loja && temVendedor) {
       const lojaNome = stores.find(s => s.id === loja)?.name || '';
-      const vendNome = sellers.find(s => s.id === vend)?.name || '';
       status.className = 'setup-status status-ok';
       status.textContent = '✓ Pronto: ' + vendNome + ' em ' + lojaNome;
       box.classList.remove('locked');
@@ -194,7 +211,7 @@
       setTimeout(() => input.focus(), 0);
     } else {
       status.className = 'setup-status status-warn';
-      status.textContent = '⚠️ Selecione loja e vendedor antes de bipar';
+      status.textContent = vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
       box.classList.add('locked');
       input.disabled = true;
       input.placeholder = 'Aguardando loja/vendedor...';
@@ -211,16 +228,31 @@
   document.getElementById('vendedor').addEventListener('change', (e) => {
     const v = e.target.value;
     localStorage.setItem(STORAGE_VEND, v);
-    const nome = sellers.find(s => s.id === v)?.name || '';
-    localStorage.setItem(STORAGE_VENDNAME, nome);
+    const manualInput = document.getElementById('vendedor-manual');
+    if (v === '__manual__') {
+      manualInput.style.display = 'block';
+      manualInput.focus();
+      localStorage.setItem(STORAGE_VENDNAME, manualInput.value || '');
+    } else {
+      manualInput.style.display = 'none';
+      const nome = sellers.find(s => s.id === v)?.name || '';
+      localStorage.setItem(STORAGE_VENDNAME, nome);
+    }
+    atualizarStatus();
+  });
+
+  document.getElementById('vendedor-manual').addEventListener('input', (e) => {
+    localStorage.setItem(STORAGE_VENDNAME, e.target.value.trim());
     atualizarStatus();
   });
 
   async function enviarBipe(barcode) {
     const storeId = document.getElementById('loja').value;
-    const sellerId = document.getElementById('vendedor').value;
-    const sellerName = localStorage.getItem(STORAGE_VENDNAME) || '';
-    if (!storeId || !sellerId) {
+    const sellerSel = document.getElementById('vendedor').value;
+    const manualNome = document.getElementById('vendedor-manual').value.trim();
+    const sellerName = localStorage.getItem(STORAGE_VENDNAME) || (sellerSel === '__manual__' ? manualNome : '');
+    const sellerId = sellerSel === '__manual__' ? null : sellerSel;
+    if (!storeId || (!sellerId && !sellerName)) {
       alert('Selecione loja e vendedor primeiro!');
       return;
     }
