@@ -181,6 +181,23 @@ Caso contrário, é `entrada` (compra de fornecedor real).
 - **`transferencia`** — movimento interno entre lojas do mesmo grupo. **NÃO conta como compra**. Não pode aumentar custo médio, não pode aparecer em "total comprado", não pode ser somado a contadores de NFes de fornecedor.
 - **`saida`** — venda emitida (NFe própria). Saída de estoque, registrada em `FiscalDocument` (não `XmlFiscalDocument`).
 
+### Loja destino da NFe = CNPJ (NÃO CRIAR COLUNA NOVA)
+
+A loja destino de uma NFe é determinada **automaticamente** pelo `recipientCnpj`, que casa com `FiscalIssuer.cnpj` → vinculado à `Store` via `Store.fiscalIssuerId`.
+
+**CNPJs do grupo Meta Esportes (cada loja tem o seu, NUNCA misturar entre lojas):**
+
+| Loja | CNPJ destinatário |
+|------|-------------------|
+| **LOJA01** Baratão dos Esportes | 44.052.617/0001-26 |
+| **LOJA02** Sports & Tennis Bessa | 44.052.617/0002-07 |
+| **LOJA03** Sports & Tennis Rainha da Borborema | 44.052.617/0003-98 |
+| **LOJA04** Sports & Tennis Ecommerce | 44.052.617/0004-79 |
+| **LOJA05** Sports & Tennis Tambaú | 44.052.617/0005-50 |
+| **LOJA06** Sports & Tennis Tambiá | 44.052.617/0006-30 |
+
+**REGRA**: NFe com `recipientCnpj` = 44052617000207 vai EXCLUSIVAMENTE pra Bessa. NUNCA misturar com Baratão (CNPJ 0001-26) nem com outras filiais. O agrupamento é exato pelo CNPJ do destinatário, não por código de loja.
+
 ### Card no admin
 
 Tab **NFE GERAL** (`tab-nfegeral`) — mostra obrigatoriamente em colunas separadas:

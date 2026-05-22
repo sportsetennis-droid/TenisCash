@@ -1891,6 +1891,36 @@ async function nfeGeralLoad() {
       `;
     }
 
+    // Breakdown por loja (entrada) — via recipientCnpj → FiscalIssuer → Store
+    const byStore = stats.byStore || [];
+    if (byStore.length) {
+      summaryEl.innerHTML += `
+        <div style="grid-column:span 2;background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px">
+          <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:var(--text2);margin-bottom:10px">📊 ENTRADAS POR LOJA (via CNPJ destinatário)</div>
+          <table style="width:100%;font-size:13px;border-collapse:collapse">
+            <thead><tr style="border-bottom:1.5px solid var(--border)">
+              <th style="text-align:left;padding:6px">Loja</th>
+              <th style="text-align:left;padding:6px">CNPJ destinatário</th>
+              <th style="text-align:right;padding:6px">NFes</th>
+              <th style="text-align:right;padding:6px">Valor (R$)</th>
+            </tr></thead>
+            <tbody>
+              ${byStore.map(b => {
+                const loja = b.storeCode ? `<strong>${b.storeCode}</strong> · ${b.storeName || ''}` : `<span style="color:#888">(sem loja vinculada)</span>`;
+                const cnpj = b.cnpj ? b.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '—';
+                return `<tr style="border-bottom:1px solid #f0f0f5">
+                  <td style="padding:8px 6px">${loja}</td>
+                  <td style="padding:8px 6px;font-family:monospace;font-size:11px;color:#666">${cnpj}</td>
+                  <td style="padding:8px 6px;text-align:right;font-weight:700">${Number(b.qty).toLocaleString('pt-BR')}</td>
+                  <td style="padding:8px 6px;text-align:right;color:#25d366;font-weight:700">${Number(b.value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
     // Listas das 50 últimas de cada
     const [entResp, trResp] = await Promise.all([
       fetch('/api/admin/xml/nfes?docType=entrada&limit=50', { headers }).then(r => r.json()),

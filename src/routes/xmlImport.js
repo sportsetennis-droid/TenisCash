@@ -52,20 +52,37 @@ router.get('/nfes', async (req, res) => {
   }
 });
 
-// Stats: contagens por tipo + top emissores
+// Stats: contagens por tipo + por loja (via recipientCnpj) + top emissores
 router.get('/nfes/stats', async (req, res) => {
   try {
     const byType = await prisma.$queryRaw`
       SELECT "docType" as type, COUNT(*)::int qty, COALESCE(SUM("totalValue"),0)::float value
       FROM "XmlFiscalDocument" GROUP BY "docType" ORDER BY qty DESC`;
+
+    // Por loja — agrupa só ENTRADA por recipientCnpj e mapeia pra Store via FiscalIssuer
+    const byStore = await prisma.$queryRaw`
+      SELECT
+        d."recipientCnpj" as cnpj,
+        d."recipientName" as name,
+        s.code as "storeCode",
+        s.name as "storeName",
+        COUNT(*)::int qty,
+        COALESCE(SUM(d."totalValue"),0)::float value
+      FROM "XmlFiscalDocument" d
+      LEFT JOIN "FiscalIssuer" fi ON fi.cnpj = d."recipientCnpj"
+      LEFT JOIN "Store" s ON s."fiscalIssuerId" = fi.id
+      WHERE d."docType" = 'entrada' AND d."recipientCnpj" IS NOT NULL
+      GROUP BY d."recipientCnpj", d."recipientName", s.code, s.name
+      ORDER BY qty DESC`;
+
     const topIssuers = await prisma.$queryRaw`
       SELECT "issuerCnpj" as cnpj, "issuerName" as name, COUNT(*)::int qty,
              COALESCE(SUM("totalValue"),0)::float value
       FROM "XmlFiscalDocument"
-      WHERE "issuerCnpj" IS NOT NULL
+      WHERE "issuerCnpj" IS NOT NULL AND "docType" = 'entrada'
       GROUP BY "issuerCnpj", "issuerName"
       ORDER BY qty DESC LIMIT 50`;
-    res.json({ byType, topIssuers });
+    res.json({ byType, byStore, topIssuers });
   } catch (err) {
     res.status(500).json({ error: 'Erro stats', detail: err.message });
   }
