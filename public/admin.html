@@ -278,6 +278,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
     <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
+    <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
   </div>
 
   <!-- HOME / HUB SECTION -->
@@ -392,6 +393,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-icon">📄</div>
         <div class="hub-card-title">XML NF-e</div>
         <div class="hub-card-desc">Importar notas fiscais dos fornecedores</div>
+        <span class="hub-card-badge">FISCAL</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('nfegeral')">
+        <div class="hub-card-icon">📊</div>
+        <div class="hub-card-title">NFE GERAL</div>
+        <div class="hub-card-desc">Todas as NFes divididas: Entrada vs Transferência</div>
         <span class="hub-card-badge">FISCAL</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('labels')">
@@ -1822,6 +1829,108 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       if (name === 'whatsapp') waCoexLoadStatus();
     };
   })();
+</script>
+
+<!-- ===================================================================== -->
+<!-- NFE GERAL — divisão Entrada vs Transferência (NUNCA pode ficar junta) -->
+<!-- Regra documentada em CLAUDE.md (seção "NFe — Classificação")          -->
+<!-- ===================================================================== -->
+<div class="section" id="tab-nfegeral" style="display:none">
+  <div class="section-head">
+    <span class="section-title">NFE GERAL — Entrada vs Transferência</span>
+    <button type="button" class="refresh-btn" onclick="nfeGeralLoad()">↻</button>
+  </div>
+
+  <div style="background:#FFEBDC;padding:12px;border-radius:8px;margin-bottom:18px;font-size:13px;line-height:1.5">
+    <strong>Regra de classificação (CLAUDE.md):</strong>
+    Uma NFe é <strong>TRANSFERÊNCIA</strong> quando emissor e destinatário pertencem ao mesmo grupo (CNPJ raiz 8 dígitos iguais) ou quando contém CFOP 5152/6152.
+    Caso contrário é <strong>ENTRADA</strong> (compra de fornecedor real).
+    <strong>Transferência NÃO conta como compra de estoque</strong> — é só movimento interno entre lojas.
+  </div>
+
+  <div id="nfegeral-summary" style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:24px">
+    <div class="loading-spinner">Carregando...</div>
+  </div>
+
+  <div id="nfegeral-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px"></div>
+</div>
+
+<script>
+async function nfeGeralLoad() {
+  const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+  const summaryEl = document.getElementById('nfegeral-summary');
+  const gridEl = document.getElementById('nfegeral-grid');
+  summaryEl.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  gridEl.innerHTML = '';
+  try {
+    const statsResp = await fetch('/api/admin/xml/nfes/stats', { headers });
+    const stats = await statsResp.json();
+    const byType = stats.byType || [];
+    const entradaStats = byType.find(b => b.type === 'entrada') || { qty: 0, value: 0 };
+    const transfStats = byType.find(b => b.type === 'transferencia') || { qty: 0, value: 0 };
+    const semTipoStats = byType.find(b => b.type === null) || { qty: 0, value: 0 };
+
+    summaryEl.innerHTML = `
+      <div style="background:#fff;border:2px solid #25d36633;border-radius:14px;padding:18px">
+        <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#25d366;margin-bottom:6px">✅ ENTRADA (compra fornecedor)</div>
+        <div style="font-size:36px;font-weight:900;line-height:1">${entradaStats.qty.toLocaleString('pt-BR')}</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px">NFes · R$ ${Number(entradaStats.value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+      </div>
+      <div style="background:#fff;border:2px solid #ff950033;border-radius:14px;padding:18px">
+        <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#ff9500;margin-bottom:6px">🔁 TRANSFERÊNCIA (entre lojas)</div>
+        <div style="font-size:36px;font-weight:900;line-height:1">${transfStats.qty.toLocaleString('pt-BR')}</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px">NFes · R$ ${Number(transfStats.value).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} · NÃO entra no estoque</div>
+      </div>
+    `;
+
+    if (semTipoStats.qty > 0) {
+      summaryEl.innerHTML += `
+        <div style="grid-column:span 2;background:#fff5f5;border:2px solid #d70015;border-radius:14px;padding:14px;font-size:13px">
+          ⚠️ <strong>${semTipoStats.qty}</strong> NFes sem tipo classificado (precisa rodar reclassificação)
+        </div>
+      `;
+    }
+
+    // Listas das 50 últimas de cada
+    const [entResp, trResp] = await Promise.all([
+      fetch('/api/admin/xml/nfes?docType=entrada&limit=50', { headers }).then(r => r.json()),
+      fetch('/api/admin/xml/nfes?docType=transferencia&limit=50', { headers }).then(r => r.json()),
+    ]);
+
+    const renderList = (title, color, nfes) => `
+      <div style="background:#fff;border-radius:14px;border:1.5px solid var(--border);overflow:hidden">
+        <div style="background:${color};color:#fff;padding:12px 16px;font-family:Orbitron;font-size:12px;letter-spacing:2px">${title} — ${nfes.length} mais recentes</div>
+        <div style="max-height:600px;overflow:auto">
+          ${nfes.length ? nfes.map(n => `
+            <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;font-size:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(n.issuerName || '(sem nome)').slice(0,40)}</div>
+                <div style="color:var(--text2);font-size:11px">NF ${n.number || '—'} · ${n.itemsCount || 0} itens · ${n.issueDate ? new Date(n.issueDate).toLocaleDateString('pt-BR') : '—'}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-weight:700;color:${color}">R$ ${Number(n.totalValue||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                ${n.brand ? `<div style="font-size:11px;color:var(--text2)">${n.brand}</div>` : ''}
+              </div>
+            </div>
+          `).join('') : '<div style="padding:24px;text-align:center;color:var(--text2)">Nenhuma NFe</div>'}
+        </div>
+      </div>
+    `;
+
+    gridEl.innerHTML = renderList('✅ ENTRADA — compras de fornecedor', '#25d366', entResp.nfes || [])
+                     + renderList('🔁 TRANSFERÊNCIA — entre lojas (não conta estoque)', '#ff9500', trResp.nfes || []);
+  } catch (e) {
+    summaryEl.innerHTML = '<div style="color:red;grid-column:span 2">Erro carregando NFes: ' + e.message + '</div>';
+  }
+}
+
+(function(){
+  const prev = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof prev === 'function') prev(name, btn);
+    if (name === 'nfegeral') nfeGeralLoad();
+  };
+})();
 </script>
 
 <!-- MODAL: revisão de imagem de UM produto -->

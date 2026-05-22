@@ -148,6 +148,46 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
 
+## REGRA PERMANENTE — NFe (Classificação Entrada vs Transferência)
+
+**Entrada e Transferência NUNCA podem ficar juntas em nenhuma contagem, contador ou cálculo.**
+
+### Critério de classificação (`XmlFiscalDocument.docType`)
+
+Uma NFe é classificada como `transferencia` se:
+1. **CNPJ raiz iguais** — primeiros 8 dígitos do `issuerCnpj` == primeiros 8 dígitos do `recipientCnpj` (mesmo grupo empresarial, ex Meta Esportes matriz↔filial)
+2. **OU** contém pelo menos um item com `cfop` = `5152` ou `6152` (transferência interna)
+
+Caso contrário, é `entrada` (compra de fornecedor real).
+
+### O que cada tipo significa no estoque
+
+- **`entrada`** — compra de mercadoria de fornecedor. **CONTA como compra** (adiciona ao estoque, gera custo, alimenta `costPrice` médio, contabiliza para apuração de custo).
+- **`transferencia`** — movimento interno entre lojas do mesmo grupo. **NÃO conta como compra**. Não pode aumentar custo médio, não pode aparecer em "total comprado", não pode ser somado a contadores de NFes de fornecedor.
+- **`saida`** — venda emitida (NFe própria). Saída de estoque, registrada em `FiscalDocument` (não `XmlFiscalDocument`).
+
+### Card no admin
+
+Tab **NFE GERAL** (`tab-nfegeral`) — mostra obrigatoriamente em colunas separadas:
+- **ENTRADA** (verde) — compras de fornecedor
+- **TRANSFERÊNCIA** (laranja) — movimento entre lojas
+
+Endpoint backend: `GET /api/admin/xml/nfes/stats` retorna `byType` agrupado por `docType`.
+
+### Onde foi aplicado
+
+- Schema: `XmlFiscalDocument.docType` (string: `entrada | transferencia | saida`)
+- Script de import: `scripts/import-nfe-zip-2025.js` classifica no momento da importação
+- Endpoint: `GET /api/admin/xml/nfes?docType=entrada` ou `docType=transferencia`
+- UI: `public/admin.html` → tab "NFE Geral"
+
+### CFOPs identificados no banco (referência)
+
+- `5152`, `6152` — Transferência de mercadoria
+- `6101`, `6102`, `6105`, `6106` — Compra interestadual (entrada)
+- `5101`, `5102` — Compra estadual (entrada)
+- `2202` — Devolução de venda (entrada, mas com tratamento especial)
+
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
 NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:
