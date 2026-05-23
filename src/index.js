@@ -48,6 +48,7 @@ const stocktakeRoutes = require('./routes/stocktake');
 const messagesV2Routes = require('./routes/messagesV2');
 const marketingRoutes = require('./routes/marketing');
 const { startMessagesCron } = require('./services/messagesCron');
+const { startMarketingCron } = require('./services/marketingCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -404,6 +405,14 @@ app.listen(PORT, '0.0.0.0', () => {
   // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
   if (process.env.DISABLE_MESSAGES_CRON !== '1') {
     try { startMessagesCron(); } catch (e) { console.error('[messagesCron] falha ao iniciar:', e.message); }
+  }
+
+  // Cron marketing IA (trend 05:00 + content 06:00 America/Fortaleza)
+  // Só ativa se FAL_KEY estiver configurada (senão não tem como gerar)
+  if (process.env.FAL_KEY) {
+    try { startMarketingCron(); } catch (e) { console.error('[marketingCron] falha ao iniciar:', e.message); }
+  } else {
+    console.log('[marketingCron] desativado — FAL_KEY não configurada');
   }
 
   // Cron jobs em background

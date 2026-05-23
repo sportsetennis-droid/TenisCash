@@ -279,6 +279,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
     <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
     <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
+    <button class="tab" onclick="switchTab('marketing',this)">🎨 Marketing IA</button>
   </div>
 
   <!-- HOME / HUB SECTION -->
@@ -503,8 +504,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <button class="hub-card" onclick="switchTabByName('aiCenter')">
         <div class="hub-card-icon">🧠</div>
         <div class="hub-card-title">Central IA</div>
-        <div class="hub-card-desc">Orquestrador dos 18 agentes Sports & Tennis</div>
+        <div class="hub-card-desc">Orquestrador dos 24 agentes Sports & Tennis</div>
         <span class="hub-card-badge">PRINCIPAL</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('marketing')">
+        <div class="hub-card-icon">🎨</div>
+        <div class="hub-card-title">Marketing IA</div>
+        <div class="hub-card-desc">Gera foto editorial + Reel + sem-fundo via fal.ai · publica IG</div>
+        <span class="hub-card-badge">NOVO</span>
       </button>
     </div>
 
@@ -1861,6 +1868,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div id="nfegeral-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px"></div>
 </div>
 
+<!-- ============ MARKETING IA TAB ============ -->
+<div class="section" id="tab-marketing" style="display:none"></div>
+
 <script>
 async function nfeGeralLoad() {
   const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
@@ -1965,8 +1975,276 @@ async function nfeGeralLoad() {
   window.switchTab = function(name, btn){
     if (typeof prev === 'function') prev(name, btn);
     if (name === 'nfegeral') nfeGeralLoad();
+    if (name === 'marketing') marketingLoad();
   };
 })();
+
+// =============================================================
+// MARKETING IA — tab de revisão de criativos
+// =============================================================
+async function marketingLoad() {
+  const root = document.getElementById('tab-marketing');
+  if (!root) return;
+  if (root.dataset.loaded === '1') {
+    marketingReload();
+    return;
+  }
+  root.dataset.loaded = '1';
+  root.innerHTML = `
+    <div style="max-width:1280px;margin:0 auto;padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px">
+        <div>
+          <h2 style="font-size:24px;font-weight:800;letter-spacing:-0.02em;color:#0a0a0a">🎨 Marketing IA</h2>
+          <div style="font-size:13px;color:#6e6e73;margin-top:4px">Criativos gerados via fal.ai (Flux + Kling + Bria) com copy do Claude</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="mk-gen-btn" style="background:linear-gradient(135deg,#FF6A1F,#FF8A4D);color:#fff;border:none;padding:10px 18px;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(255,106,31,0.3)" onclick="marketingOpenGenerate()">+ Gerar criativo</button>
+          <button style="background:#fff;border:1px solid #e5e5ea;padding:10px 14px;border-radius:999px;font-weight:600;cursor:pointer" onclick="marketingReload()">↻</button>
+        </div>
+      </div>
+      <div id="mk-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px">
+        <button class="mk-filter active" data-filter="pending_review" onclick="marketingSetFilter('pending_review')">Pendentes</button>
+        <button class="mk-filter" data-filter="approved" onclick="marketingSetFilter('approved')">Aprovados</button>
+        <button class="mk-filter" data-filter="published" onclick="marketingSetFilter('published')">Publicados</button>
+        <button class="mk-filter" data-filter="rejected" onclick="marketingSetFilter('rejected')">Rejeitados</button>
+        <button class="mk-filter" data-filter="" onclick="marketingSetFilter('')">Todos</button>
+      </div>
+      <div id="mk-creatives" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px"></div>
+    </div>
+    <style>
+      .mk-filter { background:#fff;border:1px solid #e5e5ea;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;color:#6e6e73;cursor:pointer;white-space:nowrap;flex-shrink:0; }
+      .mk-filter.active { background:#FF6A1F;color:#fff;border-color:#FF6A1F; }
+      .mk-card { background:#fff;border:1px solid #e5e5ea;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+      .mk-card .mk-media { width:100%;aspect-ratio:4/3;background:#fafafc;display:block;object-fit:cover; }
+      .mk-card video.mk-media { aspect-ratio:9/16;max-height:360px;object-fit:contain;background:#000; }
+      .mk-card .mk-body { padding:14px 16px; }
+      .mk-card .mk-product { display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:#6e6e73 }
+      .mk-card .mk-thumb { width:36px;height:36px;border-radius:8px;object-fit:cover;background:#f0f0f5;flex-shrink:0 }
+      .mk-card .mk-product strong { color:#0a0a0a;font-weight:700;font-size:14px }
+      .mk-card textarea { width:100%;font-size:13px;font-family:inherit;border:1px solid #e5e5ea;border-radius:8px;padding:8px 10px;min-height:60px;resize:vertical;margin-bottom:8px;background:#fafafc }
+      .mk-card textarea:focus { border-color:#FF6A1F;outline:none;background:#fff }
+      .mk-card .mk-label { font-size:10px;letter-spacing:0.8px;color:#a8a8ad;font-weight:700;text-transform:uppercase;margin-bottom:4px;margin-top:8px }
+      .mk-card .mk-actions { display:flex;gap:6px;margin-top:12px;flex-wrap:wrap }
+      .mk-card .mk-btn { flex:1;padding:8px 12px;border-radius:8px;border:none;font-weight:600;font-size:13px;cursor:pointer;min-width:80px }
+      .mk-card .mk-btn.ok { background:#25d366;color:#fff }
+      .mk-card .mk-btn.no { background:#fff;color:#d70015;border:1px solid #e5e5ea }
+      .mk-card .mk-btn.pub { background:linear-gradient(135deg,#FF6A1F,#FF8A4D);color:#fff }
+      .mk-card .mk-btn.del { background:#fff;color:#6e6e73;border:1px solid #e5e5ea;flex:0 0 auto;min-width:40px }
+      .mk-status { display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-left:auto }
+      .mk-status.pending_review { background:#FFEBDC;color:#FF6A1F }
+      .mk-status.approved { background:#e8f7ee;color:#0a843d }
+      .mk-status.published { background:#e1efff;color:#0066cc }
+      .mk-status.rejected { background:#fff1f0;color:#d70015 }
+      .mk-stat-card { background:#fff;border:1px solid #e5e5ea;border-radius:12px;padding:14px 16px }
+      .mk-stat-card .mk-stat-label { font-size:11px;letter-spacing:0.8px;color:#a8a8ad;font-weight:700;text-transform:uppercase }
+      .mk-stat-card .mk-stat-value { font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#0a0a0a;margin-top:4px }
+    </style>
+  `;
+  STATE_MK.filter = 'pending_review';
+  marketingReload();
+  marketingLoadStats();
+}
+
+const STATE_MK = { filter: 'pending_review', creatives: [] };
+const MK_API = '/api/marketing';
+
+function marketingSetFilter(f) {
+  STATE_MK.filter = f;
+  document.querySelectorAll('.mk-filter').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  marketingReload();
+}
+
+async function marketingReload() {
+  const el = document.getElementById('mk-creatives');
+  if (!el) return;
+  el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888">Carregando…</div>';
+  try {
+    const q = STATE_MK.filter ? `?status=${STATE_MK.filter}&limit=100` : '?limit=100';
+    const r = await mkApi(q);
+    STATE_MK.creatives = r.creatives || [];
+    if (STATE_MK.creatives.length === 0) {
+      el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:#888"><div style="font-size:48px;opacity:0.4;margin-bottom:12px">🎨</div><div style="font-weight:700;color:#555;margin-bottom:6px">Nenhum criativo neste filtro</div><div style="font-size:13px">Clica em "+ Gerar criativo" pra começar</div></div>';
+      return;
+    }
+    el.innerHTML = STATE_MK.creatives.map(renderMkCard).join('');
+  } catch (e) {
+    el.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#d70015">Erro: ${escapeHtmlMk(e.message)}</div>`;
+  }
+}
+
+async function marketingLoadStats() {
+  try {
+    const s = await mkApi('/stats');
+    const m = s.thisMonth || {};
+    const el = document.getElementById('mk-stats');
+    if (!el) return;
+    el.innerHTML = `
+      <div class="mk-stat-card"><div class="mk-stat-label">Gerados (mês)</div><div class="mk-stat-value">${m.generated || 0}</div></div>
+      <div class="mk-stat-card"><div class="mk-stat-label">Aprovados</div><div class="mk-stat-value">${m.approved || 0}</div></div>
+      <div class="mk-stat-card"><div class="mk-stat-label">Publicados</div><div class="mk-stat-value">${m.published || 0}</div></div>
+      <div class="mk-stat-card"><div class="mk-stat-label">Custo (USD)</div><div class="mk-stat-value">$${(m.costUsd || 0).toFixed(2)}</div></div>
+      <div class="mk-stat-card"><div class="mk-stat-label">Taxa aprovação</div><div class="mk-stat-value">${Math.round((m.approvalRate || 0) * 100)}%</div></div>
+    `;
+  } catch (e) { /* ignora */ }
+}
+
+function renderMkCard(c) {
+  const p = c.product || {};
+  const isVideo = c.kind === 'reel_video';
+  const isTransp = c.kind === 'transparent_photo';
+  const kindLabel = { editorial_photo: '📸 Foto editorial 16:9', reel_video: '🎬 Reel 9:16', transparent_photo: '✂️ Sem fundo' }[c.kind] || c.kind;
+  const media = isVideo
+    ? `<video class="mk-media" src="${escapeHtmlMk(c.outputUrl)}" controls preload="metadata" playsinline></video>`
+    : `<img class="mk-media" src="${escapeHtmlMk(c.outputUrl)}" alt="" loading="lazy"${isTransp ? ' style="background:repeating-conic-gradient(#f0f0f5 0% 25%,#fff 0% 50%) 50% / 16px 16px"' : ''}>`;
+  const productThumb = p.imageUrl ? `<img class="mk-thumb" src="${escapeHtmlMk(p.imageUrl)}" alt="">` : '<div class="mk-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px">📦</div>';
+  return `
+    <div class="mk-card" data-id="${escapeHtmlMk(c.id)}">
+      ${media}
+      <div class="mk-body">
+        <div class="mk-product">
+          ${productThumb}
+          <div style="flex:1;min-width:0">
+            <div><strong>${escapeHtmlMk(p.name || '?')}</strong></div>
+            <div style="font-size:11px;color:#a8a8ad">${escapeHtmlMk(p.sku || '')} · ${escapeHtmlMk(p.brand || '')}</div>
+          </div>
+          <span class="mk-status ${c.status}">${c.status.replace('_', ' ')}</span>
+        </div>
+        <div style="font-size:11px;color:#a8a8ad;margin-bottom:8px">${kindLabel} · $${(c.costUsd || 0).toFixed(2)}</div>
+
+        <div class="mk-label">Caption Instagram</div>
+        <textarea data-field="captionIg" data-id="${c.id}">${escapeHtmlMk(c.captionIg || '')}</textarea>
+        <div class="mk-label">TikTok</div>
+        <textarea data-field="captionTiktok" data-id="${c.id}">${escapeHtmlMk(c.captionTiktok || '')}</textarea>
+        <div class="mk-label">WhatsApp</div>
+        <textarea data-field="captionWa" data-id="${c.id}">${escapeHtmlMk(c.captionWa || '')}</textarea>
+        <div class="mk-label">Hashtags</div>
+        <textarea data-field="hashtags" data-id="${c.id}" style="min-height:36px">${escapeHtmlMk(c.hashtags || '')}</textarea>
+
+        <div class="mk-actions">
+          ${c.status === 'pending_review' ? `
+            <button class="mk-btn ok" onclick="mkApprove('${c.id}')">✓ Aprovar</button>
+            <button class="mk-btn no" onclick="mkReject('${c.id}')">Rejeitar</button>
+          ` : ''}
+          ${c.status === 'approved' ? `
+            <button class="mk-btn pub" onclick="mkPublish('${c.id}')">📤 Publicar IG</button>
+            <button class="mk-btn no" onclick="mkPatch('${c.id}', {status:'pending_review'})">Despublicar revisão</button>
+          ` : ''}
+          ${c.status === 'published' && c.publications?.[0]?.externalUrl ? `
+            <a class="mk-btn pub" style="text-decoration:none;text-align:center;line-height:24px" href="${escapeHtmlMk(c.publications[0].externalUrl)}" target="_blank" rel="noopener">Ver no IG ↗</a>
+          ` : ''}
+          <button class="mk-btn ok" style="flex:0 0 auto;background:#fff;color:#6e6e73;border:1px solid #e5e5ea;min-width:40px" onclick="mkSaveCopy('${c.id}')" title="Salvar edição dos textos">💾</button>
+          ${c.status !== 'published' ? `<button class="mk-btn del" onclick="mkDelete('${c.id}')" title="Apagar">🗑️</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function mkApi(path, opts = {}) {
+  const res = await fetch(MK_API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function mkPatch(id, fields) {
+  try {
+    await mkApi('/creatives/' + id, { method: 'PATCH', body: JSON.stringify(fields) });
+    marketingReload(); marketingLoadStats();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function mkApprove(id) {
+  mkSaveCopySilent(id).then(() => mkPatch(id, { status: 'approved' }));
+}
+
+async function mkReject(id) {
+  const reason = prompt('Motivo da rejeição (opcional):') || '';
+  mkPatch(id, { status: 'rejected', rejectionReason: reason });
+}
+
+async function mkSaveCopy(id) {
+  const fields = collectMkFields(id);
+  try {
+    await mkApi('/creatives/' + id, { method: 'PATCH', body: JSON.stringify(fields) });
+    showMkToast('Copies salvos');
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+async function mkSaveCopySilent(id) {
+  const fields = collectMkFields(id);
+  return mkApi('/creatives/' + id, { method: 'PATCH', body: JSON.stringify(fields) }).catch(() => {});
+}
+function collectMkFields(id) {
+  const out = {};
+  document.querySelectorAll(`.mk-card[data-id="${id}"] textarea[data-id="${id}"]`).forEach(t => {
+    out[t.dataset.field] = t.value;
+  });
+  return out;
+}
+
+async function mkDelete(id) {
+  if (!confirm('Apagar este criativo?')) return;
+  try {
+    await mkApi('/creatives/' + id, { method: 'DELETE' });
+    marketingReload(); marketingLoadStats();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function mkPublish(id) {
+  if (!confirm('Publicar este criativo no Instagram agora?')) return;
+  try {
+    showMkToast('Publicando… aguarde até 60s');
+    const r = await mkApi('/creatives/' + id + '/publish', { method: 'POST', body: JSON.stringify({ platform: 'instagram' }) });
+    showMkToast('✓ Publicado!');
+    if (r.publication?.externalUrl) window.open(r.publication.externalUrl, '_blank');
+    marketingReload(); marketingLoadStats();
+  } catch (e) { alert('Erro publicando: ' + e.message); }
+}
+
+function marketingOpenGenerate() {
+  const productSku = prompt('SKU ou nome do produto pra gerar criativo:');
+  if (!productSku) return;
+  const sceneHint = prompt('Cenário pra foto (opcional — ex: "atleta correndo na praia"):') || '';
+  marketingGenerateBySearch(productSku, sceneHint);
+}
+
+async function marketingGenerateBySearch(q, sceneHint) {
+  try {
+    // busca o produto via endpoint catalog
+    const search = await fetch('/api/messages-v2/products/search?q=' + encodeURIComponent(q), {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') },
+    }).then(r => r.json());
+    if (!search.products?.length) { alert('Produto não encontrado'); return; }
+    const product = search.products[0];
+    showMkToast(`Gerando pra ${product.name}… isso leva ~60-90s`);
+    const r = await mkApi('/generate/' + product.id, { method: 'POST', body: JSON.stringify({ sceneHint }) });
+    showMkToast(`✓ ${r.created.length} criativos gerados (custo $${(r.totalCostUsd || 0).toFixed(2)})`);
+    if (r.errors?.length) console.warn('errors:', r.errors);
+    marketingReload(); marketingLoadStats();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+function showMkToast(msg) {
+  let el = document.getElementById('mk-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mk-toast';
+    el.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:rgba(20,20,22,0.92);color:#fff;padding:12px 18px;border-radius:14px;font-weight:600;font-size:14px;z-index:9999;box-shadow:0 12px 32px rgba(0,0,0,0.16);backdrop-filter:blur(20px)';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(showMkToast._t);
+  showMkToast._t = setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 3500);
+}
+
+function escapeHtmlMk(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 </script>
 
 <!-- MODAL: revisão de imagem de UM produto -->

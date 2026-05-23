@@ -216,6 +216,81 @@ router.delete('/creatives/:id', async (req, res) => {
 });
 
 // ====================================================
+// POST /creatives/:id/publish — publica no Instagram (e futuramente outros)
+// ====================================================
+// Body: { platform: 'instagram', caption?: string (override) }
+router.post('/creatives/:id/publish', async (req, res) => {
+  try {
+    const platform = String(req.body?.platform || 'instagram').toLowerCase();
+    const caption = req.body?.caption || null;
+
+    const creative = await prisma.productCreative.findUnique({
+      where: { id: req.params.id },
+      include: { product: { select: { id: true, name: true, sku: true } } },
+    });
+    if (!creative) return res.status(404).json({ error: 'criativo não existe' });
+    if (creative.status !== 'approved') {
+      return res.status(400).json({ error: 'criativo precisa estar approved antes de publicar' });
+    }
+
+    // Cria registro de publication (status queued) ANTES de chamar API
+    const pub = await prisma.marketingPublication.create({
+      data: {
+        creativeId: creative.id,
+        productId: creative.productId,
+        platform,
+        caption: caption || creative.captionIg || '',
+        mediaUrl: creative.outputUrl,
+        status: 'publishing',
+        publishedById: req.userId,
+      },
+    });
+
+    try {
+      let result;
+      if (platform === 'instagram') {
+        const ig = require('../services/instagramPublisher');
+        const captionFull = (caption || creative.captionIg || '') + (creative.hashtags ? '\n\n' + creative.hashtags.split(/\s+/).filter(Boolean).map(h => '#' + h.replace(/^#/, '')).join(' ') : '');
+        if (creative.kind === 'reel_video') {
+          result = await ig.publishReel({ videoUrl: creative.outputUrl, caption: captionFull });
+        } else {
+          result = await ig.publishPhoto({ imageUrl: creative.outputUrl, caption: captionFull });
+        }
+      } else {
+        throw new Error('platform não suportada ainda: ' + platform);
+      }
+
+      // Marca como sucesso
+      await prisma.marketingPublication.update({
+        where: { id: pub.id },
+        data: {
+          status: 'success',
+          externalId: result.mediaId,
+          externalUrl: result.permalink,
+          publishedAt: new Date(),
+        },
+      });
+      // Marca o criativo como published
+      await prisma.productCreative.update({
+        where: { id: creative.id },
+        data: { status: 'published' },
+      });
+
+      res.json({ success: true, publication: { id: pub.id, externalId: result.mediaId, externalUrl: result.permalink } });
+    } catch (apiErr) {
+      await prisma.marketingPublication.update({
+        where: { id: pub.id },
+        data: { status: 'failed', errorMessage: apiErr.message },
+      });
+      throw apiErr;
+    }
+  } catch (err) {
+    console.error('[marketing/publish]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
 // GET /publications — histórico
 // ====================================================
 router.get('/publications', async (req, res) => {
