@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assinatura email — Sports & Tennis</title>
+<style>
+  body { background: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; color: #0a0a0a; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .sub { font-size: 14px; color: #6e6e73; margin-bottom: 28px; }
+  .preview-box { background: #fff; border-radius: 16px; padding: 36px; margin-bottom: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+  .preview-box h2 { font-size: 13px; letter-spacing: 1px; color: #a8a8ad; font-weight: 700; text-transform: uppercase; margin-bottom: 16px; }
+  .controls { background: #fff; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .controls label { display: block; font-size: 12px; font-weight: 600; color: #6e6e73; margin-bottom: 6px; margin-top: 14px; }
+  .controls input { width: 100%; padding: 10px 14px; border: 1.5px solid #e5e5ea; border-radius: 10px; font-size: 14px; font-family: inherit; }
+  .controls input:focus { outline: none; border-color: #FF6A1F; }
+  .actions { display: flex; gap: 8px; margin-top: 20px; }
+  .actions button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 14px; }
+  .actions .copy { background: #FF6A1F; color: #fff; }
+  .actions .download { background: #fafafc; color: #0a0a0a; border: 1px solid #e5e5ea; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #25d366; color: #fff; padding: 10px 20px; border-radius: 999px; font-weight: 700; font-size: 13px; opacity: 0; transition: opacity 0.3s; }
+  .toast.show { opacity: 1; }
+  .help { background: #FFEBDC; border-radius: 12px; padding: 16px 20px; font-size: 13px; color: #0a0a0a; line-height: 1.55; }
+  .help strong { color: #FF6A1F; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>✍️ Assinatura de email Sports & Tennis</h1>
+  <p class="sub">Personalize seus dados, copie o HTML e cole em Gmail / Outlook / Apple Mail.</p>
+
+  <div class="controls">
+    <label>Nome completo</label>
+    <input id="f-nome" type="text" value="Douglas Bernardo" oninput="render()">
+    <label>Cargo</label>
+    <input id="f-cargo" type="text" value="Founder · Sports & Tennis" oninput="render()">
+    <label>Email</label>
+    <input id="f-email" type="text" value="douglas@teniscash.com.br" oninput="render()">
+    <label>Telefone (com DDD)</label>
+    <input id="f-tel" type="text" value="+55 83 9671-3153" oninput="render()">
+    <label>Loja / unidade (opcional)</label>
+    <input id="f-loja" type="text" value="João Pessoa · PB" oninput="render()">
+
+    <div class="actions">
+      <button class="copy" onclick="copyHtml()">📋 Copiar HTML</button>
+      <button class="download" onclick="downloadHtml()">⬇️ Baixar .html</button>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px;letter-spacing:1px;color:#a8a8ad;font-weight:700;text-transform:uppercase;margin-bottom:12px">Preview</h2>
+  <div class="preview-box">
+    <div style="font-size:13px;color:#6e6e73;margin-bottom:24px">— Daqui pra baixo é o que aparece na sua assinatura —</div>
+    <div id="signature-preview"></div>
+  </div>
+
+  <div class="help">
+    <strong>Como instalar no Gmail:</strong> Configurações ⚙ → Ver todas as configurações → aba <strong>Geral</strong> → role até <strong>Assinatura</strong> → "+ Criar" → cole o HTML no campo (em rich text mode) →
+    Em "PADRÕES DA ASSINATURA" selecione a nova → Salvar.
+    <br><br>
+    <strong>Outlook web:</strong> Configurações ⚙ → "Conta" → "Assinaturas" → cole o HTML.
+    <br><br>
+    <strong>Apple Mail (Mac):</strong> Mail → Preferências → Assinaturas → arrasta o .html baixado ou cola o HTML.
+  </div>
+</div>
+
+<div class="toast" id="toast">Copiado!</div>
+
+<script>
+function buildSignature() {
+  const nome  = (document.getElementById('f-nome').value || '').trim();
+  const cargo = (document.getElementById('f-cargo').value || '').trim();
+  const email = (document.getElementById('f-email').value || '').trim();
+  const tel   = (document.getElementById('f-tel').value || '').trim();
+  const loja  = (document.getElementById('f-loja').value || '').trim();
+  const telWa = tel.replace(/\D/g, '');
+
+  return `<table cellpadding="0" cellspacing="0" border="0" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0a0a0a;font-size:13px;line-height:1.5;">
+  <tr>
+    <td style="padding-right:18px;border-right:3px solid #FF6A1F;vertical-align:top;">
+      <div style="background:linear-gradient(135deg,#E64500 0%,#FF6A1F 45%,#FF9550 100%);width:60px;height:60px;border-radius:14px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:60px;">
+        <span style="color:#ffffff;font-size:22px;font-weight:900;letter-spacing:-0.02em;">T$</span>
+      </div>
+    </td>
+    <td style="padding-left:18px;vertical-align:top;">
+      <div style="font-size:16px;font-weight:800;letter-spacing:-0.02em;color:#0a0a0a;">${escapeHtml(nome)}</div>
+      <div style="font-size:13px;color:#6e6e73;font-weight:500;margin-top:2px;">${escapeHtml(cargo)}</div>
+      <div style="margin-top:10px;font-size:13px;color:#0a0a0a;line-height:1.7;">
+        <a href="mailto:${escapeHtml(email)}" style="color:#0a0a0a;text-decoration:none;">📧 ${escapeHtml(email)}</a><br>
+        <a href="https://wa.me/${escapeHtml(telWa)}" style="color:#0a0a0a;text-decoration:none;">💬 ${escapeHtml(tel)}</a>
+        ${loja ? `<br><span style="color:#6e6e73;">📍 ${escapeHtml(loja)}</span>` : ''}
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:#a8a8ad;">
+        <a href="https://teniscash.com.br" style="color:#FF6A1F;text-decoration:none;font-weight:600;">teniscash.com.br</a>
+        &nbsp;·&nbsp;
+        <a href="https://instagram.com/sportsetennis" style="color:#FF6A1F;text-decoration:none;font-weight:600;">@sportsetennis</a>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#a8a8ad;font-style:italic;">
+        Sports & Tennis · Bessa · Tambaú · Rainha da Borborema · Tambiá · Ecommerce
+      </div>
+    </td>
+  </tr>
+</table>`;
+}
+function render() {
+  document.getElementById('signature-preview').innerHTML = buildSignature();
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function copyHtml() {
+  const html = buildSignature();
+  navigator.clipboard.writeText(html).then(() => showToast('HTML copiado!'));
+}
+function downloadHtml() {
+  const html = '<!DOCTYPE html><html><body>' + buildSignature() + '</body></html>';
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'assinatura-teniscash.html';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+render();
+</script>
+</body>
+</html>
