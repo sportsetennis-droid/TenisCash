@@ -83,7 +83,75 @@
 
   /* ===== APP SHELL ===== */
   .app { display: flex; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; background: var(--bg-app); position: relative; overflow: hidden; }
-  @media (min-width: 900px) {
+
+  /* === DESKTOP (>=1024px): split layout, sidebar fixa + thread sempre aberta === */
+  @media (min-width: 1024px) {
+    html, body { overflow: hidden; height: 100vh; }
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      grid-template-rows: auto 1fr;
+      max-width: 1280px;
+      width: calc(100vw - 40px);
+      height: calc(100vh - 40px);
+      margin: 20px auto;
+      border-radius: 24px;
+      box-shadow: var(--shadow-xl);
+      border: 1px solid rgba(0,0,0,0.06);
+      overflow: hidden;
+      background: var(--bg-card);
+    }
+    /* Topbar atravessa as 2 colunas */
+    .app-top { grid-column: 1 / -1; grid-row: 1; }
+    /* Content (lista) na coluna 1 */
+    .content { grid-column: 1; grid-row: 2; border-right: 1px solid var(--border); background: var(--bg-app); overflow-y: auto; padding-bottom: 80px; }
+    /* Bottom-nav vira nav-tabs dentro da sidebar */
+    .bottom-nav { position: absolute; bottom: 16px; left: 16px; right: auto; transform: none; width: 328px; justify-content: space-around; }
+    /* Thread/feed sempre visível na coluna 2 */
+    .screen-thread {
+      display: flex !important;
+      position: static;
+      grid-column: 2;
+      grid-row: 2;
+      max-width: none;
+      margin: 0;
+      border-radius: 0;
+      box-shadow: none;
+      height: auto;
+      padding-top: 0;
+      padding-bottom: 0;
+      background: var(--bg-app);
+      animation: none;
+    }
+    /* Quando NADA está aberto, mostra placeholder */
+    .screen-thread:not(.open) .thread-header,
+    .screen-thread:not(.open) .thread-body,
+    .screen-thread:not(.open) .composer { display: none; }
+    .screen-thread:not(.open)::before {
+      content: '';
+      display: block;
+      flex: 1;
+      background:
+        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="%23d2d2d7" stroke-width="1.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>')
+        center center no-repeat;
+    }
+    .screen-thread:not(.open)::after {
+      content: 'Selecione uma conversa ou timeline pra começar';
+      display: block;
+      text-align: center;
+      color: var(--text2);
+      font-size: 14px;
+      font-weight: 500;
+      padding-bottom: 40vh;
+    }
+    .thread-header { border-radius: 0; }
+    /* Botão back não faz sentido no desktop split */
+    .screen-thread .back-btn { display: none; }
+    /* Body do desktop ganha fundo gradient sutil */
+    body { background: radial-gradient(circle at 20% 20%, #fff6ef 0%, transparent 50%), radial-gradient(circle at 80% 80%, #fde4f1 0%, transparent 50%), #f0f0f5; }
+  }
+  /* === Tablet/medium: continua frame celular centralizado === */
+  @media (min-width: 900px) and (max-width: 1023.98px) {
     html, body { overflow: auto; }
     .app { height: calc(100vh - 40px); margin: 20px auto; border-radius: 32px; box-shadow: var(--shadow-xl); border: 1px solid rgba(0,0,0,0.06); overflow: hidden; }
   }
