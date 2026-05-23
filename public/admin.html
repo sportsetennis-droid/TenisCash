@@ -477,23 +477,17 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Contas a pagar e a receber</div>
         <span class="hub-card-badge">CAIXA</span>
       </button>
-      <button class="hub-card" onclick="switchTabByName('messages')">
+      <button class="hub-card" onclick="window.open('/app.html','_blank')">
         <div class="hub-card-icon">💬</div>
         <div class="hub-card-title">Mensagens</div>
-        <div class="hub-card-desc">Chat interno: anúncios, demandas, inbox</div>
+        <div class="hub-card-desc">Chat + timeline do dia · mobile-first · instala como app (PWA)</div>
         <span class="hub-card-badge">COMUNICAÇÃO</span>
       </button>
-      <button class="hub-card" onclick="window.open('/mensagens.html','_blank')">
-        <div class="hub-card-icon">✨</div>
-        <div class="hub-card-title">Mensagens v2</div>
-        <div class="hub-card-desc">Chat moderno: conversas + timeline do dia (some 00:00)</div>
-        <span class="hub-card-badge">NOVO</span>
-      </button>
-      <button class="hub-card" onclick="window.open('/app.html','_blank')">
-        <div class="hub-card-icon">📱</div>
-        <div class="hub-card-title">App Mobile (PWA)</div>
-        <div class="hub-card-desc">Versão mobile-first do chat: instala como app no celular</div>
-        <span class="hub-card-badge">PWA</span>
+      <button class="hub-card" onclick="switchTabByName('messages')">
+        <div class="hub-card-icon">📨</div>
+        <div class="hub-card-title">Inbox legado</div>
+        <div class="hub-card-desc">Sistema antigo de anúncios e demandas (read-only)</div>
+        <span class="hub-card-badge">LEGADO</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('whatsapp')">
         <div class="hub-card-icon">🟢</div>

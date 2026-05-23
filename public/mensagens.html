@@ -2,204 +2,219 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mensagens — TenisCash</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>TenisCash — Mensagens</title>
+<link rel="manifest" href="/manifest.json">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-  body { background: #f5f5f7; color: #1d1d1f; height: 100vh; overflow: hidden; }
-
-  /* ============ HEADER ============ */
-  .topbar { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-  .topbar h1 { font-size: 18px; color: #E5571E; font-weight: 700; }
-  .topbar .user { font-size: 13px; color: #666; }
-  .topbar .user a { color: #E5571E; margin-left: 14px; text-decoration: none; }
-
-  .tabs { display: flex; background: #fff; border-bottom: 1px solid #e5e5ea; }
-  .tab { flex: 1; max-width: 280px; padding: 14px 18px; font-size: 14px; font-weight: 600; color: #666; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; display: flex; align-items: center; gap: 8px; background: none; border-top: none; border-left: none; border-right: none; }
-  .tab.active { color: #E5571E; border-bottom-color: #E5571E; }
-  .tab .badge { background: #d70015; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; min-width: 22px; text-align: center; }
-
-  /* ============ LAYOUT SPLIT ============ */
-  .main { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 105px); }
-  @media (max-width: 768px) {
-    .main { grid-template-columns: 1fr; }
-    .main.thread-open .left { display: none; }
-    .main:not(.thread-open) .right { display: none; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: #fff; color: #1d1d1f; font-size: 15px; line-height: 1.4; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  @media (min-width: 900px) {
+    body { background: linear-gradient(135deg, #FFEBDC 0%, #fff 50%, #f5f5f7 100%); }
   }
+  button { font-family: inherit; }
 
-  .left { border-right: 1px solid #e5e5ea; background: #fff; overflow-y: auto; }
-  .right { background: #fafafc; overflow-y: auto; display: flex; flex-direction: column; }
+  /* ===== APP SHELL ===== */
+  .app { display: flex; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; background: #fff; position: relative; overflow: hidden; }
+  @media (min-width: 900px) {
+    html, body { overflow: auto; }
+    .app { height: calc(100vh - 40px); margin: 20px auto; border-radius: 24px; box-shadow: 0 16px 48px rgba(0,0,0,0.18); border: 1px solid #e5e5ea; }
+  }
+  .app-top { background: #E5571E; color: #fff; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .app-top h1 { font-size: 17px; font-weight: 700; }
+  .app-top .user-chip { font-size: 12px; opacity: 0.95; }
 
-  /* ============ LISTA (esquerda) ============ */
-  .list-header { padding: 12px 16px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; }
-  .list-header h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #888; font-weight: 700; }
-  .list-header button { background: #E5571E; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  /* ===== TABS BOTTOM NAV ===== */
+  .bottom-nav { display: flex; background: #fff; border-top: 1px solid #e5e5ea; flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .bottom-nav button { flex: 1; padding: 12px 4px 14px; background: none; border: none; color: #888; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; }
+  .bottom-nav button.active { color: #E5571E; }
+  .bottom-nav button .icon { font-size: 22px; line-height: 1; }
+  .bottom-nav button .badge { position: absolute; top: 6px; right: 22px; background: #d70015; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px; min-width: 18px; text-align: center; }
 
-  .list-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f5; cursor: pointer; display: flex; gap: 10px; align-items: center; }
-  .list-item:hover { background: #fafafc; }
-  .list-item.active { background: #FFEBDC; border-left: 3px solid #E5571E; padding-left: 13px; }
-  .list-item .avatar { width: 40px; height: 40px; border-radius: 50%; background: #E5571E; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
-  .list-item .avatar.store { background: #25d366; }
-  .list-item .info { flex: 1; min-width: 0; }
-  .list-item .name { font-weight: 700; font-size: 14px; color: #1d1d1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item .preview { font-size: 12px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .list-item .meta { font-size: 11px; color: #aaa; text-align: right; flex-shrink: 0; }
-  .list-item .badge { background: #d70015; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-top: 4px; display: inline-block; }
+  /* ===== CONTENT ===== */
+  .content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fafafc; }
+  .view { display: none; min-height: 100%; }
+  .view.active { display: block; }
+
+  /* ===== LIST ITEMS ===== */
+  .list-header { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; background: #fafafc; }
+  .list-header h2 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #888; font-weight: 700; }
+  .list-header button { background: #E5571E; color: #fff; border: none; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  .list-item { padding: 12px 16px; background: #fff; border-bottom: 1px solid #f0f0f5; display: flex; gap: 12px; align-items: center; cursor: pointer; min-height: 64px; }
+  .list-item:active { background: #FFEBDC; }
+  .list-item .avatar { width: 44px; height: 44px; border-radius: 50%; background: #E5571E; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex-shrink: 0; }
   .list-item.timeline-item .avatar { background: #6e6e73; }
   .list-item.timeline-item .avatar.public { background: #007aff; }
+  .list-item .info { flex: 1; min-width: 0; }
+  .list-item .name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .preview { font-size: 13px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .meta { text-align: right; flex-shrink: 0; }
+  .list-item .meta .time { font-size: 11px; color: #aaa; }
+  .list-item .meta .badge { background: #d70015; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9px; display: inline-block; margin-top: 3px; }
 
-  /* ============ THREAD/FEED (direita) ============ */
-  .right-header { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 12px 18px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-  .right-header .back-btn { display: none; background: none; border: none; color: #E5571E; font-size: 20px; cursor: pointer; }
-  @media (max-width: 768px) { .right-header .back-btn { display: block; } }
-  .right-header .title { font-weight: 700; font-size: 15px; flex: 1; }
-  .right-header .subtitle { font-size: 12px; color: #888; margin-top: 1px; }
+  /* ===== EMPTY ===== */
+  .empty { padding: 60px 24px; text-align: center; color: #888; }
+  .empty .icon { font-size: 60px; opacity: 0.4; margin-bottom: 14px; }
+  .empty .title { font-size: 16px; font-weight: 700; color: #555; margin-bottom: 6px; }
+  .empty .desc { font-size: 13px; }
 
-  .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  /* ===== THREAD / FEED FULLSCREEN ===== */
+  .screen-thread { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #fafafc; display: none; flex-direction: column; max-width: 480px; margin: 0 auto; z-index: 10; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .screen-thread.open { display: flex; }
+  .thread-header { background: #E5571E; color: #fff; padding: 14px 12px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .thread-header .back-btn { background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; padding: 0 6px; line-height: 1; }
+  .thread-header .title { font-weight: 700; font-size: 15px; flex: 1; }
+  .thread-header .subtitle { font-size: 11px; opacity: 0.85; }
+  .thread-body { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
 
-  /* ===== BOLHAS (conversa) ===== */
-  .bubble { max-width: 70%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-wrap: break-word; position: relative; }
+  /* ===== BOLHAS ===== */
+  .bubble { max-width: 78%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.4; word-wrap: break-word; }
   .bubble.from-me { align-self: flex-end; background: #E5571E; color: #fff; border-bottom-right-radius: 4px; }
   .bubble.from-other { align-self: flex-start; background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; border-bottom-left-radius: 4px; }
-  .bubble .meta { font-size: 11px; opacity: 0.7; margin-top: 4px; display: flex; justify-content: flex-end; gap: 4px; align-items: center; }
-  .bubble .actions { display: none; position: absolute; top: -10px; right: 4px; background: #fff; border: 1px solid #e5e5ea; border-radius: 6px; padding: 2px 4px; gap: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-  .bubble:hover .actions { display: flex; }
-  .bubble .actions button { background: none; border: none; cursor: pointer; padding: 2px 4px; font-size: 12px; color: #666; }
-  .bubble .actions button:hover { color: #d70015; }
+  .bubble .meta { font-size: 10px; opacity: 0.75; margin-top: 4px; display: flex; justify-content: flex-end; gap: 4px; }
+  .bubble.long-press-active { box-shadow: 0 0 0 3px rgba(229,87,30,0.4); }
 
-  /* ===== POSTS (timeline) ===== */
-  .post { background: #fff; border: 1px solid #e5e5ea; border-radius: 12px; padding: 14px 16px; }
-  .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  /* ===== POSTS ===== */
+  .post { background: #fff; border: 1px solid #e5e5ea; border-radius: 14px; padding: 12px 14px; }
+  .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
   .post-author { font-weight: 700; font-size: 13px; }
   .post-author .username { color: #888; font-weight: 400; font-size: 12px; }
   .post-time { font-size: 11px; color: #888; }
-  .post-actions { display: none; gap: 4px; }
-  .post:hover .post-actions { display: flex; }
-  .post-actions button { background: none; border: 1px solid #e5e5ea; border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
-  .post-actions button:hover { background: #fafafc; }
-  .post-content { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
-  .post-edited { font-size: 10px; color: #aaa; margin-left: 6px; }
-
-  /* ===== COMPOSER (rodapé) ===== */
-  .composer { background: #fff; border-top: 1px solid #e5e5ea; padding: 12px 16px; flex-shrink: 0; }
-  .composer textarea { width: 100%; min-height: 40px; max-height: 140px; padding: 10px 14px; border: 1px solid #d2d2d7; border-radius: 12px; font-size: 14px; resize: none; font-family: inherit; outline: none; transition: border 0.15s; }
-  .composer textarea:focus { border-color: #E5571E; }
-  .composer-row { display: flex; gap: 8px; align-items: flex-end; }
-  .composer-row button { background: #25d366; color: #fff; border: none; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.15s; }
-  .composer-row button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .composer-hint { font-size: 11px; color: #888; margin-top: 6px; text-align: center; }
+  .post-content { font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
 
   /* ===== PRODUCT CARDS ===== */
-  .prod-card { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.08); margin-bottom: 6px; text-decoration: none; color: inherit; transition: transform 0.1s; }
-  .prod-card:hover { transform: translateY(-1px); }
-  .bubble.from-me .prod-card { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); color: #fff; }
+  .prod-card { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.08); margin-bottom: 6px; text-decoration: none; color: inherit; }
+  .bubble.from-me .prod-card { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.3); color: #fff; }
   .prod-card .pc-img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: #f0f0f5; flex-shrink: 0; }
   .prod-card .pc-info { flex: 1; min-width: 0; }
-  .prod-card .pc-name { font-weight: 700; font-size: 13px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .prod-card .pc-brand { font-size: 11px; opacity: 0.7; }
+  .prod-card .pc-name { font-weight: 700; font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .prod-card .pc-brand { font-size: 11px; opacity: 0.75; }
   .prod-card .pc-price { font-size: 13px; font-weight: 700; margin-top: 2px; }
   .prod-card .pc-old { font-size: 11px; text-decoration: line-through; opacity: 0.55; margin-right: 4px; }
 
-  /* ===== COMPOSER attach chip (selected product) ===== */
-  .attach-chip { background: #FFEBDC; border: 1px solid #E5571E; border-radius: 10px; padding: 6px 10px; font-size: 12px; color: #E5571E; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .attach-chip button { background: none; border: none; color: #E5571E; cursor: pointer; font-size: 14px; }
-  .composer .attach-btn { background: none; border: 1.5px solid #d2d2d7; color: #666; padding: 8px 12px; border-radius: 12px; cursor: pointer; font-size: 18px; line-height: 1; flex-shrink: 0; }
-  .composer .attach-btn:hover { border-color: #E5571E; color: #E5571E; }
+  /* ===== COMPOSER ===== */
+  .composer { background: #fff; border-top: 1px solid #e5e5ea; padding: 10px 10px 10px; flex-shrink: 0; }
+  .composer .attach-chip { background: #FFEBDC; border: 1px solid #E5571E; border-radius: 10px; padding: 6px 10px; font-size: 12px; color: #E5571E; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .composer .attach-chip button { background: none; border: none; color: #E5571E; cursor: pointer; font-size: 16px; }
+  .composer-row { display: flex; gap: 6px; align-items: flex-end; }
+  .composer textarea { flex: 1; min-height: 42px; max-height: 120px; padding: 10px 14px; border: 1px solid #d2d2d7; border-radius: 22px; font-size: 14px; resize: none; font-family: inherit; outline: none; transition: border 0.15s; }
+  .composer textarea:focus { border-color: #E5571E; }
+  .composer .attach-btn { background: none; border: 1.5px solid #d2d2d7; color: #666; padding: 8px 12px; border-radius: 22px; cursor: pointer; font-size: 18px; line-height: 1; flex-shrink: 0; }
+  .composer .send-btn { background: #25d366; color: #fff; border: none; padding: 10px 18px; border-radius: 22px; cursor: pointer; font-weight: 600; font-size: 14px; flex-shrink: 0; }
+  .composer .send-btn:disabled { opacity: 0.4; }
+  .composer-hint { font-size: 10px; color: #888; margin-top: 6px; text-align: center; }
 
-  /* ===== PRODUCT SEARCH MODAL ===== */
-  .prod-search-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #f0f0f5; cursor: pointer; align-items: center; }
-  .prod-search-item:hover { background: #fafafc; }
-  .prod-search-item img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: #f0f0f5; flex-shrink: 0; }
-  .prod-search-item .name { font-weight: 600; font-size: 13px; line-height: 1.3; }
-  .prod-search-item .meta { font-size: 11px; color: #888; }
-  .prod-search-item .price { font-weight: 700; color: #E5571E; font-size: 13px; }
-
-  /* ===== EMPTY STATES ===== */
-  .empty { padding: 40px 20px; text-align: center; color: #888; font-size: 14px; }
-  .empty .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
-
-  /* ===== MODAL ===== */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
-  .modal { background: #fff; border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; }
-  .modal h2 { font-size: 18px; margin-bottom: 16px; color: #E5571E; }
+  /* ===== MODAL (fullscreen on mobile) ===== */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: flex-end; justify-content: center; z-index: 20; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #fff; border-radius: 16px 16px 0 0; padding: 20px 18px; max-width: 480px; width: 100%; max-height: 85vh; overflow-y: auto; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .modal h2 { font-size: 17px; margin-bottom: 14px; color: #E5571E; }
   .modal label { display: block; font-size: 11px; letter-spacing: 1px; color: #888; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; }
-  .modal input[type=text] { width: 100%; padding: 10px 14px; border: 1.5px solid #d2d2d7; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+  .modal input[type=text] { width: 100%; padding: 12px 14px; border: 1.5px solid #d2d2d7; border-radius: 10px; font-size: 15px; margin-bottom: 14px; }
   .modal input[type=text]:focus { outline: none; border-color: #E5571E; }
-  .modal-search-result { padding: 8px 10px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
-  .modal-search-result button { background: #E5571E; color: #fff; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  .modal-search-result { padding: 10px 8px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; font-size: 14px; gap: 10px; }
+  .modal-search-result button { background: #E5571E; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
   .modal-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .modal-chip { background: #FFEBDC; color: #E5571E; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .modal-chip { background: #FFEBDC; color: #E5571E; padding: 6px 12px; border-radius: 14px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .modal-chip button { background: none; border: none; color: #E5571E; cursor: pointer; font-size: 14px; }
-  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-  .modal-actions button { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; position: sticky; bottom: 0; background: #fff; padding-top: 12px; border-top: 1px solid #f0f0f5; }
+  .modal-actions button { padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; flex: 1; }
   .modal-actions .btn-secondary { background: #f0f0f5; color: #1d1d1f; }
   .modal-actions .btn-primary { background: #E5571E; color: #fff; }
 
-  /* ===== TIMELINE SUB-TABS ===== */
-  .timeline-tabs { display: flex; gap: 4px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e5ea; overflow-x: auto; flex-shrink: 0; }
-  .timeline-tab { padding: 6px 12px; border-radius: 16px; background: #f0f0f5; color: #666; font-size: 12px; cursor: pointer; white-space: nowrap; border: none; font-weight: 600; }
-  .timeline-tab.active { background: #E5571E; color: #fff; }
-  .timeline-tab .dot { color: #007aff; margin-left: 4px; }
+  /* ===== PRODUCT SEARCH ITEM ===== */
+  .prod-search-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #f0f0f5; cursor: pointer; align-items: center; }
+  .prod-search-item:active { background: #fafafc; }
+  .prod-search-item img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: #f0f0f5; flex-shrink: 0; }
+  .prod-search-item .name { font-weight: 600; font-size: 14px; line-height: 1.3; }
+  .prod-search-item .meta { font-size: 11px; color: #888; }
+  .prod-search-item .price { font-weight: 700; color: #E5571E; font-size: 13px; }
 
-  .login-required { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
-  .login-required a { background: #E5571E; color: #fff; padding: 10px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; }
+  /* ===== LOGIN REQUIRED ===== */
+  .login-required { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; padding: 20px; text-align: center; }
+  .login-required a { background: #E5571E; color: #fff; padding: 12px 26px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+
+  /* ===== ACTION SHEET (long-press on bubble) ===== */
+  .action-sheet { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: flex-end; justify-content: center; z-index: 25; }
+  .action-sheet.open { display: flex; }
+  .action-sheet .sheet { background: #fff; border-radius: 16px 16px 0 0; max-width: 480px; width: 100%; padding-bottom: env(safe-area-inset-bottom); }
+  .action-sheet button { width: 100%; padding: 14px; background: none; border: none; border-top: 1px solid #f0f0f5; font-size: 15px; cursor: pointer; color: #1d1d1f; }
+  .action-sheet button.danger { color: #d70015; }
+  .action-sheet button.cancel { font-weight: 700; }
 </style>
 </head>
 <body>
-
-<div class="topbar">
-  <h1>💬 TenisCash Mensagens</h1>
-  <div class="user">
-    <span id="user-name">—</span>
-    <a href="/admin.html">← Voltar ao Admin</a>
+<div class="app">
+  <div class="app-top">
+    <h1>💬 TenisCash</h1>
+    <div class="user-chip" id="user-name">—</div>
   </div>
-</div>
 
-<div class="tabs">
-  <button class="tab active" id="tab-conv" onclick="switchMainTab('conv')">
-    💬 Conversas <span class="badge" id="badge-conv" style="display:none">0</span>
-  </button>
-  <button class="tab" id="tab-tl" onclick="switchMainTab('tl')">
-    📓 Como está o dia hoje? <span class="badge" id="badge-tl" style="display:none">0</span>
-  </button>
-</div>
-
-<div class="main" id="main">
-  <div class="left">
-    <!-- CONVERSAS list -->
-    <div id="conv-list" style="display:block">
+  <div class="content">
+    <!-- VIEW: CONVERSAS -->
+    <div class="view active" id="view-conv">
       <div class="list-header">
         <h2>Conversas</h2>
-        <button onclick="alert('Para iniciar conversa, abra o card de um cliente no admin')">+</button>
       </div>
-      <div id="conv-items"><div class="empty">Carregando...</div></div>
+      <div id="conv-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando...</div></div></div>
     </div>
 
-    <!-- TIMELINES list -->
-    <div id="tl-list" style="display:none">
+    <!-- VIEW: TIMELINES -->
+    <div class="view" id="view-tl">
       <div class="list-header">
         <h2>Timelines</h2>
         <button onclick="openCreateTimelineModal()">+ Nova</button>
       </div>
-      <div id="tl-items"><div class="empty">Carregando...</div></div>
+      <div id="tl-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando...</div></div></div>
     </div>
   </div>
 
-  <div class="right" id="right">
-    <div class="empty" style="margin:auto">
-      <div class="icon">👈</div>
-      <div>Selecione uma conversa ou timeline</div>
-    </div>
+  <div class="bottom-nav">
+    <button class="active" id="nav-conv" onclick="switchView('conv')">
+      <span class="icon">💬</span>
+      <span>Conversas</span>
+      <span class="badge" id="badge-conv" style="display:none">0</span>
+    </button>
+    <button id="nav-tl" onclick="switchView('tl')">
+      <span class="icon">📓</span>
+      <span>Hoje</span>
+      <span class="badge" id="badge-tl" style="display:none">0</span>
+    </button>
   </div>
 </div>
 
-<!-- MODAL: Anexar produto (busca + escolha) -->
-<div class="modal-overlay" id="modal-attach-product" style="display:none">
+<!-- THREAD/FEED FULLSCREEN -->
+<div class="screen-thread" id="thread-screen">
+  <div class="thread-header">
+    <button class="back-btn" onclick="closeThread()">←</button>
+    <div style="flex:1">
+      <div class="title" id="thread-title">—</div>
+      <div class="subtitle" id="thread-subtitle">—</div>
+    </div>
+  </div>
+  <div class="thread-body" id="thread-body"></div>
+  <div class="composer">
+    <div id="attach-preview"></div>
+    <div class="composer-row">
+      <button class="attach-btn" onclick="openProductModal()" title="Anexar produto">🛍️</button>
+      <textarea id="composer-input" rows="1" placeholder="Mensagem..." oninput="autoGrow(this)"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendActive()">Enviar</button>
+    </div>
+    <div class="composer-hint" id="composer-hint"></div>
+  </div>
+</div>
+
+<!-- MODAL: Anexar produto -->
+<div class="modal-overlay" id="modal-product">
   <div class="modal">
     <h2>🛍️ Anexar produto</h2>
     <label>Buscar (nome, marca, SKU, código de barras)</label>
-    <input type="text" id="prod-search-input" placeholder="🔍 Ex: ASICS GT, mizuno, 100..." oninput="searchProducts()">
-    <div id="prod-search-results" style="max-height:360px;overflow-y:auto;margin-top:8px"></div>
+    <input type="text" id="prod-search-input" placeholder="🔍 Ex: ASICS GT, mizuno..." oninput="searchProducts()">
+    <div id="prod-search-results" style="max-height:50vh;overflow-y:auto"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeProductModal()">Fechar</button>
     </div>
@@ -207,15 +222,15 @@
 </div>
 
 <!-- MODAL: Criar Timeline -->
-<div class="modal-overlay" id="modal-create-tl" style="display:none">
+<div class="modal-overlay" id="modal-create-tl">
   <div class="modal">
-    <h2>📓 Criar Timeline Privada</h2>
+    <h2>📓 Nova Timeline</h2>
     <label>Nome</label>
-    <input type="text" id="new-tl-name" placeholder="Ex: Família, Time Bessa, Amigos">
-    <label>Convidar pessoas (busca por nome, telefone ou @username)</label>
-    <input type="text" id="new-tl-search" placeholder="🔍 Buscar..." oninput="searchPeopleForInvite()">
-    <div id="search-results" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
-    <label>Pessoas convidadas:</label>
+    <input type="text" id="new-tl-name" placeholder="Família, Time Bessa, Amigos…">
+    <label>Convidar pessoas</label>
+    <input type="text" id="new-tl-search" placeholder="🔍 Buscar por nome…" oninput="searchPeopleForInvite()">
+    <div id="search-results" style="max-height:30vh;overflow-y:auto;margin-bottom:12px"></div>
+    <label>Convidadas</label>
     <div class="modal-chips" id="invite-chips"><span style="font-size:12px;color:#888">Nenhuma adicionada</span></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeCreateTimelineModal()">Cancelar</button>
@@ -224,60 +239,44 @@
   </div>
 </div>
 
+<!-- ACTION SHEET -->
+<div class="action-sheet" id="action-sheet">
+  <div class="sheet" id="action-sheet-content"></div>
+</div>
+
 <script>
-// =============================================================
-// STATE
-// =============================================================
+const API = '/api/messages-v2';
 const STATE = {
-  token: null,
+  view: 'conv',
   userId: null,
-  userName: null,
-  mainTab: 'conv',         // 'conv' | 'tl'
   conversations: [],
-  activeConvId: null,
-  activeConvMessages: [],
   timelines: [],
-  activeTimelineId: null,
-  activeTimelinePosts: [],
-  inviteList: [],          // pessoas pra adicionar na nova timeline
-  attachedProduct: null,   // produto selecionado pra anexar no próximo send
-  attachContext: null,     // 'chat' | 'post'
+  activeKind: null,        // 'conv' | 'tl'
+  activeId: null,
+  activeMessages: [],
+  activePosts: [],
+  activeMeta: null,
+  inviteList: [],
+  attachedProduct: null,
   pollTimer: null,
 };
 
-const API = '/api/messages-v2';
-
-// =============================================================
-// AUTH
-// =============================================================
-function getToken() {
-  return localStorage.getItem('tc_admin_token') || '';
-}
-function authHeaders() {
-  return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' };
-}
+function getToken() { return localStorage.getItem('tc_admin_token') || ''; }
+function authHeaders() { return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }; }
 
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    ...opts,
-    headers: { ...authHeaders(), ...(opts.headers || {}) },
-  });
+  const res = await fetch(API + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
   if (res.status === 401) {
-    document.body.innerHTML = '<div class="login-required"><h2>Você precisa fazer login</h2><a href="/admin.html">Ir pra Login</a></div>';
-    throw new Error('not authenticated');
+    document.body.innerHTML = '<div class="login-required"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+    throw new Error('unauth');
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
   return data;
 }
 
-// =============================================================
-// HELPERS
-// =============================================================
 function escapeHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function formatTime(iso) {
   if (!iso) return '';
@@ -285,339 +284,188 @@ function formatTime(iso) {
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
   if (sameDay) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  const diffDays = Math.floor((now - d) / (24*60*60*1000));
-  if (diffDays === 1) return 'ontem';
-  if (diffDays < 7) return diffDays + ' dias atrás';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 function initials(name) {
-  return String(name || '?').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  if (!name) return '?';
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
-// =============================================================
-// TAB SWITCH
-// =============================================================
-function switchMainTab(tab) {
-  STATE.mainTab = tab;
-  document.getElementById('tab-conv').classList.toggle('active', tab === 'conv');
-  document.getElementById('tab-tl').classList.toggle('active', tab === 'tl');
-  document.getElementById('conv-list').style.display = tab === 'conv' ? 'block' : 'none';
-  document.getElementById('tl-list').style.display = tab === 'tl' ? 'block' : 'none';
-  if (tab === 'conv') loadConversations(); else loadTimelines();
-  document.getElementById('main').classList.remove('thread-open');
-  if (!STATE.activeConvId && !STATE.activeTimelineId) renderEmptyRight();
+// ============= VIEWS =============
+function switchView(name) {
+  STATE.view = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'tl' && STATE.timelines.length === 0) loadTimelines();
 }
 
-// =============================================================
-// CONVERSAS
-// =============================================================
+// ============= CONVERSAS LIST =============
 async function loadConversations() {
   try {
     const d = await api('/conversations');
     STATE.conversations = d.conversations || [];
-    renderConvList();
-  } catch (e) {
-    document.getElementById('conv-items').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
-  }
+    renderConversations();
+  } catch (e) { document.getElementById('conv-items').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
 }
-function renderConvList() {
+function renderConversations() {
   const el = document.getElementById('conv-items');
   if (STATE.conversations.length === 0) {
-    el.innerHTML = '<div class="empty"><div class="icon">📭</div>Nenhuma conversa<br><small>Conversas com clientes e equipe aparecem aqui</small></div>';
+    el.innerHTML = '<div class="empty"><div class="icon">💬</div><div class="title">Sem conversas</div><div class="desc">As conversas aparecem aqui quando alguém te escreve.</div></div>';
     return;
   }
   el.innerHTML = STATE.conversations.map(c => {
-    const isStore = c.otherParty?.type === 'store';
-    const name = c.otherParty?.name || '(sem nome)';
-    const lastMsgText = c.lastMessage?.content || (c.lastMessage ? '[mídia]' : '(sem mensagens)');
+    const name = c.otherParty?.name || '(conversa)';
+    const preview = c.lastMessage?.content || (c.lastMessage?.productCardId ? '🛍️ Produto' : (c.lastMessage?.mediaType ? '[mídia]' : 'Iniciar conversa'));
     return `
-      <div class="list-item ${STATE.activeConvId === c.id ? 'active' : ''}" onclick="openConversation('${c.id}')">
-        <div class="avatar ${isStore ? 'store' : ''}">${isStore ? '🏪' : escapeHtml(initials(name))}</div>
+      <div class="list-item" data-id="${c.id}">
+        <div class="avatar">${initials(name)}</div>
         <div class="info">
           <div class="name">${escapeHtml(name)}</div>
-          <div class="preview">${escapeHtml(lastMsgText.slice(0, 60))}</div>
+          <div class="preview">${escapeHtml(preview)}</div>
         </div>
         <div class="meta">
-          <div>${formatTime(c.lastMessageAt)}</div>
+          <div class="time">${formatTime(c.lastMessageAt)}</div>
           ${c.unreadCount > 0 ? `<div class="badge">${c.unreadCount}</div>` : ''}
         </div>
       </div>
     `;
   }).join('');
-}
-async function openConversation(convId) {
-  STATE.activeConvId = convId;
-  STATE.activeTimelineId = null;
-  document.getElementById('main').classList.add('thread-open');
-  renderConvList();
-  try {
-    const d = await api('/conversations/' + convId + '/messages');
-    STATE.activeConvMessages = d.messages || [];
-    const conv = STATE.conversations.find(c => c.id === convId);
-    renderThread(conv);
-    // marca como lida
-    api('/conversations/' + convId + '/read', { method: 'PATCH' }).then(() => loadConversations());
-  } catch (e) {
-    document.getElementById('right').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
-  }
-}
-function renderThread(conv) {
-  const otherName = conv?.otherParty?.name || '(conversa)';
-  const html = `
-    <div class="right-header">
-      <button class="back-btn" onclick="backToList()">←</button>
-      <div>
-        <div class="title">${escapeHtml(otherName)}</div>
-        <div class="subtitle">${conv?.otherParty?.type === 'store' ? 'Loja oficial' : (conv?.otherParty?.username ? '@' + conv.otherParty.username : 'Conversa direta')}</div>
-      </div>
-    </div>
-    <div class="messages" id="messages-list">
-      ${STATE.activeConvMessages.length === 0
-        ? '<div class="empty"><div class="icon">💬</div>Nenhuma mensagem ainda. Comece a conversar!</div>'
-        : STATE.activeConvMessages.map(m => renderBubble(m)).join('')}
-    </div>
-    <div class="composer">
-      <div id="attach-preview-chat"></div>
-      <div class="composer-row">
-        <button class="attach-btn" onclick="openProductModal('chat')" title="Anexar produto">🛍️</button>
-        <textarea id="msg-input" placeholder="Escreva sua mensagem..." onkeydown="onMsgKeydown(event)"></textarea>
-        <button onclick="sendMessage()">Enviar</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('right').innerHTML = html;
-  renderAttachPreview();
-  scrollMessagesToBottom();
-  setTimeout(() => document.getElementById('msg-input').focus(), 50);
-}
-function renderBubble(m) {
-  const fromMe = m.senderId === STATE.userId;
-  const ageMs = Date.now() - new Date(m.createdAt).getTime();
-  const canDeleteBoth = fromMe && ageMs < 2 * 60 * 60 * 1000;
-  return `
-    <div class="bubble ${fromMe ? 'from-me' : 'from-other'}" data-id="${m.id}">
-      ${m.productCard ? renderProductCard(m.productCard) : ''}
-      ${m.content ? `<div>${escapeHtml(m.content)}</div>` : ''}
-      ${m.mediaUrl ? `<div style="font-size:12px;opacity:0.8">[${m.mediaType || 'mídia'}]</div>` : ''}
-      <div class="meta">
-        ${m.editedAt ? '<span style="font-size:10px;opacity:0.6">editada</span>' : ''}
-        ${formatTime(m.createdAt)}
-        ${fromMe ? (m.readAt ? '✓✓' : '✓') : ''}
-      </div>
-      ${fromMe ? `
-        <div class="actions">
-          <button onclick="deleteMsg('${m.id}', 'me')" title="Apagar pra mim">🗑️</button>
-          ${canDeleteBoth ? `<button onclick="deleteMsg('${m.id}', 'both')" title="Apagar pros dois">🗑️🗑️</button>` : ''}
-        </div>
-      ` : `
-        <div class="actions">
-          <button onclick="deleteMsg('${m.id}', 'me')" title="Apagar pra mim">🗑️</button>
-        </div>
-      `}
-    </div>
-  `;
-}
-function scrollMessagesToBottom() {
-  const el = document.getElementById('messages-list');
-  if (el) el.scrollTop = el.scrollHeight;
-}
-function onMsgKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-}
-async function sendMessage() {
-  const input = document.getElementById('msg-input');
-  const content = input.value.trim();
-  const productCardId = STATE.attachedProduct?.id || null;
-  if (!content && !productCardId) return;
-  if (!STATE.activeConvId) return;
-  input.disabled = true;
-  try {
-    const body = { content: content || null };
-    if (productCardId) body.productCardId = productCardId;
-    const d = await api('/conversations/' + STATE.activeConvId + '/messages', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-    STATE.activeConvMessages.push(d.message);
-    input.value = '';
-    STATE.attachedProduct = null;
-    const conv = STATE.conversations.find(c => c.id === STATE.activeConvId);
-    renderThread(conv);
-    loadConversations();
-  } catch (e) {
-    alert('Erro ao enviar: ' + e.message);
-  } finally {
-    input.disabled = false;
-  }
-}
-async function deleteMsg(msgId, scope) {
-  const msg = scope === 'both' ? 'Apagar esta mensagem para os DOIS lados?' : 'Apagar do seu lado?';
-  if (!confirm(msg)) return;
-  try {
-    await api('/messages/' + msgId + '?scope=' + scope, { method: 'DELETE' });
-    STATE.activeConvMessages = STATE.activeConvMessages.filter(m => m.id !== msgId);
-    const conv = STATE.conversations.find(c => c.id === STATE.activeConvId);
-    renderThread(conv);
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
+  el.querySelectorAll('.list-item').forEach(it => {
+    it.addEventListener('click', () => openConversation(it.getAttribute('data-id')));
+  });
 }
 
-// =============================================================
-// TIMELINES
-// =============================================================
+// ============= TIMELINES LIST =============
 async function loadTimelines() {
   try {
     const d = await api('/timelines');
     STATE.timelines = d.timelines || [];
-    renderTimelineList();
-  } catch (e) {
-    document.getElementById('tl-items').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
-  }
+    renderTimelines();
+  } catch (e) { document.getElementById('tl-items').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
 }
-function renderTimelineList() {
+function renderTimelines() {
   const el = document.getElementById('tl-items');
   if (STATE.timelines.length === 0) {
-    el.innerHTML = '<div class="empty"><div class="icon">📭</div>Nenhuma timeline<br><small>Crie uma privada com seus amigos</small></div>';
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div><div class="title">Sem timelines</div><div class="desc">Crie uma privada com seus amigos ou time.</div></div>';
     return;
   }
   el.innerHTML = STATE.timelines.map(t => `
-    <div class="list-item timeline-item ${STATE.activeTimelineId === t.id ? 'active' : ''}" onclick="openTimeline('${t.id}')">
+    <div class="list-item timeline-item" data-id="${t.id}">
       <div class="avatar ${t.isPublic ? 'public' : ''}">${t.isPublic ? '🌍' : '👥'}</div>
       <div class="info">
         <div class="name">${escapeHtml(t.name)}</div>
-        <div class="preview">${t.isPublic ? 'Geral · todos veem' : (t.memberCount + ' pessoas')}</div>
+        <div class="preview">${t.isPublic ? 'Geral · todos veem' : (t.memberCount + ' pessoas · privada')}</div>
       </div>
       <div class="meta">
         ${t.unreadCount > 0 ? `<div class="badge">${t.unreadCount}</div>` : ''}
       </div>
     </div>
   `).join('');
+  el.querySelectorAll('.list-item').forEach(it => {
+    it.addEventListener('click', () => openTimeline(it.getAttribute('data-id')));
+  });
 }
-async function openTimeline(timelineId) {
-  STATE.activeTimelineId = timelineId;
-  STATE.activeConvId = null;
-  document.getElementById('main').classList.add('thread-open');
-  renderTimelineList();
+
+// ============= THREAD (chat) =============
+async function openConversation(convId) {
+  STATE.activeKind = 'conv';
+  STATE.activeId = convId;
+  STATE.activeMessages = [];
+  STATE.activeMeta = STATE.conversations.find(c => c.id === convId) || null;
+  showThread();
+  document.getElementById('thread-title').textContent = STATE.activeMeta?.otherParty?.name || 'Conversa';
+  document.getElementById('thread-subtitle').textContent = STATE.activeMeta?.otherParty?.type === 'store' ? 'Loja oficial' : (STATE.activeMeta?.otherParty?.username ? '@' + STATE.activeMeta.otherParty.username : 'Conversa direta');
+  document.getElementById('composer-input').placeholder = 'Mensagem...';
+  document.getElementById('composer-hint').textContent = '';
+  document.getElementById('thread-body').innerHTML = '<div class="empty"><div class="icon">⏳</div></div>';
   try {
-    const d = await api('/timelines/' + timelineId + '/posts');
-    STATE.activeTimelinePosts = d.posts || [];
-    renderFeed(d.timeline);
-    loadTimelines(); // atualiza badges
-  } catch (e) {
-    document.getElementById('right').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
-  }
+    const d = await api('/conversations/' + convId + '/messages');
+    STATE.activeMessages = d.messages || [];
+    renderThread();
+    api('/conversations/' + convId + '/read', { method: 'PATCH' }).then(loadConversations);
+  } catch (e) { document.getElementById('thread-body').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
 }
-function renderFeed(timeline) {
-  const html = `
-    <div class="right-header">
-      <button class="back-btn" onclick="backToList()">←</button>
-      <div>
-        <div class="title">${timeline.isPublic ? '🌍 ' : '👥 '}${escapeHtml(timeline.name)}</div>
-        <div class="subtitle">${timeline.isPublic ? 'Pública — todos veem' : 'Privada'} · Tudo aqui some às 00:00</div>
+
+function renderThread() {
+  const body = document.getElementById('thread-body');
+  if (STATE.activeMessages.length === 0) {
+    body.innerHTML = '<div class="empty"><div class="icon">💬</div><div class="desc">Sem mensagens ainda. Quebra o gelo!</div></div>';
+    return;
+  }
+  body.innerHTML = STATE.activeMessages.map(m => renderBubble(m)).join('');
+  wireBubbleLongPress();
+  body.scrollTop = body.scrollHeight;
+}
+
+function renderBubble(m) {
+  const fromMe = m.senderId === STATE.userId;
+  return `
+    <div class="bubble ${fromMe ? 'from-me' : 'from-other'}" data-id="${m.id}" data-from-me="${fromMe ? 1 : 0}" data-created="${m.createdAt}">
+      ${m.productCard ? renderProductCard(m.productCard) : ''}
+      ${m.content ? `<div>${escapeHtml(m.content)}</div>` : ''}
+      ${m.mediaUrl ? `<div style="font-size:12px;opacity:0.8">[${m.mediaType || 'mídia'}]</div>` : ''}
+      <div class="meta">
+        ${m.editedAt ? '<span style="opacity:0.6">editada</span>' : ''}
+        ${formatTime(m.createdAt)}
+        ${fromMe ? (m.readAt ? '✓✓' : '✓') : ''}
       </div>
-    </div>
-    <div class="messages" id="posts-list">
-      ${STATE.activeTimelinePosts.length === 0
-        ? '<div class="empty"><div class="icon">✍️</div>Nenhum post hoje. Seja o primeiro!</div>'
-        : STATE.activeTimelinePosts.map(p => renderPost(p)).join('')}
-    </div>
-    <div class="composer">
-      <div id="attach-preview-post"></div>
-      <div class="composer-row">
-        <button class="attach-btn" onclick="openProductModal('post')" title="Anexar produto">🛍️</button>
-        <textarea id="post-input" placeholder="O que você quer compartilhar do seu dia?" onkeydown="onPostKeydown(event)"></textarea>
-        <button onclick="sendPost()">Postar</button>
-      </div>
-      <div class="composer-hint">⏰ Tudo aqui some às 00:00 — fim do dia, fim do post</div>
     </div>
   `;
-  document.getElementById('right').innerHTML = html;
-  renderAttachPreview();
 }
+
+// ============= TIMELINE FEED =============
+async function openTimeline(timelineId) {
+  STATE.activeKind = 'tl';
+  STATE.activeId = timelineId;
+  STATE.activePosts = [];
+  STATE.activeMeta = STATE.timelines.find(t => t.id === timelineId) || null;
+  showThread();
+  document.getElementById('thread-title').textContent = (STATE.activeMeta?.isPublic ? '🌍 ' : '👥 ') + (STATE.activeMeta?.name || '');
+  document.getElementById('thread-subtitle').textContent = STATE.activeMeta?.isPublic ? 'Geral · todos veem' : 'Privada';
+  document.getElementById('composer-input').placeholder = 'Como tá o dia?...';
+  document.getElementById('composer-hint').textContent = '⏰ Tudo aqui some às 00:00';
+  document.getElementById('thread-body').innerHTML = '<div class="empty"><div class="icon">⏳</div></div>';
+  try {
+    const d = await api('/timelines/' + timelineId + '/posts');
+    STATE.activePosts = d.posts || [];
+    renderFeed();
+    loadTimelines();
+  } catch (e) { document.getElementById('thread-body').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
+}
+
+function renderFeed() {
+  const body = document.getElementById('thread-body');
+  if (STATE.activePosts.length === 0) {
+    body.innerHTML = '<div class="empty"><div class="icon">✍️</div><div class="title">Nenhum post hoje</div><div class="desc">Seja o primeiro!</div></div>';
+    return;
+  }
+  body.innerHTML = STATE.activePosts.map(p => renderPost(p)).join('');
+}
+
 function renderPost(p) {
-  const isMe = p.authorId === STATE.userId;
   const username = p.author?.username ? ' <span class="username">@' + escapeHtml(p.author.username) + '</span>' : '';
+  const isMe = p.authorId === STATE.userId;
   return `
-    <div class="post" data-id="${p.id}">
+    <div class="post" data-id="${p.id}" data-mine="${isMe ? 1 : 0}">
       <div class="post-header">
-        <div class="post-author">${escapeHtml(p.author?.name || '?')}${username} <span class="post-time">· ${formatTime(p.createdAt)}</span>${p.editedAt ? ' <span class="post-edited">(editado)</span>' : ''}</div>
-        ${isMe ? `
-          <div class="post-actions">
-            <button onclick="editPost('${p.id}')">✏️</button>
-            <button onclick="deletePost('${p.id}')">🗑️</button>
-          </div>
-        ` : ''}
+        <div class="post-author">${escapeHtml(p.author?.name || '?')}${username}<span class="post-time"> · ${formatTime(p.createdAt)}</span></div>
+        ${isMe ? `<button style="background:none;border:none;font-size:18px;color:#888" onclick="postActionSheet('${p.id}')">⋯</button>` : ''}
       </div>
       ${p.content ? `<div class="post-content">${escapeHtml(p.content)}</div>` : ''}
       ${p.productCard ? `<div style="margin-top:8px">${renderProductCard(p.productCard)}</div>` : ''}
-      ${p.mediaUrl ? `<div style="margin-top:8px;font-size:12px;color:#888">[${p.mediaType || 'mídia'}]</div>` : ''}
     </div>
   `;
 }
-function onPostKeydown(e) {
-  if (e.key === 'Enter' && e.ctrlKey) {
-    e.preventDefault();
-    sendPost();
-  }
-}
-async function sendPost() {
-  const input = document.getElementById('post-input');
-  const content = input.value.trim();
-  const productCardId = STATE.attachedProduct?.id || null;
-  if (!content && !productCardId) return;
-  if (!STATE.activeTimelineId) return;
-  input.disabled = true;
-  try {
-    const body = { content: content || null };
-    if (productCardId) body.productCardId = productCardId;
-    const d = await api('/timelines/' + STATE.activeTimelineId + '/posts', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-    STATE.activeTimelinePosts.unshift(d.post);
-    input.value = '';
-    STATE.attachedProduct = null;
-    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
-    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  } finally {
-    input.disabled = false;
-  }
-}
-async function editPost(postId) {
-  const post = STATE.activeTimelinePosts.find(p => p.id === postId);
-  if (!post) return;
-  const novo = prompt('Editar post:', post.content || '');
-  if (novo == null) return;
-  try {
-    const d = await api('/posts/' + postId, { method: 'PATCH', body: JSON.stringify({ content: novo }) });
-    Object.assign(post, d.post);
-    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
-    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
-}
-async function deletePost(postId) {
-  if (!confirm('Apagar este post?')) return;
-  try {
-    await api('/posts/' + postId, { method: 'DELETE' });
-    STATE.activeTimelinePosts = STATE.activeTimelinePosts.filter(p => p.id !== postId);
-    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
-    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
-}
 
-// =============================================================
-// PRODUCT CARDS (anexar produto em chat/post)
-// =============================================================
+// ============= PRODUCT CARDS =============
 function renderProductCard(p) {
   const price = Number(p.promoPrice ?? p.price ?? 0);
   const hasPromo = p.promoPrice && p.promoPrice < p.price;
@@ -636,45 +484,25 @@ function renderProductCard(p) {
     </a>
   `;
 }
-function openProductModal(context) {
-  STATE.attachContext = context; // 'chat' | 'post'
-  document.getElementById('prod-search-input').value = '';
-  document.getElementById('prod-search-results').innerHTML = '<div style="font-size:12px;color:#888;padding:10px">Digite ao menos 2 caracteres pra buscar.</div>';
-  document.getElementById('modal-attach-product').style.display = 'flex';
-  setTimeout(() => document.getElementById('prod-search-input').focus(), 50);
-}
-function closeProductModal() {
-  document.getElementById('modal-attach-product').style.display = 'none';
-}
+
+function openProductModal() { document.getElementById('prod-search-input').value = ''; document.getElementById('prod-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>'; document.getElementById('modal-product').classList.add('open'); setTimeout(() => document.getElementById('prod-search-input').focus(), 80); }
+function closeProductModal() { document.getElementById('modal-product').classList.remove('open'); }
 let prodSearchDebounce;
 function searchProducts() {
   clearTimeout(prodSearchDebounce);
   const q = document.getElementById('prod-search-input').value.trim();
-  if (q.length < 2) { document.getElementById('prod-search-results').innerHTML = '<div style="font-size:12px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>'; return; }
+  if (q.length < 2) { document.getElementById('prod-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>'; return; }
   prodSearchDebounce = setTimeout(async () => {
     try {
       const d = await api('/products/search?q=' + encodeURIComponent(q));
       const items = d.products || [];
       const out = document.getElementById('prod-search-results');
-      if (items.length === 0) {
-        out.innerHTML = '<div style="font-size:12px;color:#888;padding:10px">Nenhum produto encontrado.</div>';
-        return;
-      }
+      if (items.length === 0) { out.innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Nenhum produto.</div>'; return; }
       out.innerHTML = items.map(p => {
         const price = Number(p.promoPrice ?? p.price ?? 0);
-        const img = p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="" loading="lazy">` : `<div style="width:48px;height:48px;border-radius:6px;background:#f0f0f5;display:flex;align-items:center;justify-content:center;font-size:18px">📦</div>`;
-        return `
-          <div class="prod-search-item" data-prod-id="${escapeHtml(p.id)}">
-            ${img}
-            <div style="flex:1;min-width:0">
-              <div class="name">${escapeHtml(p.name)}</div>
-              <div class="meta">${escapeHtml(p.brand || '')} · ${escapeHtml(p.sku || '')}</div>
-            </div>
-            <div class="price">R$ ${price.toFixed(2)}</div>
-          </div>
-        `;
+        const img = p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" alt="" loading="lazy">` : '<div style="width:48px;height:48px;border-radius:6px;background:#f0f0f5;display:flex;align-items:center;justify-content:center;font-size:18px">📦</div>';
+        return `<div class="prod-search-item" data-prod-id="${escapeHtml(p.id)}">${img}<div style="flex:1;min-width:0"><div class="name">${escapeHtml(p.name)}</div><div class="meta">${escapeHtml(p.brand || '')} · ${escapeHtml(p.sku || '')}</div></div><div class="price">R$ ${price.toFixed(2)}</div></div>`;
       }).join('');
-      // wire clicks
       out.querySelectorAll('.prod-search-item').forEach(el => {
         el.addEventListener('click', () => {
           const id = el.getAttribute('data-prod-id');
@@ -682,184 +510,220 @@ function searchProducts() {
           if (prod) attachProduct(prod);
         });
       });
-    } catch (e) {
-      document.getElementById('prod-search-results').innerHTML = '<div style="color:red;padding:10px">Erro: ' + escapeHtml(e.message) + '</div>';
-    }
+    } catch (e) { document.getElementById('prod-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
   }, 300);
 }
-function attachProduct(prod) {
-  STATE.attachedProduct = prod;
-  closeProductModal();
-  renderAttachPreview();
-  // foco no input depois de anexar
-  const id = STATE.attachContext === 'chat' ? 'msg-input' : 'post-input';
-  const el = document.getElementById(id);
-  if (el) el.focus();
+function attachProduct(prod) { STATE.attachedProduct = prod; closeProductModal(); renderAttachPreview(); document.getElementById('composer-input').focus(); }
+function clearAttached() { STATE.attachedProduct = null; renderAttachPreview(); }
+function renderAttachPreview() {
+  const el = document.getElementById('attach-preview');
+  if (!STATE.attachedProduct) { el.innerHTML = ''; return; }
+  const p = STATE.attachedProduct;
+  el.innerHTML = `<div class="attach-chip">🛍️ <strong>${escapeHtml(p.name)}</strong> · R$ ${Number(p.promoPrice ?? p.price ?? 0).toFixed(2)} <button onclick="clearAttached()">×</button></div>`;
 }
-function clearAttachedProduct() {
+
+// ============= SEND =============
+async function sendActive() {
+  const input = document.getElementById('composer-input');
+  const content = input.value.trim();
+  const productCardId = STATE.attachedProduct?.id || null;
+  if (!content && !productCardId) return;
+  if (!STATE.activeId) return;
+  input.disabled = true;
+  document.getElementById('send-btn').disabled = true;
+  try {
+    const body = { content: content || null };
+    if (productCardId) body.productCardId = productCardId;
+    if (STATE.activeKind === 'conv') {
+      const d = await api('/conversations/' + STATE.activeId + '/messages', { method: 'POST', body: JSON.stringify(body) });
+      STATE.activeMessages.push(d.message);
+      renderThread();
+      loadConversations();
+    } else {
+      const d = await api('/timelines/' + STATE.activeId + '/posts', { method: 'POST', body: JSON.stringify(body) });
+      STATE.activePosts.unshift(d.post);
+      renderFeed();
+    }
+    input.value = '';
+    input.style.height = '';
+    STATE.attachedProduct = null;
+    renderAttachPreview();
+  } catch (e) { alert('Erro: ' + e.message); }
+  finally { input.disabled = false; document.getElementById('send-btn').disabled = false; input.focus(); }
+}
+
+// ============= LONG PRESS / ACTIONS =============
+function wireBubbleLongPress() {
+  document.querySelectorAll('.bubble').forEach(el => {
+    let timer = null;
+    let pressed = false;
+    const start = () => { pressed = true; timer = setTimeout(() => { if (pressed) { el.classList.add('long-press-active'); openBubbleActionSheet(el); } }, 400); };
+    const cancel = () => { pressed = false; clearTimeout(timer); el.classList.remove('long-press-active'); };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchcancel', cancel);
+    el.addEventListener('touchmove', cancel);
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+  });
+}
+function openBubbleActionSheet(el) {
+  const id = el.getAttribute('data-id');
+  const fromMe = el.getAttribute('data-from-me') === '1';
+  const created = new Date(el.getAttribute('data-created'));
+  const ageH = (Date.now() - created.getTime()) / 3600000;
+  const canBoth = fromMe && ageH < 2;
+  const buttons = [];
+  buttons.push(`<button onclick="closeActionSheet(); deleteMsg('${id}','me')">Apagar pra mim</button>`);
+  if (canBoth) buttons.push(`<button class="danger" onclick="closeActionSheet(); deleteMsg('${id}','both')">Apagar pros dois</button>`);
+  buttons.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
+  document.getElementById('action-sheet-content').innerHTML = buttons.join('');
+  document.getElementById('action-sheet').classList.add('open');
+}
+function postActionSheet(postId) {
+  const buttons = [];
+  buttons.push(`<button onclick="closeActionSheet(); editPost('${postId}')">Editar</button>`);
+  buttons.push(`<button class="danger" onclick="closeActionSheet(); deletePost('${postId}')">Apagar</button>`);
+  buttons.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
+  document.getElementById('action-sheet-content').innerHTML = buttons.join('');
+  document.getElementById('action-sheet').classList.add('open');
+}
+function closeActionSheet() { document.getElementById('action-sheet').classList.remove('open'); }
+
+async function deleteMsg(msgId, scope) {
+  try {
+    await api('/messages/' + msgId + '?scope=' + scope, { method: 'DELETE' });
+    STATE.activeMessages = STATE.activeMessages.filter(m => m.id !== msgId);
+    renderThread();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+async function editPost(postId) {
+  const post = STATE.activePosts.find(p => p.id === postId);
+  if (!post) return;
+  const novo = prompt('Editar post:', post.content || '');
+  if (novo == null) return;
+  try {
+    const d = await api('/posts/' + postId, { method: 'PATCH', body: JSON.stringify({ content: novo }) });
+    Object.assign(post, d.post);
+    renderFeed();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+async function deletePost(postId) {
+  if (!confirm('Apagar este post?')) return;
+  try {
+    await api('/posts/' + postId, { method: 'DELETE' });
+    STATE.activePosts = STATE.activePosts.filter(p => p.id !== postId);
+    renderFeed();
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+// ============= THREAD SCREEN =============
+function showThread() { document.getElementById('thread-screen').classList.add('open'); }
+function closeThread() {
+  document.getElementById('thread-screen').classList.remove('open');
+  STATE.activeId = null;
+  STATE.activeKind = null;
   STATE.attachedProduct = null;
   renderAttachPreview();
 }
-function renderAttachPreview() {
-  const ids = ['attach-preview-chat', 'attach-preview-post'];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (!STATE.attachedProduct) {
-      el.innerHTML = '';
-      return;
-    }
-    const p = STATE.attachedProduct;
-    el.innerHTML = `
-      <div class="attach-chip">
-        🛍️ <strong>${escapeHtml(p.name)}</strong>
-        <span style="opacity:0.7">· R$ ${Number(p.promoPrice ?? p.price ?? 0).toFixed(2)}</span>
-        <button onclick="clearAttachedProduct()" title="Remover">×</button>
-      </div>
-    `;
-  });
-}
 
-// =============================================================
-// MODAL: Criar Timeline Privada
-// =============================================================
+// ============= NEW TIMELINE MODAL =============
 function openCreateTimelineModal() {
   STATE.inviteList = [];
   document.getElementById('new-tl-name').value = '';
   document.getElementById('new-tl-search').value = '';
   document.getElementById('search-results').innerHTML = '';
   renderInviteChips();
-  document.getElementById('modal-create-tl').style.display = 'flex';
-  setTimeout(() => document.getElementById('new-tl-name').focus(), 50);
+  document.getElementById('modal-create-tl').classList.add('open');
+  setTimeout(() => document.getElementById('new-tl-name').focus(), 80);
 }
-function closeCreateTimelineModal() {
-  document.getElementById('modal-create-tl').style.display = 'none';
-}
-let searchDebounce;
+function closeCreateTimelineModal() { document.getElementById('modal-create-tl').classList.remove('open'); }
+
+let peopleDebounce;
 function searchPeopleForInvite() {
-  clearTimeout(searchDebounce);
+  clearTimeout(peopleDebounce);
   const q = document.getElementById('new-tl-search').value.trim();
   if (q.length < 2) { document.getElementById('search-results').innerHTML = ''; return; }
-  searchDebounce = setTimeout(async () => {
+  peopleDebounce = setTimeout(async () => {
     try {
       const d = await api('/people/search?q=' + encodeURIComponent(q));
       const results = (d.people || []).filter(p => !STATE.inviteList.find(i => i.id === p.id));
-      document.getElementById('search-results').innerHTML = results.length === 0
-        ? '<div style="font-size:12px;color:#888;padding:6px">Nenhuma pessoa encontrada</div>'
-        : results.map(p => `
-            <div class="modal-search-result">
-              <span>${escapeHtml(p.name)}${p.username ? ' · @' + escapeHtml(p.username) : ''}</span>
-              <button onclick='addInvite(${JSON.stringify(p).replace(/'/g, "\\u0027")})'>+ Adicionar</button>
-            </div>
-          `).join('');
-    } catch (e) {
-      document.getElementById('search-results').innerHTML = '<div style="color:red">Erro: ' + escapeHtml(e.message) + '</div>';
-    }
+      const out = document.getElementById('search-results');
+      out.innerHTML = results.length === 0
+        ? '<div style="font-size:13px;color:#888;padding:8px">Nenhuma pessoa encontrada</div>'
+        : results.map(p => `<div class="modal-search-result"><span>${escapeHtml(p.name)}${p.username ? ' · @' + escapeHtml(p.username) : ''}</span><button data-id="${p.id}">+ Adicionar</button></div>`).join('');
+      out.querySelectorAll('button[data-id]').forEach(b => {
+        b.addEventListener('click', () => {
+          const person = results.find(r => r.id === b.getAttribute('data-id'));
+          if (person) addInvite(person);
+        });
+      });
+    } catch (e) { document.getElementById('search-results').innerHTML = `<div style="color:red">Erro: ${escapeHtml(e.message)}</div>`; }
   }, 300);
 }
-function addInvite(person) {
-  if (STATE.inviteList.find(i => i.id === person.id)) return;
-  STATE.inviteList.push(person);
+function addInvite(p) {
+  if (STATE.inviteList.find(i => i.id === p.id)) return;
+  STATE.inviteList.push(p);
   renderInviteChips();
   document.getElementById('new-tl-search').value = '';
   document.getElementById('search-results').innerHTML = '';
 }
-function removeInvite(personId) {
-  STATE.inviteList = STATE.inviteList.filter(i => i.id !== personId);
+function removeInvite(id) {
+  STATE.inviteList = STATE.inviteList.filter(i => i.id !== id);
   renderInviteChips();
 }
 function renderInviteChips() {
   const el = document.getElementById('invite-chips');
-  if (STATE.inviteList.length === 0) {
-    el.innerHTML = '<span style="font-size:12px;color:#888">Nenhuma adicionada</span>';
-    return;
-  }
-  el.innerHTML = STATE.inviteList.map(p => `
-    <div class="modal-chip">
-      ${escapeHtml(p.name)}
-      <button onclick="removeInvite('${p.id}')">×</button>
-    </div>
-  `).join('');
+  if (STATE.inviteList.length === 0) { el.innerHTML = '<span style="font-size:12px;color:#888">Nenhuma adicionada</span>'; return; }
+  el.innerHTML = STATE.inviteList.map(p => `<div class="modal-chip">${escapeHtml(p.name)} <button data-id="${p.id}">×</button></div>`).join('');
+  el.querySelectorAll('button[data-id]').forEach(b => b.addEventListener('click', () => removeInvite(b.getAttribute('data-id'))));
 }
 async function createTimeline() {
   const name = document.getElementById('new-tl-name').value.trim();
-  if (!name) { alert('Dá um nome pra timeline'); return; }
-  if (STATE.inviteList.length === 0 && !confirm('Sem convidados — você vai postar sozinho. Tudo bem?')) return;
+  if (!name) { alert('Dá um nome'); return; }
+  if (STATE.inviteList.length === 0 && !confirm('Sem convidados — postará sozinho. OK?')) return;
   try {
-    const d = await api('/timelines', {
-      method: 'POST',
-      body: JSON.stringify({ name, inviteUserIds: STATE.inviteList.map(p => p.id) }),
-    });
+    const d = await api('/timelines', { method: 'POST', body: JSON.stringify({ name, inviteUserIds: STATE.inviteList.map(p => p.id) }) });
     closeCreateTimelineModal();
     await loadTimelines();
     openTimeline(d.timeline.id);
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  }
+  } catch (e) { alert('Erro: ' + e.message); }
 }
 
-// =============================================================
-// RIGHT panel helpers
-// =============================================================
-function renderEmptyRight() {
-  document.getElementById('right').innerHTML = '<div class="empty" style="margin:auto"><div class="icon">👈</div><div>Selecione uma conversa ou timeline</div></div>';
-}
-function backToList() {
-  document.getElementById('main').classList.remove('thread-open');
-}
-
-// =============================================================
-// NOTIFICATIONS POLLING (a cada 15s)
-// =============================================================
+// ============= POLLING =============
 async function pollNotifications() {
   try {
     const d = await api('/notifications/summary');
-    const badgeConv = document.getElementById('badge-conv');
-    const badgeTl = document.getElementById('badge-tl');
-    if (d.unreadConversations > 0) {
-      badgeConv.textContent = d.unreadConversations;
-      badgeConv.style.display = 'inline';
-    } else {
-      badgeConv.style.display = 'none';
-    }
+    const bConv = document.getElementById('badge-conv');
+    const bTl = document.getElementById('badge-tl');
+    if (d.unreadConversations > 0) { bConv.textContent = d.unreadConversations; bConv.style.display = 'inline-block'; } else bConv.style.display = 'none';
     const tlSum = (d.unreadTimelines || []).reduce((s, t) => s + t.unreadCount, 0);
-    if (tlSum > 0) {
-      badgeTl.textContent = tlSum;
-      badgeTl.style.display = 'inline';
-    } else {
-      badgeTl.style.display = 'none';
-    }
+    if (tlSum > 0) { bTl.textContent = tlSum; bTl.style.display = 'inline-block'; } else bTl.style.display = 'none';
   } catch {}
 }
 
-// =============================================================
-// BOOT
-// =============================================================
+// ============= BOOT =============
 async function boot() {
   if (!getToken()) {
-    document.body.innerHTML = '<div class="login-required"><h2>Você precisa fazer login no Admin TenisCash primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+    document.body.innerHTML = '<div class="login-required"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
     return;
   }
-  // pega userId do JWT
   try {
     const payload = JSON.parse(atob(getToken().split('.')[1]));
     STATE.userId = payload.userId;
   } catch {}
-  // user info via API admin
   try {
     const r = await fetch('/api/admin/me', { headers: authHeaders() });
     if (r.ok) {
       const d = await r.json();
-      STATE.userName = d.name || d.user?.name;
-      document.getElementById('user-name').textContent = STATE.userName || '';
+      document.getElementById('user-name').textContent = d.name || d.user?.name || '';
     }
   } catch {}
-
   await loadConversations();
   await pollNotifications();
   STATE.pollTimer = setInterval(pollNotifications, 15000);
 }
-
 boot();
 </script>
 </body>
