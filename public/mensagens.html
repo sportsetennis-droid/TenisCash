@@ -53,16 +53,18 @@
     --header-text: var(--text);
   }
   body[data-tab="conv"] {
-    --accent: #007aff;
-    --accent-soft: #e1efff;
-    --accent-grad: linear-gradient(135deg, #007aff 0%, #0a84ff 100%);
+    /* Mensagens: laranja brand, header branco glass — clean */
+    --accent: #FF6A1F;
+    --accent-soft: #FFEBDC;
+    --accent-grad: linear-gradient(135deg, #FF6A1F 0%, #FF8A4D 100%);
     --header-bg: rgba(255,255,255,0.85);
     --header-text: var(--text);
   }
   body[data-tab="tl"] {
+    /* Hoje: gradient laranja mais quente, header com cor — vibrante */
     --accent: #FF6A1F;
     --accent-soft: #FFEBDC;
-    --accent-grad: linear-gradient(135deg, #FF6A1F 0%, #FF2D92 60%, #8E44EC 100%);
+    --accent-grad: linear-gradient(135deg, #E64500 0%, #FF6A1F 45%, #FF9550 100%);
     --header-bg: var(--accent-grad);
     --header-text: #ffffff;
   }
@@ -269,18 +271,18 @@
     font-weight: 700;
     font-size: 16px;
     flex-shrink: 0;
-    background: linear-gradient(135deg, #FF6A1F, #FF2D92);
+    background: linear-gradient(135deg, #FF6A1F, #FF9550);
     box-shadow: 0 4px 12px rgba(255,106,31,0.25);
   }
-  .list-item.timeline-item .avatar { background: linear-gradient(135deg, #8E44EC, #0a84ff); box-shadow: 0 4px 12px rgba(142,68,236,0.25); }
-  .list-item.timeline-item .avatar.public { background: linear-gradient(135deg, #FF6A1F, #FF2D92, #8E44EC); box-shadow: 0 4px 16px rgba(255,45,146,0.30); }
+  .list-item.timeline-item .avatar { background: linear-gradient(135deg, #E64500, #FF6A1F); box-shadow: 0 4px 12px rgba(230,69,0,0.28); }
+  .list-item.timeline-item .avatar.public { background: linear-gradient(135deg, #E64500, #FF6A1F, #FF9550); box-shadow: 0 4px 16px rgba(255,106,31,0.32); }
   .list-item .info { flex: 1; min-width: 0; }
   .list-item .name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
   .list-item .preview { font-size: 13.5px; color: var(--text2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
   .list-item .meta { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
   .list-item .meta .time { font-size: 11px; color: var(--text3); font-weight: 500; }
   .list-item .meta .badge { background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; display: inline-block; min-width: 20px; text-align: center; }
-  body[data-tab="tl"] .list-item .meta .badge { background: var(--pink); }
+  /* badge na timeline mantém o vermelho de notificação real */
 
   /* ===== EMPTY ===== */
   .empty { padding: 80px 24px; text-align: center; color: var(--text2); }
@@ -407,10 +409,10 @@
   }
   .bubble.from-me {
     align-self: flex-end;
-    background: linear-gradient(135deg, #007aff 0%, #0a84ff 100%);
+    background: var(--accent-grad);
     color: #fff;
     border-bottom-right-radius: 6px;
-    box-shadow: 0 2px 8px rgba(10,132,255,0.25);
+    box-shadow: 0 2px 8px rgba(255,106,31,0.28);
   }
   .bubble.from-other {
     align-self: flex-start;
@@ -437,7 +439,7 @@
   .post-author-avatar {
     width: 36px; height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #8E44EC, #FF2D92);
+    background: linear-gradient(135deg, #FF6A1F, #FF9550);
     color: #fff;
     display: flex;
     align-items: center;
