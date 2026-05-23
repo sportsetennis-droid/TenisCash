@@ -667,6 +667,77 @@
   .media-audio { display: block; width: 100%; margin-top: 8px; height: 38px; }
   .bubble .media-audio { max-width: 100%; }
 
+  /* ===== TOAST notifications (substitui alert) ===== */
+  .toast-stack { position: fixed; top: calc(20px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none; max-width: 92vw; }
+  .toast {
+    background: rgba(20,20,22,0.92);
+    color: #fff;
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    padding: 12px 18px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: auto;
+    animation: toastIn 0.3s var(--ease-spring);
+    min-width: 280px;
+  }
+  .toast.success { background: linear-gradient(135deg, rgba(37,211,102,0.95), rgba(30,170,80,0.95)); }
+  .toast.error { background: linear-gradient(135deg, rgba(255,59,48,0.95), rgba(220,40,30,0.95)); }
+  .toast.info { background: linear-gradient(135deg, rgba(255,106,31,0.95), rgba(255,138,77,0.95)); }
+  .toast .icon { font-size: 18px; flex-shrink: 0; }
+  .toast.hide { animation: toastOut 0.25s var(--ease) forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-12px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(-8px) scale(0.95); } }
+
+  /* ===== SKELETON loaders (substitui '⏳ Carregando...') ===== */
+  .skeleton-list { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .skeleton-item {
+    padding: 14px;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-height: 68px;
+    box-shadow: var(--shadow-sm);
+  }
+  .skeleton-avatar { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; }
+  .skeleton-line { height: 12px; border-radius: 4px; margin-bottom: 8px; }
+  .skeleton-line.short { width: 40%; }
+  .skeleton-line.med { width: 60%; }
+  .skeleton-line.long { width: 80%; }
+  .skeleton-shimmer { background: linear-gradient(90deg, #e8e8ed 0%, #f4f4f7 50%, #e8e8ed 100%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* ===== TOOLTIP nos botões redondos (desktop hover) ===== */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: rgba(20,20,22,0.92);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s var(--ease), transform 0.15s var(--ease);
+    z-index: 50;
+  }
+  @media (hover: hover) {
+    [data-tooltip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
   /* ===== AUDIO RECORDING indicator ===== */
   .recording-bar {
     background: linear-gradient(135deg, #ff3b30, #ff2d92);
@@ -690,6 +761,7 @@
 </style>
 </head>
 <body>
+<div class="toast-stack" id="toast-stack"></div>
 <div class="app">
   <div class="app-top">
     <h1>
@@ -698,7 +770,7 @@
     </h1>
     <div style="display:flex;align-items:center;gap:8px">
       <div class="user-chip" id="user-name">—</div>
-      <button class="gear-btn" onclick="openProfileDrawer()" title="Perfil">⚙</button>
+      <button class="gear-btn" onclick="openProfileDrawer()" data-tooltip="Perfil & Notificações">⚙</button>
     </div>
   </div>
 
@@ -712,7 +784,7 @@
           <button onclick="openNewDmModal()">+ Nova</button>
         </div>
       </div>
-      <div class="list-items" id="conv-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando…</div></div></div>
+      <div class="list-items" id="conv-items"></div>
     </div>
 
     <!-- VIEW: TIMELINES (Hoje) -->
@@ -723,7 +795,7 @@
           <button onclick="openCreateTimelineModal()">+ Nova</button>
         </div>
       </div>
-      <div class="list-items" id="tl-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando…</div></div></div>
+      <div class="list-items" id="tl-items"></div>
     </div>
   </div>
 
@@ -753,9 +825,9 @@
     <div class="composer">
       <div id="attach-preview"></div>
       <div class="composer-row">
-        <button class="attach-btn" onclick="openProductModal()" title="Anexar produto">🛍️</button>
-        <button class="attach-btn" onclick="document.getElementById('photo-input').click()" title="Foto">📷</button>
-        <button class="attach-btn" id="audio-btn" onclick="toggleAudio()" title="Áudio">🎤</button>
+        <button class="attach-btn" onclick="openProductModal()" data-tooltip="Anexar produto">🛍️</button>
+        <button class="attach-btn" onclick="document.getElementById('photo-input').click()" data-tooltip="Enviar foto">📷</button>
+        <button class="attach-btn" id="audio-btn" onclick="toggleAudio()" data-tooltip="Gravar áudio">🎤</button>
         <textarea id="composer-input" rows="1" placeholder="Mensagem..." oninput="autoGrow(this)"></textarea>
         <button class="send-btn" id="send-btn" onclick="sendActive()">Enviar</button>
       </div>
@@ -879,6 +951,40 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ============= TOAST (substitui alert) =============
+function toast(message, type = 'info', durationMs = 3200) {
+  const stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  const icon = { success: '✓', error: '✕', info: 'ℹ' }[type] || 'ℹ';
+  el.innerHTML = `<span class="icon">${icon}</span><span>${escapeHtml(message)}</span>`;
+  el.addEventListener('click', () => dismissToast(el));
+  stack.appendChild(el);
+  setTimeout(() => dismissToast(el), durationMs);
+}
+function dismissToast(el) {
+  if (!el || el.classList.contains('hide')) return;
+  el.classList.add('hide');
+  setTimeout(() => el.remove(), 260);
+}
+
+// ============= SKELETON =============
+function skeletonList(count = 4) {
+  let html = '<div class="skeleton-list">';
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="skeleton-item">
+        <div class="skeleton-avatar skeleton-shimmer"></div>
+        <div style="flex:1">
+          <div class="skeleton-line med skeleton-shimmer"></div>
+          <div class="skeleton-line long skeleton-shimmer" style="height:10px"></div>
+        </div>
+      </div>`;
+  }
+  return html + '</div>';
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -918,11 +1024,16 @@ function switchView(name) {
 
 // ============= CONVERSAS LIST =============
 async function loadConversations() {
+  const el = document.getElementById('conv-items');
+  // Mostra skeleton só na primeira carga (não a cada poll)
+  if (!STATE.conversations.length && el && !el.querySelector('.list-item')) {
+    el.innerHTML = skeletonList(5);
+  }
   try {
     const d = await api('/conversations');
     STATE.conversations = d.conversations || [];
     renderConversations();
-  } catch (e) { document.getElementById('conv-items').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
+  } catch (e) { el.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
 }
 function renderConversations() {
   const el = document.getElementById('conv-items');
@@ -954,11 +1065,15 @@ function renderConversations() {
 
 // ============= TIMELINES LIST =============
 async function loadTimelines() {
+  const el = document.getElementById('tl-items');
+  if (!STATE.timelines.length && el && !el.querySelector('.list-item')) {
+    el.innerHTML = skeletonList(3);
+  }
   try {
     const d = await api('/timelines');
     STATE.timelines = d.timelines || [];
     renderTimelines();
-  } catch (e) { document.getElementById('tl-items').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
+  } catch (e) { el.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div class="desc">${escapeHtml(e.message)}</div></div>`; }
 }
 function renderTimelines() {
   const el = document.getElementById('tl-items');
@@ -1210,7 +1325,7 @@ async function sendActive() {
     input.value = '';
     input.style.height = '';
     clearAttached();
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
   finally { input.disabled = false; document.getElementById('send-btn').disabled = false; input.focus(); }
 }
 
@@ -1275,7 +1390,7 @@ async function toggleReaction(targetType, targetId, emoji) {
       STATE.activeMessages = d.messages || [];
       renderThread();
     }
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 
 async function deleteMsg(msgId, scope) {
@@ -1283,7 +1398,7 @@ async function deleteMsg(msgId, scope) {
     await api('/messages/' + msgId + '?scope=' + scope, { method: 'DELETE' });
     STATE.activeMessages = STATE.activeMessages.filter(m => m.id !== msgId);
     renderThread();
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 async function editPost(postId) {
   const post = STATE.activePosts.find(p => p.id === postId);
@@ -1294,7 +1409,7 @@ async function editPost(postId) {
     const d = await api('/posts/' + postId, { method: 'PATCH', body: JSON.stringify({ content: novo }) });
     Object.assign(post, d.post);
     renderFeed();
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 async function deletePost(postId) {
   if (!confirm('Apagar este post?')) return;
@@ -1302,7 +1417,7 @@ async function deletePost(postId) {
     await api('/posts/' + postId, { method: 'DELETE' });
     STATE.activePosts = STATE.activePosts.filter(p => p.id !== postId);
     renderFeed();
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 
 // ============= THREAD SCREEN =============
@@ -1368,14 +1483,14 @@ function renderInviteChips() {
 }
 async function createTimeline() {
   const name = document.getElementById('new-tl-name').value.trim();
-  if (!name) { alert('Dá um nome'); return; }
+  if (!name) { toast('Dá um nome pra timeline', 'error'); return; }
   if (STATE.inviteList.length === 0 && !confirm('Sem convidados — postará sozinho. OK?')) return;
   try {
     const d = await api('/timelines', { method: 'POST', body: JSON.stringify({ name, inviteUserIds: STATE.inviteList.map(p => p.id) }) });
     closeCreateTimelineModal();
     await loadTimelines();
     openTimeline(d.timeline.id);
-  } catch (e) { alert('Erro: ' + e.message); }
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 
 // ============= POLLING =============
@@ -1395,7 +1510,7 @@ async function onPhotoChosen(ev) {
   const file = ev.target.files && ev.target.files[0];
   ev.target.value = ''; // permite re-escolher mesma foto
   if (!file) return;
-  if (!/^image\//.test(file.type)) { alert('Selecione uma foto'); return; }
+  if (!/^image\//.test(file.type)) { toast('Selecione uma foto', 'error'); return; }
   try {
     const dataUrl = await compressImage(file, 1280, 0.7);
     if (dataUrl.length > 700 * 1024) {
@@ -1406,7 +1521,7 @@ async function onPhotoChosen(ev) {
       STATE.attachedMedia = { type: 'photo', dataUrl };
     }
     renderAttachPreview();
-  } catch (e) { alert('Erro processando foto: ' + e.message); }
+  } catch (e) { toast('Erro processando foto: ' + e.message, 'error'); }
 }
 function compressImage(file, maxW, quality) {
   return new Promise((resolve, reject) => {
@@ -1452,7 +1567,7 @@ async function toggleAudio() {
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target.result;
-        if (dataUrl.length > 700 * 1024) { alert('Áudio muito longo (max ~30s)'); renderAttachPreview(); return; }
+        if (dataUrl.length > 700 * 1024) { toast('Áudio muito longo (max ~30s)', 'error'); renderAttachPreview(); return; }
         const duration = Math.round((Date.now() - audioStartedAt) / 1000);
         STATE.attachedMedia = { type: 'audio', dataUrl, duration };
         renderAttachPreview();
@@ -1466,7 +1581,7 @@ async function toggleAudio() {
     document.getElementById('attach-preview').innerHTML = '<div class="recording-bar"><span class="pulse"></span> Gravando… (tap 🎤 pra parar)</div>';
     // auto-stop em 30s
     setTimeout(() => { if (audioRecorder && audioRecorder.state === 'recording') stopAudio(); }, 30000);
-  } catch (e) { alert('Sem permissão de microfone: ' + e.message); }
+  } catch (e) { toast('Sem permissão de microfone: ' + e.message, 'error'); }
 }
 function stopAudio() {
   if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop();
@@ -1508,7 +1623,7 @@ function searchPeopleForDm() {
             closeNewDmModal();
             await loadConversations();
             openConversation(r.conversation.id);
-          } catch (e) { alert('Erro: ' + e.message); }
+          } catch (e) { toast('Erro: ' + e.message, 'error'); }
         });
       });
     } catch (e) { document.getElementById('dm-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
@@ -1548,7 +1663,7 @@ function searchPeopleForAttend() {
             closeAttendClientModal();
             await loadConversations();
             openConversation(r.conversation.id);
-          } catch (e) { alert('Erro: ' + e.message); }
+          } catch (e) { toast('Erro: ' + e.message, 'error'); }
         });
       });
     } catch (e) { document.getElementById('attend-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
@@ -1570,8 +1685,8 @@ async function saveUsername() {
   const v = document.getElementById('profile-username').value.trim().toLowerCase();
   try {
     const r = await api('/users/me/username', { method: 'PATCH', body: JSON.stringify({ username: v }) });
-    alert('Username salvo: ' + (r.user.username ? '@' + r.user.username : '(removido)'));
-  } catch (e) { alert('Erro: ' + e.message); }
+    toast('Username salvo: ' + (r.user.username ? '@' + r.user.username : '(removido)'), 'success');
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
 }
 
 // ============= PUSH NOTIFICATIONS =============
@@ -1624,7 +1739,7 @@ async function togglePush() {
     }
     // pede permissão
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { alert('Permissão negada'); refreshPushStatus(); return; }
+    if (perm !== 'granted') { toast('Permissão negada', 'error'); refreshPushStatus(); return; }
     const keyResp = await api('/push/vapid-public-key');
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
@@ -1642,7 +1757,7 @@ async function togglePush() {
     refreshPushStatus();
     // teste imediato
     api('/push/test', { method: 'POST' }).catch(() => {});
-  } catch (e) { alert('Erro ativando push: ' + e.message); refreshPushStatus(); }
+  } catch (e) { toast('Erro ativando push: ' + e.message, 'error'); refreshPushStatus(); }
 }
 
 // ============= BOOT =============
