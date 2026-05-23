@@ -115,14 +115,14 @@
       padding-bottom: 80px;
       position: relative;
     }
-    /* Bottom-nav vira pill flutuante dentro da sidebar */
+    /* Bottom-nav vira pill flutuante DENTRO da sidebar (coluna 1) */
     .bottom-nav {
-      position: absolute;
-      bottom: 14px;
-      left: 14px;
-      right: 14px;
-      transform: none;
-      width: auto;
+      position: absolute !important;
+      bottom: 14px !important;
+      left: 14px !important;
+      right: auto !important;
+      width: 332px !important;        /* 360 sidebar - 28 padding lateral */
+      transform: none !important;
       justify-content: space-around;
     }
     /* Thread/feed na coluna 2 — sempre visível, sem fixed.
