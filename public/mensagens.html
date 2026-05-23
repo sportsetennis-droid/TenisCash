@@ -317,6 +317,7 @@
     border-radius: var(--radius-md);
     padding: 16px;
     box-shadow: var(--shadow-sm);
+    overflow: hidden; /* foto edge-to-edge respeita os cantos arredondados */
     transition: transform 0.15s var(--ease-spring);
   }
   .post:active { transform: scale(0.99); }
@@ -519,11 +520,39 @@
   .bubble.from-me .reaction-chip { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); color: #fff; }
   .bubble.from-me .reaction-chip.mine { background: #fff; color: var(--accent); border-color: #fff; }
 
-  /* ===== MEDIA (photo/audio) ===== */
-  .media-photo { display: block; max-width: 100%; width: auto; height: auto; max-height: 320px; border-radius: var(--radius-md); margin-top: 6px; object-fit: contain; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-  .media-audio { display: block; width: 100%; max-width: 100%; margin-top: 6px; height: 38px; }
-  .bubble .media-photo { max-height: 240px; }
-  .bubble .media-audio { max-width: 240px; }
+  /* ===== MEDIA (photo/audio) — padronizado: 4:3 sempre, object-fit cover ===== */
+  .media-photo {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--bg-soft);
+    border-radius: var(--radius-md);
+    margin-top: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  /* Post na timeline: foto enche o card todo (edge-to-edge tipo Instagram) */
+  .post .media-photo {
+    width: calc(100% + 32px);
+    margin: 12px -16px 0;
+    border-radius: 0;
+    aspect-ratio: 4 / 3;
+    box-shadow: none;
+  }
+  .post .media-photo:last-child {
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+    margin-bottom: -16px;
+  }
+  /* Chat bubble: foto 100% da bolha, aspect-ratio mantido */
+  .bubble .media-photo {
+    width: 100%;
+    margin-top: 4px;
+    aspect-ratio: 4 / 3;
+  }
+  /* Áudio */
+  .media-audio { display: block; width: 100%; margin-top: 8px; height: 38px; }
+  .bubble .media-audio { max-width: 100%; }
 
   /* ===== AUDIO RECORDING indicator ===== */
   .recording-bar {
