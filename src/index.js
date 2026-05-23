@@ -66,7 +66,8 @@ app.use(helmet({
 }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({
-  limit: '1mb',
+  // 1.5mb pra acomodar foto/audio em base64 do /api/messages-v2
+  limit: '1.5mb',
   verify: (req, _res, buf) => {
     if (req.originalUrl && req.originalUrl.startsWith('/api/whatsapp/webhook')) {
       req.rawBody = buf;

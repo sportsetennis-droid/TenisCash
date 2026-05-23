@@ -4934,10 +4934,17 @@ function showUserDetail(id) {
     } catch(e){}
   }
 
+  // botão Conversar (abre /app.html?user=ID em nova aba) — Mensagens v2
+  html += '<button id="js-open-chat" style="width:100%;margin-top:14px;padding:14px;background:#25d366;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer">💬 Conversar com ' + ((u.name || 'cliente').split(' ')[0]) + '</button>';
+
   document.getElementById('user-detail').innerHTML = html;
   document.getElementById('user-modal').classList.add('show');
   const closeBtn = document.querySelector('#user-detail .js-modal-close');
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const chatBtn = document.getElementById('js-open-chat');
+  if (chatBtn) chatBtn.addEventListener('click', () => {
+    window.open('/app.html?user=' + encodeURIComponent(u.id), '_blank');
+  });
 }
 
 function closeModal() {

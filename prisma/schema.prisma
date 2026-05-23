@@ -111,6 +111,10 @@ model User {
   conversationsAsUserB     Conversation[]     @relation("conversationsAsUserB")
   conversationsAsClient    Conversation[]     @relation("conversationsAsClient")
   chatMessagesSent         ChatMessage[]      @relation("chatMessagesSent")
+  reactions                Reaction[]         @relation("reactionsByUser")
+
+  // Push notifications (Web Push API) — array de subscriptions (1 por device)
+  pushSubscriptions        PushSubscription[] @relation("pushByUser")
 }
 
 // ============================================================
@@ -2232,7 +2236,7 @@ model TimelinePost {
   authorId      String
   content       String?                             // texto (pode ser null se for só mídia)
   mediaType     String?                             // "photo" | "audio" | null
-  mediaUrl      String?                             // URL no storage
+  mediaUrl      String?                             // URL no storage OU data:image/jpeg;base64,...
   mediaDuration Int?                                // duração em segundos (áudio)
   productCardId String?                             // FK Product — card de produto inline
   createdAt     DateTime @default(now())
@@ -2243,6 +2247,7 @@ model TimelinePost {
   timeline      Timeline @relation(fields: [timelineId], references: [id])
   author        User     @relation("timelinePostsAuthored", fields: [authorId], references: [id])
   productCard   Product? @relation("timelinePostProducts", fields: [productCardId], references: [id])
+  reactions     Reaction[] @relation("reactionsOnPost")
 
   @@index([timelineId, createdAt])
   @@index([expiredAt])
@@ -2293,8 +2298,48 @@ model ChatMessage {
   conversation             Conversation @relation(fields: [conversationId], references: [id])
   sender                   User         @relation("chatMessagesSent", fields: [senderId], references: [id])
   productCard              Product?     @relation("chatMessageProducts", fields: [productCardId], references: [id])
+  reactions                Reaction[]   @relation("reactionsOnMessage")
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
   @@index([readAt])
+}
+
+// ============================================================
+// REAÇÕES (👍❤️🔥) em msg de chat ou post de timeline
+// ============================================================
+model Reaction {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String?                       // FK TimelinePost (XOR com messageId)
+  messageId String?                       // FK ChatMessage
+  emoji     String                        // unicode emoji (👍, ❤️, 🔥, 😂, 😢, 👏)
+  createdAt DateTime @default(now())
+
+  user    User          @relation("reactionsByUser", fields: [userId], references: [id])
+  post    TimelinePost? @relation("reactionsOnPost", fields: [postId], references: [id])
+  message ChatMessage?  @relation("reactionsOnMessage", fields: [messageId], references: [id])
+
+  @@unique([userId, postId, emoji])      // 1 mesma reação por user/post
+  @@unique([userId, messageId, emoji])   // 1 mesma reação por user/msg
+  @@index([postId])
+  @@index([messageId])
+}
+
+// ============================================================
+// PUSH NOTIFICATION SUBSCRIPTIONS (Web Push API)
+// ============================================================
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique             // URL do push server (FCM/Mozilla/Apple)
+  p256dh    String                        // chave pública pra criptografia
+  authKey   String                        // chave de autenticação
+  userAgent String?                       // pra mostrar "Chrome iPhone" etc
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation("pushByUser", fields: [userId], references: [id])
+
+  @@index([userId])
 }

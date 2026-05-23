@@ -142,16 +142,41 @@
   .action-sheet { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: flex-end; justify-content: center; z-index: 25; }
   .action-sheet.open { display: flex; }
   .action-sheet .sheet { background: #fff; border-radius: 16px 16px 0 0; max-width: 480px; width: 100%; padding-bottom: env(safe-area-inset-bottom); }
+  .action-sheet .sheet .emoji-row { display: flex; justify-content: space-around; padding: 14px 10px; gap: 4px; border-bottom: 1px solid #f0f0f5; }
+  .action-sheet .sheet .emoji-row button { font-size: 28px; padding: 6px 10px; border-radius: 12px; background: none; border: none; cursor: pointer; flex: 1; transition: background 0.1s; }
+  .action-sheet .sheet .emoji-row button:active { background: #fafafc; }
   .action-sheet button { width: 100%; padding: 14px; background: none; border: none; border-top: 1px solid #f0f0f5; font-size: 15px; cursor: pointer; color: #1d1d1f; }
   .action-sheet button.danger { color: #d70015; }
   .action-sheet button.cancel { font-weight: 700; }
+
+  /* ===== REACTIONS chips ===== */
+  .reactions-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .reaction-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+  .reaction-chip.mine { background: #FFEBDC; border-color: #E5571E; color: #E5571E; }
+  .bubble.from-me .reaction-chip { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.3); color: #fff; }
+  .bubble.from-me .reaction-chip.mine { background: #fff; color: #E5571E; border-color: #fff; }
+
+  /* ===== USERNAME header chip + drawer ===== */
+  .app-top .gear-btn { background: none; border: none; color: #fff; cursor: pointer; font-size: 22px; padding: 0 4px; line-height: 1; }
+
+  /* ===== MEDIA in bubble (photo/audio) ===== */
+  .bubble .media-photo { max-width: 100%; max-height: 260px; border-radius: 10px; display: block; margin-top: 4px; }
+  .bubble .media-audio { width: 100%; max-width: 240px; margin-top: 4px; }
+
+  /* ===== AUDIO RECORDING indicator ===== */
+  .recording-bar { background: #d70015; color: #fff; padding: 8px 12px; border-radius: 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .recording-bar .pulse { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="app-top">
     <h1>💬 TenisCash</h1>
-    <div class="user-chip" id="user-name">—</div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="user-chip" id="user-name">—</div>
+      <button class="gear-btn" onclick="openProfileDrawer()" title="Perfil">⚙️</button>
+    </div>
   </div>
 
   <div class="content">
@@ -159,6 +184,7 @@
     <div class="view active" id="view-conv">
       <div class="list-header">
         <h2>Conversas</h2>
+        <button onclick="openNewDmModal()">+ Nova</button>
       </div>
       <div id="conv-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando...</div></div></div>
     </div>
@@ -201,10 +227,45 @@
     <div id="attach-preview"></div>
     <div class="composer-row">
       <button class="attach-btn" onclick="openProductModal()" title="Anexar produto">🛍️</button>
+      <button class="attach-btn" onclick="document.getElementById('photo-input').click()" title="Foto">📷</button>
+      <button class="attach-btn" id="audio-btn" onclick="toggleAudio()" title="Áudio">🎤</button>
       <textarea id="composer-input" rows="1" placeholder="Mensagem..." oninput="autoGrow(this)"></textarea>
       <button class="send-btn" id="send-btn" onclick="sendActive()">Enviar</button>
     </div>
+    <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
     <div class="composer-hint" id="composer-hint"></div>
+  </div>
+</div>
+
+<!-- MODAL: Profile / Username / Push -->
+<div class="modal-overlay" id="modal-profile">
+  <div class="modal">
+    <h2>⚙️ Perfil</h2>
+    <label>Seu @username (pra ser convidado em timeline)</label>
+    <input type="text" id="profile-username" placeholder="ex: douglas, joaobessa">
+    <div style="font-size:11px;color:#888;margin-top:-8px;margin-bottom:14px">3-20 caracteres: a-z, 0-9, _ ou .</div>
+    <button class="btn-primary" style="width:100%;padding:12px;border:none;border-radius:10px;background:#E5571E;color:#fff;font-weight:700;font-size:14px;cursor:pointer;margin-bottom:14px" onclick="saveUsername()">Salvar username</button>
+
+    <label>Notificações push</label>
+    <div id="push-status" style="font-size:13px;color:#888;margin-bottom:8px">Verificando…</div>
+    <button class="btn-primary" id="push-toggle-btn" style="width:100%;padding:12px;border:none;border-radius:10px;background:#E5571E;color:#fff;font-weight:700;font-size:14px;cursor:pointer" onclick="togglePush()">Ativar notificações</button>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeProfileDrawer()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Nova DM (iniciar conversa com pessoa) -->
+<div class="modal-overlay" id="modal-new-dm">
+  <div class="modal">
+    <h2>💬 Nova conversa</h2>
+    <label>Buscar pessoa (nome, @username, telefone)</label>
+    <input type="text" id="dm-search-input" placeholder="🔍 Buscar..." oninput="searchPeopleForDm()">
+    <div id="dm-search-results" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeNewDmModal()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -258,6 +319,7 @@ const STATE = {
   activeMeta: null,
   inviteList: [],
   attachedProduct: null,
+  attachedMedia: null,
   pollTimer: null,
 };
 
@@ -408,17 +470,36 @@ function renderThread() {
 function renderBubble(m) {
   const fromMe = m.senderId === STATE.userId;
   return `
-    <div class="bubble ${fromMe ? 'from-me' : 'from-other'}" data-id="${m.id}" data-from-me="${fromMe ? 1 : 0}" data-created="${m.createdAt}">
+    <div class="bubble ${fromMe ? 'from-me' : 'from-other'}" data-id="${m.id}" data-from-me="${fromMe ? 1 : 0}" data-created="${m.createdAt}" data-target-type="message">
       ${m.productCard ? renderProductCard(m.productCard) : ''}
       ${m.content ? `<div>${escapeHtml(m.content)}</div>` : ''}
-      ${m.mediaUrl ? `<div style="font-size:12px;opacity:0.8">[${m.mediaType || 'mídia'}]</div>` : ''}
+      ${m.mediaUrl ? renderMedia(m) : ''}
       <div class="meta">
         ${m.editedAt ? '<span style="opacity:0.6">editada</span>' : ''}
         ${formatTime(m.createdAt)}
         ${fromMe ? (m.readAt ? '✓✓' : '✓') : ''}
       </div>
+      ${renderReactions(m.reactionsGrouped, m.id, 'message')}
     </div>
   `;
+}
+
+function renderMedia(item) {
+  if (!item.mediaUrl) return '';
+  if (item.mediaType === 'photo' || /^data:image\//.test(item.mediaUrl)) {
+    return `<img class="media-photo" src="${escapeHtml(item.mediaUrl)}" alt="foto" loading="lazy">`;
+  }
+  if (item.mediaType === 'audio' || /^data:audio\//.test(item.mediaUrl)) {
+    return `<audio class="media-audio" controls src="${escapeHtml(item.mediaUrl)}"></audio>`;
+  }
+  return `<div style="font-size:12px;opacity:0.8">[${item.mediaType || 'mídia'}]</div>`;
+}
+
+function renderReactions(grouped, targetId, targetType) {
+  if (!grouped || grouped.length === 0) return '';
+  return `<div class="reactions-row">${grouped.map(g => `
+    <span class="reaction-chip ${g.mine ? 'mine' : ''}" onclick="toggleReaction('${targetType}','${targetId}','${g.emoji}')">${g.emoji} ${g.count}</span>
+  `).join('')}</div>`;
 }
 
 // ============= TIMELINE FEED =============
@@ -454,13 +535,18 @@ function renderPost(p) {
   const username = p.author?.username ? ' <span class="username">@' + escapeHtml(p.author.username) + '</span>' : '';
   const isMe = p.authorId === STATE.userId;
   return `
-    <div class="post" data-id="${p.id}" data-mine="${isMe ? 1 : 0}">
+    <div class="post" data-id="${p.id}" data-mine="${isMe ? 1 : 0}" data-target-type="post">
       <div class="post-header">
         <div class="post-author">${escapeHtml(p.author?.name || '?')}${username}<span class="post-time"> · ${formatTime(p.createdAt)}</span></div>
-        ${isMe ? `<button style="background:none;border:none;font-size:18px;color:#888" onclick="postActionSheet('${p.id}')">⋯</button>` : ''}
+        <div style="display:flex;gap:4px">
+          <button style="background:none;border:none;font-size:18px;color:#888;cursor:pointer" onclick="openReactionPicker('post','${p.id}')" title="Reagir">😀</button>
+          ${isMe ? `<button style="background:none;border:none;font-size:18px;color:#888;cursor:pointer" onclick="postActionSheet('${p.id}')" title="Mais">⋯</button>` : ''}
+        </div>
       </div>
       ${p.content ? `<div class="post-content">${escapeHtml(p.content)}</div>` : ''}
       ${p.productCard ? `<div style="margin-top:8px">${renderProductCard(p.productCard)}</div>` : ''}
+      ${p.mediaUrl ? `<div style="margin-top:8px">${renderMedia(p)}</div>` : ''}
+      ${renderReactions(p.reactionsGrouped, p.id, 'post')}
     </div>
   `;
 }
@@ -513,13 +599,30 @@ function searchProducts() {
     } catch (e) { document.getElementById('prod-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
   }, 300);
 }
-function attachProduct(prod) { STATE.attachedProduct = prod; closeProductModal(); renderAttachPreview(); document.getElementById('composer-input').focus(); }
-function clearAttached() { STATE.attachedProduct = null; renderAttachPreview(); }
+function attachProduct(prod) {
+  STATE.attachedProduct = prod;
+  STATE.attachedMedia = null; // 1 anexo por vez
+  closeProductModal();
+  renderAttachPreview();
+  document.getElementById('composer-input').focus();
+}
+function clearAttached() { STATE.attachedProduct = null; STATE.attachedMedia = null; renderAttachPreview(); }
 function renderAttachPreview() {
   const el = document.getElementById('attach-preview');
-  if (!STATE.attachedProduct) { el.innerHTML = ''; return; }
-  const p = STATE.attachedProduct;
-  el.innerHTML = `<div class="attach-chip">🛍️ <strong>${escapeHtml(p.name)}</strong> · R$ ${Number(p.promoPrice ?? p.price ?? 0).toFixed(2)} <button onclick="clearAttached()">×</button></div>`;
+  if (STATE.attachedProduct) {
+    const p = STATE.attachedProduct;
+    el.innerHTML = `<div class="attach-chip">🛍️ <strong>${escapeHtml(p.name)}</strong> · R$ ${Number(p.promoPrice ?? p.price ?? 0).toFixed(2)} <button onclick="clearAttached()">×</button></div>`;
+    return;
+  }
+  if (STATE.attachedMedia) {
+    const m = STATE.attachedMedia;
+    const preview = m.type === 'photo'
+      ? `<img src="${escapeHtml(m.dataUrl)}" style="width:48px;height:48px;border-radius:6px;object-fit:cover">`
+      : `<span>🎤 áudio ${m.duration || '?'}s</span>`;
+    el.innerHTML = `<div class="attach-chip">${preview} <strong style="margin-left:6px">${m.type === 'photo' ? 'Foto pronta' : 'Áudio pronto'}</strong> <button onclick="clearAttached()">×</button></div>`;
+    return;
+  }
+  el.innerHTML = '';
 }
 
 // ============= SEND =============
@@ -527,13 +630,19 @@ async function sendActive() {
   const input = document.getElementById('composer-input');
   const content = input.value.trim();
   const productCardId = STATE.attachedProduct?.id || null;
-  if (!content && !productCardId) return;
+  const media = STATE.attachedMedia;
+  if (!content && !productCardId && !media) return;
   if (!STATE.activeId) return;
   input.disabled = true;
   document.getElementById('send-btn').disabled = true;
   try {
     const body = { content: content || null };
     if (productCardId) body.productCardId = productCardId;
+    if (media) {
+      body.mediaType = media.type;
+      body.mediaUrl = media.dataUrl;
+      if (media.duration) body.mediaDuration = media.duration;
+    }
     if (STATE.activeKind === 'conv') {
       const d = await api('/conversations/' + STATE.activeId + '/messages', { method: 'POST', body: JSON.stringify(body) });
       STATE.activeMessages.push(d.message);
@@ -546,8 +655,7 @@ async function sendActive() {
     }
     input.value = '';
     input.style.height = '';
-    STATE.attachedProduct = null;
-    renderAttachPreview();
+    clearAttached();
   } catch (e) { alert('Erro: ' + e.message); }
   finally { input.disabled = false; document.getElementById('send-btn').disabled = false; input.focus(); }
 }
@@ -568,28 +676,53 @@ function wireBubbleLongPress() {
     el.addEventListener('mouseleave', cancel);
   });
 }
+const EMOJIS = ['👍', '❤️', '🔥', '😂', '😢', '👏'];
+function emojiRow(targetType, targetId) {
+  return `<div class="emoji-row">${EMOJIS.map(e => `<button onclick="closeActionSheet(); toggleReaction('${targetType}','${targetId}','${e}')">${e}</button>`).join('')}</div>`;
+}
 function openBubbleActionSheet(el) {
   const id = el.getAttribute('data-id');
   const fromMe = el.getAttribute('data-from-me') === '1';
   const created = new Date(el.getAttribute('data-created'));
   const ageH = (Date.now() - created.getTime()) / 3600000;
   const canBoth = fromMe && ageH < 2;
-  const buttons = [];
-  buttons.push(`<button onclick="closeActionSheet(); deleteMsg('${id}','me')">Apagar pra mim</button>`);
-  if (canBoth) buttons.push(`<button class="danger" onclick="closeActionSheet(); deleteMsg('${id}','both')">Apagar pros dois</button>`);
-  buttons.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
-  document.getElementById('action-sheet-content').innerHTML = buttons.join('');
+  const parts = [emojiRow('message', id)];
+  parts.push(`<button onclick="closeActionSheet(); deleteMsg('${id}','me')">Apagar pra mim</button>`);
+  if (canBoth) parts.push(`<button class="danger" onclick="closeActionSheet(); deleteMsg('${id}','both')">Apagar pros dois</button>`);
+  parts.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
+  document.getElementById('action-sheet-content').innerHTML = parts.join('');
   document.getElementById('action-sheet').classList.add('open');
 }
 function postActionSheet(postId) {
-  const buttons = [];
-  buttons.push(`<button onclick="closeActionSheet(); editPost('${postId}')">Editar</button>`);
-  buttons.push(`<button class="danger" onclick="closeActionSheet(); deletePost('${postId}')">Apagar</button>`);
-  buttons.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
-  document.getElementById('action-sheet-content').innerHTML = buttons.join('');
+  const parts = [emojiRow('post', postId)];
+  parts.push(`<button onclick="closeActionSheet(); editPost('${postId}')">Editar</button>`);
+  parts.push(`<button class="danger" onclick="closeActionSheet(); deletePost('${postId}')">Apagar</button>`);
+  parts.push(`<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`);
+  document.getElementById('action-sheet-content').innerHTML = parts.join('');
+  document.getElementById('action-sheet').classList.add('open');
+}
+function openReactionPicker(targetType, targetId) {
+  document.getElementById('action-sheet-content').innerHTML = emojiRow(targetType, targetId) +
+    `<button class="cancel" onclick="closeActionSheet()">Cancelar</button>`;
   document.getElementById('action-sheet').classList.add('open');
 }
 function closeActionSheet() { document.getElementById('action-sheet').classList.remove('open'); }
+
+async function toggleReaction(targetType, targetId, emoji) {
+  try {
+    await api('/reactions', { method: 'POST', body: JSON.stringify({ targetType, targetId, emoji }) });
+    // recarrega o feed/thread
+    if (STATE.activeKind === 'tl') {
+      const d = await api('/timelines/' + STATE.activeId + '/posts');
+      STATE.activePosts = d.posts || [];
+      renderFeed();
+    } else if (STATE.activeKind === 'conv') {
+      const d = await api('/conversations/' + STATE.activeId + '/messages');
+      STATE.activeMessages = d.messages || [];
+      renderThread();
+    }
+  } catch (e) { alert('Erro: ' + e.message); }
+}
 
 async function deleteMsg(msgId, scope) {
   try {
@@ -703,6 +836,221 @@ async function pollNotifications() {
   } catch {}
 }
 
+// ============= FOTO (camera/galeria) =============
+async function onPhotoChosen(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  ev.target.value = ''; // permite re-escolher mesma foto
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { alert('Selecione uma foto'); return; }
+  try {
+    const dataUrl = await compressImage(file, 1280, 0.7);
+    if (dataUrl.length > 700 * 1024) {
+      // recomprime mais agressivo se ficou grande
+      const smaller = await compressImage(file, 1024, 0.6);
+      STATE.attachedMedia = { type: 'photo', dataUrl: smaller };
+    } else {
+      STATE.attachedMedia = { type: 'photo', dataUrl };
+    }
+    renderAttachPreview();
+  } catch (e) { alert('Erro processando foto: ' + e.message); }
+}
+function compressImage(file, maxW, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ============= ÁUDIO (MediaRecorder) =============
+let audioRecorder = null;
+let audioChunks = [];
+let audioStartedAt = 0;
+async function toggleAudio() {
+  if (audioRecorder && audioRecorder.state === 'recording') {
+    stopAudio();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    audioStartedAt = Date.now();
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+    audioRecorder = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 }) : new MediaRecorder(stream);
+    audioRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    audioRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: audioRecorder.mimeType });
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        if (dataUrl.length > 700 * 1024) { alert('Áudio muito longo (max ~30s)'); renderAttachPreview(); return; }
+        const duration = Math.round((Date.now() - audioStartedAt) / 1000);
+        STATE.attachedMedia = { type: 'audio', dataUrl, duration };
+        renderAttachPreview();
+      };
+      reader.readAsDataURL(blob);
+    };
+    audioRecorder.start();
+    document.getElementById('audio-btn').textContent = '⏹️';
+    document.getElementById('audio-btn').style.background = '#d70015';
+    document.getElementById('audio-btn').style.color = '#fff';
+    document.getElementById('attach-preview').innerHTML = '<div class="recording-bar"><span class="pulse"></span> Gravando… (tap 🎤 pra parar)</div>';
+    // auto-stop em 30s
+    setTimeout(() => { if (audioRecorder && audioRecorder.state === 'recording') stopAudio(); }, 30000);
+  } catch (e) { alert('Sem permissão de microfone: ' + e.message); }
+}
+function stopAudio() {
+  if (audioRecorder && audioRecorder.state === 'recording') audioRecorder.stop();
+  document.getElementById('audio-btn').textContent = '🎤';
+  document.getElementById('audio-btn').style.background = '';
+  document.getElementById('audio-btn').style.color = '';
+}
+
+// ============= NOVA DM (busca pessoa + cria conv) =============
+function openNewDmModal() {
+  document.getElementById('dm-search-input').value = '';
+  document.getElementById('dm-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>';
+  document.getElementById('modal-new-dm').classList.add('open');
+  setTimeout(() => document.getElementById('dm-search-input').focus(), 80);
+}
+function closeNewDmModal() { document.getElementById('modal-new-dm').classList.remove('open'); }
+let dmSearchDebounce;
+function searchPeopleForDm() {
+  clearTimeout(dmSearchDebounce);
+  const q = document.getElementById('dm-search-input').value.trim();
+  if (q.length < 2) { document.getElementById('dm-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>'; return; }
+  dmSearchDebounce = setTimeout(async () => {
+    try {
+      const d = await api('/people/search?q=' + encodeURIComponent(q));
+      const people = (d.people || []).filter(p => p.id !== STATE.userId);
+      const out = document.getElementById('dm-search-results');
+      if (people.length === 0) { out.innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Nenhuma pessoa encontrada</div>'; return; }
+      out.innerHTML = people.map(p => `
+        <div class="modal-search-result" data-id="${escapeHtml(p.id)}">
+          <span><strong>${escapeHtml(p.name)}</strong>${p.username ? ' · @' + escapeHtml(p.username) : ''}</span>
+          <button>Conversar</button>
+        </div>
+      `).join('');
+      out.querySelectorAll('.modal-search-result').forEach(el => {
+        el.addEventListener('click', async () => {
+          const id = el.getAttribute('data-id');
+          try {
+            const r = await api('/conversations', { method: 'POST', body: JSON.stringify({ type: 'dm', toUserId: id }) });
+            closeNewDmModal();
+            await loadConversations();
+            openConversation(r.conversation.id);
+          } catch (e) { alert('Erro: ' + e.message); }
+        });
+      });
+    } catch (e) { document.getElementById('dm-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
+  }, 300);
+}
+
+// ============= PROFILE DRAWER =============
+function openProfileDrawer() {
+  document.getElementById('modal-profile').classList.add('open');
+  refreshPushStatus();
+  // pré-preenche username atual
+  fetch('/api/admin/me', { headers: authHeaders() }).then(r => r.json()).then(d => {
+    const u = d.user || d;
+    document.getElementById('profile-username').value = u.username || '';
+  }).catch(() => {});
+}
+function closeProfileDrawer() { document.getElementById('modal-profile').classList.remove('open'); }
+async function saveUsername() {
+  const v = document.getElementById('profile-username').value.trim().toLowerCase();
+  try {
+    const r = await api('/users/me/username', { method: 'PATCH', body: JSON.stringify({ username: v }) });
+    alert('Username salvo: ' + (r.user.username ? '@' + r.user.username : '(removido)'));
+  } catch (e) { alert('Erro: ' + e.message); }
+}
+
+// ============= PUSH NOTIFICATIONS =============
+async function refreshPushStatus() {
+  const status = document.getElementById('push-status');
+  const btn = document.getElementById('push-toggle-btn');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    status.textContent = '❌ Seu navegador não suporta notificações push';
+    btn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    status.textContent = '🚫 Permissão bloqueada nas configurações do navegador';
+    btn.style.display = 'none';
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      status.textContent = '✅ Ativas neste dispositivo';
+      btn.textContent = 'Desativar notificações';
+      btn.style.background = '#666';
+    } else {
+      status.textContent = '⏸️ Desativadas';
+      btn.textContent = 'Ativar notificações';
+      btn.style.background = '#E5571E';
+    }
+  } catch (e) {
+    status.textContent = 'Erro: ' + e.message;
+  }
+}
+function urlBase64ToUint8Array(b64) {
+  const padding = '='.repeat((4 - b64.length % 4) % 4);
+  const base = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+async function togglePush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      await api('/push/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint: existing.endpoint }) });
+      await existing.unsubscribe();
+      refreshPushStatus();
+      return;
+    }
+    // pede permissão
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { alert('Permissão negada'); refreshPushStatus(); return; }
+    const keyResp = await api('/push/vapid-public-key');
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyResp.publicKey),
+    });
+    await api('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        keys: { p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'),
+                auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_') },
+        userAgent: navigator.userAgent,
+      }),
+    });
+    refreshPushStatus();
+    // teste imediato
+    api('/push/test', { method: 'POST' }).catch(() => {});
+  } catch (e) { alert('Erro ativando push: ' + e.message); refreshPushStatus(); }
+}
+
 // ============= BOOT =============
 async function boot() {
   if (!getToken()) {
@@ -720,9 +1068,26 @@ async function boot() {
       document.getElementById('user-name').textContent = d.name || d.user?.name || '';
     }
   } catch {}
+
+  // registra service worker pra push
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('/sw.js'); } catch (e) { console.warn('SW register falhou', e); }
+  }
+
   await loadConversations();
   await pollNotifications();
   STATE.pollTimer = setInterval(pollNotifications, 15000);
+
+  // suporte a ?conv=ID ou ?user=ID na URL
+  const params = new URLSearchParams(location.search);
+  if (params.get('conv')) {
+    setTimeout(() => openConversation(params.get('conv')), 300);
+  } else if (params.get('user')) {
+    // inicia DM com esse user
+    api('/conversations', { method: 'POST', body: JSON.stringify({ type: 'dm', toUserId: params.get('user') }) })
+      .then(r => { loadConversations(); openConversation(r.conversation.id); })
+      .catch(e => console.warn('?user= falhou', e));
+  }
 }
 boot();
 </script>

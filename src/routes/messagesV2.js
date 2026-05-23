@@ -29,9 +29,28 @@ const express = require('express');
 const { authMiddleware, prisma } = require('../middleware');
 
 const router = express.Router();
+// limite global do app já está em 1.5mb (src/index.js) pra acomodar
+// foto/audio em base64 das mensagens.
 router.use(authMiddleware);
 
 const TZ = 'America/Fortaleza';
+
+// Limite hard pra mediaUrl quando vier como data URL (base64).
+// 700KB de base64 ≈ 525KB de bytes reais — suficiente pra foto 1280px JPEG 0.7 ou áudio opus 30s.
+const MAX_MEDIA_BYTES = 700 * 1024;
+function validateMediaUrl(mediaUrl) {
+  if (!mediaUrl) return null;
+  if (typeof mediaUrl !== 'string') return 'mediaUrl precisa ser string';
+  if (mediaUrl.startsWith('data:')) {
+    if (mediaUrl.length > MAX_MEDIA_BYTES) {
+      return `mídia muito grande (max ${Math.round(MAX_MEDIA_BYTES/1024)}KB base64)`;
+    }
+    if (!/^data:(image\/(jpeg|png|webp)|audio\/(webm|ogg|mp4|mpeg));base64,/.test(mediaUrl)) {
+      return 'mediaUrl tem que ser data:image/* ou data:audio/*';
+    }
+  }
+  return null;
+}
 
 // Helper: pega o início do dia (00:00) no timezone PB pra usar como filtro
 async function getTodayStart() {
@@ -236,7 +255,19 @@ router.get('/timelines/:id/posts', async (req, res) => {
       include: {
         author: { select: { id: true, name: true, username: true } },
         productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true } },
+        reactions: { select: { emoji: true, userId: true } },
       },
+    });
+    // agrupa reações por emoji
+    posts.forEach((p) => {
+      const g = {};
+      for (const r of p.reactions || []) {
+        if (!g[r.emoji]) g[r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+        g[r.emoji].count++;
+        if (r.userId === userId) g[r.emoji].mine = true;
+      }
+      p.reactionsGrouped = Object.values(g);
+      delete p.reactions;
     });
 
     // Atualiza lastReadAt do membro (se for privada e ele for membro)
@@ -264,6 +295,8 @@ router.post('/timelines/:id/posts', async (req, res) => {
     if (!content && !mediaUrl && !productCardId) {
       return res.status(400).json({ error: 'content, mediaUrl ou productCardId obrigatório' });
     }
+    const mediaErr = validateMediaUrl(mediaUrl);
+    if (mediaErr) return res.status(400).json({ error: mediaErr });
 
     // Verifica acesso
     const timeline = await prisma.timeline.findUnique({ where: { id: timelineId } });
@@ -473,7 +506,19 @@ router.get('/conversations/:id/messages', async (req, res) => {
       include: {
         sender: { select: { id: true, name: true, username: true } },
         productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true, sku: true } },
+        reactions: { select: { emoji: true, userId: true } },
       },
+    });
+    // agrupa reações
+    messages.forEach((m) => {
+      const g = {};
+      for (const r of m.reactions || []) {
+        if (!g[r.emoji]) g[r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+        g[r.emoji].count++;
+        if (r.userId === userId) g[r.emoji].mine = true;
+      }
+      m.reactionsGrouped = Object.values(g);
+      delete m.reactions;
     });
 
     res.json({ conversation: conv, messages: messages.reverse() });
@@ -493,6 +538,8 @@ router.post('/conversations/:id/messages', async (req, res) => {
     if (!content && !mediaUrl && !productCardId) {
       return res.status(400).json({ error: 'content, mediaUrl ou productCardId obrigatório' });
     }
+    const mediaErr = validateMediaUrl(mediaUrl);
+    if (mediaErr) return res.status(400).json({ error: mediaErr });
 
     const conv = await prisma.conversation.findUnique({ where: { id: convId } });
     if (!conv) return res.status(404).json({ error: 'conversa não existe' });
@@ -523,6 +570,22 @@ router.post('/conversations/:id/messages', async (req, res) => {
       where: { id: convId },
       data: { lastMessageAt: new Date() },
     });
+
+    // dispara push pra outra ponta (não bloqueia)
+    try {
+      const recipientId = conv.userAId === userId ? conv.userBId : (conv.userBId === userId ? conv.userAId : conv.clientUserId);
+      if (recipientId && recipientId !== userId) {
+        const senderName = msg.sender?.name || 'Mensagem nova';
+        const preview = content ? content.slice(0, 100) : (productCardId ? '🛍️ Produto' : (mediaType === 'photo' ? '📷 Foto' : (mediaType === 'audio' ? '🎤 Áudio' : 'Nova mensagem')));
+        const pushSvcInner = require('../services/pushNotifications');
+        pushSvcInner.sendToUser(recipientId, {
+          title: senderName,
+          body: preview,
+          url: '/app.html',
+          tag: 'msg-' + convId,
+        }).catch(() => {});
+      }
+    } catch (e) { /* push é best-effort */ }
 
     res.json({ message: msg });
   } catch (err) {
@@ -752,6 +815,277 @@ router.get('/notifications/summary', async (req, res) => {
     });
   } catch (err) {
     console.error('[messagesV2/notifications/summary]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// USERNAME — setar/atualizar handle (@username)
+// ====================================================
+
+router.patch('/users/me/username', async (req, res) => {
+  try {
+    const userId = req.userId;
+    const raw = String(req.body?.username || '').trim().toLowerCase();
+    if (raw && !/^[a-z0-9_.]{3,20}$/.test(raw)) {
+      return res.status(400).json({ error: 'username deve ter 3-20 chars: a-z, 0-9, _ ou .' });
+    }
+
+    if (raw) {
+      const exists = await prisma.user.findFirst({ where: { username: raw, id: { not: userId } } });
+      if (exists) return res.status(409).json({ error: 'username já em uso' });
+    }
+
+    const u = await prisma.user.update({
+      where: { id: userId },
+      data: { username: raw || null },
+      select: { id: true, name: true, username: true },
+    });
+    res.json({ user: u });
+  } catch (err) {
+    console.error('[messagesV2/users/me/username]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// REAÇÕES (emoji em post ou msg)
+// ====================================================
+
+const ALLOWED_EMOJIS = ['👍', '❤️', '🔥', '😂', '😢', '👏'];
+
+router.post('/reactions', async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { targetType, targetId, emoji } = req.body || {};
+    if (!['post', 'message'].includes(targetType)) return res.status(400).json({ error: 'targetType deve ser post|message' });
+    if (!targetId) return res.status(400).json({ error: 'targetId obrigatório' });
+    if (!ALLOWED_EMOJIS.includes(emoji)) return res.status(400).json({ error: 'emoji não permitido' });
+
+    // valida acesso
+    if (targetType === 'post') {
+      const post = await prisma.timelinePost.findUnique({ where: { id: targetId }, include: { timeline: true } });
+      if (!post || post.deletedAt) return res.status(404).json({ error: 'post não existe' });
+      if (!post.timeline.isPublic) {
+        const member = await prisma.timelineMember.findFirst({ where: { timelineId: post.timelineId, userId, leftAt: null } });
+        if (!member) return res.status(403).json({ error: 'sem acesso' });
+      }
+    } else {
+      const msg = await prisma.chatMessage.findUnique({ where: { id: targetId }, include: { conversation: true } });
+      if (!msg) return res.status(404).json({ error: 'mensagem não existe' });
+      const c = msg.conversation;
+      const ok = c.userAId === userId || c.userBId === userId || c.clientUserId === userId;
+      if (!ok) return res.status(403).json({ error: 'sem acesso' });
+    }
+
+    // toggle: se já existe, apaga; senão cria
+    const where = targetType === 'post'
+      ? { userId, postId: targetId, emoji }
+      : { userId, messageId: targetId, emoji };
+    const existing = await prisma.reaction.findFirst({ where });
+    if (existing) {
+      await prisma.reaction.delete({ where: { id: existing.id } });
+      return res.json({ toggled: 'off' });
+    }
+    const created = await prisma.reaction.create({
+      data: {
+        userId,
+        emoji,
+        ...(targetType === 'post' ? { postId: targetId } : { messageId: targetId }),
+      },
+    });
+    res.json({ toggled: 'on', reaction: created });
+  } catch (err) {
+    console.error('[messagesV2/reactions]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /reactions?targetType=post&targetId=...
+router.get('/reactions', async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { targetType, targetId } = req.query;
+    if (!['post', 'message'].includes(targetType)) return res.status(400).json({ error: 'targetType invalido' });
+    const where = targetType === 'post' ? { postId: targetId } : { messageId: targetId };
+    const reactions = await prisma.reaction.findMany({
+      where,
+      include: { user: { select: { id: true, name: true, username: true } } },
+    });
+    // agrupa por emoji
+    const grouped = {};
+    for (const r of reactions) {
+      if (!grouped[r.emoji]) grouped[r.emoji] = { emoji: r.emoji, count: 0, users: [], mine: false };
+      grouped[r.emoji].count++;
+      grouped[r.emoji].users.push({ id: r.user.id, name: r.user.name });
+      if (r.userId === userId) grouped[r.emoji].mine = true;
+    }
+    res.json({ reactions: Object.values(grouped) });
+  } catch (err) {
+    console.error('[messagesV2/reactions GET]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// PUSH NOTIFICATIONS (Web Push)
+// ====================================================
+
+const pushSvc = require('../services/pushNotifications');
+
+router.get('/push/vapid-public-key', async (req, res) => {
+  try {
+    const key = await pushSvc.getPublicKey();
+    if (!key) return res.status(503).json({ error: 'push indisponivel (lib não instalada ou setup falhou)' });
+    res.json({ publicKey: key });
+  } catch (err) {
+    console.error('[push/vapid]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/push/subscribe', async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { endpoint, keys, userAgent } = req.body || {};
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ error: 'subscription invalida' });
+    }
+    const sub = await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      update: { userId, p256dh: keys.p256dh, authKey: keys.auth, userAgent: userAgent || null, lastUsedAt: new Date() },
+      create: { userId, endpoint, p256dh: keys.p256dh, authKey: keys.auth, userAgent: userAgent || null },
+    });
+    res.json({ subscription: { id: sub.id } });
+  } catch (err) {
+    console.error('[push/subscribe]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/push/subscribe', async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'endpoint obrigatório' });
+    await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.userId } });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[push/unsubscribe]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/push/test', async (req, res) => {
+  try {
+    const r = await pushSvc.sendToUser(req.userId, {
+      title: 'TenisCash',
+      body: 'Push notifications funcionando!',
+      url: '/app.html',
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// SYSTEM MESSAGES (TenisCash bot → cliente)
+// ====================================================
+// Cria/garante o user-bot "TenisCash" (id = 'system-teniscash') e
+// dispara uma DM dele pra qualquer userId.
+
+async function ensureSystemUser() {
+  const SYSTEM_ID = 'system-teniscash';
+  let bot = await prisma.user.findUnique({ where: { id: SYSTEM_ID } });
+  if (!bot) {
+    bot = await prisma.user.create({
+      data: {
+        id: SYSTEM_ID,
+        name: 'TenisCash',
+        username: 'teniscash',
+        phone: '+5500000000000',
+        pin: 'system-no-login',
+        role: 'system',
+        active: true,
+      },
+    }).catch(async () => {
+      // se falhar por unique conflict, busca de novo
+      return await prisma.user.findUnique({ where: { id: SYSTEM_ID } });
+    });
+  }
+  return bot;
+}
+
+router.post('/system/notify', async (req, res) => {
+  try {
+    // só admin/superadmin pode disparar
+    const me = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!me || !['admin', 'superadmin'].includes(me.role)) {
+      return res.status(403).json({ error: 'apenas admin' });
+    }
+    const { toUserId, content, productCardId } = req.body || {};
+    if (!toUserId || (!content && !productCardId)) {
+      return res.status(400).json({ error: 'toUserId + (content ou productCardId) obrigatório' });
+    }
+
+    const bot = await ensureSystemUser();
+    const [a, b] = canonicalDmPair(bot.id, toUserId);
+    const conv = await prisma.conversation.upsert({
+      where: { userAId_userBId: { userAId: a, userBId: b } },
+      update: {},
+      create: { type: 'dm', userAId: a, userBId: b },
+    });
+    const msg = await prisma.chatMessage.create({
+      data: {
+        conversationId: conv.id,
+        senderId: bot.id,
+        senderType: 'system',
+        content: content || null,
+        productCardId: productCardId || null,
+      },
+    });
+    await prisma.conversation.update({ where: { id: conv.id }, data: { lastMessageAt: new Date() } });
+
+    // dispara push em background (não bloqueia resposta)
+    pushSvc.sendToUser(toUserId, {
+      title: 'TenisCash',
+      body: content ? content.slice(0, 100) : '🛍️ Produto',
+      url: '/app.html',
+      tag: 'system-' + conv.id,
+    }).catch(() => {});
+
+    res.json({ message: msg, conversationId: conv.id });
+  } catch (err) {
+    console.error('[system/notify]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// LOJA-CLIENTE conversation (vendedor inicia)
+// ====================================================
+// Vendedor (role=seller, com storeId) abre conv da LOJA com um cliente.
+// Todos os outros vendedores da loja veem a mesma thread (inbox da loja).
+
+router.post('/conversations/loja/with-client', async (req, res) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!me || !['seller', 'admin', 'superadmin'].includes(me.role)) {
+      return res.status(403).json({ error: 'apenas vendedor/admin' });
+    }
+    const storeId = req.body?.storeId || me.storeId;
+    const clientUserId = req.body?.clientUserId;
+    if (!storeId) return res.status(400).json({ error: 'storeId obrigatório (vendedor sem loja?)' });
+    if (!clientUserId) return res.status(400).json({ error: 'clientUserId obrigatório' });
+
+    const conv = await prisma.conversation.upsert({
+      where: { storeId_clientUserId: { storeId, clientUserId } },
+      update: {},
+      create: { type: 'loja', storeId, clientUserId },
+    });
+    res.json({ conversation: conv });
+  } catch (err) {
+    console.error('[conversations/loja]', err);
     res.status(500).json({ error: err.message });
   }
 });
