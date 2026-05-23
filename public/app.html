@@ -159,9 +159,11 @@
   /* ===== USERNAME header chip + drawer ===== */
   .app-top .gear-btn { background: none; border: none; color: #fff; cursor: pointer; font-size: 22px; padding: 0 4px; line-height: 1; }
 
-  /* ===== MEDIA in bubble (photo/audio) ===== */
-  .bubble .media-photo { max-width: 100%; max-height: 260px; border-radius: 10px; display: block; margin-top: 4px; }
-  .bubble .media-audio { width: 100%; max-width: 240px; margin-top: 4px; }
+  /* ===== MEDIA (photo/audio) — vale pra bubble E pra post ===== */
+  .media-photo { display: block; max-width: 100%; width: auto; height: auto; max-height: 320px; border-radius: 10px; margin-top: 4px; object-fit: contain; }
+  .media-audio { display: block; width: 100%; max-width: 100%; margin-top: 4px; }
+  .bubble .media-photo { max-height: 260px; }
+  .bubble .media-audio { max-width: 240px; }
 
   /* ===== AUDIO RECORDING indicator ===== */
   .recording-bar { background: #d70015; color: #fff; padding: 8px 12px; border-radius: 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; }
