@@ -184,7 +184,10 @@
     <div class="view active" id="view-conv">
       <div class="list-header">
         <h2>Conversas</h2>
-        <button onclick="openNewDmModal()">+ Nova</button>
+        <div style="display:flex;gap:6px">
+          <button id="seller-attend-btn" style="display:none;background:#25d366" onclick="openAttendClientModal()">🏪 Atender</button>
+          <button onclick="openNewDmModal()">+ Nova</button>
+        </div>
       </div>
       <div id="conv-items"><div class="empty"><div class="icon">⏳</div><div class="desc">Carregando...</div></div></div>
     </div>
@@ -252,6 +255,20 @@
 
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeProfileDrawer()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Vendedor atender cliente (cria conversa loja-cliente) -->
+<div class="modal-overlay" id="modal-attend-client">
+  <div class="modal">
+    <h2>🏪 Atender cliente da loja</h2>
+    <div style="font-size:12px;color:#888;margin-bottom:10px">A conversa fica vinculada à <strong id="seller-store-name">sua loja</strong> — todos os vendedores da loja veem.</div>
+    <label>Buscar cliente (nome, @username, telefone)</label>
+    <input type="text" id="attend-search-input" placeholder="🔍 Buscar..." oninput="searchPeopleForAttend()">
+    <div id="attend-search-results" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeAttendClientModal()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -961,6 +978,46 @@ function searchPeopleForDm() {
   }, 300);
 }
 
+// ============= VENDEDOR: ATENDER CLIENTE (conv loja-cliente) =============
+function openAttendClientModal() {
+  document.getElementById('attend-search-input').value = '';
+  document.getElementById('attend-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>';
+  document.getElementById('modal-attend-client').classList.add('open');
+  setTimeout(() => document.getElementById('attend-search-input').focus(), 80);
+}
+function closeAttendClientModal() { document.getElementById('modal-attend-client').classList.remove('open'); }
+let attendSearchDebounce;
+function searchPeopleForAttend() {
+  clearTimeout(attendSearchDebounce);
+  const q = document.getElementById('attend-search-input').value.trim();
+  if (q.length < 2) { document.getElementById('attend-search-results').innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Digite ao menos 2 caracteres.</div>'; return; }
+  attendSearchDebounce = setTimeout(async () => {
+    try {
+      const d = await api('/people/search?q=' + encodeURIComponent(q));
+      const people = (d.people || []).filter(p => p.id !== STATE.userId);
+      const out = document.getElementById('attend-search-results');
+      if (people.length === 0) { out.innerHTML = '<div style="font-size:13px;color:#888;padding:10px">Nenhum cliente encontrado</div>'; return; }
+      out.innerHTML = people.map(p => `
+        <div class="modal-search-result" data-id="${escapeHtml(p.id)}">
+          <span><strong>${escapeHtml(p.name)}</strong>${p.username ? ' · @' + escapeHtml(p.username) : ''}${p.phone ? ' · ' + escapeHtml(p.phone) : ''}</span>
+          <button>Atender</button>
+        </div>
+      `).join('');
+      out.querySelectorAll('.modal-search-result').forEach(el => {
+        el.addEventListener('click', async () => {
+          const id = el.getAttribute('data-id');
+          try {
+            const r = await api('/conversations/loja/with-client', { method: 'POST', body: JSON.stringify({ clientUserId: id }) });
+            closeAttendClientModal();
+            await loadConversations();
+            openConversation(r.conversation.id);
+          } catch (e) { alert('Erro: ' + e.message); }
+        });
+      });
+    } catch (e) { document.getElementById('attend-search-results').innerHTML = `<div style="color:red;padding:10px">Erro: ${escapeHtml(e.message)}</div>`; }
+  }, 300);
+}
+
 // ============= PROFILE DRAWER =============
 function openProfileDrawer() {
   document.getElementById('modal-profile').classList.add('open');
@@ -1065,7 +1122,13 @@ async function boot() {
     const r = await fetch('/api/admin/me', { headers: authHeaders() });
     if (r.ok) {
       const d = await r.json();
-      document.getElementById('user-name').textContent = d.name || d.user?.name || '';
+      const me = d.user || d;
+      document.getElementById('user-name').textContent = me.name || '';
+      // Mostra botão "Atender" pra vendedor/admin com storeId
+      if (['seller', 'admin', 'superadmin'].includes(me.role) && (me.storeId || me.role === 'admin' || me.role === 'superadmin')) {
+        document.getElementById('seller-attend-btn').style.display = 'inline-block';
+        if (me.store?.name) document.getElementById('seller-store-name').textContent = me.store.name;
+      }
     }
   } catch {}
 

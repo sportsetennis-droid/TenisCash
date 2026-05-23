@@ -358,6 +358,11 @@ async function upsertSaleFromOrder(nsOrder) {
         });
       });
       await logSync('order', 'ok', `order/paid ${nsOrder.id} → T$ ${tcEarned} creditado pra ${user.id}`);
+      // Bot "TenisCash" avisa cliente
+      try {
+        const sysMsg = require('./systemMessenger');
+        sysMsg.notifyCashbackEarned(user.id, tcEarned, nsOrder.id).catch(() => {});
+      } catch (e) { /* ignora */ }
     }
   }
 

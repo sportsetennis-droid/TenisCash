@@ -325,6 +325,36 @@ router.post('/timelines/:id/posts', async (req, res) => {
       },
     });
 
+    // dispara push pros membros da timeline (não pro próprio autor)
+    try {
+      const pushSvc = require('../services/pushNotifications');
+      let recipients = [];
+      if (timeline.isPublic) {
+        // não notificar TODOS no canal público (spam) — só vendedores ativos
+        recipients = await prisma.user.findMany({
+          where: { active: true, role: { in: ['seller', 'admin', 'superadmin'] }, id: { not: userId } },
+          select: { id: true },
+        });
+      } else {
+        const members = await prisma.timelineMember.findMany({
+          where: { timelineId, leftAt: null, userId: { not: userId } },
+          select: { userId: true },
+        });
+        recipients = members.map(m => ({ id: m.userId }));
+      }
+      const preview = content ? content.slice(0, 100) : (productCardId ? '🛍️ Produto' : (mediaType === 'photo' ? '📷 Foto' : (mediaType === 'audio' ? '🎤 Áudio' : 'Novo post')));
+      const authorName = post.author?.name || 'TenisCash';
+      const tlName = timeline.name || 'Hoje';
+      for (const r of recipients) {
+        pushSvc.sendToUser(r.id, {
+          title: `📓 ${tlName} · ${authorName}`,
+          body: preview,
+          url: '/app.html',
+          tag: 'tl-' + timelineId,
+        }).catch(() => {});
+      }
+    } catch (e) { /* push best-effort */ }
+
     res.json({ post });
   } catch (err) {
     console.error('[messagesV2/timelines/:id/posts POST]', err);
@@ -894,6 +924,30 @@ router.post('/reactions', async (req, res) => {
         ...(targetType === 'post' ? { postId: targetId } : { messageId: targetId }),
       },
     });
+
+    // push pro autor (não pra si mesmo)
+    try {
+      let authorId = null;
+      let authorName = '';
+      if (targetType === 'post') {
+        const p = await prisma.timelinePost.findUnique({ where: { id: targetId }, select: { authorId: true } });
+        authorId = p?.authorId;
+      } else {
+        const m = await prisma.chatMessage.findUnique({ where: { id: targetId }, select: { senderId: true } });
+        authorId = m?.senderId;
+      }
+      if (authorId && authorId !== userId) {
+        const reactor = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+        const pushSvc = require('../services/pushNotifications');
+        pushSvc.sendToUser(authorId, {
+          title: `${emoji} ${reactor?.name || 'Alguém'} reagiu`,
+          body: targetType === 'post' ? 'Em um post seu' : 'Em uma mensagem sua',
+          url: '/app.html',
+          tag: 'reaction-' + targetId,
+        }).catch(() => {});
+      }
+    } catch (e) { /* push best-effort */ }
+
     res.json({ toggled: 'on', reaction: created });
   } catch (err) {
     console.error('[messagesV2/reactions]', err);
@@ -1015,6 +1069,51 @@ async function ensureSystemUser() {
   }
   return bot;
 }
+
+// POST /system/broadcast — dispara system message pra muitos users
+// body: { userIds: [..] OR role: "user" | "seller", content, productCardId? }
+// Cuidado: rate-limit no front, e LIMITE 1000 destinatários
+router.post('/system/broadcast', async (req, res) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!me || !['admin', 'superadmin'].includes(me.role)) {
+      return res.status(403).json({ error: 'apenas admin' });
+    }
+    const { userIds, role, content, productCardId } = req.body || {};
+    if (!content && !productCardId) return res.status(400).json({ error: 'content ou productCardId obrigatório' });
+
+    let targets = [];
+    if (Array.isArray(userIds) && userIds.length > 0) {
+      targets = userIds.slice(0, 1000);
+    } else if (role) {
+      const users = await prisma.user.findMany({
+        where: { role, active: true },
+        select: { id: true },
+        take: 1000,
+      });
+      targets = users.map(u => u.id);
+    } else {
+      return res.status(400).json({ error: 'userIds ou role obrigatório' });
+    }
+
+    const sysMsg = require('../services/systemMessenger');
+    let sent = 0, failed = 0;
+    // dispara em paralelo limitado (10 por vez)
+    const chunks = [];
+    for (let i = 0; i < targets.length; i += 10) chunks.push(targets.slice(i, i + 10));
+    for (const chunk of chunks) {
+      await Promise.all(chunk.map(async (uid) => {
+        const r = await sysMsg.notify(uid, { content, productCardId });
+        if (r) sent++; else failed++;
+      }));
+    }
+
+    res.json({ targetsCount: targets.length, sent, failed });
+  } catch (err) {
+    console.error('[system/broadcast]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/system/notify', async (req, res) => {
   try {

@@ -12,3 +12,4 @@ tmp/
 *.key
 certificados/
 certs/
+.rwlogin.*

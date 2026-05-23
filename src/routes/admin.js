@@ -366,6 +366,12 @@ router.post('/sale', async (req, res) => {
       return { updated, transaction };
     });
 
+    // dispara mensagem do bot "TenisCash" + push pro cliente (best-effort)
+    try {
+      const sysMsg = require('../services/systemMessenger');
+      sysMsg.notifyCashbackEarned(user.id, teniscashEarned, result.transaction.id).catch(() => {});
+    } catch (e) { /* ignora */ }
+
     res.json({
       success: true,
       message: `Venda registrada. ${user.name} ganhou T$ ${teniscashEarned.toFixed(2)}`,

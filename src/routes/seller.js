@@ -612,6 +612,14 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       return { sale, commissionsCount: commissionsData.length };
     });
 
+    // ===== Bot "TenisCash" avisa cliente do cashback =====
+    if (customer && (tcEarned - tcConsumed) > 0) {
+      try {
+        const sysMsg = require('../services/systemMessenger');
+        sysMsg.notifyCashbackEarned(customer.id, tcEarned - tcConsumed, result.sale.id).catch(() => {});
+      } catch (e) { /* ignora */ }
+    }
+
     // ===== EMISSÃO AUTOMÁTICA DE NFCe =====
     // Tenta emitir cupom fiscal automaticamente se a loja tem FiscalIssuer
     // com CSC cadastrado. Se faltar dados ou der erro fiscal, a venda é
