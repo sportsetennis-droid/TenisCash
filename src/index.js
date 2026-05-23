@@ -45,6 +45,8 @@ const coachRoutes = require('./routes/coach');
 const adminClassificationRoutes = require('./routes/adminClassification');
 const whatsappRoutes = require('./routes/whatsapp');
 const stocktakeRoutes = require('./routes/stocktake');
+const messagesV2Routes = require('./routes/messagesV2');
+const { startMessagesCron } = require('./services/messagesCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -134,6 +136,7 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
+app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
@@ -394,6 +397,11 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
+
+  // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
+  if (process.env.DISABLE_MESSAGES_CRON !== '1') {
+    try { startMessagesCron(); } catch (e) { console.error('[messagesCron] falha ao iniciar:', e.message); }
+  }
 
   // Cron jobs em background
   if (process.env.DISABLE_FISCAL_DRAFT_JOB !== '1') {

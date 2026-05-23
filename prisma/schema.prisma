@@ -17,6 +17,7 @@ model User {
   phone           String    @unique
   email           String?
   cpf             String?   @unique
+  username        String?   @unique  // handle único pra ser convidado em timelines privadas
   pin             String // hashed
   balance         Float     @default(0) // CASHBACK do cliente — pode transferir, usar em compras
   partnerBalance  Float     @default(0) // COMISSÃO do parceiro — APENAS troca por produtos (não transfere)
@@ -101,6 +102,15 @@ model User {
   badges                  BadgeEarned[]
   consents                Consent[]
   liveTrackingSessions    LiveTrackingSession[]    @relation("liveTrackingOwner")
+
+  // ===== MENSAGENS V2 (Timeline + Conversas) =====
+  timelinesCreated         Timeline[]         @relation("timelinesCreated")
+  timelineMemberships      TimelineMember[]   @relation("timelineMemberships")
+  timelinePostsAuthored    TimelinePost[]     @relation("timelinePostsAuthored")
+  conversationsAsUserA     Conversation[]     @relation("conversationsAsUserA")
+  conversationsAsUserB     Conversation[]     @relation("conversationsAsUserB")
+  conversationsAsClient    Conversation[]     @relation("conversationsAsClient")
+  chatMessagesSent         ChatMessage[]      @relation("chatMessagesSent")
 }
 
 // ============================================================
@@ -203,6 +213,9 @@ model Store {
   clockIns ClockIn[]
   messages Message[]    @relation("storeMessages")
   stocks   StoreStock[]
+
+  // Mensagens V2: conversas entre loja e cliente
+  conversationsAsStore Conversation[] @relation("conversationsForStore")
 }
 
 // ============================================================
@@ -305,6 +318,9 @@ model Product {
   saleItems SaleItem[]
   trainings SellerTraining[]
   quizzes   Quiz[]
+
+  // Mensagens V2: card de produto enviado em conversa
+  chatMessagesAsCard ChatMessage[] @relation("chatMessageProducts")
 
   @@index([brand, category])
   @@index([active, featured])
@@ -2165,4 +2181,117 @@ model StocktakeBipe {
   @@index([barcode])
   @@index([productId])
   @@index([applied, bipedAt])
+}
+
+// =====================================================================
+// MENSAGENS V2 — Timeline ("Como está o dia hoje?") + Conversas (DMs)
+// =====================================================================
+// Ver documento: docs/MENSAGENS.md
+// Princípios:
+// - Timeline some 00:00 (cron timezone America/Fortaleza)
+// - Conversas persistem PRA SEMPRE no banco (soft-delete por timestamp)
+// - Sem like/reaction visual. Reagir = mandar DM.
+// =====================================================================
+
+model Timeline {
+  id            String   @id @default(cuid())
+  name          String                              // "Geral", "Família", "Time Bessa"
+  isPublic      Boolean  @default(false)            // true só pra UMA timeline global do sistema
+  createdById   String?                             // FK User — null pra timeline pública do sistema
+  createdAt     DateTime @default(now())
+  deletedAt     DateTime?
+
+  createdBy     User?                @relation("timelinesCreated", fields: [createdById], references: [id])
+  members       TimelineMember[]
+  posts         TimelinePost[]
+
+  @@index([isPublic])
+  @@index([createdById])
+}
+
+model TimelineMember {
+  id            String   @id @default(cuid())
+  timelineId    String
+  userId        String
+  joinedAt      DateTime @default(now())
+  lastReadAt    DateTime @default(now())            // pra calcular badge "não lido"
+  leftAt        DateTime?
+  role          String   @default("member")         // "creator" | "member"
+
+  timeline      Timeline @relation(fields: [timelineId], references: [id])
+  user          User     @relation("timelineMemberships", fields: [userId], references: [id])
+
+  @@unique([timelineId, userId])
+  @@index([userId, leftAt])
+}
+
+model TimelinePost {
+  id            String   @id @default(cuid())
+  timelineId    String
+  authorId      String
+  content       String?                             // texto (pode ser null se for só mídia)
+  mediaType     String?                             // "photo" | "audio" | null
+  mediaUrl      String?                             // URL no storage
+  mediaDuration Int?                                // duração em segundos (áudio)
+  createdAt     DateTime @default(now())
+  editedAt      DateTime?
+  deletedAt     DateTime?                           // soft delete pelo autor antes da meia-noite
+  expiredAt     DateTime?                           // setado pelo cron 00:00 America/Fortaleza
+
+  timeline      Timeline @relation(fields: [timelineId], references: [id])
+  author        User     @relation("timelinePostsAuthored", fields: [authorId], references: [id])
+
+  @@index([timelineId, createdAt])
+  @@index([expiredAt])
+  @@index([authorId, createdAt])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  type          String                              // "dm" | "loja"
+  // Pra DM: userAId < userBId lexicograficamente
+  userAId       String?
+  userBId       String?
+  // Pra Loja: storeId + clientUserId
+  storeId       String?
+  clientUserId  String?
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  userA         User?    @relation("conversationsAsUserA", fields: [userAId], references: [id])
+  userB         User?    @relation("conversationsAsUserB", fields: [userBId], references: [id])
+  store         Store?   @relation("conversationsForStore", fields: [storeId], references: [id])
+  clientUser    User?    @relation("conversationsAsClient", fields: [clientUserId], references: [id])
+  messages      ChatMessage[]
+
+  @@unique([userAId, userBId])
+  @@unique([storeId, clientUserId])
+  @@index([lastMessageAt])
+}
+
+model ChatMessage {
+  id                       String   @id @default(cuid())
+  conversationId           String
+  senderId                 String                    // FK User (ou User-representante-da-loja)
+  senderType               String   @default("user") // "user" | "store" | "system"
+  content                  String?
+  mediaType                String?                   // "photo" | "audio" | null
+  mediaUrl                 String?
+  mediaDuration            Int?
+  productCardId            String?                   // FK Product — card de produto inline
+  readAt                   DateTime?                 // quando o destinatário leu
+  editedAt                 DateTime?
+  // Soft delete 3-d — NUNCA hard delete (auditoria 100%)
+  deletedForSenderAt       DateTime?                 // remetente apagou pro lado dele
+  deletedForRecipientAt    DateTime?                 // destinatário apagou pro lado dele
+  deletedForBothAt         DateTime?                 // remetente apagou pros dois (só se < 2h)
+  createdAt                DateTime @default(now())
+
+  conversation             Conversation @relation(fields: [conversationId], references: [id])
+  sender                   User         @relation("chatMessagesSent", fields: [senderId], references: [id])
+  productCard              Product?     @relation("chatMessageProducts", fields: [productCardId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([readAt])
 }

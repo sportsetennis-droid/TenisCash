@@ -21,6 +21,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
     "node-sped-nfe": "^1.2.52",
     "node-sped-pdf": "^1.0.66",
     "nodemailer": "^6.9.0",
