@@ -87,6 +87,7 @@
   /* === DESKTOP (>=1024px): split layout, sidebar fixa + thread sempre aberta === */
   @media (min-width: 1024px) {
     html, body { overflow: hidden; height: 100vh; }
+    body { background: radial-gradient(circle at 20% 20%, #fff6ef 0%, transparent 50%), radial-gradient(circle at 80% 80%, #fde4f1 0%, transparent 50%), #f0f0f5; }
     .app {
       display: grid;
       grid-template-columns: 360px 1fr;
@@ -100,14 +101,31 @@
       border: 1px solid rgba(0,0,0,0.06);
       overflow: hidden;
       background: var(--bg-card);
+      position: relative;
     }
     /* Topbar atravessa as 2 colunas */
-    .app-top { grid-column: 1 / -1; grid-row: 1; }
-    /* Content (lista) na coluna 1 */
-    .content { grid-column: 1; grid-row: 2; border-right: 1px solid var(--border); background: var(--bg-app); overflow-y: auto; padding-bottom: 80px; }
-    /* Bottom-nav vira nav-tabs dentro da sidebar */
-    .bottom-nav { position: absolute; bottom: 16px; left: 16px; right: auto; transform: none; width: 328px; justify-content: space-around; }
-    /* Thread/feed sempre visível na coluna 2 */
+    .app-top { grid-column: 1 / -1; grid-row: 1; padding: 16px 22px; }
+    /* Content (lista) na coluna 1 — fica relative pra bottom-nav fica absolute dentro */
+    .content {
+      grid-column: 1;
+      grid-row: 2;
+      border-right: 1px solid var(--border);
+      background: var(--bg-soft);
+      overflow-y: auto;
+      padding-bottom: 80px;
+      position: relative;
+    }
+    /* Bottom-nav vira pill flutuante dentro da sidebar */
+    .bottom-nav {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      right: 14px;
+      transform: none;
+      width: auto;
+      justify-content: space-around;
+    }
+    /* Thread/feed na coluna 2 — sempre visível, sem fixed */
     .screen-thread {
       display: flex !important;
       position: static;
@@ -123,32 +141,45 @@
       background: var(--bg-app);
       animation: none;
     }
-    /* Quando NADA está aberto, mostra placeholder */
+    /* Quando NADA está aberto, mostra placeholder centralizado */
+    .screen-thread:not(.open) {
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: var(--bg-soft);
+      background-image:
+        radial-gradient(circle at 50% 40%, rgba(255,106,31,0.04) 0%, transparent 60%);
+    }
     .screen-thread:not(.open) .thread-header,
     .screen-thread:not(.open) .thread-body,
     .screen-thread:not(.open) .composer { display: none; }
     .screen-thread:not(.open)::before {
       content: '';
       display: block;
-      flex: 1;
+      width: 96px;
+      height: 96px;
       background:
-        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="%23d2d2d7" stroke-width="1.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>')
-        center center no-repeat;
+        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23c0c0c8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>')
+        center / contain no-repeat;
+      opacity: 0.7;
     }
     .screen-thread:not(.open)::after {
       content: 'Selecione uma conversa ou timeline pra começar';
       display: block;
       text-align: center;
       color: var(--text2);
-      font-size: 14px;
+      font-size: 14.5px;
       font-weight: 500;
-      padding-bottom: 40vh;
+      max-width: 280px;
+      line-height: 1.5;
     }
     .thread-header { border-radius: 0; }
     /* Botão back não faz sentido no desktop split */
     .screen-thread .back-btn { display: none; }
-    /* Body do desktop ganha fundo gradient sutil */
-    body { background: radial-gradient(circle at 20% 20%, #fff6ef 0%, transparent 50%), radial-gradient(circle at 80% 80%, #fde4f1 0%, transparent 50%), #f0f0f5; }
+    /* List header sem padding-top excessivo na sidebar */
+    .list-header { padding: 14px 18px 8px; }
+    .list-header h2 { font-size: 20px; }
+    .list-items { padding: 4px 12px 80px; }
   }
   /* === Tablet/medium: continua frame celular centralizado === */
   @media (min-width: 900px) and (max-width: 1023.98px) {
@@ -699,29 +730,29 @@
       <span class="badge" id="badge-tl" style="display:none">0</span>
     </button>
   </div>
-</div>
 
-<!-- THREAD/FEED FULLSCREEN -->
-<div class="screen-thread" id="thread-screen">
-  <div class="thread-header">
-    <button class="back-btn" onclick="closeThread()">←</button>
-    <div style="flex:1">
-      <div class="title" id="thread-title">—</div>
-      <div class="subtitle" id="thread-subtitle">—</div>
+  <!-- THREAD/FEED — fullscreen no mobile, coluna 2 do split no desktop -->
+  <div class="screen-thread" id="thread-screen">
+    <div class="thread-header">
+      <button class="back-btn" onclick="closeThread()">←</button>
+      <div style="flex:1">
+        <div class="title" id="thread-title">—</div>
+        <div class="subtitle" id="thread-subtitle">—</div>
+      </div>
     </div>
-  </div>
-  <div class="thread-body" id="thread-body"></div>
-  <div class="composer">
-    <div id="attach-preview"></div>
-    <div class="composer-row">
-      <button class="attach-btn" onclick="openProductModal()" title="Anexar produto">🛍️</button>
-      <button class="attach-btn" onclick="document.getElementById('photo-input').click()" title="Foto">📷</button>
-      <button class="attach-btn" id="audio-btn" onclick="toggleAudio()" title="Áudio">🎤</button>
-      <textarea id="composer-input" rows="1" placeholder="Mensagem..." oninput="autoGrow(this)"></textarea>
-      <button class="send-btn" id="send-btn" onclick="sendActive()">Enviar</button>
+    <div class="thread-body" id="thread-body"></div>
+    <div class="composer">
+      <div id="attach-preview"></div>
+      <div class="composer-row">
+        <button class="attach-btn" onclick="openProductModal()" title="Anexar produto">🛍️</button>
+        <button class="attach-btn" onclick="document.getElementById('photo-input').click()" title="Foto">📷</button>
+        <button class="attach-btn" id="audio-btn" onclick="toggleAudio()" title="Áudio">🎤</button>
+        <textarea id="composer-input" rows="1" placeholder="Mensagem..." oninput="autoGrow(this)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendActive()">Enviar</button>
+      </div>
+      <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
+      <div class="composer-hint" id="composer-hint"></div>
     </div>
-    <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
-    <div class="composer-hint" id="composer-hint"></div>
   </div>
 </div>
 
