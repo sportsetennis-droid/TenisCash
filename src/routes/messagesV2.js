@@ -233,7 +233,10 @@ router.get('/timelines/:id/posts', async (req, res) => {
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
-      include: { author: { select: { id: true, name: true, username: true } } },
+      include: {
+        author: { select: { id: true, name: true, username: true } },
+        productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true } },
+      },
     });
 
     // Atualiza lastReadAt do membro (se for privada e ele for membro)
@@ -256,9 +259,11 @@ router.post('/timelines/:id/posts', async (req, res) => {
   try {
     const userId = req.userId;
     const timelineId = req.params.id;
-    const { content, mediaType, mediaUrl, mediaDuration } = req.body || {};
+    const { content, mediaType, mediaUrl, mediaDuration, productCardId } = req.body || {};
 
-    if (!content && !mediaUrl) return res.status(400).json({ error: 'content ou mediaUrl obrigatório' });
+    if (!content && !mediaUrl && !productCardId) {
+      return res.status(400).json({ error: 'content, mediaUrl ou productCardId obrigatório' });
+    }
 
     // Verifica acesso
     const timeline = await prisma.timeline.findUnique({ where: { id: timelineId } });
@@ -279,8 +284,12 @@ router.post('/timelines/:id/posts', async (req, res) => {
         mediaType: mediaType || null,
         mediaUrl: mediaUrl || null,
         mediaDuration: mediaDuration || null,
+        productCardId: productCardId || null,
       },
-      include: { author: { select: { id: true, name: true, username: true } } },
+      include: {
+        author: { select: { id: true, name: true, username: true } },
+        productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true } },
+      },
     });
 
     res.json({ post });
@@ -463,7 +472,7 @@ router.get('/conversations/:id/messages', async (req, res) => {
       take: limit,
       include: {
         sender: { select: { id: true, name: true, username: true } },
-        productCard: { select: { id: true, name: true, brand: true, price: true, imageUrl: true, sku: true } },
+        productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true, sku: true } },
       },
     });
 
@@ -506,7 +515,7 @@ router.post('/conversations/:id/messages', async (req, res) => {
       },
       include: {
         sender: { select: { id: true, name: true, username: true } },
-        productCard: { select: { id: true, name: true, brand: true, price: true, imageUrl: true } },
+        productCard: { select: { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true } },
       },
     });
 
@@ -636,6 +645,39 @@ router.get('/people/search', async (req, res) => {
     res.json({ people });
   } catch (err) {
     console.error('[messagesV2/people/search]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// BUSCA DE PRODUTOS (pra anexar como card em chat/post)
+// ====================================================
+
+router.get('/products/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length < 2) return res.json({ products: [] });
+
+    const where = {
+      active: true,
+      OR: [
+        { name: { contains: q, mode: 'insensitive' } },
+        { sku: { contains: q, mode: 'insensitive' } },
+        { brand: { contains: q, mode: 'insensitive' } },
+        { barcode: { contains: q } },
+      ],
+    };
+
+    const products = await prisma.product.findMany({
+      where,
+      select: { id: true, sku: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true },
+      orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+      take: 20,
+    });
+
+    res.json({ products });
+  } catch (err) {
+    console.error('[messagesV2/products/search]', err);
     res.status(500).json({ error: err.message });
   }
 });

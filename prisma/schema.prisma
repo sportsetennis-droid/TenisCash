@@ -321,6 +321,7 @@ model Product {
 
   // Mensagens V2: card de produto enviado em conversa
   chatMessagesAsCard ChatMessage[] @relation("chatMessageProducts")
+  timelinePostsAsCard TimelinePost[] @relation("timelinePostProducts")
 
   @@index([brand, category])
   @@index([active, featured])
@@ -2233,6 +2234,7 @@ model TimelinePost {
   mediaType     String?                             // "photo" | "audio" | null
   mediaUrl      String?                             // URL no storage
   mediaDuration Int?                                // duração em segundos (áudio)
+  productCardId String?                             // FK Product — card de produto inline
   createdAt     DateTime @default(now())
   editedAt      DateTime?
   deletedAt     DateTime?                           // soft delete pelo autor antes da meia-noite
@@ -2240,6 +2242,7 @@ model TimelinePost {
 
   timeline      Timeline @relation(fields: [timelineId], references: [id])
   author        User     @relation("timelinePostsAuthored", fields: [authorId], references: [id])
+  productCard   Product? @relation("timelinePostProducts", fields: [productCardId], references: [id])
 
   @@index([timelineId, createdAt])
   @@index([expiredAt])
