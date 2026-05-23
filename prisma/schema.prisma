@@ -327,6 +327,9 @@ model Product {
   chatMessagesAsCard ChatMessage[] @relation("chatMessageProducts")
   timelinePostsAsCard TimelinePost[] @relation("timelinePostProducts")
 
+  // Marketing IA: criativos gerados (foto editorial, vídeo Reels, sem-fundo)
+  creatives ProductCreative[] @relation("creativesForProduct")
+
   @@index([brand, category])
   @@index([active, featured])
 }
@@ -2342,4 +2345,79 @@ model PushSubscription {
   user User @relation("pushByUser", fields: [userId], references: [id])
 
   @@index([userId])
+}
+
+// ============================================================
+// MARKETING IA — criativos gerados (fal.ai) + publicações
+// ============================================================
+
+model ProductCreative {
+  id            String   @id @default(cuid())
+  productId     String
+  // Tipo do criativo
+  kind          String                            // "editorial_photo" | "reel_video" | "transparent_photo"
+  // URLs / metadados do output da fal.ai
+  outputUrl     String                            // URL pública do asset gerado
+  thumbnailUrl  String?                           // thumb (pra video)
+  // Modelo usado pra geração
+  model         String                            // "fal-ai/flux-pro/kontext-max" | "fal-ai/kling-video/v2.1/pro/image-to-video" | "fal-ai/bria/background/remove"
+  // Prompt e parâmetros
+  prompt        String?
+  params        Json?                             // { aspect_ratio, duration, etc }
+  // Custo em USD (estimado, pra controlar gasto)
+  costUsd       Float?
+  // Copies geradas pelo Claude pra cada plataforma
+  captionIg     String?
+  captionTiktok String?
+  captionWa     String?
+  hashtags      String?                           // CSV
+  // Fluxo de aprovação
+  status        String   @default("pending_review") // pending_review | approved | rejected | published
+  reviewedById  String?                           // userId do admin que revisou
+  reviewedAt    DateTime?
+  rejectionReason String?
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product       Product  @relation("creativesForProduct", fields: [productId], references: [id])
+  publications  MarketingPublication[] @relation("publicationsForCreative")
+
+  @@index([productId, kind])
+  @@index([status, createdAt])
+  @@index([createdAt])
+}
+
+model MarketingPublication {
+  id           String   @id @default(cuid())
+  creativeId   String?                            // FK opcional (publicação manual sem criativo IA)
+  productId    String?
+  // Plataforma
+  platform     String                             // "instagram" | "tiktok" | "whatsapp_broadcast" | "facebook"
+  // ID retornado pela API da plataforma (Meta media_id, TikTok post_id, etc)
+  externalId   String?
+  externalUrl  String?                            // URL pública do post
+  // Conteúdo publicado
+  caption      String?
+  mediaUrl     String?
+  // Resultado
+  status       String   @default("queued")        // queued | publishing | success | failed
+  errorMessage String?
+  // Métricas (atualizadas em job posterior)
+  metricViews    Int?
+  metricLikes    Int?
+  metricComments Int?
+  metricShares   Int?
+  metricSaves    Int?
+  metricsUpdatedAt DateTime?
+  // Quem disparou
+  publishedById String?
+  publishedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  creative ProductCreative? @relation("publicationsForCreative", fields: [creativeId], references: [id])
+
+  @@index([platform, status])
+  @@index([publishedAt])
+  @@index([productId])
 }

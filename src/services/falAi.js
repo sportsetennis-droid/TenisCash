@@ -1,0 +1,158 @@
+// =====================================================================
+// fal.ai wrapper — geração de criativos de marketing
+// =====================================================================
+// Modelos usados:
+//   - fal-ai/flux-pro/kontext-max  → foto editorial 16:9
+//   - fal-ai/kling-video/v2.1/pro/image-to-video → vídeo 5s 9:16 pra Reels
+//   - fal-ai/bria/background/remove → remove fundo do produto
+//
+// Auth: FAL_KEY no env. Pegar em https://fal.ai/dashboard/keys
+//
+// IMPORTANTE: @fal-ai/client é ESM. Carregamos via dynamic import.
+// =====================================================================
+
+let _fal = null;
+async function getFal() {
+  if (_fal) return _fal;
+  const mod = await import('@fal-ai/client');
+  const client = mod.fal;
+  if (!process.env.FAL_KEY) {
+    throw new Error('FAL_KEY não configurada no .env');
+  }
+  client.config({ credentials: process.env.FAL_KEY });
+  _fal = client;
+  return _fal;
+}
+
+// Custos estimados por chamada (USD) — atualizar conforme fal.ai mudar tabela
+const COSTS = {
+  'fal-ai/flux-pro/kontext-max': 0.04,
+  'fal-ai/kling-video/v2.1/pro/image-to-video': 0.50,
+  'fal-ai/bria/background/remove': 0.01,
+};
+
+// Helper genérico com retry exponencial (3 tentativas)
+async function withRetry(fn, opName, maxAttempts = 3) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const t0 = Date.now();
+      const result = await fn();
+      console.log(`[falAi] ${opName} OK em ${((Date.now()-t0)/1000).toFixed(1)}s`);
+      return result;
+    } catch (err) {
+      lastErr = err;
+      const wait = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+      console.warn(`[falAi] ${opName} falhou tentativa ${attempt}/${maxAttempts}: ${err.message}. Aguardando ${wait}ms`);
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Gera foto editorial profissional do produto.
+ * Usa Flux Pro Kontext Max com imagem de referência (produto do catálogo).
+ * @param {object} opts { productName, brand, imageUrl, aspectRatio, sceneHint }
+ * @returns {Promise<{outputUrl, model, prompt, costUsd}>}
+ */
+async function generateEditorialPhoto({ productName, brand, imageUrl, aspectRatio = '16:9', sceneHint = '' }) {
+  const fal = await getFal();
+  const model = 'fal-ai/flux-pro/kontext-max';
+
+  const scene = sceneHint || pickEditorialScene(productName, brand);
+  const prompt = `Editorial product photography of ${productName} (${brand}), ${scene}, dramatic studio lighting, hyperrealistic, 8k, magazine cover quality, sharp focus on product, professional sports/lifestyle aesthetic`;
+
+  const result = await withRetry(
+    () => fal.subscribe(model, {
+      input: {
+        prompt,
+        image_url: imageUrl,
+        aspect_ratio: aspectRatio,
+        guidance_scale: 3.5,
+        num_inference_steps: 28,
+        output_format: 'jpeg',
+        safety_tolerance: '2',
+      },
+      logs: false,
+    }),
+    `editorialPhoto ${productName.slice(0,40)}`
+  );
+
+  const outputUrl = result?.data?.images?.[0]?.url;
+  if (!outputUrl) throw new Error('flux-pro retornou sem image url');
+
+  return { outputUrl, model, prompt, costUsd: COSTS[model] };
+}
+
+/**
+ * Gera vídeo de 5s vertical (9:16) animando uma imagem (Reels/TikTok).
+ * @param {object} opts { imageUrl, productName, duration }
+ */
+async function generateReelVideo({ imageUrl, productName, duration = 5 }) {
+  const fal = await getFal();
+  const model = 'fal-ai/kling-video/v2.1/pro/image-to-video';
+
+  const prompt = `Slow cinematic camera movement around the product, dynamic lighting reveal, premium sports brand commercial style, smooth motion, ${productName}`;
+
+  const result = await withRetry(
+    () => fal.subscribe(model, {
+      input: {
+        prompt,
+        image_url: imageUrl,
+        duration: String(duration),
+        aspect_ratio: '9:16',
+        negative_prompt: 'static, blurry, distorted, low quality, watermark, text',
+      },
+      logs: false,
+    }),
+    `reelVideo ${productName.slice(0,40)}`
+  );
+
+  const outputUrl = result?.data?.video?.url;
+  if (!outputUrl) throw new Error('kling retornou sem video url');
+
+  return { outputUrl, model, prompt, costUsd: COSTS[model] };
+}
+
+/**
+ * Remove fundo de uma foto de produto (Bria RMBG 2.0).
+ * @param {object} opts { imageUrl }
+ */
+async function removeBackground({ imageUrl }) {
+  const fal = await getFal();
+  const model = 'fal-ai/bria/background/remove';
+
+  const result = await withRetry(
+    () => fal.subscribe(model, { input: { image_url: imageUrl }, logs: false }),
+    `removeBg`
+  );
+
+  const outputUrl = result?.data?.image?.url;
+  if (!outputUrl) throw new Error('bria-rmbg retornou sem image url');
+
+  return { outputUrl, model, prompt: null, costUsd: COSTS[model] };
+}
+
+/**
+ * Heurística pra escolher cenário editorial baseado em categoria/marca.
+ * Pode evoluir pra usar AI ou regras manuais.
+ */
+function pickEditorialScene(name, brand) {
+  const n = (name || '').toLowerCase();
+  if (n.match(/corrida|run|running/)) return 'urban street with morning light, athlete blur in background';
+  if (n.match(/futebol|chuteira|society/)) return 'green grass football field, golden hour, condensation drops';
+  if (n.match(/tenis(?!\s)|tennis|padel/)) return 'red clay tennis court with net in background, vibrant sunset';
+  if (n.match(/basquete|basket/)) return 'outdoor concrete basketball court, dramatic city skyline';
+  if (n.match(/treino|gym|crossfit|musculação/)) return 'industrial gym with steel beams, moody dramatic lighting';
+  if (n.match(/caminhada|walk|tracking|trilha/)) return 'mountain trail with morning mist, soft natural light';
+  if (n.match(/feminin|woman/)) return 'modern minimalist studio, soft pastel background';
+  return 'modern sports lifestyle scene, urban environment, warm sunset lighting';
+}
+
+module.exports = {
+  generateEditorialPhoto,
+  generateReelVideo,
+  removeBackground,
+  COSTS,
+};
