@@ -1,1 +1,13 @@
-{"name":"TenisCash","short_name":"TenisCash","start_url":"/","display":"standalone","background_color":"#E5571E","theme_color":"#E5571E"}
+{
+  "name": "TenisCash",
+  "short_name": "TenisCash",
+  "start_url": "/app.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E5571E",
+  "theme_color": "#E5571E",
+  "icons": [
+    { "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
