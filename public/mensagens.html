@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mensagens — TenisCash</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { background: #f5f5f7; color: #1d1d1f; height: 100vh; overflow: hidden; }
+
+  /* ============ HEADER ============ */
+  .topbar { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .topbar h1 { font-size: 18px; color: #E5571E; font-weight: 700; }
+  .topbar .user { font-size: 13px; color: #666; }
+  .topbar .user a { color: #E5571E; margin-left: 14px; text-decoration: none; }
+
+  .tabs { display: flex; background: #fff; border-bottom: 1px solid #e5e5ea; }
+  .tab { flex: 1; max-width: 280px; padding: 14px 18px; font-size: 14px; font-weight: 600; color: #666; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; display: flex; align-items: center; gap: 8px; background: none; border-top: none; border-left: none; border-right: none; }
+  .tab.active { color: #E5571E; border-bottom-color: #E5571E; }
+  .tab .badge { background: #d70015; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; min-width: 22px; text-align: center; }
+
+  /* ============ LAYOUT SPLIT ============ */
+  .main { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 105px); }
+  @media (max-width: 768px) {
+    .main { grid-template-columns: 1fr; }
+    .main.thread-open .left { display: none; }
+    .main:not(.thread-open) .right { display: none; }
+  }
+
+  .left { border-right: 1px solid #e5e5ea; background: #fff; overflow-y: auto; }
+  .right { background: #fafafc; overflow-y: auto; display: flex; flex-direction: column; }
+
+  /* ============ LISTA (esquerda) ============ */
+  .list-header { padding: 12px 16px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; }
+  .list-header h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #888; font-weight: 700; }
+  .list-header button { background: #E5571E; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+  .list-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f5; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  .list-item:hover { background: #fafafc; }
+  .list-item.active { background: #FFEBDC; border-left: 3px solid #E5571E; padding-left: 13px; }
+  .list-item .avatar { width: 40px; height: 40px; border-radius: 50%; background: #E5571E; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .list-item .avatar.store { background: #25d366; }
+  .list-item .info { flex: 1; min-width: 0; }
+  .list-item .name { font-weight: 700; font-size: 14px; color: #1d1d1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .preview { font-size: 12px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .meta { font-size: 11px; color: #aaa; text-align: right; flex-shrink: 0; }
+  .list-item .badge { background: #d70015; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px; margin-top: 4px; display: inline-block; }
+  .list-item.timeline-item .avatar { background: #6e6e73; }
+  .list-item.timeline-item .avatar.public { background: #007aff; }
+
+  /* ============ THREAD/FEED (direita) ============ */
+  .right-header { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 12px 18px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .right-header .back-btn { display: none; background: none; border: none; color: #E5571E; font-size: 20px; cursor: pointer; }
+  @media (max-width: 768px) { .right-header .back-btn { display: block; } }
+  .right-header .title { font-weight: 700; font-size: 15px; flex: 1; }
+  .right-header .subtitle { font-size: 12px; color: #888; margin-top: 1px; }
+
+  .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ===== BOLHAS (conversa) ===== */
+  .bubble { max-width: 70%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4; word-wrap: break-word; position: relative; }
+  .bubble.from-me { align-self: flex-end; background: #E5571E; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.from-other { align-self: flex-start; background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; border-bottom-left-radius: 4px; }
+  .bubble .meta { font-size: 11px; opacity: 0.7; margin-top: 4px; display: flex; justify-content: flex-end; gap: 4px; align-items: center; }
+  .bubble .actions { display: none; position: absolute; top: -10px; right: 4px; background: #fff; border: 1px solid #e5e5ea; border-radius: 6px; padding: 2px 4px; gap: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .bubble:hover .actions { display: flex; }
+  .bubble .actions button { background: none; border: none; cursor: pointer; padding: 2px 4px; font-size: 12px; color: #666; }
+  .bubble .actions button:hover { color: #d70015; }
+
+  /* ===== POSTS (timeline) ===== */
+  .post { background: #fff; border: 1px solid #e5e5ea; border-radius: 12px; padding: 14px 16px; }
+  .post-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .post-author { font-weight: 700; font-size: 13px; }
+  .post-author .username { color: #888; font-weight: 400; font-size: 12px; }
+  .post-time { font-size: 11px; color: #888; }
+  .post-actions { display: none; gap: 4px; }
+  .post:hover .post-actions { display: flex; }
+  .post-actions button { background: none; border: 1px solid #e5e5ea; border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+  .post-actions button:hover { background: #fafafc; }
+  .post-content { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .post-edited { font-size: 10px; color: #aaa; margin-left: 6px; }
+
+  /* ===== COMPOSER (rodapé) ===== */
+  .composer { background: #fff; border-top: 1px solid #e5e5ea; padding: 12px 16px; flex-shrink: 0; }
+  .composer textarea { width: 100%; min-height: 40px; max-height: 140px; padding: 10px 14px; border: 1px solid #d2d2d7; border-radius: 12px; font-size: 14px; resize: none; font-family: inherit; outline: none; transition: border 0.15s; }
+  .composer textarea:focus { border-color: #E5571E; }
+  .composer-row { display: flex; gap: 8px; align-items: flex-end; }
+  .composer-row button { background: #25d366; color: #fff; border: none; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity 0.15s; }
+  .composer-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .composer-hint { font-size: 11px; color: #888; margin-top: 6px; text-align: center; }
+
+  /* ===== EMPTY STATES ===== */
+  .empty { padding: 40px 20px; text-align: center; color: #888; font-size: 14px; }
+  .empty .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+  .modal { background: #fff; border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: 18px; margin-bottom: 16px; color: #E5571E; }
+  .modal label { display: block; font-size: 11px; letter-spacing: 1px; color: #888; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; }
+  .modal input[type=text] { width: 100%; padding: 10px 14px; border: 1.5px solid #d2d2d7; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+  .modal input[type=text]:focus { outline: none; border-color: #E5571E; }
+  .modal-search-result { padding: 8px 10px; border-bottom: 1px solid #f0f0f5; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .modal-search-result button { background: #E5571E; color: #fff; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+  .modal-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .modal-chip { background: #FFEBDC; color: #E5571E; padding: 4px 10px; border-radius: 14px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .modal-chip button { background: none; border: none; color: #E5571E; cursor: pointer; font-size: 14px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  .modal-actions button { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; }
+  .modal-actions .btn-secondary { background: #f0f0f5; color: #1d1d1f; }
+  .modal-actions .btn-primary { background: #E5571E; color: #fff; }
+
+  /* ===== TIMELINE SUB-TABS ===== */
+  .timeline-tabs { display: flex; gap: 4px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e5ea; overflow-x: auto; flex-shrink: 0; }
+  .timeline-tab { padding: 6px 12px; border-radius: 16px; background: #f0f0f5; color: #666; font-size: 12px; cursor: pointer; white-space: nowrap; border: none; font-weight: 600; }
+  .timeline-tab.active { background: #E5571E; color: #fff; }
+  .timeline-tab .dot { color: #007aff; margin-left: 4px; }
+
+  .login-required { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
+  .login-required a { background: #E5571E; color: #fff; padding: 10px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>💬 TenisCash Mensagens</h1>
+  <div class="user">
+    <span id="user-name">—</span>
+    <a href="/admin.html">← Voltar ao Admin</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tab-conv" onclick="switchMainTab('conv')">
+    💬 Conversas <span class="badge" id="badge-conv" style="display:none">0</span>
+  </button>
+  <button class="tab" id="tab-tl" onclick="switchMainTab('tl')">
+    📓 Como está o dia hoje? <span class="badge" id="badge-tl" style="display:none">0</span>
+  </button>
+</div>
+
+<div class="main" id="main">
+  <div class="left">
+    <!-- CONVERSAS list -->
+    <div id="conv-list" style="display:block">
+      <div class="list-header">
+        <h2>Conversas</h2>
+        <button onclick="alert('Para iniciar conversa, abra o card de um cliente no admin')">+</button>
+      </div>
+      <div id="conv-items"><div class="empty">Carregando...</div></div>
+    </div>
+
+    <!-- TIMELINES list -->
+    <div id="tl-list" style="display:none">
+      <div class="list-header">
+        <h2>Timelines</h2>
+        <button onclick="openCreateTimelineModal()">+ Nova</button>
+      </div>
+      <div id="tl-items"><div class="empty">Carregando...</div></div>
+    </div>
+  </div>
+
+  <div class="right" id="right">
+    <div class="empty" style="margin:auto">
+      <div class="icon">👈</div>
+      <div>Selecione uma conversa ou timeline</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Criar Timeline -->
+<div class="modal-overlay" id="modal-create-tl" style="display:none">
+  <div class="modal">
+    <h2>📓 Criar Timeline Privada</h2>
+    <label>Nome</label>
+    <input type="text" id="new-tl-name" placeholder="Ex: Família, Time Bessa, Amigos">
+    <label>Convidar pessoas (busca por nome, telefone ou @username)</label>
+    <input type="text" id="new-tl-search" placeholder="🔍 Buscar..." oninput="searchPeopleForInvite()">
+    <div id="search-results" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
+    <label>Pessoas convidadas:</label>
+    <div class="modal-chips" id="invite-chips"><span style="font-size:12px;color:#888">Nenhuma adicionada</span></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeCreateTimelineModal()">Cancelar</button>
+      <button class="btn-primary" onclick="createTimeline()">Criar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================
+// STATE
+// =============================================================
+const STATE = {
+  token: null,
+  userId: null,
+  userName: null,
+  mainTab: 'conv',         // 'conv' | 'tl'
+  conversations: [],
+  activeConvId: null,
+  activeConvMessages: [],
+  timelines: [],
+  activeTimelineId: null,
+  activeTimelinePosts: [],
+  inviteList: [],          // pessoas pra adicionar na nova timeline
+  pollTimer: null,
+};
+
+const API = '/api/messages-v2';
+
+// =============================================================
+// AUTH
+// =============================================================
+function getToken() {
+  return localStorage.getItem('tc_admin_token') || '';
+}
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' };
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { ...authHeaders(), ...(opts.headers || {}) },
+  });
+  if (res.status === 401) {
+    document.body.innerHTML = '<div class="login-required"><h2>Você precisa fazer login</h2><a href="/admin.html">Ir pra Login</a></div>';
+    throw new Error('not authenticated');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+// =============================================================
+// HELPERS
+// =============================================================
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function formatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const diffDays = Math.floor((now - d) / (24*60*60*1000));
+  if (diffDays === 1) return 'ontem';
+  if (diffDays < 7) return diffDays + ' dias atrás';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+function initials(name) {
+  return String(name || '?').trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+}
+
+// =============================================================
+// TAB SWITCH
+// =============================================================
+function switchMainTab(tab) {
+  STATE.mainTab = tab;
+  document.getElementById('tab-conv').classList.toggle('active', tab === 'conv');
+  document.getElementById('tab-tl').classList.toggle('active', tab === 'tl');
+  document.getElementById('conv-list').style.display = tab === 'conv' ? 'block' : 'none';
+  document.getElementById('tl-list').style.display = tab === 'tl' ? 'block' : 'none';
+  if (tab === 'conv') loadConversations(); else loadTimelines();
+  document.getElementById('main').classList.remove('thread-open');
+  if (!STATE.activeConvId && !STATE.activeTimelineId) renderEmptyRight();
+}
+
+// =============================================================
+// CONVERSAS
+// =============================================================
+async function loadConversations() {
+  try {
+    const d = await api('/conversations');
+    STATE.conversations = d.conversations || [];
+    renderConvList();
+  } catch (e) {
+    document.getElementById('conv-items').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+function renderConvList() {
+  const el = document.getElementById('conv-items');
+  if (STATE.conversations.length === 0) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div>Nenhuma conversa<br><small>Conversas com clientes e equipe aparecem aqui</small></div>';
+    return;
+  }
+  el.innerHTML = STATE.conversations.map(c => {
+    const isStore = c.otherParty?.type === 'store';
+    const name = c.otherParty?.name || '(sem nome)';
+    const lastMsgText = c.lastMessage?.content || (c.lastMessage ? '[mídia]' : '(sem mensagens)');
+    return `
+      <div class="list-item ${STATE.activeConvId === c.id ? 'active' : ''}" onclick="openConversation('${c.id}')">
+        <div class="avatar ${isStore ? 'store' : ''}">${isStore ? '🏪' : escapeHtml(initials(name))}</div>
+        <div class="info">
+          <div class="name">${escapeHtml(name)}</div>
+          <div class="preview">${escapeHtml(lastMsgText.slice(0, 60))}</div>
+        </div>
+        <div class="meta">
+          <div>${formatTime(c.lastMessageAt)}</div>
+          ${c.unreadCount > 0 ? `<div class="badge">${c.unreadCount}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+async function openConversation(convId) {
+  STATE.activeConvId = convId;
+  STATE.activeTimelineId = null;
+  document.getElementById('main').classList.add('thread-open');
+  renderConvList();
+  try {
+    const d = await api('/conversations/' + convId + '/messages');
+    STATE.activeConvMessages = d.messages || [];
+    const conv = STATE.conversations.find(c => c.id === convId);
+    renderThread(conv);
+    // marca como lida
+    api('/conversations/' + convId + '/read', { method: 'PATCH' }).then(() => loadConversations());
+  } catch (e) {
+    document.getElementById('right').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+function renderThread(conv) {
+  const otherName = conv?.otherParty?.name || '(conversa)';
+  const html = `
+    <div class="right-header">
+      <button class="back-btn" onclick="backToList()">←</button>
+      <div>
+        <div class="title">${escapeHtml(otherName)}</div>
+        <div class="subtitle">${conv?.otherParty?.type === 'store' ? 'Loja oficial' : (conv?.otherParty?.username ? '@' + conv.otherParty.username : 'Conversa direta')}</div>
+      </div>
+    </div>
+    <div class="messages" id="messages-list">
+      ${STATE.activeConvMessages.length === 0
+        ? '<div class="empty"><div class="icon">💬</div>Nenhuma mensagem ainda. Comece a conversar!</div>'
+        : STATE.activeConvMessages.map(m => renderBubble(m)).join('')}
+    </div>
+    <div class="composer">
+      <div class="composer-row">
+        <textarea id="msg-input" placeholder="Escreva sua mensagem..." onkeydown="onMsgKeydown(event)"></textarea>
+        <button onclick="sendMessage()">Enviar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('right').innerHTML = html;
+  scrollMessagesToBottom();
+  setTimeout(() => document.getElementById('msg-input').focus(), 50);
+}
+function renderBubble(m) {
+  const fromMe = m.senderId === STATE.userId;
+  const ageMs = Date.now() - new Date(m.createdAt).getTime();
+  const canDeleteBoth = fromMe && ageMs < 2 * 60 * 60 * 1000;
+  return `
+    <div class="bubble ${fromMe ? 'from-me' : 'from-other'}" data-id="${m.id}">
+      ${m.productCard ? `
+        <div style="border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px;margin-bottom:6px;background:rgba(255,255,255,0.1)">
+          <div style="font-weight:700;font-size:13px">🛍️ ${escapeHtml(m.productCard.name)}</div>
+          <div style="font-size:12px;opacity:0.9">${escapeHtml(m.productCard.brand || '')} · R$ ${Number(m.productCard.price || 0).toFixed(2)}</div>
+        </div>
+      ` : ''}
+      ${m.content ? `<div>${escapeHtml(m.content)}</div>` : ''}
+      ${m.mediaUrl ? `<div style="font-size:12px;opacity:0.8">[${m.mediaType || 'mídia'}]</div>` : ''}
+      <div class="meta">
+        ${m.editedAt ? '<span style="font-size:10px;opacity:0.6">editada</span>' : ''}
+        ${formatTime(m.createdAt)}
+        ${fromMe ? (m.readAt ? '✓✓' : '✓') : ''}
+      </div>
+      ${fromMe ? `
+        <div class="actions">
+          <button onclick="deleteMsg('${m.id}', 'me')" title="Apagar pra mim">🗑️</button>
+          ${canDeleteBoth ? `<button onclick="deleteMsg('${m.id}', 'both')" title="Apagar pros dois">🗑️🗑️</button>` : ''}
+        </div>
+      ` : `
+        <div class="actions">
+          <button onclick="deleteMsg('${m.id}', 'me')" title="Apagar pra mim">🗑️</button>
+        </div>
+      `}
+    </div>
+  `;
+}
+function scrollMessagesToBottom() {
+  const el = document.getElementById('messages-list');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+function onMsgKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+async function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const content = input.value.trim();
+  if (!content || !STATE.activeConvId) return;
+  input.disabled = true;
+  try {
+    const d = await api('/conversations/' + STATE.activeConvId + '/messages', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    STATE.activeConvMessages.push(d.message);
+    input.value = '';
+    const conv = STATE.conversations.find(c => c.id === STATE.activeConvId);
+    renderThread(conv);
+    loadConversations();
+  } catch (e) {
+    alert('Erro ao enviar: ' + e.message);
+  } finally {
+    input.disabled = false;
+  }
+}
+async function deleteMsg(msgId, scope) {
+  const msg = scope === 'both' ? 'Apagar esta mensagem para os DOIS lados?' : 'Apagar do seu lado?';
+  if (!confirm(msg)) return;
+  try {
+    await api('/messages/' + msgId + '?scope=' + scope, { method: 'DELETE' });
+    STATE.activeConvMessages = STATE.activeConvMessages.filter(m => m.id !== msgId);
+    const conv = STATE.conversations.find(c => c.id === STATE.activeConvId);
+    renderThread(conv);
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// =============================================================
+// TIMELINES
+// =============================================================
+async function loadTimelines() {
+  try {
+    const d = await api('/timelines');
+    STATE.timelines = d.timelines || [];
+    renderTimelineList();
+  } catch (e) {
+    document.getElementById('tl-items').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+function renderTimelineList() {
+  const el = document.getElementById('tl-items');
+  if (STATE.timelines.length === 0) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div>Nenhuma timeline<br><small>Crie uma privada com seus amigos</small></div>';
+    return;
+  }
+  el.innerHTML = STATE.timelines.map(t => `
+    <div class="list-item timeline-item ${STATE.activeTimelineId === t.id ? 'active' : ''}" onclick="openTimeline('${t.id}')">
+      <div class="avatar ${t.isPublic ? 'public' : ''}">${t.isPublic ? '🌍' : '👥'}</div>
+      <div class="info">
+        <div class="name">${escapeHtml(t.name)}</div>
+        <div class="preview">${t.isPublic ? 'Geral · todos veem' : (t.memberCount + ' pessoas')}</div>
+      </div>
+      <div class="meta">
+        ${t.unreadCount > 0 ? `<div class="badge">${t.unreadCount}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+async function openTimeline(timelineId) {
+  STATE.activeTimelineId = timelineId;
+  STATE.activeConvId = null;
+  document.getElementById('main').classList.add('thread-open');
+  renderTimelineList();
+  try {
+    const d = await api('/timelines/' + timelineId + '/posts');
+    STATE.activeTimelinePosts = d.posts || [];
+    renderFeed(d.timeline);
+    loadTimelines(); // atualiza badges
+  } catch (e) {
+    document.getElementById('right').innerHTML = '<div class="empty">Erro: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+function renderFeed(timeline) {
+  const html = `
+    <div class="right-header">
+      <button class="back-btn" onclick="backToList()">←</button>
+      <div>
+        <div class="title">${timeline.isPublic ? '🌍 ' : '👥 '}${escapeHtml(timeline.name)}</div>
+        <div class="subtitle">${timeline.isPublic ? 'Pública — todos veem' : 'Privada'} · Tudo aqui some às 00:00</div>
+      </div>
+    </div>
+    <div class="messages" id="posts-list">
+      ${STATE.activeTimelinePosts.length === 0
+        ? '<div class="empty"><div class="icon">✍️</div>Nenhum post hoje. Seja o primeiro!</div>'
+        : STATE.activeTimelinePosts.map(p => renderPost(p)).join('')}
+    </div>
+    <div class="composer">
+      <div class="composer-row">
+        <textarea id="post-input" placeholder="O que você quer compartilhar do seu dia?" onkeydown="onPostKeydown(event)"></textarea>
+        <button onclick="sendPost()">Postar</button>
+      </div>
+      <div class="composer-hint">⏰ Tudo aqui some às 00:00 — fim do dia, fim do post</div>
+    </div>
+  `;
+  document.getElementById('right').innerHTML = html;
+}
+function renderPost(p) {
+  const isMe = p.authorId === STATE.userId;
+  const username = p.author?.username ? ' <span class="username">@' + escapeHtml(p.author.username) + '</span>' : '';
+  return `
+    <div class="post" data-id="${p.id}">
+      <div class="post-header">
+        <div class="post-author">${escapeHtml(p.author?.name || '?')}${username} <span class="post-time">· ${formatTime(p.createdAt)}</span>${p.editedAt ? ' <span class="post-edited">(editado)</span>' : ''}</div>
+        ${isMe ? `
+          <div class="post-actions">
+            <button onclick="editPost('${p.id}')">✏️</button>
+            <button onclick="deletePost('${p.id}')">🗑️</button>
+          </div>
+        ` : ''}
+      </div>
+      <div class="post-content">${escapeHtml(p.content || '')}</div>
+      ${p.mediaUrl ? `<div style="margin-top:8px;font-size:12px;color:#888">[${p.mediaType || 'mídia'}]</div>` : ''}
+    </div>
+  `;
+}
+function onPostKeydown(e) {
+  if (e.key === 'Enter' && e.ctrlKey) {
+    e.preventDefault();
+    sendPost();
+  }
+}
+async function sendPost() {
+  const input = document.getElementById('post-input');
+  const content = input.value.trim();
+  if (!content || !STATE.activeTimelineId) return;
+  input.disabled = true;
+  try {
+    const d = await api('/timelines/' + STATE.activeTimelineId + '/posts', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    STATE.activeTimelinePosts.unshift(d.post);
+    input.value = '';
+    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
+    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    input.disabled = false;
+  }
+}
+async function editPost(postId) {
+  const post = STATE.activeTimelinePosts.find(p => p.id === postId);
+  if (!post) return;
+  const novo = prompt('Editar post:', post.content || '');
+  if (novo == null) return;
+  try {
+    const d = await api('/posts/' + postId, { method: 'PATCH', body: JSON.stringify({ content: novo }) });
+    Object.assign(post, d.post);
+    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
+    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+async function deletePost(postId) {
+  if (!confirm('Apagar este post?')) return;
+  try {
+    await api('/posts/' + postId, { method: 'DELETE' });
+    STATE.activeTimelinePosts = STATE.activeTimelinePosts.filter(p => p.id !== postId);
+    const tl = STATE.timelines.find(t => t.id === STATE.activeTimelineId);
+    renderFeed({ id: STATE.activeTimelineId, name: tl?.name || '', isPublic: tl?.isPublic });
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// =============================================================
+// MODAL: Criar Timeline Privada
+// =============================================================
+function openCreateTimelineModal() {
+  STATE.inviteList = [];
+  document.getElementById('new-tl-name').value = '';
+  document.getElementById('new-tl-search').value = '';
+  document.getElementById('search-results').innerHTML = '';
+  renderInviteChips();
+  document.getElementById('modal-create-tl').style.display = 'flex';
+  setTimeout(() => document.getElementById('new-tl-name').focus(), 50);
+}
+function closeCreateTimelineModal() {
+  document.getElementById('modal-create-tl').style.display = 'none';
+}
+let searchDebounce;
+function searchPeopleForInvite() {
+  clearTimeout(searchDebounce);
+  const q = document.getElementById('new-tl-search').value.trim();
+  if (q.length < 2) { document.getElementById('search-results').innerHTML = ''; return; }
+  searchDebounce = setTimeout(async () => {
+    try {
+      const d = await api('/people/search?q=' + encodeURIComponent(q));
+      const results = (d.people || []).filter(p => !STATE.inviteList.find(i => i.id === p.id));
+      document.getElementById('search-results').innerHTML = results.length === 0
+        ? '<div style="font-size:12px;color:#888;padding:6px">Nenhuma pessoa encontrada</div>'
+        : results.map(p => `
+            <div class="modal-search-result">
+              <span>${escapeHtml(p.name)}${p.username ? ' · @' + escapeHtml(p.username) : ''}</span>
+              <button onclick='addInvite(${JSON.stringify(p).replace(/'/g, "\\u0027")})'>+ Adicionar</button>
+            </div>
+          `).join('');
+    } catch (e) {
+      document.getElementById('search-results').innerHTML = '<div style="color:red">Erro: ' + escapeHtml(e.message) + '</div>';
+    }
+  }, 300);
+}
+function addInvite(person) {
+  if (STATE.inviteList.find(i => i.id === person.id)) return;
+  STATE.inviteList.push(person);
+  renderInviteChips();
+  document.getElementById('new-tl-search').value = '';
+  document.getElementById('search-results').innerHTML = '';
+}
+function removeInvite(personId) {
+  STATE.inviteList = STATE.inviteList.filter(i => i.id !== personId);
+  renderInviteChips();
+}
+function renderInviteChips() {
+  const el = document.getElementById('invite-chips');
+  if (STATE.inviteList.length === 0) {
+    el.innerHTML = '<span style="font-size:12px;color:#888">Nenhuma adicionada</span>';
+    return;
+  }
+  el.innerHTML = STATE.inviteList.map(p => `
+    <div class="modal-chip">
+      ${escapeHtml(p.name)}
+      <button onclick="removeInvite('${p.id}')">×</button>
+    </div>
+  `).join('');
+}
+async function createTimeline() {
+  const name = document.getElementById('new-tl-name').value.trim();
+  if (!name) { alert('Dá um nome pra timeline'); return; }
+  if (STATE.inviteList.length === 0 && !confirm('Sem convidados — você vai postar sozinho. Tudo bem?')) return;
+  try {
+    const d = await api('/timelines', {
+      method: 'POST',
+      body: JSON.stringify({ name, inviteUserIds: STATE.inviteList.map(p => p.id) }),
+    });
+    closeCreateTimelineModal();
+    await loadTimelines();
+    openTimeline(d.timeline.id);
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// =============================================================
+// RIGHT panel helpers
+// =============================================================
+function renderEmptyRight() {
+  document.getElementById('right').innerHTML = '<div class="empty" style="margin:auto"><div class="icon">👈</div><div>Selecione uma conversa ou timeline</div></div>';
+}
+function backToList() {
+  document.getElementById('main').classList.remove('thread-open');
+}
+
+// =============================================================
+// NOTIFICATIONS POLLING (a cada 15s)
+// =============================================================
+async function pollNotifications() {
+  try {
+    const d = await api('/notifications/summary');
+    const badgeConv = document.getElementById('badge-conv');
+    const badgeTl = document.getElementById('badge-tl');
+    if (d.unreadConversations > 0) {
+      badgeConv.textContent = d.unreadConversations;
+      badgeConv.style.display = 'inline';
+    } else {
+      badgeConv.style.display = 'none';
+    }
+    const tlSum = (d.unreadTimelines || []).reduce((s, t) => s + t.unreadCount, 0);
+    if (tlSum > 0) {
+      badgeTl.textContent = tlSum;
+      badgeTl.style.display = 'inline';
+    } else {
+      badgeTl.style.display = 'none';
+    }
+  } catch {}
+}
+
+// =============================================================
+// BOOT
+// =============================================================
+async function boot() {
+  if (!getToken()) {
+    document.body.innerHTML = '<div class="login-required"><h2>Você precisa fazer login no Admin TenisCash primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+    return;
+  }
+  // pega userId do JWT
+  try {
+    const payload = JSON.parse(atob(getToken().split('.')[1]));
+    STATE.userId = payload.userId;
+  } catch {}
+  // user info via API admin
+  try {
+    const r = await fetch('/api/admin/me', { headers: authHeaders() });
+    if (r.ok) {
+      const d = await r.json();
+      STATE.userName = d.name || d.user?.name;
+      document.getElementById('user-name').textContent = STATE.userName || '';
+    }
+  } catch {}
+
+  await loadConversations();
+  await pollNotifications();
+  STATE.pollTimer = setInterval(pollNotifications, 15000);
+}
+
+boot();
+</script>
+</body>
+</html>
