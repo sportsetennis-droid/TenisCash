@@ -148,6 +148,39 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
 
+## REGRA PERMANENTE — Mobile-first em TUDO que cliente/vendedor usa
+
+99% do tráfego das telas voltadas pra **cliente, vendedor em loja, ou uso operacional fora do escritório** vem de celular. NUNCA construir tela com split-layout desktop-first pra esse público — sempre mobile-first.
+
+**Tipo de tela → regra:**
+
+| Tela | Padrão |
+|------|--------|
+| Admin / backoffice (`/admin.html`) | Desktop-first OK (uso em mesa) |
+| Vendedor em loja (bipar, contagem, ponto, chat) | **Mobile-first obrigatório** |
+| Cliente final (loja, app, chat, perfil) | **Mobile-first obrigatório** |
+| Páginas públicas (políticas, login) | Mobile-first |
+
+**Padrão técnico do mobile-first PWA:**
+- `<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">`
+- `padding-top: env(safe-area-inset-top)` + `padding-bottom: env(safe-area-inset-bottom)` no body (iPhone notch)
+- Container principal `max-width: 480px; margin: 0 auto` (centralizado)
+- `<meta name="apple-mobile-web-app-capable" content="yes">` + `manifest.json` linkado (instalável)
+- Botões com `min-height: 44px` (touch target Apple HIG)
+- Bottom nav fixo (não top tabs) — polegar alcança fácil
+- Modais como bottom-sheet (não centro da tela)
+- Long-press em items pra menu de ação (não hover)
+- Em desktop (`@media (min-width: 900px)`): renderizar como "frame de celular" centralizado com sombra — não esticar pra ocupar tela cheia
+
+**Verificação antes de declarar pronto:**
+1. Abrir no DevTools → modo responsive → iPhone 13 (390px)
+2. Testar com polegar (não mouse) — botões alcançáveis?
+3. Bottom nav não cobre conteúdo?
+4. Modal não escapa da viewport?
+5. Input não fica escondido atrás do teclado virtual?
+
+Aprendi isso depois de fazer `/mensagens.html` com split-layout 340px+thread e o dono ter que avisar "vc tem que se ligar que as pessoas vao acessar mobile".
+
 ## REGRA PERMANENTE — Timezone em jobs cron e queries SQL
 
 Railway roda servidor em **UTC por padrão**. Sports & Tennis fica em João Pessoa/PB.
