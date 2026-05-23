@@ -148,6 +148,27 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
 
+## REGRA PERMANENTE — Timezone em jobs cron e queries SQL
+
+Railway roda servidor em **UTC por padrão**. Sports & Tennis fica em João Pessoa/PB.
+
+**Sempre que houver job agendado (node-cron, cron.schedule, etc) ou query que dependa de "hoje/ontem/início do dia":**
+
+1. **No node-cron** — passar timezone explícito:
+   ```js
+   cron.schedule('0 0 * * *', job, { timezone: 'America/Fortaleza' });
+   ```
+   SEM timezone, `0 0 * * *` roda às 00:00 UTC = 21:00 horário de Paraíba.
+
+2. **Em queries SQL** que comparam datas — usar `AT TIME ZONE`:
+   ```sql
+   AND "createdAt" >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')
+   ```
+
+3. **Timezone correto pra Paraíba é `America/Fortaleza`** (UTC-3 fixo, sem horário de verão). NÃO usar `America/Sao_Paulo` — historicamente SP teve DST até 2019, pode dar drift em comparações antigas.
+
+Sempre validar com a query `SELECT NOW(), NOW() AT TIME ZONE 'America/Fortaleza';` antes de declarar pronto.
+
 ## REGRA PERMANENTE — Testar TUDO que for entregue (NUNCA QUEBRAR)
 
 Antes de declarar pronto qualquer feature/correção:
