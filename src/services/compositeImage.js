@@ -276,7 +276,7 @@ function buildOverlaySvg(opts) {
       <rect x="0" y="0" width="${width}" height="${headlineY + (headlineLines.length - 1) * headlineLineHeight + Math.round(headlineSize * 0.6)}" fill="rgba(0,0,0,0.18)"/>
       ${headlineLines.map((line, i) => `
         <text x="${Math.round(width * 0.05)}" y="${headlineY + i * headlineLineHeight}"
-              font-family="Arial Black, Helvetica, Inter, sans-serif"
+              font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
               font-size="${headlineSize}"
               font-weight="900"
               fill="#ffffff"
@@ -287,7 +287,7 @@ function buildOverlaySvg(opts) {
 
     ${hasSubline ? `
       <text x="${Math.round(width * 0.05)}" y="${sublineY}"
-            font-family="Arial, Helvetica, sans-serif"
+            font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
             font-size="${sublineSize}"
             font-weight="700"
             fill="#ffffff"
@@ -306,7 +306,7 @@ function buildOverlaySvg(opts) {
             dominant-baseline="middle">R$ ${priceStr}</text>
       ${installments > 1 ? `
         <text x="${badgeCx}" y="${badgeCy + Math.round(badgeR * 0.4)}"
-              font-family="Arial, Helvetica, sans-serif"
+              font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
               font-size="${parcelaSize}"
               font-weight="700"
               fill="#ffffff"
