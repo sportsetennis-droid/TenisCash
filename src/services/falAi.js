@@ -3,7 +3,7 @@
 // =====================================================================
 // Modelos usados:
 //   - fal-ai/flux-pro/kontext-max  → foto editorial 16:9
-//   - fal-ai/kling-video/v2.5/standard/image-to-video → vídeo 5s 9:16 pra Reels
+//   - fal-ai/kling-video/v2.1/standard/image-to-video → vídeo 5s 9:16 pra Reels
 //   - fal-ai/bria/background/remove → remove fundo do produto
 //
 // Auth: FAL_KEY no env. Pegar em https://fal.ai/dashboard/keys
@@ -28,7 +28,7 @@ async function getFal() {
 const COSTS = {
   'fal-ai/flux-pro/kontext/max': 0.04,
   'fal-ai/flux-pro/v1.1': 0.04,
-  'fal-ai/kling-video/v2.5/standard/image-to-video': 0.10,
+  'fal-ai/kling-video/v2.1/standard/image-to-video': 0.10,
   'fal-ai/bria/background/remove': 0.01,
 };
 
@@ -92,7 +92,7 @@ async function generateEditorialPhoto({ productName, brand, imageUrl, aspectRati
  */
 async function generateReelVideo({ imageUrl, productName, duration = 5 }) {
   const fal = await getFal();
-  const model = 'fal-ai/kling-video/v2.5/standard/image-to-video';
+  const model = 'fal-ai/kling-video/v2.1/standard/image-to-video';
 
   const prompt = `Slow cinematic camera movement around the product, dynamic lighting reveal, premium sports brand commercial style, smooth motion, ${productName}`;
 
