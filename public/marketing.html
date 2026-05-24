@@ -156,6 +156,11 @@
       <label class="cat-toggle" title="GPT re-imagina o produto. Pode deformar texto/quantidade."><input type="radio" name="cat-provider" value="openai"> <span>🤖 GPT <span style="color:#a8a8ad;font-size:11px">(criativo, pode deformar)</span></span></label>
       <label class="cat-toggle" title="Os 3 lado a lado pra comparar"><input type="radio" name="cat-provider" value="all"> <span>🎨 Todos os 3 ($0.13)</span></label>
     </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;background:#fff;border:1.5px solid #e5e5ea;padding:10px 14px;border-radius:10px">
+      <span style="font-size:13px;font-weight:700;color:#0a0a0a">📝 Texto no criativo:</span>
+      <input type="text" id="cat-headline" placeholder="Frase grande no topo (vazio = automático)" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
+      <label class="cat-toggle" style="font-size:12px"><input type="checkbox" id="cat-include-price" checked> <span>Badge de preço</span></label>
+    </div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <label class="cat-toggle" style="font-size:13px"><b>Formato:</b></label>
       <label class="cat-toggle"><input type="radio" name="cat-aspect" value="1:1"> <span>⬜ 1:1 (feed IG)</span></label>
@@ -718,7 +723,11 @@ async function catalogGenerate() {
     try {
       const r = await api('/generate/' + job.productId, {
         method: 'POST',
-        body: JSON.stringify({ skipVideo, sceneHint: job.sceneHint, provider, aspectRatio: getAspect() }),
+        body: JSON.stringify({
+          skipVideo, sceneHint: job.sceneHint, provider, aspectRatio: getAspect(),
+          headline: document.getElementById('cat-headline')?.value || '',
+          includePrice: !!document.getElementById('cat-include-price')?.checked,
+        }),
       });
       if (r?.created?.length) ok++;
       STATE.catalog.recentProductIds.add(job.productId);

@@ -35,6 +35,29 @@ function requireAdmin(req, res, next) {
 }
 router.use(requireAdmin);
 
+// =====================================================
+// Heurística pra gerar headline curta automaticamente
+// a partir do nome do produto + marca. Tom S&T informal.
+// =====================================================
+function autoHeadline(product) {
+  if (!product) return '';
+  const name = (product.name || '').toUpperCase();
+  const brand = (product.brand || '').toUpperCase();
+  // Tenta extrair a "essência" do nome: corta tudo depois de "/" ou "-" repetido
+  const core = name.split(/[/-]/)[0].trim();
+  // Templates rotativos pra não ficar igual sempre
+  const templates = [
+    `CHEGOU ${brand}`,
+    `${brand} NA LOJA`,
+    `OFF: ${core.slice(0, 28)}`,
+    `${core.slice(0, 22)} — JÁ DISPONÍVEL`,
+    `NOVIDADE ${brand}`,
+  ];
+  // Escolhe baseado no hash do id (estável por produto)
+  const seed = (product.id || product.sku || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+  return templates[seed % templates.length];
+}
+
 // ====================================================
 // POST /generate/:productId — gera trio + copies
 // ====================================================
@@ -73,11 +96,19 @@ router.post('/generate/:productId', async (req, res) => {
     // 'composite' (default): produto REAL + cenário IA (fidelidade 100%)
     // 'fal'/'openai': image-to-image generativo (cenas mais ricas, mas pode deformar produto)
     if (provider === 'composite' || provider === 'all') {
+      // Overlay de texto opcional. Se vier vazio, tenta gerar headline automaticamente
+      // a partir do nome/marca; ainda permite override via req.body.headline.
+      const headline = (req.body?.headline ?? autoHeadline(product))?.toString().slice(0, 60);
+      const subline = (req.body?.subline ?? '').toString().slice(0, 80);
+      const includePrice = req.body?.includePrice !== false; // default true
       tasks.push(
         compositeImage.generateEditorialPhoto({
           product,
           aspectRatio,
           sceneHint,
+          headline,
+          subline,
+          includePrice,
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
     }

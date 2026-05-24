@@ -192,6 +192,150 @@ async function composeFinal(bgUrl, productPngUrl, aspectRatio) {
     .toBuffer();
 }
 
+// =====================================================================
+// TEXT OVERLAY — headline + badge de preço (estilo S&T)
+// =====================================================================
+
+function escapeXml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+/**
+ * Quebra texto em múltiplas linhas pra caber numa largura máxima.
+ * Aproximação: 0.55 * fontSize por caractere (Inter/Helvetica bold).
+ */
+function wrapText(text, maxChars) {
+  if (!text) return [];
+  const words = String(text).split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    if ((line + ' ' + w).trim().length <= maxChars) line = (line + ' ' + w).trim();
+    else { if (line) lines.push(line); line = w; }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
+ * Gera SVG com headline no topo e badge de preço no canto inferior direito.
+ * Aplica sobre a imagem composite via Sharp.composite.
+ *
+ * @param {object} opts
+ *   - headline: string (opcional) — texto grande no topo
+ *   - subline: string (opcional) — texto pequeno abaixo do produto
+ *   - price: number (opcional) — preço em BRL, vira badge
+ *   - installments: number (opcional, default 6) — pra calcular parcela
+ *   - aspectRatio, width, height: dimensões da imagem base
+ */
+function buildOverlaySvg(opts) {
+  const { headline, subline, price, installments = 6, width, height } = opts;
+  const hasHeadline = headline && String(headline).trim().length > 0;
+  const hasPrice = typeof price === 'number' && price > 0;
+  const hasSubline = subline && String(subline).trim().length > 0;
+
+  if (!hasHeadline && !hasPrice && !hasSubline) return null;
+
+  // Tamanhos proporcionais à largura (responsivo)
+  const headlineSize = Math.round(width * 0.075);   // ~77px em 1024px
+  const sublineSize = Math.round(width * 0.025);    // ~26px
+  const priceSize = Math.round(width * 0.055);      // ~56px
+  const parcelaSize = Math.round(width * 0.022);    // ~22px
+
+  // Headline: até 22 chars por linha, max 2 linhas
+  const headlineLines = hasHeadline ? wrapText(headline.toUpperCase(), 22).slice(0, 2) : [];
+  const headlineLineHeight = Math.round(headlineSize * 1.05);
+  const headlineY = Math.round(headlineSize * 1.3);
+
+  // Subline
+  const sublineY = Math.round(height * 0.85);
+
+  // Badge preço (canto inferior direito) — círculo laranja c/ gradiente
+  const badgeR = Math.round(width * 0.13);
+  const badgeCx = width - badgeR - Math.round(width * 0.04);
+  const badgeCy = height - badgeR - Math.round(width * 0.04);
+  const parcela = hasPrice ? (price / installments).toFixed(2).replace('.', ',') : '';
+  const priceStr = hasPrice ? Math.round(price).toString() : '';
+
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#FF6A1F"/>
+        <stop offset="100%" stop-color="#FF2D92"/>
+      </linearGradient>
+      <filter id="text-shadow" x="-10%" y="-10%" width="120%" height="120%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+        <feOffset dx="0" dy="3" result="offsetblur"/>
+        <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+        <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+
+    ${hasHeadline ? `
+      <!-- Faixa de fundo semitransparente atrás do headline pra garantir legibilidade -->
+      <rect x="0" y="0" width="${width}" height="${headlineY + (headlineLines.length - 1) * headlineLineHeight + Math.round(headlineSize * 0.6)}" fill="rgba(0,0,0,0.18)"/>
+      ${headlineLines.map((line, i) => `
+        <text x="${Math.round(width * 0.05)}" y="${headlineY + i * headlineLineHeight}"
+              font-family="Arial Black, Helvetica, Inter, sans-serif"
+              font-size="${headlineSize}"
+              font-weight="900"
+              fill="#ffffff"
+              filter="url(#text-shadow)"
+              letter-spacing="-1">${escapeXml(line)}</text>
+      `).join('')}
+    ` : ''}
+
+    ${hasSubline ? `
+      <text x="${Math.round(width * 0.05)}" y="${sublineY}"
+            font-family="Arial, Helvetica, sans-serif"
+            font-size="${sublineSize}"
+            font-weight="700"
+            fill="#ffffff"
+            filter="url(#text-shadow)">${escapeXml(subline.slice(0, 80))}</text>
+    ` : ''}
+
+    ${hasPrice ? `
+      <!-- Badge circular de preço -->
+      <circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}" fill="url(#bg-grad)" stroke="#ffffff" stroke-width="3" filter="url(#text-shadow)"/>
+      <text x="${badgeCx}" y="${badgeCy - Math.round(badgeR * 0.05)}"
+            font-family="Arial Black, Helvetica, sans-serif"
+            font-size="${priceSize}"
+            font-weight="900"
+            fill="#ffffff"
+            text-anchor="middle"
+            dominant-baseline="middle">R$ ${priceStr}</text>
+      ${installments > 1 ? `
+        <text x="${badgeCx}" y="${badgeCy + Math.round(badgeR * 0.4)}"
+              font-family="Arial, Helvetica, sans-serif"
+              font-size="${parcelaSize}"
+              font-weight="700"
+              fill="#ffffff"
+              text-anchor="middle"
+              dominant-baseline="middle"
+              opacity="0.95">${installments}x R$ ${parcela}</text>
+      ` : ''}
+    ` : ''}
+  </svg>`;
+}
+
+/**
+ * Aplica overlay de texto + badge sobre uma imagem buffer.
+ */
+async function applyTextOverlay(imageBuffer, opts) {
+  const meta = await sharp(imageBuffer).metadata();
+  const svg = buildOverlaySvg({ ...opts, width: meta.width, height: meta.height });
+  if (!svg) return imageBuffer;
+  try {
+    return await sharp(imageBuffer)
+      .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+      .jpeg({ quality: 92 })
+      .toBuffer();
+  } catch (e) {
+    console.warn('[compositeImage] overlay falhou, retornando sem texto:', e.message);
+    return imageBuffer;
+  }
+}
+
 /**
  * Upload do buffer final pra fal.storage.
  */
@@ -249,7 +393,23 @@ async function generateEditorialPhoto(opts) {
   ]);
 
   // Composição local (Sharp) — rápida
-  const finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
+  let finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
+
+  // Aplica overlay de texto (headline + preço) se solicitado
+  // opts.headline: string com a frase principal
+  // opts.subline: string secundária pequena
+  // opts.price: número (puxa do product.price se não passar e includePrice=true)
+  // opts.includePrice: bool (default true se price > 0)
+  const wantOverlay = opts.headline || opts.subline || opts.includePrice !== false;
+  if (wantOverlay) {
+    const overlayPrice = (opts.includePrice !== false && product.price > 0) ? product.price : null;
+    finalBuffer = await applyTextOverlay(finalBuffer, {
+      headline: opts.headline || '',
+      subline: opts.subline || '',
+      price: overlayPrice,
+      installments: opts.installments || 6,
+    });
+  }
 
   // Upload final
   const filename = `composite-${Date.now()}-${productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.jpg`;
