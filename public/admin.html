@@ -279,7 +279,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
     <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
     <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
-    <button class="tab" onclick="window.location.href='/marketing.html'">🎨 Marketing IA</button>
+    <button class="tab" onclick="switchTab('marketing',this)">🎨 Marketing IA</button>
   </div>
 
   <!-- HOME / HUB SECTION -->
@@ -507,7 +507,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Orquestrador dos 24 agentes Sports & Tennis</div>
         <span class="hub-card-badge">PRINCIPAL</span>
       </button>
-      <button class="hub-card" onclick="window.location.href='/marketing.html'">
+      <button class="hub-card" onclick="switchTabByName('marketing')">
         <div class="hub-card-icon">🎨</div>
         <div class="hub-card-title">Marketing IA</div>
         <div class="hub-card-desc">Catálogo + Flux/GPT-Image · gera foto editorial, Reel, sem-fundo · copy do Claude</div>
@@ -1982,68 +1982,20 @@ async function nfeGeralLoad() {
 // =============================================================
 // MARKETING IA — tab de revisão de criativos
 // =============================================================
+// Marketing IA agora roda dentro de iframe da /marketing.html (versão completa: catálogo + Flux + GPT)
+// Mantém código antigo (mk* funções abaixo) como morto pra não quebrar refs internas — limpar depois.
 async function marketingLoad() {
   const root = document.getElementById('tab-marketing');
   if (!root) return;
-  if (root.dataset.loaded === '1') {
-    marketingReload();
-    return;
-  }
+  if (root.dataset.loaded === '1') return;  // iframe persiste estado próprio
   root.dataset.loaded = '1';
   root.innerHTML = `
-    <div style="max-width:1280px;margin:0 auto;padding:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px">
-        <div>
-          <h2 style="font-size:24px;font-weight:800;letter-spacing:-0.02em;color:#0a0a0a">🎨 Marketing IA</h2>
-          <div style="font-size:13px;color:#6e6e73;margin-top:4px">Criativos gerados via fal.ai (Flux + Kling + Bria) com copy do Claude</div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button id="mk-gen-btn" style="background:linear-gradient(135deg,#FF6A1F,#FF8A4D);color:#fff;border:none;padding:10px 18px;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(255,106,31,0.3)" onclick="marketingOpenGenerate()">+ Gerar criativo</button>
-          <button style="background:#fff;border:1px solid #e5e5ea;padding:10px 14px;border-radius:999px;font-weight:600;cursor:pointer" onclick="marketingReload()">↻</button>
-        </div>
-      </div>
-      <div id="mk-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px"></div>
-      <div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px">
-        <button class="mk-filter active" data-filter="pending_review" onclick="marketingSetFilter('pending_review')">Pendentes</button>
-        <button class="mk-filter" data-filter="approved" onclick="marketingSetFilter('approved')">Aprovados</button>
-        <button class="mk-filter" data-filter="published" onclick="marketingSetFilter('published')">Publicados</button>
-        <button class="mk-filter" data-filter="rejected" onclick="marketingSetFilter('rejected')">Rejeitados</button>
-        <button class="mk-filter" data-filter="" onclick="marketingSetFilter('')">Todos</button>
-      </div>
-      <div id="mk-creatives" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px"></div>
-    </div>
-    <style>
-      .mk-filter { background:#fff;border:1px solid #e5e5ea;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;color:#6e6e73;cursor:pointer;white-space:nowrap;flex-shrink:0; }
-      .mk-filter.active { background:#FF6A1F;color:#fff;border-color:#FF6A1F; }
-      .mk-card { background:#fff;border:1px solid #e5e5ea;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04); }
-      .mk-card .mk-media { width:100%;aspect-ratio:4/3;background:#fafafc;display:block;object-fit:cover; }
-      .mk-card video.mk-media { aspect-ratio:9/16;max-height:360px;object-fit:contain;background:#000; }
-      .mk-card .mk-body { padding:14px 16px; }
-      .mk-card .mk-product { display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:#6e6e73 }
-      .mk-card .mk-thumb { width:36px;height:36px;border-radius:8px;object-fit:cover;background:#f0f0f5;flex-shrink:0 }
-      .mk-card .mk-product strong { color:#0a0a0a;font-weight:700;font-size:14px }
-      .mk-card textarea { width:100%;font-size:13px;font-family:inherit;border:1px solid #e5e5ea;border-radius:8px;padding:8px 10px;min-height:60px;resize:vertical;margin-bottom:8px;background:#fafafc }
-      .mk-card textarea:focus { border-color:#FF6A1F;outline:none;background:#fff }
-      .mk-card .mk-label { font-size:10px;letter-spacing:0.8px;color:#a8a8ad;font-weight:700;text-transform:uppercase;margin-bottom:4px;margin-top:8px }
-      .mk-card .mk-actions { display:flex;gap:6px;margin-top:12px;flex-wrap:wrap }
-      .mk-card .mk-btn { flex:1;padding:8px 12px;border-radius:8px;border:none;font-weight:600;font-size:13px;cursor:pointer;min-width:80px }
-      .mk-card .mk-btn.ok { background:#25d366;color:#fff }
-      .mk-card .mk-btn.no { background:#fff;color:#d70015;border:1px solid #e5e5ea }
-      .mk-card .mk-btn.pub { background:linear-gradient(135deg,#FF6A1F,#FF8A4D);color:#fff }
-      .mk-card .mk-btn.del { background:#fff;color:#6e6e73;border:1px solid #e5e5ea;flex:0 0 auto;min-width:40px }
-      .mk-status { display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-left:auto }
-      .mk-status.pending_review { background:#FFEBDC;color:#FF6A1F }
-      .mk-status.approved { background:#e8f7ee;color:#0a843d }
-      .mk-status.published { background:#e1efff;color:#0066cc }
-      .mk-status.rejected { background:#fff1f0;color:#d70015 }
-      .mk-stat-card { background:#fff;border:1px solid #e5e5ea;border-radius:12px;padding:14px 16px }
-      .mk-stat-card .mk-stat-label { font-size:11px;letter-spacing:0.8px;color:#a8a8ad;font-weight:700;text-transform:uppercase }
-      .mk-stat-card .mk-stat-value { font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#0a0a0a;margin-top:4px }
-    </style>
+    <iframe
+      src="/marketing.html?embedded=1"
+      style="width:100%;height:calc(100vh - 110px);border:none;display:block;background:transparent"
+      allow="clipboard-write"
+    ></iframe>
   `;
-  STATE_MK.filter = 'pending_review';
-  marketingReload();
-  marketingLoadStats();
 }
 
 const STATE_MK = { filter: 'pending_review', creatives: [] };
