@@ -59,7 +59,7 @@ async function withRetry(fn, opName, maxAttempts = 3) {
  */
 async function generateEditorialPhoto({ productName, brand, imageUrl, aspectRatio = '16:9', sceneHint = '' }) {
   const fal = await getFal();
-  const model = 'fal-ai/flux-pro/kontext-max';
+  const model = 'fal-ai/flux-pro/kontext/max';
 
   const scene = sceneHint || pickEditorialScene(productName, brand);
   const prompt = `Editorial product photography of ${productName} (${brand}), ${scene}, dramatic studio lighting, hyperrealistic, 8k, magazine cover quality, sharp focus on product, professional sports/lifestyle aesthetic`;
