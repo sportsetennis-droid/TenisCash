@@ -3,7 +3,7 @@
 // =====================================================================
 // Modelos usados:
 //   - fal-ai/flux-pro/kontext-max  → foto editorial 16:9
-//   - fal-ai/kling-video/v2.1/standard/image-to-video → vídeo 5s 9:16 pra Reels
+//   - fal-ai/minimax/hailuo-02/pro/image-to-video → vídeo 6s 9:16 pra Reels (cinematográfico, escolhido apos teste comparativo)
 //   - fal-ai/bria/background/remove → remove fundo do produto
 //
 // Auth: FAL_KEY no env. Pegar em https://fal.ai/dashboard/keys
@@ -29,6 +29,7 @@ const COSTS = {
   'fal-ai/flux-pro/kontext/max': 0.04,
   'fal-ai/flux-pro/v1.1': 0.04,
   'fal-ai/kling-video/v2.1/standard/image-to-video': 0.10,
+  'fal-ai/minimax/hailuo-02/pro/image-to-video': 0.50,
   'fal-ai/bria/background/remove': 0.01,
 };
 
@@ -90,20 +91,22 @@ async function generateEditorialPhoto({ productName, brand, imageUrl, aspectRati
  * Gera vídeo de 5s vertical (9:16) animando uma imagem (Reels/TikTok).
  * @param {object} opts { imageUrl, productName, duration }
  */
-async function generateReelVideo({ imageUrl, productName, duration = 5 }) {
+async function generateReelVideo({ imageUrl, productName, duration = 6 }) {
   const fal = await getFal();
-  const model = 'fal-ai/kling-video/v2.1/standard/image-to-video';
+  // Minimax Hailuo 02 Pro: melhor custo/benefício em UGC realista pra produto
+  // Validado vs Veo3 Full ($3), Wan 2.5, Seedance, Luma — Hailuo Pro entregou
+  // qualidade cinematográfica mantendo fidelidade do produto, ao preço de $0.50
+  const model = 'fal-ai/minimax/hailuo-02/pro/image-to-video';
 
-  const prompt = `Slow cinematic camera movement around the product, dynamic lighting reveal, premium sports brand commercial style, smooth motion, ${productName}`;
+  const prompt = `Cinematic slow camera movement around the ${productName} product, dynamic lighting reveal, premium sports brand commercial style, smooth motion, soft warm pastel background morphing into lifestyle scene, golden hour light, hyperrealistic`;
 
   const result = await withRetry(
     () => fal.subscribe(model, {
       input: {
         prompt,
         image_url: imageUrl,
-        duration: String(duration),
-        aspect_ratio: '9:16',
-        negative_prompt: 'static, blurry, distorted, low quality, watermark, text',
+        duration: Math.max(6, Math.min(10, duration)), // Hailuo aceita 6 ou 10
+        prompt_optimizer: true,
       },
       logs: false,
     }),
@@ -111,7 +114,7 @@ async function generateReelVideo({ imageUrl, productName, duration = 5 }) {
   );
 
   const outputUrl = result?.data?.video?.url;
-  if (!outputUrl) throw new Error('kling retornou sem video url');
+  if (!outputUrl) throw new Error('hailuo retornou sem video url');
 
   return { outputUrl, model, prompt, costUsd: COSTS[model] };
 }
