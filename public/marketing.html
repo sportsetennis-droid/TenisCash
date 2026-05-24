@@ -57,6 +57,39 @@
   .empty .icon { font-size: 64px; opacity: 0.4; margin-bottom: 14px; }
   .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,22,0.92); color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: 14px; z-index: 99; opacity: 0; transition: opacity 0.3s; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
   .toast.show { opacity: 1; }
+  /* Main tabs */
+  .main-tab { background: transparent; border: none; padding: 14px 20px; font-size: 14px; font-weight: 700; color: #6e6e73; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  .main-tab.active { color: #FF6A1F; border-bottom-color: #FF6A1F; }
+  .main-tab:hover { color: #0a0a0a; }
+
+  /* Catalog */
+  .catalog-controls { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 14px; align-items: center; }
+  @media (max-width: 700px) { .catalog-controls { grid-template-columns: 1fr; } }
+  .catalog-controls input, .catalog-controls select { padding: 12px 14px; border: 1.5px solid #e5e5ea; border-radius: 10px; font-size: 14px; font-family: inherit; background: #fff; outline: none; }
+  .catalog-controls input:focus, .catalog-controls select:focus { border-color: #FF6A1F; }
+  .cat-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6e6e73; cursor: pointer; padding: 0 8px; user-select: none; }
+  .cat-toggle input { width: 18px; height: 18px; cursor: pointer; }
+
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 12px; }
+  .cat-card { background: #fff; border: 1.5px solid #e5e5ea; border-radius: 14px; overflow: hidden; cursor: pointer; transition: all 0.15s; position: relative; }
+  .cat-card:hover { border-color: #FF6A1F; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,106,31,0.10); }
+  .cat-card.selected { border-color: #FF6A1F; border-width: 2.5px; box-shadow: 0 4px 16px rgba(255,106,31,0.25); }
+  .cat-card .cat-img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #fafafc; display: block; }
+  .cat-card .cat-info { padding: 10px 12px; }
+  .cat-card .cat-name { font-size: 12.5px; font-weight: 600; color: #0a0a0a; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 32px; }
+  .cat-card .cat-brand { font-size: 10px; color: #a8a8ad; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .cat-card .cat-price { font-size: 14px; font-weight: 800; color: #FF6A1F; margin-top: 4px; }
+  .cat-card .cat-check { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.95); border: 2px solid #e5e5ea; display: flex; align-items: center; justify-content: center; font-size: 14px; color: transparent; transition: all 0.15s; backdrop-filter: blur(8px); }
+  .cat-card.selected .cat-check { background: #FF6A1F; border-color: #FF6A1F; color: #fff; }
+  .cat-card.already-generated { opacity: 0.6; }
+  .cat-card .cat-badge { position: absolute; top: 8px; left: 8px; background: rgba(40,150,80,0.95); color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  /* Floating bar */
+  .cat-floating { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #fff; border-radius: 999px; padding: 12px 18px 12px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); display: none; align-items: center; gap: 16px; z-index: 50; border: 1.5px solid #e5e5ea; max-width: 92vw; }
+  .cat-floating.visible { display: flex; }
+  .cat-float-info { font-weight: 700; color: #0a0a0a; }
+  .cat-float-cost { color: #6e6e73; font-weight: 500; margin-left: 8px; font-size: 13px; }
+
   .login { display: flex; flex-direction: column; align-items: center; padding: 80px 20px; gap: 20px; text-align: center; }
   .login h2 { font-size: 22px; font-weight: 800; }
   .login a { background: #FF6A1F; color: #fff; padding: 14px 28px; border-radius: 999px; text-decoration: none; font-weight: 700; }
@@ -70,25 +103,80 @@
       <div class="sub">Criativos gerados via fal.ai (Flux + Bria + Kling) com copy do Claude</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" onclick="openGenerate()">+ Gerar criativo</button>
       <button class="btn btn-secondary" onclick="reload()">↻ Atualizar</button>
     </div>
   </div>
-  <div class="stats" id="stats"></div>
-  <div class="filters">
-    <button class="filter active" data-f="pending_review" onclick="setFilter('pending_review')">Pendentes</button>
-    <button class="filter" data-f="approved" onclick="setFilter('approved')">Aprovados</button>
-    <button class="filter" data-f="published" onclick="setFilter('published')">Publicados</button>
-    <button class="filter" data-f="rejected" onclick="setFilter('rejected')">Rejeitados</button>
-    <button class="filter" data-f="" onclick="setFilter('')">Todos</button>
+
+  <!-- Tabs principais -->
+  <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1.5px solid #e5e5ea">
+    <button class="main-tab active" data-tab="criativos" onclick="switchMainTab('criativos')">🎨 Criativos gerados</button>
+    <button class="main-tab" data-tab="catalogo" onclick="switchMainTab('catalogo')">📦 Escolher do catálogo</button>
   </div>
-  <div class="grid" id="grid"><div class="empty">Carregando...</div></div>
+
+  <!-- TAB 1: Criativos -->
+  <div id="tab-criativos">
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <button class="filter active" data-f="pending_review" onclick="setFilter('pending_review')">Pendentes</button>
+      <button class="filter" data-f="approved" onclick="setFilter('approved')">Aprovados</button>
+      <button class="filter" data-f="published" onclick="setFilter('published')">Publicados</button>
+      <button class="filter" data-f="rejected" onclick="setFilter('rejected')">Rejeitados</button>
+      <button class="filter" data-f="" onclick="setFilter('')">Todos</button>
+    </div>
+    <div class="grid" id="grid"><div class="empty">Carregando...</div></div>
+  </div>
+
+  <!-- TAB 2: Catálogo -->
+  <div id="tab-catalogo" style="display:none">
+    <div class="catalog-controls">
+      <input type="text" id="cat-search" placeholder="🔍 Buscar nome, SKU, modelo..." oninput="catalogSearch()">
+      <select id="cat-brand" onchange="catalogSearch()">
+        <option value="">Todas as marcas</option>
+      </select>
+      <label class="cat-toggle">
+        <input type="checkbox" id="cat-skipvideo" checked>
+        <span>Sem vídeo (mais barato — $0.05/produto)</span>
+      </label>
+    </div>
+    <div id="cat-counter" style="font-size:13px;color:#6e6e73;margin-bottom:10px"></div>
+    <div id="cat-grid" class="cat-grid"><div class="empty">Carregando produtos...</div></div>
+    <div id="cat-pagination" style="text-align:center;margin:24px 0"></div>
+  </div>
+
+  <!-- Barra flutuante de ação (aparece quando seleciona produtos) -->
+  <div id="cat-floating-bar" class="cat-floating">
+    <div class="cat-float-info">
+      <span id="cat-float-count">0</span> selecionados
+      <span class="cat-float-cost">· Custo estimado: $<span id="cat-float-cost">0.00</span></span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="catalogClear()">Limpar</button>
+      <button class="btn" onclick="catalogGenerate()">🎨 Gerar criativos</button>
+    </div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
 const API = '/api/marketing';
-const STATE = { filter: 'pending_review', creatives: [] };
+const STATE = {
+  filter: 'pending_review',
+  creatives: [],
+  catalog: {
+    loaded: false,
+    loading: false,
+    products: [],
+    selected: new Set(),
+    brands: [],
+    page: 1,
+    pageSize: 40,
+    total: 0,
+    search: '',
+    brand: '',
+    recentProductIds: new Set(),
+    searchTimer: null,
+  },
+};
 
 function getToken() { return localStorage.getItem('tc_admin_token') || ''; }
 
@@ -291,6 +379,225 @@ function toast(msg) {
   t.classList.add('show');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// =====================================================
+// Catálogo — seleção visual de produtos pra gerar criativo
+// =====================================================
+function switchMainTab(name) {
+  document.querySelectorAll('.main-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.getElementById('tab-criativos').style.display = name === 'criativos' ? '' : 'none';
+  document.getElementById('tab-catalogo').style.display = name === 'catalogo' ? '' : 'none';
+  if (name === 'catalogo' && !STATE.catalog.loaded) {
+    loadBrands();
+    loadCatalog();
+  }
+}
+
+function fmtBRL(v) {
+  if (v == null || isNaN(v)) return '—';
+  return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+}
+
+async function loadBrands() {
+  try {
+    // Reaproveita endpoint público do catálogo se existir; senão extrai da listagem
+    const r = await fetch('/api/catalog/brands').then(r => r.ok ? r.json() : null).catch(() => null);
+    const sel = document.getElementById('cat-brand');
+    let brands = [];
+    if (r && Array.isArray(r.brands)) {
+      brands = r.brands.filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+    STATE.catalog.brands = brands;
+    sel.innerHTML = '<option value="">Todas as marcas</option>' + brands.map(b => `<option value="${escH(b)}">${escH(b)}</option>`).join('');
+  } catch {}
+}
+
+async function loadCatalog() {
+  const grid = document.getElementById('cat-grid');
+  const counter = document.getElementById('cat-counter');
+  if (STATE.catalog.loading) return;
+  STATE.catalog.loading = true;
+  grid.innerHTML = '<div class="empty">Carregando produtos...</div>';
+  try {
+    const params = new URLSearchParams({
+      page: String(STATE.catalog.page),
+      pageSize: String(STATE.catalog.pageSize),
+    });
+    if (STATE.catalog.search) params.set('search', STATE.catalog.search);
+    if (STATE.catalog.brand) params.set('brand', STATE.catalog.brand);
+    params.set('active', 'true');
+
+    const res = await fetch('/api/catalog/products?' + params.toString(), {
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const products = data.products || data.items || [];
+    STATE.catalog.products = products;
+    STATE.catalog.total = data.total || data.totalCount || products.length;
+    STATE.catalog.loaded = true;
+
+    // Carrega lista de produtos com criativos recentes (últimos 30d) pra marcar "já gerado"
+    await loadRecentlyUsed();
+
+    counter.innerHTML = `<b>${STATE.catalog.total}</b> produtos · página ${STATE.catalog.page}`;
+
+    if (products.length === 0) {
+      grid.innerHTML = '<div class="empty"><div class="icon">📦</div><div>Nenhum produto encontrado</div></div>';
+    } else {
+      grid.innerHTML = products.map(renderCatalogCard).join('');
+    }
+    renderPagination();
+    updateFloatingBar();
+  } catch (e) {
+    grid.innerHTML = '<div class="empty" style="color:#d70015">Erro ao carregar catálogo: ' + escH(e.message) + '</div>';
+  } finally {
+    STATE.catalog.loading = false;
+  }
+}
+
+async function loadRecentlyUsed() {
+  try {
+    // Pega últimos 200 criativos pra cruzar com produtos
+    const r = await api('/creatives?limit=200');
+    const ids = new Set();
+    (r.creatives || []).forEach(c => { if (c.productId) ids.add(c.productId); });
+    STATE.catalog.recentProductIds = ids;
+  } catch {}
+}
+
+function renderCatalogCard(p) {
+  const selected = STATE.catalog.selected.has(p.id);
+  const alreadyGen = STATE.catalog.recentProductIds.has(p.id);
+  const img = p.imageUrl
+    ? `<img class="cat-img" src="${escH(p.imageUrl)}" alt="" loading="lazy">`
+    : '<div class="cat-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;color:#c0c0c5">📦</div>';
+  return `
+    <div class="cat-card${selected ? ' selected' : ''}${alreadyGen ? ' already-generated' : ''}" onclick="toggleProduct('${escH(p.id)}')">
+      ${img}
+      ${alreadyGen ? '<div class="cat-badge">✓ recente</div>' : ''}
+      <div class="cat-check">✓</div>
+      <div class="cat-info">
+        <div class="cat-name">${escH(p.name || '—')}</div>
+        <div class="cat-brand">${escH(p.brand || 'sem marca')} · ${escH(p.sku || '')}</div>
+        <div class="cat-price">${fmtBRL(p.price)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPagination() {
+  const totalPages = Math.max(1, Math.ceil(STATE.catalog.total / STATE.catalog.pageSize));
+  const cur = STATE.catalog.page;
+  const wrap = document.getElementById('cat-pagination');
+  if (totalPages <= 1) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <button class="btn btn-secondary" ${cur <= 1 ? 'disabled' : ''} onclick="catalogPage(${cur - 1})">← Anterior</button>
+    <span style="margin:0 14px;color:#6e6e73;font-weight:600">Página ${cur} de ${totalPages}</span>
+    <button class="btn btn-secondary" ${cur >= totalPages ? 'disabled' : ''} onclick="catalogPage(${cur + 1})">Próxima →</button>
+  `;
+}
+
+function catalogPage(p) {
+  STATE.catalog.page = p;
+  loadCatalog();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleProduct(id) {
+  if (STATE.catalog.selected.has(id)) STATE.catalog.selected.delete(id);
+  else STATE.catalog.selected.add(id);
+  // Re-renderiza só o card afetado pra UX rápida
+  const grid = document.getElementById('cat-grid');
+  const p = STATE.catalog.products.find(x => x.id === id);
+  if (p) {
+    const cards = grid.querySelectorAll('.cat-card');
+    for (const card of cards) {
+      if (card.getAttribute('onclick')?.includes(id)) {
+        card.outerHTML = renderCatalogCard(p);
+        break;
+      }
+    }
+  }
+  updateFloatingBar();
+}
+
+function catalogSearch() {
+  clearTimeout(STATE.catalog.searchTimer);
+  STATE.catalog.searchTimer = setTimeout(() => {
+    STATE.catalog.search = document.getElementById('cat-search').value.trim();
+    STATE.catalog.brand = document.getElementById('cat-brand').value;
+    STATE.catalog.page = 1;
+    loadCatalog();
+  }, 300);
+}
+
+function catalogClear() {
+  STATE.catalog.selected.clear();
+  // Re-renderiza grid
+  const grid = document.getElementById('cat-grid');
+  grid.innerHTML = STATE.catalog.products.map(renderCatalogCard).join('');
+  updateFloatingBar();
+}
+
+function updateFloatingBar() {
+  const bar = document.getElementById('cat-floating-bar');
+  const n = STATE.catalog.selected.size;
+  document.getElementById('cat-float-count').textContent = n;
+  const skipVideo = document.getElementById('cat-skipvideo')?.checked;
+  const perItem = skipVideo ? 0.05 : 0.55;
+  document.getElementById('cat-float-cost').textContent = (n * perItem).toFixed(2);
+  bar.classList.toggle('visible', n > 0);
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target?.id === 'cat-skipvideo') updateFloatingBar();
+});
+
+async function catalogGenerate() {
+  const ids = Array.from(STATE.catalog.selected);
+  if (ids.length === 0) { toast('Selecione pelo menos 1 produto'); return; }
+  const skipVideo = document.getElementById('cat-skipvideo').checked;
+  const perItem = skipVideo ? 0.05 : 0.55;
+  const totalCost = (ids.length * perItem).toFixed(2);
+  if (!confirm(`Gerar criativo pra ${ids.length} produto(s)?\n\nCusto estimado: $${totalCost}\nTempo: ~${ids.length * (skipVideo ? 30 : 90)}s`)) return;
+
+  let ok = 0, fail = 0;
+  let i = 0;
+  // Sequencial pra evitar timeout 524 do Cloudflare (havia rolado antes)
+  for (const productId of ids) {
+    i++;
+    const p = STATE.catalog.products.find(x => x.id === productId) || {};
+    toast(`Gerando ${i}/${ids.length}: ${(p.name || productId).slice(0, 40)}…`);
+    try {
+      const r = await api('/generate/' + productId, {
+        method: 'POST',
+        body: JSON.stringify({ skipVideo, sceneHint: '' }),
+      });
+      ok += (r?.created?.length ? 1 : 0);
+      // Marca como recente pra UI atualizar visual
+      STATE.catalog.recentProductIds.add(productId);
+    } catch (e) {
+      console.warn('gen fail', productId, e.message);
+      fail++;
+    }
+  }
+  toast(`✓ ${ok} gerados · ${fail} falharam · $${(ok * perItem).toFixed(2)} gasto`);
+  STATE.catalog.selected.clear();
+  // Re-renderiza grid com badge "já gerado"
+  const grid = document.getElementById('cat-grid');
+  grid.innerHTML = STATE.catalog.products.map(renderCatalogCard).join('');
+  updateFloatingBar();
+  // Atualiza stats e lista de criativos pra refletir os novos
+  loadStats();
+  if (ok > 0) {
+    // Vai pra aba de criativos pra ver o resultado
+    setTimeout(() => {
+      switchMainTab('criativos');
+      reload();
+    }, 1200);
+  }
 }
 
 if (!getToken()) {
