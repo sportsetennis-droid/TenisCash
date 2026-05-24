@@ -26,7 +26,8 @@ async function getFal() {
 
 // Custos estimados por chamada (USD) — atualizar conforme fal.ai mudar tabela
 const COSTS = {
-  'fal-ai/flux-pro/kontext-max': 0.04,
+  'fal-ai/flux-pro/kontext/max': 0.04,
+  'fal-ai/flux-pro/v1.1': 0.04,
   'fal-ai/kling-video/v2.1/pro/image-to-video': 0.50,
   'fal-ai/bria/background/remove': 0.01,
 };

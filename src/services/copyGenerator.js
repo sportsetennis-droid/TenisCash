@@ -56,7 +56,7 @@ Retorne JSON estrito com 4 campos:
 Sem comentários, só JSON puro.`;
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-haiku-latest',
+    model: 'claude-haiku-4-5',
     max_tokens: 600,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
