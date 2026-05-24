@@ -146,6 +146,12 @@
         <span>Sem vídeo (mais barato — $0.05/produto)</span>
       </label>
     </div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <label class="cat-toggle" style="font-size:13px"><b>Modelo da imagem:</b></label>
+      <label class="cat-toggle"><input type="radio" name="cat-provider" value="fal" checked> <span>📸 Flux Pro Kontext ($0.04)</span></label>
+      <label class="cat-toggle"><input type="radio" name="cat-provider" value="openai"> <span>🤖 GPT-Image-1 ($0.04)</span></label>
+      <label class="cat-toggle"><input type="radio" name="cat-provider" value="both"> <span>🎨 Ambos lado a lado ($0.08)</span></label>
+    </div>
     <div id="cat-counter" style="font-size:13px;color:#6e6e73;margin-bottom:10px"></div>
     <div id="cat-grid" class="cat-grid"><div class="empty">Carregando produtos...</div></div>
     <div id="cat-pagination" style="text-align:center;margin:24px 0"></div>
@@ -246,6 +252,15 @@ function renderCard(c) {
   const isVideo = c.kind === 'reel_video';
   const isTransp = c.kind === 'transparent_photo';
   const kindLabel = { editorial_photo: '📸 Foto editorial 16:9', reel_video: '🎬 Reel 9:16', transparent_photo: '✂️ Sem fundo' }[c.kind] || c.kind;
+  // Tag do modelo: gpt-image-1 → "🤖 GPT", flux/* → "📸 Flux", hailuo → "🎬 Hailuo", bria → "✂️ Bria"
+  let modelTag = '';
+  if (c.model) {
+    if (c.model.includes('gpt-image')) modelTag = '🤖 GPT';
+    else if (c.model.includes('flux')) modelTag = '📸 Flux';
+    else if (c.model.includes('hailuo') || c.model.includes('minimax')) modelTag = '🎬 Hailuo';
+    else if (c.model.includes('bria')) modelTag = '✂️ Bria';
+    else modelTag = c.model.split('/').pop();
+  }
   const media = isVideo
     ? `<video class="media" src="${escH(c.outputUrl)}" controls preload="metadata" playsinline></video>`
     : `<img class="media${isTransp ? ' transparent-bg' : ''}" src="${escH(c.outputUrl)}" alt="" loading="lazy">`;
@@ -262,7 +277,7 @@ function renderCard(c) {
           </div>
           <span class="status s-${c.status}">${c.status.replace('_',' ')}</span>
         </div>
-        <div class="kind">${kindLabel} · $${(c.costUsd || 0).toFixed(2)}</div>
+        <div class="kind">${kindLabel}${modelTag ? ' · <b style="color:#FF6A1F">' + modelTag + '</b>' : ''} · $${(c.costUsd || 0).toFixed(2)}</div>
 
         <div class="lbl">Caption Instagram</div>
         <textarea data-field="captionIg">${escH(c.captionIg || '')}</textarea>
@@ -357,14 +372,26 @@ async function generateMore(creativeId) {
   const c = STATE.creatives.find(x => x.id === creativeId);
   if (!c || !c.product?.id) { toast('Produto não encontrado'); return; }
   const p = c.product;
-  const sceneHint = prompt(`Cenário para a nova variação de "${p.name.slice(0, 60)}":\n\n(deixe vazio pra cenário automático diferente do atual)`, '');
-  if (sceneHint === null) return; // cancelou
-  const skipVideo = confirm('Sem vídeo? (OK = sem vídeo, $0.05 — Cancelar = com vídeo, $0.55)');
+  const providerChoice = prompt(
+    `Modelo pra nova variação de "${p.name.slice(0, 50)}":\n\n1 = Flux Pro Kontext ($0.05 com bg+sem video)\n2 = GPT-Image-1 OpenAI ($0.05)\n3 = Ambos lado a lado ($0.09)\n\nDigite 1, 2 ou 3:`,
+    '1'
+  );
+  if (providerChoice === null) return;
+  const provider = providerChoice === '2' ? 'openai' : providerChoice === '3' ? 'both' : 'fal';
+  const sceneHint = prompt(`Cenário (deixe vazio pra cenário aleatório diferente do atual):`, '');
+  if (sceneHint === null) return;
+  const skipVideo = confirm('Sem vídeo? (OK = sem vídeo, mais barato — Cancelar = com vídeo, +$0.50)');
+  const cost = perItemCost(skipVideo, provider).toFixed(2);
   try {
-    toast(`Gerando variação pra ${p.name.slice(0, 30)}… leva ${skipVideo ? '30s' : '90s'}`);
+    const wait = skipVideo ? (provider === 'openai' || provider === 'both' ? '60s' : '30s') : '90s';
+    toast(`Gerando variação ${provider} pra ${p.name.slice(0, 30)}… leva ~${wait} ($${cost})`);
     const r = await api('/generate/' + p.id, {
       method: 'POST',
-      body: JSON.stringify({ skipVideo, sceneHint: sceneHint.trim() || SCENE_HINTS[Math.floor(Math.random() * (SCENE_HINTS.length - 1)) + 1] }),
+      body: JSON.stringify({
+        skipVideo,
+        provider,
+        sceneHint: sceneHint.trim() || SCENE_HINTS[Math.floor(Math.random() * (SCENE_HINTS.length - 1)) + 1],
+      }),
     });
     toast('✓ ' + r.created.length + ' criativos novos · $' + (r.totalCostUsd || 0).toFixed(2));
     reload();
@@ -589,6 +616,22 @@ function catalogClear() {
   updateFloatingBar();
 }
 
+function getProvider() {
+  const r = document.querySelector('input[name="cat-provider"]:checked');
+  return r ? r.value : 'fal';
+}
+
+function perItemCost(skipVideo, provider) {
+  // Foto editorial: fal=$0.04, openai=$0.04, both=$0.08
+  let photo = 0.04;
+  if (provider === 'both') photo = 0.08;
+  // Bria remove bg: $0.01
+  const bg = 0.01;
+  // Video Hailuo Pro: $0.50
+  const vid = skipVideo ? 0 : 0.50;
+  return photo + bg + vid;
+}
+
 function updateFloatingBar() {
   const bar = document.getElementById('cat-floating-bar');
   const produtos = STATE.catalog.selected.size;
@@ -599,13 +642,13 @@ function updateFloatingBar() {
     ? `${produtos} selecionado${produtos !== 1 ? 's' : ''}`
     : `${produtos} produto${produtos !== 1 ? 's' : ''} · ${totalVar} variaç${totalVar !== 1 ? 'ões' : 'ão'}`;
   const skipVideo = document.getElementById('cat-skipvideo')?.checked;
-  const perItem = skipVideo ? 0.05 : 0.55;
+  const perItem = perItemCost(skipVideo, getProvider());
   document.getElementById('cat-float-cost').textContent = (totalVar * perItem).toFixed(2);
   bar.classList.toggle('visible', produtos > 0);
 }
 
 document.addEventListener('change', (e) => {
-  if (e.target?.id === 'cat-skipvideo') updateFloatingBar();
+  if (e.target?.id === 'cat-skipvideo' || e.target?.name === 'cat-provider') updateFloatingBar();
 });
 
 // Cenários pré-definidos pra rodízio quando o usuário quer múltiplas variações do mesmo produto.
@@ -633,10 +676,12 @@ async function catalogGenerate() {
   const jobs = buildJobs();
   if (jobs.length === 0) { toast('Selecione pelo menos 1 produto'); return; }
   const skipVideo = document.getElementById('cat-skipvideo').checked;
-  const perItem = skipVideo ? 0.05 : 0.55;
+  const provider = getProvider();
+  const perItem = perItemCost(skipVideo, provider);
   const totalCost = (jobs.length * perItem).toFixed(2);
   const produtos = STATE.catalog.selected.size;
-  const msg = `Gerar ${jobs.length} criativo(s) (${produtos} produto${produtos !== 1 ? 's' : ''}, cada variação usa cenário diferente)?\n\nCusto estimado: $${totalCost}\nTempo: ~${jobs.length * (skipVideo ? 30 : 90)}s`;
+  const providerLabel = { fal: 'Flux Pro', openai: 'GPT-Image-1', both: 'Flux + GPT (lado a lado)' }[provider];
+  const msg = `Gerar ${jobs.length} criativo(s) com ${providerLabel} (${produtos} produto${produtos !== 1 ? 's' : ''}, cada variação usa cenário diferente)?\n\nCusto estimado: $${totalCost}\nTempo: ~${jobs.length * (skipVideo ? (provider === 'openai' ? 60 : 30) : 90)}s`;
   if (!confirm(msg)) return;
 
   let ok = 0, fail = 0;
@@ -649,7 +694,7 @@ async function catalogGenerate() {
     try {
       const r = await api('/generate/' + job.productId, {
         method: 'POST',
-        body: JSON.stringify({ skipVideo, sceneHint: job.sceneHint }),
+        body: JSON.stringify({ skipVideo, sceneHint: job.sceneHint, provider }),
       });
       if (r?.created?.length) ok++;
       STATE.catalog.recentProductIds.add(job.productId);

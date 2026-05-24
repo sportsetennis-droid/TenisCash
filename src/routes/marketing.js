@@ -15,6 +15,7 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const falAi = require('../services/falAi');
+const openaiImage = require('../services/openaiImage');
 const copyGen = require('../services/copyGenerator');
 
 const router = express.Router();
@@ -40,7 +41,13 @@ router.use(requireAdmin);
 
 router.post('/generate/:productId', async (req, res) => {
   try {
-    const { skipVideo = false, skipBgRemove = false, sceneHint = '' } = req.body || {};
+    const {
+      skipVideo = false,
+      skipBgRemove = false,
+      sceneHint = '',
+      provider = 'fal',         // 'fal' | 'openai' | 'both'
+      openaiQuality = 'medium',  // 'low' | 'medium' | 'high'
+    } = req.body || {};
     const product = await prisma.product.findUnique({
       where: { id: req.params.productId },
       select: { id: true, name: true, brand: true, category: true, price: true, shortDescription: true, imageUrl: true, sku: true },
@@ -48,31 +55,49 @@ router.post('/generate/:productId', async (req, res) => {
     if (!product) return res.status(404).json({ error: 'produto não encontrado' });
     if (!product.imageUrl) return res.status(400).json({ error: 'produto sem imageUrl — não dá pra usar como referência' });
 
-    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name})`);
+    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name}) · provider=${provider}`);
 
-    // Roda as 3 gerações em paralelo (fal.ai aguenta)
-    const tasks = [
-      falAi.generateEditorialPhoto({
-        productName: product.name,
-        brand: product.brand,
-        imageUrl: product.imageUrl,
-        aspectRatio: '16:9',
-        sceneHint,
-      }).then(r => ({ kind: 'editorial_photo', ...r })),
-    ];
+    // Roda as gerações em paralelo (fal.ai e OpenAI aguentam)
+    const tasks = [];
+
+    // Foto editorial — pelo provider escolhido
+    if (provider === 'fal' || provider === 'both') {
+      tasks.push(
+        falAi.generateEditorialPhoto({
+          productName: product.name,
+          brand: product.brand,
+          imageUrl: product.imageUrl,
+          aspectRatio: '16:9',
+          sceneHint,
+        }).then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
+      );
+    }
+    if (provider === 'openai' || provider === 'both') {
+      tasks.push(
+        openaiImage.generateEditorialPhoto({
+          productName: product.name,
+          brand: product.brand,
+          imageUrl: product.imageUrl,
+          aspectRatio: '16:9',
+          sceneHint,
+          quality: openaiQuality,
+        }).then(r => ({ kind: 'editorial_photo', provider: 'openai', ...r }))
+      );
+    }
+
     if (!skipVideo) {
       // Pra video, ideal seria usar a foto editorial gerada. Mas pra paralelizar usamos a do catálogo.
       tasks.push(
         falAi.generateReelVideo({
           imageUrl: product.imageUrl,
           productName: product.name,
-        }).then(r => ({ kind: 'reel_video', ...r }))
+        }).then(r => ({ kind: 'reel_video', provider: 'fal', ...r }))
       );
     }
     if (!skipBgRemove) {
       tasks.push(
         falAi.removeBackground({ imageUrl: product.imageUrl })
-          .then(r => ({ kind: 'transparent_photo', ...r }))
+          .then(r => ({ kind: 'transparent_photo', provider: 'fal', ...r }))
       );
     }
 
