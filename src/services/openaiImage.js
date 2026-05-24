@@ -75,14 +75,34 @@ async function fetchAsBuffer(url) {
 
 /**
  * Faz upload de um Buffer pra fal.storage e retorna URL pública.
+ * File global não existe no Node do Railway, então importamos de node:buffer
+ * (Node 20+) ou caímos pro Blob (que fal.storage também aceita).
  */
+let _FileCtor = null;
+function getFileCtor() {
+  if (_FileCtor !== null) return _FileCtor;
+  // 1) global File (browser-like / Node 20+ com File exposto)
+  if (typeof File !== 'undefined') { _FileCtor = File; return _FileCtor; }
+  // 2) node:buffer.File (Node 20+)
+  try {
+    const buf = require('node:buffer');
+    if (buf?.File) { _FileCtor = buf.File; return _FileCtor; }
+  } catch {}
+  _FileCtor = false; // marca que não tem
+  return _FileCtor;
+}
+
 async function uploadToFalStorage(buffer, filename) {
   const fal = await getFal();
-  // fal client aceita File (browser) ou Blob. Em Node 20+ tem Blob global.
-  const blob = new Blob([buffer], { type: 'image/png' });
-  // Cria File via File API (Node 20+ tem File global)
-  const file = new File([blob], filename, { type: 'image/png' });
-  const url = await fal.storage.upload(file);
+  const FileC = getFileCtor();
+  let payload;
+  if (FileC) {
+    payload = new FileC([buffer], filename, { type: 'image/png' });
+  } else {
+    // fal.storage.upload aceita Blob também — fica sem nome custom mas funciona
+    payload = new Blob([buffer], { type: 'image/png' });
+  }
+  const url = await fal.storage.upload(payload);
   if (!url) throw new Error('fal.storage.upload retornou vazio');
   return url;
 }
