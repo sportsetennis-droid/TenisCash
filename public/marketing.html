@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#FF6A1F">
+<title>Marketing IA — TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+  body { background: radial-gradient(circle at 20% 20%, #fff6ef 0%, transparent 50%), radial-gradient(circle at 80% 80%, #fde4f1 0%, transparent 50%), #f5f5f7; color: #0a0a0a; min-height: 100vh; padding: 20px 12px; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, #E64500 0%, #FF6A1F 45%, #FF9550 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { font-size: 13px; color: #6e6e73; margin-top: 4px; }
+  .btn { background: linear-gradient(135deg, #FF6A1F, #FF8A4D); color: #fff; border: none; padding: 12px 20px; border-radius: 999px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,106,31,0.3); }
+  .btn:active { transform: scale(0.97); }
+  .btn-secondary { background: #fff; color: #0a0a0a; border: 1px solid #e5e5ea; box-shadow: none; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat { background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .stat-label { font-size: 10px; letter-spacing: 1px; color: #a8a8ad; font-weight: 700; text-transform: uppercase; }
+  .stat-val { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; }
+  .filters { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 18px; padding-bottom: 4px; }
+  .filter { background: #fff; border: 1px solid #e5e5ea; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 13px; color: #6e6e73; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  .filter.active { background: #FF6A1F; color: #fff; border-color: #FF6A1F; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 14px; }
+  .card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .media { width: 100%; aspect-ratio: 4/3; background: #fafafc; display: block; object-fit: cover; }
+  .card video.media { aspect-ratio: 9/16; max-height: 360px; object-fit: contain; background: #000; }
+  .card .transparent-bg { background: repeating-conic-gradient(#f0f0f5 0% 25%,#fff 0% 50%) 50% / 16px 16px; }
+  .body { padding: 14px 16px; }
+  .prod { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .thumb { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: #f0f0f5; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .prod-info { flex: 1; min-width: 0; }
+  .prod-name { font-weight: 700; font-size: 14px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+  .prod-meta { font-size: 11px; color: #a8a8ad; }
+  .status { padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .s-pending_review { background: #FFEBDC; color: #FF6A1F; }
+  .s-approved { background: #e8f7ee; color: #0a843d; }
+  .s-published { background: #e1efff; color: #0066cc; }
+  .s-rejected { background: #fff1f0; color: #d70015; }
+  .kind { font-size: 11px; color: #a8a8ad; margin-bottom: 8px; }
+  .lbl { font-size: 10px; letter-spacing: 0.8px; color: #a8a8ad; font-weight: 700; text-transform: uppercase; margin: 8px 0 4px; }
+  textarea { width: 100%; font-family: inherit; font-size: 13px; border: 1px solid #e5e5ea; border-radius: 8px; padding: 8px 10px; min-height: 60px; resize: vertical; background: #fafafc; margin-bottom: 4px; }
+  textarea:focus { outline: none; border-color: #FF6A1F; background: #fff; }
+  .actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .a-btn { flex: 1; padding: 9px 12px; border-radius: 8px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; min-width: 80px; }
+  .a-ok { background: #25d366; color: #fff; }
+  .a-no { background: #fff; color: #d70015; border: 1px solid #e5e5ea; }
+  .a-pub { background: linear-gradient(135deg,#FF6A1F,#FF8A4D); color: #fff; }
+  .a-save { background: #fff; color: #6e6e73; border: 1px solid #e5e5ea; flex: 0 0 auto; min-width: 40px; }
+  .a-del { background: #fff; color: #6e6e73; border: 1px solid #e5e5ea; flex: 0 0 auto; min-width: 40px; }
+  .empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; color: #6e6e73; }
+  .empty .icon { font-size: 64px; opacity: 0.4; margin-bottom: 14px; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,22,0.92); color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: 14px; z-index: 99; opacity: 0; transition: opacity 0.3s; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+  .toast.show { opacity: 1; }
+  .login { display: flex; flex-direction: column; align-items: center; padding: 80px 20px; gap: 20px; text-align: center; }
+  .login h2 { font-size: 22px; font-weight: 800; }
+  .login a { background: #FF6A1F; color: #fff; padding: 14px 28px; border-radius: 999px; text-decoration: none; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap" id="root">
+  <div class="top">
+    <div>
+      <h1>🎨 Marketing IA</h1>
+      <div class="sub">Criativos gerados via fal.ai (Flux + Bria + Kling) com copy do Claude</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="openGenerate()">+ Gerar criativo</button>
+      <button class="btn btn-secondary" onclick="reload()">↻ Atualizar</button>
+    </div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="filters">
+    <button class="filter active" data-f="pending_review" onclick="setFilter('pending_review')">Pendentes</button>
+    <button class="filter" data-f="approved" onclick="setFilter('approved')">Aprovados</button>
+    <button class="filter" data-f="published" onclick="setFilter('published')">Publicados</button>
+    <button class="filter" data-f="rejected" onclick="setFilter('rejected')">Rejeitados</button>
+    <button class="filter" data-f="" onclick="setFilter('')">Todos</button>
+  </div>
+  <div class="grid" id="grid"><div class="empty">Carregando...</div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/marketing';
+const STATE = { filter: 'pending_review', creatives: [] };
+
+function getToken() { return localStorage.getItem('tc_admin_token') || ''; }
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  if (res.status === 401) {
+    document.getElementById('root').innerHTML = '<div class="login"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+    throw new Error('unauth');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+function escH(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+async function reload() {
+  const el = document.getElementById('grid');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  try {
+    const q = STATE.filter ? '?status=' + STATE.filter + '&limit=100' : '?limit=100';
+    const r = await api('/creatives' + q);
+    STATE.creatives = r.creatives || [];
+    if (STATE.creatives.length === 0) {
+      el.innerHTML = '<div class="empty"><div class="icon">🎨</div><div style="font-weight:700;color:#555;margin-bottom:6px">Nenhum criativo aqui</div><div style="font-size:13px">Clica em "+ Gerar criativo" pra começar</div></div>';
+      return;
+    }
+    el.innerHTML = STATE.creatives.map(renderCard).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="empty" style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+function setFilter(f) {
+  STATE.filter = f;
+  document.querySelectorAll('.filter').forEach(b => b.classList.toggle('active', b.dataset.f === f));
+  reload();
+}
+
+async function loadStats() {
+  try {
+    const s = await api('/stats');
+    const m = s.thisMonth || {};
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Gerados (mês)</div><div class="stat-val">${m.generated || 0}</div></div>
+      <div class="stat"><div class="stat-label">Aprovados</div><div class="stat-val">${m.approved || 0}</div></div>
+      <div class="stat"><div class="stat-label">Publicados</div><div class="stat-val">${m.published || 0}</div></div>
+      <div class="stat"><div class="stat-label">Custo (USD)</div><div class="stat-val">$${(m.costUsd || 0).toFixed(2)}</div></div>
+      <div class="stat"><div class="stat-label">Taxa aprovação</div><div class="stat-val">${Math.round((m.approvalRate || 0) * 100)}%</div></div>
+    `;
+  } catch {}
+}
+
+function renderCard(c) {
+  const p = c.product || {};
+  const isVideo = c.kind === 'reel_video';
+  const isTransp = c.kind === 'transparent_photo';
+  const kindLabel = { editorial_photo: '📸 Foto editorial 16:9', reel_video: '🎬 Reel 9:16', transparent_photo: '✂️ Sem fundo' }[c.kind] || c.kind;
+  const media = isVideo
+    ? `<video class="media" src="${escH(c.outputUrl)}" controls preload="metadata" playsinline></video>`
+    : `<img class="media${isTransp ? ' transparent-bg' : ''}" src="${escH(c.outputUrl)}" alt="" loading="lazy">`;
+  const thumb = p.imageUrl ? `<img class="thumb" src="${escH(p.imageUrl)}" alt="">` : '<div class="thumb">📦</div>';
+  return `
+    <div class="card" data-id="${escH(c.id)}">
+      ${media}
+      <div class="body">
+        <div class="prod">
+          ${thumb}
+          <div class="prod-info">
+            <div class="prod-name">${escH(p.name || '?')}</div>
+            <div class="prod-meta">${escH(p.sku || '')} · ${escH(p.brand || '')}</div>
+          </div>
+          <span class="status s-${c.status}">${c.status.replace('_',' ')}</span>
+        </div>
+        <div class="kind">${kindLabel} · $${(c.costUsd || 0).toFixed(2)}</div>
+
+        <div class="lbl">Caption Instagram</div>
+        <textarea data-field="captionIg">${escH(c.captionIg || '')}</textarea>
+        <div class="lbl">TikTok</div>
+        <textarea data-field="captionTiktok">${escH(c.captionTiktok || '')}</textarea>
+        <div class="lbl">WhatsApp</div>
+        <textarea data-field="captionWa">${escH(c.captionWa || '')}</textarea>
+        <div class="lbl">Hashtags</div>
+        <textarea data-field="hashtags" style="min-height:36px">${escH(c.hashtags || '')}</textarea>
+
+        <div class="actions">
+          ${c.status === 'pending_review' ? `
+            <button class="a-btn a-ok" onclick="approve('${c.id}')">✓ Aprovar</button>
+            <button class="a-btn a-no" onclick="reject('${c.id}')">Rejeitar</button>
+          ` : ''}
+          ${c.status === 'approved' ? `
+            <button class="a-btn a-pub" onclick="publish('${c.id}')">📤 Publicar IG</button>
+            <button class="a-btn a-no" onclick="patch('${c.id}', {status:'pending_review'})">Voltar revisão</button>
+          ` : ''}
+          ${c.status === 'published' && c.publications?.[0]?.externalUrl ? `
+            <a class="a-btn a-pub" style="text-decoration:none;text-align:center;line-height:24px" href="${escH(c.publications[0].externalUrl)}" target="_blank">Ver no IG ↗</a>
+          ` : ''}
+          <button class="a-btn a-save" onclick="saveCopy('${c.id}')" title="Salvar edição">💾</button>
+          ${c.status !== 'published' ? `<button class="a-btn a-del" onclick="del('${c.id}')" title="Apagar">🗑️</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function collectFields(id) {
+  const out = {};
+  document.querySelectorAll('.card[data-id="' + id + '"] textarea').forEach(t => out[t.dataset.field] = t.value);
+  return out;
+}
+
+async function patch(id, fields) {
+  try { await api('/creatives/' + id, { method: 'PATCH', body: JSON.stringify(fields) }); reload(); loadStats(); }
+  catch (e) { toast('Erro: ' + e.message); }
+}
+async function approve(id) {
+  try {
+    await api('/creatives/' + id, { method: 'PATCH', body: JSON.stringify({ ...collectFields(id), status: 'approved' }) });
+    toast('Aprovado'); reload(); loadStats();
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+async function reject(id) {
+  const reason = prompt('Motivo (opcional):') || '';
+  patch(id, { status: 'rejected', rejectionReason: reason });
+}
+async function saveCopy(id) {
+  try { await api('/creatives/' + id, { method: 'PATCH', body: JSON.stringify(collectFields(id)) }); toast('Salvo'); }
+  catch (e) { toast('Erro: ' + e.message); }
+}
+async function del(id) {
+  if (!confirm('Apagar?')) return;
+  try { await api('/creatives/' + id, { method: 'DELETE' }); reload(); loadStats(); }
+  catch (e) { toast('Erro: ' + e.message); }
+}
+async function publish(id) {
+  if (!confirm('Publicar no Instagram?')) return;
+  try {
+    toast('Publicando, aguarde 30-60s…');
+    const r = await api('/creatives/' + id + '/publish', { method: 'POST', body: JSON.stringify({ platform: 'instagram' }) });
+    toast('✓ Publicado');
+    if (r.publication?.externalUrl) window.open(r.publication.externalUrl, '_blank');
+    reload(); loadStats();
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+async function openGenerate() {
+  const q = prompt('SKU ou nome do produto pra gerar criativo:');
+  if (!q) return;
+  const sceneHint = prompt('Cenário pra foto (opcional, ex: "atleta na praia"):') || '';
+  try {
+    toast('Buscando produto…');
+    const s = await fetch('/api/messages-v2/products/search?q=' + encodeURIComponent(q), {
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+    }).then(r => r.json());
+    if (!s.products?.length) { toast('Produto não encontrado'); return; }
+    const p = s.products[0];
+    toast('Gerando pra ' + p.name + ' — leva 60-90s…');
+    const r = await api('/generate/' + p.id, { method: 'POST', body: JSON.stringify({ sceneHint, skipVideo: false }) });
+    toast('✓ ' + r.created.length + ' criativos · $' + (r.totalCostUsd || 0).toFixed(2));
+    reload(); loadStats();
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+if (!getToken()) {
+  document.getElementById('root').innerHTML = '<div class="login"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+} else {
+  reload();
+  loadStats();
+}
+</script>
+</body>
+</html>
