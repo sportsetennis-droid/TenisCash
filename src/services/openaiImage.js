@@ -107,47 +107,66 @@ async function uploadToFalStorage(buffer, filename) {
   return url;
 }
 
+const { buildEditorialPrompt, getReferenceImages } = require('./marketingPrompts');
+
 /**
- * Gera foto editorial usando gpt-image-1 com imagem de referência do produto.
- * Interface idêntica ao falAi.generateEditorialPhoto pra plug-and-play.
+ * Gera foto editorial usando gpt-image-1 com até 3 imagens de referência.
+ * Aceita objeto product COMPLETO pra ter acesso a aiContext, imageUrls[], etc.
  *
  * @param {object} opts
- * @param {string} opts.productName
- * @param {string} opts.brand
- * @param {string} opts.imageUrl   - URL pública da foto do produto (referência)
- * @param {string} opts.aspectRatio - '16:9' | '9:16' | '1:1'
+ * @param {object} opts.product    - objeto Product Prisma (com aiContext, imageUrls)
+ * @param {string} opts.aspectRatio - '16:9' | '9:16' | '1:1' | '4:5'
  * @param {string} opts.sceneHint  - cenário custom (opcional)
  * @param {string} opts.quality    - 'low' | 'medium' | 'high' (default: medium)
+ * @param {number} opts.maxRefs    - máx imagens de referência (default 3, gpt-image-1 aceita até 4)
+ *
+ * Aceita também a assinatura antiga { productName, brand, imageUrl } pra compat.
+ *
  * @returns {Promise<{outputUrl, model, prompt, costUsd}>}
  */
-async function generateEditorialPhoto({
-  productName,
-  brand,
-  imageUrl,
-  aspectRatio = '16:9',
-  sceneHint = '',
-  quality = 'medium',
-}) {
+async function generateEditorialPhoto(opts) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY não configurada no .env');
 
-  const scene = sceneHint || pickEditorialScene(productName, brand);
-  const prompt = `Editorial product photography of the ${productName} (${brand}), ${scene}. Hyperrealistic, magazine cover quality, dramatic professional studio lighting, sharp focus on the product. Premium sports/lifestyle brand aesthetic. Do not change product colors, logos, or shape — keep faithful to reference image.`;
+  // Compat: aceita assinatura antiga { productName, brand, imageUrl } montando product on-the-fly
+  let product = opts.product;
+  if (!product) {
+    product = {
+      name: opts.productName,
+      brand: opts.brand,
+      imageUrl: opts.imageUrl,
+      imageUrls: opts.imageUrls,
+    };
+  }
 
-  // 1. Baixa imagem do produto
-  const refBuffer = await withRetry(() => fetchAsBuffer(imageUrl), `fetch ref ${productName.slice(0, 30)}`);
+  const aspectRatio = opts.aspectRatio || '16:9';
+  const sceneHint = opts.sceneHint || '';
+  const quality = opts.quality || 'medium';
+  const maxRefs = opts.maxRefs || 3;
 
-  // 2. Monta multipart pra /v1/images/edits
+  const prompt = buildEditorialPrompt(product, sceneHint, { aspectRatio });
+  const refUrls = getReferenceImages(product, maxRefs);
+  if (refUrls.length === 0) throw new Error('produto sem imagem de referência');
+
+  // 1. Baixa todas as imagens de referência em paralelo
+  const refBuffers = await Promise.all(
+    refUrls.map((url, i) => withRetry(() => fetchAsBuffer(url), `fetch ref ${i + 1}/${refUrls.length}`))
+  );
+
+  // 2. Monta multipart pra /v1/images/edits — gpt-image-1 aceita múltiplas refs
   const form = new FormData();
   form.append('model', 'gpt-image-1');
   form.append('prompt', prompt);
   form.append('size', sizeFor(aspectRatio));
   form.append('quality', quality);
   form.append('n', '1');
-  // gpt-image-1 aceita PNG/JPEG/WebP até 25MB
-  const inputBlob = new Blob([refBuffer], { type: 'image/png' });
-  form.append('image', inputBlob, 'product.png');
+  // Manda cada ref como image[] (ou image múltiplas vezes, dependendo da API)
+  refBuffers.forEach((buf, i) => {
+    const blob = new Blob([buf], { type: 'image/png' });
+    form.append('image[]', blob, `product-${i}.png`);
+  });
 
   // 3. Chama OpenAI
+  const productName = product.name || 'product';
   const result = await withRetry(async () => {
     const r = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
@@ -159,14 +178,14 @@ async function generateEditorialPhoto({
       throw new Error(`OpenAI ${r.status}: ${txt.slice(0, 300)}`);
     }
     return r.json();
-  }, `gpt-image-1 ${productName.slice(0, 30)}`);
+  }, `gpt-image-1 ${productName.slice(0, 30)} [${refUrls.length} refs]`);
 
   const b64 = result?.data?.[0]?.b64_json;
   if (!b64) throw new Error('gpt-image-1 não retornou b64_json');
 
   // 4. Upload pra fal.storage
   const outBuffer = Buffer.from(b64, 'base64');
-  const filename = `gpt-${Date.now()}-${(productName || 'prod').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.png`;
+  const filename = `gpt-${Date.now()}-${productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.png`;
   const outputUrl = await withRetry(() => uploadToFalStorage(outBuffer, filename), `upload ${filename}`);
 
   return {
@@ -175,21 +194,6 @@ async function generateEditorialPhoto({
     prompt,
     costUsd: COSTS[`gpt-image-1:${quality}`] || 0.042,
   };
-}
-
-/**
- * Mesma heurística do falAi pra escolher cenário editorial.
- */
-function pickEditorialScene(name, brand) {
-  const n = (name || '').toLowerCase();
-  if (n.match(/corrida|run|running/)) return 'urban street with morning light, athlete blur in background';
-  if (n.match(/futebol|chuteira|society/)) return 'green grass football field, golden hour, condensation drops';
-  if (n.match(/tenis(?!\s)|tennis|padel/)) return 'red clay tennis court with net in background, vibrant sunset';
-  if (n.match(/basquete|basket/)) return 'outdoor concrete basketball court, dramatic city skyline';
-  if (n.match(/treino|gym|crossfit|musculação/)) return 'industrial gym with steel beams, moody dramatic lighting';
-  if (n.match(/caminhada|walk|tracking|trilha/)) return 'mountain trail with morning mist, soft natural light';
-  if (n.match(/feminin|woman/)) return 'modern minimalist studio, soft pastel background';
-  return 'modern sports lifestyle scene, urban environment, warm sunset lighting';
 }
 
 module.exports = {

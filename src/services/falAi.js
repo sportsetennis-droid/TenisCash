@@ -52,18 +52,43 @@ async function withRetry(fn, opName, maxAttempts = 3) {
   throw lastErr;
 }
 
+const { buildEditorialPrompt, getReferenceImages } = require('./marketingPrompts');
+
 /**
  * Gera foto editorial profissional do produto.
  * Usa Flux Pro Kontext Max com imagem de referência (produto do catálogo).
- * @param {object} opts { productName, brand, imageUrl, aspectRatio, sceneHint }
+ * Flux Kontext Max aceita apenas 1 imagem de ref, então usa a 1ª.
+ *
+ * @param {object} opts
+ *   - product: objeto Product completo (preferido — usa aiContext, imageUrls)
+ *   - OU productName, brand, imageUrl (compat antiga)
+ *   - aspectRatio, sceneHint
  * @returns {Promise<{outputUrl, model, prompt, costUsd}>}
  */
-async function generateEditorialPhoto({ productName, brand, imageUrl, aspectRatio = '16:9', sceneHint = '' }) {
+async function generateEditorialPhoto(opts) {
   const fal = await getFal();
   const model = 'fal-ai/flux-pro/kontext/max';
 
-  const scene = sceneHint || pickEditorialScene(productName, brand);
-  const prompt = `Editorial product photography of ${productName} (${brand}), ${scene}, dramatic studio lighting, hyperrealistic, 8k, magazine cover quality, sharp focus on product, professional sports/lifestyle aesthetic`;
+  // Compat: aceita assinatura antiga
+  let product = opts.product;
+  if (!product) {
+    product = {
+      name: opts.productName,
+      brand: opts.brand,
+      imageUrl: opts.imageUrl,
+      imageUrls: opts.imageUrls,
+    };
+  }
+
+  const aspectRatio = opts.aspectRatio || '16:9';
+  const sceneHint = opts.sceneHint || '';
+
+  const prompt = buildEditorialPrompt(product, sceneHint, { aspectRatio });
+  const refs = getReferenceImages(product, 1); // Kontext Max só aceita 1
+  const imageUrl = refs[0];
+  if (!imageUrl) throw new Error('produto sem imagem de referência');
+
+  const productName = product.name || 'product';
 
   const result = await withRetry(
     () => fal.subscribe(model, {

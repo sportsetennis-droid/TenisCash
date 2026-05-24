@@ -50,24 +50,30 @@ router.post('/generate/:productId', async (req, res) => {
     } = req.body || {};
     const product = await prisma.product.findUnique({
       where: { id: req.params.productId },
-      select: { id: true, name: true, brand: true, category: true, price: true, shortDescription: true, imageUrl: true, sku: true },
+      select: {
+        id: true, name: true, brand: true, category: true, subcategory: true,
+        price: true, shortDescription: true,
+        imageUrl: true, imageUrls: true,
+        aiContext: true,
+        sku: true,
+      },
     });
     if (!product) return res.status(404).json({ error: 'produto não encontrado' });
     if (!product.imageUrl) return res.status(400).json({ error: 'produto sem imageUrl — não dá pra usar como referência' });
 
-    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name}) · provider=${provider}`);
+    // Aspect ratio configurável via body (default 16:9). Aceita 1:1, 4:5, 9:16.
+    const aspectRatio = req.body?.aspectRatio || '16:9';
+    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name}) · provider=${provider} · ar=${aspectRatio}`);
 
     // Roda as gerações em paralelo (fal.ai e OpenAI aguentam)
     const tasks = [];
 
-    // Foto editorial — pelo provider escolhido
+    // Foto editorial — pelo provider escolhido. Passa product completo pra usar aiContext/imageUrls
     if (provider === 'fal' || provider === 'both') {
       tasks.push(
         falAi.generateEditorialPhoto({
-          productName: product.name,
-          brand: product.brand,
-          imageUrl: product.imageUrl,
-          aspectRatio: '16:9',
+          product,
+          aspectRatio,
           sceneHint,
         }).then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
       );
@@ -75,10 +81,8 @@ router.post('/generate/:productId', async (req, res) => {
     if (provider === 'openai' || provider === 'both') {
       tasks.push(
         openaiImage.generateEditorialPhoto({
-          productName: product.name,
-          brand: product.brand,
-          imageUrl: product.imageUrl,
-          aspectRatio: '16:9',
+          product,
+          aspectRatio,
           sceneHint,
           quality: openaiQuality,
         }).then(r => ({ kind: 'editorial_photo', provider: 'openai', ...r }))

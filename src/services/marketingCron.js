@@ -80,9 +80,7 @@ async function runContentCreative() {
         console.log(`[marketingCron] gerando criativo pra ${product.sku} (${product.name.slice(0,50)})${includeVideo ? ' [com vídeo]' : ' [sem vídeo — econômico]'}`);
         const tasks = [
           falAi.generateEditorialPhoto({
-            productName: product.name,
-            brand: product.brand,
-            imageUrl: product.imageUrl,
+            product,
             aspectRatio: '16:9',
           }),
           falAi.removeBackground({ imageUrl: product.imageUrl }),
@@ -200,7 +198,7 @@ async function selectCandidates(limit) {
     },
     orderBy: [{ featured: 'desc' }],
     take: limit * 8,  // pool maior pra randomizar com diversidade
-    select: { id: true, sku: true, name: true, brand: true, category: true, price: true, imageUrl: true, shortDescription: true },
+    select: { id: true, sku: true, name: true, brand: true, category: true, subcategory: true, price: true, imageUrl: true, imageUrls: true, aiContext: true, shortDescription: true },
   });
 
   // Diversifica: max 1 por marca
