@@ -151,9 +151,10 @@
     </div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
       <label class="cat-toggle" style="font-size:13px"><b>Modelo da imagem:</b></label>
-      <label class="cat-toggle"><input type="radio" name="cat-provider" value="fal" checked> <span>📸 Flux Pro Kontext ($0.04)</span></label>
-      <label class="cat-toggle"><input type="radio" name="cat-provider" value="openai"> <span>🤖 GPT-Image-1 ($0.04)</span></label>
-      <label class="cat-toggle"><input type="radio" name="cat-provider" value="both"> <span>🎨 Ambos lado a lado ($0.08)</span></label>
+      <label class="cat-toggle" title="Produto REAL + cenário IA. Fidelidade 100% — recomendado pra anúncio."><input type="radio" name="cat-provider" value="composite" checked> <span>🎯 Composite — fiel 100% <span style="color:#0a843d;font-size:11px">(recomendado)</span></span></label>
+      <label class="cat-toggle" title="Flux re-imagina o produto. Pode deformar texto/quantidade."><input type="radio" name="cat-provider" value="fal"> <span>📸 Flux <span style="color:#a8a8ad;font-size:11px">(criativo, pode deformar)</span></span></label>
+      <label class="cat-toggle" title="GPT re-imagina o produto. Pode deformar texto/quantidade."><input type="radio" name="cat-provider" value="openai"> <span>🤖 GPT <span style="color:#a8a8ad;font-size:11px">(criativo, pode deformar)</span></span></label>
+      <label class="cat-toggle" title="Os 3 lado a lado pra comparar"><input type="radio" name="cat-provider" value="all"> <span>🎨 Todos os 3 ($0.13)</span></label>
     </div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <label class="cat-toggle" style="font-size:13px"><b>Formato:</b></label>
@@ -262,10 +263,11 @@ function renderCard(c) {
   const isVideo = c.kind === 'reel_video';
   const isTransp = c.kind === 'transparent_photo';
   const kindLabel = { editorial_photo: '📸 Foto editorial 16:9', reel_video: '🎬 Reel 9:16', transparent_photo: '✂️ Sem fundo' }[c.kind] || c.kind;
-  // Tag do modelo: gpt-image-1 → "🤖 GPT", flux/* → "📸 Flux", hailuo → "🎬 Hailuo", bria → "✂️ Bria"
+  // Tag do modelo
   let modelTag = '';
   if (c.model) {
-    if (c.model.includes('gpt-image')) modelTag = '🤖 GPT';
+    if (c.model.includes('composite')) modelTag = '🎯 Composite';
+    else if (c.model.includes('gpt-image')) modelTag = '🤖 GPT';
     else if (c.model.includes('flux')) modelTag = '📸 Flux';
     else if (c.model.includes('hailuo') || c.model.includes('minimax')) modelTag = '🎬 Hailuo';
     else if (c.model.includes('bria')) modelTag = '✂️ Bria';
@@ -637,11 +639,18 @@ function getAspect() {
 }
 
 function perItemCost(skipVideo, provider) {
-  // Foto editorial: fal=$0.04, openai=$0.04, both=$0.08
+  // Foto editorial por provider:
+  //   composite = $0.05 (bria $0.01 + flux bg $0.04, ja inclui sem-fundo)
+  //   fal       = $0.04
+  //   openai    = $0.04
+  //   both      = $0.08 (fal + openai)
+  //   all       = $0.13 (composite + fal + openai)
   let photo = 0.04;
-  if (provider === 'both') photo = 0.08;
-  // Bria remove bg: $0.01
-  const bg = 0.01;
+  if (provider === 'composite') photo = 0.05;
+  else if (provider === 'both') photo = 0.08;
+  else if (provider === 'all') photo = 0.13;
+  // Bria sem-fundo separado: $0.01 (composite ja inclui, então não duplica)
+  const bg = provider === 'composite' ? 0 : 0.01;
   // Video Hailuo Pro: $0.50
   const vid = skipVideo ? 0 : 0.50;
   return photo + bg + vid;
@@ -695,7 +704,7 @@ async function catalogGenerate() {
   const perItem = perItemCost(skipVideo, provider);
   const totalCost = (jobs.length * perItem).toFixed(2);
   const produtos = STATE.catalog.selected.size;
-  const providerLabel = { fal: 'Flux Pro', openai: 'GPT-Image-1', both: 'Flux + GPT (lado a lado)' }[provider];
+  const providerLabel = { composite: '🎯 Composite (produto real + cenário IA)', fal: 'Flux Pro', openai: 'GPT-Image-1', both: 'Flux + GPT (lado a lado)', all: 'Composite + Flux + GPT (todos)' }[provider];
   const msg = `Gerar ${jobs.length} criativo(s) com ${providerLabel} (${produtos} produto${produtos !== 1 ? 's' : ''}, cada variação usa cenário diferente)?\n\nCusto estimado: $${totalCost}\nTempo: ~${jobs.length * (skipVideo ? (provider === 'openai' ? 60 : 30) : 90)}s`;
   if (!confirm(msg)) return;
 

@@ -356,15 +356,123 @@
   }
 
   const input = document.getElementById('codigo');
+
+  // ============================================================
+  // DEFESAS ANTI-BIPADOR-BUGADO
+  // ============================================================
+  // Alguns bipadores USB sem fio bugam e disparam keystroke
+  // repetido infinito ("333333..." ou similar). Defesas:
+  //   1. Se chegarem >12 chars iguais consecutivos sem Enter → reset
+  //   2. Se input passar de 60 chars sem Enter → trava e mostra alerta
+  //      (códigos de barras reais têm 8-14 dígitos)
+  //   3. Botão "Reset" emergencial sempre disponível
+  //   4. Overlay opcional de debug (#debug=1 na URL)
+  // ============================================================
+
+  const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+  let lastChar = '';
+  let sameCharCount = 0;
+  let lastKeyTime = 0;
+  let debugOverlay = null;
+
+  if (DEBUG) {
+    debugOverlay = document.createElement('div');
+    debugOverlay.id = 'debug-overlay';
+    debugOverlay.style.cssText = 'position:fixed;bottom:10px;right:10px;width:300px;max-height:240px;overflow:auto;background:rgba(0,0,0,0.85);color:#0f0;font:11px/1.3 monospace;padding:8px;border-radius:6px;z-index:99999';
+    debugOverlay.innerHTML = '<b style="color:#fff">DEBUG (?debug=1)</b><br>Aperte trigger do bipador...';
+    document.body.appendChild(debugOverlay);
+  }
+
+  function logDebug(line) {
+    if (!debugOverlay) return;
+    const div = document.createElement('div');
+    div.textContent = `[${new Date().toISOString().slice(11,23)}] ${line}`;
+    debugOverlay.appendChild(div);
+    debugOverlay.scrollTop = debugOverlay.scrollHeight;
+    while (debugOverlay.children.length > 50) debugOverlay.firstChild?.remove();
+  }
+
+  function resetInput(reason) {
+    input.value = '';
+    lastChar = '';
+    sameCharCount = 0;
+    if (reason) {
+      console.warn('[bipar] reset:', reason);
+      logDebug('RESET: ' + reason);
+      const el = document.getElementById('last-bipe');
+      if (el) {
+        el.className = 'last-bipe error';
+        el.textContent = '⚠️ Leitor bugado, resetei. Tente bipar de novo. (' + reason + ')';
+      }
+    }
+  }
+
   input.addEventListener('keydown', (e) => {
+    const now = Date.now();
+    const dt = now - lastKeyTime;
+    lastKeyTime = now;
+
+    if (DEBUG) logDebug(`key="${e.key}" code=${e.code} dt=${dt}ms len=${input.value.length}`);
+
     if (e.key === 'Enter') {
       e.preventDefault();
       const v = input.value.trim();
       if (v) {
+        // Valida: código de barras esperado tem 6-20 dígitos (EAN-8/13, GTIN, UPC, Code128)
+        // Mas NÃO bloqueia: deixa enviar e backend valida — só avisa
+        if (v.length > 20) {
+          resetInput('código muito longo (' + v.length + ' chars). Bipador travado?');
+          return;
+        }
+        if (/^(.)\1{6,}$/.test(v)) {
+          // String tipo "33333333" ou "11111111" — claro bug do leitor
+          resetInput('código com char repetido (bipador bugado): ' + v.slice(0, 20));
+          return;
+        }
         enviarBipe(v);
         input.value = '';
+        lastChar = '';
+        sameCharCount = 0;
+      }
+      return;
+    }
+
+    // Detecta stream de char repetido (bug do bipador)
+    // Real barcode é unique pattern (várias letras/dígitos diferentes), nunca 12x mesmo char.
+    if (e.key.length === 1) { // ignora teclas especiais
+      if (e.key === lastChar) {
+        sameCharCount++;
+        if (sameCharCount >= 12) {
+          e.preventDefault();
+          resetInput('detectei ' + sameCharCount + 'x o char "' + lastChar + '" — bipador bugado');
+          return;
+        }
+      } else {
+        lastChar = e.key;
+        sameCharCount = 1;
       }
     }
+
+    // Trava input gigante (>60 chars = bipador travado em loop)
+    if (input.value.length > 60) {
+      e.preventDefault();
+      resetInput('input ultrapassou 60 chars — bipador travado');
+    }
+  });
+
+  // Reset automático se ficar input parado >2s sem Enter (leitor enviou parcial e parou)
+  setInterval(() => {
+    if (input.value.length > 0 && Date.now() - lastKeyTime > 2000) {
+      // tinha algo digitado, parou de receber, nunca veio Enter → provavelmente lixo
+      if (input.value.length > 25 || /^(.)\1{6,}$/.test(input.value)) {
+        resetInput('input ficou parado com lixo: ' + input.value.slice(0, 20));
+      }
+    }
+  }, 1000);
+
+  // Atalho global: tecla F2 reseta input emergencial
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F2') { e.preventDefault(); resetInput('manual via F2'); }
   });
 
   // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select

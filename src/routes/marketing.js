@@ -16,6 +16,7 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const falAi = require('../services/falAi');
 const openaiImage = require('../services/openaiImage');
+const compositeImage = require('../services/compositeImage');
 const copyGen = require('../services/copyGenerator');
 
 const router = express.Router();
@@ -45,7 +46,7 @@ router.post('/generate/:productId', async (req, res) => {
       skipVideo = false,
       skipBgRemove = false,
       sceneHint = '',
-      provider = 'fal',         // 'fal' | 'openai' | 'both'
+      provider = 'composite',         // 'composite' (default — fidelidade 100%) | 'fal' | 'openai' | 'both'
       openaiQuality = 'medium',  // 'low' | 'medium' | 'high'
     } = req.body || {};
     const product = await prisma.product.findUnique({
@@ -68,8 +69,19 @@ router.post('/generate/:productId', async (req, res) => {
     // Roda as gerações em paralelo (fal.ai e OpenAI aguentam)
     const tasks = [];
 
-    // Foto editorial — pelo provider escolhido. Passa product completo pra usar aiContext/imageUrls
-    if (provider === 'fal' || provider === 'both') {
+    // Foto editorial — pelo provider escolhido.
+    // 'composite' (default): produto REAL + cenário IA (fidelidade 100%)
+    // 'fal'/'openai': image-to-image generativo (cenas mais ricas, mas pode deformar produto)
+    if (provider === 'composite' || provider === 'all') {
+      tasks.push(
+        compositeImage.generateEditorialPhoto({
+          product,
+          aspectRatio,
+          sceneHint,
+        }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
+      );
+    }
+    if (provider === 'fal' || provider === 'both' || provider === 'all') {
       tasks.push(
         falAi.generateEditorialPhoto({
           product,
@@ -78,7 +90,7 @@ router.post('/generate/:productId', async (req, res) => {
         }).then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
       );
     }
-    if (provider === 'openai' || provider === 'both') {
+    if (provider === 'openai' || provider === 'both' || provider === 'all') {
       tasks.push(
         openaiImage.generateEditorialPhoto({
           product,
