@@ -84,6 +84,14 @@
   .cat-card.already-generated { opacity: 0.6; }
   .cat-card .cat-badge { position: absolute; top: 8px; left: 8px; background: rgba(40,150,80,0.95); color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px; text-transform: uppercase; }
 
+  /* Quantity stepper (variações por produto) */
+  .cat-qty { position: absolute; bottom: 8px; right: 8px; display: flex; align-items: center; gap: 0; background: #fff; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,0.18); border: 1.5px solid #FF6A1F; overflow: hidden; }
+  .cat-qty button { background: transparent; border: none; width: 28px; height: 28px; font-size: 16px; font-weight: 800; color: #FF6A1F; cursor: pointer; padding: 0; line-height: 1; }
+  .cat-qty button:active { background: #FFEBDC; }
+  .cat-qty button:disabled { color: #d0d0d5; cursor: not-allowed; }
+  .cat-qty .cat-qty-val { min-width: 22px; text-align: center; font-weight: 800; font-size: 13px; color: #0a0a0a; }
+  .a-more { background: #fff; color: #FF6A1F; border: 1.5px solid #FF6A1F; }
+
   /* Floating bar */
   .cat-floating { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #fff; border-radius: 999px; padding: 12px 18px 12px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); display: none; align-items: center; gap: 16px; z-index: 50; border: 1.5px solid #e5e5ea; max-width: 92vw; }
   .cat-floating.visible { display: flex; }
@@ -146,8 +154,8 @@
   <!-- Barra flutuante de ação (aparece quando seleciona produtos) -->
   <div id="cat-floating-bar" class="cat-floating">
     <div class="cat-float-info">
-      <span id="cat-float-count">0</span> selecionados
-      <span class="cat-float-cost">· Custo estimado: $<span id="cat-float-cost">0.00</span></span>
+      <span id="cat-float-count">0</span>
+      <span class="cat-float-cost">· Custo: $<span id="cat-float-cost">0.00</span></span>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" onclick="catalogClear()">Limpar</button>
@@ -166,7 +174,7 @@ const STATE = {
     loaded: false,
     loading: false,
     products: [],
-    selected: new Set(),
+    selected: new Map(),  // id -> quantidade de variações (1..5)
     brands: [],
     page: 1,
     pageSize: 40,
@@ -278,6 +286,7 @@ function renderCard(c) {
             <a class="a-btn a-pub" style="text-decoration:none;text-align:center;line-height:24px" href="${escH(c.publications[0].externalUrl)}" target="_blank">Ver no IG ↗</a>
           ` : ''}
           <button class="a-btn a-dl" onclick="downloadCreative('${c.id}')" title="Baixar arquivo">⬇️ Baixar</button>
+          ${p.id ? `<button class="a-btn a-more" onclick="generateMore('${c.id}')" title="Gerar mais 1 variação deste produto">🔄 +1</button>` : ''}
           <button class="a-btn a-save" onclick="saveCopy('${c.id}')" title="Salvar edição copies">💾</button>
           ${c.status !== 'published' ? `<button class="a-btn a-del" onclick="del('${c.id}')" title="Apagar">🗑️</button>` : ''}
         </div>
@@ -342,6 +351,25 @@ async function downloadCreative(id) {
     window.open(c.outputUrl, '_blank');
     toast('Abri em nova aba — use Ctrl+S pra salvar');
   }
+}
+
+async function generateMore(creativeId) {
+  const c = STATE.creatives.find(x => x.id === creativeId);
+  if (!c || !c.product?.id) { toast('Produto não encontrado'); return; }
+  const p = c.product;
+  const sceneHint = prompt(`Cenário para a nova variação de "${p.name.slice(0, 60)}":\n\n(deixe vazio pra cenário automático diferente do atual)`, '');
+  if (sceneHint === null) return; // cancelou
+  const skipVideo = confirm('Sem vídeo? (OK = sem vídeo, $0.05 — Cancelar = com vídeo, $0.55)');
+  try {
+    toast(`Gerando variação pra ${p.name.slice(0, 30)}… leva ${skipVideo ? '30s' : '90s'}`);
+    const r = await api('/generate/' + p.id, {
+      method: 'POST',
+      body: JSON.stringify({ skipVideo, sceneHint: sceneHint.trim() || SCENE_HINTS[Math.floor(Math.random() * (SCENE_HINTS.length - 1)) + 1] }),
+    });
+    toast('✓ ' + r.created.length + ' criativos novos · $' + (r.totalCostUsd || 0).toFixed(2));
+    reload();
+    loadStats();
+  } catch (e) { toast('Erro: ' + e.message); }
 }
 
 async function publish(id) {
@@ -468,16 +496,25 @@ async function loadRecentlyUsed() {
 }
 
 function renderCatalogCard(p) {
-  const selected = STATE.catalog.selected.has(p.id);
+  const qty = STATE.catalog.selected.get(p.id) || 0;
+  const selected = qty > 0;
   const alreadyGen = STATE.catalog.recentProductIds.has(p.id);
   const img = p.imageUrl
     ? `<img class="cat-img" src="${escH(p.imageUrl)}" alt="" loading="lazy">`
     : '<div class="cat-img" style="display:flex;align-items:center;justify-content:center;font-size:32px;color:#c0c0c5">📦</div>';
+  const stepper = selected
+    ? `<div class="cat-qty" onclick="event.stopPropagation()">
+         <button onclick="changeQty('${escH(p.id)}', -1)" ${qty <= 1 ? '' : ''}>−</button>
+         <span class="cat-qty-val" title="variações">${qty}</span>
+         <button onclick="changeQty('${escH(p.id)}', +1)" ${qty >= 5 ? 'disabled' : ''}>+</button>
+       </div>`
+    : '';
   return `
     <div class="cat-card${selected ? ' selected' : ''}${alreadyGen ? ' already-generated' : ''}" onclick="toggleProduct('${escH(p.id)}')">
       ${img}
       ${alreadyGen ? '<div class="cat-badge">✓ recente</div>' : ''}
       <div class="cat-check">✓</div>
+      ${stepper}
       <div class="cat-info">
         <div class="cat-name">${escH(p.name || '—')}</div>
         <div class="cat-brand">${escH(p.brand || 'sem marca')} · ${escH(p.sku || '')}</div>
@@ -507,20 +544,31 @@ function catalogPage(p) {
 
 function toggleProduct(id) {
   if (STATE.catalog.selected.has(id)) STATE.catalog.selected.delete(id);
-  else STATE.catalog.selected.add(id);
-  // Re-renderiza só o card afetado pra UX rápida
+  else STATE.catalog.selected.set(id, 1);
+  rerenderCard(id);
+  updateFloatingBar();
+}
+
+function changeQty(id, delta) {
+  const cur = STATE.catalog.selected.get(id) || 0;
+  const next = Math.max(0, Math.min(5, cur + delta));
+  if (next === 0) STATE.catalog.selected.delete(id);
+  else STATE.catalog.selected.set(id, next);
+  rerenderCard(id);
+  updateFloatingBar();
+}
+
+function rerenderCard(id) {
   const grid = document.getElementById('cat-grid');
   const p = STATE.catalog.products.find(x => x.id === id);
-  if (p) {
-    const cards = grid.querySelectorAll('.cat-card');
-    for (const card of cards) {
-      if (card.getAttribute('onclick')?.includes(id)) {
-        card.outerHTML = renderCatalogCard(p);
-        break;
-      }
+  if (!p) return;
+  const cards = grid.querySelectorAll('.cat-card');
+  for (const card of cards) {
+    if (card.getAttribute('onclick')?.includes(id)) {
+      card.outerHTML = renderCatalogCard(p);
+      break;
     }
   }
-  updateFloatingBar();
 }
 
 function catalogSearch() {
@@ -543,43 +591,70 @@ function catalogClear() {
 
 function updateFloatingBar() {
   const bar = document.getElementById('cat-floating-bar');
-  const n = STATE.catalog.selected.size;
-  document.getElementById('cat-float-count').textContent = n;
+  const produtos = STATE.catalog.selected.size;
+  // Total de variações = soma das quantidades
+  let totalVar = 0;
+  STATE.catalog.selected.forEach(q => totalVar += q);
+  document.getElementById('cat-float-count').textContent = produtos === totalVar
+    ? `${produtos} selecionado${produtos !== 1 ? 's' : ''}`
+    : `${produtos} produto${produtos !== 1 ? 's' : ''} · ${totalVar} variaç${totalVar !== 1 ? 'ões' : 'ão'}`;
   const skipVideo = document.getElementById('cat-skipvideo')?.checked;
   const perItem = skipVideo ? 0.05 : 0.55;
-  document.getElementById('cat-float-cost').textContent = (n * perItem).toFixed(2);
-  bar.classList.toggle('visible', n > 0);
+  document.getElementById('cat-float-cost').textContent = (totalVar * perItem).toFixed(2);
+  bar.classList.toggle('visible', produtos > 0);
 }
 
 document.addEventListener('change', (e) => {
   if (e.target?.id === 'cat-skipvideo') updateFloatingBar();
 });
 
+// Cenários pré-definidos pra rodízio quando o usuário quer múltiplas variações do mesmo produto.
+// Cada índice vira sceneHint diferente — assim Flux/Hailuo não geram cópias idênticas.
+const SCENE_HINTS = [
+  '',  // 1ª: cenário default do prompt base (editorial premium)
+  'close-up extremo do produto sobre superfície de mármore branco, luz lateral dramática, sombras suaves',
+  'produto em ambiente outdoor de quadra de tênis ao pôr do sol, luz dourada, atleta desfocado ao fundo',
+  'flat lay top-down sobre fundo neutro cinza claro, com acessórios esportivos (toalha, garrafa) ao redor',
+  'produto em destaque dentro de um vestiário moderno minimalista, iluminação cinematográfica suave',
+];
+
+function buildJobs(skipVideo) {
+  // Expande selected (Map) em lista plana de jobs { productId, sceneHint, variantIdx }
+  const jobs = [];
+  STATE.catalog.selected.forEach((qty, productId) => {
+    for (let i = 0; i < qty; i++) {
+      jobs.push({ productId, sceneHint: SCENE_HINTS[i % SCENE_HINTS.length], variantIdx: i + 1, totalVar: qty });
+    }
+  });
+  return jobs;
+}
+
 async function catalogGenerate() {
-  const ids = Array.from(STATE.catalog.selected);
-  if (ids.length === 0) { toast('Selecione pelo menos 1 produto'); return; }
+  const jobs = buildJobs();
+  if (jobs.length === 0) { toast('Selecione pelo menos 1 produto'); return; }
   const skipVideo = document.getElementById('cat-skipvideo').checked;
   const perItem = skipVideo ? 0.05 : 0.55;
-  const totalCost = (ids.length * perItem).toFixed(2);
-  if (!confirm(`Gerar criativo pra ${ids.length} produto(s)?\n\nCusto estimado: $${totalCost}\nTempo: ~${ids.length * (skipVideo ? 30 : 90)}s`)) return;
+  const totalCost = (jobs.length * perItem).toFixed(2);
+  const produtos = STATE.catalog.selected.size;
+  const msg = `Gerar ${jobs.length} criativo(s) (${produtos} produto${produtos !== 1 ? 's' : ''}, cada variação usa cenário diferente)?\n\nCusto estimado: $${totalCost}\nTempo: ~${jobs.length * (skipVideo ? 30 : 90)}s`;
+  if (!confirm(msg)) return;
 
   let ok = 0, fail = 0;
-  let i = 0;
-  // Sequencial pra evitar timeout 524 do Cloudflare (havia rolado antes)
-  for (const productId of ids) {
-    i++;
-    const p = STATE.catalog.products.find(x => x.id === productId) || {};
-    toast(`Gerando ${i}/${ids.length}: ${(p.name || productId).slice(0, 40)}…`);
+  // Sequencial pra evitar timeout 524 do Cloudflare em paralelo
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    const p = STATE.catalog.products.find(x => x.id === job.productId) || {};
+    const tag = job.totalVar > 1 ? ` v${job.variantIdx}/${job.totalVar}` : '';
+    toast(`Gerando ${i + 1}/${jobs.length}: ${(p.name || job.productId).slice(0, 36)}${tag}…`);
     try {
-      const r = await api('/generate/' + productId, {
+      const r = await api('/generate/' + job.productId, {
         method: 'POST',
-        body: JSON.stringify({ skipVideo, sceneHint: '' }),
+        body: JSON.stringify({ skipVideo, sceneHint: job.sceneHint }),
       });
-      ok += (r?.created?.length ? 1 : 0);
-      // Marca como recente pra UI atualizar visual
-      STATE.catalog.recentProductIds.add(productId);
+      if (r?.created?.length) ok++;
+      STATE.catalog.recentProductIds.add(job.productId);
     } catch (e) {
-      console.warn('gen fail', productId, e.message);
+      console.warn('gen fail', job.productId, e.message);
       fail++;
     }
   }
@@ -589,10 +664,8 @@ async function catalogGenerate() {
   const grid = document.getElementById('cat-grid');
   grid.innerHTML = STATE.catalog.products.map(renderCatalogCard).join('');
   updateFloatingBar();
-  // Atualiza stats e lista de criativos pra refletir os novos
   loadStats();
   if (ok > 0) {
-    // Vai pra aba de criativos pra ver o resultado
     setTimeout(() => {
       switchMainTab('criativos');
       reload();
