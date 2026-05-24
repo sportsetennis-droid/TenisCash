@@ -47,6 +47,7 @@ const whatsappRoutes = require('./routes/whatsapp');
 const stocktakeRoutes = require('./routes/stocktake');
 const messagesV2Routes = require('./routes/messagesV2');
 const marketingRoutes = require('./routes/marketing');
+const marketingConfigRoutes = require('./routes/marketingConfig');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
 
@@ -141,6 +142,7 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
+app.use('/api/marketing-config', marketingConfigRoutes);
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);

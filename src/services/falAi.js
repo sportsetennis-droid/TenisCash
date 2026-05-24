@@ -83,7 +83,7 @@ async function generateEditorialPhoto(opts) {
   const aspectRatio = opts.aspectRatio || '16:9';
   const sceneHint = opts.sceneHint || '';
 
-  const prompt = buildEditorialPrompt(product, sceneHint, { aspectRatio });
+  const prompt = await buildEditorialPrompt(product, sceneHint, { aspectRatio });
   const refs = getReferenceImages(product, 1); // Kontext Max só aceita 1
   const imageUrl = refs[0];
   if (!imageUrl) throw new Error('produto sem imagem de referência');

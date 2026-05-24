@@ -143,7 +143,7 @@ async function generateEditorialPhoto(opts) {
   const quality = opts.quality || 'medium';
   const maxRefs = opts.maxRefs || 3;
 
-  const prompt = buildEditorialPrompt(product, sceneHint, { aspectRatio });
+  const prompt = await buildEditorialPrompt(product, sceneHint, { aspectRatio });
   const refUrls = getReferenceImages(product, maxRefs);
   if (refUrls.length === 0) throw new Error('produto sem imagem de referência');
 

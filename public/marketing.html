@@ -65,6 +65,20 @@
   .main-tab.active { color: #FF6A1F; border-bottom-color: #FF6A1F; }
   .main-tab:hover { color: #0a0a0a; }
 
+  /* Config sub-tabs */
+  .cfg-tab { background: transparent; border: none; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #6e6e73; cursor: pointer; border-bottom: 2.5px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .cfg-tab.active { color: #FF6A1F; border-bottom-color: #FF6A1F; font-weight: 700; }
+  .cfg-tab:hover { color: #0a0a0a; }
+  .cfg-row { display: grid; grid-template-columns: 200px 1fr 80px; gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid #f0f0f5; }
+  .cfg-row input.cfg-key { padding: 8px 10px; border: 1px solid #e5e5ea; border-radius: 8px; font-size: 13px; font-family: inherit; }
+  .cfg-row textarea.cfg-val { width: 100%; padding: 8px 10px; border: 1px solid #e5e5ea; border-radius: 8px; font-size: 13px; font-family: inherit; min-height: 60px; resize: vertical; }
+  .cfg-row button.cfg-del { padding: 4px 10px; background: #fff; color: #d70015; border: 1px solid #e5e5ea; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; height: fit-content; }
+  .cfg-actions { display: flex; gap: 8px; margin: 18px 0 8px; align-items: center; flex-wrap: wrap; }
+  .cfg-btn { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: none; }
+  .cfg-btn-primary { background: #FF6A1F; color: #fff; }
+  .cfg-btn-secondary { background: #fff; color: #0a0a0a; border: 1px solid #e5e5ea; }
+  .cfg-info { background: #fef9f5; border: 1px solid #FFEBDC; padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #6e6e73; margin-bottom: 14px; }
+
   /* Catalog */
   .catalog-controls { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 14px; align-items: center; }
   @media (max-width: 700px) { .catalog-controls { grid-template-columns: 1fr; } }
@@ -119,9 +133,10 @@
   </div>
 
   <!-- Tabs principais -->
-  <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1.5px solid #e5e5ea">
+  <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1.5px solid #e5e5ea;overflow-x:auto">
     <button class="main-tab active" data-tab="criativos" onclick="switchMainTab('criativos')">🎨 Criativos gerados</button>
     <button class="main-tab" data-tab="catalogo" onclick="switchMainTab('catalogo')">📦 Escolher do catálogo</button>
+    <button class="main-tab" data-tab="config" onclick="switchMainTab('config')">⚙️ Configurações IA</button>
   </div>
 
   <!-- TAB 1: Criativos -->
@@ -171,6 +186,19 @@
     <div id="cat-counter" style="font-size:13px;color:#6e6e73;margin-bottom:10px"></div>
     <div id="cat-grid" class="cat-grid"><div class="empty">Carregando produtos...</div></div>
     <div id="cat-pagination" style="text-align:center;margin:24px 0"></div>
+  </div>
+
+  <!-- TAB 3: Configurações IA -->
+  <div id="tab-config" style="display:none">
+    <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #e5e5ea;overflow-x:auto">
+      <button class="cfg-tab active" data-cfg="brands" onclick="switchCfgTab('brands')">🏷️ Cenários por marca</button>
+      <button class="cfg-tab" data-cfg="modalities" onclick="switchCfgTab('modalities')">⚽ Cenários por modalidade</button>
+      <button class="cfg-tab" data-cfg="hints" onclick="switchCfgTab('hints')">🎬 Variações automáticas</button>
+      <button class="cfg-tab" data-cfg="prompts" onclick="switchCfgTab('prompts')">💬 Prompts dos provedores</button>
+      <button class="cfg-tab" data-cfg="persona" onclick="switchCfgTab('persona')">🧑 Persona & Voz</button>
+      <button class="cfg-tab" data-cfg="agents" onclick="switchCfgTab('agents')">🤖 Agentes Central IA</button>
+    </div>
+    <div id="cfg-content" style="background:#fff;border:1px solid #e5e5ea;border-radius:14px;padding:18px"><div class="empty">Carregando...</div></div>
   </div>
 
   <!-- Barra flutuante de ação (aparece quando seleciona produtos) -->
@@ -460,11 +488,286 @@ function switchMainTab(name) {
   document.querySelectorAll('.main-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.getElementById('tab-criativos').style.display = name === 'criativos' ? '' : 'none';
   document.getElementById('tab-catalogo').style.display = name === 'catalogo' ? '' : 'none';
+  document.getElementById('tab-config').style.display = name === 'config' ? '' : 'none';
   if (name === 'catalogo' && !STATE.catalog.loaded) {
     loadBrands();
     loadCatalog();
   }
+  if (name === 'config') {
+    switchCfgTab('brands');
+  }
 }
+
+// ============================================================
+// Configurações IA — editar BRAND_SCENES, SCENE_HINTS, prompts, agentes
+// ============================================================
+const CFG_API = '/api/marketing-config';
+let CFG_STATE = { current: 'brands', data: null };
+
+async function cfgFetch(path, opts = {}) {
+  const r = await fetch(CFG_API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+function switchCfgTab(name) {
+  document.querySelectorAll('.cfg-tab').forEach(b => b.classList.toggle('active', b.dataset.cfg === name));
+  CFG_STATE.current = name;
+  const el = document.getElementById('cfg-content');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  if (name === 'brands') renderMapEditor('brand-scenes', 'Marca', 'Cenário em inglês (Flux/GPT entendem melhor inglês)');
+  else if (name === 'modalities') renderMapEditor('modality-scenes', 'Modalidade', 'Cenário em inglês');
+  else if (name === 'hints') renderListEditor('scene-hints', 'Variação de cenário', 'Texto da variação (português ou inglês, max 200 chars)');
+  else if (name === 'prompts') renderPromptsEditor();
+  else if (name === 'persona') renderPersonaEditor();
+  else if (name === 'agents') renderAgentsEditor();
+}
+
+// --- Editor genérico de Map (key → value) ---
+async function renderMapEditor(endpoint, keyLabel, valLabel) {
+  const el = document.getElementById('cfg-content');
+  try {
+    const d = await cfgFetch('/' + endpoint);
+    const entries = Object.entries(d.value);
+    el.innerHTML = `
+      <div class="cfg-info">${escH(keyLabel)} → ${escH(valLabel)}. Mudanças salvam tudo de uma vez. Defaults: ${Object.keys(d.default).length} entradas.</div>
+      <div id="cfg-list">
+        ${entries.map(([k, v], i) => mapRowHtml(k, v, i)).join('')}
+      </div>
+      <div class="cfg-actions">
+        <button class="cfg-btn cfg-btn-secondary" onclick="cfgAddRow()">+ Adicionar ${escH(keyLabel.toLowerCase())}</button>
+        <button class="cfg-btn cfg-btn-primary" onclick="cfgSaveMap('${endpoint}')">💾 Salvar tudo</button>
+        <button class="cfg-btn cfg-btn-secondary" onclick="cfgResetDefault('${endpoint}', 'map')" style="margin-left:auto">↺ Restaurar default</button>
+      </div>
+    `;
+    CFG_STATE.data = d;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+function mapRowHtml(k, v, i) {
+  return `
+    <div class="cfg-row" data-idx="${i}">
+      <input class="cfg-key" value="${escH(k)}" placeholder="ex: mizuno">
+      <textarea class="cfg-val" placeholder="Cenário em inglês">${escH(v)}</textarea>
+      <button class="cfg-del" onclick="this.parentElement.remove()">Remover</button>
+    </div>
+  `;
+}
+
+function cfgAddRow() {
+  const list = document.getElementById('cfg-list');
+  const div = document.createElement('div');
+  div.innerHTML = mapRowHtml('', '', list.children.length);
+  list.appendChild(div.firstElementChild);
+}
+
+async function cfgSaveMap(endpoint) {
+  const rows = document.querySelectorAll('#cfg-list .cfg-row');
+  const value = {};
+  for (const row of rows) {
+    const k = row.querySelector('.cfg-key').value.trim().toLowerCase();
+    const v = row.querySelector('.cfg-val').value.trim();
+    if (k && v) value[k] = v;
+  }
+  try {
+    await cfgFetch('/' + endpoint, { method: 'PUT', body: JSON.stringify({ value }) });
+    toast('✓ Salvo · ' + Object.keys(value).length + ' entradas');
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+// --- Editor de lista (array de strings) ---
+async function renderListEditor(endpoint, label, placeholder) {
+  const el = document.getElementById('cfg-content');
+  try {
+    const d = await cfgFetch('/' + endpoint);
+    el.innerHTML = `
+      <div class="cfg-info">${escH(label)}. Cada item é uma variação automática que roda quando tu pede mais de 1 versão do mesmo produto.</div>
+      <div id="cfg-list">
+        ${d.value.map((v, i) => `
+          <div class="cfg-row" data-idx="${i}" style="grid-template-columns: 40px 1fr 80px">
+            <div style="text-align:center;color:#FF6A1F;font-weight:800;padding-top:8px">${i + 1}</div>
+            <textarea class="cfg-val" placeholder="${escH(placeholder)}">${escH(v)}</textarea>
+            <button class="cfg-del" onclick="this.parentElement.remove()">Remover</button>
+          </div>
+        `).join('')}
+      </div>
+      <div class="cfg-actions">
+        <button class="cfg-btn cfg-btn-secondary" onclick="cfgAddListRow()">+ Adicionar variação</button>
+        <button class="cfg-btn cfg-btn-primary" onclick="cfgSaveList('${endpoint}')">💾 Salvar tudo</button>
+        <button class="cfg-btn cfg-btn-secondary" onclick="cfgResetDefault('${endpoint}', 'list')" style="margin-left:auto">↺ Restaurar default</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+function cfgAddListRow() {
+  const list = document.getElementById('cfg-list');
+  const i = list.children.length;
+  const div = document.createElement('div');
+  div.innerHTML = `
+    <div class="cfg-row" data-idx="${i}" style="grid-template-columns: 40px 1fr 80px">
+      <div style="text-align:center;color:#FF6A1F;font-weight:800;padding-top:8px">${i + 1}</div>
+      <textarea class="cfg-val" placeholder="Nova variação"></textarea>
+      <button class="cfg-del" onclick="this.parentElement.remove()">Remover</button>
+    </div>
+  `;
+  list.appendChild(div.firstElementChild);
+}
+
+async function cfgSaveList(endpoint) {
+  const rows = document.querySelectorAll('#cfg-list .cfg-row');
+  const value = Array.from(rows).map(r => r.querySelector('.cfg-val').value);
+  try {
+    await cfgFetch('/' + endpoint, { method: 'PUT', body: JSON.stringify({ value }) });
+    toast('✓ Salvo · ' + value.length + ' itens');
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+// --- Editor de prompts (3 textareas grandes) ---
+async function renderPromptsEditor() {
+  const el = document.getElementById('cfg-content');
+  try {
+    const d = await cfgFetch('/provider-prompts');
+    el.innerHTML = `
+      <div class="cfg-info">Templates de prompt que vão pros modelos. Placeholders disponíveis: <code>{PRODUCT_NAME}</code> <code>{BRAND}</code> <code>{CATEGORY}</code> <code>{SCENE}</code> <code>{FACTS}</code> <code>{BRAND_VOICE}</code> <code>{PERSONA_BR}</code> <code>{ASPECT}</code> <code>{ASPECT_USE}</code></div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:6px">📝 Editorial base (Flux/GPT)</div>
+        <textarea id="prompt-editorial" style="width:100%;min-height:180px;font-family:'SF Mono',Menlo,monospace;font-size:12.5px;padding:10px;border:1px solid #e5e5ea;border-radius:8px">${escH(d.value.editorial_base || '')}</textarea>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:6px">🎯 Composite background (só Flux text-to-image)</div>
+        <textarea id="prompt-composite-bg" style="width:100%;min-height:140px;font-family:'SF Mono',Menlo,monospace;font-size:12.5px;padding:10px;border:1px solid #e5e5ea;border-radius:8px">${escH(d.value.composite_bg || '')}</textarea>
+      </div>
+
+      <div class="cfg-actions">
+        <button class="cfg-btn cfg-btn-primary" onclick="cfgSavePrompts()">💾 Salvar prompts</button>
+        <button class="cfg-btn cfg-btn-secondary" onclick="cfgResetDefault('provider-prompts', 'prompts')" style="margin-left:auto">↺ Restaurar default</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+async function cfgSavePrompts() {
+  const value = {
+    editorial_base: document.getElementById('prompt-editorial').value,
+    composite_bg: document.getElementById('prompt-composite-bg').value,
+  };
+  try {
+    await cfgFetch('/provider-prompts', { method: 'PUT', body: JSON.stringify({ value }) });
+    toast('✓ Prompts salvos');
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+// --- Editor de persona + brand voice ---
+async function renderPersonaEditor() {
+  const el = document.getElementById('cfg-content');
+  try {
+    const [p, b] = await Promise.all([cfgFetch('/persona-br'), cfgFetch('/brand-voice')]);
+    el.innerHTML = `
+      <div class="cfg-info">Strings adicionadas em todos os prompts editorial. Edite com cuidado — afeta TODA geração de imagem.</div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:6px">🧑 Persona BR (quando aparece pessoa na cena)</div>
+        <textarea id="cfg-persona" style="width:100%;min-height:100px;font-family:inherit;font-size:13px;padding:10px;border:1px solid #e5e5ea;border-radius:8px">${escH(p.value)}</textarea>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:6px">🎨 Brand Voice (identidade visual S&T)</div>
+        <textarea id="cfg-brandvoice" style="width:100%;min-height:100px;font-family:inherit;font-size:13px;padding:10px;border:1px solid #e5e5ea;border-radius:8px">${escH(b.value)}</textarea>
+      </div>
+
+      <div class="cfg-actions">
+        <button class="cfg-btn cfg-btn-primary" onclick="cfgSavePersona()">💾 Salvar</button>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+async function cfgSavePersona() {
+  try {
+    await Promise.all([
+      cfgFetch('/persona-br', { method: 'PUT', body: JSON.stringify({ value: document.getElementById('cfg-persona').value }) }),
+      cfgFetch('/brand-voice', { method: 'PUT', body: JSON.stringify({ value: document.getElementById('cfg-brandvoice').value }) }),
+    ]);
+    toast('✓ Salvo');
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+// --- Editor de agentes (.md files) ---
+async function renderAgentsEditor() {
+  const el = document.getElementById('cfg-content');
+  try {
+    const d = await cfgFetch('/agents');
+    const agents = d.agents || [];
+    el.innerHTML = `
+      <div class="cfg-info">Agentes da Central IA — arquivos <code>.claude/agents/*.md</code>. Mudanças são salvas direto no filesystem (requer redeploy pra aplicar nas próximas conversas).</div>
+      <div style="display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:500px">
+        <div style="border:1px solid #e5e5ea;border-radius:10px;padding:8px;background:#fafafc;overflow-y:auto;max-height:600px">
+          ${agents.length === 0 ? '<div style="color:#a8a8ad;font-size:12px;padding:10px">Nenhum agente encontrado em .claude/agents/</div>' : agents.map(a => `
+            <button onclick="loadAgent('${escH(a)}')" id="agent-btn-${escH(a)}" style="display:block;width:100%;text-align:left;padding:8px 10px;background:transparent;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#0a0a0a;margin-bottom:2px" onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background='transparent'">${escH(a)}</button>
+          `).join('')}
+        </div>
+        <div>
+          <div id="agent-name" style="font-size:14px;font-weight:700;margin-bottom:6px;color:#6e6e73">← Selecione um agente</div>
+          <textarea id="agent-content" style="width:100%;min-height:540px;font-family:'SF Mono',Menlo,monospace;font-size:12px;padding:12px;border:1px solid #e5e5ea;border-radius:8px;line-height:1.45" placeholder="Conteúdo do agente .md"></textarea>
+          <div class="cfg-actions">
+            <button class="cfg-btn cfg-btn-primary" onclick="saveAgent()" id="agent-save-btn" disabled>💾 Salvar agente</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = '<div style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+async function loadAgent(name) {
+  document.getElementById('agent-name').textContent = '🤖 ' + name + '.md';
+  document.getElementById('agent-content').value = 'Carregando...';
+  document.getElementById('agent-save-btn').disabled = true;
+  CFG_STATE.currentAgent = name;
+  try {
+    const d = await cfgFetch('/agents/' + encodeURIComponent(name));
+    document.getElementById('agent-content').value = d.content;
+    document.getElementById('agent-save-btn').disabled = false;
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+async function saveAgent() {
+  if (!CFG_STATE.currentAgent) return;
+  const content = document.getElementById('agent-content').value;
+  try {
+    await cfgFetch('/agents/' + encodeURIComponent(CFG_STATE.currentAgent), {
+      method: 'PUT', body: JSON.stringify({ content }),
+    });
+    toast('✓ ' + CFG_STATE.currentAgent + ' salvo');
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+async function cfgResetDefault(endpoint, type) {
+  if (!confirm('Restaurar valores default? Isso vai sobrescrever tudo que tu editou aqui.')) return;
+  try {
+    const d = await cfgFetch('/' + endpoint);
+    const def = d.default;
+    await cfgFetch('/' + endpoint, { method: 'PUT', body: JSON.stringify({ value: def }) });
+    toast('✓ Restaurado pro default');
+    switchCfgTab(CFG_STATE.current);
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
 
 function fmtBRL(v) {
   if (v == null || isNaN(v)) return '—';

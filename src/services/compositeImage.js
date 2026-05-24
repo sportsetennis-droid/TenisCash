@@ -17,7 +17,7 @@
 // =====================================================================
 
 const sharp = require('sharp');
-const { pickSceneAuto, getReferenceImages } = require('./marketingPrompts');
+const { buildBackgroundPrompt, getReferenceImages } = require('./marketingPrompts');
 
 const COSTS = {
   'composite': 0.05,  // bria 0.01 + flux 0.04 (estimado)
@@ -68,21 +68,6 @@ function dimsFor(aspectRatio) {
     case '16:9':
     default:     return { w: 1920, h: 1080 };
   }
-}
-
-/**
- * Constrói prompt pra geração de SÓ o cenário (sem produto na cena).
- */
-function buildBackgroundPrompt(product, sceneHint) {
-  const scene = (sceneHint && sceneHint.trim()) || pickSceneAuto(product);
-  return [
-    'Editorial background scene for sports lifestyle product photography:',
-    scene + '.',
-    'Empty scene with clean focal point — no products, no people, no text.',
-    'Hyperrealistic, magazine quality, dramatic professional lighting, shallow depth of field.',
-    'Subtle warm orange-pink gradient accents are welcome but not required.',
-    'IMPORTANT: Do not include any product, person, animal, or text in the image. Leave space in the center-bottom area for a product overlay.',
-  ].join(' ');
 }
 
 /**
@@ -384,7 +369,7 @@ async function generateEditorialPhoto(opts) {
   if (!productImageUrl) throw new Error('produto sem imagem de referência');
 
   const productName = product.name || 'product';
-  const bgPrompt = buildBackgroundPrompt(product, sceneHint);
+  const bgPrompt = await buildBackgroundPrompt(product, sceneHint);
 
   // Roda Bria (remove bg) e Flux (gera bg) EM PARALELO — economia de tempo
   const [productPngUrl, backgroundUrl] = await Promise.all([
