@@ -2133,6 +2133,7 @@ function renderMkCard(c) {
           ${c.status === 'published' && c.publications?.[0]?.externalUrl ? `
             <a class="mk-btn pub" style="text-decoration:none;text-align:center;line-height:24px" href="${escapeHtmlMk(c.publications[0].externalUrl)}" target="_blank" rel="noopener">Ver no IG ↗</a>
           ` : ''}
+          <button class="mk-btn pub" style="background:#007aff;color:#fff" onclick="mkDownload('${c.id}')" title="Baixar arquivo">⬇️ Baixar</button>
           <button class="mk-btn ok" style="flex:0 0 auto;background:#fff;color:#6e6e73;border:1px solid #e5e5ea;min-width:40px" onclick="mkSaveCopy('${c.id}')" title="Salvar edição dos textos">💾</button>
           ${c.status !== 'published' ? `<button class="mk-btn del" onclick="mkDelete('${c.id}')" title="Apagar">🗑️</button>` : ''}
         </div>
@@ -2192,6 +2193,33 @@ async function mkDelete(id) {
     await mkApi('/creatives/' + id, { method: 'DELETE' });
     marketingReload(); marketingLoadStats();
   } catch (e) { alert('Erro: ' + e.message); }
+}
+
+async function mkDownload(id) {
+  const c = STATE_MK.creatives.find(x => x.id === id);
+  if (!c || !c.outputUrl) { showMkToast('Sem arquivo pra baixar'); return; }
+  const p = c.product || {};
+  const ext = c.kind === 'reel_video' ? 'mp4' : (c.kind === 'transparent_photo' ? 'png' : 'jpg');
+  const kindLabel = c.kind === 'reel_video' ? 'video' : (c.kind === 'transparent_photo' ? 'sem-fundo' : 'foto');
+  const safeName = (p.name || 'criativo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+  const filename = `${p.sku || 'sku'}_${safeName}_${kindLabel}.${ext}`;
+  try {
+    showMkToast('Baixando…');
+    const r = await fetch(c.outputUrl);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    showMkToast('✓ Baixado: ' + filename);
+  } catch (e) {
+    window.open(c.outputUrl, '_blank');
+    showMkToast('Abri em nova aba — use Ctrl+S pra salvar');
+  }
 }
 
 async function mkPublish(id) {

@@ -50,6 +50,7 @@
   .a-ok { background: #25d366; color: #fff; }
   .a-no { background: #fff; color: #d70015; border: 1px solid #e5e5ea; }
   .a-pub { background: linear-gradient(135deg,#FF6A1F,#FF8A4D); color: #fff; }
+  .a-dl { background: #007aff; color: #fff; }
   .a-save { background: #fff; color: #6e6e73; border: 1px solid #e5e5ea; flex: 0 0 auto; min-width: 40px; }
   .a-del { background: #fff; color: #6e6e73; border: 1px solid #e5e5ea; flex: 0 0 auto; min-width: 40px; }
   .empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; color: #6e6e73; }
@@ -188,7 +189,8 @@ function renderCard(c) {
           ${c.status === 'published' && c.publications?.[0]?.externalUrl ? `
             <a class="a-btn a-pub" style="text-decoration:none;text-align:center;line-height:24px" href="${escH(c.publications[0].externalUrl)}" target="_blank">Ver no IG ↗</a>
           ` : ''}
-          <button class="a-btn a-save" onclick="saveCopy('${c.id}')" title="Salvar edição">💾</button>
+          <button class="a-btn a-dl" onclick="downloadCreative('${c.id}')" title="Baixar arquivo">⬇️ Baixar</button>
+          <button class="a-btn a-save" onclick="saveCopy('${c.id}')" title="Salvar edição copies">💾</button>
           ${c.status !== 'published' ? `<button class="a-btn a-del" onclick="del('${c.id}')" title="Apagar">🗑️</button>` : ''}
         </div>
       </div>
@@ -225,6 +227,35 @@ async function del(id) {
   try { await api('/creatives/' + id, { method: 'DELETE' }); reload(); loadStats(); }
   catch (e) { toast('Erro: ' + e.message); }
 }
+async function downloadCreative(id) {
+  const c = STATE.creatives.find(x => x.id === id);
+  if (!c || !c.outputUrl) { toast('Sem arquivo pra baixar'); return; }
+  const p = c.product || {};
+  const ext = c.kind === 'reel_video' ? 'mp4' : (c.kind === 'transparent_photo' ? 'png' : 'jpg');
+  const kindLabel = c.kind === 'reel_video' ? 'video' : (c.kind === 'transparent_photo' ? 'sem-fundo' : 'foto');
+  const safeName = (p.name || 'criativo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+  const filename = `${p.sku || 'sku'}_${safeName}_${kindLabel}.${ext}`;
+  try {
+    toast('Baixando…');
+    const r = await fetch(c.outputUrl);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast('✓ Baixado: ' + filename);
+  } catch (e) {
+    // Fallback: abre em nova aba (user salva via "Salvar como")
+    window.open(c.outputUrl, '_blank');
+    toast('Abri em nova aba — use Ctrl+S pra salvar');
+  }
+}
+
 async function publish(id) {
   if (!confirm('Publicar no Instagram?')) return;
   try {
