@@ -70,19 +70,20 @@ async function runContentCreative() {
     const falAi = require('./falAi');
     const copyGen = require('./copyGenerator');
 
+    // Vídeo desabilitado no cron — gasta muito ($0.50/video Hailuo Pro).
+    // Trio diário = foto editorial ($0.04) + sem-fundo ($0.01) + copies = $0.05/produto.
+    // Vídeo só sob demanda (botão manual no admin) ou se ENABLE_VIDEO_IN_CRON=1.
+    const includeVideo = process.env.ENABLE_VIDEO_IN_CRON === '1';
+
     for (const product of candidates) {
       try {
-        console.log(`[marketingCron] gerando criativo pra ${product.sku} (${product.name.slice(0,50)})`);
-        const [editorial, video, transparent, copies] = await Promise.allSettled([
+        console.log(`[marketingCron] gerando criativo pra ${product.sku} (${product.name.slice(0,50)})${includeVideo ? ' [com vídeo]' : ' [sem vídeo — econômico]'}`);
+        const tasks = [
           falAi.generateEditorialPhoto({
             productName: product.name,
             brand: product.brand,
             imageUrl: product.imageUrl,
             aspectRatio: '16:9',
-          }),
-          falAi.generateReelVideo({
-            imageUrl: product.imageUrl,
-            productName: product.name,
           }),
           falAi.removeBackground({ imageUrl: product.imageUrl }),
           copyGen.generateCopies({
@@ -92,12 +93,25 @@ async function runContentCreative() {
             price: product.price,
             shortDesc: product.shortDescription,
           }),
-        ]);
+        ];
+        if (includeVideo) {
+          tasks.splice(1, 0, falAi.generateReelVideo({
+            imageUrl: product.imageUrl,
+            productName: product.name,
+          }));
+        }
+        const settled = await Promise.allSettled(tasks);
+
+        // Indices: [editorial, video?, transparent, copies]
+        const editorial = settled[0];
+        const video = includeVideo ? settled[1] : { status: 'skipped' };
+        const transparent = settled[includeVideo ? 2 : 1];
+        const copies = settled[includeVideo ? 3 : 2];
 
         const c = copies.status === 'fulfilled' ? copies.value : { captionIg:'', captionTiktok:'', captionWa:'', hashtags:'' };
         const items = [
           { result: editorial, kind: 'editorial_photo' },
-          { result: video, kind: 'reel_video' },
+          ...(includeVideo ? [{ result: video, kind: 'reel_video' }] : []),
           { result: transparent, kind: 'transparent_photo' },
         ];
 
