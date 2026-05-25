@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",
+    "@expo-google-fonts/inter": "^0.4.2",
     "@fal-ai/client": "^1.6.4",
     "@fontsource/inter": "^5.2.8",
     "@prisma/client": "^5.20.0",

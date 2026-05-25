@@ -29,21 +29,24 @@ const { buildBackgroundPrompt, getReferenceImages } = require('./marketingPrompt
 
 let _fontCacheB64 = null;
 let _fontCacheBoldB64 = null;
+// TTF (universal): @expo-google-fonts/inter — librsvg/Sharp suportam nativamente.
+// WOFF2 funciona local em Windows mas falha no Linux Alpine do Railway.
 function getFontB64() {
-  if (_fontCacheB64) return _fontCacheB64;
+  if (_fontCacheB64 !== null) return _fontCacheB64;
   try {
-    const p = path.resolve(__dirname, '../../node_modules/@fontsource/inter/files/inter-latin-900-normal.woff2');
+    const p = path.resolve(__dirname, '../../node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf');
     _fontCacheB64 = fs.readFileSync(p).toString('base64');
+    console.log('[compositeImage] Inter-900 TTF carregada,', _fontCacheB64.length, 'chars b64');
   } catch (e) {
-    console.warn('[compositeImage] Inter-900 woff2 não encontrada — usando fallback CSS:', e.message);
+    console.warn('[compositeImage] Inter-900 TTF não encontrada:', e.message);
     _fontCacheB64 = '';
   }
   return _fontCacheB64;
 }
 function getFontBoldB64() {
-  if (_fontCacheBoldB64) return _fontCacheBoldB64;
+  if (_fontCacheBoldB64 !== null) return _fontCacheBoldB64;
   try {
-    const p = path.resolve(__dirname, '../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2');
+    const p = path.resolve(__dirname, '../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf');
     _fontCacheBoldB64 = fs.readFileSync(p).toString('base64');
   } catch {
     _fontCacheBoldB64 = '';
@@ -54,8 +57,8 @@ function fontDefsCss() {
   const b900 = getFontB64();
   const b700 = getFontBoldB64();
   const faces = [];
-  if (b900) faces.push(`@font-face { font-family: 'STSBlack'; src: url(data:font/woff2;base64,${b900}) format('woff2'); font-weight: 900; font-style: normal; }`);
-  if (b700) faces.push(`@font-face { font-family: 'STSBold'; src: url(data:font/woff2;base64,${b700}) format('woff2'); font-weight: 700; font-style: normal; }`);
+  if (b900) faces.push(`@font-face { font-family: 'STSBlack'; src: url(data:font/ttf;base64,${b900}) format('truetype'); font-weight: 900; font-style: normal; }`);
+  if (b700) faces.push(`@font-face { font-family: 'STSBold'; src: url(data:font/ttf;base64,${b700}) format('truetype'); font-weight: 700; font-style: normal; }`);
   return faces.join(' ');
 }
 
