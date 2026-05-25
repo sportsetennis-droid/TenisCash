@@ -17,7 +17,47 @@
 // =====================================================================
 
 const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
 const { buildBackgroundPrompt, getReferenceImages } = require('./marketingPrompts');
+
+// =====================================================
+// Fontes Inter embedded (Base64) — render robusto independente do SO
+// =====================================================
+// librsvg do Sharp lê @font-face com data URI WOFF2 nativamente.
+// Carregamos a fonte 1x no boot e reutilizamos em todas as gerações.
+
+let _fontCacheB64 = null;
+let _fontCacheBoldB64 = null;
+function getFontB64() {
+  if (_fontCacheB64) return _fontCacheB64;
+  try {
+    const p = path.resolve(__dirname, '../../node_modules/@fontsource/inter/files/inter-latin-900-normal.woff2');
+    _fontCacheB64 = fs.readFileSync(p).toString('base64');
+  } catch (e) {
+    console.warn('[compositeImage] Inter-900 woff2 não encontrada — usando fallback CSS:', e.message);
+    _fontCacheB64 = '';
+  }
+  return _fontCacheB64;
+}
+function getFontBoldB64() {
+  if (_fontCacheBoldB64) return _fontCacheBoldB64;
+  try {
+    const p = path.resolve(__dirname, '../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2');
+    _fontCacheBoldB64 = fs.readFileSync(p).toString('base64');
+  } catch {
+    _fontCacheBoldB64 = '';
+  }
+  return _fontCacheBoldB64;
+}
+function fontDefsCss() {
+  const b900 = getFontB64();
+  const b700 = getFontBoldB64();
+  const faces = [];
+  if (b900) faces.push(`@font-face { font-family: 'STSBlack'; src: url(data:font/woff2;base64,${b900}) format('woff2'); font-weight: 900; font-style: normal; }`);
+  if (b700) faces.push(`@font-face { font-family: 'STSBold'; src: url(data:font/woff2;base64,${b700}) format('woff2'); font-weight: 700; font-style: normal; }`);
+  return faces.join(' ');
+}
 
 const COSTS = {
   'composite': 0.05,  // bria 0.01 + flux 0.04 (estimado)
@@ -244,6 +284,7 @@ function buildOverlaySvg(opts) {
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <defs>
+      <style>${fontDefsCss()}</style>
       <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#FF6A1F"/>
         <stop offset="100%" stop-color="#FF2D92"/>
@@ -261,7 +302,7 @@ function buildOverlaySvg(opts) {
       <rect x="0" y="0" width="${width}" height="${headlineY + (headlineLines.length - 1) * headlineLineHeight + Math.round(headlineSize * 0.6)}" fill="rgba(0,0,0,0.18)"/>
       ${headlineLines.map((line, i) => `
         <text x="${Math.round(width * 0.05)}" y="${headlineY + i * headlineLineHeight}"
-              font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
+              font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
               font-size="${headlineSize}"
               font-weight="900"
               fill="#ffffff"
@@ -272,7 +313,7 @@ function buildOverlaySvg(opts) {
 
     ${hasSubline ? `
       <text x="${Math.round(width * 0.05)}" y="${sublineY}"
-            font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
+            font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
             font-size="${sublineSize}"
             font-weight="700"
             fill="#ffffff"
@@ -291,7 +332,7 @@ function buildOverlaySvg(opts) {
             dominant-baseline="middle">R$ ${priceStr}</text>
       ${installments > 1 ? `
         <text x="${badgeCx}" y="${badgeCy + Math.round(badgeR * 0.4)}"
-              font-family="Liberation Sans, DejaVu Sans, Arial, sans-serif"
+              font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
               font-size="${parcelaSize}"
               font-weight="700"
               fill="#ffffff"
