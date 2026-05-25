@@ -79,6 +79,18 @@
   .cfg-btn-secondary { background: #fff; color: #0a0a0a; border: 1px solid #e5e5ea; }
   .cfg-info { background: #fef9f5; border: 1px solid #FFEBDC; padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #6e6e73; margin-bottom: 14px; }
 
+  /* Lightbox — clica na foto do criativo pra ver em tamanho real */
+  .card img.media { cursor: zoom-in; }
+  .lightbox { position: fixed; inset: 0; background: rgba(10, 10, 10, 0.92); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: zoom-out; animation: lb-fade 0.18s ease-out; }
+  @keyframes lb-fade { from { opacity: 0 } to { opacity: 1 } }
+  .lightbox img { max-width: 95vw; max-height: 92vh; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); cursor: zoom-out; }
+  .lightbox .lb-close { position: absolute; top: 18px; right: 22px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.15); color: #fff; border: none; font-size: 22px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .lightbox .lb-close:hover { background: rgba(255,255,255,0.3); }
+  .lightbox .lb-info { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(20,20,22,0.85); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; max-width: 90vw; text-align: center; }
+  .lightbox .lb-actions { position: absolute; top: 18px; left: 22px; display: flex; gap: 8px; }
+  .lightbox .lb-actions a, .lightbox .lb-actions button { background: rgba(255,255,255,0.15); color: #fff; border: none; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .lightbox .lb-actions a:hover, .lightbox .lb-actions button:hover { background: rgba(255,255,255,0.3); }
+
   /* Catalog */
   .catalog-controls { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 14px; align-items: center; }
   @media (max-width: 700px) { .catalog-controls { grid-template-columns: 1fr; } }
@@ -308,7 +320,7 @@ function renderCard(c) {
   }
   const media = isVideo
     ? `<video class="media" src="${escH(c.outputUrl)}" controls preload="metadata" playsinline></video>`
-    : `<img class="media${isTransp ? ' transparent-bg' : ''}" src="${escH(c.outputUrl)}" alt="" loading="lazy">`;
+    : `<img class="media${isTransp ? ' transparent-bg' : ''}" src="${escH(c.outputUrl)}" alt="" loading="lazy" onclick="openLightbox('${escH(c.id)}')" title="Clique pra ampliar">`;
   const thumb = p.imageUrl ? `<img class="thumb" src="${escH(p.imageUrl)}" alt="">` : '<div class="thumb">📦</div>';
   return `
     <div class="card" data-id="${escH(c.id)}">
@@ -384,6 +396,49 @@ async function del(id) {
   try { await api('/creatives/' + id, { method: 'DELETE' }); reload(); loadStats(); }
   catch (e) { toast('Erro: ' + e.message); }
 }
+// =====================================================
+// Lightbox — clica na foto pra ver em tamanho real
+// =====================================================
+function openLightbox(creativeId) {
+  const c = STATE.creatives.find(x => x.id === creativeId);
+  if (!c || !c.outputUrl) return;
+  closeLightbox(); // fecha anterior se houver
+  const p = c.product || {};
+  const kindLabel = { editorial_photo: '📸 Foto editorial', reel_video: '🎬 Reel', transparent_photo: '✂️ Sem fundo' }[c.kind] || c.kind;
+  let modelTag = '';
+  if (c.model) {
+    if (c.model.includes('composite')) modelTag = '🎯 Composite';
+    else if (c.model.includes('gpt-image')) modelTag = '🤖 GPT';
+    else if (c.model.includes('flux')) modelTag = '📸 Flux';
+    else if (c.model.includes('bria')) modelTag = '✂️ Bria';
+    else modelTag = c.model.split('/').pop();
+  }
+  const lb = document.createElement('div');
+  lb.className = 'lightbox';
+  lb.onclick = (e) => { if (e.target === lb) closeLightbox(); };
+  lb.innerHTML = `
+    <button class="lb-close" onclick="closeLightbox()" title="Fechar (Esc)">✕</button>
+    <div class="lb-actions">
+      <a href="${escH(c.outputUrl)}" target="_blank" rel="noopener" title="Abrir original em nova aba">↗ Original</a>
+      <button onclick="downloadCreative('${escH(c.id)}'); event.stopPropagation()" title="Baixar arquivo">⬇️ Baixar</button>
+    </div>
+    <img src="${escH(c.outputUrl)}" alt="${escH(p.name || 'criativo')}" onclick="event.stopPropagation()">
+    <div class="lb-info">${escH(p.name || 'criativo')} · ${kindLabel}${modelTag ? ' · ' + modelTag : ''} · $${(c.costUsd || 0).toFixed(2)}</div>
+  `;
+  document.body.appendChild(lb);
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.querySelectorAll('.lightbox').forEach(l => l.remove());
+  document.body.style.overflow = '';
+}
+
+// Esc fecha lightbox
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
 async function downloadCreative(id) {
   const c = STATE.creatives.find(x => x.id === id);
   if (!c || !c.outputUrl) { toast('Sem arquivo pra baixar'); return; }
