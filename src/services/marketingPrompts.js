@@ -123,11 +123,15 @@ async function buildBackgroundPrompt(product, sceneHint = '') {
   // Persona BR é injetada pra evitar modelos genéricos europeus.
   const personaBr = await cfg.getPersonaBr();
   return [
-    'Editorial photography for Brazilian social media post:',
-    scene + '.',
+    'Editorial photography for Brazilian social media post (Instagram feed format).',
+    'Scene: ' + scene + '.',
     'Hyperrealistic, magazine quality, dramatic professional lighting, shallow depth of field.',
     personaBr,
-    'Composition: leave generous negative space at top and bottom (around 20% each) for headline and logo overlays. The main subject should occupy the center of the frame.',
+    'CRITICAL COMPOSITION RULES:',
+    '— The subject (person/object) MUST be positioned in the LOWER HALF of the frame, ideally from 45% to 90% vertical position.',
+    '— The TOP 30% of the frame MUST be empty/clean (sky, blurred wall, plain background) for headline text overlay.',
+    '— The BOTTOM 10% MUST also be uncluttered for logo and handle overlay.',
+    '— If a person is the subject, frame from chest/waist down OR show them seated/leaning so their head sits around 30-40% from top, NOT at the very top.',
     'No fake brand logos, no random text written on the image.',
   ].join(' ');
 }

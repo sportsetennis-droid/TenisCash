@@ -380,16 +380,28 @@ function buildOverlaySvg(opts) {
         <stop offset="0%" stop-color="#FF6A1F"/>
         <stop offset="100%" stop-color="#FF2D92"/>
       </linearGradient>
+      <!-- Gradient escuro pra fundo do headline: forte no topo, transparente embaixo -->
+      <linearGradient id="headline-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="rgba(0,0,0,0.75)"/>
+        <stop offset="60%" stop-color="rgba(0,0,0,0.55)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </linearGradient>
+      <!-- Gradient claro pra fundo do handle/logo: bottom-up -->
+      <linearGradient id="bottom-grad" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0%" stop-color="rgba(0,0,0,0.65)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+      </linearGradient>
       <filter id="text-shadow" x="-15%" y="-15%" width="130%" height="130%">
-        <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
-        <feOffset dx="0" dy="3" result="offsetblur"/>
-        <feComponentTransfer><feFuncA type="linear" slope="0.6"/></feComponentTransfer>
+        <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+        <feOffset dx="0" dy="4" result="offsetblur"/>
+        <feComponentTransfer><feFuncA type="linear" slope="0.8"/></feComponentTransfer>
         <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     </defs>
 
     ${hasHeadline ? `
-      <rect x="0" y="0" width="${width}" height="${headlineBlockH}" fill="rgba(0,0,0,0.22)"/>
+      <!-- Faixa gradient escuro (transparente embaixo) — protege legibilidade sem cortar foto -->
+      <rect x="0" y="0" width="${width}" height="${Math.round(headlineBlockH * 1.6)}" fill="url(#headline-grad)"/>
       ${headlineLines.map((line, i) => {
         const p = textToSvgPath(line, sideMargin, headlineY + i * headlineLineHeight, headlineSize, false);
         return p ? `<path d="${p.d}" fill="#ffffff" filter="url(#text-shadow)"/>` : '';
@@ -400,6 +412,11 @@ function buildOverlaySvg(opts) {
       const p = textToSvgPath(line, sideMargin, sublineY + i * sublineLineHeight, sublineSize, true);
       return p ? `<path d="${p.d}" fill="#ffffff" filter="url(#text-shadow)"/>` : '';
     }).join('') : ''}
+
+    ${(hasLogo || hasHandle) ? `
+      <!-- Faixa gradient inferior protege legibilidade da logo/handle sem cobrir o produto -->
+      <rect x="0" y="${Math.round(height * 0.78)}" width="${width}" height="${Math.round(height * 0.22)}" fill="url(#bottom-grad)"/>
+    ` : ''}
 
     ${hasLogo ? `
       <rect x="${logoX - 6}" y="${logoY - 6}" width="${logoSize + 12}" height="${logoSize + 12}" rx="14" fill="rgba(255,255,255,0.95)"/>
