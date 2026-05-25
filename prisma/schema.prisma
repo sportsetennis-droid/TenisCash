@@ -2353,7 +2353,14 @@ model PushSubscription {
 
 model ProductCreative {
   id              String    @id @default(cuid())
-  productId       String
+  productId       String? // opcional: pode ser criativo avulso (sem produto do catálogo)
+  brandProfileId  String? // marca do criativo (multi-tenant)
+  // Dados do produto avulso (quando productId é null)
+  adhocName       String? // nome do produto livre
+  adhocImageUrl   String? // foto original enviada pelo usuário
+  adhocCategory   String?
+  adhocPrice      Float?
+  adhocDesc       String?
   // Tipo do criativo
   kind            String // "editorial_photo" | "reel_video" | "transparent_photo"
   // URLs / metadados do output da fal.ai
@@ -2380,10 +2387,11 @@ model ProductCreative {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  product      Product                @relation("creativesForProduct", fields: [productId], references: [id])
+  product      Product?               @relation("creativesForProduct", fields: [productId], references: [id])
   publications MarketingPublication[] @relation("publicationsForCreative")
 
   @@index([productId, kind])
+  @@index([brandProfileId, createdAt])
   @@index([status, createdAt])
   @@index([createdAt])
 }

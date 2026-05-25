@@ -149,7 +149,86 @@
       <select id="active-brand" onchange="onBrandChange()" style="padding:10px 14px;border:1.5px solid #FF6A1F;border-radius:999px;font-weight:700;font-size:13px;background:#fff;color:#FF6A1F;cursor:pointer;font-family:inherit;max-width:240px">
         <option value="">🏢 Marca ativa…</option>
       </select>
+      <button class="btn" onclick="openAdhocModal()">+ Foto avulsa</button>
       <button class="btn btn-secondary" onclick="reload()">↻ Atualizar</button>
+    </div>
+  </div>
+
+  <!-- Modal: gerar criativo a partir de upload (sem produto cadastrado) -->
+  <div id="adhoc-modal" style="display:none;position:fixed;inset:0;background:rgba(10,10,10,0.7);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;backdrop-filter:blur(6px)" onclick="if(event.target===this) closeAdhocModal()">
+    <div style="background:#fff;border-radius:18px;max-width:680px;width:100%;padding:24px;margin:auto">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <h2 style="font-size:20px;font-weight:800;margin:0">📤 Criativo a partir de foto</h2>
+          <div style="font-size:12px;color:#6e6e73;margin-top:2px">Pra marcas sem catálogo cadastrado (Meta Fardamentos, APS, político, etc)</div>
+        </div>
+        <button onclick="closeAdhocModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#6e6e73">✕</button>
+      </div>
+
+      <label class="bp-lbl">Marca *</label>
+      <select id="ad-brand" class="bp-input" style="font-weight:600"></select>
+
+      <label class="bp-lbl">Foto do produto / conceito *</label>
+      <div style="display:flex;gap:10px;align-items:center;background:#fafafc;border:1.5px dashed #e5e5ea;border-radius:10px;padding:10px;cursor:pointer" onclick="document.getElementById('ad-file').click()">
+        <div id="ad-preview" style="width:64px;height:64px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;color:#c0c0c5;overflow:hidden;flex-shrink:0">📸</div>
+        <div style="flex:1;font-size:13px;color:#6e6e73"><span id="ad-file-name">Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)</span></div>
+      </div>
+      <input type="file" id="ad-file" accept="image/*" style="display:none" onchange="onAdhocFileChange(this.files[0])">
+
+      <div style="display:grid;grid-template-columns:1fr 140px;gap:12px">
+        <div>
+          <label class="bp-lbl">Nome do produto / conceito *</label>
+          <input type="text" id="ad-name" class="bp-input" placeholder="Ex: Uniforme cirúrgico Tactel branco">
+        </div>
+        <div>
+          <label class="bp-lbl">Preço (R$, opcional)</label>
+          <input type="number" id="ad-price" class="bp-input" placeholder="189.90" step="0.01" min="0">
+        </div>
+      </div>
+
+      <label class="bp-lbl">Categoria (opcional)</label>
+      <input type="text" id="ad-category" class="bp-input" placeholder="Ex: uniformes médicos · futebol · campanha eleitoral">
+
+      <label class="bp-lbl">Descrição curta (opcional, ajuda a IA)</label>
+      <textarea id="ad-desc" class="bp-input" rows="2" placeholder="Ex: 100% poliéster Tactel 180g, lavável 250 ciclos, conforto cirúrgico"></textarea>
+
+      <!-- Overlay options -->
+      <div style="background:#fafafc;border-radius:10px;padding:10px 14px;margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:#0a0a0a;margin-bottom:8px">🎨 Conteúdo do criativo</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-headline" checked> <span>📝 Frase</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-price"> <span>💰 Preço</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-logo" checked> <span>🏢 Logo</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-handle" checked> <span>@ Handle</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-subline"> <span>✏️ Subtexto</span></label>
+        </div>
+        <input type="text" id="ad-headline" placeholder="Frase custom (vazio = automática)" style="width:100%;padding:7px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit;margin-top:8px">
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;align-items:center">
+        <div style="flex:1">
+          <label class="bp-lbl" style="margin-top:0">Formato</label>
+          <select id="ad-aspect" class="bp-input">
+            <option value="1:1" selected>⬜ 1:1 (feed IG)</option>
+            <option value="4:5">📱 4:5 (portrait IG)</option>
+            <option value="9:16">📺 9:16 (stories)</option>
+            <option value="16:9">🖼️ 16:9 (landscape)</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label class="bp-lbl" style="margin-top:0">Modelo</label>
+          <select id="ad-provider" class="bp-input">
+            <option value="composite" selected>🎯 Composite (fidelidade 100%)</option>
+            <option value="fal">📸 Flux Pro (criativo)</option>
+            <option value="openai">🤖 GPT-Image-1 (criativo)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
+        <button class="cfg-btn cfg-btn-secondary" onclick="closeAdhocModal()">Cancelar</button>
+        <button class="cfg-btn cfg-btn-primary" onclick="adhocGenerate()" id="ad-go-btn">🎨 Gerar criativo</button>
+      </div>
     </div>
   </div>
 
@@ -834,6 +913,99 @@ async function bpPasteLogoUrl(slug) {
     await loadBrandProfiles();
     loadBrandEditor(slug);
   } catch (e) { toast('Erro: ' + e.message); }
+}
+
+// =====================================================
+// Modal: Criativo de foto avulsa (upload + marca + dados)
+// =====================================================
+let _adhocFile = null;
+
+function openAdhocModal() {
+  // Popula dropdown de marca
+  const sel = document.getElementById('ad-brand');
+  if (!BP_STATE.brands || BP_STATE.brands.length === 0) {
+    loadActiveBrandDropdown().then(() => fillAdBrand());
+  } else {
+    fillAdBrand();
+  }
+  function fillAdBrand() {
+    const active = getActiveBrand();
+    sel.innerHTML = '<option value="">— Escolher marca —</option>' +
+      BP_STATE.brands.map(b => `<option value="${escH(b.slug)}" ${active === b.slug ? 'selected' : ''}>${escH(b.displayName)} ${b.instagramHandle ? '· ' + escH(b.instagramHandle) : ''}</option>`).join('');
+  }
+  // Reset
+  _adhocFile = null;
+  document.getElementById('ad-file').value = '';
+  document.getElementById('ad-file-name').textContent = 'Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)';
+  document.getElementById('ad-preview').innerHTML = '📸';
+  document.getElementById('ad-preview').style.background = '#fff';
+  ['ad-name','ad-price','ad-category','ad-desc','ad-headline'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('adhoc-modal').style.display = 'flex';
+}
+
+function closeAdhocModal() {
+  document.getElementById('adhoc-modal').style.display = 'none';
+}
+
+function onAdhocFileChange(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast('Arquivo > 10MB'); return; }
+  _adhocFile = file;
+  document.getElementById('ad-file-name').textContent = file.name + ' · ' + Math.round(file.size / 1024) + 'KB';
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('ad-preview').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function adhocGenerate() {
+  const brandSlug = document.getElementById('ad-brand').value;
+  if (!brandSlug) { toast('Escolha a marca'); return; }
+  if (!_adhocFile) { toast('Escolha um arquivo de imagem'); return; }
+  const name = document.getElementById('ad-name').value.trim();
+  if (!name) { toast('Nome obrigatório'); return; }
+
+  const fd = new FormData();
+  fd.append('file', _adhocFile);
+  fd.append('brandSlug', brandSlug);
+  fd.append('name', name);
+  fd.append('category', document.getElementById('ad-category').value.trim());
+  fd.append('description', document.getElementById('ad-desc').value.trim());
+  const priceVal = document.getElementById('ad-price').value;
+  if (priceVal) fd.append('price', priceVal);
+  fd.append('headline', document.getElementById('ad-headline').value.trim());
+  fd.append('aspectRatio', document.getElementById('ad-aspect').value);
+  fd.append('provider', document.getElementById('ad-provider').value);
+  fd.append('includeHeadline', document.getElementById('ad-ck-headline').checked);
+  fd.append('includePrice',    document.getElementById('ad-ck-price').checked);
+  fd.append('includeLogo',     document.getElementById('ad-ck-logo').checked);
+  fd.append('includeHandle',   document.getElementById('ad-ck-handle').checked);
+  fd.append('includeSubline',  document.getElementById('ad-ck-subline').checked);
+
+  const btn = document.getElementById('ad-go-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Gerando…';
+  toast(`Gerando criativo "${name.slice(0, 30)}"… leva ~25s`);
+
+  try {
+    const r = await fetch('/api/marketing/generate-upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: fd,
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    toast('✓ ' + (d.created?.length || 0) + ' criativo · $' + (d.totalCostUsd || 0).toFixed(2));
+    closeAdhocModal();
+    reload();
+    loadStats();
+  } catch (e) {
+    toast('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🎨 Gerar criativo';
+  }
 }
 
 function bpApplyArchetypeDefaults(slug) {

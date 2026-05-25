@@ -13,12 +13,34 @@
 // =====================================================================
 
 const express = require('express');
+const multer = require('multer');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const falAi = require('../services/falAi');
 const openaiImage = require('../services/openaiImage');
 const compositeImage = require('../services/compositeImage');
 const copyGen = require('../services/copyGenerator');
 const brandProfiles = require('../services/brandProfiles');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// Upload pra fal.storage (reutilizado de brand logo)
+async function uploadFileToFal(buffer, filename, mimetype) {
+  const mod = await import('@fal-ai/client');
+  const fal = mod.fal;
+  if (!process.env.FAL_KEY) throw new Error('FAL_KEY não configurada');
+  fal.config({ credentials: process.env.FAL_KEY });
+  let FileC = (typeof File !== 'undefined') ? File : null;
+  if (!FileC) { try { FileC = require('node:buffer').File; } catch {} }
+  const payload = FileC
+    ? new FileC([buffer], filename, { type: mimetype })
+    : new Blob([buffer], { type: mimetype });
+  const url = await fal.storage.upload(payload);
+  if (!url) throw new Error('fal.storage retornou vazio');
+  return url;
+}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -242,15 +264,171 @@ router.post('/generate/:productId', async (req, res) => {
 });
 
 // ====================================================
+// POST /generate-upload — gera criativo a partir de UPLOAD de foto
+// (sem produto cadastrado no catálogo). Para marcas como Meta Fardamentos,
+// APS, político, etc. Aceita multipart com:
+//   - file: foto do produto (jpg/png/webp, max 10MB)
+//   - brandSlug: marca da BrandProfile
+//   - name: nome do produto/conceito
+//   - category, price, description: opcionais
+//   - flags de overlay: includeHeadline, includePrice, includeLogo, includeHandle, includeSubline
+//   - headline, subline: textos custom
+//   - provider, aspectRatio: opções de geração
+// ====================================================
+router.post('/generate-upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'foto obrigatória (campo "file")' });
+
+    const body = req.body || {};
+    const brandSlug = body.brandSlug;
+    if (!brandSlug) return res.status(400).json({ error: 'brandSlug obrigatório' });
+    const brand = await brandProfiles.getBySlug(brandSlug);
+    if (!brand) return res.status(404).json({ error: 'marca não encontrada: ' + brandSlug });
+
+    // 1. Upload da foto original pro fal.storage
+    const ext = (req.file.originalname?.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+    const safeName = (body.name || 'produto').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+    const filename = `adhoc-${brandSlug}-${Date.now()}-${safeName}.${ext}`;
+    const imageUrl = await uploadFileToFal(req.file.buffer, filename, req.file.mimetype);
+
+    // 2. Monta product "virtual" pra reusar o pipeline composite
+    const virtualProduct = {
+      id: null,
+      sku: 'adhoc-' + Date.now(),
+      name: body.name || 'Produto',
+      brand: brand.displayName,
+      category: body.category || '',
+      subcategory: '',
+      shortDescription: body.description || '',
+      price: body.price ? parseFloat(body.price) : null,
+      imageUrl,
+      imageUrls: [],
+      aiContext: null,
+    };
+
+    const provider = body.provider || 'composite';
+    const aspectRatio = body.aspectRatio || '1:1';
+    const sceneHint = body.sceneHint || '';
+
+    // 3. Resolve overlay options
+    const includeHeadline = body.includeHeadline === 'true' || body.includeHeadline === true;
+    const includePrice    = body.includePrice === 'true'    || body.includePrice === true;
+    const includeLogo     = body.includeLogo === 'true'     || body.includeLogo === true;
+    const includeHandle   = body.includeHandle === 'true'   || body.includeHandle === true;
+    const includeSubline  = body.includeSubline === 'true'  || body.includeSubline === true;
+    const headlineRaw = (body.headline || '').toString().trim();
+    const headline = includeHeadline
+      ? (headlineRaw || autoHeadline(virtualProduct)).slice(0, 60)
+      : '';
+    const subline = includeSubline ? (body.subline || '').toString().slice(0, 80) : '';
+
+    console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider}`);
+
+    // 4. Roda composite (e/ou outros providers se solicitado)
+    const tasks = [];
+    if (provider === 'composite' || provider === 'all') {
+      tasks.push(
+        compositeImage.generateEditorialPhoto({
+          product: virtualProduct,
+          aspectRatio,
+          sceneHint,
+          headline, subline,
+          includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
+          logoUrl: includeLogo ? brand.logoUrl : null,
+          handle: includeHandle ? brand.instagramHandle : '',
+        }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
+      );
+    }
+    if (provider === 'fal' || provider === 'all') {
+      tasks.push(
+        falAi.generateEditorialPhoto({ product: virtualProduct, aspectRatio, sceneHint })
+          .then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
+      );
+    }
+    if (provider === 'openai' || provider === 'all') {
+      tasks.push(
+        openaiImage.generateEditorialPhoto({ product: virtualProduct, aspectRatio, sceneHint, quality: 'medium' })
+          .then(r => ({ kind: 'editorial_photo', provider: 'openai', ...r }))
+      );
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const created = [];
+    const errors = [];
+
+    // 5. Gera copy via Claude
+    let copies = { captionIg: '', captionTiktok: '', captionWa: '', hashtags: '' };
+    try {
+      copies = await copyGen.generateCopies({
+        productName: virtualProduct.name,
+        brand: brand.displayName,
+        category: virtualProduct.category,
+        price: virtualProduct.price,
+        shortDesc: virtualProduct.shortDescription,
+        sceneHint,
+      });
+    } catch (e) { errors.push({ step: 'copy', error: e.message }); }
+
+    // 6. Salva cada criativo no banco (productId=null, brandProfileId setado, dados ad-hoc preservados)
+    for (const result of settled) {
+      if (result.status !== 'fulfilled') {
+        errors.push({ step: 'image_gen', error: result.reason?.message || String(result.reason) });
+        continue;
+      }
+      const r = result.value;
+      const creative = await prisma.productCreative.create({
+        data: {
+          productId: null,
+          brandProfileId: brand.id,
+          adhocName: virtualProduct.name,
+          adhocImageUrl: imageUrl,
+          adhocCategory: virtualProduct.category || null,
+          adhocPrice: virtualProduct.price || null,
+          adhocDesc: virtualProduct.shortDescription || null,
+          kind: r.kind,
+          outputUrl: r.outputUrl,
+          model: r.model,
+          prompt: r.prompt,
+          costUsd: r.costUsd,
+          captionIg: copies.captionIg,
+          captionTiktok: copies.captionTiktok,
+          captionWa: copies.captionWa,
+          hashtags: copies.hashtags,
+          status: 'pending_review',
+          params: { aspectRatio, sceneHint, provider, brandSlug },
+        },
+      });
+      created.push(creative);
+    }
+
+    res.json({
+      brand: { slug: brand.slug, displayName: brand.displayName },
+      virtualProduct: { name: virtualProduct.name, imageUrl },
+      created,
+      copies,
+      errors,
+      totalCostUsd: created.reduce((s, c) => s + (c.costUsd || 0), 0),
+    });
+  } catch (err) {
+    console.error('[marketing/generate-upload]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
 // GET /creatives — lista com filtros
 // ====================================================
 router.get('/creatives', async (req, res) => {
   try {
-    const { status, productId, kind, limit = '50' } = req.query;
+    const { status, productId, kind, brandSlug, limit = '50' } = req.query;
     const where = {};
     if (status) where.status = String(status);
     if (productId) where.productId = String(productId);
     if (kind) where.kind = String(kind);
+    if (brandSlug) {
+      const b = await brandProfiles.getBySlug(String(brandSlug));
+      if (b) where.brandProfileId = b.id;
+    }
 
     const creatives = await prisma.productCreative.findMany({
       where,
@@ -262,7 +440,24 @@ router.get('/creatives', async (req, res) => {
       },
     });
 
-    res.json({ creatives });
+    // Pra criativos ad-hoc (productId=null), monta um product virtual a partir
+    // dos campos adhoc* salvos. Frontend exibe igual.
+    const list = creatives.map(c => {
+      if (!c.product && c.adhocName) {
+        c.product = {
+          id: null,
+          name: c.adhocName,
+          sku: 'adhoc',
+          brand: '',
+          category: c.adhocCategory || '',
+          price: c.adhocPrice || 0,
+          imageUrl: c.adhocImageUrl || null,
+        };
+      }
+      return c;
+    });
+
+    res.json({ creatives: list });
   } catch (err) {
     console.error('[marketing/creatives GET]', err);
     res.status(500).json({ error: err.message });
