@@ -103,6 +103,11 @@
   </div>
 
   <div class="filters">
+    <label>Data:</label>
+    <input type="date" id="filter-date" onchange="onDateChange()">
+    <button class="chip" onclick="setDateToday()" title="Volta pra hoje">Hoje</button>
+    <button class="chip" onclick="shiftDate(-1)" title="Dia anterior">◀</button>
+    <button class="chip" onclick="shiftDate(1)" title="Próximo dia">▶</button>
     <label>Status:</label>
     <span class="chip active" data-status="" onclick="setStatusFilter('')">Todos</span>
     <span class="chip" data-status="found" onclick="setStatusFilter('found')">✓ Achados</span>
@@ -117,7 +122,47 @@
 
 <script>
 const API = '/api/stocktake';
-const STATE = { status: '', sellerId: '', autoRefresh: true };
+const STATE = { status: '', sellerId: '', autoRefresh: true, date: null };
+
+// Pega data atual no fuso America/Fortaleza (UTC-3)
+function todayFortaleza() {
+  const now = new Date();
+  // Fortaleza é UTC-3 fixo. Subtrai 3h do UTC, pega yyyy-mm-dd.
+  const offset = -3 * 60 * 60 * 1000;
+  const local = new Date(now.getTime() + offset + now.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+// Converte 'YYYY-MM-DD' em range ISO Fortaleza (00:00 → 23:59:59.999 -03:00)
+function dateRangeBR(yyyymmdd) {
+  return {
+    from: new Date(yyyymmdd + 'T00:00:00-03:00').toISOString(),
+    to:   new Date(yyyymmdd + 'T23:59:59.999-03:00').toISOString(),
+  };
+}
+
+function isToday(yyyymmdd) {
+  return yyyymmdd === todayFortaleza();
+}
+
+function setDateToday() {
+  STATE.date = todayFortaleza();
+  document.getElementById('filter-date').value = STATE.date;
+  loadAll();
+}
+
+function onDateChange() {
+  STATE.date = document.getElementById('filter-date').value || todayFortaleza();
+  loadAll();
+}
+
+function shiftDate(days) {
+  const d = new Date((STATE.date || todayFortaleza()) + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  STATE.date = d.toISOString().slice(0, 10);
+  document.getElementById('filter-date').value = STATE.date;
+  loadAll();
+}
 
 function getToken() { return localStorage.getItem('tc_admin_token') || ''; }
 async function api(path, opts = {}) {
@@ -151,15 +196,18 @@ async function loadAll() {
 
 async function loadSummary() {
   try {
-    const r = await api('/summary');
+    const date = STATE.date || todayFortaleza();
+    const r = await api('/summary?date=' + date);
     const stats = document.getElementById('stats');
+    const dayLabel = isToday(date) ? 'hoje' : date.split('-').reverse().join('/');
     stats.innerHTML = `
-      <div class="stat ok"><div class="stat-label">Total hoje</div><div class="stat-val">${r.today.total || 0}</div></div>
-      <div class="stat ok"><div class="stat-label">✓ Achados</div><div class="stat-val">${r.today.found || 0}</div></div>
-      <div class="stat alert"><div class="stat-label">✗ Não achados</div><div class="stat-val">${r.today.notFound || 0}</div></div>
-      <div class="stat"><div class="stat-label">Vendedores ativos</div><div class="stat-val">${r.today.sellers || 0}</div></div>
+      <div class="stat ok"><div class="stat-label">Total ${dayLabel}</div><div class="stat-val">${r.day?.total || 0}</div></div>
+      <div class="stat ok"><div class="stat-label">✓ Achados</div><div class="stat-val">${r.day?.found || 0}</div></div>
+      <div class="stat alert"><div class="stat-label">✗ Não achados</div><div class="stat-val">${r.day?.notFound || 0}</div></div>
+      <div class="stat"><div class="stat-label">Vendedores ativos</div><div class="stat-val">${r.day?.sellers || 0}</div></div>
       <div class="stat"><div class="stat-label">Total geral (banco)</div><div class="stat-val">${r.total || 0}</div></div>
     `;
+    document.querySelector('.by-seller-title').textContent = `${dayLabel === 'hoje' ? 'Hoje' : dayLabel} — por vendedor`;
     const sl = document.getElementById('by-seller-list');
     sl.innerHTML = (r.bySeller || []).map(s => `
       <div class="seller-row">
@@ -191,7 +239,10 @@ async function loadBipes() {
     const sval = document.getElementById('filter-seller')?.value || '';
     if (sval.startsWith('id:')) params.set('sellerId', sval.slice(3));
     else if (sval.startsWith('name:')) params.set('sellerName', sval.slice(5));
-    params.set('today', '1');
+    const date = STATE.date || todayFortaleza();
+    const { from, to } = dateRangeBR(date);
+    params.set('dateFrom', from);
+    params.set('dateTo', to);
 
     const r = await api('/bipes?' + params.toString());
     const list = document.getElementById('bipes-list');
@@ -232,14 +283,19 @@ async function deleteBipe(id, barcode, sellerName) {
   } catch (e) { toast('Erro: ' + e.message); }
 }
 
-// Auto-refresh a cada 10s
-setInterval(() => { if (STATE.autoRefresh && !document.hidden) loadAll(); }, 10_000);
-
 if (!getToken()) {
   document.getElementById('root').innerHTML = '<div class="login"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
 } else {
+  STATE.date = todayFortaleza();
+  document.getElementById('filter-date').value = STATE.date;
+  document.getElementById('filter-date').max = todayFortaleza();
   loadAll();
 }
+
+// Auto-refresh só se vendo HOJE (datas passadas não mudam)
+setInterval(() => {
+  if (STATE.autoRefresh && !document.hidden && isToday(STATE.date)) loadAll();
+}, 10_000);
 </script>
 </body>
 </html>

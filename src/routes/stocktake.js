@@ -170,29 +170,38 @@ router.get('/bipes', async (req, res) => {
   }
 });
 
-// GET /api/stocktake/summary → contagem total + hoje + por vendedor (HOJE)
-router.get('/summary', async (_req, res) => {
+// GET /api/stocktake/summary?date=YYYY-MM-DD → contagem total + dia + por vendedor
+// (sem ?date usa hoje no fuso America/Fortaleza)
+router.get('/summary', async (req, res) => {
   try {
-    // Define o início do dia em America/Fortaleza
-    const r = await prisma.$queryRaw`SELECT DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')::timestamp AS today`;
-    const todayStart = r[0].today;
+    let dayStart, dayEnd;
+    if (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date))) {
+      // Range exato do dia escolhido em UTC-3 (Fortaleza)
+      dayStart = new Date(req.query.date + 'T00:00:00-03:00');
+      dayEnd = new Date(req.query.date + 'T23:59:59.999-03:00');
+    } else {
+      const r = await prisma.$queryRaw`SELECT DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')::timestamp AS today, (DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza') + INTERVAL '1 day' - INTERVAL '1 millisecond')::timestamp AS end_today`;
+      dayStart = r[0].today;
+      dayEnd = r[0].end_today;
+    }
 
-    const [total, totalToday, foundToday, notFoundToday, sellerGroupsToday] = await Promise.all([
+    const dayWhere = { bipedAt: { gte: dayStart, lte: dayEnd } };
+
+    const [total, totalDay, foundDay, notFoundDay, sellerGroupsDay] = await Promise.all([
       prisma.stocktakeBipe.count(),
-      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart } } }),
-      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart }, found: true } }),
-      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart }, found: false } }),
+      prisma.stocktakeBipe.count({ where: dayWhere }),
+      prisma.stocktakeBipe.count({ where: { ...dayWhere, found: true } }),
+      prisma.stocktakeBipe.count({ where: { ...dayWhere, found: false } }),
       prisma.stocktakeBipe.groupBy({
         by: ['sellerId', 'sellerName'],
-        where: { bipedAt: { gte: todayStart } },
+        where: dayWhere,
         _count: { id: true },
       }),
     ]);
 
-    // Pra cada vendedor hoje, contar found/notFound separado
     const bySellerWithFound = [];
-    for (const g of sellerGroupsToday) {
-      const where = { bipedAt: { gte: todayStart }, sellerId: g.sellerId, sellerName: g.sellerName };
+    for (const g of sellerGroupsDay) {
+      const where = { ...dayWhere, sellerId: g.sellerId, sellerName: g.sellerName };
       const [f, nf] = await Promise.all([
         prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
         prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
@@ -209,11 +218,18 @@ router.get('/summary', async (_req, res) => {
 
     res.json({
       total,
+      day: {
+        total: totalDay,
+        found: foundDay,
+        notFound: notFoundDay,
+        sellers: sellerGroupsDay.length,
+      },
+      // alias 'today' pra compat com versão anterior da UI
       today: {
-        total: totalToday,
-        found: foundToday,
-        notFound: notFoundToday,
-        sellers: sellerGroupsToday.length,
+        total: totalDay,
+        found: foundDay,
+        notFound: notFoundDay,
+        sellers: sellerGroupsDay.length,
       },
       bySeller: bySellerWithFound,
     });
