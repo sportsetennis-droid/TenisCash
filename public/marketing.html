@@ -87,6 +87,11 @@
   .bp-input:focus { border-color: #FF6A1F; background: #fff; outline: none; }
   textarea.bp-input { resize: vertical; min-height: 56px; line-height: 1.4; }
 
+  /* Toggle de modos do modal Foto avulsa */
+  .ad-mode-btn { flex: 1; background: transparent; border: none; padding: 9px 8px; font-size: 12.5px; font-weight: 600; color: #6e6e73; cursor: pointer; border-radius: 8px; font-family: inherit; white-space: nowrap; }
+  .ad-mode-btn.active { background: #fff; color: #FF6A1F; box-shadow: 0 1px 2px rgba(0,0,0,0.06); font-weight: 700; }
+  .ad-mode-btn:hover:not(.active) { color: #0a0a0a; }
+
   /* Lightbox — clica na foto do criativo pra ver em tamanho real */
   .card img.media { cursor: zoom-in; }
   .lightbox { position: fixed; inset: 0; background: rgba(10, 10, 10, 0.92); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: zoom-out; animation: lb-fade 0.18s ease-out; }
@@ -159,40 +164,53 @@
   <!-- Modal: gerar criativo a partir de upload (sem produto cadastrado) -->
   <div id="adhoc-modal" style="display:none;position:fixed;inset:0;background:rgba(10,10,10,0.7);z-index:1000;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;backdrop-filter:blur(6px)" onclick="if(event.target===this) closeAdhocModal()">
     <div style="background:#fff;border-radius:18px;max-width:680px;width:100%;padding:24px;margin:auto">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
         <div>
-          <h2 style="font-size:20px;font-weight:800;margin:0">📤 Criativo a partir de foto</h2>
-          <div style="font-size:12px;color:#6e6e73;margin-top:2px">Pra marcas sem catálogo cadastrado (Meta Fardamentos, APS, político, etc)</div>
+          <h2 style="font-size:20px;font-weight:800;margin:0">📤 Criativo personalizado</h2>
+          <div style="font-size:12px;color:#6e6e73;margin-top:2px">Pra marcas sem catálogo cadastrado · use foto, descrição ou os dois</div>
         </div>
         <button onclick="closeAdhocModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#6e6e73">✕</button>
+      </div>
+
+      <!-- TOGGLE: 3 modos -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;background:#fafafc;padding:4px;border-radius:10px">
+        <button class="ad-mode-btn active" data-mode="photo" onclick="setAdhocMode('photo')">📸 Com foto</button>
+        <button class="ad-mode-btn" data-mode="concept" onclick="setAdhocMode('concept')">💭 Só conceito (sem foto)</button>
+        <button class="ad-mode-btn" data-mode="both" onclick="setAdhocMode('both')">🎨 Foto + conceito</button>
       </div>
 
       <label class="bp-lbl">Marca *</label>
       <select id="ad-brand" class="bp-input" style="font-weight:600"></select>
 
-      <label class="bp-lbl">Foto do produto / conceito *</label>
-      <div style="display:flex;gap:10px;align-items:center;background:#fafafc;border:1.5px dashed #e5e5ea;border-radius:10px;padding:10px;cursor:pointer" onclick="document.getElementById('ad-file').click()">
-        <div id="ad-preview" style="width:64px;height:64px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;color:#c0c0c5;overflow:hidden;flex-shrink:0">📸</div>
-        <div style="flex:1;font-size:13px;color:#6e6e73"><span id="ad-file-name">Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)</span></div>
+      <!-- FOTO (modo photo + both) -->
+      <div id="ad-section-photo">
+        <label class="bp-lbl">Foto do produto / conceito <span id="ad-photo-req">*</span></label>
+        <div style="display:flex;gap:10px;align-items:center;background:#fafafc;border:1.5px dashed #e5e5ea;border-radius:10px;padding:10px;cursor:pointer" onclick="document.getElementById('ad-file').click()">
+          <div id="ad-preview" style="width:64px;height:64px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;color:#c0c0c5;overflow:hidden;flex-shrink:0">📸</div>
+          <div style="flex:1;font-size:13px;color:#6e6e73"><span id="ad-file-name">Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)</span></div>
+        </div>
+        <input type="file" id="ad-file" accept="image/*" style="display:none" onchange="onAdhocFileChange(this.files[0])">
       </div>
-      <input type="file" id="ad-file" accept="image/*" style="display:none" onchange="onAdhocFileChange(this.files[0])">
 
       <div style="display:grid;grid-template-columns:1fr 140px;gap:12px">
         <div>
-          <label class="bp-lbl">Nome do produto / conceito *</label>
-          <input type="text" id="ad-name" class="bp-input" placeholder="Ex: Uniforme cirúrgico Tactel branco">
+          <label class="bp-lbl">Título / nome *</label>
+          <input type="text" id="ad-name" class="bp-input" placeholder="Ex: Uniforme cirúrgico Tactel · Dia do Médico · Vou trabalhar pela saúde">
         </div>
         <div>
-          <label class="bp-lbl">Preço (R$, opcional)</label>
+          <label class="bp-lbl">Preço R$ (opc.)</label>
           <input type="number" id="ad-price" class="bp-input" placeholder="189.90" step="0.01" min="0">
         </div>
       </div>
 
-      <label class="bp-lbl">Categoria (opcional)</label>
-      <input type="text" id="ad-category" class="bp-input" placeholder="Ex: uniformes médicos · futebol · campanha eleitoral">
+      <label class="bp-lbl">Categoria / tema (opcional)</label>
+      <input type="text" id="ad-category" class="bp-input" placeholder="Ex: uniformes médicos · campanha eleitoral · saúde pública · motivacional">
 
-      <label class="bp-lbl">Descrição curta (opcional, ajuda a IA)</label>
-      <textarea id="ad-desc" class="bp-input" rows="2" placeholder="Ex: 100% poliéster Tactel 180g, lavável 250 ciclos, conforto cirúrgico"></textarea>
+      <label class="bp-lbl" id="ad-desc-label">📝 Descrição / briefing (opcional — quanto mais detalhe, melhor a cena)</label>
+      <textarea id="ad-desc" class="bp-input" rows="4" placeholder="Ex: 100% poliéster Tactel 180g, ambiente cirúrgico iluminado
+
+OU pra modo conceito:
+Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em corredor de hospital moderno, luz natural, expressão serena de quem cuida com propósito"></textarea>
 
       <!-- Overlay options -->
       <div style="background:#fafafc;border-radius:10px;padding:10px 14px;margin-top:14px">
@@ -925,9 +943,24 @@ async function bpPasteLogoUrl(slug) {
 }
 
 // =====================================================
-// Modal: Criativo de foto avulsa (upload + marca + dados)
+// Modal: Criativo personalizado (foto / conceito / ambos)
 // =====================================================
 let _adhocFile = null;
+let _adhocMode = 'photo'; // 'photo' | 'concept' | 'both'
+
+function setAdhocMode(mode) {
+  _adhocMode = mode;
+  document.querySelectorAll('.ad-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  // Mostra/esconde seção de foto
+  document.getElementById('ad-section-photo').style.display = (mode === 'concept') ? 'none' : '';
+  // Asterisco de "obrigatório" some no modo concept
+  document.getElementById('ad-photo-req').textContent = (mode === 'photo') ? '*' : '(opcional)';
+  // Hint no campo descrição: vira obrigatório em modo concept
+  const lbl = document.getElementById('ad-desc-label');
+  if (mode === 'concept') lbl.innerHTML = '📝 Descreva a cena que você quer * <span style="color:#FF6A1F;font-weight:700">(obrigatório no modo só conceito)</span>';
+  else if (mode === 'both') lbl.innerHTML = '📝 Descrição / briefing extra (opcional — refina a cena gerada)';
+  else lbl.innerHTML = '📝 Descrição / briefing (opcional — quanto mais detalhe, melhor a cena)';
+}
 
 function openAdhocModal() {
   // Popula dropdown de marca
@@ -949,6 +982,7 @@ function openAdhocModal() {
   document.getElementById('ad-preview').innerHTML = '📸';
   document.getElementById('ad-preview').style.background = '#fff';
   ['ad-name','ad-price','ad-category','ad-desc','ad-headline'].forEach(id => document.getElementById(id).value = '');
+  setAdhocMode('photo'); // modo padrão
   document.getElementById('adhoc-modal').style.display = 'flex';
 }
 
@@ -971,12 +1005,17 @@ function onAdhocFileChange(file) {
 async function adhocGenerate() {
   const brandSlug = document.getElementById('ad-brand').value;
   if (!brandSlug) { toast('Escolha a marca'); return; }
-  if (!_adhocFile) { toast('Escolha um arquivo de imagem'); return; }
   const name = document.getElementById('ad-name').value.trim();
-  if (!name) { toast('Nome obrigatório'); return; }
+  if (!name) { toast('Título / nome obrigatório'); return; }
+  const desc = document.getElementById('ad-desc').value.trim();
+
+  // Validação por modo
+  if (_adhocMode === 'photo' && !_adhocFile) { toast('Escolha um arquivo de imagem (modo Com foto)'); return; }
+  if (_adhocMode === 'concept' && !desc) { toast('No modo Conceito, descreva a cena que você quer'); return; }
 
   const fd = new FormData();
-  fd.append('file', _adhocFile);
+  if (_adhocFile) fd.append('file', _adhocFile);
+  fd.append('mode', _adhocMode);
   fd.append('brandSlug', brandSlug);
   fd.append('name', name);
   fd.append('category', document.getElementById('ad-category').value.trim());

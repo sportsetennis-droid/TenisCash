@@ -486,20 +486,30 @@ async function generateEditorialPhoto(opts) {
   const aspectRatio = opts.aspectRatio || '1:1';
   const sceneHint = opts.sceneHint || '';
   const refs = getReferenceImages(product, 1);
-  const productImageUrl = refs[0];
-  if (!productImageUrl) throw new Error('produto sem imagem de referência');
+  const productImageUrl = refs[0]; // pode ser null no modo conceito
 
   const productName = product.name || 'product';
   const bgPrompt = await buildBackgroundPrompt(product, sceneHint);
 
-  // Roda Bria (remove bg) e Flux (gera bg) EM PARALELO — economia de tempo
-  const [productPngUrl, backgroundUrl] = await Promise.all([
-    removeBgBria(productImageUrl),
-    generateBackground(bgPrompt, aspectRatio),
-  ]);
-
-  // Composição local (Sharp) — rápida
-  let finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
+  let finalBuffer;
+  if (productImageUrl) {
+    // MODO COM FOTO: Bria (remove bg) + Flux (gera bg) EM PARALELO + Sharp compõe
+    const [productPngUrl, backgroundUrl] = await Promise.all([
+      removeBgBria(productImageUrl),
+      generateBackground(bgPrompt, aspectRatio),
+    ]);
+    finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
+  } else {
+    // MODO CONCEITO PURO (sem foto): só gera background via Flux text-to-image,
+    // que vira a imagem inteira. Overlay (headline, logo, handle) por cima.
+    const backgroundUrl = await generateBackground(bgPrompt, aspectRatio);
+    const bgBuf = await fetchAsBuffer(backgroundUrl);
+    const { w: targetW, h: targetH } = dimsFor(aspectRatio);
+    finalBuffer = await sharp(bgBuf)
+      .resize(targetW, targetH, { fit: 'cover', position: 'center' })
+      .jpeg({ quality: 92 })
+      .toBuffer();
+  }
 
   // Aplica overlay de texto/logo/handle se solicitado
   // Cada elemento é opt-in via flag separada (controlado pela UI)
@@ -529,9 +539,9 @@ async function generateEditorialPhoto(opts) {
 
   return {
     outputUrl,
-    model: 'composite (bria+flux+sharp)',
+    model: productImageUrl ? 'composite (bria+flux+sharp)' : 'composite (flux-only / concept)',
     prompt: bgPrompt,
-    costUsd: COSTS.composite,
+    costUsd: productImageUrl ? COSTS.composite : 0.04, // sem Bria, só Flux
   };
 }
 

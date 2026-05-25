@@ -104,13 +104,32 @@ async function buildEditorialPrompt(product, sceneHint = '', opts = {}) {
 }
 
 /**
- * Constrói prompt SÓ pra background (composite). Usa template editável.
+ * Constrói prompt SÓ pra background (composite).
+ * - Quando há produto (imageUrl) → modo "leave space for product overlay" (sem produto/pessoa)
+ * - Quando NÃO há produto (modo conceito) → cena completa e livre (com pessoa OK)
  */
 async function buildBackgroundPrompt(product, sceneHint = '') {
   const prompts = await cfg.getProviderPrompts();
   const scene = (sceneHint && sceneHint.trim()) || await pickSceneAuto(product);
-  const template = prompts.composite_bg || cfg.DEFAULT_PROVIDER_PROMPTS.composite_bg;
-  return template.replace(/\{SCENE\}/g, scene);
+  const hasProduct = !!(product?.imageUrl);
+
+  if (hasProduct) {
+    const template = prompts.composite_bg || cfg.DEFAULT_PROVIDER_PROMPTS.composite_bg;
+    return template.replace(/\{SCENE\}/g, scene);
+  }
+
+  // MODO CONCEITO PURO: a cena descrita pelo user é o conteúdo total
+  // (pode ter pessoa, objetos, texto sutil, qualquer coisa).
+  // Persona BR é injetada pra evitar modelos genéricos europeus.
+  const personaBr = await cfg.getPersonaBr();
+  return [
+    'Editorial photography for Brazilian social media post:',
+    scene + '.',
+    'Hyperrealistic, magazine quality, dramatic professional lighting, shallow depth of field.',
+    personaBr,
+    'Composition: leave generous negative space at top and bottom (around 20% each) for headline and logo overlays. The main subject should occupy the center of the frame.',
+    'No fake brand logos, no random text written on the image.',
+  ].join(' ');
 }
 
 /**

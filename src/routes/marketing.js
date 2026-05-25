@@ -277,29 +277,40 @@ router.post('/generate/:productId', async (req, res) => {
 // ====================================================
 router.post('/generate-upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'foto obrigatória (campo "file")' });
-
     const body = req.body || {};
+    const mode = body.mode || 'photo'; // 'photo' | 'concept' | 'both'
     const brandSlug = body.brandSlug;
     if (!brandSlug) return res.status(400).json({ error: 'brandSlug obrigatório' });
     const brand = await brandProfiles.getBySlug(brandSlug);
     if (!brand) return res.status(404).json({ error: 'marca não encontrada: ' + brandSlug });
 
-    // 1. Upload da foto original pro fal.storage
-    const ext = (req.file.originalname?.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
-    const safeName = (body.name || 'produto').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
-    const filename = `adhoc-${brandSlug}-${Date.now()}-${safeName}.${ext}`;
-    const imageUrl = await uploadFileToFal(req.file.buffer, filename, req.file.mimetype);
+    const description = body.description || '';
+    const hasFile = !!req.file;
+    const hasDesc = description.trim().length > 0;
 
-    // 2. Monta product "virtual" pra reusar o pipeline composite
+    // Validação por modo
+    if (mode === 'photo' && !hasFile) return res.status(400).json({ error: 'modo "photo" exige arquivo' });
+    if (mode === 'concept' && !hasDesc) return res.status(400).json({ error: 'modo "concept" exige descrição da cena' });
+
+    // 1. Upload da foto (se houver)
+    let imageUrl = null;
+    if (hasFile) {
+      const ext = (req.file.originalname?.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+      const safeName = (body.name || 'produto').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+      const filename = `adhoc-${brandSlug}-${Date.now()}-${safeName}.${ext}`;
+      imageUrl = await uploadFileToFal(req.file.buffer, filename, req.file.mimetype);
+    }
+
+    // 2. Monta product virtual. No modo conceito, imageUrl=null e a descrição
+    //    vira sceneHint pra IA gerar tudo do zero (Flux text-to-image puro)
     const virtualProduct = {
       id: null,
       sku: 'adhoc-' + Date.now(),
-      name: body.name || 'Produto',
+      name: body.name || 'Conceito',
       brand: brand.displayName,
       category: body.category || '',
       subcategory: '',
-      shortDescription: body.description || '',
+      shortDescription: description,
       price: body.price ? parseFloat(body.price) : null,
       imageUrl,
       imageUrls: [],
@@ -308,7 +319,10 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
 
     const provider = body.provider || 'composite';
     const aspectRatio = body.aspectRatio || '1:1';
-    const sceneHint = body.sceneHint || '';
+    // No modo conceito, a descrição vira a CENA pro Flux background gerar do zero
+    const sceneHint = (mode === 'concept' || mode === 'both')
+      ? (description || body.sceneHint || '')
+      : (body.sceneHint || '');
 
     // 3. Resolve overlay options
     const includeHeadline = body.includeHeadline === 'true' || body.includeHeadline === true;
