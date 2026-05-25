@@ -106,6 +106,95 @@ router.get('/form-options', adminOnly, async (_req, res) => {
   }
 });
 
+// GET /api/admin/products/:id/nfe-summary
+// Retorna histórico de entradas via NFe + total comprado vs total contado (bipe)
+router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
+  try {
+    const productId = req.params.id;
+
+    // Todas as linhas de NFe vinculadas a esse produto
+    const items = await prisma.xmlFiscalItem.findMany({
+      where: { productId },
+      include: {
+        fiscalDocument: { select: { issueDate: true, issuerName: true, docType: true, number: true, recipientCnpj: true, brand: true } },
+      },
+      orderBy: { fiscalDocument: { issueDate: 'desc' } },
+    });
+
+    // Separa por tipo (entrada de fornecedor vs transferência interna)
+    const entradas = items.filter(i => i.fiscalDocument?.docType === 'entrada' || !i.fiscalDocument?.docType);
+    const transferencias = items.filter(i => i.fiscalDocument?.docType === 'transferencia');
+
+    const totalComprado = entradas.reduce((s, i) => s + (i.quantity || 0), 0);
+    const totalTransferido = transferencias.reduce((s, i) => s + (i.quantity || 0), 0);
+
+    // Estoque atual por loja (somando todos os tamanhos)
+    const storeStocks = await prisma.storeStock.findMany({
+      where: { productSize: { productId } },
+      include: { store: { select: { code: true, name: true } }, productSize: { select: { size: true, barcode: true } } },
+    });
+    const totalEmEstoque = storeStocks.reduce((s, ss) => s + (ss.stock || 0), 0);
+
+    // Bipes recentes do produto (last 30 days)
+    const bipes30d = await prisma.stocktakeBipe.count({
+      where: {
+        productId,
+        bipedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    });
+
+    // CNPJ → loja (pra mostrar pra que loja a NFe foi destinada)
+    const cnpjs = [...new Set(entradas.map(e => e.fiscalDocument?.recipientCnpj).filter(Boolean))];
+    const issuers = cnpjs.length ? await prisma.fiscalIssuer.findMany({
+      where: { cnpj: { in: cnpjs } },
+      select: { cnpj: true, store: { select: { code: true, name: true } } },
+    }) : [];
+    const cnpjToStore = Object.fromEntries(issuers.map(i => [i.cnpj, i.store]));
+
+    res.json({
+      productId,
+      totals: {
+        comprado: totalComprado,          // quanto entrou via NFe de fornecedor
+        transferido: totalTransferido,    // quanto rolou em transferências internas
+        emEstoque: totalEmEstoque,        // soma do estoque físico atual (todas lojas/tamanhos)
+        diferenca: totalComprado - totalEmEstoque, // sumiço (vendido/perdido/transferido)
+        bipes30d,                          // qtos bipes contou nesse produto nos últimos 30d
+      },
+      entradas: entradas.map(i => ({
+        id: i.id,
+        data: i.fiscalDocument?.issueDate,
+        fornecedor: i.fiscalDocument?.issuerName,
+        numero: i.fiscalDocument?.number,
+        quantidade: i.quantity,
+        valorUnit: i.unitValue,
+        valorTotal: i.totalValue,
+        ean: i.ean,
+        ref: i.supplierCode,
+        descricao: i.description,
+        lojaDestino: cnpjToStore[i.fiscalDocument?.recipientCnpj]?.code || null,
+        lojaNome: cnpjToStore[i.fiscalDocument?.recipientCnpj]?.name || null,
+      })),
+      transferencias: transferencias.map(i => ({
+        id: i.id,
+        data: i.fiscalDocument?.issueDate,
+        de: i.fiscalDocument?.issuerName,
+        para: cnpjToStore[i.fiscalDocument?.recipientCnpj]?.code || null,
+        quantidade: i.quantity,
+      })),
+      estoquePorLoja: storeStocks.map(ss => ({
+        loja: ss.store?.code,
+        lojaNome: ss.store?.name,
+        tamanho: ss.productSize?.size,
+        estoque: ss.stock,
+        atualizadoEm: ss.updatedAt,
+      })),
+    });
+  } catch (err) {
+    console.error('[nfe-summary]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/products/:id', adminOnly, async (req, res) => {
   try {
     const p = await prisma.product.findUnique({

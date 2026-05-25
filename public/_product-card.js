@@ -80,6 +80,86 @@
   };
   if (typeof window !== 'undefined') window.PCard = window.PCard || PCard;
 
+  // ============================================================
+  // Lazy load do histórico de entradas via NFe
+  // ============================================================
+  PCard.loadNfeSummary = async function (productId, btn) {
+    const container = document.querySelector(`.pcard-nfe-content[data-pid="${productId}"]`);
+    if (!container) return;
+    // Toggle se já carregado
+    if (container.dataset.loaded === '1') {
+      const open = container.style.display !== 'none';
+      container.style.display = open ? 'none' : 'block';
+      if (btn) btn.textContent = open ? '▼ Ver histórico' : '▲ Ocultar';
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Carregando...'; }
+    try {
+      const token = localStorage.getItem('tc_admin_token') || '';
+      const r = await fetch('/api/admin/products/' + productId + '/nfe-summary', { headers: { 'Authorization': 'Bearer ' + token } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+      const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const t = d.totals || {};
+      let html = '';
+      // Resumo totais
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-bottom:10px;">`;
+      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">COMPRADO</div><div style="font-size:18px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">EM ESTOQUE</div><div style="font-size:18px;font-weight:800;color:#0a843d;">${t.emEstoque || 0}</div></div>`;
+      const dif = t.diferenca || 0;
+      const difColor = dif > 0 ? '#d70015' : dif < 0 ? '#b06b00' : '#8e8e93';
+      const difSign = dif > 0 ? '−' : dif < 0 ? '+' : '';
+      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">DIFERENÇA</div><div style="font-size:18px;font-weight:800;color:${difColor};">${difSign}${Math.abs(dif)}</div></div>`;
+      html += `</div>`;
+      if (t.diferenca > 0) {
+        html += `<div style="background:#fff1f0;padding:6px 10px;border-radius:6px;font-size:11px;color:#d70015;margin-bottom:8px;">⚠ Comprado ${t.comprado} − contado ${t.emEstoque} = ${t.diferenca} sumiram (vendido / perdido / em loja não contada)</div>`;
+      }
+      // Lista de entradas
+      const entradas = d.entradas || [];
+      if (entradas.length === 0) {
+        html += `<div style="color:#8e8e93;font-size:11px;text-align:center;padding:10px;">Nenhuma entrada via NFe registrada pra esse produto</div>`;
+      } else {
+        html += `<div style="font-size:10px;color:#0066cc;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${entradas.length} entrada${entradas.length > 1 ? 's' : ''}</div>`;
+        html += `<div style="max-height:220px;overflow-y:auto;background:white;border-radius:6px;">`;
+        entradas.slice(0, 30).forEach(e => {
+          const data = e.data ? new Date(e.data).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '?';
+          html += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;gap:8px;">`;
+          html += `<div style="flex:1;min-width:0;">`;
+          html += `<div style="font-weight:600;">${data} · <span style="color:#0066cc">${e.lojaDestino || '?'}</span></div>`;
+          html += `<div style="font-size:10px;color:#8e8e93;">${esc((e.fornecedor || '').slice(0, 40))} · NF ${esc(e.numero || '?')}</div>`;
+          html += `</div>`;
+          html += `<div style="text-align:right;">`;
+          html += `<div style="font-weight:800;color:#0066cc;">${e.quantidade} un</div>`;
+          if (e.valorUnit) html += `<div style="font-size:10px;color:#8e8e93;">R$ ${Number(e.valorUnit).toFixed(2)} ea</div>`;
+          html += `</div>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+      // Transferências
+      if (d.transferencias && d.transferencias.length > 0) {
+        html += `<div style="font-size:10px;color:#b06b00;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${d.transferencias.length} transferência${d.transferencias.length > 1 ? 's' : ''} interna${d.transferencias.length > 1 ? 's' : ''}</div>`;
+        html += `<div style="background:white;border-radius:6px;">`;
+        d.transferencias.slice(0, 10).forEach(t => {
+          const data = t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '?';
+          html += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;font-size:11px;">`;
+          html += `<div>${data} · ${esc(t.de?.slice(0,25) || '?')} → ${esc(t.para || '?')}</div>`;
+          html += `<div style="font-weight:700;">${t.quantidade} un</div>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+      container.innerHTML = html;
+      container.dataset.loaded = '1';
+      container.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = '▲ Ocultar'; }
+    } catch (e) {
+      container.innerHTML = `<div style="color:#d70015;font-size:11px;">Erro: ${e.message}</div>`;
+      container.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = '▼ Tentar de novo'; }
+    }
+  };
+
   /**
    * Renderiza UM card de produto.
    */
@@ -210,6 +290,17 @@
     if (cls.tier) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ${esc(cls.tier)}</span>`;
     if (metaPills) html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">${metaPills}</div>`;
 
+    // BLOCO NFe (lazy load) — só pra admin
+    if (showStock && actions === 'admin') {
+      html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
+      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Entradas via NFe</div>`;
+      html += `<button type="button" onclick="event.stopPropagation();PCard.loadNfeSummary('${p.id}', this)" style="background:#0066cc;color:white;border:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">▼ Ver histórico</button>`;
+      html += `</div>`;
+      html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="display:none;margin-top:8px;font-size:12px;color:#1d1d1f;"></div>`;
+      html += `</div>`;
+    }
+
     // TAMANHOS POR LOJA
     if (showStock) {
       const storesArr = Object.keys(byStore).sort();
@@ -217,7 +308,7 @@
         const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
         html += `<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFEBDC);border-radius:10px;border:2px solid #FCDAC4;">`;
         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">`;
-        html += `<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Estoque por loja</div>`;
+        html += `<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">🏪 Estoque físico por loja (último bipe)</div>`;
         html += `<div style="font-size:12px;color:#1d1d1f;font-weight:800;">${totalUn} un. total</div>`;
         html += '</div>';
         storesArr.forEach(code => {
