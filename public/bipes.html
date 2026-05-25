@@ -48,7 +48,9 @@
 
   /* Lista de bipes */
   .bipes-table { background:#fff; border-radius:12px; overflow:hidden; }
-  .bipe { display:grid; grid-template-columns:80px 1fr 1fr 50px; gap:10px; padding:10px 14px; border-bottom:1px solid #f0f0f5; align-items:center; font-size:13px; }
+  .bipe { display:grid; grid-template-columns:80px 1fr 1fr 50px 36px; gap:10px; padding:10px 14px; border-bottom:1px solid #f0f0f5; align-items:center; font-size:13px; }
+  .del-btn { background:transparent; border:none; cursor:pointer; padding:6px 8px; border-radius:6px; font-size:14px; color:#d70015; opacity:0.5; transition:opacity 0.15s; }
+  .del-btn:hover { opacity:1; background:#fff1f0; }
   .bipe:last-child { border:none; }
   .bipe-time { font-size:11px; color:#a8a8ad; font-variant-numeric:tabular-nums; }
   .bipe-code { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:#0a0a0a; font-weight:600; }
@@ -61,7 +63,9 @@
   .ok-badge.no { background:#fff1f0; color:#d70015; }
 
   @media (max-width: 600px) {
-    .bipe { grid-template-columns:1fr; gap:4px; padding:12px 14px; }
+    .bipe { grid-template-columns:1fr 36px; gap:4px 8px; padding:12px 14px; }
+    .bipe > :first-child { grid-column: 1 / 2; }
+    .bipe > .del-btn { grid-column: 2 / 3; grid-row: 1 / 5; align-self: start; }
     .bipe-time { font-size:10px; }
   }
 
@@ -168,10 +172,14 @@ async function loadSummary() {
       </div>
     `).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes hoje ainda</div>';
 
-    // Popular filtro de vendedor
+    // Popular filtro de vendedor — usa "id:xxx" ou "name:Xxx" como value
+    // (porque muitos bipes vêm sem sellerId mas com sellerName)
     const sel = document.getElementById('filter-seller');
     const current = sel.value;
-    sel.innerHTML = '<option value="">Todos vendedores</option>' + (r.bySeller || []).map(s => `<option value="${escH(s.id || '')}" ${s.id === current ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`).join('');
+    sel.innerHTML = '<option value="">Todos vendedores</option>' + (r.bySeller || []).map(s => {
+      const val = s.id ? `id:${s.id}` : `name:${s.name}`;
+      return `<option value="${escH(val)}" ${val === current ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`;
+    }).join('');
   } catch (e) { console.warn('summary', e); }
 }
 
@@ -180,8 +188,9 @@ async function loadBipes() {
     const params = new URLSearchParams({ limit: '100' });
     if (STATE.status === 'found') params.set('found', 'true');
     if (STATE.status === 'notfound') params.set('found', 'false');
-    const sid = document.getElementById('filter-seller')?.value;
-    if (sid) params.set('sellerId', sid);
+    const sval = document.getElementById('filter-seller')?.value || '';
+    if (sval.startsWith('id:')) params.set('sellerId', sval.slice(3));
+    else if (sval.startsWith('name:')) params.set('sellerName', sval.slice(5));
     params.set('today', '1');
 
     const r = await api('/bipes?' + params.toString());
@@ -192,7 +201,7 @@ async function loadBipes() {
       return;
     }
     list.innerHTML = items.map(b => `
-      <div class="bipe">
+      <div class="bipe" data-id="${escH(b.id)}">
         <div class="bipe-time">${fmtTime(b.bipedAt)}</div>
         <div class="bipe-code" title="${escH(b.barcode)}">${escH(b.barcode)}</div>
         <div class="bipe-info">
@@ -202,11 +211,25 @@ async function loadBipes() {
         <div class="bipe-status">
           <span class="ok-badge ${b.found ? 'ok' : 'no'}">${b.found ? '✓' : '✗'}</span>
         </div>
+        <button class="del-btn" onclick="deleteBipe('${escH(b.id)}', '${escH(b.barcode)}', '${escH(b.sellerName || '?')}')" title="Excluir bipe">🗑️</button>
       </div>
     `).join('');
   } catch (e) {
     document.getElementById('bipes-list').innerHTML = '<div class="empty" style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
   }
+}
+
+async function deleteBipe(id, barcode, sellerName) {
+  if (!confirm(`Excluir esse bipe?\n\nCódigo: ${barcode}\nVendedor: ${sellerName}\n\nNão dá pra desfazer.`)) return;
+  try {
+    await api('/bipes/' + id, { method: 'DELETE' });
+    toast('✓ Bipe excluído');
+    // Anima sumiço da linha
+    const row = document.querySelector(`.bipe[data-id="${id}"]`);
+    if (row) { row.style.transition='opacity 0.2s'; row.style.opacity='0'; setTimeout(() => row.remove(), 200); }
+    // Recarrega stats
+    loadSummary();
+  } catch (e) { toast('Erro: ' + e.message); }
 }
 
 // Auto-refresh a cada 10s

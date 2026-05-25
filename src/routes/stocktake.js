@@ -141,10 +141,11 @@ router.use(authMiddleware, adminMiddleware);
 // GET /api/stocktake/bipes?storeId=&sellerId=&dateFrom=&dateTo=&applied=&found=&today=1&limit=
 router.get('/bipes', async (req, res) => {
   try {
-    const { storeId, sellerId, dateFrom, dateTo, applied, found, today, limit } = req.query;
+    const { storeId, sellerId, sellerName, dateFrom, dateTo, applied, found, today, limit } = req.query;
     const where = {};
     if (storeId) where.storeId = String(storeId);
     if (sellerId) where.sellerId = String(sellerId);
+    if (sellerName) where.sellerName = String(sellerName);
     if (applied === 'true') where.applied = true;
     if (applied === 'false') where.applied = false;
     if (found === 'true') where.found = true;
