@@ -304,6 +304,114 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+// POST /api/stocktake/apply-to-stock — aplica bipes no StoreStock
+// Body opcional: { date: 'YYYY-MM-DD', storeId, sellerId, dryRun: true }
+// Modo "Substituir": pra cada (productSize, store), conta TODOS os bipes
+// found=true daquele dia/filtro e SOBRESCREVE o stock com esse número.
+// Marca bipes como applied=true.
+router.post('/apply-to-stock', async (req, res) => {
+  try {
+    const { date, storeId, sellerId, dryRun } = req.body || {};
+
+    // Range do dia (default: hoje America/Fortaleza)
+    let dayStart, dayEnd;
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      dayStart = new Date(date + 'T00:00:00-03:00');
+      dayEnd = new Date(date + 'T23:59:59.999-03:00');
+    } else {
+      const r = await prisma.$queryRaw`SELECT DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')::timestamp AS today, (DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza') + INTERVAL '1 day' - INTERVAL '1 millisecond')::timestamp AS end_today`;
+      dayStart = r[0].today; dayEnd = r[0].end_today;
+    }
+
+    const where = {
+      bipedAt: { gte: dayStart, lte: dayEnd },
+      found: true,
+      applied: false,
+      productSizeId: { not: null },
+      storeId: { not: null },
+    };
+    if (storeId) where.storeId = String(storeId);
+    if (sellerId) where.sellerId = String(sellerId);
+
+    // Agrupa por (storeId, productSizeId) e conta os bipes
+    const groups = await prisma.stocktakeBipe.groupBy({
+      by: ['storeId', 'productSizeId'],
+      where,
+      _count: { id: true },
+    });
+
+    if (groups.length === 0) {
+      return res.json({ ok: true, applied: 0, products: 0, bipes: 0, dryRun: !!dryRun, message: 'Sem bipes pra aplicar' });
+    }
+
+    // Pega produtos pra mostrar mudanças
+    const sizeIds = [...new Set(groups.map(g => g.productSizeId))];
+    const sizes = await prisma.productSize.findMany({
+      where: { id: { in: sizeIds } },
+      include: { product: { select: { id: true, name: true, brand: true, sku: true } } },
+    });
+    const sizeMap = Object.fromEntries(sizes.map(s => [s.id, s]));
+
+    const storeIds = [...new Set(groups.map(g => g.storeId))];
+    const stores = await prisma.store.findMany({ where: { id: { in: storeIds } }, select: { id: true, name: true, code: true } });
+    const storeMap = Object.fromEntries(stores.map(s => [s.id, s]));
+
+    // Estoque atual pra calcular delta
+    const currentStocks = await prisma.storeStock.findMany({
+      where: {
+        OR: groups.map(g => ({ storeId: g.storeId, productSizeId: g.productSizeId })),
+      },
+    });
+    const currentMap = Object.fromEntries(currentStocks.map(s => [s.storeId + ':' + s.productSizeId, s.stock]));
+
+    // Monta plano
+    const plan = groups.map(g => {
+      const key = g.storeId + ':' + g.productSizeId;
+      const current = currentMap[key] || 0;
+      const newStock = g._count.id;
+      const size = sizeMap[g.productSizeId];
+      const store = storeMap[g.storeId];
+      return {
+        storeId: g.storeId, storeName: store?.name, storeCode: store?.code,
+        productSizeId: g.productSizeId, size: size?.size, productName: size?.product?.name,
+        brand: size?.product?.brand, sku: size?.product?.sku,
+        currentStock: current,
+        newStock,
+        delta: newStock - current,
+        bipes: g._count.id,
+      };
+    });
+
+    if (dryRun) {
+      return res.json({ ok: true, dryRun: true, plan, total: plan.length });
+    }
+
+    // EXECUTA: upsert StoreStock + marca bipes como applied
+    let appliedStocks = 0;
+    for (const item of plan) {
+      await prisma.storeStock.upsert({
+        where: { storeId_productSizeId: { storeId: item.storeId, productSizeId: item.productSizeId } },
+        update: { stock: item.newStock },
+        create: { storeId: item.storeId, productSizeId: item.productSizeId, stock: item.newStock },
+      });
+      appliedStocks++;
+    }
+    const upd = await prisma.stocktakeBipe.updateMany({ where, data: { applied: true } });
+
+    res.json({
+      ok: true,
+      applied: appliedStocks,
+      bipes: upd.count,
+      products: new Set(plan.map(p => p.productSizeId)).size,
+      stores: new Set(plan.map(p => p.storeId)).size,
+      plan,
+    });
+  } catch (err) {
+    console.error('[stocktake/apply-to-stock]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/stocktake/bipes/:id → remove bipe (caso erro)
 router.delete('/bipes/:id', async (req, res) => {
   try {

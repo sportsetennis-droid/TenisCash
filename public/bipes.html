@@ -88,6 +88,7 @@
       <div class="sub">Quem tá bipando agora · auto-refresh a cada 10s</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="applyToStock()" style="background:linear-gradient(135deg,#0a843d,#19b755);box-shadow:0 4px 14px rgba(10,132,61,0.35)">📦 Aplicar bipes ao estoque</button>
       <span class="auto-refresh live" id="live-indicator"><span class="dot"></span>AO VIVO</span>
       <button class="btn btn-secondary" onclick="loadAll()">↻</button>
     </div>
@@ -308,6 +309,59 @@ async function loadBipes() {
   } catch (e) {
     document.getElementById('bipes-list').innerHTML = '<div class="empty" style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
   }
+}
+
+async function applyToStock() {
+  const date = STATE.date || todayFortaleza();
+  const dayLabel = isToday(date) ? 'HOJE' : date.split('-').reverse().join('/');
+  // Filtros aplicados (loja/vendedor) também limitam o que aplica
+  const storeId = document.getElementById('filter-store')?.value || '';
+  const sval = document.getElementById('filter-seller')?.value || '';
+  const sellerId = sval.startsWith('id:') ? sval.slice(3) : '';
+  const sellerName = sval.startsWith('name:') ? sval.slice(5) : '';
+
+  // 1. PREVIEW (dryRun=true)
+  toast('Calculando ajustes…');
+  let preview;
+  try {
+    preview = await fetch('/api/stocktake/apply-to-stock', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, storeId, sellerId, sellerName, dryRun: true }),
+    }).then(r => r.json());
+  } catch (e) { toast('Erro: ' + e.message); return; }
+  if (preview.error) { toast('Erro: ' + preview.error); return; }
+  if (!preview.plan || preview.plan.length === 0) {
+    alert('Nenhum bipe pra aplicar (' + dayLabel + ').\n\nMotivos possíveis:\n• Todos os bipes já foram aplicados antes\n• Não tem bipe found=true no dia\n• Bipes sem storeId/productSizeId');
+    return;
+  }
+
+  // 2. Mostra resumo amigável e pede confirmação
+  const total = preview.plan.length;
+  const stores = new Set(preview.plan.map(p => p.storeName)).size;
+  let summary = `📦 APLICAR ESTOQUE DO DIA ${dayLabel}\n\n`;
+  summary += `${total} produto(s) em ${stores} loja(s) — vai SUBSTITUIR o estoque com o que foi bipado.\n\n`;
+  summary += `Exemplos:\n`;
+  preview.plan.slice(0, 8).forEach(p => {
+    const sign = p.delta >= 0 ? '+' : '';
+    summary += `  • ${(p.productName || '?').slice(0,40)} ${p.size || ''} · ${(p.storeCode || p.storeName || '').slice(0,12)}: ${p.currentStock} → ${p.newStock} (${sign}${p.delta})\n`;
+  });
+  if (preview.plan.length > 8) summary += `  ... e mais ${preview.plan.length - 8} produtos\n`;
+  summary += `\nConfirma? Não dá pra desfazer automaticamente.`;
+  if (!confirm(summary)) return;
+
+  // 3. APLICA pra valer
+  toast('Aplicando…');
+  try {
+    const r = await fetch('/api/stocktake/apply-to-stock', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, storeId, sellerId, sellerName }),
+    }).then(r => r.json());
+    if (r.error) { toast('Erro: ' + r.error); return; }
+    alert(`✅ APLICADO!\n\n📦 ${r.products || 0} produtos atualizados\n🏢 ${r.stores || 0} lojas\n📊 ${r.bipes || 0} bipes processados\n\nOs bipes agora estão marcados como APLICADOS — não vão repetir.`);
+    loadAll();
+  } catch (e) { toast('Erro: ' + e.message); }
 }
 
 async function deleteBipe(id, barcode, sellerName) {
