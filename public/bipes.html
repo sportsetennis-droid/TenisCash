@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#FF6A1F">
+<title>Bipes do dia — TenisCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',-apple-system,sans-serif; -webkit-tap-highlight-color:transparent; }
+  body { background:#f5f5f7; color:#0a0a0a; min-height:100vh; padding:14px 12px env(safe-area-inset-bottom); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1100px; margin:0 auto; }
+  .top { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  h1 { font-size:22px; font-weight:800; color:#FF6A1F; letter-spacing:-0.02em; }
+  .sub { font-size:12px; color:#6e6e73; margin-top:2px; }
+  .btn { background:#FF6A1F; color:#fff; border:none; padding:9px 14px; border-radius:999px; font-size:13px; font-weight:700; cursor:pointer; }
+  .btn-secondary { background:#fff; border:1px solid #e5e5ea; color:#0a0a0a; }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+  /* Stats cards */
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+  .stat { background:#fff; border-radius:12px; padding:12px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+  .stat-label { font-size:10px; letter-spacing:1px; color:#a8a8ad; font-weight:700; text-transform:uppercase; }
+  .stat-val { font-size:24px; font-weight:800; letter-spacing:-0.02em; margin-top:4px; }
+  .stat.alert { background:linear-gradient(135deg,#fff1f0,#fff); border:1px solid #fcc; }
+  .stat.alert .stat-val { color:#d70015; }
+  .stat.ok .stat-val { color:#0a843d; }
+
+  /* Filters */
+  .filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:center; background:#fff; padding:10px 12px; border-radius:12px; }
+  .filters select, .filters input { padding:7px 11px; border:1px solid #e5e5ea; border-radius:8px; font-size:13px; font-family:inherit; }
+  .filters label { font-size:12px; color:#6e6e73; font-weight:600; }
+  .chip { padding:5px 12px; border-radius:999px; font-size:11px; font-weight:700; cursor:pointer; border:1px solid #e5e5ea; background:#fff; color:#6e6e73; }
+  .chip.active { background:#FF6A1F; color:#fff; border-color:#FF6A1F; }
+
+  /* Por vendedor */
+  .by-seller { background:#fff; border-radius:12px; padding:10px 14px; margin-bottom:14px; }
+  .by-seller-title { font-size:11px; letter-spacing:1px; color:#a8a8ad; font-weight:700; text-transform:uppercase; margin-bottom:8px; }
+  .seller-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f0f0f5; font-size:13px; }
+  .seller-row:last-child { border:none; }
+  .seller-name { font-weight:600; flex:1; }
+  .seller-counts { display:flex; gap:14px; }
+  .seller-count { font-size:11px; color:#6e6e73; }
+  .seller-count b { font-size:14px; }
+  .seller-count.ok b { color:#0a843d; }
+  .seller-count.bad b { color:#d70015; }
+
+  /* Lista de bipes */
+  .bipes-table { background:#fff; border-radius:12px; overflow:hidden; }
+  .bipe { display:grid; grid-template-columns:80px 1fr 1fr 50px; gap:10px; padding:10px 14px; border-bottom:1px solid #f0f0f5; align-items:center; font-size:13px; }
+  .bipe:last-child { border:none; }
+  .bipe-time { font-size:11px; color:#a8a8ad; font-variant-numeric:tabular-nums; }
+  .bipe-code { font-family:'SF Mono',Menlo,monospace; font-size:12px; color:#0a0a0a; font-weight:600; }
+  .bipe-info { font-size:12px; color:#6e6e73; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bipe-info .product { color:#0a0a0a; font-weight:600; }
+  .bipe-info .seller { font-size:11px; color:#a8a8ad; }
+  .bipe-status { text-align:right; }
+  .ok-badge { display:inline-block; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+  .ok-badge.ok { background:#e8f7ee; color:#0a843d; }
+  .ok-badge.no { background:#fff1f0; color:#d70015; }
+
+  @media (max-width: 600px) {
+    .bipe { grid-template-columns:1fr; gap:4px; padding:12px 14px; }
+    .bipe-time { font-size:10px; }
+  }
+
+  .empty { text-align:center; padding:60px 20px; color:#a8a8ad; }
+  .toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); background:rgba(20,20,22,0.92); color:#fff; padding:11px 18px; border-radius:14px; font-size:13px; font-weight:600; z-index:99; opacity:0; transition:opacity 0.3s; backdrop-filter:blur(20px); }
+  .toast.show { opacity:1; }
+  .login { display:flex; flex-direction:column; align-items:center; padding:80px 20px; gap:20px; text-align:center; }
+  .login a { background:#FF6A1F; color:#fff; padding:14px 28px; border-radius:999px; text-decoration:none; font-weight:700; }
+  .auto-refresh { font-size:11px; color:#a8a8ad; }
+  .auto-refresh.live { color:#0a843d; }
+  .auto-refresh .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#0a843d; margin-right:4px; animation:pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
+</style>
+</head>
+<body>
+<div class="wrap" id="root">
+  <div class="top">
+    <div>
+      <h1>📊 Bipes do dia</h1>
+      <div class="sub">Quem tá bipando agora · auto-refresh a cada 10s</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="auto-refresh live" id="live-indicator"><span class="dot"></span>AO VIVO</span>
+      <button class="btn btn-secondary" onclick="loadAll()">↻</button>
+    </div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="stat-label">Hoje</div><div class="stat-val">—</div></div>
+  </div>
+
+  <div class="by-seller" id="by-seller">
+    <div class="by-seller-title">Hoje por vendedor</div>
+    <div id="by-seller-list">Carregando...</div>
+  </div>
+
+  <div class="filters">
+    <label>Status:</label>
+    <span class="chip active" data-status="" onclick="setStatusFilter('')">Todos</span>
+    <span class="chip" data-status="found" onclick="setStatusFilter('found')">✓ Achados</span>
+    <span class="chip" data-status="notfound" onclick="setStatusFilter('notfound')">✗ Não achados</span>
+    <label style="margin-left:auto">Vendedor:</label>
+    <select id="filter-seller" onchange="loadBipes()"><option value="">Todos</option></select>
+  </div>
+
+  <div class="bipes-table" id="bipes-list"><div class="empty">Carregando bipes...</div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/stocktake';
+const STATE = { status: '', sellerId: '', autoRefresh: true };
+
+function getToken() { return localStorage.getItem('tc_admin_token') || ''; }
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  if (r.status === 401) {
+    document.getElementById('root').innerHTML = '<div class="login"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+    throw new Error('unauth');
+  }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+
+function escH(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2500); }
+
+function fmtTime(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function setStatusFilter(s) {
+  STATE.status = s;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.status === s));
+  loadBipes();
+}
+
+async function loadAll() {
+  await Promise.all([loadSummary(), loadBipes()]);
+}
+
+async function loadSummary() {
+  try {
+    const r = await api('/summary');
+    const stats = document.getElementById('stats');
+    stats.innerHTML = `
+      <div class="stat ok"><div class="stat-label">Total hoje</div><div class="stat-val">${r.today.total || 0}</div></div>
+      <div class="stat ok"><div class="stat-label">✓ Achados</div><div class="stat-val">${r.today.found || 0}</div></div>
+      <div class="stat alert"><div class="stat-label">✗ Não achados</div><div class="stat-val">${r.today.notFound || 0}</div></div>
+      <div class="stat"><div class="stat-label">Vendedores ativos</div><div class="stat-val">${r.today.sellers || 0}</div></div>
+      <div class="stat"><div class="stat-label">Total geral (banco)</div><div class="stat-val">${r.total || 0}</div></div>
+    `;
+    const sl = document.getElementById('by-seller-list');
+    sl.innerHTML = (r.bySeller || []).map(s => `
+      <div class="seller-row">
+        <div class="seller-name">${escH(s.name)}</div>
+        <div class="seller-counts">
+          <div class="seller-count ok">✓ <b>${s.found}</b></div>
+          <div class="seller-count bad">✗ <b>${s.notFound}</b></div>
+          <div class="seller-count">total <b>${s.total}</b></div>
+        </div>
+      </div>
+    `).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes hoje ainda</div>';
+
+    // Popular filtro de vendedor
+    const sel = document.getElementById('filter-seller');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Todos vendedores</option>' + (r.bySeller || []).map(s => `<option value="${escH(s.id || '')}" ${s.id === current ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`).join('');
+  } catch (e) { console.warn('summary', e); }
+}
+
+async function loadBipes() {
+  try {
+    const params = new URLSearchParams({ limit: '100' });
+    if (STATE.status === 'found') params.set('found', 'true');
+    if (STATE.status === 'notfound') params.set('found', 'false');
+    const sid = document.getElementById('filter-seller')?.value;
+    if (sid) params.set('sellerId', sid);
+    params.set('today', '1');
+
+    const r = await api('/bipes?' + params.toString());
+    const list = document.getElementById('bipes-list');
+    const items = r.bipes || [];
+    if (items.length === 0) {
+      list.innerHTML = '<div class="empty">Nenhum bipe pra esse filtro hoje</div>';
+      return;
+    }
+    list.innerHTML = items.map(b => `
+      <div class="bipe">
+        <div class="bipe-time">${fmtTime(b.bipedAt)}</div>
+        <div class="bipe-code" title="${escH(b.barcode)}">${escH(b.barcode)}</div>
+        <div class="bipe-info">
+          <div class="product">${escH(b.productName || '(não identificado)')}</div>
+          <div class="seller">${escH(b.sellerName || '?')}${b.productSize ? ' · tam ' + escH(b.productSize) : ''}${b.productBrand ? ' · ' + escH(b.productBrand) : ''}</div>
+        </div>
+        <div class="bipe-status">
+          <span class="ok-badge ${b.found ? 'ok' : 'no'}">${b.found ? '✓' : '✗'}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('bipes-list').innerHTML = '<div class="empty" style="color:#d70015">Erro: ' + escH(e.message) + '</div>';
+  }
+}
+
+// Auto-refresh a cada 10s
+setInterval(() => { if (STATE.autoRefresh && !document.hidden) loadAll(); }, 10_000);
+
+if (!getToken()) {
+  document.getElementById('root').innerHTML = '<div class="login"><div style="font-size:60px">🔒</div><h2>Faça login no admin primeiro</h2><a href="/admin.html">Ir pra Login</a></div>';
+} else {
+  loadAll();
+}
+</script>
+</body>
+</html>

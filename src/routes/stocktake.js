@@ -138,10 +138,10 @@ router.post('/bipe', async (req, res) => {
 
 router.use(authMiddleware, adminMiddleware);
 
-// GET /api/stocktake/bipes?storeId=&sellerId=&dateFrom=&dateTo=&applied=&limit=
+// GET /api/stocktake/bipes?storeId=&sellerId=&dateFrom=&dateTo=&applied=&found=&today=1&limit=
 router.get('/bipes', async (req, res) => {
   try {
-    const { storeId, sellerId, dateFrom, dateTo, applied, found, limit } = req.query;
+    const { storeId, sellerId, dateFrom, dateTo, applied, found, today, limit } = req.query;
     const where = {};
     if (storeId) where.storeId = String(storeId);
     if (sellerId) where.sellerId = String(sellerId);
@@ -149,7 +149,11 @@ router.get('/bipes', async (req, res) => {
     if (applied === 'false') where.applied = false;
     if (found === 'true') where.found = true;
     if (found === 'false') where.found = false;
-    if (dateFrom || dateTo) {
+    if (today === '1') {
+      // hoje pela timezone America/Fortaleza
+      const r = await prisma.$queryRaw`SELECT DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')::timestamp AS today`;
+      where.bipedAt = { gte: r[0].today };
+    } else if (dateFrom || dateTo) {
       where.bipedAt = {};
       if (dateFrom) where.bipedAt.gte = new Date(dateFrom);
       if (dateTo) where.bipedAt.lte = new Date(dateTo);
@@ -165,61 +169,55 @@ router.get('/bipes', async (req, res) => {
   }
 });
 
-// GET /api/stocktake/summary → contagem por loja+vendedor+data
-router.get('/summary', async (req, res) => {
+// GET /api/stocktake/summary → contagem total + hoje + por vendedor (HOJE)
+router.get('/summary', async (_req, res) => {
   try {
-    const { dateFrom, dateTo } = req.query;
-    const where = {};
-    if (dateFrom || dateTo) {
-      where.bipedAt = {};
-      if (dateFrom) where.bipedAt.gte = new Date(dateFrom);
-      if (dateTo) where.bipedAt.lte = new Date(dateTo);
+    // Define o início do dia em America/Fortaleza
+    const r = await prisma.$queryRaw`SELECT DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Fortaleza')::timestamp AS today`;
+    const todayStart = r[0].today;
+
+    const [total, totalToday, foundToday, notFoundToday, sellerGroupsToday] = await Promise.all([
+      prisma.stocktakeBipe.count(),
+      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart } } }),
+      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart }, found: true } }),
+      prisma.stocktakeBipe.count({ where: { bipedAt: { gte: todayStart }, found: false } }),
+      prisma.stocktakeBipe.groupBy({
+        by: ['sellerId', 'sellerName'],
+        where: { bipedAt: { gte: todayStart } },
+        _count: { id: true },
+      }),
+    ]);
+
+    // Pra cada vendedor hoje, contar found/notFound separado
+    const bySellerWithFound = [];
+    for (const g of sellerGroupsToday) {
+      const where = { bipedAt: { gte: todayStart }, sellerId: g.sellerId, sellerName: g.sellerName };
+      const [f, nf] = await Promise.all([
+        prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
+        prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
+      ]);
+      bySellerWithFound.push({
+        id: g.sellerId,
+        name: g.sellerName || '(sem nome)',
+        total: g._count.id,
+        found: f,
+        notFound: nf,
+      });
     }
-
-    const byStore = await prisma.stocktakeBipe.groupBy({
-      by: ['storeId'],
-      where,
-      _count: { id: true },
-    });
-
-    const bySeller = await prisma.stocktakeBipe.groupBy({
-      by: ['storeId', 'sellerId', 'sellerName'],
-      where,
-      _count: { id: true },
-    });
-
-    const totalBipes = await prisma.stocktakeBipe.count({ where });
-    const totalFound = await prisma.stocktakeBipe.count({ where: { ...where, found: true } });
-    const totalUnique = await prisma.stocktakeBipe.findMany({
-      where,
-      select: { barcode: true },
-      distinct: ['barcode'],
-    });
-
-    // Lojas pra hidratar nomes
-    const stores = await prisma.store.findMany({ select: { id: true, name: true, code: true } });
-    const storeMap = Object.fromEntries(stores.map((s) => [s.id, s]));
+    bySellerWithFound.sort((a, b) => b.total - a.total);
 
     res.json({
-      totalBipes,
-      totalFound,
-      totalNotFound: totalBipes - totalFound,
-      totalUniqueBarcodes: totalUnique.length,
-      byStore: byStore.map((b) => ({
-        storeId: b.storeId,
-        storeName: storeMap[b.storeId]?.name || '(sem loja)',
-        storeCode: storeMap[b.storeId]?.code || null,
-        count: b._count.id,
-      })),
-      bySeller: bySeller.map((b) => ({
-        storeId: b.storeId,
-        storeName: storeMap[b.storeId]?.name || '(sem loja)',
-        sellerId: b.sellerId,
-        sellerName: b.sellerName || '(sem nome)',
-        count: b._count.id,
-      })),
+      total,
+      today: {
+        total: totalToday,
+        found: foundToday,
+        notFound: notFoundToday,
+        sellers: sellerGroupsToday.length,
+      },
+      bySeller: bySellerWithFound,
     });
   } catch (err) {
+    console.error('[stocktake/summary]', err);
     res.status(500).json({ error: err.message });
   }
 });
