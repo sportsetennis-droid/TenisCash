@@ -96,7 +96,7 @@
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Carregando...'; }
     try {
       const token = localStorage.getItem('tc_admin_token') || '';
-      const r = await fetch('/api/admin/products/' + productId + '/nfe-summary', { headers: { 'Authorization': 'Bearer ' + token } });
+      const r = await fetch('/api/admin/catalog/products/' + productId + '/nfe-summary', { headers: { 'Authorization': 'Bearer ' + token } });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
       const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
