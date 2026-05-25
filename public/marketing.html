@@ -79,6 +79,12 @@
   .cfg-btn-secondary { background: #fff; color: #0a0a0a; border: 1px solid #e5e5ea; }
   .cfg-info { background: #fef9f5; border: 1px solid #FFEBDC; padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #6e6e73; margin-bottom: 14px; }
 
+  /* BrandProfile editor */
+  .bp-lbl { display: block; font-size: 11px; letter-spacing: 0.6px; color: #6e6e73; font-weight: 700; text-transform: uppercase; margin: 12px 0 4px; }
+  .bp-input { width: 100%; padding: 9px 11px; border: 1px solid #e5e5ea; border-radius: 8px; font-size: 13px; font-family: inherit; background: #fafafc; box-sizing: border-box; }
+  .bp-input:focus { border-color: #FF6A1F; background: #fff; outline: none; }
+  textarea.bp-input { resize: vertical; min-height: 56px; line-height: 1.4; }
+
   /* Lightbox — clica na foto do criativo pra ver em tamanho real */
   .card img.media { cursor: zoom-in; }
   .lightbox { position: fixed; inset: 0; background: rgba(10, 10, 10, 0.92); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: zoom-out; animation: lb-fade 0.18s ease-out; }
@@ -139,7 +145,10 @@
       <h1>🎨 Marketing IA</h1>
       <div class="sub">Criativos gerados via fal.ai (Flux + Bria + Kling) com copy do Claude</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="active-brand" onchange="onBrandChange()" style="padding:10px 14px;border:1.5px solid #FF6A1F;border-radius:999px;font-weight:700;font-size:13px;background:#fff;color:#FF6A1F;cursor:pointer;font-family:inherit;max-width:240px">
+        <option value="">🏢 Marca ativa…</option>
+      </select>
       <button class="btn btn-secondary" onclick="reload()">↻ Atualizar</button>
     </div>
   </div>
@@ -148,6 +157,7 @@
   <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1.5px solid #e5e5ea;overflow-x:auto">
     <button class="main-tab active" data-tab="criativos" onclick="switchMainTab('criativos')">🎨 Criativos gerados</button>
     <button class="main-tab" data-tab="catalogo" onclick="switchMainTab('catalogo')">📦 Escolher do catálogo</button>
+    <button class="main-tab" data-tab="brands" onclick="switchMainTab('brands')">🏢 Marcas</button>
     <button class="main-tab" data-tab="config" onclick="switchMainTab('config')">⚙️ Configurações IA</button>
   </div>
 
@@ -200,7 +210,20 @@
     <div id="cat-pagination" style="text-align:center;margin:24px 0"></div>
   </div>
 
-  <!-- TAB 3: Configurações IA -->
+  <!-- TAB 3: Marcas (BrandProfile editor) -->
+  <div id="tab-brands" style="display:none">
+    <div style="display:grid;grid-template-columns:240px 1fr;gap:14px">
+      <div style="border:1px solid #e5e5ea;border-radius:12px;padding:10px;background:#fff;max-height:80vh;overflow-y:auto">
+        <div style="font-size:11px;letter-spacing:1px;color:#a8a8ad;font-weight:700;text-transform:uppercase;margin-bottom:8px;padding:0 6px">9 marcas</div>
+        <div id="brand-list"></div>
+      </div>
+      <div id="brand-editor" style="background:#fff;border:1px solid #e5e5ea;border-radius:14px;padding:18px;min-height:80vh">
+        <div class="empty">← Escolha uma marca pra editar o DNA</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: Configurações IA -->
   <div id="tab-config" style="display:none">
     <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #e5e5ea;overflow-x:auto">
       <button class="cfg-tab active" data-cfg="brands" onclick="switchCfgTab('brands')">🏷️ Cenários por marca</button>
@@ -543,15 +566,209 @@ function switchMainTab(name) {
   document.querySelectorAll('.main-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.getElementById('tab-criativos').style.display = name === 'criativos' ? '' : 'none';
   document.getElementById('tab-catalogo').style.display = name === 'catalogo' ? '' : 'none';
+  document.getElementById('tab-brands').style.display = name === 'brands' ? '' : 'none';
   document.getElementById('tab-config').style.display = name === 'config' ? '' : 'none';
   if (name === 'catalogo' && !STATE.catalog.loaded) {
     loadBrands();
     loadCatalog();
   }
-  if (name === 'config') {
-    switchCfgTab('brands');
-  }
+  if (name === 'brands') loadBrandProfiles();
+  if (name === 'config') switchCfgTab('brands');
 }
+
+// =============================================================
+// BRAND PROFILES — multi-tenant
+// =============================================================
+const BP_API = '/api/brand-profiles';
+let BP_STATE = { brands: [], archetypeDefaults: {}, current: null };
+
+async function bpFetch(path, opts = {}) {
+  const r = await fetch(BP_API + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function loadActiveBrandDropdown() {
+  try {
+    const d = await bpFetch('/');
+    BP_STATE.brands = d.brands || [];
+    BP_STATE.archetypeDefaults = d.archetypeDefaults || {};
+    const sel = document.getElementById('active-brand');
+    const saved = localStorage.getItem('tc_active_brand') || '';
+    sel.innerHTML = '<option value="">🏢 Marca ativa…</option>' +
+      BP_STATE.brands.map(b => `<option value="${escH(b.slug)}" ${saved === b.slug ? 'selected' : ''}>${escH(b.displayName)} ${b.instagramHandle ? '· ' + escH(b.instagramHandle) : ''}</option>`).join('');
+  } catch (e) { console.warn('loadActiveBrandDropdown', e); }
+}
+
+function getActiveBrand() {
+  return document.getElementById('active-brand')?.value || '';
+}
+
+function onBrandChange() {
+  const slug = getActiveBrand();
+  if (slug) localStorage.setItem('tc_active_brand', slug);
+  else localStorage.removeItem('tc_active_brand');
+  toast(slug ? '✓ Marca: ' + slug : 'Sem marca ativa');
+}
+
+async function loadBrandProfiles() {
+  try {
+    if (BP_STATE.brands.length === 0) await loadActiveBrandDropdown();
+    const list = document.getElementById('brand-list');
+    list.innerHTML = BP_STATE.brands.map(b => `
+      <button onclick="loadBrandEditor('${escH(b.slug)}')" id="bp-btn-${escH(b.slug)}"
+        style="display:block;width:100%;text-align:left;padding:10px 12px;background:transparent;border:none;border-radius:8px;cursor:pointer;font-size:13px;color:#0a0a0a;margin-bottom:2px"
+        onmouseover="this.style.background='#f0f0f5'" onmouseout="this.style.background='transparent'">
+        <div style="font-weight:700">${escH(b.displayName)}</div>
+        <div style="font-size:11px;color:#a8a8ad">${escH(b.instagramHandle || '—')} · ${escH(b.archetype)}</div>
+        ${!b.description ? '<div style="font-size:10px;color:#FF6A1F;margin-top:3px">⚠️ DNA vazio — preencher</div>' : ''}
+      </button>
+    `).join('');
+  } catch (e) { document.getElementById('brand-list').innerHTML = '<div style="color:red">Erro: ' + escH(e.message) + '</div>'; }
+}
+
+function loadBrandEditor(slug) {
+  const b = BP_STATE.brands.find(x => x.slug === slug);
+  if (!b) return;
+  BP_STATE.current = b;
+  const vt = b.voiceTone || { formal: 5, energy: 5, technical: 5, humor: 5, intimacy: 5 };
+  const pillars = (b.contentPillars || []).join(', ');
+  const ctas = (b.ctaTemplates || []).join('\n');
+  const taboo = (b.taboo || []).join(', ');
+  const hashtags = (b.hashtags || []).join(' ');
+  const palette = (b.paletteHex || []).join(', ');
+
+  const archetypes = ['mass_retail', 'b2b_premium', 'institutional', 'personal', 'political', 'custom'];
+  const ed = document.getElementById('brand-editor');
+  ed.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:20px;font-weight:800">${escH(b.displayName)}</div>
+        <div style="font-size:12px;color:#6e6e73">${escH(b.instagramHandle || 'sem handle IG')}</div>
+      </div>
+      <button class="cfg-btn cfg-btn-secondary" onclick="bpApplyArchetypeDefaults('${escH(b.slug)}')">↺ Aplicar default do archetype</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label class="bp-lbl">Display Name</label>
+        <input class="bp-input" id="bp-displayName" value="${escH(b.displayName || '')}">
+      </div>
+      <div>
+        <label class="bp-lbl">Instagram Handle</label>
+        <input class="bp-input" id="bp-instagramHandle" value="${escH(b.instagramHandle || '')}" placeholder="@metafardamentos">
+      </div>
+      <div>
+        <label class="bp-lbl">Archetype</label>
+        <select class="bp-input" id="bp-archetype">
+          ${archetypes.map(a => `<option value="${a}" ${a === b.archetype ? 'selected' : ''}>${a}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="bp-lbl">Paleta (cores hex, separadas por vírgula)</label>
+        <input class="bp-input" id="bp-palette" value="${escH(palette)}" placeholder="#FF6A1F, #FF2D92">
+      </div>
+    </div>
+
+    <label class="bp-lbl">Descrição curta da marca (1-2 linhas)</label>
+    <textarea class="bp-input" id="bp-description" rows="2" placeholder="Pitch curto que define a marca">${escH(b.description || '')}</textarea>
+
+    <label class="bp-lbl">Missão / propósito</label>
+    <textarea class="bp-input" id="bp-mission" rows="2" placeholder="Por que essa marca existe?">${escH(b.mission || '')}</textarea>
+
+    <label class="bp-lbl">Audiência-alvo</label>
+    <textarea class="bp-input" id="bp-audience" rows="2" placeholder="Quem é o seguidor/cliente ideal? Idade, contexto, dor...">${escH(b.audience || '')}</textarea>
+
+    <label class="bp-lbl">Tom de voz (0 = nada, 10 = máximo)</label>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
+      ${['formal','energy','technical','humor','intimacy'].map(k => `
+        <div style="background:#fafafc;border-radius:8px;padding:8px">
+          <div style="font-size:11px;color:#6e6e73;font-weight:700;text-transform:uppercase">${k}</div>
+          <input type="range" min="0" max="10" value="${vt[k] || 5}" oninput="document.getElementById('bp-tone-${k}-val').textContent = this.value" id="bp-tone-${k}" style="width:100%">
+          <div style="text-align:center;font-weight:800;color:#FF6A1F" id="bp-tone-${k}-val">${vt[k] || 5}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <label class="bp-lbl">Pilares de conteúdo (vírgulas)</label>
+    <input class="bp-input" id="bp-pillars" value="${escH(pillars)}" placeholder="produto, bastidor, case real, educativo">
+
+    <label class="bp-lbl">CTAs templates (1 por linha)</label>
+    <textarea class="bp-input" id="bp-ctas" rows="3" placeholder="Vem na loja\nChama no WhatsApp\nClica no link da bio">${escH(ctas)}</textarea>
+
+    <label class="bp-lbl">Tabu — palavras/temas proibidos (vírgulas)</label>
+    <input class="bp-input" id="bp-taboo" value="${escH(taboo)}" placeholder="preço cheio sem oferta, jargão técnico demais">
+
+    <label class="bp-lbl">Hashtags base (separadas por espaço)</label>
+    <input class="bp-input" id="bp-hashtags" value="${escH(hashtags)}" placeholder="#sportsetennis #esporte #joaopessoa">
+
+    <label class="bp-lbl">Exemplo de copy bem-sucedida (IA imita o tom)</label>
+    <textarea class="bp-input" id="bp-example" rows="4" placeholder="Cola aqui 1 post que VOCÊ acha que representa a marca">${escH(b.exampleCopy || '')}</textarea>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="cfg-btn cfg-btn-primary" onclick="bpSave('${escH(b.slug)}')">💾 Salvar DNA</button>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#6e6e73">
+        <input type="checkbox" id="bp-active" ${b.active ? 'checked' : ''}>
+        Marca ativa (aparece no dropdown)
+      </label>
+    </div>
+  `;
+}
+
+async function bpSave(slug) {
+  const tone = {};
+  ['formal','energy','technical','humor','intimacy'].forEach(k => {
+    tone[k] = parseInt(document.getElementById('bp-tone-' + k).value, 10);
+  });
+  const data = {
+    displayName: document.getElementById('bp-displayName').value.trim(),
+    instagramHandle: document.getElementById('bp-instagramHandle').value.trim(),
+    archetype: document.getElementById('bp-archetype').value,
+    description: document.getElementById('bp-description').value.trim(),
+    mission: document.getElementById('bp-mission').value.trim(),
+    audience: document.getElementById('bp-audience').value.trim(),
+    voiceTone: tone,
+    paletteHex: document.getElementById('bp-palette').value.split(',').map(s => s.trim()).filter(Boolean),
+    contentPillars: document.getElementById('bp-pillars').value.split(',').map(s => s.trim()).filter(Boolean),
+    ctaTemplates: document.getElementById('bp-ctas').value.split('\n').map(s => s.trim()).filter(Boolean),
+    taboo: document.getElementById('bp-taboo').value.split(',').map(s => s.trim()).filter(Boolean),
+    hashtags: document.getElementById('bp-hashtags').value.split(/\s+/).map(s => s.trim()).filter(Boolean),
+    exampleCopy: document.getElementById('bp-example').value.trim(),
+    active: document.getElementById('bp-active').checked,
+  };
+  try {
+    await bpFetch('/' + slug, { method: 'PUT', body: JSON.stringify(data) });
+    toast('✓ DNA salvo: ' + slug);
+    BP_STATE.brands = []; // força reload
+    await loadActiveBrandDropdown();
+    await loadBrandProfiles();
+    loadBrandEditor(slug);
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+function bpApplyArchetypeDefaults(slug) {
+  const b = BP_STATE.current;
+  if (!b) return;
+  const arch = document.getElementById('bp-archetype').value;
+  const def = BP_STATE.archetypeDefaults[arch];
+  if (!def) { toast('Sem default pra ' + arch); return; }
+  if (!confirm('Aplicar valores default do archetype "' + arch + '"? Vai sobrescrever os campos atuais.')) return;
+  // Aplica
+  if (def.description && !document.getElementById('bp-description').value) document.getElementById('bp-description').value = def.description;
+  if (def.voiceTone) ['formal','energy','technical','humor','intimacy'].forEach(k => {
+    const el = document.getElementById('bp-tone-' + k);
+    if (el) { el.value = def.voiceTone[k]; document.getElementById('bp-tone-' + k + '-val').textContent = def.voiceTone[k]; }
+  });
+  if (def.paletteHex) document.getElementById('bp-palette').value = def.paletteHex.join(', ');
+  if (def.contentPillars) document.getElementById('bp-pillars').value = def.contentPillars.join(', ');
+  if (def.ctaTemplates) document.getElementById('bp-ctas').value = def.ctaTemplates.join('\n');
+  if (def.taboo) document.getElementById('bp-taboo').value = def.taboo.join(', ');
+  toast('✓ Defaults aplicados — revisa e salva');
+}
+
 
 // ============================================================
 // Configurações IA — editar BRAND_SCENES, SCENE_HINTS, prompts, agentes
@@ -1119,6 +1336,7 @@ if (!getToken()) {
 } else {
   reload();
   loadStats();
+  loadActiveBrandDropdown();
 }
 </script>
 </body>

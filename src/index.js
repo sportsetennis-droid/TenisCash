@@ -48,6 +48,8 @@ const stocktakeRoutes = require('./routes/stocktake');
 const messagesV2Routes = require('./routes/messagesV2');
 const marketingRoutes = require('./routes/marketing');
 const marketingConfigRoutes = require('./routes/marketingConfig');
+const brandProfilesRoutes = require('./routes/brandProfiles');
+const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
 
@@ -143,6 +145,9 @@ app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/marketing-config', marketingConfigRoutes);
+app.use('/api/brand-profiles', brandProfilesRoutes);
+// Seed inicial das 9 marcas (idempotente)
+brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);

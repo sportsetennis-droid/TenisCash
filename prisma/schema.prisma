@@ -17,7 +17,7 @@ model User {
   phone           String    @unique
   email           String?
   cpf             String?   @unique
-  username        String?   @unique  // handle único pra ser convidado em timelines privadas
+  username        String?   @unique // handle único pra ser convidado em timelines privadas
   pin             String // hashed
   balance         Float     @default(0) // CASHBACK do cliente — pode transferir, usar em compras
   partnerBalance  Float     @default(0) // COMISSÃO do parceiro — APENAS troca por produtos (não transfere)
@@ -104,17 +104,17 @@ model User {
   liveTrackingSessions    LiveTrackingSession[]    @relation("liveTrackingOwner")
 
   // ===== MENSAGENS V2 (Timeline + Conversas) =====
-  timelinesCreated         Timeline[]         @relation("timelinesCreated")
-  timelineMemberships      TimelineMember[]   @relation("timelineMemberships")
-  timelinePostsAuthored    TimelinePost[]     @relation("timelinePostsAuthored")
-  conversationsAsUserA     Conversation[]     @relation("conversationsAsUserA")
-  conversationsAsUserB     Conversation[]     @relation("conversationsAsUserB")
-  conversationsAsClient    Conversation[]     @relation("conversationsAsClient")
-  chatMessagesSent         ChatMessage[]      @relation("chatMessagesSent")
-  reactions                Reaction[]         @relation("reactionsByUser")
+  timelinesCreated      Timeline[]       @relation("timelinesCreated")
+  timelineMemberships   TimelineMember[] @relation("timelineMemberships")
+  timelinePostsAuthored TimelinePost[]   @relation("timelinePostsAuthored")
+  conversationsAsUserA  Conversation[]   @relation("conversationsAsUserA")
+  conversationsAsUserB  Conversation[]   @relation("conversationsAsUserB")
+  conversationsAsClient Conversation[]   @relation("conversationsAsClient")
+  chatMessagesSent      ChatMessage[]    @relation("chatMessagesSent")
+  reactions             Reaction[]       @relation("reactionsByUser")
 
   // Push notifications (Web Push API) — array de subscriptions (1 por device)
-  pushSubscriptions        PushSubscription[] @relation("pushByUser")
+  pushSubscriptions PushSubscription[] @relation("pushByUser")
 }
 
 // ============================================================
@@ -185,11 +185,11 @@ model AdminAction {
 // ============================================================
 
 model Store {
-  id        String   @id @default(uuid())
-  name      String
-  code      String   @unique
-  dna       String? // Masculino, Feminino, Futebol, Geral
-  mall      String? // Parahyba Mall, Pirâmide, Complexo K, Tambiá
+  id           String   @id @default(uuid())
+  name         String
+  code         String   @unique
+  dna          String? // Masculino, Feminino, Futebol, Geral
+  mall         String? // Parahyba Mall, Pirâmide, Complexo K, Tambiá
   address      String?
   complement   String?
   neighborhood String?
@@ -199,8 +199,8 @@ model Store {
   phone        String?
   latitude     Float?
   longitude    Float?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
   // CNPJ que emite NFCe/NFe pelas vendas dessa loja
   fiscalIssuerId String?
@@ -303,11 +303,11 @@ model Product {
   markupPercent Float? // override por produto. null = herda markup do Supplier (averageMarkup).
 
   // Fiscal — usado na emissão de NFe/NFCe (campos obrigatórios pela SEFAZ)
-  ncm           String? // NCM (Nomenclatura Comum do Mercosul) — 8 dígitos
-  cest          String? // CEST (substituição tributária) — opcional
-  origem        Int     @default(0) // 0=Nacional, 1=Importação direta, 2=Importação adq merc nac, ...
-  cfop          String? // CFOP padrão — sobrescreve o do issuer se preenchido (formato 4 dígitos)
-  unidade       String  @default("UN") // unidade de medida fiscal
+  ncm     String? // NCM (Nomenclatura Comum do Mercosul) — 8 dígitos
+  cest    String? // CEST (substituição tributária) — opcional
+  origem  Int     @default(0) // 0=Nacional, 1=Importação direta, 2=Importação adq merc nac, ...
+  cfop    String? // CFOP padrão — sobrescreve o do issuer se preenchido (formato 4 dígitos)
+  unidade String  @default("UN") // unidade de medida fiscal
 
   active   Boolean @default(true)
   featured Boolean @default(false)
@@ -324,7 +324,7 @@ model Product {
   quizzes   Quiz[]
 
   // Mensagens V2: card de produto enviado em conversa
-  chatMessagesAsCard ChatMessage[] @relation("chatMessageProducts")
+  chatMessagesAsCard  ChatMessage[]  @relation("chatMessageProducts")
   timelinePostsAsCard TimelinePost[] @relation("timelinePostProducts")
 
   // Marketing IA: criativos gerados (foto editorial, vídeo Reels, sem-fundo)
@@ -1362,12 +1362,12 @@ model XmlFiscalDocument {
   // manualmente no admin; novas importações usam essa info pra rotular
   // produtos automaticamente.
   brand         String?
-  brandSetById  String?   // userId que atribuiu
+  brandSetById  String? // userId que atribuiu
   brandSetAt    DateTime?
   // Tipo da NFe: 'entrada' (compra de fornecedor), 'saida' (venda),
   // 'transferencia' (matriz↔filial do mesmo grupo CNPJ raiz)
-  docType       String?   // entrada | saida | transferencia
-  recipientName String?   // nome do destinatário (pra mostrar na lista)
+  docType       String? // entrada | saida | transferencia
+  recipientName String? // nome do destinatário (pra mostrar na lista)
   status        String    @default("imported") // imported | matched | partial | rejected
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -1552,17 +1552,17 @@ model ProductLifecycle {
 //   SPECIALTY   → Product.aiContext.classification.tier
 // ============================================================
 model CategoryNode {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   parentId  String?
   parent    CategoryNode?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  CategoryNode[] @relation("CategoryTree")
   name      String
-  level     String   // CATEGORY | SUBCATEGORY | MODALITY | SPECIALTY
-  position  Int      @default(0) // ordenação manual dentro do mesmo nível
-  active    Boolean  @default(true)
+  level     String // CATEGORY | SUBCATEGORY | MODALITY | SPECIALTY
+  position  Int            @default(0) // ordenação manual dentro do mesmo nível
+  active    Boolean        @default(true)
   notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@index([parentId, position])
   @@index([level, active])
@@ -2033,45 +2033,45 @@ model BadgeEarned {
 
 // 1 row por CNPJ emissor (Sports & Tennis, Meta Esportes, Meta Fardamentos, etc.)
 model FiscalIssuer {
-  id              String   @id @default(cuid())
-  cnpj            String   @unique
-  companyName     String
-  fantasyName     String?
-  ie              String?  // Inscrição Estadual
-  im              String?  // Inscrição Municipal
+  id             String   @id @default(cuid())
+  cnpj           String   @unique
+  companyName    String
+  fantasyName    String?
+  ie             String? // Inscrição Estadual
+  im             String? // Inscrição Municipal
   // Endereço (necessário pra cabeçalho NFe)
-  street          String?
-  number          String?
-  complement      String?
-  neighborhood    String?
-  cityCode        String?  // código IBGE 7 dígitos
-  city            String?
-  state           String?  // UF — PB
-  zip             String?
-  phone           String?
+  street         String?
+  number         String?
+  complement     String?
+  neighborhood   String?
+  cityCode       String? // código IBGE 7 dígitos
+  city           String?
+  state          String? // UF — PB
+  zip            String?
+  phone          String?
   // Brasil NFe credenciais (homologação OU produção)
-  apiToken        String?  // token de API por CNPJ
-  environment     String   @default("homologation") // "homologation" | "production"
+  apiToken       String? // token de API por CNPJ
+  environment    String   @default("homologation") // "homologation" | "production"
   // Códigos NFCe
-  csc             String?  // Código de Segurança do Contribuinte
-  cscId           String?  // ID do CSC (1, 2, 3...)
+  csc            String? // Código de Segurança do Contribuinte
+  cscId          String? // ID do CSC (1, 2, 3...)
   // Regime tributário
-  crt             Int      @default(1) // 1=Simples Nacional, 2=SN excesso receita, 3=Regime Normal
+  crt            Int      @default(1) // 1=Simples Nacional, 2=SN excesso receita, 3=Regime Normal
   // Numeração — controle interno
-  nfeSerie        Int      @default(1)
-  nfeNextNumber   Int      @default(1)
-  nfceSerie       Int      @default(1)
-  nfceNextNumber  Int      @default(1)
-  cteSerie        Int      @default(1)
-  cteNextNumber   Int      @default(1)
+  nfeSerie       Int      @default(1)
+  nfeNextNumber  Int      @default(1)
+  nfceSerie      Int      @default(1)
+  nfceNextNumber Int      @default(1)
+  cteSerie       Int      @default(1)
+  cteNextNumber  Int      @default(1)
   // Status
-  active          Boolean  @default(true)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  active         Boolean  @default(true)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  documents       FiscalDocument[]
-  stores          Store[]
+  documents FiscalDocument[]
+  stores    Store[]
 
   @@index([cnpj])
   @@index([active])
@@ -2079,63 +2079,63 @@ model FiscalIssuer {
 
 // 1 row por documento fiscal emitido
 model FiscalDocument {
-  id              String   @id @default(cuid())
-  issuerId        String
-  issuer          FiscalIssuer @relation(fields: [issuerId], references: [id])
+  id       String       @id @default(cuid())
+  issuerId String
+  issuer   FiscalIssuer @relation(fields: [issuerId], references: [id])
 
   // Tipo do documento
-  docType         String   // "NFE" | "NFCE" | "CTE" | "MDFE" | "NFSE"
-  serie           Int
-  number          Int
+  docType      String // "NFE" | "NFCE" | "CTE" | "MDFE" | "NFSE"
+  serie        Int
+  number       Int
   // Identificadores SEFAZ
-  accessKey       String?  // 44 dígitos
-  protocol        String?  // protocolo de autorização SEFAZ
+  accessKey    String? // 44 dígitos
+  protocol     String? // protocolo de autorização SEFAZ
   // Status fiscal
-  status          String   @default("draft") // draft | processing | authorized | rejected | cancelled | error
-  rejectReason    String?  // motivo de rejeição (se status=rejected)
+  status       String  @default("draft") // draft | processing | authorized | rejected | cancelled | error
+  rejectReason String? // motivo de rejeição (se status=rejected)
 
   // Brasil NFe id interno (pra consultas/cancelamento via API)
-  externalId      String?  @unique
+  externalId String? @unique
 
   // Conteúdo
-  recipientName   String?
+  recipientName    String?
   recipientCnpjCpf String?
-  recipientEmail  String?
-  totalValue      Float?
-  productsValue   Float?
-  discountValue   Float?
-  freightValue    Float?
+  recipientEmail   String?
+  totalValue       Float?
+  productsValue    Float?
+  discountValue    Float?
+  freightValue     Float?
 
   // Vínculos com sistema TenisCash
-  saleId          String?  // se foi gerado por uma venda
-  productIds      String[] // produtos vendidos (Json array)
+  saleId     String? // se foi gerado por uma venda
+  productIds String[] // produtos vendidos (Json array)
 
   // Dados de pagamento (Decreto SEFAZ-PB 43.077/2022)
-  paymentMethod   String?  // tPag: 01=Dinheiro, 03=Crédito, 04=Débito, 17=PIX
-  paymentBrand    String?  // tBand: 01=Visa, 02=Master, etc
-  paymentAcquirer String?  // CNPJ da adquirente (Stone, Cielo, etc)
-  paymentAuthCode String?  // cAut: código de autorização da maquininha
-  paymentTpIntegra Int?    // 1=TEF integrado, 2=POS standalone
+  paymentMethod    String? // tPag: 01=Dinheiro, 03=Crédito, 04=Débito, 17=PIX
+  paymentBrand     String? // tBand: 01=Visa, 02=Master, etc
+  paymentAcquirer  String? // CNPJ da adquirente (Stone, Cielo, etc)
+  paymentAuthCode  String? // cAut: código de autorização da maquininha
+  paymentTpIntegra Int? // 1=TEF integrado, 2=POS standalone
 
   // Documentos baixados/cacheados
-  xmlContent      String?  @db.Text // XML autorizado
-  danfeUrl        String?  // URL do DANFE PDF
-  pdfContent      Bytes?   // PDF DANFE (cache, opcional)
+  xmlContent String? @db.Text // XML autorizado
+  danfeUrl   String? // URL do DANFE PDF
+  pdfContent Bytes? // PDF DANFE (cache, opcional)
 
   // Cancelamento (até 24h)
-  cancelledAt     DateTime?
-  cancelReason    String?
-  cancelProtocol  String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  cancelProtocol String?
 
   // Carta de correção
   correctionLetter Json? // { sequence, reason, protocol, date }
 
   // Auditoria
-  payload         Json? // requisição enviada à Brasil NFe (pra debug)
-  response        Json? // resposta completa da Brasil NFe
-  emittedById     String? // userId do operador
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  payload     Json? // requisição enviada à Brasil NFe (pra debug)
+  response    Json? // resposta completa da Brasil NFe
+  emittedById String? // userId do operador
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([issuerId, docType, serie, number])
   @@index([accessKey])
@@ -2146,13 +2146,13 @@ model FiscalDocument {
 
 // Log de webhooks recebidos da Brasil NFe (status updates)
 model FiscalWebhookLog {
-  id              String   @id @default(cuid())
-  externalId      String?  // id Brasil NFe
-  event           String   // "authorized" | "rejected" | "cancelled" etc
-  payload         Json
-  processed       Boolean  @default(false)
-  error           String?
-  receivedAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  externalId String? // id Brasil NFe
+  event      String // "authorized" | "rejected" | "cancelled" etc
+  payload    Json
+  processed  Boolean  @default(false)
+  error      String?
+  receivedAt DateTime @default(now())
 
   @@index([externalId])
   @@index([receivedAt])
@@ -2167,22 +2167,22 @@ model FiscalWebhookLog {
 // com StoreStock e decidir o que fazer.
 // =====================================================================
 model StocktakeBipe {
-  id              String   @id @default(cuid())
-  barcode         String   // código bipado, exato como veio do leitor
-  storeId         String?  // FK Store (opcional pra resiliencia)
-  sellerId        String?  // FK User (vendedor que bipou)
-  sellerName      String?  // nome legível guardado no momento do bipe (caso seller deletado depois)
-  productId       String?  // FK Product, null se barcode não achou produto
-  productSizeId   String?  // FK ProductSize, null se não achou
-  productName     String?  // snapshot do nome
-  productSize     String?  // snapshot do tamanho
-  productBrand    String?  // snapshot da marca
-  found           Boolean  @default(false) // true se localizou produto no catálogo
-  duplicate       Boolean  @default(false) // true se o barcode existe em >1 produto (ambíguo)
-  ip              String?  // IP de quem bipou (auditoria)
-  userAgent       String?  // browser/dispositivo
-  applied         Boolean  @default(false) // true depois que owner aplicou no StoreStock
-  bipedAt         DateTime @default(now())
+  id            String   @id @default(cuid())
+  barcode       String // código bipado, exato como veio do leitor
+  storeId       String? // FK Store (opcional pra resiliencia)
+  sellerId      String? // FK User (vendedor que bipou)
+  sellerName    String? // nome legível guardado no momento do bipe (caso seller deletado depois)
+  productId     String? // FK Product, null se barcode não achou produto
+  productSizeId String? // FK ProductSize, null se não achou
+  productName   String? // snapshot do nome
+  productSize   String? // snapshot do tamanho
+  productBrand  String? // snapshot da marca
+  found         Boolean  @default(false) // true se localizou produto no catálogo
+  duplicate     Boolean  @default(false) // true se o barcode existe em >1 produto (ambíguo)
+  ip            String? // IP de quem bipou (auditoria)
+  userAgent     String? // browser/dispositivo
+  applied       Boolean  @default(false) // true depois que owner aplicou no StoreStock
+  bipedAt       DateTime @default(now())
 
   @@index([storeId, bipedAt])
   @@index([sellerId, bipedAt])
@@ -2202,55 +2202,55 @@ model StocktakeBipe {
 // =====================================================================
 
 model Timeline {
-  id            String   @id @default(cuid())
-  name          String                              // "Geral", "Família", "Time Bessa"
-  isPublic      Boolean  @default(false)            // true só pra UMA timeline global do sistema
-  createdById   String?                             // FK User — null pra timeline pública do sistema
-  createdAt     DateTime @default(now())
-  deletedAt     DateTime?
+  id          String    @id @default(cuid())
+  name        String // "Geral", "Família", "Time Bessa"
+  isPublic    Boolean   @default(false) // true só pra UMA timeline global do sistema
+  createdById String? // FK User — null pra timeline pública do sistema
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
 
-  createdBy     User?                @relation("timelinesCreated", fields: [createdById], references: [id])
-  members       TimelineMember[]
-  posts         TimelinePost[]
+  createdBy User?            @relation("timelinesCreated", fields: [createdById], references: [id])
+  members   TimelineMember[]
+  posts     TimelinePost[]
 
   @@index([isPublic])
   @@index([createdById])
 }
 
 model TimelineMember {
-  id            String   @id @default(cuid())
-  timelineId    String
-  userId        String
-  joinedAt      DateTime @default(now())
-  lastReadAt    DateTime @default(now())            // pra calcular badge "não lido"
-  leftAt        DateTime?
-  role          String   @default("member")         // "creator" | "member"
+  id         String    @id @default(cuid())
+  timelineId String
+  userId     String
+  joinedAt   DateTime  @default(now())
+  lastReadAt DateTime  @default(now()) // pra calcular badge "não lido"
+  leftAt     DateTime?
+  role       String    @default("member") // "creator" | "member"
 
-  timeline      Timeline @relation(fields: [timelineId], references: [id])
-  user          User     @relation("timelineMemberships", fields: [userId], references: [id])
+  timeline Timeline @relation(fields: [timelineId], references: [id])
+  user     User     @relation("timelineMemberships", fields: [userId], references: [id])
 
   @@unique([timelineId, userId])
   @@index([userId, leftAt])
 }
 
 model TimelinePost {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   timelineId    String
   authorId      String
-  content       String?                             // texto (pode ser null se for só mídia)
-  mediaType     String?                             // "photo" | "audio" | null
-  mediaUrl      String?                             // URL no storage OU data:image/jpeg;base64,...
-  mediaDuration Int?                                // duração em segundos (áudio)
-  productCardId String?                             // FK Product — card de produto inline
-  createdAt     DateTime @default(now())
+  content       String? // texto (pode ser null se for só mídia)
+  mediaType     String? // "photo" | "audio" | null
+  mediaUrl      String? // URL no storage OU data:image/jpeg;base64,...
+  mediaDuration Int? // duração em segundos (áudio)
+  productCardId String? // FK Product — card de produto inline
+  createdAt     DateTime  @default(now())
   editedAt      DateTime?
-  deletedAt     DateTime?                           // soft delete pelo autor antes da meia-noite
-  expiredAt     DateTime?                           // setado pelo cron 00:00 America/Fortaleza
+  deletedAt     DateTime? // soft delete pelo autor antes da meia-noite
+  expiredAt     DateTime? // setado pelo cron 00:00 America/Fortaleza
 
-  timeline      Timeline @relation(fields: [timelineId], references: [id])
-  author        User     @relation("timelinePostsAuthored", fields: [authorId], references: [id])
-  productCard   Product? @relation("timelinePostProducts", fields: [productCardId], references: [id])
-  reactions     Reaction[] @relation("reactionsOnPost")
+  timeline    Timeline   @relation(fields: [timelineId], references: [id])
+  author      User       @relation("timelinePostsAuthored", fields: [authorId], references: [id])
+  productCard Product?   @relation("timelinePostProducts", fields: [productCardId], references: [id])
+  reactions   Reaction[] @relation("reactionsOnPost")
 
   @@index([timelineId, createdAt])
   @@index([expiredAt])
@@ -2259,7 +2259,7 @@ model TimelinePost {
 
 model Conversation {
   id            String   @id @default(cuid())
-  type          String                              // "dm" | "loja"
+  type          String // "dm" | "loja"
   // Pra DM: userAId < userBId lexicograficamente
   userAId       String?
   userBId       String?
@@ -2269,11 +2269,11 @@ model Conversation {
   lastMessageAt DateTime @default(now())
   createdAt     DateTime @default(now())
 
-  userA         User?    @relation("conversationsAsUserA", fields: [userAId], references: [id])
-  userB         User?    @relation("conversationsAsUserB", fields: [userBId], references: [id])
-  store         Store?   @relation("conversationsForStore", fields: [storeId], references: [id])
-  clientUser    User?    @relation("conversationsAsClient", fields: [clientUserId], references: [id])
-  messages      ChatMessage[]
+  userA      User?         @relation("conversationsAsUserA", fields: [userAId], references: [id])
+  userB      User?         @relation("conversationsAsUserB", fields: [userBId], references: [id])
+  store      Store?        @relation("conversationsForStore", fields: [storeId], references: [id])
+  clientUser User?         @relation("conversationsAsClient", fields: [clientUserId], references: [id])
+  messages   ChatMessage[]
 
   @@unique([userAId, userBId])
   @@unique([storeId, clientUserId])
@@ -2281,27 +2281,27 @@ model Conversation {
 }
 
 model ChatMessage {
-  id                       String   @id @default(cuid())
-  conversationId           String
-  senderId                 String                    // FK User (ou User-representante-da-loja)
-  senderType               String   @default("user") // "user" | "store" | "system"
-  content                  String?
-  mediaType                String?                   // "photo" | "audio" | null
-  mediaUrl                 String?
-  mediaDuration            Int?
-  productCardId            String?                   // FK Product — card de produto inline
-  readAt                   DateTime?                 // quando o destinatário leu
-  editedAt                 DateTime?
+  id                    String    @id @default(cuid())
+  conversationId        String
+  senderId              String // FK User (ou User-representante-da-loja)
+  senderType            String    @default("user") // "user" | "store" | "system"
+  content               String?
+  mediaType             String? // "photo" | "audio" | null
+  mediaUrl              String?
+  mediaDuration         Int?
+  productCardId         String? // FK Product — card de produto inline
+  readAt                DateTime? // quando o destinatário leu
+  editedAt              DateTime?
   // Soft delete 3-d — NUNCA hard delete (auditoria 100%)
-  deletedForSenderAt       DateTime?                 // remetente apagou pro lado dele
-  deletedForRecipientAt    DateTime?                 // destinatário apagou pro lado dele
-  deletedForBothAt         DateTime?                 // remetente apagou pros dois (só se < 2h)
-  createdAt                DateTime @default(now())
+  deletedForSenderAt    DateTime? // remetente apagou pro lado dele
+  deletedForRecipientAt DateTime? // destinatário apagou pro lado dele
+  deletedForBothAt      DateTime? // remetente apagou pros dois (só se < 2h)
+  createdAt             DateTime  @default(now())
 
-  conversation             Conversation @relation(fields: [conversationId], references: [id])
-  sender                   User         @relation("chatMessagesSent", fields: [senderId], references: [id])
-  productCard              Product?     @relation("chatMessageProducts", fields: [productCardId], references: [id])
-  reactions                Reaction[]   @relation("reactionsOnMessage")
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation("chatMessagesSent", fields: [senderId], references: [id])
+  productCard  Product?     @relation("chatMessageProducts", fields: [productCardId], references: [id])
+  reactions    Reaction[]   @relation("reactionsOnMessage")
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
@@ -2314,17 +2314,17 @@ model ChatMessage {
 model Reaction {
   id        String   @id @default(cuid())
   userId    String
-  postId    String?                       // FK TimelinePost (XOR com messageId)
-  messageId String?                       // FK ChatMessage
-  emoji     String                        // unicode emoji (👍, ❤️, 🔥, 😂, 😢, 👏)
+  postId    String? // FK TimelinePost (XOR com messageId)
+  messageId String? // FK ChatMessage
+  emoji     String // unicode emoji (👍, ❤️, 🔥, 😂, 😢, 👏)
   createdAt DateTime @default(now())
 
   user    User          @relation("reactionsByUser", fields: [userId], references: [id])
   post    TimelinePost? @relation("reactionsOnPost", fields: [postId], references: [id])
   message ChatMessage?  @relation("reactionsOnMessage", fields: [messageId], references: [id])
 
-  @@unique([userId, postId, emoji])      // 1 mesma reação por user/post
-  @@unique([userId, messageId, emoji])   // 1 mesma reação por user/msg
+  @@unique([userId, postId, emoji]) // 1 mesma reação por user/post
+  @@unique([userId, messageId, emoji]) // 1 mesma reação por user/msg
   @@index([postId])
   @@index([messageId])
 }
@@ -2333,13 +2333,13 @@ model Reaction {
 // PUSH NOTIFICATION SUBSCRIPTIONS (Web Push API)
 // ============================================================
 model PushSubscription {
-  id        String   @id @default(cuid())
-  userId    String
-  endpoint  String   @unique             // URL do push server (FCM/Mozilla/Apple)
-  p256dh    String                        // chave pública pra criptografia
-  authKey   String                        // chave de autenticação
-  userAgent String?                       // pra mostrar "Chrome iPhone" etc
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique // URL do push server (FCM/Mozilla/Apple)
+  p256dh     String // chave pública pra criptografia
+  authKey    String // chave de autenticação
+  userAgent  String? // pra mostrar "Chrome iPhone" etc
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
   user User @relation("pushByUser", fields: [userId], references: [id])
@@ -2352,36 +2352,36 @@ model PushSubscription {
 // ============================================================
 
 model ProductCreative {
-  id            String   @id @default(cuid())
-  productId     String
+  id              String    @id @default(cuid())
+  productId       String
   // Tipo do criativo
-  kind          String                            // "editorial_photo" | "reel_video" | "transparent_photo"
+  kind            String // "editorial_photo" | "reel_video" | "transparent_photo"
   // URLs / metadados do output da fal.ai
-  outputUrl     String                            // URL pública do asset gerado
-  thumbnailUrl  String?                           // thumb (pra video)
+  outputUrl       String // URL pública do asset gerado
+  thumbnailUrl    String? // thumb (pra video)
   // Modelo usado pra geração
-  model         String                            // "fal-ai/flux-pro/kontext-max" | "fal-ai/kling-video/v2.1/pro/image-to-video" | "fal-ai/bria/background/remove"
+  model           String // "fal-ai/flux-pro/kontext-max" | "fal-ai/kling-video/v2.1/pro/image-to-video" | "fal-ai/bria/background/remove"
   // Prompt e parâmetros
-  prompt        String?
-  params        Json?                             // { aspect_ratio, duration, etc }
+  prompt          String?
+  params          Json? // { aspect_ratio, duration, etc }
   // Custo em USD (estimado, pra controlar gasto)
-  costUsd       Float?
+  costUsd         Float?
   // Copies geradas pelo Claude pra cada plataforma
-  captionIg     String?
-  captionTiktok String?
-  captionWa     String?
-  hashtags      String?                           // CSV
+  captionIg       String?
+  captionTiktok   String?
+  captionWa       String?
+  hashtags        String? // CSV
   // Fluxo de aprovação
-  status        String   @default("pending_review") // pending_review | approved | rejected | published
-  reviewedById  String?                           // userId do admin que revisou
-  reviewedAt    DateTime?
+  status          String    @default("pending_review") // pending_review | approved | rejected | published
+  reviewedById    String? // userId do admin que revisou
+  reviewedAt      DateTime?
   rejectionReason String?
   // Timestamps
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  product       Product  @relation("creativesForProduct", fields: [productId], references: [id])
-  publications  MarketingPublication[] @relation("publicationsForCreative")
+  product      Product                @relation("creativesForProduct", fields: [productId], references: [id])
+  publications MarketingPublication[] @relation("publicationsForCreative")
 
   @@index([productId, kind])
   @@index([status, createdAt])
@@ -2389,35 +2389,78 @@ model ProductCreative {
 }
 
 model MarketingPublication {
-  id           String   @id @default(cuid())
-  creativeId   String?                            // FK opcional (publicação manual sem criativo IA)
-  productId    String?
+  id               String    @id @default(cuid())
+  creativeId       String? // FK opcional (publicação manual sem criativo IA)
+  productId        String?
   // Plataforma
-  platform     String                             // "instagram" | "tiktok" | "whatsapp_broadcast" | "facebook"
+  platform         String // "instagram" | "tiktok" | "whatsapp_broadcast" | "facebook"
   // ID retornado pela API da plataforma (Meta media_id, TikTok post_id, etc)
-  externalId   String?
-  externalUrl  String?                            // URL pública do post
+  externalId       String?
+  externalUrl      String? // URL pública do post
   // Conteúdo publicado
-  caption      String?
-  mediaUrl     String?
+  caption          String?
+  mediaUrl         String?
   // Resultado
-  status       String   @default("queued")        // queued | publishing | success | failed
-  errorMessage String?
+  status           String    @default("queued") // queued | publishing | success | failed
+  errorMessage     String?
   // Métricas (atualizadas em job posterior)
-  metricViews    Int?
-  metricLikes    Int?
-  metricComments Int?
-  metricShares   Int?
-  metricSaves    Int?
+  metricViews      Int?
+  metricLikes      Int?
+  metricComments   Int?
+  metricShares     Int?
+  metricSaves      Int?
   metricsUpdatedAt DateTime?
   // Quem disparou
-  publishedById String?
-  publishedAt   DateTime?
-  createdAt     DateTime @default(now())
+  publishedById    String?
+  publishedAt      DateTime?
+  createdAt        DateTime  @default(now())
 
   creative ProductCreative? @relation("publicationsForCreative", fields: [creativeId], references: [id])
 
   @@index([platform, status])
   @@index([publishedAt])
   @@index([productId])
+}
+
+// ============================================================
+// BRAND PROFILE — multi-tenant pra IA de marketing
+// ============================================================
+// Cada conta de Instagram administrada é um BrandProfile com
+// seu próprio DNA narrativo. brand-narrative-agent lê isso pra
+// gerar copy/cenário alinhado a cada marca.
+
+model BrandProfile {
+  id              String  @id @default(uuid())
+  slug            String  @unique // identificador url-safe: "metafardamentos"
+  displayName     String // "Meta Fardamentos"
+  archetype       String  @default("custom") // mass_retail | b2b_premium | institutional | personal | political | custom
+  instagramHandle String? // "@metafardamentos"
+  active          Boolean @default(true)
+  order           Int     @default(0) // ordem de exibição no dropdown
+
+  // DNA narrativo (preenchido pelo dono via UI)
+  description    String? // pitch curto da marca (1-2 linhas)
+  mission        String? // propósito/missão
+  audience       String? // persona-alvo
+  voiceTone      Json? // { formal: 0-10, energy, technical, humor, intimacy }
+  paletteHex     Json? // ["#FF6A1F", "#FF2D92"]
+  fontFamily     String? // pra overlay
+  contentPillars Json? // string[] - tipos de conteúdo prioritários
+  hashtags       Json? // string[]
+  ctaTemplates   Json? // string[] - CTAs reutilizáveis
+  taboo          Json? // string[] - palavras/temas proibidos
+  exampleCopy    String? // copy bem-sucedida pra IA imitar tom
+
+  // Conexão Instagram (preencher quando conectar Graph API)
+  instagramUserId String? // IG Business Account ID
+  instagramToken  String? // long-lived access token
+  fbPageId        String?
+
+  // Overrides do marketingConfig (cenários/prompts próprios)
+  customConfig Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, order])
 }
