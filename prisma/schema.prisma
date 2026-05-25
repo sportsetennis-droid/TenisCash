@@ -2437,6 +2437,7 @@ model BrandProfile {
   instagramHandle String? // "@metafardamentos"
   active          Boolean @default(true)
   displayOrder    Int     @default(0) // ordem de exibição no dropdown
+  logoUrl         String? // URL pública da logo (PNG/SVG, preferir quadrada)
 
   // DNA narrativo (preenchido pelo dono via UI)
   description    String? // pitch curto da marca (1-2 linhas)

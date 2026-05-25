@@ -3,11 +3,42 @@
 // =====================================================================
 
 const express = require('express');
+const multer = require('multer');
 const { authMiddleware, prisma } = require('../middleware');
 const bp = require('../services/brandProfiles');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+// Multer pra upload de logo — 5MB max, em memória (não escreve em disco)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpeg|jpg|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Apenas PNG, JPG, WebP ou SVG'));
+  },
+});
+
+// Upload pra fal.storage (mesma CDN das imagens de marketing)
+async function uploadToFalStorage(buffer, filename, mimetype) {
+  const mod = await import('@fal-ai/client');
+  const fal = mod.fal;
+  if (!process.env.FAL_KEY) throw new Error('FAL_KEY não configurada');
+  fal.config({ credentials: process.env.FAL_KEY });
+
+  // File construtor (Node 20+ tem global, fallback node:buffer)
+  let FileC = (typeof File !== 'undefined') ? File : null;
+  if (!FileC) {
+    try { FileC = require('node:buffer').File; } catch {}
+  }
+  const payload = FileC
+    ? new FileC([buffer], filename, { type: mimetype })
+    : new Blob([buffer], { type: mimetype });
+  const url = await fal.storage.upload(payload);
+  if (!url) throw new Error('fal.storage retornou vazio');
+  return url;
+}
 
 function requireAdmin(req, res, next) {
   prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } })
@@ -56,6 +87,40 @@ router.delete('/:id', async (req, res) => {
   try {
     await bp.deleteBrand(req.params.id);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Upload de logo — multipart com campo "file" OU body.logoUrl pra URL direta
+router.post('/:slug/logo', upload.single('file'), async (req, res) => {
+  try {
+    const { slug } = req.params;
+    let logoUrl;
+
+    if (req.file) {
+      // Upload do arquivo
+      const safe = (slug || 'logo').replace(/[^a-z0-9-]/gi, '');
+      const ext = (req.file.originalname?.split('.').pop() || 'png').toLowerCase().slice(0, 5);
+      const filename = `logo-${safe}-${Date.now()}.${ext}`;
+      logoUrl = await uploadToFalStorage(req.file.buffer, filename, req.file.mimetype);
+    } else if (req.body?.logoUrl) {
+      // URL direta colada
+      logoUrl = String(req.body.logoUrl).trim();
+      if (!/^https?:\/\//.test(logoUrl)) return res.status(400).json({ error: 'logoUrl precisa começar com http(s)://' });
+    } else {
+      return res.status(400).json({ error: 'envie um arquivo no campo "file" OU body.logoUrl com URL' });
+    }
+
+    // Atualiza no banco (cria se não existir)
+    const brand = await bp.upsert({ slug, logoUrl });
+    res.json({ logoUrl, brand });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Remove logo
+router.delete('/:slug/logo', async (req, res) => {
+  try {
+    const brand = await bp.upsert({ slug: req.params.slug, logoUrl: null });
+    res.json({ brand });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
