@@ -81,19 +81,12 @@
   if (typeof window !== 'undefined') window.PCard = window.PCard || PCard;
 
   // ============================================================
-  // Lazy load do histórico de entradas via NFe
+  // Carrega entrada de NFe automaticamente quando card entra na viewport
   // ============================================================
-  PCard.loadNfeSummary = async function (productId, btn) {
+  PCard.loadNfeSummary = async function (productId) {
     const container = document.querySelector(`.pcard-nfe-content[data-pid="${productId}"]`);
-    if (!container) return;
-    // Toggle se já carregado
-    if (container.dataset.loaded === '1') {
-      const open = container.style.display !== 'none';
-      container.style.display = open ? 'none' : 'block';
-      if (btn) btn.textContent = open ? '▼ Ver histórico' : '▲ Ocultar';
-      return;
-    }
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Carregando...'; }
+    if (!container || container.dataset.loaded === '1' || container.dataset.loading === '1') return;
+    container.dataset.loading = '1';
     try {
       const token = localStorage.getItem('tc_admin_token') || '';
       const r = await fetch('/api/admin/catalog/products/' + productId + '/nfe-summary', { headers: { 'Authorization': 'Bearer ' + token } });
@@ -151,14 +144,43 @@
       }
       container.innerHTML = html;
       container.dataset.loaded = '1';
-      container.style.display = 'block';
-      if (btn) { btn.disabled = false; btn.textContent = '▲ Ocultar'; }
+      container.dataset.loading = '';
     } catch (e) {
-      container.innerHTML = `<div style="color:#d70015;font-size:11px;">Erro: ${e.message}</div>`;
-      container.style.display = 'block';
-      if (btn) { btn.disabled = false; btn.textContent = '▼ Tentar de novo'; }
+      container.innerHTML = `<div style="color:#d70015;font-size:11px;">Erro ao carregar: ${e.message}</div>`;
+      container.dataset.loading = '';
     }
   };
+
+  // IntersectionObserver: carrega quando o card aparece na viewport (evita N+1 fetches simultâneos)
+  if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
+    PCard._observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          const pid = e.target.dataset.pid;
+          if (pid) PCard.loadNfeSummary(pid);
+          PCard._observer.unobserve(e.target);
+        }
+      }
+    }, { rootMargin: '200px' });
+    // Auto-observa novos elementos quando adicionados ao DOM
+    PCard._mutObserver = new MutationObserver((muts) => {
+      muts.forEach(m => {
+        m.addedNodes.forEach(n => {
+          if (n.nodeType !== 1) return;
+          n.querySelectorAll?.('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
+        });
+      });
+    });
+    PCard._mutObserver.observe(document.body, { childList: true, subtree: true });
+    // Observa os que já estão no DOM no boot
+    if (document.readyState !== 'loading') {
+      document.querySelectorAll('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
+      });
+    }
+  }
 
   /**
    * Renderiza UM card de produto.
@@ -290,14 +312,11 @@
     if (cls.tier) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ${esc(cls.tier)}</span>`;
     if (metaPills) html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">${metaPills}</div>`;
 
-    // BLOCO NFe (lazy load) — só pra admin
+    // BLOCO NFe — carrega automático quando card entra na viewport
     if (showStock && actions === 'admin') {
       html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
-      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;">📦 Entradas via NFe</div>`;
-      html += `<button type="button" onclick="event.stopPropagation();PCard.loadNfeSummary('${p.id}', this)" style="background:#0066cc;color:white;border:none;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">▼ Ver histórico</button>`;
-      html += `</div>`;
-      html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="display:none;margin-top:8px;font-size:12px;color:#1d1d1f;"></div>`;
+      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe</div>`;
+      html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
       html += `</div>`;
     }
 
