@@ -110,8 +110,9 @@ router.post('/:slug/logo', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'envie um arquivo no campo "file" OU body.logoUrl com URL' });
     }
 
-    // Atualiza no banco (cria se não existir)
-    const brand = await bp.upsert({ slug, logoUrl });
+    // Update direto (marca já existe via seed). Não usa upsert pra evitar
+    // criar brand incompleto sem displayName.
+    const brand = await bp.update(slug, { logoUrl });
     res.json({ logoUrl, brand });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -119,7 +120,7 @@ router.post('/:slug/logo', upload.single('file'), async (req, res) => {
 // Remove logo
 router.delete('/:slug/logo', async (req, res) => {
   try {
-    const brand = await bp.upsert({ slug: req.params.slug, logoUrl: null });
+    const brand = await bp.update(req.params.slug, { logoUrl: null });
     res.json({ brand });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

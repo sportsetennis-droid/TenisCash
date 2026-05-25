@@ -36,12 +36,29 @@ async function getById(id) {
 async function upsert(data) {
   const { slug, ...rest } = data;
   if (!slug) throw new Error('slug obrigatório');
+  // Fallback pra create: displayName é obrigatório
+  const createData = {
+    slug,
+    displayName: rest.displayName || slug.replace(/[-_]/g, ' '),
+    ...rest,
+  };
   const saved = await prisma.brandProfile.upsert({
     where: { slug },
     update: { ...rest, updatedAt: new Date() },
-    create: { slug, ...rest },
+    create: createData,
   });
   cache = null; // invalida
+  return saved;
+}
+
+// Update simples — falha se brand não existe (evita criar marca incompleta)
+async function update(slug, patch) {
+  if (!slug) throw new Error('slug obrigatório');
+  const saved = await prisma.brandProfile.update({
+    where: { slug },
+    data: { ...patch, updatedAt: new Date() },
+  });
+  cache = null;
   return saved;
 }
 
@@ -157,6 +174,7 @@ module.exports = {
   getBySlug,
   getById,
   upsert,
+  update,
   deleteBrand,
   seedDefaults,
   SEED_BRANDS,
