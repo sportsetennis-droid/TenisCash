@@ -204,27 +204,55 @@ router.get('/summary', async (req, res) => {
       }),
     ]);
 
-    // Hidrata nome da loja
-    const stores = await prisma.store.findMany({ select: { id: true, name: true, code: true } });
+    // Hidrata nome da loja — TODAS as ativas (mesmo as sem bipe)
+    const stores = await prisma.store.findMany({
+      where: { active: true },
+      select: { id: true, name: true, code: true },
+      orderBy: { code: 'asc' },
+    });
     const storeMap = Object.fromEntries(stores.map((s) => [s.id, s]));
 
+    // Mapa dos grupos que tiveram bipe (acesso O(1))
+    const groupedById = {};
+    storeGroupsDay.forEach(g => { groupedById[g.storeId || 'NULL'] = g._count.id; });
+
+    // Loop por TODAS as lojas ativas (lista completa)
     const byStoreWithFound = [];
-    for (const g of storeGroupsDay) {
-      const where = { ...dayWhere, storeId: g.storeId };
+    for (const store of stores) {
+      const where = { ...dayWhere, storeId: store.id };
+      const [f, nf, total] = await Promise.all([
+        prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
+        prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
+        prisma.stocktakeBipe.count({ where }),
+      ]);
+      byStoreWithFound.push({
+        id: store.id,
+        name: store.name,
+        code: store.code,
+        total,
+        found: f,
+        notFound: nf,
+      });
+    }
+    // Bipes sem storeId (vendedor não escolheu loja)
+    const semLojaCount = groupedById['NULL'] || 0;
+    if (semLojaCount > 0) {
+      const where = { ...dayWhere, storeId: null };
       const [f, nf] = await Promise.all([
         prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
         prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
       ]);
       byStoreWithFound.push({
-        id: g.storeId,
-        name: storeMap[g.storeId]?.name || '(sem loja)',
-        code: storeMap[g.storeId]?.code || null,
-        total: g._count.id,
+        id: null,
+        name: '(sem loja selecionada)',
+        code: '⚠️',
+        total: semLojaCount,
         found: f,
         notFound: nf,
       });
     }
-    byStoreWithFound.sort((a, b) => b.total - a.total);
+    // Ordena: mais bipes primeiro, depois alfabético
+    byStoreWithFound.sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
     const bySellerWithFound = [];
     for (const g of sellerGroupsDay) {

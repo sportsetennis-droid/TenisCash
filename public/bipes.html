@@ -221,16 +221,22 @@ async function loadSummary() {
 
     // Render bloco "por loja"
     const sl_store = document.getElementById('by-store-list');
-    sl_store.innerHTML = (r.byStore || []).map(s => `
-      <div class="seller-row">
+    sl_store.innerHTML = (r.byStore || []).map(s => {
+      const dim = s.total === 0;
+      return `
+      <div class="seller-row" style="${dim ? 'opacity:0.5' : ''}">
         <div class="seller-name">🏢 ${escH(s.name)}${s.code ? ' <span style="color:#a8a8ad;font-size:11px">' + escH(s.code) + '</span>' : ''}</div>
         <div class="seller-counts">
-          <div class="seller-count ok">✓ <b>${s.found}</b></div>
-          <div class="seller-count bad">✗ <b>${s.notFound}</b></div>
-          <div class="seller-count">total <b>${s.total}</b></div>
+          ${s.total > 0 ? `
+            <div class="seller-count ok">✓ <b>${s.found}</b></div>
+            <div class="seller-count bad">✗ <b>${s.notFound}</b></div>
+            <div class="seller-count">total <b>${s.total}</b></div>
+          ` : `
+            <div class="seller-count" style="font-style:italic;color:#a8a8ad">sem bipes ainda</div>
+          `}
         </div>
-      </div>
-    `).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes</div>';
+      </div>`;
+    }).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes</div>';
     const sl = document.getElementById('by-seller-list');
     sl.innerHTML = (r.bySeller || []).map(s => {
       const storesLine = (s.stores || []).map(st => st.name + ' (' + st.count + ')').join(' · ');
