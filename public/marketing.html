@@ -193,10 +193,24 @@
       <label class="cat-toggle" title="GPT re-imagina o produto. Pode deformar texto/quantidade."><input type="radio" name="cat-provider" value="openai"> <span>🤖 GPT <span style="color:#a8a8ad;font-size:11px">(criativo, pode deformar)</span></span></label>
       <label class="cat-toggle" title="Os 3 lado a lado pra comparar"><input type="radio" name="cat-provider" value="all"> <span>🎨 Todos os 3 ($0.13)</span></label>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;background:#fff;border:1.5px solid #e5e5ea;padding:10px 14px;border-radius:10px">
-      <span style="font-size:13px;font-weight:700;color:#0a0a0a">📝 Texto no criativo:</span>
-      <input type="text" id="cat-headline" placeholder="Frase grande no topo (vazio = automático)" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
-      <label class="cat-toggle" style="font-size:12px"><input type="checkbox" id="cat-include-price" checked> <span>Badge de preço</span></label>
+    <div style="background:#fff;border:1.5px solid #e5e5ea;padding:12px 14px;border-radius:10px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;color:#0a0a0a;margin-bottom:8px">🎨 Conteúdo do criativo (marque o que quer aparecer)</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+        <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ck-headline" checked onchange="toggleOverlayFields()"> <span>📝 Frase grande</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ck-price" onchange="toggleOverlayFields()"> <span>💰 Badge de preço</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ck-logo" onchange="toggleOverlayFields()"> <span>🏢 Logo da marca</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ck-handle" onchange="toggleOverlayFields()"> <span>@ Handle Instagram</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ck-subline" onchange="toggleOverlayFields()"> <span>✏️ Subtexto</span></label>
+      </div>
+      <div id="overlay-fields" style="display:flex;gap:10px;flex-direction:column">
+        <div id="field-headline">
+          <input type="text" id="cat-headline" placeholder="Frase no topo (vazio = automática em português, ex: CHEGOU CAJU BRASIL)" style="width:100%;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
+        </div>
+        <div id="field-subline" style="display:none">
+          <input type="text" id="cat-subline" placeholder="Subtexto pequeno (ex: 'Coleção verão 2026' ou '6× sem juros')" style="width:100%;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
+        </div>
+      </div>
+      <div style="font-size:11px;color:#a8a8ad;margin-top:8px">💡 Logo e handle puxam da <b>Marca ativa</b> selecionada no topo. Preço puxa do catálogo automaticamente.</div>
     </div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <label class="cat-toggle" style="font-size:13px"><b>Formato:</b></label>
@@ -508,12 +522,14 @@ async function generateMore(creativeId) {
   try {
     const wait = skipVideo ? (provider === 'openai' || provider === 'both' ? '60s' : '30s') : '90s';
     toast(`Gerando variação ${provider} pra ${p.name.slice(0, 30)}… leva ~${wait} ($${cost})`);
+    const overlay = (typeof getOverlayOpts === 'function') ? getOverlayOpts() : {};
     const r = await api('/generate/' + p.id, {
       method: 'POST',
       body: JSON.stringify({
         skipVideo,
         provider,
         sceneHint: sceneHint.trim() || SCENE_HINTS[Math.floor(Math.random() * (SCENE_HINTS.length - 1)) + 1],
+        ...overlay,
       }),
     });
     toast('✓ ' + r.created.length + ' criativos novos · $' + (r.totalCostUsd || 0).toFixed(2));
@@ -1289,6 +1305,26 @@ function getAspect() {
   return r ? r.value : '16:9';
 }
 
+function toggleOverlayFields() {
+  document.getElementById('field-headline').style.display =
+    document.getElementById('ck-headline').checked ? '' : 'none';
+  document.getElementById('field-subline').style.display =
+    document.getElementById('ck-subline').checked ? '' : 'none';
+}
+
+function getOverlayOpts() {
+  return {
+    includeHeadline: document.getElementById('ck-headline')?.checked || false,
+    includePrice:    document.getElementById('ck-price')?.checked || false,
+    includeLogo:     document.getElementById('ck-logo')?.checked || false,
+    includeHandle:   document.getElementById('ck-handle')?.checked || false,
+    includeSubline:  document.getElementById('ck-subline')?.checked || false,
+    headline: document.getElementById('cat-headline')?.value?.trim() || '',
+    subline:  document.getElementById('cat-subline')?.value?.trim() || '',
+    brandSlug: getActiveBrand() || null,
+  };
+}
+
 function perItemCost(skipVideo, provider) {
   // Foto editorial por provider:
   //   composite = $0.05 (bria $0.01 + flux bg $0.04, ja inclui sem-fundo)
@@ -1367,12 +1403,12 @@ async function catalogGenerate() {
     const tag = job.totalVar > 1 ? ` v${job.variantIdx}/${job.totalVar}` : '';
     toast(`Gerando ${i + 1}/${jobs.length}: ${(p.name || job.productId).slice(0, 36)}${tag}…`);
     try {
+      const overlay = getOverlayOpts();
       const r = await api('/generate/' + job.productId, {
         method: 'POST',
         body: JSON.stringify({
           skipVideo, sceneHint: job.sceneHint, provider, aspectRatio: getAspect(),
-          headline: document.getElementById('cat-headline')?.value || '',
-          includePrice: !!document.getElementById('cat-include-price')?.checked,
+          ...overlay,
         }),
       });
       if (r?.created?.length) ok++;

@@ -226,11 +226,15 @@ function escapeXml(s) {
 }
 
 /**
- * Quebra texto em múltiplas linhas pra caber numa largura máxima.
- * Aproximação: 0.55 * fontSize por caractere (Inter/Helvetica bold).
+ * Quebra texto em múltiplas linhas pra caber numa largura máxima em pixels.
+ * Inter Black aprox 0.58 * fontSize por char. Se palavra única for muito
+ * longa, ela ocupa linha inteira (pode estourar — caller deve diminuir
+ * fontSize via autoFitFontSize).
  */
-function wrapText(text, maxChars) {
+function wrapText(text, fontSize, maxWidthPx) {
   if (!text) return [];
+  const charPx = fontSize * 0.58;
+  const maxChars = Math.max(6, Math.floor(maxWidthPx / charPx));
   const words = String(text).split(/\s+/);
   const lines = [];
   let line = '';
@@ -240,6 +244,27 @@ function wrapText(text, maxChars) {
   }
   if (line) lines.push(line);
   return lines;
+}
+
+/**
+ * Calcula o maior fontSize que mantém o texto cabendo em maxLines linhas
+ * dentro de maxWidthPx. Diminui de 5 em 5 até dar conta.
+ */
+function autoFitFontSize(text, maxWidthPx, maxLines, startSize, minSize) {
+  let size = startSize;
+  while (size > minSize) {
+    const lines = wrapText(text, size, maxWidthPx);
+    if (lines.length <= maxLines) return { size, lines };
+    size -= Math.max(2, Math.round(startSize * 0.04));
+  }
+  // Último recurso: trunca palavras se ainda assim estourou
+  const lines = wrapText(text, size, maxWidthPx).slice(0, maxLines);
+  if (lines.length === maxLines) {
+    const last = lines[maxLines - 1];
+    const maxChars = Math.floor(maxWidthPx / (size * 0.58));
+    if (last.length > maxChars - 1) lines[maxLines - 1] = last.slice(0, maxChars - 1) + '…';
+  }
+  return { size, lines };
 }
 
 /**
@@ -254,33 +279,64 @@ function wrapText(text, maxChars) {
  *   - aspectRatio, width, height: dimensões da imagem base
  */
 function buildOverlaySvg(opts) {
-  const { headline, subline, price, installments = 6, width, height } = opts;
+  const { headline, subline, price, installments = 6, width, height, handle, logoEmbedB64 } = opts;
   const hasHeadline = headline && String(headline).trim().length > 0;
   const hasPrice = typeof price === 'number' && price > 0;
   const hasSubline = subline && String(subline).trim().length > 0;
+  const hasHandle = handle && String(handle).trim().length > 0;
+  const hasLogo = !!logoEmbedB64;
 
-  if (!hasHeadline && !hasPrice && !hasSubline) return null;
+  if (!hasHeadline && !hasPrice && !hasSubline && !hasHandle && !hasLogo) return null;
 
-  // Tamanhos proporcionais à largura (responsivo)
-  const headlineSize = Math.round(width * 0.075);   // ~77px em 1024px
-  const sublineSize = Math.round(width * 0.025);    // ~26px
-  const priceSize = Math.round(width * 0.055);      // ~56px
-  const parcelaSize = Math.round(width * 0.022);    // ~22px
+  // Margem segura horizontal (10% pra cada lado = 80% de largura útil pro texto)
+  const sideMargin = Math.round(width * 0.05);
+  const maxTextWidth = width - 2 * sideMargin;
 
-  // Headline: até 22 chars por linha, max 2 linhas
-  const headlineLines = hasHeadline ? wrapText(headline.toUpperCase(), 22).slice(0, 2) : [];
-  const headlineLineHeight = Math.round(headlineSize * 1.05);
-  const headlineY = Math.round(headlineSize * 1.3);
+  // === HEADLINE com auto-fit (diminui fontSize até caber em 2 linhas) ===
+  const startHeadlineSize = Math.round(width * 0.085);  // ~87px em 1024px
+  const minHeadlineSize = Math.round(width * 0.04);     // ~41px mínimo
+  let headlineLines = [];
+  let headlineSize = startHeadlineSize;
+  if (hasHeadline) {
+    const fit = autoFitFontSize(headline.toUpperCase(), maxTextWidth, 2, startHeadlineSize, minHeadlineSize);
+    headlineLines = fit.lines;
+    headlineSize = fit.size;
+  }
+  const headlineLineHeight = Math.round(headlineSize * 1.0);
+  const headlineY = Math.round(headlineSize * 1.15);
+  const headlineBlockH = headlineY + (headlineLines.length - 1) * headlineLineHeight + Math.round(headlineSize * 0.5);
 
-  // Subline
-  const sublineY = Math.round(height * 0.85);
+  // === SUBLINE com auto-fit ===
+  const startSublineSize = Math.round(width * 0.028);
+  const minSublineSize = Math.round(width * 0.02);
+  let sublineLines = [];
+  let sublineSize = startSublineSize;
+  if (hasSubline) {
+    const fit = autoFitFontSize(subline, maxTextWidth, 2, startSublineSize, minSublineSize);
+    sublineLines = fit.lines;
+    sublineSize = fit.size;
+  }
+  const sublineLineHeight = Math.round(sublineSize * 1.15);
+  const sublineY = Math.round(height * 0.82);
 
-  // Badge preço (canto inferior direito) — círculo laranja c/ gradiente
+  // === PREÇO badge (canto inferior direito) ===
+  const priceSize = Math.round(width * 0.055);
+  const parcelaSize = Math.round(width * 0.022);
   const badgeR = Math.round(width * 0.13);
   const badgeCx = width - badgeR - Math.round(width * 0.04);
   const badgeCy = height - badgeR - Math.round(width * 0.04);
   const parcela = hasPrice ? (price / installments).toFixed(2).replace('.', ',') : '';
   const priceStr = hasPrice ? Math.round(price).toString() : '';
+
+  // === LOGO (canto inferior esquerdo) ===
+  const logoSize = Math.round(width * 0.13);
+  const logoX = Math.round(width * 0.04);
+  const logoY = height - logoSize - Math.round(width * 0.04);
+
+  // === HANDLE @ (canto inferior, abaixo da logo OU sozinho) ===
+  const handleSize = Math.round(width * 0.022);
+  const handleX = hasLogo ? (logoX + logoSize + Math.round(width * 0.018)) : Math.round(width * 0.05);
+  const handleY = hasLogo ? (logoY + logoSize / 2 + handleSize / 3) : (height - Math.round(width * 0.04));
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -289,19 +345,18 @@ function buildOverlaySvg(opts) {
         <stop offset="0%" stop-color="#FF6A1F"/>
         <stop offset="100%" stop-color="#FF2D92"/>
       </linearGradient>
-      <filter id="text-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <filter id="text-shadow" x="-15%" y="-15%" width="130%" height="130%">
         <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
         <feOffset dx="0" dy="3" result="offsetblur"/>
-        <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+        <feComponentTransfer><feFuncA type="linear" slope="0.6"/></feComponentTransfer>
         <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     </defs>
 
     ${hasHeadline ? `
-      <!-- Faixa de fundo semitransparente atrás do headline pra garantir legibilidade -->
-      <rect x="0" y="0" width="${width}" height="${headlineY + (headlineLines.length - 1) * headlineLineHeight + Math.round(headlineSize * 0.6)}" fill="rgba(0,0,0,0.18)"/>
+      <rect x="0" y="0" width="${width}" height="${headlineBlockH}" fill="rgba(0,0,0,0.22)"/>
       ${headlineLines.map((line, i) => `
-        <text x="${Math.round(width * 0.05)}" y="${headlineY + i * headlineLineHeight}"
+        <text x="${sideMargin}" y="${headlineY + i * headlineLineHeight}"
               font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
               font-size="${headlineSize}"
               font-weight="900"
@@ -311,20 +366,33 @@ function buildOverlaySvg(opts) {
       `).join('')}
     ` : ''}
 
-    ${hasSubline ? `
-      <text x="${Math.round(width * 0.05)}" y="${sublineY}"
-            font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
+    ${hasSubline ? sublineLines.map((line, i) => `
+      <text x="${sideMargin}" y="${sublineY + i * sublineLineHeight}"
+            font-family="STSBold, STSBlack, Arial, sans-serif"
             font-size="${sublineSize}"
             font-weight="700"
             fill="#ffffff"
-            filter="url(#text-shadow)">${escapeXml(subline.slice(0, 80))}</text>
+            filter="url(#text-shadow)">${escapeXml(line)}</text>
+    `).join('') : ''}
+
+    ${hasLogo ? `
+      <rect x="${logoX - 6}" y="${logoY - 6}" width="${logoSize + 12}" height="${logoSize + 12}" rx="14" fill="rgba(255,255,255,0.95)"/>
+      <image href="data:image/png;base64,${logoEmbedB64}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>
+    ` : ''}
+
+    ${hasHandle ? `
+      <text x="${handleX}" y="${handleY}"
+            font-family="STSBold, Arial, sans-serif"
+            font-size="${handleSize}"
+            font-weight="700"
+            fill="#ffffff"
+            filter="url(#text-shadow)">${escapeXml(handle)}</text>
     ` : ''}
 
     ${hasPrice ? `
-      <!-- Badge circular de preço -->
       <circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}" fill="url(#bg-grad)" stroke="#ffffff" stroke-width="3" filter="url(#text-shadow)"/>
       <text x="${badgeCx}" y="${badgeCy - Math.round(badgeR * 0.05)}"
-            font-family="Arial Black, Helvetica, sans-serif"
+            font-family="STSBlack, Arial Black, Arial, sans-serif"
             font-size="${priceSize}"
             font-weight="900"
             fill="#ffffff"
@@ -332,7 +400,7 @@ function buildOverlaySvg(opts) {
             dominant-baseline="middle">R$ ${priceStr}</text>
       ${installments > 1 ? `
         <text x="${badgeCx}" y="${badgeCy + Math.round(badgeR * 0.4)}"
-              font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
+              font-family="STSBold, Arial, sans-serif"
               font-size="${parcelaSize}"
               font-weight="700"
               fill="#ffffff"
@@ -346,10 +414,22 @@ function buildOverlaySvg(opts) {
 
 /**
  * Aplica overlay de texto + badge sobre uma imagem buffer.
+ * Aceita logoUrl (URL pública); baixa, converte pra base64 e embeda no SVG.
  */
 async function applyTextOverlay(imageBuffer, opts) {
   const meta = await sharp(imageBuffer).metadata();
-  const svg = buildOverlaySvg({ ...opts, width: meta.width, height: meta.height });
+  let logoEmbedB64 = null;
+  if (opts.logoUrl) {
+    try {
+      const buf = await fetchAsBuffer(opts.logoUrl);
+      // Normaliza pra PNG quadrada 256x256 (com fundo transparente)
+      const norm = await sharp(buf).resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+      logoEmbedB64 = norm.toString('base64');
+    } catch (e) {
+      console.warn('[compositeImage] logo download falhou:', e.message);
+    }
+  }
+  const svg = buildOverlaySvg({ ...opts, width: meta.width, height: meta.height, logoEmbedB64 });
   if (!svg) return imageBuffer;
   try {
     return await sharp(imageBuffer)
@@ -421,18 +501,24 @@ async function generateEditorialPhoto(opts) {
   // Composição local (Sharp) — rápida
   let finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
 
-  // Aplica overlay de texto (headline + preço) se solicitado
-  // opts.headline: string com a frase principal
-  // opts.subline: string secundária pequena
-  // opts.price: número (puxa do product.price se não passar e includePrice=true)
-  // opts.includePrice: bool (default true se price > 0)
-  const wantOverlay = opts.headline || opts.subline || opts.includePrice !== false;
+  // Aplica overlay de texto/logo/handle se solicitado
+  // Cada elemento é opt-in via flag separada (controlado pela UI)
+  //   opts.includeHeadline (default true se opts.headline tem texto)
+  //   opts.includePrice    (default false — só liga se UI marcar)
+  //   opts.includeLogo     (default false)
+  //   opts.includeHandle   (default false)
+  //   opts.includeSubline  (default false)
+  //   opts.logoUrl, opts.handle — passados pela rota
+  const headline = opts.includeHeadline === false ? '' : (opts.headline || '');
+  const subline = opts.includeSubline ? (opts.subline || '') : '';
+  const price = opts.includePrice && product.price > 0 ? product.price : null;
+  const logoUrl = opts.includeLogo ? (opts.logoUrl || null) : null;
+  const handle = opts.includeHandle ? (opts.handle || '') : '';
+
+  const wantOverlay = headline || subline || price || logoUrl || handle;
   if (wantOverlay) {
-    const overlayPrice = (opts.includePrice !== false && product.price > 0) ? product.price : null;
     finalBuffer = await applyTextOverlay(finalBuffer, {
-      headline: opts.headline || '',
-      subline: opts.subline || '',
-      price: overlayPrice,
+      headline, subline, price, logoUrl, handle,
       installments: opts.installments || 6,
     });
   }

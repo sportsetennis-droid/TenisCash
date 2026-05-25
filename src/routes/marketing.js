@@ -18,6 +18,7 @@ const falAi = require('../services/falAi');
 const openaiImage = require('../services/openaiImage');
 const compositeImage = require('../services/compositeImage');
 const copyGen = require('../services/copyGenerator');
+const brandProfiles = require('../services/brandProfiles');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -40,22 +41,26 @@ router.use(requireAdmin);
 // a partir do nome do produto + marca. Tom S&T informal.
 // =====================================================
 function autoHeadline(product) {
-  if (!product) return '';
-  const name = (product.name || '').toUpperCase();
-  const brand = (product.brand || '').toUpperCase();
-  // Tenta extrair a "essência" do nome: corta tudo depois de "/" ou "-" repetido
-  const core = name.split(/[/-]/)[0].trim();
-  // Templates rotativos pra não ficar igual sempre
-  const templates = [
-    `CHEGOU ${brand}`,
-    `${brand} NA LOJA`,
-    `OFF: ${core.slice(0, 28)}`,
-    `${core.slice(0, 22)} — JÁ DISPONÍVEL`,
-    `NOVIDADE ${brand}`,
-  ];
-  // Escolhe baseado no hash do id (estável por produto)
-  const seed = (product.id || product.sku || '').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-  return templates[seed % templates.length];
+  if (!product) return 'NOVIDADE NA LOJA';
+  const name = (product.name || '').toUpperCase().trim();
+  const brand = (product.brand || '').toUpperCase().trim();
+  const core = (name.split(/[/\-]/)[0] || '').trim().slice(0, 30);
+  // Templates PORTUGUÊS curtos — escolhe pelo hash do id pra ser estável
+  const t = [];
+  if (brand) {
+    t.push(`CHEGOU ${brand}`);
+    t.push(`${brand} NA LOJA`);
+    t.push(`NOVIDADE ${brand}`);
+  }
+  if (core) {
+    t.push(`${core} — JÁ NA LOJA`);
+    t.push(`PEGA O ${core.slice(0, 22)}`);
+  }
+  t.push('NOVIDADE NA LOJA');
+  t.push('CHEGOU PRA TI');
+  const seed = (product.id || product.sku || product.name || 'x').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+  const out = t[seed % t.length] || 'CHEGOU NA LOJA';
+  return out.length > 0 ? out : 'CHEGOU NA LOJA';
 }
 
 // ====================================================
@@ -96,11 +101,33 @@ router.post('/generate/:productId', async (req, res) => {
     // 'composite' (default): produto REAL + cenário IA (fidelidade 100%)
     // 'fal'/'openai': image-to-image generativo (cenas mais ricas, mas pode deformar produto)
     if (provider === 'composite' || provider === 'all') {
-      // Overlay de texto opcional. Se vier vazio, tenta gerar headline automaticamente
-      // a partir do nome/marca; ainda permite override via req.body.headline.
-      const headline = (req.body?.headline ?? autoHeadline(product))?.toString().slice(0, 60);
-      const subline = (req.body?.subline ?? '').toString().slice(0, 80);
-      const includePrice = req.body?.includePrice !== false; // default true
+      // === OVERLAY CONFIGURÁVEL ===
+      // Cada elemento é opt-in via flag dedicada (default tudo FALSE exceto headline).
+      // UI escolhe o que quer no criativo: frase / preço / logo / handle / subline
+      const includeHeadline = req.body?.includeHeadline !== false; // default true
+      const includePrice    = req.body?.includePrice === true;     // default false
+      const includeLogo     = req.body?.includeLogo === true;      // default false
+      const includeHandle   = req.body?.includeHandle === true;    // default false
+      const includeSubline  = req.body?.includeSubline === true;   // default false
+
+      // Headline: usuário pode passar manualmente; se vazio, gera auto em PT
+      const headline = includeHeadline
+        ? (req.body?.headline?.trim() || autoHeadline(product)).toString().slice(0, 60)
+        : '';
+      const subline = includeSubline ? (req.body?.subline ?? '').toString().slice(0, 80) : '';
+
+      // Resolve dados da marca ativa (logo + handle) se necessário
+      let logoUrl = null, handle = '';
+      if ((includeLogo || includeHandle) && req.body?.brandSlug) {
+        try {
+          const brand = await brandProfiles.getBySlug(req.body.brandSlug);
+          if (brand) {
+            if (includeLogo) logoUrl = brand.logoUrl || null;
+            if (includeHandle) handle = brand.instagramHandle || '';
+          }
+        } catch (e) { console.warn('[marketing] brand resolve falhou:', e.message); }
+      }
+
       tasks.push(
         compositeImage.generateEditorialPhoto({
           product,
@@ -108,7 +135,13 @@ router.post('/generate/:productId', async (req, res) => {
           sceneHint,
           headline,
           subline,
+          includeHeadline,
           includePrice,
+          includeLogo,
+          includeHandle,
+          includeSubline,
+          logoUrl,
+          handle,
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
     }
