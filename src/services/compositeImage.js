@@ -27,40 +27,71 @@ const { buildBackgroundPrompt, getReferenceImages } = require('./marketingPrompt
 // librsvg do Sharp lê @font-face com data URI WOFF2 nativamente.
 // Carregamos a fonte 1x no boot e reutilizamos em todas as gerações.
 
-let _fontCacheB64 = null;
-let _fontCacheBoldB64 = null;
-// TTF (universal): @expo-google-fonts/inter — librsvg/Sharp suportam nativamente.
-// WOFF2 funciona local em Windows mas falha no Linux Alpine do Railway.
-function getFontB64() {
-  if (_fontCacheB64 !== null) return _fontCacheB64;
+// =====================================================
+// Texto → SVG PATH (opentype.js) — vetorial, sem fontconfig
+// =====================================================
+// librsvg do Railway tem fontconfig quebrado, então não consegue
+// renderizar <text> mesmo com @font-face TTF embedded. Solução:
+// converter texto em <path d="..."> shapes vetoriais via opentype.js.
+// Cada letra vira uma figura SVG, independente de qualquer fonte do SO.
+
+const opentype = require('opentype.js');
+
+let _fontBlack = null;
+let _fontBold = null;
+
+function loadFont(relPath) {
   try {
-    const p = path.resolve(__dirname, '../../node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf');
-    _fontCacheB64 = fs.readFileSync(p).toString('base64');
-    console.log('[compositeImage] Inter-900 TTF carregada,', _fontCacheB64.length, 'chars b64');
+    const p = path.resolve(__dirname, '../..', relPath);
+    const buf = fs.readFileSync(p);
+    const font = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+    return font;
   } catch (e) {
-    console.warn('[compositeImage] Inter-900 TTF não encontrada:', e.message);
-    _fontCacheB64 = '';
+    console.warn('[compositeImage] falha ao carregar fonte', relPath, ':', e.message);
+    return null;
   }
-  return _fontCacheB64;
 }
-function getFontBoldB64() {
-  if (_fontCacheBoldB64 !== null) return _fontCacheBoldB64;
+
+function getFontBlack() {
+  if (_fontBlack !== null) return _fontBlack;
+  _fontBlack = loadFont('node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf') || false;
+  if (_fontBlack) console.log('[compositeImage] Inter-900 Black (opentype) carregada');
+  return _fontBlack;
+}
+function getFontBold() {
+  if (_fontBold !== null) return _fontBold;
+  _fontBold = loadFont('node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf') || false;
+  return _fontBold;
+}
+
+/**
+ * Retorna { pathData, width } pro texto desenhado em (x, y) com fontSize.
+ * Usa fonte Black (default) ou Bold. Se nenhuma carregar, retorna null.
+ */
+function textToSvgPath(text, x, y, fontSize, useBold = false) {
+  const font = (useBold ? getFontBold() : getFontBlack()) || getFontBold() || getFontBlack();
+  if (!font) return null;
   try {
-    const p = path.resolve(__dirname, '../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf');
-    _fontCacheBoldB64 = fs.readFileSync(p).toString('base64');
-  } catch {
-    _fontCacheBoldB64 = '';
+    const otPath = font.getPath(String(text || ''), x, y, fontSize);
+    const advance = font.getAdvanceWidth(String(text || ''), fontSize);
+    return { d: otPath.toPathData(2), width: advance };
+  } catch (e) {
+    console.warn('[compositeImage] textToSvgPath falhou:', e.message);
+    return null;
   }
-  return _fontCacheBoldB64;
 }
-function fontDefsCss() {
-  const b900 = getFontB64();
-  const b700 = getFontBoldB64();
-  const faces = [];
-  if (b900) faces.push(`@font-face { font-family: 'STSBlack'; src: url(data:font/ttf;base64,${b900}) format('truetype'); font-weight: 900; font-style: normal; }`);
-  if (b700) faces.push(`@font-face { font-family: 'STSBold'; src: url(data:font/ttf;base64,${b700}) format('truetype'); font-weight: 700; font-style: normal; }`);
-  return faces.join(' ');
+
+/**
+ * Mede largura do texto em pixels (pra wrapping).
+ */
+function measureText(text, fontSize, useBold = false) {
+  const font = (useBold ? getFontBold() : getFontBlack()) || getFontBold() || getFontBlack();
+  if (!font) return text.length * fontSize * 0.5;
+  return font.getAdvanceWidth(String(text || ''), fontSize);
 }
+
+// fontDefsCss não é mais necessário (sem @font-face). Mantido vazio pra compat.
+function fontDefsCss() { return ''; }
 
 const COSTS = {
   'composite': 0.05,  // bria 0.01 + flux 0.04 (estimado)
@@ -230,19 +261,16 @@ function escapeXml(s) {
 
 /**
  * Quebra texto em múltiplas linhas pra caber numa largura máxima em pixels.
- * Inter Black aprox 0.58 * fontSize por char. Se palavra única for muito
- * longa, ela ocupa linha inteira (pode estourar — caller deve diminuir
- * fontSize via autoFitFontSize).
+ * MEDIÇÃO REAL via opentype.js (não mais estimativa por chars).
  */
-function wrapText(text, fontSize, maxWidthPx) {
+function wrapText(text, fontSize, maxWidthPx, useBold = false) {
   if (!text) return [];
-  const charPx = fontSize * 0.58;
-  const maxChars = Math.max(6, Math.floor(maxWidthPx / charPx));
   const words = String(text).split(/\s+/);
   const lines = [];
   let line = '';
   for (const w of words) {
-    if ((line + ' ' + w).trim().length <= maxChars) line = (line + ' ' + w).trim();
+    const candidate = line ? (line + ' ' + w) : w;
+    if (measureText(candidate, fontSize, useBold) <= maxWidthPx) line = candidate;
     else { if (line) lines.push(line); line = w; }
   }
   if (line) lines.push(line);
@@ -251,21 +279,25 @@ function wrapText(text, fontSize, maxWidthPx) {
 
 /**
  * Calcula o maior fontSize que mantém o texto cabendo em maxLines linhas
- * dentro de maxWidthPx. Diminui de 5 em 5 até dar conta.
+ * dentro de maxWidthPx. Usa medição real.
  */
-function autoFitFontSize(text, maxWidthPx, maxLines, startSize, minSize) {
+function autoFitFontSize(text, maxWidthPx, maxLines, startSize, minSize, useBold = false) {
   let size = startSize;
   while (size > minSize) {
-    const lines = wrapText(text, size, maxWidthPx);
-    if (lines.length <= maxLines) return { size, lines };
+    const lines = wrapText(text, size, maxWidthPx, useBold);
+    // E também checa se a maior linha cabe (não só count)
+    const fits = lines.length <= maxLines && lines.every(l => measureText(l, size, useBold) <= maxWidthPx);
+    if (fits) return { size, lines };
     size -= Math.max(2, Math.round(startSize * 0.04));
   }
-  // Último recurso: trunca palavras se ainda assim estourou
-  const lines = wrapText(text, size, maxWidthPx).slice(0, maxLines);
+  // Último recurso: trunca com "…"
+  const lines = wrapText(text, size, maxWidthPx, useBold).slice(0, maxLines);
   if (lines.length === maxLines) {
-    const last = lines[maxLines - 1];
-    const maxChars = Math.floor(maxWidthPx / (size * 0.58));
-    if (last.length > maxChars - 1) lines[maxLines - 1] = last.slice(0, maxChars - 1) + '…';
+    let last = lines[maxLines - 1];
+    while (measureText(last + '…', size, useBold) > maxWidthPx && last.length > 0) {
+      last = last.slice(0, -1);
+    }
+    lines[maxLines - 1] = last + '…';
   }
   return { size, lines };
 }
@@ -358,60 +390,51 @@ function buildOverlaySvg(opts) {
 
     ${hasHeadline ? `
       <rect x="0" y="0" width="${width}" height="${headlineBlockH}" fill="rgba(0,0,0,0.22)"/>
-      ${headlineLines.map((line, i) => `
-        <text x="${sideMargin}" y="${headlineY + i * headlineLineHeight}"
-              font-family="STSBlack, STSBold, Arial Black, Arial, sans-serif"
-              font-size="${headlineSize}"
-              font-weight="900"
-              fill="#ffffff"
-              filter="url(#text-shadow)"
-              letter-spacing="-1">${escapeXml(line)}</text>
-      `).join('')}
+      ${headlineLines.map((line, i) => {
+        const p = textToSvgPath(line, sideMargin, headlineY + i * headlineLineHeight, headlineSize, false);
+        return p ? `<path d="${p.d}" fill="#ffffff" filter="url(#text-shadow)"/>` : '';
+      }).join('')}
     ` : ''}
 
-    ${hasSubline ? sublineLines.map((line, i) => `
-      <text x="${sideMargin}" y="${sublineY + i * sublineLineHeight}"
-            font-family="STSBold, STSBlack, Arial, sans-serif"
-            font-size="${sublineSize}"
-            font-weight="700"
-            fill="#ffffff"
-            filter="url(#text-shadow)">${escapeXml(line)}</text>
-    `).join('') : ''}
+    ${hasSubline ? sublineLines.map((line, i) => {
+      const p = textToSvgPath(line, sideMargin, sublineY + i * sublineLineHeight, sublineSize, true);
+      return p ? `<path d="${p.d}" fill="#ffffff" filter="url(#text-shadow)"/>` : '';
+    }).join('') : ''}
 
     ${hasLogo ? `
       <rect x="${logoX - 6}" y="${logoY - 6}" width="${logoSize + 12}" height="${logoSize + 12}" rx="14" fill="rgba(255,255,255,0.95)"/>
       <image href="data:image/png;base64,${logoEmbedB64}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>
     ` : ''}
 
-    ${hasHandle ? `
-      <text x="${handleX}" y="${handleY}"
-            font-family="STSBold, Arial, sans-serif"
-            font-size="${handleSize}"
-            font-weight="700"
-            fill="#ffffff"
-            filter="url(#text-shadow)">${escapeXml(handle)}</text>
-    ` : ''}
+    ${hasHandle ? (() => {
+      const p = textToSvgPath(handle, handleX, handleY, handleSize, true);
+      return p ? `<path d="${p.d}" fill="#ffffff" filter="url(#text-shadow)"/>` : '';
+    })() : ''}
 
-    ${hasPrice ? `
-      <circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}" fill="url(#bg-grad)" stroke="#ffffff" stroke-width="3" filter="url(#text-shadow)"/>
-      <text x="${badgeCx}" y="${badgeCy - Math.round(badgeR * 0.05)}"
-            font-family="STSBlack, Arial Black, Arial, sans-serif"
-            font-size="${priceSize}"
-            font-weight="900"
-            fill="#ffffff"
-            text-anchor="middle"
-            dominant-baseline="middle">R$ ${priceStr}</text>
-      ${installments > 1 ? `
-        <text x="${badgeCx}" y="${badgeCy + Math.round(badgeR * 0.4)}"
-              font-family="STSBold, Arial, sans-serif"
-              font-size="${parcelaSize}"
-              font-weight="700"
-              fill="#ffffff"
-              text-anchor="middle"
-              dominant-baseline="middle"
-              opacity="0.95">${installments}x R$ ${parcela}</text>
-      ` : ''}
-    ` : ''}
+    ${hasPrice ? (() => {
+      const priceText = 'R$ ' + priceStr;
+      const pricePath = textToSvgPath(priceText, 0, 0, priceSize, false);
+      const priceW = pricePath ? pricePath.width : 0;
+      const priceX = badgeCx - priceW / 2;
+      const priceY = badgeCy + priceSize * 0.3;
+      const pricePathEl = pricePath ? `<path d="${textToSvgPath(priceText, priceX, priceY, priceSize, false).d}" fill="#ffffff"/>` : '';
+
+      let parcelaEl = '';
+      if (installments > 1) {
+        const ptxt = installments + 'x R$ ' + parcela;
+        const pp = textToSvgPath(ptxt, 0, 0, parcelaSize, true);
+        if (pp) {
+          const px = badgeCx - pp.width / 2;
+          const py = badgeCy + Math.round(badgeR * 0.55);
+          parcelaEl = `<path d="${textToSvgPath(ptxt, px, py, parcelaSize, true).d}" fill="#ffffff" opacity="0.95"/>`;
+        }
+      }
+      return `
+        <circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}" fill="url(#bg-grad)" stroke="#ffffff" stroke-width="3" filter="url(#text-shadow)"/>
+        ${pricePathEl}
+        ${parcelaEl}
+      `;
+    })() : ''}
   </svg>`;
 }
 
