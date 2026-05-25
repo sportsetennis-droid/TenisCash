@@ -132,6 +132,51 @@ async function fetchAsBuffer(url) {
 }
 
 /**
+ * Expande canvas no topo da imagem usando BLUR da própria foto como fill.
+ * Garante espaço pro headline sem ficar no rosto do sujeito.
+ *
+ * Estratégia:
+ *   1. Pega faixa superior da imagem original (top 20%)
+ *   2. Cria versão dela em 18% da altura, blur 40px + 85% brightness
+ *   3. Compose: blur no topo + original embaixo
+ *   4. Resize de volta pro aspect ratio target (squeeze vertical leve ~15%)
+ *
+ * O squeeze é praticamente imperceptível em fotos editoriais; vale o
+ * trade-off pra garantir headline SEMPRE no espaço vazio do topo.
+ */
+async function expandTopForText(imgBuf, targetW, targetH, topExpandPct = 0.18) {
+  const meta = await sharp(imgBuf).metadata();
+  if (!meta.width || !meta.height) return imgBuf;
+  const expandPx = Math.round(meta.height * topExpandPct);
+
+  // 1. Fill blur: pega top 20% da imagem original, resize pra altura expandPx, blur forte + dim
+  const topSliceH = Math.max(40, Math.round(meta.height * 0.2));
+  const topFill = await sharp(imgBuf)
+    .extract({ left: 0, top: 0, width: meta.width, height: topSliceH })
+    .resize(meta.width, expandPx, { fit: 'cover', position: 'top' })
+    .blur(35)
+    .modulate({ brightness: 0.82 })
+    .toBuffer();
+
+  // 2. Canvas expandido = original + blur no topo
+  const expanded = await sharp({
+    create: { width: meta.width, height: meta.height + expandPx, channels: 3, background: { r: 0, g: 0, b: 0 } },
+  })
+    .composite([
+      { input: topFill, top: 0, left: 0 },
+      { input: imgBuf, top: expandPx, left: 0 },
+    ])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+
+  // 3. Resize pro aspect ratio final (squeeze vertical leve)
+  return sharp(expanded)
+    .resize(targetW, targetH, { fit: 'fill' })
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
+/**
  * Aspect ratio → dimensões em pixels (lado maior fixo em 1536).
  */
 function dimsFor(aspectRatio) {
@@ -535,6 +580,8 @@ async function generateEditorialPhoto(opts) {
   const bgPrompt = await buildBackgroundPrompt(product, sceneHint);
 
   let finalBuffer;
+  const { w: targetW, h: targetH } = dimsFor(aspectRatio);
+
   if (productImageUrl) {
     // MODO COM FOTO: Bria (remove bg) + Flux (gera bg) EM PARALELO + Sharp compõe
     const [productPngUrl, backgroundUrl] = await Promise.all([
@@ -543,15 +590,23 @@ async function generateEditorialPhoto(opts) {
     ]);
     finalBuffer = await composeFinal(backgroundUrl, productPngUrl, aspectRatio);
   } else {
-    // MODO CONCEITO PURO (sem foto): só gera background via Flux text-to-image,
-    // que vira a imagem inteira. Overlay (headline, logo, handle) por cima.
+    // MODO CONCEITO PURO (sem foto): só gera background via Flux text-to-image
     const backgroundUrl = await generateBackground(bgPrompt, aspectRatio);
     const bgBuf = await fetchAsBuffer(backgroundUrl);
-    const { w: targetW, h: targetH } = dimsFor(aspectRatio);
     finalBuffer = await sharp(bgBuf)
       .resize(targetW, targetH, { fit: 'cover', position: 'center' })
       .jpeg({ quality: 92 })
       .toBuffer();
+  }
+
+  // === EXPANSÃO DE CANVAS PRO HEADLINE ===
+  // Se vai ter headline (ou subline), expande topo via blur+squeeze pra
+  // garantir espaço pro texto sem ficar em cima do sujeito.
+  // Default ON quando includeHeadline=true. Pode desligar via opts.expandTop=false
+  const willHaveTopText = (opts.includeHeadline !== false) &&
+                          (opts.headline || opts.includeHeadline === true);
+  if (willHaveTopText && opts.expandTop !== false) {
+    finalBuffer = await expandTopForText(finalBuffer, targetW, targetH, 0.18);
   }
 
   // Aplica overlay de texto/logo/handle se solicitado
