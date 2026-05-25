@@ -116,14 +116,17 @@
         html += `<div style="max-height:220px;overflow-y:auto;background:white;border-radius:6px;">`;
         entradas.slice(0, 30).forEach(e => {
           const data = e.data ? new Date(e.data).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '?';
-          html += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;gap:8px;">`;
+          html += `<div style="padding:8px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">`;
           html += `<div style="flex:1;min-width:0;">`;
           html += `<div style="font-weight:600;">${data} · <span style="color:#0066cc">${e.lojaDestino || '?'}</span></div>`;
-          html += `<div style="font-size:10px;color:#8e8e93;">${esc((e.fornecedor || '').slice(0, 40))} · NF ${esc(e.numero || '?')}</div>`;
+          html += `<div style="font-size:11px;color:#0a0a0a;margin-top:2px;"><b>NF ${esc(e.numero || '?')}</b></div>`;
+          html += `<div style="font-size:10px;color:#8e8e93;">${esc((e.fornecedor || '').slice(0, 40))}</div>`;
+          if (e.ref) html += `<div style="font-size:10px;color:#8e8e93;">Ref fornec: ${esc(e.ref)}</div>`;
           html += `</div>`;
-          html += `<div style="text-align:right;">`;
-          html += `<div style="font-weight:800;color:#0066cc;">${e.quantidade} un</div>`;
+          html += `<div style="text-align:right;flex-shrink:0;">`;
+          html += `<div style="font-weight:800;color:#0066cc;font-size:14px;">${e.quantidade} un</div>`;
           if (e.valorUnit) html += `<div style="font-size:10px;color:#8e8e93;">R$ ${Number(e.valorUnit).toFixed(2)} ea</div>`;
+          if (e.valorTotal) html += `<div style="font-size:10px;color:#8e8e93;">total R$ ${Number(e.valorTotal).toFixed(2)}</div>`;
           html += `</div>`;
           html += `</div>`;
         });
