@@ -245,6 +245,9 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
         </div>
       </div>
 
+      <!-- Alerta persistente de validação -->
+      <div id="ad-error-box" style="display:none;background:#fff1f0;border:1.5px solid #d70015;color:#d70015;padding:10px 14px;border-radius:10px;margin-top:14px;font-size:13px;font-weight:600"></div>
+
       <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
         <button class="cfg-btn cfg-btn-secondary" onclick="closeAdhocModal()">Cancelar</button>
         <button class="cfg-btn cfg-btn-primary" onclick="adhocGenerate()" id="ad-go-btn">🎨 Gerar criativo</button>
@@ -983,6 +986,7 @@ function openAdhocModal() {
   document.getElementById('ad-preview').style.background = '#fff';
   ['ad-name','ad-price','ad-category','ad-desc','ad-headline'].forEach(id => document.getElementById(id).value = '');
   setAdhocMode('photo'); // modo padrão
+  if (typeof adhocClearError === 'function') adhocClearError();
   document.getElementById('adhoc-modal').style.display = 'flex';
 }
 
@@ -1002,16 +1006,32 @@ function onAdhocFileChange(file) {
   reader.readAsDataURL(file);
 }
 
+function adhocShowError(msg) {
+  const box = document.getElementById('ad-error-box');
+  if (box) { box.style.display = ''; box.innerHTML = '⚠️ ' + msg; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  toast(msg);
+}
+function adhocClearError() {
+  const box = document.getElementById('ad-error-box');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
 async function adhocGenerate() {
+  adhocClearError();
   const brandSlug = document.getElementById('ad-brand').value;
-  if (!brandSlug) { toast('Escolha a marca'); return; }
   const name = document.getElementById('ad-name').value.trim();
-  if (!name) { toast('Título / nome obrigatório'); return; }
   const desc = document.getElementById('ad-desc').value.trim();
 
-  // Validação por modo
-  if (_adhocMode === 'photo' && !_adhocFile) { toast('Escolha um arquivo de imagem (modo Com foto)'); return; }
-  if (_adhocMode === 'concept' && !desc) { toast('No modo Conceito, descreva a cena que você quer'); return; }
+  // Validação acumulativa (lista TODOS os erros, não só o primeiro)
+  const errors = [];
+  if (!brandSlug) errors.push('Escolha a <b>Marca</b>');
+  if (!name) errors.push('Preencha o <b>Título / nome</b> (campo abaixo da foto)');
+  if (_adhocMode === 'photo' && !_adhocFile) errors.push('Escolha um <b>arquivo de imagem</b> (clique no campo Foto)');
+  if (_adhocMode === 'concept' && !desc) errors.push('No modo <b>Só conceito</b>, descreva a cena no campo de descrição');
+  if (errors.length) {
+    adhocShowError('Faltam:<br>• ' + errors.join('<br>• '));
+    return;
+  }
 
   const fd = new FormData();
   if (_adhocFile) fd.append('file', _adhocFile);
