@@ -2436,7 +2436,7 @@ model BrandProfile {
   archetype       String  @default("custom") // mass_retail | b2b_premium | institutional | personal | political | custom
   instagramHandle String? // "@metafardamentos"
   active          Boolean @default(true)
-  order           Int     @default(0) // ordem de exibição no dropdown
+  displayOrder    Int     @default(0) // ordem de exibição no dropdown
 
   // DNA narrativo (preenchido pelo dono via UI)
   description    String? // pitch curto da marca (1-2 linhas)
@@ -2462,5 +2462,5 @@ model BrandProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([active, order])
+  @@index([active, displayOrder])
 }

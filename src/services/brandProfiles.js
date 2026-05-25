@@ -17,7 +17,7 @@ async function listAll(includeInactive = false) {
   if (cache && now - cacheTime < CACHE_TTL) {
     return includeInactive ? cache : cache.filter(b => b.active);
   }
-  const all = await prisma.brandProfile.findMany({ orderBy: [{ order: 'asc' }, { displayName: 'asc' }] });
+  const all = await prisma.brandProfile.findMany({ orderBy: [{ displayOrder: 'asc' }, { displayName: 'asc' }] });
   cache = all;
   cacheTime = now;
   return includeInactive ? all : all.filter(b => b.active);
@@ -58,33 +58,43 @@ async function deleteBrand(id) {
 
 const SEED_BRANDS = [
   // Sports retail (3)
-  { slug: 'sportsetennis',     displayName: 'Sports & Tennis',           archetype: 'mass_retail',   instagramHandle: '@sportsetennis',     order: 1 },
-  { slug: 'metaesportes',      displayName: 'Meta Esportes',             archetype: 'mass_retail',   instagramHandle: '@metaesportes',      order: 2 },
-  { slug: 'barataodosesportes', displayName: 'Baratão dos Esportes',     archetype: 'mass_retail',   instagramHandle: '@barataodosesportes', order: 3 },
+  { slug: 'sportsetennis',     displayName: 'Sports & Tennis',           archetype: 'mass_retail',   instagramHandle: '@sportsetennis',     displayOrder: 1},
+  { slug: 'metaesportes',      displayName: 'Meta Esportes',             archetype: 'mass_retail',   instagramHandle: '@metaesportes',      displayOrder: 2 },
+  { slug: 'barataodosesportes', displayName: 'Baratão dos Esportes',     archetype: 'mass_retail',   instagramHandle: '@barataodosesportes', displayOrder: 3 },
   // B2B premium uniformes
-  { slug: 'metafardamentos',   displayName: 'Meta Fardamentos',          archetype: 'b2b_premium',   instagramHandle: '@metafardamentos',   order: 4 },
+  { slug: 'metafardamentos',   displayName: 'Meta Fardamentos',          archetype: 'b2b_premium',   instagramHandle: '@metafardamentos',   displayOrder: 4 },
   // Institucional saúde
-  { slug: 'metasaudeaps',      displayName: 'Meta Saúde APS',            archetype: 'institutional', instagramHandle: '@metasaudeaps',      order: 5 },
-  { slug: 'metasaudesus',      displayName: 'Meta Saúde SUS',            archetype: 'institutional', instagramHandle: '@metasaudesus',      order: 6 },
-  { slug: 'iaaps',             displayName: 'IA APS',                    archetype: 'institutional', instagramHandle: '@ia.aps',            order: 7 },
+  { slug: 'metasaudeaps',      displayName: 'Meta Saúde APS',            archetype: 'institutional', instagramHandle: '@metasaudeaps',      displayOrder: 5 },
+  { slug: 'metasaudesus',      displayName: 'Meta Saúde SUS',            archetype: 'institutional', instagramHandle: '@metasaudesus',      displayOrder: 6 },
+  { slug: 'iaaps',             displayName: 'IA APS',                    archetype: 'institutional', instagramHandle: '@ia.aps',            displayOrder: 7 },
   // Marca pessoal
-  { slug: 'transpireproposito', displayName: 'Transpire Propósito',      archetype: 'personal',      instagramHandle: '@transpireproposito', order: 8 },
-  { slug: 'yyyouforyou',       displayName: 'You For You',               archetype: 'personal',      instagramHandle: '@yyyouforyou',       order: 9 },
+  { slug: 'transpireproposito', displayName: 'Transpire Propósito',      archetype: 'personal',      instagramHandle: '@transpireproposito', displayOrder: 8 },
+  { slug: 'yyyouforyou',       displayName: 'You For You',               archetype: 'personal',      instagramHandle: '@yyyouforyou',       displayOrder: 9 },
   // Político
-  { slug: 'douglasbr2026',     displayName: 'Douglas BR 2026',           archetype: 'political',     instagramHandle: '@douglasbr2026',     order: 10 },
+  { slug: 'douglasbr2026',     displayName: 'Douglas BR 2026',           archetype: 'political',     instagramHandle: '@douglasbr2026',     displayOrder: 10 },
 ];
 
 async function seedDefaults() {
-  let created = 0;
-  for (const b of SEED_BRANDS) {
-    const exists = await prisma.brandProfile.findUnique({ where: { slug: b.slug } });
-    if (!exists) {
-      await prisma.brandProfile.create({ data: b });
-      created++;
-    }
+  // Defensivo: se prisma client ainda não tem o model (cache de build velho),
+  // não crasha. Retry no próximo boot/redeploy.
+  if (!prisma.brandProfile) {
+    console.warn('[brandProfiles] prisma.brandProfile não disponível — pulando seed (regenerar client?)');
+    return 0;
   }
-  if (created > 0) {
-    console.log(`[brandProfiles] seed criou ${created} marcas (rascunho — preencher DNA via UI)`);
+  let created = 0;
+  try {
+    for (const b of SEED_BRANDS) {
+      const exists = await prisma.brandProfile.findUnique({ where: { slug: b.slug } });
+      if (!exists) {
+        await prisma.brandProfile.create({ data: b });
+        created++;
+      }
+    }
+    if (created > 0) {
+      console.log(`[brandProfiles] seed criou ${created} marcas (rascunho — preencher DNA via UI)`);
+    }
+  } catch (e) {
+    console.warn('[brandProfiles] seed falhou (segue boot):', e.message);
   }
   cache = null;
   return created;
