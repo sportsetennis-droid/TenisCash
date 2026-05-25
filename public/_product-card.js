@@ -154,36 +154,41 @@
     }
   };
 
-  // IntersectionObserver: carrega quando o card aparece na viewport (evita N+1 fetches simultâneos)
+  // IntersectionObserver: carrega NFe quando card aparece na viewport
+  // (sem MutationObserver — caller deve chamar PCard.observeNfeContainers() após inserir cards no DOM)
   if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
-    PCard._observer = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          const pid = e.target.dataset.pid;
-          if (pid) PCard.loadNfeSummary(pid);
-          PCard._observer.unobserve(e.target);
+    try {
+      PCard._observer = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            const pid = e.target.dataset.pid;
+            if (pid) PCard.loadNfeSummary(pid);
+            try { PCard._observer.unobserve(e.target); } catch {}
+          }
         }
-      }
-    }, { rootMargin: '200px' });
-    // Auto-observa novos elementos quando adicionados ao DOM
-    PCard._mutObserver = new MutationObserver((muts) => {
-      muts.forEach(m => {
-        m.addedNodes.forEach(n => {
-          if (n.nodeType !== 1) return;
-          n.querySelectorAll?.('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
-        });
-      });
-    });
-    PCard._mutObserver.observe(document.body, { childList: true, subtree: true });
-    // Observa os que já estão no DOM no boot
-    if (document.readyState !== 'loading') {
-      document.querySelectorAll('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.pcard-nfe-content[data-pid]').forEach(el => PCard._observer.observe(el));
-      });
-    }
+      }, { rootMargin: '200px' });
+    } catch (err) { console.warn('[PCard] IntersectionObserver init falhou:', err); }
   }
+
+  PCard.observeNfeContainers = function (root) {
+    if (!PCard._observer) return;
+    const scope = root || document;
+    try {
+      scope.querySelectorAll('.pcard-nfe-content[data-pid]:not([data-loaded="1"]):not([data-loading="1"])').forEach(el => {
+        try { PCard._observer.observe(el); } catch {}
+      });
+    } catch {}
+  };
+
+  // Auto-observe debounced: cada vez que render() é chamado, agenda 1 varredura
+  // 250ms depois. Múltiplos render() em sequência (renderGrid) só geram 1 scan.
+  PCard._scheduleObserve = function () {
+    if (PCard._scanTimer) clearTimeout(PCard._scanTimer);
+    PCard._scanTimer = setTimeout(() => {
+      PCard._scanTimer = null;
+      PCard.observeNfeContainers();
+    }, 250);
+  };
 
   /**
    * Renderiza UM card de produto.
@@ -386,6 +391,8 @@
     }
 
     html += '</div></div>';
+    // Agenda varredura pra ativar IntersectionObserver nos novos containers NFe
+    if (showStock && actions === 'admin' && PCard._scheduleObserve) PCard._scheduleObserve();
     return html;
   };
 
