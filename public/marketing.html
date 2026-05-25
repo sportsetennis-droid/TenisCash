@@ -11,9 +11,11 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
   body { background: radial-gradient(circle at 20% 20%, #fff6ef 0%, transparent 50%), radial-gradient(circle at 80% 80%, #fde4f1 0%, transparent 50%), #f5f5f7; color: #0a0a0a; min-height: 100vh; padding: 20px 12px; -webkit-font-smoothing: antialiased; }
-  /* Modo embedded (iframe dentro do admin): esconde o header próprio pra não duplicar */
+  /* Modo embedded (iframe dentro do admin): esconde só o TÍTULO/subtitle,
+     mantém a barra de ações (dropdown marca + foto avulsa + atualizar) visível */
   body.embedded { padding-top: 12px; }
-  body.embedded .top { display: none; }
+  body.embedded .top-title { display: none; }
+  body.embedded .top { padding: 0 0 12px 0; border-bottom: 1px solid #f0f0f5; margin-bottom: 14px; }
   .wrap { max-width: 1200px; margin: 0 auto; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
   h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, #E64500 0%, #FF6A1F 45%, #FF9550 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -141,7 +143,7 @@
 <body>
 <div class="wrap" id="root">
   <div class="top">
-    <div>
+    <div class="top-title">
       <h1>🎨 Marketing IA</h1>
       <div class="sub">Criativos gerados via fal.ai (Flux + Bria + Kling) com copy do Claude</div>
     </div>
@@ -149,7 +151,7 @@
       <select id="active-brand" onchange="onBrandChange()" style="padding:10px 14px;border:1.5px solid #FF6A1F;border-radius:999px;font-weight:700;font-size:13px;background:#fff;color:#FF6A1F;cursor:pointer;font-family:inherit;max-width:240px">
         <option value="">🏢 Marca ativa…</option>
       </select>
-      <button class="btn" onclick="openAdhocModal()">+ Foto avulsa</button>
+      <button class="btn" onclick="openAdhocModal()">📤 + Foto avulsa</button>
       <button class="btn btn-secondary" onclick="reload()">↻ Atualizar</button>
     </div>
   </div>
@@ -255,6 +257,13 @@
 
   <!-- TAB 2: Catálogo -->
   <div id="tab-catalogo" style="display:none">
+    <div style="background:linear-gradient(135deg,#FFF6EF,#FDE4F1);border:1px solid #FFEBDC;border-radius:14px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-weight:700;color:#0a0a0a;font-size:14px">📤 Não tem o produto aqui no catálogo?</div>
+        <div style="font-size:12px;color:#6e6e73;margin-top:2px">Use "Foto avulsa" pra gerar criativo de qualquer marca a partir de uma foto sua (Meta Fardamentos, APS, político, etc)</div>
+      </div>
+      <button class="btn" onclick="openAdhocModal()">📤 Gerar de foto avulsa</button>
+    </div>
     <div class="catalog-controls">
       <input type="text" id="cat-search" placeholder="🔍 Buscar nome, SKU, modelo..." oninput="catalogSearch()">
       <select id="cat-brand" onchange="catalogSearch()">
