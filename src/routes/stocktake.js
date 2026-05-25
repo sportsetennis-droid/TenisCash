@@ -187,7 +187,7 @@ router.get('/summary', async (req, res) => {
 
     const dayWhere = { bipedAt: { gte: dayStart, lte: dayEnd } };
 
-    const [total, totalDay, foundDay, notFoundDay, sellerGroupsDay] = await Promise.all([
+    const [total, totalDay, foundDay, notFoundDay, sellerGroupsDay, storeGroupsDay] = await Promise.all([
       prisma.stocktakeBipe.count(),
       prisma.stocktakeBipe.count({ where: dayWhere }),
       prisma.stocktakeBipe.count({ where: { ...dayWhere, found: true } }),
@@ -197,21 +197,56 @@ router.get('/summary', async (req, res) => {
         where: dayWhere,
         _count: { id: true },
       }),
+      prisma.stocktakeBipe.groupBy({
+        by: ['storeId'],
+        where: dayWhere,
+        _count: { id: true },
+      }),
     ]);
 
-    const bySellerWithFound = [];
-    for (const g of sellerGroupsDay) {
-      const where = { ...dayWhere, sellerId: g.sellerId, sellerName: g.sellerName };
+    // Hidrata nome da loja
+    const stores = await prisma.store.findMany({ select: { id: true, name: true, code: true } });
+    const storeMap = Object.fromEntries(stores.map((s) => [s.id, s]));
+
+    const byStoreWithFound = [];
+    for (const g of storeGroupsDay) {
+      const where = { ...dayWhere, storeId: g.storeId };
       const [f, nf] = await Promise.all([
         prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
         prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
       ]);
+      byStoreWithFound.push({
+        id: g.storeId,
+        name: storeMap[g.storeId]?.name || '(sem loja)',
+        code: storeMap[g.storeId]?.code || null,
+        total: g._count.id,
+        found: f,
+        notFound: nf,
+      });
+    }
+    byStoreWithFound.sort((a, b) => b.total - a.total);
+
+    const bySellerWithFound = [];
+    for (const g of sellerGroupsDay) {
+      const where = { ...dayWhere, sellerId: g.sellerId, sellerName: g.sellerName };
+      const [f, nf, storeBreak] = await Promise.all([
+        prisma.stocktakeBipe.count({ where: { ...where, found: true } }),
+        prisma.stocktakeBipe.count({ where: { ...where, found: false } }),
+        prisma.stocktakeBipe.groupBy({ by: ['storeId'], where, _count: { id: true } }),
+      ]);
+      // Lojas onde esse vendedor bipou no dia
+      const stores = storeBreak.map(s => ({
+        id: s.storeId,
+        name: storeMap[s.storeId]?.name || '(sem loja)',
+        count: s._count.id,
+      })).sort((a, b) => b.count - a.count);
       bySellerWithFound.push({
         id: g.sellerId,
         name: g.sellerName || '(sem nome)',
         total: g._count.id,
         found: f,
         notFound: nf,
+        stores,
       });
     }
     bySellerWithFound.sort((a, b) => b.total - a.total);
@@ -223,14 +258,16 @@ router.get('/summary', async (req, res) => {
         found: foundDay,
         notFound: notFoundDay,
         sellers: sellerGroupsDay.length,
+        stores: storeGroupsDay.length,
       },
-      // alias 'today' pra compat com versão anterior da UI
+      // alias 'today' pra compat
       today: {
         total: totalDay,
         found: foundDay,
         notFound: notFoundDay,
         sellers: sellerGroupsDay.length,
       },
+      byStore: byStoreWithFound,
       bySeller: bySellerWithFound,
     });
   } catch (err) {

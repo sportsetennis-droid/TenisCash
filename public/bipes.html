@@ -97,9 +97,15 @@
     <div class="stat"><div class="stat-label">Hoje</div><div class="stat-val">—</div></div>
   </div>
 
-  <div class="by-seller" id="by-seller">
-    <div class="by-seller-title">Hoje por vendedor</div>
-    <div id="by-seller-list">Carregando...</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px">
+    <div class="by-seller" id="by-store">
+      <div class="by-seller-title" id="by-store-title">Hoje por loja</div>
+      <div id="by-store-list">Carregando...</div>
+    </div>
+    <div class="by-seller" id="by-seller">
+      <div class="by-seller-title" id="by-seller-title">Hoje por vendedor</div>
+      <div id="by-seller-list">Carregando...</div>
+    </div>
   </div>
 
   <div class="filters">
@@ -112,7 +118,9 @@
     <span class="chip active" data-status="" onclick="setStatusFilter('')">Todos</span>
     <span class="chip" data-status="found" onclick="setStatusFilter('found')">✓ Achados</span>
     <span class="chip" data-status="notfound" onclick="setStatusFilter('notfound')">✗ Não achados</span>
-    <label style="margin-left:auto">Vendedor:</label>
+    <label style="margin-left:auto">Loja:</label>
+    <select id="filter-store" onchange="loadBipes()"><option value="">Todas</option></select>
+    <label>Vendedor:</label>
     <select id="filter-seller" onchange="loadBipes()"><option value="">Todos</option></select>
   </div>
 
@@ -207,26 +215,50 @@ async function loadSummary() {
       <div class="stat"><div class="stat-label">Vendedores ativos</div><div class="stat-val">${r.day?.sellers || 0}</div></div>
       <div class="stat"><div class="stat-label">Total geral (banco)</div><div class="stat-val">${r.total || 0}</div></div>
     `;
-    document.querySelector('.by-seller-title').textContent = `${dayLabel === 'hoje' ? 'Hoje' : dayLabel} — por vendedor`;
-    const sl = document.getElementById('by-seller-list');
-    sl.innerHTML = (r.bySeller || []).map(s => `
+    const titlePrefix = dayLabel === 'hoje' ? 'Hoje' : dayLabel;
+    document.getElementById('by-store-title').textContent = `${titlePrefix} — por loja`;
+    document.getElementById('by-seller-title').textContent = `${titlePrefix} — por vendedor`;
+
+    // Render bloco "por loja"
+    const sl_store = document.getElementById('by-store-list');
+    sl_store.innerHTML = (r.byStore || []).map(s => `
       <div class="seller-row">
-        <div class="seller-name">${escH(s.name)}</div>
+        <div class="seller-name">🏢 ${escH(s.name)}${s.code ? ' <span style="color:#a8a8ad;font-size:11px">' + escH(s.code) + '</span>' : ''}</div>
         <div class="seller-counts">
           <div class="seller-count ok">✓ <b>${s.found}</b></div>
           <div class="seller-count bad">✗ <b>${s.notFound}</b></div>
           <div class="seller-count">total <b>${s.total}</b></div>
         </div>
       </div>
-    `).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes hoje ainda</div>';
+    `).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes</div>';
+    const sl = document.getElementById('by-seller-list');
+    sl.innerHTML = (r.bySeller || []).map(s => {
+      const storesLine = (s.stores || []).map(st => st.name + ' (' + st.count + ')').join(' · ');
+      return `
+        <div class="seller-row">
+          <div class="seller-name">${escH(s.name)}${storesLine ? '<div style="font-size:10px;color:#a8a8ad;font-weight:500">🏢 ' + escH(storesLine) + '</div>' : ''}</div>
+          <div class="seller-counts">
+            <div class="seller-count ok">✓ <b>${s.found}</b></div>
+            <div class="seller-count bad">✗ <b>${s.notFound}</b></div>
+            <div class="seller-count">total <b>${s.total}</b></div>
+          </div>
+        </div>`;
+    }).join('') || '<div style="color:#a8a8ad;text-align:center;padding:14px">Sem bipes</div>';
 
     // Popular filtro de vendedor — usa "id:xxx" ou "name:Xxx" como value
-    // (porque muitos bipes vêm sem sellerId mas com sellerName)
     const sel = document.getElementById('filter-seller');
     const current = sel.value;
     sel.innerHTML = '<option value="">Todos vendedores</option>' + (r.bySeller || []).map(s => {
       const val = s.id ? `id:${s.id}` : `name:${s.name}`;
       return `<option value="${escH(val)}" ${val === current ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`;
+    }).join('');
+
+    // Popular filtro de loja
+    const selStore = document.getElementById('filter-store');
+    const currentStore = selStore.value;
+    selStore.innerHTML = '<option value="">Todas lojas</option>' + (r.byStore || []).map(s => {
+      const val = s.id || '';
+      return `<option value="${escH(val)}" ${val === currentStore ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`;
     }).join('');
   } catch (e) { console.warn('summary', e); }
 }
@@ -239,6 +271,8 @@ async function loadBipes() {
     const sval = document.getElementById('filter-seller')?.value || '';
     if (sval.startsWith('id:')) params.set('sellerId', sval.slice(3));
     else if (sval.startsWith('name:')) params.set('sellerName', sval.slice(5));
+    const stval = document.getElementById('filter-store')?.value || '';
+    if (stval) params.set('storeId', stval);
     const date = STATE.date || todayFortaleza();
     const { from, to } = dateRangeBR(date);
     params.set('dateFrom', from);
