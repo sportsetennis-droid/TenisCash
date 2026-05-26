@@ -225,6 +225,45 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
         <input type="text" id="ad-headline" placeholder="Frase custom (vazio = automática)" style="width:100%;padding:7px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit;margin-top:8px">
       </div>
 
+      <!-- Pessoa na cena -->
+      <div style="background:linear-gradient(180deg, rgba(229,87,30,0.04), transparent);border:1px solid #FFEBDC;border-radius:10px;padding:10px 14px;margin-top:10px">
+        <div style="font-size:12px;font-weight:700;color:#0a0a0a;margin-bottom:8px">👤 Pessoa na cena</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+          <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="ad-people-mode" value="auto" checked onchange="toggleAdPeople()"> <span>🎲 Deixar IA decidir</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="ad-people-mode" value="none" onchange="toggleAdPeople()"> <span>🚫 Sem pessoa (só produto)</span></label>
+          <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="ad-people-mode" value="specific" onchange="toggleAdPeople()"> <span>🎯 Pessoa específica</span></label>
+        </div>
+        <div id="ad-people-detail" style="display:none;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:140px">
+            <label class="bp-lbl" style="margin-top:0;font-size:11px">Gênero</label>
+            <select id="ad-people-gender" class="bp-input">
+              <option value="F">👩 Mulher</option>
+              <option value="M">👨 Homem</option>
+              <option value="any">🧑 Indiferente</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label class="bp-lbl" style="margin-top:0;font-size:11px">Faixa etária</label>
+            <select id="ad-people-age" class="bp-input">
+              <option value="child">👶 Criança (6-10)</option>
+              <option value="teen">🧒 Adolescente (14-18)</option>
+              <option value="young" selected>🧑 Jovem adulto (22-30)</option>
+              <option value="adult">👤 Adulto (35-45)</option>
+              <option value="senior">🧓 Sênior (55-65)</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label class="bp-lbl" style="margin-top:0;font-size:11px">Pele</label>
+            <select id="ad-people-ethnicity" class="bp-input">
+              <option value="mixed" selected>🌍 Miscigenada</option>
+              <option value="brown">🟤 Morena</option>
+              <option value="white">⚪ Clara</option>
+              <option value="black">⚫ Negra</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;align-items:center">
         <div style="flex:1">
           <label class="bp-lbl" style="margin-top:0">Formato</label>
@@ -327,6 +366,45 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
       <label class="cat-toggle"><input type="radio" name="cat-aspect" value="4:5"> <span>📱 4:5 (feed portrait)</span></label>
       <label class="cat-toggle"><input type="radio" name="cat-aspect" value="16:9" checked> <span>🖼️ 16:9 (landscape)</span></label>
       <label class="cat-toggle"><input type="radio" name="cat-aspect" value="9:16"> <span>📺 9:16 (stories/reels)</span></label>
+    </div>
+
+    <!-- Pessoa na cena (catálogo) -->
+    <div style="background:linear-gradient(180deg, rgba(229,87,30,0.04), transparent);border:1.5px solid #FFEBDC;padding:12px 14px;border-radius:10px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#0a0a0a;margin-bottom:8px">👤 Pessoa na cena</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+        <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="cat-people-mode" value="auto" checked onchange="toggleCatPeople()"> <span>🎲 Deixar IA decidir</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="cat-people-mode" value="none" onchange="toggleCatPeople()"> <span>🚫 Sem pessoa (só produto)</span></label>
+        <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="cat-people-mode" value="specific" onchange="toggleCatPeople()"> <span>🎯 Pessoa específica</span></label>
+      </div>
+      <div id="cat-people-detail" style="display:none;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <label style="font-size:11px;color:#6e6e73;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:block;margin-bottom:4px">Gênero</label>
+          <select id="cat-people-gender" style="width:100%;padding:8px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;background:white">
+            <option value="F">👩 Mulher</option>
+            <option value="M">👨 Homem</option>
+            <option value="any">🧑 Indiferente</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="font-size:11px;color:#6e6e73;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:block;margin-bottom:4px">Faixa etária</label>
+          <select id="cat-people-age" style="width:100%;padding:8px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;background:white">
+            <option value="child">👶 Criança (6-10)</option>
+            <option value="teen">🧒 Adolescente (14-18)</option>
+            <option value="young" selected>🧑 Jovem adulto (22-30)</option>
+            <option value="adult">👤 Adulto (35-45)</option>
+            <option value="senior">🧓 Sênior (55-65)</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="font-size:11px;color:#6e6e73;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:block;margin-bottom:4px">Pele</label>
+          <select id="cat-people-ethnicity" style="width:100%;padding:8px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;background:white">
+            <option value="mixed" selected>🌍 Miscigenada</option>
+            <option value="brown">🟤 Morena</option>
+            <option value="white">⚪ Clara</option>
+            <option value="black">⚫ Negra</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div id="cat-counter" style="font-size:13px;color:#6e6e73;margin-bottom:10px"></div>
     <div id="cat-grid" class="cat-grid"><div class="empty">Carregando produtos...</div></div>
@@ -1049,6 +1127,8 @@ async function adhocGenerate() {
   fd.append('includePrice',    document.getElementById('ad-ck-price').checked);
   fd.append('includeLogo',     document.getElementById('ad-ck-logo').checked);
   fd.append('includeHandle',   document.getElementById('ad-ck-handle').checked);
+  // Pessoa na cena (JSON string pra multipart)
+  fd.append('people', JSON.stringify(getAdPeople()));
   fd.append('includeSubline',  document.getElementById('ad-ck-subline').checked);
 
   const btn = document.getElementById('ad-go-btn');
@@ -1562,7 +1642,42 @@ function getOverlayOpts() {
     headline: document.getElementById('cat-headline')?.value?.trim() || '',
     subline:  document.getElementById('cat-subline')?.value?.trim() || '',
     brandSlug: getActiveBrand() || null,
+    people:   getCatPeople(),
   };
+}
+
+// ===== PESSOA NA CENA — catálogo e foto avulsa =====
+function getCatPeople() {
+  const mode = document.querySelector('input[name="cat-people-mode"]:checked')?.value || 'auto';
+  if (mode === 'auto') return { mode: 'auto' };
+  if (mode === 'none') return { mode: 'none' };
+  return {
+    mode: 'specific',
+    gender: document.getElementById('cat-people-gender')?.value || 'any',
+    age: document.getElementById('cat-people-age')?.value || 'young',
+    ethnicity: document.getElementById('cat-people-ethnicity')?.value || 'mixed',
+  };
+}
+function toggleCatPeople() {
+  const mode = document.querySelector('input[name="cat-people-mode"]:checked')?.value;
+  const det = document.getElementById('cat-people-detail');
+  if (det) det.style.display = (mode === 'specific') ? 'flex' : 'none';
+}
+function getAdPeople() {
+  const mode = document.querySelector('input[name="ad-people-mode"]:checked')?.value || 'auto';
+  if (mode === 'auto') return { mode: 'auto' };
+  if (mode === 'none') return { mode: 'none' };
+  return {
+    mode: 'specific',
+    gender: document.getElementById('ad-people-gender')?.value || 'any',
+    age: document.getElementById('ad-people-age')?.value || 'young',
+    ethnicity: document.getElementById('ad-people-ethnicity')?.value || 'mixed',
+  };
+}
+function toggleAdPeople() {
+  const mode = document.querySelector('input[name="ad-people-mode"]:checked')?.value;
+  const det = document.getElementById('ad-people-detail');
+  if (det) det.style.display = (mode === 'specific') ? 'flex' : 'none';
 }
 
 function perItemCost(skipVideo, provider) {

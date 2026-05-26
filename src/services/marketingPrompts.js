@@ -104,36 +104,94 @@ async function buildEditorialPrompt(product, sceneHint = '', opts = {}) {
 }
 
 /**
- * Constrói prompt SÓ pra background (composite).
- * - Quando há produto (imageUrl) → modo "leave space for product overlay" (sem produto/pessoa)
- * - Quando NÃO há produto (modo conceito) → cena completa e livre (com pessoa OK)
+ * Helper: monta diretrizes sobre pessoa no prompt, baseado em opts.people.
+ *
+ * opts.people = {
+ *   mode: 'auto' | 'none' | 'specific',
+ *   gender: 'F' | 'M' | 'any',          // só usado quando mode='specific'
+ *   age: 'child' | 'teen' | 'young' | 'adult' | 'senior',
+ *   ethnicity?: 'mixed' | 'brown' | 'white' | 'black',  // opcional, default 'mixed'
+ * }
+ *
+ * Retorna string vazia se mode='auto' (deixa IA decidir baseado na cena).
  */
-async function buildBackgroundPrompt(product, sceneHint = '') {
+function buildPeopleClause(people) {
+  if (!people || people.mode === 'auto' || !people.mode) return '';
+
+  if (people.mode === 'none') {
+    return 'STRICT RULE: NO PEOPLE in the scene. Show only the product/object/environment. No human figures, no hands, no body parts, no silhouettes. Pure product or environmental photography.';
+  }
+
+  // mode === 'specific'
+  const genderMap = { F: 'woman', M: 'man', any: 'person' };
+  const ageMap = {
+    child:  'child aged 6 to 10 years old',
+    teen:   'teenager aged 14 to 18 years old',
+    young:  'young adult aged 22 to 30 years old',
+    adult:  'adult aged 35 to 45 years old',
+    senior: 'senior aged 55 to 65 years old',
+  };
+  const ethnicityMap = {
+    mixed: 'mixed-race Brazilian',
+    brown: 'brown-skinned Brazilian (pele morena)',
+    white: 'light-skinned Brazilian',
+    black: 'black Brazilian',
+  };
+  const g = genderMap[people.gender] || 'person';
+  const a = ageMap[people.age] || ageMap.young;
+  const eth = ethnicityMap[people.ethnicity || 'mixed'];
+
+  return `HUMAN SUBJECT REQUIRED: feature exactly ONE ${eth} ${g}, ${a}, as the main subject. Realistic Brazilian features (NOT a European/American stock model). Natural pose appropriate to the scene. Frame so the person's head sits around 30-40% from the top of the image, body extending downward.`;
+}
+
+/**
+ * Constrói prompt SÓ pra background (composite).
+ * - Quando há produto (imageUrl) → modo "leave space for product overlay" (sem produto/pessoa por default)
+ * - Quando NÃO há produto (modo conceito) → cena completa e livre (com pessoa OK)
+ *
+ * opts.people permite forçar/proibir pessoa na cena (ver buildPeopleClause).
+ */
+async function buildBackgroundPrompt(product, sceneHint = '', opts = {}) {
   const prompts = await cfg.getProviderPrompts();
   const scene = (sceneHint && sceneHint.trim()) || await pickSceneAuto(product);
   const hasProduct = !!(product?.imageUrl);
+  const peopleClause = buildPeopleClause(opts.people);
 
   if (hasProduct) {
     const template = prompts.composite_bg || cfg.DEFAULT_PROVIDER_PROMPTS.composite_bg;
-    return template.replace(/\{SCENE\}/g, scene);
+    let result = template.replace(/\{SCENE\}/g, scene);
+    // No modo composite (com produto), por default a IA não deve gerar pessoa
+    // (o produto vai ser sobreposto). Só inclui pessoa se user pediu explicitamente.
+    if (opts.people && opts.people.mode === 'specific') {
+      result += ' ' + peopleClause;
+    } else if (!opts.people || opts.people.mode === 'auto' || opts.people.mode === 'none') {
+      // Default composite: sem pessoa (background limpo pro produto compor por cima)
+      result += ' STRICT: NO PEOPLE in this background — it will be composited with the product later.';
+    }
+    return result;
   }
 
   // MODO CONCEITO PURO: a cena descrita pelo user é o conteúdo total
   // (pode ter pessoa, objetos, texto sutil, qualquer coisa).
   // Persona BR é injetada pra evitar modelos genéricos europeus.
   const personaBr = await cfg.getPersonaBr();
-  return [
+  const parts = [
     'Editorial photography for Brazilian social media post (Instagram feed format).',
     'Scene: ' + scene + '.',
     'Hyperrealistic, magazine quality, dramatic professional lighting, shallow depth of field.',
     personaBr,
+  ];
+  // Insere clausula de pessoa ANTES das regras de composição (peso maior)
+  if (peopleClause) parts.push(peopleClause);
+  parts.push(
     'CRITICAL COMPOSITION RULES:',
     '— The subject (person/object) MUST be positioned in the LOWER HALF of the frame, ideally from 45% to 90% vertical position.',
     '— The TOP 30% of the frame MUST be empty/clean (sky, blurred wall, plain background) for headline text overlay.',
     '— The BOTTOM 10% MUST also be uncluttered for logo and handle overlay.',
     '— If a person is the subject, frame from chest/waist down OR show them seated/leaning so their head sits around 30-40% from top, NOT at the very top.',
-    'No fake brand logos, no random text written on the image.',
-  ].join(' ');
+    'No fake brand logos, no random text written on the image.'
+  );
+  return parts.join(' ');
 }
 
 /**
@@ -154,6 +212,7 @@ function getReferenceImages(product, maxImages = 3) {
 module.exports = {
   buildEditorialPrompt,
   buildBackgroundPrompt,
+  buildPeopleClause,
   pickSceneAuto,
   getReferenceImages,
 };

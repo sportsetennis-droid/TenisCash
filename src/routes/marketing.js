@@ -164,6 +164,7 @@ router.post('/generate/:productId', async (req, res) => {
           includeSubline,
           logoUrl,
           handle,
+          people: req.body?.people || null,  // { mode, gender, age, ethnicity }
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
     }
@@ -336,7 +337,22 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
       : '';
     const subline = includeSubline ? (body.subline || '').toString().slice(0, 80) : '';
 
-    console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider}`);
+    // Parse de people (FormData manda string JSON ou campos separados)
+    let people = null;
+    try {
+      if (body.people) {
+        people = typeof body.people === 'string' ? JSON.parse(body.people) : body.people;
+      } else if (body.peopleMode) {
+        people = {
+          mode: body.peopleMode,
+          gender: body.peopleGender || 'any',
+          age: body.peopleAge || 'young',
+          ethnicity: body.peopleEthnicity || 'mixed',
+        };
+      }
+    } catch (e) { console.warn('[marketing] people parse fail:', e.message); }
+
+    console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider} · people=${people?.mode || 'auto'}`);
 
     // 4. Roda composite (e/ou outros providers se solicitado)
     const tasks = [];
@@ -350,6 +366,7 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
           includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
           logoUrl: includeLogo ? brand.logoUrl : null,
           handle: includeHandle ? brand.instagramHandle : '',
+          people,
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
     }

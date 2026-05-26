@@ -577,7 +577,8 @@ async function generateEditorialPhoto(opts) {
   const productImageUrl = refs[0]; // pode ser null no modo conceito
 
   const productName = product.name || 'product';
-  const bgPrompt = await buildBackgroundPrompt(product, sceneHint);
+  // opts.people = { mode, gender, age, ethnicity } controla figura humana no bg
+  const bgPrompt = await buildBackgroundPrompt(product, sceneHint, { people: opts.people });
 
   let finalBuffer;
   const { w: targetW, h: targetH } = dimsFor(aspectRatio);
