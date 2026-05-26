@@ -2660,6 +2660,7 @@ function escapeHtmlMk(s) {
     <div id="cat-p-units-wrap" style="margin-top:8px;padding:12px;background:#f5f5f7;border-radius:10px;border:1px solid #e5e5ea;">
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:flex-end;">
         <div style="flex:1;min-width:90px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">TAMANHO</label><input type="text" id="cat-p-new-size" placeholder="38" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
+        <div style="flex:2;min-width:140px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">SKU (código do tamanho)</label><input type="text" id="cat-p-new-sku" placeholder="ex: 7908341493884" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;font-family:monospace;"></div>
         <div style="flex:2;min-width:150px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">LOJA</label><select id="cat-p-new-store" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"><option value="">— escolha —</option></select></div>
         <div style="flex:1;min-width:80px;"><label class="muted" style="font-size:10px;letter-spacing:1px;display:block;margin-bottom:3px;">QTD</label><input type="number" id="cat-p-new-qty" value="1" min="1" max="50" style="width:100%;padding:8px;border:1px solid #e5e5ea;border-radius:8px;background:white;color:#1d1d1f;font-size:14px;"></div>
         <button type="button" id="cat-p-add-unit" style="padding:9px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">+ Adicionar</button>
@@ -3495,10 +3496,11 @@ function _catRenderUnits() {
   const stores = _catStoresCache || [];
   const storeOpts = stores.map(s => '<option value="' + s.id + '" data-code="' + s.code + '">' + s.code + ' — ' + s.name + '</option>').join('');
 
-  // 2 colunas: TAMANHO | LOJA+REMOVER (botão 🗑 dentro da célula da loja, garante visibilidade)
-  let html = '<div style="display:grid;grid-template-columns:90px 1fr;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
+  // 3 colunas: TAMANHO | SKU | LOJA+REMOVER
+  let html = '<div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:0;background:white;border:1px solid #e5e5ea;border-radius:8px;overflow:hidden;">';
   // Header
   html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;text-align:center;border-right:1px solid #e5e5ea;">TAMANHO</div>';
+  html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;border-right:1px solid #e5e5ea;">SKU (código do tamanho)</div>';
   html += '<div style="padding:10px;background:#f5f5f7;font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">LOJA · AÇÕES</div>';
   // Linhas com EDIÇÃO INLINE
   sorted.forEach((u, idx) => {
@@ -3507,9 +3509,13 @@ function _catRenderUnits() {
     const bg = idx % 2 === 0 ? 'white' : '#fafafa';
     // Coluna TAMANHO
     html += '<div style="padding:8px;background:' + bg + ';border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
-    html += '<input type="text" value="' + escapeHtml(u.size) + '" onchange="catEditUnitSize(' + u._idx + ', this.value)" style="width:100%;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:18px;font-weight:800;color:#1d1d1f;text-align:center;background:white;">';
+    html += '<input type="text" value="' + escapeHtml(u.size) + '" onchange="catEditUnitSize(' + u._idx + ', this.value)" style="width:100%;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:16px;font-weight:800;color:#1d1d1f;text-align:center;background:white;">';
     html += '</div>';
-    // Coluna LOJA + BOTÃO 🗑 (juntos pra nunca cortar)
+    // Coluna SKU (barcode)
+    html += '<div style="padding:8px;background:' + bg + ';border-top:1px solid #f0f0f3;border-right:1px solid #f0f0f3;">';
+    html += '<input type="text" value="' + escapeHtml(u.barcode || '') + '" onchange="catEditUnitSku(' + u._idx + ', this.value)" placeholder="(vazio)" style="width:100%;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:12px;color:#1d1d1f;background:white;font-family:monospace;">';
+    html += '</div>';
+    // Coluna LOJA + BOTÃO 🗑
     html += '<div style="padding:8px;background:' + bg + ';display:flex;align-items:center;gap:8px;border-top:1px solid #f0f0f3;">';
     html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>';
     html += '<select onchange="catEditUnitStore(' + u._idx + ', this.value, this.selectedOptions[0].dataset.code, this.selectedOptions[0].textContent)" style="flex:1;min-width:0;padding:8px;border:1.5px solid #e5e5ea;border-radius:6px;font-size:13px;color:#1d1d1f;background:white;">';
@@ -3527,6 +3533,11 @@ function _catRenderUnits() {
   summary.innerHTML = 'Total: <strong style="color:#1d1d1f;">' + _catUnits.length + ' unidades</strong>';
 }
 
+window.catEditUnitSku = function(idx, newSku) {
+  if (!_catUnits[idx]) return;
+  _catUnits[idx].barcode = (newSku || '').trim() || null;
+  _catSyncTextarea();
+};
 window.catEditUnitSize = function(idx, newSize) {
   if (_catUnits[idx]) {
     _catUnits[idx].size = String(newSize).trim();
@@ -3562,6 +3573,7 @@ async function _catSetupUnitsForm() {
     addBtn._wired = true;
     addBtn.onclick = () => {
       const size = document.getElementById('cat-p-new-size').value.trim();
+      const sku = document.getElementById('cat-p-new-sku').value.trim();
       const storeId = document.getElementById('cat-p-new-store').value;
       const qty = parseInt(document.getElementById('cat-p-new-qty').value, 10) || 1;
       if (!size) { alert('Informe o tamanho'); return; }
@@ -3570,11 +3582,12 @@ async function _catSetupUnitsForm() {
       const storeCode = storeOpt.dataset.code;
       const storeName = storeOpt.textContent;
       for (let i = 0; i < qty; i++) {
-        _catUnits.push({ size, storeId, storeCode, storeName });
+        _catUnits.push({ size, barcode: sku || null, storeId, storeCode, storeName });
       }
       _catRenderUnits();
       _catSyncTextarea();
       document.getElementById('cat-p-new-size').value = '';
+      document.getElementById('cat-p-new-sku').value = '';
       document.getElementById('cat-p-new-size').focus();
     };
   }
@@ -3815,17 +3828,18 @@ async function openCatProductModal(id) {
   const storeMap = {}; stores.forEach(s => storeMap[s.id] = s);
   (p.sizes || []).forEach(sz => {
     // Backend pode ter retornado storeStocks dentro de cada size — se não, fallback pra stock agregado
+    // sz.barcode é o SKU desse tamanho (compartilhado entre todas as unidades fisicas desse size)
     if (sz.storeStocks && sz.storeStocks.length) {
       sz.storeStocks.forEach(ss => {
         const st = storeMap[ss.storeId] || {};
         for (let i = 0; i < (ss.stock || 0); i++) {
-          _catUnits.push({ size: sz.size, storeId: ss.storeId, storeCode: st.code || '?', storeName: (st.code || '?') + ' — ' + (st.name || '') });
+          _catUnits.push({ size: sz.size, barcode: sz.barcode || null, storeId: ss.storeId, storeCode: st.code || '?', storeName: (st.code || '?') + ' — ' + (st.name || '') });
         }
       });
     } else {
       // Sem storeStocks → marca como sem loja vinculada
       for (let i = 0; i < (sz.stock || 0); i++) {
-        _catUnits.push({ size: sz.size, storeId: '', storeCode: '?', storeName: 'Sem loja' });
+        _catUnits.push({ size: sz.size, barcode: sz.barcode || null, storeId: '', storeCode: '?', storeName: 'Sem loja' });
       }
     }
   });
@@ -3845,12 +3859,14 @@ async function catProductSave() {
   });
   // Se temos _catUnits, ele tem prioridade (formato novo). Senão usa textarea.
   if (Array.isArray(_catUnits) && _catUnits.length > 0) {
-    // Agrega: por (size, storeId) → quantidade
+    // Agrega: por (size, storeId) → quantidade. SKU/barcode vem do 1o item do grupo.
     sizes.length = 0;
     const agg = {};
     _catUnits.forEach(u => {
       const key = u.size + '||' + (u.storeId || '');
-      agg[key] = agg[key] || { size: u.size, storeId: u.storeId || null, stock: 0 };
+      agg[key] = agg[key] || { size: u.size, barcode: u.barcode || null, storeId: u.storeId || null, stock: 0 };
+      // Se algum tem barcode preenchido, mantem o primeiro encontrado pra esse size
+      if (!agg[key].barcode && u.barcode) agg[key].barcode = u.barcode;
       agg[key].stock++;
     });
     Object.values(agg).forEach(v => sizes.push(v));
