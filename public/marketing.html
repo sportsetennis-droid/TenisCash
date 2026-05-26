@@ -369,6 +369,10 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
         <div id="field-headline">
           <input type="text" id="cat-headline" placeholder="Frase no topo (vazio = automática em português, ex: CHEGOU CAJU BRASIL)" style="width:100%;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
         </div>
+        <div>
+          <label style="font-size:11px;color:#6e6e73;font-weight:600;display:block;margin-bottom:3px">💬 Prompt extra pra IA <span style="font-weight:400;color:#a8a8ad">(opcional — instruções extras pra cena, em pt ou en)</span></label>
+          <textarea id="cat-scenehint" rows="2" placeholder="Ex: 'fundo de praia em João Pessoa ao pôr do sol' ou 'mood profissional, paleta laranja escuro' ou 'modelo correndo na esteira'" style="width:100%;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+        </div>
         <div id="field-subline" style="display:none">
           <input type="text" id="cat-subline" placeholder="Subtexto pequeno (ex: 'Coleção verão 2026' ou '6× sem juros')" style="width:100%;padding:8px 12px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit">
         </div>
@@ -1907,10 +1911,13 @@ const SCENE_HINTS = [
 
 function buildJobs(skipVideo) {
   // Expande selected (Map) em lista plana de jobs { productId, sceneHint, variantIdx }
+  // Se user preencheu cat-scenehint, usa ELE em todas as variações (substitui SCENE_HINTS automático)
+  const customHint = document.getElementById('cat-scenehint')?.value?.trim() || '';
   const jobs = [];
   STATE.catalog.selected.forEach((qty, productId) => {
     for (let i = 0; i < qty; i++) {
-      jobs.push({ productId, sceneHint: SCENE_HINTS[i % SCENE_HINTS.length], variantIdx: i + 1, totalVar: qty });
+      const sh = customHint || SCENE_HINTS[i % SCENE_HINTS.length];
+      jobs.push({ productId, sceneHint: sh, variantIdx: i + 1, totalVar: qty });
     }
   });
   return jobs;

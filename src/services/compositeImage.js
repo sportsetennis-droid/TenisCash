@@ -644,7 +644,39 @@ async function generateEditorialPhoto(opts) {
   };
 }
 
+/**
+ * Aplica overlay (headline/price/logo/handle) em uma imagem JÁ GERADA por outro
+ * provider (Flux ou OpenAI). Usa o mesmo applyTextOverlay do composite, mas
+ * trabalha com o buffer baixado da URL.
+ *
+ * @param {string} imageUrl - URL da imagem gerada pelo Flux/OpenAI
+ * @param {object} overlayOpts - { headline, subline, price, logoUrl, handle, includeXxx }
+ * @returns {Promise<string>} nova URL com overlay aplicado (subida no fal.storage)
+ */
+async function applyOverlayToUrl(imageUrl, overlayOpts) {
+  const buf = await fetchAsBuffer(imageUrl);
+  // Mesma logica do compositeImage: so aplica se ha algo pra aplicar
+  const headline = overlayOpts.includeHeadline === false ? '' : (overlayOpts.headline || '');
+  const subline = overlayOpts.includeSubline ? (overlayOpts.subline || '') : '';
+  const price = overlayOpts.includePrice && overlayOpts.price > 0 ? overlayOpts.price : null;
+  const logoUrl = overlayOpts.includeLogo ? (overlayOpts.logoUrl || null) : null;
+  const handle = overlayOpts.includeHandle ? (overlayOpts.handle || '') : '';
+
+  const wantOverlay = headline || subline || price || logoUrl || handle;
+  if (!wantOverlay) return imageUrl; // nada pra aplicar, devolve URL original
+
+  const finalBuffer = await applyTextOverlay(buf, {
+    headline, subline, price, logoUrl, handle,
+    installments: overlayOpts.installments || 6,
+  });
+
+  const filename = `overlay-${Date.now()}.jpg`;
+  return await uploadToFalStorage(finalBuffer, filename);
+}
+
 module.exports = {
   generateEditorialPhoto,
+  applyOverlayToUrl,
+  applyTextOverlay,
   COSTS,
 };

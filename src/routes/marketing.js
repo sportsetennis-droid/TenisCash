@@ -163,43 +163,38 @@ router.post('/generate/:productId', async (req, res) => {
     // Foto editorial — pelo provider escolhido.
     // 'composite' (default): produto REAL + cenário IA (fidelidade 100%)
     // 'fal'/'openai': image-to-image generativo (cenas mais ricas, mas pode deformar produto)
+    // === OVERLAY CONFIGURÁVEL (válido pra TODOS os providers) ===
+    // Aplica no composite via opts; aplica em Flux/OpenAI via applyOverlayToUrl
+    const includeHeadline = req.body?.includeHeadline !== false; // default true
+    const includePrice    = req.body?.includePrice === true;     // default false
+    const includeLogo     = req.body?.includeLogo === true;
+    const includeHandle   = req.body?.includeHandle === true;
+    const includeSubline  = req.body?.includeSubline === true;
+
+    const headline = includeHeadline
+      ? (req.body?.headline?.trim() || autoHeadline(product, brandProfile)).toString().slice(0, 60)
+      : '';
+    const subline = includeSubline ? (req.body?.subline ?? '').toString().slice(0, 80) : '';
+
+    const logoUrl = includeLogo ? (brandProfile?.logoUrl || null) : null;
+    const handle  = includeHandle ? (brandProfile?.instagramHandle || '') : '';
+    if (includeLogo && !logoUrl) {
+      console.warn(`[marketing] AVISO: marca ${brandProfile?.slug || 'none'} sem logoUrl — logo nao vai sair no criativo`);
+    }
+
+    const overlayOpts = {
+      includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
+      headline, subline, price: product.price,
+      logoUrl, handle,
+    };
+
     if (provider === 'composite' || provider === 'all') {
-      // === OVERLAY CONFIGURÁVEL ===
-      // Cada elemento é opt-in via flag dedicada (default tudo FALSE exceto headline).
-      // UI escolhe o que quer no criativo: frase / preço / logo / handle / subline
-      const includeHeadline = req.body?.includeHeadline !== false; // default true
-      const includePrice    = req.body?.includePrice === true;     // default false
-      const includeLogo     = req.body?.includeLogo === true;      // default false
-      const includeHandle   = req.body?.includeHandle === true;    // default false
-      const includeSubline  = req.body?.includeSubline === true;   // default false
-
-      // Headline: usuário pode passar manualmente; se vazio, gera auto contextual
-      const headline = includeHeadline
-        ? (req.body?.headline?.trim() || autoHeadline(product, brandProfile)).toString().slice(0, 60)
-        : '';
-      const subline = includeSubline ? (req.body?.subline ?? '').toString().slice(0, 80) : '';
-
-      // Dados da marca ativa (logo + handle) — brandProfile já foi carregado acima
-      const logoUrl = includeLogo ? (brandProfile?.logoUrl || null) : null;
-      const handle  = includeHandle ? (brandProfile?.instagramHandle || '') : '';
-      if (includeLogo && !logoUrl) {
-        console.warn(`[marketing] AVISO: marca ${brandProfile?.slug} sem logoUrl — logo nao vai sair no criativo`);
-      }
-
       tasks.push(
         compositeImage.generateEditorialPhoto({
           product,
           aspectRatio,
           sceneHint,
-          headline,
-          subline,
-          includeHeadline,
-          includePrice,
-          includeLogo,
-          includeHandle,
-          includeSubline,
-          logoUrl,
-          handle,
+          ...overlayOpts,
           people: req.body?.people || null,  // { mode, gender, age, ethnicity }
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
@@ -210,7 +205,13 @@ router.post('/generate/:productId', async (req, res) => {
           product,
           aspectRatio,
           sceneHint,
-        }).then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
+        }).then(async r => {
+          // Aplica overlay no resultado do Flux (logo/preço/headline)
+          try {
+            const newUrl = await compositeImage.applyOverlayToUrl(r.outputUrl, overlayOpts);
+            return { kind: 'editorial_photo', provider: 'fal', ...r, outputUrl: newUrl };
+          } catch (e) { console.warn('[overlay/fal] falhou:', e.message); return { kind: 'editorial_photo', provider: 'fal', ...r }; }
+        })
       );
     }
     if (provider === 'openai' || provider === 'both' || provider === 'all') {
@@ -220,7 +221,12 @@ router.post('/generate/:productId', async (req, res) => {
           aspectRatio,
           sceneHint,
           quality: openaiQuality,
-        }).then(r => ({ kind: 'editorial_photo', provider: 'openai', ...r }))
+        }).then(async r => {
+          try {
+            const newUrl = await compositeImage.applyOverlayToUrl(r.outputUrl, overlayOpts);
+            return { kind: 'editorial_photo', provider: 'openai', ...r, outputUrl: newUrl };
+          } catch (e) { console.warn('[overlay/openai] falhou:', e.message); return { kind: 'editorial_photo', provider: 'openai', ...r }; }
+        })
       );
     }
 
@@ -389,7 +395,15 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
       }
     } catch (e) { console.warn('[marketing] people parse fail:', e.message); }
 
-    console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider} · people=${people?.mode || 'auto'}`);
+    console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider} · people=${people?.mode || 'auto'} · logo=${includeLogo}${includeLogo && !brand.logoUrl ? ' (MAS LOGO VAZIA!)' : ''}`);
+
+    // Overlay opts (valido pra TODOS providers)
+    const overlayOptsUpload = {
+      includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
+      headline, subline, price: virtualProduct.price,
+      logoUrl: includeLogo ? (brand.logoUrl || null) : null,
+      handle: includeHandle ? (brand.instagramHandle || '') : '',
+    };
 
     // 4. Roda composite (e/ou outros providers se solicitado)
     const tasks = [];
@@ -399,10 +413,7 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
           product: virtualProduct,
           aspectRatio,
           sceneHint,
-          headline, subline,
-          includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
-          logoUrl: includeLogo ? brand.logoUrl : null,
-          handle: includeHandle ? brand.instagramHandle : '',
+          ...overlayOptsUpload,
           people,
         }).then(r => ({ kind: 'editorial_photo', provider: 'composite', ...r }))
       );
@@ -410,13 +421,23 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
     if (provider === 'fal' || provider === 'all') {
       tasks.push(
         falAi.generateEditorialPhoto({ product: virtualProduct, aspectRatio, sceneHint })
-          .then(r => ({ kind: 'editorial_photo', provider: 'fal', ...r }))
+          .then(async r => {
+            try {
+              const newUrl = await compositeImage.applyOverlayToUrl(r.outputUrl, overlayOptsUpload);
+              return { kind: 'editorial_photo', provider: 'fal', ...r, outputUrl: newUrl };
+            } catch (e) { console.warn('[overlay/fal-upload]', e.message); return { kind: 'editorial_photo', provider: 'fal', ...r }; }
+          })
       );
     }
     if (provider === 'openai' || provider === 'all') {
       tasks.push(
         openaiImage.generateEditorialPhoto({ product: virtualProduct, aspectRatio, sceneHint, quality: 'medium' })
-          .then(r => ({ kind: 'editorial_photo', provider: 'openai', ...r }))
+          .then(async r => {
+            try {
+              const newUrl = await compositeImage.applyOverlayToUrl(r.outputUrl, overlayOptsUpload);
+              return { kind: 'editorial_photo', provider: 'openai', ...r, outputUrl: newUrl };
+            } catch (e) { console.warn('[overlay/openai-upload]', e.message); return { kind: 'editorial_photo', provider: 'openai', ...r }; }
+          })
       );
     }
 
