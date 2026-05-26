@@ -474,18 +474,19 @@
       resetInput('input ultrapassou 100 chars — bipador travado');
     }
 
-    // ⭐ AUTO-SUBMIT: leitor sem sufixo Enter (ex: LOJA03 com config errada).
-    // Após cada keydown, agenda envio automático em 200ms. Se vier outra
-    // tecla antes, o timer reinicia. Quando parar de chegar chars = enviou tudo.
+    agendarAutoSubmit();
+  });
+
+  // Função centralizada: agenda envio automatico em 200ms apos parar de digitar.
+  // Chamada tanto no keydown quanto no input event (cobre TODOS os tipos de leitor).
+  function agendarAutoSubmit() {
     clearTimeout(window._bipeAutoSubmitTimer);
     window._bipeAutoSubmitTimer = setTimeout(() => {
       const v = (input.value || '').trim();
       if (!v) return;
-      if (v.length < 6) return; // muito curto, ignora (provável ruído)
-      // mesma validação do Enter
+      if (v.length < 6) return; // muito curto, provável ruído
       if (v.length > 30) { resetInput('código muito longo (' + v.length + '): auto-submit cancelado'); return; }
       if (/^(.)\1{10,}$/.test(v)) { resetInput('char repetido no auto-submit: ' + v.slice(0, 20)); return; }
-      // dispara envio
       enviarBipe(v);
       if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
       input.value = '';
@@ -493,6 +494,13 @@
       sameCharCount = 0;
       if (DEBUG) logDebug('AUTO-SUBMIT: ' + v);
     }, 200);
+  }
+
+  // ALTERNATIVO: alguns leitores enviam via 'input' event (paste/IME) sem keydown.
+  // Hookar input também garante cobertura.
+  input.addEventListener('input', () => {
+    if (DEBUG) logDebug('INPUT event: ' + (input.value || '').slice(0, 30));
+    agendarAutoSubmit();
   });
 
   // ===== DIGITAÇÃO MANUAL (fallback quando leitor falha) =====
