@@ -371,6 +371,7 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
     <!-- Pessoa na cena (catálogo) -->
     <div style="background:linear-gradient(180deg, rgba(229,87,30,0.04), transparent);border:1.5px solid #FFEBDC;padding:12px 14px;border-radius:10px;margin-bottom:14px">
       <div style="font-size:13px;font-weight:700;color:#0a0a0a;margin-bottom:8px">👤 Pessoa na cena</div>
+      <div id="cat-people-warn" style="display:none;background:#fff8e0;border:1.5px solid #f0b146;border-radius:8px;padding:8px 12px;font-size:12px;color:#7a4a00;margin-bottom:8px;line-height:1.4"></div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
         <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="cat-people-mode" value="auto" checked onchange="toggleCatPeople()"> <span>🎲 Deixar IA decidir</span></label>
         <label class="cat-toggle" style="font-size:12.5px"><input type="radio" name="cat-people-mode" value="none" onchange="toggleCatPeople()"> <span>🚫 Sem pessoa (só produto)</span></label>
@@ -1662,6 +1663,20 @@ function toggleCatPeople() {
   const mode = document.querySelector('input[name="cat-people-mode"]:checked')?.value;
   const det = document.getElementById('cat-people-detail');
   if (det) det.style.display = (mode === 'specific') ? 'flex' : 'none';
+  updateCatPeopleWarn();
+}
+function updateCatPeopleWarn() {
+  const mode = document.querySelector('input[name="cat-people-mode"]:checked')?.value;
+  const provider = document.querySelector('input[name="cat-provider"]:checked')?.value;
+  let w = document.getElementById('cat-people-warn');
+  if (!w) return;
+  // Composite com produto + pessoa específica = pessoa fica atrás do produto
+  if (mode === 'specific' && (provider === 'composite' || provider === 'all')) {
+    w.style.display = 'block';
+    w.innerHTML = '⚠️ <b>Atenção</b>: você escolheu <b>Composite</b> + <b>Pessoa específica</b>. No Composite, o produto real é colado em cima do fundo gerado. A pessoa vai aparecer ao lado/atrás do produto, não vestindo-o. <br>Pra ter <b>pessoa vestindo o produto</b>, use o modelo <b>📸 Flux</b> ou <b>🤖 GPT</b> (eles re-imaginam a cena inteira, com risco de deformar o produto).';
+  } else {
+    w.style.display = 'none';
+  }
 }
 function getAdPeople() {
   const mode = document.querySelector('input[name="ad-people-mode"]:checked')?.value || 'auto';
@@ -1715,6 +1730,7 @@ function updateFloatingBar() {
 
 document.addEventListener('change', (e) => {
   if (e.target?.id === 'cat-skipvideo' || e.target?.name === 'cat-provider') updateFloatingBar();
+  if (e.target?.name === 'cat-provider' || e.target?.name === 'cat-people-mode') updateCatPeopleWarn();
 });
 
 // Cenários pré-definidos pra rodízio quando o usuário quer múltiplas variações do mesmo produto.

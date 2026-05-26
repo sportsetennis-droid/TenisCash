@@ -37,13 +37,26 @@ async function pickSceneAuto(product) {
     if (name.includes(key) || category.includes(key)) return modalityScenes[key];
   }
 
-  // 4. Heurística feminina
-  if (name.match(/feminin|woman|moda/) || aiClass.gender === 'F') {
+  // 4. Heurísticas por TIPO de produto (antes de cair em fallback genérico)
+  //    Detecta contexto: uniforme/médico/político/etc
+  if (/uniforme|farda|jaleco|scrub|tactel|m[ée]dic|hospital|cl[ií]nic/.test(name + ' ' + category)) {
+    return 'professional corporate environment, clean modern workplace, neutral background, soft natural light';
+  }
+  if (/escola|aluno|estudante|colegial/.test(name + ' ' + category)) {
+    return 'modern school environment, clean and bright, educational setting';
+  }
+  if (/clube|time|esportiv/.test(name + ' ' + category)) {
+    return 'professional sports club environment, clean and energetic';
+  }
+
+  // 5. Heurística feminina (só pra Sports & Tennis casual feminino, NÃO pra outras marcas)
+  const isSportsTennis = !brand || brand === 'sports & tennis' || brand === 'sportstennis';
+  if (isSportsTennis && (name.match(/feminin|woman|moda/) || aiClass.gender === 'F')) {
     return 'modern minimalist studio with soft pastel background, feminine athletic elegance';
   }
 
-  // 5. Default
-  return brandScenes._default || 'modern Brazilian sports lifestyle scene, urban Northeast environment';
+  // 6. Default neutro (não esportivo, pra não bagunçar marcas B2B/institucionais)
+  return brandScenes._default || 'clean modern editorial environment, neutral professional background, soft natural light';
 }
 
 /**
@@ -158,17 +171,25 @@ async function buildBackgroundPrompt(product, sceneHint = '', opts = {}) {
   const peopleClause = buildPeopleClause(opts.people);
 
   if (hasProduct) {
-    const template = prompts.composite_bg || cfg.DEFAULT_PROVIDER_PROMPTS.composite_bg;
-    let result = template.replace(/\{SCENE\}/g, scene);
-    // No modo composite (com produto), por default a IA não deve gerar pessoa
-    // (o produto vai ser sobreposto). Só inclui pessoa se user pediu explicitamente.
+    // CASO ESPECIAL: usuário pediu pessoa específica + tem produto = composite vai
+    // ficar visualmente esquisito (pessoa fica atrás do produto colado). MAS pra
+    // não bloquear o usuário, geramos prompt customizado SEM o "no people" do
+    // template padrão, e a pessoa entra. Aviso UX fica na UI.
     if (opts.people && opts.people.mode === 'specific') {
-      result += ' ' + peopleClause;
-    } else if (!opts.people || opts.people.mode === 'auto' || opts.people.mode === 'none') {
-      // Default composite: sem pessoa (background limpo pro produto compor por cima)
-      result += ' STRICT: NO PEOPLE in this background — it will be composited with the product later.';
+      return [
+        'Editorial background scene for product photography:',
+        scene + '.',
+        peopleClause,
+        'Hyperrealistic, magazine quality, dramatic professional lighting, shallow depth of field.',
+        'The person should be positioned to the SIDE or BACKGROUND — leaving the CENTER-BOTTOM area clear for a product overlay (a real product image will be composited on top).',
+        'No text written on the image.',
+      ].join(' ');
     }
-    return result;
+
+    // Default composite: usa template padrão (sem pessoa, espaço pro produto)
+    const template = prompts.composite_bg || cfg.DEFAULT_PROVIDER_PROMPTS.composite_bg;
+    return template.replace(/\{SCENE\}/g, scene) +
+           ' STRICT: NO PEOPLE in this background — it will be composited with the product later.';
   }
 
   // MODO CONCEITO PURO: a cena descrita pelo user é o conteúdo total
