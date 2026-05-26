@@ -81,6 +81,57 @@
   if (typeof window !== 'undefined') window.PCard = window.PCard || PCard;
 
   // ============================================================
+  // Variantes de cor do mesmo modelo (lazy, dispara quando card entra na viewport)
+  // Renderiza fileira de miniaturas estilo On Running / e-commerce
+  // ============================================================
+  PCard._colorVariantsCache = {};
+  PCard.loadColorVariants = async function (productId) {
+    const slot = document.querySelector('.pcard-colorvar-slot[data-pid="' + productId + '"]');
+    if (!slot || slot.dataset.loaded === '1' || slot.dataset.loading === '1') return;
+    slot.dataset.loading = '1';
+    try {
+      let data = PCard._colorVariantsCache[productId];
+      if (!data) {
+        const token = localStorage.getItem('tc_admin_token') || '';
+        const r = await fetch('/api/admin/catalog/products/' + productId + '/color-variants', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) { slot.dataset.loaded = '1'; return; }
+        data = await r.json();
+        PCard._colorVariantsCache[productId] = data;
+      }
+      const variants = (data.variants || []).filter(v => !v.isCurrent); // tira o atual da fileira
+      if (variants.length === 0) { slot.dataset.loaded = '1'; return; }
+
+      const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      let html = '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
+      html += '<span style="font-size:10px;font-weight:700;color:#8e8e93;letter-spacing:0.5px;margin-right:6px;text-transform:uppercase;">+' + variants.length + ' cor' + (variants.length > 1 ? 'es' : '') + '</span>';
+      variants.slice(0, 6).forEach(v => {
+        const img = v.imageUrl
+          ? `<img src="${esc(v.imageUrl)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:contain;background:#fafafa;" onerror="this.style.display='none';this.parentElement.style.background='#eee';">`
+          : '<div style="width:100%;height:100%;background:#eee;"></div>';
+        html += `<a href="#" data-vid="${esc(v.id)}" title="${esc(v.color || v.ref || '')}" class="pcard-colorvar-thumb" style="width:30px;height:30px;border-radius:6px;border:1.5px solid #e5e5ea;overflow:hidden;cursor:pointer;transition:all 0.15s;flex-shrink:0;display:block;text-decoration:none;" onmouseover="this.style.borderColor='#E5571E';this.style.transform='scale(1.1)';" onmouseout="this.style.borderColor='#e5e5ea';this.style.transform='';">${img}</a>`;
+      });
+      if (variants.length > 6) html += `<span style="font-size:11px;color:#8e8e93;align-self:center;">+${variants.length - 6}</span>`;
+      html += '</div>';
+      slot.innerHTML = html;
+      slot.dataset.loaded = '1';
+      // Click handler: abrir modal do produto clicado (se função existir)
+      slot.querySelectorAll('.pcard-colorvar-thumb').forEach(el => {
+        el.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const vid = el.dataset.vid;
+          if (typeof window.openCatProductModal === 'function') window.openCatProductModal(vid);
+        };
+      });
+    } catch (e) {
+      console.warn('[PCard] color-variants fail:', e.message);
+      slot.dataset.loaded = '1';
+    } finally {
+      slot.dataset.loading = '';
+    }
+  };
+
+  // ============================================================
   // Índice global de productIds bipados (Set carregado 1x, cache 5min)
   // Qualquer card renderizado consulta esse Set pra mostrar badge "BIPADO"
   // ============================================================
@@ -281,6 +332,30 @@
     } catch {}
   };
 
+  // Observer separado pra variantes de cor (load lazy)
+  if (typeof window !== 'undefined' && 'IntersectionObserver' in window) {
+    try {
+      PCard._colorVarObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            const pid = e.target.dataset.pid;
+            if (pid) PCard.loadColorVariants(pid);
+            try { PCard._colorVarObserver.unobserve(e.target); } catch {}
+          }
+        }
+      }, { rootMargin: '200px' });
+    } catch {}
+  }
+  PCard.observeColorVariants = function (root) {
+    if (!PCard._colorVarObserver) return;
+    const scope = root || document;
+    try {
+      scope.querySelectorAll('.pcard-colorvar-slot[data-pid]:not([data-loaded="1"]):not([data-loading="1"])').forEach(el => {
+        try { PCard._colorVarObserver.observe(el); } catch {}
+      });
+    } catch {}
+  };
+
   // Auto-observe debounced: cada vez que render() é chamado, agenda 1 varredura
   // 250ms depois. Múltiplos render() em sequência (renderGrid) só geram 1 scan.
   PCard._scheduleObserve = function () {
@@ -288,6 +363,7 @@
     PCard._scanTimer = setTimeout(() => {
       PCard._scanTimer = null;
       PCard.observeNfeContainers();
+      PCard.observeColorVariants();
     }, 250);
   };
 
@@ -411,6 +487,12 @@
     if (ref && ref !== p.sku) html += `<span title="Referência do fornecedor" style="background:#FCDAC4;color:#E5571E;padding:1px 6px;border-radius:4px;font-weight:700;">FORN: ${esc(ref)}</span>`;
     if (colorTag) html += `<span title="Cor do modelo" style="background:#fff;color:#1d1d1f;padding:1px 6px;border-radius:4px;font-weight:700;border:1px solid #e5e5ea;">🎨 ${esc(colorTag)}</span>`;
     html += '</div>';
+
+    // SLOT de variantes de cor — carregado lazy via PCard.loadColorVariants
+    // Só faz sentido se o produto tem modelGroup definido (Converse + outras marcas com padrão identificado)
+    if (ctx.modelGroup) {
+      html += `<div class="pcard-colorvar-slot" data-pid="${p.id}" data-modelgroup="${esc(ctx.modelGroup)}"></div>`;
+    }
 
     // Botão specs
     if (actions === 'admin' && p.longDescription) {

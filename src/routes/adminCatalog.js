@@ -106,6 +106,47 @@ router.get('/form-options', adminOnly, async (_req, res) => {
   }
 });
 
+// GET /api/admin/catalog/products/:id/color-variants
+// Retorna outras Products com mesmo modelGroup (cores diferentes do mesmo modelo)
+router.get('/products/:id/color-variants', adminOnly, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const p = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, brand: true, aiContext: true },
+    });
+    if (!p) return res.status(404).json({ error: 'produto nao encontrado' });
+
+    const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
+    const mg = ctx.modelGroup;
+    if (!mg) return res.json({ variants: [] }); // produto sem modelGroup, sem variantes a mostrar
+
+    // Busca outros Products do mesmo modelo (mesma brand + mesmo modelGroup)
+    const all = await prisma.$queryRaw`
+      SELECT id, name, "imageUrl", "aiContext"->>'color' AS color,
+             "aiContext"->>'supplierRef' AS ref
+      FROM "Product"
+      WHERE brand = ${p.brand}
+        AND "aiContext"->>'modelGroup' = ${mg}
+        AND active = true
+      ORDER BY "aiContext"->>'supplierRef'
+    `;
+    // Marca qual é o atual
+    const variants = all.map(v => ({
+      id: v.id,
+      ref: v.ref,
+      color: v.color,
+      imageUrl: v.imageUrl,
+      name: v.name,
+      isCurrent: v.id === productId,
+    }));
+    res.json({ modelGroup: mg, variants, total: variants.length });
+  } catch (err) {
+    console.error('[color-variants]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/products/:id/nfe-summary
 // Retorna histórico de entradas via NFe + total comprado vs total contado (bipe)
 router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {

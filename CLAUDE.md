@@ -363,8 +363,15 @@ MODELO (ex: "Converse Chuck Taylor All Star")
 
 **Regra**: cada marca tem padrão diferente pra identificar variação de cor do mesmo modelo. Algumas usam padrão na referência (CK0909XXXX), outras na descrição, outras só no nome do fornecedor. **Tem que estudar marca por marca pra traçar o perfil de cada uma**.
 
-Padrões observados (a estudar):
-- **FIBER**: ref estruturada `CATEGORIA-MODELO-COR-TAMANHO` (ex: `CALBFBR-ALLBLACK-G`)
+Padrões observados:
+
+- **CONVERSE** ✅ confirmado: ref no formato `[CK|CT|CO][0000][0000]` (10 chars).
+  - Primeiros 6 chars = MODELO (ex: `CK0004`, `CT0419`, `CO0639`)
+  - Últimos 4 chars = variação de cor (ex: `0001`, `0002`, `0006`, `0007` — não são sequenciais, são códigos fixos de cor do fornecedor)
+  - Cards com mesma `modelGroup` (primeiros 6 chars) são o mesmo modelo em cores diferentes
+  - 106 refs Converse no formato letra+número distribuídas em 58 modelos
+  - Outros 106 cards têm ref puramente numérica (`120953`, etc) — código interno do PDV. Esses são DUPLICATAS dos 106 letra+número (nome contém a ref oficial)
+- **FIBER**: ref estruturada `CATEGORIA-MODELO-COR-TAMANHO` (ex: `CALBFBR-ALLBLACK-G`) — a estudar
 - **Maioria das marcas**: `Product.sku` atual é `XXXX-EAN` (prefixo PDV + código de barras de UM tamanho) — não é ref real do modelo
 - Outras: documentar conforme forem analisadas
 
