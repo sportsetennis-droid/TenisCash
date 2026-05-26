@@ -235,6 +235,23 @@ Caso contrário, é `entrada` (compra de fornecedor real).
 - **`transferencia`** — movimento interno entre lojas do mesmo grupo. **NÃO conta como compra**. Não pode aumentar custo médio, não pode aparecer em "total comprado", não pode ser somado a contadores de NFes de fornecedor.
 - **`saida`** — venda emitida (NFe própria). Saída de estoque, registrada em `FiscalDocument` (não `XmlFiscalDocument`).
 
+### ⚠️ DISTINÇÃO CRÍTICA — "não conta como compra" ≠ "não cria Product"
+
+**NÃO confundir essas duas coisas (Claude já errou aqui antes):**
+
+1. **Transferência NÃO CONTA como compra/entrada/custo** → no card do produto, na coluna "Comprado", em contadores de fornecedor, em custo médio. ✅ Isso é regra rígida.
+
+2. **Transferência PODE criar Product novo no catálogo** se o EAN não existir ainda. ✅ Isso é OK e desejado — o produto existe fisicamente nas lojas (foi comprado em algum momento, mesmo que a NFe de entrada original não esteja na base).
+
+**Por que dá pra criar Product a partir de transferência:**
+- O card do produto SEMPRE separa visualmente: bloco azul "📦 NFe entradas" (só `docType='entrada'`) vs bloco laranja "🔄 Transferências" (só `docType='transferencia'`)
+- Endpoint `/api/admin/catalog/products/:id/nfe-summary` filtra `entradas` por `docType === 'entrada'` ONLY
+- Então criar Product a partir de transferência NÃO bagunça os contadores — só faz o produto existir no catálogo pra poder ser bipado, vendido, fotografado etc.
+
+**Quando rodar `scripts/create-products-from-nfe-pending.js`:** NÃO precisa filtrar por docType. Pega TODOS os `XmlFiscalItem` órfãos (entrada + transferência) e cria Product. A separação visual já está garantida nos cards.
+
+**Único cuidado:** o `aiContext.sourceFornecedor` salvo no Product vai ser o `issuerName` da NFe — que numa transferência é a própria loja matriz, não o fornecedor real (Nike, Mizuno etc). Isso é metadado de baixo impacto; o curador IA depois pode revisar marca/fornecedor.
+
 ### Loja destino da NFe = CNPJ (NÃO CRIAR COLUNA NOVA)
 
 A loja destino de uma NFe é determinada **automaticamente** pelo `recipientCnpj`, que casa com `FiscalIssuer.cnpj` → vinculado à `Store` via `Store.fiscalIssuerId`.
