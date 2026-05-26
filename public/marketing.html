@@ -932,6 +932,45 @@ function loadBrandEditor(slug) {
       </div>
     </div>
 
+    <!-- PADRAO DA LOGO NO CRIATIVO (logoPlacement) -->
+    <div style="background:linear-gradient(180deg,#FFF6EF,#fff);border:1.5px solid #FFEBDC;border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:#0a0a0a;margin-bottom:8px">📐 Padrão da logo nos criativos <span style="font-weight:400;color:#a8a8ad;font-size:11px">(onde, qual tamanho, qual fundo)</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+        <div>
+          <label class="bp-lbl" style="margin-top:0;font-size:11px">Posição</label>
+          <select class="bp-input" id="bp-logo-position">
+            <option value="bottom-left">⬇️◀ Canto inferior esq</option>
+            <option value="bottom-right">⬇️▶ Canto inferior dir</option>
+            <option value="bottom-center">⬇️ Centro inferior</option>
+            <option value="top-left">⬆️◀ Canto superior esq</option>
+            <option value="top-right">⬆️▶ Canto superior dir</option>
+            <option value="top-center">⬆️ Centro superior</option>
+          </select>
+        </div>
+        <div>
+          <label class="bp-lbl" style="margin-top:0;font-size:11px">Tamanho</label>
+          <select class="bp-input" id="bp-logo-size">
+            <option value="0.08">▫ Pequeno (8%)</option>
+            <option value="0.13">◽ Médio (13% — padrão)</option>
+            <option value="0.18">◻ Grande (18%)</option>
+            <option value="0.22">⬜ Muito grande (22%)</option>
+          </select>
+        </div>
+        <div>
+          <label class="bp-lbl" style="margin-top:0;font-size:11px">Fundo</label>
+          <select class="bp-input" id="bp-logo-bg">
+            <option value="whiteRounded">🔲 Branco arredondado</option>
+            <option value="whiteCircle">⚪ Branco circular</option>
+            <option value="none">⬚ Sem fundo (transparente)</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <button class="cfg-btn cfg-btn-primary" onclick="bpSaveLogoPlacement('${escH(b.slug)}')">💾 Salvar padrão da logo</button>
+        <span style="font-size:11px;color:#a8a8ad">Esses valores viram default em TODO criativo dessa marca</span>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
       <div>
         <label class="bp-lbl">Display Name</label>
@@ -996,6 +1035,12 @@ function loadBrandEditor(slug) {
       </label>
     </div>
   `;
+
+  // Pré-popula valores do padrão da logo (vem do customConfig.logoPlacement)
+  const lp = (b.customConfig && b.customConfig.logoPlacement) || {};
+  if (document.getElementById('bp-logo-position')) document.getElementById('bp-logo-position').value = lp.position || 'bottom-left';
+  if (document.getElementById('bp-logo-size')) document.getElementById('bp-logo-size').value = String(lp.sizePct || 0.13);
+  if (document.getElementById('bp-logo-bg')) document.getElementById('bp-logo-bg').value = lp.bgStyle || 'whiteRounded';
 }
 
 async function bpSave(slug) {
@@ -1023,6 +1068,24 @@ async function bpSave(slug) {
     await bpFetch('/' + slug, { method: 'PUT', body: JSON.stringify(data) });
     toast('✓ DNA salvo: ' + slug);
     BP_STATE.brands = []; // força reload
+    await loadActiveBrandDropdown();
+    await loadBrandProfiles();
+    loadBrandEditor(slug);
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
+async function bpSaveLogoPlacement(slug) {
+  const placement = {
+    position: document.getElementById('bp-logo-position').value,
+    sizePct: parseFloat(document.getElementById('bp-logo-size').value),
+    bgStyle: document.getElementById('bp-logo-bg').value,
+  };
+  try {
+    const b = BP_STATE.brands.find(x => x.slug === slug) || {};
+    const customConfig = Object.assign({}, b.customConfig || {}, { logoPlacement: placement });
+    await bpFetch('/' + slug, { method: 'PUT', body: JSON.stringify({ customConfig }) });
+    toast('✓ Padrão da logo salvo');
+    BP_STATE.brands = [];
     await loadActiveBrandDropdown();
     await loadBrandProfiles();
     loadBrandEditor(slug);

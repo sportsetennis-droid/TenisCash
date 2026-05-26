@@ -409,9 +409,26 @@ function buildOverlaySvg(opts) {
   const priceStr = hasPrice ? Math.round(price).toString() : '';
 
   // === LOGO (canto inferior esquerdo) ===
-  const logoSize = Math.round(width * 0.13);
-  const logoX = Math.round(width * 0.04);
-  const logoY = height - logoSize - Math.round(width * 0.04);
+  // Logo placement configurável por marca (opts.logoPlacement)
+  // { position: 'bottom-left'|'bottom-right'|'top-left'|'top-right'|'top-center'|'bottom-center',
+  //   sizePct: 0.08..0.22 (default 0.13),
+  //   bgStyle: 'whiteRounded'|'whiteCircle'|'none' (default 'whiteRounded') }
+  const lp = opts.logoPlacement || {};
+  const logoSizePct = (typeof lp.sizePct === 'number' && lp.sizePct >= 0.05 && lp.sizePct <= 0.30) ? lp.sizePct : 0.13;
+  const logoBgStyle = lp.bgStyle || 'whiteRounded';
+  const logoPosition = lp.position || 'bottom-left';
+  const logoSize = Math.round(width * logoSizePct);
+  const logoMargin = Math.round(width * 0.04);
+  let logoX, logoY;
+  switch (logoPosition) {
+    case 'top-left':       logoX = logoMargin; logoY = logoMargin; break;
+    case 'top-right':      logoX = width - logoSize - logoMargin; logoY = logoMargin; break;
+    case 'top-center':     logoX = Math.round((width - logoSize) / 2); logoY = logoMargin; break;
+    case 'bottom-right':   logoX = width - logoSize - logoMargin; logoY = height - logoSize - logoMargin; break;
+    case 'bottom-center':  logoX = Math.round((width - logoSize) / 2); logoY = height - logoSize - logoMargin; break;
+    case 'bottom-left':
+    default:               logoX = logoMargin; logoY = height - logoSize - logoMargin;
+  }
 
   // === HANDLE @ (canto inferior, abaixo da logo OU sozinho) ===
   const handleSize = Math.round(width * 0.022);
@@ -463,10 +480,18 @@ function buildOverlaySvg(opts) {
       <rect x="0" y="${Math.round(height * 0.78)}" width="${width}" height="${Math.round(height * 0.22)}" fill="url(#bottom-grad)"/>
     ` : ''}
 
-    ${hasLogo ? `
-      <rect x="${logoX - 6}" y="${logoY - 6}" width="${logoSize + 12}" height="${logoSize + 12}" rx="14" fill="rgba(255,255,255,0.95)"/>
-      <image href="data:image/png;base64,${logoEmbedB64}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>
-    ` : ''}
+    ${hasLogo ? (() => {
+      let bgRect = '';
+      if (logoBgStyle === 'whiteRounded') {
+        bgRect = `<rect x="${logoX - 6}" y="${logoY - 6}" width="${logoSize + 12}" height="${logoSize + 12}" rx="14" fill="rgba(255,255,255,0.95)"/>`;
+      } else if (logoBgStyle === 'whiteCircle') {
+        const cx = logoX + logoSize / 2;
+        const cy = logoY + logoSize / 2;
+        const r = logoSize / 2 + 8;
+        bgRect = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,0.95)"/>`;
+      }
+      return bgRect + `<image href="data:image/png;base64,${logoEmbedB64}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>`;
+    })() : ''}
 
     ${hasHandle ? (() => {
       const p = textToSvgPath(handle, handleX, handleY, handleSize, true);
@@ -629,6 +654,7 @@ async function generateEditorialPhoto(opts) {
     finalBuffer = await applyTextOverlay(finalBuffer, {
       headline, subline, price, logoUrl, handle,
       installments: opts.installments || 6,
+      logoPlacement: opts.logoPlacement || null,
     });
   }
 
@@ -668,6 +694,7 @@ async function applyOverlayToUrl(imageUrl, overlayOpts) {
   const finalBuffer = await applyTextOverlay(buf, {
     headline, subline, price, logoUrl, handle,
     installments: overlayOpts.installments || 6,
+    logoPlacement: overlayOpts.logoPlacement || null,
   });
 
   const filename = `overlay-${Date.now()}.jpg`;

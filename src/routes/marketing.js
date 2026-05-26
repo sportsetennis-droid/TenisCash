@@ -182,10 +182,14 @@ router.post('/generate/:productId', async (req, res) => {
       console.warn(`[marketing] AVISO: marca ${brandProfile?.slug || 'none'} sem logoUrl — logo nao vai sair no criativo`);
     }
 
+    // Padrão visual da logo (posição/tamanho/fundo) — vem do BrandProfile.customConfig.logoPlacement
+    // ou pode ser override do request body. Estrutura: { position, sizePct, bgStyle }
+    const logoPlacement = req.body?.logoPlacement || brandProfile?.customConfig?.logoPlacement || null;
+
     const overlayOpts = {
       includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
       headline, subline, price: product.price,
-      logoUrl, handle,
+      logoUrl, handle, logoPlacement,
     };
 
     if (provider === 'composite' || provider === 'all') {
@@ -398,11 +402,15 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
     console.log(`[marketing/generate-upload] ${virtualProduct.name} · brand=${brand.slug} · provider=${provider} · people=${people?.mode || 'auto'} · logo=${includeLogo}${includeLogo && !brand.logoUrl ? ' (MAS LOGO VAZIA!)' : ''}`);
 
     // Overlay opts (valido pra TODOS providers)
+    const logoPlacementUpload = body.logoPlacement
+      ? (typeof body.logoPlacement === 'string' ? JSON.parse(body.logoPlacement) : body.logoPlacement)
+      : (brand?.customConfig?.logoPlacement || null);
     const overlayOptsUpload = {
       includeHeadline, includePrice, includeLogo, includeHandle, includeSubline,
       headline, subline, price: virtualProduct.price,
       logoUrl: includeLogo ? (brand.logoUrl || null) : null,
       handle: includeHandle ? (brand.instagramHandle || '') : '',
+      logoPlacement: logoPlacementUpload,
     };
 
     // 4. Roda composite (e/ou outros providers se solicitado)
