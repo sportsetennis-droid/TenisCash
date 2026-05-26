@@ -159,9 +159,27 @@ router.post('/bipe', async (req, res) => {
       },
     });
 
+    // REAL-TIME: bipe atualiza StoreStock NA HORA (+1 unidade)
+    // Regra confirmada pelo dono: cada bipe = +1 unidade da SKU naquela loja, imediatamente.
+    let appliedToStock = false;
+    if (chosen && storeId && chosen.id) {
+      try {
+        await prisma.storeStock.upsert({
+          where: { storeId_productSizeId: { storeId, productSizeId: chosen.id } },
+          update: { stock: { increment: 1 } },
+          create: { storeId, productSizeId: chosen.id, stock: 1 },
+        });
+        await prisma.stocktakeBipe.update({ where: { id: bipe.id }, data: { applied: true } });
+        appliedToStock = true;
+      } catch (e) {
+        console.warn('[bipe] upsert StoreStock falhou:', e.message);
+      }
+    }
+
     res.json({
       success: true,
       bipeId: bipe.id,
+      appliedToStock,
       found,
       duplicate,
       product: chosen
