@@ -81,6 +81,58 @@
   if (typeof window !== 'undefined') window.PCard = window.PCard || PCard;
 
   // ============================================================
+  // Índice global de productIds bipados (Set carregado 1x, cache 5min)
+  // Qualquer card renderizado consulta esse Set pra mostrar badge "BIPADO"
+  // ============================================================
+  PCard._bipedSet = null;
+  PCard._bipedSetLoadedAt = 0;
+  PCard._bipedSetPromise = null;
+  PCard.loadBipedIndex = async function (force) {
+    const now = Date.now();
+    if (!force && PCard._bipedSet && (now - PCard._bipedSetLoadedAt) < 5 * 60 * 1000) return PCard._bipedSet;
+    if (PCard._bipedSetPromise) return PCard._bipedSetPromise;
+    PCard._bipedSetPromise = (async () => {
+      try {
+        const token = localStorage.getItem('tc_admin_token') || '';
+        const r = await fetch('/api/stocktake/biped-product-ids', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!r.ok) { PCard._bipedSet = PCard._bipedSet || new Set(); return PCard._bipedSet; }
+        const d = await r.json();
+        PCard._bipedSet = new Set(d.productIds || []);
+        PCard._bipedSetLoadedAt = Date.now();
+      } catch {
+        PCard._bipedSet = PCard._bipedSet || new Set();
+      } finally {
+        PCard._bipedSetPromise = null;
+      }
+      // Re-renderiza badges nos cards já no DOM (caso loadBipedIndex tenha sido chamado depois dos renders)
+      try {
+        document.querySelectorAll('.pcard-biped-slot[data-pid]').forEach(slot => {
+          const pid = slot.getAttribute('data-pid');
+          const isBiped = PCard._bipedSet && PCard._bipedSet.has(pid);
+          slot.innerHTML = isBiped ? PCard._bipedBadgeHtml() : '';
+        });
+      } catch {}
+      return PCard._bipedSet;
+    })();
+    return PCard._bipedSetPromise;
+  };
+  PCard.isBiped = function (productId) {
+    return !!(PCard._bipedSet && PCard._bipedSet.has(productId));
+  };
+  PCard._bipedBadgeHtml = function () {
+    return '<span title="Produto bipado em loja — confirmado em estoque físico" style="background:#e8f7ee;color:#0a843d;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;">📍 BIPADO</span>';
+  };
+
+  // Auto-load índice de bipados ao carregar a página (admin/bipes/etc)
+  if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { try { PCard.loadBipedIndex(); } catch {} });
+    } else {
+      setTimeout(() => { try { PCard.loadBipedIndex(); } catch {} }, 100);
+    }
+  }
+
+  // ============================================================
   // Carrega entrada de NFe automaticamente quando card entra na viewport
   // ============================================================
   PCard.loadNfeSummary = async function (productId) {
@@ -267,6 +319,11 @@
       ? '<span style="background:#e8f7ee;color:#0a843d;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">✨ COMPLETO</span>'
       : '<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⚠ FALTANTE</span>';
 
+    // Badge BIPADO — preenchido dinamicamente via PCard._bipedSet (carregado 1x)
+    // Slot vazio enquanto o Set não chega; loadBipedIndex re-renderiza ao carregar.
+    const isBipedNow = PCard.isBiped(p.id);
+    const bipedSlotHtml = `<span class="pcard-biped-slot" data-pid="${p.id}">${isBipedNow ? PCard._bipedBadgeHtml() : ''}</span>`;
+
     // Tamanhos por loja
     const byStore = {};
     (p.sizes || []).forEach(sz => {
@@ -339,6 +396,9 @@
       }
     }
     html += '</div>';
+
+    // Linha de badges (BIPADO + outros indicadores universais — visível em TODO card)
+    html += `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-height:18px;">${bipedSlotHtml}</div>`;
 
     // Nome
     html += `<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">${esc(p.name || '?')}</div>`;
