@@ -13,3 +13,4 @@ tmp/
 certificados/
 certs/
 .rwlogin.*
+backups/
