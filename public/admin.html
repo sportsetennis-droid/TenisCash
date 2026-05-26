@@ -1427,6 +1427,16 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
         </select>
       </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Bipados</label>
+        <select id="inv-biped" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">Todos (bipados ou não)</option>
+          <option value="any">📍 Apenas bipados</option>
+          <option value="30">📍 Bipados últimos 30 dias</option>
+          <option value="7">📍 Bipados últimos 7 dias</option>
+          <option value="never">🚫 Nunca bipados</option>
+        </select>
+      </div>
       <div style="grid-column:span 2;">
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
         <input id="inv-f-search" class="form-input" placeholder="nome / SKU / REF / marca / categoria / modalidade / especialidade" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -8879,11 +8889,14 @@ async function initInventoryTab() {
     document.getElementById('inv-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadInvProducts(); });
     // Limpar
     document.getElementById('inv-clear').onclick = () => {
-      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle'].forEach(id => document.getElementById(id).value = '');
+      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle','inv-biped'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       document.getElementById('inv-f-search').value = '';
       document.getElementById('inv-lowstock').checked = false;
       loadInvProducts();
     };
+    // Filtro Bipados: recarrega quando muda
+    const bipedSel = document.getElementById('inv-biped');
+    if (bipedSel) bipedSel.addEventListener('change', () => loadInvProducts());
 
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
@@ -8924,9 +8937,10 @@ async function loadInvProducts(opts) {
   const search = document.getElementById('inv-f-search').value.trim();
   const lifecycleStatus = document.getElementById('inv-lifecycle').value;
   const lowStock = document.getElementById('inv-lowstock').checked;
+  const biped = document.getElementById('inv-biped')?.value || '';
 
   // GUARDA: nao carregar 7k+ cards sem nenhum filtro (trava o browser)
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -8963,7 +8977,16 @@ async function loadInvProducts(opts) {
   document.getElementById('inv-category').value = category;
   const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  const list = data.products || [];
+  let list = data.products || [];
+
+  // FILTRO BIPADOS (frontend): carrega Set de productIds e filtra
+  if (biped) {
+    await _loadBipedProductIds(biped);
+    const set = _bipedProductIds || new Set();
+    if (biped === 'never') list = list.filter(p => !set.has(p.id));
+    else list = list.filter(p => set.has(p.id));
+  }
+
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
 
   if (!window.PCard) { wrap.innerHTML = '<div class="muted">PCard não carregado</div>'; return; }
