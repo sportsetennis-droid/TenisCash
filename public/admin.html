@@ -8911,9 +8911,9 @@ async function loadInvDashboard() {
   </div>
   ${lcHtml ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Distribuição:</div><div>${lcHtml}</div>` : ''}`;
 }
-async function loadInvProducts() {
+async function loadInvProducts(opts) {
+  opts = opts || {};
   const wrap = document.getElementById('inv-list-wrap');
-  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   const qs = new URLSearchParams();
   const brand = document.getElementById('inv-f-brand').value.trim();
   const category = document.getElementById('inv-f-category').value.trim();
@@ -8924,6 +8924,31 @@ async function loadInvProducts() {
   const search = document.getElementById('inv-f-search').value.trim();
   const lifecycleStatus = document.getElementById('inv-lifecycle').value;
   const lowStock = document.getElementById('inv-lowstock').checked;
+
+  // GUARDA: nao carregar 7k+ cards sem nenhum filtro (trava o browser)
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock);
+  if (!hasFilter && !opts.force) {
+    wrap.innerHTML = `
+      <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
+        <div style="font-size:48px;margin-bottom:12px;">🔎</div>
+        <div style="font-size:18px;font-weight:800;color:#1d1d1f;margin-bottom:6px;">Aplique pelo menos 1 filtro</div>
+        <div style="font-size:13px;color:#8e8e93;max-width:480px;margin:0 auto 18px;">
+          Temos mais de 8 mil produtos no catálogo. Renderizar todos de uma vez trava o navegador.<br>
+          Use os filtros acima (marca, categoria, fornecedor, busca, etc) pra reduzir a lista.
+        </div>
+        <button type="button" id="inv-force-loadall" style="padding:10px 18px;background:white;border:1.5px solid #d70015;color:#d70015;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">
+          ⚠ Carregar tudo mesmo assim (lento)
+        </button>
+      </div>`;
+    const forceBtn = document.getElementById('inv-force-loadall');
+    if (forceBtn) forceBtn.onclick = () => {
+      if (!confirm('Tem certeza? Carregar 8 mil+ cards pode travar o navegador por 30s+.')) return;
+      loadInvProducts({ force: true });
+    };
+    return;
+  }
+
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   if (brand) qs.set('brand', brand);
   if (category) qs.set('category', category);
   if (supplier) qs.set('supplier', supplier);
