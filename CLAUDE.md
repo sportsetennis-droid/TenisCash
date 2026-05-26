@@ -371,11 +371,11 @@ Padrões observados:
 - **FIBER** ✅: ref `XXX-NNNN-VER-TAM` (ex: `SFBMUL-0104-V2-44/45/46`). modelGroup = primeiros 2 segmentos (`SFBMUL-0104`). 129 cards em 32 modelos.
 - **ASICS** ✅: ref `MODELO COR+TAM` separado por espaço (ex: `1011B958 403039`). modelGroup = parte antes do espaço (`1011B958`). 480 cards em 89 modelos.
 - **PUMA** ✅: ref `MODELO   COR+TAM` separado por múltiplos espaços (ex: `687979   018PEQ`). modelGroup = primeiros 4-8 dígitos antes do espaço (`687979`). 305 cards em 102 modelos.
-- **Caju Brasil** ⏳ a estudar: ref tipo `022.00400473P`
-- **KAPPA** ⏳ a estudar: ref tipo `KP0119015069G`
-- **REEBOK** ⏳ a estudar: ref tipo `100204834METPAZ41` ou `RUH4D333169U`
-- **ADIDAS** ⏳ a estudar: 708 com ref mas formato variado (EANs + alfanum)
-- **NIKE/FILA/UMBRO/BOTAFOGO/etc**: refs apenas numéricas curtas (4-7 dígitos) — sem padrão visível pra extrair modelo da ref. Possivelmente cada ref já é 1 modelo, sem variação de cor.
+- **Caju Brasil** ✅: ref `NNN.NNN+NNNNN+tam-letra` (ex: `017.00701068P`). modelGroup = primeiros 7 chars (`017.007`). 510 cards em 146 modelos.
+- **REEBOK** ✅: ref `9-digits + M/W + 5-letras-cor + 2-dig-tam` (ex: `100209958WCRAVD38`). modelGroup = primeiros 10 chars (`100209958W`). 128 cards em 23 modelos. (79 pulados em formato variado tipo `RUH4D333169U`.)
+- **ADIDAS** ✅: codigo curto `[A-Z]{2}[0-9]{4}` (ex: `DP3219`, `JG5856`). Quando ref é EAN, extrai do NOME (formato "REF: XXXXXX - ..."). modelGroup = esse codigo. 700 cards em 179 modelos. (166 pulados sem codigo visível.)
+- **KAPPA** ⚠️ parcial: múltiplos padrões. `KP+7dig+3dig+tam` ou `KPCA+2dig+6dig+tam` ou `KP+digits+J+digits`. modelGroup = parte fixa antes do código de cor+tam. 138/351 cards cobertos em 23 modelos. Outros 213 cards têm formatos não cobertos.
+- **NIKE/FILA/UMBRO/BOTAFOGO/Alto Giro/Body for Sure/SALOMON/TOPPER**: refs apenas numéricas curtas (4-7 dígitos) — sem padrão visível pra extrair modelo. Cada ref provavelmente já é 1 produto único (cor+tamanho específico), sem agrupamento possível só pela ref.
 
 Quando o agrupamento por modelo for implementado, salvar em `aiContext.modelGroup` (string normalizada do modelo) e usar pra:
 - Mostrar "também disponível em outras cores" no card
