@@ -8593,17 +8593,37 @@ window.catCreateNode = async function (level) {
     });
     catSel.value = level === 'CATEGORY' ? r.node.id : curCat;
 
-    // Se foi um nível interno, repopula o select correspondente e seleciona o novo
-    if (level !== 'CATEGORY') {
-      _catApplyCascade(); // repopula cascade
-      // Aguarda 50ms pro DOM atualizar e seleciona
-      setTimeout(() => {
-        const targetId = level === 'SUBCATEGORY' ? 'cat-apply-sub' : level === 'MODALITY' ? 'cat-apply-mod' : 'cat-apply-spec';
-        const sel = document.getElementById(targetId);
-        sel.value = r.node.id;
-        _catApplyCascade();
-      }, 50);
+    // Repopula TODA a cadeia manualmente (sem depender de event.target)
+    const subSel = document.getElementById('cat-apply-sub');
+    const modSel = document.getElementById('cat-apply-mod');
+    const specSel = document.getElementById('cat-apply-spec');
+    const catIdNow = catSel.value;
+
+    // Repopula Sub baseado na categoria atual
+    _catPopulateSelectOptions(subSel, catIdNow ? _catChildrenOf(catIdNow) : []);
+    subSel.disabled = !catIdNow;
+
+    // Se acabou de criar SUBCATEGORY, seleciona ela
+    if (level === 'SUBCATEGORY') subSel.value = r.node.id;
+    else if (level !== 'CATEGORY') {
+      // Mantem a sub atual se possivel (procura no novo set)
+      const prevSubId = subSel.dataset.prevValue || '';
+      if (prevSubId && Array.from(subSel.options).some(o => o.value === prevSubId)) subSel.value = prevSubId;
     }
+
+    // Repopula Mod baseado na sub atual
+    const subIdNow = subSel.value;
+    _catPopulateSelectOptions(modSel, subIdNow ? _catChildrenOf(subIdNow) : []);
+    modSel.disabled = !subIdNow;
+
+    if (level === 'MODALITY') modSel.value = r.node.id;
+
+    // Repopula Spec baseado na mod atual
+    const modIdNow = modSel.value;
+    _catPopulateSelectOptions(specSel, modIdNow ? _catChildrenOf(modIdNow) : []);
+    specSel.disabled = !modIdNow;
+
+    if (level === 'SPECIALTY') specSel.value = r.node.id;
     if (typeof toast === 'function') toast('✓ ' + labelPt + ' criada: ' + name);
   } catch (e) {
     alert('Erro ao criar: ' + e.message);
