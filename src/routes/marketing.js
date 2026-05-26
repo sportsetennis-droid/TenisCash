@@ -210,6 +210,12 @@ router.post('/generate/:productId', async (req, res) => {
     const errors = [];
 
     // Em paralelo, gera as copies
+    // Carrega BrandProfile pra usar tom de voz/persona/CTAs da marca ativa
+    let brandProfile = null;
+    if (req.body?.brandSlug) {
+      try { brandProfile = await brandProfiles.getBySlug(req.body.brandSlug); }
+      catch (e) { console.warn('[marketing/generate] brand load fail:', e.message); }
+    }
     let copies = { captionIg: '', captionTiktok: '', captionWa: '', hashtags: '' };
     try {
       copies = await copyGen.generateCopies({
@@ -219,6 +225,7 @@ router.post('/generate/:productId', async (req, res) => {
         price: product.price,
         shortDesc: product.shortDescription,
         sceneHint,
+        brandProfile,
       });
     } catch (e) {
       console.warn('[marketing/generate] copy gen falhou:', e.message);
@@ -387,7 +394,7 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
     const created = [];
     const errors = [];
 
-    // 5. Gera copy via Claude
+    // 5. Gera copy via Claude usando tom da marca ativa (brand já foi carregado)
     let copies = { captionIg: '', captionTiktok: '', captionWa: '', hashtags: '' };
     try {
       copies = await copyGen.generateCopies({
@@ -397,6 +404,7 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
         price: virtualProduct.price,
         shortDesc: virtualProduct.shortDescription,
         sceneHint,
+        brandProfile: brand,
       });
     } catch (e) { errors.push({ step: 'copy', error: e.message }); }
 
