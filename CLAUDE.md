@@ -381,6 +381,31 @@ Quando o agrupamento por modelo for implementado, salvar em `aiContext.modelGrou
 - Curadoria/foto: 1 sessão cobre todas as variantes
 - Cross-selling no PDV
 
+### Fluxo conceitual completo do card (regra)
+
+**Estrutura do card:**
+- **Nome** = MODELO (ex: "Chuck Taylor All Star") — vem de `Product.name`
+- **Marca** = criadora (ex: "Converse") — vem de `Product.brand`
+- **Referência** = código do fornecedor pra essa cor (ex: `CK00040001`) — vem de `Product.sku` ou `aiContext.supplierRef`
+- **Cor** = vem de `aiContext.color`
+- **REF + COR mudam por variação**; nome+marca não.
+
+**Miniaturas de outras cores (estilo On Running):**
+Card mostra fileira de variantes (outros Products com mesma `aiContext.modelGroup`).
+Ao clicar numa miniatura → recarrega info do card principal pra mostrar dados da cor clicada (SKU, tamanhos, loja). NÃO abre modal nem navega — substitui inline.
+
+**SKU (código do tamanho) vem AUTOMATICAMENTE de duas fontes:**
+
+1. **NFe de entrada** (XmlFiscalItem): a NFe traz `ean` (= SKU) + `description` (que contém o tamanho, ex: "TENIS X CHUCK TAYLOR 38"). Ao importar NFe, vincular ProductSize com `barcode=ean` e `size` extraído da description.
+
+2. **Bipe**: vendedor escaneia código de barras numa loja. O sistema:
+   - Busca ProductSize pelo `barcode=ean`
+   - Se acha → atrela bipe a esse ProductSize, **estoque dessa Size na loja onde foi bipada**
+   - **Se NÃO acha mas o ean existe em XmlFiscalItem** → cria ProductSize automaticamente (lê tamanho da description da NFe, productId da NFe, barcode=ean)
+   - O bipe SEMPRE traz `storeId` (loja onde escaneou) → loja física do estoque
+
+**Regra de ouro:** ao bipar, o sistema **sabe automaticamente** (1) qual produto é (via ean), (2) qual tamanho é (via NFe description), (3) qual loja é (via bipe.storeId). Vendedor não precisa preencher nada.
+
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
 NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:

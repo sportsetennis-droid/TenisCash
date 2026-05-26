@@ -17,6 +17,29 @@ const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
 const router = express.Router();
 
+// Extrai tamanho da descricao da NFe (mesmo regex do script create-products-from-nfe-pending.js)
+function inferSizeFromDescription(description) {
+  if (!description) return 'Único';
+  const d = String(description).toUpperCase().trim();
+  const acessorios = /\b(MEIA|MEIAS|BOLSA|MOCHILA|GARRAFA|TOALHA|VISEIRA|BONE|BONÉ|BANDEIRA|FAIXA|MUNHEQUEIRA|RAQUETE|BOLA|CORDA|CASQUEIRA|GORRO|TOUCA|LUVA|ÓCULOS|OCULOS|RELOGIO|MEDALHA|TROFEU)\b/;
+  if (acessorios.test(d)) return 'Único';
+  // Padrao: "TAMANHO:38;COR:..."
+  const mTamCol = d.match(/TAMANHO:\s*([A-Z0-9]+)\s*[;,]/);
+  if (mTamCol) return mTamCol[1];
+  const mTam = d.match(/\bTAM\.?\s*(\d{2})\b/);
+  if (mTam) return mTam[1];
+  const mTamL = d.match(/\bTAM\.?\s*(PP|P|M|G|GG|XGG|XG)\b/);
+  if (mTamL) return mTamL[1];
+  if (/\b\d{2}[\/\-A]\s*\d{2}\b/.test(d) || /\b\d{2}\s+A\s+\d{2}\b/.test(d)) return '?';
+  const mEnd = d.match(/\s(\d{2})\s*$/);
+  if (mEnd) return mEnd[1];
+  if (/\b(PP|XGG|XG|GG|G|M|P)\b\s*$/.test(d)) {
+    const m = d.match(/\b(PP|XGG|XG|GG|G|M|P)\b\s*$/);
+    if (m) return m[1];
+  }
+  return 'Único';
+}
+
 // ============== PÚBLICOS ==============
 
 // GET /api/stocktake/stores → lojas ativas (dropdown)
@@ -75,6 +98,31 @@ router.post('/bipe', async (req, res) => {
           where: { barcode: stripped },
           include: { product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
         });
+      }
+    }
+
+    // FALLBACK: se nao acha ProductSize mas o ean existe em XmlFiscalItem
+    // com productId vinculado, cria ProductSize automaticamente (regra CLAUDE.md)
+    let autoCreated = false;
+    if (matched.length === 0) {
+      const nfeItem = await prisma.xmlFiscalItem.findFirst({
+        where: { ean: code, productId: { not: null } },
+        select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (nfeItem && nfeItem.product) {
+        const sizeStr = inferSizeFromDescription(nfeItem.description);
+        try {
+          const newSize = await prisma.productSize.create({
+            data: { productId: nfeItem.productId, size: sizeStr, barcode: code, stock: 0 },
+          });
+          matched = [{ id: newSize.id, size: sizeStr, barcode: code, product: nfeItem.product }];
+          autoCreated = true;
+          console.log(`[bipe] auto-criou ProductSize size=${sizeStr} barcode=${code} productId=${nfeItem.productId}`);
+        } catch (e) {
+          // pode falhar por unique constraint (productId, size); ignora e segue como nao-encontrado
+          console.warn(`[bipe] auto-create ProductSize falhou: ${e.message}`);
+        }
       }
     }
 
