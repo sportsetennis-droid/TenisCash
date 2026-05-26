@@ -65,7 +65,7 @@ function parseJsonSafe(v) {
 // marcas distintas, categorias distintas, fornecedores ativos, lojas, árvore IA.
 router.get('/form-options', adminOnly, async (_req, res) => {
   try {
-    const [brandRows, catRows, suppliers, stores] = await Promise.all([
+    const [brandRows, catRows, suppliers, stores, categoryNodes] = await Promise.all([
       prisma.$queryRaw`SELECT DISTINCT brand FROM "Product" WHERE active=true AND brand IS NOT NULL AND brand!='' AND brand!='A DEFINIR' ORDER BY brand ASC`,
       prisma.$queryRaw`SELECT DISTINCT category FROM "Product" WHERE active=true AND category IS NOT NULL AND category!='' ORDER BY category ASC`,
       prisma.supplier.findMany({
@@ -77,7 +77,45 @@ router.get('/form-options', adminOnly, async (_req, res) => {
         select: { id: true, code: true, name: true },
         orderBy: { code: 'asc' },
       }),
+      // DINAMICO: arvore real do banco (CategoryNode)
+      prisma.categoryNode.findMany({
+        where: { active: true },
+        select: { id: true, name: true, level: true, parentId: true, position: true },
+        orderBy: [{ position: 'asc' }, { name: 'asc' }],
+      }),
     ]);
+
+    // Constroi tree { types, modalities, tiers } a partir dos CategoryNode
+    // types = nomes de CATEGORY (raiz)
+    // modalities[CategoryName] = MODALITY descendentes dessa CATEGORY (atravessa SUBCATEGORY)
+    // tiers[ModalityName] = SPECIALTY filhos diretos da MODALITY
+    const byId = Object.fromEntries(categoryNodes.map(n => [n.id, n]));
+    const childrenOf = (id) => categoryNodes.filter(n => n.parentId === id);
+    const categories = categoryNodes.filter(n => n.level === 'CATEGORY');
+    const modalities = {};
+    const tiers = {};
+
+    for (const cat of categories) {
+      const modsForCat = [];
+      // Atravessa SUBCATEGORY -> MODALITY
+      const subs = childrenOf(cat.id);
+      for (const sub of subs) {
+        if (sub.level === 'MODALITY') modsForCat.push(sub.name); // alguns Catalogs tem MODALITY direto
+        else if (sub.level === 'SUBCATEGORY') {
+          const subMods = childrenOf(sub.id).filter(n => n.level === 'MODALITY');
+          subMods.forEach(m => modsForCat.push(m.name));
+        }
+      }
+      if (modsForCat.length) modalities[cat.name] = [...new Set(modsForCat)].sort();
+    }
+
+    // tiers: pra cada MODALITY, seus SPECIALTY filhos
+    const mods = categoryNodes.filter(n => n.level === 'MODALITY');
+    for (const mod of mods) {
+      const specs = childrenOf(mod.id).filter(n => n.level === 'SPECIALTY');
+      if (specs.length) tiers[mod.name] = specs.map(s => s.name).sort();
+    }
+
     res.json({
       brands: brandRows.map(r => r.brand),
       categories: catRows.map(r => r.category),
@@ -85,19 +123,9 @@ router.get('/form-options', adminOnly, async (_req, res) => {
       stores,
       genders: ['Homem', 'Mulher', 'Menino', 'Menina'],
       tree: {
-        types: ['Tênis', 'Chuteira', 'Outro'],
-        modalities: {
-          'Tênis': ['Corrida', 'Caminhada / Treino leve', 'LifeStyle', 'Recuperação', 'Musculação / CrossFit / Hyrox', 'Streetwear', 'Sapatilha'],
-          'Chuteira': ['Futsal', 'Society', 'Campo'],
-        },
-        tiers: {
-          'Corrida': ['máximo conforto', 'confortável', 'velocidade', 'custo benefício', 'super treino', 'pau pra toda obra', 'maratona'],
-          'LifeStyle': ['premium', 'clássico', 'casual'],
-          'Musculação / CrossFit / Hyrox': ['pro', 'intermediário', 'custo benefício'],
-          'Futsal': ['entrada', 'custo benefício', 'treino', 'pro'],
-          'Society': ['entrada', 'custo benefício', 'treino', 'pro'],
-          'Campo': ['entrada', 'custo benefício', 'treino', 'pro'],
-        },
+        types: categories.map(c => c.name),
+        modalities,
+        tiers,
       },
     });
   } catch (err) {

@@ -8271,22 +8271,23 @@ async function initCategoriesTab() {
       });
     }
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
-    // Popula Modalidade e Especialidade — arvore v2 (mesma do Estoque)
-    const _catMods = [
-      'Corrida','LifeStyle','Musculação/Crossfit','Recuperação Muscular','StreetWear','Sandálias',
-      'Futsal','Society','Campo',
-      'Legging','Short','Bermuda','Saia','Top','Camiseta','Regata','Calça',
-      'Meias','Joelheira','Cotoveleira',
-    ];
-    _catMods.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('cat-classify-modality').appendChild(o); });
-    const _catTiers = [
-      'Iniciante','Caminhada','Custo Benefício','Confortável','Trail','Super Amortecimento','Super Leve','Super Treino','Super Tênis','Super Trail',
-      'Casual','Clássico','Premium',
-      'Sapatilha de Treino','Treino Leve','Treino de Força','Treino Pro',
-      'Treino','Profissional',
-      'invisível','cano curto','cano médio','cano longo',
-    ];
-    _catTiers.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('cat-classify-tier').appendChild(o); });
+    // Modalidade + Especialidade vêm DA ÁRVORE (dinâmico). Resetar é safe.
+    try {
+      const treeRes = await api('/admin/categories/tree');
+      const tree = treeRes.tree || [];
+      const mods = new Set(), tiers = new Set();
+      (function walk(nodes) {
+        nodes.forEach(n => {
+          if (n.level === 'MODALITY') mods.add(n.name);
+          else if (n.level === 'SPECIALTY') tiers.add(n.name);
+          if (n.children) walk(n.children);
+        });
+      })(tree);
+      const modSel = document.getElementById('cat-classify-modality');
+      Array.from(mods).sort().forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; modSel.appendChild(o); });
+      const tierSel = document.getElementById('cat-classify-tier');
+      Array.from(tiers).sort().forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; tierSel.appendChild(o); });
+    } catch (e) { console.warn('[cat] tree fetch falhou:', e.message); }
     // Selects encadeados
     document.getElementById('cat-apply-category').addEventListener('change', _catApplyCascade);
     document.getElementById('cat-apply-sub').addEventListener('change', _catApplyCascade);
@@ -9039,32 +9040,24 @@ async function initInventoryTab() {
       };
       pop('inv-f-brand', fopts.brands);
       pop('inv-f-supplier', fopts.suppliers, s => s.cnpj || s.id, s => s.companyName);
-      // Modalidades de TODAS as categorias (arvore v2)
-      const allMods = [
-        // Tênis
-        'Corrida','LifeStyle','Musculação/Crossfit','Recuperação Muscular','StreetWear','Sandálias',
-        // Chuteiras
-        'Futsal','Society','Campo',
-        // Vestuário
-        'Legging','Short','Bermuda','Saia','Top','Camiseta','Regata','Calça',
-        // Acessórios
-        'Meias','Joelheira','Cotoveleira',
-      ];
-      allMods.forEach(m => { const o = document.createElement('option'); o.value=m; o.textContent=m; document.getElementById('inv-f-modality').appendChild(o); });
-      // Especialidades de TODAS as modalidades (arvore v2)
-      const allTiers = [
-        // Tênis Corrida
-        'Iniciante','Caminhada','Custo Benefício','Confortável','Trail','Super Amortecimento','Super Leve','Super Treino','Super Tênis','Super Trail',
-        // Tênis LifeStyle
-        'Casual','Clássico','Premium',
-        // Tênis Musculação/Crossfit
-        'Sapatilha de Treino','Treino Leve','Treino de Força','Treino Pro',
-        // Chuteiras
-        'Treino','Profissional',
-        // Acessórios Meias
-        'invisível','cano curto','cano médio','cano longo',
-      ];
-      allTiers.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; document.getElementById('inv-f-tier').appendChild(o); });
+      // Modalidades + Especialidades vêm DA ÁRVORE (dinâmico, atualiza quando cria/exclui via botão +)
+      try {
+        const treeRes = await api('/admin/categories/tree');
+        const tree = treeRes.tree || [];
+        const mods = new Set(), tiers = new Set();
+        function walk(nodes) {
+          nodes.forEach(n => {
+            if (n.level === 'MODALITY') mods.add(n.name);
+            else if (n.level === 'SPECIALTY') tiers.add(n.name);
+            if (n.children) walk(n.children);
+          });
+        }
+        walk(tree);
+        const modSel = document.getElementById('inv-f-modality');
+        Array.from(mods).sort().forEach(m => { const o = document.createElement('option'); o.value=m; o.textContent=m; modSel.appendChild(o); });
+        const tierSel = document.getElementById('inv-f-tier');
+        Array.from(tiers).sort().forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tierSel.appendChild(o); });
+      } catch (e) { console.warn('[inv] tree fetch falhou:', e.message); }
     } catch (e) { console.warn('[inv] form-options falhou', e); }
 
     // Buscar quando Enter no campo de texto
