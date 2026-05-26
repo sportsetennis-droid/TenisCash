@@ -250,6 +250,74 @@
     atualizarStatus();
   });
 
+  // ============================================================
+  // FILA DE RETRY (localStorage) — pra não perder bipe se a rede falhar
+  // ============================================================
+  const RETRY_KEY = 'tc_bipe_retry_queue';
+  function loadRetryQueue() {
+    try { return JSON.parse(localStorage.getItem(RETRY_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function saveRetryQueue(q) {
+    try { localStorage.setItem(RETRY_KEY, JSON.stringify(q.slice(0, 5000))); }
+    catch {}
+  }
+  function enqueueRetry(payload) {
+    const q = loadRetryQueue();
+    q.push({ ...payload, ts: new Date().toISOString() });
+    saveRetryQueue(q);
+    updatePendingBadge();
+  }
+  function updatePendingBadge() {
+    const q = loadRetryQueue();
+    let el = document.getElementById('bipe-pending-badge');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'bipe-pending-badge';
+      el.style.cssText = 'position:fixed;top:10px;right:10px;background:#d70015;color:white;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;z-index:99998;box-shadow:0 4px 12px rgba(0,0,0,0.2);cursor:pointer;display:none;';
+      el.onclick = () => { if (confirm('Tentar reenviar ' + loadRetryQueue().length + ' bipes pendentes agora?')) processRetryQueue(); };
+      document.body.appendChild(el);
+    }
+    if (q.length > 0) {
+      el.style.display = 'block';
+      el.textContent = '⚠ ' + q.length + ' bipes pendentes (rede). Clique pra reenviar.';
+    } else {
+      el.style.display = 'none';
+    }
+  }
+  let _retrying = false;
+  async function processRetryQueue() {
+    if (_retrying) return;
+    _retrying = true;
+    try {
+      let q = loadRetryQueue();
+      const remaining = [];
+      for (const item of q) {
+        try {
+          const r = await fetch('/api/stocktake/bipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ barcode: item.barcode, storeId: item.storeId, sellerId: item.sellerId, sellerName: item.sellerName }),
+          });
+          if (!r.ok) { remaining.push(item); continue; }
+          // sucesso: atualiza o bipe local existente (se ainda no array bipes)
+          const local = bipes.find(b => b.code === item.barcode && b._pending);
+          if (local) {
+            try { const d = await r.json(); Object.assign(local, d); delete local._pending; } catch {}
+          }
+        } catch (e) { remaining.push(item); }
+      }
+      saveRetryQueue(remaining);
+      updatePendingBadge();
+      renderLista();
+      renderStats();
+    } finally { _retrying = false; }
+  }
+  // Auto-retry a cada 10s se houver fila
+  setInterval(() => { if (loadRetryQueue().length > 0 && navigator.onLine !== false) processRetryQueue(); }, 10000);
+  // Tenta na hora que a rede voltar
+  window.addEventListener('online', () => { processRetryQueue(); });
+
   async function enviarBipe(barcode) {
     const storeId = document.getElementById('loja').value;
     const sellerSel = document.getElementById('vendedor').value;
@@ -260,12 +328,16 @@
       alert('Selecione loja e vendedor primeiro!');
       return;
     }
+    const payload = { barcode, storeId, sellerId, sellerName };
     try {
       const r = await fetch('/api/stocktake/bipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode, storeId, sellerId, sellerName }),
+        body: JSON.stringify(payload),
+        // Timeout via AbortController (5s)
+        signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
       });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       const ts = new Date().toISOString();
       const bipe = { ts, code: barcode, ...d };
@@ -274,7 +346,10 @@
       renderLista();
       renderStats();
     } catch (e) {
-      const bipe = { ts: new Date().toISOString(), code: barcode, found: false, error: e.message };
+      // FALHA DE REDE — bipe vai pra fila de retry, NÃO conta como "não encontrado"
+      console.warn('[bipe] rede falhou, enfileirando retry:', e.message);
+      enqueueRetry(payload);
+      const bipe = { ts: new Date().toISOString(), code: barcode, found: null, _pending: true, error: e.message };
       bipes.push(bipe);
       renderLast(bipe);
       renderLista();
@@ -291,6 +366,16 @@
         <div class="last-bipe-info">
           <div class="name">${bipe.product.name}</div>
           <div class="meta">${bipe.product.brand || ''} · Tam ${bipe.product.size || '—'} · ${bipe.code}</div>
+        </div>
+      `;
+    } else if (bipe._pending) {
+      // FALHA DE REDE — bipe ficou pendente local, vai retry automatico
+      el.className = 'last-bipe';
+      el.innerHTML = `
+        <div style="width:50px;height:60px;background:#fff8e0;border:1.5px solid #f0b146;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#b06b00;font-size:24px;font-weight:900">⏳</div>
+        <div class="last-bipe-info" style="background:#fff8e0;padding:6px 10px;border-radius:6px;">
+          <div class="name" style="color:#b06b00;">⚠ Sem rede — bipe na fila</div>
+          <div class="meta">${bipe.code} — vai enviar quando conectar</div>
         </div>
       `;
     } else {
@@ -558,6 +643,8 @@
   });
 
   carregarLojas();
+  // Mostra badge inicial se há bipes pendentes da sessão anterior
+  setTimeout(() => { updatePendingBadge(); if (loadRetryQueue().length > 0) processRetryQueue(); }, 500);
 </script>
 </body>
 </html>
