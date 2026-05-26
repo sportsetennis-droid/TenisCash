@@ -138,6 +138,30 @@ router.post('/bipe', async (req, res) => {
 
 router.use(authMiddleware, adminMiddleware);
 
+// GET /api/stocktake/biped-product-ids
+// Retorna lista única de productIds que já apareceram em bipes (com found=true)
+// Usado pelo card de classificação pra filtrar só produtos que foram bipados.
+router.get('/biped-product-ids', async (req, res) => {
+  try {
+    const { storeId, days } = req.query;
+    const where = { productId: { not: null }, found: true };
+    if (storeId) where.storeId = String(storeId);
+    if (days && /^\d+$/.test(String(days))) {
+      const since = new Date(Date.now() - parseInt(days, 10) * 86400000);
+      where.bipedAt = { gte: since };
+    }
+    const rows = await prisma.stocktakeBipe.findMany({
+      where,
+      select: { productId: true },
+      distinct: ['productId'],
+    });
+    const productIds = rows.map(r => r.productId).filter(Boolean);
+    res.json({ productIds, total: productIds.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stocktake/bipes?storeId=&sellerId=&dateFrom=&dateTo=&applied=&found=&today=1&limit=
 router.get('/bipes', async (req, res) => {
   try {

@@ -1280,6 +1280,16 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <option value="all">Todos</option>
       </select>
     </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Bipados</label>
+      <select id="cat-classify-biped" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Todos (bipados ou não)</option>
+        <option value="any">📍 Apenas bipados — qualquer data</option>
+        <option value="30">📍 Bipados últimos 30 dias</option>
+        <option value="7">📍 Bipados últimos 7 dias</option>
+        <option value="never">🚫 Nunca foram bipados</option>
+      </select>
+    </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -8196,6 +8206,14 @@ async function initCategoriesTab() {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
+    // Filtro Bipados — recarrega lista de productIds bipados antes de renderizar
+    const bipedSel = document.getElementById('cat-classify-biped');
+    if (bipedSel) {
+      bipedSel.addEventListener('change', async () => {
+        await _loadBipedProductIds(bipedSel.value);
+        renderCatClassifyGrid();
+      });
+    }
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
     // Popula Modalidade e Especialidade — arvore v2 (mesma do Estoque)
     const _catMods = [
@@ -8279,6 +8297,24 @@ async function loadCategoriesClassify() {
   renderCatClassifyGrid();
 }
 
+// Set de productIds bipados (carregado on-demand quando filtro Bipados muda)
+let _bipedProductIds = null; // null = não carregado / Set quando carregado
+let _bipedProductIdsKey = ''; // chave do filtro carregado (pra evitar recarregar)
+
+async function _loadBipedProductIds(filterValue) {
+  // filterValue: '' (todos), 'any', 'never', '30', '7'
+  if (!filterValue) { _bipedProductIds = null; _bipedProductIdsKey = ''; return; }
+  // 'any' e 'never' usam mesma lista (todos os bipados sem limite de data)
+  const days = (filterValue === '7' || filterValue === '30') ? filterValue : '';
+  const cacheKey = 'all|' + days;
+  if (_bipedProductIdsKey === cacheKey && _bipedProductIds) return;
+  const url = '/stocktake/biped-product-ids' + (days ? '?days=' + days : '');
+  const data = await api(url);
+  if (data.error || !Array.isArray(data.productIds)) { _bipedProductIds = new Set(); _bipedProductIdsKey = cacheKey; return; }
+  _bipedProductIds = new Set(data.productIds);
+  _bipedProductIdsKey = cacheKey;
+}
+
 function _filteredCatProducts() {
   const brand = document.getElementById('cat-classify-brand').value;
   const category = document.getElementById('cat-classify-category')?.value || '';
@@ -8287,6 +8323,7 @@ function _filteredCatProducts() {
   const modality = document.getElementById('cat-classify-modality')?.value || '';
   const tier = document.getElementById('cat-classify-tier')?.value || '';
   const status = document.getElementById('cat-classify-status').value;
+  const biped = (document.getElementById('cat-classify-biped')?.value) || '';
   const search = (document.getElementById('cat-classify-search').value || '').toLowerCase().trim();
   return _catClassifyProducts.filter(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
@@ -8305,6 +8342,12 @@ function _filteredCatProducts() {
     } else if (status === 'classified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (!isFull) return false;
+    }
+    // Filtro Bipados (independente do status)
+    if (biped) {
+      const isBiped = _bipedProductIds && _bipedProductIds.has(p.id);
+      if (biped === 'never' && isBiped) return false;
+      if ((biped === 'any' || biped === '30' || biped === '7') && !isBiped) return false;
     }
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
