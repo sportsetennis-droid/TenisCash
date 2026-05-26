@@ -100,11 +100,12 @@
       const difColor = dif > 0 ? '#d70015' : dif < 0 ? '#b06b00' : '#0a843d';
       const difSign = dif > 0 ? '−' : dif < 0 ? '+' : '';
       const difLabel = dif === 0 ? '✓' : `${difSign}${Math.abs(dif)}`;
-      html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px;">`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">COMPRADO</div><div style="font-size:17px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">VENDIDO</div><div style="font-size:17px;font-weight:800;color:#0a843d;">${t.vendido || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">ESTOQUE</div><div style="font-size:17px;font-weight:800;color:#E5571E;">${t.emEstoque || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">PERDA</div><div style="font-size:17px;font-weight:800;color:${difColor};">${difLabel}</div></div>`;
+      // Grid responsivo: 4 colunas se couber, senão quebra pra 2x2 automaticamente
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:5px;margin-bottom:10px;">`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">COMPRADO</div><div style="font-size:17px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">VENDIDO</div><div style="font-size:17px;font-weight:800;color:#0a843d;">${t.vendido || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">ESTOQUE</div><div style="font-size:17px;font-weight:800;color:#E5571E;">${t.emEstoque || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">PERDA</div><div style="font-size:17px;font-weight:800;color:${difColor};">${difLabel}</div></div>`;
       html += `</div>`;
       if (t.diferenca > 0) {
         html += `<div style="background:#fff1f0;padding:6px 10px;border-radius:6px;font-size:11px;color:#d70015;margin-bottom:8px;">⚠ ${t.comprado} comprado − ${t.vendido || 0} vendido − ${t.emEstoque} estoque = <b>${t.diferenca} sumiram</b> (perda / não bipado)</div>`;
@@ -425,7 +426,7 @@
 
   PCard.renderGrid = function (products, opts) {
     opts = opts || {};
-    const minWidth = opts.minWidth || '300px';
+    const minWidth = opts.minWidth || '360px';
     let html = '';
     if (opts.showCount !== false) {
       html += `<p style="font-size:13px;color:var(--text2, #8e8e93);margin-bottom:12px;">${products.length} produtos</p>`;
