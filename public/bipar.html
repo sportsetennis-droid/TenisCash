@@ -392,6 +392,8 @@
     while (debugOverlay.children.length > 50) debugOverlay.firstChild?.remove();
   }
 
+  let resetCount = 0;
+  let lastResetAt = 0;
   function resetInput(reason) {
     input.value = '';
     lastChar = '';
@@ -399,13 +401,25 @@
     if (reason) {
       console.warn('[bipar] reset:', reason);
       logDebug('RESET: ' + reason);
+      const now = Date.now();
+      // Conta resets seguidos (dentro de 15s)
+      if (now - lastResetAt < 15000) resetCount++; else resetCount = 1;
+      lastResetAt = now;
       const el = document.getElementById('last-bipe');
       if (el) {
         el.className = 'last-bipe error';
-        el.textContent = '⚠️ Leitor bugado, resetei. Tente bipar de novo. (' + reason + ')';
+        if (resetCount >= 3) {
+          // 3+ resets seguidos = leitor TRAVADO. Oferece digitação manual.
+          el.innerHTML = '⚠️ <b>Leitor com problema</b> (' + resetCount + ' tentativas). ' +
+            '<button onclick="window.abrirDigitacaoManual && window.abrirDigitacaoManual()" style="margin-left:8px;padding:6px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">⌨️ Digitar SKU manualmente</button>';
+        } else {
+          el.textContent = '⚠️ Leitor bugado, resetei. Tente bipar de novo. (' + reason + ')';
+        }
       }
     }
   }
+  // Reset contador quando vier 1 bipe SUCESSO
+  window.resetBipeErrorCounter = () => { resetCount = 0; lastResetAt = 0; };
 
   input.addEventListener('keydown', (e) => {
     const now = Date.now();
@@ -418,18 +432,18 @@
       e.preventDefault();
       const v = input.value.trim();
       if (v) {
-        // Valida: código de barras esperado tem 6-20 dígitos (EAN-8/13, GTIN, UPC, Code128)
-        // Mas NÃO bloqueia: deixa enviar e backend valida — só avisa
-        if (v.length > 20) {
+        // Limites afrouxados (LOJA03 com leitor com mau contato — tolera mais)
+        if (v.length > 30) {
           resetInput('código muito longo (' + v.length + ' chars). Bipador travado?');
           return;
         }
-        if (/^(.)\1{6,}$/.test(v)) {
-          // String tipo "33333333" ou "11111111" — claro bug do leitor
+        if (/^(.)\1{10,}$/.test(v)) {
+          // Só bloqueia se MUITOS chars iguais seguidos (10+, antes era 7)
           resetInput('código com char repetido (bipador bugado): ' + v.slice(0, 20));
           return;
         }
         enviarBipe(v);
+        if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
         input.value = '';
         lastChar = '';
         sameCharCount = 0;
@@ -438,11 +452,11 @@
     }
 
     // Detecta stream de char repetido (bug do bipador)
-    // Real barcode é unique pattern (várias letras/dígitos diferentes), nunca 12x mesmo char.
-    if (e.key.length === 1) { // ignora teclas especiais
+    // Tolerância aumentada de 12 → 20 (LOJA03 mau contato)
+    if (e.key.length === 1) {
       if (e.key === lastChar) {
         sameCharCount++;
-        if (sameCharCount >= 12) {
+        if (sameCharCount >= 20) {
           e.preventDefault();
           resetInput('detectei ' + sameCharCount + 'x o char "' + lastChar + '" — bipador bugado');
           return;
@@ -453,12 +467,39 @@
       }
     }
 
-    // Trava input gigante (>60 chars = bipador travado em loop)
-    if (input.value.length > 60) {
+    // Trava input gigante (>100 chars = bipador travado em loop, antes era 60)
+    if (input.value.length > 100) {
       e.preventDefault();
-      resetInput('input ultrapassou 60 chars — bipador travado');
+      resetInput('input ultrapassou 100 chars — bipador travado');
     }
   });
+
+  // ===== DIGITAÇÃO MANUAL (fallback quando leitor falha) =====
+  window.abrirDigitacaoManual = function () {
+    const html = '<div id="manual-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px">' +
+      '<div style="background:white;border-radius:18px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+        '<div style="font-size:22px;font-weight:800;color:#1d1d1f;margin-bottom:6px;">⌨️ Digitar SKU manual</div>' +
+        '<div style="font-size:13px;color:#8e8e93;margin-bottom:16px;">Olhe o código de barras embaixo do produto e digite os números (sem espaços).</div>' +
+        '<input id="manual-sku-input" type="text" inputmode="numeric" autocomplete="off" placeholder="ex: 7908341493884" style="width:100%;padding:18px;font-size:24px;font-family:monospace;border:2px solid #E5571E;border-radius:12px;letter-spacing:1px;text-align:center;">' +
+        '<div style="display:flex;gap:10px;margin-top:14px;">' +
+          '<button onclick="document.getElementById(\'manual-overlay\').remove();document.getElementById(\'bipe-input\')?.focus()" style="flex:1;padding:14px;background:#f0f0f3;color:#1d1d1f;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Cancelar</button>' +
+          '<button onclick="confirmarSkuManual()" style="flex:2;padding:14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Bipar este SKU</button>' +
+        '</div>' +
+      '</div></div>';
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div.firstChild);
+    setTimeout(() => { const i = document.getElementById('manual-sku-input'); if (i) { i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') window.confirmarSkuManual(); }); } }, 50);
+  };
+  window.confirmarSkuManual = function () {
+    const inp = document.getElementById('manual-sku-input');
+    const v = (inp?.value || '').trim();
+    if (!v) { inp?.focus(); return; }
+    document.getElementById('manual-overlay')?.remove();
+    enviarBipe(v);
+    if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
+    setTimeout(() => document.getElementById('codigo')?.focus(), 100);
+  };
 
   // Reset automático se ficar input parado >2s sem Enter (leitor enviou parcial e parou)
   setInterval(() => {
