@@ -176,7 +176,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
-<script src="/_product-card.js?v=20260525-biped-badge"></script>
+<script src="/_product-card.js?v=20260526-ref-cor"></script>
 </head>
 <body>
 
@@ -2523,18 +2523,23 @@ function escapeHtmlMk(s) {
     <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)">PRODUTO</div>
     <input type="hidden" id="cat-p-id">
 
-    <!-- CARD 1: Identificação -->
+    <!-- CARD 1: Identificação do MODELO (card = ref + descrição + cor) -->
     <div style="margin-top:16px;padding:14px;background:linear-gradient(135deg,#f5f5f7,#fafafa);border-radius:12px;border:1px solid #e5e5ea;">
-      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">📦 IDENTIFICAÇÃO</div>
-      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
+      <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:6px">📦 IDENTIFICAÇÃO DO MODELO</div>
+      <div style="font-size:11px;color:#8e8e93;margin-bottom:10px">1 card = 1 modelo único (referência + descrição + cor). Cada tamanho dentro do card tem seu próprio SKU no bloco "tamanhos" abaixo.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div>
-          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">SKU</label>
-          <input class="form-input" id="cat-p-sku" placeholder="Ex: NIK-PEG40" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">REFERÊNCIA DO FORNECEDOR</label>
+          <input class="form-input" id="cat-p-sku" placeholder="Ex: CK09090001 (código do modelo no fornecedor)" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
         </div>
         <div>
-          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">PRODUTO (Nome)</label>
-          <input class="form-input" id="cat-p-name" placeholder="Ex: Tênis Nike Pegasus 40 Branco" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+          <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">COR</label>
+          <input class="form-input" id="cat-p-color" placeholder="Ex: Branco/Marinho, Preto, Azul" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
         </div>
+      </div>
+      <div>
+        <label style="font-size:10px;letter-spacing:1.5px;color:#8e8e93;font-weight:600">DESCRIÇÃO DO PRODUTO (nome do modelo)</label>
+        <input class="form-input" id="cat-p-name" placeholder="Ex: Tênis Converse Chuck Taylor All Star" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
       </div>
     </div>
 
@@ -3725,6 +3730,7 @@ async function openCatProductModal(id) {
     document.getElementById('cat-p-id').value = '';
     document.getElementById('cat-p-sku').value = '';
     document.getElementById('cat-p-name').value = '';
+    { const c = document.getElementById('cat-p-color'); if (c) c.value = ''; }
     document.getElementById('cat-p-brand').value = '';
     document.getElementById('cat-p-category').value = '';
     document.getElementById('cat-p-price').value = '';
@@ -3749,6 +3755,12 @@ async function openCatProductModal(id) {
   document.getElementById('cat-p-id').value = p.id;
   document.getElementById('cat-p-sku').value = p.sku;
   document.getElementById('cat-p-name').value = p.name;
+  // Cor: carrega de aiContext.color
+  try {
+    const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
+    const colorInput = document.getElementById('cat-p-color');
+    if (colorInput) colorInput.value = ctx.color || '';
+  } catch {}
   // Marca/Categoria: se a opção não existe no select, adiciona on-the-fly
   ['brand','category'].forEach(k => {
     const sel = document.getElementById('cat-p-' + k);
@@ -3864,7 +3876,9 @@ async function catProductSave() {
     const sup = (_catFormOpts.suppliers || []).find(s => s.id === supplierId);
     if (sup) supplierCnpj = sup.cnpj;
   }
-  const aiContext = { ...existingCtx, classification: cls, supplierId, supplierCnpj };
+  // Cor: salvo em aiContext.color (componente do card junto com ref + descrição)
+  const colorVal = (document.getElementById('cat-p-color')?.value || '').trim();
+  const aiContext = { ...existingCtx, classification: cls, supplierId, supplierCnpj, color: colorVal || existingCtx.color || null };
 
   const body = {
     sku: document.getElementById('cat-p-sku').value.trim(),
