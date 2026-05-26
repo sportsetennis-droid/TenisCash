@@ -406,6 +406,22 @@ Ao clicar numa miniatura → recarrega info do card principal pra mostrar dados 
 
 **Regra de ouro:** ao bipar, o sistema **sabe automaticamente** (1) qual produto é (via ean), (2) qual tamanho é (via NFe description), (3) qual loja é (via bipe.storeId). Vendedor não precisa preencher nada.
 
+### Bipe em tempo real (real-time)
+
+**Cada bipe = +1 unidade NA HORA no StoreStock.** Sem fluxo de "aplicar depois".
+
+- `POST /api/stocktake/bipe` faz `prisma.storeStock.upsert({ ..., increment: 1 })` imediatamente
+- Marca `StocktakeBipe.applied = true` na criação
+- Card do produto mostra o estoque atualizado em segundos
+
+**Regra de uso (dono confirmou):** vendedor bipa **UMA vez** cada unidade física. Se aparecer mais bipes da mesma SKU que a quantidade comprada na NFe → erro de bipagem detectável visualmente (card mostra comprado X vs bipado Y).
+
+**Comparação visual no card** (já implementado em `/products/:id/nfe-summary`):
+- COMPRADO (NFe entrada) vs BIPADO (StocktakeBipe contado) vs VENDIDO vs ESTOQUE
+- Se BIPADO > COMPRADO → bipagem duplicada, dono identifica olhando
+
+Não há "desfazer bipe" automático. Se erro for detectado, dono deleta o bipe manual em `/bipes.html` e ajusta StoreStock manual.
+
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
 NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:
