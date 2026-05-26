@@ -1301,19 +1301,31 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">1. Categoria</label>
-        <select id="cat-apply-category" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">—</option></select>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          <select id="cat-apply-category" class="form-input" style="flex:1;background:white;color:#1d1d1f;"><option value="">—</option></select>
+          <button type="button" onclick="catCreateNode('CATEGORY')" title="Criar nova Categoria" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+        </div>
       </div>
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">2. Sub</label>
-        <select id="cat-apply-sub" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          <select id="cat-apply-sub" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+          <button type="button" onclick="catCreateNode('SUBCATEGORY')" title="Criar nova Subcategoria filha da Categoria selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+        </div>
       </div>
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">3. Modalidade</label>
-        <select id="cat-apply-mod" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          <select id="cat-apply-mod" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+          <button type="button" onclick="catCreateNode('MODALITY')" title="Criar nova Modalidade filha da Subcategoria selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+        </div>
       </div>
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">4. Especialidade</label>
-        <select id="cat-apply-spec" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          <select id="cat-apply-spec" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
+          <button type="button" onclick="catCreateNode('SPECIALTY')" title="Criar nova Especialidade filha da Modalidade selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+        </div>
       </div>
       <button id="cat-apply-btn" class="btn btn-primary" style="height:42px;">✓ Aplicar</button>
     </div>
@@ -8527,6 +8539,76 @@ function _catSyncFilterToApply() {
     else info.textContent = 'Selecione filtros acima ou escolha aqui o que aplicar.';
   }
 }
+
+// CRIA NÓ NOVO na árvore via POST /admin/categories.
+// level: 'CATEGORY' | 'SUBCATEGORY' | 'MODALITY' | 'SPECIALTY'
+// Pega parentId do select do nível superior (se aplicável).
+window.catCreateNode = async function (level) {
+  // Mapeia level -> id do select pai
+  const parentSelectId = {
+    CATEGORY: null,
+    SUBCATEGORY: 'cat-apply-category',
+    MODALITY: 'cat-apply-sub',
+    SPECIALTY: 'cat-apply-mod',
+  }[level];
+  const labelPt = {
+    CATEGORY: 'Categoria',
+    SUBCATEGORY: 'Subcategoria',
+    MODALITY: 'Modalidade',
+    SPECIALTY: 'Especialidade',
+  }[level];
+
+  let parentId = null;
+  if (parentSelectId) {
+    parentId = document.getElementById(parentSelectId).value;
+    if (!parentId) {
+      alert('Selecione o nível superior primeiro (' + (parentSelectId === 'cat-apply-category' ? 'Categoria' : parentSelectId === 'cat-apply-sub' ? 'Subcategoria' : 'Modalidade') + ').');
+      return;
+    }
+  }
+
+  const name = prompt('Nome da nova ' + labelPt + ':');
+  if (!name || !name.trim()) return;
+
+  try {
+    const r = await api('/admin/categories', 'POST', { name: name.trim(), level, parentId });
+    if (r.error) { alert('Erro: ' + r.error); return; }
+    // Recarrega a tree e seleciona o novo nó
+    const treeRes = await api('/admin/categories/tree');
+    _catTreeData = treeRes.tree || [];
+    _catTreeFlat = [];
+    function walkFlat(nodes, parent) {
+      nodes.forEach(n => { _catTreeFlat.push({ ...n, parent }); walkFlat(n.children || [], n); });
+    }
+    walkFlat(_catTreeData, null);
+
+    // Repopula select de categoria
+    const catSel = document.getElementById('cat-apply-category');
+    const curCat = catSel.value;
+    catSel.innerHTML = '<option value="">—</option>';
+    _catTreeData.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.id; opt.textContent = n.name;
+      catSel.appendChild(opt);
+    });
+    catSel.value = level === 'CATEGORY' ? r.node.id : curCat;
+
+    // Se foi um nível interno, repopula o select correspondente e seleciona o novo
+    if (level !== 'CATEGORY') {
+      _catApplyCascade(); // repopula cascade
+      // Aguarda 50ms pro DOM atualizar e seleciona
+      setTimeout(() => {
+        const targetId = level === 'SUBCATEGORY' ? 'cat-apply-sub' : level === 'MODALITY' ? 'cat-apply-mod' : 'cat-apply-spec';
+        const sel = document.getElementById(targetId);
+        sel.value = r.node.id;
+        _catApplyCascade();
+      }, 50);
+    }
+    if (typeof toast === 'function') toast('✓ ' + labelPt + ' criada: ' + name);
+  } catch (e) {
+    alert('Erro ao criar: ' + e.message);
+  }
+};
 
 function _catApplyCascade() {
   const catId = document.getElementById('cat-apply-category').value;
