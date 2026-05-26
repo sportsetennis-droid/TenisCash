@@ -4,7 +4,7 @@ const { authMiddleware, prisma } = require('../middleware');
 const router = express.Router();
 
 function sellerOnly(req, res, next) {
-  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
   }
   next();
@@ -229,7 +229,7 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
     // Destino request: primeiro superadmin/admin ativo (um único destinatário)
     if (t === 'request') {
       const admin = await prisma.user.findFirst({
-        where: { active: true, role: { in: ['superadmin', 'admin'] } },
+        where: { active: true, role: { in: ['superadmin', 'admin', 'manager'] } },
         orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
         select: { id: true },
       });
@@ -255,7 +255,7 @@ router.post('/', authMiddleware, sellerOnly, async (req, res) => {
     });
     if (!dest || !dest.active) return res.status(400).json({ error: 'Destinatário não encontrado' });
 
-    if (dest.role === 'admin' || dest.role === 'superadmin') {
+    if (dest.role === 'admin' || dest.role === 'superadmin' || dest.role === 'manager') {
       if (t !== 'message') return res.status(400).json({ error: 'Vendedor só pode falar com admin via message ou request' });
     }
 

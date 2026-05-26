@@ -280,7 +280,7 @@ async function upsertSaleFromOrder(nsOrder) {
   // 2. Cria/atualiza Sale local
   // Schema Sale exige sellerId (não opcional). Usa primeiro admin/seller disponível como "operador" da venda online.
   const operator = await prisma.user.findFirst({
-    where: { role: { in: ['admin', 'superadmin', 'seller'] }, active: true },
+    where: { role: { in: ['admin', 'superadmin', 'manager', 'seller'] }, active: true },
   });
   if (!operator) {
     await logSync('order', 'error', `Sem operador disponível para venda Nuvemshop ${nsOrder.id}`);

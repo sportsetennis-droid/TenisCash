@@ -4,7 +4,7 @@ const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middl
 const router = express.Router();
 
 function sellerOnly(req, res, next) {
-  if (!['seller', 'admin', 'superadmin', 'store'].includes(req.userRole)) {
+  if (!['seller', 'admin', 'superadmin', 'manager', 'store'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso restrito ao vendedor / loja' });
   }
   next();
@@ -229,7 +229,7 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
       },
     });
     if (!u || !u.active) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
       return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
     }
 
@@ -288,7 +288,7 @@ router.get('/clockin/today', authMiddleware, sellerOnly, async (req, res) => {
       select: { id: true, role: true, active: true, storeId: true },
     });
     if (!u || !u.active) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
       return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
     }
 
@@ -314,7 +314,7 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
       select: { id: true, role: true, active: true },
     });
     if (!u || !u.active) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+    if (u.role !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
       return res.status(403).json({ error: 'Acesso restrito ao vendedor' });
     }
 

@@ -49,7 +49,7 @@ router.get('/generate', authMiddleware, async (req, res) => {
 router.post('/validate', authMiddleware, async (req, res) => {
   try {
     // Só admin pode validar QR
-    if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+    if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
       return res.status(403).json({ error: 'Apenas administradores podem validar QR codes' });
     }
 

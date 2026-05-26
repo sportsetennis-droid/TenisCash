@@ -593,8 +593,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- SELLERS SECTION -->
   <div class="section" id="tab-sellers" style="display:none">
     <div class="section-head">
-      <span class="section-title">Gerenciar Vendedores</span>
-      <button class="refresh-btn" onclick="loadSellers()">↻</button>
+      <span class="section-title">Gerenciar Vendedores e Gerentes</span>
+      <button class="refresh-btn" onclick="loadSellers(); loadManagers()">↻</button>
     </div>
 
     <div style="background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06);border-radius:14px;padding:16px">
@@ -619,6 +619,37 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         Após tornar vendedor, ele entra no modo vendedor no app.
       </div>
       <div id="seller-assign-msg" style="margin-top:10px"></div>
+    </div>
+
+    <!-- TORNAR GERENTE (acesso a TODAS as lojas) -->
+    <div style="background:linear-gradient(180deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));border:1px solid rgba(245,158,11,0.18);border-radius:14px;padding:16px;margin-top:18px">
+      <div style="font-size:12px;letter-spacing:2px;color:#b45309;margin-bottom:10px">TORNAR GERENTE — ACESSO TOTAL</div>
+
+      <div class="form-grid" style="grid-template-columns: 1fr auto;">
+        <div class="picker">
+          <input class="form-input" id="manager-user-search" placeholder="Buscar usuário por nome ou telefone..." oninput="searchManagerPicker()" autocomplete="off">
+          <div class="picker-list" id="manager-user-picker" style="display:none"></div>
+        </div>
+
+        <button class="btn btn-primary" onclick="promoteManager()" style="background:#f59e0b;border-color:#f59e0b">Tornar Gerente</button>
+      </div>
+
+      <div class="note">
+        <span class="pill pill-warn">Atenção</span>
+        Gerente tem acesso a <strong>TODAS as lojas</strong>: vê bipes, estoque, vendas, NFe, marketing e curadoria de qualquer loja.
+        Não fica preso em loja única como o vendedor.
+      </div>
+      <div id="manager-assign-msg" style="margin-top:10px"></div>
+    </div>
+
+    <div style="margin-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:12px;letter-spacing:2px;color:#b45309">GERENTES ATUAIS</div>
+        <span class="pill pill-ok" id="manager-count" style="background:rgba(245,158,11,0.12);color:#b45309">0 gerentes</span>
+      </div>
+      <div id="managers-table-wrap">
+        <div class="loading-spinner">Carregando...</div>
+      </div>
     </div>
 
     <div style="margin-top:18px">
@@ -2740,8 +2771,8 @@ async function doAdminLogin() {
 
   const data = await api('/auth/login', 'POST', body);
   if (data.error) { document.getElementById('login-error').textContent = data.error; return; }
-  if (data.user.role !== 'admin' && data.user.role !== 'superadmin') {
-    document.getElementById('login-error').textContent = 'Acesso restrito a administradores';
+  if (data.user.role !== 'admin' && data.user.role !== 'superadmin' && data.user.role !== 'manager') {
+    document.getElementById('login-error').textContent = 'Acesso restrito a administradores e gerentes';
     return;
   }
   token = data.token;
@@ -2763,7 +2794,7 @@ async function showDashboard() {
   document.getElementById('dashboard').style.display = 'block';
   if (!adminUser) {
     const me = await api('/auth/me');
-    if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin')) { doLogout(); return; }
+    if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin' && me.user.role !== 'manager')) { doLogout(); return; }
     adminUser = me.user;
   }
   document.getElementById('admin-name').textContent = adminUser.name;
@@ -2776,6 +2807,7 @@ async function loadDashboard() {
   loadTransactions();
   await loadStores();
   loadSellers();
+  loadManagers();
   loadAdminMessageStats();
   loadAdminAiCostCard();
 }
@@ -4758,6 +4790,128 @@ async function removeSeller(userId) {
   loadSellers();
 }
 
+// ==================== GERENTE (acesso TODAS as lojas) ====================
+let selectedManagerUser = null;
+let managerPickerTimer = null;
+let managerAllUsers = [];
+
+function searchManagerPicker() {
+  clearTimeout(managerPickerTimer);
+  managerPickerTimer = setTimeout(async () => {
+    const q = document.getElementById('manager-user-search').value.trim();
+    const list = document.getElementById('manager-user-picker');
+    selectedManagerUser = null;
+    if (!q || q.length < 2) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    const data = await api('/admin/users?search=' + encodeURIComponent(q));
+    if (data.error || !data.users) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    const users = data.users.slice(0, 8);
+    if (users.length === 0) { list.style.display = 'none'; list.innerHTML = ''; return; }
+
+    list.innerHTML = users.map(u => {
+      const phone = (u.phone || '').toString();
+      const role = (u.role || '').toString();
+      const roleBadge = role === 'superadmin' ? 'badge-super' : role === 'admin' ? 'badge-admin' : 'badge-user';
+      return (
+        '<div class="picker-item" data-user-id="' + u.id + '">' +
+          '<strong>' + (escapeHtml(u.name || '—')) + '</strong>' +
+          '<div class="sub">' +
+            '<span style="margin-right:8px;color:var(--text2)">' + (escapeHtml(phone || '—')) + '</span>' +
+            '<span class="badge-role ' + roleBadge + '">' + role.toUpperCase() + '</span>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    managerAllUsers = data.users;
+    list.style.display = 'block';
+    Array.from(list.querySelectorAll('.picker-item')).forEach(el => {
+      el.onclick = () => pickManagerUser(el.dataset.userId);
+    });
+  }, 350);
+}
+
+function pickManagerUser(userId) {
+  const u = (managerAllUsers || []).find(x => x.id === userId);
+  if (!u) return;
+  selectedManagerUser = u;
+  document.getElementById('manager-user-search').value = (u.name || '—') + ' (' + (u.phone || '—') + ')';
+  const list = document.getElementById('manager-user-picker');
+  list.style.display = 'none';
+  list.innerHTML = '';
+}
+
+async function promoteManager() {
+  const msg = document.getElementById('manager-assign-msg');
+  msg.innerHTML = '';
+  if (!selectedManagerUser) { msg.innerHTML = '<div class="login-error">Selecione um usuário</div>'; return; }
+  const phone = (selectedManagerUser.phone || '').toString();
+  if (!phone) { msg.innerHTML = '<div class="login-error">Usuário sem telefone</div>'; return; }
+
+  const ok = confirm('Promover ' + selectedManagerUser.name + ' a GERENTE?\\n\\nIsso dá acesso a TODAS as lojas (bipes, estoque, vendas, NFe, marketing, curadoria).');
+  if (!ok) return;
+
+  const data = await api('/admin/manager/promote', 'POST', { phone });
+  if (data.error) { msg.innerHTML = '<div class="login-error">' + data.error + '</div>'; return; }
+
+  msg.innerHTML = '<div style="color:var(--green);font-size:13px">' + (data.message || 'Gerente promovido') + '</div>';
+  selectedManagerUser = null;
+  document.getElementById('manager-user-search').value = '';
+  loadManagers();
+}
+
+async function loadManagers() {
+  const wrap = document.getElementById('managers-table-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando gerentes...</div>';
+  const data = await api('/admin/managers');
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">Erro: ' + data.error + '</div>'; return; }
+
+  const managers = data.managers || [];
+  const countEl = document.getElementById('manager-count');
+  if (countEl) countEl.textContent = managers.length + (managers.length === 1 ? ' gerente' : ' gerentes');
+
+  if (managers.length === 0) {
+    wrap.innerHTML = '<div style="text-align:center;padding:30px;color:#8e8e93;background:rgba(245,158,11,0.04);border:1px dashed rgba(245,158,11,0.3);border-radius:12px;">Nenhum gerente cadastrado ainda</div>';
+    return;
+  }
+
+  function ini(n){if(!n)return '?';const p=String(n).trim().split(/\s+/);return (p.length===1?p[0].slice(0,2):p[0][0]+p[p.length-1][0]).toUpperCase();}
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+  managers.forEach(m => {
+    html += '<div style="background:white;border:1px solid rgba(245,158,11,0.25);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 0 rgba(245,158,11,0.06);">';
+    html += '<div style="display:flex;gap:12px;align-items:center;">';
+    html += '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#fbbf24);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">' + ini(m.name) + '</div>';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="font-weight:700;font-size:14px;color:#1d1d1f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(m.name || '—') + '</div>';
+    html += '<div style="font-size:10px;font-weight:700;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:6px;display:inline-block;margin-top:3px;letter-spacing:0.5px;">GERENTE</div>';
+    html += '</div></div>';
+    html += '<div style="font-size:12px;color:#8e8e93;">📱 ' + escapeHtml(m.phone || '—') + '</div>';
+    html += '<div style="font-size:12px;color:#1d1d1f;padding:6px 10px;background:#fef3c7;border-radius:8px;">🏬 <strong>Acesso a TODAS as lojas</strong></div>';
+    html += '<button class="js-remove-manager" data-mgr-id="' + m.id + '" data-mgr-name="' + escapeHtml(m.name || '') + '" style="padding:8px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;margin-top:auto;">🗑 Remover gerente</button>';
+    html += '</div>';
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+  Array.from(wrap.querySelectorAll('.js-remove-manager')).forEach(btn => {
+    btn.onclick = () => removeManagerConfirm(btn.dataset.mgrId, btn.dataset.mgrName);
+  });
+}
+
+function removeManagerConfirm(userId, name) {
+  const ok = confirm('Remover ' + name + ' como gerente?\\n\\nIsso vai tirar o acesso dele a todas as lojas (volta a ser USER).');
+  if (!ok) return;
+  removeManager(userId);
+}
+
+async function removeManager(userId) {
+  const data = await api('/admin/manager/remove', 'POST', { userId });
+  if (data.error) { alert(data.error); return; }
+  loadManagers();
+}
+
 // CLOCK-IN (ADMIN)
 async function loadClockinAdmin() {
   const wrap = document.getElementById('clockin-summary-wrap');
@@ -5315,7 +5469,7 @@ function switchTab(tab, btn) {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
   });
-  if (tab === 'sellers') { loadStores(); loadSellers(); }
+  if (tab === 'sellers') { loadStores(); loadSellers(); loadManagers(); }
   if (tab === 'clockin') { loadClockinAdmin(); }
   if (tab === 'messages') { initAdminMessagesUI(); }
   if (tab === 'catalog') { initAdminCatalogTab(); }

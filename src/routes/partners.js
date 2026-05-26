@@ -14,7 +14,7 @@ const TIER_THRESHOLDS = [
 ];
 
 function adminOnly(req, res, next) {
-  if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+  if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito a administradores' });
   }
   next();
@@ -28,7 +28,7 @@ function partnerOnly(req, res, next) {
 }
 
 function sellerOrAdmin(req, res, next) {
-  if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+  if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso restrito a vendedor ou admin' });
   }
   next();
@@ -249,7 +249,7 @@ router.post('/partner/redeem', authMiddleware, partnerOnly, async (req, res) => 
       .join('\n');
 
     const adminUser = await prisma.user.findFirst({
-      where: { role: { in: ['admin', 'superadmin'] }, active: true },
+      where: { role: { in: ['admin', 'superadmin', 'manager'] }, active: true },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });

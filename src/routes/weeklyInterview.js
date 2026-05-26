@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 function requireSeller(req, res, next) {
-  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+  if (req.userRole !== 'seller' && req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito a vendedores' });
   }
   next();
@@ -175,7 +175,7 @@ router.post('/:id/submit', requireSeller, async (req, res) => {
 // Admin: relatório agregado das entrevistas
 router.get('/_admin/report', requireSeller, async (req, res) => {
   try {
-    if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+    if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
       return res.status(403).json({ error: 'Acesso restrito a admin' });
     }
     const { weekStartDate } = weekBoundsFor();

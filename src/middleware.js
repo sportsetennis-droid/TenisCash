@@ -22,7 +22,7 @@ function authMiddleware(req, res, next) {
 }
 
 function adminMiddleware(req, res, next) {
-  if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+  if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito a administradores' });
   }
   next();
@@ -43,7 +43,8 @@ async function storeScope(req, _res, next) {
       storeId: u?.storeId || null,
       isStoreLocked: u?.role === 'store',
       isSellerLocked: u?.role === 'seller',
-      isAdmin: u?.role === 'admin' || u?.role === 'superadmin',
+      isAdmin: u?.role === 'admin' || u?.role === 'superadmin' || u?.role === 'manager',
+      isManager: u?.role === 'manager',
     };
   } catch (_) {
     req.scope = { storeId: null, isStoreLocked: false, isSellerLocked: false, isAdmin: false };

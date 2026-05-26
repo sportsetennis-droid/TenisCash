@@ -37,7 +37,7 @@ function pfxSenhaFor(cnpj) {
 // ============================================================
 router.post('/emit-nfce-from-sale', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const { saleId, paymentMethod, acquirerKey, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
@@ -171,7 +171,7 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 // ============================================================
 router.post('/emit-nfe55', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const b = req.body || {};
@@ -268,7 +268,7 @@ router.post('/emit-nfe55', async (req, res) => {
 // ============================================================
 router.post('/finalize-nfe-draft/:id', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const doc = await prisma.fiscalDocument.findUnique({
@@ -394,7 +394,7 @@ async function getSpedPdf() {
 
 router.get('/documents/:id/danfe', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const doc = await prisma.fiscalDocument.findUnique({
@@ -431,7 +431,7 @@ router.get('/documents/:id/danfe', async (req, res) => {
 // Acesso via token query param (impressora não consegue mandar header).
 router.get('/documents/:id/print', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const docId = req.params.id;

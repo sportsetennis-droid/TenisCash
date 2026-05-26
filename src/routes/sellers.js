@@ -4,7 +4,7 @@ const { authMiddleware, prisma } = require('../middleware');
 const router = express.Router();
 
 function allowedSearchRoles(req, res, next) {
-  if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+  if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso negado' });
   }
   next();
@@ -32,7 +32,7 @@ router.get('/search', authMiddleware, allowedSearchRoles, async (req, res) => {
       where: {
         id: { not: req.userId },
         active: true,
-        role: { in: ['seller', 'admin', 'superadmin'] },
+        role: { in: ['seller', 'admin', 'superadmin', 'manager'] },
         OR: or,
       },
       take: 10,

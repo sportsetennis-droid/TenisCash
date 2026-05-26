@@ -43,7 +43,7 @@ async function uploadToFalStorage(buffer, filename, mimetype) {
 function requireAdmin(req, res, next) {
   prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } })
     .then((u) => {
-      if (!u || !['admin', 'superadmin'].includes(u.role)) {
+      if (!u || !['admin', 'superadmin', 'manager'].includes(u.role)) {
         return res.status(403).json({ error: 'apenas admin' });
       }
       next();

@@ -37,14 +37,14 @@ function multerErrorHandler(err, _req, res, _next) {
 }
 
 function adminOnly(req, res, next) {
-  if (req.userRole !== 'admin' && req.userRole !== 'superadmin') {
+  if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito a administradores' });
   }
   next();
 }
 
 function sellerOrAdmin(req, res, next) {
-  if (!['seller', 'admin', 'superadmin'].includes(req.userRole)) {
+  if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso negado' });
   }
   next();

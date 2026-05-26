@@ -145,7 +145,7 @@ async function runContentCreative() {
     try {
       const pushSvc = require('./pushNotifications');
       const admins = await prisma.user.findMany({
-        where: { role: { in: ['admin', 'superadmin'] }, active: true },
+        where: { role: { in: ['admin', 'superadmin', 'manager'] }, active: true },
         select: { id: true },
       });
       for (const a of admins) {

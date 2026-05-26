@@ -332,7 +332,7 @@ router.post('/timelines/:id/posts', async (req, res) => {
       if (timeline.isPublic) {
         // não notificar TODOS no canal público (spam) — só vendedores ativos
         recipients = await prisma.user.findMany({
-          where: { active: true, role: { in: ['seller', 'admin', 'superadmin'] }, id: { not: userId } },
+          where: { active: true, role: { in: ['seller', 'admin', 'superadmin', 'manager'] }, id: { not: userId } },
           select: { id: true },
         });
       } else {
@@ -1076,7 +1076,7 @@ async function ensureSystemUser() {
 router.post('/system/broadcast', async (req, res) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!me || !['admin', 'superadmin'].includes(me.role)) {
+    if (!me || !['admin', 'superadmin', 'manager'].includes(me.role)) {
       return res.status(403).json({ error: 'apenas admin' });
     }
     const { userIds, role, content, productCardId } = req.body || {};
@@ -1119,7 +1119,7 @@ router.post('/system/notify', async (req, res) => {
   try {
     // só admin/superadmin pode disparar
     const me = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!me || !['admin', 'superadmin'].includes(me.role)) {
+    if (!me || !['admin', 'superadmin', 'manager'].includes(me.role)) {
       return res.status(403).json({ error: 'apenas admin' });
     }
     const { toUserId, content, productCardId } = req.body || {};
@@ -1169,7 +1169,7 @@ router.post('/system/notify', async (req, res) => {
 router.post('/conversations/loja/with-client', async (req, res) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!me || !['seller', 'admin', 'superadmin'].includes(me.role)) {
+    if (!me || !['seller', 'admin', 'superadmin', 'manager'].includes(me.role)) {
       return res.status(403).json({ error: 'apenas vendedor/admin' });
     }
     const storeId = req.body?.storeId || me.storeId;

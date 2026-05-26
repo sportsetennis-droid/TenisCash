@@ -12,7 +12,7 @@ const router = express.Router();
 router.use(authMiddleware, storeScope);
 
 function requireSeller(req, res, next) {
-  if (!['seller', 'admin', 'superadmin', 'store'].includes(req.userRole)) {
+  if (!['seller', 'admin', 'superadmin', 'manager', 'store'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso restrito a vendedores / loja' });
   }
   next();

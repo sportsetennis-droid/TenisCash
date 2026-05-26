@@ -769,6 +769,120 @@ router.post('/seller/remove', async (req, res) => {
   }
 });
 
+// ==================== GERENTE (acesso a TODAS as lojas) ====================
+// role='manager' equivale a admin nas checagens de acesso, mas storeId fica null
+// (gerente nao trava em loja unica — opera em todas)
+
+// Promover usuario a gerente (busca por userId, phone ou employeeCode)
+router.post('/manager/promote', async (req, res) => {
+  try {
+    const { userId, phone, employeeCode } = req.body || {};
+    if (!userId && !phone && !employeeCode) {
+      return res.status(400).json({ error: 'Informe userId, phone ou employeeCode' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        ...(userId ? { id: userId } : {}),
+        ...(phone ? { phone: String(phone).replace(/\D/g, '') } : {}),
+        ...(employeeCode ? { employeeCode } : {}),
+      },
+      select: { id: true, name: true, phone: true, role: true, storeId: true, active: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+    if (user.role === 'superadmin') return res.status(400).json({ error: 'Superadmin nao pode virar gerente' });
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'manager', storeId: null }, // gerente vê TODAS as lojas
+      select: { id: true, name: true, role: true, phone: true },
+    });
+
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.userId,
+        action: 'manager_promote',
+        targetUserId: user.id,
+        description: `Promoveu a gerente (acesso a todas as lojas): ${user.name}`,
+        metadata: JSON.stringify({ previousRole: user.role, previousStoreId: user.storeId }),
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `${updated.name} agora é gerente com acesso a todas as lojas`,
+      user: updated,
+    });
+  } catch (err) {
+    console.error('Erro ao promover gerente:', err);
+    res.status(500).json({ error: 'Erro ao promover gerente' });
+  }
+});
+
+// Remover gerente (volta pra user)
+router.post('/manager/remove', async (req, res) => {
+  try {
+    const { userId, phone, employeeCode } = req.body || {};
+    if (!userId && !phone && !employeeCode) {
+      return res.status(400).json({ error: 'Informe userId, phone ou employeeCode' });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        ...(userId ? { id: userId } : {}),
+        ...(phone ? { phone: String(phone).replace(/\D/g, '') } : {}),
+        ...(employeeCode ? { employeeCode } : {}),
+        role: 'manager',
+      },
+      select: { id: true, name: true },
+    });
+
+    if (!user) return res.status(404).json({ error: 'Gerente não encontrado' });
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'user' },
+      select: { id: true, name: true, role: true },
+    });
+
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.userId,
+        action: 'manager_remove',
+        targetUserId: user.id,
+        description: `Removeu gerente (voltou para user): ${user.name}`,
+      }
+    });
+
+    res.json({ success: true, message: `Gerente removido: ${updated.name}`, user: updated });
+  } catch (err) {
+    console.error('Erro ao remover gerente:', err);
+    res.status(500).json({ error: 'Erro ao remover gerente' });
+  }
+});
+
+// Listar gerentes ativos
+router.get('/managers', async (req, res) => {
+  try {
+    const managers = await prisma.user.findMany({
+      where: { role: 'manager', active: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        employeeCode: true,
+        createdAt: true,
+      },
+    });
+    res.json({ managers, total: managers.length });
+  } catch (err) {
+    console.error('Erro ao listar gerentes:', err);
+    res.status(500).json({ error: 'Erro ao listar gerentes' });
+  }
+});
+
 // ==================== PONTO DIGITAL (ADMIN) ====================
 router.get('/clockin/summary', async (req, res) => {
   try {

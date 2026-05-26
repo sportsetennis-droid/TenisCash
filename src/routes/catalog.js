@@ -223,7 +223,7 @@ router.post('/request-reservation', authMiddleware, async (req, res) => {
     if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
 
     const admin = await prisma.user.findFirst({
-      where: { active: true, role: { in: ['superadmin', 'admin'] } },
+      where: { active: true, role: { in: ['superadmin', 'admin', 'manager'] } },
       orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
       select: { id: true },
     });
