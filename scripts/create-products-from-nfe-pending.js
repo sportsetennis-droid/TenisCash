@@ -50,14 +50,25 @@ function inferBrand(description, nfeBrand) {
 }
 
 (async () => {
-  console.log('🔎 Buscando XmlFiscalItem pendentes (sem productId)...');
+  console.log('🔎 Buscando XmlFiscalItem pendentes de NFe de ENTRADA (compras de fornecedor)...');
+  console.log('   ⚠️  Transferencias sao IGNORADAS por regra (CLAUDE.md):');
+  console.log('   transferencia NAO cria Product, so aparece em card existente.');
   const pendingItems = await p.xmlFiscalItem.findMany({
-    where: { productId: null, ean: { not: null } },
-    include: { fiscalDocument: { select: { brand: true, issuerName: true } } },
+    where: {
+      productId: null,
+      ean: { not: null },
+      fiscalDocument: { docType: 'entrada' }, // SO entrada, NUNCA transferencia
+    },
+    include: { fiscalDocument: { select: { brand: true, issuerName: true, docType: true } } },
   });
-  // Filtra EANs válidos
-  const validItems = pendingItems.filter(i => i.ean && i.ean.length >= 8 && i.ean !== 'SEM GTIN');
-  console.log(`  ${pendingItems.length} pendentes total, ${validItems.length} com EAN válido`);
+  // Defesa extra: nem se filtro falhar, deixa passar transferencia
+  const onlyEntradaItems = pendingItems.filter(i => i.fiscalDocument?.docType === 'entrada');
+  if (onlyEntradaItems.length !== pendingItems.length) {
+    console.warn(`  ⚠️  Filtro deixou passar ${pendingItems.length - onlyEntradaItems.length} transferencias, descartadas pela defesa extra`);
+  }
+  // EANs válidos
+  const validItems = onlyEntradaItems.filter(i => i.ean && i.ean.length >= 8 && i.ean !== 'SEM GTIN');
+  console.log(`  ${onlyEntradaItems.length} pendentes de ENTRADA, ${validItems.length} com EAN válido`);
 
   // Agrupa por EAN
   const byEan = {};
