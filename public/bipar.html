@@ -434,13 +434,13 @@
       const v = input.value.trim();
       if (v) {
         // Limites afrouxados (LOJA03 com leitor com mau contato — tolera mais)
-        if (v.length > 30) {
-          resetInput('código muito longo (' + v.length + ' chars). Bipador travado?');
+        // DEFESAS BEM AFROUXADAS (LOJA03 com leitor quebrado — aceita quase tudo)
+        if (v.length > 60) {
+          resetInput('código muito longo (' + v.length + ' chars)');
           return;
         }
-        if (/^(.)\1{10,}$/.test(v)) {
-          // Só bloqueia se MUITOS chars iguais seguidos (10+, antes era 7)
-          resetInput('código com char repetido (bipador bugado): ' + v.slice(0, 20));
+        if (/^(.)\1{30,}$/.test(v)) {
+          resetInput('char repetido 30+ vezes: ' + v.slice(0, 20));
           return;
         }
         enviarBipe(v);
@@ -457,7 +457,7 @@
     if (e.key.length === 1) {
       if (e.key === lastChar) {
         sameCharCount++;
-        if (sameCharCount >= 20) {
+        if (sameCharCount >= 40) {
           e.preventDefault();
           resetInput('detectei ' + sameCharCount + 'x o char "' + lastChar + '" — bipador bugado');
           return;
@@ -469,9 +469,9 @@
     }
 
     // Trava input gigante (>100 chars = bipador travado em loop, antes era 60)
-    if (input.value.length > 100) {
+    if (input.value.length > 200) {
       e.preventDefault();
-      resetInput('input ultrapassou 100 chars — bipador travado');
+      resetInput('input ultrapassou 200 chars — bipador travado');
     }
 
     agendarAutoSubmit();
@@ -484,9 +484,9 @@
     window._bipeAutoSubmitTimer = setTimeout(() => {
       const v = (input.value || '').trim();
       if (!v) return;
-      if (v.length < 6) return; // muito curto, provável ruído
-      if (v.length > 30) { resetInput('código muito longo (' + v.length + '): auto-submit cancelado'); return; }
-      if (/^(.)\1{10,}$/.test(v)) { resetInput('char repetido no auto-submit: ' + v.slice(0, 20)); return; }
+      if (v.length < 4) return; // só ignora ruido bem pequeno
+      if (v.length > 60) { resetInput('código muito longo (' + v.length + '): auto-submit cancelado'); return; }
+      if (/^(.)\1{30,}$/.test(v)) { resetInput('char repetido 30+ no auto-submit: ' + v.slice(0, 20)); return; }
       enviarBipe(v);
       if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
       input.value = '';
