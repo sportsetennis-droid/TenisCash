@@ -375,7 +375,24 @@ Padrões observados:
 - **REEBOK** ✅: ref `9-digits + M/W + 5-letras-cor + 2-dig-tam` (ex: `100209958WCRAVD38`). modelGroup = primeiros 10 chars (`100209958W`). 128 cards em 23 modelos. (79 pulados em formato variado tipo `RUH4D333169U`.)
 - **ADIDAS** ✅: codigo curto `[A-Z]{2}[0-9]{4}` (ex: `DP3219`, `JG5856`). Quando ref é EAN, extrai do NOME (formato "REF: XXXXXX - ..."). modelGroup = esse codigo. 700 cards em 179 modelos. (166 pulados sem codigo visível.)
 - **KAPPA** ⚠️ parcial: múltiplos padrões. `KP+7dig+3dig+tam` ou `KPCA+2dig+6dig+tam` ou `KP+digits+J+digits`. modelGroup = parte fixa antes do código de cor+tam. 138/351 cards cobertos em 23 modelos. Outros 213 cards têm formatos não cobertos.
-- **NIKE/FILA/UMBRO/BOTAFOGO/Alto Giro/Body for Sure/SALOMON/TOPPER**: refs apenas numéricas curtas (4-7 dígitos) — sem padrão visível pra extrair modelo. Cada ref provavelmente já é 1 produto único (cor+tamanho específico), sem agrupamento possível só pela ref.
+- **FILA** ✅: ref `F[N]L[N]-DESC` no NOME (ex: `F11L01791-CASACO...`). 96 cards em 47 modelos.
+- **UMBRO** ✅: ref `U[N]FB[N]-DESC` no NOME (ex: `U01FB00419-CHUTEIRA...`). 128 cards em 65 modelos.
+- **BOTAFOGO** ✅: ref `EKPB+6dig+cor+tam` (ex: `EKPB471902044P`). modelGroup = primeiros 10 chars. 76 cards em 20 modelos.
+- **Alto Giro** ✅: 2-3 primeiras palavras do nome (sem extrair da ref numérica). 150 cards em 37 modelos.
+- **DIADORA** ✅: extrai `DFSC056` ou `DFAR020` do nome. 138 cards em 13 modelos.
+- **SPALDING** ✅: ref `XXX[N]+digits` (ex: `DRIS2502IN.42`). modelGroup = primeiras 3-4 letras + 3-5 dígitos. 138 cards em 25 modelos.
+- **SPEEDO** ✅: ref `SPO+N.N-N.tam` (ex: `SPO02.02-04.36`). modelGroup = primeiros 4-5 chars (`SPO02`, `SPO120`). 155 cards em 12 modelos.
+- **EVOKE** ✅: ref `MODELO COR` ou `EVK XX YY` (ex: `AVALANCHE A13`, `EVK 30 BRC01`). 176 cards em 61 modelos.
+- **PROGNE** ✅: ref `LP905184GG` ou `62501M`. modelGroup = primeiros 4-6 chars. 173 cards em 44 modelos.
+- **ARMY** ✅: extrai do nome antes de `Tamanho:` (ex: "Calca Athleisure Armybr"). 168 cards em 16 modelos.
+- **TOPPER** ✅: extrai `TP06140003` do nome. 34 cards em 34 modelos.
+- **SALOMON** ✅: extrai modelo do nome (`X ULTRA 5 MID`, `GENESIS`). 71 cards em 12 modelos.
+- **LUPO** ✅: ref `NNNNN-NNNNNNNNNN` (ex: `02170-0880460900`). modelGroup = primeiro segmento (5 dígitos). 215 cards em 42 modelos.
+- **VOLLO** ✅: ref `VN200-3`, `VP1053`. modelGroup = primeiros 3-5 chars. 53 cards em 40 modelos.
+- **HIDROLIGHT** ✅: ref `H93_2`, `EL16_3`. modelGroup = parte alfanum antes do `_`. 96 cards em 50 modelos.
+- **Let's Gym** ✅: ref `2628AZ`, `2143BVDV`. modelGroup = primeiros 4 dígitos. 83 cards em 31 modelos.
+- **Hope Resort** ✅: ref `HF332240VHD000G`. modelGroup = primeiros 8 chars (`HF332240`). 72 cards em 24 modelos.
+- **NIKE / Body for Sure**: refs muito curtas (NIKE = 6 dígitos, BfS = 5 dígitos) sem decomposição visível. Cada ref provavelmente já é 1 produto único.
 
 Quando o agrupamento por modelo for implementado, salvar em `aiContext.modelGroup` (string normalizada do modelo) e usar pra:
 - Mostrar "também disponível em outras cores" no card
