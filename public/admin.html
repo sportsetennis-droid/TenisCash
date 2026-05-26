@@ -1041,6 +1041,10 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <select id="cur-f-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
     </div>
     <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Loja</label>
+      <select id="cur-f-store" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
       <select id="cur-f-subcategory" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
         <option value="">— todas —</option>
@@ -1311,6 +1315,10 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <select id="cat-classify-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
     </div>
     <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Loja</label>
+      <select id="cat-classify-store" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
       <select id="cat-classify-subcategory" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
         <option value="">— todas —</option>
@@ -1471,6 +1479,10 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
         <select id="inv-f-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Loja</label>
+        <select id="inv-f-store" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
       </div>
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
@@ -7021,7 +7033,7 @@ async function initCurationTab() {
     document.getElementById('curation-refresh').onclick = loadCurationProducts;
     document.getElementById('cur-filter').onclick = loadCurationProducts;
     document.getElementById('cur-clear').onclick = () => {
-      ['cur-f-brand','cur-f-category','cur-f-supplier','cur-f-subcategory','cur-f-modality','cur-f-tier','cur-lifecycle','cur-biped'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+      ['cur-f-brand','cur-f-category','cur-f-supplier','cur-f-store','cur-f-subcategory','cur-f-modality','cur-f-tier','cur-lifecycle','cur-biped'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
       document.getElementById('cur-f-search').value = '';
       document.getElementById('cur-lowstock').checked = false;
       loadCurationProducts();
@@ -7038,6 +7050,7 @@ async function initCurationTab() {
       };
       popSel('cur-f-brand', fopts.brands || []);
       popSel('cur-f-supplier', fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+      popSel('cur-f-store', fopts.stores || [], s => s.id, s => (s.code || '') + ' — ' + (s.name || ''));
       // Modalidade + Especialidade DINÂMICAS da árvore
       try {
         const treeRes = await api('/admin/categories/tree');
@@ -7074,9 +7087,10 @@ async function loadCurationProducts(opts) {
   const lifecycleStatus = document.getElementById('cur-lifecycle').value;
   const lowStock = document.getElementById('cur-lowstock').checked;
   const biped = document.getElementById('cur-biped').value || '';
+  const storeId = document.getElementById('cur-f-store')?.value || '';
 
   // GUARDA: precisa de pelo menos 1 filtro pra não travar com 7k+ cards
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -7099,6 +7113,7 @@ async function loadCurationProducts(opts) {
   if (search) qs.set('search', search);
   if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
   if (lowStock) qs.set('lowStock', 'true');
+  if (storeId) qs.set('storeId', storeId);
 
   const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
@@ -8371,7 +8386,7 @@ async function initCategoriesTab() {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
     // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
@@ -8448,6 +8463,7 @@ async function loadCategoriesClassify() {
   // Popula filtros
   _catPopulateSelect(document.getElementById('cat-classify-brand'), fopts.brands || []);
   _catPopulateSelect(document.getElementById('cat-classify-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+  _catPopulateSelect(document.getElementById('cat-classify-store'), fopts.stores || [], s => s.id, s => (s.code || '') + ' — ' + (s.name || ''));
 
   // Popula select de categoria
   const catSelect = document.getElementById('cat-apply-category');
@@ -8489,6 +8505,7 @@ function _filteredCatProducts() {
   const brand = document.getElementById('cat-classify-brand').value;
   const category = document.getElementById('cat-classify-category')?.value || '';
   const supplier = document.getElementById('cat-classify-supplier').value;
+  const storeId = document.getElementById('cat-classify-store')?.value || '';
   const subcategory = document.getElementById('cat-classify-subcategory')?.value || '';
   const modality = document.getElementById('cat-classify-modality')?.value || '';
   const tier = document.getElementById('cat-classify-tier')?.value || '';
@@ -8503,6 +8520,13 @@ function _filteredCatProducts() {
     if (brand && (p.brand || '').toLowerCase() !== brand.toLowerCase()) return false;
     if (category && (p.category || '').toLowerCase() !== category.toLowerCase()) return false;
     if (supplier && supCnpj !== supplier && supId !== supplier) return false;
+    // Filtro POR LOJA (Categoria) — produto tem que ter estoque > 0 nessa loja
+    if (storeId) {
+      const hasStockInStore = (p.sizes || []).some(sz =>
+        (sz.storeStocks || []).some(ss => ss.storeId === storeId && (ss.stock || 0) > 0)
+      );
+      if (!hasStockInStore) return false;
+    }
     if (subcategory && (p.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
     if (modality && (cls.modality || '') !== modality) return false;
     if (tier && (cls.tier || '') !== tier) return false;
@@ -9153,6 +9177,7 @@ async function initInventoryTab() {
       };
       pop('inv-f-brand', fopts.brands);
       pop('inv-f-supplier', fopts.suppliers, s => s.cnpj || s.id, s => s.companyName);
+      pop('inv-f-store', fopts.stores, s => s.id, s => (s.code || '') + ' — ' + (s.name || ''));
       // Modalidades + Especialidades vêm DA ÁRVORE (dinâmico, atualiza quando cria/exclui via botão +)
       try {
         const treeRes = await api('/admin/categories/tree');
@@ -9177,7 +9202,7 @@ async function initInventoryTab() {
     document.getElementById('inv-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadInvProducts(); });
     // Limpar
     document.getElementById('inv-clear').onclick = () => {
-      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle','inv-biped'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-store','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle','inv-biped'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       document.getElementById('inv-f-search').value = '';
       document.getElementById('inv-lowstock').checked = false;
       loadInvProducts();
@@ -9225,10 +9250,11 @@ async function loadInvProducts(opts) {
   const search = document.getElementById('inv-f-search').value.trim();
   const lifecycleStatus = document.getElementById('inv-lifecycle').value;
   const lowStock = document.getElementById('inv-lowstock').checked;
+  const storeId = document.getElementById('inv-f-store')?.value || '';
   const biped = document.getElementById('inv-biped')?.value || '';
 
   // GUARDA: nao carregar 7k+ cards sem nenhum filtro (trava o browser)
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -9260,6 +9286,7 @@ async function loadInvProducts(opts) {
   if (search) qs.set('search', search);
   if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
   if (lowStock) qs.set('lowStock', 'true');
+  if (storeId) qs.set('storeId', storeId);
   // Espelha pros hidden inputs antigos pra retrocompat
   document.getElementById('inv-brand').value = brand;
   document.getElementById('inv-category').value = category;

@@ -55,7 +55,7 @@ router.get('/dashboard', async (_req, res) => {
 // Lista produtos com info de lifecycle e estoque
 router.get('/products', async (req, res) => {
   try {
-    const { lifecycleStatus, brand, category, subcategory, lowStock, search, gender, modality, tier, supplier } = req.query;
+    const { lifecycleStatus, brand, category, subcategory, lowStock, search, gender, modality, tier, supplier, storeId } = req.query;
     const jsonFilters = [];
     // Gender mantido pra retrocompat — novos clientes devem usar subcategory
     if (gender) jsonFilters.push({ aiContext: { path: ['classification', 'gender'], equals: String(gender) } });
@@ -147,6 +147,13 @@ router.get('/products', async (req, res) => {
       .filter((it) => {
         if (lifecycleStatus && it.lifecycle?.lifecycleStatus !== lifecycleStatus) return false;
         if (lowStock === 'true' && it.totalStock > 5) return false;
+        // Filtro POR LOJA: só mostra produtos com pelo menos 1 ProductSize com stock > 0 nessa storeId
+        if (storeId) {
+          const hasStockInStore = (it.sizes || []).some(sz =>
+            (sz.storeStocks || []).some(ss => ss.storeId === storeId && (ss.stock || 0) > 0)
+          );
+          if (!hasStockInStore) return false;
+        }
         return true;
       });
 
