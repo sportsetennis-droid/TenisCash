@@ -1304,6 +1304,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="display:flex;gap:4px;margin-top:4px;">
           <select id="cat-apply-category" class="form-input" style="flex:1;background:white;color:#1d1d1f;"><option value="">—</option></select>
           <button type="button" onclick="catCreateNode('CATEGORY')" title="Criar nova Categoria" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+          <button type="button" onclick="catDeleteNode('cat-apply-category')" title="Excluir Categoria selecionada (e todos os filhos)" style="width:38px;background:#fff;color:#d70015;border:1.5px solid #d70015;border-radius:8px;font-size:14px;cursor:pointer;">🗑</button>
         </div>
       </div>
       <div>
@@ -1311,6 +1312,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="display:flex;gap:4px;margin-top:4px;">
           <select id="cat-apply-sub" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
           <button type="button" onclick="catCreateNode('SUBCATEGORY')" title="Criar nova Subcategoria filha da Categoria selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+          <button type="button" onclick="catDeleteNode('cat-apply-sub')" title="Excluir Subcategoria selecionada (e todos os filhos)" style="width:38px;background:#fff;color:#d70015;border:1.5px solid #d70015;border-radius:8px;font-size:14px;cursor:pointer;">🗑</button>
         </div>
       </div>
       <div>
@@ -1318,6 +1320,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="display:flex;gap:4px;margin-top:4px;">
           <select id="cat-apply-mod" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
           <button type="button" onclick="catCreateNode('MODALITY')" title="Criar nova Modalidade filha da Subcategoria selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+          <button type="button" onclick="catDeleteNode('cat-apply-mod')" title="Excluir Modalidade selecionada (e todos os filhos)" style="width:38px;background:#fff;color:#d70015;border:1.5px solid #d70015;border-radius:8px;font-size:14px;cursor:pointer;">🗑</button>
         </div>
       </div>
       <div>
@@ -1325,6 +1328,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="display:flex;gap:4px;margin-top:4px;">
           <select id="cat-apply-spec" class="form-input" style="flex:1;background:white;color:#1d1d1f;" disabled><option value="">—</option></select>
           <button type="button" onclick="catCreateNode('SPECIALTY')" title="Criar nova Especialidade filha da Modalidade selecionada" style="width:38px;background:#E5571E;color:white;border:none;border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+          <button type="button" onclick="catDeleteNode('cat-apply-spec')" title="Excluir Especialidade selecionada" style="width:38px;background:#fff;color:#d70015;border:1.5px solid #d70015;border-radius:8px;font-size:14px;cursor:pointer;">🗑</button>
         </div>
       </div>
       <button id="cat-apply-btn" class="btn btn-primary" style="height:42px;">✓ Aplicar</button>
@@ -8627,6 +8631,52 @@ window.catCreateNode = async function (level) {
     if (typeof toast === 'function') toast('✓ ' + labelPt + ' criada: ' + name);
   } catch (e) {
     alert('Erro ao criar: ' + e.message);
+  }
+};
+
+// EXCLUI o nó selecionado no select indicado.
+// Cuidado: o backend deleta em cascata todos os filhos (sub → mod → spec).
+window.catDeleteNode = async function (selectId) {
+  const sel = document.getElementById(selectId);
+  const nodeId = sel?.value;
+  if (!nodeId) { alert('Selecione um item pra excluir.'); return; }
+  const nodeName = sel.options[sel.selectedIndex]?.textContent || nodeId;
+
+  // Conta filhos pra avisar
+  const filhos = _catTreeFlat.filter(n => n.parentId === nodeId).length;
+  const filhosTxt = filhos > 0 ? '\\n\\n⚠️ Esse nó tem ' + filhos + ' filho(s) que serão deletados em cascata.' : '';
+  if (!confirm('Excluir "' + nodeName + '"?' + filhosTxt + '\\n\\nProdutos classificados nesse nó vão perder a classificação. Tem certeza?')) return;
+
+  try {
+    const r = await api('/admin/categories/' + nodeId, 'DELETE');
+    if (r.error) { alert('Erro: ' + r.error); return; }
+
+    // Recarrega tree e repopula selects
+    const treeRes = await api('/admin/categories/tree');
+    _catTreeData = treeRes.tree || [];
+    _catTreeFlat = [];
+    function walkFlat(nodes, parent) {
+      nodes.forEach(n => { _catTreeFlat.push({ ...n, parent }); walkFlat(n.children || [], n); });
+    }
+    walkFlat(_catTreeData, null);
+
+    // Repopula select de Categoria
+    const catSel = document.getElementById('cat-apply-category');
+    catSel.innerHTML = '<option value="">—</option>';
+    _catTreeData.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.id; opt.textContent = n.name;
+      catSel.appendChild(opt);
+    });
+    // Limpa todos os selects abaixo
+    ['cat-apply-sub','cat-apply-mod','cat-apply-spec'].forEach(id => {
+      const s = document.getElementById(id);
+      s.innerHTML = '<option value="">—</option>';
+      s.disabled = true;
+    });
+    if (typeof toast === 'function') toast('✓ "' + nodeName + '" excluída');
+  } catch (e) {
+    alert('Erro ao excluir: ' + e.message);
   }
 };
 
