@@ -298,6 +298,56 @@ Endpoint backend: `GET /api/admin/xml/nfes/stats` retorna `byType` agrupado por 
 - `5101`, `5102` — Compra estadual (entrada)
 - `2202` — Devolução de venda (entrada, mas com tratamento especial)
 
+## REGRA PERMANENTE — Estrutura do Card de Produto (REF + DESC + COR vs SKU)
+
+**1 CARD = 1 modelo único.** Chave de unificação: **REFERÊNCIA + DESCRIÇÃO + COR**.
+
+**SKU é dos TAMANHOS, NÃO do card.** Cada tamanho dentro do card tem seu próprio SKU/código de barras.
+
+### Mapeamento conceito → schema
+
+| Conceito (linguagem do dono) | Tabela / Campo |
+|---|---|
+| **CARD** (1 modelo+cor) | `Product` |
+| **REFERÊNCIA** do modelo | `Product.sku` (legado: nome do campo é confuso, mas é referência) |
+| **DESCRIÇÃO** do modelo | `Product.name` |
+| **COR** do modelo | `aiContext.color` (string livre, ex: "Branco/Marinho") |
+| **REF do fornecedor** (cód externo) | `aiContext.supplierRef` |
+| **SKU** de cada tamanho | `ProductSize.barcode` (EAN/código único por tamanho) |
+| Estoque por tamanho | `ProductSize.stock` ou `StoreStock` |
+
+### Exemplo
+
+```
+CARD: Tênis Converse Chuck Taylor All Star Side Zip
+  REF: CK09090001
+  COR: Azul Escuro/Laranja/Branco
+  ├─ Tam 38 → SKU 7908341493884
+  ├─ Tam 39 → SKU 7908341493891
+  ├─ Tam 40 → SKU 7908341493907
+  ...
+```
+
+Se o dono tem 12 pares fisicos do mesmo modelo+cor:
+- **1 CARD único** no catálogo
+- Pares se distribuem em **N ProductSize** (1 por tamanho)
+- Pares do mesmo tamanho compartilham o mesmo SKU (mesmo código de barras)
+
+### Regra de unificação
+
+Quando criar/importar produto, agrupar por (REF + DESC normalizada + COR). NUNCA criar 1 Product por tamanho separadamente. Tamanho vira ProductSize dentro do Product.
+
+### UI rules
+
+- **NUNCA** chamar `Product.sku` de "SKU" no admin (confunde). Usar **"REFERÊNCIA DO FORNECEDOR"** ou **"REF"**.
+- O label "SKU" pode ser usado SÓ pra `ProductSize.barcode` (cód do tamanho).
+- Modal de edição de produto: campos **REFERÊNCIA + DESCRIÇÃO + COR** no bloco "Identificação do Modelo".
+- Card visual: mostrar `REF: XXX` + `🎨 cor` (não mostrar "SKU XXX" no topo do card).
+
+### Histórico
+
+- 26/05/2026: Claude criava 1 Product por tamanho via NFe (errado). Owner corrigiu: "SKU é por tamanho, não por card". Refatorou UI + card visual.
+
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
 NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:
