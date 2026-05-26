@@ -907,12 +907,12 @@ function loadBrandEditor(slug) {
   ed.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:14px;align-items:center">
-        <!-- Logo da marca + upload -->
-        <div style="position:relative;width:64px;height:64px;border-radius:14px;border:1.5px dashed #e5e5ea;background:#fafafc;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer" onclick="document.getElementById('bp-logo-input').click()" title="Clique pra trocar a logo">
+        <!-- Logo da marca + upload (clica no quadrado pra subir) -->
+        <div style="position:relative;width:80px;height:80px;border-radius:14px;border:2px dashed ${b.logoUrl ? '#0a843d' : '#E5571E'};background:${b.logoUrl ? '#fff' : 'rgba(229,87,30,0.06)'};display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;transition:all 0.15s" onclick="document.getElementById('bp-logo-input').click()" title="Clique pra subir arquivo de logo" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform=''">
           ${b.logoUrl
             ? `<img src="${escH(b.logoUrl)}" style="width:100%;height:100%;object-fit:contain;background:#fff">`
-            : `<span style="font-size:22px;color:#c0c0c5">🏢</span>`}
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;font-weight:700;text-align:center;padding:2px;letter-spacing:0.5px">${b.logoUrl ? 'TROCAR' : '+ LOGO'}</div>
+            : `<div style="text-align:center;padding:4px"><div style="font-size:24px;color:#E5571E">📤</div><div style="font-size:8px;color:#E5571E;font-weight:700;letter-spacing:0.5px;margin-top:2px">SUBIR LOGO</div></div>`}
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.65);color:#fff;font-size:9px;font-weight:700;text-align:center;padding:3px;letter-spacing:0.5px">${b.logoUrl ? '🔄 TROCAR' : '👆 CLIQUE'}</div>
         </div>
         <input type="file" id="bp-logo-input" accept="image/*" style="display:none" onchange="bpUploadLogo('${escH(b.slug)}', this.files[0])">
         <div>
@@ -922,7 +922,8 @@ function loadBrandEditor(slug) {
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="cfg-btn cfg-btn-secondary" onclick="bpPasteLogoUrl('${escH(b.slug)}')">🔗 Colar URL da logo</button>
+        <button class="cfg-btn cfg-btn-primary" onclick="document.getElementById('bp-logo-input').click()" style="background:#E5571E;color:white">📤 Upload arquivo da logo</button>
+        <button class="cfg-btn cfg-btn-secondary" onclick="bpPasteLogoUrl('${escH(b.slug)}')">🔗 Colar URL</button>
         <button class="cfg-btn cfg-btn-secondary" onclick="bpApplyArchetypeDefaults('${escH(b.slug)}')">↺ Aplicar default do archetype</button>
       </div>
     </div>
