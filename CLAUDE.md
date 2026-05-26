@@ -365,15 +365,17 @@ MODELO (ex: "Converse Chuck Taylor All Star")
 
 Padrões observados:
 
-- **CONVERSE** ✅ confirmado: ref no formato `[CK|CT|CO][0000][0000]` (10 chars).
-  - Primeiros 6 chars = MODELO (ex: `CK0004`, `CT0419`, `CO0639`)
-  - Últimos 4 chars = variação de cor (ex: `0001`, `0002`, `0006`, `0007` — não são sequenciais, são códigos fixos de cor do fornecedor)
-  - Cards com mesma `modelGroup` (primeiros 6 chars) são o mesmo modelo em cores diferentes
-  - 106 refs Converse no formato letra+número distribuídas em 58 modelos
-  - Outros 106 cards têm ref puramente numérica (`120953`, etc) — código interno do PDV. Esses são DUPLICATAS dos 106 letra+número (nome contém a ref oficial)
-- **FIBER**: ref estruturada `CATEGORIA-MODELO-COR-TAMANHO` (ex: `CALBFBR-ALLBLACK-G`) — a estudar
-- **Maioria das marcas**: `Product.sku` atual é `XXXX-EAN` (prefixo PDV + código de barras de UM tamanho) — não é ref real do modelo
-- Outras: documentar conforme forem analisadas
+- **CONVERSE** ✅: ref `[CK|CT|CO][0000][0000]` (10 chars). modelGroup = primeiros 6 chars (CK0004). 106 refs em 58 modelos.
+- **SKECHERS** ✅: ref `LETRAS-NUMS-COR-TAM` (ex: `GTW-129627-ORG-34`). modelGroup = primeiros 2 segmentos (`GTW-129627`). 265 cards em 27 modelos.
+- **MIZUNO** ✅: ref `NUM-COR-TAM` (ex: `101060060-ROSA46-35`). modelGroup = 1º segmento numérico (`101060060`). 298 cards em 30 modelos.
+- **FIBER** ✅: ref `XXX-NNNN-VER-TAM` (ex: `SFBMUL-0104-V2-44/45/46`). modelGroup = primeiros 2 segmentos (`SFBMUL-0104`). 129 cards em 32 modelos.
+- **ASICS** ✅: ref `MODELO COR+TAM` separado por espaço (ex: `1011B958 403039`). modelGroup = parte antes do espaço (`1011B958`). 480 cards em 89 modelos.
+- **PUMA** ✅: ref `MODELO   COR+TAM` separado por múltiplos espaços (ex: `687979   018PEQ`). modelGroup = primeiros 4-8 dígitos antes do espaço (`687979`). 305 cards em 102 modelos.
+- **Caju Brasil** ⏳ a estudar: ref tipo `022.00400473P`
+- **KAPPA** ⏳ a estudar: ref tipo `KP0119015069G`
+- **REEBOK** ⏳ a estudar: ref tipo `100204834METPAZ41` ou `RUH4D333169U`
+- **ADIDAS** ⏳ a estudar: 708 com ref mas formato variado (EANs + alfanum)
+- **NIKE/FILA/UMBRO/BOTAFOGO/etc**: refs apenas numéricas curtas (4-7 dígitos) — sem padrão visível pra extrair modelo da ref. Possivelmente cada ref já é 1 modelo, sem variação de cor.
 
 Quando o agrupamento por modelo for implementado, salvar em `aiContext.modelGroup` (string normalizada do modelo) e usar pra:
 - Mostrar "também disponível em outras cores" no card
