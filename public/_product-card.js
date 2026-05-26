@@ -369,22 +369,7 @@
     if (cls.tier) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ${esc(cls.tier)}</span>`;
     if (metaPills) html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">${metaPills}</div>`;
 
-    // BLOCO NFe — carrega automático quando card entra na viewport
-    if (showStock && actions === 'admin') {
-      // AZUL: Entradas via NFe (compra de fornecedor) — conta como estoque novo
-      html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
-      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— compra de fornecedor</span></div>`;
-      html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
-      html += `</div>`;
-
-      // LARANJA: Transferências internas (NÃO conta como estoque novo — só move entre lojas)
-      html += `<div style="margin-top:6px;padding:10px 12px;background:#fff6ef;border:1.5px solid #ffd6a8;border-radius:10px;">`;
-      html += `<div style="font-size:11px;color:#cc6a00;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">🔄 Transferências internas <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— não gera estoque novo</span></div>`;
-      html += `<div class="pcard-transf-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
-      html += `</div>`;
-    }
-
-    // TAMANHOS POR LOJA
+    // TAMANHOS POR LOJA (estoque físico do último bipe — info mais importante, sobe pro topo)
     if (showStock) {
       const storesArr = Object.keys(byStore).sort();
       if (storesArr.length) {
@@ -428,6 +413,21 @@
       } else if (actions === 'admin') {
         html += `<div style="margin-top:8px;padding:14px;background:#fff1f0;border-radius:10px;border:2px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">⚠ Nenhuma loja vinculada</div>`;
       }
+    }
+
+    // BLOCO NFe — carrega automático quando card entra na viewport (AGORA DEPOIS DO ESTOQUE)
+    if (showStock && actions === 'admin') {
+      // AZUL: Entradas via NFe (compra de fornecedor) — conta como estoque novo
+      html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
+      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— compra de fornecedor</span></div>`;
+      html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
+      html += `</div>`;
+
+      // LARANJA: Transferências internas (NÃO conta como estoque novo — só move entre lojas)
+      html += `<div style="margin-top:6px;padding:10px 12px;background:#fff6ef;border:1.5px solid #ffd6a8;border-radius:10px;">`;
+      html += `<div style="font-size:11px;color:#cc6a00;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">🔄 Transferências internas <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— não gera estoque novo</span></div>`;
+      html += `<div class="pcard-transf-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
+      html += `</div>`;
     }
 
     // Status + ações
