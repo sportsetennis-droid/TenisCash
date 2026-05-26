@@ -167,25 +167,39 @@
         html += `</div>`;
       }
 
-      // Transferências
-      if (d.transferencias && d.transferencias.length > 0) {
-        html += `<div style="font-size:10px;color:#b06b00;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${d.transferencias.length} transferência${d.transferencias.length > 1 ? 's' : ''} interna${d.transferencias.length > 1 ? 's' : ''}</div>`;
-        html += `<div style="background:white;border-radius:6px;">`;
-        d.transferencias.slice(0, 10).forEach(t => {
-          const data = t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '?';
-          html += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;font-size:11px;">`;
-          html += `<div>${data} · ${esc(t.de?.slice(0,25) || '?')} → ${esc(t.para || '?')}</div>`;
-          html += `<div style="font-weight:700;">${t.quantidade} un</div>`;
-          html += `</div>`;
-        });
-        html += `</div>`;
-      }
+      // Transferências movidas pra fora deste bloco — agora têm card próprio
       container.innerHTML = html;
       container.dataset.loaded = '1';
       container.dataset.loading = '';
+
+      // Preenche TAMBÉM o card laranja de transferências (separado)
+      const transfContainer = document.querySelector(`.pcard-transf-content[data-pid="${productId}"]`);
+      if (transfContainer) {
+        const transferencias = d.transferencias || [];
+        if (transferencias.length === 0) {
+          transfContainer.innerHTML = `<div style="color:#8e8e93;font-size:11px;text-align:center;padding:6px;">Nenhuma transferência interna pra esse produto</div>`;
+        } else {
+          let th = `<div style="font-size:10px;color:#cc6a00;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${transferencias.length} transferência${transferencias.length > 1 ? 's' : ''} · ${transferencias.reduce((s,t)=>s+(t.quantidade||0),0)} un total</div>`;
+          th += `<div style="background:white;border-radius:6px;max-height:160px;overflow-y:auto;">`;
+          transferencias.slice(0, 20).forEach(t => {
+            const data = t.data ? new Date(t.data).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '?';
+            th += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;">`;
+            th += `<div style="flex:1;min-width:0;">`;
+            th += `<div style="font-weight:600;">${data}</div>`;
+            th += `<div style="font-size:10px;color:#8e8e93;">${esc((t.de || '').slice(0,25))} → <span style="color:#cc6a00;font-weight:700;">${esc(t.para || '?')}</span></div>`;
+            th += `</div>`;
+            th += `<div style="font-weight:800;color:#cc6a00;flex-shrink:0;">${t.quantidade} un</div>`;
+            th += `</div>`;
+          });
+          th += `</div>`;
+          transfContainer.innerHTML = th;
+        }
+      }
     } catch (e) {
       container.innerHTML = `<div style="color:#d70015;font-size:11px;">Erro ao carregar: ${e.message}</div>`;
       container.dataset.loading = '';
+      const tc = document.querySelector(`.pcard-transf-content[data-pid="${productId}"]`);
+      if (tc) tc.innerHTML = `<div style="color:#d70015;font-size:11px;">Erro ao carregar</div>`;
     }
   };
 
@@ -357,9 +371,16 @@
 
     // BLOCO NFe — carrega automático quando card entra na viewport
     if (showStock && actions === 'admin') {
+      // AZUL: Entradas via NFe (compra de fornecedor) — conta como estoque novo
       html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
-      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe</div>`;
+      html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— compra de fornecedor</span></div>`;
       html += `<div class="pcard-nfe-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
+      html += `</div>`;
+
+      // LARANJA: Transferências internas (NÃO conta como estoque novo — só move entre lojas)
+      html += `<div style="margin-top:6px;padding:10px 12px;background:#fff6ef;border:1.5px solid #ffd6a8;border-radius:10px;">`;
+      html += `<div style="font-size:11px;color:#cc6a00;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">🔄 Transferências internas <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— não gera estoque novo</span></div>`;
+      html += `<div class="pcard-transf-content" data-pid="${p.id}" style="font-size:12px;color:#1d1d1f;"><div style="color:#8e8e93;font-size:11px;">⏳ Carregando...</div></div>`;
       html += `</div>`;
     }
 

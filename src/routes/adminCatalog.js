@@ -122,7 +122,9 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
     });
 
     // Separa por tipo (entrada de fornecedor vs transferência interna)
-    const entradas = items.filter(i => i.fiscalDocument?.docType === 'entrada' || !i.fiscalDocument?.docType);
+    // REGRA CLAUDE.md: Transferência NUNCA conta como compra/estoque novo.
+    // Pra comprado: SÓ docType='entrada' (não considera null/desconhecido pra evitar contar errado)
+    const entradas = items.filter(i => i.fiscalDocument?.docType === 'entrada');
     const transferencias = items.filter(i => i.fiscalDocument?.docType === 'transferencia');
 
     const totalComprado = entradas.reduce((s, i) => s + (i.quantity || 0), 0);
