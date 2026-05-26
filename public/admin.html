@@ -176,7 +176,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
-<script src="/_product-card.js?v=20260526-swap-v2"></script>
+<script src="/_product-card.js?v=20260526-hideNfe"></script>
 </head>
 <body>
 
@@ -1019,18 +1019,76 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <!-- CURADORIA EXPOSTA -->
 <div class="section" id="tab-curation" style="display:none">
   <div class="section-head">
-    <span class="section-title">Curadoria Exposta</span>
+    <span class="section-title">Curadoria — Produtos</span>
     <button type="button" class="refresh-btn" id="curation-refresh">↻</button>
   </div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-    <button type="button" class="btn btn-primary" id="curation-new">+ Nova Curadoria</button>
-    <select class="search-box" id="curation-filter-store"><option value="">Todas as lojas</option></select>
-    <select class="search-box" id="curation-filter-status">
-      <option value="">Todos status</option>
-      <option>DRAFT</option><option>SETUP</option><option>ACTIVE</option><option>FINISHED</option>
-    </select>
-    <button type="button" class="btn btn-primary" id="curation-filter-btn">Filtrar</button>
+
+  <!-- FILTROS unificados (Marca/Cat/Forn/Sub/Mod/Esp/Lifecycle/Bipados/Busca) -->
+  <div style="background:white;border-radius:14px;border:1px solid #e5e5ea;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Marca</label>
+      <select id="cur-f-brand" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Categoria</label>
+      <select id="cur-f-category" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todas —</option>
+        <option>Tênis</option><option>Chuteiras</option><option>Vestuário</option><option>Acessórios</option><option>Dropper</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Fornecedor</label>
+      <select id="cur-f-supplier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Subcategoria</label>
+      <select id="cur-f-subcategory" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">— todas —</option>
+        <option value="Feminino">Feminino</option>
+        <option value="Mulher">Mulher</option>
+        <option value="Homem">Homem</option>
+        <option value="Menina">Menina</option>
+        <option value="Menino">Menino</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Modalidade</label>
+      <select id="cur-f-modality" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Especialidade</label>
+      <select id="cur-f-tier" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todas —</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Lifecycle</label>
+      <select id="cur-lifecycle" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Todo lifecycle</option>
+        <option>NEW</option><option>NORMAL_TURNOVER</option><option>FAST_TURNOVER</option>
+        <option>SLOW_TURNOVER</option><option>STUCK</option><option>SOLD_OUT</option>
+        <option>CLEARANCE</option><option>REBUY</option><option>DO_NOT_REBUY</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Bipados</label>
+      <select id="cur-biped" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Todos (bipados ou não)</option>
+        <option value="any">📍 Apenas bipados</option>
+        <option value="30">📍 Bipados últimos 30 dias</option>
+        <option value="7">📍 Bipados últimos 7 dias</option>
+        <option value="never">🚫 Nunca bipados</option>
+      </select>
+    </div>
+    <div style="grid-column:span 2;">
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
+      <input id="cur-f-search" class="form-input" placeholder="nome / SKU / REF / marca / modalidade" style="margin-top:4px;background:white;color:#1d1d1f;">
+    </div>
+    <div style="display:flex;align-items:end;gap:6px;">
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;height:38px;"><input type="checkbox" id="cur-lowstock"> Baixo estoque</label>
+      <button type="button" id="cur-filter" style="flex:1;padding:9px 14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;height:38px;">🔎 Buscar</button>
+      <button type="button" id="cur-clear" title="Limpar" style="padding:9px 10px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;cursor:pointer;height:38px;">✕</button>
+    </div>
   </div>
+
   <div id="curation-list-wrap"></div>
 </div>
 
@@ -6953,83 +7011,138 @@ async function loadLabelBatches() {
   wrap.innerHTML = html;
 }
 
-// ==================== CURADORIA ====================
+// ==================== CURADORIA (produtos com filtros) ====================
+// Reutiliza /admin/inventory/products + PCard.render (hideNfeAndTransfers).
+// Filtros idênticos ao tab Estoque e Categoria.
 let _curationInit = false;
 async function initCurationTab() {
   if (!_curationInit) {
     _curationInit = true;
-    document.getElementById('curation-refresh').onclick = loadCurations;
-    document.getElementById('curation-filter-btn').onclick = loadCurations;
-    document.getElementById('curation-new').onclick = curationCreatePrompt;
-    // popular select de lojas
+    document.getElementById('curation-refresh').onclick = loadCurationProducts;
+    document.getElementById('cur-filter').onclick = loadCurationProducts;
+    document.getElementById('cur-clear').onclick = () => {
+      ['cur-f-brand','cur-f-category','cur-f-supplier','cur-f-subcategory','cur-f-modality','cur-f-tier','cur-lifecycle','cur-biped'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+      document.getElementById('cur-f-search').value = '';
+      document.getElementById('cur-lowstock').checked = false;
+      loadCurationProducts();
+    };
+    document.getElementById('cur-biped').addEventListener('change', loadCurationProducts);
+    document.getElementById('cur-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadCurationProducts(); });
+
+    // Popula filtros (marca, fornecedor, modalidade, especialidade) — mesma fonte do Estoque
     try {
-      const sd = await api('/stores');
-      const sel = document.getElementById('curation-filter-store');
-      (sd.stores||[]).forEach(s => {
-        const o = document.createElement('option'); o.value = s.id; o.textContent = (s.code||'')+' — '+(s.name||''); sel.appendChild(o);
-      });
-    } catch(e){}
+      const fopts = await api('/admin/catalog/form-options');
+      const popSel = (id, items, getVal = v => v, getLabel = v => v) => {
+        const sel = document.getElementById(id);
+        items.forEach(it => { const o = document.createElement('option'); o.value = getVal(it); o.textContent = getLabel(it); sel.appendChild(o); });
+      };
+      popSel('cur-f-brand', fopts.brands || []);
+      popSel('cur-f-supplier', fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+      // Modalidade + Especialidade DINÂMICAS da árvore
+      try {
+        const treeRes = await api('/admin/categories/tree');
+        const tree = treeRes.tree || [];
+        const mods = new Set(), tiers = new Set();
+        (function walk(nodes) {
+          nodes.forEach(n => {
+            if (n.level === 'MODALITY') mods.add(n.name);
+            else if (n.level === 'SPECIALTY') tiers.add(n.name);
+            if (n.children) walk(n.children);
+          });
+        })(tree);
+        const modSel = document.getElementById('cur-f-modality');
+        Array.from(mods).sort().forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m; modSel.appendChild(o); });
+        const tierSel = document.getElementById('cur-f-tier');
+        Array.from(tiers).sort().forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; tierSel.appendChild(o); });
+      } catch (e) { console.warn('[cur] tree fail:', e.message); }
+    } catch (e) { console.warn('[cur] form-options fail:', e.message); }
   }
-  loadCurations();
+  loadCurationProducts();
 }
-async function curationCreatePrompt() {
-  const sd = await api('/stores');
-  const stores = sd.stores || [];
-  if (!stores.length) { alert('Cadastre uma loja primeiro'); return; }
-  const name = prompt('Nome da curadoria (ex: "Vitrine Verão 2026"):');
-  if (!name) return;
-  const storeOpts = stores.map((s,i) => `${i+1}: ${s.code} — ${s.name}`).join('\n');
-  const choice = prompt(`Qual loja?\n\n${storeOpts}`, '1');
-  const idx = parseInt(choice, 10) - 1;
-  if (!(idx >= 0 && idx < stores.length)) return;
-  const data = await api('/admin/curation', 'POST', { name, storeId: stores[idx].id, status: 'DRAFT' });
-  if (data.error) { alert(data.error); return; }
-  loadCurations();
-}
-async function loadCurations() {
+
+async function loadCurationProducts(opts) {
+  opts = opts || {};
   const wrap = document.getElementById('curation-list-wrap');
-  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
-  const storeId = document.getElementById('curation-filter-store').value;
-  const status = document.getElementById('curation-filter-status').value;
   const qs = new URLSearchParams();
-  if (storeId) qs.set('storeId', storeId);
-  if (status) qs.set('status', status);
-  const data = await api('/admin/curation' + (qs.toString() ? '?'+qs : ''));
+  const brand = document.getElementById('cur-f-brand').value.trim();
+  const category = document.getElementById('cur-f-category').value.trim();
+  const supplier = document.getElementById('cur-f-supplier').value.trim();
+  const subcategory = document.getElementById('cur-f-subcategory').value.trim();
+  const modality = document.getElementById('cur-f-modality').value.trim();
+  const tier = document.getElementById('cur-f-tier').value.trim();
+  const search = document.getElementById('cur-f-search').value.trim();
+  const lifecycleStatus = document.getElementById('cur-lifecycle').value;
+  const lowStock = document.getElementById('cur-lowstock').checked;
+  const biped = document.getElementById('cur-biped').value || '';
+
+  // GUARDA: precisa de pelo menos 1 filtro pra não travar com 7k+ cards
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped);
+  if (!hasFilter && !opts.force) {
+    wrap.innerHTML = `
+      <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
+        <div style="font-size:48px;margin-bottom:12px;">🔎</div>
+        <div style="font-size:18px;font-weight:800;color:#1d1d1f;margin-bottom:6px;">Aplique pelo menos 1 filtro</div>
+        <div style="font-size:13px;color:#8e8e93;max-width:480px;margin:0 auto;">
+          Temos mais de 8 mil produtos. Use os filtros pra reduzir a lista antes de renderizar.
+        </div>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = '<div class="loading-spinner">Carregando produtos...</div>';
+  if (brand) qs.set('brand', brand);
+  if (category) qs.set('category', category);
+  if (supplier) qs.set('supplier', supplier);
+  if (subcategory) qs.set('subcategory', subcategory);
+  if (modality) qs.set('modality', modality);
+  if (tier) qs.set('tier', tier);
+  if (search) qs.set('search', search);
+  if (lifecycleStatus) qs.set('lifecycleStatus', lifecycleStatus);
+  if (lowStock) qs.set('lowStock', 'true');
+
+  const data = await api('/admin/inventory/products' + (qs.toString() ? '?'+qs : ''));
   if (data.error) { wrap.innerHTML = `<div style="color:#e35">${escapeHtml(data.error)}</div>`; return; }
-  const list = data.curations || [];
-  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhuma curadoria. Clique em "+ Nova Curadoria".</div>'; return; }
-  const statusColors = { DRAFT: '#8e8e93', ACTIVE: '#0a843d', PAUSED: '#b06b00', COMPLETED: '#0066cc' };
-  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' curadorias</p>';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
-  list.forEach(c => {
-    const sc = statusColors[c.status] || '#8e8e93';
-    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
-    html += '<div style="font-size:14px;font-weight:700;color:#1d1d1f;flex:1;">' + escapeHtml(c.name) + '</div>';
-    html += '<span style="font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(c.status) + '</span>';
-    html += '</div>';
-    html += '<div style="font-size:11px;color:#8e8e93;">🏬 ' + escapeHtml(c.storeId || '—') + '</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0;border-top:1px dashed #e5e5ea;border-bottom:1px dashed #e5e5ea;">';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Itens</div><div style="font-size:18px;font-weight:800;color:#E5571E;">' + (c._count?.items || 0) + '</div></div>';
-    html += '<div><div style="font-size:9px;color:#8e8e93;text-transform:uppercase;">Tarefas</div><div style="font-size:18px;font-weight:800;color:#1d1d1f;">' + (c._count?.checklist || 0) + '</div></div>';
-    html += '</div>';
-    if (c.startDate) html += '<div style="font-size:11px;color:#8e8e93;">📅 ' + new Date(c.startDate).toLocaleDateString('pt-BR') + '</div>';
-    html += '<div style="display:flex;gap:6px;margin-top:4px;">';
-    html += '<button onclick="curationActivate(\'' + c.id + '\')" style="flex:1;padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">▶ Ativar</button>';
-    html += '<button onclick="curationDelete(\'' + c.id + '\')" style="padding:8px 10px;background:white;border:1px solid #e5e5ea;border-radius:8px;font-size:12px;color:#d70015;cursor:pointer;">🗑</button>';
-    html += '</div></div>';
+  let list = data.products || [];
+
+  // Filtro Bipados (frontend)
+  if (biped) {
+    await _loadBipedProductIds(biped);
+    const set = _bipedProductIds || new Set();
+    if (biped === 'never') list = list.filter(p => !set.has(p.id));
+    else list = list.filter(p => set.has(p.id));
+  }
+
+  // Dedupe por modelGroup (mesma lógica do Estoque) — 1 card por modelo
+  const groupsByModel = {};
+  const ungrouped = [];
+  for (const p of list) {
+    let mg = null;
+    try { const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); mg = ctx.modelGroup; } catch {}
+    if (!mg) { ungrouped.push(p); continue; }
+    const key = (p.brand || '') + '||' + mg;
+    if (!groupsByModel[key]) groupsByModel[key] = [];
+    groupsByModel[key].push(p);
+  }
+  const reps = Object.values(groupsByModel).map(arr => {
+    const sorted = [...arr].sort((a, b) => {
+      const aHasImg = a.imageUrl ? 1 : 0;
+      const bHasImg = b.imageUrl ? 1 : 0;
+      if (bHasImg !== aHasImg) return bHasImg - aHasImg;
+      return (b.sizes || []).length - (a.sizes || []).length;
+    });
+    return sorted[0];
   });
-  html += '</div>';
-  wrap.innerHTML = html;
-}
-async function curationActivate(id) {
-  await api('/admin/curation/' + id, 'PUT', { status: 'ACTIVE', startDate: new Date().toISOString() });
-  loadCurations();
-}
-async function curationDelete(id) {
-  if (!confirm('Excluir curadoria?')) return;
-  await api('/admin/curation/' + id, 'DELETE');
-  loadCurations();
+  list = [...reps, ...ungrouped];
+
+  if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
+  if (!window.PCard) { wrap.innerHTML = '<div class="muted">PCard não carregado</div>'; return; }
+
+  const TOTAL = list.length;
+  const headerHtml = `<div style="font-size:12px;color:#8e8e93;margin-bottom:8px;"><strong>${TOTAL}</strong> produto${TOTAL===1?'':'s'} (deduplicados por modelo)</div>`;
+  wrap.innerHTML = headerHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">' +
+    list.slice(0, 200).map(p => PCard.render(p, { actions: 'admin', showStock: true, hideNfeAndTransfers: true })).join('') +
+    '</div>' +
+    (TOTAL > 200 ? `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 200 de ${TOTAL} — refine os filtros pra ver os outros</div>` : '');
 }
 
 // ==================== ENTREVISTA SEMANAL ====================

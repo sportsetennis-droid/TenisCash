@@ -612,7 +612,9 @@
     }
 
     // BLOCO NFe — carrega automático quando card entra na viewport (AGORA DEPOIS DO ESTOQUE)
-    if (showStock && actions === 'admin') {
+    // opts.hideNfeAndTransfers = true esconde blocos NFe entrada + Transferências
+    // (usado no card de Curadoria, que só precisa de estoque)
+    if (showStock && actions === 'admin' && !opts.hideNfeAndTransfers) {
       // AZUL: Entradas via NFe (compra de fornecedor) — conta como estoque novo
       html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
       html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— compra de fornecedor</span></div>`;
