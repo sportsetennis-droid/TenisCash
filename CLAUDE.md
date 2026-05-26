@@ -348,6 +348,32 @@ Quando criar/importar produto, agrupar por (REF + DESC normalizada + COR). NUNCA
 
 - 26/05/2026: Claude criava 1 Product por tamanho via NFe (errado). Owner corrigiu: "SKU é por tamanho, não por card". Refatorou UI + card visual.
 
+### Hierarquia conceitual de 3 níveis (modelo > variante-cor > tamanho)
+
+Acima do CARD (variante de cor) existe um nível superior: **MODELO**.
+
+```
+MODELO (ex: "Converse Chuck Taylor All Star")
+  ├─ VARIANTE COR 1 ("Branco/Marinho")  → REF CK09090001 → 1 CARD
+  │   ├─ Tam 38 → SKU 7908...884
+  │   └─ Tam 39 → SKU 7908...891
+  ├─ VARIANTE COR 2 ("Preto/Vermelho")  → REF CK09090002 → 1 CARD
+  └─ VARIANTE COR 3 ("Rosa/Cru")         → REF CK09090003 → 1 CARD
+```
+
+**Regra**: cada marca tem padrão diferente pra identificar variação de cor do mesmo modelo. Algumas usam padrão na referência (CK0909XXXX), outras na descrição, outras só no nome do fornecedor. **Tem que estudar marca por marca pra traçar o perfil de cada uma**.
+
+Padrões observados (a estudar):
+- **FIBER**: ref estruturada `CATEGORIA-MODELO-COR-TAMANHO` (ex: `CALBFBR-ALLBLACK-G`)
+- **Maioria das marcas**: `Product.sku` atual é `XXXX-EAN` (prefixo PDV + código de barras de UM tamanho) — não é ref real do modelo
+- Outras: documentar conforme forem analisadas
+
+Quando o agrupamento por modelo for implementado, salvar em `aiContext.modelGroup` (string normalizada do modelo) e usar pra:
+- Mostrar "também disponível em outras cores" no card
+- Agrupar relatórios por modelo
+- Curadoria/foto: 1 sessão cobre todas as variantes
+- Cross-selling no PDV
+
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
 NUNCA sugerir "Excluir minha conta" no WhatsApp Business app sem:
