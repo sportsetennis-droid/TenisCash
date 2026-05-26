@@ -18,6 +18,7 @@ const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const falAi = require('../services/falAi');
 const openaiImage = require('../services/openaiImage');
 const compositeImage = require('../services/compositeImage');
+const collageImage = require('../services/collageImage');
 const copyGen = require('../services/copyGenerator');
 const brandProfiles = require('../services/brandProfiles');
 
@@ -59,30 +60,62 @@ function requireAdmin(req, res, next) {
 router.use(requireAdmin);
 
 // =====================================================
-// Heurística pra gerar headline curta automaticamente
-// a partir do nome do produto + marca. Tom S&T informal.
+// Heurística pra gerar headline curta automaticamente.
+// Aceita brandProfile pra usar templates apropriados ao arquétipo.
 // =====================================================
-function autoHeadline(product) {
-  if (!product) return 'NOVIDADE NA LOJA';
+function autoHeadline(product, brandProfile = null) {
+  if (!product) return 'NOVIDADE';
   const name = (product.name || '').toUpperCase().trim();
   const brand = (product.brand || '').toUpperCase().trim();
   const core = (name.split(/[/\-]/)[0] || '').trim().slice(0, 30);
-  // Templates PORTUGUÊS curtos — escolhe pelo hash do id pra ser estável
-  const t = [];
-  if (brand) {
-    t.push(`CHEGOU ${brand}`);
-    t.push(`${brand} NA LOJA`);
-    t.push(`NOVIDADE ${brand}`);
+  const archetype = brandProfile?.archetype || 'mass_retail';
+
+  // Templates por arquétipo (não usa "CHEGOU X" pra B2B/institucional)
+  let t = [];
+  if (archetype === 'b2b_premium' || archetype === 'institutional') {
+    // B2B / Institucional: tom profissional, sem "CHEGOU"
+    if (core) {
+      t.push(core);
+      t.push(`LINHA ${core.slice(0, 20)}`);
+    }
+    if (brand && brand.length < 25) t.push(brand);
+    t.push('NOVA LINHA');
+    t.push('CONHEÇA');
+    t.push('LANÇAMENTO');
+  } else if (archetype === 'personal' || archetype === 'political') {
+    // Personal/político: foco no propósito, não no produto
+    t.push('PROPÓSITO');
+    t.push('COMPROMISSO');
+    t.push('SOMOS JUNTOS');
+    if (brandProfile?.mission) {
+      const m = brandProfile.mission.split('.')[0].toUpperCase().slice(0, 40);
+      if (m.length > 8) t.push(m);
+    }
+  } else {
+    // mass_retail / custom (S&T e similares — varejo esportivo)
+    if (brand) {
+      t.push(`CHEGOU ${brand}`);
+      t.push(`${brand} NA LOJA`);
+      t.push(`NOVIDADE ${brand}`);
+    }
+    if (core) {
+      t.push(`${core} — JÁ NA LOJA`);
+      t.push(`PEGA O ${core.slice(0, 22)}`);
+    }
+    t.push('NOVIDADE NA LOJA');
+    t.push('CHEGOU PRA TI');
   }
-  if (core) {
-    t.push(`${core} — JÁ NA LOJA`);
-    t.push(`PEGA O ${core.slice(0, 22)}`);
+
+  // CTAs preferenciais da marca (se houver) entram no rodízio
+  if (Array.isArray(brandProfile?.ctaTemplates)) {
+    brandProfile.ctaTemplates.slice(0, 3).forEach(c => {
+      if (c && c.length < 50) t.push(String(c).toUpperCase());
+    });
   }
-  t.push('NOVIDADE NA LOJA');
-  t.push('CHEGOU PRA TI');
+
   const seed = (product.id || product.sku || product.name || 'x').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-  const out = t[seed % t.length] || 'CHEGOU NA LOJA';
-  return out.length > 0 ? out : 'CHEGOU NA LOJA';
+  const out = t[seed % t.length] || (brand || 'NOVIDADE');
+  return out.length > 0 ? out : 'NOVIDADE';
 }
 
 // ====================================================
@@ -114,7 +147,15 @@ router.post('/generate/:productId', async (req, res) => {
 
     // Aspect ratio configurável via body (default 16:9). Aceita 1:1, 4:5, 9:16.
     const aspectRatio = req.body?.aspectRatio || '16:9';
-    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name}) · provider=${provider} · ar=${aspectRatio}`);
+
+    // Carrega BrandProfile uma vez (usado pra logo, handle, autoHeadline e copies)
+    let brandProfile = null;
+    if (req.body?.brandSlug) {
+      try { brandProfile = await brandProfiles.getBySlug(req.body.brandSlug); }
+      catch (e) { console.warn('[marketing/generate] brand load fail:', e.message); }
+    }
+
+    console.log(`[marketing/generate] iniciando ${product.sku} (${product.name}) · provider=${provider} · ar=${aspectRatio} · brand=${brandProfile?.slug || 'none'}`);
 
     // Roda as gerações em paralelo (fal.ai e OpenAI aguentam)
     const tasks = [];
@@ -132,22 +173,17 @@ router.post('/generate/:productId', async (req, res) => {
       const includeHandle   = req.body?.includeHandle === true;    // default false
       const includeSubline  = req.body?.includeSubline === true;   // default false
 
-      // Headline: usuário pode passar manualmente; se vazio, gera auto em PT
+      // Headline: usuário pode passar manualmente; se vazio, gera auto contextual
       const headline = includeHeadline
-        ? (req.body?.headline?.trim() || autoHeadline(product)).toString().slice(0, 60)
+        ? (req.body?.headline?.trim() || autoHeadline(product, brandProfile)).toString().slice(0, 60)
         : '';
       const subline = includeSubline ? (req.body?.subline ?? '').toString().slice(0, 80) : '';
 
-      // Resolve dados da marca ativa (logo + handle) se necessário
-      let logoUrl = null, handle = '';
-      if ((includeLogo || includeHandle) && req.body?.brandSlug) {
-        try {
-          const brand = await brandProfiles.getBySlug(req.body.brandSlug);
-          if (brand) {
-            if (includeLogo) logoUrl = brand.logoUrl || null;
-            if (includeHandle) handle = brand.instagramHandle || '';
-          }
-        } catch (e) { console.warn('[marketing] brand resolve falhou:', e.message); }
+      // Dados da marca ativa (logo + handle) — brandProfile já foi carregado acima
+      const logoUrl = includeLogo ? (brandProfile?.logoUrl || null) : null;
+      const handle  = includeHandle ? (brandProfile?.instagramHandle || '') : '';
+      if (includeLogo && !logoUrl) {
+        console.warn(`[marketing] AVISO: marca ${brandProfile?.slug} sem logoUrl — logo nao vai sair no criativo`);
       }
 
       tasks.push(
@@ -209,13 +245,7 @@ router.post('/generate/:productId', async (req, res) => {
     const created = [];
     const errors = [];
 
-    // Em paralelo, gera as copies
-    // Carrega BrandProfile pra usar tom de voz/persona/CTAs da marca ativa
-    let brandProfile = null;
-    if (req.body?.brandSlug) {
-      try { brandProfile = await brandProfiles.getBySlug(req.body.brandSlug); }
-      catch (e) { console.warn('[marketing/generate] brand load fail:', e.message); }
-    }
+    // Em paralelo, gera as copies (brandProfile ja carregado no inicio do handler)
     let copies = { captionIg: '', captionTiktok: '', captionWa: '', hashtags: '' };
     try {
       copies = await copyGen.generateCopies({
@@ -340,7 +370,7 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
     const includeSubline  = body.includeSubline === 'true'  || body.includeSubline === true;
     const headlineRaw = (body.headline || '').toString().trim();
     const headline = includeHeadline
-      ? (headlineRaw || autoHeadline(virtualProduct)).slice(0, 60)
+      ? (headlineRaw || autoHeadline(virtualProduct, brand)).slice(0, 60)
       : '';
     const subline = includeSubline ? (body.subline || '').toString().slice(0, 80) : '';
 
@@ -450,6 +480,215 @@ router.post('/generate-upload', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('[marketing/generate-upload]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// POST /generate-collage — monta colagem 2x1/1x2/2x2 a partir de:
+//   - panels: array de { productId? OR imageUrl?, label?, sceneHint? }
+//   - layout: '2x1' | '1x2' | '2x2'
+//   - aspectRatio: '1:1' | '4:5' | '9:16' | '16:9'
+//   - brandSlug: marca pra contexto (cores, persona, copy)
+//   - generatePanels: true (gera cada painel via composite) | false (usa imageUrls direto)
+// ====================================================
+router.post('/generate-collage', async (req, res) => {
+  try {
+    const {
+      panels = [],
+      layout = '2x2',
+      aspectRatio = '1:1',
+      brandSlug = null,
+      generatePanels = true,
+      labelStyle = 'belowImg',
+      people = null,
+    } = req.body || {};
+
+    if (!Array.isArray(panels) || panels.length < 2) {
+      return res.status(400).json({ error: 'Forneca pelo menos 2 paineis em "panels"' });
+    }
+    if (!['2x1', '1x2', '2x2'].includes(layout)) {
+      return res.status(400).json({ error: 'layout deve ser 2x1, 1x2 ou 2x2' });
+    }
+
+    const expected = layout === '2x2' ? 4 : 2;
+    if (panels.length < expected) {
+      return res.status(400).json({ error: `layout ${layout} exige ${expected} paineis, recebi ${panels.length}` });
+    }
+
+    // Carrega brand
+    let brand = null;
+    if (brandSlug) {
+      try { brand = await brandProfiles.getBySlug(brandSlug); }
+      catch (e) { console.warn('[collage] brand load fail:', e.message); }
+    }
+
+    // Pra cada painel, resolver a imagem final (composite ou imageUrl direto)
+    const panelInputs = panels.slice(0, expected);
+    const resolved = await Promise.all(panelInputs.map(async (p, idx) => {
+      let imageUrl = null;
+      let label = p.label || '';
+      let product = null;
+
+      if (p.productId) {
+        product = await prisma.product.findUnique({
+          where: { id: p.productId },
+          select: { id: true, name: true, brand: true, category: true, price: true, imageUrl: true, imageUrls: true, aiContext: true, sku: true, shortDescription: true },
+        });
+        if (!product) throw new Error(`Produto ${p.productId} nao encontrado`);
+        if (!label) label = product.name?.slice(0, 30) || '';
+
+        if (generatePanels) {
+          // Gera composite editorial pra esse produto (cell tamanho aproximado)
+          // Aspect ratio dos paineis = quadrado se 2x2/2x1/1x2 (cells sao retangulos)
+          const r = await compositeImage.generateEditorialPhoto({
+            product,
+            aspectRatio: layout === '2x1' ? '1:1' : layout === '1x2' ? '1:1' : '1:1',
+            sceneHint: p.sceneHint || '',
+            includeHeadline: false, // sem texto no painel (label vem por fora)
+            includePrice: false,
+            includeLogo: false,
+            includeHandle: false,
+            includeSubline: false,
+            people,
+          });
+          imageUrl = r.outputUrl;
+        } else {
+          imageUrl = product.imageUrl;
+        }
+      } else if (p.imageUrl) {
+        imageUrl = p.imageUrl;
+      } else {
+        throw new Error(`Painel ${idx + 1}: forneca productId OU imageUrl`);
+      }
+
+      return { imageUrl, label, product };
+    }));
+
+    console.log(`[marketing/generate-collage] layout=${layout} paineis=${resolved.length} brand=${brandSlug || 'none'}`);
+
+    // Monta colagem
+    const collageBuf = await collageImage.buildCollage({
+      panels: resolved.map(r => ({ imageUrl: r.imageUrl, label: r.label })),
+      layout,
+      aspectRatio,
+      labelStyle,
+    });
+
+    // Upload final
+    const filename = `collage-${layout}-${Date.now()}.jpg`;
+    const outputUrl = await uploadFileToFal(collageBuf, filename, 'image/jpeg');
+
+    // Calcula custo: cada composite gerado custou ~$0.05 (Bria $0.01 + Flux bg $0.04)
+    const costUsd = generatePanels ? (resolved.length * 0.05) : 0;
+
+    // Gera copy unica pra colagem (usa primeira marca/produto como base)
+    let copies = { captionIg: '', captionTiktok: '', captionWa: '', hashtags: '' };
+    const firstProd = resolved.find(r => r.product)?.product;
+    try {
+      copies = await copyGen.generateCopies({
+        productName: firstProd ? `${firstProd.name} (+ ${resolved.length - 1} produtos)` : 'Colagem multi-produto',
+        brand: brand?.displayName || firstProd?.brand,
+        category: firstProd?.category,
+        price: firstProd?.price,
+        shortDesc: `Colagem ${layout} mostrando ${resolved.length} produtos`,
+        brandProfile: brand,
+      });
+    } catch (e) { console.warn('[collage] copy gen fail:', e.message); }
+
+    // Salva no banco (productId = primeiro produto se houver; sempre brandProfileId)
+    const creative = await prisma.productCreative.create({
+      data: {
+        productId: firstProd?.id || null,
+        brandProfileId: brand?.id || null,
+        kind: 'editorial_photo',
+        outputUrl,
+        model: `collage-${layout}`,
+        prompt: `Colagem ${layout} com ${resolved.length} paineis`,
+        costUsd,
+        captionIg: copies.captionIg,
+        captionTiktok: copies.captionTiktok,
+        captionWa: copies.captionWa,
+        hashtags: copies.hashtags,
+        status: 'pending_review',
+        adhocName: !firstProd ? `Colagem ${layout}` : null,
+        params: {
+          layout,
+          aspectRatio,
+          panels: resolved.map(r => ({ productId: r.product?.id || null, label: r.label })),
+          isCollage: true,
+        },
+      },
+    });
+
+    res.json({ creative, copies, costUsd, outputUrl });
+  } catch (err) {
+    console.error('[marketing/generate-collage]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ====================================================
+// POST /generate-collage-upload — colagem com fotos UPLOADADAS
+// FormData: files (multi), layout, brandSlug, labels[] (array)
+// ====================================================
+router.post('/generate-collage-upload', upload.array('files', 4), async (req, res) => {
+  try {
+    const files = req.files || [];
+    const body = req.body || {};
+    const layout = body.layout || '2x2';
+    const expected = layout === '2x2' ? 4 : 2;
+    if (files.length < expected) {
+      return res.status(400).json({ error: `layout ${layout} exige ${expected} arquivos, recebi ${files.length}` });
+    }
+    const aspectRatio = body.aspectRatio || '1:1';
+    const brandSlug = body.brandSlug || null;
+    let labels = [];
+    try { labels = body.labels ? JSON.parse(body.labels) : []; } catch {}
+
+    // Brand
+    let brand = null;
+    if (brandSlug) {
+      try { brand = await brandProfiles.getBySlug(brandSlug); }
+      catch {}
+    }
+
+    // Upload cada foto pra fal.storage
+    const panels = await Promise.all(files.slice(0, expected).map(async (f, idx) => {
+      const ext = (f.originalname?.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+      const filename = `collage-input-${Date.now()}-${idx}.${ext}`;
+      const url = await uploadFileToFal(f.buffer, filename, f.mimetype);
+      return { imageUrl: url, label: labels[idx] || '' };
+    }));
+
+    const collageBuf = await collageImage.buildCollage({
+      panels,
+      layout,
+      aspectRatio,
+      labelStyle: body.labelStyle || 'belowImg',
+    });
+
+    const filename = `collage-upload-${layout}-${Date.now()}.jpg`;
+    const outputUrl = await uploadFileToFal(collageBuf, filename, 'image/jpeg');
+
+    const creative = await prisma.productCreative.create({
+      data: {
+        productId: null,
+        brandProfileId: brand?.id || null,
+        kind: 'editorial_photo',
+        outputUrl,
+        model: `collage-upload-${layout}`,
+        prompt: `Colagem upload ${layout} (${expected} fotos)`,
+        costUsd: 0,
+        status: 'pending_review',
+        adhocName: `Colagem upload ${layout}`,
+        params: { layout, aspectRatio, isCollage: true, fromUpload: true },
+      },
+    });
+
+    res.json({ creative, outputUrl });
+  } catch (err) {
+    console.error('[marketing/generate-collage-upload]', err);
     res.status(500).json({ error: err.message });
   }
 });

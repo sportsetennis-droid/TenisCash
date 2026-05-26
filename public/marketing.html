@@ -172,11 +172,12 @@
         <button onclick="closeAdhocModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#6e6e73">✕</button>
       </div>
 
-      <!-- TOGGLE: 3 modos -->
-      <div style="display:flex;gap:6px;margin-bottom:14px;background:#fafafc;padding:4px;border-radius:10px">
+      <!-- TOGGLE: 4 modos -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;background:#fafafc;padding:4px;border-radius:10px;flex-wrap:wrap">
         <button class="ad-mode-btn active" data-mode="photo" onclick="setAdhocMode('photo')">📸 Com foto</button>
-        <button class="ad-mode-btn" data-mode="concept" onclick="setAdhocMode('concept')">💭 Só conceito (sem foto)</button>
+        <button class="ad-mode-btn" data-mode="concept" onclick="setAdhocMode('concept')">💭 Só conceito</button>
         <button class="ad-mode-btn" data-mode="both" onclick="setAdhocMode('both')">🎨 Foto + conceito</button>
+        <button class="ad-mode-btn" data-mode="collage" onclick="setAdhocMode('collage')">🎴 Colagem 2/4 fotos</button>
       </div>
 
       <label class="bp-lbl">Marca *</label>
@@ -190,6 +191,19 @@
           <div style="flex:1;font-size:13px;color:#6e6e73"><span id="ad-file-name">Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)</span></div>
         </div>
         <input type="file" id="ad-file" accept="image/*" style="display:none" onchange="onAdhocFileChange(this.files[0])">
+      </div>
+
+      <!-- COLAGEM (modo collage) -->
+      <div id="ad-section-collage" style="display:none">
+        <label class="bp-lbl">Layout da colagem</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <label class="cat-toggle"><input type="radio" name="ad-collage-layout" value="2x1" onchange="renderAdCollageSlots()"> <span>▭▭ 2x1 (lado-a-lado)</span></label>
+          <label class="cat-toggle"><input type="radio" name="ad-collage-layout" value="1x2" onchange="renderAdCollageSlots()"> <span>▱▱ 1x2 (empilhado)</span></label>
+          <label class="cat-toggle"><input type="radio" name="ad-collage-layout" value="2x2" checked onchange="renderAdCollageSlots()"> <span>▦ 2x2 (4 painéis)</span></label>
+        </div>
+        <label class="bp-lbl">Suba <span id="ad-collage-count">4</span> fotos · cada uma vira 1 painel</label>
+        <div id="ad-collage-slots" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px"></div>
+        <input type="file" id="ad-collage-files" accept="image/*" multiple style="display:none" onchange="onAdCollageFiles(this.files)">
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 140px;gap:12px">
@@ -223,6 +237,7 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
           <label class="cat-toggle" style="font-size:12.5px"><input type="checkbox" id="ad-ck-subline"> <span>✏️ Subtexto</span></label>
         </div>
         <input type="text" id="ad-headline" placeholder="Frase custom (vazio = automática)" style="width:100%;padding:7px 11px;border:1px solid #e5e5ea;border-radius:8px;font-size:13px;font-family:inherit;margin-top:8px">
+        <div id="ad-brand-warn" style="display:none;background:#fff8e0;border:1.5px solid #f0b146;border-radius:8px;padding:8px 12px;font-size:12px;color:#7a4a00;margin-top:8px;line-height:1.4"></div>
       </div>
 
       <!-- Pessoa na cena -->
@@ -359,6 +374,7 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
         </div>
       </div>
       <div style="font-size:11px;color:#a8a8ad;margin-top:8px">💡 Logo e handle puxam da <b>Marca ativa</b> selecionada no topo. Preço puxa do catálogo automaticamente.</div>
+      <div id="cat-brand-warn" style="display:none;background:#fff8e0;border:1.5px solid #f0b146;border-radius:8px;padding:8px 12px;font-size:12px;color:#7a4a00;margin-top:8px;line-height:1.4"></div>
     </div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
       <label class="cat-toggle" style="font-size:13px"><b>Formato:</b></label>
@@ -446,6 +462,7 @@ Ex: Post pro Dia do Médico — médica jovem brasileira de jaleco branco em cor
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" onclick="catalogClear()">Limpar</button>
+      <button class="btn btn-secondary" onclick="catalogGenerateCollage()" title="Monta 1 imagem com 2 ou 4 produtos selecionados em grid">🎴 Colagem 2/4</button>
       <button class="btn" onclick="catalogGenerate()">🎨 Gerar criativos</button>
     </div>
   </div>
@@ -809,6 +826,37 @@ async function loadActiveBrandDropdown() {
   } catch (e) { console.warn('loadActiveBrandDropdown', e); }
 }
 
+function getBrandInfo(slug) {
+  return BP_STATE.brands.find(b => b.slug === slug);
+}
+function updateBrandWarns() {
+  // CATÁLOGO: avisa se Logo marcado + marca ativa sem logoUrl
+  const catLogo = document.getElementById('ck-logo')?.checked;
+  const activeSlug = getActiveBrand();
+  const activeBrand = activeSlug ? getBrandInfo(activeSlug) : null;
+  const catWarn = document.getElementById('cat-brand-warn');
+  if (catWarn) {
+    if (catLogo && activeBrand && !activeBrand.logoUrl) {
+      catWarn.style.display = 'block';
+      catWarn.innerHTML = `⚠️ A marca <b>${activeBrand.displayName}</b> não tem <b>logo cadastrada</b>. Vai gerar criativo sem logo. <a href="#" onclick="switchMainTab('brands');return false" style="color:#E5571E;font-weight:700;text-decoration:underline">Subir logo agora →</a>`;
+    } else {
+      catWarn.style.display = 'none';
+    }
+  }
+  // FOTO AVULSA: idem
+  const adLogo = document.getElementById('ad-ck-logo')?.checked;
+  const adSlug = document.getElementById('ad-brand')?.value;
+  const adBrand = adSlug ? getBrandInfo(adSlug) : null;
+  const adWarn = document.getElementById('ad-brand-warn');
+  if (adWarn) {
+    if (adLogo && adBrand && !adBrand.logoUrl) {
+      adWarn.style.display = 'block';
+      adWarn.innerHTML = `⚠️ A marca <b>${adBrand.displayName}</b> não tem <b>logo cadastrada</b>. Vai gerar criativo sem logo. Suba a logo na aba 🏢 Marcas.`;
+    } else {
+      adWarn.style.display = 'none';
+    }
+  }
+}
 function getActiveBrand() {
   return document.getElementById('active-brand')?.value || '';
 }
@@ -1028,20 +1076,91 @@ async function bpPasteLogoUrl(slug) {
 // Modal: Criativo personalizado (foto / conceito / ambos)
 // =====================================================
 let _adhocFile = null;
-let _adhocMode = 'photo'; // 'photo' | 'concept' | 'both'
+let _adhocMode = 'photo'; // 'photo' | 'concept' | 'both' | 'collage'
+let _adCollageFiles = []; // array de File pra modo collage
 
 function setAdhocMode(mode) {
   _adhocMode = mode;
   document.querySelectorAll('.ad-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  // Mostra/esconde seção de foto
-  document.getElementById('ad-section-photo').style.display = (mode === 'concept') ? 'none' : '';
-  // Asterisco de "obrigatório" some no modo concept
+  const isCollage = (mode === 'collage');
+  // Mostra/esconde seção de foto única
+  document.getElementById('ad-section-photo').style.display = (mode === 'concept' || isCollage) ? 'none' : '';
+  // Mostra/esconde seção colagem
+  document.getElementById('ad-section-collage').style.display = isCollage ? '' : 'none';
+  // Asterisco de "obrigatório" some no modo concept e collage
   document.getElementById('ad-photo-req').textContent = (mode === 'photo') ? '*' : '(opcional)';
-  // Hint no campo descrição: vira obrigatório em modo concept
+  // Hint no campo descrição
   const lbl = document.getElementById('ad-desc-label');
   if (mode === 'concept') lbl.innerHTML = '📝 Descreva a cena que você quer * <span style="color:#FF6A1F;font-weight:700">(obrigatório no modo só conceito)</span>';
   else if (mode === 'both') lbl.innerHTML = '📝 Descrição / briefing extra (opcional — refina a cena gerada)';
+  else if (isCollage) lbl.innerHTML = '📝 Legenda / contexto da colagem (opcional)';
   else lbl.innerHTML = '📝 Descrição / briefing (opcional — quanto mais detalhe, melhor a cena)';
+
+  if (isCollage) renderAdCollageSlots();
+}
+
+function getAdCollageLayout() {
+  return document.querySelector('input[name="ad-collage-layout"]:checked')?.value || '2x2';
+}
+
+function renderAdCollageSlots() {
+  const layout = getAdCollageLayout();
+  const n = (layout === '2x2') ? 4 : 2;
+  document.getElementById('ad-collage-count').textContent = n;
+  const host = document.getElementById('ad-collage-slots');
+  host.style.gridTemplateColumns = (layout === '1x2') ? '1fr' : '1fr 1fr';
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    const f = _adCollageFiles[i];
+    const label = f ? `${escH(f.name.slice(0,18))}<br><span style="font-size:10px;color:#a8a8ad">${Math.round(f.size/1024)}KB</span>` : `<span style="color:#c0c0c5">+ Foto ${i+1}</span>`;
+    const preview = (_adCollagePreviewUrls && _adCollagePreviewUrls[i]) ? `<img src="${_adCollagePreviewUrls[i]}" style="width:100%;height:100%;object-fit:cover">` : '<div style="font-size:24px;color:#c0c0c5">📷</div>';
+    html += `<div onclick="pickAdCollageSlot(${i})" style="aspect-ratio:1;background:#fafafc;border:1.5px dashed #d5d5da;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;text-align:center;font-size:11px;color:#6e6e73;padding:4px">
+      <div style="width:100%;height:60%;display:flex;align-items:center;justify-content:center;overflow:hidden">${preview}</div>
+      <div style="margin-top:4px">${label}</div>
+    </div>`;
+  }
+  host.innerHTML = html;
+}
+
+let _adCollagePreviewUrls = [];
+let _adCollageActiveSlot = -1;
+function pickAdCollageSlot(idx) {
+  _adCollageActiveSlot = idx;
+  // Reset input para permitir selecionar mesma foto
+  const input = document.getElementById('ad-collage-files');
+  input.value = '';
+  input.click();
+}
+
+function onAdCollageFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  // Se selecionou múltiplas de uma vez (drop ou multi-select), preenche slots em ordem
+  if (files.length > 1 || _adCollageActiveSlot < 0) {
+    files.forEach((f, i) => {
+      const slot = (_adCollageActiveSlot >= 0 ? _adCollageActiveSlot : 0) + i;
+      if (slot < 4 && f.size <= 10 * 1024 * 1024) {
+        _adCollageFiles[slot] = f;
+        readPreviewInto(slot, f);
+      }
+    });
+  } else {
+    const f = files[0];
+    if (f.size > 10 * 1024 * 1024) { toast('Arquivo > 10MB'); return; }
+    _adCollageFiles[_adCollageActiveSlot] = f;
+    readPreviewInto(_adCollageActiveSlot, f);
+  }
+  _adCollageActiveSlot = -1;
+  renderAdCollageSlots();
+}
+
+function readPreviewInto(slot, file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    _adCollagePreviewUrls[slot] = e.target.result;
+    renderAdCollageSlots();
+  };
+  reader.readAsDataURL(file);
 }
 
 function openAdhocModal() {
@@ -1059,6 +1178,8 @@ function openAdhocModal() {
   }
   // Reset
   _adhocFile = null;
+  _adCollageFiles = [];
+  _adCollagePreviewUrls = [];
   document.getElementById('ad-file').value = '';
   document.getElementById('ad-file-name').textContent = 'Clique pra escolher arquivo (JPG, PNG, WebP — max 10MB)';
   document.getElementById('ad-preview').innerHTML = '📸';
@@ -1067,6 +1188,7 @@ function openAdhocModal() {
   setAdhocMode('photo'); // modo padrão
   if (typeof adhocClearError === 'function') adhocClearError();
   document.getElementById('adhoc-modal').style.display = 'flex';
+  setTimeout(updateBrandWarns, 50);
 }
 
 function closeAdhocModal() {
@@ -1100,6 +1222,44 @@ async function adhocGenerate() {
   const brandSlug = document.getElementById('ad-brand').value;
   const name = document.getElementById('ad-name').value.trim();
   const desc = document.getElementById('ad-desc').value.trim();
+
+  // MODO COLAGEM: roteia pra endpoint dedicado
+  if (_adhocMode === 'collage') {
+    const layout = getAdCollageLayout();
+    const need = (layout === '2x2') ? 4 : 2;
+    const errors = [];
+    if (!brandSlug) errors.push('Escolha a <b>Marca</b>');
+    const filledFiles = _adCollageFiles.filter(Boolean);
+    if (filledFiles.length < need) errors.push(`Suba <b>${need} fotos</b> pra colagem ${layout} (atualmente ${filledFiles.length})`);
+    if (errors.length) { adhocShowError('Faltam:<br>• ' + errors.join('<br>• ')); return; }
+
+    const fd = new FormData();
+    filledFiles.slice(0, need).forEach(f => fd.append('files', f));
+    fd.append('layout', layout);
+    fd.append('brandSlug', brandSlug);
+    fd.append('aspectRatio', document.getElementById('ad-aspect').value);
+
+    toast(`Montando colagem ${layout}... aguarde ~10s`);
+    document.getElementById('ad-go-btn').disabled = true;
+    try {
+      const res = await fetch('/api/marketing/generate-collage-upload', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + getToken() },
+        body: fd,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'erro');
+      toast('✓ Colagem gerada — vai pra aba Criativos');
+      closeAdhocModal();
+      switchMainTab('criativos');
+      setTimeout(reload, 800);
+    } catch (e) {
+      adhocShowError('Erro ao gerar colagem: ' + e.message);
+    } finally {
+      document.getElementById('ad-go-btn').disabled = false;
+    }
+    return;
+  }
 
   // Validação acumulativa (lista TODOS os erros, não só o primeiro)
   const errors = [];
@@ -1731,6 +1891,7 @@ function updateFloatingBar() {
 document.addEventListener('change', (e) => {
   if (e.target?.id === 'cat-skipvideo' || e.target?.name === 'cat-provider') updateFloatingBar();
   if (e.target?.name === 'cat-provider' || e.target?.name === 'cat-people-mode') updateCatPeopleWarn();
+  if (['ck-logo','ad-ck-logo','ad-brand','active-brand'].includes(e.target?.id)) updateBrandWarns();
 });
 
 // Cenários pré-definidos pra rodízio quando o usuário quer múltiplas variações do mesmo produto.
@@ -1752,6 +1913,59 @@ function buildJobs(skipVideo) {
     }
   });
   return jobs;
+}
+
+async function catalogGenerateCollage() {
+  // Pega productIds selecionados (pode ter repetidos via quantidade de variações)
+  const selected = Array.from(STATE.catalog.selected.keys());
+  if (selected.length < 2) { toast('Selecione pelo menos 2 produtos pra montar colagem'); return; }
+  // Escolhe layout: 2 produtos → 2x1, 4 → 2x2, 3 → 2x1 (descarta 1), >=5 → 2x2 (primeiros 4)
+  let layout = '2x2', need = 4;
+  if (selected.length === 2) { layout = '2x1'; need = 2; }
+  else if (selected.length === 3) { layout = '2x1'; need = 2; }
+
+  // Pergunta layout final
+  const choice = prompt(`Você selecionou ${selected.length} produto(s). Layout da colagem:\n1 = 2x1 lado-a-lado (2 produtos)\n2 = 1x2 empilhado (2 produtos)\n3 = 2x2 grid (4 produtos)\n\nDigite 1, 2 ou 3:`, selected.length >= 4 ? '3' : '1');
+  if (choice === null) return;
+  if (choice === '1') { layout = '2x1'; need = 2; }
+  else if (choice === '2') { layout = '1x2'; need = 2; }
+  else if (choice === '3') { layout = '2x2'; need = 4; }
+  else { toast('Opção inválida'); return; }
+
+  if (selected.length < need) { toast(`Layout ${layout} precisa de ${need} produtos`); return; }
+
+  const productIds = selected.slice(0, need);
+  const products = productIds.map(id => STATE.catalog.products.find(p => p.id === id)).filter(Boolean);
+  const panels = products.map(p => ({ productId: p.id, label: p.name?.slice(0, 30) || '' }));
+
+  const aspectRatio = getAspect();
+  const brandSlug = getActiveBrand() || null;
+  const cost = (need * 0.05).toFixed(2);
+
+  if (!confirm(`Gerar colagem ${layout} com ${need} produtos?\n\nCusto: $${cost} · Tempo: ~${need * 15}s`)) return;
+
+  toast(`Gerando colagem ${layout}... ~${need * 15}s`);
+  try {
+    const r = await api('/generate-collage', {
+      method: 'POST',
+      body: JSON.stringify({
+        panels,
+        layout,
+        aspectRatio,
+        brandSlug,
+        generatePanels: true,
+        people: getCatPeople(),
+      }),
+    });
+    if (r.error) throw new Error(r.error);
+    toast('✓ Colagem pronta — vai pra aba Criativos');
+    STATE.catalog.selected.clear();
+    updateFloatingBar();
+    switchMainTab('criativos');
+    setTimeout(reload, 800);
+  } catch (e) {
+    toast('Erro: ' + e.message);
+  }
 }
 
 async function catalogGenerate() {
