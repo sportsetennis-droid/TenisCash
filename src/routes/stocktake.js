@@ -101,11 +101,30 @@ router.post('/bipe', async (req, res) => {
       }
     }
 
-    // FALLBACK NFe DESLIGADO (26/05/2026): estava causando matches errados.
-    // Quando EAN nao acha ProductSize, agora deixa como found=false (igual
-    // antes do dia 26/05) pra dono revisar manual em /bipes.html.
-    // Não criar ProductSize nem incrementar StoreStock baseado em NFe.
+    // FALLBACK: se nao acha ProductSize mas o ean existe em XmlFiscalItem
+    // com productId vinculado, cria ProductSize automaticamente (regra CLAUDE.md)
     let autoCreated = false;
+    if (matched.length === 0) {
+      const nfeItem = await prisma.xmlFiscalItem.findFirst({
+        where: { ean: code, productId: { not: null } },
+        select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (nfeItem && nfeItem.product) {
+        const sizeStr = inferSizeFromDescription(nfeItem.description);
+        try {
+          const newSize = await prisma.productSize.create({
+            data: { productId: nfeItem.productId, size: sizeStr, barcode: code, stock: 0 },
+          });
+          matched = [{ id: newSize.id, size: sizeStr, barcode: code, product: nfeItem.product }];
+          autoCreated = true;
+          console.log(`[bipe] auto-criou ProductSize size=${sizeStr} barcode=${code} productId=${nfeItem.productId}`);
+        } catch (e) {
+          // pode falhar por unique constraint (productId, size); ignora e segue como nao-encontrado
+          console.warn(`[bipe] auto-create ProductSize falhou: ${e.message}`);
+        }
+      }
+    }
 
     const found = matched.length > 0;
     const duplicate = matched.length > 1;
