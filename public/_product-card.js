@@ -102,16 +102,18 @@
       if (variants.length === 0) { slot.dataset.loaded = '1'; return; }
 
       const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      let html = '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e5ea;">';
-      html += '<span style="font-size:10px;font-weight:700;color:#8e8e93;letter-spacing:0.5px;margin-right:6px;text-transform:uppercase;">+' + variants.length + ' cor' + (variants.length > 1 ? 'es' : '') + '</span>';
-      variants.slice(0, 6).forEach(v => {
+      let html = '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e5e5ea;">';
+      html += '<div style="font-size:10px;font-weight:700;color:#8e8e93;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase;">🎨 ' + variants.length + ' OUTRA' + (variants.length > 1 ? 'S CORES DESSE MODELO' : ' COR DESSE MODELO') + '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      variants.slice(0, 8).forEach(v => {
         const img = v.imageUrl
           ? `<img src="${esc(v.imageUrl)}" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;object-fit:contain;background:#fafafa;" onerror="this.style.display='none';this.parentElement.style.background='#eee';">`
-          : '<div style="width:100%;height:100%;background:#eee;"></div>';
-        html += `<a href="#" data-vid="${esc(v.id)}" title="${esc(v.color || v.ref || '')}" class="pcard-colorvar-thumb" style="width:30px;height:30px;border-radius:6px;border:1.5px solid #e5e5ea;overflow:hidden;cursor:pointer;transition:all 0.15s;flex-shrink:0;display:block;text-decoration:none;" onmouseover="this.style.borderColor='#E5571E';this.style.transform='scale(1.1)';" onmouseout="this.style.borderColor='#e5e5ea';this.style.transform='';">${img}</a>`;
+          : '<div style="width:100%;height:100%;background:#eee;display:flex;align-items:center;justify-content:center;font-size:18px;color:#c0c0c5;">📷</div>';
+        const titleAttr = esc(v.color || v.ref || '');
+        html += `<a href="#" data-vid="${esc(v.id)}" title="${titleAttr}" class="pcard-colorvar-thumb" style="width:64px;height:64px;border-radius:10px;border:2px solid #e5e5ea;overflow:hidden;cursor:pointer;transition:all 0.15s;flex-shrink:0;display:block;text-decoration:none;background:#fff;" onmouseover="this.style.borderColor='#E5571E';this.style.transform='scale(1.08)';this.style.boxShadow='0 4px 12px rgba(229,87,30,0.25)';" onmouseout="this.style.borderColor='#e5e5ea';this.style.transform='';this.style.boxShadow='';">${img}</a>`;
       });
-      if (variants.length > 6) html += `<span style="font-size:11px;color:#8e8e93;align-self:center;">+${variants.length - 6}</span>`;
-      html += '</div>';
+      if (variants.length > 8) html += `<div style="width:64px;height:64px;border-radius:10px;border:2px dashed #c0c0c5;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#8e8e93;flex-shrink:0;">+${variants.length - 8}</div>`;
+      html += '</div></div>';
       slot.innerHTML = html;
       slot.dataset.loaded = '1';
       // Click handler: SUBSTITUI INLINE o card pela variante clicada (estilo On Running)
@@ -207,8 +209,13 @@
       const newNode = wrapper.firstElementChild;
       if (newNode && cardWrap.parentNode) {
         cardWrap.parentNode.replaceChild(newNode, cardWrap);
-        // Re-agenda observers pra novos slots
+        // Re-agenda observers (NFe summary) + força carregamento IMEDIATO das variantes
+        // de cor (o card já está na viewport, não precisa esperar IntersectionObserver)
         PCard._scheduleObserve();
+        // Carrega variantes JÁ — sem esperar observer (evita slot ficar vazio)
+        setTimeout(() => {
+          try { PCard.loadColorVariants(newProductId); } catch (e) { console.warn('[PCard] swap loadColorVariants:', e.message); }
+        }, 50);
       }
     } catch (err) {
       console.error('[PCard] swap fail:', err);
