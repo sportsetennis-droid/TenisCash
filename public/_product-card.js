@@ -95,17 +95,24 @@
       const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const t = d.totals || {};
       let html = '';
-      // Resumo totais
-      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-bottom:10px;">`;
-      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">COMPRADO</div><div style="font-size:18px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">EM ESTOQUE</div><div style="font-size:18px;font-weight:800;color:#0a843d;">${t.emEstoque || 0}</div></div>`;
+      // Resumo totais (4 colunas: COMPRADO · VENDIDO · ESTOQUE · DIFERENÇA)
       const dif = t.diferenca || 0;
-      const difColor = dif > 0 ? '#d70015' : dif < 0 ? '#b06b00' : '#8e8e93';
+      const difColor = dif > 0 ? '#d70015' : dif < 0 ? '#b06b00' : '#0a843d';
       const difSign = dif > 0 ? '−' : dif < 0 ? '+' : '';
-      html += `<div style="background:white;padding:6px 8px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.5px;">DIFERENÇA</div><div style="font-size:18px;font-weight:800;color:${difColor};">${difSign}${Math.abs(dif)}</div></div>`;
+      const difLabel = dif === 0 ? '✓' : `${difSign}${Math.abs(dif)}`;
+      html += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px;">`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">COMPRADO</div><div style="font-size:17px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">VENDIDO</div><div style="font-size:17px;font-weight:800;color:#0a843d;">${t.vendido || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">ESTOQUE</div><div style="font-size:17px;font-weight:800;color:#E5571E;">${t.emEstoque || 0}</div></div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">PERDA</div><div style="font-size:17px;font-weight:800;color:${difColor};">${difLabel}</div></div>`;
       html += `</div>`;
       if (t.diferenca > 0) {
-        html += `<div style="background:#fff1f0;padding:6px 10px;border-radius:6px;font-size:11px;color:#d70015;margin-bottom:8px;">⚠ Comprado ${t.comprado} − contado ${t.emEstoque} = ${t.diferenca} sumiram (vendido / perdido / em loja não contada)</div>`;
+        html += `<div style="background:#fff1f0;padding:6px 10px;border-radius:6px;font-size:11px;color:#d70015;margin-bottom:8px;">⚠ ${t.comprado} comprado − ${t.vendido || 0} vendido − ${t.emEstoque} estoque = <b>${t.diferenca} sumiram</b> (perda / não bipado)</div>`;
+      } else if (t.diferenca === 0 && (t.comprado > 0)) {
+        html += `<div style="background:#e8f7ee;padding:6px 10px;border-radius:6px;font-size:11px;color:#0a843d;margin-bottom:8px;">✓ Tudo bate: comprado = vendido + estoque</div>`;
+      }
+      if (t.receita) {
+        html += `<div style="background:white;padding:5px 10px;border-radius:6px;font-size:11px;color:#0a843d;margin-bottom:8px;text-align:right;font-weight:700;">💰 Receita: R$ ${Number(t.receita).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>`;
       }
       // Lista de entradas
       const entradas = d.entradas || [];
@@ -132,6 +139,26 @@
         });
         html += `</div>`;
       }
+      // VENDAS — lista detalhada
+      const vendas = d.vendas || [];
+      if (vendas.length > 0) {
+        html += `<div style="font-size:10px;color:#0a843d;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:10px;margin-bottom:4px;">💰 ${vendas.length} venda${vendas.length > 1 ? 's' : ''}</div>`;
+        html += `<div style="max-height:200px;overflow-y:auto;background:white;border-radius:6px;">`;
+        vendas.slice(0, 20).forEach(v => {
+          const data = v.data ? new Date(v.data).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '?';
+          html += `<div style="padding:6px 10px;border-bottom:1px solid #f0f0f5;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">`;
+          html += `<div style="flex:1;min-width:0;font-size:11px;">`;
+          html += `<div style="font-weight:600;">${data}${v.loja ? ' · <span style="color:#0a843d">' + esc(v.loja) + '</span>' : ''}${v.tamanho ? ' · Tam ' + esc(v.tamanho) : ''}</div>`;
+          html += `</div>`;
+          html += `<div style="text-align:right;flex-shrink:0;font-size:11px;">`;
+          html += `<div style="font-weight:800;color:#0a843d;">${v.quantidade} un</div>`;
+          if (v.valorTotal) html += `<div style="font-size:10px;color:#8e8e93;">R$ ${Number(v.valorTotal).toFixed(2)}</div>`;
+          html += `</div>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+
       // Transferências
       if (d.transferencias && d.transferencias.length > 0) {
         html += `<div style="font-size:10px;color:#b06b00;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${d.transferencias.length} transferência${d.transferencias.length > 1 ? 's' : ''} interna${d.transferencias.length > 1 ? 's' : ''}</div>`;

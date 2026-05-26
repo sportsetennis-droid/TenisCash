@@ -143,6 +143,25 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
       },
     });
 
+    // VENDAS (SaleItem com esse productId)
+    const saleItems = await prisma.saleItem.findMany({
+      where: { productId },
+      include: {
+        sale: { select: { id: true, createdAt: true, storeId: true, status: true } },
+      },
+      orderBy: { sale: { createdAt: 'desc' } },
+    });
+    const totalVendido = saleItems.reduce((s, i) => s + (i.quantity || 0), 0);
+    const totalRevenue = saleItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+
+    // Hidrata nomes de lojas pras vendas
+    const saleStoreIds = [...new Set(saleItems.map(i => i.sale?.storeId).filter(Boolean))];
+    const saleStoresList = saleStoreIds.length ? await prisma.store.findMany({
+      where: { id: { in: saleStoreIds } },
+      select: { id: true, code: true, name: true },
+    }) : [];
+    const saleStoreMap = Object.fromEntries(saleStoresList.map(s => [s.id, s]));
+
     // CNPJ → loja (pra mostrar pra que loja a NFe foi destinada)
     // FiscalIssuer.stores é PLURAL (1 CNPJ pode ter várias lojas físicas)
     const cnpjs = [...new Set(entradas.map(e => e.fiscalDocument?.recipientCnpj).filter(Boolean))];
@@ -158,8 +177,10 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
       totals: {
         comprado: totalComprado,          // quanto entrou via NFe de fornecedor
         transferido: totalTransferido,    // quanto rolou em transferências internas
-        emEstoque: totalEmEstoque,        // soma do estoque físico atual (todas lojas/tamanhos)
-        diferenca: totalComprado - totalEmEstoque, // sumiço (vendido/perdido/transferido)
+        vendido: totalVendido,             // quanto saiu em vendas (SaleItem)
+        receita: totalRevenue,             // valor total das vendas em R$
+        emEstoque: totalEmEstoque,         // soma do estoque físico atual (todas lojas/tamanhos)
+        diferenca: totalComprado - totalVendido - totalEmEstoque, // sumiço/perda (deveria ser 0)
         bipes30d,                          // qtos bipes contou nesse produto nos últimos 30d
       },
       entradas: entradas.map(i => ({
@@ -175,6 +196,18 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
         descricao: i.description,
         lojaDestino: cnpjToStore[i.fiscalDocument?.recipientCnpj]?.code || null,
         lojaNome: cnpjToStore[i.fiscalDocument?.recipientCnpj]?.name || null,
+      })),
+      vendas: saleItems.slice(0, 50).map(i => ({
+        id: i.id,
+        saleId: i.saleId,
+        data: i.sale?.createdAt,
+        quantidade: i.quantity,
+        valorUnit: i.unitPrice,
+        valorTotal: i.totalPrice,
+        tamanho: i.size,
+        loja: saleStoreMap[i.sale?.storeId]?.code || null,
+        lojaNome: saleStoreMap[i.sale?.storeId]?.name || null,
+        status: i.sale?.status,
       })),
       transferencias: transferencias.map(i => ({
         id: i.id,
