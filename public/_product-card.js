@@ -100,11 +100,18 @@
       const difColor = dif > 0 ? '#d70015' : dif < 0 ? '#b06b00' : '#0a843d';
       const difSign = dif > 0 ? '−' : dif < 0 ? '+' : '';
       const difLabel = dif === 0 ? '✓' : `${difSign}${Math.abs(dif)}`;
+      // Helper pra mostrar breakdown por loja (microline cinza embaixo do número)
+      const bd = d.breakdown || {};
+      const breakLine = (arr) => {
+        if (!arr || arr.length === 0) return '';
+        const txt = arr.slice(0, 4).map(x => `${esc(x.loja)} ${x.qtd}`).join(' · ');
+        return `<div style="font-size:9px;color:#8e8e93;font-weight:600;margin-top:2px;line-height:1.1;">${esc(txt)}</div>`;
+      };
       // Grid responsivo: 4 colunas se couber, senão quebra pra 2x2 automaticamente
-      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:5px;margin-bottom:10px;">`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">COMPRADO</div><div style="font-size:17px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">VENDIDO</div><div style="font-size:17px;font-weight:800;color:#0a843d;">${t.vendido || 0}</div></div>`;
-      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">ESTOQUE</div><div style="font-size:17px;font-weight:800;color:#E5571E;">${t.emEstoque || 0}</div></div>`;
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(82px,1fr));gap:5px;margin-bottom:10px;">`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">COMPRADO</div><div style="font-size:17px;font-weight:800;color:#0066cc;">${t.comprado || 0}</div>${breakLine(bd.compradoPorLoja)}</div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">VENDIDO</div><div style="font-size:17px;font-weight:800;color:#0a843d;">${t.vendido || 0}</div>${breakLine(bd.vendidoPorLoja)}</div>`;
+      html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">ESTOQUE</div><div style="font-size:17px;font-weight:800;color:#E5571E;">${t.emEstoque || 0}</div>${breakLine(bd.estoquePorLoja)}</div>`;
       html += `<div style="background:white;padding:6px 4px;border-radius:6px;text-align:center;min-width:0;"><div style="font-size:9px;color:#8e8e93;font-weight:700;letter-spacing:0.3px;">PERDA</div><div style="font-size:17px;font-weight:800;color:${difColor};">${difLabel}</div></div>`;
       html += `</div>`;
       if (t.diferenca > 0) {

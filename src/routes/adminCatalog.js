@@ -162,6 +162,21 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
     }) : [];
     const saleStoreMap = Object.fromEntries(saleStoresList.map(s => [s.id, s]));
 
+    // Breakdown VENDIDO por loja
+    const vendidoPorLojaMap = {};
+    saleItems.forEach(i => {
+      const sid = i.sale?.storeId || 'sem_loja';
+      vendidoPorLojaMap[sid] = (vendidoPorLojaMap[sid] || 0) + (i.quantity || 0);
+    });
+    const vendidoPorLoja = Object.entries(vendidoPorLojaMap).map(([sid, qty]) => ({
+      loja: saleStoreMap[sid]?.code || (sid === 'sem_loja' ? '?' : sid.slice(0, 8)),
+      lojaNome: saleStoreMap[sid]?.name || null,
+      qtd: qty,
+    })).sort((a, b) => b.qtd - a.qtd);
+
+    // Breakdown COMPRADO por loja (NFe → recipientCnpj → store)
+    // Usa o cnpjToStore que será criado abaixo, faz depois
+
     // CNPJ → loja (pra mostrar pra que loja a NFe foi destinada)
     // FiscalIssuer.stores é PLURAL (1 CNPJ pode ter várias lojas físicas)
     const cnpjs = [...new Set(entradas.map(e => e.fiscalDocument?.recipientCnpj).filter(Boolean))];
@@ -172,16 +187,42 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
     // Pega a 1ª loja vinculada (caso de 1-pra-1, que é o normal)
     const cnpjToStore = Object.fromEntries(issuers.map(i => [i.cnpj, i.stores?.[0] || null]));
 
+    // Breakdown COMPRADO por loja (pelo CNPJ destinatário de cada NFe)
+    const compradoPorLojaMap = {};
+    entradas.forEach(e => {
+      const cnpj = e.fiscalDocument?.recipientCnpj;
+      const code = cnpj ? (cnpjToStore[cnpj]?.code || '?') : '?';
+      compradoPorLojaMap[code] = (compradoPorLojaMap[code] || 0) + (e.quantity || 0);
+    });
+    const compradoPorLoja = Object.entries(compradoPorLojaMap).map(([code, qtd]) => ({
+      loja: code, qtd,
+    })).sort((a, b) => b.qtd - a.qtd);
+
+    // Breakdown ESTOQUE por loja (já tenho storeStocks)
+    const estoquePorLojaMap = {};
+    storeStocks.forEach(ss => {
+      const code = ss.store?.code || '?';
+      estoquePorLojaMap[code] = (estoquePorLojaMap[code] || 0) + (ss.stock || 0);
+    });
+    const estoquePorLojaResumo = Object.entries(estoquePorLojaMap).map(([code, qtd]) => ({
+      loja: code, qtd,
+    })).filter(x => x.qtd > 0).sort((a, b) => b.qtd - a.qtd);
+
     res.json({
       productId,
       totals: {
-        comprado: totalComprado,          // quanto entrou via NFe de fornecedor
-        transferido: totalTransferido,    // quanto rolou em transferências internas
-        vendido: totalVendido,             // quanto saiu em vendas (SaleItem)
-        receita: totalRevenue,             // valor total das vendas em R$
-        emEstoque: totalEmEstoque,         // soma do estoque físico atual (todas lojas/tamanhos)
-        diferenca: totalComprado - totalVendido - totalEmEstoque, // sumiço/perda (deveria ser 0)
-        bipes30d,                          // qtos bipes contou nesse produto nos últimos 30d
+        comprado: totalComprado,
+        transferido: totalTransferido,
+        vendido: totalVendido,
+        receita: totalRevenue,
+        emEstoque: totalEmEstoque,
+        diferenca: totalComprado - totalVendido - totalEmEstoque,
+        bipes30d,
+      },
+      breakdown: {
+        compradoPorLoja,   // [{ loja, qtd }] — pra que loja foi destinada cada NFe
+        vendidoPorLoja,    // [{ loja, lojaNome, qtd }] — qual loja vendeu quanto
+        estoquePorLoja: estoquePorLojaResumo, // [{ loja, qtd }] — estoque físico
       },
       entradas: entradas.map(i => ({
         id: i.id,
