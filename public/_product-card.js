@@ -114,13 +114,13 @@
       html += '</div>';
       slot.innerHTML = html;
       slot.dataset.loaded = '1';
-      // Click handler: abrir modal do produto clicado (se função existir)
+      // Click handler: SUBSTITUI INLINE o card pela variante clicada (estilo On Running)
       slot.querySelectorAll('.pcard-colorvar-thumb').forEach(el => {
         el.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
           const vid = el.dataset.vid;
-          if (typeof window.openCatProductModal === 'function') window.openCatProductModal(vid);
+          PCard.swapCardInline(productId, vid);
         };
       });
     } catch (e) {
@@ -172,6 +172,50 @@
   };
   PCard._bipedBadgeHtml = function () {
     return '<span title="Produto bipado em loja — confirmado em estoque físico" style="background:#e8f7ee;color:#0a843d;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;gap:3px;">📍 BIPADO</span>';
+  };
+
+  // ============================================================
+  // swapCardInline: substitui o conteudo de UM card pela info de
+  // outra variante (cor), sem abrir modal nem navegar.
+  // Estilo On Running: vc clica numa miniatura -> a imagem grande
+  // e os dados do card mudam pra essa cor.
+  // ============================================================
+  PCard.swapCardInline = async function (currentProductId, newProductId) {
+    if (currentProductId === newProductId) return;
+    // Acha o nó do card atual (pelo carrossel ID)
+    const carrossel = document.getElementById('pcrsl-' + currentProductId);
+    const cardWrap = carrossel ? carrossel.parentElement : null;
+    if (!cardWrap) { console.warn('[PCard] swap: card atual nao achado pid=' + currentProductId); return; }
+
+    // Loading visual
+    cardWrap.style.opacity = '0.55';
+    cardWrap.style.pointerEvents = 'none';
+    try {
+      // Busca produto novo (endpoint admin)
+      const token = localStorage.getItem('tc_admin_token') || '';
+      const r = await fetch('/api/admin/catalog/products/' + newProductId, { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const newProd = d.product;
+      if (!newProd) throw new Error('produto nao retornado');
+
+      // Re-renderiza com os mesmos opts (extrai do cardWrap... ou usa default 'admin')
+      const newHtml = PCard.render(newProd, { actions: 'admin', showStock: true });
+      // Substitui o outerHTML do card
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = newHtml;
+      const newNode = wrapper.firstElementChild;
+      if (newNode && cardWrap.parentNode) {
+        cardWrap.parentNode.replaceChild(newNode, cardWrap);
+        // Re-agenda observers pra novos slots
+        PCard._scheduleObserve();
+      }
+    } catch (err) {
+      console.error('[PCard] swap fail:', err);
+      cardWrap.style.opacity = '';
+      cardWrap.style.pointerEvents = '';
+      alert('Erro ao trocar variante: ' + err.message);
+    }
   };
 
   // Auto-load índice de bipados ao carregar a página (admin/bipes/etc)
