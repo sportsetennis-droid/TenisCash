@@ -81,10 +81,13 @@
 - Route: `financial.js`
 - Tabelas: `AccountPayable`, `AccountReceivable`
 
-### N. APEX (app esportivo — em construção)
-- Routes: `activities.js`, `coach.js`
-- Services: `activityIngest.js`, `aiCoach.js`
-- Tabelas: `AthleteProfile`, `Consent`, `DeviceConnection`, `Activity`, `ActivityLap`, `ActivityPhoto`, `Route`, `RoutePoint`, `Segment`, `SegmentEffort`, `Club`, `ClubMembership`, `Challenge`, `ChallengeParticipation`, `TrainingPlan`, `Workout`, `WorkoutStep`, `UserPlan`, `SafetyContact`, `LiveTrackingSession`, `BadgeEarned` (todas vazias ou quase vazias)
+### N. APEX (app esportivo — **EXTRAÍDO** para `src/modules/apex/`)
+- **Status:** módulo extraído com sucesso em 26/05/2026. Quatro commits atômicos: `c070555`, `0af78f7`, `29ff92b`, `903f2e2`. Validação final aprovada (ver `docs/PLANO_EXTRACAO_APEX.md`).
+- Routes (em `src/modules/apex/routes/`): `activities.js`, `coach.js`
+- Services (em `src/modules/apex/services/`): `activityIngest.js`, `aiCoach.js`
+- README do módulo: `src/modules/apex/README.md`
+- Mount points públicos preservados: `/api/activities`, `/api/coach`
+- Tabelas (continuam em `prisma/schema.prisma`, não foram movidas): `AthleteProfile`, `Consent`, `DeviceConnection`, `Activity`, `ActivityLap`, `ActivityPhoto`, `Route`, `RoutePoint`, `Segment`, `SegmentEffort`, `Club`, `ClubMembership`, `Challenge`, `ChallengeParticipation`, `TrainingPlan`, `Workout`, `WorkoutStep`, `UserPlan`, `SafetyContact`, `LiveTrackingSession`, `BadgeEarned` (todas vazias ou quase vazias)
 
 ### O. Admin / Auth / Permissões
 - Routes: `admin.js`, `auth.js`
@@ -217,7 +220,7 @@ Modalidade/Especialidade tinham listas fixas em 3 lugares (Estoque, Categoria, f
 8. **Scripts antigos** — alguns podem ainda esperar execução.
 
 ### 🟢 BAIXO RISCO
-9. **APEX module** — tabelas vazias, sem produção.
+9. **APEX module** — tabelas vazias, sem produção. **Código já extraído** para `src/modules/apex/` (26/05/2026). Risco de mexer continua baixo, mas a movimentação física já foi feita.
 10. **Marketing IA** — relativamente isolado.
 11. **Curadoria de vitrine** (StoreCuration) — vazio.
 12. **Fiscal NFCe direto SEFAZ** — `.mjs` separado.

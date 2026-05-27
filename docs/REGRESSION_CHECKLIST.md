@@ -159,13 +159,46 @@ Checklist:
 
 ---
 
-## 9. Fluxo: APEX (app esportivo)
+## 9. Fluxo: APEX (app esportivo) — módulo extraído
+
+**Status:** APEX foi extraído para `src/modules/apex/` em 26/05/2026 (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`). Validação final APROVADA.
+
+Localização atual dos arquivos (referência):
+- `src/modules/apex/README.md`
+- `src/modules/apex/routes/activities.js` — montado em `/api/activities` (path inalterado)
+- `src/modules/apex/routes/coach.js` — montado em `/api/coach` (path inalterado)
+- `src/modules/apex/services/activityIngest.js`
+- `src/modules/apex/services/aiCoach.js`
+
+### 9.a. Checklist operacional (mesmo de antes)
 
 - [ ] Login no APEX funciona.
 - [ ] Listagem de eventos esportivos carrega.
 - [ ] Inscrição em torneio persiste em `Tournament` / `Participation`.
 - [ ] Push notification (Web Push) chega ao dispositivo cadastrado.
 - [ ] Endpoints REST do APEX respondem em < 2s.
+
+### 9.b. Padrão de validação segura para mudanças futuras no APEX
+
+Toda mudança que toque um dos 4 arquivos APEX (ou o `src/modules/apex/README.md`) deve passar pelos seguintes checks **sem chamar endpoint, sem rodar servidor, sem chamada externa**:
+
+- [ ] `git status --short -uall` limpo antes de começar.
+- [ ] Grep global por importadores do arquivo afetado — confirmar que só o esperado existe (`src/`, `public/`, `scripts/`, `docs/`).
+- [ ] `node --check src/modules/apex/routes/activities.js`
+- [ ] `node --check src/modules/apex/routes/coach.js`
+- [ ] `node --check src/modules/apex/services/activityIngest.js`
+- [ ] `node --check src/modules/apex/services/aiCoach.js`
+- [ ] `node --check src/index.js`
+- [ ] `node -e "const r = require('./src/modules/apex/routes/activities'); console.log(typeof r)"` retorna `function`.
+- [ ] `node -e "const r = require('./src/modules/apex/routes/coach'); console.log(typeof r)"` retorna `function`.
+- [ ] `node -e "const s = require('./src/modules/apex/services/activityIngest'); console.log(typeof s)"` retorna `object` com chaves `ingestActivity, importActivityFile, VALID_SPORTS`.
+- [ ] `node -e "const s = require('./src/modules/apex/services/aiCoach'); console.log(typeof s)"` retorna `object` com chaves `isConfigured, dailyBriefing, postWorkoutAnalysis, chat`.
+- [ ] **Nenhuma das funções acima foi chamada** — apenas carga estática de módulo.
+- [ ] **Nenhuma chamada Anthropic** foi disparada (verificar lendo o código alterado; `new Anthropic(...)` deve continuar dentro das funções, nunca no top-level).
+- [ ] **Nenhuma query Prisma** foi executada (PrismaClient pode ser instanciado, mas não pode ser chamado).
+- [ ] `npm start` **não** foi executado.
+- [ ] `src/index.js` linhas 43-44 (requires) e 141-142 (mount points) inalteradas, a menos que a mudança proposta seja explicitamente nelas — e mesmo nesse caso, mount points string permanecem literais (`'/api/activities'` e `'/api/coach'`).
+- [ ] `prisma/schema.prisma`, `package.json`, `.env`, `src/middleware.js`, `docs/`, `public/`, `scripts/` permanecem intocados pela mudança (validar com `git show --name-only <commit>`).
 
 ---
 

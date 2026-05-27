@@ -151,13 +151,24 @@ scripts/
 - **Status:** Pouco volume, mas é financeiro.
 - **Risco para extração:** ⚠️ **NÃO CLASSIFICAR como baixo risco sem validação adicional.** Antes de qualquer extração: confirmar com o dono se há lançamentos reais sendo feitos e se há fechamento contábil dependente. Toda regra que toca financeiro precisa de plano revisável (regra global do projeto).
 
-### M. `modules/apex` (app esportivo)
+### M. `modules/apex` (app esportivo) ✅ **EXTRAÍDO**
 **Responsabilidades:** Atividades, treinos, clubes, segments, badges, coach IA.
-- Routes: `activities.js`, `coach.js`
-- Services: `activityIngest.js`, `aiCoach.js`
-- Tabelas: AthleteProfile, Consent, DeviceConnection, Activity, ActivityLap, ActivityPhoto, Route, RoutePoint, Segment, SegmentEffort, Club, ClubMembership, Challenge, ChallengeParticipation, TrainingPlan, Workout, WorkoutStep, UserPlan, SafetyContact, LiveTrackingSession, BadgeEarned
-- **Status:** 21 tabelas, todas vazias ou quase vazias.
-- **Risco para extração:** 🟢 BAIXO (e é candidato a virar repo próprio futuramente)
+- **Status físico:** módulo já vive em `src/modules/apex/`.
+  - `src/modules/apex/README.md`
+  - `src/modules/apex/routes/activities.js`
+  - `src/modules/apex/routes/coach.js`
+  - `src/modules/apex/services/activityIngest.js`
+  - `src/modules/apex/services/aiCoach.js`
+- **Commits da extração (26/05/2026):**
+  - `c070555` refactor(apex): mover rota activities para modulo APEX
+  - `0af78f7` refactor(apex): mover rota coach para modulo APEX
+  - `29ff92b` refactor(apex): mover service activityIngest para modulo APEX
+  - `903f2e2` refactor(apex): mover service aiCoach para modulo APEX
+- **Validação final:** APROVADA (ver `docs/RELATORIO_VALIDACAO_FINAL_APEX` no histórico de turnos, ou se promovido a arquivo, em `docs/`).
+- Mount points públicos preservados: `/api/activities` e `/api/coach` permanecem literalmente iguais ao baseline.
+- Schema Prisma **não foi tocado** — os 21 modelos APEX continuam em `prisma/schema.prisma`.
+- Tabelas: AthleteProfile, Consent, DeviceConnection, Activity, ActivityLap, ActivityPhoto, Route, RoutePoint, Segment, SegmentEffort, Club, ClubMembership, Challenge, ChallengeParticipation, TrainingPlan, Workout, WorkoutStep, UserPlan, SafetyContact, LiveTrackingSession, BadgeEarned — todas vazias ou quase vazias.
+- **Próximo passo opcional não executado:** criação de `src/modules/apex/index.js` re-exportando routes — adiado (não obrigatório, sem benefício no curto prazo).
 
 ### N. `modules/admin`
 **Responsabilidades:** Usuários, permissões, auditoria, dashboard.
@@ -272,8 +283,8 @@ scripts/
 ## 7. Ordem sugerida de extração
 
 ### Fase 1 — Sem risco produtivo (ordem segura de primeira extração)
-1. **APEX** (21 tabelas vazias, zero produção — ideal pra validar padrão de módulo)
-2. **Etiquetas** (`labels.js` + `labelGenerator.js`, isolado, sem cron, sem integração externa)
+1. ✅ **APEX** — **EXTRAÍDO em 26/05/2026** (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`). Padrão de extração modular validado em produção sem incidente.
+2. **Etiquetas** (`labels.js` + `labelGenerator.js`, isolado, sem cron, sem integração externa) ← próximo candidato natural
 3. **Curadoria de Vitrine** (StoreCuration — todas as tabelas vazias, sem uso em produção)
 4. **Life** (`life.js` + `UserLifeProfile`, isolado)
 

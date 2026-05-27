@@ -1,10 +1,23 @@
 # PLANO DE EXTRAÇÃO — Módulo APEX
 
-> **Plano em modo DESIGN.** Este documento descreve **como** a extração deveria ser feita se autorizada. **Não autoriza execução.** Nenhum arquivo será movido, renomeado ou alterado sem ordem explícita do dono em conversa.
+> **Plano executado e validado.** Em 26/05/2026 a extração foi realizada com sucesso em 4 commits atômicos. A validação final (RELATORIO_VALIDACAO_FINAL_APEX) foi **APROVADA**. Schema Prisma, banco, rotas públicas, endpoints e integrações externas **não foram alterados**. Este documento foi atualizado para refletir o estado pós-extração.
 
-- Data: 2026-05-26
-- Branch alvo de trabalho: `organizacao/refactor-2026-05-26`
-- Status: documento de planejamento — sem implementação
+- Data do plano: 2026-05-26
+- Data da execução: 2026-05-26
+- Branch onde o trabalho aconteceu: `refactor/apex-extracao-01` (filha de `organizacao/refactor-2026-05-26`)
+- Status: **CONCLUÍDO** (com Passo 7 adiado, ver seção 10)
+
+### Resumo dos commits da extração
+
+| Passo | Commit | Mensagem |
+|---|---|---|
+| Estrutura vazia + README | (incluído em `1796446` "docs:" e parte do Passo 3) | — |
+| 3. Mover `activities.js` | `c070555` | `refactor(apex): mover rota activities para modulo APEX` |
+| 4. Mover `coach.js` | `0af78f7` | `refactor(apex): mover rota coach para modulo APEX` |
+| 5. Mover `activityIngest.js` | `29ff92b` | `refactor(apex): mover service activityIngest para modulo APEX` |
+| 6. Mover `aiCoach.js` | `903f2e2` | `refactor(apex): mover service aiCoach para modulo APEX` |
+| 7. `index.js` do módulo | — | **NÃO EXECUTADO / ADIADO** (opcional, sem benefício no curto prazo) |
+| 8. Documentação | (este commit `docs(apex):`) | `docs(apex): marcar extracao do modulo APEX como concluida` |
 
 ---
 
@@ -198,47 +211,48 @@ Cada passo é um commit independente, com possibilidade de rollback. Ordem obrig
 - **Não mover nada ainda.** Apenas a estrutura.
 - Commit: `chore(apex): cria estrutura src/modules/apex/ (vazia)`.
 
-### Passo 3 — Mover `activities.js` (1 arquivo de cada vez)
-- `git mv src/routes/activities.js src/modules/apex/routes/activities.js`.
-- Atualizar `require` em `src/index.js` para o novo path.
-- Verificar que nenhum outro arquivo importava `routes/activities.js` (já confirmado no Passo 1).
-- Boot local: servidor sobe, `GET /api/activities` (com auth) responde 200 ou 401, não 404.
-- Commit: `refactor(apex): move routes/activities.js para modules/apex/routes/`.
+### Passo 3 — Mover `activities.js` ✅ **CONCLUÍDO** (commit `c070555`)
+- ✅ `git mv src/routes/activities.js src/modules/apex/routes/activities.js`.
+- ✅ Atualizado `require` em `src/index.js` linha 43 para `./modules/apex/routes/activities`.
+- ✅ Ajustados imports relativos internos: `../middleware` → `../../../middleware` e `../services/activityIngest` → `../../../services/activityIngest` (este último foi simplificado depois no Passo 5).
+- ✅ `node --check` e `node -e "require(...)"` passaram. Endpoint `/api/activities` validado por carga de módulo.
+- ✅ Commit: `c070555 refactor(apex): mover rota activities para modulo APEX`.
 
-### Passo 4 — Mover `coach.js`
-- Mesmo procedimento do Passo 3 com `coach.js`.
-- Boot local.
-- Commit: `refactor(apex): move routes/coach.js para modules/apex/routes/`.
+### Passo 4 — Mover `coach.js` ✅ **CONCLUÍDO** (commit `0af78f7`)
+- ✅ Mesmo procedimento do Passo 3 com `coach.js`.
+- ✅ Imports relativos ajustados em `src/modules/apex/routes/coach.js` linhas 6 e 7.
+- ✅ Require em `src/index.js` linha 44 ajustado para `./modules/apex/routes/coach`.
+- ✅ Commit: `0af78f7 refactor(apex): mover rota coach para modulo APEX`.
 
-### Passo 5 — Mover `activityIngest.js`
-- `git mv src/services/activityIngest.js src/modules/apex/services/activityIngest.js`.
-- Atualizar `require` dentro de `src/modules/apex/routes/activities.js`.
-- Verificar que nenhum outro arquivo importava `services/activityIngest.js` (Passo 1).
-- Boot local + smoke test do endpoint.
-- Commit: `refactor(apex): move services/activityIngest.js para modules/apex/services/`.
+### Passo 5 — Mover `activityIngest.js` ✅ **CONCLUÍDO** (commit `29ff92b`)
+- ✅ `git mv src/services/activityIngest.js src/modules/apex/services/activityIngest.js`.
+- ✅ `require` dentro de `src/modules/apex/routes/activities.js` linha 9 simplificado de `../../../services/activityIngest` para `../services/activityIngest` (consumo interno ao módulo).
+- ✅ Confirmado por busca que nenhum outro arquivo importava o service.
+- ✅ Commit: `29ff92b refactor(apex): mover service activityIngest para modulo APEX`.
 
-### Passo 6 — Mover `aiCoach.js`
-- Mesmo procedimento do Passo 5 com `aiCoach.js`.
-- Boot local + smoke test do endpoint.
-- Commit: `refactor(apex): move services/aiCoach.js para modules/apex/services/`.
+### Passo 6 — Mover `aiCoach.js` ✅ **CONCLUÍDO** (commit `903f2e2`)
+- ✅ Mesmo procedimento do Passo 5 com `aiCoach.js`.
+- ✅ `require` em `src/modules/apex/routes/coach.js` linha 7 simplificado para `../services/aiCoach`.
+- ✅ Service carregou como `object` com chaves `isConfigured`, `dailyBriefing`, `postWorkoutAnalysis`, `chat` — nenhuma função invocada, nenhuma chamada Anthropic feita.
+- ✅ Commit: `903f2e2 refactor(apex): mover service aiCoach para modulo APEX`.
 
-### Passo 7 — `index.js` do módulo (opcional, mas recomendado)
-- Criar `src/modules/apex/index.js` que exporta `{ activitiesRoutes, coachRoutes }`.
-- Atualizar `src/index.js` para `const { activitiesRoutes, coachRoutes } = require('./modules/apex');`.
-- Mount points `/api/activities` e `/api/coach` **permanecem idênticos**.
-- Boot local + smoke test.
-- Commit: `refactor(apex): expõe routes via modules/apex/index.js`.
+### Passo 7 — `index.js` do módulo ⏸ **NÃO EXECUTADO / ADIADO**
+- **Status:** não foi feito. Decisão consciente.
+- **Motivo do adiamento:** o ganho de criar `src/modules/apex/index.js` re-exportando `{ activitiesRoutes, coachRoutes }` é puramente cosmético (2 linhas viram 1 em `src/index.js`). Sem benefício operacional. Pode ser feito em ciclo de polimento futuro.
+- **Se for retomado:** seguir o passo original — criar arquivo de barrel export, simplificar requires em `src/index.js`, validar com `node --check` + `node -e "require(...)"`. Path string dos mount points não muda.
 
-### Passo 8 — Documentação
-- Atualizar `docs/MAPA_ATUAL.md` (apenas indicar nova localização do APEX).
-- Atualizar `docs/MODULOS_DESEJADOS.md` (marcar APEX como "extraído ✓").
-- Não tocar nos outros docs.
-- Commit: `docs: marca APEX como extraído`.
+### Passo 8 — Documentação ✅ **EM EXECUÇÃO**
+- ✅ `docs/MAPA_ATUAL.md` atualizado (seção N marca APEX como extraído).
+- ✅ `docs/MODULOS_DESEJADOS.md` atualizado (módulo M marcado ✅ e Fase 1 marca APEX como ✅).
+- ✅ `docs/PLANO_EXTRACAO_APEX.md` (este arquivo) atualizado com status pós-execução.
+- ✅ `docs/REGRESSION_CHECKLIST.md` atualizado com referências aos novos paths e padrão de validação APEX.
+- ✅ `docs/sports-app/README.md` atualizado com paths novos.
+- Commit alvo: `docs(apex): marcar extracao do modulo APEX como concluida`.
 
-### Passo 9 — Encerramento
-- Rodar checklist manual de validação (seção 14).
-- Abrir PR para review.
-- **Não fazer merge automático.** Aguardar revisão do dono.
+### Passo 9 — Encerramento ✅ **CONCLUÍDO**
+- ✅ Checklist manual de validação (seção 14) executado em cada passo, e final consolidado em `RELATORIO_VALIDACAO_FINAL_APEX` — **APROVADO**.
+- Nenhum PR foi aberto ainda; trabalho está em branch local `refactor/apex-extracao-01`. Push e abertura de PR ficam a critério explícito do dono.
+- **Sem merge automático.** Aguardando revisão.
 
 ---
 
@@ -381,4 +395,25 @@ Rodar **antes** de declarar a extração concluída.
 - **Schema Prisma fica intocado.** Separar models APEX em outro schema é trabalho futuro, exige planejamento próprio e migração coordenada — fora do escopo deste plano.
 - **`notifyBadgeEarned` permanece em `systemMessenger.js`.** Não tentar puxar para dentro de APEX nesta fase.
 
-**Este documento é apenas planejamento. Nenhum arquivo foi movido, renomeado ou alterado. Nenhum código foi tocado. Nenhuma execução está autorizada.**
+## Status final (atualização pós-execução — 26/05/2026)
+
+A extração foi **executada e validada com sucesso**. Resumo:
+
+- ✅ 4 commits atômicos (Passos 3, 4, 5, 6): `c070555`, `0af78f7`, `29ff92b`, `903f2e2`.
+- ✅ 4 arquivos APEX agora vivem em `src/modules/apex/`.
+- ✅ Mount points `/api/activities` e `/api/coach` preservados literalmente.
+- ✅ `prisma/schema.prisma` **não foi tocado**.
+- ✅ `package.json`, `.env`, `src/middleware.js` **não foram tocados**.
+- ✅ Banco **não recebeu nenhuma escrita**.
+- ✅ Nenhum endpoint foi chamado durante a validação (apenas `node --check` e `node -e "require(...)"`).
+- ✅ Nenhuma chamada Anthropic, fal.ai, OpenAI ou qualquer outra API externa foi feita.
+- ✅ Working tree limpa após cada commit.
+- ⏸ Passo 7 (`index.js` do módulo) **adiado**, sem perda funcional.
+
+Lição aprendida deste exercício (para guiar próximas extrações — Etiquetas, Curadoria de Vitrine, Life):
+
+- Padrão de **1 arquivo por commit** atômico funciona bem e dá rollback granular.
+- **`R<N>` no `git status`** permite detectar quão "puro" foi o rename (R100 = sem edit, R<95 = com edits de import).
+- `node --check` + `node -e "require(...)"` são suficientes para smoke test de extração modular sem precisar subir servidor.
+- Confirmar antes do `git mv` que **nenhum outro arquivo** importa o que será movido — busca global por nome simples e por path completo.
+- Manter mount points string idênticos é não-negociável; só ajustar a fonte do require.

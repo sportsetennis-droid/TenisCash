@@ -1,6 +1,6 @@
 # Sports & Tennis — App esportivo (módulo APEX)
 
-**Status:** Esqueleto. Schemas e serviços base já estão no repositório TenisCash (`prisma/schema.prisma`, `src/services/activityIngest.js`, `src/services/aiCoach.js`, `src/routes/activities.js`, `src/routes/coach.js`). Falta infra extra (PostGIS, ClickHouse, Kafka, S3) + apps mobile + time.
+**Status:** Esqueleto. Schemas continuam em `prisma/schema.prisma`. Em 26/05/2026 o código backend do APEX foi **extraído para o módulo isolado `src/modules/apex/`** (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`) — `activityIngest.js`, `aiCoach.js`, `activities.js`, `coach.js` agora vivem todos em `src/modules/apex/`. Mount points `/api/activities` e `/api/coach` preservados. Falta infra extra (PostGIS, ClickHouse, Kafka, S3) + apps mobile + time.
 
 ## Visão unificada
 
@@ -22,11 +22,14 @@ Sports & Tennis (lojas físicas + ecommerce) + TenisCash (loyalty) + agentes IA 
 
 | Onde | O quê |
 |---|---|
-| `prisma/schema.prisma` | Modelos APEX (Activity, Route, Segment, Club, Challenge, AthleteProfile, BadgeEarned, etc.) |
-| `src/services/activityIngest.js` | Validação + ingestão de atividade |
-| `src/services/aiCoach.js` | APEX COACH (briefing, análise pós-treino, chat) |
-| `src/routes/activities.js` | POST/GET /api/activities |
-| `src/routes/coach.js` | POST /api/coach/briefing, /post-workout, /chat |
+| `prisma/schema.prisma` | Modelos APEX (Activity, Route, Segment, Club, Challenge, AthleteProfile, BadgeEarned, etc.) — **não movido**, permanece no schema único |
+| `src/modules/apex/services/activityIngest.js` | Validação + ingestão de atividade |
+| `src/modules/apex/services/aiCoach.js` | APEX COACH (briefing, análise pós-treino, chat) |
+| `src/modules/apex/routes/activities.js` | POST/GET /api/activities |
+| `src/modules/apex/routes/coach.js` | POST /api/coach/briefing, /post-workout, /chat |
+| `src/modules/apex/README.md` | Descrição do módulo extraído |
+
+> **Nota histórica:** antes de 26/05/2026 esses arquivos viviam em `src/routes/` e `src/services/`. A extração foi puramente de movimentação — sem mudança de schema, sem mudança de comportamento, sem mudança de path público. Ver `docs/PLANO_EXTRACAO_APEX.md` para o histórico completo.
 
 ## O que NÃO está em produção (sabidamente)
 
