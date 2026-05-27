@@ -3,7 +3,7 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, adminMiddleware, prisma } = require('../../../middleware');
 
 const router = express.Router();
 router.use(authMiddleware);
