@@ -5,8 +5,8 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware } = require('../middleware');
-const ingest = require('../services/activityIngest');
+const { authMiddleware } = require('../../../middleware');
+const ingest = require('../../../services/activityIngest');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
