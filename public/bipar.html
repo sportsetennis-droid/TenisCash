@@ -252,8 +252,16 @@
 
   // ============================================================
   // FILA DE RETRY (localStorage) — pra não perder bipe se a rede falhar
+  //
+  // HOTFIX-BIPE: bipe é gravado na fila ANTES do fetch.
+  // Cada bipe tem clientScanId único (idempotência no servidor).
+  // 4xx (cliente errou) → remove da fila, não retentar.
+  // 5xx/timeout/rede → fica na fila, retry pega depois.
   // ============================================================
   const RETRY_KEY = 'tc_bipe_retry_queue';
+  function genClientScanId() {
+    return 'cs' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
   function loadRetryQueue() {
     try { return JSON.parse(localStorage.getItem(RETRY_KEY) || '[]'); }
     catch { return []; }
@@ -264,7 +272,16 @@
   }
   function enqueueRetry(payload) {
     const q = loadRetryQueue();
+    // garante clientScanId pra idempotência
+    if (!payload.clientScanId) payload.clientScanId = genClientScanId();
     q.push({ ...payload, ts: new Date().toISOString() });
+    saveRetryQueue(q);
+    updatePendingBadge();
+    return payload.clientScanId;
+  }
+  function removeFromQueue(clientScanId) {
+    if (!clientScanId) return;
+    const q = loadRetryQueue().filter(it => it.clientScanId !== clientScanId);
     saveRetryQueue(q);
     updatePendingBadge();
   }
@@ -280,7 +297,7 @@
     }
     if (q.length > 0) {
       el.style.display = 'block';
-      el.textContent = '⚠ ' + q.length + ' bipes pendentes (rede). Clique pra reenviar.';
+      el.textContent = '⚠ ' + q.length + ' bipes pendentes. Clique pra reenviar.';
     } else {
       el.style.display = 'none';
     }
@@ -293,15 +310,28 @@
       let q = loadRetryQueue();
       const remaining = [];
       for (const item of q) {
+        // garante clientScanId em itens antigos (compat reversa)
+        if (!item.clientScanId) item.clientScanId = genClientScanId();
         try {
           const r = await fetch('/api/stocktake/bipe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ barcode: item.barcode, storeId: item.storeId, sellerId: item.sellerId, sellerName: item.sellerName }),
+            body: JSON.stringify({
+              barcode: item.barcode,
+              storeId: item.storeId,
+              sellerId: item.sellerId,
+              sellerName: item.sellerName,
+              clientScanId: item.clientScanId,
+            }),
           });
+          // 4xx: cliente errou — REMOVE da fila, não fica em loop. Log BIPE_RETRY_CLIENTE.
+          if (r.status >= 400 && r.status < 500) {
+            console.warn('[bipe] BIPE_RETRY_CLIENTE 4xx — removendo da fila:', r.status, item.barcode);
+            continue;
+          }
           if (!r.ok) { remaining.push(item); continue; }
-          // sucesso: atualiza o bipe local existente (se ainda no array bipes)
-          const local = bipes.find(b => b.code === item.barcode && b._pending);
+          // sucesso: atualiza o bipe local existente
+          const local = bipes.find(b => b._pending && b.clientScanId === item.clientScanId);
           if (local) {
             try { const d = await r.json(); Object.assign(local, d); delete local._pending; } catch {}
           }
@@ -328,32 +358,55 @@
       alert('Selecione loja e vendedor primeiro!');
       return;
     }
-    const payload = { barcode, storeId, sellerId, sellerName };
+
+    // HOTFIX-BIPE: gera clientScanId e ENFILEIRA ANTES do fetch.
+    // Se navegador travar/crashar entre aqui e o fetch, o bipe SOBREVIVE
+    // no localStorage e será reenviado no próximo load + processRetryQueue.
+    const clientScanId = genClientScanId();
+    const payload = { barcode, storeId, sellerId, sellerName, clientScanId };
+    enqueueRetry(payload);
+
+    // Mostra bipe local como pendente IMEDIATAMENTE
+    const ts = new Date().toISOString();
+    const localBipe = { ts, code: barcode, found: null, _pending: true, clientScanId };
+    bipes.push(localBipe);
+    renderLast(localBipe);
+    renderLista();
+    renderStats();
+
     try {
       const r = await fetch('/api/stocktake/bipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        // Timeout via AbortController (5s)
         signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
       });
+
+      // 4xx: cliente errou. Remove da fila, marca como erro definitivo no bipe local.
+      if (r.status >= 400 && r.status < 500) {
+        console.warn('[bipe] BIPE_RETRY_CLIENTE 4xx:', r.status, barcode);
+        removeFromQueue(clientScanId);
+        Object.assign(localBipe, { _pending: false, found: false, _error4xx: true });
+        renderLast(localBipe);
+        renderLista();
+        renderStats();
+        return;
+      }
+
       if (!r.ok) throw new Error('HTTP ' + r.status);
+
       const d = await r.json();
-      const ts = new Date().toISOString();
-      const bipe = { ts, code: barcode, ...d };
-      bipes.push(bipe);
-      renderLast(bipe);
+      // Sucesso confirmado pelo servidor → REMOVE da fila e atualiza bipe local
+      removeFromQueue(clientScanId);
+      Object.assign(localBipe, d);
+      delete localBipe._pending;
+      renderLast(localBipe);
       renderLista();
       renderStats();
     } catch (e) {
-      // FALHA DE REDE — bipe vai pra fila de retry, NÃO conta como "não encontrado"
-      console.warn('[bipe] rede falhou, enfileirando retry:', e.message);
-      enqueueRetry(payload);
-      const bipe = { ts: new Date().toISOString(), code: barcode, found: null, _pending: true, error: e.message };
-      bipes.push(bipe);
-      renderLast(bipe);
-      renderLista();
-      renderStats();
+      // Erro de rede, timeout ou 5xx — bipe FICA na fila, retry vai pegar
+      console.warn('[bipe] enviarBipe falhou, mantém na fila pra retry:', e.message);
+      // localBipe permanece com _pending: true (sem mudar)
     }
   }
 
