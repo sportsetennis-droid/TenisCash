@@ -73,94 +73,202 @@ router.get('/sellers', async (req, res) => {
 });
 
 // POST /api/stocktake/bipe → registra bipe + retorna produto (se achou)
+//
+// HOTFIX-BIPE: bipe é SALVO PRIMEIRO (StocktakeBipe.create), só depois
+// fazemos lookups que enriquecem o registro. Se lookup falhar, o bipe
+// bruto não é perdido. Idempotência opcional via clientScanId (embutido
+// no userAgent — sem mudar schema). Logs estruturados pra auditoria.
 router.post('/bipe', async (req, res) => {
+  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
+  const uaRaw = (req.headers['user-agent'] || '').toString().slice(0, 160);
+
   try {
-    const { barcode, storeId, sellerId, sellerName } = req.body || {};
-    if (!barcode) return res.status(400).json({ error: 'barcode obrigatório' });
+    const { barcode, storeId, sellerId, sellerName, clientScanId } = req.body || {};
+
+    if (!barcode) {
+      console.log('[bipe] BIPE_RECEBIDO_INVALIDO', JSON.stringify({ motivo: 'barcode_ausente', storeId: storeId || null, sellerId: sellerId || null }));
+      return res.status(400).json({ error: 'barcode obrigatório', retry: false });
+    }
 
     const code = String(barcode).trim();
-    if (!code) return res.status(400).json({ error: 'barcode vazio' });
+    if (!code) {
+      console.log('[bipe] BIPE_RECEBIDO_INVALIDO', JSON.stringify({ motivo: 'barcode_vazio', storeId: storeId || null, sellerId: sellerId || null }));
+      return res.status(400).json({ error: 'barcode vazio', retry: false });
+    }
 
-    // Busca produto pelo barcode no ProductSize
-    const sizes = await prisma.productSize.findMany({
-      where: { barcode: code },
-      include: {
-        product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } },
-      },
-    });
+    console.log('[bipe] BIPE_RECEBIDO', JSON.stringify({ storeId: storeId || null, sellerId: sellerId || null, barcodeLen: code.length, clientScanId: clientScanId || null }));
 
-    // Tenta variantes (sem zeros à esquerda)
-    let matched = sizes;
-    if (matched.length === 0) {
-      const stripped = code.replace(/^0+/, '');
-      if (stripped && stripped !== code) {
-        matched = await prisma.productSize.findMany({
-          where: { barcode: stripped },
-          include: { product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
+    // Idempotência via clientScanId embutido no userAgent (suffix " | cs:<id>")
+    // Sem mudar schema — usa userAgent como carrier. Limitação registrada.
+    const csId = clientScanId ? String(clientScanId).slice(0, 40).replace(/[^a-zA-Z0-9_-]/g, '') : null;
+    const ua = csId ? `${uaRaw} | cs:${csId}` : uaRaw;
+
+    if (csId) {
+      // Procura bipe recente (últimos 60s) com mesmo clientScanId pra evitar duplicação
+      const sinceMs = new Date(Date.now() - 60_000);
+      try {
+        const existing = await prisma.stocktakeBipe.findFirst({
+          where: {
+            barcode: code,
+            bipedAt: { gte: sinceMs },
+            userAgent: { contains: `cs:${csId}` },
+          },
+          orderBy: { bipedAt: 'desc' },
         });
+        if (existing) {
+          console.log('[bipe] BIPE_DUPLICADO_IGNORADO', JSON.stringify({ bipeIdExistente: existing.id, clientScanId: csId }));
+          return res.json({
+            success: true,
+            bipeId: existing.id,
+            appliedToStock: existing.applied,
+            found: existing.found,
+            duplicate: existing.duplicate,
+            idempotent: true,
+            product: existing.productName ? {
+              name: existing.productName,
+              brand: existing.productBrand,
+              size: existing.productSize,
+              sku: null, imageUrl: null, active: true,
+            } : null,
+          });
+        }
+      } catch (e) {
+        // Falha do check de idempotência não bloqueia: segue criando bipe normal
+        console.warn('[bipe] check_idempotencia_falhou:', e.message);
       }
     }
 
-    // FALLBACK: se nao acha ProductSize mas o ean existe em XmlFiscalItem
-    // com productId vinculado, cria ProductSize automaticamente (regra CLAUDE.md)
-    let autoCreated = false;
-    if (matched.length === 0) {
-      const nfeItem = await prisma.xmlFiscalItem.findFirst({
-        where: { ean: code, productId: { not: null } },
-        select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
-        orderBy: { createdAt: 'desc' },
+    // ========================================================================
+    // PASSO 1: SALVA O BIPE BRUTO IMEDIATAMENTE (antes de qualquer lookup)
+    // Garantia: se qualquer etapa seguinte falhar, o bipe não some.
+    // ========================================================================
+    let bipe;
+    try {
+      bipe = await prisma.stocktakeBipe.create({
+        data: {
+          barcode: code,
+          storeId: storeId || null,
+          sellerId: sellerId || null,
+          sellerName: sellerName || null,
+          productId: null,
+          productSizeId: null,
+          productName: null,
+          productSize: null,
+          productBrand: null,
+          found: false,
+          duplicate: false,
+          ip: ip || null,
+          userAgent: ua || null,
+        },
       });
-      if (nfeItem && nfeItem.product) {
-        const sizeStr = inferSizeFromDescription(nfeItem.description);
-        try {
-          const newSize = await prisma.productSize.create({
-            data: { productId: nfeItem.productId, size: sizeStr, barcode: code, stock: 0 },
+      console.log('[bipe] BIPE_SALVO', JSON.stringify({ bipeId: bipe.id, barcode: code, storeId: storeId || null, sellerId: sellerId || null }));
+    } catch (e) {
+      // Falha em criar o bipe bruto é catastrófica — bipe será perdido. Retorna 503 pra cliente retentar.
+      console.error('[bipe] BIPE_ERRO_CRIAR_BRUTO', JSON.stringify({ error: e.message, barcode: code }));
+      return res.status(503).json({ error: 'Falha ao salvar bipe — tente de novo', retry: true });
+    }
+
+    // ========================================================================
+    // PASSO 2: lookups enriquecedores (rede de proteção: erros não derrubam o bipe)
+    // ========================================================================
+    let matched = [];
+    try {
+      matched = await prisma.productSize.findMany({
+        where: { barcode: code },
+        include: {
+          product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } },
+        },
+      });
+    } catch (e) {
+      console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_productSize', error: e.message }));
+    }
+
+    // Variante sem zeros à esquerda
+    if (matched.length === 0) {
+      try {
+        const stripped = code.replace(/^0+/, '');
+        if (stripped && stripped !== code) {
+          matched = await prisma.productSize.findMany({
+            where: { barcode: stripped },
+            include: { product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
           });
-          matched = [{ id: newSize.id, size: sizeStr, barcode: code, product: nfeItem.product }];
-          autoCreated = true;
-          console.log(`[bipe] auto-criou ProductSize size=${sizeStr} barcode=${code} productId=${nfeItem.productId}`);
-        } catch (e) {
-          // pode falhar por unique constraint (productId, size); ignora e segue como nao-encontrado
-          console.warn(`[bipe] auto-create ProductSize falhou: ${e.message}`);
         }
+      } catch (e) {
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_stripped', error: e.message }));
+      }
+    }
+
+    // FALLBACK NFe — regra CLAUDE.md ativa.
+    if (matched.length === 0) {
+      try {
+        const nfeItem = await prisma.xmlFiscalItem.findFirst({
+          where: { ean: code, productId: { not: null } },
+          select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (nfeItem && nfeItem.product) {
+          const sizeStr = inferSizeFromDescription(nfeItem.description);
+          try {
+            const newSize = await prisma.productSize.create({
+              data: { productId: nfeItem.productId, size: sizeStr, barcode: code, stock: 0 },
+            });
+            matched = [{ id: newSize.id, size: sizeStr, barcode: code, product: nfeItem.product }];
+            console.log('[bipe] BIPE_AUTOCRIOU_PRODUCTSIZE', JSON.stringify({ bipeId: bipe.id, productId: nfeItem.productId, size: sizeStr, barcode: code }));
+          } catch (e) {
+            console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'fallback_create_productSize', error: e.message }));
+          }
+        }
+      } catch (e) {
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'fallback_nfe_query', error: e.message }));
       }
     }
 
     const found = matched.length > 0;
     const duplicate = matched.length > 1;
-    // Prefere produto ativo se ambíguo
     const chosen = found ? (matched.find((m) => m.product.active) || matched[0]) : null;
 
-    // Snapshot do vendedor (se sellerId enviado)
+    // Snapshot do vendedor (se sellerId enviado e sellerName ausente)
     let sellerNameSnap = sellerName || null;
     if (sellerId && !sellerNameSnap) {
-      const u = await prisma.user.findUnique({ where: { id: sellerId }, select: { name: true } });
-      sellerNameSnap = u?.name || null;
+      try {
+        const u = await prisma.user.findUnique({ where: { id: sellerId }, select: { name: true } });
+        sellerNameSnap = u?.name || null;
+      } catch (e) {
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_seller', error: e.message }));
+      }
     }
 
-    const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
-    const ua = (req.headers['user-agent'] || '').toString().slice(0, 200);
+    // ========================================================================
+    // PASSO 3: enriquece o bipe (update) — não é catastrófico se falhar
+    // ========================================================================
+    if (found || sellerNameSnap !== sellerName) {
+      try {
+        await prisma.stocktakeBipe.update({
+          where: { id: bipe.id },
+          data: {
+            sellerName: sellerNameSnap,
+            productId: chosen?.product.id || null,
+            productSizeId: chosen?.id || null,
+            productName: chosen?.product.name || null,
+            productSize: chosen?.size || null,
+            productBrand: chosen?.product.brand || null,
+            found,
+            duplicate,
+          },
+        });
+        console.log('[bipe] BIPE_ENRIQUECIDO', JSON.stringify({ bipeId: bipe.id, productId: chosen?.product.id || null, found }));
+      } catch (e) {
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'enriquecer_bipe', error: e.message }));
+      }
+    }
 
-    const bipe = await prisma.stocktakeBipe.create({
-      data: {
-        barcode: code,
-        storeId: storeId || null,
-        sellerId: sellerId || null,
-        sellerName: sellerNameSnap,
-        productId: chosen?.product.id || null,
-        productSizeId: chosen?.id || null,
-        productName: chosen?.product.name || null,
-        productSize: chosen?.size || null,
-        productBrand: chosen?.product.brand || null,
-        found,
-        duplicate,
-        ip: ip || null,
-        userAgent: ua || null,
-      },
-    });
+    if (!found) {
+      console.log('[bipe] BIPE_PRODUTO_NAO_ENCONTRADO', JSON.stringify({ bipeId: bipe.id, barcode: code }));
+    }
 
-    // REAL-TIME: bipe atualiza StoreStock NA HORA (+1 unidade)
-    // Regra confirmada pelo dono: cada bipe = +1 unidade da SKU naquela loja, imediatamente.
+    // ========================================================================
+    // PASSO 4: real-time StoreStock (já era protegido por try/catch local)
+    // ========================================================================
     let appliedToStock = false;
     if (chosen && storeId && chosen.id) {
       try {
@@ -172,7 +280,7 @@ router.post('/bipe', async (req, res) => {
         await prisma.stocktakeBipe.update({ where: { id: bipe.id }, data: { applied: true } });
         appliedToStock = true;
       } catch (e) {
-        console.warn('[bipe] upsert StoreStock falhou:', e.message);
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'storestock_upsert', error: e.message }));
       }
     }
 
@@ -195,8 +303,8 @@ router.post('/bipe', async (req, res) => {
       candidates: duplicate ? matched.map((m) => ({ name: m.product.name, size: m.size, sku: m.product.sku, active: m.product.active })) : undefined,
     });
   } catch (err) {
-    console.error('[stocktake/bipe]', err);
-    res.status(500).json({ error: err.message });
+    console.error('[bipe] BIPE_ERRO', JSON.stringify({ error: err.message }));
+    res.status(500).json({ error: err.message, retry: true });
   }
 });
 
