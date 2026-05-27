@@ -59,10 +59,13 @@
 - Services: `compositeImage.js`, `collageImage.js`, `falAi.js`, `openaiImage.js`, `copyGenerator.js`, `marketingPrompts.js`, `marketingCron.js`, `marketingConfig.js`, `productEnrichmentAI.js`, `curationAgent.js`, `retailOrchestrator.js`, `visionValidator.js`, `visionBatchValidator.js`, `instagramPublisher.js`, `meta.js`, `slackNotifier.js`
 - Tabelas: `BrandProfile` (10), `ProductCreative` (85), `MarketingPublication`, `AIConversation`, `AIAgent`, `AIOrchestration`, `AIOrchestrationTask`, `AIApproval`, `AILog`, `AiRecommendation`, `UserRecommendation`, `UserAction`
 
-### I. Etiquetas / Impressão
-- Route: `labels.js`
-- Service: `labelGenerator.js`
-- Tabelas: `LabelTemplate`, `LabelBatch`, `LabelItem`, `LabelPrintLog`
+### I. Etiquetas / Impressão — **EXTRAÍDO** para `src/modules/labels/`
+- **Status:** módulo extraído com sucesso em 26/05/2026. Três commits atômicos: `7dc6bd0` (estrutura inicial), `b580c25` (route), `659bef3` (service). Validação final aprovada (`RELATORIO_VALIDACAO_FINAL_LABELS`).
+- Route (em `src/modules/labels/routes/`): `labels.js`
+- Service (em `src/modules/labels/services/`): `labelGenerator.js`
+- README do módulo: `src/modules/labels/README.md`
+- Mount point público preservado: `/api/admin/labels`
+- Tabelas (continuam em `prisma/schema.prisma`, não foram movidas): `LabelTemplate`, `LabelBatch`, `LabelItem`, `LabelPrintLog`
 
 ### J. Curadoria de vitrine (StoreCuration)
 - Route: `curation.js`

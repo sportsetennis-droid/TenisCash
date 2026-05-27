@@ -211,11 +211,55 @@ Toda mudança que toque um dos 4 arquivos APEX (ou o `src/modules/apex/README.md
 
 ---
 
-## 11. Fluxo: Etiquetas e impressão
+## 11. Fluxo: Etiquetas e impressão — módulo extraído
+
+**Status:** Etiquetas foi extraído para `src/modules/labels/` em 26/05/2026 (commits `7dc6bd0`, `b580c25`, `659bef3`). Validação final APROVADA.
+
+Localização atual dos arquivos (referência):
+- `src/modules/labels/README.md`
+- `src/modules/labels/routes/labels.js` — montado em `/api/admin/labels` (path inalterado)
+- `src/modules/labels/services/labelGenerator.js`
+
+### 11.a. Checklist operacional (mesmo de antes)
 
 - [ ] Gerar etiqueta de produto no admin abre PDF/print dialog.
 - [ ] Etiqueta contém: barcode, REF, descrição, tamanho, preço.
 - [ ] Impressão em lote por seleção funciona.
+
+### 11.b. Padrão de validação segura para mudanças futuras em Etiquetas
+
+⚠️ **Anomalia operacional vinculante:** alguns `GET` endpoints **escrevem no banco**. Por isso, validação técnica de extração/refator **não pode** usar HTTP smoke test.
+
+Endpoints com escrita disfarçada (NÃO chamar como smoke test técnico):
+- `GET /api/admin/labels/templates` — chama `ensureDefaultTemplates()` que **cria/atualiza `LabelTemplate`** na primeira chamada ou se layout S&T não bate.
+- `GET /api/admin/labels/batches/:id/pdf` — gera PDF e **atualiza `LabelBatch.status = 'GENERATED'`** em toda chamada.
+
+Toda mudança que toque um dos arquivos Etiquetas (ou o `src/modules/labels/README.md`) deve passar pelos seguintes checks **sem chamar endpoint, sem rodar servidor, sem gerar PDF, sem escrever no banco, sem chamada externa**:
+
+- [ ] `git status --short -uall` limpo antes de começar.
+- [ ] Grep global por importadores do arquivo afetado:
+  - `grep -rnE "require\(['\"][^'\"]*labels\b" src/ public/ scripts/` (route)
+  - `grep -rnE "require\(['\"][^'\"]*labelGenerator\b" src/ public/ scripts/` (service)
+  - Confirmar que só o esperado existe.
+- [ ] `node --check src/modules/labels/routes/labels.js`
+- [ ] `node --check src/modules/labels/services/labelGenerator.js`
+- [ ] `node --check src/index.js`
+- [ ] `node -e "require('pdfkit'); require('qrcode'); console.log('deps labels ok')"` retorna `deps labels ok`.
+- [ ] `node -e "const r = require('./src/modules/labels/routes/labels'); console.log(typeof r)"` retorna `function`.
+- [ ] `node -e "const s = require('./src/modules/labels/services/labelGenerator'); console.log(typeof s, Object.keys(s).join(','))"` retorna `object generateLabelsPDF,defaultTemplates`.
+- [ ] **`generateLabelsPDF(...)` NÃO foi invocada** — apenas resolução de exports.
+- [ ] **`ensureDefaultTemplates()` NÃO foi invocada** — está dentro do handler `GET /templates`, que não é chamado.
+- [ ] **Nenhum PDF foi gerado** — sem `PDFDocument` instanciado, sem `QRCode.toDataURL()` chamado.
+- [ ] **Nenhuma query Prisma** foi executada — PrismaClient pode ser resolvido lazy via `middleware.js`, mas sem chamada de método nenhuma conexão real é aberta.
+- [ ] **`npm start` NÃO foi executado.**
+- [ ] **`GET /api/admin/labels/templates` NÃO foi chamado** (escreveria).
+- [ ] **`GET /api/admin/labels/batches/:id/pdf` NÃO foi chamado** (escreveria + geraria PDF).
+- [ ] **Nenhum endpoint `POST` ou `DELETE`** de `/api/admin/labels/...` foi chamado.
+- [ ] `src/index.js` linhas 23 (require) e 122 (mount) inalteradas, a menos que a mudança proposta seja explicitamente nelas — e mesmo nesse caso, mount string permanece literal (`'/api/admin/labels'`).
+- [ ] `prisma/schema.prisma`, `package.json`, `.env`, `src/middleware.js`, `public/admin.html`, `docs/`, `public/`, `scripts/` permanecem intocados pela mudança (validar com `git show --name-only <commit>`).
+- [ ] Snapshot `count(*)` das 4 tabelas Label (`LabelTemplate`, `LabelBatch`, `LabelItem`, `LabelPrintLog`) e `Product` igual antes e depois (sem crescimento espontâneo).
+
+Smoke funcional via HTTP (gerar 1 PDF real em staging com lote-teste, depois deletar) **só com autorização explícita do dono**, em staging, fora do escopo da validação técnica.
 
 ---
 

@@ -1,11 +1,35 @@
 # PLANO DE EXTRAÇÃO — Módulo Etiquetas
 
-> **Plano em modo DESIGN.** Documento descreve **como** a extração deveria ser feita se autorizada. **Não autoriza execução.** Nenhum arquivo será movido, renomeado ou alterado sem ordem explícita do dono em conversa.
+> **Plano executado e validado.** Em 26/05/2026 a extração foi realizada com sucesso em 3 commits atômicos. A validação final (`RELATORIO_VALIDACAO_FINAL_LABELS`) foi **APROVADA**. Schema Prisma, banco, mount point público, endpoints, PDFs e integrações externas **não foram alterados ou executados**. Este documento foi atualizado para refletir o estado pós-extração.
 
-- Data: 2026-05-26
-- Branch alvo de trabalho: a definir (sugestão: `refactor/etiquetas-extracao-01`, derivada de `refactor/apex-extracao-01` ou de `organizacao/refactor-2026-05-26` conforme o estado do merge do APEX)
-- Status: documento de planejamento — sem implementação
-- Precedente: extração APEX concluída em 26/05/2026 (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`, `c0aaa03`). Mesmo padrão será aplicado.
+- Data do plano: 2026-05-26
+- Data da execução: 2026-05-26
+- Branch onde o trabalho aconteceu: `refactor/labels-extracao-01` (derivada de `refactor/apex-extracao-01` no commit `46d5296`)
+- Status: **CONCLUÍDO** (com Passo 5 adiado, ver seção 12)
+- Precedente: extração APEX concluída em 26/05/2026 (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`, `c0aaa03`). Mesmo padrão foi aplicado.
+
+### Tabela mestra de commits da extração
+
+| Passo | Commit | Mensagem |
+|---|---|---|
+| 0. Sanity check (deps `pdfkit`/`qrcode`, importadores, status limpo) | — | (`RELATORIO_SANITY_PRE_LABELS` no histórico de turnos) |
+| 2. Criar estrutura `src/modules/labels/` + README | `7dc6bd0` | `chore(labels): criar estrutura inicial do modulo` |
+| 3. Mover `labels.js` | `b580c25` | `refactor(labels): mover route labels para modulo Etiquetas` |
+| 4. Mover `labelGenerator.js` | `659bef3` | `refactor(labels): mover service labelGenerator para modulo Etiquetas` |
+| 5. `index.js` do módulo | — | **NÃO EXECUTADO / ADIADO** (opcional, sem benefício no curto prazo — mesma decisão do APEX) |
+| 6. Documentação | (este commit `docs(labels):`) | `docs(labels): marcar extracao do modulo Etiquetas como concluida` |
+| 7. Validação final | — | `RELATORIO_VALIDACAO_FINAL_LABELS` — **APROVADO** |
+
+### Atestado pós-execução
+
+- ✅ Mount point `/api/admin/labels` permaneceu literalmente idêntico (linha 122 de `src/index.js`).
+- ✅ Schema Prisma **não foi tocado** — os 4 modelos `Label*` (linhas ~903 a ~995) continuam no schema único.
+- ✅ Banco **não recebeu nenhuma escrita** durante a extração.
+- ✅ Nenhum endpoint público foi chamado durante a validação (especialmente `GET /templates` e `GET /batches/:id/pdf`, que escrevem).
+- ✅ Nenhum PDF foi gerado (`generateLabelsPDF` não invocada).
+- ✅ Nenhuma chamada externa (Anthropic, fal.ai, etc.) — Etiquetas não tem integração de rede de qualquer forma.
+- ✅ `npm start` não foi executado durante a validação.
+- ✅ `package.json`, `.env`, `src/middleware.js`, `public/admin.html` permanecem intocados.
 
 ---
 
@@ -246,13 +270,13 @@ Cada passo é um commit atômico independente. Ordem obrigatória.
 - Anotar todos os models Prisma acessados.
 - Gerar lista de paths que mudarão e paths que **não** mudarão.
 
-### Passo 2 — Criar a pasta destino (vazia)
+### Passo 2 — Criar a pasta destino (vazia) ✅ **CONCLUÍDO** (commit `7dc6bd0`)
 - Criar `src/modules/labels/` com subpastas `routes/` e `services/`.
 - Adicionar `src/modules/labels/README.md` descrevendo o módulo (objetivo, arquivos, mount, schema-fica-fora, etc.).
 - **Não mover nada ainda.** Apenas estrutura + README.
 - Commit: `chore(labels): cria estrutura src/modules/labels/ (vazia) + README`.
 
-### Passo 3 — Mover `labels.js`
+### Passo 3 — Mover `labels.js` ✅ **CONCLUÍDO** (commit `b580c25`)
 - `git mv src/routes/labels.js src/modules/labels/routes/labels.js`.
 - Atualizar `require` em `src/index.js` linha 23 para `./modules/labels/routes/labels`.
 - Atualizar imports relativos dentro do arquivo movido:
@@ -262,7 +286,7 @@ Cada passo é um commit atômico independente. Ordem obrigatória.
 - `node -e "const r = require('./src/modules/labels/routes/labels'); console.log(typeof r)"` deve retornar `function` (Express router).
 - Commit: `refactor(labels): mover rota labels para modulo Labels`.
 
-### Passo 4 — Mover `labelGenerator.js`
+### Passo 4 — Mover `labelGenerator.js` ✅ **CONCLUÍDO** (commit `659bef3`)
 - `git mv src/services/labelGenerator.js src/modules/labels/services/labelGenerator.js`.
 - Atualizar `require` dentro de `src/modules/labels/routes/labels.js` linha 7: `require('../../../services/labelGenerator')` → `require('../services/labelGenerator')` (caminho interno simplificado).
 - `labelGenerator.js` não tem `require` relativo interno (só `pdfkit`, `qrcode`, `buffer`) — confirmar com `grep -nE "require\(['\"]\.\.?/" src/services/labelGenerator.js`.
@@ -271,19 +295,21 @@ Cada passo é um commit atômico independente. Ordem obrigatória.
 - `node -e "const r = require('./src/modules/labels/routes/labels'); console.log(typeof r)"` deve continuar retornando `function`.
 - Commit: `refactor(labels): mover service labelGenerator para modulo Labels`.
 
-### Passo 5 — `index.js` do módulo (opcional, mas recomendado)
+### Passo 5 — `index.js` do módulo (opcional) ⏸ **NÃO EXECUTADO / ADIADO**
+
+**Motivo do adiamento:** ganho puramente cosmético (1 linha em `src/index.js`). Sem benefício operacional. Mesma decisão tomada na extração APEX. Pode ser retomado em ciclo de polimento futuro.
 - Decisão do dono. Pode ser adiado como foi no APEX.
 - Se executado: criar `src/modules/labels/index.js` exportando `{ labelsRoutes }`, simplificar `src/index.js` linha 23.
 - Commit: `refactor(labels): expõe routes via modules/labels/index.js`.
 
-### Passo 6 — Documentação
+### Passo 6 — Documentação ✅ **EM EXECUÇÃO** (este commit `docs(labels):`)
 - Atualizar `docs/MAPA_ATUAL.md` (apontar nova localização do módulo Etiquetas).
 - Atualizar `docs/MODULOS_DESEJADOS.md` (marcar Etiquetas como ✓ extraído + atualizar Fase 1).
 - Atualizar `docs/PLANO_EXTRACAO_ETIQUETAS.md` (este arquivo) com status pós-execução e hashes dos commits.
 - Atualizar `docs/REGRESSION_CHECKLIST.md` se mencionar paths antigos de Etiquetas.
 - Commit: `docs(labels): marcar extracao do modulo Etiquetas como concluida`.
 
-### Passo 7 — Encerramento
+### Passo 7 — Encerramento ✅ **CONCLUÍDO** (`RELATORIO_VALIDACAO_FINAL_LABELS` aprovado)
 - Rodar checklist manual de validação (seção 16).
 - Gerar `RELATORIO_VALIDACAO_FINAL_LABELS` (formato igual ao do APEX).
 - Abrir PR (ou aguardar autorização). **Não fazer merge automático.**

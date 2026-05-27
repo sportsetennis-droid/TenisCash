@@ -284,8 +284,8 @@ scripts/
 
 ### Fase 1 — Sem risco produtivo (ordem segura de primeira extração)
 1. ✅ **APEX** — **EXTRAÍDO em 26/05/2026** (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`). Padrão de extração modular validado em produção sem incidente.
-2. **Etiquetas** (`labels.js` + `labelGenerator.js`, isolado, sem cron, sem integração externa) ← próximo candidato natural
-3. **Curadoria de Vitrine** (StoreCuration — todas as tabelas vazias, sem uso em produção)
+2. ✅ **Etiquetas** — **EXTRAÍDO em 26/05/2026** (commits `7dc6bd0`, `b580c25`, `659bef3`). Módulo agora vive em `src/modules/labels/`. Mount `/api/admin/labels` preservado. Validação final aprovada.
+3. **Curadoria de Vitrine** (StoreCuration — todas as tabelas vazias, sem uso em produção) ← próximo candidato natural
 4. **Life** (`life.js` + `UserLifeProfile`, isolado)
 
 ### Fase 2 — Risco médio (exigem instrumentação + canário)
