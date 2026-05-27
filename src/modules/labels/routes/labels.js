@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../../../middleware');
-const { generateLabelsPDF, defaultTemplates } = require('../../../services/labelGenerator');
+const { generateLabelsPDF, defaultTemplates } = require('../services/labelGenerator');
 
 const router = express.Router();
 router.use(authMiddleware);
