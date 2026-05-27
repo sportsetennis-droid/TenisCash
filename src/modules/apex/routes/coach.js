@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { authMiddleware } = require('../../../middleware');
-const coach = require('../../../services/aiCoach');
+const coach = require('../services/aiCoach');
 
 const router = express.Router();
 router.use(authMiddleware);
