@@ -285,8 +285,8 @@ scripts/
 ### Fase 1 — Sem risco produtivo (ordem segura de primeira extração)
 1. ✅ **APEX** — **EXTRAÍDO em 26/05/2026** (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`). Padrão de extração modular validado em produção sem incidente.
 2. ✅ **Etiquetas** — **EXTRAÍDO em 26/05/2026** (commits `7dc6bd0`, `b580c25`, `659bef3`). Módulo agora vive em `src/modules/labels/`. Mount `/api/admin/labels` preservado. Validação final aprovada.
-3. **Curadoria de Vitrine** (StoreCuration — todas as tabelas vazias, sem uso em produção) ← próximo candidato natural
-4. **Life** (`life.js` + `UserLifeProfile`, isolado)
+3. ✅ **Curadoria de Vitrine** — **EXTRAÍDO em 26/05/2026** (commit único `48525d9`, modo turbo). Módulo agora vive em `src/modules/curadoria-vitrine/`. Mount `/api/admin/curation` preservado. Módulo irmão `aiCuration` intocado.
+4. **Life** (`life.js` + `UserLifeProfile`, isolado) ← próximo candidato a avaliar (sujeito a triagem S0/S1/S2)
 
 ### Fase 2 — Risco médio (exigem instrumentação + canário)
 - RH / Vendedores (`seller.js`, `sellers.js`, `sellerPortfolio.js`, `weeklyInterview.js`, `stores.js`)

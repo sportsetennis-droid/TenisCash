@@ -67,9 +67,13 @@
 - Mount point público preservado: `/api/admin/labels`
 - Tabelas (continuam em `prisma/schema.prisma`, não foram movidas): `LabelTemplate`, `LabelBatch`, `LabelItem`, `LabelPrintLog`
 
-### J. Curadoria de vitrine (StoreCuration)
-- Route: `curation.js`
-- Tabelas: `StoreCuration`, `StoreCurationZone`, `StoreCurationItem`, `StoreCurationChecklist`, `StoreCurationPhoto`, `StoreCurationResult` (todas vazias)
+### J. Curadoria de vitrine (StoreCuration) — **EXTRAÍDO** para `src/modules/curadoria-vitrine/`
+- **Status:** módulo extraído em 26/05/2026. Commit de código: `48525d9 refactor(curadoria-vitrine): extrair modulo`. Sem service auxiliar (toda lógica no route).
+- Route (em `src/modules/curadoria-vitrine/routes/`): `curation.js`
+- README do módulo: `src/modules/curadoria-vitrine/README.md`
+- Mount público preservado: `/api/admin/curation`
+- Módulo irmão NÃO TOCADO: `/api/admin/ai-curation` (Curadoria de Produto IA — `src/routes/aiCuration.js` + `src/services/curationAgent.js`)
+- Tabelas (continuam em `prisma/schema.prisma`, não foram movidas): `StoreCuration`, `StoreCurationZone`, `StoreCurationItem`, `StoreCurationChecklist`, `StoreCurationPhoto`, `StoreCurationResult` (todas vazias)
 
 ### K. Campanhas
 - Route: `campaigns.js`

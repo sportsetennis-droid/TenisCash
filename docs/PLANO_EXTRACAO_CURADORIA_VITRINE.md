@@ -4,7 +4,18 @@
 
 - Data: 2026-05-26
 - Branch alvo de trabalho: a definir (sugestão: `refactor/curadoria-vitrine-extracao-01`, derivada de `refactor/labels-extracao-01` ou de `organizacao/refactor-2026-05-26` conforme decisão do dono).
-- Status: documento de planejamento — sem implementação
+- Status: **CONCLUÍDO em 26/05/2026** — commit único `48525d9 refactor(curadoria-vitrine): extrair modulo` (modo turbo)
+
+### Atestado pós-execução
+
+- ✅ Mount `/api/admin/curation` literalmente preservado (linha 124 de `src/index.js`).
+- ✅ Mount irmão `/api/admin/ai-curation` (linha 137) intocado.
+- ✅ `src/routes/aiCuration.js` e `src/services/curationAgent.js` **NÃO foram tocados** (commits anteriores `3cc22fe` e `c0ef3dd` preservados como último commit).
+- ✅ `prisma/schema.prisma` intocado.
+- ✅ `package.json`, `.env`, `src/middleware.js`, `public/admin.html` intocados.
+- ✅ `src/modules/apex/` e `src/modules/labels/` (extrações anteriores) intocados.
+- ✅ Nenhum endpoint chamado, nenhum PDF gerado, nenhuma escrita em banco, nenhuma chamada externa.
+- ✅ Working tree limpa após o commit.
 - Precedentes:
   - APEX extraído em 26/05/2026 (commits `c070555`, `0af78f7`, `29ff92b`, `903f2e2`, `c0aaa03`).
   - Etiquetas extraído em 26/05/2026 (commits `7dc6bd0`, `b580c25`, `659bef3`, `77e7513`).

@@ -106,7 +106,19 @@ Checklist:
 - [ ] Falha no Anthropic/fal.ai não corrompe `Product` — produto continua acessível.
 - [ ] Custo da chamada IA é logado.
 
-### 5.b. Curadoria de Vitrine (StoreCuration — montagem física da vitrine)
+### 5.b. Curadoria de Vitrine (StoreCuration — montagem física da vitrine) — módulo extraído
+
+**Status:** Curadoria de Vitrine foi extraída para `src/modules/curadoria-vitrine/` em 26/05/2026 (commit `48525d9`). Mount `/api/admin/curation` preservado. Sem service auxiliar.
+
+Localização atual:
+- `src/modules/curadoria-vitrine/README.md`
+- `src/modules/curadoria-vitrine/routes/curation.js` — montado em `/api/admin/curation` (path inalterado)
+
+Módulo irmão **NÃO TOCADO** (Curadoria de Produto IA):
+- `src/routes/aiCuration.js` → `/api/admin/ai-curation`
+- `src/services/curationAgent.js`
+
+Padrão de validação técnica para mudanças futuras: `node --check` + `node -e "require(...)"` + grep, sem chamar endpoint, sem escrever no banco, sem tocar em `aiCuration` ou `curationAgent`. Tabelas continuam vazias — sem snapshot funcional obrigatório.
 
 - Route: `curation.js`
 - Tabelas: `StoreCuration`, `StoreCurationZone`, `StoreCurationItem`, `StoreCurationChecklist`, `StoreCurationPhoto`, `StoreCurationResult` (todas vazias hoje).
