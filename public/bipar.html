@@ -86,7 +86,10 @@
       <div>
         <label>VENDEDOR</label>
         <select id="vendedor"><option value="">Selecione a loja primeiro</option></select>
-        <input type="text" id="vendedor-manual" placeholder="Digite o nome do vendedor" style="width:100%;padding:12px;font-size:15px;border:1.5px solid #d2d2d7;border-radius:8px;margin-top:6px;display:none">
+        <div id="vendedor-manual-wrap" style="display:none;margin-top:6px;gap:6px">
+          <input type="text" id="vendedor-manual" placeholder="Digite o nome do vendedor" style="flex:1;padding:12px;font-size:15px;border:1.5px solid #d2d2d7;border-radius:8px;min-width:0">
+          <button type="button" id="vendedor-manual-save" style="padding:12px 18px;font-size:14px;font-weight:700;background:#25d366;color:#fff;border:none;border-radius:8px;cursor:pointer;white-space:nowrap">✓ Salvar</button>
+        </div>
       </div>
     </div>
     <div id="setup-status" class="setup-status status-warn">⚠️ Selecione loja e vendedor antes de bipar</div>
@@ -174,7 +177,7 @@
       if (savedVend === '__manual__') {
         sel.value = '__manual__';
         const manualInput = document.getElementById('vendedor-manual');
-        manualInput.style.display = 'block';
+        document.getElementById('vendedor-manual-wrap').style.display = 'flex';
         manualInput.value = localStorage.getItem(STORAGE_VENDNAME) || '';
       } else if (savedVend && sellers.find(s => s.id === savedVend)) {
         sel.value = savedVend;
@@ -233,21 +236,50 @@
     const v = e.target.value;
     localStorage.setItem(STORAGE_VEND, v);
     const manualInput = document.getElementById('vendedor-manual');
+    const manualWrap = document.getElementById('vendedor-manual-wrap');
     if (v === '__manual__') {
-      manualInput.style.display = 'block';
+      manualWrap.style.display = 'flex';
       manualInput.focus();
       localStorage.setItem(STORAGE_VENDNAME, manualInput.value || '');
     } else {
-      manualInput.style.display = 'none';
+      manualWrap.style.display = 'none';
       const nome = sellers.find(s => s.id === v)?.name || '';
       localStorage.setItem(STORAGE_VENDNAME, nome);
     }
     atualizarStatus();
   });
 
+  // Salva nome digitado em tempo real (compat) — só atualiza status, não pula foco
   document.getElementById('vendedor-manual').addEventListener('input', (e) => {
     localStorage.setItem(STORAGE_VENDNAME, e.target.value.trim());
     atualizarStatus();
+  });
+
+  // SALVAR NOME + PULAR PRO BIPE
+  // Disparado pelo botão "✓ Salvar" ou pelo Enter no input do nome.
+  function salvarVendedorManualEFocarBipe() {
+    const inp = document.getElementById('vendedor-manual');
+    const nome = (inp.value || '').trim();
+    if (nome.length < 2) {
+      inp.focus();
+      alert('Digite o nome do vendedor (mínimo 2 letras)');
+      return;
+    }
+    localStorage.setItem(STORAGE_VENDNAME, nome);
+    atualizarStatus();
+    // Pula pro campo de código de barras (se já estiver liberado)
+    const codigoInput = document.getElementById('codigo');
+    if (codigoInput && !codigoInput.disabled) {
+      setTimeout(() => codigoInput.focus(), 0);
+    }
+  }
+
+  document.getElementById('vendedor-manual-save').addEventListener('click', salvarVendedorManualEFocarBipe);
+  document.getElementById('vendedor-manual').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      salvarVendedorManualEFocarBipe();
+    }
   });
 
   // ============================================================
