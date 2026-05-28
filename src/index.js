@@ -170,13 +170,18 @@ app.use(express.static(path.join(__dirname, '../public'), {
     // JS/CSS sem query string → must-revalidate; com query string → immutable
     if (/\.(js|css)$/.test(filePath)) {
       res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    } else if (/\.html$/.test(filePath)) {
+      // HTML é o ponto de entrada do app (JS inline) — NUNCA cachear,
+      // senão PWA/Safari servem versão velha e o app fica desatualizado.
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
   },
 }));
 
 // Rota amigável: teniscash.com.br/loja → portal das lojas
 app.get('/loja', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/loja.html'));
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/loja.html'), { cacheControl: false });
 });
 
 // Página pública de produto (QR Code aponta pra cá)
