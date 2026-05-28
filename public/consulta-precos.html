@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Consulta de Preço — Sports & Tennis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 14px; }
+  @media (min-width: 900px) {
+    .wrap { margin: 24px auto; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.12); padding: 20px; }
+  }
+  h1 { font-size: 20px; color: #E5571E; margin-bottom: 2px; }
+  .sub { font-size: 12px; color: #888; margin-bottom: 14px; }
+
+  .search-bar {
+    position: sticky; top: 6px; z-index: 10; background: #f5f5f7; padding-bottom: 8px;
+  }
+  @media (min-width: 900px) { .search-bar { background: #fff; } }
+  #q {
+    width: 100%; padding: 16px; font-size: 17px; border: 2px solid #E5571E; border-radius: 12px;
+    outline: none; background: #fff;
+  }
+  #q:focus { box-shadow: 0 0 0 4px rgba(229,87,30,.15); }
+
+  .hint { text-align: center; color: #999; font-size: 13px; padding: 40px 20px; line-height: 1.6; }
+  .loading { text-align: center; color: #E5571E; font-size: 13px; padding: 20px; }
+
+  .item {
+    display: flex; gap: 12px; align-items: center; background: #fff; border: 1px solid #e5e5ea;
+    border-radius: 12px; padding: 12px; margin-bottom: 8px;
+  }
+  .item img { width: 56px; height: 64px; object-fit: cover; border-radius: 8px; background: #eee; flex-shrink: 0; }
+  .item .ph { width: 56px; height: 64px; border-radius: 8px; background: #eee; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 22px; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .name { font-weight: 700; font-size: 14px; line-height: 1.2; }
+  .item .meta { font-size: 11px; color: #888; margin-top: 3px; }
+  .item .price-box { text-align: right; flex-shrink: 0; }
+  .item .price { font-size: 20px; font-weight: 800; color: #1d8348; white-space: nowrap; }
+  .item .price.promo { color: #d70015; }
+  .item .price-old { font-size: 12px; color: #aaa; text-decoration: line-through; }
+  .item .no-price { font-size: 13px; color: #c00; font-weight: 600; }
+
+  .count { font-size: 12px; color: #888; margin: 8px 2px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🏷️ Consulta de Preço</h1>
+    <div class="sub">Base completa Sports &amp; Tennis · só preço, sem estoque</div>
+
+    <div class="search-bar">
+      <input type="text" id="q" placeholder="Nome, marca, referência ou bipe o código..." autocomplete="off">
+    </div>
+
+    <div id="count" class="count" style="display:none"></div>
+    <div id="results">
+      <div class="hint">Digite o nome, a marca, a referência<br>ou bipe o código de barras pra ver o preço.</div>
+    </div>
+  </div>
+
+<script>
+  const q = document.getElementById('q');
+  const results = document.getElementById('results');
+  const countEl = document.getElementById('count');
+  let timer = null;
+  let lastReq = 0;
+
+  function fmtBRL(n) {
+    if (n == null) return null;
+    try { return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+    catch { return 'R$ ' + Number(n).toFixed(2).replace('.', ','); }
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  async function buscar(termo) {
+    const reqId = ++lastReq;
+    results.innerHTML = '<div class="loading">Buscando...</div>';
+    countEl.style.display = 'none';
+    try {
+      const r = await fetch('/api/price-check?q=' + encodeURIComponent(termo) + '&limit=80');
+      const d = await r.json();
+      if (reqId !== lastReq) return; // resposta antiga, ignora
+      render(d, termo);
+    } catch (e) {
+      if (reqId !== lastReq) return;
+      results.innerHTML = '<div class="hint">Erro ao buscar. Tente de novo.</div>';
+    }
+  }
+
+  function render(d, termo) {
+    const prods = d.products || [];
+    if (prods.length === 0) {
+      results.innerHTML = '<div class="hint">Nenhum produto encontrado para "<b>' + esc(termo) + '</b>".<br>Confira a escrita ou tente outra palavra.</div>';
+      countEl.style.display = 'none';
+      return;
+    }
+    countEl.style.display = 'block';
+    countEl.textContent = prods.length + ' produto' + (prods.length > 1 ? 's' : '') + (prods.length >= 80 ? ' (mostrando os primeiros 80 — refine a busca)' : '');
+
+    results.innerHTML = prods.map(p => {
+      const temPromo = p.promoPrice != null && p.price != null && p.promoPrice < p.price;
+      let priceHtml;
+      if (p.price == null && p.promoPrice == null) {
+        priceHtml = '<div class="no-price">sem preço</div>';
+      } else if (temPromo) {
+        priceHtml = '<div class="price-old">' + fmtBRL(p.price) + '</div><div class="price promo">' + fmtBRL(p.promoPrice) + '</div>';
+      } else {
+        priceHtml = '<div class="price">' + fmtBRL(p.price ?? p.promoPrice) + '</div>';
+      }
+      const metaParts = [];
+      if (p.brand && p.brand !== 'A DEFINIR') metaParts.push(esc(p.brand));
+      if (p.ref) metaParts.push('REF ' + esc(p.ref));
+      if (p.color) metaParts.push('🎨 ' + esc(p.color));
+      const img = p.imageUrl
+        ? '<img src="' + esc(p.imageUrl) + '" onerror="this.outerHTML=\'<div class=ph>📦</div>\'">'
+        : '<div class="ph">📦</div>';
+      return '<div class="item">' +
+        img +
+        '<div class="info"><div class="name">' + esc(p.name) + '</div>' +
+        '<div class="meta">' + (metaParts.join(' · ') || '&nbsp;') + '</div></div>' +
+        '<div class="price-box">' + priceHtml + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  q.addEventListener('input', () => {
+    clearTimeout(timer);
+    const termo = q.value.trim();
+    if (termo.length < 2) {
+      results.innerHTML = '<div class="hint">Digite o nome, a marca, a referência<br>ou bipe o código de barras pra ver o preço.</div>';
+      countEl.style.display = 'none';
+      return;
+    }
+    timer = setTimeout(() => buscar(termo), 280);
+  });
+
+  // Enter = busca imediata (útil pra leitor de código de barras)
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearTimeout(timer);
+      const termo = q.value.trim();
+      if (termo.length >= 2) buscar(termo);
+    }
+  });
+
+  q.focus();
+</script>
+</body>
+</html>
