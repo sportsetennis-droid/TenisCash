@@ -638,6 +638,11 @@
         <span style="font-size:18px;">🔍</span>
         <input type="text" id="catSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onCatalogSearch()">
       </div>
+      <!-- Toggle: só produtos com estoque físico em loja (mostra os tamanhos no card) -->
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;cursor:pointer;">
+        <input type="checkbox" id="catInStoreOnly" checked onchange="onCatalogSearch()" style="width:18px;height:18px;accent-color:#E5571E;">
+        📍 Só com estoque na loja <span style="font-weight:400;color:#8e8e93;">(mostra os tamanhos por loja)</span>
+      </label>
       <!-- Filtros padrão (Marca/Categoria/Gênero/Modalidade/Especialidade) — mesma da admin -->
       <div id="psbar-loja" style="margin-top:14px;"></div>
     </div>
@@ -1878,6 +1883,8 @@ async function onCatalogSearch() {
       if (_filterSize) params.push('size=' + encodeURIComponent(_filterSize));
       if (ps.brand) params.push('brand=' + encodeURIComponent(ps.brand));
       if (ps.category) params.push('category=' + encodeURIComponent(ps.category));
+      const inStoreEl = document.getElementById('catInStoreOnly');
+      if (inStoreEl && inStoreEl.checked) params.push('inStore=1');
       const d = await api('/api/catalog/products?' + params.join('&'));
       const products = d.products || d.items || [];
       renderCatalog(products);

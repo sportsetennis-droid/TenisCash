@@ -40,19 +40,27 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const modality = String(req.query.modality || '').trim();
     const tier = String(req.query.tier || '').trim();
     const size = String(req.query.size || '').trim();
+    // inStore=1 → só produtos que TÊM estoque físico em alguma loja (StoreStock>0).
+    // Usado pela Curadoria pra mostrar os bipados (com tamanhos por loja no card).
+    const inStore = String(req.query.inStore || req.query.instore || '') === '1';
     const aiFilters = [];
     if (type) aiFilters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
     if (gender) aiFilters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
     if (modality) aiFilters.push({ aiContext: { path: ['classification', 'modality'], equals: modality } });
     if (tier) aiFilters.push({ aiContext: { path: ['classification', 'tier'], equals: tier } });
 
+    // Condições sobre ProductSize (tamanho e/ou estoque em loja) — merge num único some
+    const sizesSome = {};
+    if (size) sizesSome.size = size;
+    if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
+
     const where = {
       active: true,
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       ...(aiFilters.length ? { AND: aiFilters } : {}),
-      // Tamanho: filtra produtos que TÊM esse tamanho cadastrado em ProductSize
-      ...(size ? { sizes: { some: { size } } } : {}),
+      // Tamanho e/ou estoque em loja
+      ...(Object.keys(sizesSome).length ? { sizes: { some: sizesSome } } : {}),
       ...(search
         ? {
             OR: [
