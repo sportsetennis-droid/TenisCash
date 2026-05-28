@@ -493,8 +493,8 @@
 
     <div id="precoCount" style="font-size:12px;color:#888;margin:6px 2px;display:none;"></div>
     <div id="precoResults">
-      <div style="text-align:center;color:#999;font-size:13px;padding:36px 18px;line-height:1.6;">
-        Digite o nome, a marca, a referência<br>ou bipe o código de barras pra ver o preço.
+      <div style="text-align:center;color:#E5571E;font-size:13px;padding:36px 18px;line-height:1.6;">
+        Carregando a base completa...
       </div>
     </div>
   </div>
@@ -1172,72 +1172,130 @@ async function api(path, opts = {}) {
 // ===== CONSULTA DE PRECO (card da loja) =====
 let _precoTimer = null;
 let _precoReq = 0;
+const PRECO_PAGE = 60;
+let _precoTermo = '';
+let _precoOffset = 0;
+let _precoTotal = 0;
+let _precoHasMore = false;
+let _precoLoading = false;
 function fmtPrecoBRL(n) {
   if (n == null) return null;
   try { return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
   catch { return 'R$ ' + Number(n).toFixed(2).replace('.', ','); }
 }
 function escPreco(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-async function buscarPreco(termo) {
+
+function precoItemHtml(p) {
+  const temPromo = p.promoPrice != null && p.price != null && p.promoPrice < p.price;
+  let priceHtml;
+  if (p.price == null && p.promoPrice == null) priceHtml = '<div style="font-size:13px;color:#c00;font-weight:600;">sem preço</div>';
+  else if (temPromo) priceHtml = '<div style="font-size:12px;color:#aaa;text-decoration:line-through;">' + fmtPrecoBRL(p.price) + '</div><div style="font-size:20px;font-weight:800;color:#d70015;">' + fmtPrecoBRL(p.promoPrice) + '</div>';
+  else priceHtml = '<div style="font-size:20px;font-weight:800;color:#1d8348;">' + fmtPrecoBRL(p.price ?? p.promoPrice) + '</div>';
+  const meta = [];
+  if (p.brand && p.brand !== 'A DEFINIR') meta.push(escPreco(p.brand));
+  if (p.ref) meta.push('REF ' + escPreco(p.ref));
+  if (p.color) meta.push('🎨 ' + escPreco(p.color));
+  const img = p.imageUrl
+    ? '<img src="' + escPreco(p.imageUrl) + '" style="width:54px;height:62px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0;" onerror="this.outerHTML=\'<div style=&quot;width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;&quot;>📦</div>\'">'
+    : '<div style="width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;">📦</div>';
+  return '<div class="card" style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:12px;">' +
+    img +
+    '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;line-height:1.2;">' + escPreco(p.name) + '</div>' +
+    '<div style="font-size:11px;color:#888;margin-top:3px;">' + (meta.join(' · ') || '&nbsp;') + '</div></div>' +
+    '<div style="text-align:right;flex-shrink:0;">' + priceHtml + '</div>' +
+  '</div>';
+}
+
+// Carrega a base. reset=true zera a lista (nova busca / abertura); reset=false anexa (scroll).
+async function carregarPrecos(reset) {
+  if (_precoLoading) return;
+  if (!reset && !_precoHasMore) return;
+  _precoLoading = true;
   const reqId = ++_precoReq;
   const results = document.getElementById('precoResults');
   const countEl = document.getElementById('precoCount');
-  results.innerHTML = '<div style="text-align:center;color:#E5571E;font-size:13px;padding:20px;">Buscando...</div>';
-  countEl.style.display = 'none';
+  if (reset) {
+    _precoOffset = 0;
+    results.innerHTML = '<div style="text-align:center;color:#E5571E;font-size:13px;padding:20px;">Carregando...</div>';
+    countEl.style.display = 'none';
+  } else {
+    const more = document.getElementById('precoMore');
+    if (more) more.textContent = 'Carregando...';
+  }
   try {
-    const r = await fetch('/api/price-check?q=' + encodeURIComponent(termo) + '&limit=80');
+    const r = await fetch('/api/price-check?q=' + encodeURIComponent(_precoTermo) + '&limit=' + PRECO_PAGE + '&offset=' + _precoOffset);
     const d = await r.json();
     if (reqId !== _precoReq) return;
     const prods = d.products || [];
-    if (prods.length === 0) {
-      results.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:30px 18px;">Nenhum produto encontrado para "<b>' + escPreco(termo) + '</b>".</div>';
+    _precoTotal = d.total || 0;
+    _precoHasMore = !!d.hasMore;
+    _precoOffset += prods.length;
+
+    if (reset && prods.length === 0) {
+      results.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:30px 18px;">' +
+        (_precoTermo ? 'Nenhum produto encontrado para "<b>' + escPreco(_precoTermo) + '</b>".' : 'Nenhum produto cadastrado.') +
+        '</div>';
       countEl.style.display = 'none';
       return;
     }
+
+    const itemsHtml = prods.map(precoItemHtml).join('');
+    if (reset) results.innerHTML = itemsHtml;
+    else {
+      const more = document.getElementById('precoMore');
+      if (more) more.remove();
+      results.insertAdjacentHTML('beforeend', itemsHtml);
+    }
+
+    // Rodapé: "carregar mais" ou fim
+    if (_precoHasMore) {
+      results.insertAdjacentHTML('beforeend',
+        '<div id="precoMore" onclick="carregarPrecos(false)" style="text-align:center;color:#E5571E;font-size:13px;padding:16px;cursor:pointer;font-weight:600;">Carregar mais ↓</div>');
+    }
+
     countEl.style.display = 'block';
-    countEl.textContent = prods.length + ' produto' + (prods.length > 1 ? 's' : '') + (prods.length >= 80 ? ' (primeiros 80 — refine a busca)' : '');
-    results.innerHTML = prods.map(p => {
-      const temPromo = p.promoPrice != null && p.price != null && p.promoPrice < p.price;
-      let priceHtml;
-      if (p.price == null && p.promoPrice == null) priceHtml = '<div style="font-size:13px;color:#c00;font-weight:600;">sem preço</div>';
-      else if (temPromo) priceHtml = '<div style="font-size:12px;color:#aaa;text-decoration:line-through;">' + fmtPrecoBRL(p.price) + '</div><div style="font-size:20px;font-weight:800;color:#d70015;">' + fmtPrecoBRL(p.promoPrice) + '</div>';
-      else priceHtml = '<div style="font-size:20px;font-weight:800;color:#1d8348;">' + fmtPrecoBRL(p.price ?? p.promoPrice) + '</div>';
-      const meta = [];
-      if (p.brand && p.brand !== 'A DEFINIR') meta.push(escPreco(p.brand));
-      if (p.ref) meta.push('REF ' + escPreco(p.ref));
-      if (p.color) meta.push('🎨 ' + escPreco(p.color));
-      const img = p.imageUrl
-        ? '<img src="' + escPreco(p.imageUrl) + '" style="width:54px;height:62px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0;" onerror="this.outerHTML=\'<div style=&quot;width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;&quot;>📦</div>\'">'
-        : '<div style="width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;">📦</div>';
-      return '<div class="card" style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:12px;">' +
-        img +
-        '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;line-height:1.2;">' + escPreco(p.name) + '</div>' +
-        '<div style="font-size:11px;color:#888;margin-top:3px;">' + (meta.join(' · ') || '&nbsp;') + '</div></div>' +
-        '<div style="text-align:right;flex-shrink:0;">' + priceHtml + '</div>' +
-      '</div>';
-    }).join('');
+    countEl.textContent = _precoOffset + ' de ' + _precoTotal + ' produto' + (_precoTotal !== 1 ? 's' : '') +
+      (_precoTermo ? '' : ' (base completa)');
   } catch (e) {
     if (reqId !== _precoReq) return;
-    results.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:30px;">Erro ao buscar. Tente de novo.</div>';
+    if (reset) results.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:30px;">Erro ao carregar. Tente de novo.</div>';
+    else { const more = document.getElementById('precoMore'); if (more) more.textContent = 'Erro — tocar pra tentar de novo'; }
+  } finally {
+    _precoLoading = false;
   }
 }
+
+function aplicarTermoPreco(termo) {
+  _precoTermo = termo;
+  carregarPrecos(true);
+}
+
 function initPrecos() {
   const inp = document.getElementById('precoSearch');
-  if (!inp || inp._wired) { if (inp) setTimeout(() => inp.focus(), 60); return; }
+  if (!inp) return;
+  if (inp._wired) { setTimeout(() => inp.focus(), 60); return; }
   inp._wired = true;
   inp.addEventListener('input', () => {
     clearTimeout(_precoTimer);
     const termo = inp.value.trim();
-    if (termo.length < 2) {
-      document.getElementById('precoResults').innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:36px 18px;line-height:1.6;">Digite o nome, a marca, a referência<br>ou bipe o código de barras pra ver o preço.</div>';
-      document.getElementById('precoCount').style.display = 'none';
-      return;
-    }
-    _precoTimer = setTimeout(() => buscarPreco(termo), 280);
+    // termo vazio ou 1 char => lista base completa; >=2 => busca
+    _precoTimer = setTimeout(() => aplicarTermoPreco(termo.length >= 2 ? termo : ''), 280);
   });
   inp.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(_precoTimer); const t = inp.value.trim(); if (t.length >= 2) buscarPreco(t); }
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(_precoTimer); const t = inp.value.trim(); aplicarTermoPreco(t.length >= 2 ? t : ''); }
   });
+  // Scroll infinito: quando o card está visível e chega perto do fim, carrega mais
+  if (!window._precoScrollWired) {
+    window._precoScrollWired = true;
+    window.addEventListener('scroll', () => {
+      const page = document.getElementById('page-precos');
+      if (!page || !page.classList.contains('show')) return;
+      if (_precoLoading || !_precoHasMore) return;
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 600) carregarPrecos(false);
+    }, { passive: true });
+  }
+  // Abertura: carrega TODO o banco automaticamente
+  aplicarTermoPreco('');
   setTimeout(() => inp.focus(), 60);
 }
 
