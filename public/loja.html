@@ -1208,8 +1208,9 @@ function precoItemHtml(p) {
 
 // Carrega a base. reset=true zera a lista (nova busca / abertura); reset=false anexa (scroll).
 async function carregarPrecos(reset) {
-  if (_precoLoading) return;
-  if (!reset && !_precoHasMore) return;
+  // reset (nova busca/abertura) SEMPRE vence — supersede load em voo (reqId descarta o antigo).
+  // Paginacao (reset=false) so roda se nao houver load em voo e ainda tiver mais.
+  if (!reset && (_precoLoading || !_precoHasMore)) return;
   _precoLoading = true;
   const reqId = ++_precoReq;
   const results = document.getElementById('precoResults');
