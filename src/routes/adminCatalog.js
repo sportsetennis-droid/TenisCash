@@ -159,8 +159,36 @@ router.get('/products/:id/color-variants', adminOnly, async (req, res) => {
         AND active = true
       ORDER BY "aiContext"->>'supplierRef'
     `;
-    // Marca qual é o atual
-    const variants = all.map(v => ({
+
+    // Dedupe: 1 miniatura por COR. O catálogo às vezes tem 1 card por TAMANHO
+    // (ex: ASICS "1011B958 004040" e "1011B958 004043" = mesma cor 004, tamanhos
+    // diferentes). Metade desses cards vem sem cor rotulada e com imagem genérica,
+    // o que gera miniaturas repetidas. Regra:
+    //  - mantém 1 por cor (prefere o que tem imagem);
+    //  - cards SEM cor são descartados quando já existe variante rotulada
+    //    (são duplicatas incompletas por tamanho);
+    //  - se NENHUMA variante tiver cor, deduplica por imagem.
+    const norm = (s) => (s == null ? '' : String(s)).trim().toUpperCase();
+    const labeled = all.filter((v) => norm(v.color));
+    let chosen;
+    if (labeled.length) {
+      const byColor = new Map();
+      for (const v of labeled) {
+        const k = norm(v.color);
+        const cur = byColor.get(k);
+        if (!cur || (!cur.imageUrl && v.imageUrl)) byColor.set(k, v);
+      }
+      chosen = [...byColor.values()];
+    } else {
+      const byImg = new Map();
+      for (const v of all) {
+        const k = v.imageUrl || v.id;
+        if (!byImg.has(k)) byImg.set(k, v);
+      }
+      chosen = [...byImg.values()];
+    }
+
+    const variants = chosen.map((v) => ({
       id: v.id,
       ref: v.ref,
       color: v.color,
