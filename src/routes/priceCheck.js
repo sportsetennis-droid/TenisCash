@@ -83,13 +83,49 @@ router.get('/', async (req, res) => {
     // ---------------------------------------------------------------
     // MODO 2 — COM termo: busca por texto
     // ---------------------------------------------------------------
+    // 2a) Busca também por FORNECEDOR: o nome do fornecedor não fica no
+    // produto, mora na NFe (XmlFiscalDocument). Cadeia:
+    //   Supplier/issuerName ~ q  ->  XmlFiscalDocument  ->  XmlFiscalItem.productId
+    // Assim digitar "siker" traz todos os produtos comprados do SIKER,
+    // mesmo que a marca esteja "A DEFINIR".
+    let supplierProductIds = [];
+    try {
+      const sups = await prisma.supplier.findMany({
+        where: { companyName: { contains: q, mode: 'insensitive' } },
+        select: { id: true },
+        take: 50,
+      });
+      const docs = await prisma.xmlFiscalDocument.findMany({
+        where: {
+          OR: [
+            { issuerName: { contains: q, mode: 'insensitive' } },
+            ...(sups.length ? [{ supplierId: { in: sups.map(s => s.id) } }] : []),
+          ],
+        },
+        select: { id: true },
+        take: 500,
+      });
+      if (docs.length) {
+        const items = await prisma.xmlFiscalItem.findMany({
+          where: { fiscalDocumentId: { in: docs.map(d => d.id) }, productId: { not: null } },
+          select: { productId: true },
+        });
+        supplierProductIds = [...new Set(items.map(i => i.productId))];
+      }
+    } catch (e) {
+      console.error('[price-check] busca por fornecedor falhou:', e.message);
+    }
+
+    const orConds = [
+      { name: { contains: q, mode: 'insensitive' } },
+      { brand: { contains: q, mode: 'insensitive' } },
+      { sku: { contains: q, mode: 'insensitive' } },
+    ];
+    if (supplierProductIds.length) orConds.push({ id: { in: supplierProductIds } });
+
     const where = {
       active: true,
-      OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { brand: { contains: q, mode: 'insensitive' } },
-        { sku: { contains: q, mode: 'insensitive' } },
-      ],
+      OR: orConds,
     };
     const [total, products] = await Promise.all([
       prisma.product.count({ where }),
