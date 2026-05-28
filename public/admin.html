@@ -8574,7 +8574,7 @@ function renderCatClassifyGrid() {
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">';
   visible.forEach(p => {
     const checked = _catClassifySelected.has(p.id);
-    const cardHtml = window.PCard ? PCard.render(p, { actions: 'public', showStock: false }) : `<div>${escapeHtml(p.name)}</div>`;
+    const cardHtml = window.PCard ? PCard.render(p, { actions: 'public', showStock: true }) : `<div>${escapeHtml(p.name)}</div>`;
     html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
       <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
       ${cardHtml}
