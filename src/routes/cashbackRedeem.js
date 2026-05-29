@@ -108,7 +108,11 @@ router.post('/teniscash/store-coupon', authMiddleware, async (req, res) => {
     if (!conn) return res.status(503).json({ error: 'Loja Nuvemshop indisponível no momento. Tente mais tarde.' });
 
     const pct = await getRedeemPct();
-    const maxAmount = Number(balance.toFixed(2)); // teto em R$ = saldo (NS limita o desconto a isso)
+    // Valor que o cliente QUER usar (opcional). Default = saldo todo.
+    // Nunca passa do saldo. O checkout ainda limita ao pct do carrinho.
+    let requested = parseFloat(req.body && req.body.amount);
+    if (!Number.isFinite(requested) || requested <= 0) requested = balance;
+    const maxAmount = Number(Math.min(requested, balance).toFixed(2)); // teto em R$ (NS limita o desconto a isso)
 
     // Cancela resgate pendente anterior (saldo pode ter mudado) e gera um novo coerente.
     const olds = await prisma.cashbackRedemption.findMany({ where: { userId: user.id, status: 'pending' } });

@@ -506,6 +506,16 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px;line-height:1.4">
       Importante: por compra você escolhe 1 cupom — ou o de Creation, ou o do TenisCash. Não acumulam.
     </p>
+
+    <label style="display:block;font-size:12px;letter-spacing:1px;color:rgba(255,255,255,0.7);margin-top:16px;font-weight:700">QUANTO QUER USAR? (T$)</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+      <input id="tcs-amount" type="number" inputmode="decimal" min="1" step="1" class="input-field" placeholder="0,00" style="flex:1;margin:0">
+      <button type="button" class="btn-secondary" id="tcs-amount-max-btn" onclick="tcsUseMax()" style="margin:0;min-height:48px;padding:0 14px;white-space:nowrap">Usar tudo</button>
+    </div>
+    <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;line-height:1.4">
+      Máx T$ <span id="tcs-amount-max">0,00</span> (seu saldo). No checkout entra o menor entre esse valor e <span id="tcs-pct3">10</span>% do carrinho.
+    </p>
+
     <button type="button" class="btn-primary" id="tcs-generate-btn" onclick="generateStoreCoupon()" style="margin-top:16px;min-height:48px">Gerar meu cupom</button>
     <div id="tcs-error" class="error-msg" style="display:none;margin-top:10px"></div>
   </div>
@@ -2676,8 +2686,13 @@ async function loadTenisCashStore() {
   const pct = Number(data.maxPct) || 10;
   document.getElementById('tcs-balance').textContent = tcsFmt(bal);
   document.getElementById('tcs-balance2').textContent = tcsFmt(bal);
+  document.getElementById('tcs-amount-max').textContent = tcsFmt(bal);
   document.getElementById('tcs-pct').textContent = pct;
   document.getElementById('tcs-pct2').textContent = pct;
+  document.getElementById('tcs-pct3').textContent = pct;
+  const amtInput = document.getElementById('tcs-amount');
+  amtInput.max = bal;
+  amtInput.value = bal > 0 ? bal : '';
 
   if (data.pending) {
     renderTcsActive(data.pending, data.storeUrl);
@@ -2703,11 +2718,22 @@ function renderTcsActive(pending, storeUrl) {
   tcsShow('active');
 }
 
+function tcsUseMax() {
+  const bal = tcsState ? (Number(tcsState.balance) || 0) : 0;
+  const amtInput = document.getElementById('tcs-amount');
+  amtInput.value = bal > 0 ? bal : '';
+}
+
 async function generateStoreCoupon() {
   const btn = document.getElementById('tcs-generate-btn');
   document.getElementById('tcs-error').style.display = 'none';
+  const bal = tcsState ? (Number(tcsState.balance) || 0) : 0;
+  let amount = parseFloat(document.getElementById('tcs-amount').value);
+  if (!Number.isFinite(amount) || amount <= 0) { showError('tcs-error', 'Digite quanto quer usar.'); return; }
+  if (amount > bal) { showError('tcs-error', 'Você só tem T$ ' + tcsFmt(bal) + '.'); return; }
+  amount = Number(amount.toFixed(2));
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Gerando...';
-  const data = await api('/teniscash/store-coupon', 'POST');
+  const data = await api('/teniscash/store-coupon', 'POST', { amount });
   if (data.error) {
     showError('tcs-error', data.error);
     btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Gerar meu cupom';
