@@ -184,6 +184,16 @@ app.get('/loja', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/loja.html'), { cacheControl: false });
 });
 
+// Vitrine por loja — consumidor vê só os produtos com estoque NAQUELA loja.
+// Ex: teniscash.com.br/praiadobessa  (a página lê o slug pelo path)
+const VITRINE_SLUGS = ['praiadobessa', 'bessa', 'tambau', 'tambia', 'rainhadaborborema', 'rainha', 'baratao', 'ecommerce'];
+VITRINE_SLUGS.forEach((slug) => {
+  app.get('/' + slug, (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.sendFile(path.join(__dirname, '../public/vitrine.html'), { cacheControl: false });
+  });
+});
+
 // Página pública de produto (QR Code aponta pra cá)
 app.get('/p/:id', async (req, res) => {
   try {

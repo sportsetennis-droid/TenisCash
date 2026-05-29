@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Sports & Tennis — Loja</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 14px; }
+  @media (min-width: 900px) {
+    .wrap { margin: 20px auto; background: #fff; border-radius: 18px; box-shadow: 0 8px 40px rgba(0,0,0,.12); padding: 18px; max-width: 900px; }
+  }
+  .head { background: linear-gradient(135deg,#E5571E,#EE7240); color: #fff; border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .head .brand { font-size: 13px; font-weight: 800; letter-spacing: 1px; opacity: .9; }
+  .head h1 { font-size: 22px; margin: 4px 0 2px; }
+  .head .sub { font-size: 13px; opacity: .92; }
+  .head .pin { font-size: 12px; opacity: .92; margin-top: 6px; }
+
+  .search { position: sticky; top: 6px; z-index: 10; padding-bottom: 8px; }
+  #q { width: 100%; padding: 14px; font-size: 16px; border: 2px solid #E5571E; border-radius: 12px; outline: none; background: #fff; }
+
+  .count { font-size: 12px; color: #888; margin: 6px 2px 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  @media (min-width: 700px) { .grid { grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); } }
+
+  .card { background: #fff; border: 1px solid #e5e5ea; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+  .card .ph { width: 100%; aspect-ratio: 4/5; background: #f0f0f3; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 30px; }
+  .card img { width: 100%; aspect-ratio: 4/5; object-fit: contain; background: #f5f5f7; padding: 6px; }
+  .card .body { padding: 10px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+  .card .brand { font-size: 10px; font-weight: 800; color: #E5571E; letter-spacing: .5px; }
+  .card .name { font-size: 13px; font-weight: 700; line-height: 1.25; color: #1d1d1f; }
+  .card .price { font-size: 16px; font-weight: 800; color: #1d8348; }
+  .card .price.promo { color: #d70015; }
+  .card .price-old { font-size: 11px; color: #aaa; text-decoration: line-through; }
+  .card .sizes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .card .sz { font-size: 11px; font-weight: 700; border: 1.5px solid #e5e5ea; border-radius: 7px; padding: 3px 7px; color: #1d1d1f; }
+  .card .here { font-size: 10px; font-weight: 700; color: #0a843d; background: #e8f7ee; border-radius: 6px; padding: 2px 6px; align-self: flex-start; }
+
+  .hint, .loading { text-align: center; color: #999; font-size: 13px; padding: 36px 18px; line-height: 1.6; }
+  .loading { color: #E5571E; }
+  #more { text-align: center; color: #E5571E; font-weight: 700; font-size: 14px; padding: 16px; cursor: pointer; grid-column: 1/-1; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="brand">SPORTS &amp; TENNIS</div>
+      <h1 id="storeName">Loja</h1>
+      <div class="sub">Produtos disponíveis nesta loja agora</div>
+      <div class="pin" id="storePin">📍 retire ou compre na loja perto de você</div>
+    </div>
+
+    <div class="search">
+      <input type="text" id="q" placeholder="Buscar nome, marca ou referência..." autocomplete="off">
+    </div>
+
+    <div id="count" class="count" style="display:none"></div>
+    <div id="results"><div class="loading">Carregando produtos da loja...</div></div>
+  </div>
+
+<script>
+  // slug → loja
+  const STORES = {
+    praiadobessa:       { code: 'LOJA02', name: 'Praia do Bessa' },
+    bessa:              { code: 'LOJA02', name: 'Praia do Bessa' },
+    tambau:             { code: 'LOJA05', name: 'Tambaú' },
+    tambia:             { code: 'LOJA06', name: 'Tambiá' },
+    rainhadaborborema:  { code: 'LOJA03', name: 'Rainha da Borborema' },
+    rainha:             { code: 'LOJA03', name: 'Rainha da Borborema' },
+    baratao:            { code: 'LOJA01', name: 'Baratão dos Esportes' },
+    ecommerce:          { code: 'LOJA04', name: 'Ecommerce' },
+  };
+  // descobre o slug pela URL (/praiadobessa ou ?loja=praiadobessa)
+  function getSlug() {
+    const p = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    if (p && STORES[p]) return p;
+    const qs = new URLSearchParams(location.search).get('loja');
+    if (qs && STORES[qs.toLowerCase()]) return qs.toLowerCase();
+    return null;
+  }
+  const slug = getSlug();
+  const store = slug ? STORES[slug] : null;
+
+  const results = document.getElementById('results');
+  const countEl = document.getElementById('count');
+  const PAGE = 40;
+  let _page = 1, _total = 0, _hasMore = false, _loading = false, _termo = '', _timer = null, _reqId = 0;
+
+  function fmtBRL(n) { if (n == null) return null; try { return Number(n).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); } catch { return 'R$ ' + Number(n).toFixed(2).replace('.', ','); } }
+  function esc(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function sizesNaLoja(p) {
+    // tamanhos com estoque>0 nesta loja
+    const out = [];
+    (p.sizes || []).forEach(s => {
+      const q = (s.storeStocks || []).filter(ss => (ss.store && ss.store.code) === store.code).reduce((a, ss) => a + (ss.stock || 0), 0);
+      if (q > 0) out.push(s.size);
+    });
+    return out.sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
+  }
+
+  function cardHtml(p) {
+    const temPromo = p.promoPrice != null && p.price != null && p.promoPrice < p.price;
+    let priceHtml;
+    if (p.price == null && p.promoPrice == null) priceHtml = '';
+    else if (temPromo) priceHtml = '<span class="price-old">' + fmtBRL(p.price) + '</span><span class="price promo">' + fmtBRL(p.promoPrice) + '</span>';
+    else priceHtml = '<span class="price">' + fmtBRL(p.price ?? p.promoPrice) + '</span>';
+    const img = p.imageUrl
+      ? '<img src="' + esc(p.imageUrl) + '" referrerpolicy="no-referrer-when-downgrade" onerror="this.outerHTML=\'<div class=ph>📦</div>\'">'
+      : '<div class="ph">📦</div>';
+    const szs = sizesNaLoja(p);
+    const szHtml = szs.length ? '<div class="sizes">' + szs.map(s => '<span class="sz">' + esc(s) + '</span>').join('') + '</div>' : '';
+    const brand = (p.brand && p.brand !== 'A DEFINIR') ? '<div class="brand">' + esc(p.brand) + '</div>' : '';
+    return '<div class="card">' + img +
+      '<div class="body">' + brand +
+      '<div class="name">' + esc(p.name) + '</div>' +
+      (priceHtml ? '<div>' + priceHtml + '</div>' : '') +
+      szHtml +
+      '<span class="here">📍 na loja ' + esc(store.name) + '</span>' +
+      '</div></div>';
+  }
+
+  async function carregar(reset) {
+    if (_loading) { if (!reset) return; }
+    _loading = true;
+    const reqId = ++_reqId;
+    if (reset) { _page = 1; results.innerHTML = '<div class="loading">Carregando...</div>'; }
+    else { const m = document.getElementById('more'); if (m) m.textContent = 'Carregando...'; }
+    try {
+      const url = '/api/catalog/products?storeCode=' + encodeURIComponent(store.code) +
+        '&pageSize=' + PAGE + '&page=' + _page + (_termo ? '&q=' + encodeURIComponent(_termo) : '');
+      const r = await fetch(url);
+      const d = await r.json();
+      if (reqId !== _reqId) return;
+      const prods = d.products || [];
+      _total = d.total || 0;
+      _hasMore = (d.page || 1) < (d.totalPages || 1);
+      const html = prods.map(cardHtml).join('');
+      if (reset) {
+        if (prods.length === 0) { results.innerHTML = '<div class="hint">' + (_termo ? 'Nada encontrado para "<b>' + esc(_termo) + '</b>" nesta loja.' : 'Nenhum produto disponível nesta loja no momento.') + '</div>'; countEl.style.display = 'none'; return; }
+        results.innerHTML = '<div class="grid">' + html + '</div>';
+      } else {
+        const m = document.getElementById('more'); if (m) m.remove();
+        results.querySelector('.grid').insertAdjacentHTML('beforeend', html);
+      }
+      if (_hasMore) { _page++; results.querySelector('.grid').insertAdjacentHTML('beforeend', '<div id="more" onclick="carregar(false)">Ver mais ↓</div>'); }
+      countEl.style.display = 'block';
+      countEl.textContent = _total + ' produto' + (_total !== 1 ? 's' : '') + ' nesta loja';
+    } catch (e) {
+      if (reqId !== _reqId) return;
+      if (reset) results.innerHTML = '<div class="hint">Erro ao carregar. Tente de novo.</div>';
+    } finally { _loading = false; }
+  }
+
+  if (!store) {
+    document.getElementById('storeName').textContent = 'Loja não encontrada';
+    results.innerHTML = '<div class="hint">Loja não encontrada.<br>Use /praiadobessa, /tambau, /tambia, /rainhadaborborema, /baratao ou /ecommerce.</div>';
+  } else {
+    document.getElementById('storeName').textContent = 'Loja ' + store.name;
+    document.title = 'Sports & Tennis — ' + store.name;
+    document.getElementById('q').addEventListener('input', () => {
+      clearTimeout(_timer);
+      _timer = setTimeout(() => { _termo = document.getElementById('q').value.trim(); carregar(true); }, 280);
+    });
+    window.addEventListener('scroll', () => {
+      if (_loading || !_hasMore) return;
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 600) carregar(false);
+    }, { passive: true });
+    carregar(true);
+  }
+</script>
+</body>
+</html>

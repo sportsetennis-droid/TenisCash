@@ -43,6 +43,13 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // inStore=1 → só produtos que TÊM estoque físico em alguma loja (StoreStock>0).
     // Usado pela Curadoria pra mostrar os bipados (com tamanhos por loja no card).
     const inStore = String(req.query.inStore || req.query.instore || '') === '1';
+    // storeCode/storeId → vitrine de UMA loja: só produtos com estoque NESSA loja.
+    const storeCode = String(req.query.storeCode || '').trim();
+    let storeId = String(req.query.storeId || '').trim();
+    if (storeCode && !storeId) {
+      const st = await prisma.store.findFirst({ where: { code: storeCode }, select: { id: true } });
+      storeId = st ? st.id : '__none__';
+    }
     const aiFilters = [];
     // Casa com a 1ª OU a 2ª classificação (classification2)
     if (type) aiFilters.push({ OR: [
@@ -65,7 +72,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // Condições sobre ProductSize (tamanho e/ou estoque em loja) — merge num único some
     const sizesSome = {};
     if (size) sizesSome.size = size;
-    if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
+    if (storeId) sizesSome.storeStocks = { some: { stock: { gt: 0 }, storeId } };
+    else if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
 
     const where = {
       active: true,
