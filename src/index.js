@@ -18,6 +18,7 @@ const catalogRoutes = require('./routes/catalog');
 const aiRoutes = require('./routes/ai');
 const adminCatalogRoutes = require('./routes/adminCatalog');
 const partnersRoutes = require('./routes/partners');
+const cashbackRedeemRoutes = require('./routes/cashbackRedeem');
 const adminAIRoutes = require('./ai/orchestrator/orchestrator.routes');
 const lifeRoutes = require('./routes/life');
 const labelsRoutes = require('./routes/labels');
@@ -153,6 +154,7 @@ brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falho
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
+app.use('/api', cashbackRedeemRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

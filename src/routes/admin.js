@@ -601,6 +601,15 @@ router.post('/config', async (req, res) => {
   }
 });
 
+router.get('/config/:key', async (req, res) => {
+  try {
+    const row = await prisma.config.findUnique({ where: { key: req.params.key } });
+    res.json({ key: req.params.key, value: row ? row.value : null });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao ler config' });
+  }
+});
+
 // ==================== LISTAR USUÁRIOS ====================
 
 router.get('/users', async (req, res) => {

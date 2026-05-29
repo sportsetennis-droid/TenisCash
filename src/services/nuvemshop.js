@@ -154,6 +154,30 @@ async function deleteCoupon(connection, couponId) {
   return nuvemshopApi(connection, 'DELETE', `/coupons/${couponId}`);
 }
 
+// =====================================================================
+// CUPOM DE RESGATE DE TENISCASH (cashback do cliente vira desconto)
+// =====================================================================
+// Percentual (pct do carrinho) com TETO em R$ = saldo do cliente
+// (max_discount_amount). Uso único. Não combina com outros descontos
+// (cliente escolhe: ou cupom de Creation, ou TenisCash).
+function buildRedemptionCouponPayload({ code, pct, maxAmount, minPrice = 0 }) {
+  return {
+    code: String(code),
+    type: 'percentage',
+    value: String(Number(pct).toFixed(2)),
+    valid: true,
+    max_uses: 1,
+    max_discount_amount: Number(Number(maxAmount).toFixed(2)),
+    min_price: Number(minPrice) || 0,
+    includes_shipping: false,
+    combines_with_other_discounts: false,
+  };
+}
+
+async function createRedemptionCoupon(connection, opts) {
+  return nuvemshopApi(connection, 'POST', '/coupons', buildRedemptionCouponPayload(opts));
+}
+
 module.exports = {
   isConfigured,
   buildAuthUrl,
@@ -172,4 +196,6 @@ module.exports = {
   updateCoupon,
   setCouponValid,
   deleteCoupon,
+  buildRedemptionCouponPayload,
+  createRedemptionCoupon,
 };

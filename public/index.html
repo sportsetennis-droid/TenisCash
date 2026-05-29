@@ -468,8 +468,68 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="action-btn" onclick="showScreen('promos')"><span>★</span><span>Promos</span></div>
     <div class="action-btn" onclick="showScreen('assessor')"><span>✦</span><span>Assessor</span></div>
   </div>
+
+  <!-- CTA: usar TenisCash como desconto na loja online -->
+  <div onclick="showScreen('teniscash-store')" style="margin-top:14px;background:linear-gradient(135deg,#FF8A33,#E5571E);border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;min-height:44px">
+    <span style="font-size:26px">🛒</span>
+    <div style="flex:1">
+      <p style="font-size:14px;font-weight:800;color:#fff;line-height:1.2">Usar meu TenisCash na loja</p>
+      <p style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">Gere um cupom e desconte no checkout do site</p>
+    </div>
+    <span style="font-size:20px;color:#fff">›</span>
+  </div>
+
   <div class="section-title"><p style="font-size:15px;font-weight:700">Movimentações</p></div>
   <div id="home-transactions"></div>
+</div>
+
+<!-- USAR TENISCASH NA LOJA (cupom de resgate) -->
+<div id="teniscash-store" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="auto">←</span><p style="font-size:18px;font-weight:700">Usar TenisCash na loja</p></div>
+
+  <div class="balance-card" style="margin-top:12px">
+    <p class="balance-label">SALDO DISPONÍVEL</p>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="color:#fff;font-size:16px;font-weight:700;font-family:'Orbitron'">T$</span>
+      <span class="balance-amount" id="tcs-balance">0,00</span>
+    </div>
+    <p class="balance-equiv" id="tcs-hint">Desconto de até <strong id="tcs-pct">10</strong>% do carrinho, limitado ao seu saldo.</p>
+  </div>
+
+  <!-- ESTADO 1: sem cupom ativo -->
+  <div id="tcs-empty" style="display:none;margin-top:18px">
+    <p style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.5">
+      Gere um cupom pessoal pra usar seu TenisCash como desconto no checkout do site.
+      O desconto é de <strong id="tcs-pct2">10</strong>% do valor do carrinho, limitado ao seu saldo (T$ <span id="tcs-balance2">0,00</span>).
+      Você ainda ganha cashback nessa compra.
+    </p>
+    <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px;line-height:1.4">
+      Importante: por compra você escolhe 1 cupom — ou o de Creation, ou o do TenisCash. Não acumulam.
+    </p>
+    <button type="button" class="btn-primary" id="tcs-generate-btn" onclick="generateStoreCoupon()" style="margin-top:16px;min-height:48px">Gerar meu cupom</button>
+    <div id="tcs-error" class="error-msg" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <!-- ESTADO 2: cupom ativo -->
+  <div id="tcs-active" style="display:none;margin-top:18px">
+    <div style="background:rgba(255,109,0,0.1);border:1px dashed rgba(255,109,0,0.5);border-radius:16px;padding:18px;text-align:center">
+      <p style="font-size:10px;letter-spacing:2px;color:#E5571E">SEU CUPOM</p>
+      <p id="tcs-code" style="font-size:30px;font-family:'Orbitron';font-weight:900;margin-top:6px;letter-spacing:2px">—</p>
+      <p style="font-size:12px;opacity:.7;margin-top:6px"><span id="tcs-active-pct">10</span>% de desconto • teto T$ <span id="tcs-active-max">0,00</span></p>
+      <button type="button" class="btn-secondary" id="tcs-copy-btn" onclick="copyStoreCoupon()" style="margin-top:14px;min-height:44px">Copiar código</button>
+    </div>
+
+    <a id="tcs-store-link" href="#" target="_blank" rel="noopener" class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:14px;min-height:48px;line-height:24px">Ir pra loja com o cupom aplicado</a>
+
+    <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:14px;line-height:1.5">
+      No checkout, cole o código no campo "cupom de desconto". O saldo é debitado só quando o pedido for pago.
+      Se mudar de ideia, você pode cancelar e gerar outro.
+    </p>
+    <button type="button" class="btn-secondary" id="tcs-cancel-btn" onclick="cancelStoreCoupon()" style="margin-top:12px;min-height:44px;opacity:.85">Cancelar cupom</button>
+    <div id="tcs-error2" class="error-msg" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <div id="tcs-loading" style="margin-top:24px;text-align:center;color:rgba(255,255,255,0.6);font-size:13px">Carregando...</div>
 </div>
 
 <!-- SELLER HOME -->
@@ -981,6 +1041,17 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <!-- MINHAS COMPRAS (funções de cliente) -->
   <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:24px 0 10px">MINHAS COMPRAS</h3>
   <p style="font-size:11px;opacity:.6;margin-bottom:10px">Use seu cashback como cliente — independente da sua comissão de Creation.</p>
+
+  <!-- CTA: usar TenisCash como desconto na loja online -->
+  <div data-screen="teniscash-store" style="margin-bottom:10px;background:linear-gradient(135deg,#FF8A33,#E5571E);border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;min-height:44px">
+    <span style="font-size:24px">🛒</span>
+    <div style="flex:1">
+      <p style="font-size:13px;font-weight:800;color:#fff;line-height:1.2">Usar meu TenisCash na loja</p>
+      <p style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px">Gere um cupom e desconte no checkout</p>
+    </div>
+    <span style="font-size:18px;color:#fff">›</span>
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
     <button type="button" class="action-btn" data-screen="transfer" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;color:#fff;cursor:pointer">
       <span style="font-size:22px">↗</span><span style="font-size:12px;font-family:'Chakra Petch';font-weight:700">Transferir</span>
@@ -1169,10 +1240,10 @@ function showScreen(id) {
   const navSeller = document.getElementById('bottomNavSeller');
   const navPartner = document.getElementById('bottomNavPartner');
 
-  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor'];
+  const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
-  const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile'];
+  const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
   const shouldShowPartnerNav = partnerScreens.includes(id) && isPartner();
@@ -1210,6 +1281,7 @@ function showScreen(id) {
   if (id === 'partner-home') loadPartnerHome();
   if (id === 'partner-sales') loadPartnerSalesScreen();
   if (id === 'partner-redeem') initPartnerRedeem();
+  if (id === 'teniscash-store') loadTenisCashStore();
   if (id === 'seller-portfolio') initSellerPortfolio();
   if (id === 'seller-interview') initSellerInterview();
 }
@@ -2580,6 +2652,95 @@ async function loadQR() {
   document.getElementById('qr-balance').textContent = 'T$ ' + user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
   const data = await api('/qr/generate');
   if (data.qrImage) { document.getElementById('qr-img').src = data.qrImage; }
+}
+
+// ===================== USAR TENISCASH NA LOJA (cupom de resgate) =====================
+let tcsState = null;
+
+function tcsShow(which) {
+  document.getElementById('tcs-loading').style.display = which === 'loading' ? 'block' : 'none';
+  document.getElementById('tcs-empty').style.display = which === 'empty' ? 'block' : 'none';
+  document.getElementById('tcs-active').style.display = which === 'active' ? 'block' : 'none';
+}
+
+function tcsFmt(v) { return (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }); }
+
+async function loadTenisCashStore() {
+  tcsShow('loading');
+  document.getElementById('tcs-error').style.display = 'none';
+  document.getElementById('tcs-error2').style.display = 'none';
+  const data = await api('/teniscash/store-coupon');
+  if (data.error) { tcsShow('empty'); showError('tcs-error', data.error); return; }
+  tcsState = data;
+  const bal = Number(data.balance) || 0;
+  const pct = Number(data.maxPct) || 10;
+  document.getElementById('tcs-balance').textContent = tcsFmt(bal);
+  document.getElementById('tcs-balance2').textContent = tcsFmt(bal);
+  document.getElementById('tcs-pct').textContent = pct;
+  document.getElementById('tcs-pct2').textContent = pct;
+
+  if (data.pending) {
+    renderTcsActive(data.pending, data.storeUrl);
+  } else if (bal <= 0) {
+    tcsShow('empty');
+    document.getElementById('tcs-generate-btn').disabled = true;
+    document.getElementById('tcs-generate-btn').style.opacity = '.5';
+    document.getElementById('tcs-generate-btn').textContent = 'Sem saldo pra usar';
+  } else {
+    tcsShow('empty');
+    const btn = document.getElementById('tcs-generate-btn');
+    btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Gerar meu cupom';
+  }
+}
+
+function renderTcsActive(pending, storeUrl) {
+  document.getElementById('tcs-code').textContent = pending.couponCode;
+  document.getElementById('tcs-active-pct').textContent = Number(pending.pct) || 10;
+  document.getElementById('tcs-active-max').textContent = tcsFmt(pending.maxAmount);
+  const base = storeUrl || (tcsState && tcsState.storeUrl) || '';
+  const link = document.getElementById('tcs-store-link');
+  link.href = base ? (base.replace(/\/$/, '') + '/?coupon=' + encodeURIComponent(pending.couponCode)) : '#';
+  tcsShow('active');
+}
+
+async function generateStoreCoupon() {
+  const btn = document.getElementById('tcs-generate-btn');
+  document.getElementById('tcs-error').style.display = 'none';
+  btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Gerando...';
+  const data = await api('/teniscash/store-coupon', 'POST');
+  if (data.error) {
+    showError('tcs-error', data.error);
+    btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Gerar meu cupom';
+    return;
+  }
+  renderTcsActive({ couponCode: data.couponCode, pct: data.pct, maxAmount: data.maxAmount }, data.storeUrl);
+}
+
+function copyStoreCoupon() {
+  const code = document.getElementById('tcs-code').textContent;
+  const done = () => {
+    const b = document.getElementById('tcs-copy-btn');
+    const old = b.textContent; b.textContent = 'Copiado!';
+    setTimeout(() => { b.textContent = old; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(done).catch(done);
+  } else {
+    const t = document.createElement('textarea'); t.value = code; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(t); done();
+  }
+}
+
+async function cancelStoreCoupon() {
+  if (!confirm('Cancelar este cupom? Você pode gerar outro depois.')) return;
+  const btn = document.getElementById('tcs-cancel-btn');
+  document.getElementById('tcs-error2').style.display = 'none';
+  btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Cancelando...';
+  const data = await api('/teniscash/store-coupon', 'DELETE');
+  btn.disabled = false; btn.style.opacity = '.85'; btn.textContent = 'Cancelar cupom';
+  if (data.error) { showError('tcs-error2', data.error); return; }
+  loadTenisCashStore();
 }
 
 // PROMOS

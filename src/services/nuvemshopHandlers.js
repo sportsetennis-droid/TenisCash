@@ -368,6 +368,8 @@ async function upsertSaleFromOrder(nsOrder) {
   // 3b. Comissão do Creation (independe de o cliente ter conta). Idempotente por nsOrderId.
   if (nsOrder.payment_status === 'paid') {
     await creditPartnerFromOrder(nsOrder);
+    // 3c. Resgate de TenisCash: se o cupom usado é de resgate, debita o saldo.
+    await consumeCashbackRedemptionFromOrder(nsOrder);
   }
 
   // ===== PRÉ-EMISSÃO NFe MODELO 55 (Nuvemshop usa LOJA04 /0004-79) =====
@@ -589,6 +591,103 @@ async function reversePartnerCommission(nsOrderId) {
   }
 }
 
+// ---------------------------------------------------------------------
+// Resgate de TenisCash (lado entrada): pedido pago com cupom de resgate
+// -> debita o saldo do cliente pelo valor realmente descontado.
+// Idempotente por nsOrderId. NÃO derruba o fluxo principal se falhar.
+// ---------------------------------------------------------------------
+async function consumeCashbackRedemptionFromOrder(nsOrder) {
+  try {
+    const codes = extractOrderCouponCodes(nsOrder);
+    if (!codes.length) return null;
+
+    const redemption = await prisma.cashbackRedemption.findFirst({
+      where: { couponCode: { in: codes }, status: 'pending' },
+    });
+    if (!redemption) return null;
+    if (redemption.nsOrderId === String(nsOrder.id)) return redemption; // idempotência
+
+    // Valor descontado pelo cupom (NS manda discount_coupon); fallback = pct do subtotal.
+    let discount = parseFloat(nsOrder.discount_coupon);
+    if (!Number.isFinite(discount) || discount <= 0) {
+      const subtotal = parseFloat(nsOrder.subtotal) || parseFloat(nsOrder.total) || 0;
+      discount = Number((subtotal * (redemption.pct || 0) / 100).toFixed(2));
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: redemption.userId }, select: { id: true, balance: true } });
+    if (!user) return null;
+    // Nunca debita mais que o desconto, o teto do cupom ou o saldo atual.
+    const debit = Number(Math.max(0, Math.min(discount, redemption.maxAmount, user.balance)).toFixed(2));
+
+    await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: user.id },
+        data: { balance: { decrement: debit } },
+      });
+      await tx.cashbackRedemption.update({
+        where: { id: redemption.id },
+        data: { status: 'consumed', usedAmount: debit, nsOrderId: String(nsOrder.id), consumedAt: new Date() },
+      });
+      await tx.transaction.create({
+        data: {
+          type: 'cashback_redeem',
+          amount: debit,
+          description: `Resgate TenisCash no pedido NS-${nsOrder.id} (cupom ${redemption.couponCode})`,
+          senderId: user.id,
+          balanceAfter: updatedUser.balance,
+          metadata: JSON.stringify({ redemptionId: redemption.id, couponCode: redemption.couponCode, nsOrderId: String(nsOrder.id), wallet: 'balance', channel: 'nuvemshop' }),
+        },
+      });
+    });
+
+    // Queima o cupom na NS (já é uso único, mas limpamos pra não poluir a loja).
+    try {
+      if (redemption.nsCouponId) {
+        const conn = await getConnection();
+        if (conn) await ns.deleteCoupon(conn, redemption.nsCouponId);
+      }
+    } catch (_) { /* uso único já protege contra reuso */ }
+
+    await logSync('order', 'ok', `order/paid ${nsOrder.id} → resgate TenisCash debitado: R$ ${debit} de ${user.id}`);
+    return redemption;
+  } catch (err) {
+    console.error('[redeem consume NS]', err.message);
+    await logSync('order', 'error', `order/paid ${nsOrder.id} resgate TenisCash falhou: ${err.message}`);
+    return null;
+  }
+}
+
+// Estorna o resgate de TenisCash quando o pedido é cancelado (idempotente).
+async function reverseCashbackRedemption(nsOrderId) {
+  try {
+    const r = await prisma.cashbackRedemption.findFirst({
+      where: { nsOrderId: String(nsOrderId), status: 'consumed' },
+    });
+    if (!r || r.usedAmount <= 0) return;
+    await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: r.userId },
+        data: { balance: { increment: r.usedAmount } },
+      });
+      await tx.cashbackRedemption.update({ where: { id: r.id }, data: { status: 'cancelled' } });
+      await tx.transaction.create({
+        data: {
+          type: 'cashback_redeem_reversal',
+          amount: r.usedAmount,
+          description: `Estorno resgate TenisCash — pedido NS-${nsOrderId} cancelado`,
+          receiverId: r.userId,
+          balanceAfter: u.balance,
+          metadata: JSON.stringify({ redemptionId: r.id, couponCode: r.couponCode, nsOrderId: String(nsOrderId), wallet: 'balance', channel: 'nuvemshop', reversal: true }),
+        },
+      });
+    });
+    await logSync('order', 'ok', `order/cancelled ${nsOrderId} → resgate TenisCash estornado: R$ ${r.usedAmount}`);
+  } catch (err) {
+    console.error('[redeem reversal NS]', err.message);
+    await logSync('order', 'error', `order/cancelled ${nsOrderId} estorno resgate TenisCash falhou: ${err.message}`);
+  }
+}
+
 async function handleOrderEvent(eventType, resourceId, connection) {
   const order = await ns.getOrder(connection, resourceId);
   if (eventType === 'order/cancelled') {
@@ -621,6 +720,8 @@ async function handleOrderEvent(eventType, resourceId, connection) {
     }
     // Estorna comissão do Creation, se houve PartnerSale por esse pedido (idempotente: status refunded)
     await reversePartnerCommission(String(resourceId));
+    // Devolve o TenisCash que foi descontado via cupom de resgate, se houve (idempotente: status cancelled)
+    await reverseCashbackRedemption(String(resourceId));
     await logSync('order', 'ok', `order/cancelled ${resourceId} → Sale cancelada + estorno se aplicável`);
     return;
   }

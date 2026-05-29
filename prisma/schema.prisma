@@ -87,6 +87,9 @@ model User {
   partner              Partner?      @relation("partner")
   partnerSalesAsSeller PartnerSale[] @relation("partnerSaleSeller")
 
+  // Resgate de TenisCash como desconto na loja Nuvemshop
+  cashbackRedemptions CashbackRedemption[] @relation("cashbackRedemptions")
+
   // ===== APEX SPORT (app esportivo unificado ao TenisCash) =====
   // O cliente da loja Sports & Tennis é o mesmo atleta do app.
   // Ele compra na loja, treina no app, ganha TenisCash, gasta na próxima compra.
@@ -716,6 +719,34 @@ model PartnerSale {
 
   @@index([partnerId, createdAt])
   @@index([customerCpf, createdAt])
+  @@index([nsOrderId])
+}
+
+// ============================================================
+// RESGATE DE TENISCASH NA LOJA (cashback -> desconto Nuvemshop)
+// ============================================================
+// Cliente gera um cupom pessoal de valor (% do carrinho, teto = saldo).
+// Aplica no checkout da NS. Quando o pedido é pago, debitamos o saldo
+// pelo valor realmente descontado. Idempotente por nsOrderId.
+model CashbackRedemption {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation("cashbackRedemptions", fields: [userId], references: [id])
+
+  couponCode String  @unique // código pessoal gerado (ex: TC7H3K9Q)
+  nsCouponId String? // id do cupom espelhado na Nuvemshop
+
+  pct        Float // % aplicado no momento da geração (snapshot do teto config)
+  maxAmount  Float // teto em R$ = saldo disponível na geração (max_discount_amount NS)
+  usedAmount Float @default(0) // R$ efetivamente debitado quando consumido
+
+  status     String    @default("pending") // pending | consumed | expired | cancelled
+  nsOrderId  String? // pedido NS que consumiu (idempotência)
+  expiresAt  DateTime?
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, status])
   @@index([nsOrderId])
 }
 
