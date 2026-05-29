@@ -831,6 +831,24 @@ async function pushProductToNuvemshop(localProductId, connection) {
   });
   if (!product) throw new Error(`Produto ${localProductId} não encontrado`);
 
+  // ===== REGRA INQUEBRÁVEL =====
+  // Só sobe pro Nuvemshop produto classificado nas 4: Categoria + Sub +
+  // Modalidade + Especialidade. Sem as 4, NÃO sincroniza (nem cria, nem atualiza).
+  {
+    const _ctx = (() => { try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); } catch { return {}; } })();
+    const _cls = _ctx.classification || {};
+    const _badCat = ['', 'A CLASSIFICAR', 'A DEFINIR'];
+    const _has = (v) => v != null && String(v).trim() !== '';
+    const full = _has(product.category) && !_badCat.includes(String(product.category).trim())
+      && _has(product.subcategory)
+      && _has(_cls.modality)
+      && _has(_cls.tier);
+    if (!full) {
+      console.log('[ns push] PULADO — regra das 4 classificações nao atendida:', localProductId);
+      return { skipped: true, action: 'skipped', reason: 'classificacao incompleta (precisa Categoria + Sub + Modalidade + Especialidade)' };
+    }
+  }
+
   const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId: product.id },
   });
