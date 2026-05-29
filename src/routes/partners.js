@@ -134,6 +134,30 @@ function startOfMonthBrazil() {
   return new Date(Date.UTC(y, m, 1) - offsetMin * 60000);
 }
 
+// Chaves YYYY-MM dos últimos 6 meses (incluindo o atual) no fuso de Fortaleza (UTC-3 fixo),
+// + o instante UTC do primeiro dia do mês mais antigo (pra filtrar o findMany).
+function last6MonthsBrazil() {
+  const offsetMin = -180;
+  const now = new Date();
+  const local = new Date(now.getTime() + offsetMin * 60000);
+  const y = local.getUTCFullYear();
+  const m = local.getUTCMonth();
+  const keys = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - i, 1));
+    keys.push(d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'));
+  }
+  const start = new Date(Date.UTC(y, m - 5, 1) - offsetMin * 60000);
+  return { keys, start };
+}
+
+// Mês (YYYY-MM) de uma data UTC, no fuso de Fortaleza.
+function monthKeyBrazil(date) {
+  const offsetMin = -180;
+  const local = new Date(new Date(date).getTime() + offsetMin * 60000);
+  return local.getUTCFullYear() + '-' + String(local.getUTCMonth() + 1).padStart(2, '0');
+}
+
 /* ========================================================================
    ENDPOINTS PÚBLICOS / SEMI-PÚBLICOS
    ====================================================================== */
@@ -191,7 +215,8 @@ router.get('/partner/dashboard', authMiddleware, partnerOnly, async (req, res) =
     if (!partner) return res.status(404).json({ error: 'Parceiro não encontrado' });
 
     const monthStart = startOfMonthBrazil();
-    const [salesMonth, recent] = await Promise.all([
+    const { keys: seriesKeys, start: seriesStart } = last6MonthsBrazil();
+    const [salesMonth, recent, seriesRows] = await Promise.all([
       prisma.partnerSale.aggregate({
         where: { partnerId: partner.id, createdAt: { gte: monthStart }, status: { not: 'refunded' } },
         _sum: { saleAmount: true, commissionT: true },
@@ -205,7 +230,24 @@ router.get('/partner/dashboard', authMiddleware, partnerOnly, async (req, res) =
           id: true, customerName: true, saleAmount: true, commissionT: true, createdAt: true,
         },
       }),
+      prisma.partnerSale.findMany({
+        where: { partnerId: partner.id, status: { not: 'refunded' }, createdAt: { gte: seriesStart } },
+        select: { createdAt: true, commissionT: true, saleAmount: true },
+      }),
     ]);
+
+    // Série mensal (6 meses) pro gráfico do dashboard
+    const buckets = {};
+    seriesKeys.forEach((k) => { buckets[k] = { month: k, sales: 0, commission: 0, revenue: 0 }; });
+    for (const r of seriesRows) {
+      const k = monthKeyBrazil(r.createdAt);
+      if (buckets[k]) {
+        buckets[k].sales += 1;
+        buckets[k].commission += (r.commissionT || 0);
+        buckets[k].revenue += (r.saleAmount || 0);
+      }
+    }
+    const monthlySeries = seriesKeys.map((k) => buckets[k]);
 
     // Posição no ranking por totalCommission
     const better = await prisma.partner.count({
@@ -233,6 +275,7 @@ router.get('/partner/dashboard', authMiddleware, partnerOnly, async (req, res) =
       monthCommission: salesMonth._sum?.commissionT || 0,
       rankingPosition: better + 1,
       recentSales: recent,
+      monthlySeries,
     });
   } catch (err) {
     console.error('partner/dashboard', err);

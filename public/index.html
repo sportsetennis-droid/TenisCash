@@ -201,12 +201,35 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   .action-btn:hover{background:rgba(255,255,255,0.18);transform:translateY(-2px)}
   .tx-item{padding:15px 0}
   /* listas de movimentação em 2 colunas no desktop (usa a largura) */
-  .tc-has-nav #home-transactions,
-  .tc-has-nav #partner-cashback-tx{display:grid;grid-template-columns:1fr 1fr;column-gap:40px}
+  .tc-has-nav #home-transactions{display:grid;grid-template-columns:1fr 1fr;column-gap:40px}
   .prod-card{transition:border-color .15s,background .15s}
   .prod-card:hover{border-color:rgba(255,255,255,0.45);background:rgba(0,0,0,0.28)}
   .btn-primary,.btn-secondary,.btn-outline{cursor:pointer}
+
+  /* ---- Dashboard do parceiro (Creation): 2 colunas ---- */
+  #partner-home .pt-dash{display:grid;grid-template-columns:1.6fr 1fr;gap:28px;align-items:start}
+  #partner-home .pt-col-main,#partner-home .pt-col-side{min-width:0}
+  #partner-home .pt-col-side h3:first-child{margin-top:0}
+
+  /* ---- Minhas Vendas: tabela de verdade no desktop ---- */
+  .pt-sales-table{width:100%;border-collapse:collapse;margin-top:6px}
+  .pt-sales-table th{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.55);text-align:left;font-weight:700;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.14)}
+  .pt-sales-table th.num,.pt-sales-table td.num{text-align:right}
+  .pt-sales-table td{font-size:13px;padding:13px 14px;border-bottom:1px solid rgba(255,255,255,0.07);vertical-align:top}
+  .pt-sales-table tbody tr{transition:background .12s}
+  .pt-sales-table tbody tr:hover{background:rgba(255,255,255,0.05)}
+  .pt-sales-table .commission{color:#FFB07A;font-weight:700;font-family:'Chakra Petch'}
+  .pt-sales-table .cust{font-weight:700}
+  .pt-sales-table .prods{font-size:11px;opacity:.6;margin-top:3px;line-height:1.4}
 }
+
+/* ---- Gráfico de comissão (mobile + desktop) ---- */
+.pt-chart{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;height:130px}
+.pt-chart .pt-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px}
+.pt-chart .pt-bar-val{font-size:9px;color:rgba(255,255,255,0.85);font-family:'Chakra Petch';font-weight:700;white-space:nowrap}
+.pt-chart .pt-bar{width:100%;max-width:34px;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#FF8A33,#E5571E);min-height:3px;transition:height .3s}
+.pt-chart .pt-bar.empty{background:rgba(255,255,255,0.12)}
+.pt-chart .pt-bar-lbl{font-size:9px;letter-spacing:.5px;color:rgba(255,255,255,0.5);text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -1068,6 +1091,8 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="avatar" data-screen="profile"><span id="partner-initial" style="font-weight:700;font-size:16px"></span></div>
   </div>
 
+  <div class="pt-dash">
+  <div class="pt-col-main">
   <!-- CARD DUPLO DE SALDO: COMISSÃO (parceiro) + CASHBACK (cliente) -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
     <div style="background:linear-gradient(135deg,#C04816,#A03E00);padding:16px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:130px">
@@ -1102,6 +1127,15 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </div>
   </div>
 
+  <!-- GRÁFICO: COMISSÃO POR MÊS -->
+  <div class="pt-chart-card" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.13);border-radius:16px;padding:16px 16px 12px;margin-top:14px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+      <p style="font-size:11px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron'">COMISSÃO POR MÊS</p>
+      <p style="font-size:10px;opacity:.5">últimos 6 meses</p>
+    </div>
+    <div id="partner-chart" class="pt-chart"><p style="font-size:11px;opacity:.5">Carregando...</p></div>
+  </div>
+
   <!-- CUPOM EM DESTAQUE -->
   <div id="partner-coupon-card" style="background:rgba(255,109,0,0.1);border:1px solid rgba(255,109,0,0.4);border-radius:14px;padding:14px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <div>
@@ -1121,6 +1155,9 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button type="button" class="btn-secondary" data-screen="partner-redeem" style="flex:1">Trocar T$</button>
   </div>
 
+  </div><!-- /pt-col-main -->
+
+  <div class="pt-col-side">
   <!-- MINHAS COMPRAS (funções de cliente) -->
   <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:24px 0 10px">MINHAS COMPRAS</h3>
   <p style="font-size:11px;opacity:.6;margin-bottom:10px">Use seu cashback como cliente — independente da sua comissão de Creation.</p>
@@ -1153,6 +1190,8 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <!-- ÚLTIMAS MOVIMENTAÇÕES (cashback do parceiro como cliente) -->
   <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:24px 0 8px">MOVIMENTAÇÕES DO CASHBACK</h3>
   <div id="partner-cashback-tx" style="margin-bottom:30px"><p style="font-size:12px;opacity:.6">Carregando...</p></div>
+  </div><!-- /pt-col-side -->
+  </div><!-- /pt-dash -->
 </div>
 
 <div id="partner-sales" class="screen">
@@ -3401,6 +3440,7 @@ async function loadPartnerHome() {
   document.getElementById('partner-coupon-commission').textContent = data.partner && data.partner.commissionPct != null ? data.partner.commissionPct : 3;
 
   loadPartnerCashbackMovements();
+  renderPartnerChart(data.monthlySeries || []);
 
   const recentWrap = document.getElementById('partner-recent-wrap');
   recentWrap.innerHTML = '';
@@ -3449,6 +3489,47 @@ async function loadPartnerHome() {
       recentWrap.appendChild(row);
     });
   }
+}
+
+var PT_MONTH_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function renderPartnerChart(series) {
+  const el = document.getElementById('partner-chart');
+  if (!el) return;
+  const data = Array.isArray(series) ? series : [];
+  if (!data.length) {
+    el.innerHTML = '<p style="font-size:11px;opacity:.5">Sem dados ainda. Suas comissões aparecem aqui mês a mês.</p>';
+    return;
+  }
+  const max = Math.max.apply(null, data.map(function (d) { return Number(d.commission) || 0; }).concat([0]));
+  el.innerHTML = '';
+  data.forEach(function (d) {
+    const commission = Number(d.commission) || 0;
+    const pct = max > 0 ? Math.round((commission / max) * 100) : 0;
+    const mk = String(d.month || '');
+    const mi = parseInt(mk.slice(5, 7), 10) - 1;
+    const lbl = (mi >= 0 && mi < 12) ? PT_MONTH_ABBR[mi] : mk;
+
+    const col = document.createElement('div');
+    col.className = 'pt-bar-col';
+
+    const val = document.createElement('div');
+    val.className = 'pt-bar-val';
+    val.textContent = commission > 0 ? ('T$' + fmtBRL(commission)) : '';
+
+    const bar = document.createElement('div');
+    bar.className = 'pt-bar' + (commission > 0 ? '' : ' empty');
+    bar.style.height = (commission > 0 ? Math.max(pct, 6) : 4) + '%';
+    bar.title = lbl + ': T$ ' + fmtBRL(commission) + ' (' + (d.sales || 0) + ' venda' + ((d.sales || 0) === 1 ? '' : 's') + ')';
+
+    const lblEl = document.createElement('div');
+    lblEl.className = 'pt-bar-lbl';
+    lblEl.textContent = lbl;
+
+    col.appendChild(val);
+    col.appendChild(bar);
+    col.appendChild(lblEl);
+    el.appendChild(col);
+  });
 }
 
 async function loadPartnerCashbackMovements() {
@@ -3558,6 +3639,30 @@ function flashFeedback(msg) {
   window._tcFlashT = setTimeout(function () { el.style.opacity = '0'; setTimeout(function(){ el.style.display = 'none'; }, 250); }, 2200);
 }
 
+function buildSaleDetail(s) {
+  const box = document.createElement('div');
+  box.style.cssText = 'font-size:12px;padding:4px 0';
+  let prods = [];
+  try { prods = s.products ? JSON.parse(s.products) : []; } catch {}
+  if (prods.length) {
+    const ul = document.createElement('ul');
+    ul.style.cssText = 'margin:2px 0 0 18px;padding:0';
+    prods.forEach(function (p) {
+      const li = document.createElement('li');
+      li.textContent = (p.qty || 1) + 'x ' + (p.name || p.sku || 'item') + ' — R$ ' + fmtBRL(p.price || 0);
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  } else {
+    box.textContent = 'Sem detalhes de produtos.';
+  }
+  const calc = document.createElement('div');
+  calc.style.cssText = 'margin-top:6px;opacity:.7';
+  calc.textContent = 'Subtotal: R$ ' + fmtBRL(s.saleAmountFull) + ' • Desconto: -R$ ' + fmtBRL(s.discountValue);
+  box.appendChild(calc);
+  return box;
+}
+
 async function loadPartnerSalesScreen() {
   if (!isPartner()) return;
   ensurePartnerListeners();
@@ -3587,6 +3692,65 @@ async function loadPartnerSalesScreen() {
     + '<span style="opacity:.7">Receita:</span> <strong>R$ ' + fmtBRL(totalRevenue) + '</strong> &nbsp;•&nbsp; '
     + '<span style="opacity:.7">Comissão:</span> <strong style="color:#E5571E">T$ ' + fmtBRL(totalCommission) + '</strong></p>';
   wrap.appendChild(summary);
+
+  // Desktop: tabela de verdade (data/cliente/receita/comissão). Mobile: cards (inalterado).
+  if (window.matchMedia('(min-width:1024px)').matches) {
+    const table = document.createElement('table');
+    table.className = 'pt-sales-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Data</th><th>Cliente</th><th class="num">Receita</th><th class="num">Comissão</th></tr>';
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    sales.forEach(function (s) {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+
+      const tdDate = document.createElement('td');
+      tdDate.textContent = new Date(s.createdAt).toLocaleDateString('pt-BR');
+
+      const tdCust = document.createElement('td');
+      const cust = document.createElement('div');
+      cust.className = 'cust';
+      cust.textContent = firstName(s.customerName) || 'Cliente';
+      tdCust.appendChild(cust);
+      let prods = [];
+      try { prods = s.products ? JSON.parse(s.products) : []; } catch {}
+      if (prods.length) {
+        const ps = document.createElement('div');
+        ps.className = 'prods';
+        ps.textContent = prods.map(function (p) { return (p.qty || 1) + 'x ' + (p.name || p.sku || 'item'); }).join(', ');
+        tdCust.appendChild(ps);
+      }
+
+      const tdRev = document.createElement('td');
+      tdRev.className = 'num';
+      tdRev.textContent = 'R$ ' + fmtBRL(s.saleAmount);
+
+      const tdCom = document.createElement('td');
+      tdCom.className = 'num commission';
+      tdCom.textContent = '+ T$ ' + fmtBRL(s.commissionT);
+
+      tr.appendChild(tdDate); tr.appendChild(tdCust); tr.appendChild(tdRev); tr.appendChild(tdCom);
+
+      const detailTr = document.createElement('tr');
+      detailTr.style.display = 'none';
+      const detailTd = document.createElement('td');
+      detailTd.colSpan = 4;
+      detailTd.style.cssText = 'background:rgba(0,0,0,0.18);padding:6px 14px 14px';
+      detailTd.appendChild(buildSaleDetail(s));
+      detailTr.appendChild(detailTd);
+
+      tr.addEventListener('click', function () {
+        detailTr.style.display = detailTr.style.display === 'table-row' ? 'none' : 'table-row';
+      });
+
+      tbody.appendChild(tr);
+      tbody.appendChild(detailTr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return;
+  }
 
   sales.forEach(function (s) {
     const card = document.createElement('div');
