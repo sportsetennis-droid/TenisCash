@@ -12,6 +12,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["agents/fiscal-agent/index.js"],
       "port": 8765
+    },
+    {
+      "name": "TenisCash Static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "public", "-p", "4599", "-c-1", "--silent"],
+      "port": 4599
     }
   ]
 }

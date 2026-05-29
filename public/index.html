@@ -134,6 +134,79 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .prod-card .pprice{font-family:'Orbitron';font-size:14px;font-weight:900;color:#E5571E;margin-top:4px}
 .prod-card .pbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .prod-card .pbtns button{font-size:11px;padding:7px 10px;border-radius:10px;border:none;cursor:pointer;background:#fff;color:#E5571E;font-weight:700;font-family:'Chakra Petch'}
+
+/* =====================================================================
+   DESKTOP (>=1024px) — layout de verdade: sidebar + canvas + conteúdo largo.
+   TODO o bloco vive dentro do media query: mobile fica 100% intacto.
+   O menu lateral reaproveita o .bottom-nav visível (cliente/vendedor/parceiro),
+   que o showScreen já alterna por papel — zero markup novo de navegação.
+   ===================================================================== */
+@media (min-width:1024px){
+  html{background:#9c3a06}
+  body{
+    max-width:none;margin:0;min-height:100vh;
+    background:
+      radial-gradient(1100px 520px at 82% -8%, rgba(255,160,90,0.30), transparent 60%),
+      linear-gradient(165deg,#E5571E 0%, #C0431A 58%, #9c3a06 100%);
+    background-attachment:fixed;
+  }
+
+  /* ---- Sidebar (vem do bottom-nav visível) ---- */
+  .bottom-nav{
+    top:0;bottom:auto;left:0;transform:none;
+    width:252px;height:100vh;max-width:none;
+    flex-direction:column;justify-content:flex-start;align-items:stretch;
+    gap:4px;padding:104px 16px 24px;
+    border-top:none;border-right:1px solid rgba(255,255,255,0.14);
+    background:linear-gradient(180deg,#C0431A 0%, #9c3a06 100%);
+    box-shadow:6px 0 30px rgba(0,0,0,0.22);
+    overflow-y:auto;z-index:200;
+  }
+  .bottom-nav::before{
+    content:'TENISCASH';
+    position:absolute;top:34px;left:24px;
+    font-family:'Orbitron';font-weight:900;font-size:21px;letter-spacing:3px;color:#fff;
+  }
+  .bottom-nav::after{
+    content:'Sports & Tennis';
+    position:absolute;top:64px;left:24px;
+    font-size:10px;letter-spacing:3px;color:rgba(255,255,255,0.55);
+  }
+  .nav-item{
+    flex-direction:row;justify-content:flex-start;gap:14px;
+    width:100%;padding:13px 16px;border-radius:12px;opacity:.72;
+    transition:background .15s,opacity .15s;
+  }
+  .nav-item:hover{opacity:1;background:rgba(255,255,255,0.10)}
+  .nav-item.active{opacity:1;background:rgba(255,255,255,0.18)}
+  .nav-item span:first-child{font-size:20px;width:26px;text-align:center}
+  .nav-item span:last-child{font-size:14px;letter-spacing:.4px;font-weight:700;color:#fff}
+
+  /* ---- Conteúdo: deslocado e centralizado quando logado (há nav) ---- */
+  .tc-has-nav .screen{
+    margin-left:252px;max-width:1060px;
+    padding:44px 56px 72px;
+  }
+  /* topo de tela respira mais no desktop */
+  .tc-has-nav .header,.tc-has-nav .top-bar,.tc-has-nav .back-header{padding-top:8px}
+
+  /* ---- Telas sem nav (auth/splash/termos): cartão centralizado ---- */
+  body:not(.tc-has-nav) .screen:not(#splash){max-width:480px;margin:0 auto;padding-left:20px;padding-right:20px}
+  .login-screen{max-width:440px;margin:0 auto}
+
+  /* ---- Polish dos blocos principais ---- */
+  .balance-card{padding:34px 38px}
+  .balance-amount{font-size:52px}
+  .action-btn{transition:transform .12s,background .15s}
+  .action-btn:hover{background:rgba(255,255,255,0.18);transform:translateY(-2px)}
+  .tx-item{padding:15px 0}
+  /* listas de movimentação em 2 colunas no desktop (usa a largura) */
+  .tc-has-nav #home-transactions,
+  .tc-has-nav #partner-cashback-tx{display:grid;grid-template-columns:1fr 1fr;column-gap:40px}
+  .prod-card{transition:border-color .15s,background .15s}
+  .prod-card:hover{border-color:rgba(255,255,255,0.45);background:rgba(0,0,0,0.28)}
+  .btn-primary,.btn-secondary,.btn-outline{cursor:pointer}
+}
 </style>
 </head>
 <body>
@@ -1261,6 +1334,8 @@ function showScreen(id) {
   navCustomer.style.display = shouldShowCustomerNav ? 'flex' : 'none';
   navSeller.style.display = shouldShowSellerNav ? 'flex' : 'none';
   if (navPartner) navPartner.style.display = shouldShowPartnerNav ? 'flex' : 'none';
+  // Desktop: marca o body quando há menu (logado) pra deslocar o conteúdo pra direita da sidebar
+  document.body.classList.toggle('tc-has-nav', shouldShowCustomerNav || shouldShowSellerNav || shouldShowPartnerNav);
 
   if (shouldShowCustomerNav) {
     Array.from(navCustomer.querySelectorAll('.nav-item')).forEach(n => n.classList.toggle('active', n.getAttribute('data-screen') === id));
