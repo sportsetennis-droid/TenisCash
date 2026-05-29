@@ -2604,7 +2604,7 @@ function updateBalance() {
   const eq = document.getElementById('home-equiv');
   if (balanceVisible) {
     bal.textContent = user.balance.toLocaleString('pt-BR',{minimumFractionDigits:2});
-    eq.textContent = '≈ R$ '+(user.balance*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2})+' em poder de compra';
+    eq.textContent = '≈ R$ '+(user.balance*1).toLocaleString('pt-BR',{minimumFractionDigits:2})+' em poder de compra';
   } else { bal.textContent = '••••••'; eq.textContent = ''; }
 }
 

@@ -4776,7 +4776,7 @@ function updateStats(users) {
   document.getElementById('s-complete-sub').textContent = pct + '% dos usuários';
 
   document.getElementById('s-circulation').textContent = 'T$ ' + totalBalance.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0});
-  document.getElementById('s-circ-sub').textContent = '≈ R$ ' + (totalBalance * 0.20).toLocaleString('pt-BR', {minimumFractionDigits:2}) + ' em poder de compra';
+  document.getElementById('s-circ-sub').textContent = '≈ R$ ' + (totalBalance * 1).toLocaleString('pt-BR', {minimumFractionDigits:2}) + ' em poder de compra';
 
   document.getElementById('s-bonus').textContent = 'T$ ' + bonusTotal.toLocaleString('pt-BR');
   document.getElementById('s-bonus-sub').textContent = bonusUsers.length + ' bônus de boas-vindas';
