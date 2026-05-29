@@ -592,9 +592,11 @@ async function reversePartnerCommission(nsOrderId) {
 }
 
 // ---------------------------------------------------------------------
-// Resgate de TenisCash (lado entrada): pedido pago com cupom de resgate
-// -> debita o saldo do cliente pelo valor realmente descontado.
-// Idempotente por nsOrderId. NÃO derruba o fluxo principal se falhar.
+// Resgate de TenisCash (lado entrada): pedido pago com cupom de resgate.
+// O saldo JÁ foi RESERVADO (hold) quando o cupom foi gerado (balance -= maxAmount).
+// Aqui só RECONCILIA: usedAmount = min(desconto real, maxAmount). Se o carrinho
+// ficou abaixo do teto (10% do carrinho < maxAmount), devolve a diferença reservada.
+// NÃO debita de novo. Idempotente por nsOrderId. NÃO derruba o fluxo principal.
 // ---------------------------------------------------------------------
 async function consumeCashbackRedemptionFromOrder(nsOrder) {
   try {
@@ -616,29 +618,36 @@ async function consumeCashbackRedemptionFromOrder(nsOrder) {
 
     const user = await prisma.user.findUnique({ where: { id: redemption.userId }, select: { id: true, balance: true } });
     if (!user) return null;
-    // Nunca debita mais que o desconto, o teto do cupom ou o saldo atual.
-    const debit = Number(Math.max(0, Math.min(discount, redemption.maxAmount, user.balance)).toFixed(2));
+
+    const held = Number(redemption.maxAmount) || 0;            // valor que foi reservado
+    const used = Number(Math.max(0, Math.min(discount, held)).toFixed(2)); // realmente consumido (<= reservado)
+    const refund = Number(Math.max(0, held - used).toFixed(2)); // sobra do reservado -> volta pro cliente
 
     await prisma.$transaction(async (tx) => {
-      const updatedUser = await tx.user.update({
-        where: { id: user.id },
-        data: { balance: { decrement: debit } },
-      });
+      let balanceAfter = user.balance;
+      if (refund > 0) {
+        const updatedUser = await tx.user.update({
+          where: { id: user.id },
+          data: { balance: { increment: refund } },
+        });
+        balanceAfter = updatedUser.balance;
+        await tx.transaction.create({
+          data: {
+            type: 'cashback_redeem_hold_release',
+            amount: refund,
+            description: `Sobra do TenisCash reservado devolvida — pedido NS-${nsOrder.id} (cupom ${redemption.couponCode})`,
+            receiverId: user.id,
+            balanceAfter,
+            metadata: JSON.stringify({ redemptionId: redemption.id, couponCode: redemption.couponCode, nsOrderId: String(nsOrder.id), wallet: 'balance', channel: 'nuvemshop', hold: 'partial_release' }),
+          },
+        });
+      }
       await tx.cashbackRedemption.update({
         where: { id: redemption.id },
-        data: { status: 'consumed', usedAmount: debit, nsOrderId: String(nsOrder.id), consumedAt: new Date() },
-      });
-      await tx.transaction.create({
-        data: {
-          type: 'cashback_redeem',
-          amount: debit,
-          description: `Resgate TenisCash no pedido NS-${nsOrder.id} (cupom ${redemption.couponCode})`,
-          senderId: user.id,
-          balanceAfter: updatedUser.balance,
-          metadata: JSON.stringify({ redemptionId: redemption.id, couponCode: redemption.couponCode, nsOrderId: String(nsOrder.id), wallet: 'balance', channel: 'nuvemshop' }),
-        },
+        data: { status: 'consumed', usedAmount: used, nsOrderId: String(nsOrder.id), consumedAt: new Date() },
       });
     });
+    const debit = used;
 
     // Queima o cupom na NS (já é uso único, mas limpamos pra não poluir a loja).
     try {

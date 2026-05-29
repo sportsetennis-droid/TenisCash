@@ -64,6 +64,34 @@ async function killNsCoupon(redemption) {
   }
 }
 
+// Devolve o saldo RESERVADO (hold) de um resgate pendente e marca como cancelado.
+// Usado quando o cliente cancela o cupom, ou quando geramos um novo (o antigo
+// some e o saldo volta). Idempotente por status (só mexe em 'pending').
+async function releaseRedemptionHold(redemption) {
+  const amt = Number(redemption.maxAmount) || 0;
+  await prisma.$transaction(async (tx) => {
+    const fresh = await tx.cashbackRedemption.findUnique({ where: { id: redemption.id }, select: { status: true } });
+    if (!fresh || fresh.status !== 'pending') return; // já tratado
+    if (amt > 0) {
+      const u = await tx.user.update({
+        where: { id: redemption.userId },
+        data: { balance: { increment: amt } },
+      });
+      await tx.transaction.create({
+        data: {
+          type: 'cashback_redeem_hold_release',
+          amount: amt,
+          description: `Devolução de TenisCash reservado (cupom ${redemption.couponCode} não usado)`,
+          receiverId: redemption.userId,
+          balanceAfter: u.balance,
+          metadata: JSON.stringify({ redemptionId: redemption.id, couponCode: redemption.couponCode, wallet: 'balance', hold: 'release' }),
+        },
+      });
+    }
+    await tx.cashbackRedemption.update({ where: { id: redemption.id }, data: { status: 'cancelled' } });
+  });
+}
+
 // ---------------------------------------------------------------------
 // GET — resgate pendente atual do cliente (se houver)
 // ---------------------------------------------------------------------
@@ -99,27 +127,30 @@ router.post('/teniscash/store-coupon', authMiddleware, async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { id: true, balance: true } });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    const balance = Number(user.balance) || 0;
-    if (balance <= 0) {
-      return res.status(400).json({ error: 'Você não tem saldo TenisCash pra usar.' });
-    }
-
     const conn = await getNsConnection();
     if (!conn) return res.status(503).json({ error: 'Loja Nuvemshop indisponível no momento. Tente mais tarde.' });
+
+    // Cancela resgate pendente anterior e DEVOLVE o saldo que estava reservado nele
+    // (o cliente pode estar pedindo um valor diferente; o saldo do cupom antigo volta).
+    const olds = await prisma.cashbackRedemption.findMany({ where: { userId: user.id, status: 'pending' } });
+    for (const old of olds) {
+      await killNsCoupon(old);
+      await releaseRedemptionHold(old);
+    }
+
+    // Saldo REAL disponível depois de devolver holds anteriores.
+    const fresh = await prisma.user.findUnique({ where: { id: user.id }, select: { balance: true } });
+    const available = Number(fresh?.balance) || 0;
+    if (available <= 0) {
+      return res.status(400).json({ error: 'Você não tem saldo TenisCash pra usar.' });
+    }
 
     const pct = await getRedeemPct();
     // Valor que o cliente QUER usar (opcional). Default = saldo todo.
     // Nunca passa do saldo. O checkout ainda limita ao pct do carrinho.
     let requested = parseFloat(req.body && req.body.amount);
-    if (!Number.isFinite(requested) || requested <= 0) requested = balance;
-    const maxAmount = Number(Math.min(requested, balance).toFixed(2)); // teto em R$ (NS limita o desconto a isso)
-
-    // Cancela resgate pendente anterior (saldo pode ter mudado) e gera um novo coerente.
-    const olds = await prisma.cashbackRedemption.findMany({ where: { userId: user.id, status: 'pending' } });
-    for (const old of olds) {
-      await killNsCoupon(old);
-      await prisma.cashbackRedemption.update({ where: { id: old.id }, data: { status: 'cancelled' } });
-    }
+    if (!Number.isFinite(requested) || requested <= 0) requested = available;
+    const maxAmount = Number(Math.min(requested, available).toFixed(2)); // teto em R$ (= valor reservado)
 
     const couponCode = await generateUniqueCode();
 
@@ -133,16 +164,45 @@ router.post('/teniscash/store-coupon', authMiddleware, async (req, res) => {
       return res.status(502).json({ error: 'Não consegui criar o cupom na loja. Tente novamente.' });
     }
 
-    const redemption = await prisma.cashbackRedemption.create({
-      data: { userId: user.id, couponCode, nsCouponId, pct, maxAmount, status: 'pending' },
-    });
+    // RESERVA o saldo na hora: balance -= maxAmount + transação de hold + cria o resgate.
+    // Se a loja não usar o cupom, o saldo volta (DELETE / regenerar / pedido não pago).
+    let redemption;
+    let newBalance = available;
+    try {
+      redemption = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: user.id },
+          data: { balance: { decrement: maxAmount } },
+        });
+        newBalance = u.balance;
+        const r = await tx.cashbackRedemption.create({
+          data: { userId: user.id, couponCode, nsCouponId, pct, maxAmount, status: 'pending' },
+        });
+        await tx.transaction.create({
+          data: {
+            type: 'cashback_redeem_hold',
+            amount: maxAmount,
+            description: `TenisCash reservado para o cupom ${couponCode}`,
+            senderId: user.id,
+            balanceAfter: u.balance,
+            metadata: JSON.stringify({ redemptionId: r.id, couponCode, wallet: 'balance', hold: 'reserve' }),
+          },
+        });
+        return r;
+      });
+    } catch (err) {
+      console.error('[redeem] falha reservar saldo:', err.message);
+      // desfaz o cupom órfão na NS
+      try { if (nsCouponId) await ns.deleteCoupon(conn, nsCouponId); } catch { /* best-effort */ }
+      return res.status(500).json({ error: 'Erro ao reservar saldo de TenisCash' });
+    }
 
     res.json({
       ok: true,
       couponCode: redemption.couponCode,
       pct: redemption.pct,
       maxAmount: redemption.maxAmount,
-      balance,
+      balance: newBalance, // saldo JÁ com o valor reservado descontado
       storeUrl: STORE_URL,
       // Atalho: link da loja com o cupom já pré-aplicado no carrinho
       storeUrlWithCoupon: `${STORE_URL}/?coupon=${encodeURIComponent(redemption.couponCode)}`,
@@ -161,9 +221,10 @@ router.delete('/teniscash/store-coupon', authMiddleware, async (req, res) => {
     const olds = await prisma.cashbackRedemption.findMany({ where: { userId: req.userId, status: 'pending' } });
     for (const old of olds) {
       await killNsCoupon(old);
-      await prisma.cashbackRedemption.update({ where: { id: old.id }, data: { status: 'cancelled' } });
+      await releaseRedemptionHold(old); // devolve o saldo reservado
     }
-    res.json({ ok: true, cancelled: olds.length });
+    const fresh = await prisma.user.findUnique({ where: { id: req.userId }, select: { balance: true } });
+    res.json({ ok: true, cancelled: olds.length, balance: Number(fresh?.balance) || 0 });
   } catch (err) {
     console.error('DELETE /teniscash/store-coupon', err);
     res.status(500).json({ error: 'Erro ao cancelar cupom' });
