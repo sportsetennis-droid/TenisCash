@@ -508,9 +508,9 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     </p>
 
     <label style="display:block;font-size:12px;letter-spacing:1px;color:rgba(255,255,255,0.7);margin-top:16px;font-weight:700">QUANTO QUER USAR? (T$)</label>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-      <input id="tcs-amount" type="number" inputmode="decimal" min="1" step="1" class="input-field" placeholder="0,00" style="flex:1;margin:0">
-      <button type="button" class="btn-secondary" id="tcs-amount-max-btn" onclick="tcsUseMax()" style="margin:0;min-height:48px;padding:0 14px;white-space:nowrap">Usar tudo</button>
+    <div style="display:flex;gap:8px;align-items:stretch;margin-top:6px">
+      <input id="tcs-amount" type="number" inputmode="decimal" min="1" step="1" class="input-field" placeholder="0,00" style="flex:1 1 auto;min-width:0;margin:0;font-size:17px;font-weight:700">
+      <button type="button" id="tcs-amount-max-btn" onclick="tcsUseMax()" style="flex:0 0 auto;width:auto;margin:0;padding:0 16px;min-height:48px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:12px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Chakra Petch';white-space:nowrap">Usar tudo</button>
     </div>
     <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;line-height:1.4">
       Máx T$ <span id="tcs-amount-max">0,00</span> (seu saldo). No checkout entra o menor entre esse valor e <span id="tcs-pct3">10</span>% do carrinho.
