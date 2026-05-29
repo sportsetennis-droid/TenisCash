@@ -1,11 +1,53 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
+const ns = require('../services/nuvemshop');
 
 const router = express.Router();
 
 const PARTNER_TYPES = ['atleta', 'influencer', 'saude', 'personal', 'outro'];
 const PARTNER_STATUS = ['active', 'paused', 'banned'];
+
+// Governança: teto de desconto do cupom de um Creation (regra ≤15%; dono fixou 10%).
+const MAX_DISCOUNT_PCT = 10;
+const DEFAULT_DISCOUNT_PCT = 5;
+const DEFAULT_COMMISSION_PCT = 5;
+
+// ----------------------------------------------------------------------
+// Interligação Creation ⇄ Nuvemshop — espelha o cupom do Creation na loja.
+// Resiliente: se a NS falhar, NÃO derruba a operação local (loga e segue).
+// ----------------------------------------------------------------------
+async function getNsConnection() {
+  try { return await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } }); }
+  catch { return null; }
+}
+
+// Cria (ou recria) o cupom na NS e devolve o nsCouponId, ou null se falhar.
+async function nsCreateOrUpdateCoupon(partner, { valid } = {}) {
+  const conn = await getNsConnection();
+  if (!conn) { console.warn('[creation] sem conexão NS — cupom não espelhado:', partner.couponCode); return null; }
+  const isValid = valid != null ? valid : (partner.status === 'active');
+  try {
+    if (partner.nsCouponId) {
+      await ns.updateCoupon(conn, partner.nsCouponId, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid });
+      return partner.nsCouponId;
+    }
+    const created = await ns.createCoupon(conn, { code: partner.couponCode, discountPct: partner.discountPct, valid: isValid });
+    return created && created.id != null ? String(created.id) : null;
+  } catch (err) {
+    // Cupom já existe na NS com esse code? tenta achar e linkar.
+    console.warn('[creation] falha espelhar cupom NS:', partner.couponCode, err.message);
+    return null;
+  }
+}
+
+async function nsSetCouponValid(partner, valid) {
+  if (!partner?.nsCouponId) return;
+  const conn = await getNsConnection();
+  if (!conn) return;
+  try { await ns.setCouponValid(conn, partner.nsCouponId, valid); }
+  catch (err) { console.warn('[creation] falha valid=' + valid + ' cupom NS:', partner.couponCode, err.message); }
+}
 const TIER_THRESHOLDS = [
   { tier: 'platina', min: 100 },
   { tier: 'ouro', min: 31 },
@@ -394,8 +436,10 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
     if (!couponCode || couponCode.length < 3) return res.status(400).json({ error: 'Código do cupom inválido (mínimo 3 caracteres)' });
     if (!PARTNER_TYPES.includes(type)) return res.status(400).json({ error: 'Tipo inválido. Use: ' + PARTNER_TYPES.join(', ') });
 
-    const discountPct = Math.min(50, Math.max(0, parseFloat(b.discountPct))) || 5;
-    const commissionPct = Math.min(50, Math.max(0, parseFloat(b.commissionPct))) || 3;
+    // Desconto do cupom tem teto de governança (MAX_DISCOUNT_PCT). Comissão é margem
+    // interna do programa, não vai pro cliente — cap mais folgado (50%).
+    const discountPct = Math.min(MAX_DISCOUNT_PCT, Math.max(0, parseFloat(b.discountPct))) || DEFAULT_DISCOUNT_PCT;
+    const commissionPct = Math.min(50, Math.max(0, parseFloat(b.commissionPct))) || DEFAULT_COMMISSION_PCT;
 
     const user = await prisma.user.findUnique({ where: { phone } });
     if (!user) return res.status(404).json({ error: 'Usuário com este telefone não encontrado. Cadastre o usuário antes.' });
@@ -433,7 +477,19 @@ router.post('/admin/partners', authMiddleware, adminOnly, async (req, res) => {
       return p;
     });
 
-    res.json({ partner });
+    // Espelha o cupom na Nuvemshop (interligação Creation ⇄ NS). Não bloqueia se falhar.
+    let nsCouponId = null;
+    try {
+      nsCouponId = await nsCreateOrUpdateCoupon(partner);
+      if (nsCouponId && nsCouponId !== partner.nsCouponId) {
+        await prisma.partner.update({ where: { id: partner.id }, data: { nsCouponId } });
+        partner.nsCouponId = nsCouponId;
+      }
+    } catch (e) {
+      console.warn('[creation] cupom NS não espelhado na criação:', partner.couponCode, e.message);
+    }
+
+    res.json({ partner, nsCouponId });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Cupom ou usuário já cadastrados' });
     console.error('admin/partners create', err);
@@ -468,7 +524,7 @@ router.put('/admin/partners/:id', authMiddleware, adminOnly, async (req, res) =>
       }
       data.couponCode = c;
     }
-    if (b.discountPct != null) data.discountPct = Math.min(50, Math.max(0, parseFloat(b.discountPct)));
+    if (b.discountPct != null) data.discountPct = Math.min(MAX_DISCOUNT_PCT, Math.max(0, parseFloat(b.discountPct)));
     if (b.commissionPct != null) data.commissionPct = Math.min(50, Math.max(0, parseFloat(b.commissionPct)));
     if (b.bio !== undefined) data.bio = b.bio ? String(b.bio).slice(0, 500) : null;
     if (b.niche !== undefined) data.niche = b.niche ? String(b.niche).slice(0, 80) : null;
@@ -484,6 +540,23 @@ router.put('/admin/partners/:id', authMiddleware, adminOnly, async (req, res) =>
     if (b.notes !== undefined) data.notes = b.notes ? String(b.notes).slice(0, 500) : null;
 
     const updated = await prisma.partner.update({ where: { id }, data });
+
+    // Re-espelha na NS se mudou code, desconto ou status (afeta o cupom).
+    const couponChanged = data.couponCode != null && data.couponCode !== existing.couponCode;
+    const discountChanged = data.discountPct != null && data.discountPct !== existing.discountPct;
+    const statusChanged = data.status != null && data.status !== existing.status;
+    if (couponChanged || discountChanged || statusChanged) {
+      try {
+        const nsCouponId = await nsCreateOrUpdateCoupon(updated, { valid: updated.status === 'active' });
+        if (nsCouponId && nsCouponId !== updated.nsCouponId) {
+          await prisma.partner.update({ where: { id }, data: { nsCouponId } });
+          updated.nsCouponId = nsCouponId;
+        }
+      } catch (e) {
+        console.warn('[creation] cupom NS não re-espelhado no update:', updated.couponCode, e.message);
+      }
+    }
+
     res.json({ partner: updated });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'Cupom já está em uso' });
@@ -502,6 +575,9 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
     // Mantém rastro: PEDRO -> PEDRO_DEL_1716490231234
     const archivedCoupon = (partner.couponCode || '').slice(0, 24).toUpperCase()
       + '_DEL_' + Date.now();
+
+    // Desativa o cupom espelhado na NS (não apaga: preserva histórico de pedidos NS).
+    await nsSetCouponValid(partner, false);
 
     const salesCount = await prisma.partnerSale.count({ where: { partnerId: id } });
     if (salesCount > 0 && req.query.force !== 'true') {

@@ -353,7 +353,6 @@ async function upsertSaleFromOrder(nsOrder) {
             amount: tcEarned,
             receiverId: user.id,
             description: `Cashback pedido NS-${nsOrder.id}`,
-            status: 'completed',
           },
         });
       });
@@ -364,6 +363,11 @@ async function upsertSaleFromOrder(nsOrder) {
         sysMsg.notifyCashbackEarned(user.id, tcEarned, nsOrder.id).catch(() => {});
       } catch (e) { /* ignora */ }
     }
+  }
+
+  // 3b. Comissão do Creation (independe de o cliente ter conta). Idempotente por nsOrderId.
+  if (nsOrder.payment_status === 'paid') {
+    await creditPartnerFromOrder(nsOrder);
   }
 
   // ===== PRÉ-EMISSÃO NFe MODELO 55 (Nuvemshop usa LOJA04 /0004-79) =====
@@ -429,6 +433,162 @@ async function upsertSaleFromOrder(nsOrder) {
   return sale;
 }
 
+// ---------------------------------------------------------------------
+// Interligação Creation ⇄ Nuvemshop (lado entrada): pedido pago com cupom
+// de um Creation → cria PartnerSale + credita comissão (partnerBalance).
+// Idempotente por nsOrderId. Não derruba o fluxo principal se falhar.
+// ---------------------------------------------------------------------
+function normalizeCouponCode(raw) {
+  return String(raw || '').trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+}
+
+function tierFromPartnerSales(totalSales) {
+  if (totalSales >= 100) return 'platina';
+  if (totalSales >= 31) return 'ouro';
+  if (totalSales >= 10) return 'prata';
+  return 'bronze';
+}
+
+// Extrai o(s) código(s) de cupom do pedido NS (campo `coupon` costuma ser array).
+function extractOrderCouponCodes(nsOrder) {
+  const out = [];
+  const c = nsOrder.coupon;
+  if (Array.isArray(c)) { for (const x of c) { const code = normalizeCouponCode(x?.code || x); if (code) out.push(code); } }
+  else if (c && typeof c === 'object') { const code = normalizeCouponCode(c.code); if (code) out.push(code); }
+  else if (typeof c === 'string') { const code = normalizeCouponCode(c); if (code) out.push(code); }
+  return out;
+}
+
+async function creditPartnerFromOrder(nsOrder) {
+  try {
+    const codes = extractOrderCouponCodes(nsOrder);
+    if (!codes.length) return null;
+
+    // Idempotência: já processamos esse pedido pro programa Creation?
+    const dup = await prisma.partnerSale.findFirst({ where: { nsOrderId: String(nsOrder.id) } });
+    if (dup) return dup;
+
+    // Acha o Creation dono de algum dos cupons do pedido
+    const partner = await prisma.partner.findFirst({
+      where: { couponCode: { in: codes }, status: 'active' },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    if (!partner) return null;
+
+    // Valores: saleAmountFull = produtos a preço cheio (subtotal);
+    // discountValue = desconto do cupom (NS manda discount_coupon); fallback = % do Creation.
+    // NOTA: semântica dos campos de cupom do pedido NS precisa ser confirmada com um pedido real.
+    const subtotal = parseFloat(nsOrder.subtotal);
+    const productTotal = parseFloat(nsOrder.total) || 0;
+    const saleAmountFull = Number.isFinite(subtotal) && subtotal > 0 ? subtotal : productTotal;
+    let discountValue = parseFloat(nsOrder.discount_coupon);
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      discountValue = Number((saleAmountFull * (partner.discountPct || 0) / 100).toFixed(2));
+    }
+    const saleAmount = Number(Math.max(0, saleAmountFull - discountValue).toFixed(2));
+    const commissionT = Number((saleAmount * (partner.commissionPct || 0) / 100).toFixed(2));
+
+    const c = nsOrder.customer || {};
+    const customerName = (c.name || ((c.first_name || '') + ' ' + (c.last_name || ''))).trim() || null;
+    const customerCpf = (c.identification || '').replace(/\D/g, '') || null;
+    const products = Array.isArray(nsOrder.products)
+      ? nsOrder.products.map((p) => ({ sku: String(p.sku || p.variant_id || ''), name: pickStr(p.name) || '', qty: Number(p.quantity) || 1, price: parseFloat(p.price) || 0 }))
+      : [];
+
+    const result = await prisma.$transaction(async (tx) => {
+      const sale = await tx.partnerSale.create({
+        data: {
+          partnerId: partner.id,
+          customerName,
+          customerCpf,
+          customerPhone: (c.phone || '').replace(/\D/g, '') || null,
+          saleAmount,
+          saleAmountFull,
+          discountValue,
+          commissionT,
+          products: products.length ? JSON.stringify(products) : null,
+          status: 'approved',
+          channel: 'nuvemshop',
+          nsOrderId: String(nsOrder.id),
+        },
+      });
+      const updatedUser = await tx.user.update({
+        where: { id: partner.userId },
+        data: { partnerBalance: { increment: commissionT } },
+      });
+      await tx.transaction.create({
+        data: {
+          type: 'partner_commission',
+          amount: commissionT,
+          description: `Comissão cupom ${partner.couponCode} — pedido NS-${nsOrder.id}`,
+          receiverId: partner.userId,
+          balanceAfter: updatedUser.partnerBalance,
+          metadata: JSON.stringify({ partnerSaleId: sale.id, couponCode: partner.couponCode, nsOrderId: String(nsOrder.id), wallet: 'partnerBalance', channel: 'nuvemshop' }),
+        },
+      });
+      const newTotalSales = partner.totalSales + 1;
+      await tx.partner.update({
+        where: { id: partner.id },
+        data: {
+          totalSales: newTotalSales,
+          totalRevenue: partner.totalRevenue + saleAmount,
+          totalCommission: partner.totalCommission + commissionT,
+          tier: tierFromPartnerSales(newTotalSales),
+        },
+      });
+      return { sale, commissionT };
+    });
+
+    await logSync('order', 'ok', `order/paid ${nsOrder.id} → comissão Creation ${partner.couponCode}: T$ ${result.commissionT}`);
+    return result.sale;
+  } catch (err) {
+    console.error('[creation commission NS]', err.message);
+    await logSync('order', 'error', `order/paid ${nsOrder.id} comissão Creation falhou: ${err.message}`);
+    return null;
+  }
+}
+
+// Estorna a comissão do Creation quando o pedido NS é cancelado. Idempotente:
+// só age se houver PartnerSale 'approved' por esse nsOrderId.
+async function reversePartnerCommission(nsOrderId) {
+  try {
+    const ps = await prisma.partnerSale.findFirst({
+      where: { nsOrderId: String(nsOrderId), channel: 'nuvemshop', status: { not: 'refunded' } },
+      include: { partner: true },
+    });
+    if (!ps || !ps.partner) return;
+    await prisma.$transaction(async (tx) => {
+      await tx.partnerSale.update({ where: { id: ps.id }, data: { status: 'refunded' } });
+      const updatedUser = await tx.user.update({
+        where: { id: ps.partner.userId },
+        data: { partnerBalance: { decrement: ps.commissionT } },
+      });
+      await tx.transaction.create({
+        data: {
+          type: 'partner_commission_reversal',
+          amount: ps.commissionT,
+          description: `Estorno comissão cupom ${ps.partner.couponCode} — pedido NS-${nsOrderId} cancelado`,
+          senderId: ps.partner.userId,
+          balanceAfter: updatedUser.partnerBalance,
+          metadata: JSON.stringify({ partnerSaleId: ps.id, couponCode: ps.partner.couponCode, nsOrderId: String(nsOrderId), wallet: 'partnerBalance', channel: 'nuvemshop', reversal: true }),
+        },
+      });
+      await tx.partner.update({
+        where: { id: ps.partner.id },
+        data: {
+          totalSales: { decrement: 1 },
+          totalRevenue: { decrement: ps.saleAmount },
+          totalCommission: { decrement: ps.commissionT },
+        },
+      });
+    });
+    await logSync('order', 'ok', `order/cancelled ${nsOrderId} → comissão Creation ${ps.partner.couponCode} estornada (T$ ${ps.commissionT})`);
+  } catch (err) {
+    console.error('[creation reversal NS]', err.message);
+    await logSync('order', 'error', `order/cancelled ${nsOrderId} estorno comissão Creation falhou: ${err.message}`);
+  }
+}
+
 async function handleOrderEvent(eventType, resourceId, connection) {
   const order = await ns.getOrder(connection, resourceId);
   if (eventType === 'order/cancelled') {
@@ -454,12 +614,13 @@ async function handleOrderEvent(eventType, resourceId, connection) {
               amount: cashback.amount,
               senderId: cashback.receiverId,
               description: `Estorno: pedido NS-${resourceId} cancelado`,
-              status: 'completed',
             },
           });
         });
       }
     }
+    // Estorna comissão do Creation, se houve PartnerSale por esse pedido (idempotente: status refunded)
+    await reversePartnerCommission(String(resourceId));
     await logSync('order', 'ok', `order/cancelled ${resourceId} → Sale cancelada + estorno se aplicável`);
     return;
   }

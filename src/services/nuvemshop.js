@@ -114,6 +114,46 @@ async function updateVariantStock(connection, productId, variantId, stock) {
   return nuvemshopApi(connection, 'PUT', `/products/${productId}/variants/${variantId}`, { stock });
 }
 
+// =====================================================================
+// CUPONS — usados pelo programa Creation (afiliados)
+// =====================================================================
+
+// Monta o payload de cupom percentual padrão de um Creation.
+function buildCouponPayload({ code, discountPct, valid = true, minPrice = 0 }) {
+  return {
+    code: String(code),
+    type: 'percentage',
+    value: String(Number(discountPct).toFixed(2)),
+    valid: !!valid,
+    max_uses: null,
+    min_price: Number(minPrice) || 0,
+    includes_shipping: false,
+    combines_with_other_discounts: false,
+  };
+}
+
+async function createCoupon(connection, opts) {
+  return nuvemshopApi(connection, 'POST', '/coupons', buildCouponPayload(opts));
+}
+
+async function updateCoupon(connection, couponId, opts) {
+  // PUT aceita os mesmos campos; só manda o que veio
+  const payload = {};
+  if (opts.code != null) payload.code = String(opts.code);
+  if (opts.discountPct != null) { payload.type = 'percentage'; payload.value = String(Number(opts.discountPct).toFixed(2)); }
+  if (opts.valid != null) payload.valid = !!opts.valid;
+  if (opts.minPrice != null) payload.min_price = Number(opts.minPrice) || 0;
+  return nuvemshopApi(connection, 'PUT', `/coupons/${couponId}`, payload);
+}
+
+async function setCouponValid(connection, couponId, valid) {
+  return nuvemshopApi(connection, 'PUT', `/coupons/${couponId}`, { valid: !!valid });
+}
+
+async function deleteCoupon(connection, couponId) {
+  return nuvemshopApi(connection, 'DELETE', `/coupons/${couponId}`);
+}
+
 module.exports = {
   isConfigured,
   buildAuthUrl,
@@ -127,4 +167,9 @@ module.exports = {
   getOrder,
   getCustomer,
   updateVariantStock,
+  buildCouponPayload,
+  createCoupon,
+  updateCoupon,
+  setCouponValid,
+  deleteCoupon,
 };

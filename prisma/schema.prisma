@@ -202,6 +202,9 @@ model Store {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Nuvemshop: location_id físico desta loja (estoque por loja no site)
+  nuvemshopLocationId String?
+
   // CNPJ que emite NFCe/NFe pelas vendas dessa loja
   fiscalIssuerId String?
   fiscalIssuer   FiscalIssuer? @relation(fields: [fiscalIssuerId], references: [id])
@@ -659,7 +662,8 @@ model Partner {
 
   couponCode    String @unique // ex: PEDRO, CARLA-RUN
   discountPct   Float  @default(5) // % desconto pro cliente
-  commissionPct Float  @default(3) // % comissão pro parceiro
+  commissionPct Float  @default(5) // % comissão pro Creation
+  nsCouponId    String? // id do cupom espelhado na Nuvemshop (interligação Creation ⇄ NS)
 
   // Estatísticas (denormalizadas pra dashboard rápido)
   totalSales      Int    @default(0)
@@ -705,10 +709,14 @@ model PartnerSale {
   sellerId String? // vendedor que registrou a venda
   seller   User?   @relation("partnerSaleSeller", fields: [sellerId], references: [id])
 
+  channel   String  @default("pdv") // pdv | nuvemshop
+  nsOrderId String? // id do pedido Nuvemshop (idempotência da comissão online)
+
   createdAt DateTime @default(now())
 
   @@index([partnerId, createdAt])
   @@index([customerCpf, createdAt])
+  @@index([nsOrderId])
 }
 
 // ============================================================

@@ -261,7 +261,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
-    <button class="tab" onclick="switchTab('partners',this)">Parceiros</button>
+    <button class="tab" onclick="switchTab('partners',this)">Creation</button>
     <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
     <button class="tab" onclick="switchTab('labels',this)">Etiquetas</button>
     <button class="tab" onclick="switchTab('curation',this)">Curadoria</button>
@@ -333,9 +333,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </button>
       <button class="hub-card" onclick="switchTabByName('partners')">
         <div class="hub-card-icon">🤝</div>
-        <div class="hub-card-title">Parceiros</div>
-        <div class="hub-card-desc">Programa de afiliados + cupons</div>
-        <span class="hub-card-badge">AFILIADOS</span>
+        <div class="hub-card-title">Creation</div>
+        <div class="hub-card-desc">Creators + cupons interligados à Nuvemshop</div>
+        <span class="hub-card-badge">CREATION</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('clockin')">
         <div class="hub-card-icon">⏰</div>
@@ -820,18 +820,18 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <!-- PARCEIROS -->
 <div class="section" id="tab-partners" style="display:none">
   <div class="section-head">
-    <span class="section-title">Programa de Parceiros</span>
+    <span class="section-title">Creation</span>
     <button type="button" class="refresh-btn" id="btn-partners-refresh">↻</button>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <button type="button" class="tab active js-prt-sub" data-prt-sub="list">Lista de Parceiros</button>
+    <button type="button" class="tab active js-prt-sub" data-prt-sub="list">Lista de Creations</button>
     <button type="button" class="tab js-prt-sub" data-prt-sub="sales">Vendas com Cupom</button>
     <button type="button" class="tab js-prt-sub" data-prt-sub="stats">Estatísticas</button>
   </div>
 
   <div id="prt-panel-list">
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-      <button type="button" class="btn btn-primary" id="prt-btn-new">+ Novo parceiro</button>
+      <button type="button" class="btn btn-primary" id="prt-btn-new">+ Novo Creation</button>
       <button type="button" class="btn btn-primary" id="prt-btn-sale">Registrar venda com cupom</button>
       <input class="search-box" id="prt-filter-search" placeholder="Buscar nome, telefone ou cupom..." style="width:280px">
       <select class="search-box" id="prt-filter-status" style="width:160px">
@@ -855,14 +855,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <div id="prt-panel-stats" style="display:none">
     <div class="stats-grid" style="margin-bottom:16px">
-      <div class="stat-card"><div class="stat-label">PARCEIROS</div><div class="stat-value" id="prt-stat-count">—</div></div>
+      <div class="stat-card"><div class="stat-label">CREATIONS</div><div class="stat-value" id="prt-stat-count">—</div></div>
       <div class="stat-card stat-orange"><div class="stat-label">VENDAS NO MÊS</div><div class="stat-value" id="prt-stat-month-sales">—</div></div>
       <div class="stat-card"><div class="stat-label">RECEITA NO MÊS</div><div class="stat-value" id="prt-stat-month-rev">—</div></div>
       <div class="stat-card"><div class="stat-label">COMISSÃO NO MÊS (T$)</div><div class="stat-value" id="prt-stat-month-com">—</div></div>
       <div class="stat-card"><div class="stat-label">DESCONTO CONCEDIDO MÊS</div><div class="stat-value" id="prt-stat-month-disc">—</div></div>
       <div class="stat-card stat-orange"><div class="stat-label">ROI DO MÊS (R$/T$)</div><div class="stat-value" id="prt-stat-roi">—</div></div>
     </div>
-    <h3 style="font-family:Orbitron;font-size:14px;letter-spacing:2px;margin:14px 0 10px">Top 10 parceiros por comissão</h3>
+    <h3 style="font-family:Orbitron;font-size:14px;letter-spacing:2px;margin:14px 0 10px">Top 10 Creations por comissão</h3>
     <div id="prt-stats-top-wrap"></div>
   </div>
 </div>
@@ -2472,7 +2472,7 @@ function escapeHtmlMk(s) {
     <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">BIO</label>
     <textarea class="form-input" id="prt-bio" rows="2" style="margin-top:6px"></textarea>
 
-    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOTAS INTERNAS (não visível ao parceiro)</label>
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOTAS INTERNAS (não visível ao Creation)</label>
     <textarea class="form-input" id="prt-notes" rows="2" style="margin-top:6px"></textarea>
 
     <div id="prt-error" style="margin-top:10px"></div>
@@ -4351,10 +4351,10 @@ async function loadAdminPartnersList() {
   const data = await api('/admin/partners' + (q.toString() ? '?' + q.toString() : ''));
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(data.error) + '</div>'; return; }
   const list = data.partners || [];
-  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum parceiro</div>'; return; }
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhum Creation</div>'; return; }
   const tierColors = { BRONZE: '#b08d57', SILVER: '#a0a0a0', GOLD: '#d4af37', DIAMOND: '#0066cc' };
   const statusColors = { ACTIVE: '#0a843d', PAUSED: '#b06b00', INACTIVE: '#8e8e93' };
-  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' parceiros</p>';
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' Creations</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;">';
   list.forEach(p => {
     const u = p.user || {};
@@ -4396,7 +4396,7 @@ function prtRoleLabel(role) {
     case 'seller': return 'vendedor';
     case 'admin': return 'admin';
     case 'superadmin': return 'superadmin';
-    case 'partner': return 'parceiro';
+    case 'partner': return 'Creation';
     default: return role || '—';
   }
 }
@@ -4452,7 +4452,7 @@ async function searchPrtUserPicker() {
       });
     } else {
       item.addEventListener('click', function () {
-        alert('Esse usuário já é parceiro (cupom: ' + (u.partnerCoupon || '?') + '). Escolha outro.');
+        alert('Esse usuário já é Creation (cupom: ' + (u.partnerCoupon || '?') + '). Escolha outro.');
       });
     }
     list.appendChild(item);
@@ -4534,10 +4534,10 @@ async function savePartnerModal() {
 async function deletePartnerFromModal() {
   const id = document.getElementById('prt-id').value.trim();
   if (!id) return;
-  if (!confirm('Remover parceiro? Se houver vendas, ele será apenas banido (histórico preservado).')) return;
+  if (!confirm('Remover Creation? Se houver vendas, ele será apenas banido (histórico preservado).')) return;
   const r = await api('/admin/partners/' + encodeURIComponent(id), 'DELETE');
   if (r.error) { alert(r.error); return; }
-  if (r.soft) alert(r.message || 'Parceiro banido (vendas preservadas)');
+  if (r.soft) alert(r.message || 'Creation banido (vendas preservadas)');
   document.getElementById('prt-modal').classList.remove('show');
   loadAdminPartnersList();
 }
@@ -4552,7 +4552,7 @@ async function loadAdminPartnerSales() {
   const partnersData = await api('/admin/partners');
   if (partnersData.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(partnersData.error) + '</div>'; return; }
   const partners = partnersData.partners || [];
-  if (!partners.length) { wrap.innerHTML = '<div class="empty-state">Nenhum parceiro</div>'; return; }
+  if (!partners.length) { wrap.innerHTML = '<div class="empty-state">Nenhum Creation</div>'; return; }
   // pega vendas dos top 25 parceiros por totalCommission (o backend já ordena)
   const top = partners.slice(0, 25);
   const all = [];
@@ -4576,7 +4576,7 @@ async function loadAdminPartnerSales() {
   }
   filtered.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
   if (!filtered.length) { wrap.innerHTML = '<div class="empty-state">Nenhuma venda para os filtros</div>'; return; }
-  let html = '<table><thead><tr><th>Data</th><th>Cupom</th><th>Parceiro</th><th>Cliente</th><th>Valor</th><th>Desconto</th><th>Comissão T$</th><th>Vendedor</th><th>Status</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Data</th><th>Cupom</th><th>Creation</th><th>Cliente</th><th>Valor</th><th>Desconto</th><th>Comissão T$</th><th>Vendedor</th><th>Status</th></tr></thead><tbody>';
   filtered.slice(0, 300).forEach(function (s) {
     const cli = (s.customerName || '—') + (s.customerPhone ? ' (' + s.customerPhone + ')' : '');
     html += '<tr>'
@@ -4608,7 +4608,7 @@ async function loadAdminPartnerStats() {
   const wrap = document.getElementById('prt-stats-top-wrap');
   const top = data.top || [];
   if (!top.length) { wrap.innerHTML = '<div class="empty-state">Sem vendas ainda</div>'; return; }
-  let html = '<table><thead><tr><th>#</th><th>Cupom</th><th>Parceiro</th><th>Vendas</th><th>Comissão T$</th><th>Tier</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>#</th><th>Cupom</th><th>Creation</th><th>Vendas</th><th>Comissão T$</th><th>Tier</th></tr></thead><tbody>';
   top.forEach(function (p, i) {
     html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(p.couponCode) + '</td><td>' + escapeHtml(p.userName || '—') + '</td><td>' + (p.totalSales || 0) + '</td><td>' + Number(p.totalCommission || 0).toFixed(2) + '</td><td>' + escapeHtml(p.tier) + '</td></tr>';
   });
@@ -4661,7 +4661,7 @@ function recalcPartnerSale() {
     + 'Subtotal: <strong>R$ ' + full.toFixed(2) + '</strong><br>'
     + 'Desconto (' + prtSaleCouponInfo.discountPct + '%): <strong style="color:var(--orange)">-R$ ' + disc.toFixed(2) + '</strong><br>'
     + 'Total cobrado: <strong>R$ ' + total.toFixed(2) + '</strong><br>'
-    + '<span style="color:#A8FFB0">Comissão pro parceiro: T$ ' + com.toFixed(2) + '</span>';
+    + '<span style="color:#A8FFB0">Comissão pro Creation: T$ ' + com.toFixed(2) + '</span>';
   calc.style.display = 'block';
 }
 
@@ -4707,7 +4707,7 @@ async function confirmPartnerSale() {
     errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(r.error) + '</strong></div>';
     return;
   }
-  alert('Venda registrada. Comissão T$ ' + Number(r.commissionEarned).toFixed(2) + ' creditada ao parceiro. Saldo: T$ ' + Number(r.partnerBalance).toFixed(2));
+  alert('Venda registrada. Comissão T$ ' + Number(r.commissionEarned).toFixed(2) + ' creditada ao Creation. Saldo: T$ ' + Number(r.partnerBalance).toFixed(2));
   document.getElementById('prt-sale-modal').classList.remove('show');
   loadAdminPartnersList();
 }
@@ -6273,7 +6273,7 @@ async function aiShowOrch(id) {
     'whatsapp-agent': '💬 WhatsApp',
     'report-agent': '📊 Relatório',
     'operations-agent': '⚙ Operação',
-    'partner-agent': '🤝 Parceiros',
+    'partner-agent': '🤝 Creation',
     'product-agent': '🛍 Produto',
     'design-brief-agent': '🎨 Briefing Visual',
     'safety-agent': '🛡 Segurança',
@@ -6395,9 +6395,9 @@ function renderAgentDetail(code, m) {
   }
 
   if (code === 'partner-agent') {
-    h += aiKV('Campanha de parceiro', m.partnerCampaign);
-    h += aiKV('Texto pra parceiro divulgar', m.partnerPostText);
-    h += aiKV('Meta do parceiro', m.partnerGoal);
+    h += aiKV('Campanha de Creation', m.partnerCampaign);
+    h += aiKV('Texto pro Creation divulgar', m.partnerPostText);
+    h += aiKV('Meta do Creation', m.partnerGoal);
     h += aiKV('Notas de comissão', m.commissionNotes);
   }
 
