@@ -22,6 +22,7 @@ Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS
 - SEMPRE registrar ação com timestamp + agente responsável
 - SEMPRE usar dados REAIS (banco TenisCash, não simulados)
 - NUNCA committar `.env`, tokens, secrets — `.env` está no `.gitignore`
+- **REGRA INQUEBRÁVEL — Nuvemshop:** só sobe produto pro Nuvemshop classificado nas **4** (Categoria + Sub + Modalidade + Especialidade). Sem as 4, NÃO sobe (nem cria, nem atualiza). Enforced em `pushProductToNuvemshop` (skip se incompleto).
 
 ## Hierarquia de agentes
 
