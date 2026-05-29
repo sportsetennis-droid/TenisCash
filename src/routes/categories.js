@@ -154,13 +154,42 @@ router.get('/:id/products', async (req, res) => {
   }
 });
 
+function mapTypeFromCategory(catName) {
+  if (catName === 'Tênis') return 'Tênis';
+  if (catName === 'Chuteiras') return 'Chuteira';
+  if (catName === 'Vestuário' || catName === 'Acessórios') return 'Outro';
+  return null;
+}
+
 // POST /:id/assign-products — atribui esse nó (e ancestrais) a vários produtos
 // Funciona em qualquer nível. Atualiza Product.category/subcategory ou
 // aiContext.classification.modality/tier conforme o level.
+//
+// Body: { productIds:[], slot?:1|2, clear?:bool }
+//  - slot 1 (default): classificação principal (Product.category/subcategory +
+//    aiContext.classification) — comportamento original.
+//  - slot 2: 2ª classificação opcional, guardada em aiContext.classification2
+//    (NÃO mexe na 1ª nem em Product.category/subcategory). Vai pro Nuvemshop também.
+//  - clear:true com slot 2 → remove a 2ª classificação.
 router.post('/:id/assign-products', async (req, res) => {
   try {
-    const { productIds } = req.body || {};
+    const { productIds, clear } = req.body || {};
+    const slot = (req.body?.slot === 2 || req.body?.slot === '2') ? 2 : 1;
     if (!Array.isArray(productIds) || !productIds.length) return res.status(400).json({ error: 'productIds obrigatório' });
+
+    // ---- Remover 2ª classificação ----
+    if (slot === 2 && clear) {
+      let cleared = 0;
+      for (const pid of productIds) {
+        const p = await prisma.product.findUnique({ where: { id: pid }, select: { aiContext: true } });
+        if (!p) continue;
+        const ctx = (typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext) || {};
+        if (ctx.classification2) { delete ctx.classification2; await prisma.product.update({ where: { id: pid }, data: { aiContext: ctx } }); cleared++; }
+      }
+      scheduleNsSync(productIds);
+      return res.json({ ok: true, updated: cleared, cleared: true, nuvemshop: 'queued' });
+    }
+
     const node = await prisma.categoryNode.findUnique({ where: { id: req.params.id } });
     if (!node) return res.status(404).json({ error: 'Nó não encontrado' });
     // Constrói cadeia de ancestrais
@@ -177,10 +206,29 @@ router.post('/:id/assign-products', async (req, res) => {
       const p = await prisma.product.findUnique({ where: { id: pid }, select: { aiContext: true } });
       if (!p) continue;
       const ctx = (typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext) || {};
-      ctx.classification = ctx.classification || {};
-      if (byLevel.CATEGORY === 'Tênis' || byLevel.CATEGORY === 'Chuteiras' || byLevel.CATEGORY === 'Vestuário' || byLevel.CATEGORY === 'Acessórios') {
-        ctx.classification.type = byLevel.CATEGORY === 'Tênis' ? 'Tênis' : byLevel.CATEGORY === 'Chuteiras' ? 'Chuteira' : 'Outro';
+
+      if (slot === 2) {
+        // 2ª classificação — guarda cadeia completa em classification2 (não toca na 1ª)
+        const c2 = {};
+        if (byLevel.CATEGORY) { c2.category = byLevel.CATEGORY; const t = mapTypeFromCategory(byLevel.CATEGORY); if (t) c2.type = t; }
+        if (byLevel.SUBCATEGORY) {
+          c2.subcategory = byLevel.SUBCATEGORY;
+          if (/^(Mulher|Feminino|Homem|Menina|Menino)$/i.test(byLevel.SUBCATEGORY)) c2.gender = byLevel.SUBCATEGORY;
+        }
+        if (byLevel.MODALITY) c2.modality = byLevel.MODALITY;
+        if (byLevel.SPECIALTY) c2.tier = byLevel.SPECIALTY;
+        c2.classifiedAt = new Date().toISOString();
+        c2.editedBy = req.userId;
+        ctx.classification2 = c2;
+        await prisma.product.update({ where: { id: pid }, data: { aiContext: ctx } });
+        updated++;
+        continue;
       }
+
+      // slot 1 — comportamento original
+      ctx.classification = ctx.classification || {};
+      const t = mapTypeFromCategory(byLevel.CATEGORY);
+      if (t) ctx.classification.type = t;
       if (byLevel.SUBCATEGORY && /^(Mulher|Feminino|Homem|Menina|Menino)$/i.test(byLevel.SUBCATEGORY)) {
         ctx.classification.gender = byLevel.SUBCATEGORY;
       }
@@ -198,7 +246,7 @@ router.post('/:id/assign-products', async (req, res) => {
     }
     // Sync com Nuvemshop em background — não bloqueia resposta
     scheduleNsSync(productIds);
-    res.json({ ok: true, updated, applied: byLevel, nuvemshop: 'queued' });
+    res.json({ ok: true, updated, applied: byLevel, slot, nuvemshop: 'queued' });
   } catch (err) {
     res.status(500).json({ error: 'Erro ao atribuir', detail: err.message });
   }

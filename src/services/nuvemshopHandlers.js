@@ -877,6 +877,31 @@ async function pushProductToNuvemshop(localProductId, connection) {
     }
   }
 
+  // 2ª classificação (opcional) — produto pode estar em DUAS cadeias de categoria
+  // no Nuvemshop. Monta a 2ª cadeia a partir de aiContext.classification2 e ANEXA.
+  const c2 = aiCtx?.classification2;
+  if (c2 && c2.category) {
+    let p2 = null;
+    const cat2 = await findOrCreateCategoryWithParent(connection, c2.category, null);
+    if (cat2) { categoryIds.push(cat2); p2 = cat2; }
+    if (c2.subcategory && p2) {
+      const sub2 = await findOrCreateCategoryWithParent(connection, c2.subcategory, p2);
+      if (sub2) { categoryIds.push(sub2); p2 = sub2; }
+    }
+    if (c2.modality && p2) {
+      const mod2 = await findOrCreateCategoryWithParent(connection, c2.modality, p2);
+      if (mod2) { categoryIds.push(mod2); p2 = mod2; }
+    }
+    if (c2.tier && p2) {
+      const tier2 = await findOrCreateCategoryWithParent(connection, c2.tier, p2);
+      if (tier2) { categoryIds.push(tier2); }
+    }
+  }
+  // Dedupe IDs (caso as duas cadeias compartilhem nós)
+  const dedupCategoryIds = [...new Set(categoryIds.map(String))];
+  categoryIds.length = 0;
+  categoryIds.push(...dedupCategoryIds);
+
   let nsProduct;
   let action;
   let variantSync = null;

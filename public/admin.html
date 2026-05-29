@@ -1400,6 +1400,31 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <button id="cat-apply-btn" class="btn btn-primary" style="height:42px;">✓ Aplicar</button>
     </div>
     <div id="cat-apply-info" style="margin-top:8px;font-size:12px;color:#8e8e93;">Selecione produtos abaixo. A classificação aplica o nó mais profundo escolhido + ancestrais.</div>
+
+    <div style="margin-top:10px;">
+      <button type="button" id="cat-add-2nd-btn" onclick="toggleSecondClassification()" style="background:#fff;border:1.5px dashed #E5571E;color:#E5571E;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;">➕ Adicionar 2ª classificação</button>
+      <span style="font-size:11px;color:#8e8e93;margin-left:8px;">opcional — o produto pode ficar em 2 categorias (vai pro Nuvemshop também)</span>
+    </div>
+    <div id="cat-apply2-row" style="display:none;grid-template-columns:1fr 1fr 1fr 1fr auto auto;gap:10px;align-items:end;margin-top:10px;padding-top:10px;border-top:1px dashed #ffe4bd;">
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">1. Categoria (2ª)</label>
+        <select id="cat-apply2-category" class="form-input" style="background:white;color:#1d1d1f;margin-top:4px;width:100%;" onchange="_catApply2Cascade(event)"><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">2. Sub (2ª)</label>
+        <select id="cat-apply2-sub" class="form-input" style="background:white;color:#1d1d1f;margin-top:4px;width:100%;" disabled onchange="_catApply2Cascade(event)"><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">3. Modalidade (2ª)</label>
+        <select id="cat-apply2-mod" class="form-input" style="background:white;color:#1d1d1f;margin-top:4px;width:100%;" disabled onchange="_catApply2Cascade(event)"><option value="">—</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">4. Especialidade (2ª)</label>
+        <select id="cat-apply2-spec" class="form-input" style="background:white;color:#1d1d1f;margin-top:4px;width:100%;" disabled onchange="_catApply2Cascade(event)"><option value="">—</option></select>
+      </div>
+      <button type="button" onclick="_catApply2Classification()" class="btn btn-primary" style="height:42px;">✓ Aplicar 2ª</button>
+      <button type="button" onclick="_catClear2Classification()" title="Remover a 2ª classificação dos produtos selecionados" style="height:42px;background:#fff;color:#d70015;border:1.5px solid #d70015;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;padding:0 12px;">Remover 2ª</button>
+    </div>
   </div>
 
   <div id="cat-classify-toolbar" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -8850,6 +8875,68 @@ function _catApplyCascade() {
   if (!deepest) info.textContent = 'Selecione produtos abaixo. Escolha pelo menos a Categoria pra aplicar.';
   else if (_catClassifySelected.size === 0) info.textContent = 'Nó selecionado: aplicará cadeia. Selecione produtos pra aplicar.';
   else info.textContent = `Aplicará classificação a ${_catClassifySelected.size} produto(s).`;
+}
+
+// ===== 2ª classificação (opcional) =====
+function toggleSecondClassification() {
+  const row = document.getElementById('cat-apply2-row');
+  const btn = document.getElementById('cat-add-2nd-btn');
+  const show = (row.style.display === 'none' || !row.style.display);
+  row.style.display = show ? 'grid' : 'none';
+  btn.textContent = show ? '✕ Esconder 2ª classificação' : '➕ Adicionar 2ª classificação';
+  if (show) {
+    const c2 = document.getElementById('cat-apply2-category');
+    // Copia as opções de Categoria da 1ª linha (mesmos nós-raiz)
+    if (c2 && c2.options.length <= 1) c2.innerHTML = document.getElementById('cat-apply-category').innerHTML;
+  }
+}
+
+function _catApply2Cascade(ev) {
+  const cat = document.getElementById('cat-apply2-category');
+  const sub = document.getElementById('cat-apply2-sub');
+  const mod = document.getElementById('cat-apply2-mod');
+  const spec = document.getElementById('cat-apply2-spec');
+  const id = ev && ev.target ? ev.target.id : null;
+  if (id === 'cat-apply2-category') {
+    _catPopulateSelectOptions(sub, cat.value ? _catChildrenOf(cat.value) : []);
+    sub.disabled = !cat.value;
+    _catPopulateSelectOptions(mod, []); mod.disabled = true;
+    _catPopulateSelectOptions(spec, []); spec.disabled = true;
+  }
+  if (id === 'cat-apply2-sub') {
+    _catPopulateSelectOptions(mod, sub.value ? _catChildrenOf(sub.value) : []);
+    mod.disabled = !sub.value;
+    _catPopulateSelectOptions(spec, []); spec.disabled = true;
+  }
+  if (id === 'cat-apply2-mod') {
+    _catPopulateSelectOptions(spec, mod.value ? _catChildrenOf(mod.value) : []);
+    spec.disabled = !mod.value;
+  }
+}
+
+async function _catApply2Classification() {
+  if (_catClassifySelected.size === 0) { alert('Selecione produtos.'); return; }
+  const nodeId = document.getElementById('cat-apply2-spec').value
+    || document.getElementById('cat-apply2-mod').value
+    || document.getElementById('cat-apply2-sub').value
+    || document.getElementById('cat-apply2-category').value;
+  if (!nodeId) { alert('Escolha pelo menos a Categoria da 2ª classificação.'); return; }
+  if (!confirm(`Aplicar 2ª classificação a ${_catClassifySelected.size} produto(s)? (vai pro Nuvemshop também)`)) return;
+  const r = await api('/admin/categories/' + nodeId + '/assign-products', 'POST', { productIds: Array.from(_catClassifySelected), slot: 2 });
+  if (r.error) { alert('Erro: ' + r.error); return; }
+  alert('✓ 2ª classificação aplicada a ' + r.updated + ' produto(s).');
+  _catClassifySelected.clear();
+  await loadCategoriesClassify();
+}
+
+async function _catClear2Classification() {
+  if (_catClassifySelected.size === 0) { alert('Selecione produtos.'); return; }
+  if (!confirm(`Remover a 2ª classificação de ${_catClassifySelected.size} produto(s)?`)) return;
+  const r = await api('/admin/categories/clear/assign-products', 'POST', { productIds: Array.from(_catClassifySelected), slot: 2, clear: true });
+  if (r.error) { alert('Erro: ' + r.error); return; }
+  alert('✓ 2ª classificação removida de ' + r.updated + ' produto(s).');
+  _catClassifySelected.clear();
+  await loadCategoriesClassify();
 }
 
 async function _catApplyClassification() {

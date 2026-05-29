@@ -44,10 +44,23 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // Usado pela Curadoria pra mostrar os bipados (com tamanhos por loja no card).
     const inStore = String(req.query.inStore || req.query.instore || '') === '1';
     const aiFilters = [];
-    if (type) aiFilters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
-    if (gender) aiFilters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
-    if (modality) aiFilters.push({ aiContext: { path: ['classification', 'modality'], equals: modality } });
-    if (tier) aiFilters.push({ aiContext: { path: ['classification', 'tier'], equals: tier } });
+    // Casa com a 1ª OU a 2ª classificação (classification2)
+    if (type) aiFilters.push({ OR: [
+      { aiContext: { path: ['classification', 'type'], equals: type } },
+      { aiContext: { path: ['classification2', 'type'], equals: type } },
+    ] });
+    if (gender) aiFilters.push({ OR: [
+      { aiContext: { path: ['classification', 'gender'], equals: gender } },
+      { aiContext: { path: ['classification2', 'gender'], equals: gender } },
+    ] });
+    if (modality) aiFilters.push({ OR: [
+      { aiContext: { path: ['classification', 'modality'], equals: modality } },
+      { aiContext: { path: ['classification2', 'modality'], equals: modality } },
+    ] });
+    if (tier) aiFilters.push({ OR: [
+      { aiContext: { path: ['classification', 'tier'], equals: tier } },
+      { aiContext: { path: ['classification2', 'tier'], equals: tier } },
+    ] });
 
     // Condições sobre ProductSize (tamanho e/ou estoque em loja) — merge num único some
     const sizesSome = {};

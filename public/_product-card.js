@@ -563,6 +563,12 @@
     if (genderLabel) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#e3f2fd;color:#0066cc;border-radius:6px;font-weight:700;">${esc(genderLabel)}</span>`;
     if (cls.modality) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#f0f0f3;color:#1d1d1f;border-radius:6px;font-weight:600;">${esc(cls.modality)}</span>`;
     if (cls.tier) metaPills += `<span style="font-size:10px;padding:2px 7px;background:#fff8e0;color:#b06b00;border-radius:6px;font-weight:700;">⭐ ${esc(cls.tier)}</span>`;
+    // 2ª classificação (opcional) — etiqueta roxa com a cadeia completa
+    const cls2 = ctx.classification2 || null;
+    if (cls2) {
+      const parts2 = [cls2.category || cls2.type, cls2.subcategory || cls2.gender, cls2.modality, cls2.tier].filter(Boolean);
+      if (parts2.length) metaPills += `<span title="2ª classificação" style="font-size:10px;padding:2px 7px;background:#ede7f6;color:#5e35b1;border-radius:6px;font-weight:700;">2ª: ${esc(parts2.join(' › '))}</span>`;
+    }
     if (metaPills) html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">${metaPills}</div>`;
 
     // TAMANHOS POR LOJA (estoque físico do último bipe — info mais importante, sobe pro topo)

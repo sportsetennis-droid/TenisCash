@@ -44,10 +44,23 @@ router.get('/products', async (req, res) => {
     const cursor = req.query.cursor;
 
     const filters = [];
-    if (type) filters.push({ aiContext: { path: ['classification', 'type'], equals: type } });
-    if (gender) filters.push({ aiContext: { path: ['classification', 'gender'], equals: gender } });
-    if (modality) filters.push({ aiContext: { path: ['classification', 'modality'], equals: modality } });
-    if (tier) filters.push({ aiContext: { path: ['classification', 'tier'], equals: tier } });
+    // Casa com a 1ª OU a 2ª classificação (classification2)
+    if (type) filters.push({ OR: [
+      { aiContext: { path: ['classification', 'type'], equals: type } },
+      { aiContext: { path: ['classification2', 'type'], equals: type } },
+    ] });
+    if (gender) filters.push({ OR: [
+      { aiContext: { path: ['classification', 'gender'], equals: gender } },
+      { aiContext: { path: ['classification2', 'gender'], equals: gender } },
+    ] });
+    if (modality) filters.push({ OR: [
+      { aiContext: { path: ['classification', 'modality'], equals: modality } },
+      { aiContext: { path: ['classification2', 'modality'], equals: modality } },
+    ] });
+    if (tier) filters.push({ OR: [
+      { aiContext: { path: ['classification', 'tier'], equals: tier } },
+      { aiContext: { path: ['classification2', 'tier'], equals: tier } },
+    ] });
     if (unclassified) filters.push({ OR: [
       { aiContext: { equals: null } },
       { aiContext: { path: ['classification'], equals: null } },
