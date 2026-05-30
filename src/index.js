@@ -529,6 +529,11 @@ app.get('/t/:slug', async (req, res) => {
   .mt-row .nm{font-weight:600}
   .mt-row.win .nm{font-weight:800;color:#0a843d}
   .mt-row .sc{font-weight:800;font-size:17px;min-width:26px;text-align:center}
+  .liverow{display:flex;align-items:center;gap:8px;padding:6px 0 2px;border-top:1px solid #f0f0f3;margin-top:2px}
+  .livebadge{display:inline-flex;align-items:center;gap:5px;background:#ffe9e0;color:#d70015;font-size:10px;font-weight:900;padding:3px 8px;border-radius:7px;text-transform:uppercase;letter-spacing:.5px}
+  .livebadge .dot{width:7px;height:7px;border-radius:50%;background:#d70015;animation:lp 1.1s infinite}
+  @keyframes lp{0%,100%{opacity:1}50%{opacity:.25}}
+  .livesets{font-size:14px;font-weight:800;color:#1d1d1f;letter-spacing:.5px}
   .tbl{width:100%;background:#fff;border-radius:12px;overflow:hidden;border-collapse:collapse;box-shadow:0 2px 8px rgba(0,0,0,.04);font-size:13px}
   .tbl th{background:#1d1d1f;color:#fff;font-size:11px;font-weight:700;padding:9px 4px;text-align:center}
   .tbl td{padding:9px 4px;text-align:center;border-top:1px solid #f0f0f3}
@@ -580,13 +585,19 @@ app.get('/t/:slug', async (req, res) => {
         var h=m.homeEntry?m.homeEntry.name:'A definir';
         var a=m.awayEntry?m.awayEntry.name:'A definir';
         var done=(m.status==='FINISHED'||m.status==='WALKOVER');
+        var live=(m.status==='LIVE');
         var hs=done&&m.homeScore!=null?m.homeScore:'';
         var as=done&&m.awayScore!=null?m.awayScore:'';
         var hw=m.winnerEntryId&&m.homeEntry&&m.winnerEntryId===m.homeEntry.id;
         var aw=m.winnerEntryId&&m.awayEntry&&m.winnerEntryId===m.awayEntry.id;
+        var setsStr='';
+        if(live&&m.liveState&&m.liveState.sets&&m.liveState.sets.length){
+          setsStr=m.liveState.sets.map(function(s){return (s.h!=null?s.h:0)+'-'+(s.a!=null?s.a:0);}).join('  ');
+        }
         html+='<div class="mt">'
           +'<div class="mt-row'+(hw?' win':'')+'"><span class="nm">'+esc(h)+'</span><span class="sc">'+esc(hs)+'</span></div>'
           +'<div class="mt-row'+(aw?' win':'')+'"><span class="nm">'+esc(a)+'</span><span class="sc">'+esc(as)+'</span></div>'
+          +(live?'<div class="liverow"><span class="livebadge"><span class="dot"></span>Ao vivo</span><span class="livesets">'+esc(setsStr)+'</span></div>':'')
           +'</div>';
       });
       html+='</div>';
@@ -601,8 +612,10 @@ app.get('/t/:slug', async (req, res) => {
     }).join('');
     return '<table class="tbl"><thead><tr><th>#</th><th class="tl">Atleta</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th>Pts</th></tr></thead><tbody>'+rows+'</tbody></table>';
   }
-  function load(catId){
-    elBody.innerHTML='<div class="empty">Carregando…</div>';
+  var POLL=null;
+  function load(catId, silent){
+    if(POLL){clearTimeout(POLL);POLL=null;}
+    if(!silent) elBody.innerHTML='<div class="empty">Carregando…</div>';
     Promise.all([
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/matches').then(function(r){return r.json();}),
       fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();})
@@ -614,7 +627,8 @@ app.get('/t/:slug', async (req, res) => {
       if(stHtml) html+='<div class="sec-h">Classificação</div>'+stHtml;
       html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
       elBody.innerHTML=html;
-    }).catch(function(){elBody.innerHTML='<div class="empty">Erro ao carregar.</div>';});
+      if(matches.some(function(m){return m.status==='LIVE';})){POLL=setTimeout(function(){load(catId,true);},20000);}
+    }).catch(function(){if(!silent)elBody.innerHTML='<div class="empty">Erro ao carregar.</div>';});
   }
   function renderTabs(){
     elTabs.innerHTML=CATS.map(function(c,i){
