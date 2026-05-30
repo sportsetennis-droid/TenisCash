@@ -118,6 +118,20 @@ model User {
 
   // Push notifications (Web Push API) — array de subscriptions (1 por device)
   pushSubscriptions PushSubscription[] @relation("pushByUser")
+
+  // ===== PROFISSIONAL ESPORTIVO (card público + gestão + cobrança) =====
+  // O usuário vira "profissional" (personal, professor, fisio, nutri).
+  // Ele cobra pelos serviços DENTRO do app mesmo recebendo o dinheiro FORA
+  // dele (Pix/banco próprio) — settlementMode separa COBRAR de RECEBER.
+  professionalProfile     Professional?
+  professionalClientLinks ProfessionalClient[]
+
+  // ===== APEX COMPETIÇÃO (torneios, ranking, desafios) =====
+  tournamentsOwned   Tournament[]    @relation("tournamentOwner")
+  entryMemberships   EntryMember[]
+  athleteRatings     AthleteRating[]
+  challengesSent     PlayChallenge[] @relation("challenger")
+  challengesReceived PlayChallenge[] @relation("challenged")
 }
 
 // ============================================================
@@ -663,9 +677,9 @@ model Partner {
   type   String // 'atleta', 'influencer', 'saude', 'personal', 'outro'
   status String @default("active") // active, paused, banned
 
-  couponCode    String @unique // ex: PEDRO, CARLA-RUN
-  discountPct   Float  @default(5) // % desconto pro cliente
-  commissionPct Float  @default(5) // % comissão pro Creation
+  couponCode    String  @unique // ex: PEDRO, CARLA-RUN
+  discountPct   Float   @default(5) // % desconto pro cliente
+  commissionPct Float   @default(5) // % comissão pro Creation
   nsCouponId    String? // id do cupom espelhado na Nuvemshop (interligação Creation ⇄ NS)
 
   // Estatísticas (denormalizadas pra dashboard rápido)
@@ -685,7 +699,8 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sales PartnerSale[]
+  sales     PartnerSale[]
+  campaigns CreationCampaign[]
 
   @@index([status])
   @@index([tier])
@@ -720,6 +735,81 @@ model PartnerSale {
   @@index([partnerId, createdAt])
   @@index([customerCpf, createdAt])
   @@index([nsOrderId])
+}
+
+// ============================================================
+// MÓDULO 10.1 — CAMPANHAS DE CREATION (briefing + entregáveis + retainer)
+// ============================================================
+// Extensão do Programa de Parceiros (Partner = Creation). Contrata um Creation
+// por CAMPANHA. Pagamento por:
+//   - commission  → comissão de venda (já roda via cupom/PartnerSale)
+//   - monthly_fee → valor mensal fixo (retainer)        ← novo
+//   - hybrid      → retainer + comissão
+// O retainer é pago via CreationPayout. payoutMode decide a moeda:
+//   - tenis_cash → credita User.partnerBalance (T$, trocável por produto)
+//   - pix_cash   → pagamento OFF-PLATFORM (Pix/banco), só registra liquidação
+// (mesmo princípio COBRAR≠RECEBER do Charge dos Professionals).
+model CreationCampaign {
+  id        String  @id @default(cuid())
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  title     String
+  briefing  String? @db.Text // roteiro/diretrizes do que o creator deve postar
+  objective String? // awareness | sales | launch | ugc | other
+
+  // Modelo de pagamento
+  paymentModel          String @default("commission") // commission | monthly_fee | hybrid
+  monthlyFee            Float  @default(0) // valor do retainer por período (na moeda do payoutMode)
+  commissionPctOverride Float? // sobrescreve Partner.commissionPct nesta campanha (null = herda)
+  payoutMode            String @default("tenis_cash") // tenis_cash | pix_cash
+
+  // Período / recorrência do retainer
+  recurrence String    @default("monthly") // one_off | monthly
+  startDate  DateTime  @default(now())
+  endDate    DateTime?
+  dayOfMonth Int? // dia de fechamento/pagamento do retainer (1-28)
+
+  // Entregáveis — ex: [{ "type": "reel", "qty": 3, "done": 1 }, { "type": "story", "qty": 5, "done": 0 }]
+  deliverables Json?
+
+  status String  @default("proposed") // proposed | active | paused | delivered | finished | cancelled
+  notes  String?
+
+  // Stats denormalizadas
+  totalPaid Float @default(0) // soma dos payouts liquidados
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payouts CreationPayout[]
+
+  @@index([partnerId, status])
+  @@index([status])
+}
+
+model CreationPayout {
+  id         String           @id @default(cuid())
+  campaignId String
+  campaign   CreationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  partnerId  String // denormalizado pra query rápida por parceiro
+
+  reference  String // "2026-05" (competência do retainer) ou "one_off"
+  amount     Float
+  payoutMode String @default("tenis_cash") // snapshot do modo no momento da geração
+
+  status   String    @default("pending") // pending | paid | cancelled
+  method   String? // tenis_cash | pix | cash | transfer
+  paidAt   DateTime?
+  paidById String? // admin que liberou
+  txId     String? // Transaction.id quando creditado em T$ (partnerBalance)
+
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, reference]) // idempotência: 1 retainer por competência por campanha
+  @@index([partnerId, status])
+  @@index([status, createdAt])
 }
 
 // ============================================================
@@ -2511,4 +2601,481 @@ model BrandProfile {
   updatedAt DateTime @updatedAt
 
   @@index([active, displayOrder])
+}
+
+// ============================================================
+// APEX COMPETIÇÃO — Torneios, partidas, ranking, desafios
+// Camada de competição do app esportivo (estilo CopaFácil + Playtomic).
+// Reutiliza User (carteira/perfil), AthleteProfile (card), BadgeEarned
+// (XP/cashback) e Transaction (movimento TenisCash). storeId = loja
+// patrocinadora/sede (campo solto sem relação, mesmo padrão de Club).
+// ============================================================
+
+model Tournament {
+  id        String  @id @default(cuid())
+  slug      String  @unique // URL pública: /t/copa-verao-2026
+  name      String
+  sport     String // TENNIS | BEACH_TENNIS | PADEL | FUTSAL | VOLLEY | ...
+  format    String  @default("KNOCKOUT") // KNOCKOUT | ROUND_ROBIN | GROUPS | GROUPS_KNOCKOUT
+  isDoubles Boolean @default(false) // dupla (beach tennis / padel)
+  status    String  @default("DRAFT") // DRAFT | OPEN | ONGOING | FINISHED | CANCELED
+
+  ownerId String
+  owner   User    @relation("tournamentOwner", fields: [ownerId], references: [id])
+  storeId String? // loja Sports & Tennis patrocinadora/sede (sem relação, padrão Club)
+
+  description String? @db.Text
+  rules       String? @db.Text
+  bannerUrl   String?
+  city        String?
+  state       String?
+
+  startDate           DateTime?
+  endDate             DateTime?
+  registrationCloseAt DateTime?
+  maxEntries          Int?
+
+  // Config de TenisCash — movimento REAL de saldo é fase 2 (gated por aprovação do dono)
+  entryFeeCash     Float   @default(0) // custo de inscrição em TenisCash
+  prizeCash        Float   @default(0) // prêmio ao campeão em TenisCash
+  prizeDescription String?
+
+  visibility String   @default("public")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  categories TournamentCategory[]
+  entries    TournamentEntry[]
+  matches    TournamentMatch[]
+  standings  TournamentStanding[]
+
+  @@index([status])
+  @@index([sport])
+  @@index([storeId])
+}
+
+model TournamentCategory {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name         String // "Geral" | "Masculino A" | "Feminino B" | "Misto"
+  gender       String     @default("OPEN") // M | F | MIXED | OPEN
+  levelLabel   String? // A | B | C | Open | Iniciante ...
+  format       String? // override do formato do torneio (senão usa o do torneio)
+  pointsWin    Int        @default(3) // pontuação na liga/pontos corridos
+  pointsDraw   Int        @default(1)
+  pointsLoss   Int        @default(0)
+
+  entries   TournamentEntry[]
+  matches   TournamentMatch[]
+  standings TournamentStanding[]
+
+  @@index([tournamentId])
+}
+
+model TournamentEntry {
+  id           String             @id @default(cuid())
+  tournamentId String
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     TournamentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  name      String // nome de exibição: "João & Maria" | "Time Bessa"
+  seed      Int? // cabeça de chave
+  groupName String? // grupo na fase de grupos
+  status    String   @default("CONFIRMED") // PENDING | CONFIRMED | WITHDRAWN
+  entryPaid Boolean  @default(false) // pagou inscrição em TenisCash (fase 2)
+  createdAt DateTime @default(now())
+
+  members     EntryMember[]
+  homeMatches TournamentMatch[]   @relation("homeEntry")
+  awayMatches TournamentMatch[]   @relation("awayEntry")
+  wonMatches  TournamentMatch[]   @relation("winnerEntry")
+  standing    TournamentStanding?
+
+  @@index([categoryId])
+  @@index([tournamentId])
+}
+
+model EntryMember {
+  id      String          @id @default(cuid())
+  entryId String
+  entry   TournamentEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, userId])
+  @@index([userId])
+}
+
+model TournamentMatch {
+  id           String             @id @default(cuid())
+  tournamentId String
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     TournamentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  stage     String  @default("LEAGUE") // LEAGUE | GROUP | RO32 | RO16 | QUARTER | SEMI | FINAL | THIRD
+  round     Int     @default(1) // rodada (pontos corridos) ou nível da chave
+  groupName String? // grupo, se fase de grupos
+  ordering  Int     @default(0) // ordem da partida na rodada/chave
+
+  homeEntryId String?
+  homeEntry   TournamentEntry? @relation("homeEntry", fields: [homeEntryId], references: [id])
+  awayEntryId String?
+  awayEntry   TournamentEntry? @relation("awayEntry", fields: [awayEntryId], references: [id])
+
+  scheduledAt DateTime?
+  location    String?
+
+  homeScore     Int? // sets/games/gols do mandante (resumo)
+  awayScore     Int?
+  winnerEntryId String?
+  winnerEntry   TournamentEntry? @relation("winnerEntry", fields: [winnerEntryId], references: [id])
+
+  status    String @default("SCHEDULED") // SCHEDULED | LIVE | FINISHED | WALKOVER | CANCELED
+  liveState Json? // placar ao vivo: { sets:[...], currentGame, server, ... }
+
+  // Avanço automático na chave (mata-mata): vencedor sobe pra nextMatch no slot nextSlot
+  nextMatchId   String?
+  nextMatch     TournamentMatch?  @relation("bracketProgression", fields: [nextMatchId], references: [id])
+  feederMatches TournamentMatch[] @relation("bracketProgression")
+  nextSlot      String? // "home" | "away"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games MatchGame[]
+
+  @@index([tournamentId])
+  @@index([categoryId, round])
+  @@index([status])
+}
+
+model MatchGame {
+  id           String          @id @default(cuid())
+  matchId      String
+  match        TournamentMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  setNumber    Int // set/game/período 1,2,3...
+  homeGames    Int             @default(0)
+  awayGames    Int             @default(0)
+  homeTiebreak Int?
+  awayTiebreak Int?
+
+  @@unique([matchId, setNumber])
+}
+
+model TournamentStanding {
+  id           String             @id @default(cuid())
+  tournamentId String
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     TournamentCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  entryId      String             @unique
+  entry        TournamentEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  groupName    String?
+
+  played       Int  @default(0)
+  won          Int  @default(0)
+  drawn        Int  @default(0)
+  lost         Int  @default(0)
+  scoreFor     Int  @default(0) // sets/games/gols a favor
+  scoreAgainst Int  @default(0)
+  points       Int  @default(0)
+  rank         Int? // posição calculada
+
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId, points])
+}
+
+model AthleteRating {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sport        String // TENNIS | BEACH_TENNIS | PADEL ...
+  rating       Float     @default(2.0) // escala 0-7 (estilo Playtomic)
+  matchesCount Int       @default(0)
+  wins         Int       @default(0)
+  losses       Int       @default(0)
+  lastMatchAt  DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([userId, sport])
+  @@index([sport, rating])
+}
+
+model PlayChallenge {
+  id           String @id @default(cuid())
+  challengerId String
+  challenger   User   @relation("challenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  challengedId String
+  challenged   User   @relation("challenged", fields: [challengedId], references: [id], onDelete: Cascade)
+  sport        String
+
+  proposedAt DateTime?
+  location   String?
+  message    String?
+
+  status String @default("PENDING") // PENDING | ACCEPTED | DECLINED | PLAYED | CANCELED
+
+  // resultado do amistoso 1v1
+  homeScore Int?
+  awayScore Int?
+  winnerId  String? // userId do vencedor
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([challengedId, status])
+  @@index([challengerId, status])
+}
+
+// ============================================================
+// PROFISSIONAL ESPORTIVO — Card público + Gestão + Cobrança
+// ------------------------------------------------------------
+// Wedge de entrada: o profissional (personal, professor de tênis/
+// padel, fisio, nutri) ganha um PERFIL PÚBLICO ("card"), gerencia
+// seus alunos e COBRA pelos serviços dentro do app.
+//
+// COBRAR ≠ RECEBER: por padrão (settlementMode = off_platform) o
+// profissional cobra pelo app mas recebe o dinheiro na PRÓPRIA chave
+// Pix/banco — fricção de adoção quase zero, não precisa trocar de PSP.
+// Recebimento pela plataforma (on_platform: split + cashback TenisCash
+// + antecipação) é o upsell DEPOIS que o hábito de uso se forma.
+// ============================================================
+
+model Professional {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Card público
+  slug        String  @unique // /p/joao-tenis
+  displayName String
+  headline    String? // "Personal Trainer & Professor de Tênis"
+  bio         String? @db.Text
+  avatarUrl   String?
+  coverUrl    String?
+  category    String? // personal | tennis | padel | physio | nutri | run | other
+  city        String?
+  state       String?
+
+  // Contato exibido no card
+  whatsapp  String?
+  instagram String?
+
+  // Recebimento off-platform (chave Pix DELE — gera cobrança sem trocar PSP)
+  pixKey     String?
+  pixKeyType String? // cpf | cnpj | email | phone | random
+  bankName   String?
+
+  // Config
+  published Boolean @default(false) // card visível publicamente
+  verified  Boolean @default(false) // selo S&T
+
+  // Stats denormalizadas
+  clientCount Int   @default(0)
+  offerCount  Int   @default(0)
+  totalBilled Float @default(0)
+  totalPaid   Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers        ProfessionalOffer[]
+  clients       ProfessionalClient[]
+  charges       Charge[]
+  subscriptions ProfessionalSubscription[]
+
+  @@index([category])
+  @@index([city])
+  @@index([published])
+}
+
+model ProfessionalOffer {
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+
+  type        String // class_presential | plan_monthly | digital_product | free_lead
+  title       String
+  description String? @db.Text
+  imageUrl    String?
+
+  // Preço (0 = grátis / isca)
+  price       Float   @default(0)
+  recurrence  String? // monthly | weekly (apenas plan_monthly)
+  durationMin Int? // duração da aula presencial (min)
+
+  active  Boolean @default(true)
+  visible Boolean @default(true) // aparece no card público
+
+  soldCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges       Charge[]
+  subscriptions ProfessionalSubscription[]
+
+  @@index([professionalId])
+  @@index([type])
+  @@index([active])
+}
+
+model ProfessionalClient {
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+
+  // O aluno PODE (ou não) ser um usuário TenisCash — ficha vale mesmo sem cadastro
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  name  String
+  phone String?
+  email String?
+  notes String?  @db.Text
+  tags  String[] // ["iniciante", "tênis", "manhã"]
+
+  status       String    @default("active") // active | inactive | lead
+  totalBilled  Float     @default(0)
+  totalPaid    Float     @default(0)
+  lastChargeAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges       Charge[]
+  subscriptions ProfessionalSubscription[]
+
+  @@index([professionalId])
+  @@index([userId])
+  @@index([status])
+}
+
+model ProfessionalSubscription {
+  id             String             @id @default(cuid())
+  professionalId String
+  professional   Professional       @relation(fields: [professionalId], references: [id])
+  clientId       String
+  client         ProfessionalClient @relation(fields: [clientId], references: [id])
+  offerId        String?
+  offer          ProfessionalOffer? @relation(fields: [offerId], references: [id])
+
+  title       String // snapshot do nome do plano
+  amount      Float
+  recurrence  String   @default("monthly") // monthly | weekly
+  status      String   @default("active") // active | paused | cancelled
+  nextDueDate DateTime
+  dayOfMonth  Int? // dia de vencimento (1-28)
+
+  startedAt   DateTime  @default(now())
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  charges Charge[]
+
+  @@index([professionalId])
+  @@index([clientId])
+  @@index([status])
+  @@index([nextDueDate])
+}
+
+model Charge {
+  id             String                    @id @default(cuid())
+  professionalId String
+  professional   Professional              @relation(fields: [professionalId], references: [id])
+  clientId       String?
+  client         ProfessionalClient?       @relation(fields: [clientId], references: [id])
+  offerId        String?
+  offer          ProfessionalOffer?        @relation(fields: [offerId], references: [id])
+  subscriptionId String?
+  subscription   ProfessionalSubscription? @relation(fields: [subscriptionId], references: [id])
+
+  amount      Float
+  description String
+
+  // COBRAR ≠ RECEBER — o coração do wedge
+  settlementMode String @default("off_platform") // off_platform | on_platform
+
+  method  String? // pix | cash | card | transfer | other
+  status  String    @default("pending") // pending | paid | overdue | cancelled | refunded
+  dueDate DateTime?
+
+  // Pix off-platform (BR Code gerado da chave do profissional)
+  pixPayload String? @db.Text // "copia e cola" EMV
+  pixQrUrl   String? // data URL do QR (opcional)
+
+  // Confirmação de pagamento
+  paidAt          DateTime?
+  paidConfirmedBy String? // manual | open_finance | platform
+
+  // On-platform (futuro): take rate + cashback TenisCash
+  cashbackAmount Float?
+  feeAmount      Float?
+
+  // Página pública de pagamento: /c/<token>
+  publicToken String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professionalId])
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// ============================================================
+// LIVE COMMERCE — vitrine ao vivo + chat de atendimento
+// O visitante é ANÔNIMO (não é User), por isso usa modelos
+// dedicados em vez de Conversation/ChatMessage (que exigem
+// senderId FK de User). storeId/sellerId ficam como String
+// solto DE PROPÓSITO: sem FK em Store/User, o `prisma db push`
+// é 100% aditivo (cria 3 tabelas novas, zero risco nas
+// tabelas de produção existentes).
+// ============================================================
+
+model LiveChannel {
+  id        String    @id @default(cuid())
+  storeId   String    @unique // FK lógica → Store.id (1 canal por loja)
+  isLive    Boolean   @default(false)
+  title     String? // ex: "Loja Bessa ao vivo — novidades de tênis"
+  hlsUrl    String? // player público (Cloudflare Tunnel → MediaMTX da loja)
+  startedAt DateTime?
+  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+}
+
+model LiveChat {
+  id               String   @id @default(cuid())
+  storeId          String // FK lógica → Store.id
+  visitorName      String
+  visitorToken     String   @unique // segredo do visitante anônimo (substitui login)
+  status           String   @default("open") // open | closed
+  assignedSellerId String? // FK lógica → User.id (vendedor que assumiu)
+  sellerUnread     Int      @default(0) // msgs do visitante não lidas pelo vendedor
+  lastMessageAt    DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  messages LiveMessage[]
+
+  @@index([storeId, status, lastMessageAt])
+}
+
+model LiveMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  sender    String // visitor | seller | system
+  body      String   @db.Text
+  sellerId  String? // FK lógica → User.id quando sender=seller
+  createdAt DateTime @default(now())
+
+  chat LiveChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
 }

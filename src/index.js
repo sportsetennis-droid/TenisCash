@@ -18,6 +18,7 @@ const catalogRoutes = require('./routes/catalog');
 const aiRoutes = require('./routes/ai');
 const adminCatalogRoutes = require('./routes/adminCatalog');
 const partnersRoutes = require('./routes/partners');
+const creationCampaignsRoutes = require('./routes/creationCampaigns');
 const cashbackRedeemRoutes = require('./routes/cashbackRedeem');
 const adminAIRoutes = require('./ai/orchestrator/orchestrator.routes');
 const lifeRoutes = require('./routes/life');
@@ -43,6 +44,7 @@ const anthropicToolsRoutes = require('./routes/anthropicTools');
 const orchestratorRoutes = require('./routes/orchestrator');
 const activitiesRoutes = require('./routes/activities');
 const coachRoutes = require('./routes/coach');
+const tournamentsRoutes = require('./routes/tournaments');
 const adminClassificationRoutes = require('./routes/adminClassification');
 const whatsappRoutes = require('./routes/whatsapp');
 const stocktakeRoutes = require('./routes/stocktake');
@@ -51,6 +53,8 @@ const marketingRoutes = require('./routes/marketing');
 const marketingConfigRoutes = require('./routes/marketingConfig');
 const brandProfilesRoutes = require('./routes/brandProfiles');
 const priceCheckRoutes = require('./routes/priceCheck');
+const professionalsRoutes = require('./routes/professionals');
+const liveCommerceRoutes = require('./routes/liveCommerce');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -142,6 +146,7 @@ app.use('/api/admin/orchestrator', orchestratorRoutes);
 app.use('/api/admin/classification', adminClassificationRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
+app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
@@ -149,11 +154,14 @@ app.use('/api/marketing', marketingRoutes);
 app.use('/api/marketing-config', marketingConfigRoutes);
 app.use('/api/brand-profiles', brandProfilesRoutes);
 app.use('/api/price-check', priceCheckRoutes);
+app.use('/api/professionals', professionalsRoutes);
+app.use('/api/live', liveCommerceRoutes);
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
+app.use('/api', creationCampaignsRoutes);
 app.use('/api', cashbackRedeemRoutes);
 
 // Health check
@@ -418,6 +426,358 @@ app.get('/p/:id', async (req, res) => {
     console.error('[/p/:id] erro:', err);
     res.status(500).send('Erro ao carregar produto');
   }
+});
+
+// Painel logado do profissional (cria ofertas, alunos, cobranças)
+app.get('/painel', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/painel.html'), { cacheControl: false });
+});
+
+// Card público do profissional esportivo (/pro/:slug)
+app.get('/pro/:slug', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/pro.html'), { cacheControl: false });
+});
+
+// Página pública de pagamento de cobrança (/c/:token)
+app.get('/c/:token', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/cobranca.html'), { cacheControl: false });
+});
+
+// ===================================================================
+// APEX COMPETIÇÃO — páginas públicas server-rendered (mobile-first)
+// ===================================================================
+
+const APEX_SPORT_LABEL = {
+  TENNIS: '🎾 Tênis', BEACH_TENNIS: '🏖️ Beach Tennis', PADEL: '🎾 Padel',
+  FUTSAL: '⚽ Futsal', SOCCER: '⚽ Futebol', VOLLEY: '🏐 Vôlei',
+  BASKETBALL: '🏀 Basquete', HANDBALL: '🤾 Handebol', TABLE_TENNIS: '🏓 Tênis de Mesa',
+  OTHER: '🏅 Esporte',
+};
+const apexEsc = (s) =>
+  String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Página pública do torneio (chave, jogos, classificação)
+app.get('/t/:slug', async (req, res) => {
+  try {
+    const { prisma } = require('./middleware');
+    const slug = req.params.slug;
+    const t = await prisma.tournament.findFirst({
+      where: { OR: [{ slug }, { id: slug }] },
+      include: {
+        categories: { include: { _count: { select: { entries: true } } } },
+        _count: { select: { entries: true } },
+      },
+    });
+    if (!t) {
+      return res
+        .status(404)
+        .send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Torneio não encontrado</h1></body></html>');
+    }
+
+    const STATUS = {
+      DRAFT: ['Rascunho', '#8e8e93'], OPEN: ['Inscrições abertas', '#0a843d'],
+      ONGOING: ['Em andamento', '#E5571E'], FINISHED: ['Encerrado', '#1d1d1f'],
+      CANCELED: ['Cancelado', '#d70015'],
+    };
+    const st = STATUS[t.status] || STATUS.DRAFT;
+    const fmtDate = (d) =>
+      d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Fortaleza' }) : '';
+    const dateLine = t.startDate
+      ? fmtDate(t.startDate) + (t.endDate ? ' a ' + fmtDate(t.endDate) : '')
+      : '';
+    const place = [t.city, t.state].filter(Boolean).join('/');
+
+    const catData = t.categories.map((c) => ({
+      id: c.id, name: c.name, entries: c._count.entries,
+    }));
+    const catJson = JSON.stringify(catData).replace(/</g, '\\u003c');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${apexEsc(t.name)} — Sports & Tennis</title>
+<meta property="og:title" content="${apexEsc(t.name)}">
+<meta property="og:description" content="${apexEsc((APEX_SPORT_LABEL[t.sport] || t.sport) + ' · ' + t._count.entries + ' inscritos · ' + st[0])}">
+<meta property="og:type" content="website">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;line-height:1.5;padding-bottom:env(safe-area-inset-bottom)}
+  .container{max-width:520px;margin:0 auto;padding:14px}
+  .header{background:linear-gradient(135deg,#E5571E,#EE7240);color:#fff;padding:18px 18px;border-radius:16px;box-shadow:0 8px 24px rgba(229,87,30,.25)}
+  .badge{display:inline-block;background:${st[1]};color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
+  .header h1{font-size:21px;font-weight:800;margin-top:10px;line-height:1.2}
+  .meta{font-size:13px;opacity:.95;margin-top:8px;display:flex;flex-wrap:wrap;gap:4px 14px}
+  .meta span{display:inline-flex;align-items:center;gap:5px}
+  .prize{margin-top:12px;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700}
+  .cats{display:flex;gap:8px;overflow-x:auto;padding:14px 0 4px;scrollbar-width:none}
+  .cats::-webkit-scrollbar{display:none}
+  .cat{flex-shrink:0;border:2px solid #e5e5ea;background:#fff;color:#1d1d1f;font-size:13px;font-weight:700;padding:8px 14px;border-radius:12px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .cat.active{border-color:#E5571E;color:#E5571E;background:#FCDAC4}
+  .cat .cnt{background:#f0f0f3;color:#8e8e93;font-size:11px;padding:1px 7px;border-radius:7px;margin-left:4px}
+  .cat.active .cnt{background:#E5571E;color:#fff}
+  .sec-h{font-size:11px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin:18px 4px 8px}
+  .rnd{margin-bottom:14px}
+  .rnd-h{font-size:13px;font-weight:800;color:#E5571E;margin:0 4px 8px}
+  .mt{background:#fff;border-radius:12px;padding:6px 14px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .mt-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:15px}
+  .mt-row+.mt-row{border-top:1px solid #f0f0f3}
+  .mt-row .nm{font-weight:600}
+  .mt-row.win .nm{font-weight:800;color:#0a843d}
+  .mt-row .sc{font-weight:800;font-size:17px;min-width:26px;text-align:center}
+  .tbl{width:100%;background:#fff;border-radius:12px;overflow:hidden;border-collapse:collapse;box-shadow:0 2px 8px rgba(0,0,0,.04);font-size:13px}
+  .tbl th{background:#1d1d1f;color:#fff;font-size:11px;font-weight:700;padding:9px 4px;text-align:center}
+  .tbl td{padding:9px 4px;text-align:center;border-top:1px solid #f0f0f3}
+  .tbl .tl{text-align:left;font-weight:700;padding-left:12px}
+  .tbl th.tl{text-align:left;padding-left:12px}
+  .empty{background:#fff;border-radius:12px;padding:28px 16px;text-align:center;color:#8e8e93;font-size:14px}
+  .footer{text-align:center;padding:22px;color:#8e8e93;font-size:11px}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="badge">${apexEsc(st[0])}</span>
+      <h1>${apexEsc(t.name)}</h1>
+      <div class="meta">
+        <span>${apexEsc(APEX_SPORT_LABEL[t.sport] || t.sport)}</span>
+        ${t.isDoubles ? '<span>👥 Duplas</span>' : ''}
+        ${dateLine ? '<span>📅 ' + apexEsc(dateLine) + '</span>' : ''}
+        ${place ? '<span>📍 ' + apexEsc(place) + '</span>' : ''}
+        <span>👤 ${t._count.entries} inscritos</span>
+      </div>
+      ${t.prizeDescription ? '<div class="prize">🏆 ' + apexEsc(t.prizeDescription) + '</div>' : ''}
+    </div>
+
+    ${t.description ? '<div class="sec-h">Sobre</div><div class="empty" style="text-align:left;color:#1d1d1f">' + apexEsc(t.description) + '</div>' : ''}
+
+    <div class="cats" id="cats"></div>
+    <div id="catbody"></div>
+
+    <div class="footer">teniscash.com.br · Sports &amp; Tennis</div>
+  </div>
+<script>
+(function(){
+  var TID = ${JSON.stringify(t.id)};
+  var CATS = ${catJson};
+  var elTabs = document.getElementById('cats');
+  var elBody = document.getElementById('catbody');
+  var STAGE = {FINAL:'Final',SEMI:'Semifinal',QUARTER:'Quartas de final',RO16:'Oitavas de final',RO32:'16-avos',RO64:'32-avos'};
+  function esc(s){s=(s==null?'':''+s);return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function renderMatches(matches){
+    if(!matches.length) return '<div class="empty">Chave ainda não gerada.</div>';
+    var groups={},order=[];
+    matches.forEach(function(m){var k=(m.stage==='LEAGUE'||m.stage==='GROUP')?('R'+m.round):m.stage;if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(m);});
+    var html='';
+    order.forEach(function(k){
+      var ms=groups[k];var label=STAGE[k]||('Rodada '+ms[0].round);
+      html+='<div class="rnd"><div class="rnd-h">'+esc(label)+'</div>';
+      ms.forEach(function(m){
+        var h=m.homeEntry?m.homeEntry.name:'A definir';
+        var a=m.awayEntry?m.awayEntry.name:'A definir';
+        var done=(m.status==='FINISHED'||m.status==='WALKOVER');
+        var hs=done&&m.homeScore!=null?m.homeScore:'';
+        var as=done&&m.awayScore!=null?m.awayScore:'';
+        var hw=m.winnerEntryId&&m.homeEntry&&m.winnerEntryId===m.homeEntry.id;
+        var aw=m.winnerEntryId&&m.awayEntry&&m.winnerEntryId===m.awayEntry.id;
+        html+='<div class="mt">'
+          +'<div class="mt-row'+(hw?' win':'')+'"><span class="nm">'+esc(h)+'</span><span class="sc">'+esc(hs)+'</span></div>'
+          +'<div class="mt-row'+(aw?' win':'')+'"><span class="nm">'+esc(a)+'</span><span class="sc">'+esc(as)+'</span></div>'
+          +'</div>';
+      });
+      html+='</div>';
+    });
+    return html;
+  }
+  function renderStandings(stand){
+    if(!stand.length) return '';
+    var rows=stand.map(function(s,i){
+      var nm=s.entry?s.entry.name:'?';
+      return '<tr><td>'+(s.rank||i+1)+'</td><td class="tl">'+esc(nm)+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+(s.scoreFor-s.scoreAgainst)+'</td><td><b>'+s.points+'</b></td></tr>';
+    }).join('');
+    return '<table class="tbl"><thead><tr><th>#</th><th class="tl">Atleta</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th><th>Pts</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+  function load(catId){
+    elBody.innerHTML='<div class="empty">Carregando…</div>';
+    Promise.all([
+      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/matches').then(function(r){return r.json();}),
+      fetch('/api/tournaments/'+TID+'/categories/'+catId+'/standings').then(function(r){return r.json();})
+    ]).then(function(res){
+      var matches=(res[0]&&res[0].matches)||[];
+      var stand=(res[1]&&res[1].standings)||[];
+      var html='';
+      var stHtml=renderStandings(stand);
+      if(stHtml) html+='<div class="sec-h">Classificação</div>'+stHtml;
+      html+='<div class="sec-h">Jogos</div>'+renderMatches(matches);
+      elBody.innerHTML=html;
+    }).catch(function(){elBody.innerHTML='<div class="empty">Erro ao carregar.</div>';});
+  }
+  function renderTabs(){
+    elTabs.innerHTML=CATS.map(function(c,i){
+      return '<button class="cat'+(i===0?' active':'')+'" data-id="'+c.id+'">'+esc(c.name)+' <span class="cnt">'+c.entries+'</span></button>';
+    }).join('');
+    Array.prototype.forEach.call(elTabs.querySelectorAll('.cat'),function(b){
+      b.addEventListener('click',function(){
+        Array.prototype.forEach.call(elTabs.querySelectorAll('.cat'),function(x){x.classList.remove('active');});
+        b.classList.add('active');load(b.getAttribute('data-id'));
+      });
+    });
+  }
+  if(CATS.length){renderTabs();load(CATS[0].id);}else{elBody.innerHTML='<div class="empty">Nenhuma categoria criada ainda.</div>';}
+})();
+</script>
+</body>
+</html>`;
+    res.send(html);
+  } catch (err) {
+    console.error('[/t/:slug] erro:', err);
+    res.status(500).send('Erro ao carregar torneio');
+  }
+});
+
+// Card público do atleta (estilo FIFA) — compartilhável
+app.get('/atleta/:username', async (req, res) => {
+  try {
+    const engine = require('./services/tournamentEngine');
+    const userId = await engine.resolveUserId(req.params.username);
+    if (!userId) {
+      return res
+        .status(404)
+        .send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Atleta não encontrado</h1></body></html>');
+    }
+    const card = await engine.buildAthleteCard(userId);
+    if (!card) return res.status(404).send('Atleta não encontrado');
+
+    const u = card.user;
+    const s = card.stats;
+    const overall = card.ratings.length ? card.ratings[0].rating.toFixed(1) : '—';
+    const bestSport = card.ratings.length ? APEX_SPORT_LABEL[card.ratings[0].sport] || card.ratings[0].sport : '';
+    const initials = (u.name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    const place = [u.city, u.state].filter(Boolean).join('/');
+
+    const ratingChips = card.ratings
+      .map(
+        (r) =>
+          '<div class="rt"><div class="rt-v">' + r.rating.toFixed(1) + '</div><div class="rt-s">' +
+          apexEsc(APEX_SPORT_LABEL[r.sport] || r.sport) + '</div><div class="rt-w">' + r.wins + 'V · ' + r.losses + 'D</div></div>'
+      )
+      .join('');
+
+    const statCell = (val, label) =>
+      '<div class="sc"><div class="sc-v">' + val + '</div><div class="sc-l">' + label + '</div></div>';
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${apexEsc(u.name)} — Card do Atleta</title>
+<meta property="og:title" content="${apexEsc(u.name)} — Card do Atleta">
+<meta property="og:description" content="${apexEsc('Rating ' + overall + ' · ' + s.matchesPlayed + ' jogos · ' + s.wins + ' vitórias · ' + s.trainings + ' treinos · Sports & Tennis')}">
+<meta property="og:type" content="profile">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0b0b0d;color:#fff;line-height:1.5;min-height:100vh;padding:18px 14px env(safe-area-inset-bottom)}
+  .wrap{max-width:440px;margin:0 auto}
+  .card{position:relative;background:linear-gradient(155deg,#2a2118 0%,#1a1a1f 45%,#0f0f12 100%);border:1.5px solid #E5571E;border-radius:22px;padding:22px;box-shadow:0 18px 50px rgba(229,87,30,.22),inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden}
+  .card:before{content:"";position:absolute;top:-60px;right:-60px;width:180px;height:180px;background:radial-gradient(circle,rgba(229,87,30,.35),transparent 70%);}
+  .top{display:flex;gap:16px;align-items:center;position:relative}
+  .ovr{text-align:center;flex-shrink:0}
+  .ovr-v{font-size:46px;font-weight:900;line-height:1;color:#fff;text-shadow:0 2px 10px rgba(229,87,30,.5)}
+  .ovr-l{font-size:10px;font-weight:800;letter-spacing:1.5px;color:#E5571E;margin-top:2px}
+  .ovr-s{font-size:11px;color:#b9b9c0;margin-top:4px}
+  .avatar{width:80px;height:80px;border-radius:50%;border:2.5px solid #E5571E;object-fit:cover;background:#E5571E;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;color:#fff;flex-shrink:0;margin-left:auto}
+  .who{margin-top:18px;position:relative}
+  .who h1{font-size:23px;font-weight:900;letter-spacing:.3px}
+  .who .at{color:#E5571E;font-size:14px;font-weight:700;margin-top:1px}
+  .who .loc{color:#9a9aa2;font-size:13px;margin-top:3px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px;position:relative}
+  .sc{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:12px 6px;text-align:center}
+  .sc-v{font-size:22px;font-weight:900;color:#fff}
+  .sc-l{font-size:10px;color:#9a9aa2;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+  .rts{display:flex;gap:10px;overflow-x:auto;margin-top:18px;scrollbar-width:none;position:relative}
+  .rts::-webkit-scrollbar{display:none}
+  .rt{flex-shrink:0;background:linear-gradient(135deg,#E5571E,#EE7240);border-radius:13px;padding:12px 16px;text-align:center;min-width:96px}
+  .rt-v{font-size:24px;font-weight:900}
+  .rt-s{font-size:11px;font-weight:700;margin-top:2px}
+  .rt-w{font-size:10px;opacity:.85;margin-top:2px}
+  .bdg{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;position:relative}
+  .bdg span{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;color:#ffd479}
+  .actions{display:flex;gap:10px;margin-top:18px}
+  .btn{flex:1;border:none;border-radius:13px;padding:14px;font-size:14px;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .btn-p{background:#E5571E;color:#fff}
+  .btn-s{background:rgba(255,255,255,.1);color:#fff}
+  .foot{text-align:center;color:#5a5a62;font-size:11px;margin-top:18px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="top">
+        <div class="ovr">
+          <div class="ovr-v">${overall}</div>
+          <div class="ovr-l">RATING</div>
+          ${bestSport ? '<div class="ovr-s">' + apexEsc(bestSport) + '</div>' : ''}
+        </div>
+        ${u.avatarUrl ? '<img class="avatar" src="' + apexEsc(u.avatarUrl) + '" alt="">' : '<div class="avatar">' + apexEsc(initials) + '</div>'}
+      </div>
+      <div class="who">
+        <h1>${apexEsc(u.name)}</h1>
+        ${u.username ? '<div class="at">@' + apexEsc(u.username) + '</div>' : ''}
+        ${place ? '<div class="loc">📍 ' + apexEsc(place) + '</div>' : ''}
+      </div>
+      <div class="grid">
+        ${statCell(s.trainings, 'Treinos')}
+        ${statCell(s.matchesPlayed, 'Jogos')}
+        ${statCell(s.wins, 'Vitórias')}
+        ${statCell(s.winRate + '%', 'Aproveit.')}
+        ${statCell(s.tournaments, 'Torneios')}
+        ${statCell(s.xp, 'XP')}
+      </div>
+      ${ratingChips ? '<div class="rts">' + ratingChips + '</div>' : ''}
+      ${card.badges.length ? '<div class="bdg">' + card.badges.map((b) => '<span>🏅 ' + apexEsc(b.key) + '</span>').join('') + '</div>' : ''}
+      <div class="actions">
+        <button class="btn btn-p" id="shareBtn">Compartilhar</button>
+        <a class="btn btn-s" href="/" style="text-decoration:none;text-align:center">Abrir o app</a>
+      </div>
+    </div>
+    <div class="foot">teniscash.com.br · Sports &amp; Tennis</div>
+  </div>
+<script>
+(function(){
+  var NAME=${JSON.stringify(u.name)};
+  function share(){
+    var url=location.href;
+    var txt='Confira o card de '+NAME+' no Sports & Tennis: '+url;
+    if(navigator.share){navigator.share({title:NAME,text:txt,url:url}).catch(function(){});}
+    else{window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');}
+  }
+  document.getElementById('shareBtn').addEventListener('click',share);
+})();
+</script>
+</body>
+</html>`;
+    res.send(html);
+  } catch (err) {
+    console.error('[/atleta/:username] erro:', err);
+    res.status(500).send('Erro ao carregar card');
+  }
+});
+
+// Live commerce — vitrine ao vivo do cliente. /aovivo/LOJA01 (slug lido no front).
+app.get(['/aovivo', '/aovivo/:loja'], (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/aovivo.html'), { cacheControl: false });
+});
+
+// Live commerce — painel do vendedor (login próprio + chat + ligar/desligar transmissão).
+app.get('/atendimento', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/atendimento.html'), { cacheControl: false });
 });
 
 // Fallback SPA → app cliente

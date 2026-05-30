@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Ao Vivo — Sports & Tennis</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  :root{--orange:#E5571E;--orange2:#EE7240;--ink:#1d1d1f;--muted:#8e8e93;--bg:#f5f5f7}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
+    padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);display:flex;flex-direction:column;min-height:100vh}
+  .frame{width:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column;flex:1;background:#fff}
+  @media(min-width:900px){
+    body{background:#0b0b0d;align-items:center;justify-content:center;padding:24px}
+    .frame{max-height:920px;border-radius:28px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  }
+  /* VÍDEO */
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;flex-shrink:0}
+  .stage video{width:100%;height:100%;object-fit:cover;background:#000;display:block}
+  .stage .off{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:10px;text-align:center;padding:20px;background:radial-gradient(circle at 50% 40%,#2a2118,#0b0b0d)}
+  .stage .off .ic{font-size:40px}
+  .stage .off .t{font-size:16px;font-weight:800}
+  .stage .off .s{font-size:13px;color:#b9b9c0;max-width:280px}
+  .live-badge{position:absolute;top:12px;left:12px;display:none;align-items:center;gap:6px;background:#d70015;color:#fff;font-size:12px;font-weight:800;padding:5px 11px;border-radius:8px;letter-spacing:.5px;box-shadow:0 2px 10px rgba(0,0,0,.4);z-index:2}
+  .live-badge .dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  body.is-live .live-badge{display:inline-flex}
+  body.is-live .stage .off{display:none}
+  .head{padding:12px 16px;background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;flex-shrink:0}
+  .head .store{font-size:15px;font-weight:800}
+  .head .title{font-size:12px;opacity:.92;margin-top:2px}
+  /* CHAT */
+  .chat{flex:1;display:flex;flex-direction:column;min-height:0}
+  .msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .hint{text-align:center;color:var(--muted);font-size:13px;padding:18px 24px;line-height:1.5}
+  .bubble{max-width:80%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap}
+  .bubble.them{align-self:flex-start;background:#fff;border:1px solid #e5e5ea;border-bottom-left-radius:5px}
+  .bubble.me{align-self:flex-end;background:var(--orange);color:#fff;border-bottom-right-radius:5px}
+  .bubble.sys{align-self:center;background:#e8e8ed;color:#555;font-size:12px;border-radius:10px;padding:6px 12px}
+  .who{font-size:11px;color:var(--muted);margin:0 4px -2px}
+  /* NOME */
+  .namebox{padding:18px 16px;border-top:1px solid #eee;background:#fff;flex-shrink:0}
+  .namebox p{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .row{display:flex;gap:8px}
+  input,textarea{font-family:inherit;font-size:15px;border:1.5px solid #e5e5ea;border-radius:12px;padding:12px 14px;width:100%;outline:none;background:#fff;color:var(--ink)}
+  input:focus,textarea:focus{border-color:var(--orange)}
+  textarea{resize:none;max-height:120px;line-height:1.35}
+  .btn{flex-shrink:0;min-height:46px;min-width:46px;border:none;border-radius:12px;background:var(--orange);color:#fff;font-size:15px;font-weight:800;padding:0 18px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .btn:active{background:#c8480f}
+  .btn:disabled{opacity:.5}
+  /* COMPOSER */
+  .composer{display:none;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #eee;background:#fff;gap:8px;align-items:flex-end;flex-shrink:0}
+  body.has-chat .composer{display:flex}
+  body.has-chat .namebox{display:none}
+  .foot{text-align:center;font-size:11px;color:var(--muted);padding:8px}
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="stage">
+      <span class="live-badge"><span class="dot"></span>AO VIVO</span>
+      <video id="vid" playsinline muted autoplay></video>
+      <div class="off">
+        <div class="ic">🛍️</div>
+        <div class="t" id="offT">Loja fechada no momento</div>
+        <div class="s" id="offS">Pode deixar sua mensagem mesmo assim — um vendedor responde assim que abrir.</div>
+      </div>
+    </div>
+    <div class="head">
+      <div class="store" id="storeName">Sports &amp; Tennis</div>
+      <div class="title" id="liveTitle">Atendimento online</div>
+    </div>
+
+    <div class="chat">
+      <div class="msgs" id="msgs">
+        <div class="hint" id="hint">👋 Quer ver um produto de perto, saber preço ou tamanho? Fale com a gente — um vendedor te atende ao vivo.</div>
+      </div>
+
+      <div class="namebox" id="namebox">
+        <p>Como podemos te chamar?</p>
+        <div class="row">
+          <input id="nameInput" placeholder="Seu nome" maxlength="60" autocomplete="given-name">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <textarea id="firstMsg" rows="1" placeholder="Escreva sua mensagem…" maxlength="2000"></textarea>
+          <button class="btn" id="startBtn">Enviar</button>
+        </div>
+      </div>
+
+      <div class="composer" id="composer">
+        <textarea id="msgInput" rows="1" placeholder="Mensagem…" maxlength="2000"></textarea>
+        <button class="btn" id="sendBtn">➤</button>
+      </div>
+    </div>
+    <div class="foot">teniscash.com.br · Sports &amp; Tennis</div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+(function(){
+  // Loja vem do path /aovivo/LOJA01 ou de ?loja=LOJA01
+  var parts = location.pathname.split('/').filter(Boolean);
+  var STORE = (new URLSearchParams(location.search).get('loja') || parts[parts.length-1] || '').toUpperCase();
+  if (!STORE || STORE === 'AOVIVO') STORE = '';
+  var LSKEY = 'live_' + STORE;
+
+  var el = function(id){return document.getElementById(id);};
+  var msgs = el('msgs'), vid = el('vid');
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(LSKEY) || '{}'); } catch(e){ state = {}; }
+  var es = null, seen = {};
+  var hls = null, lastHls = null;
+
+  function save(){ try{ localStorage.setItem(LSKEY, JSON.stringify(state)); }catch(e){} }
+  function esc(s){ s=(s==null?'':''+s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function scrollDown(){ msgs.scrollTop = msgs.scrollHeight; }
+
+  function addBubble(m){
+    if (m.id && seen[m.id]) return;
+    if (m.id) seen[m.id] = 1;
+    var h = el('hint'); if (h) h.remove();
+    var div = document.createElement('div');
+    if (m.sender === 'system'){ div.className='bubble sys'; div.textContent=m.body; }
+    else { div.className = 'bubble ' + (m.sender === 'visitor' ? 'me' : 'them'); div.textContent = m.body; }
+    msgs.appendChild(div);
+    scrollDown();
+  }
+
+  // ---- VÍDEO ----
+  function setLive(on, hlsUrl, title){
+    document.body.classList.toggle('is-live', !!on);
+    if (title) el('liveTitle').textContent = title;
+    if (on && hlsUrl){
+      if (hlsUrl !== lastHls){
+        lastHls = hlsUrl;
+        if (window.Hls && Hls.isSupported()){
+          if (hls) { try{hls.destroy();}catch(e){} }
+          hls = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
+          hls.loadSource(hlsUrl); hls.attachMedia(vid);
+          hls.on(Hls.Events.ERROR, function(_e,d){ if(d&&d.fatal){ try{hls.destroy();}catch(e){} hls=null; lastHls=null; } });
+        } else if (vid.canPlayType('application/vnd.apple.mpegurl')){
+          vid.src = hlsUrl; // Safari/iOS HLS nativo
+        }
+        vid.play().catch(function(){});
+      }
+    } else {
+      lastHls = null;
+      if (hls){ try{hls.destroy();}catch(e){} hls=null; }
+      try{ vid.removeAttribute('src'); vid.load(); }catch(e){}
+    }
+  }
+
+  function loadChannel(){
+    if (!STORE) return;
+    fetch('/api/live/channel/' + encodeURIComponent(STORE)).then(function(r){return r.json();}).then(function(c){
+      if (c.storeName) el('storeName').textContent = c.storeName;
+      if (c.title) el('liveTitle').textContent = c.title;
+      else if (!c.isLive) el('liveTitle').textContent = 'Atendimento online';
+      setLive(c.isLive, c.hlsUrl, c.title);
+    }).catch(function(){});
+  }
+
+  // ---- CHAT ----
+  function connectStream(){
+    if (!state.chatId || !state.token) return;
+    if (es) { try{es.close();}catch(e){} }
+    es = new EventSource('/api/live/chat/' + state.chatId + '/stream?token=' + encodeURIComponent(state.token));
+    es.onmessage = function(ev){
+      var d; try{ d = JSON.parse(ev.data); }catch(e){ return; }
+      if (d.type === 'message') addBubble(d.message);
+      else if (d.type === 'closed') addBubble({ sender:'system', body:'Atendimento encerrado. Obrigado! 🧡' });
+    };
+  }
+
+  function loadHistory(){
+    if (!state.chatId || !state.token) return;
+    fetch('/api/live/chat/' + state.chatId + '/messages?token=' + encodeURIComponent(state.token))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ (d.messages||[]).forEach(addBubble); })
+      .catch(function(){});
+  }
+
+  function openChatUI(){ document.body.classList.add('has-chat'); }
+
+  function startChat(){
+    var name = el('nameInput').value.trim();
+    var first = el('firstMsg').value.trim();
+    if (!first){ el('firstMsg').focus(); return; }
+    el('startBtn').disabled = true;
+    fetch('/api/live/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ storeCode: STORE, visitorName: name, message: first })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      el('startBtn').disabled = false;
+      if (!d.chatId){ alert(d.error || 'Não foi possível iniciar o chat'); return; }
+      state.chatId = d.chatId; state.token = d.visitorToken; state.name = name; save();
+      openChatUI();
+      if (d.message) addBubble(d.message);
+      connectStream();
+    }).catch(function(){ el('startBtn').disabled = false; alert('Erro de conexão'); });
+  }
+
+  function sendMsg(){
+    var inp = el('msgInput'); var body = inp.value.trim();
+    if (!body || !state.chatId) return;
+    inp.value = ''; autoGrow(inp);
+    addBubble({ sender:'visitor', body: body }); // echo otimista
+    fetch('/api/live/chat/' + state.chatId + '/message', {
+      method:'POST', headers:{'Content-Type':'application/json','x-visitor-token':state.token},
+      body: JSON.stringify({ body: body })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (d.message && d.message.id) seen[d.message.id] = 1;
+    }).catch(function(){});
+  }
+
+  function autoGrow(t){ t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,120)+'px'; }
+
+  // wire up
+  el('startBtn').addEventListener('click', startChat);
+  el('sendBtn').addEventListener('click', sendMsg);
+  el('msgInput').addEventListener('input', function(){ autoGrow(this); });
+  el('firstMsg').addEventListener('input', function(){ autoGrow(this); });
+  el('msgInput').addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMsg(); } });
+  el('firstMsg').addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); startChat(); } });
+
+  if (!STORE){
+    el('storeName').textContent = 'Loja não informada';
+    el('hint').textContent = 'Link inválido — abra pela página da loja.';
+  } else {
+    if (state.chatId && state.token){ openChatUI(); loadHistory(); connectStream(); }
+    loadChannel();
+    setInterval(loadChannel, 20000);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cobrança — Sports & Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fff; display: flex; flex-direction: column; }
+  @media (min-width: 760px) {
+    body { padding: 24px 0; display: flex; align-items: flex-start; justify-content: center; }
+    .wrap { border-radius: 24px; overflow: hidden; box-shadow: 0 12px 50px rgba(0,0,0,.16); min-height: auto; }
+  }
+  .top { background: linear-gradient(135deg,#E5571E,#EE7240); color: #fff; padding: 22px 22px 26px; text-align: center; }
+  .top .pro { display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 14px; font-weight: 700; opacity: .96; }
+  .top .pro .av { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.25) center/cover; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+  .top .label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; opacity: .85; margin-top: 16px; }
+  .top .amount { font-size: 40px; font-weight: 800; margin-top: 2px; }
+  .top .desc { font-size: 14px; opacity: .95; margin-top: 6px; }
+  .body { padding: 20px; flex: 1; }
+  .status { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 14px; font-weight: 700; padding: 12px; border-radius: 12px; margin-bottom: 18px; }
+  .status.pending { background: #fff6e5; color: #b26b00; }
+  .status.paid { background: #e8f7ee; color: #0a843d; }
+  .status.cancelled, .status.refunded, .status.overdue { background: #fdecea; color: #c0392b; }
+  .qr { text-align: center; }
+  .qr img { width: 240px; height: 240px; max-width: 80%; border: 1px solid #eee; border-radius: 14px; padding: 8px; background: #fff; }
+  .qr .hint { font-size: 13px; color: #888; margin: 12px 0 16px; line-height: 1.5; }
+  .copybox { background: #f5f5f7; border: 1px solid #e5e5ea; border-radius: 12px; padding: 12px 14px; font-size: 12px; word-break: break-all; color: #555; font-family: ui-monospace, Menlo, monospace; max-height: 80px; overflow: auto; }
+  .copybtn { width: 100%; min-height: 52px; margin-top: 12px; border: none; border-radius: 14px; background: #E5571E; color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
+  .copybtn:active { opacity: .85; }
+  .copybtn.done { background: #0a843d; }
+  .nopix { text-align: center; color: #888; font-size: 14px; padding: 20px; line-height: 1.6; }
+  .powered { text-align: center; font-size: 11px; color: #bbb; padding: 16px 0 22px; }
+  .powered b { color: #E5571E; }
+  .state { text-align: center; color: #999; font-size: 14px; padding: 90px 24px; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="state" id="state">Carregando…</div>
+  </div>
+
+<script>
+  const token = decodeURIComponent(location.pathname.replace(/^\/c\//, '').replace(/\/$/, ''));
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const money = (v) => 'R$ ' + Number(v||0).toFixed(2).replace('.', ',');
+  const STATUS_LABEL = { pending: 'Aguardando pagamento', paid: 'Pago', cancelled: 'Cancelada', refunded: 'Estornada', overdue: 'Vencida' };
+  const STATUS_ICON = { pending: '⏳', paid: '✓', cancelled: '✕', refunded: '↩', overdue: '!' };
+
+  async function load() {
+    try {
+      const r = await fetch('/api/professionals/charge/' + encodeURIComponent(token));
+      if (!r.ok) throw new Error('not found');
+      const c = await r.json();
+      const pro = c.professional || {};
+      const initials = (pro.displayName || '?').trim().split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+      const isPaid = c.status === 'paid';
+      const showPix = c.method === 'pix' && c.pixPayload && (c.status === 'pending' || c.status === 'overdue');
+
+      const html = `
+        <div class="top">
+          <div class="pro">
+            <span class="av" ${pro.avatarUrl ? `style="background-image:url('${esc(pro.avatarUrl)}')"` : ''}>${pro.avatarUrl ? '' : esc(initials)}</span>
+            <span>${esc(pro.displayName || 'Profissional')}</span>
+          </div>
+          <div class="label">Cobrança</div>
+          <div class="amount">${money(c.amount)}</div>
+          <div class="desc">${esc(c.description || '')}</div>
+        </div>
+        <div class="body">
+          <div class="status ${esc(c.status)}">${STATUS_ICON[c.status] || ''} ${esc(STATUS_LABEL[c.status] || c.status)}</div>
+          ${showPix ? `
+            <div class="qr">
+              ${c.pixQrUrl ? `<img src="${esc(c.pixQrUrl)}" alt="QR Pix">` : ''}
+              <div class="hint">Abra o app do seu banco, escolha <b>Pix · Pagar com QR Code</b> ou cole o código abaixo.</div>
+              <div class="copybox" id="payload">${esc(c.pixPayload)}</div>
+              <button class="copybtn" id="copybtn">Copiar código Pix</button>
+            </div>
+          ` : isPaid ? `
+            <div class="nopix">Pagamento confirmado. Obrigado! 🎾</div>
+          ` : `
+            <div class="nopix">Combine o pagamento diretamente com ${esc(pro.displayName || 'o profissional')}.</div>
+          `}
+        </div>
+        <div class="powered">powered by <b>Sports &amp; Tennis</b> · TenisCash</div>
+      `;
+      document.getElementById('wrap').innerHTML = html;
+
+      const btn = document.getElementById('copybtn');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const txt = document.getElementById('payload').textContent;
+          try { await navigator.clipboard.writeText(txt); }
+          catch (_) {
+            const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+          }
+          btn.textContent = '✓ Código copiado!'; btn.classList.add('done');
+          setTimeout(() => { btn.textContent = 'Copiar código Pix'; btn.classList.remove('done'); }, 2200);
+        });
+      }
+    } catch (e) {
+      document.getElementById('state').innerHTML = 'Cobrança não encontrada.<br><span style="font-size:12px">Verifique o link.</span>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>

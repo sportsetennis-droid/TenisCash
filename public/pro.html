@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Carregando…</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    padding-bottom: env(safe-area-inset-bottom);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fff; }
+  @media (min-width: 760px) {
+    body { padding: 24px 0; }
+    .wrap { margin: 0 auto; border-radius: 24px; overflow: hidden; box-shadow: 0 12px 50px rgba(0,0,0,.16); min-height: auto; }
+  }
+  .cover { height: 140px; background: linear-gradient(135deg,#E5571E,#EE7240); position: relative; }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar { width: 96px; height: 96px; border-radius: 50%; border: 4px solid #fff; background: #f0f0f3 center/cover no-repeat; margin: -52px auto 0; position: relative; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #E5571E; font-weight: 800; }
+  .ident { text-align: center; padding: 12px 20px 6px; }
+  .ident h1 { font-size: 22px; display: inline-flex; align-items: center; gap: 6px; }
+  .verified { width: 18px; height: 18px; background: #1d8cff; color: #fff; border-radius: 50%; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+  .ident .headline { font-size: 14px; color: #E5571E; font-weight: 700; margin-top: 3px; }
+  .ident .meta { font-size: 13px; color: #888; margin-top: 4px; }
+  .bio { padding: 4px 20px 16px; font-size: 14px; line-height: 1.5; color: #444; text-align: center; }
+  .actions { display: flex; gap: 10px; padding: 0 20px 16px; }
+  .btn { flex: 1; min-height: 48px; border-radius: 12px; border: none; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; text-decoration: none; }
+  .btn.wa { background: #25d366; color: #fff; }
+  .btn.ig { background: #f0f0f3; color: #1d1d1f; }
+  .section-title { font-size: 13px; font-weight: 800; letter-spacing: .5px; color: #888; text-transform: uppercase; padding: 8px 20px; }
+  .offers { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .offer { border: 1px solid #e5e5ea; border-radius: 16px; overflow: hidden; }
+  .offer img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #f0f0f3; }
+  .offer .ob { padding: 14px; }
+  .offer .tag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: #E5571E; background: #fdeee7; border-radius: 6px; padding: 3px 8px; margin-bottom: 8px; }
+  .offer h3 { font-size: 16px; }
+  .offer p { font-size: 13px; color: #666; line-height: 1.45; margin-top: 5px; }
+  .offer .row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 10px; }
+  .offer .price { font-size: 19px; font-weight: 800; color: #1d8348; }
+  .offer .price.free { color: #1d8cff; }
+  .offer .cta { min-height: 44px; padding: 0 18px; border-radius: 10px; background: #E5571E; color: #fff; border: none; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .state { text-align: center; color: #999; font-size: 14px; padding: 80px 24px; line-height: 1.6; }
+  .powered { text-align: center; font-size: 11px; color: #bbb; padding: 8px 0 22px; }
+  .powered b { color: #E5571E; }
+</style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="state" id="state">Carregando…</div>
+  </div>
+
+<script>
+  const slug = decodeURIComponent(location.pathname.replace(/^\/pro\//, '').replace(/\/$/, ''));
+  const TYPE_LABEL = {
+    class_presential: 'Aula presencial',
+    plan_monthly: 'Plano mensal',
+    digital_product: 'Produto digital',
+    free_lead: 'Grátis',
+  };
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const money = (v) => 'R$ ' + Number(v||0).toFixed(2).replace('.', ',');
+  const onlyDigits = (s) => String(s||'').replace(/\D/g,'');
+
+  function waLink(phone, text) {
+    const d = onlyDigits(phone);
+    const num = d.length >= 12 ? d : '55' + d;
+    return 'https://wa.me/' + num + (text ? '?text=' + encodeURIComponent(text) : '');
+  }
+
+  function offerHtml(pro, o) {
+    const free = !o.price || o.price <= 0;
+    const priceTxt = free ? 'Grátis' : money(o.price) + (o.recurrence === 'monthly' ? '/mês' : o.recurrence === 'weekly' ? '/sem' : '');
+    const msg = `Olá, ${pro.displayName}! Tenho interesse em "${o.title}". Vi no seu card da Sports & Tennis.`;
+    return `
+      <div class="offer">
+        ${o.imageUrl ? `<img src="${esc(o.imageUrl)}" alt="">` : ''}
+        <div class="ob">
+          <span class="tag">${esc(TYPE_LABEL[o.type] || 'Oferta')}</span>
+          <h3>${esc(o.title)}</h3>
+          ${o.description ? `<p>${esc(o.description)}</p>` : ''}
+          <div class="row">
+            <span class="price ${free ? 'free' : ''}">${priceTxt}</span>
+            <a class="cta" href="${pro.whatsapp ? waLink(pro.whatsapp, msg) : '#'}" target="_blank" rel="noopener">Tenho interesse</a>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function load() {
+    try {
+      const r = await fetch('/api/professionals/public/' + encodeURIComponent(slug));
+      if (!r.ok) throw new Error('not found');
+      const pro = await r.json();
+      document.title = pro.displayName + ' — Sports & Tennis';
+
+      const initials = (pro.displayName || '?').trim().split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+      const metaBits = [pro.city, pro.state].filter(Boolean).join(' · ');
+
+      const html = `
+        <div class="cover">${pro.coverUrl ? `<img src="${esc(pro.coverUrl)}" alt="">` : ''}</div>
+        <div class="avatar" ${pro.avatarUrl ? `style="background-image:url('${esc(pro.avatarUrl)}')"` : ''}>${pro.avatarUrl ? '' : esc(initials)}</div>
+        <div class="ident">
+          <h1>${esc(pro.displayName)} ${pro.verified ? '<span class="verified">✓</span>' : ''}</h1>
+          ${pro.headline ? `<div class="headline">${esc(pro.headline)}</div>` : ''}
+          ${metaBits ? `<div class="meta">📍 ${esc(metaBits)}</div>` : ''}
+        </div>
+        ${pro.bio ? `<div class="bio">${esc(pro.bio)}</div>` : ''}
+        <div class="actions">
+          ${pro.whatsapp ? `<a class="btn wa" href="${waLink(pro.whatsapp, 'Olá, ' + pro.displayName + '! Vi seu card na Sports & Tennis.')}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+          ${pro.instagram ? `<a class="btn ig" href="https://instagram.com/${esc(onlyDigits(pro.instagram) ? pro.instagram : pro.instagram.replace('@',''))}" target="_blank" rel="noopener">Instagram</a>` : ''}
+        </div>
+        ${(pro.offers && pro.offers.length) ? `
+          <div class="section-title">Ofertas</div>
+          <div class="offers">${pro.offers.map(o => offerHtml(pro, o)).join('')}</div>
+        ` : ''}
+        <div class="powered">powered by <b>Sports &amp; Tennis</b> · TenisCash</div>
+      `;
+      document.getElementById('wrap').innerHTML = html;
+    } catch (e) {
+      document.getElementById('state').innerHTML = 'Card não encontrado.<br><span style="font-size:12px">Verifique o link.</span>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>

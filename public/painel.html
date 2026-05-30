@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Painel do Profissional — Sports & Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    padding-top: env(safe-area-inset-top);
+    min-height: 100vh;
+  }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #f5f5f7; position: relative; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  @media (min-width: 760px) {
+    body { padding: 20px 0; }
+    .app { border-radius: 24px; overflow: hidden; box-shadow: 0 12px 50px rgba(0,0,0,.16); min-height: calc(100vh - 40px); }
+  }
+  .topbar { background: linear-gradient(135deg,#E5571E,#EE7240); color:#fff; padding: 16px 18px; display:flex; align-items:center; justify-content:space-between; }
+  .topbar .t { font-size: 17px; font-weight: 800; }
+  .topbar .sub { font-size: 12px; opacity: .9; }
+  .view { padding: 16px; }
+  h2.sec { font-size: 13px; font-weight: 800; letter-spacing:.5px; text-transform: uppercase; color:#888; margin: 4px 2px 12px; }
+
+  .stats { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .stat { background:#fff; border:1px solid #e5e5ea; border-radius:14px; padding:14px; }
+  .stat .lbl { font-size:11px; color:#888; font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+  .stat .val { font-size:22px; font-weight:800; margin-top:4px; }
+  .stat .val.green{color:#1d8348} .stat .val.amber{color:#b26b00} .stat .val.blue{color:#1d8cff}
+
+  .card { background:#fff; border:1px solid #e5e5ea; border-radius:14px; padding:14px; margin-bottom:12px; }
+  .card .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .muted { color:#888; font-size:13px; }
+  .pill { font-size:11px; font-weight:800; padding:3px 9px; border-radius:20px; }
+  .pill.pending{background:#fff6e5;color:#b26b00} .pill.paid{background:#e8f7ee;color:#0a843d}
+  .pill.cancelled,.pill.refunded,.pill.overdue{background:#fdecea;color:#c0392b}
+  .pill.on{background:#e8f7ee;color:#0a843d} .pill.off{background:#eef;color:#5b5bd6}
+
+  .btn { min-height:46px; padding:0 16px; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; }
+  .btn.primary{background:#E5571E;color:#fff;width:100%}
+  .btn.ghost{background:#fff;color:#E5571E;border:1.5px solid #E5571E}
+  .btn.sm{min-height:38px;font-size:13px;padding:0 12px;border-radius:10px}
+  .btn.gray{background:#f0f0f3;color:#1d1d1f}
+  .btn.green{background:#25d366;color:#fff}
+  .btn.danger{background:#fdecea;color:#c0392b}
+  .btn:disabled{opacity:.5}
+
+  .fab { position: fixed; right: calc(50% - 240px + 16px); bottom: calc(84px + env(safe-area-inset-bottom)); width:56px; height:56px; border-radius:50%; background:#E5571E; color:#fff; font-size:28px; border:none; box-shadow:0 6px 20px rgba(229,87,30,.45); cursor:pointer; z-index:30; }
+  @media (max-width:520px){ .fab{ right:16px; } }
+
+  .nav { position: fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:1px solid #e5e5ea; display:flex; padding-bottom: env(safe-area-inset-bottom); z-index:25; }
+  .nav button { flex:1; background:none; border:none; padding:9px 4px; font-size:10px; font-weight:700; color:#999; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; min-height:60px; }
+  .nav button.active{ color:#E5571E; }
+  .nav .ic{ font-size:20px; }
+
+  label.f { display:block; font-size:12px; font-weight:700; color:#555; margin:12px 2px 5px; }
+  input.f, select.f, textarea.f { width:100%; padding:12px 13px; font-size:16px; border:1.5px solid #e5e5ea; border-radius:11px; background:#fff; outline:none; }
+  input.f:focus, select.f:focus, textarea.f:focus{ border-color:#E5571E; }
+  textarea.f{ min-height:80px; resize:vertical; }
+  .help{ font-size:12px; color:#999; margin:5px 2px 0; }
+
+  .sheet-bg { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:50; display:none; }
+  .sheet-bg.open{ display:block; }
+  .sheet { position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:100%; max-width:480px; background:#fff; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + env(safe-area-inset-bottom)); max-height:90vh; overflow:auto; z-index:51; }
+  .sheet h3 { font-size:18px; margin-bottom:4px; }
+  .sheet .x { position:absolute; right:16px; top:14px; font-size:24px; color:#bbb; background:none; border:none; cursor:pointer; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  .seg button { flex:1; min-width:46%; min-height:42px; border:1.5px solid #e5e5ea; background:#fff; border-radius:10px; font-size:13px; font-weight:700; color:#555; cursor:pointer; }
+  .seg button.on{ border-color:#E5571E; background:#fdeee7; color:#E5571E; }
+
+  .empty{ text-align:center; color:#aaa; font-size:14px; padding:40px 20px; line-height:1.6; }
+  .state{ text-align:center; color:#999; padding:80px 24px; font-size:14px; line-height:1.6; }
+  .toast{ position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#1d1d1f; color:#fff; padding:11px 18px; border-radius:12px; font-size:14px; font-weight:600; z-index:80; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show{ opacity:1; }
+  .linkbox{ background:#f5f5f7; border:1px solid #e5e5ea; border-radius:11px; padding:11px; font-size:13px; word-break:break-all; color:#555; }
+  .toggle{ display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid #e5e5ea; border-radius:12px; padding:13px 14px; }
+  .switch{ width:50px; height:30px; border-radius:30px; background:#ccc; position:relative; cursor:pointer; transition:.2s; flex-shrink:0; }
+  .switch.on{ background:#0a843d; }
+  .switch::after{ content:''; position:absolute; width:24px; height:24px; border-radius:50%; background:#fff; top:3px; left:3px; transition:.2s; }
+  .switch.on::after{ left:23px; }
+</style>
+</head>
+<body>
+  <div class="app" id="app"><div class="state" id="boot">Carregando…</div></div>
+  <div class="sheet-bg" id="sheetBg"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/professionals';
+const token = localStorage.getItem('tc_token') || '';
+let state = { pro:null, dash:null, offers:[], clients:[], charges:[], subs:[], tab:'inicio' };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const money = (v) => 'R$ ' + Number(v||0).toFixed(2).replace('.', ',');
+const onlyDigits = (s) => String(s||'').replace(/\D/g,'');
+const TYPE_LABEL = { class_presential:'Aula presencial', plan_monthly:'Plano mensal', digital_product:'Produto digital', free_lead:'Grátis' };
+const STATUS_LABEL = { pending:'Pendente', paid:'Pago', overdue:'Vencida', cancelled:'Cancelada', refunded:'Estornada' };
+
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function fmtDate(d){ if(!d) return ''; const x=new Date(d); return x.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); }
+async function copy(txt){ try{ await navigator.clipboard.writeText(txt); }catch(_){ const a=document.createElement('textarea'); a.value=txt; document.body.appendChild(a); a.select(); try{document.execCommand('copy')}catch(e){} document.body.removeChild(a);} toast('Copiado!'); }
+
+async function api(path, { method='GET', body } = {}) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { gateLogin(); throw new Error('401'); }
+  if (!res.ok) { let m='Erro'; try{ m=(await res.json()).error||m }catch(e){} throw new Error(m); }
+  return res.status===204 ? null : res.json();
+}
+
+function gateLogin(){
+  $('app').innerHTML = `<div class="state">Você precisa entrar no app primeiro.<br><br>
+    <a class="btn primary" style="display:inline-flex;width:auto;padding:0 22px;text-decoration:none" href="/">Ir para o login</a></div>`;
+}
+
+// ---------- BOOT ----------
+async function boot(){
+  if(!token){ gateLogin(); return; }
+  try{
+    state.pro = await api('/me');
+    await loadAll();
+    renderShell();
+    go('inicio');
+  }catch(e){
+    if(e.message==='401') return;
+    // 404 => ainda não é profissional => onboarding
+    renderOnboarding();
+  }
+}
+
+async function loadAll(){
+  const [dash, offers, clients, charges, subs] = await Promise.all([
+    api('/me/dashboard'), api('/me/offers'), api('/me/clients'), api('/me/charges'), api('/me/subscriptions'),
+  ]);
+  state.dash=dash; state.offers=offers; state.clients=clients; state.charges=charges; state.subs=subs;
+}
+
+// ---------- ONBOARDING ----------
+function renderOnboarding(){
+  $('app').innerHTML = `
+    <div class="topbar"><div><div class="t">Criar meu card</div><div class="sub">Seu perfil profissional na Sports & Tennis</div></div></div>
+    <div class="view">
+      <p class="muted" style="margin-bottom:14px">Monte seu card público em 1 minuto. Você poderá criar ofertas e cobrar seus alunos depois.</p>
+      <label class="f">Seu nome / nome profissional *</label>
+      <input class="f" id="ob_name" placeholder="Ex: João Silva">
+      <label class="f">O que você faz?</label>
+      <select class="f" id="ob_cat">
+        <option value="">Selecione…</option>
+        <option value="personal">Personal Trainer</option>
+        <option value="tennis">Professor de Tênis</option>
+        <option value="padel">Professor de Padel</option>
+        <option value="physio">Fisioterapeuta</option>
+        <option value="nutri">Nutricionista</option>
+        <option value="run">Assessoria de Corrida</option>
+        <option value="other">Outro</option>
+      </select>
+      <label class="f">Cidade</label>
+      <input class="f" id="ob_city" placeholder="João Pessoa">
+      <label class="f">WhatsApp</label>
+      <input class="f" id="ob_wpp" inputmode="numeric" placeholder="83 99999-8888">
+      <label class="f">Chave Pix (pra cobrar)</label>
+      <input class="f" id="ob_pix" placeholder="CPF, e-mail, telefone ou aleatória">
+      <p class="help">A cobrança cai direto na sua conta. A gente só gera o Pix pra você.</p>
+      <div style="margin-top:18px"><button class="btn primary" id="ob_go">Criar meu card</button></div>
+    </div>`;
+  $('ob_go').onclick = async () => {
+    const name = $('ob_name').value.trim();
+    if(!name){ toast('Informe seu nome'); return; }
+    $('ob_go').disabled=true;
+    try{
+      state.pro = await api('/me', { method:'POST', body:{
+        displayName:name, category:$('ob_cat').value||undefined, city:$('ob_city').value.trim()||undefined,
+        whatsapp:$('ob_wpp').value.trim()||undefined, pixKey:$('ob_pix').value.trim()||undefined,
+      }});
+      await loadAll(); renderShell(); go('inicio'); toast('Card criado!');
+    }catch(e){ toast(e.message); $('ob_go').disabled=false; }
+  };
+}
+
+// ---------- SHELL ----------
+function renderShell(){
+  $('app').innerHTML = `
+    <div class="topbar">
+      <div><div class="t">${esc(state.pro.displayName)}</div><div class="sub">Painel do profissional</div></div>
+      <div class="pill ${state.pro.published?'on':'off'}">${state.pro.published?'Publicado':'Rascunho'}</div>
+    </div>
+    <div class="view" id="view"></div>
+    <button class="fab" id="fab" style="display:none">+</button>
+    <div class="nav" id="nav">
+      ${navBtn('inicio','📊','Início')}
+      ${navBtn('ofertas','🏷️','Ofertas')}
+      ${navBtn('alunos','👥','Alunos')}
+      ${navBtn('cobrancas','💸','Cobranças')}
+      ${navBtn('perfil','⚙️','Perfil')}
+    </div>`;
+  $('nav').querySelectorAll('button').forEach(b=> b.onclick=()=>go(b.dataset.tab));
+}
+function navBtn(tab,ic,lbl){ return `<button data-tab="${tab}"><span class="ic">${ic}</span>${lbl}</button>`; }
+
+function go(tab){
+  state.tab=tab;
+  $('nav').querySelectorAll('button').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
+  const fab=$('fab');
+  const fabMap={ ofertas:()=>openOffer(), alunos:()=>openClient(), cobrancas:()=>openCharge() };
+  if(fabMap[tab]){ fab.style.display='block'; fab.onclick=fabMap[tab]; } else fab.style.display='none';
+  ({ inicio:renderInicio, ofertas:renderOfertas, alunos:renderAlunos, cobrancas:renderCobrancas, perfil:renderPerfil }[tab])();
+}
+
+// ---------- INÍCIO ----------
+function renderInicio(){
+  const d=state.dash||{};
+  const url = location.origin + '/pro/' + state.pro.slug;
+  $('view').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="lbl">A receber</div><div class="val amber">${money(d.pendingAmount)}</div><div class="muted">${d.pendingCount||0} cobrança(s)</div></div>
+      <div class="stat"><div class="lbl">Recebido</div><div class="val green">${money(d.paidAmount)}</div><div class="muted">${d.paidCount||0} paga(s)</div></div>
+      <div class="stat"><div class="lbl">Alunos</div><div class="val">${d.clientCount||0}</div></div>
+      <div class="stat"><div class="lbl">Planos ativos</div><div class="val blue">${d.activeSubscriptions||0}</div></div>
+    </div>
+    <h2 class="sec">Seu card público</h2>
+    <div class="card">
+      <div class="linkbox" style="margin-bottom:10px">${esc(url)}</div>
+      <div class="row" style="gap:8px">
+        <button class="btn ghost sm" style="flex:1" onclick="copy('${esc(url)}')">Copiar link</button>
+        <a class="btn gray sm" style="flex:1;text-decoration:none" href="/pro/${esc(state.pro.slug)}" target="_blank">Ver card</a>
+      </div>
+      ${!state.pro.published ? `<p class="help" style="color:#b26b00;margin-top:10px">Seu card está em rascunho. Publique no Perfil pra ele ficar visível.</p>`:''}
+    </div>
+    <h2 class="sec">Cobranças recentes</h2>
+    ${ (state.charges.slice(0,5).map(chargeRow).join('')) || '<div class="empty">Nenhuma cobrança ainda.</div>' }
+  `;
+}
+
+// ---------- OFERTAS ----------
+function renderOfertas(){
+  $('view').innerHTML = `<h2 class="sec">Minhas ofertas</h2>${
+    state.offers.length ? state.offers.map(offerRow).join('') : '<div class="empty">Toque no + pra criar sua primeira oferta.<br>Ex: aula avulsa, plano mensal, aula grátis.</div>'
+  }`;
+}
+function offerRow(o){
+  const free=!o.price||o.price<=0;
+  return `<div class="card"><div class="row">
+    <div><div class="pill off" style="background:#fdeee7;color:#E5571E">${esc(TYPE_LABEL[o.type]||'Oferta')}</div>
+      <div style="font-weight:700;margin-top:6px">${esc(o.title)}</div>
+      <div class="muted">${free?'Grátis':money(o.price)+(o.recurrence==='monthly'?'/mês':'')}${o.active?'':' · inativa'}</div></div>
+    <button class="btn gray sm" onclick='openOffer(${JSON.stringify(o.id)})'>Editar</button>
+  </div></div>`;
+}
+function openOffer(id){
+  const o = id ? state.offers.find(x=>x.id===id) : null;
+  const types=['class_presential','plan_monthly','digital_product','free_lead'];
+  sheet(`${o?'Editar':'Nova'} oferta`, `
+    <label class="f">Tipo</label>
+    <div class="seg" id="o_type">${types.map(t=>`<button data-v="${t}" class="${(o?o.type:'class_presential')===t?'on':''}">${TYPE_LABEL[t]}</button>`).join('')}</div>
+    <label class="f">Título *</label><input class="f" id="o_title" value="${o?esc(o.title):''}" placeholder="Ex: Aula avulsa 1h">
+    <label class="f">Descrição</label><textarea class="f" id="o_desc" placeholder="Detalhes da oferta">${o?esc(o.description||''):''}</textarea>
+    <label class="f">Preço (R$) — deixe 0 pra grátis</label><input class="f" id="o_price" inputmode="decimal" value="${o?o.price:''}" placeholder="120.00">
+    ${o?`<div style="margin-top:14px"><button class="btn danger" style="width:100%" onclick='delOffer(${JSON.stringify(o.id)})'>Excluir oferta</button></div>`:''}
+    <div style="margin-top:14px"><button class="btn primary" id="o_save">Salvar</button></div>
+  `);
+  let type=o?o.type:'class_presential';
+  $('o_type').querySelectorAll('button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; $('o_type').querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+  $('o_save').onclick=async()=>{
+    const title=$('o_title').value.trim(); if(!title){toast('Título obrigatório');return;}
+    const body={ type, title, description:$('o_desc').value.trim()||null, price:parseFloat($('o_price').value)||0 };
+    $('o_save').disabled=true;
+    try{
+      if(o) await api('/me/offers/'+o.id,{method:'PUT',body}); else await api('/me/offers',{method:'POST',body});
+      state.offers=await api('/me/offers'); closeSheet(); go('ofertas'); toast('Oferta salva!');
+    }catch(e){toast(e.message);$('o_save').disabled=false;}
+  };
+}
+async function delOffer(id){ try{ await api('/me/offers/'+id,{method:'DELETE'}); state.offers=await api('/me/offers'); closeSheet(); go('ofertas'); toast('Excluída'); }catch(e){toast(e.message);} }
+
+// ---------- ALUNOS ----------
+function renderAlunos(){
+  $('view').innerHTML = `<h2 class="sec">Meus alunos</h2>${
+    state.clients.length ? state.clients.map(clientRow).join('') : '<div class="empty">Toque no + pra cadastrar um aluno.</div>'
+  }`;
+}
+function clientRow(c){
+  return `<div class="card"><div class="row">
+    <div onclick='openClientDetail(${JSON.stringify(c.id)})' style="flex:1;cursor:pointer">
+      <div style="font-weight:700">${esc(c.name)}</div>
+      <div class="muted">${esc(c.phone||'sem telefone')} · pago ${money(c.totalPaid)}</div>
+    </div>
+    <button class="btn ghost sm" onclick='openCharge(${JSON.stringify(c.id)})'>Cobrar</button>
+  </div></div>`;
+}
+function openClient(id){
+  const c = id ? state.clients.find(x=>x.id===id) : null;
+  sheet(`${c?'Editar':'Novo'} aluno`, `
+    <label class="f">Nome *</label><input class="f" id="c_name" value="${c?esc(c.name):''}">
+    <label class="f">Telefone</label><input class="f" id="c_phone" inputmode="numeric" value="${c?esc(c.phone||''):''}" placeholder="83 99999-8888">
+    <label class="f">E-mail</label><input class="f" id="c_email" value="${c?esc(c.email||''):''}">
+    <label class="f">Anotações</label><textarea class="f" id="c_notes" placeholder="Objetivo, nível, horário…">${c?esc(c.notes||''):''}</textarea>
+    <div style="margin-top:14px"><button class="btn primary" id="c_save">Salvar</button></div>
+  `);
+  $('c_save').onclick=async()=>{
+    const name=$('c_name').value.trim(); if(!name){toast('Nome obrigatório');return;}
+    const body={ name, phone:$('c_phone').value.trim()||null, email:$('c_email').value.trim()||null, notes:$('c_notes').value.trim()||null };
+    $('c_save').disabled=true;
+    try{
+      if(c) await api('/me/clients/'+c.id,{method:'PUT',body}); else await api('/me/clients',{method:'POST',body});
+      state.clients=await api('/me/clients'); closeSheet(); go('alunos'); toast('Aluno salvo!');
+    }catch(e){toast(e.message);$('c_save').disabled=false;}
+  };
+}
+async function openClientDetail(id){
+  let c; try{ c=await api('/me/clients/'+id); }catch(e){ toast(e.message); return; }
+  const charges=(c.charges||[]);
+  sheet(esc(c.name), `
+    <div class="muted" style="margin-bottom:12px">${esc(c.phone||'sem telefone')} · cobrado ${money(c.totalBilled)} · pago ${money(c.totalPaid)}</div>
+    <div class="row" style="gap:8px;margin-bottom:14px">
+      <button class="btn ghost sm" style="flex:1" onclick='closeSheet();openCharge(${JSON.stringify(c.id)})'>Nova cobrança</button>
+      <button class="btn gray sm" style="flex:1" onclick='closeSheet();openPlan(${JSON.stringify(c.id)})'>Criar plano</button>
+    </div>
+    <button class="btn gray sm" style="width:100%;margin-bottom:14px" onclick='closeSheet();openClient(${JSON.stringify(c.id)})'>Editar dados do aluno</button>
+    <h2 class="sec" style="margin-top:6px">Histórico</h2>
+    ${ charges.length ? charges.map(chargeRow).join('') : '<div class="empty">Sem cobranças.</div>' }
+  `);
+}
+
+// ---------- COBRANÇAS ----------
+function renderCobrancas(){
+  const subs = state.subs||[];
+  $('view').innerHTML = `
+    <h2 class="sec">Cobranças</h2>
+    ${ state.charges.length ? state.charges.map(chargeRow).join('') : '<div class="empty">Toque no + pra criar uma cobrança.</div>' }
+    ${ subs.length ? `<h2 class="sec" style="margin-top:18px">Planos recorrentes</h2>${subs.map(subRow).join('')}` : '' }
+  `;
+}
+function chargeRow(c){
+  const cli = c.client ? c.client.name : (state.clients.find(x=>x.id===c.clientId)||{}).name;
+  const url = location.origin + '/c/' + c.publicToken;
+  return `<div class="card">
+    <div class="row">
+      <div><div style="font-weight:700">${money(c.amount)}</div>
+        <div class="muted">${esc(c.description||'')}</div>
+        <div class="muted">${esc(cli||'sem aluno')}${c.dueDate?(' · vence '+fmtDate(c.dueDate)):''}</div></div>
+      <span class="pill ${c.status}">${STATUS_LABEL[c.status]||c.status}</span>
+    </div>
+    <div class="row" style="gap:7px;margin-top:11px">
+      ${c.publicToken?`<button class="btn gray sm" style="flex:1" onclick="copy('${esc(url)}')">Copiar link</button>`:''}
+      ${c.status==='pending'||c.status==='overdue'?`<button class="btn green sm" style="flex:1" onclick='markPaid(${JSON.stringify(c.id)})'>Marcar pago</button>
+        <button class="btn danger sm" onclick='cancelCharge(${JSON.stringify(c.id)})'>✕</button>`:''}
+    </div>
+  </div>`;
+}
+function openCharge(clientId){
+  const opts = state.clients.map(c=>`<option value="${c.id}" ${c.id===clientId?'selected':''}>${esc(c.name)}</option>`).join('');
+  const noPix = !state.pro.pixKey;
+  sheet('Nova cobrança', `
+    <label class="f">Aluno</label>
+    <select class="f" id="ch_client"><option value="">— sem aluno —</option>${opts}</select>
+    <label class="f">Valor (R$) *</label><input class="f" id="ch_amount" inputmode="decimal" placeholder="120.00">
+    <label class="f">Descrição *</label><input class="f" id="ch_desc" placeholder="Ex: Aula de tênis — Junho">
+    <label class="f">Vencimento</label><input class="f" id="ch_due" type="date">
+    <label class="f">Forma</label>
+    <div class="seg" id="ch_method">
+      <button data-v="pix" class="on">Pix${noPix?' ⚠️':''}</button>
+      <button data-v="cash">Dinheiro</button>
+      <button data-v="card">Cartão</button>
+      <button data-v="transfer">Transferência</button>
+    </div>
+    ${noPix?`<p class="help" style="color:#b26b00">Sem chave Pix configurada — o QR não será gerado. Configure no Perfil.</p>`:`<p class="help">O Pix é gerado da sua chave. O dinheiro cai direto na sua conta.</p>`}
+    <div style="margin-top:14px"><button class="btn primary" id="ch_save">Gerar cobrança</button></div>
+  `);
+  let method='pix';
+  $('ch_method').querySelectorAll('button').forEach(b=>b.onclick=()=>{ method=b.dataset.v; $('ch_method').querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+  $('ch_save').onclick=async()=>{
+    const amount=parseFloat($('ch_amount').value); const desc=$('ch_desc').value.trim();
+    if(!amount||amount<=0){toast('Valor inválido');return;} if(!desc){toast('Descrição obrigatória');return;}
+    const body={ amount, description:desc, method, clientId:$('ch_client').value||undefined, dueDate:$('ch_due').value||undefined };
+    $('ch_save').disabled=true;
+    try{
+      const charge=await api('/me/charges',{method:'POST',body});
+      await loadAll(); closeSheet(); chargeCreated(charge);
+    }catch(e){toast(e.message);$('ch_save').disabled=false;}
+  };
+}
+function chargeCreated(charge){
+  const url=location.origin+'/c/'+charge.publicToken;
+  const cli=state.clients.find(x=>x.id===charge.clientId);
+  const waMsg=`Olá${cli?', '+cli.name:''}! Segue sua cobrança de ${money(charge.amount)} (${charge.description}): ${url}`;
+  const wa = cli&&cli.phone ? `https://wa.me/${onlyDigits(cli.phone).length>=12?onlyDigits(cli.phone):'55'+onlyDigits(cli.phone)}?text=${encodeURIComponent(waMsg)}` : null;
+  sheet('Cobrança criada ✓', `
+    <p class="muted" style="margin-bottom:12px">Envie o link pro aluno. Ele paga e você confirma aqui.</p>
+    <div class="linkbox" style="margin-bottom:12px">${esc(url)}</div>
+    <button class="btn primary" style="margin-bottom:10px" onclick="copy('${esc(url)}')">Copiar link de pagamento</button>
+    ${wa?`<a class="btn green" style="width:100%;text-decoration:none" href="${wa}" target="_blank">Enviar no WhatsApp</a>`:''}
+    <div style="margin-top:12px"><button class="btn gray" style="width:100%" onclick="closeSheet();go('cobrancas')">Concluir</button></div>
+  `);
+}
+async function markPaid(id){ try{ await api('/me/charges/'+id+'/pay',{method:'POST'}); await loadAll(); go(state.tab); toast('Marcado como pago!'); }catch(e){toast(e.message);} }
+async function cancelCharge(id){ try{ await api('/me/charges/'+id+'/cancel',{method:'POST'}); await loadAll(); go(state.tab); toast('Cancelada'); }catch(e){toast(e.message);} }
+
+// ---------- PLANOS ----------
+function subRow(s){
+  const cli = s.client?s.client.name:(state.clients.find(x=>x.id===s.clientId)||{}).name;
+  return `<div class="card"><div class="row">
+    <div><div style="font-weight:700">${esc(s.title)} · ${money(s.amount)}/mês</div>
+      <div class="muted">${esc(cli||'')} · vence dia ${s.dayOfMonth||'—'} · próx ${fmtDate(s.nextDueDate)}</div></div>
+    <span class="pill ${s.status==='active'?'on':'cancelled'}">${s.status==='active'?'Ativo':'Cancelado'}</span>
+  </div>
+  ${s.status==='active'?`<div style="margin-top:10px"><button class="btn danger sm" onclick='cancelSub(${JSON.stringify(s.id)})'>Cancelar plano</button></div>`:''}
+  </div>`;
+}
+function openPlan(clientId){
+  const opts = state.clients.map(c=>`<option value="${c.id}" ${c.id===clientId?'selected':''}>${esc(c.name)}</option>`).join('');
+  sheet('Novo plano mensal', `
+    <label class="f">Aluno *</label><select class="f" id="p_client">${opts}</select>
+    <label class="f">Nome do plano</label><input class="f" id="p_title" placeholder="Ex: Plano 2x/semana" value="Plano mensal">
+    <label class="f">Valor mensal (R$) *</label><input class="f" id="p_amount" inputmode="decimal" placeholder="480.00">
+    <label class="f">Dia de vencimento (1-28)</label><input class="f" id="p_day" inputmode="numeric" placeholder="10">
+    <div style="margin-top:14px"><button class="btn primary" id="p_save">Criar plano</button></div>
+  `);
+  $('p_save').onclick=async()=>{
+    const amount=parseFloat($('p_amount').value); const clientId=$('p_client').value;
+    if(!clientId){toast('Escolha o aluno');return;} if(!amount||amount<=0){toast('Valor inválido');return;}
+    const body={ clientId, title:$('p_title').value.trim()||'Plano mensal', amount, dayOfMonth:parseInt($('p_day').value)||undefined };
+    $('p_save').disabled=true;
+    try{ await api('/me/subscriptions',{method:'POST',body}); state.subs=await api('/me/subscriptions'); closeSheet(); go('cobrancas'); toast('Plano criado!'); }
+    catch(e){toast(e.message);$('p_save').disabled=false;}
+  };
+}
+async function cancelSub(id){ try{ await api('/me/subscriptions/'+id+'/cancel',{method:'POST'}); state.subs=await api('/me/subscriptions'); go(state.tab); toast('Plano cancelado'); }catch(e){toast(e.message);} }
+
+// ---------- PERFIL ----------
+function renderPerfil(){
+  const p=state.pro;
+  $('view').innerHTML = `
+    <h2 class="sec">Visibilidade</h2>
+    <div class="toggle" style="margin-bottom:16px">
+      <div><div style="font-weight:700">Card publicado</div><div class="muted">Visível em /pro/${esc(p.slug)}</div></div>
+      <div class="switch ${p.published?'on':''}" id="pubsw"></div>
+    </div>
+    <h2 class="sec">Dados do card</h2>
+    <label class="f">Nome profissional</label><input class="f" id="pf_name" value="${esc(p.displayName)}">
+    <label class="f">Headline</label><input class="f" id="pf_head" value="${esc(p.headline||'')}" placeholder="Personal Trainer & Prof. de Tênis">
+    <label class="f">Bio</label><textarea class="f" id="pf_bio">${esc(p.bio||'')}</textarea>
+    <label class="f">Cidade</label><input class="f" id="pf_city" value="${esc(p.city||'')}">
+    <label class="f">Estado (UF)</label><input class="f" id="pf_state" value="${esc(p.state||'')}" maxlength="2">
+    <label class="f">WhatsApp</label><input class="f" id="pf_wpp" value="${esc(p.whatsapp||'')}">
+    <label class="f">Instagram</label><input class="f" id="pf_ig" value="${esc(p.instagram||'')}" placeholder="@seuperfil">
+    <h2 class="sec" style="margin-top:18px">Recebimento</h2>
+    <label class="f">Chave Pix</label><input class="f" id="pf_pix" value="${esc(p.pixKey||'')}" placeholder="CPF, e-mail, telefone ou aleatória">
+    <p class="help">A cobrança é gerada dessa chave. O dinheiro cai direto na sua conta — a Sports & Tennis não fica no meio.</p>
+    <div style="margin:18px 0"><button class="btn primary" id="pf_save">Salvar alterações</button></div>
+  `;
+  $('pubsw').onclick=async()=>{ try{ state.pro=await api('/me',{method:'PUT',body:{published:!state.pro.published}}); renderShell(); go('perfil'); toast(state.pro.published?'Publicado!':'Despublicado'); }catch(e){toast(e.message);} };
+  $('pf_save').onclick=async()=>{
+    const body={ displayName:$('pf_name').value.trim(), headline:$('pf_head').value.trim()||null, bio:$('pf_bio').value.trim()||null,
+      city:$('pf_city').value.trim()||null, state:$('pf_state').value.trim().toUpperCase()||null,
+      whatsapp:$('pf_wpp').value.trim()||null, instagram:$('pf_ig').value.trim()||null, pixKey:$('pf_pix').value.trim()||null };
+    $('pf_save').disabled=true;
+    try{ state.pro=await api('/me',{method:'PUT',body}); renderShell(); go('perfil'); toast('Salvo!'); }catch(e){toast(e.message);$('pf_save').disabled=false;}
+  };
+}
+
+// ---------- SHEET ----------
+function sheet(title, html){
+  const bg=$('sheetBg');
+  bg.innerHTML = `<div class="sheet"><button class="x" onclick="closeSheet()">×</button><h3>${esc(title)}</h3>${html}</div>`;
+  bg.classList.add('open');
+  bg.onclick=(e)=>{ if(e.target===bg) closeSheet(); };
+}
+function closeSheet(){ $('sheetBg').classList.remove('open'); $('sheetBg').innerHTML=''; }
+
+boot();
+</script>
+</body>
+</html>
