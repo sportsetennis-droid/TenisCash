@@ -1,0 +1,58 @@
+# =====================================================================
+# MediaMTX — ponte da câmera da loja pro navegador (live commerce)
+# =====================================================================
+# A câmera TP-Link Tapo fala RTSP (protocolo que o navegador NÃO abre).
+# O MediaMTX lê esse RTSP e re-serve como HLS (que o navegador abre).
+# Depois o Cloudflare Tunnel publica esse HLS na internet, sem abrir
+# porta no roteador e sem VPS.
+#
+#   Câmera Tapo (RTSP, rede da loja)
+#        -> MediaMTX (este processo, no notebook da loja)  HLS :8888
+#        -> Cloudflare Tunnel  -> https://....  /loja01/index.m3u8
+#        -> player no /aovivo/LOJA01 (hls.js)
+#
+# PASSO A PASSO (faz uma vez por loja):
+#  1. No app Tapo: Configurações > Avançado > "Conta da câmera"
+#     (Camera Account). CRIE um usuário e senha SÓ pra câmera. NÃO é o
+#     login da conta TP-Link — é uma conta local da câmera, exclusiva
+#     pro RTSP. Anote usuário e senha.
+#  2. Descubra o IP da câmera na rede da loja (app Tapo > Config do
+#     dispositivo > Informações, ou no painel do roteador). Ex: 192.168.0.50
+#     Deixe esse IP FIXO no roteador (reserva de DHCP) pra não mudar.
+#  3. Preencha os 3 campos TODO abaixo (usuário, senha, IP).
+#  4. Rode o start-live.bat (sobe MediaMTX + Cloudflare juntos).
+#  5. Pegue a URL .m3u8 que o Cloudflare imprime e cole no painel
+#     /atendimento (engrenagem > URL do vídeo) — uma vez só.
+# =====================================================================
+
+logLevel: info
+# Remux mesmo sem ninguém assistindo: a transmissão fica pronta na hora
+# que o cliente abre a página (sem 5-10s de "ligando a câmera").
+hlsAlwaysRemux: yes
+
+# --- Servidor HLS (o que o navegador consome) ---
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: '*'          # libera o player em teniscash.com.br
+hlsVariant: lowLatency       # ~2-4s de atraso (vs ~10s do HLS normal)
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+# Protocolos que não usamos — desliga pra reduzir superfície/CPU.
+rtmp: no
+srt: no
+# WebRTC fica ligado (default): no futuro dá pra usar /loja01/whep pra
+# latência <1s (chamada de produto pertinho). Por ora o player usa HLS.
+
+paths:
+  # Uma loja = um "path". Replique o bloco (loja02, loja03...) se um dia
+  # rodar várias câmeras no mesmo notebook. O nome aqui vira parte da URL:
+  #   http://<host>:8888/loja01/index.m3u8
+  loja01:
+    # TODO: troque USER, SENHA e IP_DA_CAMERA pelos valores do passo 1 e 2.
+    # /stream1 = HD (melhor imagem, mais banda). /stream2 = SD (mais leve,
+    # bom pra internet fraca da loja). Comece no stream1; se travar, stream2.
+    source: rtsp://USER:SENHA@IP_DA_CAMERA:554/stream1
+    # Mantém a câmera conectada o tempo todo (transmissão sempre quente).
+    sourceOnDemand: no

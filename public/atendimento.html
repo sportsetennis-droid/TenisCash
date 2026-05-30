@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#E5571E">
+<title>Atendimento ao vivo — Sports &amp; Tennis</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+  :root{--orange:#E5571E;--orange2:#EE7240;--ink:#1d1d1f;--muted:#8e8e93;--bg:#f5f5f7;--line:#e5e5ea}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
+    padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);display:flex;flex-direction:column;min-height:100vh}
+  .frame{width:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column;flex:1;background:#fff;position:relative;min-height:0}
+  @media(min-width:900px){
+    body{background:#0b0b0d;align-items:center;justify-content:center;padding:24px}
+    .frame{height:920px;max-height:92vh;border-radius:28px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  }
+  input,textarea,button{font-family:inherit}
+  input,textarea{font-size:16px;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;width:100%;outline:none;background:#fff;color:var(--ink)}
+  input:focus,textarea:focus{border-color:var(--orange)}
+  textarea{resize:none;line-height:1.35}
+  .btn{min-height:46px;border:none;border-radius:12px;background:var(--orange);color:#fff;font-size:15px;font-weight:800;padding:0 18px;cursor:pointer}
+  .btn:active{background:#c8480f}
+  .btn:disabled{opacity:.5}
+  .btn.ghost{background:#eee;color:var(--ink)}
+  .btn.ghost:active{background:#e0e0e5}
+  .btn.danger{background:#d70015}
+  .btn.danger:active{background:#a8000f}
+
+  /* ===== LOGIN ===== */
+  #login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:30px 22px;gap:14px}
+  #login .logo{text-align:center;margin-bottom:8px}
+  #login .logo .ic{font-size:42px}
+  #login .logo h1{font-size:20px;font-weight:900;margin-top:6px;background:linear-gradient(135deg,var(--orange),var(--orange2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #login .logo p{font-size:13px;color:var(--muted);margin-top:4px}
+  #login label{font-size:12px;font-weight:700;color:var(--muted);margin:6px 2px 4px;display:block}
+  #login .err{display:none;background:#ffecec;color:#d70015;font-size:13px;font-weight:600;padding:10px 12px;border-radius:10px;text-align:center}
+  #login .err.show{display:block}
+
+  /* ===== APP shell ===== */
+  #app{display:none;flex-direction:column;flex:1;min-height:0}
+  body.logged #app{display:flex}
+  body.logged #login{display:none}
+
+  .topbar{background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;padding:10px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px}
+  .topbar .who{flex:1;min-width:0}
+  .topbar .who .s{font-size:15px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar .who .u{font-size:11px;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .iconbtn{background:rgba(255,255,255,.18);border:none;color:#fff;width:38px;height:38px;border-radius:10px;font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .iconbtn:active{background:rgba(255,255,255,.32)}
+  .iconbtn.on{background:#fff;color:var(--orange)}
+
+  /* live bar */
+  .livebar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fff;flex-shrink:0}
+  .livebar .stat{flex:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
+  .livebar .dot{width:9px;height:9px;border-radius:50%;background:#c7c7cc;flex-shrink:0}
+  body.is-live .livebar .dot{background:#d70015;animation:pulse 1.4s infinite}
+  body.is-live .livebar .stat{color:#d70015}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .livebar .btn{min-height:38px;font-size:13px;padding:0 14px}
+
+  /* settings drawer */
+  .drawer{display:none;flex-direction:column;gap:10px;padding:14px;border-bottom:1px solid var(--line);background:#fafafa;flex-shrink:0}
+  body.show-cfg .drawer{display:flex}
+  .drawer label{font-size:12px;font-weight:700;color:var(--muted);margin:0 2px -4px}
+  .drawer .hint{font-size:11px;color:var(--muted);line-height:1.4}
+
+  /* ===== LIST pane ===== */
+  .pane-list{flex:1;display:flex;flex-direction:column;min-height:0}
+  body.view-chat .pane-list{display:none}
+  .threads{flex:1;overflow-y:auto}
+  .thread{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid #f0f0f3;cursor:pointer;background:#fff}
+  .thread:active{background:#f5f5f7}
+  .thread .av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--orange),var(--orange2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0}
+  .thread .mid{flex:1;min-width:0}
+  .thread .mid .n{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .thread .mid .p{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .thread .right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+  .thread .right .t{font-size:11px;color:var(--muted)}
+  .badge{min-width:20px;height:20px;border-radius:11px;background:var(--orange);color:#fff;font-size:11px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 6px}
+  .thread.unread .badge{display:flex}
+  .thread.unread .mid .n{font-weight:800}
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);text-align:center;padding:40px 30px}
+  .empty .ic{font-size:38px}
+  .empty .t{font-size:15px;font-weight:700;color:var(--ink)}
+  .empty .s{font-size:13px;line-height:1.5}
+
+  /* ===== CHAT pane ===== */
+  .pane-chat{display:none;flex-direction:column;flex:1;min-height:0}
+  body.view-chat .pane-chat{display:flex}
+  .chathead{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 4px;border-bottom:1px solid var(--line);background:#fff;flex-shrink:0}
+  .chathead .back{background:none;border:none;font-size:26px;color:var(--orange);width:40px;height:40px;cursor:pointer;line-height:1}
+  .chathead .nm{flex:1;min-width:0}
+  .chathead .nm .n{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chathead .nm .s{font-size:11px;color:var(--muted)}
+  .chathead .close{background:none;border:1.5px solid var(--line);color:var(--muted);border-radius:9px;font-size:12px;font-weight:700;padding:7px 10px;cursor:pointer}
+  .chathead .close:active{background:#f0f0f3}
+  .msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+  .bubble{max-width:80%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap}
+  .bubble.them{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:5px}
+  .bubble.me{align-self:flex-end;background:var(--orange);color:#fff;border-bottom-right-radius:5px}
+  .bubble.sys{align-self:center;background:#e8e8ed;color:#555;font-size:12px;border-radius:10px;padding:6px 12px;text-align:center}
+  .composer{display:flex;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:#fff;gap:8px;align-items:flex-end;flex-shrink:0}
+  .composer textarea{max-height:120px}
+  .composer .send{flex-shrink:0;min-width:46px;padding:0 16px}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1d1d1f;color:#fff;font-size:13px;font-weight:600;padding:11px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:88%;text-align:center}
+  .toast.show{opacity:.96}
+</style>
+</head>
+<body>
+  <div class="frame">
+
+    <!-- LOGIN -->
+    <div id="login">
+      <div class="logo">
+        <div class="ic">🛍️</div>
+        <h1>Atendimento ao vivo</h1>
+        <p>Entre com seu acesso de vendedor</p>
+      </div>
+      <div class="err" id="loginErr"></div>
+      <div>
+        <label>Telefone</label>
+        <input id="lgPhone" type="tel" inputmode="tel" placeholder="(83) 9 9999-9999" autocomplete="username">
+      </div>
+      <div>
+        <label>Senha</label>
+        <input id="lgPass" type="password" placeholder="Sua senha" autocomplete="current-password">
+      </div>
+      <button class="btn" id="lgBtn" style="margin-top:8px">Entrar</button>
+    </div>
+
+    <!-- APP -->
+    <div id="app">
+      <div class="topbar">
+        <div class="who">
+          <div class="s" id="tbStore">Loja</div>
+          <div class="u" id="tbUser">vendedor</div>
+        </div>
+        <button class="iconbtn" id="btnPush" title="Notificações no celular">🔔</button>
+        <button class="iconbtn" id="btnCfg" title="Configurar câmera">⚙️</button>
+        <button class="iconbtn" id="btnOut" title="Sair">⏻</button>
+      </div>
+
+      <div class="livebar">
+        <div class="stat"><span class="dot"></span><span id="liveStat">Fora do ar</span></div>
+        <button class="btn" id="btnLive">Entrar ao vivo</button>
+      </div>
+
+      <div class="drawer">
+        <label>Título da transmissão</label>
+        <input id="cfgTitle" placeholder="Ex.: Loja Manaíra — promoções de hoje" maxlength="120">
+        <label>URL do vídeo (HLS .m3u8)</label>
+        <input id="cfgHls" placeholder="https://...cloudflare.../index.m3u8" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <div class="hint">A câmera da loja gera esse link (MediaMTX + Cloudflare). Configura uma vez — depois é só usar o botão “Entrar ao vivo”.</div>
+        <button class="btn ghost" id="cfgSave">Salvar configuração</button>
+      </div>
+
+      <!-- LISTA -->
+      <div class="pane-list">
+        <div class="threads" id="threads"></div>
+        <div class="empty" id="emptyList">
+          <div class="ic">💬</div>
+          <div class="t">Nenhum atendimento agora</div>
+          <div class="s">Quando um cliente mandar mensagem na loja ao vivo, aparece aqui na hora — com som.</div>
+        </div>
+      </div>
+
+      <!-- CONVERSA -->
+      <div class="pane-chat">
+        <div class="chathead">
+          <button class="back" id="btnBack">‹</button>
+          <div class="nm">
+            <div class="n" id="chName">Cliente</div>
+            <div class="s" id="chSub">atendimento</div>
+          </div>
+          <button class="close" id="btnClose">Encerrar</button>
+        </div>
+        <div class="msgs" id="msgs"></div>
+        <div class="composer">
+          <textarea id="reply" rows="1" placeholder="Responder…" maxlength="2000"></textarea>
+          <button class="btn send" id="btnSend">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var LOJA = new URLSearchParams(location.search).get('loja') || '';
+  var SKEY = 'tc_seller';        // {token,name,storeName,storeCode,role}
+  var sess = {};
+  try { sess = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch(e){ sess = {}; }
+  var TOKEN = sess.token || '';
+  var CFGKEY = '';               // por loja, definido após carregar canal
+
+  var THREADS = [];              // {id,visitorName,lastMessageAt,unread,preview}
+  var OPEN = null;               // chatId aberto
+  var seen = {};                 // ids já renderizados na conversa aberta
+  var es = null, pollTimer = null;
+  var actx = null;
+
+  // ---------- util ----------
+  function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show');},2600); }
+  function esc(s){ s=(s==null?'':''+s); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function initials(n){ n=(n||'?').trim(); var p=n.split(/\s+/); return ((p[0]||'')[0]||'?').toUpperCase() + ((p[1]||'')[0]||'').toUpperCase(); }
+  function fmtTime(d){
+    if(!d) return '';
+    var t=new Date(d), now=new Date(), diff=(now-t)/1000;
+    if(diff<60) return 'agora';
+    if(diff<3600) return Math.floor(diff/60)+'m';
+    if(t.toDateString()===now.toDateString()) return ('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
+    return ('0'+t.getDate()).slice(-2)+'/'+('0'+(t.getMonth()+1)).slice(-2);
+  }
+  function withLoja(path){ if(!LOJA) return path; return path + (path.indexOf('?')>=0?'&':'?') + 'loja=' + encodeURIComponent(LOJA); }
+  function body(extra){ var b = Object.assign({}, extra||{}); if(LOJA) b.loja = LOJA; return JSON.stringify(b); }
+  function headers(extra){ return Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+TOKEN}, extra||{}); }
+
+  function api(path, opts){
+    opts = opts || {};
+    opts.headers = headers(opts.headers);
+    return fetch('/api/live'+path, opts).then(function(r){
+      return r.json().catch(function(){return {};}).then(function(d){
+        if(r.status===401){ logout(); throw new Error('Sessão expirada'); }
+        if(!r.ok) throw new Error(d.error || ('Erro '+r.status));
+        return d;
+      });
+    });
+  }
+
+  // ---------- som ----------
+  function unlockAudio(){ try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }catch(e){} }
+  function beep(){
+    if(!actx) return;
+    [880,1245].forEach(function(f,i){
+      try{
+        var t=actx.currentTime+i*0.13, o=actx.createOscillator(), g=actx.createGain();
+        o.connect(g); g.connect(actx.destination); o.type='sine'; o.frequency.value=f;
+        g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.22,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.12);
+        o.start(t); o.stop(t+0.14);
+      }catch(e){}
+    });
+  }
+
+  // ---------- LOGIN ----------
+  function showLoginErr(m){ var e=$('loginErr'); e.textContent=m; e.classList.add('show'); }
+  function doLogin(){
+    var phone=$('lgPhone').value.trim(), pass=$('lgPass').value;
+    if(!phone || !pass){ showLoginErr('Informe telefone e senha'); return; }
+    $('loginErr').classList.remove('show');
+    $('lgBtn').disabled=true; $('lgBtn').textContent='Entrando…';
+    unlockAudio();
+    fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone,password:pass})})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+      .then(function(res){
+        $('lgBtn').disabled=false; $('lgBtn').textContent='Entrar';
+        if(!res.ok){ showLoginErr(res.d.error||'Não foi possível entrar'); return; }
+        var u=res.d.user||{};
+        sess = { token:res.d.token, name:u.name, role:u.role, storeName:(u.store&&u.store.name)||'', storeCode:(u.store&&u.store.code)||'' };
+        TOKEN = res.d.token;
+        localStorage.setItem(SKEY, JSON.stringify(sess));
+        enterApp();
+      })
+      .catch(function(){ $('lgBtn').disabled=false; $('lgBtn').textContent='Entrar'; showLoginErr('Erro de conexão'); });
+  }
+  function logout(){
+    try{ if(es) es.close(); }catch(e){}
+    clearInterval(pollTimer);
+    localStorage.removeItem(SKEY);
+    TOKEN=''; sess={}; OPEN=null; THREADS=[];
+    document.body.className='';
+    $('lgPass').value='';
+  }
+
+  // ---------- APP ----------
+  function enterApp(){
+    document.body.classList.add('logged');
+    $('tbStore').textContent = sess.storeName || (LOJA ? ('Loja '+LOJA) : 'Loja');
+    $('tbUser').textContent = sess.name || 'vendedor';
+    loadChannel();
+    loadThreads();
+    connectStream();
+    clearInterval(pollTimer);
+    pollTimer = setInterval(loadThreads, 30000);   // rede de segurança caso o SSE caia
+    refreshPushBtn();
+  }
+
+  function loadChannel(){
+    api('/seller/channel').then(function(c){
+      CFGKEY = 'tc_live_cfg_' + (c.storeCode||sess.storeCode||LOJA||'x');
+      var local = {}; try{ local = JSON.parse(localStorage.getItem(CFGKEY)||'{}'); }catch(e){}
+      var hls = c.hlsUrl || local.hlsUrl || '';
+      var title = c.title || local.title || '';
+      $('cfgHls').value = hls; $('cfgTitle').value = title;
+      if(c.storeName) $('tbStore').textContent = c.storeName;
+      setLiveUI(!!c.isLive);
+    }).catch(function(e){
+      if(/loja vinculada/i.test(e.message)) toast('Seu usuário não tem loja vinculada. Use ?loja=CODIGO');
+    });
+  }
+
+  function setLiveUI(on){
+    document.body.classList.toggle('is-live', on);
+    $('liveStat').textContent = on ? 'No ar agora' : 'Fora do ar';
+    $('btnLive').textContent = on ? 'Sair do ar' : 'Entrar ao vivo';
+    $('btnLive').classList.toggle('danger', on);
+  }
+
+  function toggleLive(){
+    var on = document.body.classList.contains('is-live');
+    if(on){
+      $('btnLive').disabled=true;
+      api('/seller/go-live',{method:'POST',body:body({isLive:false})}).then(function(){ setLiveUI(false); $('btnLive').disabled=false; })
+        .catch(function(e){ $('btnLive').disabled=false; toast(e.message); });
+    } else {
+      var hls=$('cfgHls').value.trim(), title=$('cfgTitle').value.trim();
+      if(!hls){ document.body.classList.add('show-cfg'); toast('Cole a URL do vídeo (HLS) da câmera'); $('cfgHls').focus(); return; }
+      saveCfg(true);
+      $('btnLive').disabled=true;
+      api('/seller/go-live',{method:'POST',body:body({isLive:true, hlsUrl:hls, title:title})}).then(function(){ setLiveUI(true); $('btnLive').disabled=false; toast('No ar! 🔴'); })
+        .catch(function(e){ $('btnLive').disabled=false; toast(e.message); });
+    }
+  }
+
+  function saveCfg(silent){
+    var hls=$('cfgHls').value.trim(), title=$('cfgTitle').value.trim();
+    if(CFGKEY){ try{ localStorage.setItem(CFGKEY, JSON.stringify({hlsUrl:hls,title:title})); }catch(e){} }
+    // se já está no ar, aplica a mudança de título/URL na hora
+    if(document.body.classList.contains('is-live')){
+      api('/seller/go-live',{method:'POST',body:body({isLive:true, hlsUrl:hls, title:title})}).catch(function(){});
+    }
+    if(!silent){ toast('Configuração salva'); document.body.classList.remove('show-cfg'); }
+  }
+
+  // ---------- THREADS ----------
+  function loadThreads(){
+    api('/seller/threads').then(function(d){ THREADS = d.threads||[]; renderThreads(); }).catch(function(){});
+  }
+  function renderThreads(){
+    var box=$('threads');
+    THREADS.sort(function(a,b){ return new Date(b.lastMessageAt)-new Date(a.lastMessageAt); });
+    $('emptyList').style.display = THREADS.length ? 'none' : 'flex';
+    box.innerHTML = THREADS.map(function(t){
+      return '<div class="thread'+(t.unread>0?' unread':'')+'" data-id="'+t.id+'">'
+        +'<div class="av">'+esc(initials(t.visitorName))+'</div>'
+        +'<div class="mid"><div class="n">'+esc(t.visitorName||'Cliente')+'</div><div class="p">'+esc(t.preview||'…')+'</div></div>'
+        +'<div class="right"><div class="t">'+fmtTime(t.lastMessageAt)+'</div><div class="badge">'+(t.unread>99?'99+':t.unread)+'</div></div>'
+        +'</div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.thread'), function(node){
+      node.addEventListener('click', function(){ openThread(node.getAttribute('data-id')); });
+    });
+  }
+  function findThread(id){ for(var i=0;i<THREADS.length;i++){ if(THREADS[i].id===id) return THREADS[i]; } return null; }
+  function bumpThread(id, visitorName, preview, when, incUnread){
+    var t=findThread(id);
+    if(!t){ t={id:id,visitorName:visitorName||'Cliente',unread:0,preview:'',lastMessageAt:when||new Date()}; THREADS.push(t); }
+    if(visitorName) t.visitorName=visitorName;
+    if(preview!=null) t.preview=preview;
+    t.lastMessageAt = when || new Date();
+    if(incUnread && OPEN!==id) t.unread=(t.unread||0)+1;
+    renderThreads();
+  }
+
+  // ---------- CONVERSA ----------
+  function addBubble(m){
+    if(m.id && seen[m.id]) return;
+    if(m.id) seen[m.id]=1;
+    var div=document.createElement('div');
+    if(m.sender==='system'){ div.className='bubble sys'; }
+    else { div.className='bubble ' + (m.sender==='seller'?'me':'them'); }
+    div.textContent=m.body;
+    $('msgs').appendChild(div);
+    $('msgs').scrollTop=$('msgs').scrollHeight;
+  }
+  function openThread(id){
+    OPEN=id; seen={};
+    var t=findThread(id);
+    $('chName').textContent = (t&&t.visitorName) || 'Cliente';
+    $('chSub').textContent = 'atendimento ao vivo';
+    $('msgs').innerHTML='';
+    document.body.classList.add('view-chat');
+    if(t){ t.unread=0; renderThreads(); }
+    api('/seller/threads/'+id+'/messages').then(function(d){
+      $('chName').textContent = (d.chat&&d.chat.visitorName)||$('chName').textContent;
+      (d.messages||[]).forEach(addBubble);
+      if(d.chat&&d.chat.status==='closed') addBubble({sender:'system',body:'Conversa encerrada'});
+    }).catch(function(e){ toast(e.message); });
+  }
+  function backToList(){ OPEN=null; document.body.classList.remove('view-chat'); loadThreads(); }
+  function sendReply(){
+    var inp=$('reply'), txt=inp.value.trim();
+    if(!txt || !OPEN) return;
+    inp.value=''; autoGrow(inp);
+    addBubble({sender:'seller', body:txt});                 // echo otimista
+    var id=OPEN;
+    api('/seller/threads/'+id+'/reply',{method:'POST',body:body({body:txt})}).then(function(d){
+      if(d.message&&d.message.id) seen[d.message.id]=1;
+      bumpThread(id, null, txt, new Date(), false);
+    }).catch(function(e){ toast(e.message); });
+  }
+  function closeThread(){
+    if(!OPEN) return;
+    if(!confirm('Encerrar este atendimento?')) return;
+    var id=OPEN;
+    api('/seller/threads/'+id+'/close',{method:'POST',body:body({})}).then(function(){
+      THREADS=THREADS.filter(function(t){return t.id!==id;});
+      backToList();
+    }).catch(function(e){ toast(e.message); });
+  }
+  function autoGrow(t){ t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,120)+'px'; }
+
+  // ---------- SSE ----------
+  function connectStream(){
+    try{ if(es) es.close(); }catch(e){}
+    es = new EventSource(withLoja('/api/live/seller/stream?token='+encodeURIComponent(TOKEN)));
+    es.onmessage = function(ev){
+      var d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+      if(d.type==='chat:new'){
+        var c=d.chat||{};
+        bumpThread(c.id, c.visitorName, c.preview||'Novo cliente no chat', c.lastMessageAt, true);
+        beep();
+      } else if(d.type==='chat:message'){
+        if(d.fromSeller){
+          // resposta minha (talvez de outro aparelho) — atualiza prévia, sem som/badge
+          if(OPEN===d.chatId) addBubble(d.message);
+          bumpThread(d.chatId, d.visitorName, d.message&&d.message.body, d.message&&d.message.createdAt, false);
+        } else {
+          if(OPEN===d.chatId){ addBubble(d.message); }
+          bumpThread(d.chatId, d.visitorName, d.message&&d.message.body, d.message&&d.message.createdAt, true);
+          beep();
+        }
+      } else if(d.type==='chat:closed'){
+        if(OPEN===d.chatId){ addBubble({sender:'system',body:'Conversa encerrada'}); }
+        THREADS=THREADS.filter(function(t){return t.id!==d.chatId;});
+        renderThreads();
+      }
+    };
+    es.onerror = function(){ /* EventSource reconecta sozinho */ };
+  }
+
+  // ---------- PUSH ----------
+  function urlB64ToU8(b64){
+    var pad='='.repeat((4-b64.length%4)%4), base=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
+    var raw=atob(base), out=new Uint8Array(raw.length);
+    for(var i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i);
+    return out;
+  }
+  function refreshPushBtn(){
+    if(!('serviceWorker' in navigator) || !('PushManager' in window)){ $('btnPush').style.display='none'; return; }
+    navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); })
+      .then(function(sub){ $('btnPush').classList.toggle('on', !!sub); }).catch(function(){});
+  }
+  function togglePush(){
+    if(!('serviceWorker' in navigator) || !('PushManager' in window)){ toast('Este aparelho não suporta push'); return; }
+    navigator.serviceWorker.ready.then(function(reg){
+      return reg.pushManager.getSubscription().then(function(existing){
+        if(existing){
+          return fetch('/api/messages-v2/push/subscribe',{method:'DELETE',headers:headers(),body:JSON.stringify({endpoint:existing.endpoint})})
+            .then(function(){ return existing.unsubscribe(); }).then(function(){ toast('Notificações desligadas'); refreshPushBtn(); });
+        }
+        return Notification.requestPermission().then(function(p){
+          if(p!=='granted'){ toast('Permissão negada'); return; }
+          return fetch('/api/messages-v2/push/vapid-public-key',{headers:headers()}).then(function(r){return r.json();}).then(function(k){
+            if(!k.publicKey) throw new Error('push indisponível');
+            return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64ToU8(k.publicKey)});
+          }).then(function(sub){
+            var p256dh=btoa(String.fromCharCode.apply(null,new Uint8Array(sub.getKey('p256dh')))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+            var auth=btoa(String.fromCharCode.apply(null,new Uint8Array(sub.getKey('auth')))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+            return fetch('/api/messages-v2/push/subscribe',{method:'POST',headers:headers(),body:JSON.stringify({endpoint:sub.endpoint,keys:{p256dh:p256dh,auth:auth},userAgent:navigator.userAgent})});
+          }).then(function(){ toast('Notificações ligadas 🔔'); refreshPushBtn(); });
+        });
+      });
+    }).catch(function(e){ toast('Erro no push: '+(e.message||e)); });
+  }
+
+  // ---------- wire ----------
+  $('lgBtn').addEventListener('click', doLogin);
+  $('lgPass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  $('btnOut').addEventListener('click', function(){ if(confirm('Sair do atendimento?')) logout(); });
+  $('btnCfg').addEventListener('click', function(){ document.body.classList.toggle('show-cfg'); });
+  $('cfgSave').addEventListener('click', function(){ saveCfg(false); });
+  $('btnLive').addEventListener('click', function(){ unlockAudio(); toggleLive(); });
+  $('btnPush').addEventListener('click', togglePush);
+  $('btnBack').addEventListener('click', backToList);
+  $('btnClose').addEventListener('click', closeThread);
+  $('btnSend').addEventListener('click', sendReply);
+  $('reply').addEventListener('input', function(){ autoGrow(this); });
+  $('reply').addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendReply(); } });
+  document.addEventListener('click', unlockAudio, {once:true});
+
+  if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }
+
+  // auto-login se já tem token salvo
+  if(TOKEN){ enterApp(); }
+})();
+</script>
+</body>
+</html>
