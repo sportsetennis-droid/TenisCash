@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Carregando… — Sports & Tennis</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0e0e10; color:#fff;
+    padding-top:env(safe-area-inset-top); min-height:100vh; }
+  .app { max-width:480px; margin:0 auto; min-height:100vh; background:#fff; color:#1d1d1f; position:relative; padding-bottom:calc(90px + env(safe-area-inset-bottom)); }
+  @media (min-width:760px){ body{padding:20px 0} .app{border-radius:24px;overflow:hidden;box-shadow:0 12px 50px rgba(0,0,0,.4);min-height:calc(100vh - 40px)} }
+  .cover { width:100%; aspect-ratio:16/9; object-fit:cover; background:linear-gradient(135deg,#E5571E,#EE7240); display:block; }
+  .cover-ph { width:100%; aspect-ratio:16/9; background:linear-gradient(135deg,#E5571E,#EE7240); display:flex; align-items:center; justify-content:center; font-size:60px; }
+  .pad { padding:18px; }
+  h1 { font-size:23px; line-height:1.2; font-weight:800; }
+  .sub { font-size:15px; color:#666; margin-top:6px; }
+  .producer { display:flex; align-items:center; gap:10px; margin:16px 0; padding:12px; background:#f5f5f7; border-radius:13px; }
+  .ava { width:42px; height:42px; border-radius:50%; background:#E5571E; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px; flex-shrink:0; object-fit:cover; }
+  .price { display:flex; align-items:baseline; gap:10px; margin:18px 0 6px; }
+  .price .now { font-size:30px; font-weight:800; color:#0a843d; }
+  .price .was { font-size:17px; color:#aaa; text-decoration:line-through; }
+  .price .rec { font-size:14px; color:#666; }
+  .desc { font-size:15px; line-height:1.6; color:#333; white-space:pre-wrap; margin:12px 0; }
+  h2.sec { font-size:13px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:#999; margin:22px 0 12px; }
+  .mod { border:1px solid #e5e5ea; border-radius:13px; margin-bottom:10px; overflow:hidden; }
+  .mod-h { padding:13px 14px; font-weight:700; background:#fafafa; }
+  .les { display:flex; align-items:center; gap:9px; padding:11px 14px; border-top:1px solid #f0f0f3; font-size:14px; }
+  .les .free { margin-left:auto; font-size:11px; font-weight:800; color:#0a843d; background:#e8f7ee; padding:2px 8px; border-radius:20px; }
+  .les .lock { margin-left:auto; color:#ccc; }
+  .badge-g { display:flex; gap:9px; align-items:center; background:#eef7ff; border:1px solid #d4e8ff; border-radius:13px; padding:13px; font-size:14px; color:#1a5fb4; margin:16px 0; }
+  .cta-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:1px solid #e5e5ea; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); z-index:20; }
+  .btn { min-height:50px; width:100%; border:none; border-radius:13px; font-size:16px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+  .btn.primary { background:#E5571E; color:#fff; }
+  .btn.green { background:#25d366; color:#fff; }
+  .btn.gray { background:#f0f0f3; color:#1d1d1f; }
+  .btn.sm { min-height:42px; font-size:14px; }
+  .btn:disabled { opacity:.5; }
+  label.f { display:block; font-size:12px; font-weight:700; color:#555; margin:12px 2px 5px; }
+  input.f, select.f { width:100%; padding:13px; font-size:16px; border:1.5px solid #e5e5ea; border-radius:11px; outline:none; }
+  input.f:focus, select.f:focus { border-color:#E5571E; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { flex:1; min-width:30%; min-height:44px; border:1.5px solid #e5e5ea; background:#fff; border-radius:10px; font-weight:700; color:#555; cursor:pointer; }
+  .seg button.on { border-color:#E5571E; background:#fdeee7; color:#E5571E; }
+  .sheet-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50; display:none; }
+  .sheet-bg.open { display:block; }
+  .sheet { position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:100%; max-width:480px; background:#fff; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + env(safe-area-inset-bottom)); max-height:92vh; overflow:auto; z-index:51; color:#1d1d1f; }
+  .sheet h3 { font-size:19px; margin-bottom:4px; }
+  .sheet .x { position:absolute; right:16px; top:14px; font-size:26px; color:#bbb; background:none; border:none; cursor:pointer; }
+  .qr { display:block; width:230px; max-width:80%; margin:14px auto; border-radius:12px; border:1px solid #eee; }
+  .copybox { background:#f5f5f7; border:1px solid #e5e5ea; border-radius:11px; padding:11px; font-size:12px; word-break:break-all; color:#555; margin:10px 0; max-height:90px; overflow:auto; }
+  .state { text-align:center; color:#999; padding:90px 24px; font-size:15px; line-height:1.6; }
+  .toast { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#1d1d1f; color:#fff; padding:11px 18px; border-radius:12px; font-size:14px; font-weight:600; z-index:80; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .spin { width:46px; height:46px; border:4px solid #eee; border-top-color:#E5571E; border-radius:50%; animation:sp 1s linear infinite; margin:14px auto; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="app" id="app"><div class="state">Carregando…</div></div>
+  <div class="sheet-bg" id="sheetBg"></div>
+  <div class="toast" id="toast"></div>
+<script>
+const API='/api/infoproducts';
+const slug=decodeURIComponent((location.pathname.split('/').filter(Boolean).pop()||''));
+const autoBuy=/^\/pay\//.test(location.pathname);
+const params=new URLSearchParams(location.search);
+const ref=params.get('ref')||getCookie('tc_ref')||null;
+let product=null, pollTimer=null;
+
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const money=(v)=>'R$ '+Number(v||0).toFixed(2).replace('.',',');
+function getCookie(n){ const m=document.cookie.match('(^|;)\\s*'+n+'\\s*=\\s*([^;]+)'); return m?decodeURIComponent(m.pop()):null; }
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+async function copy(t){ try{ await navigator.clipboard.writeText(t); }catch(_){ const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); try{document.execCommand('copy')}catch(e){} document.body.removeChild(a);} toast('Copiado!'); }
+function initials(n){ return (n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase(); }
+
+async function boot(){
+  if(!slug){ $('app').innerHTML='<div class="state">Produto não encontrado.</div>'; return; }
+  try{
+    const res=await fetch(API+'/public/'+encodeURIComponent(slug));
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Produto não encontrado');
+    product=await res.json();
+  }catch(e){ $('app').innerHTML='<div class="state">'+esc(e.message)+'</div>'; return; }
+  render();
+  if(autoBuy) openCheckout();
+}
+
+function render(){
+  const p=product;
+  document.title=p.title+' — Sports & Tennis';
+  const free=!p.price||p.price<=0;
+  const prod=p.producer||{};
+  $('app').innerHTML=`
+    ${p.coverUrl?`<img class="cover" src="${esc(p.coverUrl)}" alt="">`:`<div class="cover-ph">🎾</div>`}
+    <div class="pad">
+      <h1>${esc(p.title)}</h1>
+      ${p.subtitle?`<div class="sub">${esc(p.subtitle)}</div>`:''}
+      <div class="producer">
+        ${prod.avatarUrl?`<img class="ava" src="${esc(prod.avatarUrl)}">`:`<div class="ava">${esc(initials(prod.displayName))}</div>`}
+        <div><div style="font-weight:700">${esc(prod.displayName||'Produtor')}</div>${prod.headline?`<div style="font-size:13px;color:#888">${esc(prod.headline)}</div>`:''}</div>
+      </div>
+      <div class="price">
+        <span class="now">${free?'Grátis':money(p.price)}</span>
+        ${p.comparePrice&&p.comparePrice>p.price?`<span class="was">${money(p.comparePrice)}</span>`:''}
+        ${p.recurrence?`<span class="rec">/${p.recurrence==='monthly'?'mês':'ano'}</span>`:''}
+      </div>
+      ${p.description?`<div class="desc">${esc(p.description)}</div>`:''}
+      ${p.guaranteeDays?`<div class="badge-g">🛡️ Garantia de ${p.guaranteeDays} dias. Não gostou, devolvemos seu dinheiro.</div>`:''}
+      ${p.modules&&p.modules.length?`<h2 class="sec">Conteúdo do curso</h2>${p.modules.map(modBlock).join('')}`:''}
+    </div>
+    <div class="cta-bar"><button class="btn primary" onclick="openCheckout()">${free?'Quero acesso grátis':'Comprar agora · '+money(p.price)}</button></div>
+  `;
+}
+function modBlock(m){
+  return `<div class="mod"><div class="mod-h">${esc(m.title)}</div>
+    ${(m.lessons||[]).map(l=>`<div class="les"><span>${l.free?'▶️':'🔒'}</span><span style="flex:1">${esc(l.title)}</span>
+      ${l.free?'<span class="free">GRÁTIS</span>':(l.durationSec?`<span style="color:#aaa;font-size:12px">${Math.round(l.durationSec/60)}min</span>`:'<span class="lock">🔒</span>')}</div>`).join('')}
+  </div>`;
+}
+
+// ---------- CHECKOUT ----------
+function openCheckout(){
+  const p=product;
+  const methods=[]; if(p.allowPix)methods.push(['pix','Pix']); if(p.allowCard)methods.push(['card','Cartão']); if(p.allowBoleto)methods.push(['boleto','Boleto']);
+  if(!methods.length) methods.push(['pix','Pix']);
+  let method=methods[0][0];
+  const free=!p.price||p.price<=0;
+  sheet(free?'Acesso grátis':'Finalizar compra', `
+    <p style="color:#666;font-size:14px;margin-bottom:8px">${esc(p.title)} · <b style="color:#0a843d">${free?'Grátis':money(p.price)}</b></p>
+    <label class="f">Seu nome *</label><input class="f" id="co_name" placeholder="Nome completo">
+    <label class="f">E-mail</label><input class="f" id="co_email" type="email" inputmode="email" placeholder="voce@email.com">
+    <label class="f">WhatsApp</label><input class="f" id="co_phone" inputmode="numeric" placeholder="83 99999-8888">
+    ${free?'':`
+      <label class="f">Forma de pagamento</label>
+      <div class="seg" id="co_method">${methods.map(([v,l])=>`<button data-v="${v}" class="${v===method?'on':''}">${l}</button>`).join('')}</div>
+      <div id="co_inst_wrap" style="display:none"><label class="f">Parcelas</label>
+        <select class="f" id="co_inst">${Array.from({length:p.installmentsMax||1},(_,i)=>`<option value="${i+1}">${i+1}x de ${money(p.price/(i+1))}</option>`).join('')}</select></div>
+    `}
+    <div style="margin-top:16px"><button class="btn primary" id="co_go">${free?'Liberar acesso':'Gerar pagamento'}</button></div>
+    <p style="font-size:11px;color:#aaa;text-align:center;margin-top:10px">Pagamento processado de forma segura. Você recebe o acesso assim que confirmar.</p>
+  `);
+  if(!free){
+    $('co_method').querySelectorAll('button').forEach(b=>b.onclick=()=>{ method=b.dataset.v; $('co_method').querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); $('co_inst_wrap').style.display=(method==='card'&&(p.installmentsMax||1)>1)?'block':'none'; });
+  }
+  $('co_go').onclick=async()=>{
+    const name=$('co_name').value.trim(); if(!name){toast('Informe seu nome');return;}
+    const body={ productSlug:slug, method, ref, buyer:{ name, email:$('co_email').value.trim()||undefined, phone:$('co_phone').value.trim()||undefined } };
+    if(method==='card'&&$('co_inst')) body.installments=parseInt($('co_inst').value)||1;
+    $('co_go').disabled=true;
+    try{
+      const res=await fetch(API+'/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error||'Erro no checkout');
+      if(data.free){ location.href='/curso/'+data.accessToken; return; }
+      showPayment(data);
+    }catch(e){ toast(e.message); $('co_go').disabled=false; }
+  };
+}
+
+function showPayment(d){
+  window.__saleToken=d.saleToken;
+  if(d.pspInvoiceUrl && d.method!=='pix'){
+    sheet('Pagamento', `<p style="color:#666;margin-bottom:14px">Clique abaixo pra concluir o pagamento na página segura.</p>
+      <a class="btn primary" style="text-decoration:none" href="${esc(d.pspInvoiceUrl)}" target="_blank">Pagar agora</a>
+      <div style="margin-top:12px"><button class="btn gray sm" onclick="startPolling()">Já paguei, verificar</button></div>`);
+    startPolling(); return;
+  }
+  // Pix
+  sheet('Pague com Pix', `
+    <p style="color:#666;font-size:14px;text-align:center">Escaneie o QR ou copie o código. Liberação automática após o pagamento.</p>
+    ${d.pixQrUrl?`<img class="qr" src="${esc(d.pixQrUrl)}" alt="QR Pix">`:''}
+    ${d.pixPayload?`<div class="copybox" id="pixcode">${esc(d.pixPayload)}</div>
+      <button class="btn gray sm" onclick="copy(document.getElementById('pixcode').textContent)">Copiar código Pix</button>`:'<p style="text-align:center;color:#c0392b">Pix indisponível — fale com o produtor.</p>'}
+    <div id="pay_status" style="text-align:center;margin-top:18px"><div class="spin"></div><div style="color:#888;font-size:14px">Aguardando pagamento…</div></div>
+  `);
+  startPolling();
+}
+
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  if(!window.__saleToken) return;
+  let tries=0;
+  const check=async()=>{
+    tries++;
+    try{
+      const res=await fetch(API+'/sale/'+window.__saleToken);
+      const s=await res.json();
+      if(s.status==='paid'){ clearInterval(pollTimer); paid(s); }
+    }catch(_){}
+    if(tries>150) clearInterval(pollTimer); // ~10min
+  };
+  pollTimer=setInterval(check, 4000); check();
+}
+function paid(s){
+  const ps=$('pay_status');
+  if(s.product&&s.product.hasMembersArea&&s.accessToken){
+    if(ps){ ps.innerHTML='<div style="font-size:46px">✅</div><div style="font-weight:800;font-size:18px;margin:8px 0">Pagamento confirmado!</div>'; }
+    setTimeout(()=>{ location.href='/curso/'+s.accessToken; }, 1200);
+  } else {
+    sheet('Pagamento confirmado ✅', `<div style="text-align:center;padding:10px 0">
+      <div style="font-size:46px">✅</div>
+      <div style="font-weight:800;font-size:18px;margin:10px 0">Tudo certo!</div>
+      <p style="color:#666">${esc((s.product&&s.product.title)||'Seu produto')} foi liberado.</p>
+      ${s.accessToken?`<a class="btn primary" style="text-decoration:none;margin-top:14px" href="/curso/${esc(s.accessToken)}">Acessar agora</a>`:''}
+    </div>`);
+  }
+}
+
+// ---------- SHEET ----------
+function sheet(title, html){
+  const bg=$('sheetBg');
+  bg.innerHTML=`<div class="sheet"><button class="x" onclick="closeSheet()">×</button><h3>${esc(title)}</h3>${html}</div>`;
+  bg.classList.add('open');
+  bg.onclick=(e)=>{ if(e.target===bg) closeSheet(); };
+}
+function closeSheet(){ $('sheetBg').classList.remove('open'); $('sheetBg').innerHTML=''; if(pollTimer)clearInterval(pollTimer); }
+
+boot();
+</script>
+</body>
+</html>

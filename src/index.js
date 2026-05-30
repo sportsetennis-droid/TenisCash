@@ -55,6 +55,7 @@ const brandProfilesRoutes = require('./routes/brandProfiles');
 const priceCheckRoutes = require('./routes/priceCheck');
 const professionalsRoutes = require('./routes/professionals');
 const liveCommerceRoutes = require('./routes/liveCommerce');
+const infoproductsRoutes = require('./routes/infoproducts');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -156,6 +157,7 @@ app.use('/api/brand-profiles', brandProfilesRoutes);
 app.use('/api/price-check', priceCheckRoutes);
 app.use('/api/professionals', professionalsRoutes);
 app.use('/api/live', liveCommerceRoutes);
+app.use('/api/infoproducts', infoproductsRoutes);
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
@@ -792,6 +794,62 @@ app.get(['/aovivo', '/aovivo/:loja'], (req, res) => {
 app.get('/atendimento', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(__dirname, '../public/atendimento.html'), { cacheControl: false });
+});
+
+// ===================================================================
+// INFOPRODUTOS — páginas públicas (mobile-first)
+// ===================================================================
+const _infoPage = (file) => (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/' + file), { cacheControl: false });
+};
+// Página de vendas do produto digital + checkout inline (/pd/:slug e /pay/:slug autocompra)
+app.get(['/pd/:slug', '/pay/:slug'], _infoPage('produto.html'));
+// Área de membros: player do curso (login-free via accessToken)
+app.get('/curso/:token', _infoPage('curso.html'));
+// Meus cursos (compras do cliente logado)
+app.get('/membros', _infoPage('membros.html'));
+// Painel do afiliado
+app.get('/afiliado', _infoPage('afiliado.html'));
+// Verificação pública de certificado
+app.get('/cert/:code', _infoPage('certificado.html'));
+
+// Link de afiliado rastreado: conta clique, grava cookie tc_ref, redireciona pra página de vendas
+app.get('/r/:code', async (req, res) => {
+  const code = String(req.params.code || '').trim();
+  try {
+    const { prisma } = require('./middleware');
+    const link = await prisma.affiliateLink.findUnique({
+      where: { code },
+      include: { product: { select: { slug: true, visible: true, status: true } } },
+    });
+    if (!link || !link.product || !link.product.slug) {
+      return res.redirect(302, '/');
+    }
+    // grava clique (não bloqueia o redirect se falhar)
+    prisma.affiliateLink.update({ where: { code }, data: { clicks: { increment: 1 } } }).catch(() => {});
+    prisma.affiliateClick.create({
+      data: {
+        affiliateId: link.affiliateId,
+        productId: link.productId,
+        linkCode: code,
+        visitorToken: code,
+        ip: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 64),
+        userAgent: (req.headers['user-agent'] || '').toString(),
+      },
+    }).catch(() => {});
+    // cookie 30 dias, legível pelo front (httpOnly:false)
+    res.cookie('tc_ref', code, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+    });
+    return res.redirect(302, '/pd/' + encodeURIComponent(link.product.slug) + '?ref=' + encodeURIComponent(code));
+  } catch (e) {
+    console.error('[/r/:code] erro:', e.message);
+    return res.redirect(302, '/');
+  }
 });
 
 // Fallback SPA → app cliente

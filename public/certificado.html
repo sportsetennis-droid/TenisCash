@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Certificado — Sports & Tennis</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0e0e10; color:#1d1d1f; min-height:100vh; padding:20px; display:flex; align-items:center; justify-content:center; }
+  .cert { max-width:560px; width:100%; background:#fff; border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .band { height:10px; background:linear-gradient(90deg,#E5571E,#EE7240,#5b5bd6); }
+  .inner { padding:36px 30px; text-align:center; border:2px solid #f0f0f3; margin:14px; border-radius:12px; }
+  .seal { font-size:54px; }
+  .ttl { font-size:13px; letter-spacing:3px; text-transform:uppercase; color:#999; font-weight:800; margin:10px 0 4px; }
+  h1 { font-size:15px; color:#666; font-weight:600; margin-bottom:18px; }
+  .name { font-size:30px; font-weight:800; color:#1d1d1f; margin:8px 0; line-height:1.2; }
+  .course { font-size:18px; color:#E5571E; font-weight:700; margin:14px 0; }
+  .meta { font-size:13px; color:#888; margin-top:18px; line-height:1.7; }
+  .verify { background:#e8f7ee; color:#0a843d; font-size:12px; font-weight:700; padding:8px 14px; border-radius:20px; display:inline-block; margin-top:16px; }
+  .state { color:#fff; text-align:center; font-size:16px; line-height:1.6; }
+  .foot { text-align:center; padding:0 0 22px; font-size:12px; color:#bbb; }
+  @media print { body{background:#fff;padding:0} .cert{box-shadow:none} }
+</style>
+</head>
+<body>
+  <div id="root"><div class="state">Carregando certificado…</div></div>
+<script>
+const API='/api/infoproducts';
+const code=decodeURIComponent((location.pathname.split('/').filter(Boolean).pop()||''));
+const esc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+async function boot(){
+  if(!code){ document.getElementById('root').innerHTML='<div class="state">Código inválido.</div>'; return; }
+  try{
+    const res=await fetch(API+'/cert/'+encodeURIComponent(code));
+    if(!res.ok) throw new Error('Certificado não encontrado ou inválido.');
+    const c=await res.json();
+    const dt=new Date(c.issuedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+    document.title='Certificado de '+c.recipientName;
+    document.getElementById('root').innerHTML=`
+      <div class="cert">
+        <div class="band"></div>
+        <div class="inner">
+          <div class="seal">🏆</div>
+          <div class="ttl">Certificado de Conclusão</div>
+          <h1>Certificamos que</h1>
+          <div class="name">${esc(c.recipientName)}</div>
+          <h1>concluiu com êxito o curso</h1>
+          <div class="course">${esc(c.courseTitle)}</div>
+          ${c.hours?`<div class="meta">Carga horária: ${esc(c.hours)}h</div>`:''}
+          <div class="meta">Emitido por <b>${esc(c.producer||'Sports & Tennis')}</b><br>em ${esc(dt)}</div>
+          <div class="verify">✓ Verificado · ${esc(c.code)}</div>
+        </div>
+        <div class="foot">Sports &amp; Tennis · TenisCash</div>
+      </div>`;
+  }catch(e){ document.getElementById('root').innerHTML='<div class="state">'+esc(e.message)+'</div>'; }
+}
+boot();
+</script>
+</body>
+</html>

@@ -126,6 +126,10 @@ model User {
   professionalProfile     Professional?
   professionalClientLinks ProfessionalClient[]
 
+  // ===== INFOPRODUTOS (plataforma estilo Hotmart) =====
+  infoEnrollments Enrollment[] @relation("infoEnrollments")
+  infoAffiliate   Affiliate?   @relation("infoAffiliate")
+
   // ===== APEX COMPETIÇÃO (torneios, ranking, desafios) =====
   tournamentsOwned   Tournament[]    @relation("tournamentOwner")
   entryMemberships   EntryMember[]
@@ -2883,10 +2887,14 @@ model Professional {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  offers        ProfessionalOffer[]
-  clients       ProfessionalClient[]
-  charges       Charge[]
-  subscriptions ProfessionalSubscription[]
+  offers          ProfessionalOffer[]
+  clients         ProfessionalClient[]
+  charges         Charge[]
+  subscriptions   ProfessionalSubscription[]
+  digitalProducts DigitalProduct[]
+
+  // Recebimento via plataforma (split ao vivo quando ligar o PSP)
+  asaasWalletId String?
 
   @@index([category])
   @@index([city])
@@ -3078,4 +3086,396 @@ model LiveMessage {
   chat LiveChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
+}
+
+// ============================================================
+// INFOPRODUTOS — plataforma estilo Hotmart dentro do TenisCash
+// Produtor (Professional) vende cursos/ebooks/comunidade/mentoria.
+// Aluno compra no checkout (Pix/cartão/boleto), acessa área de
+// membros, acompanha progresso, ganha certificado. Afiliados
+// indicam por link rastreado e ganham comissão. Split, take rate
+// e cashback TenisCash entram quando o PSP (Asaas) for ligado;
+// até lá o checkout roda em Pix off-platform (dinheiro direto na
+// conta do produtor). prisma db push 100% aditivo (14 tabelas).
+// ============================================================
+
+model DigitalProduct {
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+
+  slug        String  @unique // /pd/<slug>, /pay/<slug>
+  title       String
+  subtitle    String?
+  description String? @db.Text
+  coverUrl    String?
+  type        String  @default("course") // course | ebook | community | mentorship | file | bundle
+
+  // Preço
+  price        Float   @default(0)
+  comparePrice Float? // preço "de" (riscado)
+  currency     String  @default("BRL")
+  recurrence   String? // null = vitalício | monthly | annual
+
+  // Entrega
+  hasMembersArea Boolean @default(true) // gera área de membros (curso)
+  fileUrl        String? // entrega de ebook/arquivo
+  accessDays     Int? // dias de acesso após compra (null = vitalício)
+
+  // Checkout
+  allowPix        Boolean @default(true)
+  allowCard       Boolean @default(true)
+  allowBoleto     Boolean @default(false)
+  installmentsMax Int     @default(12)
+
+  // Afiliados
+  affiliateEnabled       Boolean @default(false)
+  affiliateCommissionPct Float   @default(30) // % pro afiliado
+  affiliateAutoApprove   Boolean @default(true)
+  affiliateCookieDays    Int     @default(30) // janela de atribuição (LCC)
+
+  // Plataforma (entra com PSP)
+  platformFeePct Float @default(0) // take rate S&T (0 enquanto off-platform)
+  cashbackPct    Float @default(0) // cashback TenisCash pro comprador
+
+  // Garantia/reembolso
+  guaranteeDays Int @default(7)
+
+  // Status
+  status  String  @default("draft") // draft | published | archived
+  visible Boolean @default(true)
+
+  // Stats
+  salesCount   Int   @default(0)
+  revenueTotal Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  modules        CourseModule[]
+  enrollments    Enrollment[]
+  sales          DigitalSale[]
+  affiliateLinks AffiliateLink[]
+  coproducers    Coproducer[]
+  certificates   Certificate[]
+
+  @@index([professionalId])
+  @@index([status])
+  @@index([type])
+}
+
+model CourseModule {
+  id        String         @id @default(cuid())
+  productId String
+  product   DigitalProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String? @db.Text
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessons Lesson[]
+
+  @@index([productId])
+}
+
+model Lesson {
+  id       String       @id @default(cuid())
+  moduleId String
+  module   CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String? @db.Text
+  order       Int     @default(0)
+
+  videoUrl      String? // YouTube/Vimeo/HLS/MP4
+  videoProvider String? // youtube | vimeo | url
+  durationSec   Int?
+  contentHtml   String? @db.Text // texto rico complementar
+  attachmentUrl String?
+
+  free Boolean @default(false) // aula de amostra grátis
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress LessonProgress[]
+
+  @@index([moduleId])
+}
+
+model Enrollment {
+  id        String         @id @default(cuid())
+  productId String
+  product   DigitalProduct @relation(fields: [productId], references: [id])
+
+  // Comprador pode ou não ser User TenisCash
+  userId     String?
+  user       User?   @relation("infoEnrollments", fields: [userId], references: [id])
+  buyerName  String
+  buyerEmail String?
+  buyerPhone String?
+
+  saleId      String? // venda que liberou o acesso
+  affiliateId String? // quem indicou
+
+  accessToken String @unique // /membros?t=<token> sem login
+
+  status    String    @default("active") // active | refunded | cancelled | expired
+  expiresAt DateTime?
+
+  progressPct       Float     @default(0)
+  completedAt       DateTime?
+  certificateIssued Boolean   @default(false)
+  lastAccessAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessonProgress LessonProgress[]
+  certificate    Certificate?
+
+  @@index([productId])
+  @@index([userId])
+  @@index([status])
+}
+
+model LessonProgress {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  completed   Boolean   @default(false)
+  watchedSec  Int       @default(0)
+  completedAt DateTime?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([enrollmentId, lessonId])
+  @@index([enrollmentId])
+}
+
+model Certificate {
+  id           String         @id @default(cuid())
+  enrollmentId String         @unique
+  enrollment   Enrollment     @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  productId    String
+  product      DigitalProduct @relation(fields: [productId], references: [id])
+
+  code          String   @unique // /cert/<code> verificação pública
+  recipientName String
+  courseTitle   String
+  hours         Float?
+  issuedAt      DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Affiliate {
+  id     String  @id @default(cuid())
+  userId String? @unique
+  user   User?   @relation("infoAffiliate", fields: [userId], references: [id])
+
+  name  String
+  email String?
+  phone String?
+
+  // Recebimento de comissão
+  pixKey        String?
+  asaasWalletId String? // recebedor no PSP (split ao vivo)
+
+  status String @default("active") // active | blocked
+
+  // Stats
+  clicksTotal       Int   @default(0)
+  salesTotal        Int   @default(0)
+  commissionTotal   Float @default(0)
+  commissionPaid    Float @default(0)
+  commissionPending Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  links       AffiliateLink[]
+  clicks      AffiliateClick[]
+  commissions AffiliateCommission[]
+  payouts     Payout[]
+
+  @@index([status])
+}
+
+model AffiliateLink {
+  id          String         @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate      @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  productId   String
+  product     DigitalProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  code          String @unique // /r/<code>
+  commissionPct Float // snapshot no momento da afiliação
+  status        String @default("approved") // pending | approved | rejected
+
+  clicks Int @default(0)
+  sales  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([affiliateId, productId])
+  @@index([productId])
+  @@index([code])
+}
+
+model AffiliateClick {
+  id          String    @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  productId   String
+  linkCode    String
+
+  visitorToken String // cookie de atribuição
+  ip           String?
+  userAgent    String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([affiliateId])
+  @@index([visitorToken])
+  @@index([linkCode])
+}
+
+model Coproducer {
+  id        String         @id @default(cuid())
+  productId String
+  product   DigitalProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  userId        String?
+  name          String
+  pixKey        String?
+  asaasWalletId String?
+  sharePct      Float // % do líquido do produtor
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model DigitalSale {
+  id        String         @id @default(cuid())
+  productId String
+  product   DigitalProduct @relation(fields: [productId], references: [id])
+
+  // Comprador
+  userId     String?
+  buyerName  String
+  buyerEmail String?
+  buyerPhone String?
+
+  // Afiliação
+  affiliateId   String?
+  affiliateCode String?
+
+  // Valores
+  amount          Float // valor pago
+  producerAmount  Float @default(0) // líquido do produtor
+  affiliateAmount Float @default(0)
+  platformFee     Float @default(0) // take rate S&T
+  cashbackAmount  Float @default(0) // TenisCash pro comprador
+
+  // Pagamento
+  settlementMode String @default("off_platform") // off_platform | on_platform
+  method         String? // pix | card | boleto
+  installments   Int     @default(1)
+
+  // Máquina de estados
+  status String @default("waiting_payment") // waiting_payment | paid | refunded | chargeback | cancelled | overdue
+
+  // Pix off-platform
+  pixPayload String? @db.Text
+  pixQrUrl   String?
+
+  // PSP (Asaas)
+  pspProvider   String? // asaas
+  pspChargeId   String? // id da cobrança no PSP
+  pspInvoiceUrl String? // link de pagamento hospedado
+
+  // Token público do checkout/recibo
+  publicToken String @unique
+
+  paidAt     DateTime?
+  refundedAt DateTime?
+  dueDate    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  commissions AffiliateCommission[]
+
+  @@index([productId])
+  @@index([userId])
+  @@index([status])
+  @@index([affiliateId])
+}
+
+model AffiliateCommission {
+  id          String      @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate   @relation(fields: [affiliateId], references: [id])
+  saleId      String
+  sale        DigitalSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  amount   Float
+  status   String  @default("pending") // pending | available | paid | reversed
+  payoutId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([affiliateId])
+  @@index([status])
+}
+
+model Payout {
+  id          String     @id @default(cuid())
+  affiliateId String?
+  affiliate   Affiliate? @relation(fields: [affiliateId], references: [id])
+
+  // produtor (Professional) também pode sacar saldo on-platform
+  professionalId String?
+
+  payeeType String // affiliate | producer
+  amount    Float
+  pixKey    String?
+  method    String  @default("pix")
+
+  status        String  @default("requested") // requested | processing | paid | failed
+  pspTransferId String?
+  note          String? @db.Text
+
+  requestedAt DateTime  @default(now())
+  paidAt      DateTime?
+
+  @@index([affiliateId])
+  @@index([professionalId])
+  @@index([status])
+}
+
+model WebhookEvent {
+  id         String  @id @default(cuid())
+  provider   String // asaas
+  eventType  String
+  externalId String  @unique // idempotência
+  payload    String  @db.Text
+  processed  Boolean @default(false)
+  error      String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([provider])
+  @@index([processed])
 }

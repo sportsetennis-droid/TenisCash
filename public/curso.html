@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Área de membros — Sports & Tennis</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0e0e10; color:#fff;
+    padding-top:env(safe-area-inset-top); min-height:100vh; }
+  .app { max-width:480px; margin:0 auto; min-height:100vh; background:#fff; color:#1d1d1f; position:relative; padding-bottom:calc(20px + env(safe-area-inset-bottom)); }
+  @media (min-width:760px){ body{padding:20px 0} .app{border-radius:24px;overflow:hidden;box-shadow:0 12px 50px rgba(0,0,0,.4);min-height:calc(100vh - 40px)} }
+  .top { background:#101014; color:#fff; padding:14px 16px; position:sticky; top:0; z-index:10; }
+  .top .t { font-weight:800; font-size:16px; }
+  .top .s { font-size:12px; opacity:.7; margin-top:2px; }
+  .prog { height:6px; background:#23232a; border-radius:6px; margin-top:10px; overflow:hidden; }
+  .prog > i { display:block; height:100%; background:#25d366; transition:width .3s; }
+  .vwrap { position:relative; width:100%; aspect-ratio:16/9; background:#000; }
+  .vwrap iframe, .vwrap video { position:absolute; inset:0; width:100%; height:100%; border:0; }
+  .novid { aspect-ratio:16/9; background:#101014; color:#666; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .pad { padding:16px; }
+  h1 { font-size:18px; font-weight:800; line-height:1.25; }
+  .lesson-text { font-size:15px; line-height:1.6; color:#333; white-space:pre-wrap; margin-top:10px; }
+  .btn { min-height:48px; width:100%; border:none; border-radius:12px; font-size:15px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+  .btn.green { background:#25d366; color:#fff; }
+  .btn.done { background:#e8f7ee; color:#0a843d; }
+  .btn.gray { background:#f0f0f3; color:#1d1d1f; }
+  .btn.primary { background:#E5571E; color:#fff; }
+  .btn.sm { min-height:40px; font-size:13px; width:auto; padding:0 14px; }
+  h2.sec { font-size:13px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:#999; margin:20px 0 10px; }
+  .mod { border:1px solid #e5e5ea; border-radius:13px; margin-bottom:10px; overflow:hidden; }
+  .mod-h { padding:12px 14px; font-weight:700; background:#fafafa; font-size:14px; }
+  .les { display:flex; align-items:center; gap:10px; padding:12px 14px; border-top:1px solid #f0f0f3; font-size:14px; cursor:pointer; }
+  .les.active { background:#fdeee7; }
+  .les .ck { width:22px; height:22px; border-radius:50%; border:2px solid #ccc; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:13px; color:#fff; }
+  .les .ck.on { background:#25d366; border-color:#25d366; }
+  .att { display:inline-flex; align-items:center; gap:8px; background:#f5f5f7; border:1px solid #e5e5ea; border-radius:11px; padding:11px 14px; text-decoration:none; color:#1d1d1f; font-size:14px; font-weight:600; margin-top:12px; }
+  .cert-card { background:linear-gradient(135deg,#1d8348,#27ae60); color:#fff; border-radius:16px; padding:18px; margin-top:14px; text-align:center; }
+  .state { text-align:center; color:#999; padding:90px 24px; font-size:15px; line-height:1.6; }
+  .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#1d1d1f; color:#fff; padding:11px 18px; border-radius:12px; font-size:14px; font-weight:600; z-index:80; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div class="app" id="app"><div class="state">Carregando seu curso…</div></div>
+  <div class="toast" id="toast"></div>
+<script>
+const API='/api/infoproducts';
+const token=decodeURIComponent((location.pathname.split('/').filter(Boolean).pop()||''));
+let data=null, lessons=[], current=null;
+
+const $=(id)=>document.getElementById(id);
+const esc=(s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function ytId(u){ const m=String(u).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/); return m?m[1]:''; }
+function vimeoId(u){ const m=String(u).match(/vimeo\.com\/(?:video\/)?(\d+)/); return m?m[1]:''; }
+
+async function boot(){
+  if(!token){ $('app').innerHTML='<div class="state">Acesso inválido.</div>'; return; }
+  try{
+    const res=await fetch(API+'/enrollment/'+encodeURIComponent(token));
+    if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error||'Acesso não encontrado');
+    data=await res.json();
+  }catch(e){ $('app').innerHTML='<div class="state">'+esc(e.message)+'<br><br><a class="btn primary" style="display:inline-flex;width:auto;padding:0 20px;text-decoration:none" href="/">Voltar</a></div>'; return; }
+  lessons=[];
+  (data.product.modules||[]).forEach(m=>(m.lessons||[]).forEach(l=>lessons.push(l)));
+  current=lessons.find(l=>!l.completed)||lessons[0]||null;
+  render();
+}
+
+function render(){
+  const p=data.product;
+  document.title=p.title+' — Área de membros';
+  $('app').innerHTML=`
+    <div class="top">
+      <div class="t">${esc(p.title)}</div>
+      <div class="s">${esc((p.producer&&p.producer.displayName)||'')} · ${data.progressPct||0}% concluído</div>
+      <div class="prog"><i style="width:${data.progressPct||0}%"></i></div>
+    </div>
+    <div id="player"></div>
+    <div class="pad">
+      <div id="lessonInfo"></div>
+      ${data.progressPct>=100?certBlock():''}
+      <h2 class="sec">Conteúdo</h2>
+      <div id="curriculum">${(p.modules||[]).map(modBlock).join('')}</div>
+    </div>
+  `;
+  bindCurriculum();
+  if(current) selectLesson(current.id, false);
+  else { $('player').innerHTML='<div class="novid">Este curso ainda não tem aulas.</div>'; }
+}
+
+function modBlock(m){
+  return `<div class="mod"><div class="mod-h">${esc(m.title)}</div>
+    ${(m.lessons||[]).map(l=>`<div class="les" data-id="${l.id}">
+      <div class="ck ${l.completed?'on':''}">${l.completed?'✓':''}</div>
+      <div style="flex:1">${esc(l.title)}</div>
+      ${l.durationSec?`<span style="color:#aaa;font-size:12px">${Math.round(l.durationSec/60)}min</span>`:''}
+    </div>`).join('')}
+  </div>`;
+}
+function bindCurriculum(){ $('curriculum').querySelectorAll('.les').forEach(el=>el.onclick=()=>selectLesson(el.dataset.id, true)); }
+
+function lessonById(id){ return lessons.find(l=>l.id===id); }
+function selectLesson(id, scroll){
+  const l=lessonById(id); if(!l) return; current=l;
+  $('player').innerHTML=embed(l);
+  $('lessonInfo').innerHTML=`
+    <h1>${esc(l.title)}</h1>
+    ${l.description?`<div class="lesson-text">${esc(l.description)}</div>`:''}
+    ${l.attachmentUrl?`<a class="att" href="${esc(l.attachmentUrl)}" target="_blank">📎 Material da aula</a>`:''}
+    <div style="margin-top:16px">
+      <button class="btn ${l.completed?'done':'green'}" id="ckbtn" onclick="toggleDone('${l.id}')">${l.completed?'✓ Concluída':'Marcar como concluída'}</button>
+    </div>`;
+  document.querySelectorAll('.les').forEach(el=>el.classList.toggle('active', el.dataset.id===id));
+  if(scroll) window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function embed(l){
+  const u=l.videoUrl;
+  if(!u){ return l.contentHtml ? `<div class="pad"><div class="lesson-text">${l.contentHtml}</div></div>` : '<div class="novid">Aula em texto — veja abaixo</div>'; }
+  const prov=l.videoProvider;
+  if(prov==='youtube'||/youtu/.test(u)){ const id=ytId(u); return id?`<div class="vwrap"><iframe src="https://www.youtube.com/embed/${id}" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen></iframe></div>`:linkFallback(u); }
+  if(prov==='vimeo'||/vimeo/.test(u)){ const id=vimeoId(u); return id?`<div class="vwrap"><iframe src="https://player.vimeo.com/video/${id}" allow="autoplay;fullscreen;picture-in-picture" allowfullscreen></iframe></div>`:linkFallback(u); }
+  if(prov==='file'||/\.(mp4|webm|mov|m3u8)(\?|$)/i.test(u)){ return `<div class="vwrap"><video src="${esc(u)}" controls playsinline></video></div>`; }
+  return `<div class="vwrap"><iframe src="${esc(u)}" allowfullscreen></iframe></div>`;
+}
+function linkFallback(u){ return `<div class="novid"><a href="${esc(u)}" target="_blank" style="color:#E5571E;font-weight:700">▶ Abrir vídeo</a></div>`; }
+
+async function toggleDone(id){
+  const l=lessonById(id); if(!l) return;
+  const completed=!l.completed;
+  const btn=$('ckbtn'); if(btn) btn.disabled=true;
+  try{
+    const res=await fetch(API+'/enrollment/'+encodeURIComponent(token)+'/lessons/'+encodeURIComponent(id)+'/progress',
+      {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({completed})});
+    const r=await res.json(); if(!res.ok) throw new Error(r.error||'Erro');
+    l.completed=completed; data.progressPct=r.progressPct;
+    // atualiza UI sem recarregar tudo
+    const cls=document.querySelector('.les[data-id="'+id+'"] .ck'); if(cls){ cls.classList.toggle('on',completed); cls.textContent=completed?'✓':''; }
+    $('app').querySelector('.prog > i').style.width=(r.progressPct||0)+'%';
+    $('app').querySelector('.top .s').innerHTML=esc((data.product.producer&&data.product.producer.displayName)||'')+' · '+(r.progressPct||0)+'% concluído';
+    if(btn){ btn.className='btn '+(completed?'done':'green'); btn.textContent=completed?'✓ Concluída':'Marcar como concluída'; btn.disabled=false; }
+    if(r.completed && r.progressPct>=100){ // acabou o curso
+      if(!document.getElementById('certWrap')){ const info=$('lessonInfo'); info.insertAdjacentHTML('afterend', '<div id="certWrap" class="pad" style="padding-top:0">'+certBlock()+'</div>'); }
+      toast('Curso concluído! 🎉');
+    }
+    // auto-avança pra próxima não concluída
+    if(completed){ const next=lessons.find(x=>!x.completed); if(next&&next.id!==id) setTimeout(()=>selectLesson(next.id,true),500); }
+  }catch(e){ toast(e.message); if(btn) btn.disabled=false; }
+}
+
+function certBlock(){
+  if(data.certificate){
+    const url=location.origin+'/cert/'+data.certificate.code;
+    return `<div class="cert-card"><div style="font-size:38px">🏆</div>
+      <div style="font-weight:800;font-size:17px;margin:6px 0">Certificado emitido</div>
+      <div style="opacity:.9;font-size:13px">Código ${esc(data.certificate.code)}</div>
+      <a class="btn" style="background:#fff;color:#1d8348;margin-top:12px;text-decoration:none" href="${esc(url)}" target="_blank">Ver certificado</a></div>`;
+  }
+  return `<div class="cert-card"><div style="font-size:38px">🎓</div>
+    <div style="font-weight:800;font-size:17px;margin:6px 0">Você concluiu o curso!</div>
+    <button class="btn" style="background:#fff;color:#1d8348;margin-top:12px" onclick="emitCert()">Emitir certificado</button></div>`;
+}
+async function emitCert(){
+  try{
+    const res=await fetch(API+'/enrollment/'+encodeURIComponent(token)+'/certificate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const c=await res.json(); if(!res.ok) throw new Error(c.error||'Erro');
+    data.certificate=c; toast('Certificado emitido!');
+    const wrap=document.getElementById('certWrap'); if(wrap) wrap.innerHTML=certBlock(); else render();
+  }catch(e){ toast(e.message); }
+}
+
+boot();
+</script>
+</body>
+</html>

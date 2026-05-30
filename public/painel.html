@@ -90,8 +90,10 @@
 
 <script>
 const API = '/api/professionals';
+const IAPI = '/api/infoproducts';
 const token = localStorage.getItem('tc_token') || '';
-let state = { pro:null, dash:null, offers:[], clients:[], charges:[], subs:[], tab:'inicio' };
+let state = { pro:null, dash:null, offers:[], clients:[], charges:[], subs:[], tab:'inicio',
+  products:[], idash:null, curProduct:null };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -106,6 +108,18 @@ async function copy(txt){ try{ await navigator.clipboard.writeText(txt); }catch(
 
 async function api(path, { method='GET', body } = {}) {
   const res = await fetch(API + path, {
+    method,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { gateLogin(); throw new Error('401'); }
+  if (!res.ok) { let m='Erro'; try{ m=(await res.json()).error||m }catch(e){} throw new Error(m); }
+  return res.status===204 ? null : res.json();
+}
+
+// infoprodutos (base /api/infoproducts)
+async function iapi(path, { method='GET', body } = {}) {
+  const res = await fetch(IAPI + path, {
     method,
     headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
     body: body ? JSON.stringify(body) : undefined,
@@ -196,8 +210,9 @@ function renderShell(){
     <div class="nav" id="nav">
       ${navBtn('inicio','📊','Início')}
       ${navBtn('ofertas','🏷️','Ofertas')}
+      ${navBtn('cursos','🎓','Cursos')}
       ${navBtn('alunos','👥','Alunos')}
-      ${navBtn('cobrancas','💸','Cobranças')}
+      ${navBtn('cobrancas','💸','Cobrar')}
       ${navBtn('perfil','⚙️','Perfil')}
     </div>`;
   $('nav').querySelectorAll('button').forEach(b=> b.onclick=()=>go(b.dataset.tab));
@@ -205,12 +220,12 @@ function renderShell(){
 function navBtn(tab,ic,lbl){ return `<button data-tab="${tab}"><span class="ic">${ic}</span>${lbl}</button>`; }
 
 function go(tab){
-  state.tab=tab;
+  state.tab=tab; state.curProduct=null;
   $('nav').querySelectorAll('button').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
   const fab=$('fab');
-  const fabMap={ ofertas:()=>openOffer(), alunos:()=>openClient(), cobrancas:()=>openCharge() };
+  const fabMap={ ofertas:()=>openOffer(), cursos:()=>openProductForm(), alunos:()=>openClient(), cobrancas:()=>openCharge() };
   if(fabMap[tab]){ fab.style.display='block'; fab.onclick=fabMap[tab]; } else fab.style.display='none';
-  ({ inicio:renderInicio, ofertas:renderOfertas, alunos:renderAlunos, cobrancas:renderCobrancas, perfil:renderPerfil }[tab])();
+  ({ inicio:renderInicio, ofertas:renderOfertas, cursos:renderCursos, alunos:renderAlunos, cobrancas:renderCobrancas, perfil:renderPerfil }[tab])();
 }
 
 // ---------- INÍCIO ----------
@@ -463,6 +478,303 @@ function renderPerfil(){
     $('pf_save').disabled=true;
     try{ state.pro=await api('/me',{method:'PUT',body}); renderShell(); go('perfil'); toast('Salvo!'); }catch(e){toast(e.message);$('pf_save').disabled=false;}
   };
+}
+
+// ---------- CURSOS (infoprodutos) ----------
+const PTYPE = { course:'Curso', ebook:'E-book', community:'Comunidade', mentorship:'Mentoria', file:'Arquivo', bundle:'Combo' };
+const PSTATUS = { draft:'Rascunho', published:'Publicado', archived:'Arquivado' };
+const SALE_ST = { waiting_payment:'Aguardando', paid:'Pago', refunded:'Estornado', chargeback:'Chargeback', cancelled:'Cancelado', overdue:'Vencido' };
+
+function statusPill(s){ return s==='published'||s==='active'||s==='approved'||s==='paid' ? 'paid' : (s==='archived'||s==='rejected'||s==='cancelled'||s==='refunded'||s==='chargeback' ? 'cancelled':'pending'); }
+function detectProvider(url){ if(!url)return null; if(/youtu\.?be/.test(url))return 'youtube'; if(/vimeo/.test(url))return 'vimeo'; if(/\.(mp4|webm|mov|m3u8)(\?|$)/i.test(url))return 'file'; return 'link'; }
+async function reloadProduct(){ state.curProduct = await iapi('/me/products/'+state.curProduct.id); }
+
+async function loadProducts(){
+  const [products, idash] = await Promise.all([ iapi('/me/products'), iapi('/me/dashboard') ]);
+  state.products = products; state.idash = idash;
+}
+async function renderCursos(){
+  $('view').innerHTML = '<div class="state">Carregando…</div>';
+  try{ await loadProducts(); }catch(e){ if(e.message==='401')return; $('view').innerHTML='<div class="empty">Erro: '+esc(e.message)+'</div>'; return; }
+  const d = state.idash||{};
+  $('view').innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="lbl">Vendas pagas</div><div class="val green">${money(d.grossPaid)}</div><div class="muted">${d.paidCount||0} venda(s)</div></div>
+      <div class="stat"><div class="lbl">Líquido pra você</div><div class="val">${money(d.netPaid)}</div></div>
+      <div class="stat"><div class="lbl">Alunos</div><div class="val blue">${d.studentCount||0}</div></div>
+      <div class="stat"><div class="lbl">Aguardando</div><div class="val amber">${money(d.waitingAmount)}</div><div class="muted">${d.waitingCount||0} pendente(s)</div></div>
+    </div>
+    <h2 class="sec">Meus produtos digitais</h2>
+    ${ state.products.length ? state.products.map(productRow).join('') : '<div class="empty">Toque no + pra criar seu primeiro curso, e-book ou produto digital.<br>Você monta os módulos, define o preço e vende com link de pagamento.</div>' }
+  `;
+}
+function productRow(p){
+  const free = !p.price||p.price<=0;
+  return `<div class="card" onclick='openProductDetail(${JSON.stringify(p.id)})' style="cursor:pointer">
+    <div class="row">
+      <div style="flex:1">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="pill ${statusPill(p.status)}">${PSTATUS[p.status]||p.status}</span>
+          <span class="muted" style="font-size:11px">${PTYPE[p.type]||p.type}</span>
+        </div>
+        <div style="font-weight:700;margin-top:6px">${esc(p.title)}</div>
+        <div class="muted">${free?'Grátis':money(p.price)} · ${p._count?p._count.sales:0} venda(s) · ${p._count?p._count.modules:0} módulo(s)</div>
+      </div>
+      <span style="color:#ccc;font-size:22px">›</span>
+    </div>
+  </div>`;
+}
+
+// ----- form de produto (criar/editar) -----
+function openProductForm(p){
+  const types = ['course','ebook','community','mentorship','file','bundle'];
+  let type = p?p.type:'course';
+  sheet(`${p?'Editar':'Novo'} produto`, `
+    <label class="f">Tipo</label>
+    <div class="seg" id="p_type">${types.map(t=>`<button data-v="${t}" class="${type===t?'on':''}">${PTYPE[t]}</button>`).join('')}</div>
+    <label class="f">Título *</label><input class="f" id="p_title" value="${p?esc(p.title):''}" placeholder="Ex: Curso de Saque no Tênis">
+    <label class="f">Subtítulo</label><input class="f" id="p_sub" value="${p?esc(p.subtitle||''):''}" placeholder="Aprenda em 10 aulas">
+    <label class="f">Descrição</label><textarea class="f" id="p_desc" placeholder="O que o aluno vai aprender">${p?esc(p.description||''):''}</textarea>
+    <label class="f">Imagem de capa (URL)</label><input class="f" id="p_cover" value="${p?esc(p.coverUrl||''):''}" placeholder="https://...">
+    <label class="f">Preço (R$) — 0 = grátis</label><input class="f" id="p_price" inputmode="decimal" value="${p?p.price:''}" placeholder="197.00">
+    <label class="f">Preço "de" (riscado, opcional)</label><input class="f" id="p_compare" inputmode="decimal" value="${p&&p.comparePrice?p.comparePrice:''}" placeholder="397.00">
+    <div style="margin-top:16px"><button class="btn primary" id="p_save">${p?'Salvar':'Criar produto'}</button></div>
+  `);
+  $('p_type').querySelectorAll('button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; $('p_type').querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+  $('p_save').onclick=async()=>{
+    const title=$('p_title').value.trim(); if(!title){toast('Título obrigatório');return;}
+    const body={ type, title, subtitle:$('p_sub').value.trim()||null, description:$('p_desc').value.trim()||null,
+      coverUrl:$('p_cover').value.trim()||null, price:parseFloat($('p_price').value)||0,
+      comparePrice: $('p_compare').value?parseFloat($('p_compare').value):null };
+    $('p_save').disabled=true;
+    try{
+      if(p){
+        await iapi('/me/products/'+p.id,{method:'PUT',body});
+        if(state.curProduct && state.curProduct.id===p.id){ await reloadProduct(); closeSheet(); renderProductDetail(); }
+        else { closeSheet(); go('cursos'); }
+        toast('Salvo!');
+      } else {
+        const np=await iapi('/me/products',{method:'POST',body});
+        closeSheet(); await openProductDetail(np.id); toast('Produto criado! Agora monte o conteúdo.');
+      }
+    }catch(e){toast(e.message);$('p_save').disabled=false;}
+  };
+}
+
+// ----- detalhe do produto (gestão completa) -----
+async function openProductDetail(id){
+  state.pdTab='conteudo';
+  $('view').innerHTML='<div class="state">Carregando…</div>';
+  $('fab').style.display='none';
+  try{ state.curProduct = await iapi('/me/products/'+id); }catch(e){ toast(e.message); go('cursos'); return; }
+  renderProductDetail();
+}
+function renderProductDetail(){
+  const p = state.curProduct; if(!p){ go('cursos'); return; }
+  $('fab').style.display='none';
+  const url = location.origin + '/pd/' + p.slug;
+  const free = !p.price||p.price<=0;
+  $('view').innerHTML = `
+    <button class="btn gray sm" style="margin-bottom:12px" onclick="go('cursos')">‹ Voltar</button>
+    <div class="card">
+      <div class="row">
+        <div style="flex:1"><div style="font-weight:800;font-size:17px">${esc(p.title)}</div>
+          <div class="muted">${PTYPE[p.type]} · ${free?'Grátis':money(p.price)}</div></div>
+        <span class="pill ${statusPill(p.status)}">${PSTATUS[p.status]}</span>
+      </div>
+      <div class="linkbox" style="margin:12px 0 10px">${esc(url)}</div>
+      <div class="row" style="gap:8px">
+        <button class="btn ghost sm" style="flex:1" onclick="copy('${esc(url)}')">Copiar link</button>
+        <a class="btn gray sm" style="flex:1;text-decoration:none" href="/pd/${esc(p.slug)}" target="_blank">Ver página</a>
+      </div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn ${p.status==='published'?'gray':'green'} sm" style="flex:1" onclick="togglePublish()">${p.status==='published'?'Despublicar':'Publicar'}</button>
+        <button class="btn gray sm" style="flex:1" onclick='openProductForm(state.curProduct)'>Editar dados</button>
+      </div>
+    </div>
+    <div class="seg" style="margin:4px 0 14px" id="pd_tabs">
+      <button data-v="conteudo">Conteúdo</button>
+      <button data-v="vendas">Vendas</button>
+      <button data-v="afiliados">Afiliados</button>
+      <button data-v="config">Config</button>
+    </div>
+    <div id="pd_body"></div>
+  `;
+  const active = state.pdTab||'conteudo';
+  $('pd_tabs').querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.v===active);
+    b.onclick=()=>{ $('pd_tabs').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); pdTab(b.dataset.v); };
+  });
+  pdTab(active);
+}
+function pdTab(t){ state.pdTab=t; ({ conteudo:pdConteudo, vendas:pdVendas, afiliados:pdAfiliados, config:pdConfig }[t])(); }
+
+// ----- aba Conteúdo (course builder) -----
+function pdConteudo(){
+  const p = state.curProduct;
+  const mods = p.modules||[];
+  $('pd_body').innerHTML = `
+    ${ !p.hasMembersArea ? '<div class="card" style="background:#fff8ee;border-color:#f0d9a8"><div class="muted">Este produto está sem área de membros. Para entregar aulas online, ative em <b>Config → Entregar aulas online</b>.</div></div>' : '' }
+    ${ mods.length ? mods.map(moduleBlock).join('') : '<div class="empty">Nenhum módulo ainda. Crie o primeiro pra começar a montar o curso.</div>' }
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="addModule()">+ Adicionar módulo</button>
+  `;
+}
+function moduleBlock(m){
+  const lessons = m.lessons||[];
+  return `<div class="card">
+    <div class="row">
+      <div style="flex:1;font-weight:700">${esc(m.title)}</div>
+      <button class="btn gray sm" onclick='editModule(${JSON.stringify(m.id)})'>✎</button>
+    </div>
+    ${ lessons.map(l=>`<div class="row" style="padding:9px 0;border-top:1px solid #f0f0f3">
+        <div style="flex:1;cursor:pointer" onclick='editLesson(${JSON.stringify(m.id)},${JSON.stringify(l.id)})'>
+          <div style="font-size:14px">${l.free?'🆓 ':(l.videoUrl?'▶️ ':'📄 ')}${esc(l.title)}</div>
+          ${l.durationSec?`<div class="muted">${Math.round(l.durationSec/60)} min</div>`:''}
+        </div>
+      </div>`).join('') }
+    <button class="btn ghost sm" style="width:100%;margin-top:10px" onclick='addLesson(${JSON.stringify(m.id)})'>+ Aula</button>
+  </div>`;
+}
+function addModule(){ moduleSheet(null); }
+function editModule(id){ moduleSheet((state.curProduct.modules||[]).find(x=>x.id===id)); }
+function moduleSheet(m){
+  sheet(`${m?'Editar':'Novo'} módulo`, `
+    <label class="f">Título *</label><input class="f" id="m_title" value="${m?esc(m.title):''}" placeholder="Ex: Módulo 1 — Fundamentos">
+    <label class="f">Descrição</label><textarea class="f" id="m_desc">${m?esc(m.description||''):''}</textarea>
+    <div style="margin-top:14px"><button class="btn primary" id="m_save">${m?'Salvar':'Adicionar'}</button></div>
+    ${m?`<div style="margin-top:10px"><button class="btn danger" style="width:100%" id="m_del">Excluir módulo</button></div>`:''}
+  `);
+  $('m_save').onclick=async()=>{
+    const title=$('m_title').value.trim(); if(!title){toast('Título obrigatório');return;}
+    const body={ title, description:$('m_desc').value.trim()||null };
+    $('m_save').disabled=true;
+    try{
+      if(m) await iapi('/me/modules/'+m.id,{method:'PUT',body});
+      else await iapi('/me/products/'+state.curProduct.id+'/modules',{method:'POST',body});
+      await reloadProduct(); closeSheet(); renderProductDetail(); toast('Módulo salvo');
+    }catch(e){toast(e.message);$('m_save').disabled=false;}
+  };
+  if(m) $('m_del').onclick=async()=>{ if(!confirm('Excluir módulo e todas as aulas dele?'))return; try{ await iapi('/me/modules/'+m.id,{method:'DELETE'}); await reloadProduct(); closeSheet(); renderProductDetail(); toast('Excluído'); }catch(e){toast(e.message);} };
+}
+function addLesson(moduleId){ lessonSheet(moduleId, null); }
+function editLesson(moduleId, lessonId){
+  const m=(state.curProduct.modules||[]).find(x=>x.id===moduleId);
+  lessonSheet(moduleId, m&&(m.lessons||[]).find(x=>x.id===lessonId));
+}
+function lessonSheet(moduleId, l){
+  sheet(`${l?'Editar':'Nova'} aula`, `
+    <label class="f">Título *</label><input class="f" id="l_title" value="${l?esc(l.title):''}" placeholder="Ex: Aula 1 — Pegada">
+    <label class="f">Vídeo (YouTube, Vimeo ou MP4)</label><input class="f" id="l_video" value="${l?esc(l.videoUrl||''):''}" placeholder="https://youtu.be/...">
+    <label class="f">Duração (minutos)</label><input class="f" id="l_dur" inputmode="numeric" value="${l&&l.durationSec?Math.round(l.durationSec/60):''}">
+    <label class="f">Descrição / texto da aula</label><textarea class="f" id="l_desc">${l?esc(l.description||''):''}</textarea>
+    <label class="f">Anexo (URL de PDF/material)</label><input class="f" id="l_att" value="${l?esc(l.attachmentUrl||''):''}" placeholder="https://...">
+    <div class="toggle" style="margin-top:12px"><div><div style="font-weight:700">Aula gratuita (degustação)</div><div class="muted">Liberada sem comprar</div></div><div class="switch ${l&&l.free?'on':''}" id="l_free"></div></div>
+    <div style="margin-top:14px"><button class="btn primary" id="l_save">${l?'Salvar':'Adicionar aula'}</button></div>
+    ${l?`<div style="margin-top:10px"><button class="btn danger" style="width:100%" id="l_del">Excluir aula</button></div>`:''}
+  `);
+  $('l_free').onclick=()=>$('l_free').classList.toggle('on');
+  $('l_save').onclick=async()=>{
+    const title=$('l_title').value.trim(); if(!title){toast('Título obrigatório');return;}
+    const videoUrl=$('l_video').value.trim()||null;
+    const body={ title, videoUrl, videoProvider:detectProvider(videoUrl),
+      durationSec: $('l_dur').value?parseInt($('l_dur').value)*60:null,
+      description:$('l_desc').value.trim()||null, attachmentUrl:$('l_att').value.trim()||null,
+      free:$('l_free').classList.contains('on') };
+    $('l_save').disabled=true;
+    try{
+      if(l) await iapi('/me/lessons/'+l.id,{method:'PUT',body});
+      else await iapi('/me/modules/'+moduleId+'/lessons',{method:'POST',body});
+      await reloadProduct(); closeSheet(); renderProductDetail(); toast('Aula salva');
+    }catch(e){toast(e.message);$('l_save').disabled=false;}
+  };
+  if(l) $('l_del').onclick=async()=>{ try{ await iapi('/me/lessons/'+l.id,{method:'DELETE'}); await reloadProduct(); closeSheet(); renderProductDetail(); toast('Excluída'); }catch(e){toast(e.message);} };
+}
+
+// ----- aba Vendas -----
+async function pdVendas(){
+  $('pd_body').innerHTML='<div class="state">Carregando…</div>';
+  let sales; try{ sales=await iapi('/me/products/'+state.curProduct.id+'/sales'); }catch(e){ $('pd_body').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; return; }
+  $('pd_body').innerHTML = sales.length ? sales.map(saleRow).join('') : '<div class="empty">Nenhuma venda ainda. Divulgue o link da página pra começar.</div>';
+}
+function saleRow(s){
+  return `<div class="card"><div class="row">
+    <div style="flex:1"><div style="font-weight:700">${esc(s.buyerName||'—')}</div>
+      <div class="muted">${money(s.amount)} · ${s.method||''} · ${fmtDate(s.createdAt)}${s.settlementMode==='off_platform'?' · Pix direto':''}</div></div>
+    <span class="pill ${statusPill(s.status)}">${SALE_ST[s.status]||s.status}</span>
+  </div>
+  ${s.status==='waiting_payment'?`<div style="margin-top:10px"><button class="btn green sm" style="width:100%" onclick='confirmSale(${JSON.stringify(s.id)})'>Confirmar pagamento (recebi no Pix)</button></div>`:''}
+  </div>`;
+}
+async function confirmSale(id){ if(!confirm('Confirmar que você recebeu este Pix? O aluno será liberado na hora.'))return; try{ await iapi('/me/sales/'+id+'/confirm',{method:'POST'}); toast('Confirmado! Aluno liberado.'); pdVendas(); }catch(e){toast(e.message);} }
+
+// ----- aba Afiliados -----
+async function pdAfiliados(){
+  $('pd_body').innerHTML='<div class="state">Carregando…</div>';
+  let links; try{ links=await iapi('/me/affiliates'); }catch(e){ $('pd_body').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; return; }
+  const pid=state.curProduct.id;
+  links = links.filter(l=> l.productId===pid || (l.product&&l.product.id===pid));
+  const p=state.curProduct;
+  $('pd_body').innerHTML = `
+    <div class="card"><div class="muted">Afiliação ${p.affiliateEnabled?'<b style="color:#0a843d">ativada</b>':'<b style="color:#c0392b">desativada</b>'} · comissão ${p.affiliateCommissionPct}% · ${p.affiliateAutoApprove?'aprovação automática':'aprovação manual'}<br>Configure em Config.</div></div>
+    ${ links.length ? links.map(affLinkRow).join('') : '<div class="empty">Nenhum afiliado neste produto ainda.</div>' }
+  `;
+}
+function affLinkRow(l){
+  const st={pending:'Pendente',approved:'Aprovado',rejected:'Rejeitado'};
+  return `<div class="card"><div class="row">
+    <div style="flex:1"><div style="font-weight:700">${esc(l.affiliate?l.affiliate.name:'—')}</div>
+      <div class="muted">${l.clicks||0} cliques · ${l.sales||0} vendas · ${l.commissionPct}%</div></div>
+    <span class="pill ${statusPill(l.status)}">${st[l.status]||l.status}</span>
+  </div>
+  ${l.status==='pending'?`<div class="row" style="gap:8px;margin-top:10px">
+    <button class="btn green sm" style="flex:1" onclick='approveAff(${JSON.stringify(l.id)})'>Aprovar</button>
+    <button class="btn danger sm" style="flex:1" onclick='rejectAff(${JSON.stringify(l.id)})'>Rejeitar</button></div>`:''}
+  </div>`;
+}
+async function approveAff(id){ try{ await iapi('/me/affiliate-links/'+id+'/approve',{method:'POST'}); toast('Aprovado'); pdAfiliados(); }catch(e){toast(e.message);} }
+async function rejectAff(id){ try{ await iapi('/me/affiliate-links/'+id+'/reject',{method:'POST'}); toast('Rejeitado'); pdAfiliados(); }catch(e){toast(e.message);} }
+
+// ----- aba Config -----
+function pdConfig(){
+  const p=state.curProduct;
+  $('pd_body').innerHTML = `
+    <h2 class="sec">Formas de pagamento</h2>
+    <div class="toggle" style="margin-bottom:8px"><div style="font-weight:700">Pix</div><div class="switch ${p.allowPix?'on':''}" data-k="allowPix"></div></div>
+    <div class="toggle" style="margin-bottom:8px"><div style="font-weight:700">Cartão</div><div class="switch ${p.allowCard?'on':''}" data-k="allowCard"></div></div>
+    <div class="toggle" style="margin-bottom:8px"><div style="font-weight:700">Boleto</div><div class="switch ${p.allowBoleto?'on':''}" data-k="allowBoleto"></div></div>
+    <label class="f">Parcelas máx no cartão</label><input class="f" id="cf_inst" inputmode="numeric" value="${p.installmentsMax}">
+    <h2 class="sec" style="margin-top:18px">Área de membros</h2>
+    <div class="toggle" style="margin-bottom:8px"><div><div style="font-weight:700">Entregar aulas online</div><div class="muted">Libera o player pro aluno</div></div><div class="switch ${p.hasMembersArea?'on':''}" data-k="hasMembersArea"></div></div>
+    <label class="f">Dias de acesso (vazio = vitalício)</label><input class="f" id="cf_days" inputmode="numeric" value="${p.accessDays||''}">
+    <h2 class="sec" style="margin-top:18px">Programa de afiliados</h2>
+    <div class="toggle" style="margin-bottom:8px"><div style="font-weight:700">Permitir afiliados</div><div class="switch ${p.affiliateEnabled?'on':''}" data-k="affiliateEnabled"></div></div>
+    <div class="toggle" style="margin-bottom:8px"><div style="font-weight:700">Aprovar automático</div><div class="switch ${p.affiliateAutoApprove?'on':''}" data-k="affiliateAutoApprove"></div></div>
+    <label class="f">Comissão do afiliado (%)</label><input class="f" id="cf_comm" inputmode="decimal" value="${p.affiliateCommissionPct}">
+    <label class="f">Janela do cookie (dias)</label><input class="f" id="cf_cookie" inputmode="numeric" value="${p.affiliateCookieDays}">
+    <p class="help">Split automático e take rate entram quando o PSP for ligado. Hoje a venda cai via Pix direto na sua conta e a comissão do afiliado fica registrada pra saque.</p>
+    <div style="margin:18px 0"><button class="btn primary" id="cf_save">Salvar configurações</button></div>
+    <button class="btn danger" style="width:100%" onclick="deleteProduct()">Excluir produto</button>
+  `;
+  $('pd_body').querySelectorAll('.switch').forEach(sw=>{ sw.onclick=()=>sw.classList.toggle('on'); });
+  $('cf_save').onclick=async()=>{
+    const body={};
+    $('pd_body').querySelectorAll('.switch').forEach(sw=>{ body[sw.dataset.k]=sw.classList.contains('on'); });
+    body.installmentsMax=parseInt($('cf_inst').value)||12;
+    body.accessDays=$('cf_days').value?parseInt($('cf_days').value):null;
+    body.affiliateCommissionPct=parseFloat($('cf_comm').value)||0;
+    body.affiliateCookieDays=parseInt($('cf_cookie').value)||30;
+    $('cf_save').disabled=true;
+    try{ await iapi('/me/products/'+state.curProduct.id,{method:'PUT',body}); await reloadProduct(); toast('Configurações salvas!'); renderProductDetail(); }catch(e){toast(e.message);$('cf_save').disabled=false;}
+  };
+}
+async function togglePublish(){
+  const p=state.curProduct; const ns=p.status==='published'?'draft':'published';
+  if(ns==='published' && (!p.modules||!p.modules.length) && p.hasMembersArea){ if(!confirm('Publicar sem nenhum módulo? Os alunos não terão conteúdo pra acessar.'))return; }
+  try{ await iapi('/me/products/'+p.id,{method:'PUT',body:{status:ns}}); await reloadProduct(); toast(ns==='published'?'Publicado!':'Despublicado'); renderProductDetail(); }catch(e){toast(e.message);}
+}
+async function deleteProduct(){
+  if(!confirm('Excluir este produto? Se já tiver vendas pagas, ele será apenas arquivado (preserva o acesso dos alunos).'))return;
+  try{ const r=await iapi('/me/products/'+state.curProduct.id,{method:'DELETE'}); toast(r.archived?'Arquivado (tinha vendas)':'Excluído'); go('cursos'); }catch(e){toast(e.message);}
 }
 
 // ---------- SHEET ----------
