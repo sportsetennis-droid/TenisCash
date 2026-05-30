@@ -350,6 +350,88 @@ router.delete('/entries/:entryId', authMiddleware, async (req, res) => {
   }
 });
 
+// Inscrição PÚBLICA (estilo formulário do CopaFácil): o atleta logado pede
+// vaga e a inscrição entra como PENDING até o organizador aprovar.
+router.post('/:id/entries/request', authMiddleware, async (req, res) => {
+  try {
+    const t = await prisma.tournament.findUnique({ where: { id: req.params.id } });
+    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    if (!['OPEN', 'ONGOING'].includes(t.status)) {
+      return res.status(409).json({ error: 'as inscrições não estão abertas' });
+    }
+    if (t.registrationCloseAt && new Date(t.registrationCloseAt) < new Date()) {
+      return res.status(409).json({ error: 'inscrições encerradas' });
+    }
+    const b = req.body || {};
+    if (!b.categoryId) return res.status(400).json({ error: 'categoryId obrigatório' });
+    const cat = await prisma.tournamentCategory.findFirst({
+      where: { id: b.categoryId, tournamentId: t.id },
+    });
+    if (!cat) return res.status(400).json({ error: 'categoria não pertence a este torneio' });
+
+    const memberIds = [req.userId];
+    if (t.isDoubles) {
+      const partner = await resolveUserId(b.partner || b.partnerUsername || b.partnerId);
+      if (!partner) return res.status(400).json({ error: 'informe o parceiro de dupla (@username)' });
+      if (partner === req.userId) return res.status(400).json({ error: 'o parceiro não pode ser você' });
+      memberIds.push(partner);
+    }
+
+    const dup = await prisma.entryMember.findFirst({
+      where: { userId: { in: memberIds }, entry: { categoryId: cat.id } },
+    });
+    if (dup) return res.status(409).json({ error: 'já existe inscrição com esse(s) atleta(s) nesta categoria' });
+
+    if (t.maxEntries) {
+      const count = await prisma.tournamentEntry.count({ where: { tournamentId: t.id } });
+      if (count >= t.maxEntries) return res.status(409).json({ error: 'torneio lotado' });
+    }
+
+    let name = b.name;
+    if (!name) {
+      const users = await prisma.user.findMany({ where: { id: { in: memberIds } }, select: { name: true } });
+      name = users.map((u) => u.name?.split(' ')[0] || 'Atleta').join(' & ');
+    }
+
+    const entry = await prisma.tournamentEntry.create({
+      data: {
+        tournamentId: t.id,
+        categoryId: cat.id,
+        name,
+        status: 'PENDING',
+        members: { create: memberIds.map((userId) => ({ userId })) },
+      },
+      include: { members: true },
+    });
+    res.status(201).json(entry);
+  } catch (err) {
+    console.error('[tournaments] request entry', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Aprova uma inscrição pendente → CONFIRMED (só dono/admin)
+router.post('/entries/:entryId/approve', authMiddleware, async (req, res) => {
+  try {
+    const entry = await prisma.tournamentEntry.findUnique({
+      where: { id: req.params.entryId },
+      include: { tournament: { select: { ownerId: true } } },
+    });
+    if (!entry) return res.status(404).json({ error: 'inscrição não encontrada' });
+    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
+    if (entry.tournament.ownerId !== req.userId && !isAdmin) {
+      return res.status(403).json({ error: 'só o organizador aprova' });
+    }
+    const updated = await prisma.tournamentEntry.update({
+      where: { id: entry.id },
+      data: { status: 'CONFIRMED' },
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =====================================================================
 // CHAVEAMENTO / PARTIDAS
 // =====================================================================
@@ -364,7 +446,7 @@ router.post('/:id/categories/:catId/generate', authMiddleware, async (req, res) 
     });
     if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
 
-    const r = await engine.generateFixtures(cat.id);
+    const r = await engine.generateFixtures(cat.id, { groupCount: req.body?.groupCount });
     if (!r.ok) return res.status(400).json(r);
 
     // ao gerar a primeira chave, marca torneio como ONGOING
@@ -374,6 +456,26 @@ router.post('/:id/categories/:catId/generate', authMiddleware, async (req, res) 
     res.json(r);
   } catch (err) {
     console.error('[tournaments] generate', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GROUPS_KNOCKOUT — fase final: monta o mata-mata com os classificados da
+// fase de grupos (só dono). Exige a fase de grupos concluída.
+router.post('/:id/categories/:catId/knockout', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadOwned(req, res, req.params.id);
+    if (!t) return;
+    const cat = await prisma.tournamentCategory.findFirst({
+      where: { id: req.params.catId, tournamentId: t.id },
+    });
+    if (!cat) return res.status(404).json({ error: 'categoria não encontrada' });
+
+    const r = await engine.generateKnockoutFromGroups(cat.id, req.body?.qualifiersPerGroup || 2);
+    if (!r.ok) return res.status(400).json(r);
+    res.json(r);
+  } catch (err) {
+    console.error('[tournaments] knockout', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -614,6 +716,71 @@ router.post('/challenges/:id/result', authMiddleware, async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error('[tournaments] challenge result', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// MURAL / AVISOS (estilo "notícias" do CopaFácil) — texto, sem foto
+// =====================================================================
+
+// Lista avisos (público) por id ou slug
+router.get('/:idOrSlug/posts', async (req, res) => {
+  try {
+    const t = await prisma.tournament.findFirst({
+      where: { OR: [{ id: req.params.idOrSlug }, { slug: req.params.idOrSlug }] },
+      select: { id: true },
+    });
+    if (!t) return res.status(404).json({ error: 'torneio não encontrado' });
+    const posts = await prisma.tournamentPost.findMany({
+      where: { tournamentId: t.id },
+      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+    });
+    res.json({ posts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Publica um aviso (só dono)
+router.post('/:id/posts', authMiddleware, async (req, res) => {
+  try {
+    const t = await loadOwned(req, res, req.params.id);
+    if (!t) return;
+    const b = req.body || {};
+    const body = String(b.body || '').trim();
+    if (!body) return res.status(400).json({ error: 'escreva o aviso' });
+    const post = await prisma.tournamentPost.create({
+      data: {
+        tournamentId: t.id,
+        authorId: req.userId,
+        title: b.title ? String(b.title).trim().slice(0, 120) : null,
+        body: body.slice(0, 4000),
+        pinned: !!b.pinned,
+      },
+    });
+    res.status(201).json(post);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove um aviso (só dono)
+router.delete('/posts/:postId', authMiddleware, async (req, res) => {
+  try {
+    const post = await prisma.tournamentPost.findUnique({
+      where: { id: req.params.postId },
+      include: { tournament: { select: { ownerId: true } } },
+    });
+    if (!post) return res.status(404).json({ error: 'aviso não encontrado' });
+    const isAdmin = ['admin', 'superadmin', 'manager'].includes(req.userRole);
+    if (post.tournament.ownerId !== req.userId && !isAdmin) {
+      return res.status(403).json({ error: 'sem permissão' });
+    }
+    await prisma.tournamentPost.delete({ where: { id: post.id } });
+    res.json({ ok: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

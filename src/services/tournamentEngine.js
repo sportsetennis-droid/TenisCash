@@ -81,7 +81,7 @@ function roundRobinRounds(entries) {
  * Gera as partidas de uma categoria a partir dos inscritos CONFIRMED.
  * Idempotente: apaga partidas/standings anteriores e recria.
  */
-async function generateFixtures(categoryId) {
+async function generateFixtures(categoryId, opts = {}) {
   const category = await prisma.tournamentCategory.findUnique({
     where: { id: categoryId },
     include: {
@@ -103,11 +103,40 @@ async function generateFixtures(categoryId) {
   await prisma.tournamentMatch.deleteMany({ where: { categoryId } });
   await prisma.tournamentStanding.deleteMany({ where: { categoryId } });
 
-  if (format === 'ROUND_ROBIN' || format === 'GROUPS') {
-    return generateRoundRobin(category, entries, format);
+  if (format === 'ROUND_ROBIN') {
+    return generateRoundRobin(category, entries, 'ROUND_ROBIN');
   }
-  // KNOCKOUT (e GROUPS_KNOCKOUT cai no mata-mata por ora — fase de grupos é TODO)
+  if (format === 'GROUPS' || format === 'GROUPS_KNOCKOUT') {
+    // distribui em grupos (serpentina por seed) e gera o round-robin da fase de grupos.
+    // No GROUPS_KNOCKOUT o mata-mata vem depois, via generateKnockoutFromGroups().
+    const groupCount = resolveGroupCount(entries, opts.groupCount);
+    await assignGroups(entries, groupCount);
+    const r = await generateRoundRobin(category, entries, 'GROUPS');
+    return { ...r, format, phase: 'GROUPS', groupCount };
+  }
   return generateKnockout(category, entries);
+}
+
+// Nº de grupos: usa o pedido (clamp) ou ~4 por grupo. Cada grupo precisa de >=2.
+function resolveGroupCount(entries, requested) {
+  const n = entries.length;
+  let g = Number(requested) || Math.max(1, Math.round(n / 4));
+  g = Math.max(1, Math.min(g, Math.floor(n / 2) || 1));
+  return g;
+}
+
+// Distribui entries em `groupCount` grupos em serpentina (seed-balanced) e
+// persiste o groupName (sobrescreve p/ garantir consistência da geração).
+async function assignGroups(entries, groupCount) {
+  const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const cyc = 2 * groupCount;
+  for (let i = 0; i < entries.length; i++) {
+    const c = i % cyc;
+    const gi = c < groupCount ? c : cyc - 1 - c;
+    const gname = names[gi] || String.fromCharCode(65 + gi);
+    entries[i].groupName = gname;
+    await prisma.tournamentEntry.update({ where: { id: entries[i].id }, data: { groupName: gname } });
+  }
 }
 
 async function generateRoundRobin(category, entries, format) {
@@ -159,16 +188,49 @@ async function seedStandings(category, entries) {
 }
 
 async function generateKnockout(category, entries) {
-  const n = entries.length;
+  return buildBracketFromSeeded(category, entries.map((e) => ({ id: e.id })), {});
+}
+
+/**
+ * Monta um mata-mata a partir de uma lista JÁ ordenada por seed
+ * (index 0 = seed 1). Cada item: { id, group? }.
+ * opts.fromGroups: tenta evitar confronto do mesmo grupo na 1a rodada.
+ */
+async function buildBracketFromSeeded(category, seedEntries, opts = {}) {
+  const n = seedEntries.length;
   const size = nextPow2(n);
   const slots = seedSlots(size); // seed numbers em ordem de slot
   const roundsCount = Math.log2(size);
 
-  // seed 1..n na ordem dos entries (já ordenados por seed/createdAt)
+  // seed 1..n na ordem recebida
   const bySeed = {};
-  entries.forEach((e, i) => {
+  seedEntries.forEach((e, i) => {
     bySeed[i + 1] = e;
   });
+
+  // Pares da 1a rodada em memória (com possível swap anti-mesmo-grupo)
+  const r1count = size / 2;
+  const pairs = [];
+  for (let m = 0; m < r1count; m++) {
+    pairs.push({ home: bySeed[slots[2 * m]] || null, away: bySeed[slots[2 * m + 1]] || null });
+  }
+  if (opts.fromGroups) {
+    const clash = (p) => p.home && p.away && p.home.group && p.home.group === p.away.group;
+    for (let i = 0; i < pairs.length; i++) {
+      if (!clash(pairs[i])) continue;
+      for (let j = 0; j < pairs.length; j++) {
+        if (j === i) continue;
+        const cand = { home: pairs[i].home, away: pairs[j].away };
+        const cand2 = { home: pairs[j].home, away: pairs[i].away };
+        if (!clash(cand) && !clash(cand2)) {
+          const tmp = pairs[i].away;
+          pairs[i].away = pairs[j].away;
+          pairs[j].away = tmp;
+          break;
+        }
+      }
+    }
+  }
 
   // Cria as rodadas da FINAL pra trás, guardando a rodada posterior
   // pra linkar nextMatchId/nextSlot das partidas anteriores.
@@ -199,17 +261,14 @@ async function generateKnockout(category, entries) {
     laterRound = thisRound;
   }
 
-  // Preenche a rodada 1 com os inscritos conforme o seeding
+  // Preenche a rodada 1 com os pares calculados
   const round1 = allRounds[1];
   for (let m = 0; m < round1.length; m++) {
-    const homeEntry = bySeed[slots[2 * m]];
-    const awayEntry = bySeed[slots[2 * m + 1]];
+    const home = pairs[m].home;
+    const away = pairs[m].away;
     const match = await prisma.tournamentMatch.update({
       where: { id: round1[m].id },
-      data: {
-        homeEntryId: homeEntry ? homeEntry.id : null,
-        awayEntryId: awayEntry ? awayEntry.id : null,
-      },
+      data: { homeEntryId: home ? home.id : null, awayEntryId: away ? away.id : null },
     });
     round1[m] = match;
   }
@@ -234,7 +293,67 @@ async function generateKnockout(category, entries) {
   }
 
   const totalMatches = Object.values(allRounds).reduce((s, arr) => s + arr.length, 0);
-  return { ok: true, format: 'KNOCKOUT', bracketSize: size, rounds: roundsCount, matchesCreated: totalMatches };
+  return {
+    ok: true,
+    format: 'KNOCKOUT',
+    phase: opts.fromGroups ? 'KNOCKOUT' : undefined,
+    bracketSize: size,
+    rounds: roundsCount,
+    matchesCreated: totalMatches,
+  };
+}
+
+/**
+ * GROUPS_KNOCKOUT — fase final: pega os classificados (top N de cada grupo)
+ * e monta o mata-mata, semeado pela campanha (1os colocados como cabeças).
+ * Exige a fase de grupos concluída. Idempotente: recria só o mata-mata,
+ * preservando as partidas/standings da fase de grupos.
+ */
+async function generateKnockoutFromGroups(categoryId, qualifiersPerGroup = 2) {
+  const category = await prisma.tournamentCategory.findUnique({
+    where: { id: categoryId },
+    include: { tournament: true },
+  });
+  if (!category) return { ok: false, error: 'categoria não encontrada' };
+
+  const groupMatches = await prisma.tournamentMatch.findMany({ where: { categoryId, stage: 'GROUP' } });
+  if (!groupMatches.length) return { ok: false, error: 'gere a fase de grupos primeiro' };
+  const pending = groupMatches.filter((m) => m.status !== 'FINISHED' && m.status !== 'WALKOVER');
+  if (pending.length) return { ok: false, error: `faltam ${pending.length} jogo(s) da fase de grupos` };
+
+  await recomputeStandings(categoryId);
+  const standings = await prisma.tournamentStanding.findMany({
+    where: { categoryId },
+    orderBy: [{ groupName: 'asc' }, { rank: 'asc' }],
+  });
+
+  const byGroup = {};
+  for (const s of standings) {
+    if (!s.groupName) continue; // ignora entries sem grupo (defensivo)
+    (byGroup[s.groupName] ||= []).push(s);
+  }
+
+  const q = Math.max(1, Number(qualifiersPerGroup) || 2);
+  const qualifiers = [];
+  for (const rows of Object.values(byGroup)) {
+    rows.slice(0, q).forEach((s, i) => {
+      qualifiers.push({ id: s.entryId, group: s.groupName, place: i + 1, points: s.points });
+    });
+  }
+  if (qualifiers.length < 2) return { ok: false, error: 'classificados insuficientes p/ o mata-mata' };
+
+  // remove mata-mata anterior, preserva a fase de grupos
+  await prisma.tournamentMatch.deleteMany({ where: { categoryId, stage: { notIn: ['GROUP'] } } });
+
+  // seeds: todos os 1os (melhor campanha primeiro), depois os 2os, etc.
+  qualifiers.sort((a, b) => a.place - b.place || b.points - a.points);
+
+  const r = await buildBracketFromSeeded(
+    category,
+    qualifiers.map((x) => ({ id: x.id, group: x.group })),
+    { fromGroups: true }
+  );
+  return { ...r, qualifiers: qualifiers.length, qualifiersPerGroup: q };
 }
 
 // ---------------------------------------------------------------------
@@ -331,7 +450,7 @@ async function recomputeStandings(categoryId) {
   const category = await prisma.tournamentCategory.findUnique({ where: { id: categoryId } });
   if (!category) return [];
 
-  const entries = await prisma.tournamentEntry.findMany({ where: { categoryId } });
+  const entries = await prisma.tournamentEntry.findMany({ where: { categoryId, status: 'CONFIRMED' } });
   const matches = await prisma.tournamentMatch.findMany({
     where: { categoryId, status: 'FINISHED', stage: { in: ['LEAGUE', 'GROUP'] } },
   });
@@ -624,6 +743,7 @@ async function buildAthleteCard(userId) {
 
 module.exports = {
   generateFixtures,
+  generateKnockoutFromGroups,
   applyMatchResult,
   recomputeStandings,
   updateRatingsForMatch,

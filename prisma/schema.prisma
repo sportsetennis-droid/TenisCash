@@ -2652,6 +2652,7 @@ model Tournament {
   entries    TournamentEntry[]
   matches    TournamentMatch[]
   standings  TournamentStanding[]
+  posts      TournamentPost[]
 
   @@index([status])
   @@index([sport])
@@ -2833,6 +2834,22 @@ model PlayChallenge {
 
   @@index([challengedId, status])
   @@index([challengerId, status])
+}
+
+// Mural/avisos do torneio (estilo "notícias" do CopaFácil) — TEXTO only,
+// sem foto/vídeo (decisão do produto). Visível na página pública /t/:slug.
+model TournamentPost {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  authorId     String? // userId do organizador (sem relação forte, padrão solto)
+  title        String?
+  body         String     @db.Text
+  pinned       Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tournamentId, createdAt])
 }
 
 // ============================================================

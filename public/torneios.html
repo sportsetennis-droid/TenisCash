@@ -131,7 +131,7 @@
 "use strict";
 const SPORTS=[["TENNIS","🎾 Tênis"],["BEACH_TENNIS","🏖️ Beach Tennis"],["PADEL","🟦 Padel"],["FUTSAL","⚽ Futsal"],["SOCCER","⚽ Society"],["VOLLEY","🏐 Vôlei"],["BASKETBALL","🏀 Basquete"],["HANDBALL","🤾 Handebol"],["TABLE_TENNIS","🏓 Tênis de Mesa"],["OTHER","🏅 Outro"]];
 const SPORT_LABEL=Object.fromEntries(SPORTS);
-const FORMATS=[["KNOCKOUT","Mata-mata"],["ROUND_ROBIN","Pontos corridos"],["GROUPS","Fase de grupos"]];
+const FORMATS=[["KNOCKOUT","Mata-mata"],["ROUND_ROBIN","Pontos corridos"],["GROUPS","Fase de grupos"],["GROUPS_KNOCKOUT","Grupos + mata-mata"]];
 const FMT_LABEL=Object.fromEntries(FORMATS);
 const ST_LABEL={DRAFT:["Rascunho","g"],OPEN:["Inscrições abertas","w"],ONGOING:["Em andamento","ok"],FINISHED:["Encerrado","g"],CANCELED:["Cancelado","g"]};
 
@@ -284,10 +284,13 @@ async function doCreate(){
 
 // ---------- manage tournament ----------
 let CURCAT=null; // categoria aberta no detalhe
+let CURT=null;   // torneio aberto (p/ re-render do mural)
 async function renderTournament(id){
-  loading();CURCAT=null;
+  loading();CURCAT=null;CURT=id;
   let t;try{t=await api('/'+id);}catch(e){app.innerHTML=topbar('Torneio',true)+'<div class="wrap"><div class="card"><div class="empty">'+esc(e.message)+'</div></div></div>';return;}
+  let posts=[];try{posts=(await api('/'+id+'/posts')).posts||[];}catch(e){}
   const isOwner=ME&&(t.ownerId===ME.id);
+  const canRegister=['OPEN','ONGOING'].includes(t.status);
   const st=ST_LABEL[t.status]||['',''];
   let html=topbar(t.name,true)+'<div class="wrap">';
   html+='<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+
@@ -300,7 +303,13 @@ async function renderTournament(id){
   html+='</div>';
 
   if(!isOwner){
-    html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só o organizador gerencia.</div></div></div>';
+    if(canRegister){
+      html+='<div class="card" style="background:var(--soft)"><h2 style="margin:0 0 6px">Quer jogar?</h2>'+
+        '<p class="muted" style="margin:0 0 10px">Peça sua inscrição neste torneio. O organizador aprova.</p>'+
+        '<button class="btn" data-act="register" data-tid="'+t.id+'" data-dbl="'+(t.isDoubles?1:0)+'">📝 Pedir inscrição</button></div>';
+    }
+    html+=muralCard(t.id,false,posts);
+    html+='<div class="card"><div class="empty"><div class="ic">👀</div>Você está vendo como visitante.<br>Só o organizador gerencia a chave.</div></div></div>';
     app.innerHTML=html;return;
   }
 
@@ -317,18 +326,40 @@ async function renderTournament(id){
   else{html+='<div style="margin-top:8px">';cats.forEach(c=>{
     html+='<div class="listitem"><div class="grow"><div class="nm">'+esc(c.name)+'</div>'+
       '<div class="sub">'+(c._count?c._count.entries:0)+' inscritos · '+(c._count?c._count.matches:0)+' partidas</div></div>'+
-      '<button class="btn sm sec" data-act="open-cat" data-tid="'+t.id+'" data-cid="'+c.id+'" data-cname="'+esc(c.name)+'" data-dbl="'+(t.isDoubles?1:0)+'">Gerir</button></div>';
+      '<button class="btn sm sec" data-act="open-cat" data-tid="'+t.id+'" data-cid="'+c.id+'" data-cname="'+esc(c.name)+'" data-dbl="'+(t.isDoubles?1:0)+'" data-fmt="'+esc(c.format||t.format)+'">Gerir</button></div>';
   });html+='</div>';}
   html+='</div>';
 
   html+='<div id="cat-panel"></div>';
+  html+=muralCard(t.id,true,posts);
   html+='</div>';
   app.innerHTML=html;
 }
 
+// Mural/avisos do torneio (texto). isOwner mostra o compositor + remover.
+function muralCard(tid,isOwner,posts){
+  let h='<div class="card"><h2 style="margin:0 0 8px">📢 Mural de avisos</h2>';
+  if(isOwner){
+    h+='<input id="mp-title" placeholder="Título (opcional)" style="margin-bottom:8px">'+
+       '<textarea id="mp-body" placeholder="Escreva um aviso pros atletas (texto)..."></textarea>'+
+       '<div style="height:8px"></div><button class="btn sm gho" data-act="post-create" data-tid="'+tid+'">Publicar aviso</button><div style="height:8px"></div>';
+  }
+  if(!posts.length)h+='<div class="empty" style="padding:14px">Nenhum aviso ainda.</div>';
+  else posts.forEach(p=>{
+    h+='<div style="padding:11px 0;border-bottom:1px solid var(--line)">'+
+      (p.pinned?'<span class="pill w">📌 fixado</span> ':'')+
+      (p.title?'<div style="font-weight:800;font-size:14px;margin-top:'+(p.pinned?'4px':'0')+'">'+esc(p.title)+'</div>':'')+
+      '<div style="font-size:14px;white-space:pre-wrap;margin-top:2px">'+esc(p.body)+'</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:5px"><span class="sub">'+fmtDate(p.createdAt)+'</span>'+
+      (isOwner?'<button class="btn sm dang" data-act="del-post" data-pid="'+p.id+'">remover</button>':'')+'</div></div>';
+  });
+  h+='</div>';return h;
+}
+function fmtDate(d){try{return new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+
 // painel de uma categoria (inscritos / chave / classificação)
-async function openCat(tid,cid,cname,isDbl){
-  CURCAT={tid,cid,cname,isDbl};
+async function openCat(tid,cid,cname,isDbl,fmt){
+  CURCAT={tid,cid,cname,isDbl,fmt:fmt||'KNOCKOUT'};
   const panel=document.getElementById('cat-panel');
   panel.innerHTML='<div class="spin"></div>';
   panel.scrollIntoView({behavior:'smooth',block:'start'});
@@ -336,65 +367,117 @@ async function openCat(tid,cid,cname,isDbl){
 }
 async function renderCatPanel(tab){
   if(!CURCAT)return;
-  const {tid,cid,cname,isDbl}=CURCAT;
+  const {tid,cid,cname,isDbl,fmt}=CURCAT;
+  const isGroups=fmt==='GROUPS'||fmt==='GROUPS_KNOCKOUT';
   const panel=document.getElementById('cat-panel');
   let body='';
   if(tab==='inscritos'){
     let entries=[];try{entries=(await api('/'+tid+'/entries?categoryId='+cid)).entries||[];}catch(e){}
+    const pending=entries.filter(e=>e.status==='PENDING');
+    const confirmed=entries.filter(e=>e.status!=='PENDING'&&e.status!=='WITHDRAWN');
+    // pedidos de inscrição pública a aprovar
+    if(pending.length){
+      body+='<div style="font-size:11px;font-weight:800;color:var(--warn);text-transform:uppercase;letter-spacing:.5px;margin:2px 0 6px">⏳ Pedidos a aprovar ('+pending.length+')</div>';
+      pending.forEach(e=>{
+        const who=(e.members||[]).map(m=>'@'+(m.user.username||m.user.name||'?')).join(' & ');
+        body+='<div class="listitem"><div class="av" style="background:var(--warnbg);color:var(--warn)">⏳</div><div class="grow"><div class="nm">'+esc(e.name)+'</div><div class="sub">'+esc(who)+'</div></div>'+
+          '<button class="btn sm gho" data-act="approve-entry" data-eid="'+e.id+'">Aprovar</button>'+
+          '<button class="btn sm dang" data-act="del-entry" data-eid="'+e.id+'" style="margin-left:6px">✕</button></div>';});
+      body+='<div style="height:12px"></div>';
+    }
     body+='<button class="btn gho" data-act="add-entry" data-tid="'+tid+'" data-cid="'+cid+'" data-dbl="'+(isDbl?1:0)+'">+ Inscrever atleta'+(isDbl?'/dupla':'')+'</button>';
     body+='<div style="height:10px"></div>';
-    if(!entries.length)body+='<div class="empty" style="padding:16px">Sem inscritos ainda.</div>';
-    else entries.forEach((e,i)=>{
+    if(!confirmed.length)body+='<div class="empty" style="padding:16px">Sem inscritos confirmados ainda.</div>';
+    else confirmed.forEach((e,i)=>{
       const who=(e.members||[]).map(m=>'@'+(m.user.username||m.user.name||'?')).join(' & ');
-      body+='<div class="listitem"><div class="av">'+(i+1)+'</div><div class="grow"><div class="nm">'+esc(e.name)+'</div><div class="sub">'+esc(who)+'</div></div>'+
+      body+='<div class="listitem"><div class="av">'+(i+1)+'</div><div class="grow"><div class="nm">'+esc(e.name)+(e.groupName?' <span class="pill g">Grupo '+esc(e.groupName)+'</span>':'')+'</div><div class="sub">'+esc(who)+'</div></div>'+
         '<button class="btn sm dang" data-act="del-entry" data-eid="'+e.id+'">✕</button></div>';});
-    body+='<div style="height:10px"></div><button class="btn" data-act="gen" data-tid="'+tid+'" data-cid="'+cid+'">⚡ Gerar chave</button>'+
-      '<p class="muted" style="margin-top:8px">Atletas precisam ter conta TenisCash (@username). Inscrição com nome-livre vem na fase 2.</p>';
+    body+='<div style="height:10px"></div>';
+    if(isGroups)body+='<button class="btn" data-act="gen-groups" data-tid="'+tid+'" data-cid="'+cid+'">⚡ Sortear grupos + gerar jogos</button>'+
+      '<p class="muted" style="margin-top:8px">Distribui os confirmados em grupos (serpentina por seed) e cria a fase de grupos. Depois, na aba "Chave", avance pro mata-mata.</p>';
+    else body+='<button class="btn" data-act="gen" data-tid="'+tid+'" data-cid="'+cid+'">⚡ Gerar chave</button>'+
+      '<p class="muted" style="margin-top:8px">Atletas precisam ter conta TenisCash (@username). Só inscritos confirmados entram na chave.</p>';
   }
   if(tab==='chave'){
     let matches=[];try{matches=(await api('/'+tid+'/categories/'+cid+'/matches')).matches||[];}catch(e){}
     if(!matches.length)body+='<div class="empty" style="padding:16px">Chave não gerada ainda.<br>Volte em "Inscritos" e gere.</div>';
     else{
-      const rounds={};matches.forEach(m=>{(rounds[m.round]=rounds[m.round]||[]).push(m);});
-      Object.keys(rounds).sort((a,b)=>a-b).forEach(r=>{
-        const lbl=rounds[r][0].stage;
-        body+='<div style="font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">'+esc(stageName(lbl,r))+'</div>';
-        rounds[r].forEach(m=>{
-          const hw=m.winnerEntryId&&m.homeEntry&&m.winnerEntryId===m.homeEntry.id;
-          const aw=m.winnerEntryId&&m.awayEntry&&m.winnerEntryId===m.awayEntry.id;
-          const done=m.status==='FINISHED'||m.status==='WALKOVER';
-          const isLive=m.status==='LIVE';
-          const can=m.homeEntry&&m.awayEntry&&m.status!=='WALKOVER';
-          let liveStr='';
-          if(isLive&&m.liveState&&m.liveState.sets&&m.liveState.sets.length)liveStr=m.liveState.sets.map(s=>(s.h||0)+'-'+(s.a||0)).join(' ');
-          body+='<div class="match"><div style="flex:1;min-width:0">'+
-            '<div style="display:flex;align-items:center;gap:8px">'+
-              '<div class="side '+(hw?'win':done?'lose':'')+'">'+esc(m.homeEntry?m.homeEntry.name:'—')+'</div>'+
-              '<div class="sc">'+(done?(m.homeScore??'-'):'')+'</div><div class="vs">'+(done?'×':'vs')+'</div><div class="sc">'+(done?(m.awayScore??'-'):'')+'</div>'+
-              '<div class="side '+(aw?'win':done?'lose':'')+'" style="text-align:right">'+esc(m.awayEntry?m.awayEntry.name:'—')+'</div>'+
-            '</div>'+
-            (isLive?'<div style="margin-top:6px"><span class="livetag"><span class="dot"></span>ao vivo</span> <b style="font-size:13px">'+esc(liveStr)+'</b></div>':'')+
-            (can?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+
-              (!done?'<button class="btn sm gho" data-act="live" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'">▶ ao vivo</button>':'')+
-              '<button class="btn sm sec" data-act="result" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'" data-hid="'+m.homeEntry.id+'" data-aid="'+m.awayEntry.id+'">'+(done?'editar':'placar final')+'</button>'+
-            '</div>':'')+
-          '</div></div>';});
-      });
+      const groupM=matches.filter(m=>m.stage==='GROUP');
+      const leagueM=matches.filter(m=>m.stage==='LEAGUE');
+      const koM=matches.filter(m=>m.stage!=='GROUP'&&m.stage!=='LEAGUE');
+      if(groupM.length){
+        const byG={};groupM.forEach(m=>{(byG[m.groupName||'?']=byG[m.groupName||'?']||[]).push(m);});
+        Object.keys(byG).sort().forEach(g=>{
+          body+='<div style="font-weight:900;font-size:15px;margin:14px 0 4px">Grupo '+esc(g)+'</div>'+renderMatchRounds(byG[g]);});
+        if(fmt==='GROUPS_KNOCKOUT'){
+          if(koM.length)body+='<div style="font-weight:900;font-size:15px;margin:18px 0 4px">🏆 Mata-mata</div>'+renderMatchRounds(koM);
+          else{
+            const allDone=groupM.every(m=>m.status==='FINISHED'||m.status==='WALKOVER');
+            body+='<div style="height:14px"></div>'+
+              (allDone?'<button class="btn" data-act="promote" data-tid="'+tid+'" data-cid="'+cid+'">➡️ Avançar pro mata-mata</button>':
+              '<div class="card" style="background:var(--warnbg);box-shadow:none;margin:0"><div class="muted" style="color:var(--warn);font-weight:700">Termine todos os jogos dos grupos pra liberar o mata-mata.</div></div>');
+          }
+        }
+      }else if(leagueM.length)body+=renderMatchRounds(leagueM);
+      else body+=renderMatchRounds(koM);
     }
   }
   if(tab==='tabela'){
     let st=[];try{st=(await api('/'+tid+'/categories/'+cid+'/standings')).standings||[];}catch(e){}
     if(!st.length)body+='<div class="empty" style="padding:16px">Classificação aparece em formatos de pontos corridos/grupos.</div>';
-    else{body+='<table><thead><tr><th class="t-nm">#</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SP</th><th>Pts</th></tr></thead><tbody>';
-      st.forEach(s=>{body+='<tr><td class="t-nm">'+s.rank+'. '+esc(s.entry?s.entry.name:'?')+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+((s.scoreFor||0)-(s.scoreAgainst||0))+'</td><td><b>'+s.points+'</b></td></tr>';});
-      body+='</tbody></table>';}
+    else{
+      const byG={};st.forEach(s=>{(byG[s.groupName||'_']=byG[s.groupName||'_']||[]).push(s);});
+      Object.keys(byG).sort().forEach(g=>{
+        if(g!=='_')body+='<div style="font-weight:900;font-size:15px;margin:14px 0 6px">Grupo '+esc(g)+'</div>';
+        body+=stdTable(byG[g]);});
+    }
   }
-  panel.innerHTML='<div class="card"><h2>'+esc(cname)+'</h2>'+
+  panel.innerHTML='<div class="card"><h2>'+esc(cname)+' <span class="pill g" style="vertical-align:middle">'+esc(FMT_LABEL[fmt]||fmt)+'</span></h2>'+
     '<div class="tabs"><button data-act="cat-tab" data-tab="inscritos" class="'+(tab==='inscritos'?'on':'')+'">Inscritos</button>'+
     '<button data-act="cat-tab" data-tab="chave" class="'+(tab==='chave'?'on':'')+'">Chave</button>'+
     '<button data-act="cat-tab" data-tab="tabela" class="'+(tab==='tabela'?'on':'')+'">Tabela</button></div>'+body+'</div>';
 }
-function stageName(lbl,r){const M={FINAL:'Final',SEMI:'Semifinais',QUARTER:'Quartas',RO16:'Oitavas',RO32:'32-avos',LEAGUE:'Rodada '+r,GROUP:'Grupos · rod '+r};return M[lbl]||('Rodada '+r);}
+// renderiza partidas agrupadas por rodada (com súmula set-a-set quando concluída)
+function renderMatchRounds(arr){
+  let h='';
+  const rounds={};arr.forEach(m=>{(rounds[m.round]=rounds[m.round]||[]).push(m);});
+  Object.keys(rounds).sort((a,b)=>a-b).forEach(r=>{
+    const lbl=rounds[r][0].stage;
+    h+='<div style="font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">'+esc(stageName(lbl,r))+'</div>';
+    rounds[r].forEach(m=>{h+=matchCard(m);});
+  });
+  return h;
+}
+function matchCard(m){
+  const hw=m.winnerEntryId&&m.homeEntry&&m.winnerEntryId===m.homeEntry.id;
+  const aw=m.winnerEntryId&&m.awayEntry&&m.winnerEntryId===m.awayEntry.id;
+  const done=m.status==='FINISHED'||m.status==='WALKOVER';
+  const isLive=m.status==='LIVE';
+  const can=m.homeEntry&&m.awayEntry&&m.status!=='WALKOVER';
+  let liveStr='';
+  if(isLive&&m.liveState&&m.liveState.sets&&m.liveState.sets.length)liveStr=m.liveState.sets.map(s=>(s.h||0)+'-'+(s.a||0)).join(' ');
+  // súmula set-a-set (registro oficial dos sets)
+  const sumula=(done&&m.games&&m.games.length)?m.games.map(s=>s.homeGames+'-'+s.awayGames).join('  '):'';
+  return '<div class="match"><div style="flex:1;min-width:0">'+
+    '<div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="side '+(hw?'win':done?'lose':'')+'">'+esc(m.homeEntry?m.homeEntry.name:'—')+'</div>'+
+      '<div class="sc">'+(done?(m.homeScore==null?'-':m.homeScore):'')+'</div><div class="vs">'+(done?'×':'vs')+'</div><div class="sc">'+(done?(m.awayScore==null?'-':m.awayScore):'')+'</div>'+
+      '<div class="side '+(aw?'win':done?'lose':'')+'" style="text-align:right">'+esc(m.awayEntry?m.awayEntry.name:'—')+'</div>'+
+    '</div>'+
+    (sumula?'<div style="margin-top:5px;font-size:12px;color:var(--mut);font-weight:700;letter-spacing:.3px">📋 '+esc(sumula)+'</div>':(m.status==='WALKOVER'?'<div style="margin-top:5px;font-size:12px;color:var(--mut);font-weight:700">W.O.</div>':''))+
+    (isLive?'<div style="margin-top:6px"><span class="livetag"><span class="dot"></span>ao vivo</span> <b style="font-size:13px">'+esc(liveStr)+'</b></div>':'')+
+    (can?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+
+      (!done?'<button class="btn sm gho" data-act="live" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'">▶ ao vivo</button>':'')+
+      '<button class="btn sm sec" data-act="result" data-mid="'+m.id+'" data-h="'+esc(m.homeEntry.name)+'" data-a="'+esc(m.awayEntry.name)+'" data-hid="'+m.homeEntry.id+'" data-aid="'+m.awayEntry.id+'">'+(done?'editar':'placar final')+'</button>'+
+    '</div>':'')+
+  '</div></div>';
+}
+function stdTable(rows){
+  let h='<table><thead><tr><th class="t-nm">#</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SP</th><th>Pts</th></tr></thead><tbody>';
+  rows.forEach(s=>{h+='<tr><td class="t-nm">'+s.rank+'. '+esc(s.entry?s.entry.name:'?')+'</td><td>'+s.played+'</td><td>'+s.won+'</td><td>'+s.drawn+'</td><td>'+s.lost+'</td><td>'+((s.scoreFor||0)-(s.scoreAgainst||0))+'</td><td><b>'+s.points+'</b></td></tr>';});
+  h+='</tbody></table>';return h;
+}
+function stageName(lbl,r){const M={FINAL:'Final',SEMI:'Semifinais',QUARTER:'Quartas',RO16:'Oitavas',RO32:'32-avos',LEAGUE:'Rodada '+r,GROUP:'Rodada '+r};return M[lbl]||('Rodada '+r);}
 
 // ---------- sheets: categoria / inscrição / placar ----------
 function sheetAddCat(tid){
@@ -445,6 +528,65 @@ async function saveResult(mid){
 async function walkover(mid,winnerId){
   try{await api('/matches/'+mid+'/result',{method:'POST',body:{winnerEntryId:winnerId}});closeSheet();toast('W.O. registrado');renderCatPanel('chave');}
   catch(e){toast(e.message);}
+}
+
+// ---------- grupos / mata-mata / aprovação ----------
+function sheetGenGroups(tid,cid){
+  openSheet('<h3>Sortear grupos</h3><p class="muted">Quantos grupos? Vazio = automático (~4 por grupo). Distribuição serpentina por seed.</p>'+
+    '<label>Nº de grupos (opcional)</label><input id="gg-n" type="number" inputmode="numeric" placeholder="auto">'+
+    '<div style="height:14px"></div><button class="btn" data-act="save-gen-groups" data-tid="'+tid+'" data-cid="'+cid+'">Sortear e gerar jogos</button>');
+}
+async function doGenGroups(tid,cid){
+  const n=document.getElementById('gg-n').value;
+  const body={};if(n)body.groupCount=Number(n);
+  try{const r=await api('/'+tid+'/categories/'+cid+'/generate',{method:'POST',body});closeSheet();
+    toast((r.groupCount||'?')+' grupos · '+(r.matchesCreated||0)+' jogos');renderCatPanel('chave');}
+  catch(e){toast(e.message);}
+}
+function sheetPromote(tid,cid){
+  openSheet('<h3>Avançar pro mata-mata</h3><p class="muted">Quantos classificam por grupo? O mata-mata cruza os grupos (1º de um × 2º de outro).</p>'+
+    '<label>Classificados por grupo</label><input id="pm-q" type="number" inputmode="numeric" value="2">'+
+    '<div style="height:14px"></div><button class="btn" data-act="save-promote" data-tid="'+tid+'" data-cid="'+cid+'">Montar mata-mata</button>');
+}
+async function doPromote(tid,cid){
+  const q=Number(document.getElementById('pm-q').value)||2;
+  try{const r=await api('/'+tid+'/categories/'+cid+'/knockout',{method:'POST',body:{qualifiersPerGroup:q}});closeSheet();
+    toast('Mata-mata montado · '+(r.qualifiers||0)+' classificados');renderCatPanel('chave');}
+  catch(e){toast(e.message);}
+}
+async function approveEntry(eid){
+  try{await api('/entries/'+eid+'/approve',{method:'POST'});toast('Inscrição aprovada');renderCatPanel('inscritos');}
+  catch(e){toast(e.message);}
+}
+
+// ---------- inscrição pública (visitante pede vaga) ----------
+async function openRegister(tid,isDbl){
+  let cats=[];try{cats=(await api('/'+tid+'/categories')).categories||[];}catch(e){}
+  if(!cats.length)return toast('Esse torneio ainda não abriu categorias');
+  let f='<label>Categoria</label><select id="rg-cat">'+cats.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('')+'</select>';
+  if(isDbl)f+='<label>Parceiro de dupla (@username)</label><input id="rg-partner" placeholder="@username">';
+  openSheet('<h3>Pedir inscrição</h3><p class="muted">Sua inscrição fica pendente até o organizador aprovar.</p>'+f+
+    '<div style="height:14px"></div><button class="btn" data-act="save-register" data-tid="'+tid+'" data-dbl="'+(isDbl?1:0)+'">Enviar pedido</button>');
+}
+async function saveRegister(tid,isDbl){
+  const categoryId=document.getElementById('rg-cat').value;
+  const body={categoryId};
+  if(isDbl){const p=document.getElementById('rg-partner').value.trim().replace(/^@/,'');if(!p)return toast('Informe o parceiro de dupla');body.partner=p;}
+  try{await api('/'+tid+'/entries/request',{method:'POST',body});closeSheet();toast('Pedido enviado! Aguarde o organizador aprovar.');}
+  catch(e){toast(e.message);}
+}
+
+// ---------- mural ----------
+async function savePost(tid){
+  const title=(document.getElementById('mp-title')||{}).value||'';
+  const body=(document.getElementById('mp-body')||{}).value||'';
+  if(!body.trim())return toast('Escreva o aviso');
+  try{await api('/'+tid+'/posts',{method:'POST',body:{title:title.trim()||null,body:body.trim()}});
+    toast('Aviso publicado');if(CURT)renderTournament(CURT);}catch(e){toast(e.message);}
+}
+async function delPost(pid){
+  if(!confirm('Remover este aviso?'))return;
+  try{await api('/posts/'+pid,{method:'DELETE'});toast('Aviso removido');if(CURT)renderTournament(CURT);}catch(e){toast(e.message);}
 }
 
 // ---------- placar ao vivo ----------
@@ -570,12 +712,21 @@ document.addEventListener('click',async(ev)=>{
   if(a==='set-status'){const s=document.getElementById('t-status').value;try{await api('/'+el.dataset.id+'/status',{method:'POST',body:{status:s}});toast('Situação atualizada');}catch(e){toast(e.message);}return;}
   if(a==='add-cat'){sheetAddCat(el.dataset.id);return;}
   if(a==='save-cat'){saveCat(el.dataset.tid);return;}
-  if(a==='open-cat'){openCat(el.dataset.tid,el.dataset.cid,el.dataset.cname,el.dataset.dbl==='1');return;}
+  if(a==='open-cat'){openCat(el.dataset.tid,el.dataset.cid,el.dataset.cname,el.dataset.dbl==='1',el.dataset.fmt);return;}
   if(a==='cat-tab'){renderCatPanel(el.dataset.tab);return;}
   if(a==='add-entry'){sheetAddEntry(el.dataset.tid,el.dataset.cid,el.dataset.dbl==='1');return;}
   if(a==='save-entry'){saveEntry(el.dataset.tid,el.dataset.cid,el.dataset.dbl==='1');return;}
   if(a==='del-entry'){if(confirm('Remover inscrição?')){try{await api('/entries/'+el.dataset.eid,{method:'DELETE'});toast('Removido');renderCatPanel('inscritos');}catch(e){toast(e.message);}}return;}
+  if(a==='approve-entry'){approveEntry(el.dataset.eid);return;}
   if(a==='gen'){if(confirm('Gerar a chave agora? Isso recria as partidas.')){try{const r=await api('/'+el.dataset.tid+'/categories/'+el.dataset.cid+'/generate',{method:'POST'});toast('Chave gerada: '+(r.matchesCreated||0)+' partidas');renderCatPanel('chave');}catch(e){toast(e.message);}}return;}
+  if(a==='gen-groups'){sheetGenGroups(el.dataset.tid,el.dataset.cid);return;}
+  if(a==='save-gen-groups'){doGenGroups(el.dataset.tid,el.dataset.cid);return;}
+  if(a==='promote'){sheetPromote(el.dataset.tid,el.dataset.cid);return;}
+  if(a==='save-promote'){doPromote(el.dataset.tid,el.dataset.cid);return;}
+  if(a==='register'){openRegister(el.dataset.tid,el.dataset.dbl==='1');return;}
+  if(a==='save-register'){saveRegister(el.dataset.tid,el.dataset.dbl==='1');return;}
+  if(a==='post-create'){savePost(el.dataset.tid);return;}
+  if(a==='del-post'){delPost(el.dataset.pid);return;}
   if(a==='result'){sheetResult(el.dataset.mid,el.dataset.h,el.dataset.a,el.dataset.hid,el.dataset.aid);return;}
   if(a==='save-result'){saveResult(el.dataset.mid);return;}
   if(a==='wo'){walkover(el.dataset.mid,el.dataset.w);return;}
