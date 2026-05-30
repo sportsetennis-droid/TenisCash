@@ -14,3 +14,6 @@ certificados/
 certs/
 .rwlogin.*
 backups/
+
+# Live commerce — binários da câmera (baixados local, ~100MB, não versionar)
+infra/live/*.exe

@@ -173,7 +173,7 @@ router.post('/listings', writeLimiter, async (req, res) => {
         sellerEmail: clean(b.sellerEmail, 160),
         sellerPixKey: clean(b.sellerPixKey, 160),
         sellerCity: clean(b.sellerCity, 80),
-        sellerState: clean(b.sellerState, 40),
+        sellerState: (clean(b.sellerState, 40) || '').toUpperCase().slice(0, 2) || null,
         category,
         brand: clean(b.brand, 80),
         model,
