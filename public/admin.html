@@ -825,6 +825,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <button type="button" class="tab active js-prt-sub" data-prt-sub="list">Lista de Creations</button>
+    <button type="button" class="tab js-prt-sub" data-prt-sub="campaigns">Campanhas</button>
     <button type="button" class="tab js-prt-sub" data-prt-sub="sales">Vendas com Cupom</button>
     <button type="button" class="tab js-prt-sub" data-prt-sub="stats">Estatísticas</button>
   </div>
@@ -875,6 +876,27 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     </div>
     <h3 style="font-family:Orbitron;font-size:14px;letter-spacing:2px;margin:14px 0 10px">Top 10 Creations por comissão</h3>
     <div id="prt-stats-top-wrap"></div>
+  </div>
+
+  <div id="prt-panel-campaigns" style="display:none">
+    <div style="background:#1c1c1e;border:1px solid #2c2c2e;border-radius:12px;padding:14px;margin-bottom:16px;max-width:680px">
+      <div style="font-family:Orbitron;font-size:12px;letter-spacing:1px;color:#FF8A33;margin-bottom:6px">CONTRATAR CREATION PARA CAMPANHA</div>
+      <p style="font-size:12px;color:#8e8e93;line-height:1.4">Pague o creator por <strong>comissão de venda</strong> (já roda via cupom), <strong>valor mensal fixo</strong> (retainer) ou <strong>os dois</strong>. O retainer pode ser pago em T$ (crédito do creator) ou registrado como PIX/dinheiro pago por fora.</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <button type="button" class="btn btn-primary" id="cmp-btn-new">+ Nova Campanha</button>
+      <select class="search-box" id="cmp-filter-status" style="width:170px">
+        <option value="">Todos status</option>
+        <option value="proposed">Proposta</option>
+        <option value="active">Ativa</option>
+        <option value="paused">Pausada</option>
+        <option value="delivered">Entregue</option>
+        <option value="finished">Encerrada</option>
+        <option value="cancelled">Cancelada</option>
+      </select>
+      <button type="button" class="btn btn-primary" id="cmp-btn-filter">Filtrar</button>
+    </div>
+    <div id="cmp-list-wrap"><div class="loading-spinner">Carregando...</div></div>
   </div>
 </div>
 
@@ -2526,6 +2548,103 @@ function escapeHtmlMk(s) {
 
     <div id="prt-sale-error" style="margin-top:10px"></div>
     <button type="button" class="btn btn-primary" id="prt-sale-confirm" style="margin-top:14px;width:100%">CONFIRMAR VENDA</button>
+  </div>
+</div>
+
+<!-- MODAL: NOVA / EDITAR CAMPANHA -->
+<div class="detail-modal" id="cmp-modal">
+  <div class="detail-content" style="max-width:620px">
+    <button type="button" class="detail-close" id="cmp-modal-close">✕</button>
+    <div style="font-family:Orbitron;font-size:14px;letter-spacing:3px;color:var(--orange)" id="cmp-modal-title">NOVA CAMPANHA</div>
+    <input type="hidden" id="cmp-id">
+
+    <label class="muted" style="display:block;margin-top:14px;font-size:11px;letter-spacing:2px">CUPOM DO CREATION</label>
+    <input class="form-input" id="cmp-coupon" placeholder="Ex.: PEDRO, CARLA-RUN" style="margin-top:6px;text-transform:uppercase">
+    <div class="note" id="cmp-coupon-info" style="margin-top:6px">Digite o cupom de um Creation já cadastrado.</div>
+
+    <label class="muted" style="display:block;margin-top:12px;font-size:11px;letter-spacing:2px">TÍTULO DA CAMPANHA</label>
+    <input class="form-input" id="cmp-title" placeholder="Ex.: Lançamento tênis de corrida — junho" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">BRIEFING (o que o creator deve fazer)</label>
+    <textarea class="form-input" id="cmp-briefing" rows="3" placeholder="Roteiro, tom, hashtags, datas..." style="margin-top:6px"></textarea>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">OBJETIVO</label>
+    <input class="form-input" id="cmp-objective" placeholder="Ex.: vendas, alcance, seguidores" style="margin-top:6px">
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">MODELO DE PAGAMENTO</label>
+    <select class="form-input" id="cmp-payment-model" style="margin-top:6px">
+      <option value="commission">Só comissão (via cupom)</option>
+      <option value="monthly_fee">Valor mensal fixo (retainer)</option>
+      <option value="hybrid">Os dois (comissão + mensal)</option>
+    </select>
+
+    <div id="cmp-fee-row" style="display:none">
+      <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">VALOR MENSAL (R$/T$) / COMISSÃO % (override, opcional)</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <input class="form-input" id="cmp-monthly-fee" type="number" step="0.01" placeholder="Valor mensal" value="0">
+        <input class="form-input" id="cmp-commission-override" type="number" step="0.5" placeholder="Comissão % (opcional)">
+      </div>
+      <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">COMO PAGAR O MENSAL</label>
+      <select class="form-input" id="cmp-payout-mode" style="margin-top:6px">
+        <option value="tenis_cash">T$ — crédito do creator (troca por produto)</option>
+        <option value="pix_cash">PIX / dinheiro — pago por fora (só registra)</option>
+      </select>
+      <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">RECORRÊNCIA</label>
+      <select class="form-input" id="cmp-recurrence" style="margin-top:6px">
+        <option value="monthly">Mensal</option>
+        <option value="one_off">Uma vez (avulso)</option>
+      </select>
+    </div>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">ENTREGÁVEIS (1 por linha — formato: tipo|quantidade)</label>
+    <textarea class="form-input" id="cmp-deliverables" rows="3" placeholder="post|3&#10;story|5&#10;reels|2" style="margin-top:6px"></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="flex:1">
+        <label class="muted" style="display:block;font-size:11px;letter-spacing:2px">INÍCIO</label>
+        <input class="form-input" id="cmp-start" type="date" style="margin-top:6px">
+      </div>
+      <div style="flex:1">
+        <label class="muted" style="display:block;font-size:11px;letter-spacing:2px">FIM (opcional)</label>
+        <input class="form-input" id="cmp-end" type="date" style="margin-top:6px">
+      </div>
+    </div>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">STATUS</label>
+    <select class="form-input" id="cmp-status" style="margin-top:6px">
+      <option value="proposed">Proposta</option>
+      <option value="active">Ativa</option>
+      <option value="paused">Pausada</option>
+      <option value="delivered">Entregue</option>
+      <option value="finished">Encerrada</option>
+      <option value="cancelled">Cancelada</option>
+    </select>
+
+    <label class="muted" style="display:block;margin-top:10px;font-size:11px;letter-spacing:2px">NOTAS INTERNAS</label>
+    <textarea class="form-input" id="cmp-notes" rows="2" style="margin-top:6px"></textarea>
+
+    <!-- PAYOUTS (só ao editar campanha com retainer) -->
+    <div id="cmp-payouts-section" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-family:Orbitron;font-size:12px;letter-spacing:2px;color:#FF8A33;margin-bottom:8px">PAGAMENTOS (RETAINER)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+        <div>
+          <label class="muted" style="display:block;font-size:10px;letter-spacing:2px">COMPETÊNCIA</label>
+          <input class="form-input" id="cmp-payout-ref" type="month" style="margin-top:4px;width:160px">
+        </div>
+        <div>
+          <label class="muted" style="display:block;font-size:10px;letter-spacing:2px">VALOR (vazio = mensal)</label>
+          <input class="form-input" id="cmp-payout-amount" type="number" step="0.01" placeholder="auto" style="margin-top:4px;width:130px">
+        </div>
+        <button type="button" class="btn btn-primary" id="cmp-gen-payout">Gerar pagamento</button>
+      </div>
+      <div id="cmp-payouts-wrap"></div>
+    </div>
+
+    <div id="cmp-error" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button type="button" class="btn btn-primary" id="cmp-save" style="flex:1">SALVAR</button>
+      <button type="button" class="btn btn-danger" id="cmp-delete" style="display:none">REMOVER</button>
+    </div>
   </div>
 </div>
 
@@ -4303,9 +4422,11 @@ let prtSaleCouponInfo = null;
 function syncPrtSubPanels(sub) {
   document.querySelectorAll('.js-prt-sub').forEach(b => b.classList.toggle('active', b.getAttribute('data-prt-sub') === sub));
   document.getElementById('prt-panel-list').style.display = sub === 'list' ? 'block' : 'none';
+  document.getElementById('prt-panel-campaigns').style.display = sub === 'campaigns' ? 'block' : 'none';
   document.getElementById('prt-panel-sales').style.display = sub === 'sales' ? 'block' : 'none';
   document.getElementById('prt-panel-stats').style.display = sub === 'stats' ? 'block' : 'none';
   if (sub === 'list') loadAdminPartnersList();
+  if (sub === 'campaigns') loadAdminCampaigns();
   if (sub === 'sales') loadAdminPartnerSales();
   if (sub === 'stats') loadAdminPartnerStats();
 }
@@ -4346,6 +4467,21 @@ function initAdminPartnersTab() {
       prtSaleCouponTimer = setTimeout(checkPartnerSaleCoupon, 350);
     });
     document.getElementById('prt-sale-amount').addEventListener('input', recalcPartnerSale);
+
+    // ---- Campanhas ----
+    document.getElementById('cmp-btn-new').addEventListener('click', function () { openCampaignModal(null); });
+    document.getElementById('cmp-btn-filter').addEventListener('click', loadAdminCampaigns);
+    document.getElementById('cmp-filter-status').addEventListener('change', loadAdminCampaigns);
+    document.getElementById('cmp-modal-close').addEventListener('click', function () {
+      document.getElementById('cmp-modal').classList.remove('show');
+    });
+    document.getElementById('cmp-save').addEventListener('click', saveCampaignModal);
+    document.getElementById('cmp-delete').addEventListener('click', deleteCampaignFromModal);
+    document.getElementById('cmp-gen-payout').addEventListener('click', generateCampaignPayout);
+    document.getElementById('cmp-payment-model').addEventListener('change', syncCampaignFeeRow);
+    document.getElementById('cmp-coupon').addEventListener('input', function (e) {
+      e.target.value = String(e.target.value || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+    });
   }
   syncPrtSubPanels('list');
   loadRedeemPct();
@@ -4743,6 +4879,315 @@ async function confirmPartnerSale() {
   alert('Venda registrada. Comissão T$ ' + Number(r.commissionEarned).toFixed(2) + ' creditada ao Creation. Saldo: T$ ' + Number(r.partnerBalance).toFixed(2));
   document.getElementById('prt-sale-modal').classList.remove('show');
   loadAdminPartnersList();
+}
+
+/* ---------------------- CAMPANHAS (ADMIN) ---------------------- */
+
+let cmpLoaded = null; // campanha carregada no modal (pra merge de entregáveis e payouts)
+
+const CMP_STATUS_LABEL = { proposed: 'Proposta', active: 'Ativa', paused: 'Pausada', delivered: 'Entregue', finished: 'Encerrada', cancelled: 'Cancelada' };
+const CMP_STATUS_COLOR = { proposed: '#0066cc', active: '#0a843d', paused: '#b06b00', delivered: '#5856d6', finished: '#8e8e93', cancelled: '#d70015' };
+const CMP_MODEL_LABEL = { commission: 'Só comissão', monthly_fee: 'Mensal fixo', hybrid: 'Comissão + mensal' };
+const CMP_PAYOUT_STATUS_LABEL = { pending: 'Pendente', paid: 'Pago', cancelled: 'Cancelado' };
+const CMP_PAYOUT_STATUS_COLOR = { pending: '#b06b00', paid: '#0a843d', cancelled: '#8e8e93' };
+
+function isoToDateInput(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function currentMonthInput() {
+  const now = new Date(Date.now() - 180 * 60000); // Fortaleza UTC-3
+  return now.getUTCFullYear() + '-' + String(now.getUTCMonth() + 1).padStart(2, '0');
+}
+
+// Texto "tipo|qtd" por linha → [{type, qty, done}], preservando o done do anterior por tipo.
+function parseCampaignDeliverables(raw, prev) {
+  const prevByType = {};
+  (Array.isArray(prev) ? prev : []).forEach(function (d) { prevByType[String(d.type || '').toLowerCase()] = d; });
+  return String(raw || '').split('\n').map(function (line) {
+    const parts = line.trim().split('|');
+    const type = (parts[0] || '').trim();
+    if (!type) return null;
+    const qty = Math.max(0, parseInt(parts[1], 10) || 0);
+    const old = prevByType[type.toLowerCase()];
+    const done = old ? Math.min(qty, Math.max(0, parseInt(old.done, 10) || 0)) : 0;
+    return { type: type.slice(0, 40), qty: qty, done: done };
+  }).filter(Boolean);
+}
+
+function deliverablesToText(arr) {
+  if (!Array.isArray(arr)) return '';
+  return arr.map(function (d) { return (d.type || '') + '|' + (d.qty != null ? d.qty : 0); }).join('\n');
+}
+
+function deliverablesSummary(arr) {
+  if (!Array.isArray(arr) || !arr.length) return '<span style="color:#8e8e93">sem entregáveis</span>';
+  return arr.map(function (d) {
+    const done = parseInt(d.done, 10) || 0;
+    const qty = parseInt(d.qty, 10) || 0;
+    const ok = qty > 0 && done >= qty;
+    return '<span style="color:' + (ok ? '#0a843d' : '#1d1d1f') + '">' + escapeHtml(d.type) + ' ' + done + '/' + qty + '</span>';
+  }).join(' • ');
+}
+
+async function loadAdminCampaigns() {
+  const wrap = document.getElementById('cmp-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const st = document.getElementById('cmp-filter-status').value;
+  const data = await api('/admin/creation-campaigns' + (st ? '?status=' + encodeURIComponent(st) : ''));
+  if (data.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(data.error) + '</div>'; return; }
+  const list = data.campaigns || [];
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#8e8e93;">Nenhuma campanha. Clique em “+ Nova Campanha”.</div>'; return; }
+  let html = '<p style="font-size:13px;color:#8e8e93;margin-bottom:12px;">' + list.length + ' campanha(s)</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">';
+  list.forEach(function (c) {
+    const p = c.partner || {};
+    const u = p.user || {};
+    const sc = CMP_STATUS_COLOR[c.status] || '#8e8e93';
+    const fee = Number(c.monthlyFee || 0);
+    html += '<div style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;transition:all 0.15s;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+    html += '<div style="font-size:15px;font-weight:800;color:#1d1d1f;line-height:1.2;">' + escapeHtml(c.title) + '</div>';
+    html += '<span style="flex-shrink:0;font-size:10px;padding:3px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(CMP_STATUS_LABEL[c.status] || c.status) + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:#8e8e93;"><span style="font-family:monospace;color:#E5571E;font-weight:700;">' + escapeHtml(p.couponCode || '—') + '</span> · ' + escapeHtml(u.name || '—') + '</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
+    html += '<span style="font-size:10px;padding:3px 8px;background:#f0f0f2;color:#1d1d1f;border-radius:6px;font-weight:600;">' + escapeHtml(CMP_MODEL_LABEL[c.paymentModel] || c.paymentModel) + '</span>';
+    if (c.paymentModel !== 'commission' && fee > 0) {
+      const modeTxt = c.payoutMode === 'pix_cash' ? 'PIX' : 'T$';
+      html += '<span style="font-size:10px;padding:3px 8px;background:#fff3e8;color:#b06b00;border-radius:6px;font-weight:700;">' + modeTxt + ' ' + fee.toFixed(2) + (c.recurrence === 'monthly' ? '/mês' : '') + '</span>';
+    }
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#1d1d1f;padding:8px 0;border-top:1px dashed #e5e5ea;">' + deliverablesSummary(c.deliverables) + '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<span style="font-size:11px;color:#8e8e93;">Pago acum.</span>';
+    html += '<span style="font-size:15px;font-weight:800;color:#0a843d;">' + (c.payoutMode === 'pix_cash' ? 'R$ ' : 'T$ ') + Number(c.totalPaid || 0).toFixed(2) + '</span>';
+    html += '</div>';
+    html += '<button class="js-cmp-edit" data-id="' + c.id + '" style="padding:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">✎ Abrir / Pagar</button>';
+    html += '</div>';
+  });
+  html += '</div>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-cmp-edit').forEach(function (btn) {
+    btn.addEventListener('click', function () { openCampaignModal(btn.getAttribute('data-id')); });
+  });
+}
+
+function syncCampaignFeeRow() {
+  const model = document.getElementById('cmp-payment-model').value;
+  document.getElementById('cmp-fee-row').style.display = (model === 'monthly_fee' || model === 'hybrid') ? 'block' : 'none';
+}
+
+async function openCampaignModal(id) {
+  const modal = document.getElementById('cmp-modal');
+  document.getElementById('cmp-error').innerHTML = '';
+  modal.classList.add('show');
+  cmpLoaded = null;
+
+  // Reset
+  document.getElementById('cmp-id').value = '';
+  document.getElementById('cmp-coupon').value = '';
+  document.getElementById('cmp-coupon').disabled = false;
+  document.getElementById('cmp-coupon-info').textContent = 'Digite o cupom de um Creation já cadastrado.';
+  document.getElementById('cmp-title').value = '';
+  document.getElementById('cmp-briefing').value = '';
+  document.getElementById('cmp-objective').value = '';
+  document.getElementById('cmp-payment-model').value = 'commission';
+  document.getElementById('cmp-monthly-fee').value = '0';
+  document.getElementById('cmp-commission-override').value = '';
+  document.getElementById('cmp-payout-mode').value = 'tenis_cash';
+  document.getElementById('cmp-recurrence').value = 'monthly';
+  document.getElementById('cmp-deliverables').value = '';
+  document.getElementById('cmp-start').value = isoToDateInput(new Date().toISOString());
+  document.getElementById('cmp-end').value = '';
+  document.getElementById('cmp-status').value = 'proposed';
+  document.getElementById('cmp-notes').value = '';
+  document.getElementById('cmp-payouts-wrap').innerHTML = '';
+  document.getElementById('cmp-payout-ref').value = currentMonthInput();
+  document.getElementById('cmp-payout-amount').value = '';
+  document.getElementById('cmp-payouts-section').style.display = 'none';
+  document.getElementById('cmp-delete').style.display = id ? 'inline-block' : 'none';
+  document.getElementById('cmp-modal-title').textContent = id ? 'EDITAR CAMPANHA' : 'NOVA CAMPANHA';
+  syncCampaignFeeRow();
+
+  if (!id) return;
+  const data = await api('/admin/creation-campaigns/' + encodeURIComponent(id));
+  if (data.error) { document.getElementById('cmp-error').innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(data.error) + '</strong></div>'; return; }
+  const c = data.campaign;
+  cmpLoaded = c;
+  document.getElementById('cmp-id').value = c.id;
+  document.getElementById('cmp-coupon').value = (c.partner && c.partner.couponCode) || '';
+  document.getElementById('cmp-coupon').disabled = true; // não troca o Creation ao editar
+  document.getElementById('cmp-coupon-info').textContent = c.partner ? ('Creation: ' + ((c.partner.user && c.partner.user.name) || '—')) : '';
+  document.getElementById('cmp-title').value = c.title || '';
+  document.getElementById('cmp-briefing').value = c.briefing || '';
+  document.getElementById('cmp-objective').value = c.objective || '';
+  document.getElementById('cmp-payment-model').value = c.paymentModel || 'commission';
+  document.getElementById('cmp-monthly-fee').value = Number(c.monthlyFee || 0);
+  document.getElementById('cmp-commission-override').value = c.commissionPctOverride != null ? c.commissionPctOverride : '';
+  document.getElementById('cmp-payout-mode').value = c.payoutMode || 'tenis_cash';
+  document.getElementById('cmp-recurrence').value = c.recurrence || 'monthly';
+  document.getElementById('cmp-deliverables').value = deliverablesToText(c.deliverables);
+  document.getElementById('cmp-start').value = isoToDateInput(c.startDate);
+  document.getElementById('cmp-end').value = isoToDateInput(c.endDate);
+  document.getElementById('cmp-status').value = c.status || 'proposed';
+  document.getElementById('cmp-notes').value = c.notes || '';
+  syncCampaignFeeRow();
+
+  // Payouts só aparecem com retainer (monthly_fee/hybrid)
+  if (c.paymentModel === 'monthly_fee' || c.paymentModel === 'hybrid') {
+    document.getElementById('cmp-payouts-section').style.display = 'block';
+    renderCampaignPayouts(c.payouts || [], c.payoutMode);
+  }
+}
+
+async function saveCampaignModal() {
+  const errEl = document.getElementById('cmp-error');
+  errEl.innerHTML = '';
+  const id = document.getElementById('cmp-id').value.trim();
+  const model = document.getElementById('cmp-payment-model').value;
+  const prevDeliverables = cmpLoaded ? cmpLoaded.deliverables : [];
+  const overrideRaw = document.getElementById('cmp-commission-override').value.trim();
+  const body = {
+    title: document.getElementById('cmp-title').value.trim(),
+    briefing: document.getElementById('cmp-briefing').value.trim(),
+    objective: document.getElementById('cmp-objective').value.trim(),
+    paymentModel: model,
+    monthlyFee: parseFloat(document.getElementById('cmp-monthly-fee').value) || 0,
+    commissionPctOverride: overrideRaw === '' ? null : (parseFloat(overrideRaw) || 0),
+    payoutMode: document.getElementById('cmp-payout-mode').value,
+    recurrence: document.getElementById('cmp-recurrence').value,
+    deliverables: parseCampaignDeliverables(document.getElementById('cmp-deliverables').value, prevDeliverables),
+    startDate: document.getElementById('cmp-start').value || null,
+    endDate: document.getElementById('cmp-end').value || null,
+    status: document.getElementById('cmp-status').value,
+    notes: document.getElementById('cmp-notes').value.trim(),
+  };
+  if (!body.title) { errEl.innerHTML = '<div class="csv-errors"><strong>Informe o título da campanha.</strong></div>'; return; }
+
+  let r;
+  if (id) {
+    r = await api('/admin/creation-campaigns/' + encodeURIComponent(id), 'PUT', body);
+  } else {
+    const coupon = document.getElementById('cmp-coupon').value.trim();
+    if (!coupon) { errEl.innerHTML = '<div class="csv-errors"><strong>Informe o cupom do Creation.</strong></div>'; return; }
+    body.couponCode = coupon;
+    r = await api('/admin/creation-campaigns', 'POST', body);
+  }
+  if (r.error) { errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(r.error) + '</strong></div>'; return; }
+  // Em criação com retainer, reabre pra liberar a seção de pagamentos
+  if (!id && r.campaign && (r.campaign.paymentModel === 'monthly_fee' || r.campaign.paymentModel === 'hybrid')) {
+    openCampaignModal(r.campaign.id);
+  } else {
+    document.getElementById('cmp-modal').classList.remove('show');
+  }
+  loadAdminCampaigns();
+}
+
+async function deleteCampaignFromModal() {
+  const id = document.getElementById('cmp-id').value.trim();
+  if (!id) return;
+  if (!confirm('Remover esta campanha? Pagamentos já liquidados mantêm as Transactions de auditoria.')) return;
+  let r = await api('/admin/creation-campaigns/' + encodeURIComponent(id), 'DELETE');
+  if (r.error && /pagamento\(s\) liquidado/.test(r.error)) {
+    if (!confirm(r.error + '\n\nApagar mesmo assim?')) return;
+    r = await api('/admin/creation-campaigns/' + encodeURIComponent(id) + '?force=true', 'DELETE');
+  }
+  if (r.error) { alert(r.error); return; }
+  document.getElementById('cmp-modal').classList.remove('show');
+  loadAdminCampaigns();
+}
+
+async function generateCampaignPayout() {
+  const id = document.getElementById('cmp-id').value.trim();
+  if (!id) { alert('Salve a campanha antes de gerar pagamento.'); return; }
+  const errEl = document.getElementById('cmp-error');
+  errEl.innerHTML = '';
+  const ref = document.getElementById('cmp-payout-ref').value.trim();
+  const amtRaw = document.getElementById('cmp-payout-amount').value.trim();
+  const body = {};
+  if (ref) body.reference = ref;
+  if (amtRaw !== '') body.amount = parseFloat(amtRaw) || 0;
+  const r = await api('/admin/creation-campaigns/' + encodeURIComponent(id) + '/payouts', 'POST', body);
+  if (r.error) { errEl.innerHTML = '<div class="csv-errors"><strong>' + escapeHtml(r.error) + '</strong></div>'; return; }
+  document.getElementById('cmp-payout-amount').value = '';
+  await loadCampaignPayouts(id);
+}
+
+// Recarrega só a seção de payouts (preserva edições não salvas do formulário).
+async function loadCampaignPayouts(id) {
+  const data = await api('/admin/creation-campaigns/' + encodeURIComponent(id));
+  if (data.error || !data.campaign) return;
+  cmpLoaded = data.campaign;
+  renderCampaignPayouts(data.campaign.payouts || [], data.campaign.payoutMode);
+}
+
+function renderCampaignPayouts(payouts, payoutMode) {
+  const wrap = document.getElementById('cmp-payouts-wrap');
+  if (!payouts.length) { wrap.innerHTML = '<p class="note">Nenhum pagamento gerado ainda. Defina a competência e clique em “Gerar pagamento”.</p>'; return; }
+  const cur = payoutMode === 'pix_cash' ? 'R$ ' : 'T$ ';
+  let html = '<table style="width:100%"><thead><tr><th>Competência</th><th>Valor</th><th>Forma</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
+  payouts.forEach(function (p) {
+    const sc = CMP_PAYOUT_STATUS_COLOR[p.status] || '#8e8e93';
+    const modeTxt = p.payoutMode === 'pix_cash' ? 'PIX/dinheiro' : 'T$ (crédito)';
+    let actions = '';
+    if (p.status === 'pending') {
+      actions += '<button class="js-payout-pay btn btn-primary" data-id="' + p.id + '" data-mode="' + escapeHtml(p.payoutMode) + '" data-amt="' + Number(p.amount).toFixed(2) + '" data-ref="' + escapeHtml(p.reference) + '" style="padding:4px 10px;font-size:11px;margin-right:4px;">Pagar</button>';
+      actions += '<button class="js-payout-cancel btn btn-danger" data-id="' + p.id + '" style="padding:4px 10px;font-size:11px;">Cancelar</button>';
+    } else if (p.status === 'paid') {
+      actions = '<span class="note">' + (p.paidAt ? new Date(p.paidAt).toLocaleDateString('pt-BR') : '✓') + (p.method ? ' · ' + escapeHtml(p.method) : '') + '</span>';
+    } else {
+      actions = '<span class="note">—</span>';
+    }
+    html += '<tr>'
+      + '<td>' + escapeHtml(p.reference) + '</td>'
+      + '<td>' + cur + Number(p.amount).toFixed(2) + '</td>'
+      + '<td>' + modeTxt + '</td>'
+      + '<td><span style="font-size:11px;padding:2px 8px;background:' + sc + '20;color:' + sc + ';border-radius:6px;font-weight:700;">' + escapeHtml(CMP_PAYOUT_STATUS_LABEL[p.status] || p.status) + '</span></td>'
+      + '<td>' + actions + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.js-payout-pay').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      payCampaignPayout(btn.getAttribute('data-id'), btn.getAttribute('data-mode'), btn.getAttribute('data-amt'), btn.getAttribute('data-ref'));
+    });
+  });
+  wrap.querySelectorAll('.js-payout-cancel').forEach(function (btn) {
+    btn.addEventListener('click', function () { cancelCampaignPayout(btn.getAttribute('data-id')); });
+  });
+}
+
+async function payCampaignPayout(payoutId, mode, amt, ref) {
+  const id = document.getElementById('cmp-id').value.trim();
+  const isTC = mode === 'tenis_cash';
+  const msg = isTC
+    ? 'Pagar ' + ref + ': creditar T$ ' + amt + ' no saldo do Creation (vira crédito pra trocar por produto). Confirmar?'
+    : 'Marcar ' + ref + ' como PAGO por fora (PIX/dinheiro), valor R$ ' + amt + '. Isso NÃO mexe em saldo, só registra. Confirmar?';
+  if (!confirm(msg)) return;
+  const body = isTC ? {} : { method: 'pix' };
+  const r = await api('/admin/creation-payouts/' + encodeURIComponent(payoutId) + '/pay', 'POST', body);
+  if (r.error) { alert(r.error); return; }
+  if (isTC) {
+    alert('Pago. Saldo do Creation agora: T$ ' + Number(r.partnerBalance).toFixed(2));
+  } else {
+    alert('Registrado como pago por fora.');
+  }
+  await loadCampaignPayouts(id);
+  loadAdminCampaigns();
+}
+
+async function cancelCampaignPayout(payoutId) {
+  const id = document.getElementById('cmp-id').value.trim();
+  if (!confirm('Cancelar este pagamento pendente?')) return;
+  const r = await api('/admin/creation-payouts/' + encodeURIComponent(payoutId) + '/cancel', 'POST', {});
+  if (r.error) { alert(r.error); return; }
+  await loadCampaignPayouts(id);
 }
 
 // USERS

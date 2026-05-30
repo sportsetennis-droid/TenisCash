@@ -1151,7 +1151,9 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:18px 0 8px">ÚLTIMAS VENDAS COM CUPOM</h3>
   <div id="partner-recent-wrap"></div>
 
-  <div style="display:flex;gap:10px;margin-top:14px">
+  <button type="button" class="btn-primary" data-screen="partner-campaigns" style="width:100%;margin-top:14px;min-height:44px">📋 Minhas Campanhas</button>
+
+  <div style="display:flex;gap:10px;margin-top:10px">
     <button type="button" class="btn-primary" data-screen="partner-sales" style="flex:1">Ver vendas</button>
     <button type="button" class="btn-secondary" data-screen="partner-redeem" style="flex:1">Trocar T$</button>
   </div>
@@ -1193,6 +1195,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div id="partner-cashback-tx" style="margin-bottom:30px"><p style="font-size:12px;opacity:.6">Carregando...</p></div>
   </div><!-- /pt-col-side -->
   </div><!-- /pt-dash -->
+</div>
+
+<div id="partner-campaigns" class="screen">
+  <div class="back-header"><span class="back-arrow" data-back="partner-home">←</span><p style="font-size:18px;font-weight:700">Minhas Campanhas</p></div>
+  <div id="partner-campaigns-summary" style="margin-top:10px"></div>
+  <div id="partner-campaigns-wrap" style="margin-top:14px"><p style="opacity:.6">Carregando...</p></div>
+  <h3 style="font-size:13px;letter-spacing:2px;color:rgba(255,255,255,0.6);font-family:'Orbitron';margin:22px 0 8px">MEUS PAGAMENTOS</h3>
+  <div id="partner-payouts-wrap" style="margin-bottom:40px"><p style="opacity:.6">Carregando...</p></div>
 </div>
 
 <div id="partner-sales" class="screen">
@@ -1366,7 +1376,7 @@ function showScreen(id) {
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
   const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
-  const partnerScreens = ['partner-home','partner-sales','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
+  const partnerScreens = ['partner-home','partner-sales','partner-campaigns','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
   const shouldShowSellerNav = sellerScreens.includes(id) && isSeller();
   const shouldShowPartnerNav = partnerScreens.includes(id) && isPartner();
@@ -1405,6 +1415,7 @@ function showScreen(id) {
   if (id === 'transfer') { document.getElementById('tf-balance').textContent = 'Saldo disponível: T$ ' + (user?.balance||0).toFixed(2); }
   if (id === 'partner-home') loadPartnerHome();
   if (id === 'partner-sales') loadPartnerSalesScreen();
+  if (id === 'partner-campaigns') loadPartnerCampaigns();
   if (id === 'partner-redeem') initPartnerRedeem();
   if (id === 'teniscash-store') loadTenisCashStore();
   if (id === 'seller-portfolio') initSellerPortfolio();
@@ -3662,6 +3673,127 @@ function buildSaleDetail(s) {
   calc.textContent = 'Subtotal: R$ ' + fmtBRL(s.saleAmountFull) + ' • Desconto: -R$ ' + fmtBRL(s.discountValue);
   box.appendChild(calc);
   return box;
+}
+
+/* ---------------------- MINHAS CAMPANHAS (CREATOR) ---------------------- */
+
+let partnerCampaignsCache = [];
+
+const PCMP_STATUS = {
+  proposed: { l: 'Proposta', c: '#7aa7ff' },
+  active: { l: 'Ativa', c: '#7CE38B' },
+  paused: { l: 'Pausada', c: '#f0b146' },
+  delivered: { l: 'Entregue', c: '#b370ff' },
+  finished: { l: 'Encerrada', c: '#9aa0a6' },
+  cancelled: { l: 'Cancelada', c: '#ff7b7b' },
+};
+const PCMP_MODEL = { commission: 'Comissão por venda', monthly_fee: 'Valor mensal fixo', hybrid: 'Comissão + mensal' };
+const PCMP_PAYOUT = {
+  pending: { l: 'A receber', c: '#f0b146' },
+  paid: { l: 'Recebido', c: '#7CE38B' },
+  cancelled: { l: 'Cancelado', c: '#9aa0a6' },
+};
+
+async function loadPartnerCampaigns() {
+  if (!isPartner()) return;
+  ensurePartnerListeners();
+  const wrap = document.getElementById('partner-campaigns-wrap');
+  const sumEl = document.getElementById('partner-campaigns-summary');
+  const payWrap = document.getElementById('partner-payouts-wrap');
+  wrap.innerHTML = '<p style="opacity:.6">Carregando...</p>';
+  payWrap.innerHTML = '<p style="opacity:.6">Carregando...</p>';
+
+  const [cData, pData] = await Promise.all([api('/partner/campaigns'), api('/partner/payouts')]);
+  if (cData.error) { wrap.innerHTML = '<p class="error-msg">' + cData.error + '</p>'; sumEl.innerHTML = ''; }
+  const campaigns = (cData && cData.campaigns) || [];
+  const payouts = (pData && pData.payouts) || [];
+  partnerCampaignsCache = campaigns;
+
+  const totalPaid = payouts.filter(function (p) { return p.status === 'paid'; }).reduce(function (a, p) { return a + (p.amount || 0); }, 0);
+  const activeCount = campaigns.filter(function (c) { return c.status === 'active'; }).length;
+  sumEl.innerHTML = '<div style="background:rgba(255,109,0,0.08);border:1px solid rgba(255,109,0,0.3);border-radius:12px;padding:12px 14px">'
+    + '<p style="font-size:11px;opacity:.7;letter-spacing:2px">RESUMO</p>'
+    + '<p style="margin-top:6px"><span style="opacity:.7">Campanhas:</span> <strong>' + campaigns.length + '</strong> &nbsp;•&nbsp; '
+    + '<span style="opacity:.7">Ativas:</span> <strong>' + activeCount + '</strong> &nbsp;•&nbsp; '
+    + '<span style="opacity:.7">Recebido:</span> <strong style="color:#FF8A33">T$ ' + fmtBRL(totalPaid) + '</strong></p></div>';
+
+  if (!campaigns.length && !cData.error) {
+    wrap.innerHTML = '<p style="opacity:.6;margin-top:6px">Nenhuma campanha ainda. Quando a loja te contratar, ela aparece aqui com o briefing e o que você precisa entregar.</p>';
+  } else if (campaigns.length) {
+    wrap.innerHTML = campaigns.map(renderPartnerCampaignCard).join('');
+  }
+
+  if (!payouts.length) {
+    payWrap.innerHTML = '<p style="opacity:.6">Nenhum pagamento ainda.</p>';
+  } else {
+    payWrap.innerHTML = payouts.map(function (p) {
+      const st = PCMP_PAYOUT[p.status] || { l: p.status, c: '#9aa0a6' };
+      const cur = p.payoutMode === 'pix_cash' ? 'R$ ' : 'T$ ';
+      const sub = escapeHtmlSellerMsg(p.reference) + (p.payoutMode === 'pix_cash' ? ' • PIX/dinheiro' : ' • crédito T$');
+      return '<div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.13);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
+        + '<div style="min-width:0"><p style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtmlSellerMsg((p.campaign && p.campaign.title) || 'Campanha') + '</p>'
+        + '<p style="font-size:11px;opacity:.6;margin-top:2px">' + sub + '</p></div>'
+        + '<div style="text-align:right;flex-shrink:0"><p style="font-family:Orbitron;font-weight:800;color:#FF8A33">' + cur + fmtBRL(p.amount) + '</p>'
+        + '<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:' + st.c + '22;color:' + st.c + ';font-weight:700">' + st.l + '</span></div>'
+        + '</div>';
+    }).join('');
+  }
+}
+
+function renderPartnerCampaignCard(c, idx) {
+  const st = PCMP_STATUS[c.status] || { l: c.status, c: '#9aa0a6' };
+  const fee = Number(c.monthlyFee || 0);
+  const cur = c.payoutMode === 'pix_cash' ? 'R$ ' : 'T$ ';
+  let html = '<div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.13);border-radius:16px;padding:16px;margin-bottom:12px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">';
+  html += '<p style="font-size:16px;font-weight:800;line-height:1.2">' + escapeHtmlSellerMsg(c.title) + '</p>';
+  html += '<span style="flex-shrink:0;font-size:10px;padding:3px 8px;border-radius:8px;background:' + st.c + '22;color:' + st.c + ';font-weight:700">' + st.l + '</span>';
+  html += '</div>';
+  html += '<p style="font-size:11px;opacity:.7;margin-top:6px">' + (PCMP_MODEL[c.paymentModel] || c.paymentModel);
+  if (c.paymentModel !== 'commission' && fee > 0) html += ' • ' + cur + fmtBRL(fee) + (c.recurrence === 'monthly' ? '/mês' : '');
+  html += '</p>';
+  if (c.objective) html += '<p style="font-size:11px;opacity:.6;margin-top:2px">🎯 ' + escapeHtmlSellerMsg(c.objective) + '</p>';
+  if (c.briefing) html += '<div style="margin-top:10px;background:rgba(0,0,0,0.22);border-radius:10px;padding:10px;font-size:12px;line-height:1.4;white-space:pre-wrap">' + escapeHtmlSellerMsg(c.briefing) + '</div>';
+
+  const dels = Array.isArray(c.deliverables) ? c.deliverables : [];
+  if (dels.length) {
+    html += '<p style="font-size:11px;letter-spacing:2px;opacity:.6;margin:12px 0 4px;font-family:Orbitron">O QUE ENTREGAR</p>';
+    dels.forEach(function (d, di) {
+      const done = parseInt(d.done, 10) || 0;
+      const qty = parseInt(d.qty, 10) || 0;
+      const ok = qty > 0 && done >= qty;
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.07)">';
+      html += '<span style="font-size:13px;' + (ok ? 'color:#7CE38B' : '') + '">' + (ok ? '✓ ' : '') + escapeHtmlSellerMsg(d.type) + '</span>';
+      html += '<span style="display:flex;align-items:center;gap:8px">';
+      html += '<button type="button" onclick="partnerDeliverableStep(' + idx + ',' + di + ',-1)" style="width:42px;height:44px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:20px;cursor:pointer">−</button>';
+      html += '<strong style="min-width:46px;text-align:center;font-family:Orbitron;font-size:14px">' + done + '/' + qty + '</strong>';
+      html += '<button type="button" onclick="partnerDeliverableStep(' + idx + ',' + di + ',1)" style="width:42px;height:44px;border-radius:10px;border:1px solid rgba(255,138,51,0.4);background:rgba(255,138,51,0.25);color:#fff;font-size:20px;cursor:pointer">+</button>';
+      html += '</span></div>';
+    });
+  }
+
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.15)">';
+  html += '<span style="font-size:11px;opacity:.7">Recebido nesta campanha</span>';
+  html += '<strong style="font-family:Orbitron;color:#FF8A33">' + cur + fmtBRL(c.totalPaid || 0) + '</strong>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+async function partnerDeliverableStep(cacheIdx, delIdx, delta) {
+  const c = partnerCampaignsCache[cacheIdx];
+  if (!c || !Array.isArray(c.deliverables)) return;
+  const d = c.deliverables[delIdx];
+  if (!d) return;
+  const qty = parseInt(d.qty, 10) || 0;
+  let done = (parseInt(d.done, 10) || 0) + delta;
+  if (done < 0) done = 0;
+  if (qty > 0 && done > qty) done = qty;
+  if (done === (parseInt(d.done, 10) || 0)) return; // sem mudança (já no limite)
+  d.done = done;
+  document.getElementById('partner-campaigns-wrap').innerHTML = partnerCampaignsCache.map(renderPartnerCampaignCard).join('');
+  const r = await api('/partner/campaigns/' + encodeURIComponent(c.id) + '/deliverables', 'PATCH', { deliverables: c.deliverables });
+  if (r && r.error) flashFeedback('Erro ao salvar: ' + r.error);
 }
 
 async function loadPartnerSalesScreen() {
