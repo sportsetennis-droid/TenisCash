@@ -10,7 +10,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { prisma, authMiddleware } = require('../middleware');
+const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
 const { generatePublicToken, sanitize } = require('../services/pix');
 const payments = require('../services/payments');
 
@@ -757,6 +757,106 @@ router.post('/webhook/asaas', express.json({ limit: '1mb' }), async (req, res) =
   } catch (err) {
     console.error('[infoproducts] webhook', err);
     res.json({ ok: true }); // 200 sempre: PSP não deve reenviar em loop por erro nosso
+  }
+});
+
+// =====================================================================
+// ADMIN (plataforma) — visão de cima de TODOS os produtores/vendas
+// =====================================================================
+router.get('/admin/overview', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const [productCount, publishedCount, paidAgg, waitingAgg, enrollCount, affCount, producersRaw] = await Promise.all([
+      prisma.digitalProduct.count(),
+      prisma.digitalProduct.count({ where: { status: 'published' } }),
+      prisma.digitalSale.aggregate({ where: { status: 'paid' }, _sum: { amount: true, platformFee: true, cashbackAmount: true, affiliateAmount: true }, _count: true }),
+      prisma.digitalSale.aggregate({ where: { status: 'waiting_payment' }, _sum: { amount: true }, _count: true }),
+      prisma.enrollment.count({ where: { status: 'active' } }),
+      prisma.affiliate.count(),
+      prisma.digitalProduct.findMany({ distinct: ['professionalId'], select: { professionalId: true } }),
+    ]);
+    let payoutPending = { _sum: { amount: null }, _count: 0 };
+    try { payoutPending = await prisma.payout.aggregate({ where: { status: 'pending' }, _sum: { amount: true }, _count: true }); } catch (_) {}
+    res.json({
+      products: productCount,
+      published: publishedCount,
+      producers: producersRaw.length,
+      gmv: paidAgg._sum.amount || 0,
+      paidSales: paidAgg._count || 0,
+      platformFee: paidAgg._sum.platformFee || 0,
+      cashback: paidAgg._sum.cashbackAmount || 0,
+      affiliateComm: paidAgg._sum.affiliateAmount || 0,
+      waitingSales: waitingAgg._count || 0,
+      waitingAmount: waitingAgg._sum.amount || 0,
+      enrollments: enrollCount,
+      affiliates: affCount,
+      payoutPending: payoutPending._sum.amount || 0,
+      payoutPendingCount: payoutPending._count || 0,
+    });
+  } catch (err) {
+    console.error('[infoproducts] admin overview', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/products', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const where = {};
+    if (req.query.status) where.status = String(req.query.status);
+    if (req.query.q) where.title = { contains: String(req.query.q), mode: 'insensitive' };
+    const products = await prisma.digitalProduct.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 300,
+      include: { professional: { select: { displayName: true, slug: true } }, _count: { select: { sales: true, enrollments: true } } },
+    });
+    res.json(products.map((p) => ({
+      id: p.id, title: p.title, slug: p.slug, type: p.type, price: p.price, status: p.status, visible: p.visible,
+      producer: (p.professional && p.professional.displayName) || '—', producerSlug: p.professional && p.professional.slug,
+      salesCount: p._count.sales, enrollments: p._count.enrollments, createdAt: p.createdAt,
+    })));
+  } catch (err) {
+    console.error('[infoproducts] admin products', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/sales', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const where = {};
+    if (req.query.status) where.status = String(req.query.status);
+    const sales = await prisma.digitalSale.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 300,
+      include: { product: { select: { title: true, professional: { select: { displayName: true } } } } },
+    });
+    res.json(sales.map((s) => ({
+      id: s.id, buyerName: s.buyerName, amount: s.amount, status: s.status, method: s.method, settlementMode: s.settlementMode,
+      product: (s.product && s.product.title) || '—',
+      producer: (s.product && s.product.professional && s.product.professional.displayName) || '—',
+      affiliateCode: s.affiliateCode, createdAt: s.createdAt, paidAt: s.paidAt,
+    })));
+  } catch (err) {
+    console.error('[infoproducts] admin sales', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/producers', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const products = await prisma.digitalProduct.findMany({
+      select: { professionalId: true, status: true, salesCount: true, professional: { select: { displayName: true, slug: true } } },
+    });
+    const map = new Map();
+    for (const p of products) {
+      if (!map.has(p.professionalId)) {
+        map.set(p.professionalId, { id: p.professionalId, name: (p.professional && p.professional.displayName) || '—', slug: p.professional && p.professional.slug, products: 0, published: 0, sales: 0 });
+      }
+      const e = map.get(p.professionalId);
+      e.products++;
+      if (p.status === 'published') e.published++;
+      e.sales += p.salesCount || 0;
+    }
+    res.json(Array.from(map.values()).sort((a, b) => b.sales - a.sales));
+  } catch (err) {
+    console.error('[infoproducts] admin producers', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
