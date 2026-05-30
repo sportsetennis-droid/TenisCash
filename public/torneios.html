@@ -111,6 +111,15 @@
   .livetag{display:inline-flex;align-items:center;gap:5px;background:#ffe9e0;color:var(--bad);font-size:10px;font-weight:900;padding:2px 7px;border-radius:7px;text-transform:uppercase;letter-spacing:.4px;margin-left:6px}
   .livetag .dot{width:6px;height:6px;border-radius:50%;background:var(--bad);animation:lp 1.1s infinite}
   @keyframes lp{0%,100%{opacity:1}50%{opacity:.25}}
+  .rkbar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;-webkit-overflow-scrolling:touch}
+  .rkbar::-webkit-scrollbar{display:none}
+  .rkpill{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--mut);font-weight:800;font-size:13px;padding:8px 13px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .rkpill.on{background:var(--orange);border-color:var(--orange);color:#fff}
+  .rkrow{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .rkrow:last-child{border-bottom:0}
+  .rkpos{width:30px;text-align:center;font-size:21px;font-weight:900;flex:0 0 auto}
+  .rkpos .rknum{font-size:15px;color:var(--mut)}
+  .rkrating{font-size:21px;font-weight:900;color:var(--orange-d);flex:0 0 auto}
 </style>
 </head>
 <body>
@@ -128,6 +137,7 @@ const ST_LABEL={DRAFT:["Rascunho","g"],OPEN:["Inscrições abertas","w"],ONGOING
 
 let TOKEN=localStorage.getItem('tc_token')||'';
 let ME=null;
+let RK_SPORT='BEACH_TENNIS';
 const app=document.getElementById('app');
 
 // ---------- helpers ----------
@@ -170,6 +180,7 @@ function route(){
   if(view==='t'&&arg)return renderTournament(arg);
   if(view==='desafios')return renderChallenges();
   if(view==='vitrine')return renderVitrine();
+  if(view==='ranking')return renderRankings();
   return renderHome();
 }
 
@@ -223,6 +234,7 @@ async function renderHome(){
   html+='</div>';
 
   html+='<div class="card"><div class="linkrow" data-act="nav" data-h="desafios"><div class="l"><span class="ic">⚔️</span> Desafios 1v1</div><span style="color:var(--mut)">›</span></div>'+
+    '<div class="linkrow" data-act="nav" data-h="ranking"><div class="l"><span class="ic">🏆</span> Ranking de atletas</div><span style="color:var(--mut)">›</span></div>'+
     '<div class="linkrow" data-act="nav" data-h="vitrine"><div class="l"><span class="ic">📢</span> Vitrine pública</div><span style="color:var(--mut)">›</span></div>'+
     '<a class="linkrow plain" href="/atleta/'+esc(handle)+'"><div class="l"><span class="ic">🪪</span> Ver meu card de atleta</div><span style="color:var(--mut)">›</span></a></div>';
   html+='</div>';
@@ -517,12 +529,41 @@ async function saveChallengeResult(id,who){
   }catch(e){toast(e.message);}
 }
 
+// ---------- ranking ----------
+async function renderRankings(){
+  loading();
+  let data={ranking:[]};
+  try{data=await api('/rankings/'+RK_SPORT);}catch(e){}
+  const list=data.ranking||[];
+  let html=topbar('Ranking',true)+'<div class="wrap">';
+  html+='<div class="rkbar">'+SPORTS.map(s=>'<button class="rkpill'+(s[0]===RK_SPORT?' on':'')+'" data-act="rk-sport" data-s="'+s[0]+'">'+esc(s[1])+'</button>').join('')+'</div>';
+  if(!list.length){html+='<div class="card"><div class="empty"><div class="ic">🏆</div>Ninguém ranqueado em '+esc(SPORT_LABEL[RK_SPORT]||RK_SPORT)+' ainda.<br>Joguem partidas pra aparecer aqui.</div></div>';}
+  else{
+    const medal=['🥇','🥈','🥉'];
+    html+='<div class="card" style="padding:6px 14px">';
+    list.forEach((r,i)=>{
+      const handle=r.username||r.userId;
+      const pos=i<3?medal[i]:('<span class="rknum">'+r.rank+'</span>');
+      html+='<a class="rkrow plain" href="/atleta/'+esc(handle)+'">'+
+        '<div class="rkpos">'+pos+'</div>'+
+        '<div class="av">'+esc(initials(r.name))+'</div>'+
+        '<div class="grow"><div class="nm">'+esc(r.name||'Atleta')+'</div>'+
+        '<div class="sub">'+(r.city?esc(r.city)+' · ':'')+r.wins+'V '+r.losses+'D · '+r.matches+' jogos</div></div>'+
+        '<div class="rkrating">'+r.rating.toFixed(2)+'</div></a>';
+    });
+    html+='</div>';
+    html+='<p class="muted" style="text-align:center;margin:8px 0 0">Rating estilo Playtomic (0–7). Vitórias sobem, derrotas descem.</p>';
+  }
+  html+='</div>';app.innerHTML=html;
+}
+
 // ---------- delegated events ----------
 document.addEventListener('click',async(ev)=>{
   const el=ev.target.closest('[data-act]');if(!el)return;
   const a=el.dataset.act;
   if(a==='back'){history.length>1?history.back():go('');return;}
   if(a==='nav'){go(el.dataset.h);return;}
+  if(a==='rk-sport'){RK_SPORT=el.dataset.s;renderRankings();return;}
   if(a==='login'){doLogin();return;}
   if(a==='create'){doCreate();return;}
   if(a==='open-t'){go('t/'+el.dataset.id);return;}
