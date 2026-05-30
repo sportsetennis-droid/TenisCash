@@ -280,6 +280,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
     <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
     <button class="tab" onclick="switchTab('marketing',this)">🎨 Marketing IA</button>
+    <button class="tab" onclick="switchTab('infoproducts',this)">🎓 Infoprodutos</button>
   </div>
 
   <!-- HOME / HUB SECTION -->
@@ -510,6 +511,34 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </button>
     </div>
 
+    <!-- CATEGORIA: TORNEIOS -->
+    <div class="hub-cat-title">🏆 Torneios & Atletas</div>
+    <div class="hub-grid" style="--cat-color:#E5571E;--cat-bg:#FCDAC4;">
+      <button class="hub-card" onclick="window.open('/torneios.html','_blank')">
+        <div class="hub-card-icon">🏆</div>
+        <div class="hub-card-title">Central de Torneios</div>
+        <div class="hub-card-desc">Criar e gerir torneios, chaves mata-mata, placar ao vivo e desafios 1v1</div>
+        <span class="hub-card-badge">APEX</span>
+      </button>
+      <button class="hub-card" onclick="window.open('/torneios.html#ranking','_blank')">
+        <div class="hub-card-icon">📊</div>
+        <div class="hub-card-title">Ranking de Atletas</div>
+        <div class="hub-card-desc">Ranking por esporte, rating Playtomic (0–7) e card do atleta estilo FIFA</div>
+        <span class="hub-card-badge">APEX</span>
+      </button>
+    </div>
+
+    <!-- CATEGORIA: INFOPRODUTOS -->
+    <div class="hub-cat-title">🎓 Infoprodutos</div>
+    <div class="hub-grid" style="--cat-color:#5b5bd6;--cat-bg:#ececfb;">
+      <button class="hub-card" onclick="switchTabByName('infoproducts')">
+        <div class="hub-card-icon">🎓</div>
+        <div class="hub-card-title">Infoprodutos</div>
+        <div class="hub-card-desc">Cursos, área de membros, afiliados e vendas digitais — visão de toda a plataforma</div>
+        <span class="hub-card-badge">NOVO</span>
+      </button>
+    </div>
+
     <!-- CATEGORIA: IA -->
     <div class="hub-cat-title">🤖 Inteligência Artificial</div>
     <div class="hub-grid" style="--cat-color:#d70015;--cat-bg:#fff1f0;">
@@ -566,6 +595,15 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       // Carrega no boot
       setTimeout(loadHubStats, 800);
     </script>
+  </div>
+
+  <!-- INFOPRODUTOS SECTION -->
+  <div class="section" id="tab-infoproducts" style="display:none">
+    <div class="section-head">
+      <span class="section-title">🎓 Infoprodutos — visão da plataforma</span>
+      <button class="refresh-btn" onclick="initInfoproductsTab()">↻ Atualizar</button>
+    </div>
+    <div id="ip-content"><div class="loading-spinner">Carregando...</div></div>
   </div>
 
   <!-- USERS SECTION -->
@@ -885,7 +923,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       <button type="button" class="btn btn-primary" id="cmp-btn-new">+ Nova Campanha</button>
-      <select class="search-box" id="cmp-filter-status" style="width:170px">
+      <select class="search-box" id="crcmp-filter-status" style="width:170px">
         <option value="">Todos status</option>
         <option value="proposed">Proposta</option>
         <option value="active">Ativa</option>
@@ -896,7 +934,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </select>
       <button type="button" class="btn btn-primary" id="cmp-btn-filter">Filtrar</button>
     </div>
-    <div id="cmp-list-wrap"><div class="loading-spinner">Carregando...</div></div>
+    <div id="crcmp-list-wrap"><div class="loading-spinner">Carregando...</div></div>
   </div>
 </div>
 
@@ -4471,7 +4509,7 @@ function initAdminPartnersTab() {
     // ---- Campanhas ----
     document.getElementById('cmp-btn-new').addEventListener('click', function () { openCampaignModal(null); });
     document.getElementById('cmp-btn-filter').addEventListener('click', loadAdminCampaigns);
-    document.getElementById('cmp-filter-status').addEventListener('change', loadAdminCampaigns);
+    document.getElementById('crcmp-filter-status').addEventListener('change', loadAdminCampaigns);
     document.getElementById('cmp-modal-close').addEventListener('click', function () {
       document.getElementById('cmp-modal').classList.remove('show');
     });
@@ -4934,10 +4972,10 @@ function deliverablesSummary(arr) {
 }
 
 async function loadAdminCampaigns() {
-  const wrap = document.getElementById('cmp-list-wrap');
+  const wrap = document.getElementById('crcmp-list-wrap');
   if (!wrap) return;
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
-  const st = document.getElementById('cmp-filter-status').value;
+  const st = document.getElementById('crcmp-filter-status').value;
   const data = await api('/admin/creation-campaigns' + (st ? '?status=' + encodeURIComponent(st) : ''));
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + escapeHtml(data.error) + '</div>'; return; }
   const list = data.campaigns || [];
@@ -6103,7 +6141,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -6135,6 +6173,111 @@ function switchTab(tab, btn) {
   if (tab === 'marketing') { try { marketingLoad(); } catch (e) { console.warn('marketingLoad falhou:', e); } }
   if (tab === 'nfegeral') { try { nfeGeralLoad(); } catch (e) { console.warn('nfeGeralLoad falhou:', e); } }
   if (tab === 'whatsapp') { try { if (typeof waCoexLoadStatus === 'function') waCoexLoadStatus(); } catch (e) {} }
+  if (tab === 'infoproducts') { try { initInfoproductsTab(); } catch (e) { console.warn('initInfoproductsTab falhou:', e); } }
+}
+
+// ==================== INFOPRODUTOS (ADMIN) ====================
+const IP_PSTATUS = { draft: ['Rascunho', '#8e8e93'], published: ['Publicado', '#0a843d'], archived: ['Arquivado', '#c0392b'] };
+const IP_SALEST = { waiting_payment: ['Aguardando', '#b8860b'], paid: ['Pago', '#0a843d'], refunded: ['Reembolso', '#8e8e93'], chargeback: ['Chargeback', '#c0392b'], cancelled: ['Cancelado', '#8e8e93'], overdue: ['Vencido', '#c0392b'] };
+const IP_TYPE = { course: 'Curso', ebook: 'E-book', community: 'Comunidade', mentorship: 'Mentoria', file: 'Arquivo', bundle: 'Combo' };
+function ipEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function ipBRL(n) { return 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function ipDate(d) { if (!d) return '—'; try { return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch (e) { return '—'; } }
+function ipPill(map, key) { const m = map[key] || [key, '#8e8e93']; return '<span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;background:' + m[1] + '22;color:' + m[1] + '">' + ipEsc(m[0]) + '</span>'; }
+
+async function initInfoproductsTab() {
+  const wrap = document.getElementById('ip-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const [ov, prods, sales, producers] = await Promise.all([
+    api('/infoproducts/admin/overview'),
+    api('/infoproducts/admin/products'),
+    api('/infoproducts/admin/sales'),
+    api('/infoproducts/admin/producers'),
+  ]);
+  if (ov && ov.error) { wrap.innerHTML = '<p style="color:#c0392b;padding:20px">Erro: ' + ipEsc(ov.error) + '</p>'; return; }
+
+  const card = function (label, value, accent) {
+    return '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;min-width:150px;flex:1">'
+      + '<div style="font-size:12px;color:var(--text2);font-weight:600">' + ipEsc(label) + '</div>'
+      + '<div style="font-size:22px;font-weight:800;color:' + (accent || 'var(--text)') + ';margin-top:4px">' + value + '</div></div>';
+  };
+  const stats = '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:22px">'
+    + card('GMV (vendas pagas)', ipBRL(ov.gmv), '#0a843d')
+    + card('Vendas pagas', (ov.paidSales || 0).toLocaleString('pt-BR'))
+    + card('Aguardando', ipBRL(ov.waitingAmount) + ' <span style="font-size:13px;color:var(--text2)">(' + (ov.waitingSales || 0) + ')</span>', '#b8860b')
+    + card('Produtos', (ov.products || 0) + ' <span style="font-size:13px;color:var(--text2)">(' + (ov.published || 0) + ' pub.)</span>')
+    + card('Produtores', (ov.producers || 0).toLocaleString('pt-BR'))
+    + card('Matrículas ativas', (ov.enrollments || 0).toLocaleString('pt-BR'))
+    + card('Afiliados', (ov.affiliates || 0).toLocaleString('pt-BR'))
+    + card('Comissão afiliados', ipBRL(ov.affiliateComm), '#5b5bd6')
+    + card('Taxa plataforma', ipBRL(ov.platformFee))
+    + card('Cashback gerado', ipBRL(ov.cashback), '#E5571E')
+    + '</div>';
+
+  const th = function (cols) { return '<tr>' + cols.map(function (c) { return '<th style="text-align:left;padding:8px 10px;font-size:11px;letter-spacing:1px;color:var(--text2);border-bottom:1px solid var(--border)">' + c + '</th>'; }).join('') + '</tr>'; };
+  const tableWrap = function (title, inner) {
+    return '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;overflow-x:auto">'
+      + '<div style="font-size:14px;font-weight:700;margin-bottom:10px">' + title + '</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:13px">' + inner + '</table></div>';
+  };
+
+  // Produtos
+  const prodList = Array.isArray(prods) ? prods : [];
+  let prodTable = '<tr><td style="padding:14px;color:var(--text2)">Nenhum produto ainda.</td></tr>';
+  if (prodList.length) {
+    prodTable = th(['Produto', 'Produtor', 'Tipo', 'Preço', 'Vendas', 'Alunos', 'Status'])
+      + prodList.map(function (p) {
+        return '<tr>'
+          + '<td style="padding:8px 10px"><a href="/pd/' + ipEsc(p.slug) + '" target="_blank" style="color:#5b5bd6;text-decoration:none;font-weight:600">' + ipEsc(p.title) + '</a></td>'
+          + '<td style="padding:8px 10px">' + ipEsc(p.producer) + '</td>'
+          + '<td style="padding:8px 10px">' + ipEsc(IP_TYPE[p.type] || p.type) + '</td>'
+          + '<td style="padding:8px 10px">' + (p.price > 0 ? ipBRL(p.price) : 'Grátis') + '</td>'
+          + '<td style="padding:8px 10px">' + (p.salesCount || 0) + '</td>'
+          + '<td style="padding:8px 10px">' + (p.enrollments || 0) + '</td>'
+          + '<td style="padding:8px 10px">' + ipPill(IP_PSTATUS, p.status) + '</td>'
+          + '</tr>';
+      }).join('');
+  }
+
+  // Vendas
+  const saleList = Array.isArray(sales) ? sales : [];
+  let saleTable = '<tr><td style="padding:14px;color:var(--text2)">Nenhuma venda ainda.</td></tr>';
+  if (saleList.length) {
+    saleTable = th(['Data', 'Comprador', 'Produto', 'Produtor', 'Valor', 'Método', 'Afiliado', 'Status'])
+      + saleList.slice(0, 100).map(function (s) {
+        return '<tr>'
+          + '<td style="padding:8px 10px;white-space:nowrap">' + ipDate(s.createdAt) + '</td>'
+          + '<td style="padding:8px 10px">' + ipEsc(s.buyerName || '—') + '</td>'
+          + '<td style="padding:8px 10px">' + ipEsc(s.product) + '</td>'
+          + '<td style="padding:8px 10px">' + ipEsc(s.producer) + '</td>'
+          + '<td style="padding:8px 10px">' + ipBRL(s.amount) + '</td>'
+          + '<td style="padding:8px 10px">' + ipEsc(s.method || '—') + '</td>'
+          + '<td style="padding:8px 10px">' + (s.affiliateCode ? ipEsc(s.affiliateCode) : '—') + '</td>'
+          + '<td style="padding:8px 10px">' + ipPill(IP_SALEST, s.status) + '</td>'
+          + '</tr>';
+      }).join('');
+  }
+
+  // Produtores
+  const prodcList = Array.isArray(producers) ? producers : [];
+  let prodcTable = '<tr><td style="padding:14px;color:var(--text2)">Nenhum produtor com produto.</td></tr>';
+  if (prodcList.length) {
+    prodcTable = th(['Produtor', 'Produtos', 'Publicados', 'Vendas'])
+      + prodcList.map(function (p) {
+        return '<tr>'
+          + '<td style="padding:8px 10px">' + (p.slug ? '<a href="/pro/' + ipEsc(p.slug) + '" target="_blank" style="color:#5b5bd6;text-decoration:none;font-weight:600">' + ipEsc(p.name) + '</a>' : ipEsc(p.name)) + '</td>'
+          + '<td style="padding:8px 10px">' + (p.products || 0) + '</td>'
+          + '<td style="padding:8px 10px">' + (p.published || 0) + '</td>'
+          + '<td style="padding:8px 10px">' + (p.sales || 0) + '</td>'
+          + '</tr>';
+      }).join('');
+  }
+
+  wrap.innerHTML = stats
+    + tableWrap('Produtos (' + prodList.length + ')', prodTable)
+    + tableWrap('Vendas recentes (' + saleList.length + ')', saleTable)
+    + tableWrap('Produtores (' + prodcList.length + ')', prodcTable);
 }
 
 // ==================== MENSAGENS (ADMIN) ====================
