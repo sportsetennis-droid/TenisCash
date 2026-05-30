@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Desapega — Venda seu usado | Sports & Tennis</title>
+<style>
+  :root{ --orange:#E5571E; --orange-l:#EE7240; --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; --ok:#16a34a; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px 48px}
+  header{background:linear-gradient(135deg,var(--orange),var(--orange-l));color:#fff;padding:26px 16px 22px;border-radius:0 0 22px 22px}
+  header .inner{max-width:560px;margin:0 auto}
+  .tag{display:inline-block;background:rgba(255,255,255,.22);padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.4px}
+  h1{margin:10px 0 4px;font-size:24px;font-weight:800}
+  header p{margin:0;opacity:.95;font-size:14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:16px}
+  label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px;color:#374151}
+  label .req{color:var(--orange)}
+  .hint{font-size:12px;color:var(--muted);font-weight:500;margin-top:-2px}
+  input,select,textarea{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:11px;font-size:16px;background:#fff;color:var(--ink);font-family:inherit}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--orange)}
+  textarea{min-height:96px;resize:vertical}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .btn{display:block;width:100%;border:0;border-radius:13px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;background:var(--orange);color:#fff;margin-top:18px}
+  .btn:disabled{opacity:.6}
+  .btn.ghost{background:#fff;color:var(--orange);border:2px solid var(--orange)}
+  .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  .ph{position:relative;aspect-ratio:1;border-radius:11px;overflow:hidden;border:1px solid var(--line);background:#f1f1f1}
+  .ph img{width:100%;height:100%;object-fit:cover}
+  .ph .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:0;font-size:14px;line-height:24px;cursor:pointer}
+  .addph{display:flex;align-items:center;justify-content:center;flex-direction:column;aspect-ratio:1;border:2px dashed #cbd5e1;border-radius:11px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:700;text-align:center}
+  .addph span{font-size:26px;line-height:1}
+  .msg{padding:12px 14px;border-radius:11px;font-size:14px;font-weight:600;margin-top:14px;display:none}
+  .msg.err{background:#fef2f2;color:#b91c1c;display:block}
+  .msg.ok{background:#f0fdf4;color:#15803d;display:block}
+  .done{text-align:center;padding:24px 8px}
+  .done .ic{font-size:54px}
+  .done h2{margin:8px 0 6px}
+  .pill{display:inline-block;background:#fff3ed;color:var(--orange);font-weight:800;padding:6px 12px;border-radius:999px;font-size:13px}
+  .steps{display:flex;gap:8px;margin-top:14px;font-size:12px;color:var(--muted)}
+  .steps b{color:var(--ink)}
+  .foot{text-align:center;margin-top:22px;font-size:12px;color:var(--muted)}
+  .foot a{color:var(--orange);font-weight:700;text-decoration:none}
+  .track{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px}
+  .stbadge{display:inline-block;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800}
+  .st-pending{background:#fef9c3;color:#854d0e}.st-approved{background:#dcfce7;color:#166534}
+  .st-rejected{background:#fee2e2;color:#991b1b}.st-sold{background:#e0e7ff;color:#3730a3}.st-paused{background:#f3f4f6;color:#374151}
+</style>
+</head>
+<body>
+<header><div class="inner">
+  <span class="tag">DESAPEGA · SPORTS &amp; TENNIS</span>
+  <h1>Venda seu usado</h1>
+  <p>Cadastre seu tênis ou produto. Nossa equipe revisa e publica na vitrine.</p>
+</div></header>
+
+<div class="wrap">
+  <!-- ACOMPANHAMENTO (quando abre /desapega/acompanhar/:token) -->
+  <div id="trackBox" class="track" style="display:none"></div>
+
+  <!-- FORM -->
+  <form id="form" class="card" novalidate>
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px">Seus dados</div>
+    <div class="hint">Não aparecem na vitrine — usamos só pra falar com você.</div>
+    <label>Nome completo <span class="req">*</span></label>
+    <input id="sellerName" autocomplete="name" placeholder="Seu nome">
+    <label>WhatsApp / Telefone <span class="req">*</span></label>
+    <input id="sellerPhone" inputmode="tel" autocomplete="tel" placeholder="(83) 9 9999-9999">
+    <div class="row">
+      <div><label>Cidade</label><input id="sellerCity" placeholder="João Pessoa"></div>
+      <div><label>UF</label><input id="sellerState" maxlength="2" placeholder="PB" style="text-transform:uppercase"></div>
+    </div>
+
+    <div style="font-weight:800;font-size:16px;margin:20px 0 2px">O produto</div>
+    <div class="row">
+      <div><label>Categoria</label>
+        <select id="category">
+          <option value="tenis">Tênis</option><option value="roupa">Roupa</option>
+          <option value="acessorio">Acessório</option><option value="outro">Outro</option>
+        </select></div>
+      <div><label>Condição</label>
+        <select id="condition">
+          <option value="seminovo">Seminovo</option><option value="novo_na_caixa">Novo na caixa</option>
+          <option value="usado">Usado</option><option value="bastante_usado">Bastante usado</option>
+        </select></div>
+    </div>
+    <div class="row">
+      <div><label>Marca</label><input id="brand" placeholder="Nike, Converse..."></div>
+      <div><label>Tamanho / Nº</label><input id="size" placeholder="40, M, G..."></div>
+    </div>
+    <label>Nome / Modelo <span class="req">*</span></label>
+    <input id="model" placeholder="Ex: Nike Air Force 1 branco">
+    <div class="row">
+      <div><label>Cor</label><input id="color" placeholder="Branco"></div>
+      <div><label>Gênero</label>
+        <select id="gender">
+          <option value="">—</option><option value="masculino">Masculino</option>
+          <option value="feminino">Feminino</option><option value="unissex">Unissex</option>
+          <option value="infantil">Infantil</option>
+        </select></div>
+    </div>
+    <label>Descrição <span class="req">*</span></label>
+    <textarea id="description" placeholder="Conte o estado de conservação, tempo de uso, marcas/defeitos, se tem caixa, etc."></textarea>
+    <div class="row">
+      <div><label>Quanto quer receber (R$) <span class="req">*</span></label><input id="askingPrice" inputmode="decimal" placeholder="120"></div>
+      <div><label>Valor quando novo (R$)</label><input id="originalPrice" inputmode="decimal" placeholder="450"></div>
+    </div>
+
+    <label>Fotos <span class="req">*</span></label>
+    <div class="hint">Até 8. Mostre frente, lateral, sola e qualquer defeito.</div>
+    <div class="photos" id="photos">
+      <label class="addph" for="fileInput"><span>+</span>Adicionar<br>foto</label>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+
+    <div id="msg" class="msg"></div>
+    <button type="submit" class="btn" id="submitBtn">Enviar pra revisão</button>
+    <div class="foot">Ao enviar, você concorda que a S&amp;T revise e publique o anúncio. O contato com compradores passa pela S&amp;T.</div>
+  </form>
+
+  <!-- SUCESSO -->
+  <div id="done" class="card done" style="display:none">
+    <div class="ic">✅</div>
+    <h2>Anúncio enviado!</h2>
+    <p style="color:var(--muted)">Nossa equipe vai revisar e publicar. Guarde o link abaixo pra acompanhar:</p>
+    <p><a id="trackLink" class="pill" href="#">Acompanhar meu anúncio</a></p>
+    <div class="steps"><span>📝 <b>Enviado</b></span><span>→</span><span>🔎 Em revisão</span><span>→</span><span>🛍️ Publicado</span></div>
+    <button class="btn ghost" onclick="location.reload()">Cadastrar outro</button>
+  </div>
+
+  <div class="foot" style="margin-top:18px">
+    <a href="/desapega">← Ver vitrine de usados</a>
+  </div>
+</div>
+
+<script>
+const API='/api/desapega';
+const photos=[]; // {url, thumb}
+const $=id=>document.getElementById(id);
+
+// ---- acompanhamento por token (rota /desapega/acompanhar/:token) ----
+(function(){
+  const m=location.pathname.match(/\/desapega\/acompanhar\/([^/?#]+)/);
+  if(!m) return;
+  $('form').style.display='none';
+  const box=$('trackBox'); box.style.display='block'; box.innerHTML='Carregando…';
+  fetch(API+'/track/'+encodeURIComponent(m[1])).then(r=>r.json()).then(d=>{
+    if(!d.ok){box.innerHTML='<b>Anúncio não encontrado.</b>';return;}
+    const labels={pending:'Em revisão',approved:'Publicado',rejected:'Não aprovado',sold:'Vendido',paused:'Pausado'};
+    box.innerHTML=
+      '<div style="font-weight:800;font-size:17px;margin-bottom:8px">'+esc(d.model)+'</div>'+
+      (d.photos&&d.photos[0]?'<img src="'+d.photos[0]+'" style="width:100%;border-radius:11px;margin-bottom:10px">':'')+
+      '<div>Status: <span class="stbadge st-'+d.status+'">'+(labels[d.status]||d.status)+'</span></div>'+
+      (d.rejectionReason?'<p style="color:#b91c1c;margin:10px 0 0"><b>Motivo:</b> '+esc(d.rejectionReason)+'</p>':'')+
+      '<p style="color:var(--muted);margin:10px 0 0">Valor pedido: R$ '+Number(d.askingPrice).toFixed(2).replace('.',',')+'</p>'+
+      '<a class="btn ghost" href="/desapega/vender" style="margin-top:14px;text-decoration:none;text-align:center">Cadastrar outro produto</a>';
+  }).catch(()=>{box.innerHTML='<b>Erro ao carregar.</b>';});
+})();
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ---- fotos ----
+$('fileInput').addEventListener('change',async e=>{
+  const files=[...e.target.files].slice(0,8-photos.length);
+  e.target.value='';
+  if(!files.length) return;
+  showMsg('Enviando fotos…','ok');
+  const fd=new FormData();
+  files.forEach(f=>fd.append('files',f));
+  try{
+    const r=await fetch(API+'/upload',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Falha no upload');
+    d.urls.forEach(u=>photos.push(u));
+    renderPhotos(); clearMsg();
+  }catch(err){showMsg(err.message,'err');}
+});
+function renderPhotos(){
+  const grid=$('photos');
+  grid.querySelectorAll('.ph').forEach(n=>n.remove());
+  const add=grid.querySelector('.addph');
+  photos.forEach((u,i)=>{
+    const d=document.createElement('div');d.className='ph';
+    d.innerHTML='<img src="'+u+'"><button type="button" class="x" data-i="'+i+'">×</button>';
+    grid.insertBefore(d,add);
+  });
+  add.style.display=photos.length>=8?'none':'flex';
+  grid.querySelectorAll('.x').forEach(b=>b.onclick=()=>{photos.splice(+b.dataset.i,1);renderPhotos();});
+}
+function showMsg(t,k){const m=$('msg');m.textContent=t;m.className='msg '+(k||'err');m.scrollIntoView({behavior:'smooth',block:'center'});}
+function clearMsg(){const m=$('msg');m.className='msg';m.textContent='';}
+
+// ---- submit ----
+$('form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  clearMsg();
+  const body={
+    sellerName:$('sellerName').value, sellerPhone:$('sellerPhone').value,
+    sellerCity:$('sellerCity').value, sellerState:$('sellerState').value.toUpperCase(),
+    category:$('category').value, condition:$('condition').value,
+    brand:$('brand').value, size:$('size').value, model:$('model').value,
+    color:$('color').value, gender:$('gender').value,
+    description:$('description').value,
+    askingPrice:parseFloat(String($('askingPrice').value).replace(',','.')),
+    originalPrice:$('originalPrice').value?parseFloat(String($('originalPrice').value).replace(',','.')):null,
+    photos,
+  };
+  const btn=$('submitBtn'); btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const r=await fetch(API+'/listings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Erro ao enviar');
+    $('form').style.display='none';
+    $('trackLink').href='/desapega/acompanhar/'+d.trackToken;
+    $('done').style.display='block';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){showMsg(err.message,'err');btn.disabled=false;btn.textContent='Enviar pra revisão';}
+});
+</script>
+</body>
+</html>

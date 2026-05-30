@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Desapega — Usados | Sports & Tennis</title>
+<style>
+  :root{ --orange:#E5571E; --orange-l:#EE7240; --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+  a{color:inherit;text-decoration:none}
+  header{background:linear-gradient(135deg,var(--orange),var(--orange-l));color:#fff;padding:22px 16px 18px;border-radius:0 0 22px 22px}
+  .inner{max-width:760px;margin:0 auto}
+  .tag{display:inline-block;background:rgba(255,255,255,.22);padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.4px}
+  h1{margin:8px 0 2px;font-size:24px;font-weight:800}
+  header p{margin:0;opacity:.95;font-size:14px}
+  .sell{display:inline-block;margin-top:12px;background:#fff;color:var(--orange);font-weight:800;padding:10px 16px;border-radius:12px;font-size:14px}
+  .wrap{max-width:760px;margin:0 auto;padding:14px 16px 48px}
+  .filters{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;-webkit-overflow-scrolling:touch}
+  .chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:#374151;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer}
+  .chip.on{background:var(--orange);color:#fff;border-color:var(--orange)}
+  .search{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;margin-bottom:6px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:6px}
+  @media(min-width:560px){.grid{grid-template-columns:repeat(3,1fr)}}
+  .item{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+  .item .img{aspect-ratio:1;background:#eee;overflow:hidden}
+  .item .img img{width:100%;height:100%;object-fit:cover}
+  .item .b{padding:9px 10px 11px}
+  .item .br{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  .item .nm{font-size:13px;font-weight:700;margin:2px 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px}
+  .item .pr{font-size:16px;font-weight:800;color:var(--orange)}
+  .item .cond{font-size:11px;color:var(--muted);margin-top:2px}
+  .empty{text-align:center;color:var(--muted);padding:50px 16px}
+  .empty .ic{font-size:46px}
+  .loading{text-align:center;color:var(--muted);padding:40px}
+  /* detalhe */
+  .detail{position:fixed;inset:0;background:var(--bg);z-index:50;overflow-y:auto;display:none}
+  .detail.show{display:block}
+  .dtop{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;z-index:2}
+  .dtop button{background:none;border:0;font-size:22px;cursor:pointer;color:var(--ink)}
+  .dwrap{max-width:620px;margin:0 auto;padding:0 0 120px}
+  .gallery{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .gallery img{flex:0 0 100%;scroll-snap-align:center;width:100%;aspect-ratio:1;object-fit:cover;background:#eee}
+  .dots{text-align:center;margin:8px 0}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#cbd5e1;margin:0 3px}
+  .dot.on{background:var(--orange)}
+  .dbody{padding:16px}
+  .dbody h2{margin:0 0 4px;font-size:20px}
+  .dprice{font-size:26px;font-weight:800;color:var(--orange);margin:6px 0}
+  .dmeta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .dmeta span{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;color:#374151}
+  .ddesc{white-space:pre-wrap;color:#374151;margin-top:8px}
+  .strike{color:var(--muted);font-size:14px;font-weight:600;text-decoration:line-through;margin-left:8px}
+  .cta{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .cta .inner2{max-width:620px;margin:0 auto}
+  .cta a{display:block;background:#25D366;color:#fff;text-align:center;font-weight:800;padding:15px;border-radius:13px;font-size:16px}
+</style>
+</head>
+<body>
+<header><div class="inner">
+  <span class="tag">DESAPEGA · SPORTS &amp; TENNIS</span>
+  <h1>Usados com garantia de revisão</h1>
+  <p>Produtos de clientes, conferidos pela nossa equipe.</p>
+  <a class="sell" href="/desapega/vender">💸 Quero vender o meu</a>
+</div></header>
+
+<div class="wrap">
+  <input class="search" id="search" placeholder="Buscar marca, modelo...">
+  <div class="filters" id="filters">
+    <button class="chip on" data-cat="">Tudo</button>
+    <button class="chip" data-cat="tenis">Tênis</button>
+    <button class="chip" data-cat="roupa">Roupas</button>
+    <button class="chip" data-cat="acessorio">Acessórios</button>
+    <button class="chip" data-cat="outro">Outros</button>
+  </div>
+  <div id="list" class="loading">Carregando…</div>
+</div>
+
+<!-- DETALHE -->
+<div class="detail" id="detail">
+  <div class="dtop"><button onclick="closeDetail()">←</button><b>Detalhe do produto</b></div>
+  <div class="dwrap" id="detailBody"></div>
+</div>
+
+<script>
+const API='/api/desapega';
+// TODO: trocar pelo WhatsApp oficial central da S&T pro Desapega (formato 55DDDNUMERO)
+const ST_WHATS='5583999999999';
+const $=id=>document.getElementById(id);
+let CAT='', Q='', timer=null;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function money(v){return 'R$ '+Number(v||0).toFixed(2).replace('.',',');}
+const COND={novo_na_caixa:'Novo na caixa',seminovo:'Seminovo',usado:'Usado',bastante_usado:'Bastante usado'};
+const CATL={tenis:'Tênis',roupa:'Roupa',acessorio:'Acessório',outro:'Outro'};
+
+function load(){
+  const p=new URLSearchParams();
+  if(CAT)p.set('category',CAT);
+  if(Q)p.set('q',Q);
+  $('list').className='loading';$('list').textContent='Carregando…';
+  fetch(API+'/listings?'+p.toString()).then(r=>r.json()).then(d=>{
+    if(!d.ok||!d.listings.length){
+      $('list').className='empty';
+      $('list').innerHTML='<div class="ic">🛍️</div><p>Nenhum produto'+(CAT||Q?' com esse filtro':' ainda')+'.<br>Seja o primeiro a <a href="/desapega/vender" style="color:var(--orange);font-weight:800">desapegar</a>!</p>';
+      return;
+    }
+    $('list').className='grid';
+    $('list').innerHTML=d.listings.map(l=>
+      '<div class="item" onclick="openDetail(\''+l.id+'\')">'+
+        '<div class="img"><img loading="lazy" src="'+(l.photos[0]||'')+'" alt="'+esc(l.model)+'"></div>'+
+        '<div class="b">'+
+          '<div class="br">'+esc(l.brand||CATL[l.category]||'')+'</div>'+
+          '<div class="nm">'+esc(l.model)+'</div>'+
+          '<div class="pr">'+money(l.askingPrice)+'</div>'+
+          '<div class="cond">'+(COND[l.condition]||'')+(l.size?' · '+esc(l.size):'')+'</div>'+
+        '</div>'+
+      '</div>'
+    ).join('');
+  }).catch(()=>{$('list').className='empty';$('list').innerHTML='<p>Erro ao carregar.</p>';});
+}
+
+// filtros
+$('filters').addEventListener('click',e=>{
+  const b=e.target.closest('.chip'); if(!b)return;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  b.classList.add('on'); CAT=b.dataset.cat; load();
+});
+$('search').addEventListener('input',e=>{clearTimeout(timer);Q=e.target.value.trim();timer=setTimeout(load,350);});
+
+// detalhe
+function openDetail(id){
+  history.pushState({id},'', '/desapega/item/'+id);
+  renderDetail(id);
+}
+function renderDetail(id){
+  const D=$('detail'),B=$('detailBody');
+  D.classList.add('show');B.innerHTML='<div class="loading">Carregando…</div>';
+  window.scrollTo(0,0);
+  fetch(API+'/listings/'+id).then(r=>r.json()).then(d=>{
+    if(!d.ok){B.innerHTML='<div class="empty"><p>Produto indisponível.</p></div>';return;}
+    const l=d.listing;
+    const photos=(l.photos||[]);
+    const msg=encodeURIComponent('Olá! Tenho interesse no '+(l.brand?l.brand+' ':'')+l.model+' ('+money(l.askingPrice)+') anunciado no Desapega da Sports & Tennis. (ref: '+l.id.slice(0,8)+')');
+    B.innerHTML=
+      '<div class="gallery" id="gal">'+photos.map(u=>'<img src="'+u+'">').join('')+'</div>'+
+      (photos.length>1?'<div class="dots" id="dots">'+photos.map((_,i)=>'<span class="dot'+(i===0?' on':'')+'"></span>').join('')+'</div>':'')+
+      '<div class="dbody">'+
+        '<div class="br" style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase">'+esc(l.brand||CATL[l.category]||'')+'</div>'+
+        '<h2>'+esc(l.model)+'</h2>'+
+        '<div class="dprice">'+money(l.askingPrice)+(l.originalPrice?'<span class="strike">'+money(l.originalPrice)+'</span>':'')+'</div>'+
+        '<div class="dmeta">'+
+          '<span>'+(COND[l.condition]||'')+'</span>'+
+          (l.size?'<span>Tam: '+esc(l.size)+'</span>':'')+
+          (l.color?'<span>'+esc(l.color)+'</span>':'')+
+          (l.gender?'<span>'+esc(l.gender)+'</span>':'')+
+          (l.sellerCity?'<span>📍 '+esc(l.sellerCity)+(l.sellerState?'/'+esc(l.sellerState):'')+'</span>':'')+
+        '</div>'+
+        '<div class="ddesc">'+esc(l.description)+'</div>'+
+        '<p style="color:var(--muted);font-size:12px;margin-top:18px">🔒 A compra é intermediada pela Sports &amp; Tennis: você paga pra gente e só repassamos ao vendedor após você confirmar o recebimento.</p>'+
+      '</div>'+
+      '<div class="cta"><div class="inner2"><a href="https://wa.me/'+ST_WHATS+'?text='+msg+'" target="_blank" rel="noopener">💬 Tenho interesse</a></div></div>';
+    // dots
+    const gal=$('gal');
+    if(photos.length>1){gal.addEventListener('scroll',()=>{
+      const i=Math.round(gal.scrollLeft/gal.clientWidth);
+      document.querySelectorAll('#dots .dot').forEach((d,j)=>d.classList.toggle('on',j===i));
+    });}
+  }).catch(()=>{B.innerHTML='<div class="empty"><p>Erro ao carregar.</p></div>';});
+}
+function closeDetail(){
+  $('detail').classList.remove('show');
+  if(location.pathname.startsWith('/desapega/item')) history.pushState({},'', '/desapega');
+}
+window.addEventListener('popstate',()=>{
+  const m=location.pathname.match(/\/desapega\/item\/([^/?#]+)/);
+  if(m) renderDetail(m[1]); else $('detail').classList.remove('show');
+});
+
+// boot: se entrou direto em /desapega/item/:id, abre detalhe
+load();
+(function(){const m=location.pathname.match(/\/desapega\/item\/([^/?#]+)/);if(m)renderDetail(m[1]);})();
+</script>
+</body>
+</html>

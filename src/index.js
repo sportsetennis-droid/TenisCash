@@ -56,6 +56,7 @@ const priceCheckRoutes = require('./routes/priceCheck');
 const professionalsRoutes = require('./routes/professionals');
 const liveCommerceRoutes = require('./routes/liveCommerce');
 const infoproductsRoutes = require('./routes/infoproducts');
+const desapegaRoutes = require('./routes/desapega');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -158,6 +159,7 @@ app.use('/api/price-check', priceCheckRoutes);
 app.use('/api/professionals', professionalsRoutes);
 app.use('/api/live', liveCommerceRoutes);
 app.use('/api/infoproducts', infoproductsRoutes);
+app.use('/api/desapega', desapegaRoutes);
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
@@ -868,6 +870,16 @@ app.get('/membros', _infoPage('membros.html'));
 app.get('/afiliado', _infoPage('afiliado.html'));
 // Verificação pública de certificado
 app.get('/cert/:code', _infoPage('certificado.html'));
+
+// ===================================================================
+// DESAPEGA — marketplace de usados (mobile-first)
+// ===================================================================
+// Vitrine pública + detalhe (detalhe é resolvido no client via /item/:id)
+app.get(['/desapega', '/desapega/item/:id'], _infoPage('desapega.html'));
+// Link de cadastro do vendedor (fotos + descrição) + acompanhamento por token
+app.get(['/desapega/vender', '/desapega/acompanhar/:token'], _infoPage('desapega-vender.html'));
+// Painel de moderação (login admin + fila aprovar/reprovar)
+app.get('/desapega/admin', _infoPage('desapega-admin.html'));
 
 // Link de afiliado rastreado: conta clique, grava cookie tc_ref, redireciona pra página de vendas
 app.get('/r/:code', async (req, res) => {

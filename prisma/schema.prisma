@@ -3496,3 +3496,58 @@ model WebhookEvent {
   @@index([provider])
   @@index([processed])
 }
+
+// ============================================================
+// DESAPEGA — marketplace de produtos USADOS (C2C moderado)
+// ============================================================
+// Cliente cadastra um item usado por um link público (fotos + descrição).
+// A equipe S&T MODERA (aprova/reprova) antes de publicar na vitrine.
+// O contato do vendedor NUNCA é exposto publicamente — a negociação/venda
+// passa pela S&T. Pagamento (escrow: comprador paga conta S&T → confirma
+// recebimento → repasse ao vendedor menos comissão) fica pra FASE 2.
+model DesapegaListing {
+  id String @id @default(uuid())
+
+  // Vendedor (quem desapega) — PII, nunca exposto na vitrine pública
+  sellerName   String
+  sellerPhone  String
+  sellerEmail  String?
+  sellerPixKey String? // chave Pix pro repasse futuro (fase pagamento)
+  sellerCity   String?
+  sellerState  String?
+
+  // Produto usado
+  category      String  @default("tenis") // tenis | roupa | acessorio | outro
+  brand         String?
+  model         String // nome/modelo do item
+  size          String? // numeração/tamanho
+  color         String?
+  gender        String? // masculino | feminino | unissex | infantil
+  condition     String  @default("seminovo") // novo_na_caixa | seminovo | usado | bastante_usado
+  description   String  @db.Text
+  askingPrice   Float // quanto o vendedor quer receber
+  originalPrice Float? // quanto custou novo (referência)
+
+  // Fotos (array de URLs públicas — fal.storage, com fallback data URL)
+  photos Json @default("[]")
+
+  // Moderação
+  status          String    @default("pending") // pending | approved | rejected | sold | paused
+  rejectionReason String?   @db.Text
+  reviewedAt      DateTime?
+  reviewedById    String?
+  publishedAt     DateTime?
+  soldAt          DateTime?
+
+  // Token pro vendedor acompanhar o anúncio sem login
+  trackToken String @unique @default(cuid())
+
+  views Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([sellerPhone])
+  @@index([category, status])
+}
