@@ -273,6 +273,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
     <button class="tab" onclick="switchTab('productImages',this)">Imagens</button>
     <button class="tab" onclick="switchTab('categories',this)">Categorias</button>
+    <button class="tab" onclick="switchTab('vitrine',this)">🖼️ Vitrine</button>
     <button class="tab" onclick="switchTab('campaigns',this)">Campanhas</button>
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
@@ -1536,6 +1537,48 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div id="cat-tree-wrap"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- VITRINE -->
+<div class="section" id="tab-vitrine" style="display:none">
+  <div class="section-head">
+    <span class="section-title">🖼️ Vitrine da Home</span>
+  </div>
+  <p style="color:#666;font-size:13px;margin:4px 0 12px">
+    Escolha qual <b>produto em estoque</b> é o protagonista de cada imagem da home. Cada imagem é <b>única</b> — nenhum produto repete entre os slots. Cada slot existe nos dois gêneros (18 imagens no total).
+  </p>
+
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <div id="vit-gender-tabs" style="display:flex;gap:6px">
+      <button type="button" class="tab active" data-vit-gender="Feminino" onclick="vitSetGender('Feminino')">👩 Mulher</button>
+      <button type="button" class="tab" data-vit-gender="Masculino" onclick="vitSetGender('Masculino')">👨 Homem</button>
+    </div>
+    <span style="flex:1"></span>
+    <span id="vit-summary" style="font-size:12px;color:#666"></span>
+    <button type="button" class="btn" id="vit-save-btn" onclick="vitSave()" style="background:#0a843d;color:#fff">Salvar seleção</button>
+  </div>
+
+  <div id="vit-slots" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+</div>
+
+<!-- Modal: escolher produto pro slot -->
+<div id="vit-picker" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:24px;overflow:auto">
+  <div style="background:#fff;border-radius:12px;max-width:760px;width:100%;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <b id="vit-picker-title" style="font-size:15px;flex:1">Escolher produto</b>
+      <button type="button" class="btn" onclick="vitClosePicker()" style="background:#eee">Fechar</button>
+    </div>
+    <input id="vit-picker-search" type="text" placeholder="Buscar por nome, REF ou marca…" oninput="vitPickerSearchDebounced()" style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;margin-bottom:8px;font-size:14px">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:12px;color:#888">Gênero:</span>
+      <button type="button" class="tab active" data-vit-pg="" onclick="vitPickerSetGender('')" style="font-size:12px">Todos</button>
+      <button type="button" class="tab" data-vit-pg="Feminino" onclick="vitPickerSetGender('Feminino')" style="font-size:12px">Mulher</button>
+      <button type="button" class="tab" data-vit-pg="Masculino" onclick="vitPickerSetGender('Masculino')" style="font-size:12px">Homem</button>
+      <span style="flex:1"></span>
+      <span id="vit-picker-count" style="font-size:12px;color:#666"></span>
+    </div>
+    <div id="vit-picker-list" style="max-height:58vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -6126,6 +6169,182 @@ async function loadTransactions() {
 }
 
 // TABS
+// ==================== VITRINE (montador de imagens da home) ====================
+var vitState = { slots: [], genders: ['Feminino','Masculino'], selection: { Feminino: {}, Masculino: {} }, gender: 'Feminino', pickerSlot: null, pickerTimer: null };
+function vitEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+async function initVitrineTab(){
+  var wrap = document.getElementById('vit-slots');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:#888;padding:20px">Carregando…</div>';
+  var r = await api('/admin/vitrine/slots');
+  if (!r || r.error){ wrap.innerHTML = '<p style="color:#c0392b;padding:20px">Erro: '+vitEsc(r&&r.error||'falha')+'</p>'; return; }
+  vitState.slots = r.slots || [];
+  vitState.genders = r.genders || ['Feminino','Masculino'];
+  var sel = (r.selection && r.selection.selection) || r.selection || {};
+  vitState.selection = { Feminino: sel.Feminino || {}, Masculino: sel.Masculino || {} };
+  vitRenderSlots();
+}
+
+function vitSetGender(g){
+  vitState.gender = g;
+  document.querySelectorAll('#vit-gender-tabs [data-vit-gender]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-vit-gender')===g); });
+  vitRenderSlots();
+}
+
+function vitUsedIds(){ // produtos já escolhidos em QUALQUER slot/gênero (regra: nenhum repete)
+  var ids = {};
+  ['Feminino','Masculino'].forEach(function(g){
+    var by = vitState.selection[g] || {};
+    Object.keys(by).forEach(function(sid){ if (by[sid] && by[sid].productId) ids[by[sid].productId] = g+' · '+sid; });
+  });
+  return ids;
+}
+
+function vitRenderSlots(){
+  var wrap = document.getElementById('vit-slots');
+  var by = vitState.selection[vitState.gender] || {};
+  var filled = 0;
+  var html = vitState.slots.map(function(slot){
+    var pick = by[slot.id];
+    var head = '<div style="font-weight:700;font-size:13px">'+vitEsc(slot.label)+'</div>'+
+      '<div style="font-size:11px;color:#888;margin-bottom:8px">'+vitEsc(slot.shape)+' · '+vitEsc(slot.ratio)+' · '+vitEsc(slot.dims)+'</div>';
+    if (pick && pick.productId){
+      filled++;
+      var chips = (pick.sizes||[]).map(function(s){ return '<span style="font-size:10px;background:#f0f4ff;color:#1d4ed8;border-radius:5px;padding:1px 5px">'+vitEsc(s.size)+': '+s.stock+'</span>'; }).join(' ');
+      var img = pick.thumb ? '<img src="'+vitEsc(pick.thumb)+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;background:#f2f2f2">' : '<div style="width:64px;height:64px;border-radius:8px;background:#f2f2f2"></div>';
+      var phraseOk = pick.phrase && pick.phrase.trim();
+      return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:10px;background:#fff">'+head+
+        '<div style="display:flex;gap:8px">'+img+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:13px;font-weight:600;line-height:1.2">'+vitEsc(pick.name)+'</div>'+
+            '<div style="font-size:11px;color:#666">'+vitEsc(pick.brand||'')+' · REF '+vitEsc(pick.ref||'')+'</div>'+
+            '<div style="font-size:11px;color:#0a843d;font-weight:600">'+(pick.totalStock||0)+' em estoque</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'+
+        '<input type="text" placeholder="Frase da imagem (obrigatória)" value="'+vitEsc(pick.phrase||'')+'" oninput="vitSetPhrase(\''+slot.id+'\',this.value)" style="width:100%;padding:7px 8px;border:1px solid '+(phraseOk?'#ddd':'#e0a800')+';border-radius:7px;font-size:12px;background:'+(phraseOk?'#fff':'#fffbe6')+'">'+
+        '<div style="display:flex;gap:6px;margin-top:6px">'+
+          '<button type="button" class="btn" onclick="vitOpenPicker(\''+slot.id+'\')" style="flex:1;background:#eee;font-size:12px">Trocar</button>'+
+          '<button type="button" class="btn" onclick="vitRemove(\''+slot.id+'\')" style="background:#fdeaea;color:#c0392b;font-size:12px">Remover</button>'+
+        '</div>'+
+      '</div>';
+    }
+    return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:10px;background:#fff">'+head+
+      '<button type="button" class="btn" onclick="vitOpenPicker(\''+slot.id+'\')" style="width:100%;border:1px dashed #bbb;background:#fafafa;color:#555;padding:18px;border-radius:8px">+ Escolher produto</button>'+
+    '</div>';
+  }).join('');
+  wrap.innerHTML = html;
+  var s = document.getElementById('vit-summary');
+  if (s) s.textContent = filled+'/'+vitState.slots.length+' preenchidos ('+vitState.gender+') · '+Object.keys(vitUsedIds()).length+'/18 no total';
+}
+
+function vitSetPhrase(slotId, val){
+  var by = vitState.selection[vitState.gender];
+  if (by && by[slotId]) by[slotId].phrase = val;
+}
+
+function vitRemove(slotId){
+  var by = vitState.selection[vitState.gender];
+  if (by) delete by[slotId];
+  vitRenderSlots();
+}
+
+function vitOpenPicker(slotId){
+  vitState.pickerSlot = slotId;
+  vitState.pickerGender = '';
+  var slot = vitState.slots.find(function(s){ return s.id===slotId; });
+  var hint = slot && slot.filter ? (slot.filter.modality || slot.filter.category || slot.filter.type || '') : '';
+  document.getElementById('vit-picker-title').textContent = 'Escolher produto — '+(slot?slot.label:'')+' ('+vitState.gender+')'+(hint?(' · sugestão: '+hint):'');
+  document.getElementById('vit-picker-search').value = '';
+  document.querySelectorAll('#vit-picker [data-vit-pg]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-vit-pg')===''); });
+  document.getElementById('vit-picker').style.display = 'flex';
+  vitLoadCandidates('');
+}
+function vitClosePicker(){ document.getElementById('vit-picker').style.display = 'none'; vitState.pickerSlot = null; }
+function vitPickerSetGender(g){
+  vitState.pickerGender = g;
+  document.querySelectorAll('#vit-picker [data-vit-pg]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-vit-pg')===g); });
+  vitLoadCandidates(document.getElementById('vit-picker-search').value);
+}
+function vitPickerSearchDebounced(){
+  clearTimeout(vitState.pickerTimer);
+  var q = document.getElementById('vit-picker-search').value;
+  vitState.pickerTimer = setTimeout(function(){ vitLoadCandidates(q); }, 300);
+}
+
+async function vitLoadCandidates(q){
+  var list = document.getElementById('vit-picker-list');
+  list.innerHTML = '<div style="color:#888;padding:16px">Buscando produtos em estoque…</div>';
+  var qs = new URLSearchParams();
+  if (vitState.pickerGender) qs.set('gender', vitState.pickerGender);
+  if (q) qs.set('q', q);
+  var r = await api('/admin/vitrine/candidates?'+qs.toString());
+  if (!r || r.error){ list.innerHTML = '<p style="color:#c0392b;padding:16px">Erro: '+vitEsc(r&&r.error||'falha')+'</p>'; return; }
+  var cnt = document.getElementById('vit-picker-count');
+  if (cnt) cnt.textContent = (r.count||0)+' em estoque';
+  vitRenderCandidates(r.products || []);
+}
+
+function vitRenderCandidates(products){
+  var list = document.getElementById('vit-picker-list');
+  if (!products.length){ list.innerHTML = '<div style="color:#888;padding:16px">Nenhum produto em estoque pra esse filtro. Tente buscar por nome/REF.</div>'; return; }
+  var used = vitUsedIds();
+  list.innerHTML = products.map(function(p){
+    var chips = (p.sizes||[]).map(function(s){ return '<span style="font-size:10px;background:#f0f4ff;color:#1d4ed8;border-radius:5px;padding:1px 5px">'+vitEsc(s.size)+': '+s.stock+'</span>'; }).join(' ');
+    var img = p.imageUrl ? '<img src="'+vitEsc(p.imageUrl)+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f2f2f2">' : '<div style="width:56px;height:56px;border-radius:8px;background:#f2f2f2"></div>';
+    var usedWhere = used[p.id];
+    var btn = usedWhere
+      ? '<button type="button" class="btn" disabled style="background:#eee;color:#999;font-size:12px" title="já usado em '+vitEsc(usedWhere)+'">já usado</button>'
+      : '<button type="button" class="btn" onclick="vitSelect(\''+p.id+'\')" style="background:#0a843d;color:#fff;font-size:12px">Selecionar</button>';
+    return '<div style="display:flex;gap:10px;align-items:center;padding:8px;border-bottom:1px solid #f0f0f0;'+(usedWhere?'opacity:.55':'')+'">'+img+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:13px;font-weight:600;line-height:1.2">'+vitEsc(p.name)+'</div>'+
+        '<div style="font-size:11px;color:#666">'+vitEsc(p.brand||'')+' · REF '+vitEsc(p.sku||'')+(p.subcategory?(' · '+vitEsc(p.subcategory)):'')+'</div>'+
+        '<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'+
+      '</div>'+
+      '<div style="text-align:right"><div style="font-size:12px;font-weight:700;color:#0a843d">'+(p.totalStock||0)+'</div>'+btn+'</div>'+
+    '</div>';
+  }).join('');
+  // guardar lista atual pra resolver a seleção
+  vitState.pickerProducts = products;
+}
+
+function vitSelect(productId){
+  var p = (vitState.pickerProducts||[]).find(function(x){ return x.id===productId; });
+  if (!p) return;
+  var used = vitUsedIds();
+  if (used[productId]){ alert('Esse produto já está em '+used[productId]+'. Cada imagem é única.'); return; }
+  var by = vitState.selection[vitState.gender];
+  var prev = by[vitState.pickerSlot] || {};
+  by[vitState.pickerSlot] = {
+    productId: p.id, phrase: prev.phrase || '',
+    name: p.name, ref: p.sku, brand: p.brand, thumb: p.imageUrl,
+    sizes: p.sizes || [], totalStock: p.totalStock || 0,
+  };
+  vitClosePicker();
+  vitRenderSlots();
+}
+
+async function vitSave(){
+  var btn = document.getElementById('vit-save-btn');
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  // aviso (não bloqueia) se algum slot preenchido está sem frase
+  var semFrase = [];
+  ['Feminino','Masculino'].forEach(function(g){
+    var by = vitState.selection[g] || {};
+    Object.keys(by).forEach(function(sid){ if (by[sid] && by[sid].productId && !(by[sid].phrase||'').trim()) semFrase.push(g+'/'+sid); });
+  });
+  var r = await api('/admin/vitrine/slots', 'PUT', { selection: vitState.selection });
+  btn.disabled = false; btn.textContent = 'Salvar seleção';
+  if (r && r.error){
+    if (r.dups && r.dups.length){ alert('Produto repetido — cada imagem é única:\n'+r.dups.map(function(d){ return d.a+' = '+d.b; }).join('\n')); }
+    else alert('Erro ao salvar: '+vitEsc(r.error));
+    return;
+  }
+  alert('Seleção salva.'+(semFrase.length?('\n\nAtenção: '+semFrase.length+' slot(s) sem frase: '+semFrase.join(', ')):''));
+}
+
 function switchTab(tab, btn) {
   document.querySelectorAll('.tabs > .tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -6158,7 +6377,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -6178,6 +6397,7 @@ function switchTab(tab, btn) {
   if (tab === 'financial') { initFinancialTab(); }
   if (tab === 'suppliers') { initSuppliersTab(); }
   if (tab === 'categories') { initCategoriesTab(); }
+  if (tab === 'vitrine') { try { initVitrineTab(); } catch (e) { console.warn('initVitrineTab falhou:', e); } }
   if (tab === 'productImages') { initProductImagesTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
