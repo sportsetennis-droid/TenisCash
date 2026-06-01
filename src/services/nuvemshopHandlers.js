@@ -9,6 +9,7 @@
 //   store/redact, customers/redact, customers/data_request
 // =====================================================================
 
+const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
 
@@ -1095,6 +1096,94 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
   return result;
 }
 
+// =====================================================================
+// SYNC DE IMAGENS — Nuvemshop só aceita "images" no POST /products (create).
+// No PUT /products/:id ele IGNORA images. Resultado: trocar/adicionar foto
+// num produto já listado NUNCA aparecia na loja ("não aparece todas as fotos").
+// Aqui reconciliamos via os endpoints dedicados de imagem, e só quando o
+// conjunto local muda de fato (assinatura em aiContext.nsImagesSig evita
+// re-upload a cada sync de estoque/preço).
+// =====================================================================
+
+// Junta imageUrl (capa) + imageUrls[] numa lista ordenada e deduplicada.
+function collectLocalImages(localProduct) {
+  const out = [];
+  const push = (u) => { if (u && typeof u === 'string' && !out.includes(u)) out.push(u); };
+  push(localProduct.imageUrl);
+  if (localProduct.imageUrls) {
+    try {
+      const arr = typeof localProduct.imageUrls === 'string'
+        ? JSON.parse(localProduct.imageUrls)
+        : localProduct.imageUrls;
+      if (Array.isArray(arr)) arr.forEach(push);
+    } catch (_) {}
+  }
+  return out;
+}
+
+// Assinatura estável do conjunto (ordem importa — 1ª = capa).
+function imageSignature(imgs) {
+  return crypto.createHash('sha1').update(imgs.join('|')).digest('hex');
+}
+
+function ctxOf(localProduct) {
+  try { return typeof localProduct.aiContext === 'string' ? JSON.parse(localProduct.aiContext) : (localProduct.aiContext || {}); }
+  catch { return {}; }
+}
+
+// Converte uma src local no corpo aceito pelo POST /products/:id/images.
+// URL http(s) → { src } (Nuvemshop baixa). data:URL → { attachment, filename }.
+function imageBodyFromSrc(src, position) {
+  const body = { position };
+  const m = /^data:([^;]+);base64,(.*)$/s.exec(src);
+  if (m) {
+    const ext = (m[1].split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+    body.attachment = m[2];
+    body.filename = `img-${position}.${ext}`;
+  } else {
+    body.src = src;
+  }
+  return body;
+}
+
+// Reconcilia as imagens do produto na Nuvemshop (replace-all, só quando muda).
+async function syncNuvemshopImages(connection, nsProductId, localProduct) {
+  const desired = collectLocalImages(localProduct);
+  const sig = desired.length ? imageSignature(desired) : 'empty';
+  const ctx = ctxOf(localProduct);
+  if (ctx.nsImagesSig === sig) return { changed: false, added: 0, removed: 0, sig };
+
+  // Apaga as atuais
+  let removed = 0;
+  try {
+    const current = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/images`);
+    if (Array.isArray(current)) {
+      for (const img of current) {
+        try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/images/${img.id}`); removed++; }
+        catch (e) { console.warn('[ns img] delete falhou', img.id, e.message); }
+      }
+    }
+  } catch (e) { console.warn('[ns img] GET atual falhou:', e.message); }
+
+  // Sobe as locais na ordem (1ª = capa)
+  let added = 0;
+  const errors = [];
+  for (let i = 0; i < desired.length; i++) {
+    try {
+      await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/images`, imageBodyFromSrc(desired[i], i + 1));
+      added++;
+    } catch (e) { errors.push({ position: i + 1, error: e.message }); console.warn('[ns img] POST falhou pos', i + 1, e.message); }
+  }
+
+  // Persiste assinatura (só se algo subiu, ou se zeramos de propósito)
+  if (added > 0 || desired.length === 0) {
+    ctx.nsImagesSig = sig;
+    try { await prisma.product.update({ where: { id: localProduct.id }, data: { aiContext: ctx } }); }
+    catch (e) { console.warn('[ns img] salvar sig falhou:', e.message); }
+  }
+  return { changed: true, added, removed, sig, errors };
+}
+
 async function pushProductToNuvemshop(localProductId, connection) {
   const product = await prisma.product.findUnique({
     where: { id: localProductId },
@@ -1194,6 +1283,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
   let nsProduct;
   let action;
   let variantSync = null;
+  let imageSync = null;
   if (existingMapping) {
     // UPDATE — payload SEM variants (NS rejeita variants em PUT)
     const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
@@ -1209,6 +1299,11 @@ async function pushProductToNuvemshop(localProductId, connection) {
     );
     // Atualiza variants separadamente via /products/:id/variants/:vid
     variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, product.sizes || []);
+    // Sincroniza imagens (PUT não aceita images — usa endpoints dedicados).
+    // Só age quando o conjunto local mudou de fato (assinatura).
+    try {
+      imageSync = await syncNuvemshopImages(connection, existingMapping.nuvemshopProductId, product);
+    } catch (e) { imageSync = { changed: false, error: e.message }; console.warn('[ns push] image sync falhou:', e.message); }
     await prisma.nuvemshopProductMapping.update({
       where: { id: existingMapping.id },
       data: { lastSyncedAt: new Date(), syncStatus: 'synced' },
@@ -1229,6 +1324,15 @@ async function pushProductToNuvemshop(localProductId, connection) {
         lastSyncedAt: new Date(),
       },
     });
+    // Imagens já subiram no payload do create — grava a assinatura como baseline
+    // pra que o próximo update não as re-suba sem necessidade.
+    try {
+      const desired0 = collectLocalImages(product);
+      const ctx0 = ctxOf(product);
+      ctx0.nsImagesSig = desired0.length ? imageSignature(desired0) : 'empty';
+      await prisma.product.update({ where: { id: product.id }, data: { aiContext: ctx0 } });
+      imageSync = { fromCreate: true, count: desired0.length };
+    } catch (e) { console.warn('[ns push] baseline sig (create) falhou:', e.message); }
     action = 'created';
   }
 
@@ -1254,7 +1358,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
     }
   }
 
-  return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id, variantSync };
+  return { action, nuvemshopProductId: String(nsProduct.id), localProductId: product.id, variantSync, imageSync };
 }
 
 async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly = false, supplierCnpj = null } = {}) {
@@ -1335,4 +1439,7 @@ module.exports = {
   pushProductToNuvemshop,
   pushAllProducts,
   pushStockUpdate,
+  syncNuvemshopImages,
+  collectLocalImages,
+  imageSignature,
 };

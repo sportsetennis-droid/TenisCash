@@ -22,6 +22,7 @@ const serperGis = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
 const { scrapeProductPage } = require('../services/productPageScraper');
 const nsHandlers = require('../services/nuvemshopHandlers');
+const imageStd = require('../services/imageStandardizer');
 const { getSupplierMeta, siteForSupplier, brandForSupplier } = require('../services/supplierOfficialSites');
 
 // Helper: re-empurra produto pra Nuvemshop se já tem mapping
@@ -752,5 +753,50 @@ router.post('/upload/:productId',
     }
   }
 );
+
+// =====================================================================
+// POST /standardize/:productId — uniformiza TODAS as imagens do produto
+// pro padrão da loja (1:1 ~1200px webp) e re-empurra pra Nuvemshop.
+// Resolve "diferença de tamanho" (fontes 2048/1200/1000 misturadas) e
+// encolhe PNGs gigantes. Body opcional: { size, ratio:'1:1'|'4:5', fit, sync }
+// =====================================================================
+router.post('/standardize/:productId', async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.productId },
+      select: { id: true, sku: true, name: true, imageUrl: true, imageUrls: true },
+    });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    const srcs = nsHandlers.collectLocalImages(product);
+    if (!srcs.length) return res.status(400).json({ error: 'produto sem imagens' });
+
+    const { size, ratio = '1:1', fit = 'cover', sync = true } = req.body || {};
+    const results = await imageStd.standardizeList(srcs, { size, ratio, fit });
+
+    const urls = results.map((r) => r.url).filter(Boolean);
+    if (!urls.length) return res.status(500).json({ error: 'nenhuma imagem padronizada', results });
+
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { imageUrl: urls[0], imageUrls: urls.slice(1) },
+    });
+
+    let nuvemshop = { synced: false, reason: 'sync=false' };
+    if (sync) nuvemshop = await syncToNuvemshopIfMapped(product.id);
+
+    res.json({
+      ok: true,
+      product: { id: product.id, sku: product.sku, name: product.name },
+      count: urls.length,
+      ratio, size: size || imageStd.DEFAULT_SIZE,
+      results: results.map((r) => ({ ok: r.ok, before: r.before, beforeKb: r.beforeKb, afterKb: r.afterKb, error: r.error })),
+      nuvemshop,
+    });
+  } catch (err) {
+    console.error('[product-images/standardize] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;
