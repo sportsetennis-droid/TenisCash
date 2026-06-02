@@ -617,10 +617,12 @@
       }
     }
 
-    // BLOCO NFe — carrega automático quando card entra na viewport (AGORA DEPOIS DO ESTOQUE)
-    // opts.hideNfeAndTransfers = true esconde blocos NFe entrada + Transferências
-    // (usado no card de Curadoria, que só precisa de estoque)
-    if (showStock && actions === 'admin' && !opts.hideNfeAndTransfers) {
+    // BLOCO NFe (COMPRADO/VENDIDO/ESTOQUE/PERDA + transferências) — lazy-load no viewport.
+    // Aparece em telas de ADMIN (actions:'admin') OU quando opts.showNfe === true
+    // (telas internas que usam estilo 'public' mas precisam ver o comprado: classificação, imagens).
+    // NUNCA aparece pro cliente (loja.html usa actions:'public' SEM showNfe).
+    // opts.hideNfeAndTransfers = true força esconder.
+    if ((actions === 'admin' || opts.showNfe) && !opts.hideNfeAndTransfers) {
       // AZUL: Entradas via NFe (compra de fornecedor) — conta como estoque novo
       html += `<div style="margin-top:8px;padding:10px 12px;background:#f0f6ff;border:1.5px solid #cfe0ff;border-radius:10px;">`;
       html += `<div style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:1px;font-weight:800;margin-bottom:6px;">📦 Entradas via NFe <span style="color:#8e8e93;font-weight:600;text-transform:none;letter-spacing:0;">— compra de fornecedor</span></div>`;
@@ -652,7 +654,7 @@
 
     html += '</div></div>';
     // Agenda varredura pra ativar IntersectionObserver nos novos containers NFe
-    if (showStock && actions === 'admin' && PCard._scheduleObserve) PCard._scheduleObserve();
+    if ((actions === 'admin' || opts.showNfe) && PCard._scheduleObserve) PCard._scheduleObserve();
     return html;
   };
 

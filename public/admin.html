@@ -176,7 +176,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
-<script src="/_product-card.js?v=20260526-hideNfe"></script>
+<script src="/_product-card.js?v=20260602-comprado"></script>
 </head>
 <body>
 
@@ -8361,7 +8361,7 @@ async function loadCurationProducts(opts) {
   const TOTAL = list.length;
   const headerHtml = `<div style="font-size:12px;color:#8e8e93;margin-bottom:8px;"><strong>${TOTAL}</strong> produto${TOTAL===1?'':'s'} (deduplicados por modelo)</div>`;
   wrap.innerHTML = headerHtml + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">' +
-    list.slice(0, 200).map(p => PCard.render(p, { actions: 'admin', showStock: true, hideNfeAndTransfers: true })).join('') +
+    list.slice(0, 200).map(p => PCard.render(p, { actions: 'admin', showStock: true })).join('') +
     '</div>' +
     (TOTAL > 200 ? `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 200 de ${TOTAL} — refine os filtros pra ver os outros</div>` : '');
 }
@@ -9409,7 +9409,7 @@ function renderProductImages() {
   const visible = filtered.slice(0, 300);
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">';
   visible.forEach(p => {
-    html += window.PCard ? PCard.render(p, { actions: 'public', showStock: false, onClick: `productImageEdit('${p.id}')` }) : '';
+    html += window.PCard ? PCard.render(p, { actions: 'public', showStock: false, showNfe: true, onClick: `productImageEdit('${p.id}')` }) : '';
   });
   html += '</div>';
   if (filtered.length > 300) html += `<div style="text-align:center;padding:10px;color:#8e8e93;font-size:12px;">Mostrando 300 de ${filtered.length} — refine os filtros</div>`;
@@ -9780,7 +9780,7 @@ function renderCatClassifyGrid() {
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">';
   visible.forEach(p => {
     const checked = _catClassifySelected.has(p.id);
-    const cardHtml = window.PCard ? PCard.render(p, { actions: 'public', showStock: true }) : `<div>${escapeHtml(p.name)}</div>`;
+    const cardHtml = window.PCard ? PCard.render(p, { actions: 'public', showStock: true, showNfe: true }) : `<div>${escapeHtml(p.name)}</div>`;
     html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
       <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
       ${cardHtml}
