@@ -48,34 +48,101 @@ function extractText(resp) {
     .trim();
 }
 
+// Remove vírgulas penduradas antes de } ou ] (erro comum de LLM), sem
+// tocar em vírgulas dentro de strings.
+function stripTrailingCommas(s) {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === ',') {
+      // olha o próximo caractere não-branco
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (s[j] === '}' || s[j] === ']') continue; // descarta a vírgula
+    }
+    out += c;
+  }
+  return out;
+}
+
+// Varredura balanceada a partir de `start` (que aponta para { ou [),
+// respeitando strings e escapes. Retorna a substring fechada ou null
+// (null = não fechou → provável truncamento por max_tokens).
+function balancedFrom(raw, start) {
+  const open = raw[start];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === open) depth++;
+    else if (c === close) {
+      depth--;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Tenta achar o primeiro valor JSON que REALMENTE parseia, testando cada
+// posição de abertura ({ ou [). Robusto a prosa e a chaves soltas no texto
+// (ex.: placeholders "{valor}") antes do JSON de verdade.
+function extractFirstValidJSON(raw) {
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (c !== '{' && c !== '[') continue;
+    const candidate = balancedFrom(raw, i);
+    if (!candidate) continue;
+    try { return JSON.parse(candidate); } catch (_) { /* segue */ }
+    try { return JSON.parse(stripTrailingCommas(candidate)); } catch (_) { /* segue */ }
+  }
+  return null;
+}
+
 function tryParseJSON(raw) {
   if (!raw) return null;
+  const trimmed = String(raw).trim();
+
   // Tentativa 1: parse direto
-  try {
-    return JSON.parse(raw);
-  } catch (_) {
-    // ignorar e tentar extração
+  try { return JSON.parse(trimmed); } catch (_) { /* segue */ }
+
+  // Tentativa 2: se vier em cerca tripla ```json ... ```, usa o miolo
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const fenced = fence && fence[1] ? fence[1].trim() : null;
+  if (fenced) {
+    try { return JSON.parse(fenced); } catch (_) { /* segue */ }
   }
-  // Tentativa 2: extrair do primeiro { até último } balanceado
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  if (first !== -1 && last !== -1 && last > first) {
-    const candidate = raw.slice(first, last + 1);
-    try {
-      return JSON.parse(candidate);
-    } catch (_) {
-      // ignorar
-    }
+
+  // Tentativa 3: primeiro valor JSON válido (objeto OU array), varrendo cada
+  // posição de abertura e reparando vírgulas penduradas. Tenta no miolo da
+  // cerca primeiro, depois no texto inteiro.
+  for (const src of [fenced, trimmed]) {
+    if (!src) continue;
+    const parsed = extractFirstValidJSON(src);
+    if (parsed !== null) return parsed;
   }
-  // Tentativa 3: extrair de cerca tripla ```json ... ```
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence && fence[1]) {
-    try {
-      return JSON.parse(fence[1].trim());
-    } catch (_) {
-      // ignorar
-    }
-  }
+
+  // Tentativa 4: último recurso — repara o texto inteiro
+  try { return JSON.parse(stripTrailingCommas(trimmed)); } catch (_) { /* desiste */ }
+
   return null;
 }
 
