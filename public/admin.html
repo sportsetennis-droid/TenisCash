@@ -965,6 +965,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <button type="button" class="tab active js-ai-sub" data-ai-sub="command">📊 Centro de Comando</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="memory">🧠 Memória</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="history">Histórico</button>
@@ -974,6 +975,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- CENTRO DE COMANDO (governança: COO briefing, FinOps, scorecard, funil) -->
   <div id="ai-panel-command">
     <div id="cc-content" class="muted" style="font-size:13px">Carregando Centro de Comando...</div>
+  </div>
+
+  <!-- MEMÓRIA DA EMPRESA (o cérebro persistente: fatos + linha do tempo) -->
+  <div id="ai-panel-memory" style="display:none">
+    <div id="mem-content" class="muted" style="font-size:13px">Carregando Memória...</div>
   </div>
 
   <!-- RODAR ORQUESTRADOR -->
@@ -6805,11 +6811,12 @@ async function initAdminAICenter() {
       document.querySelectorAll('.js-ai-sub').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const sub = btn.dataset.aiSub;
-      ['command','run','approvals','history','agents'].forEach(s => {
+      ['command','memory','run','approvals','history','agents'].forEach(s => {
         const el = document.getElementById('ai-panel-' + s);
         if (el) el.style.display = (s === sub) ? 'block' : 'none';
       });
       if (sub === 'command') loadAICommandCenter();
+      if (sub === 'memory') loadAIMemory();
       if (sub === 'approvals') loadAIApprovals();
       if (sub === 'history') loadAIHistory();
       if (sub === 'agents') loadAIAgents();
@@ -6827,6 +6834,7 @@ async function initAdminAICenter() {
     btnRefresh.onclick = () => {
       const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'command';
       if (activeSub === 'command') loadAICommandCenter();
+      else if (activeSub === 'memory') loadAIMemory();
       else if (activeSub === 'approvals') loadAIApprovals();
       else if (activeSub === 'history') loadAIHistory();
       else if (activeSub === 'agents') loadAIAgents();
@@ -7036,6 +7044,135 @@ async function loadAICommandCenter() {
     st.textContent = 'Teto salvo.';
     loadAICommandCenter();
   };
+}
+
+// ==================== MEMÓRIA DA EMPRESA ====================
+// O cérebro persistente: fatos (o que a empresa É) + linha do tempo
+// (o que aconteceu). A IA lê isso antes de agir.
+
+const MEM_CAT_LABEL = {
+  empresa:'Empresa', loja:'Loja', marca:'Marca', produto:'Produto', fornecedor:'Fornecedor',
+  meta:'Meta', regra:'Regra', financeiro:'Financeiro', venda:'Venda', estoque:'Estoque',
+  cliente:'Cliente', campanha:'Campanha', decisao:'Decisão', ia:'IA', nota:'Anotação', geral:'Geral'
+};
+function memCatLabel(c){ return MEM_CAT_LABEL[c] || c || 'Geral'; }
+
+function memRow(it) {
+  const isFact = it.kind === 'fact';
+  const when = new Date(it.createdAt).toLocaleString('pt-BR');
+  const badge = isFact
+    ? `<span style="font-size:10px;font-weight:700;color:#ffb020;border:1px solid #ffb020;border-radius:4px;padding:1px 6px">${it.pinned?'📌 ':''}FATO</span>`
+    : `<span style="font-size:10px;color:#7a8194;border:1px solid #2a3040;border-radius:4px;padding:1px 6px">EVENTO</span>`;
+  return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #1b1f2a">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+        ${badge}
+        <span style="font-size:10px;color:#9aa1b2;background:#161a24;border-radius:4px;padding:1px 6px">${escapeHtml(memCatLabel(it.category))}</span>
+      </div>
+      <div style="font-size:13px;color:#eef1f8">${escapeHtml(it.title)}</div>
+      ${it.detail?`<div style="font-size:12px;color:#9aa1b2;margin-top:2px">${escapeHtml(it.detail)}</div>`:''}
+      <div style="font-size:10px;color:#5b6172;margin-top:3px">${escapeHtml(it.source||'')} · ${when}</div>
+    </div>
+    <button type="button" class="btn js-mem-del" data-id="${it.id}" style="font-size:10px;padding:2px 8px;color:#ff5470">apagar</button>
+  </div>`;
+}
+
+async function loadAIMemory() {
+  const box = document.getElementById('mem-content');
+  if (!box) return;
+  box.innerHTML = '<span class="muted" style="font-size:13px">Carregando Memória...</span>';
+
+  const [stats, tl] = await Promise.all([
+    api('/admin/ai/memory/stats'),
+    api('/admin/ai/memory/timeline?days=120&limit=200'),
+  ]);
+  if (stats && stats.error) { box.innerHTML = `<div style="color:#ff5470">Erro: ${escapeHtml(stats.error)}</div>`; return; }
+
+  const since = stats.since ? new Date(stats.since).toLocaleDateString('pt-BR') : '—';
+  const items = (tl && tl.items) || [];
+
+  const catOptions = ['empresa','loja','marca','produto','fornecedor','meta','regra','financeiro']
+    .map(c=>`<option value="${c}">${memCatLabel(c)}</option>`).join('');
+
+  const statCard = ccCard(`
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span style="font-size:11px;letter-spacing:2px;color:#7a8194">MEMÓRIA DA EMPRESA</span>
+      <span style="font-size:11px;color:#7a8194">desde ${since}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:#eef1f8">${stats.total||0}</div><div style="font-size:11px;color:#9aa1b2">Memórias</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#ffb020">${stats.facts||0}</div><div style="font-size:11px;color:#9aa1b2">Fatos</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#2ecc71">${stats.events||0}</div><div style="font-size:11px;color:#9aa1b2">Eventos</div></div>
+    </div>
+    <div style="font-size:11px;color:#5b6172;margin-top:10px">A IA lê tudo isto antes de responder. Quanto mais você ensina, mais ela acerta.</div>
+  `);
+
+  const teachCard = ccCard(`
+    <span style="font-size:11px;letter-spacing:2px;color:#7a8194">ENSINAR A IA</span>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px" class="cc-grid-2">
+      <div>
+        <div style="font-size:12px;color:#cfd5e4;margin-bottom:6px;font-weight:600">📌 Um fato da empresa <span style="font-weight:400;color:#7a8194">(ela sabe pra sempre)</span></div>
+        <select id="mem-fact-cat" class="search-box" style="width:100%;margin-bottom:6px">${catOptions}</select>
+        <input id="mem-fact-title" class="search-box" placeholder="Ex.: A loja Parahyba Mall é a que mais vende tênis" style="width:100%;margin-bottom:6px">
+        <textarea id="mem-fact-detail" rows="2" class="search-box" placeholder="Detalhe (opcional)" style="width:100%;resize:vertical;font-family:inherit;margin-bottom:6px"></textarea>
+        <button type="button" class="btn btn-primary" id="mem-fact-save" style="font-size:12px">Gravar fato</button>
+        <span id="mem-fact-status" class="muted" style="font-size:11px;margin-left:8px"></span>
+      </div>
+      <div>
+        <div style="font-size:12px;color:#cfd5e4;margin-bottom:6px;font-weight:600">📝 Anotar algo <span style="font-weight:400;color:#7a8194">(vai pra linha do tempo)</span></div>
+        <input id="mem-note-title" class="search-box" placeholder="Ex.: Fechei acordo novo com fornecedor X" style="width:100%;margin-bottom:6px">
+        <textarea id="mem-note-detail" rows="2" class="search-box" placeholder="Detalhe (opcional)" style="width:100%;resize:vertical;font-family:inherit;margin-bottom:6px"></textarea>
+        <button type="button" class="btn btn-primary" id="mem-note-save" style="font-size:12px">Anotar</button>
+        <span id="mem-note-status" class="muted" style="font-size:11px;margin-left:8px"></span>
+      </div>
+    </div>
+  `);
+
+  const timelineCard = ccCard(`
+    <span style="font-size:11px;letter-spacing:2px;color:#7a8194">LINHA DO TEMPO (${items.length})</span>
+    <div style="margin-top:6px">
+      ${items.length ? items.map(memRow).join('') : '<div style="font-size:13px;color:#7a8194;padding:12px 0">Memória vazia. Ensine o primeiro fato acima — comece pelas suas 4 lojas e suas marcas.</div>'}
+    </div>
+  `);
+
+  box.innerHTML = `<div style="display:grid;gap:14px">${statCard}${teachCard}${timelineCard}</div>`;
+
+  // wire: gravar fato
+  document.getElementById('mem-fact-save').onclick = async () => {
+    const title = (document.getElementById('mem-fact-title').value||'').trim();
+    const st = document.getElementById('mem-fact-status');
+    if (!title) { st.textContent='escreva o fato'; return; }
+    st.textContent = 'gravando...';
+    const r = await api('/admin/ai/memory/fact', 'POST', {
+      category: document.getElementById('mem-fact-cat').value,
+      title,
+      detail: (document.getElementById('mem-fact-detail').value||'').trim() || null,
+    });
+    if (r && r.error) { st.textContent = 'erro: '+r.error; return; }
+    loadAIMemory();
+  };
+  // wire: anotar
+  document.getElementById('mem-note-save').onclick = async () => {
+    const title = (document.getElementById('mem-note-title').value||'').trim();
+    const st = document.getElementById('mem-note-status');
+    if (!title) { st.textContent='escreva a anotação'; return; }
+    st.textContent = 'gravando...';
+    const r = await api('/admin/ai/memory/note', 'POST', {
+      title,
+      detail: (document.getElementById('mem-note-detail').value||'').trim() || null,
+    });
+    if (r && r.error) { st.textContent = 'erro: '+r.error; return; }
+    loadAIMemory();
+  };
+  // wire: apagar (delegação)
+  box.querySelectorAll('.js-mem-del').forEach(b => {
+    b.onclick = async () => {
+      if (!confirm('Apagar esta memória?')) return;
+      const r = await api('/admin/ai/memory/' + b.dataset.id, 'DELETE');
+      if (r && r.error) { alert('Erro: '+r.error); return; }
+      loadAIMemory();
+    };
+  });
 }
 
 async function runAIOrchestration() {

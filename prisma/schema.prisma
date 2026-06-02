@@ -937,6 +937,36 @@ model AILog {
   @@index([createdAt])
 }
 
+// =====================================================================
+// Memória da Empresa — o "cérebro" persistente que a IA lê antes de agir.
+// Guarda DUAS coisas numa só tabela:
+//   - kind="fact"  → o que a empresa É (lojas, marcas, regras, metas).
+//                    Geralmente pinned=true: a IA SEMPRE lê.
+//   - kind="event" → o que ACONTECE (venda, estoque, campanha, decisão,
+//                    conversa com a IA). Linha do tempo, gravada pra sempre.
+// =====================================================================
+model CompanyMemory {
+  id          String   @id @default(cuid())
+  kind        String   @default("event") // "fact" | "event"
+  category    String   @default("geral") // venda, estoque, financeiro, cliente, campanha, decisao, ia, nota, empresa, fornecedor, meta...
+  title       String
+  detail      String? // texto legível (pra humano e pra IA)
+  data        Json? // payload estruturado opcional
+  company     String?  @default("Sports & Tennis")
+  source      String   @default("manual") // manual, orchestrator, approval, sales, stock, system...
+  refType     String? // tipo do registro de origem (ex: "AIOrchestration")
+  refId       String? // id do registro de origem
+  importance  Int      @default(1) // 0=baixa 1=normal 2=alta 3=crítica — prioriza o que a IA lembra
+  pinned      Boolean  @default(false) // fato fixo que a IA sempre carrega
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([category, createdAt])
+  @@index([company, createdAt])
+  @@index([refType, refId])
+}
+
 // ============================================================
 // LIFE AGENT — perfil de vida ativa do assinante
 // ============================================================

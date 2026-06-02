@@ -22,6 +22,7 @@ const { executeApprovalById, pickRecipientsForCampaign } = require('../approvals
 const { listRecentLogs } = require('../logs/ai-log.service');
 const instagram = require('../../services/instagram');
 const cc = require('../command-center/command-center.service');
+const memory = require('../memory/memory.service');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -49,6 +50,17 @@ router.post('/orchestrate', async (req, res) => {
       storeId: storeId || null,
       notes: notes || null,
       userId: userId || null,
+      createdById: req.userId || null,
+    });
+    // Memória: grava que esse objetivo foi rodado (não bloqueia a resposta).
+    memory.recordEvent({
+      category: 'ia',
+      title: `Orquestrador rodou: ${objective.trim().slice(0, 140)}`,
+      detail: notes ? `Observações: ${notes}` : null,
+      source: 'orchestrator',
+      refType: 'AIOrchestration',
+      refId: result && result.orchestrationId ? result.orchestrationId : (result && result.id) || null,
+      importance: 2,
       createdById: req.userId || null,
     });
     res.json(result);
@@ -120,6 +132,17 @@ router.post('/approvals/:id/decision', async (req, res) => {
       decision,
       note: note || null,
       approvedById: req.userId,
+    });
+    // Memória: a decisão do dono é registro permanente do "porquê".
+    memory.recordEvent({
+      category: 'decisao',
+      title: `Decisão (${decision}): ${updated && updated.title ? updated.title : req.params.id}`,
+      detail: note || null,
+      source: 'approval',
+      refType: 'AIApproval',
+      refId: req.params.id,
+      importance: 2,
+      createdById: req.userId || null,
     });
     res.json({ approval: updated });
   } catch (err) {
@@ -263,6 +286,104 @@ router.post('/command-center/cap', (req, res) => {
   } catch (err) {
     console.error('[cc/cap POST] erro:', err);
     res.status(500).json({ error: 'Erro ao salvar teto', detail: err.message });
+  }
+});
+
+// =====================================================================
+// MEMÓRIA DA EMPRESA — o cérebro persistente que a IA lê antes de agir.
+// Montado em /api/admin/ai/memory/*
+// =====================================================================
+
+// Linha do tempo (filtros: days, category, kind, source, limit)
+router.get('/memory/timeline', async (req, res) => {
+  try {
+    const items = await memory.getTimeline({
+      days: req.query.days != null ? parseInt(req.query.days, 10) : 30,
+      category: req.query.category || null,
+      kind: req.query.kind || null,
+      source: req.query.source || null,
+      limit: req.query.limit != null ? parseInt(req.query.limit, 10) : 100,
+    });
+    res.json({ items });
+  } catch (err) {
+    console.error('[memory/timeline] erro:', err);
+    res.status(500).json({ error: 'Erro ao ler memória', detail: err.message });
+  }
+});
+
+// Estatísticas (total, fatos, eventos, por categoria, desde quando)
+router.get('/memory/stats', async (_req, res) => {
+  try {
+    res.json(await memory.getStats());
+  } catch (err) {
+    console.error('[memory/stats] erro:', err);
+    res.status(500).json({ error: 'Erro ao calcular estatísticas', detail: err.message });
+  }
+});
+
+// O cérebro: o que a IA carrega (fatos fixos + eventos recentes)
+router.get('/memory/brain', async (req, res) => {
+  try {
+    res.json(await memory.getBrain({
+      maxEvents: req.query.maxEvents != null ? parseInt(req.query.maxEvents, 10) : 40,
+      eventDays: req.query.eventDays != null ? parseInt(req.query.eventDays, 10) : 14,
+    }));
+  } catch (err) {
+    console.error('[memory/brain] erro:', err);
+    res.status(500).json({ error: 'Erro ao montar cérebro', detail: err.message });
+  }
+});
+
+// Cadastrar um FATO da empresa (o que ela É) — fixado por padrão
+router.post('/memory/fact', async (req, res) => {
+  try {
+    const { category, title, detail, importance, pinned, company } = req.body || {};
+    if (!title || !String(title).trim()) return res.status(400).json({ error: 'title é obrigatório' });
+    const created = await memory.addFact({
+      category: category || 'empresa',
+      title,
+      detail: detail || null,
+      company: company || undefined,
+      importance: importance != null ? importance : 2,
+      pinned: pinned != null ? !!pinned : true,
+      createdById: req.userId || null,
+    });
+    res.json({ memory: created });
+  } catch (err) {
+    console.error('[memory/fact] erro:', err);
+    res.status(500).json({ error: 'Erro ao gravar fato', detail: err.message });
+  }
+});
+
+// Anotação manual do dono na linha do tempo
+router.post('/memory/note', async (req, res) => {
+  try {
+    const { category, title, detail, importance, company } = req.body || {};
+    if (!title || !String(title).trim()) return res.status(400).json({ error: 'title é obrigatório' });
+    const created = await memory.recordNote({
+      category: category || 'nota',
+      title,
+      detail: detail || null,
+      company: company || undefined,
+      importance: importance != null ? importance : 1,
+      createdById: req.userId || null,
+    });
+    res.json({ memory: created });
+  } catch (err) {
+    console.error('[memory/note] erro:', err);
+    res.status(500).json({ error: 'Erro ao gravar anotação', detail: err.message });
+  }
+});
+
+// Apagar um item de memória (fato ou anotação)
+router.delete('/memory/:id', async (req, res) => {
+  try {
+    const ok = await memory.deleteMemory(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Item não encontrado' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[memory/delete] erro:', err);
+    res.status(500).json({ error: 'Erro ao apagar', detail: err.message });
   }
 });
 
