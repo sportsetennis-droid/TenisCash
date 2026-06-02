@@ -964,14 +964,20 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   </div>
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <button type="button" class="tab active js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
+    <button type="button" class="tab active js-ai-sub" data-ai-sub="command">📊 Centro de Comando</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="history">Histórico</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="agents">Agentes</button>
   </div>
 
+  <!-- CENTRO DE COMANDO (governança: COO briefing, FinOps, scorecard, funil) -->
+  <div id="ai-panel-command">
+    <div id="cc-content" class="muted" style="font-size:13px">Carregando Centro de Comando...</div>
+  </div>
+
   <!-- RODAR ORQUESTRADOR -->
-  <div id="ai-panel-run">
+  <div id="ai-panel-run" style="display:none">
     <div style="display:grid;grid-template-columns:1fr;gap:10px;max-width:780px;margin-bottom:14px">
       <label class="muted" style="font-size:11px;letter-spacing:2px">OBJETIVO</label>
       <textarea id="ai-objective" rows="3" class="search-box" style="resize:vertical;font-family:inherit"
@@ -6799,10 +6805,11 @@ async function initAdminAICenter() {
       document.querySelectorAll('.js-ai-sub').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const sub = btn.dataset.aiSub;
-      ['run','approvals','history','agents'].forEach(s => {
+      ['command','run','approvals','history','agents'].forEach(s => {
         const el = document.getElementById('ai-panel-' + s);
         if (el) el.style.display = (s === sub) ? 'block' : 'none';
       });
+      if (sub === 'command') loadAICommandCenter();
       if (sub === 'approvals') loadAIApprovals();
       if (sub === 'history') loadAIHistory();
       if (sub === 'agents') loadAIAgents();
@@ -6818,8 +6825,9 @@ async function initAdminAICenter() {
   if (btnRefresh && !btnRefresh._wired) {
     btnRefresh._wired = true;
     btnRefresh.onclick = () => {
-      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'run';
-      if (activeSub === 'approvals') loadAIApprovals();
+      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'command';
+      if (activeSub === 'command') loadAICommandCenter();
+      else if (activeSub === 'approvals') loadAIApprovals();
       else if (activeSub === 'history') loadAIHistory();
       else if (activeSub === 'agents') loadAIAgents();
     };
@@ -6850,6 +6858,184 @@ async function initAdminAICenter() {
       }
     } catch (e) { /* ignora — campo segue como "Todas as lojas" */ }
   }
+
+  // Centro de Comando é a aba padrão — carrega ao abrir a Central IA.
+  loadAICommandCenter();
+}
+
+// ==================== CENTRO DE COMANDO ====================
+// Camada de governança: briefing do COO, FinOps (custo vs teto),
+// scorecard por agente, funil de aprovações. Tudo de dado real.
+
+function ccBar(pct, danger) {
+  const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  const color = danger ? '#ff5470' : (p >= 80 ? '#ffb020' : '#2ecc71');
+  return `<div style="background:#1b1f2a;border-radius:6px;height:10px;overflow:hidden;margin-top:6px">
+    <div style="width:${p}%;height:100%;background:${color}"></div></div>`;
+}
+
+function ccCard(inner, accent) {
+  return `<div style="background:#10131b;border:1px solid #232838;${accent ? 'border-left:3px solid ' + accent + ';' : ''}border-radius:10px;padding:14px 16px">${inner}</div>`;
+}
+
+async function loadAICommandCenter() {
+  const box = document.getElementById('cc-content');
+  if (!box) return;
+  box.innerHTML = '<span class="muted" style="font-size:13px">Carregando Centro de Comando...</span>';
+
+  const [briefing, cost, scorecard, approvals, activity] = await Promise.all([
+    api('/admin/ai/command-center/briefing'),
+    api('/admin/ai/command-center/cost?days=30'),
+    api('/admin/ai/command-center/scorecard?days=30'),
+    api('/admin/ai/command-center/approvals?days=30'),
+    api('/admin/ai/command-center/activity?days=30'),
+  ]);
+
+  if (briefing && briefing.error) {
+    box.innerHTML = `<div style="color:#ff5470">Erro ao carregar: ${escapeHtml(briefing.error)}</div>`;
+    return;
+  }
+
+  const statusColor = { ok: '#2ecc71', watch: '#ffb020', attention: '#ff5470' };
+  const statusLabel = { ok: 'No controle', watch: 'Atenção leve', attention: 'Requer ação' };
+  const sc = statusColor[briefing.status] || '#888';
+
+  // --- 1) BRIEFING DO COO ---
+  const alertsHtml = (briefing.alerts || []).length
+    ? briefing.alerts.map(a => {
+        const c = a.level === 'high' ? '#ff5470' : (a.level === 'medium' ? '#ffb020' : '#888');
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid #1b1f2a">
+          <span style="color:${c};font-size:16px;line-height:1">●</span>
+          <span style="font-size:13px;color:#dfe3ee">${escapeHtml(a.msg)}</span></div>`;
+      }).join('')
+    : '<div style="font-size:13px;color:#2ecc71;padding:6px 0">Sem alertas — operação no controle.</div>';
+
+  const briefingCard = ccCard(`
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span style="font-size:11px;letter-spacing:2px;color:#7a8194">BRIEFING DO DIA — VOZ DO COO</span>
+      <span style="font-size:11px;font-weight:600;color:${sc};border:1px solid ${sc};border-radius:20px;padding:3px 12px">${statusLabel[briefing.status] || briefing.status}</span>
+    </div>
+    <div style="font-size:14px;color:#eef1f8;margin-top:10px;line-height:1.5">${escapeHtml(briefing.summaryText || '')}</div>
+    <div style="margin-top:10px">${alertsHtml}</div>
+  `, sc);
+
+  // --- 2) FINOPS: custo vs teto (dia e mês) ---
+  const cap = cost.cap || { dailyBRL: 0, monthlyBRL: 0, source: 'env' };
+  const finCard = ccCard(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11px;letter-spacing:2px;color:#7a8194">CUSTO DE IA (FINOPS)</span>
+      <button type="button" class="btn" id="cc-cap-edit" style="font-size:11px;padding:4px 10px">Ajustar teto</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">
+      <div>
+        <div style="font-size:12px;color:#9aa1b2">Hoje</div>
+        <div style="font-size:20px;font-weight:700;color:#eef1f8">R$ ${(cost.todayBRL||0).toFixed(2)} <span style="font-size:12px;color:#7a8194">/ R$ ${(cap.dailyBRL||0).toFixed(2)}</span></div>
+        ${ccBar(cost.dayPct, cost.dayOverCap)}
+      </div>
+      <div>
+        <div style="font-size:12px;color:#9aa1b2">Mês até agora</div>
+        <div style="font-size:20px;font-weight:700;color:#eef1f8">R$ ${(cost.monthToDateBRL||0).toFixed(2)} <span style="font-size:12px;color:#7a8194">/ R$ ${(cap.monthlyBRL||0).toFixed(2)}</span></div>
+        ${ccBar(cost.monthPct, cost.monthOverCap)}
+      </div>
+    </div>
+    <div style="font-size:11px;color:#7a8194;margin-top:10px">Últimos ${cost.days} dias: R$ ${(cost.totalCostBRL||0).toFixed(2)} · ${(cost.totalTokens||0).toLocaleString('pt-BR')} tokens · ${cost.totalCalls||0} chamadas · teto via ${cap.source === 'file' ? 'painel' : 'variável de ambiente'}</div>
+    <div id="cc-cap-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #1b1f2a">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div><div style="font-size:11px;color:#9aa1b2;margin-bottom:4px">Teto diário (R$)</div>
+          <input id="cc-cap-daily" type="number" min="0" step="1" value="${cap.dailyBRL||0}" class="search-box" style="width:130px"></div>
+        <div><div style="font-size:11px;color:#9aa1b2;margin-bottom:4px">Teto mensal (R$)</div>
+          <input id="cc-cap-monthly" type="number" min="0" step="1" value="${cap.monthlyBRL||0}" class="search-box" style="width:130px"></div>
+        <button type="button" class="btn btn-primary" id="cc-cap-save" style="font-size:12px">Salvar teto</button>
+        <span id="cc-cap-status" class="muted" style="font-size:12px"></span>
+      </div>
+    </div>
+  `, cost.dayOverCap || cost.monthOverCap ? '#ff5470' : '#2ecc71');
+
+  // --- 3) FUNIL DE APROVAÇÕES ---
+  const apprRate = approvals.approvalRate;
+  const apprCard = ccCard(`
+    <span style="font-size:11px;letter-spacing:2px;color:#7a8194">FUNIL DE APROVAÇÕES (${approvals.days}d)</span>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:#ffb020">${approvals.pending||0}</div><div style="font-size:11px;color:#9aa1b2">Pendentes</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#2ecc71">${approvals.approved||0}</div><div style="font-size:11px;color:#9aa1b2">Aprovadas</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#ff5470">${approvals.rejected||0}</div><div style="font-size:11px;color:#9aa1b2">Recusadas</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#eef1f8">${apprRate==null?'—':apprRate+'%'}</div><div style="font-size:11px;color:#9aa1b2">Taxa aprov.</div></div>
+    </div>
+    <div style="font-size:11px;color:#7a8194;margin-top:10px">
+      Tempo médio de decisão: ${approvals.avgDecisionHours==null?'—':approvals.avgDecisionHours.toFixed(1)+'h'}${approvals.oldestPendingHours!=null?` · mais antiga pendente há ${approvals.oldestPendingHours.toFixed(1)}h`:''}
+    </div>
+  `, (approvals.pending||0) > 0 ? '#ffb020' : null);
+
+  // --- 4) ATIVIDADE / MEDIÇÃO ---
+  const orch = activity.orchestrations || { total: 0, byStatus: {} };
+  const tasks = activity.tasks || { byStatus: {} };
+  const sumStatus = (m) => Object.values(m||{}).reduce((a,b)=>a+b,0);
+  const actCard = ccCard(`
+    <span style="font-size:11px;letter-spacing:2px;color:#7a8194">ATIVIDADE (${activity.days}d)</span>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;text-align:center">
+      <div><div style="font-size:22px;font-weight:700;color:#eef1f8">${orch.total||0}</div><div style="font-size:11px;color:#9aa1b2">Orquestrações</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#eef1f8">${sumStatus(tasks.byStatus)}</div><div style="font-size:11px;color:#9aa1b2">Tarefas</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:#eef1f8">${(activity.logs&&activity.logs.total)||0}</div><div style="font-size:11px;color:#9aa1b2">Chamadas IA</div></div>
+      <div><div style="font-size:22px;font-weight:700;color:${briefing.idleDays>=7?'#ff5470':'#eef1f8'}">${briefing.idleDays==null?'—':briefing.idleDays+'d'}</div><div style="font-size:11px;color:#9aa1b2">Ocioso</div></div>
+    </div>
+  `);
+
+  // --- 5) SCORECARD POR AGENTE ---
+  const rows = (scorecard.agents || []).map(a => {
+    const errColor = a.errorRate >= 50 ? '#ff5470' : (a.errorRate >= 20 ? '#ffb020' : '#2ecc71');
+    return `<tr style="border-top:1px solid #1b1f2a">
+      <td style="padding:7px 8px;font-size:13px;color:#eef1f8">${escapeHtml(a.name)}</td>
+      <td style="padding:7px 8px;font-size:13px;text-align:right;color:#cfd5e4">${a.calls}</td>
+      <td style="padding:7px 8px;font-size:13px;text-align:right;color:#cfd5e4">R$ ${(a.costBRL||0).toFixed(2)}</td>
+      <td style="padding:7px 8px;font-size:13px;text-align:right;color:#cfd5e4">${(a.tokens||0).toLocaleString('pt-BR')}</td>
+      <td style="padding:7px 8px;font-size:13px;text-align:right;color:${errColor}">${a.errorRate}%</td>
+      <td style="padding:7px 8px;font-size:13px;text-align:right;color:#cfd5e4">${a.taskFailRate}%</td>
+    </tr>`;
+  }).join('');
+  const scoreCard = ccCard(`
+    <span style="font-size:11px;letter-spacing:2px;color:#7a8194">SCORECARD POR AGENTE (${scorecard.days}d)</span>
+    <div style="overflow-x:auto;margin-top:10px">
+      <table style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead><tr style="color:#7a8194;font-size:11px;letter-spacing:1px;text-align:right">
+          <th style="padding:6px 8px;text-align:left">AGENTE</th>
+          <th style="padding:6px 8px">CHAMADAS</th>
+          <th style="padding:6px 8px">CUSTO</th>
+          <th style="padding:6px 8px">TOKENS</th>
+          <th style="padding:6px 8px">ERRO%</th>
+          <th style="padding:6px 8px">FALHA TAREFA%</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" style="padding:10px;color:#7a8194;font-size:13px">Sem dados ainda.</td></tr>'}</tbody>
+      </table>
+    </div>
+  `);
+
+  box.innerHTML = `
+    <div style="display:grid;gap:14px">
+      ${briefingCard}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="cc-grid-2">${finCard}${apprCard}</div>
+      ${actCard}
+      ${scoreCard}
+    </div>
+    <div style="font-size:11px;color:#5b6172;margin-top:12px;text-align:right">Gerado ${new Date(briefing.generatedAt).toLocaleString('pt-BR')} · dados reais (AILog · Orquestrações · Aprovações)</div>
+  `;
+
+  // Wire: ajustar teto
+  const editBtn = document.getElementById('cc-cap-edit');
+  if (editBtn) editBtn.onclick = () => {
+    const f = document.getElementById('cc-cap-form');
+    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  };
+  const saveBtn = document.getElementById('cc-cap-save');
+  if (saveBtn) saveBtn.onclick = async () => {
+    const daily = parseFloat(document.getElementById('cc-cap-daily').value);
+    const monthly = parseFloat(document.getElementById('cc-cap-monthly').value);
+    const st = document.getElementById('cc-cap-status');
+    st.textContent = 'Salvando...';
+    const r = await api('/admin/ai/command-center/cap', 'POST', { dailyBRL: daily, monthlyBRL: monthly });
+    if (r && r.error) { st.textContent = 'Erro: ' + r.error; return; }
+    st.textContent = 'Teto salvo.';
+    loadAICommandCenter();
+  };
 }
 
 async function runAIOrchestration() {

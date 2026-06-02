@@ -21,6 +21,7 @@ const {
 const { executeApprovalById, pickRecipientsForCampaign } = require('../approvals/approval.executor');
 const { listRecentLogs } = require('../logs/ai-log.service');
 const instagram = require('../../services/instagram');
+const cc = require('../command-center/command-center.service');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -177,6 +178,91 @@ router.get('/logs', async (req, res) => {
   } catch (err) {
     console.error('[ai/logs] erro:', err);
     res.status(500).json({ error: 'Erro ao listar logs' });
+  }
+});
+
+// =====================================================================
+// CENTRO DE COMANDO — camada de governança (FinOps, medição, scorecard,
+// funil de aprovações, briefing do COO). Tudo read-only sobre dado real.
+// Montado em /api/admin/ai/command-center/*
+// =====================================================================
+
+// Briefing diário (a voz do COO): resumo + alertas acionáveis
+router.get('/command-center/briefing', async (_req, res) => {
+  try {
+    res.json(await cc.getDailyBriefing());
+  } catch (err) {
+    console.error('[cc/briefing] erro:', err);
+    res.status(500).json({ error: 'Erro ao gerar briefing', detail: err.message });
+  }
+});
+
+// Custo / FinOps: total, por agente, mês/dia vs teto
+router.get('/command-center/cost', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '30', 10);
+    res.json(await cc.getCost({ days }));
+  } catch (err) {
+    console.error('[cc/cost] erro:', err);
+    res.status(500).json({ error: 'Erro ao calcular custo', detail: err.message });
+  }
+});
+
+// Atividade / Medição: o que a IA realmente fez
+router.get('/command-center/activity', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '30', 10);
+    res.json(await cc.getActivity({ days }));
+  } catch (err) {
+    console.error('[cc/activity] erro:', err);
+    res.status(500).json({ error: 'Erro ao medir atividade', detail: err.message });
+  }
+});
+
+// Scorecard por agente: confiabilidade + custo
+router.get('/command-center/scorecard', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '30', 10);
+    res.json(await cc.getScorecard({ days }));
+  } catch (err) {
+    console.error('[cc/scorecard] erro:', err);
+    res.status(500).json({ error: 'Erro ao montar scorecard', detail: err.message });
+  }
+});
+
+// Funil de aprovações: taxa de aprovação + tempo de decisão
+router.get('/command-center/approvals', async (req, res) => {
+  try {
+    const days = parseInt(req.query.days || '30', 10);
+    res.json(await cc.getApprovals({ days }));
+  } catch (err) {
+    console.error('[cc/approvals] erro:', err);
+    res.status(500).json({ error: 'Erro ao montar funil de aprovações', detail: err.message });
+  }
+});
+
+// Teto de custo (cap) — leitura
+router.get('/command-center/cap', (_req, res) => {
+  try {
+    res.json(cc.getCostCap());
+  } catch (err) {
+    console.error('[cc/cap GET] erro:', err);
+    res.status(500).json({ error: 'Erro ao ler teto', detail: err.message });
+  }
+});
+
+// Teto de custo (cap) — atualização
+router.post('/command-center/cap', (req, res) => {
+  try {
+    const { monthlyBRL, dailyBRL } = req.body || {};
+    const next = cc.setCostCap({
+      monthlyBRL: monthlyBRL != null ? Number(monthlyBRL) : undefined,
+      dailyBRL: dailyBRL != null ? Number(dailyBRL) : undefined,
+    });
+    res.json(next);
+  } catch (err) {
+    console.error('[cc/cap POST] erro:', err);
+    res.status(500).json({ error: 'Erro ao salvar teto', detail: err.message });
   }
 });
 
