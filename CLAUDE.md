@@ -426,13 +426,29 @@ Ao clicar numa miniatura → recarrega info do card principal pra mostrar dados 
 
 **Regra de ouro:** ao bipar, o sistema **sabe automaticamente** (1) qual produto é (via ean), (2) qual tamanho é (via NFe description), (3) qual loja é (via bipe.storeId). Vendedor não precisa preencher nada.
 
+### ⚠️ REGRA INQUEBRÁVEL — Modelo de Estoque: COMPRADO (total) vs LOCALIZAÇÃO (bipe)
+
+**Decisão do dono (2026-06-02), substitui o modelo "espelho" anterior:**
+
+- **`ProductSize.stock` = COMPRADO.** É o TOTAL que a empresa tem daquele tamanho, vindo da **NFe de entrada** (compra de fornecedor). É um número FIXO. Só muda quando entra/sai NFe (compra ou venda). **NUNCA** é recalculado a partir do StoreStock.
+- **`StoreStock` = LOCALIZAÇÃO.** Diz **em que loja** está cada unidade (via bipe/contagem). É PARCIAL — vai enchendo conforme as lojas bipam. `gap = comprado − Σ StoreStock` = "ainda não localizado / falta bipar".
+- **Os dois DIVERGEM de propósito.** `ProductSize.stock` (comprado) ≠ `Σ StoreStock` (localizado) é o ESTADO NORMAL durante a contagem. Isso NÃO é bug, NÃO é divergência pra "consertar".
+
+**PROIBIDO (corrompe o total comprado — Claude já fez isso e o dono barrou):**
+- ❌ `recalcSizeStock()` / `ProductSize.stock = Σ StoreStock` em QUALQUER fluxo de bipe/ajuste/contagem.
+- ❌ Tratar `ProductSize.stock` como "espelho" do StoreStock.
+- ❌ Deployar `src/services/stockSync.js` ou os edits que adicionam recalc no bipe/apply-to-stock (ficam fora de propósito).
+
+O bipe e o ajuste por loja mexem **só no StoreStock**. O comprado (`ProductSize.stock`) fica intocado.
+
 ### Bipe em tempo real (real-time)
 
-**Cada bipe = +1 unidade NA HORA no StoreStock.** Sem fluxo de "aplicar depois".
+**Cada bipe = +1 unidade NA HORA no StoreStock (LOCALIZAÇÃO).** NÃO soma no total comprado. Sem fluxo de "aplicar depois".
 
 - `POST /api/stocktake/bipe` faz `prisma.storeStock.upsert({ ..., increment: 1 })` imediatamente
+- **NÃO chama `recalcSizeStock`** — o total comprado (`ProductSize.stock`) NÃO pode ser mexido pelo bipe
 - Marca `StocktakeBipe.applied = true` na criação
-- Card do produto mostra o estoque atualizado em segundos
+- Card do produto mostra a localização atualizada em segundos
 
 **Regra de uso (dono confirmou):** vendedor bipa **UMA vez** cada unidade física. Se aparecer mais bipes da mesma SKU que a quantidade comprada na NFe → erro de bipagem detectável visualmente (card mostra comprado X vs bipado Y).
 

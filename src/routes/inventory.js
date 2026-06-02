@@ -232,17 +232,16 @@ router.put('/lifecycle/:productId', async (req, res) => {
   }
 });
 
-// Ajuste manual de estoque.
-// Aceita 2 modos:
-//   1) Clássico: { productSizeId, delta, reason } — soma delta no ProductSize.stock
-//   2) Contagem física: { productId, productSizeId|size, storeId, newStock, previousStock, reason }
-//      — atualiza StoreStock daquela loja (cria se não existir) e recalcula
-//      o stock agregado em ProductSize somando todas as lojas.
+// Ajuste manual de estoque (contagem física POR LOJA).
+// MODELO (dono 2026-06-02): ProductSize.stock = COMPRADO (total fixo, vem da NFe de entrada).
+//   StoreStock = LOCALIZAÇÃO (quanto daquele item está em cada loja, via bipe/contagem).
+//   O ajuste atualiza SÓ o StoreStock da loja. NUNCA recalcula/sobrescreve ProductSize.stock,
+//   senão o total comprado seria corrompido (vira soma dos bipes). Por isso NÃO há recalc aqui.
 router.post('/adjust', async (req, res) => {
   try {
     const { productSizeId, delta, reason, storeId, newStock, productId, size } = req.body || {};
 
-    // Modo Contagem Física (com storeId)
+    // Modo Contagem Física (com storeId) — mexe SÓ na localização (StoreStock)
     if (storeId != null) {
       if (newStock == null) return res.status(400).json({ error: 'newStock é obrigatório no modo contagem' });
       let psId = productSizeId;
@@ -255,39 +254,35 @@ router.post('/adjust', async (req, res) => {
       if (!psId) return res.status(400).json({ error: 'productSizeId ou productId+size é obrigatório' });
 
       const newQty = Math.max(0, parseInt(newStock, 10) || 0);
-      // Upsert StoreStock
+      // Atualiza SÓ o StoreStock desta loja (localização). NÃO toca no total comprado.
       const existing = await prisma.storeStock.findFirst({ where: { productSizeId: psId, storeId } });
-      let storeStock;
       if (existing) {
-        storeStock = await prisma.storeStock.update({ where: { id: existing.id }, data: { stock: newQty } });
+        await prisma.storeStock.update({ where: { id: existing.id }, data: { stock: newQty } });
       } else {
-        storeStock = await prisma.storeStock.create({ data: { productSizeId: psId, storeId, stock: newQty } });
+        await prisma.storeStock.create({ data: { productSizeId: psId, storeId, stock: newQty } });
       }
-      // Recalcula stock agregado em ProductSize.stock somando todas as lojas
+      // ProductSize.stock (= COMPRADO) permanece intocado. Só devolvemos info de localização.
       const allStocks = await prisma.storeStock.findMany({ where: { productSizeId: psId } });
-      const totalAgg = allStocks.reduce((s, x) => s + (x.stock || 0), 0);
-      await prisma.productSize.update({ where: { id: psId }, data: { stock: totalAgg } });
+      const totalLocalizado = allStocks.reduce((s, x) => s + (x.stock || 0), 0);
+      const comprado = (await prisma.productSize.findUnique({ where: { id: psId }, select: { stock: true } }))?.stock ?? null;
 
       return res.json({
         ok: true,
         productSizeId: psId,
         storeId,
         newStockInStore: newQty,
-        totalStockAgg: totalAgg,
+        totalLocalizado,        // soma das lojas (quanto já foi localizado/contado)
+        estoqueComprado: comprado, // total FIXO — não muda com ajuste/bipe
         reason: reason || null,
       });
     }
 
-    // Modo Clássico (sem storeId) — só ajuste no ProductSize agregado
-    if (!productSizeId || delta == null) return res.status(400).json({ error: 'productSizeId e delta são obrigatórios' });
-    const sizeRec = await prisma.productSize.findUnique({ where: { id: productSizeId } });
-    if (!sizeRec) return res.status(404).json({ error: 'Tamanho não encontrado' });
-    const newStockClassic = Math.max(0, (sizeRec.stock || 0) + parseInt(delta, 10));
-    const updated = await prisma.productSize.update({
-      where: { id: productSizeId },
-      data: { stock: newStockClassic },
+    // Modo sem loja: bloqueado. Ajuste é SEMPRE por loja (localização).
+    // Escrever direto no ProductSize.stock corromperia o total comprado.
+    return res.status(400).json({
+      error: 'Estoque é por loja. Envie storeId + newStock (contagem física).',
+      hint: 'POST /adjust { storeId, newStock, productSizeId (ou productId+size) }',
     });
-    res.json({ size: updated, previousStock: sizeRec.stock, delta: parseInt(delta, 10), reason: reason || null });
   } catch (err) {
     console.error('[inventory/adjust]', err);
     res.status(500).json({ error: 'Erro ao ajustar estoque', detail: err.message });
