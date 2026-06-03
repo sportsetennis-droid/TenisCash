@@ -69,26 +69,32 @@ router.get('/products', async (req, res) => {
         ],
       });
     }
-    const where = {
-      active: true,
-      ...(brand ? { brand: { equals: String(brand), mode: 'insensitive' } } : {}),
-      ...(category ? { category: { equals: String(category), mode: 'insensitive' } } : {}),
-      ...(subcategory ? { subcategory: { equals: String(subcategory), mode: 'insensitive' } } : {}),
-      // Busca livre: nome, SKU, marca, categoria, subcategoria + modalidade/especialidade (JSON)
-      ...(search ? {
-        OR: [
-          { name: { contains: String(search), mode: 'insensitive' } },
-          { sku: { contains: String(search), mode: 'insensitive' } },
-          { brand: { contains: String(search), mode: 'insensitive' } },
-          { category: { contains: String(search), mode: 'insensitive' } },
-          { subcategory: { contains: String(search), mode: 'insensitive' } },
-          { aiContext: { path: ['classification', 'modality'], string_contains: String(search) } },
-          { aiContext: { path: ['classification', 'tier'], string_contains: String(search) } },
-          { aiContext: { path: ['supplierRef'], string_contains: String(search) } },
-        ],
-      } : {}),
-      ...(jsonFilters.length ? { AND: jsonFilters } : {}),
-    };
+    // GARANTIA: mostra produto ATIVO **ou** com ESTOQUE (>0) — mercadoria comprada nunca
+    // some por estar "inativa". Insumo (0 estoque + inativo) fica de fora.
+    const VISIBLE = { OR: [{ active: true }, { sizes: { some: { stock: { gt: 0 } } } }] };
+    const andConds = [VISIBLE];
+    if (brand) andConds.push({ brand: { equals: String(brand), mode: 'insensitive' } });
+    if (category) andConds.push({ category: { equals: String(category), mode: 'insensitive' } });
+    if (subcategory) andConds.push({ subcategory: { equals: String(subcategory), mode: 'insensitive' } });
+    // BUSCA INTELIGENTE multi-palavra: cada palavra (>=2 chars) precisa casar em algum campo
+    // (nome/SKU/marca/categoria/subcategoria/modalidade/especialidade/ref). "bola reebok"
+    // acha quem tem bola E reebok, em qualquer ordem/campo — não a frase exata.
+    if (search) {
+      const fields = t => ([
+        { name: { contains: t, mode: 'insensitive' } },
+        { sku: { contains: t, mode: 'insensitive' } },
+        { brand: { contains: t, mode: 'insensitive' } },
+        { category: { contains: t, mode: 'insensitive' } },
+        { subcategory: { contains: t, mode: 'insensitive' } },
+        { aiContext: { path: ['classification', 'modality'], string_contains: t } },
+        { aiContext: { path: ['classification', 'tier'], string_contains: t } },
+        { aiContext: { path: ['supplierRef'], string_contains: t } },
+      ]);
+      const termos = String(search).split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2);
+      for (const t of (termos.length ? termos : [String(search)])) andConds.push({ OR: fields(t) });
+    }
+    if (jsonFilters.length) andConds.push(...jsonFilters);
+    const where = { AND: andConds };
     const products = await prisma.product.findMany({
       where,
       include: {
