@@ -50,6 +50,11 @@ const SELECT = {
   sizes: { select: { stock: true } }, // só a quantidade — nunca custo
 };
 
+// GARANTIA — produto aparece se está ATIVO **OU** tem estoque (>0). Assim qualquer
+// mercadoria comprada NUNCA some da busca por causa do status "inativo".
+// Insumo (estoque 0 + inativo) continua de fora. Vale pros 2 modos (lista e busca).
+const VISIBLE = { OR: [{ active: true }, { sizes: { some: { stock: { gt: 0 } } } }] };
+
 // GET /api/price-check?q=termo&limit=60&offset=0
 // - q vazio  -> lista todo o catálogo ativo (paginado)
 // - q >= 2   -> busca por nome, marca, referência (Product.sku) ou código de barras
@@ -63,7 +68,7 @@ router.get('/', async (req, res) => {
     // MODO 1 — SEM termo: lista TODO o banco (paginado)
     // ---------------------------------------------------------------
     if (!q || q.length < 2) {
-      const where = { active: true };
+      const where = VISIBLE; // garantia: ativo OU com estoque
       const [total, products] = await Promise.all([
         prisma.product.count({ where }),
         prisma.product.findMany({
@@ -120,16 +125,23 @@ router.get('/', async (req, res) => {
       console.error('[price-check] busca por fornecedor falhou:', e.message);
     }
 
-    const orConds = [
-      { name: { contains: q, mode: 'insensitive' } },
-      { brand: { contains: q, mode: 'insensitive' } },
-      { sku: { contains: q, mode: 'insensitive' } },
-    ];
-    if (supplierProductIds.length) orConds.push({ id: { in: supplierProductIds } });
+    // BUSCA INTELIGENTE: cada palavra (>=2 chars) precisa casar em nome/marca/ref.
+    // "bola reebok" => produtos que tenham bola E reebok (qualquer ordem, qualquer campo),
+    // não a frase exata. Palavras ANDadas; cada palavra ORada entre nome/marca/ref.
+    const termos = q.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2);
+    const termAnd = (termos.length ? termos : [q]).map(t => ({
+      OR: [
+        { name: { contains: t, mode: 'insensitive' } },
+        { brand: { contains: t, mode: 'insensitive' } },
+        { sku: { contains: t, mode: 'insensitive' } },
+      ],
+    }));
+    // produto casa se: (TODAS as palavras batem) OU (veio de fornecedor que casa com a frase)
+    const matchOr = [{ AND: termAnd }];
+    if (supplierProductIds.length) matchOr.push({ id: { in: supplierProductIds } });
 
     const where = {
-      active: true,
-      OR: orConds,
+      AND: [VISIBLE, { OR: matchOr }], // garantia + busca inteligente
     };
     const [total, products] = await Promise.all([
       prisma.product.count({ where }),
