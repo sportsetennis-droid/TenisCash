@@ -75,23 +75,27 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     if (storeId) sizesSome.storeStocks = { some: { stock: { gt: 0 }, storeId } };
     else if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
 
-    const where = {
-      active: true,
-      ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
-      ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
-      ...(aiFilters.length ? { AND: aiFilters } : {}),
-      // Tamanho e/ou estoque em loja
-      ...(Object.keys(sizesSome).length ? { sizes: { some: sizesSome } } : {}),
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { sku: { contains: search, mode: 'insensitive' } },
-              { brand: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    };
+    // GARANTIA (só staff logado: vendedor/admin) — mostra produto ATIVO **ou** com ESTOQUE,
+    // pra dar pra VENDER qualquer produto comprado, mesmo sem bipe. Cliente anônimo: só ativo.
+    const isStaff = ['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole);
+    const andConds = [
+      isStaff ? { OR: [{ active: true }, { sizes: { some: { stock: { gt: 0 } } } }] } : { active: true },
+    ];
+    if (brand) andConds.push({ brand: { equals: brand, mode: 'insensitive' } });
+    if (category) andConds.push({ category: { equals: category, mode: 'insensitive' } });
+    if (aiFilters.length) andConds.push(...aiFilters);
+    if (Object.keys(sizesSome).length) andConds.push({ sizes: { some: sizesSome } });
+    // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
+    if (search) {
+      const fields = t => ([
+        { name: { contains: t, mode: 'insensitive' } },
+        { sku: { contains: t, mode: 'insensitive' } },
+        { brand: { contains: t, mode: 'insensitive' } },
+      ]);
+      const termos = search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
+      for (const t of (termos.length ? termos : [search])) andConds.push({ OR: fields(t) });
+    }
+    const where = { AND: andConds };
 
     const [total, rows] = await Promise.all([
       prisma.product.count({ where }),
