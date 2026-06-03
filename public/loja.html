@@ -483,7 +483,7 @@
   <!-- CONSULTA DE PRECO -->
   <div class="page" id="page-precos">
     <h2 class="page-title">Consulta de Preço</h2>
-    <p class="page-subtitle">Busque qualquer produto da base e veja o preço. Só preço — sem estoque.</p>
+    <p class="page-subtitle">Busque qualquer produto da base e veja preço e estoque. Sem custo (custo é só no admin).</p>
 
     <div class="card" style="margin-bottom:12px;position:sticky;top:6px;z-index:5;">
       <input type="text" id="precoSearch" placeholder="Nome, marca, referência ou bipe o código..."
@@ -1203,10 +1203,14 @@ function precoItemHtml(p) {
   const img = p.imageUrl
     ? '<img src="' + escPreco(p.imageUrl) + '" style="width:54px;height:62px;object-fit:cover;border-radius:8px;background:#eee;flex-shrink:0;" onerror="this.outerHTML=\'<div style=&quot;width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;&quot;>📦</div>\'">'
     : '<div style="width:54px;height:62px;border-radius:8px;background:#eee;flex-shrink:0;display:flex;align-items:center;justify-content:center;">📦</div>';
+  const st = p.stock || 0;
+  const stockHtml = '<div style="font-size:12px;font-weight:700;margin-top:3px;color:' + (st > 0 ? '#1d8348' : '#c00') + '">📦 ' + (st > 0 ? st + ' em estoque' : 'sem estoque') + '</div>';
   return '<div class="card" style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:12px;">' +
     img +
     '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;line-height:1.2;color:#1d1d1f;">' + escPreco(p.name) + '</div>' +
-    '<div style="font-size:11px;color:#888;margin-top:3px;">' + (meta.join(' · ') || '&nbsp;') + '</div></div>' +
+    '<div style="font-size:11px;color:#888;margin-top:3px;">' + (meta.join(' · ') || '&nbsp;') + '</div>' +
+    stockHtml +
+    '</div>' +
     '<div style="text-align:right;flex-shrink:0;">' + priceHtml + '</div>' +
   '</div>';
 }

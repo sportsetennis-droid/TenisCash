@@ -54,7 +54,7 @@
 <body>
   <div class="wrap">
     <h1>🏷️ Consulta de Preço</h1>
-    <div class="sub">Base completa Sports &amp; Tennis · só preço, sem estoque</div>
+    <div class="sub">Base completa Sports &amp; Tennis · preço e estoque (sem custo)</div>
 
     <div class="search-bar">
       <input type="text" id="q" placeholder="Nome, marca, referência ou bipe o código..." autocomplete="off">
@@ -122,10 +122,14 @@
       const img = p.imageUrl
         ? '<img src="' + esc(p.imageUrl) + '" onerror="this.outerHTML=\'<div class=ph>📦</div>\'">'
         : '<div class="ph">📦</div>';
+      const st = p.stock || 0;
+      const stockHtml = '<div style="font-size:12px;font-weight:700;margin-top:3px;color:' + (st > 0 ? '#1d8348' : '#c00') + '">📦 ' + (st > 0 ? st + ' em estoque' : 'sem estoque') + '</div>';
       return '<div class="item">' +
         img +
         '<div class="info"><div class="name">' + esc(p.name) + '</div>' +
-        '<div class="meta">' + (metaParts.join(' · ') || '&nbsp;') + '</div></div>' +
+        '<div class="meta">' + (metaParts.join(' · ') || '&nbsp;') + '</div>' +
+        stockHtml +
+        '</div>' +
         '<div class="price-box">' + priceHtml + '</div>' +
       '</div>';
     }).join('');

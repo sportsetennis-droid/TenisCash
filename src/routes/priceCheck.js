@@ -1,9 +1,10 @@
 // =====================================================================
 // /api/price-check — Consulta de Preço GERAL (sem estoque, sem loja)
 // =====================================================================
-// Tela: card "Preços" dentro de public/loja.html
-// Objetivo: vendedor/gerente busca qualquer produto da base e vê o PREÇO.
-// NÃO mostra estoque. NÃO mostra loja. NÃO mostra dados fiscais.
+// Tela: card "Preços" dentro de public/loja.html (app do VENDEDOR) + consulta-precos.html
+// Objetivo: vendedor busca qualquer produto da base e vê PREÇO + ESTOQUE COMPRADO.
+// Mostra ESTOQUE (quantidade comprada = soma de ProductSize.stock).
+// NUNCA mostra CUSTO (o que pagamos) nem dados fiscais — custo é SÓ no admin (regra do dono).
 // Read-only: nenhum endpoint escreve no banco.
 //
 // Dois modos:
@@ -26,7 +27,7 @@ function ctxOf(p) {
   }
 }
 
-// Monta o objeto de saída — SOMENTE campos de exibição + preço. Zero estoque.
+// Monta o objeto de saída — campos de exibição + preço + ESTOQUE comprado. NUNCA custo/fiscal.
 function toResult(p) {
   const ctx = ctxOf(p);
   return {
@@ -38,12 +39,15 @@ function toResult(p) {
     price: p.price ?? null,
     promoPrice: p.promoPrice ?? null,
     imageUrl: p.imageUrl || null,
+    // estoque comprado = soma dos tamanhos (ProductSize.stock). Quantidade, NÃO custo.
+    stock: (p.sizes || []).reduce((a, s) => a + (s.stock || 0), 0),
   };
 }
 
 const SELECT = {
   id: true, name: true, brand: true, sku: true,
   price: true, promoPrice: true, imageUrl: true, aiContext: true,
+  sizes: { select: { stock: true } }, // só a quantidade — nunca custo
 };
 
 // GET /api/price-check?q=termo&limit=60&offset=0
