@@ -1124,7 +1124,7 @@ async function emitNfceFromSale() {
         <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ NFCe AUTORIZADA</div>
         <div style="font-family:monospace;font-size:11px;word-break:break-all;">${r.accessKey}</div>
         <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${r.protocol}</div>
-        <button onclick="window.open('/api/admin/fiscal/documents/${r.documentId}/print','_blank','width=420,height=700')" style="margin-top:8px;padding:8px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir DANFE</button>
+        <button onclick="window.open('/api/admin/fiscal/documents/${r.documentId}/print?token='+encodeURIComponent(token),'_blank','width=420,height=700')" style="margin-top:8px;padding:8px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">🖨️ Imprimir DANFE</button>
       </div>`;
       btn.style.display = 'none';
     } else {
@@ -1712,10 +1712,10 @@ async function finalizeSale() {
         <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ ${fiscal.accessKey ? fiscal.accessKey.slice(-12) : ''}</div>
         <div style="font-family:monospace;font-size:11px;word-break:break-all;">${fiscal.accessKey || ''}</div>
         <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${fiscal.protocol || '-'}</div>
-        <button onclick="window.open('/api/admin/fiscal/documents/${fiscal.documentId}/print','_blank','width=420,height=700')" style="margin-top:8px;width:100%;padding:10px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:800;cursor:pointer;font-size:14px;">🖨️ IMPRIMIR DANFE AGORA</button>
+        <button onclick="window.open('/api/admin/fiscal/documents/${fiscal.documentId}/print?token='+encodeURIComponent(token),'_blank','width=420,height=700')" style="margin-top:8px;width:100%;padding:10px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:800;cursor:pointer;font-size:14px;">🖨️ IMPRIMIR DANFE AGORA</button>
       </div>`;
       // Auto-abre janela de impressão (operador só confirma)
-      setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print', '_blank', 'width=420,height=700'), 500);
+      setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 500);
       // Limpa carrinho automaticamente — venda completa
       cart = []; customer = null;
       document.getElementById('sellCustomerPhone').value = '';

@@ -37,7 +37,7 @@ function pfxSenhaFor(cnpj) {
 // ============================================================
 router.post('/emit-nfce-from-sale', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const { saleId, paymentMethod, acquirerKey, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
@@ -194,7 +194,7 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 // ============================================================
 router.post('/emit-nfe55', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const b = req.body || {};
@@ -291,7 +291,7 @@ router.post('/emit-nfe55', async (req, res) => {
 // ============================================================
 router.post('/finalize-nfe-draft/:id', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const doc = await prisma.fiscalDocument.findUnique({
@@ -417,7 +417,7 @@ async function getSpedPdf() {
 
 router.get('/documents/:id/danfe', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const doc = await prisma.fiscalDocument.findUnique({
@@ -454,10 +454,11 @@ router.get('/documents/:id/danfe', async (req, res) => {
 // Acesso via token query param (impressora não consegue mandar header).
 router.get('/documents/:id/print', async (req, res) => {
   try {
-    if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
     const docId = req.params.id;
+    const printToken = req.query.token || (req.headers.authorization || '').replace('Bearer ', '');
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <title>Imprimindo DANFE...</title>
@@ -477,10 +478,10 @@ router.get('/documents/:id/print', async (req, res) => {
 <script>
   (async () => {
     const docId = ${JSON.stringify(docId)};
-    const token = localStorage.getItem('tc_admin_token') || localStorage.getItem('jwt') || '';
+    const token = ${JSON.stringify(printToken)} || localStorage.getItem('loja_token') || localStorage.getItem('tc_admin_token') || localStorage.getItem('jwt') || '';
     try {
-      const r = await fetch('/api/admin/fiscal/documents/' + docId + '/danfe', {
-        headers: { Authorization: 'Bearer ' + token }
+      const r = await fetch('/api/admin/fiscal/documents/' + docId + '/danfe?token=' + encodeURIComponent(token), {
+        headers: token ? { Authorization: 'Bearer ' + token } : {}
       });
       if (!r.ok) {
         const e = await r.json().catch(() => ({}));
