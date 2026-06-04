@@ -23,7 +23,7 @@ const router = express.Router();
 // imageUrl (skipDescription+skipNuvemshop) — não toca em categoria.
 // ---------------------------------------------------------------------
 const PULL2026_GUARD = 'px2026_9f3a7c1e8b5d4a26q';
-router.post('/_pull2026', async (req, res) => {
+async function pull2026Handler(req, res) {
   if (req.query.g !== PULL2026_GUARD) return res.status(404).json({ error: 'not found' });
   try {
     if (!serperImg.isConfigured() || !visionConfigured()) {
@@ -52,7 +52,7 @@ router.post('/_pull2026', async (req, res) => {
        WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true AND pr."imageUrl" IS NULL`))[0].n;
     res.json({ ready: true, processed: rows.length, withPhoto, remaining, results });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
 
 router.use(authMiddleware);
 router.use(adminMiddleware);
@@ -288,3 +288,4 @@ router.post('/fix-missing-extras', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.pull2026Handler = pull2026Handler;
