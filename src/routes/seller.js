@@ -565,6 +565,29 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         include: { items: true },
       });
 
+      // BAIXA DE ESTOQUE: deduz StoreStock da loja ativa por tamanho vendido.
+      // Sem isso o estoque só sobe (bipe) e nunca desce → nunca bate com a prateleira.
+      if (activeStoreId) {
+        for (const it of saleItemsData) {
+          if (!it.size) continue; // sem tamanho não dá pra localizar a linha de estoque
+          const prod = productMap.get(it.productId);
+          const ps = prod?.sizes.find((s) => s.size === it.size);
+          if (!ps) continue;
+          const current = await tx.storeStock.findUnique({
+            where: { storeId_productSizeId: { storeId: activeStoreId, productSizeId: ps.id } },
+          });
+          if (!current) continue; // não havia estoque dessa loja → nada a baixar
+          const newStock = Math.max(0, current.stock - it.quantity);
+          await tx.storeStock.update({ where: { id: current.id }, data: { stock: newStock } });
+          // Mantém o agregado ProductSize.stock = soma das lojas
+          const agg = await tx.storeStock.aggregate({
+            where: { productSizeId: ps.id },
+            _sum: { stock: true },
+          });
+          await tx.productSize.update({ where: { id: ps.id }, data: { stock: agg._sum.stock || 0 } });
+        }
+      }
+
       // Atualiza saldo do cliente (deduz tcUsed, soma tcEarned)
       if (customer) {
         await tx.user.update({
@@ -631,19 +654,23 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         include: { fiscalIssuer: true },
       }) : null;
 
-      if (store?.fiscalIssuer?.csc && !req.body.skipFiscal) {
+      const useAgentAuto = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
+      if (store?.fiscalIssuer?.csc && !req.body.skipFiscal && useAgentAuto) {
         const issuer = store.fiscalIssuer;
         const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
         const tPag = tPagMap[paymentMethod] || '99';
         // Pra cartão sem cAut, pula a emissão automática (operador digita depois)
         const isCard = tPag === '03' || tPag === '04';
         if (!isCard || req.body.cardAuthCode) {
+          // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
+          const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
+          const nNF = Math.max(issuer.nfceNextNumber || 1, (maxDoc._max.number || 0) + 1);
           const fiscalDoc = await prisma.fiscalDocument.create({
             data: {
               issuerId: issuer.id,
               docType: 'NFCE',
               serie: issuer.nfceSerie || 1,
-              number: issuer.nfceNextNumber,
+              number: nNF,
               status: 'processing',
               totalValue: totalAmount,
               saleId: result.sale.id,
@@ -657,7 +684,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             },
           });
 
-          // Pega produtos completos pra ter NCM/CFOP
+          // Pega produtos completos pra ter NCM
           const fullProducts = await prisma.product.findMany({
             where: { id: { in: saleItemsData.map(i => i.productId) } },
           });
@@ -667,52 +694,44 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             return {
               sku: p.sku || si.productId,
               name: si.productName,
-              ncm: p.ncm || '64041100',
-              cfop: p.cfop || '5102',
+              ncm: (p.ncm && /^\d{8}$/.test(p.ncm)) ? p.ncm : '64041100',
+              cfop: '5102', // NFC-e ao consumidor é venda interna — força 5102 (cadastro pode ter CFOP de compra/interestadual)
               unidade: p.unidade || 'UN',
               qty: si.quantity,
               unitPrice: si.unitPrice,
             };
           });
 
-          // Resolve PFX (hardcode pra Meta Esportes — todos os 6 CNPJs filiais
-          // usam o mesmo cert raiz se for emitido pra empresa)
-          const pfxPath = 'C:\\Chianca\\NFe_Emissao001\\Certificado2026.pfx';
-          const pfxSenha = '123456';
-
-          // Dynamic import do service ESM
-          const { emitNFCe } = await import('../services/fiscalSefazDirect.mjs');
-          const r = await emitNFCe({
-            issuer, pfxPath, pfxSenha,
+          // Emite pelo Fiscal Agent da loja (o PFX fica NA loja; o central no Railway não tem o certificado)
+          const agentClient = require('../services/fiscalAgentClient');
+          const r = await agentClient.emitNFCe(store, {
+            issuer,
             items: fiscalItems,
             payment: {
               tPag, valor: totalAmount,
               acquirerKey: req.body.acquirerKey,
               tBand: req.body.cardBrand,
               cAut: req.body.cardAuthCode,
-              tpIntegra: req.body.tpIntegra || (isCard ? 2 : null),
+              tpIntegra: req.body.tpIntegra || 2,
             },
-            nNF: issuer.nfceNextNumber,
-          });
-
-          // Atualiza doc
-          await prisma.fiscalDocument.update({
-            where: { id: fiscalDoc.id },
-            data: {
-              status: r.ok ? 'authorized' : 'rejected',
-              accessKey: r.accessKey,
-              protocol: r.protocol,
-              rejectReason: r.ok ? null : (r.motivo || 'Erro desconhecido'),
-              xmlContent: r.xmlSigned,
-              response: { status: r.status, motivo: r.motivo, raw: r.rawResponse?.slice(0, 4000) },
-            },
+            nNF,
           });
 
           if (r.ok) {
-            await prisma.fiscalIssuer.update({
-              where: { id: issuer.id },
-              data: { nfceNextNumber: issuer.nfceNextNumber + 1 },
+            await prisma.fiscalDocument.update({
+              where: { id: fiscalDoc.id },
+              data: { status: 'authorized', accessKey: r.accessKey, protocol: r.protocol, xmlContent: r.xmlSigned, response: { status: r.status, motivo: r.motivo } },
             });
+            await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfceNextNumber: nNF + 1 } });
+          } else if (r.accessKey) {
+            // Rejeitada PELA SEFAZ (tem chave) — mantém pra auditoria
+            await prisma.fiscalDocument.update({
+              where: { id: fiscalDoc.id },
+              data: { status: 'rejected', accessKey: r.accessKey, rejectReason: r.motivo || 'Rejeitada', response: { status: r.status, motivo: r.motivo } },
+            });
+          } else {
+            // Falhou ANTES da SEFAZ (agente/rede) — APAGA o doc pra liberar o número (sem fantasma travando)
+            await prisma.fiscalDocument.delete({ where: { id: fiscalDoc.id } }).catch(() => {});
           }
 
           fiscalResult = {
@@ -720,13 +739,13 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             documentId: fiscalDoc.id,
             accessKey: r.accessKey,
             protocol: r.protocol,
-            error: r.ok ? null : r.motivo,
+            error: r.ok ? null : (r.error || r.motivo),
           };
         } else {
           fiscalResult = { skipped: true, reason: 'Cartão sem código autorização — emitir manualmente após digitar cAut' };
         }
       } else {
-        fiscalResult = { skipped: true, reason: store?.fiscalIssuer ? 'Sem CSC cadastrado' : 'Loja sem emissor fiscal' };
+        fiscalResult = { skipped: true, reason: !store?.fiscalIssuer ? 'Loja sem emissor fiscal' : !store?.fiscalIssuer?.csc ? 'Sem CSC cadastrado' : 'Loja sem Fiscal Agent — emitir manualmente pela tela' };
       }
     } catch (err) {
       console.error('[NFCe auto] erro:', err.message);

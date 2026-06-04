@@ -78,8 +78,8 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
     const items = sale.items.map((si) => ({
       sku: si.product?.sku || si.productId,
       name: si.product?.name || 'Produto',
-      ncm: si.product?.ncm || '64041100',
-      cfop: si.product?.cfop || '5102',
+      ncm: (si.product?.ncm && /^\d{8}$/.test(si.product.ncm)) ? si.product.ncm : '64041100',
+      cfop: '5102', // NFC-e ao consumidor é venda interna — força 5102 (cadastro pode ter CFOP de compra/interestadual)
       unidade: si.product?.unidade || 'UN',
       qty: si.quantity,
       unitPrice: si.unitPrice,
@@ -96,13 +96,17 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       tpIntegra: tpIntegra || 2,
     };
 
+    // Número robusto: nunca abaixo do maior doc já gravado (blinda contra unique-constraint travado por fantasma)
+    const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
+    const nNF = Math.max(issuer.nfceNextNumber || 1, (maxDoc._max.number || 0) + 1);
+
     // Pre-cria doc em processing
     const doc = await prisma.fiscalDocument.create({
       data: {
         issuerId: issuer.id,
         docType: 'NFCE',
         serie: issuer.nfceSerie || 1,
-        number: issuer.nfceNextNumber,
+        number: nNF,
         status: 'processing',
         totalValue: sale.totalAmount,
         saleId: sale.id,
@@ -124,13 +128,13 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       result = await agentClient.emitNFCe(store, {
         issuer,
         items, payment,
-        nNF: issuer.nfceNextNumber,
+        nNF,
       });
     } else {
       const { emitNFCe } = await getSefazDirect();
       result = await emitNFCe({
         issuer, pfxPath, pfxSenha, items, payment,
-        nNF: issuer.nfceNextNumber,
+        nNF,
       });
     }
 
@@ -150,7 +154,7 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       });
       await prisma.fiscalIssuer.update({
         where: { id: issuer.id },
-        data: { nfceNextNumber: issuer.nfceNextNumber + 1 },
+        data: { nfceNextNumber: nNF + 1 },
       });
     } else if (result.accessKey) {
       // Rejeitada PELA SEFAZ (tem chave) — mantem como rejected pra auditoria

@@ -94,17 +94,22 @@ function buildDetPag({ valor, tPag, acquirerKey, tBand, cAut, tpIntegra = 2 }) {
     tPag: String(tPag).padStart(2, '0'),
     vPag: Number(valor).toFixed(2),
   };
-  // Cartão (crédito/débito) → adiciona dados do cartão
+  const acq = ACQUIRERS[acquirerKey];
+  // Cartão de crédito/débito → grupo card COMPLETO (tpIntegra + CNPJ + bandeira + cAut)
   if (['03', '04'].includes(det.tPag)) {
-    const acq = ACQUIRERS[acquirerKey];
     det.card = {
       tpIntegra: tpIntegra,
       CNPJ: acq?.cnpj || '00000000000000',
       tBand: tBand || '99',
       cAut: cAut || '000000',
     };
+  } else if (['17', '18', '19'].includes(det.tPag)) {
+    // PIX / carteira digital / cashback → SEFAZ exige o grupo card com tpIntegra.
+    // Sem isso a SEFAZ rejeita (cStat 391). tpIntegra=2 (não integrado) basta;
+    // CNPJ da instituição é opcional (incluído só se a adquirente for conhecida).
+    det.card = { tpIntegra: tpIntegra };
+    if (acq?.cnpj) det.card.CNPJ = acq.cnpj;
   }
-  // PIX (tPag=17) — opcionalmente pode incluir CNPJ da credenciadora
   return det;
 }
 
