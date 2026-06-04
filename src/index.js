@@ -113,8 +113,6 @@ const authLimiter = rateLimit({
 app.use('/api/auth/', authLimiter);
 
 // Rotas
-// TEMPORÁRIO (remover após uso): disparo foto-only 2026, FORA de /api/admin (que tem authMiddleware blanket). Protegido por ?g=.
-app.post('/api/_px2026', aiCurationRoutes.pull2026Handler);
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transfer', transferRoutes);
