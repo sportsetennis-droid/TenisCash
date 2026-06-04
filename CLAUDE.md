@@ -259,6 +259,17 @@ Caso contrário, é `entrada` (compra de fornecedor real).
 - Sessão 26/05/2026: Claude criou 1.085 Products a partir de transferência. Reverteu.
 - Sessão 26/05/2026 (depois): Claude tentou criar mais 900 Products de transferência (NFes sem EAN). Owner barrou.
 - Total: 1.590 Products deletados depois de re-leitura da regra.
+- Sessão 03/06/2026: Claude confundiu o DESTINATÁRIO (Baratão) com o FORNECEDOR e descartou mercadoria REAL (bolas Reebok compradas da SPORTCOM). Owner pegou: "bola reebok não está nas NFe de compra?". Corrigido.
+
+### ⚠️⚠️ REGRA PERMANENTE — TRANSFERÊNCIA SE DESCARTA (dono: "o que é transferência descarta, não vou mais repetir isso")
+
+**1. Produto SÓ-transferência = DESCARTA na hora.** Se um Product está ativo e a ÚNICA origem fiscal dele é transferência (tem item `docType='transferencia'` e NENHUM item `docType='entrada'`), ele é espúrio → `active=false` + zera `ProductSize.stock` + `StoreStock`. Não pergunta, não espera.
+   - Critério: `active=true AND EXISTS(item transferencia) AND NOT EXISTS(item entrada)`.
+   - Quando a NFe de ENTRADA real chegar, o produto nasce certo.
+
+**2. FORNECEDOR = EMISSOR da entrada (`issuerCnpj`), NUNCA o destinatário (`recipientCnpj`).** O destinatário é quem COMPROU (loja do grupo, ex Baratão 44052617*). O fornecedor é quem VENDEU (emissor da NFe de entrada). NUNCA gravar `aiContext.supplierCnpj` = CNPJ do grupo `44052617*`. Se estiver assim, está ERRADO → corrigir pro emissor real da entrada.
+
+**3. CNPJ do grupo `44052617*` (Baratão/Bessa/Rainha/Tambaú/Tambiá/Ecom) NUNCA é fornecedor.** São lojas próprias. Aparecer como `supplierCnpj` = bug de import a corrigir, não é transferência a manter.
 
 ### Loja destino da NFe = CNPJ (NÃO CRIAR COLUNA NOVA)
 
