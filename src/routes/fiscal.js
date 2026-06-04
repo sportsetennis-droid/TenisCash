@@ -47,13 +47,17 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       where: { id: saleId },
       include: {
         items: { include: { product: true } },
-        store: { include: { fiscalIssuer: true } },
       },
     });
     if (!sale) return res.status(404).json({ error: 'Venda não encontrada' });
 
+    // Sale tem so o escalar `storeId` (nao a relacao `store`) — busca a Store separada.
+    const store = sale.storeId
+      ? await prisma.store.findUnique({ where: { id: sale.storeId }, include: { fiscalIssuer: true } })
+      : null;
+
     // Resolve issuer pela loja da venda (Store → FiscalIssuer vinculado)
-    let issuer = sale.store?.fiscalIssuer;
+    let issuer = store?.fiscalIssuer;
     if (!issuer) {
       // Fallback: Baratão (matriz Meta Esportes) caso loja sem issuer vinculado
       issuer = await prisma.fiscalIssuer.findUnique({ where: { cnpj: '44052617000126' } });
@@ -63,7 +67,7 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 
     // PFX só é necessário se a loja NÃO usa fiscal agent (agente tem PFX local)
     let pfxPath = null, pfxSenha = null;
-    const willUseAgent = sale.store?.fiscalAgentEnabled && sale.store?.fiscalAgentUrl;
+    const willUseAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl;
     if (!willUseAgent) {
       pfxPath = pfxPathFor(issuer.cnpj);
       pfxSenha = pfxSenhaFor(issuer.cnpj);
@@ -114,10 +118,10 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
 
     // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
     let result;
-    const useAgent = sale.store?.fiscalAgentEnabled && sale.store?.fiscalAgentUrl;
+    const useAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl;
     if (useAgent) {
       const agentClient = require('../services/fiscalAgentClient');
-      result = await agentClient.emitNFCe(sale.store, {
+      result = await agentClient.emitNFCe(store, {
         issuer,
         items, payment,
         nNF: issuer.nfceNextNumber,
@@ -130,23 +134,38 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       });
     }
 
-    // Atualiza doc + numeração
-    const updated = await prisma.fiscalDocument.update({
-      where: { id: doc.id },
-      data: {
-        status: result.ok ? 'authorized' : 'rejected',
-        accessKey: result.accessKey,
-        protocol: result.protocol,
-        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
-        xmlContent: result.xmlSigned,
-        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
-      },
-    });
+    // Sucesso: grava a nota e avanca a numeracao. Falha SEM chave (nunca chegou na SEFAZ):
+    // apaga o doc pra LIBERAR o numero pro retry (nao acumula "fantasma" que trava o unique).
+    let updated = doc;
     if (result.ok) {
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          status: 'authorized',
+          accessKey: result.accessKey,
+          protocol: result.protocol,
+          xmlContent: result.xmlSigned,
+          response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+        },
+      });
       await prisma.fiscalIssuer.update({
         where: { id: issuer.id },
         data: { nfceNextNumber: issuer.nfceNextNumber + 1 },
       });
+    } else if (result.accessKey) {
+      // Rejeitada PELA SEFAZ (tem chave) — mantem como rejected pra auditoria
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          status: 'rejected',
+          accessKey: result.accessKey,
+          rejectReason: result.motivo || 'Rejeitada',
+          response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+        },
+      });
+    } else {
+      // Falhou ANTES da SEFAZ (rede/agente) — apaga pra liberar o numero pro retry
+      await prisma.fiscalDocument.delete({ where: { id: doc.id } }).catch(() => {});
     }
 
     res.json({
