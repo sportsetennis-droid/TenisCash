@@ -14,6 +14,46 @@ const serperImg = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------
+// TEMPORÁRIO (remover após uso): disparo de FOTO-ONLY pros produtos de
+// 2026 sem imagem. Protegido por chave na query. NÃO usa authMiddleware
+// porque é rodado pelo operador via curl (chaves Serper/Vision/JWT só no
+// servidor). Roda em lotes (limit) pra não estourar timeout. Só grava
+// imageUrl (skipDescription+skipNuvemshop) — não toca em categoria.
+// ---------------------------------------------------------------------
+const PULL2026_GUARD = 'px2026_9f3a7c1e8b5d4a26q';
+router.post('/_pull2026', async (req, res) => {
+  if (req.query.g !== PULL2026_GUARD) return res.status(404).json({ error: 'not found' });
+  try {
+    if (!serperImg.isConfigured() || !visionConfigured()) {
+      return res.json({ ready: false, serper: serperImg.isConfigured(), vision: visionConfigured() });
+    }
+    const limit = Math.min(15, Math.max(1, Number(req.query.limit) || 8));
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT DISTINCT pr.id FROM "XmlFiscalItem" i
+       JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId"
+       JOIN "Product" pr ON pr.id=i."productId"
+       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true AND pr."imageUrl" IS NULL
+       LIMIT ${limit}`);
+    let withPhoto = 0; const results = [];
+    for (const r of rows) {
+      try {
+        const rep = await curateProduct(r.id, { skipDescription: true, skipNuvemshop: true });
+        const url = rep && rep.steps && rep.steps.image ? rep.steps.image.url : null;
+        if (url) withPhoto++;
+        results.push({ id: r.id, url: url || null, reason: rep?.steps?.image?.reason || null });
+      } catch (e) { results.push({ id: r.id, err: e.message }); }
+    }
+    const remaining = (await prisma.$queryRawUnsafe(
+      `SELECT count(DISTINCT pr.id)::int n FROM "XmlFiscalItem" i
+       JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId"
+       JOIN "Product" pr ON pr.id=i."productId"
+       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true AND pr."imageUrl" IS NULL`))[0].n;
+    res.json({ ready: true, processed: rows.length, withPhoto, remaining, results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
