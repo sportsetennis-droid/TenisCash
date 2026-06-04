@@ -59,11 +59,17 @@ async function pull2026ColHandler(req, res) {
     const onlyIds = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
     let whereExtra = '';
     if (onlyIds.length) whereExtra = ` AND pr.id IN (${onlyIds.map((id) => `'${id.replace(/'/g, '')}'`).join(',')})`;
+    // quando não passa ids, pula os já processados (colorChecked) pra o runner andar até o fim
+    const notDone = onlyIds.length ? '' : ` AND (pr."aiContext"->>'colorChecked') IS NULL`;
+    const remainingBefore = onlyIds.length ? null : Number((await prisma.$queryRawUnsafe(
+      `SELECT count(DISTINCT pr.id)::int n FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId"
+       JOIN "Product" pr ON pr.id=i."productId"
+       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true AND (pr."aiContext"->>'colorChecked') IS NULL`))[0].n);
     const rows = await prisma.$queryRawUnsafe(
       `SELECT DISTINCT pr.id, pr.name, pr.brand, pr."aiContext" ctx
        FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId"
        JOIN "Product" pr ON pr.id=i."productId"
-       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true${whereExtra}
+       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true${whereExtra}${notDone}
        LIMIT ${limit}`);
     const results = [];
     for (const r of rows) {
@@ -82,6 +88,7 @@ async function pull2026ColHandler(req, res) {
       }
       const newCtx = { ...ctx };
       if (color) newCtx.color = color;
+      newCtx.colorChecked = true;
       await prisma.product.update({ where: { id: r.id }, data: { aiContext: newCtx, imageUrl: null } });
       let url = null, score = null, reason = null;
       try {
@@ -90,7 +97,7 @@ async function pull2026ColHandler(req, res) {
       } catch (e) { reason = 'curate err: ' + e.message; }
       results.push({ id: r.id, ref: ref || null, brand: r.brand, name: (r.name || '').slice(0, 40), color, colorSrc: (colorSrc || '').slice(0, 60), url, score, reason });
     }
-    res.json({ ready: true, processed: rows.length, results });
+    res.json({ ready: true, processed: rows.length, remainingBefore, results });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
