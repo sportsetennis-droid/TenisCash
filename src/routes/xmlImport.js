@@ -280,7 +280,10 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
     let createdSizes = 0;
     let updatedSizes = 0;
     let totalStockAdded = 0;
+    let skippedTransfer = 0;
     const cnpjSuffix = (document.issuerCnpj || '').slice(-4) || 'NFE';
+    // REGRA: transferência NUNCA cria Product (só vincula no que já existe).
+    const isTransfer = document.docType === 'transferencia';
 
     // 3. Para cada grupo: cria 1 Product + N ProductSizes
     for (const g of groups) {
@@ -303,9 +306,22 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
         .map(v => v.supplierCode)
         .find(c => c && !/^\d{12,14}$/.test(c)) || null;
 
-      // Cria ou pega produto existente pelo SKU
-      let product = await prisma.product.findUnique({ where: { sku } });
+      // 1º) MATCH POR CÓDIGO DE BARRAS (EAN) — mesmo produto de CNPJ diferente NÃO duplica.
+      const groupEans = g.variants.map(v => v.ean).filter(e => e && /^\d{8,14}$/.test(e));
+      let product = null;
+      if (groupEans.length) {
+        const szMatch = await prisma.productSize.findFirst({
+          where: { barcode: { in: groupEans } },
+          include: { product: true },
+        });
+        if (szMatch && szMatch.product) product = szMatch.product;
+      }
+      // 2º) fallback: SKU (cnpj-ean) — compat com base antiga
+      if (!product) product = await prisma.product.findUnique({ where: { sku } });
+
       if (!product) {
+        // transferência NUNCA cria Product — fica órfão esperando a NFe de entrada
+        if (isTransfer) { skippedTransfer++; continue; }
         try {
           product = await prisma.product.create({
             data: {
@@ -332,49 +348,47 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
           updatedProducts++;
         }
       } else {
-        // Produto existe — atualiza custo médio + supplierRef
-        await prisma.product.update({
-          where: { id: product.id },
-          data: {
-            costPrice: avgCost,
-            aiContext: {
-              ...(product.aiContext || {}),
-              supplierCnpj: document.issuerCnpj,
-              supplierRef: supplierRef || product.aiContext?.supplierRef || null,
-              baseProductKey: g.baseKey,
-            },
-          },
-        });
+        // Produto existe. Custo/fornecedor SÓ mudam em ENTRADA (transferência não muda fornecedor).
+        const data = { aiContext: { ...(product.aiContext || {}), baseProductKey: g.baseKey } };
+        if (!isTransfer) {
+          data.costPrice = avgCost;
+          data.aiContext.supplierCnpj = document.issuerCnpj; // emissor da entrada = fornecedor real
+          data.aiContext.supplierRef = supplierRef || product.aiContext?.supplierRef || null;
+        }
+        await prisma.product.update({ where: { id: product.id }, data });
         updatedProducts++;
       }
 
-      // ProductSize por variante (soma estoque cumulativo)
+      // ProductSize por variante.
+      // ESTOQUE ÚNICO: a NFe NÃO escreve estoque. Ela só garante o produto e o EAN.
+      // Estoque (StoreStock) entra fisicamente pelo bipe. ProductSize.stock é espelho
+      // do StoreStock — por isso aqui ele nasce 0 e nunca é incrementado pela compra.
       for (const v of g.variants) {
         if (!v.size) continue; // produto sem variante → sem ProductSize
         const existing = await prisma.productSize.findFirst({
           where: { productId: product.id, size: v.size },
         });
         if (existing) {
-          await prisma.productSize.update({
-            where: { id: existing.id },
-            data: {
-              stock: existing.stock + v.qty,
-              barcode: v.ean || existing.barcode,
-            },
-          });
+          // só completa o EAN se faltava; NÃO mexe no stock
+          if (v.ean && !existing.barcode) {
+            await prisma.productSize.update({
+              where: { id: existing.id },
+              data: { barcode: v.ean },
+            });
+          }
           updatedSizes++;
         } else {
           await prisma.productSize.create({
             data: {
               productId: product.id,
               size: v.size,
-              stock: v.qty,
+              stock: 0, // espelho do StoreStock; bipe preenche
               barcode: v.ean || null,
             },
           });
           createdSizes++;
         }
-        totalStockAdded += v.qty;
+        totalStockAdded += v.qty; // unidades COMPRADAS na NFe (relatório), não estoque
 
         // Linka o XmlFiscalItem ao produto criado
         if (v.itemId) {
@@ -415,7 +429,10 @@ router.post('/nfe/:documentId/apply', async (req, res) => {
       createdSizes,
       updatedSizes,
       totalStockAdded,
-      message: `${groups.length} produto(s) base agrupados de ${newItems.length} linha(s) da NF-e`,
+      skippedTransfer,
+      message: isTransfer
+        ? `Transferência: ${updatedProducts} vinculado(s) ao produto existente, ${skippedTransfer} sem produto (aguardando NF de entrada). Não criei produto.`
+        : `${groups.length} produto(s) base agrupados de ${newItems.length} linha(s) da NF-e`,
     });
   } catch (err) {
     console.error('[xml/nfe/apply] erro:', err);
