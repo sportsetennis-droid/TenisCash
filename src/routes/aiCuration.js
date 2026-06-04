@@ -14,6 +14,86 @@ const serperImg = require('../services/serperImageSearch');
 const serperWeb = require('../services/serperWebSearch');
 
 const router = express.Router();
+
+// ===== TEMPORÁRIO (remover após uso): re-pull foto-only 2026 COM COR =====
+// Deriva a cor pelo REF (busca web), grava aiContext.color, limpa imageUrl e
+// re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
+// Fora de /api/admin (auth blanket); protegido por ?g=. Registrado em index.js.
+const PX2026COL_GUARD = 'px2026col_7d2b9e4a1f';
+const COLOR_DICT = [
+  [/\b(pret[oa]|negr[oa]|black)\b/i, 'Preto'],
+  [/\b(branc[oa]|blanc[oa]|white)\b/i, 'Branco'],
+  [/\b(amarel[oa]|amarill[oa]|yellow)\b/i, 'Amarelo'],
+  [/\b(marinho|navy)\b/i, 'Azul Marinho'],
+  [/\b(azul|blue|azure)\b/i, 'Azul'],
+  [/\b(verde|green)\b/i, 'Verde'],
+  [/\b(vermelh[oa]|rojo|\bred\b|scarlet)\b/i, 'Vermelho'],
+  [/\b(cinza|gris|gr[ae]y|grafite|graphite)\b/i, 'Cinza'],
+  [/\b(ros[aá]|pink|fucsia|fúcsia)\b/i, 'Rosa'],
+  [/\b(rox[oa]|morad[oa]|purple|lil[aá]s|violet)\b/i, 'Roxo'],
+  [/\b(laranja|orange|naranja|coral)\b/i, 'Laranja'],
+  [/\b(bege|beige|areia|\bsand\b)\b/i, 'Bege'],
+  [/\b(marrom|brown|marr[oó]n|caramelo|chocolate)\b/i, 'Marrom'],
+  [/\b(dourad[oa]|gold[ae]?n?)\b/i, 'Dourado'],
+  [/\b(prata|silver|prateado)\b/i, 'Prata'],
+  [/\b(creme|cream|off.?white|ecru|\bcru\b)\b/i, 'Creme'],
+];
+function extractColors(text) {
+  if (!text) return [];
+  const out = [];
+  for (const [re, name] of COLOR_DICT) { if (re.test(text) && !out.includes(name)) out.push(name); }
+  return out;
+}
+function refFromProduct(name, ctx) {
+  if (ctx && ctx.supplierRef && /[A-Z]{2}[0-9]{3,}/i.test(ctx.supplierRef)) return String(ctx.supplierRef).trim();
+  const m = (name || '').match(/REF:\s*([A-Z0-9]{4,})\s*-/i);
+  return m ? m[1] : null;
+}
+async function pull2026ColHandler(req, res) {
+  if (req.query.g !== PX2026COL_GUARD) return res.status(404).json({ error: 'not found' });
+  try {
+    if (!serperImg.isConfigured() || !visionConfigured() || !serperWeb.isConfigured()) {
+      return res.json({ ready: false, serperImg: serperImg.isConfigured(), serperWeb: serperWeb.isConfigured(), vision: visionConfigured() });
+    }
+    const limit = Math.min(12, Math.max(1, Number(req.query.limit) || 6));
+    const onlyIds = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
+    let whereExtra = '';
+    if (onlyIds.length) whereExtra = ` AND pr.id IN (${onlyIds.map((id) => `'${id.replace(/'/g, '')}'`).join(',')})`;
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT DISTINCT pr.id, pr.name, pr.brand, pr."aiContext" ctx
+       FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId"
+       JOIN "Product" pr ON pr.id=i."productId"
+       WHERE d."docType"='entrada' AND d."issueDate">='2026-01-01' AND pr.active=true${whereExtra}
+       LIMIT ${limit}`);
+    const results = [];
+    for (const r of rows) {
+      let ctx = {}; try { ctx = (r.ctx && typeof r.ctx === 'object') ? r.ctx : JSON.parse(r.ctx || '{}'); } catch (_) { ctx = {}; }
+      const ref = refFromProduct(r.name, ctx);
+      let color = null, colorSrc = null;
+      if (ref) {
+        const web = await serperWeb.searchWeb([r.brand, ref].filter(Boolean).join(' '), { count: 6 });
+        if (web.ok && web.results && web.results.length) {
+          const canon = web.results.find((x) => (x.url || '').toUpperCase().includes(ref.toUpperCase())) || web.results[0];
+          let colors = extractColors(canon.title);
+          if (colors.length) colorSrc = canon.title;
+          else for (const x of web.results) { colors = extractColors(x.title); if (colors.length) { colorSrc = x.title; break; } }
+          if (colors.length) color = colors.slice(0, 3).join('/');
+        }
+      }
+      const newCtx = { ...ctx };
+      if (color) newCtx.color = color;
+      await prisma.product.update({ where: { id: r.id }, data: { aiContext: newCtx, imageUrl: null } });
+      let url = null, score = null, reason = null;
+      try {
+        const rep = await curateProduct(r.id, { skipDescription: true, skipNuvemshop: true, minScore: 8 });
+        if (rep && rep.steps && rep.steps.image) { url = rep.steps.image.url || null; score = rep.steps.image.score != null ? rep.steps.image.score : null; reason = rep.steps.image.reason || null; }
+      } catch (e) { reason = 'curate err: ' + e.message; }
+      results.push({ id: r.id, ref: ref || null, brand: r.brand, name: (r.name || '').slice(0, 40), color, colorSrc: (colorSrc || '').slice(0, 60), url, score, reason });
+    }
+    res.json({ ready: true, processed: rows.length, results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
@@ -248,3 +328,4 @@ router.post('/fix-missing-extras', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.pull2026ColHandler = pull2026ColHandler;

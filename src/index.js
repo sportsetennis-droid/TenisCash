@@ -113,6 +113,8 @@ const authLimiter = rateLimit({
 app.use('/api/auth/', authLimiter);
 
 // Rotas
+// TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
+app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transfer', transferRoutes);
