@@ -285,7 +285,7 @@
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260520k-1841"></script>
 <script src="/_product-search-bar.js?v=20260520k-1841"></script>
-<script src="/_product-card.js?v=20260526-swap-v2"></script>
+<script src="/_product-card.js?v=20260604-unif"></script>
 </head>
 <body>
 
@@ -640,7 +640,7 @@
       </div>
       <!-- Toggle: só produtos com estoque físico em loja (mostra os tamanhos no card) -->
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;cursor:pointer;">
-        <input type="checkbox" id="catInStoreOnly" checked onchange="onCatalogSearch()" style="width:18px;height:18px;accent-color:#E5571E;">
+        <input type="checkbox" id="catInStoreOnly" onchange="onCatalogSearch()" style="width:18px;height:18px;accent-color:#E5571E;">
         📍 Só com estoque na loja <span style="font-weight:400;color:#8e8e93;">(mostra os tamanhos por loja)</span>
       </label>
       <!-- Filtros padrão (Marca/Categoria/Gênero/Modalidade/Especialidade) — mesma da admin -->
@@ -1177,7 +1177,7 @@ async function api(path, opts = {}) {
 // ===== CONSULTA DE PRECO (card da loja) =====
 let _precoTimer = null;
 let _precoReq = 0;
-const PRECO_PAGE = 60;
+const PRECO_PAGE = 40;
 let _precoTermo = '';
 let _precoOffset = 0;
 let _precoTotal = 0;
@@ -1233,13 +1233,14 @@ async function carregarPrecos(reset) {
     if (more) more.textContent = 'Carregando...';
   }
   try {
-    const r = await fetch('/api/price-check?q=' + encodeURIComponent(_precoTermo) + '&limit=' + PRECO_PAGE + '&offset=' + _precoOffset);
-    const d = await r.json();
+    // UNIFICADO: MESMA busca (catalog/products) e MESMO card (PCard) da Curadoria/Vender. Um estoque só.
+    const page = Math.floor(_precoOffset / PRECO_PAGE) + 1;
+    const d = await api('/api/catalog/products?q=' + encodeURIComponent(_precoTermo) + '&pageSize=' + PRECO_PAGE + '&page=' + page);
     if (reqId !== _precoReq) return;
-    const prods = d.products || [];
+    const prods = d.products || d.items || [];
     _precoTotal = d.total || 0;
-    _precoHasMore = !!d.hasMore;
     _precoOffset += prods.length;
+    _precoHasMore = _precoOffset < _precoTotal;
 
     if (reset && prods.length === 0) {
       results.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:30px 18px;">' +
@@ -1249,12 +1250,15 @@ async function carregarPrecos(reset) {
       return;
     }
 
-    const itemsHtml = prods.map(precoItemHtml).join('');
-    if (reset) results.innerHTML = itemsHtml;
-    else {
+    // PCard public: mostra preço + estoque comprado + por loja. NUNCA custo, NUNCA editar. Clique = detalhe.
+    const cardsHtml = prods.map(p => PCard.render(p, { actions: 'public', showStock: true, onClick: "showProduct('%id%')" })).join('');
+    if (reset) {
+      results.innerHTML = '<div id="precoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">' + cardsHtml + '</div>';
+    } else {
       const more = document.getElementById('precoMore');
       if (more) more.remove();
-      results.insertAdjacentHTML('beforeend', itemsHtml);
+      const grid = document.getElementById('precoGrid');
+      if (grid) grid.insertAdjacentHTML('beforeend', cardsHtml);
     }
 
     // Rodapé: "carregar mais" ou fim
@@ -1542,17 +1546,8 @@ function renderSellResults() {
   const visible = _sellSearchAll.slice(0, _sellSearchShown);
   const remaining = _sellSearchAll.length - _sellSearchShown;
 
-  const cards = visible.map(p => `
-    <div class="product-card" onclick="addToCart('${p.id}','${(p.name || '').replace(/'/g, "\\'")}','${(p.brand || '').replace(/'/g, "\\'")}',${p.promoPrice || p.price},'${(p.imageUrl || '').replace(/'/g, "\\'")}')">
-      <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
-      <div class="product-info">
-        <div class="product-brand">${p.brand || ''}</div>
-        <div class="product-name">${p.name || ''}</div>
-        <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
-        <span class="product-badge">+ Adicionar</span>
-      </div>
-    </div>
-  `).join('');
+  // MESMO card da Curadoria/Preços: PCard public (sem custo, sem editar). Clique = adiciona ao carrinho.
+  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onClick: "addToCartById('%id%')" })).join('');
 
   const moreBtn = remaining > 0 ? `
     <div style="grid-column:1/-1;text-align:center;padding:8px 0;">
@@ -1567,6 +1562,13 @@ function renderSellResults() {
   ` : '');
 
   el.innerHTML = cards + moreBtn;
+}
+
+// Clique no card (Vender) adiciona ao carrinho — acha o produto no resultado da busca.
+function addToCartById(productId) {
+  const p = _sellSearchAll.find(x => x.id === productId);
+  if (!p) return;
+  addToCart(p.id, p.name || '', p.brand || '', (p.promoPrice || p.price), p.imageUrl || '');
 }
 
 function addToCart(productId, name, brand, price, imageUrl) {

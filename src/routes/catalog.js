@@ -91,6 +91,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         { name: { contains: t, mode: 'insensitive' } },
         { sku: { contains: t, mode: 'insensitive' } },
         { brand: { contains: t, mode: 'insensitive' } },
+        { category: { contains: t, mode: 'insensitive' } },
+        { subcategory: { contains: t, mode: 'insensitive' } },
       ]);
       const termos = search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
       for (const t of (termos.length ? termos : [search])) andConds.push({ OR: fields(t) });

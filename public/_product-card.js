@@ -573,6 +573,14 @@
 
     // TAMANHOS POR LOJA (estoque físico do último bipe — info mais importante, sobe pro topo)
     if (showStock) {
+      // ESTOQUE COMPRADO (total) — visível em TODO card não-admin (loja: Preços/Vender/Curadoria/Estoque).
+      // p.stockTotal = Σ ProductSize.stock = comprado (NFe entrada). Custo NUNCA aparece aqui.
+      // No admin o comprado já aparece no bloco azul de NFe, então não duplica.
+      if (actions !== 'admin') {
+        const compradoTotal = p.stockTotal != null ? p.stockTotal : (p.sizes || []).reduce((a, s) => a + (s.stock || 0), 0);
+        const compColor = compradoTotal > 0 ? '#0066cc' : '#8e8e93';
+        html += `<div style="margin-top:8px;padding:9px 12px;background:#eef6ff;border:1.5px solid #cfe0ff;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:0.5px;font-weight:800;">📦 Estoque comprado</span><span style="font-size:16px;font-weight:800;color:${compColor};">${compradoTotal} un</span></div>`;
+      }
       const storesArr = Object.keys(byStore).sort();
       if (storesArr.length) {
         const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
