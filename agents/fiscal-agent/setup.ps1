@@ -1,11 +1,11 @@
 # =====================================================================
-# setup.ps1 — TenisCash Fiscal Agent (instalador único)
+# setup.ps1  TenisCash Fiscal Agent (instalador unico)
 # =====================================================================
 # Idempotente. Pode rodar mais de uma vez sem efeito colateral.
 # Aborta com erro CLARO se qualquer etapa falhar.
-# Auto-valida no final via GET /health — só imprime SUCESSO se passou.
+# Auto-valida no final via GET /health  so imprime SUCESSO se passou.
 #
-# Uso: PowerShell admin → cd C:\TenisCashAgent → .\setup.ps1
+# Uso: PowerShell admin -> cd C:\TenisCashAgent -> .\setup.ps1
 # =====================================================================
 
 $ErrorActionPreference = 'Stop'
@@ -16,12 +16,12 @@ function Step($n, $msg) { Write-Host ("[$n] $msg") -ForegroundColor Cyan }
 function Ok($msg)  { Write-Host ("  OK $msg") -ForegroundColor Green }
 function Fail($msg) { Write-Host ("  FALHA: $msg") -ForegroundColor Red; exit 1 }
 
-Write-Host '=== TenisCash Fiscal Agent — setup ===' -ForegroundColor Cyan
+Write-Host '=== TenisCash Fiscal Agent  setup ===' -ForegroundColor Cyan
 Write-Host ''
 
 # Verifica admin
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-  Fail 'Não está rodando como Administrador. Abra PowerShell admin (Win+X → Terminal Administrador).'
+  Fail 'Nao esta rodando como Administrador. Abra PowerShell admin (Win+X -> Terminal Administrador).'
 }
 
 # 1. Node
@@ -33,15 +33,24 @@ try {
   if ($v -and ([int](($v -replace '[^0-9.]','') -split '\.')[0]) -ge 20) { $nodeOk = $true; Ok "Node $v" }
 } catch {}
 if (-not $nodeOk) {
-  Write-Host '  Instalando Node 20 LTS via winget...'
-  & winget install --id=OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
-  $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
-  try { $v = & node --version } catch { Fail 'Node não instalou. Reinicia o PowerShell e roda de novo.' }
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Host '  Instalando Node 20 LTS via winget...'
+    & winget install --id=OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+  } else {
+    Write-Host '  winget ausente - baixando Node 20 LTS (MSI direto)...'
+    $nodeMsi = Join-Path $env:TEMP 'node-lts-x64.msi'
+    Invoke-WebRequest 'https://nodejs.org/dist/v20.20.2/node-v20.20.2-x64.msi' -OutFile $nodeMsi -UseBasicParsing -TimeoutSec 180
+    Write-Host '  Instalando Node (silencioso, pode levar 1-2 min)...'
+    $proc = Start-Process msiexec.exe -ArgumentList '/i', "`"$nodeMsi`"", '/quiet', '/norestart' -Wait -PassThru
+    if ($proc.ExitCode -ne 0) { Fail "Instalacao do Node falhou (msiexec exit $($proc.ExitCode))" }
+  }
+  $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User') + ';C:\Program Files\nodejs'
+  try { $v = & node --version } catch { Fail 'Node nao instalou. Reinicia o PowerShell e roda de novo.' }
   Ok "Node $v instalado"
 }
 
-# 2. Diretório de trabalho
-Step 2 "Diretório $WORK"
+# 2. Diretorio de trabalho
+Step 2 "Diretorio $WORK"
 if (-not (Test-Path $WORK)) { New-Item -ItemType Directory -Force -Path $WORK | Out-Null }
 Set-Location $WORK
 Ok 'pronto'
@@ -53,24 +62,24 @@ foreach ($f in $files) {
   try {
     Invoke-WebRequest -Uri "$AGENT_URL/$f" -OutFile "$WORK\$f" -UseBasicParsing -TimeoutSec 30
     Ok $f
-  } catch { Fail "Falha ao baixar $f de $AGENT_URL — Tailscale conectado? Matriz online?" }
+  } catch { Fail "Falha ao baixar $f de $AGENT_URL  Tailscale conectado? Matriz online?" }
 }
 
 # 4. npm install
-Step 4 'Instalando dependências'
+Step 4 'Instalando dependencias'
 $null = & npm install --silent 2>&1
 if ($LASTEXITCODE -ne 0) {
   Write-Host '  npm install falhou. Rodando verbose:'
   & npm install
-  Fail 'npm install falhou — ver erro acima'
+  Fail 'npm install falhou  ver erro acima'
 }
-Ok 'dependências OK'
+Ok 'dependencias OK'
 
-# 5. .env (lê automaticamente do Chianca se disponível, ou pergunta)
+# 5. .env (le automaticamente do Chianca se disponivel, ou pergunta)
 Step 5 'Configurando .env'
 $envFile = "$WORK\.env"
 if (Test-Path $envFile) {
-  Ok '.env já existe — preservando'
+  Ok '.env ja existe  preservando'
 } else {
   # Tenta achar PFX automaticamente
   $pfxPath = $null
@@ -98,7 +107,7 @@ if (Test-Path $envFile) {
 
   if (-not $pfxPath) {
     $pfxPath = Read-Host 'Caminho do PFX (ex: C:\Chianca\NFe_Emissao003\Certificado2026.pfx)'
-    if (-not (Test-Path $pfxPath)) { Fail "PFX não existe: $pfxPath" }
+    if (-not (Test-Path $pfxPath)) { Fail "PFX nao existe: $pfxPath" }
   } else {
     Write-Host "  PFX detectado: $pfxPath" -ForegroundColor Gray
   }
@@ -134,7 +143,7 @@ Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Silent
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 Ok 'task registrada'
 
-# 7. Para qualquer instância antiga e inicia
+# 7. Para qualquer instancia antiga e inicia
 Step 7 'Iniciando agente'
 Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$WORK\*" -or $_.MainModule.FileName -like "$WORK\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -153,20 +162,20 @@ for ($i = 1; $i -le 10; $i++) {
   } catch { Start-Sleep -Seconds 1 }
 }
 if (-not $health) {
-  Write-Host '  Agente não respondeu /health após 10s. Log:' -ForegroundColor Red
+  Write-Host '  Agente nao respondeu /health apos 10s. Log:' -ForegroundColor Red
   if (Test-Path "$WORK\agent.log") { Get-Content "$WORK\agent.log" -Tail 20 }
-  Fail 'agente não subiu — investigue agent.log'
+  Fail 'agente nao subiu  investigue agent.log'
 }
 if (-not $health.ok -or -not $health.pfxExists) {
   Write-Host '  /health retornou problema:' -ForegroundColor Red
   $health | Format-List
-  Fail "PFX não acessível ou agente degradado"
+  Fail "PFX nao acessivel ou agente degradado"
 }
 Ok "store=$($health.store) port=$($health.port) pfxSize=$($health.pfxSize) version=$($health.version)"
 
 # 9. Resumo final
 Write-Host ''
-Write-Host '=== INSTALAÇÃO VALIDADA ===' -ForegroundColor Green
+Write-Host '=== INSTALACAO VALIDADA ===' -ForegroundColor Green
 Write-Host "Local: $WORK"
 Write-Host 'Log: agent.log'
 Write-Host 'Health: http://localhost:8765/health'
@@ -176,4 +185,4 @@ $envContent = Get-Content "$WORK\.env" -Raw
 $tokenMatch = [regex]::Match($envContent, 'AGENT_TOKEN=([^\r\n]+)')
 if ($tokenMatch.Success) { Write-Host ('  ' + $tokenMatch.Groups[1].Value) -ForegroundColor Yellow }
 Write-Host ''
-Write-Host '✓ tudo OK' -ForegroundColor Green
+Write-Host '[OK] tudo OK' -ForegroundColor Green

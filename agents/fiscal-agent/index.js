@@ -142,6 +142,22 @@ app.post('/cancel', async (req, res) => {
   }
 });
 
+// Consulta situação (retorna protocolo de autorização)
+app.post('/consulta', async (req, res) => {
+  try {
+    const { issuer, accessKey } = req.body || {};
+    if (!issuer || !accessKey) return res.status(400).json({ ok: false, error: 'issuer e accessKey obrigatórios' });
+    const { consultarNFe } = await getSefaz();
+    log('INFO', 'consulta', accessKey.slice(-12));
+    const result = await consultarNFe({ issuer, pfxPath: PFX_PATH, pfxSenha: PFX_SENHA, accessKey });
+    log('INFO', 'consulta', result.status || '', result.protocol || '');
+    res.json(result);
+  } catch (err) {
+    log('ERR', 'consulta', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // CCe — NFe 55 only
 app.post('/correction', async (req, res) => {
   try {

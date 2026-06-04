@@ -13,7 +13,10 @@ import { Make, Tools } from 'node-sped-nfe';
 import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
+import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
+import forge from 'node-forge';
+import pem from 'pem';
 import { buildDetPag } from './fiscalAcquirers.js';
 
 const SVRS_URLS = {
@@ -40,29 +43,112 @@ const EVENT_URLS = {
 // Cache PEM por CNPJ pra não reextrair toda emissão
 const _pemCache = new Map();
 
+// Extrai { cert, key } em PEM de um PFX usando node-forge — SEM openssl no PATH.
+// node-forge lida com PKCS12 legado (RC2/3DES) que o OpenSSL 3 do Node bloqueia.
+function _forgePfxToPem(pfxInput, senha) {
+  const der = Buffer.isBuffer(pfxInput) ? pfxInput.toString('latin1') : fs.readFileSync(pfxInput, 'latin1');
+  const p12Asn1 = forge.asn1.fromDer(der);
+  const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, senha || '');
+  // Chave privada
+  let keyBags = (p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag]) || [];
+  if (!keyBags.length) keyBags = (p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag]) || [];
+  const privKey = keyBags[0] && keyBags[0].key;
+  // Certificado FOLHA = o que casa com a chave. PFX ICP-Brasil traz a cadeia de
+  // CAs junto (Raiz, SERPRO, etc); pegar certBags[0] cego pode pegar uma CA, e aí
+  // o cert nao casa com a chave -> TLS client-auth falha -> a SVRS reseta a conexao.
+  const certBags = (p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag]) || [];
+  let leaf = null;
+  if (privKey && privKey.n) {
+    leaf = certBags.find((cb) => cb.cert && cb.cert.publicKey && cb.cert.publicKey.n && cb.cert.publicKey.n.equals(privKey.n));
+  }
+  const leafCert = (leaf && leaf.cert) || (certBags[0] && certBags[0].cert);
+  const certPem = leafCert ? forge.pki.certificateToPem(leafCert) : null;
+  const keyPem = privKey ? forge.pki.privateKeyToPem(privKey) : null;
+  if (!certPem || !keyPem) throw new Error('Falha ao extrair cert/key do PFX via node-forge');
+  return { cert: certPem, key: keyPem };
+}
+
+// ---------------------------------------------------------------------
+// PATCH CRÍTICO: node-sped-nfe (tools.xmlSign) carrega o certificado via o
+// pacote `pem`, que chama o binário openssl do sistema por child_process.
+// A loja NÃO tem openssl no PATH -> pem.readPkcs12 trava (o callback nunca
+// retorna) e congela o agente single-thread. Interceptamos readPkcs12 pra
+// extrair cert/key com node-forge (puro JS). Mantém toda a assinatura/QR
+// Code da lib intactos; só troca a parte que dependia de openssl.
+// ---------------------------------------------------------------------
+if (pem && typeof pem.readPkcs12 === 'function' && !pem.__forgePatched) {
+  pem.__forgePatched = true;
+  pem.readPkcs12 = function (pfxInput, options, callback) {
+    const cb = typeof options === 'function' ? options : callback;
+    const opts = typeof options === 'function' ? {} : (options || {});
+    try {
+      const senha = opts.p12Password || opts.password || '';
+      const { cert, key } = _forgePfxToPem(pfxInput, senha);
+      // node-sped-nfe espera { key, cert, pem } (publicCert = .pem)
+      process.nextTick(() => cb(null, { key, cert, pem: cert, ca: [] }));
+    } catch (e) {
+      process.nextTick(() => cb(e));
+    }
+  };
+}
+
 function extractPem(pfxPath, senha, cnpj) {
   if (_pemCache.has(cnpj)) return _pemCache.get(cnpj);
-  const dir = path.resolve('tmp/cert');
-  fs.mkdirSync(dir, { recursive: true });
-  const certFile = path.join(dir, cnpj + '.cert.pem');
-  const keyFile  = path.join(dir, cnpj + '.key.pem');
-  if (!fs.existsSync(certFile) || !fs.existsSync(keyFile)) {
-    execSync(`openssl pkcs12 -in "${pfxPath}" -clcerts -nokeys -passin pass:${senha} -legacy -out "${certFile}"`);
-    execSync(`openssl pkcs12 -in "${pfxPath}" -nocerts -nodes -passin pass:${senha} -legacy -out "${keyFile}"`);
-  }
-  const clean = (file, marker) => {
-    const raw = fs.readFileSync(file, 'utf8');
-    const start = raw.indexOf('-----BEGIN ' + marker);
-    const end   = raw.indexOf('-----END ' + marker);
-    if (start < 0 || end < 0) throw new Error('PEM ' + marker + ' inválido');
-    const endLine = raw.indexOf('\n', end);
-    const cleaned = raw.slice(start, endLine > 0 ? endLine : undefined).trim() + '\n';
-    fs.writeFileSync(file, cleaned);
-    return cleaned;
-  };
-  const pem = { cert: clean(certFile, 'CERTIFICATE'), key: clean(keyFile, 'PRIVATE KEY') };
-  _pemCache.set(cnpj, pem);
-  return pem;
+  const out = _forgePfxToPem(pfxPath, senha);
+  _pemCache.set(cnpj, out);
+  return out;
+}
+
+function _delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// POST SOAP pra SEFAZ/SVRS com TLS 1.2 + renegociacao legada + RETRY.
+// Por que retry: a 1a conexao "fria" com a SVRS as vezes cai (ECONNRESET na
+// renegociacao TLS que ela usa pra pedir o cert do cliente). A retentativa
+// reaproveita a sessao TLS ja cacheada no processo e passa. SEFAZ tambem e
+// instavel por natureza, entao retry e padrao de mercado.
+// Seguranca: reenviar a MESMA chave de acesso -> a SEFAZ detecta duplicidade
+// (cStat 539) e devolve a autorizacao existente; NAO duplica a nota. Alem disso
+// o reset aqui acontece no estabelecimento da conexao (antes da SEFAZ processar
+// o lote), entao reenviar e seguro.
+function _sefazPost(url, soap, pem, attempts = 4) {
+  const once = () => new Promise((res, rej) => {
+    const req = https.request({
+      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
+      cert: pem.cert, key: pem.key,
+      headers: {
+        'Content-Type': 'application/soap+xml; charset=utf-8',
+        'Content-Length': Buffer.byteLength(soap, 'utf8'),
+      },
+      rejectUnauthorized: false, timeout: 30000,
+      minVersion: 'TLSv1.2', maxVersion: 'TLSv1.2', // SVRS reseta TLS 1.3
+      secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT
+        | crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION, // SVRS renegocia p/ pedir cert
+    }, (r) => {
+      let d = ''; r.on('data', (c) => d += c);
+      r.on('end', () => res({ status: r.statusCode, body: d }));
+    });
+    req.on('error', rej);
+    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
+    req.write(soap); req.end();
+  });
+  return (async () => {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const r = await once();
+        if (r.status >= 500 && i < attempts - 1) { lastErr = new Error('HTTP ' + r.status); await _delay(400 * (i + 1)); continue; }
+        return r;
+      } catch (e) {
+        lastErr = e;
+        const code = e.code || '';
+        const retryable = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ECONNABORTED', 'EAI_AGAIN'].includes(code)
+          || /socket hang up|reset|timeout|renegotiat/i.test(e.message || '');
+        if (!retryable || i === attempts - 1) throw e;
+        await _delay(400 * (i + 1));
+      }
+    }
+    throw lastErr;
+  })();
 }
 
 /**
@@ -214,23 +300,7 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
   const pem = extractPem(pfxPath, pfxSenha, issuer.cnpj);
 
   const url = new URL(SVRS_URLS[issuer.environment === 'production' ? 'production' : 'homologation']);
-  const resp = await new Promise((res, rej) => {
-    const req = https.request({
-      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
-      cert: pem.cert, key: pem.key,
-      headers: {
-        'Content-Type': 'application/soap+xml; charset=utf-8',
-        'Content-Length': Buffer.byteLength(soap, 'utf8'),
-      },
-      rejectUnauthorized: false, timeout: 30000,
-    }, (r) => {
-      let d = ''; r.on('data', (c) => d += c);
-      r.on('end', () => res({ status: r.statusCode, body: d }));
-    });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
-    req.write(soap); req.end();
-  });
+  const resp = await _sefazPost(url, soap, pem);
 
   // Parsea cStat lote + cStat protNFe
   const loteMatch = resp.body.match(/<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>/);
@@ -239,10 +309,44 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
   const loteStat = loteMatch?.[1];
   const protStat = protMatch?.[1] || loteStat;
   const motivo = protMatch?.[2] || loteMatch?.[2];
-  const protocol = protMatch?.[3] || null;
+  const protocol = (resp.body.match(/<nProt>(\d+)<\/nProt>/) || [])[1] || protMatch?.[3] || null;
   const ok = protStat === '100' || protStat === '150';
 
   return { ok, accessKey, protocol, status: protStat, motivo, xmlSigned, rawResponse: resp.body };
+}
+
+/**
+ * consultarNFe — consulta a situação de uma NFCe/NFe na SEFAZ pela chave.
+ * Retorna o protocolo de autorização (nProt), necessário pra cancelar.
+ * consSitNFe NÃO precisa de assinatura (só TLS com o certificado).
+ */
+export async function consultarNFe({ issuer, pfxPath, pfxSenha, accessKey }) {
+  if (!accessKey || accessKey.length !== 44) throw new Error('Chave deve ter 44 dígitos');
+  const mod = parseInt(accessKey.slice(20, 22), 10);
+  const tpAmb = issuer.environment === 'production' ? 1 : 2;
+  const soap =
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">' +
+    '<soap:Body>' +
+    '<nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4">' +
+    '<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">' +
+    '<tpAmb>' + tpAmb + '</tpAmb><xServ>CONSULTAR</xServ><chNFe>' + accessKey + '</chNFe>' +
+    '</consSitNFe></nfeDadosMsg></soap:Body></soap:Envelope>';
+  const pem = extractPem(pfxPath, pfxSenha, issuer.cnpj);
+  const CONSULTA_URLS = {
+    nfce_production: 'https://nfce.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+    nfce_homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+    nfe_production: 'https://nfe.sefaz.pb.gov.br/nfews/v2/services/NFeConsultaProtocolo4',
+    nfe_homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/NFeConsultaProtocolo4',
+  };
+  const urlKey = (mod === 65 ? 'nfce_' : 'nfe_') + (tpAmb === 1 ? 'production' : 'homologation');
+  const url = new URL(CONSULTA_URLS[urlKey]);
+  const resp = await _sefazPost(url, soap, pem);
+  const cStat = (resp.body.match(/<cStat>(\d+)<\/cStat>/) || [])[1] || null;
+  const motivo = (resp.body.match(/<xMotivo>([^<]+)<\/xMotivo>/) || [])[1] || null;
+  const protocol = (resp.body.match(/<nProt>(\d+)<\/nProt>/) || [])[1] || null;
+  // cStat 100 = autorizada (cancelável); 101/151/135 = já cancelada; 110/301/302 = denegada
+  return { ok: cStat === '100', status: cStat, motivo, protocol, accessKey, rawResponse: resp.body };
 }
 
 /**
@@ -328,20 +432,7 @@ export async function cancelDocument({ issuer, pfxPath, pfxSenha, accessKey, pro
   // Roteia URL por modelo + ambiente
   const urlKey = (mod === 65 ? 'nfce_' : 'nfe_') + (tpAmb === 1 ? 'production' : 'homologation');
   const url = new URL(EVENT_URLS[urlKey]);
-  const resp = await new Promise((res, rej) => {
-    const req = https.request({
-      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
-      cert: pem.cert, key: pem.key,
-      headers: {
-        'Content-Type': 'application/soap+xml; charset=utf-8',
-        'Content-Length': Buffer.byteLength(soap, 'utf8'),
-      },
-      rejectUnauthorized: false, timeout: 30000,
-    }, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => res({ status: r.statusCode, body: d })); });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
-    req.write(soap); req.end();
-  });
+  const resp = await _sefazPost(url, soap, pem);
 
   // Parsea retorno do evento
   const retMatch = resp.body.match(/<retEvento[\s\S]*?<infEvento>[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>[\s\S]*?(?:<nProt>(\d+)<\/nProt>)?/);
@@ -438,20 +529,7 @@ export async function sendCorrectionLetter({ issuer, pfxPath, pfxSenha, accessKe
   const pem = extractPem(pfxPath, pfxSenha, cnpj);
   const urlKey = 'nfe_' + (tpAmb === 1 ? 'production' : 'homologation');
   const url = new URL(EVENT_URLS[urlKey]);
-  const resp = await new Promise((res, rej) => {
-    const req = https.request({
-      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
-      cert: pem.cert, key: pem.key,
-      headers: {
-        'Content-Type': 'application/soap+xml; charset=utf-8',
-        'Content-Length': Buffer.byteLength(soap, 'utf8'),
-      },
-      rejectUnauthorized: false, timeout: 30000,
-    }, (r) => { let d = ''; r.on('data', (c) => d += c); r.on('end', () => res({ status: r.statusCode, body: d })); });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
-    req.write(soap); req.end();
-  });
+  const resp = await _sefazPost(url, soap, pem);
 
   const retMatch = resp.body.match(/<retEvento[\s\S]*?<infEvento>[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>[\s\S]*?(?:<nProt>(\d+)<\/nProt>)?/);
   const loteMatch = resp.body.match(/<retEnvEvento[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>/);
@@ -659,23 +737,7 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
 
   const pem = extractPem(pfxPath, pfxSenha, issuer.cnpj);
   const url = new URL(NFE_PB_URLS[issuer.environment === 'production' ? 'production' : 'homologation']);
-  const resp = await new Promise((res, rej) => {
-    const req = https.request({
-      hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
-      cert: pem.cert, key: pem.key,
-      headers: {
-        'Content-Type': 'application/soap+xml; charset=utf-8',
-        'Content-Length': Buffer.byteLength(soap, 'utf8'),
-      },
-      rejectUnauthorized: false, timeout: 30000,
-    }, (r) => {
-      let d = ''; r.on('data', (c) => d += c);
-      r.on('end', () => res({ status: r.statusCode, body: d }));
-    });
-    req.on('error', rej);
-    req.on('timeout', () => { req.destroy(); rej(new Error('Timeout SEFAZ')); });
-    req.write(soap); req.end();
-  });
+  const resp = await _sefazPost(url, soap, pem);
 
   const loteMatch = resp.body.match(/<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>/);
   const protMatch = resp.body.match(/<infProt>[\s\S]*?<cStat>(\d+)<\/cStat>[\s\S]*?<xMotivo>([^<]+)<\/xMotivo>[\s\S]*?(?:<nProt>(\d+)<\/nProt>)?[\s\S]*?<\/infProt>/);
@@ -683,7 +745,7 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
   const loteStat = loteMatch?.[1];
   const protStat = protMatch?.[1] || loteStat;
   const motivo = protMatch?.[2] || loteMatch?.[2];
-  const protocol = protMatch?.[3] || null;
+  const protocol = (resp.body.match(/<nProt>(\d+)<\/nProt>/) || [])[1] || protMatch?.[3] || null;
   const ok = protStat === '100' || protStat === '150';
 
   return { ok, accessKey, protocol, status: protStat, motivo, xmlSigned, rawResponse: resp.body };
