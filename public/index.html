@@ -672,7 +672,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 
   <div class="actions" style="margin-top:16px" id="seller-actions">
-    <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>Meu Agente</span></div>
+    <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>IA ST Vendedor</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
@@ -695,9 +695,9 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER AGENT -->
 <div id="seller-agent" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Meu Agente</p></div>
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">IA ST Vendedor</p></div>
   <div id="seller-agent-today" style="margin-top:8px">
-    <div class="loading">Carregando agente...</div>
+    <div class="loading">Carregando IA ST Vendedor...</div>
   </div>
 
   <div style="display:flex;gap:8px;margin-top:12px">
@@ -706,11 +706,11 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
   <div id="seller-agent-status" style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.72)"></div>
 
-  <p class="ai-consultor-head" style="margin-top:22px">Agente do Vendedor</p>
+  <p class="ai-consultor-head" style="margin-top:22px">IA ST Vendedor</p>
   <div id="seller-agent-chat-log" class="ai-chat-log" style="max-height:calc(100vh - 430px);min-height:180px"></div>
   <div id="seller-agent-sugg" class="ai-sugg"></div>
   <div class="ai-input-row">
-    <input id="seller-agent-input" class="input-field" placeholder="Peça ajuda para vender, priorizar ou montar tarefa..." style="margin-top:0">
+    <input id="seller-agent-input" class="input-field" placeholder="Peça ajuda para vender, mandar mensagem ou montar tarefa..." style="margin-top:0">
     <button id="seller-agent-send" type="button" style="width:52px;border:none;border-radius:12px;background:#fff;color:#E5571E;font-weight:900;font-size:18px;font-family:'Chakra Petch';cursor:pointer">OK</button>
   </div>
   <div id="seller-agent-err" class="error-msg" style="display:none"></div>
@@ -1324,7 +1324,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 <div class="bottom-nav" id="bottomNavSeller" style="display:none">
   <div class="nav-item active" data-screen="seller-home"><span>⌂</span><span>Início</span></div>
   <div class="nav-item" data-screen="seller-clock"><span>⏱</span><span>Ponto</span></div>
-  <div class="nav-item" data-screen="seller-agent"><span>IA</span><span>Agente</span></div>
+  <div class="nav-item" data-screen="seller-agent"><span>IA</span><span>IA ST</span></div>
   <div class="nav-item" data-screen="seller-messages"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
   <div class="nav-item" data-screen="seller-catalog"><span>🛍</span><span>Catálogo</span></div>
   <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
@@ -1622,7 +1622,7 @@ function initSellerAgent() {
     log.dataset.seeded = '1';
     const w = document.createElement('div');
     w.className = 'ai-msg-bot';
-    w.textContent = 'Estou pronto para organizar seu turno. Vou olhar sua carteira, tarefas e sinais da loja para te dizer o melhor proximo passo.';
+    w.textContent = 'Sou a IA ST Vendedor. Posso organizar seu turno, consultar estoque e enviar mensagens internas para outros vendedores quando voce pedir.';
     log.appendChild(w);
   }
   if (!sellerAgentUiReady) {
@@ -1633,7 +1633,7 @@ function initSellerAgent() {
     document.getElementById('seller-agent-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAgent(); });
   }
   sellerAgentState.conversationId = sessionStorage.getItem('tc_seller_agent_conv') || null;
-  sellerAgentSetSuggestions(['Quem eu chamo primeiro?', 'Monte meu plano de hoje', 'Como responder objecao de preco?', 'Que produto eu foco?']);
+  sellerAgentSetSuggestions(['Quem eu chamo primeiro?', 'Mande mensagem para um vendedor', 'Tem estoque desse produto?', 'Monte meu plano de hoje']);
   loadSellerAgentToday(false);
   aiChatScrollToBottom(log, true);
 }
@@ -1709,7 +1709,7 @@ function renderSellerAgentToday(data) {
     '</div>' +
     '<div class="seller-agent-panel">' +
       '<p class="balance-label">FOCO DE VENDA</p>' +
-      (focusHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Sem produto foco. Pergunte ao agente pelo melhor produto para abordar.</div>') +
+      (focusHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Sem produto foco. Pergunte a IA ST pelo melhor produto para abordar.</div>') +
     '</div>';
 }
 
@@ -1717,7 +1717,7 @@ async function loadSellerAgentToday(force) {
   if (sellerAgentState.loading && !force) return;
   sellerAgentState.loading = true;
   const wrap = document.getElementById('seller-agent-today');
-  if (wrap && force) wrap.innerHTML = '<div class="loading">Atualizando agente...</div>';
+  if (wrap && force) wrap.innerHTML = '<div class="loading">Atualizando IA ST Vendedor...</div>';
   const data = await api('/seller/agent/today');
   sellerAgentState.loading = false;
   if (data.error) {

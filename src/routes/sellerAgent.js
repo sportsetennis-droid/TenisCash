@@ -1,5 +1,5 @@
 // =====================================================================
-// Routes: /api/seller/agent - Agente do Vendedor
+// Routes: /api/seller/agent - IA ST Vendedor
 // =====================================================================
 // V1: cria plano diario, conversa contextual e aplica tarefas sugeridas
 // usando a carteira existente do vendedor.
@@ -53,7 +53,7 @@ const chatLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `seller-agent:${req.userId || req.ip}`,
-  message: { error: 'Muitas mensagens para o agente. Aguarde um instante.' },
+  message: { error: 'Muitas mensagens para a IA ST Vendedor. Aguarde um instante.' },
 });
 
 function requireSeller(req, res, next) {
@@ -89,6 +89,12 @@ function safeText(value, max = 600) {
   s = s.replace(/ignore (previous|all) instructions/gi, '[redacted]');
   if (s.length > max) s = s.slice(0, max);
   return s;
+}
+
+function safeMessageText(value, max = 2000) {
+  return safeText(value, max)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function parseMessages(json) {
@@ -228,6 +234,136 @@ function matchesStore(store, wanted) {
   if (!needle) return true;
   const hay = normalizeStoreNeedle(`${store?.id || ''} ${store?.code || ''} ${store?.name || ''}`);
   return hay.includes(needle);
+}
+
+function isInternalMessageIntent(text) {
+  const msg = normalizeStoreNeedle(text);
+  return (
+    /\b(manda|mande|mandar|envia|envie|enviar)\b.*\bmensagem\b/.test(msg) ||
+    /\bmensagem\b.*\b(para|pra|pro|ao|a)\b/.test(msg) ||
+    /\b(avisa|avisar|avise|fala|fale|diga)\b.*\b(para|pra|pro|ao|a)\b/.test(msg)
+  );
+}
+
+function parseInternalMessageCommand(text) {
+  const raw = safeText(text, 2200);
+  const patterns = [
+    /(?:manda|mande|mandar|envia|envie|enviar)\s+(?:uma\s+)?mensagem\s+(?:para|pra|pro|ao|a)\s+(.+?)\s+(?:dizendo|falando|com\s+o\s+texto|que|:)\s+(.+)/i,
+    /(?:mensagem)\s+(?:para|pra|pro|ao|a)\s+(.+?)\s*(?:dizendo|falando|com\s+o\s+texto|que|:|-)\s*(.+)/i,
+    /(?:avisa|avisar|avise|fala|fale|diga)\s+(?:para|pra|pro|ao|a)\s+(.+?)\s+(?:que|:)\s+(.+)/i,
+  ];
+  for (const pattern of patterns) {
+    const m = raw.match(pattern);
+    if (!m) continue;
+    const recipientQuery = safeText(m[1], 120)
+      .replace(/^(o|a|ao|aos|as|pro|pra)\s+/i, '')
+      .trim();
+    const content = safeMessageText(m[2], 1800);
+    if (recipientQuery && content) return { recipientQuery, content };
+  }
+  return { recipientQuery: '', content: '' };
+}
+
+async function searchInternalRecipients(query, senderId) {
+  const q = safeText(query, 120);
+  if (!q || q.length < 2) return [];
+  const terms = q.split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 2);
+  return prisma.user.findMany({
+    where: {
+      active: true,
+      id: { not: senderId },
+      role: { in: ['seller', 'admin', 'superadmin', 'manager'] },
+      ...(terms.length
+        ? {
+            AND: terms.map((term) => ({
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { phone: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+                { employeeCode: { contains: term, mode: 'insensitive' } },
+              ],
+            })),
+          }
+        : {}),
+    },
+    orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    take: 8,
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      employeeCode: true,
+      store: { select: { code: true, name: true } },
+    },
+  });
+}
+
+function bestRecipientMatch(query, recipients) {
+  if (!recipients.length) return null;
+  const needle = normalizeStoreNeedle(query);
+  const exact = recipients.filter((r) => normalizeStoreNeedle(r.name) === needle || normalizeStoreNeedle(r.employeeCode) === needle);
+  if (exact.length === 1) return exact[0];
+  const contains = recipients.filter((r) => normalizeStoreNeedle(r.name).includes(needle));
+  if (contains.length === 1) return contains[0];
+  return recipients.length === 1 ? recipients[0] : null;
+}
+
+async function handleInternalMessageIntent(req, text) {
+  const parsed = parseInternalMessageCommand(text);
+  if (!parsed.recipientQuery || !parsed.content) {
+    return {
+      handled: true,
+      reply: 'Posso enviar pelo sistema de mensagens. Use assim: "Mande mensagem para Nome dizendo Texto da mensagem".',
+      suggestions: ['Mande mensagem para vendedor dizendo preciso de ajuda', 'Abrir mensagens', 'Quem eu chamo primeiro?'],
+    };
+  }
+
+  const recipients = await searchInternalRecipients(parsed.recipientQuery, req.userId);
+  const recipient = bestRecipientMatch(parsed.recipientQuery, recipients);
+  if (!recipient) {
+    if (!recipients.length) {
+      return {
+        handled: true,
+        reply: `Nao encontrei nenhum vendedor ou admin ativo para "${parsed.recipientQuery}". Tente nome completo ou codigo do vendedor.`,
+        suggestions: ['Tentar nome completo', 'Abrir mensagens', 'Pedir plano do dia'],
+      };
+    }
+    const list = recipients.map((r, idx) => {
+      const store = r.store?.code ? ` - ${r.store.code}` : '';
+      const code = r.employeeCode ? ` (${r.employeeCode})` : '';
+      return `${idx + 1}. ${r.name}${code}${store}`;
+    }).join('\n');
+    return {
+      handled: true,
+      reply: `Encontrei mais de uma pessoa. Me diga o nome mais completo ou codigo:\n${list}`,
+      suggestions: recipients.slice(0, 3).map((r) => `Mande mensagem para ${r.name} dizendo ${parsed.content.slice(0, 50)}`),
+    };
+  }
+
+  const message = await prisma.message.create({
+    data: {
+      fromId: req.userId,
+      toId: recipient.id,
+      type: 'message',
+      title: 'IA ST Vendedor',
+      content: parsed.content,
+      status: 'sent',
+    },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      createdAt: true,
+      to: { select: { id: true, name: true, role: true, store: { select: { code: true, name: true } } } },
+    },
+  });
+
+  return {
+    handled: true,
+    reply: `Mensagem enviada para ${recipient.name} pelo sistema interno:\n"${parsed.content}"`,
+    suggestions: ['Ver mensagens enviadas', 'Enviar outra mensagem', 'Montar proxima tarefa'],
+    message,
+  };
 }
 
 function isStockIntent(text) {
@@ -462,8 +598,8 @@ function buildRecommendedTasks(snapshot) {
     tasks.push({
       title: `${verb} ${c.customerName}`,
       description: c.nextAction
-        ? `Agente: ${c.nextAction}`
-        : `Agente: retomar contato com abordagem curta, entender necessidade e registrar o proximo passo.`,
+        ? `IA ST: ${c.nextAction}`
+        : `IA ST: retomar contato com abordagem curta, entender necessidade e registrar o proximo passo.`,
       type,
       priority: c.priority || 'MEDIUM',
       customerId: c.customerId || null,
@@ -475,7 +611,7 @@ function buildRecommendedTasks(snapshot) {
   if (snapshot.stats.tasksOpen < 3) {
     tasks.push({
       title: 'Registrar 3 atendimentos do turno',
-      description: 'Agente: depois de cada conversa, registrar resumo, resultado e proxima acao.',
+      description: 'IA ST: depois de cada conversa, registrar resumo, resultado e proxima acao.',
       type: 'FOLLOW_UP',
       priority: 'MEDIUM',
       customerId: null,
@@ -487,7 +623,7 @@ function buildRecommendedTasks(snapshot) {
   if (!snapshot.weeklyInterview || snapshot.weeklyInterview.status !== 'SUBMITTED') {
     tasks.push({
       title: 'Atualizar entrevista semanal',
-      description: 'Agente: responder dificuldades, produtos pedidos e oportunidades vistas na loja.',
+      description: 'IA ST: responder dificuldades, produtos pedidos e oportunidades vistas na loja.',
       type: 'FOLLOW_UP',
       priority: 'LOW',
       customerId: null,
@@ -602,7 +738,7 @@ async function loadSellerSnapshot(req) {
     throw err;
   }
   if (req.userRole === 'seller' && seller.id !== req.userId) {
-    const err = new Error('Voce so pode acessar seu proprio agente');
+    const err = new Error('Voce so pode acessar sua propria IA ST Vendedor');
     err.statusCode = 403;
     throw err;
   }
@@ -828,6 +964,9 @@ function compactSnapshotForPrompt(snapshot) {
 function offlineCoachReply(message, snapshot) {
   const msg = message.toLowerCase();
   const first = snapshot.priorityCustomers[0];
+  if (isInternalMessageIntent(message)) {
+    return 'Eu posso enviar mensagem interna. Use o formato: "Mande mensagem para Nome dizendo Texto da mensagem".';
+  }
   if (msg.includes('estoque') || msg.includes('tem ') || msg.includes('tamanho') || msg.includes('disponivel') || msg.includes('disponível')) {
     return 'Eu tenho acesso ao estoque das lojas. Me diga o produto ou modelo e, se quiser, o tamanho e a loja. Exemplo: "Nimbus 27 tamanho 41 em Tambia".';
   }
@@ -882,7 +1021,7 @@ async function execTool(name, input, snapshot) {
 }
 
 function buildSystemPrompt(snapshot) {
-  return `Voce e o Agente do Vendedor da Sports & Tennis dentro do TenisCash.
+  return `Voce e a IA ST Vendedor da Sports & Tennis dentro do TenisCash.
 
 Missao: ajudar o vendedor logado a vender melhor hoje, organizar tarefas, priorizar clientes, preparar abordagem, lidar com objecoes e registrar proximos passos.
 
@@ -891,6 +1030,7 @@ Regras:
 - Use apenas os dados do contexto e das tools. Nao invente cliente, estoque, preco, desconto, meta ou produto.
 - Voce TEM acesso ao estoque real das lojas via search_store_stock. Se o vendedor perguntar estoque, disponibilidade, tamanho, "tem?", "onde tem?", "quantas unidades?", use search_store_stock antes de responder.
 - Ao responder estoque, diga loja, tamanho e quantidade. Se nao localizar, diga que nao localizou estoque registrado para aquele filtro, sem mandar o vendedor procurar outro sistema.
+- Voce tambem pode enviar mensagem interna pelo TenisCash quando o texto vier em formato claro: "Mande mensagem para Nome dizendo Texto". Esse envio e tratado pelo sistema antes da IA responder.
 - O vendedor continua no controle. Para criar tarefas, oriente a usar o botao "Criar tarefas" quando a sugestao ja existir no plano.
 - Nao envie WhatsApp de verdade, nao aprove desconto e nao prometa condicao comercial sem confirmacao da loja.
 - Se o vendedor pedir produto sem falar de estoque, use search_products antes de recomendar.
@@ -916,7 +1056,7 @@ router.get('/today', requireSeller, async (req, res) => {
     });
   } catch (err) {
     console.error('[seller/agent/today] erro:', err);
-    res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao carregar agente' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao carregar IA ST Vendedor' });
   }
 });
 
@@ -990,6 +1130,16 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Mensagem obrigatoria' });
 
     const snapshot = await loadSellerSnapshot(req);
+    if (isInternalMessageIntent(text)) {
+      const messageResult = await handleInternalMessageIntent(req, text);
+      return res.json({
+        conversationId: null,
+        reply: messageResult.reply,
+        suggestions: messageResult.suggestions,
+        message: messageResult.message || null,
+      });
+    }
+
     if (isStockIntent(text)) {
       const stockInput = await parseStockInputFromText(text);
       const stockResult = await searchStoreStockForAgent(stockInput, snapshot);
@@ -1023,7 +1173,7 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
         data: {
           userId: req.userId,
           userType: 'seller-agent',
-          title: `Agente vendedor: ${text.slice(0, 55)}`,
+          title: `IA ST Vendedor: ${text.slice(0, 55)}`,
         },
       });
     }
@@ -1115,7 +1265,7 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     });
   } catch (err) {
     console.error('[seller/agent/chat] erro:', err);
-    res.status(500).json({ error: 'Erro ao conversar com o agente. Tente novamente.' });
+    res.status(500).json({ error: 'Erro ao conversar com a IA ST Vendedor. Tente novamente.' });
   }
 });
 
