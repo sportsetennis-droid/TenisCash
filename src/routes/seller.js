@@ -700,6 +700,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         const tPag = tPagMap[paymentMethod] || '99';
         // Pra cartão sem cAut, pula a emissão automática (operador digita depois)
         const isCard = tPag === '03' || tPag === '04';
+        // CONFORMIDADE FISCAL: PIX manual (sem confirmação de pagamento) NÃO pode auto-emitir.
+        // A NFC-e só pode sair APÓS o pagamento confirmado. PIX com confirmação (cardAuthCode/e2e do TEF) emite normal.
+        const isPixManual = (tPag === '17') && !req.body.cardAuthCode;
         // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas).
         // Sem isso o detPag sai com CNPJ zerado. Só aplica em cartão.
         const acquirerKey = isCard ? (req.body.acquirerKey || 'PAGSEGURO') : req.body.acquirerKey;
@@ -708,7 +711,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         const existingNfce = await prisma.fiscalDocument.findFirst({ where: { saleId: result.sale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
         if (existingNfce) {
           fiscalResult = { ok: existingNfce.status === 'authorized', alreadyEmitted: true, number: existingNfce.number, message: 'Venda já tem cupom #' + existingNfce.number };
-        } else if (!isCard || req.body.cardAuthCode) {
+        } else if ((!isCard && !isPixManual) || req.body.cardAuthCode) {
           // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
           const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
           const nNF = Math.max(issuer.nfceNextNumber || 1, (maxDoc._max.number || 0) + 1);
@@ -789,7 +792,14 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             error: r.ok ? null : (r.error || r.motivo),
           };
         } else {
-          fiscalResult = { skipped: true, reason: 'Cartão sem código autorização — emitir manualmente após digitar cAut' };
+          const reason = isPixManual
+            ? 'PIX sem confirmação de pagamento — emitir o cupom só DEPOIS que o PIX cair'
+            : 'Cartão sem código autorização — emitir manualmente após digitar cAut';
+          fiscalResult = { skipped: true, reason };
+          // Marca a venda como pendente de pagamento (não fica "completed" sem cupom).
+          if (isPixManual) {
+            await prisma.sale.update({ where: { id: result.sale.id }, data: { status: 'pending_payment' } }).catch(() => {});
+          }
         }
       } else {
         fiscalResult = { skipped: true, reason: !store?.fiscalIssuer ? 'Loja sem emissor fiscal' : !store?.fiscalIssuer?.csc ? 'Sem CSC cadastrado' : 'Loja sem Fiscal Agent — emitir manualmente pela tela' };
