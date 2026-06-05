@@ -537,6 +537,24 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       };
     });
 
+    // Desconto em R$ na venda (sem limite). Reduz os itens proporcionalmente pro cupom bater
+    // (vProd = soma dos itens, vDesc=0 no agente). Só roda se desconto>0 — venda sem desconto = idêntica a hoje.
+    const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    let discountApplied = 0;
+    const rawDiscount = round2(req.body.discount);
+    if (rawDiscount > 0 && totalAmount > 0) {
+      discountApplied = Math.min(rawDiscount, round2(totalAmount));
+      const target = round2(totalAmount - discountApplied);
+      const factor = target / totalAmount;
+      let acc = 0;
+      saleItemsData.forEach((it, idx) => {
+        if (idx < saleItemsData.length - 1) { it.totalPrice = round2(it.totalPrice * factor); acc = round2(acc + it.totalPrice); }
+        else { it.totalPrice = round2(target - acc); } // último item absorve o arredondamento
+        it.unitPrice = it.quantity ? it.totalPrice / it.quantity : it.totalPrice; // vUnCom aceita mais decimais
+      });
+      totalAmount = target;
+    }
+
     // Cliente (opcional): busca por telefone
     let customer = null;
     if (customerPhone) {
@@ -556,6 +574,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           sellerId,
           storeId: activeStoreId,
           totalAmount,
+          discount: discountApplied,
           tcUsed: tcConsumed,
           tcEarned,
           paymentMethod: paymentMethod || 'unknown',

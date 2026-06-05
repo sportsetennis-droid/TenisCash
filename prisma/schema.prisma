@@ -465,6 +465,7 @@ model Sale {
   client        SellerClient? @relation(fields: [clientId], references: [id])
   storeId       String?
   totalAmount   Float
+  discount      Float         @default(0) // desconto em R$ aplicado na venda (já embutido no totalAmount líquido)
   tcUsed        Float         @default(0)
   tcEarned      Float         @default(0)
   paymentMethod String?
