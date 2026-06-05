@@ -964,18 +964,30 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" class="refresh-btn" id="btn-ai-refresh">↻</button>
   </div>
 
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <button type="button" class="tab active js-ai-sub" data-ai-sub="daily">Comando do Dia</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="command">📊 Centro de Comando</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="memory">🧠 Memória</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="history">Histórico</button>
-    <button type="button" class="tab js-ai-sub" data-ai-sub="agents">Agentes</button>
+  <div style="display:grid;gap:8px;margin-bottom:16px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;letter-spacing:2px;color:var(--text3);min-width:72px">PRINCIPAL</span>
+      <button type="button" class="tab active js-ai-sub" data-ai-sub="home">Início</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="daily">Campanha</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="agents">Times</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="memory">Memória</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;letter-spacing:2px;color:var(--text3);min-width:72px">CONTROLE</span>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="command">Executivo</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="history">Histórico</button>
+      <button type="button" class="tab js-ai-sub" data-ai-sub="run">Avulso</button>
+    </div>
+  </div>
+
+  <!-- INICIO (entrada simples para os principais fluxos da IA) -->
+  <div id="ai-panel-home">
+    <div id="ai-home-content" class="muted" style="font-size:13px">Carregando Central IA...</div>
   </div>
 
   <!-- COMANDO DO DIA (motor diario: agentes, plano, aprovacao e execucao) -->
-  <div id="ai-panel-daily">
+  <div id="ai-panel-daily" style="display:none">
     <div id="ai-daily-content" class="muted" style="font-size:13px">Carregando Comando do Dia...</div>
   </div>
 
@@ -6814,7 +6826,7 @@ document.addEventListener('keydown', function(e) {
 // ==================== CENTRAL IA Sports & Tennis ====================
 
 let _aiCenterInitialized = false;
-const AI_CENTER_SUBS = ['daily','command','memory','run','approvals','history','agents'];
+const AI_CENTER_SUBS = ['home','daily','command','memory','run','approvals','history','agents'];
 
 async function initAdminAICenter() {
   // Sub-tabs
@@ -6827,6 +6839,7 @@ async function initAdminAICenter() {
         const el = document.getElementById('ai-panel-' + s);
         if (el) el.style.display = (s === sub) ? 'block' : 'none';
       });
+      if (sub === 'home') loadAIHome();
       if (sub === 'daily') loadAIDailyCommand();
       if (sub === 'command') loadAICommandCenter();
       if (sub === 'memory') loadAIMemory();
@@ -6845,8 +6858,9 @@ async function initAdminAICenter() {
   if (btnRefresh && !btnRefresh._wired) {
     btnRefresh._wired = true;
     btnRefresh.onclick = () => {
-      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'daily';
-      if (activeSub === 'daily') loadAIDailyCommand();
+      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'home';
+      if (activeSub === 'home') loadAIHome();
+      else if (activeSub === 'daily') loadAIDailyCommand();
       else if (activeSub === 'command') loadAICommandCenter();
       else if (activeSub === 'memory') loadAIMemory();
       else if (activeSub === 'approvals') loadAIApprovals();
@@ -6889,8 +6903,86 @@ async function initAdminAICenter() {
     } catch (e) { /* ignora — campo segue como "Todas as lojas" */ }
   }
 
-  // Comando do Dia é a aba padrão: plano diario, aprovacoes e execucao.
-  loadAIDailyCommand();
+  // Inicio é a entrada padrão da Central IA.
+  loadAIHome();
+}
+
+// ==================== INICIO CENTRAL IA ====================
+// Entrada simples: campanha, times, aprovacoes e memoria.
+
+function aiGoSub(sub) {
+  const btn = document.querySelector(`.js-ai-sub[data-ai-sub="${sub}"]`);
+  if (btn) btn.click();
+}
+
+function aiHomeAction(title, detail, buttonLabel, sub, tone) {
+  return `
+    <div style="background:#10131b;border:1px solid ${tone || '#232838'}55;border-radius:8px;padding:14px 16px;color:#eef1f8;display:flex;flex-direction:column;gap:12px;min-height:164px">
+      <div>
+        <div style="font-size:18px;font-weight:900;line-height:1.15;color:#eef1f8">${escapeHtml(title)}</div>
+        <div style="font-size:12px;color:#9aa1b2;line-height:1.45;margin-top:7px">${escapeHtml(detail)}</div>
+      </div>
+      <button type="button" class="btn ${sub === 'daily' ? 'btn-primary' : ''}" data-ai-home-sub="${escapeHtml(sub)}" style="margin-top:auto;align-self:flex-start">${escapeHtml(buttonLabel)}</button>
+    </div>
+  `;
+}
+
+function renderAIHome(status, pending) {
+  const runState = status ? aiDailyRunState(status.lastRun, status.runDate) : null;
+  const pendingCount = Array.isArray(pending?.approvals) ? pending.approvals.length : null;
+  const lastVariant = status?.orchestration?.agentVariant || status?.orchestration?.input?.metadata?.agentVariant || 'classic';
+  return `
+    <div style="display:grid;gap:14px">
+      ${aiPanel(`
+        <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:8px">CENTRAL IA</div>
+            <div style="font-size:24px;font-weight:900;line-height:1.15;color:#eef1f8">Escolha o fluxo</div>
+            <div style="font-size:13px;color:#9aa1b2;margin-top:8px;line-height:1.45;max-width:720px">Campanha, times, aprovacoes e memoria ficam separados. O time Mercado continua separado do Classico.</div>
+          </div>
+          <button type="button" class="btn" data-ai-home-sub="daily">Ir para campanha</button>
+        </div>
+      `)}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+        ${aiHomeAction('Campanha de hoje', 'Plano comercial, produtos foco, WhatsApp, Instagram e execucao da loja.', 'Abrir campanha', 'daily', '#E5571E')}
+        ${aiHomeAction('Times de agentes', 'Classico preservado e Mercado com o novo market-intelligence-agent.', 'Escolher time', 'agents', '#2ecc71')}
+        ${aiHomeAction('Aprovacoes', 'Fila humana para campanha, desconto, WhatsApp, publicacao e aprendizado.', 'Revisar fila', 'approvals', '#ffb020')}
+        ${aiHomeAction('Memoria', 'Fatos fixos e aprendizados que os agentes leem antes de trabalhar.', 'Ver memoria', 'memory', '#9aa1b2')}
+      </div>
+
+      ${aiPanel(`
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:18px">
+          ${aiPlainStat('CAMPANHA', runState ? runState.label : 'sem status', runState ? runState.note : 'status indisponivel', runState?.color || '#9aa1b2')}
+          ${aiPlainStat('TIME USADO', lastVariant === 'market' ? 'Mercado' : 'Classico', 'ultima rodada salva', lastVariant === 'market' ? '#2ecc71' : '#ffb020')}
+          ${aiPlainStat('APROVACOES', pendingCount ?? '-', pendingCount === null ? 'fila indisponivel' : 'pendente(s)', pendingCount ? '#ffb020' : '#2ecc71')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #232838">
+          <button type="button" class="btn" data-ai-home-sub="command">Executivo</button>
+          <button type="button" class="btn" data-ai-home-sub="history">Historico</button>
+          <button type="button" class="btn" data-ai-home-sub="run">Avulso</button>
+        </div>
+      `)}
+    </div>
+  `;
+}
+
+function wireAIHome() {
+  document.querySelectorAll('[data-ai-home-sub]').forEach(btn => {
+    btn.onclick = () => aiGoSub(btn.dataset.aiHomeSub);
+  });
+}
+
+async function loadAIHome() {
+  const box = document.getElementById('ai-home-content');
+  if (!box) return;
+  box.innerHTML = '<span class="muted" style="font-size:13px">Carregando Central IA...</span>';
+  const [status, pending] = await Promise.all([
+    api('/admin/ai/daily-market/status').catch(() => null),
+    api('/admin/ai/approvals/pending').catch(() => null),
+  ]);
+  box.innerHTML = renderAIHome(status && !status.error ? status : null, pending && !pending.error ? pending : null);
+  wireAIHome();
 }
 
 // ==================== COMANDO DO DIA ====================
