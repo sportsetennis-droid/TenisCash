@@ -101,11 +101,11 @@
   .grid-4 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
   /* Card base */
-  .card { background: white; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, transform 0.1s; border: 1px solid var(--border-soft); }
+  .card { background: white; color: var(--text); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); transition: box-shadow 0.15s, transform 0.1s; border: 1px solid var(--border-soft); }
   .card:hover { box-shadow: var(--shadow-md); }
 
   /* KPI card (Dashboard) — com gradient na borda esquerda + ícone */
-  .kpi-card { background: white; border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); display: flex; align-items: center; gap: 14px; transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
+  .kpi-card { background: white; color: var(--text); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); display: flex; align-items: center; gap: 14px; transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
   .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .kpi-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
   .kpi-icon.orange { background: var(--primary-light); color: var(--primary); }
@@ -182,7 +182,7 @@
   /* Modal */
   .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
   .modal-bg.show { display: flex; animation: fadeIn 0.2s ease-out; }
-  .modal { background: white; border-radius: var(--radius-lg); max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: var(--shadow-lg); }
+  .modal { background: white; color: var(--text); border-radius: var(--radius-lg); max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: var(--shadow-lg); }
   .modal-title { font-size: 20px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
   .modal-close { float: right; cursor: pointer; font-size: 24px; color: var(--text-muted); background: none; border: none; line-height: 1; padding: 0 4px; }
   .modal-close:hover { color: var(--text); }
@@ -204,12 +204,12 @@
 
   /* Clock buttons */
   .clock-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
-  .clock-btn { padding: 24px 16px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; cursor: pointer; text-align: center; font-size: 14px; font-weight: 600; transition: all 0.15s; }
+  .clock-btn { padding: 24px 16px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; color: var(--text); cursor: pointer; text-align: center; font-size: 14px; font-weight: 600; transition: all 0.15s; }
   .clock-btn:hover:not(:disabled) { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .clock-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
   /* Payment & Vendor chip cards */
-  .payment-card, .vendor-card { padding: 16px 14px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; cursor: pointer; text-align: center; transition: all 0.15s; user-select: none; }
+  .payment-card, .vendor-card { padding: 16px 14px; border: 2px solid var(--border-soft); border-radius: var(--radius); background: white; color: var(--text); cursor: pointer; text-align: center; transition: all 0.15s; user-select: none; }
   .payment-card:hover, .vendor-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .payment-card.active, .vendor-card.active { border-color: var(--primary); background: linear-gradient(135deg,#FFEBDC 0%,#FCDAC4 100%); box-shadow: 0 4px 12px rgba(255,109,0,0.15); }
   .payment-icon { font-size: 28px; margin-bottom: 4px; }
