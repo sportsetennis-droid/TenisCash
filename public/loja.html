@@ -1077,12 +1077,13 @@ function selectPayment(method) {
   });
   // Cartão E PIX passam na maquininha externa → exigem dados fiscais (Decreto SEFAZ-PB)
   const isCard = method === 'credit_card' || method === 'debit_card';
-  // PIX virou QR automático (PagBank) — não pede dados aqui. Só cartão mostra os campos.
-  document.getElementById('sellCardDetails').style.display = isCard ? 'block' : 'none';
+  const isPix = method === 'pix';
+  // Cartão e PIX: operador digita o código do comprovante (maquininha) pra emitir o cupom.
+  document.getElementById('sellCardDetails').style.display = (isCard || isPix) ? 'block' : 'none';
   const brandField = document.getElementById('sellBrandField');
-  if (brandField) brandField.style.display = isCard ? 'block' : 'none';
+  if (brandField) brandField.style.display = isCard ? 'block' : 'none'; // PIX não tem bandeira
   const titleEl = document.getElementById('sellFiscalTitle');
-  if (titleEl) titleEl.textContent = '📋 Dados do cartão (obrigatório SEFAZ-PB)';
+  if (titleEl) titleEl.textContent = isPix ? '📋 Código do comprovante (PIX) pra emitir o cupom' : '📋 Dados do cartão (obrigatório SEFAZ-PB)';
 }
 
 // Após finalizar venda, mostra bloco de NFCe (e habilita o botão)
@@ -1724,7 +1725,7 @@ async function finalizeSale() {
   const paymentMethod = document.getElementById('sellPayment').value;
   const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
   const isPix = paymentMethod === 'pix';
-  const needsFiscal = isCard; // PIX agora é QR automático (PagBank) — não exige dados na finalização
+  const needsFiscal = isCard || isPix; // cartão e PIX: exige o código do comprovante pra emitir o cupom
   let cardData = {};
   if (needsFiscal) {
     const acquirer = document.getElementById('sellCardAcquirer').value;
