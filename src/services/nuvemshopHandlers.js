@@ -12,6 +12,21 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
+const { recalcSizeStock } = require('./stockSync');
+
+// Loja do e-commerce (Nuvemshop). O estoque vindo do NS entra no StoreStock DESSA loja,
+// não no espelho ProductSize.stock. Resolvida por code (default LOJA04), cacheada.
+let _ecomStoreId; // undefined = ainda não resolvido; null = não existe
+async function getEcommerceStoreId() {
+  if (_ecomStoreId !== undefined) return _ecomStoreId;
+  const code = process.env.NUVEMSHOP_STORE_CODE || 'LOJA04';
+  const st = await prisma.store.findFirst({ where: { code } });
+  _ecomStoreId = st ? st.id : null;
+  if (!_ecomStoreId) {
+    console.warn(`[nuvemshop] Loja e-commerce '${code}' não encontrada — estoque do NS não será gravado no StoreStock.`);
+  }
+  return _ecomStoreId;
+}
 
 function pickStr(v) {
   if (v == null) return null;
@@ -119,7 +134,9 @@ async function upsertLocalProduct(nsProduct) {
     });
   }
 
-  // Variants → ProductSize
+  // Variants → ProductSize (+ StoreStock da loja e-commerce).
+  // ESTOQUE ÚNICO: o número do Nuvemshop entra no StoreStock[e-commerce], NÃO no espelho.
+  const ecomStoreId = await getEcommerceStoreId();
   for (const v of variants) {
     const size = pickStr(v.values?.[0]?.name) || pickStr(v.option1) || 'único';
     const stock = parseInt(v.stock, 10) || 0;
@@ -130,14 +147,24 @@ async function upsertLocalProduct(nsProduct) {
     });
     let psize;
     if (existingSize) {
-      psize = await prisma.productSize.update({
-        where: { id: existingSize.id },
-        data: { stock, barcode },
-      });
+      // não escreve stock no espelho; só completa o EAN se faltava
+      psize = (barcode && !existingSize.barcode)
+        ? await prisma.productSize.update({ where: { id: existingSize.id }, data: { barcode } })
+        : existingSize;
     } else {
       psize = await prisma.productSize.create({
-        data: { productId: product.id, size, stock, barcode },
+        data: { productId: product.id, size, stock: 0, barcode },
       });
+    }
+
+    // Estoque do NS → StoreStock da loja e-commerce; depois recalcula o espelho.
+    if (ecomStoreId) {
+      await prisma.storeStock.upsert({
+        where: { storeId_productSizeId: { storeId: ecomStoreId, productSizeId: psize.id } },
+        update: { stock },
+        create: { storeId: ecomStoreId, productSizeId: psize.id, stock },
+      });
+      await recalcSizeStock(prisma, psize.id);
     }
 
     // VariantMapping
@@ -388,6 +415,17 @@ async function upsertSaleFromOrder(nsOrder) {
         const addr = (nsOrder.shipping_address || {});
         const recipientName = c.name || (c.first_name || '') + ' ' + (c.last_name || '');
         const recipientDoc = (c.identification || '').replace(/\D/g, '');
+        // cMun (código IBGE do município do destinatário): a Nuvemshop não envia, mas a SEFAZ exige
+        // (senão rejeita comprador fora de João Pessoa). Resolve via ViaCEP (best-effort, não bloqueia).
+        const zipDigits = (addr.zipcode || '').replace(/\D/g, '');
+        let cityCode = null;
+        if (zipDigits.length === 8) {
+          try {
+            const cepResp = await fetch('https://viacep.com.br/ws/' + zipDigits + '/json/', { signal: AbortSignal.timeout(8000) });
+            const cepJson = await cepResp.json();
+            if (cepJson && cepJson.ibge) cityCode = String(cepJson.ibge);
+          } catch (e) { /* best-effort: emitNFe55 cai no default se faltar */ }
+        }
         const fiscalDoc = await prisma.fiscalDocument.create({
           data: {
             issuerId: issuer.id,
@@ -419,7 +457,8 @@ async function upsertSaleFromOrder(nsOrder) {
                   neighborhood: addr.locality,
                   city: addr.city,
                   state: addr.province,
-                  zip: (addr.zipcode || '').replace(/\D/g, ''),
+                  zip: zipDigits,
+                  cityCode,
                 },
               },
             },

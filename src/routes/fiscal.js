@@ -244,9 +244,43 @@ router.post('/emit-nfe55', async (req, res) => {
     }
     if (!issuer || !issuer.active) return res.status(400).json({ error: 'Emissor não encontrado/inativo' });
 
-    const pfxPath = pfxPathFor(issuer.cnpj);
-    const pfxSenha = pfxSenhaFor(issuer.cnpj);
-    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+    // Resolve a Store do issuer (Store → FiscalIssuer). Se a loja tem Fiscal Agent
+    // habilitado, emite via agente (Tailscale + PFX local) — igual NFC-e. Senão,
+    // mantém SEFAZ-direto com PFX em disco como fallback.
+    const store = await prisma.store.findFirst({ where: { fiscalIssuerId: issuer.id } });
+    const useAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
+
+    // IDEMPOTÊNCIA — mesma venda/pedido = no MÁXIMO uma NFe 55. Se já há doc NFE
+    // autorizado pra esse saleId (ou mesmo nuvemshopOrderId), devolve ele e NÃO re-emite.
+    const dedupeOr = [];
+    if (saleId) dedupeOr.push({ saleId });
+    if (nuvemshopOrderId) dedupeOr.push({ payload: { path: ['nuvemshopOrderId'], equals: String(nuvemshopOrderId) } });
+    if (dedupeOr.length) {
+      const existingDoc = await prisma.fiscalDocument.findFirst({
+        where: { docType: 'NFE', status: { in: ['authorized', 'processing'] }, OR: dedupeOr },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingDoc) {
+        if (existingDoc.status === 'authorized') {
+          return res.json({ ok: true, alreadyEmitted: true, documentId: existingDoc.id, number: existingDoc.number, accessKey: existingDoc.accessKey, status: '100', message: 'Pedido já possui NFe autorizada #' + existingDoc.number });
+        }
+        const ageMs = Date.now() - new Date(existingDoc.createdAt).getTime();
+        if (ageMs < 95000) return res.status(409).json({ error: 'Emissão desta NFe já está em andamento — aguarde alguns segundos', documentId: existingDoc.id });
+        // 'processing' antigo (>95s, provavelmente travado): segue e tenta de novo
+      }
+    }
+
+    // PFX só é necessário se a loja NÃO usa fiscal agent (agente tem PFX local)
+    let pfxPath = null, pfxSenha = null;
+    if (!useAgent) {
+      pfxPath = pfxPathFor(issuer.cnpj);
+      pfxSenha = pfxSenhaFor(issuer.cnpj);
+      if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado e Store sem Fiscal Agent — configure fiscalAgentUrl+Token na loja' });
+    }
+
+    // Número robusto: nunca abaixo do maior doc já gravado (blinda contra unique-constraint travado por fantasma)
+    const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1 }, _max: { number: true } });
+    const nNF = Math.max(issuer.nfeNextNumber || 1, (maxDoc._max.number || 0) + 1);
 
     // Pre-cria doc em processing
     const doc = await prisma.fiscalDocument.create({
@@ -254,7 +288,7 @@ router.post('/emit-nfe55', async (req, res) => {
         issuerId: issuer.id,
         docType: 'NFE',
         serie: issuer.nfeSerie || 1,
-        number: issuer.nfeNextNumber,
+        number: nNF,
         status: 'processing',
         totalValue: items.reduce((acc, i) => acc + (Number(i.qty) || 1) * (Number(i.unitPrice) || 0), 0),
         saleId: saleId || null,
@@ -272,30 +306,58 @@ router.post('/emit-nfe55', async (req, res) => {
       },
     });
 
-    const { emitNFe55 } = await getSefazDirect();
-    const result = await emitNFe55({
-      issuer, pfxPath, pfxSenha, items,
-      payment: { ...payment, nuvemshopOrderId },
-      customer, natOp,
-      nNF: issuer.nfeNextNumber,
-    });
+    // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
+    let result;
+    if (useAgent) {
+      const agentClient = require('../services/fiscalAgentClient');
+      result = await agentClient.emitNFe55(store, {
+        issuer, items,
+        payment: { ...payment, nuvemshopOrderId },
+        customer, natOp,
+        nNF,
+      });
+    } else {
+      const { emitNFe55 } = await getSefazDirect();
+      result = await emitNFe55({
+        issuer, pfxPath, pfxSenha, items,
+        payment: { ...payment, nuvemshopOrderId },
+        customer, natOp,
+        nNF,
+      });
+    }
 
-    const updated = await prisma.fiscalDocument.update({
-      where: { id: doc.id },
-      data: {
-        status: result.ok ? 'authorized' : 'rejected',
-        accessKey: result.accessKey,
-        protocol: result.protocol,
-        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
-        xmlContent: result.xmlSigned,
-        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
-      },
-    });
+    // Sucesso: grava a nota e avanca a numeracao. Falha SEM chave (nunca chegou na SEFAZ):
+    // apaga o doc pra LIBERAR o numero pro retry (nao acumula "fantasma" que trava o unique).
+    let updated = doc;
     if (result.ok) {
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          status: 'authorized',
+          accessKey: result.accessKey,
+          protocol: result.protocol,
+          xmlContent: result.xmlSigned,
+          response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+        },
+      });
       await prisma.fiscalIssuer.update({
         where: { id: issuer.id },
-        data: { nfeNextNumber: issuer.nfeNextNumber + 1 },
+        data: { nfeNextNumber: nNF + 1 },
       });
+    } else if (result.accessKey) {
+      // Rejeitada PELA SEFAZ (tem chave) — mantem como rejected pra auditoria
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          status: 'rejected',
+          accessKey: result.accessKey,
+          rejectReason: result.motivo || 'Rejeitada',
+          response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+        },
+      });
+    } else {
+      // Falhou ANTES da SEFAZ (rede/agente) — apaga pra liberar o numero pro retry
+      await prisma.fiscalDocument.delete({ where: { id: doc.id } }).catch(() => {});
     }
 
     res.json({
@@ -305,8 +367,8 @@ router.post('/emit-nfe55', async (req, res) => {
       protocol: result.protocol,
       status: result.status,
       motivo: result.motivo,
-      rejectReason: result.ok ? null : result.motivo,
-      error: result.ok ? null : result.motivo,
+      rejectReason: result.ok ? null : (result.motivo || result.error),
+      error: result.ok ? null : (result.motivo || result.error),
     });
   } catch (err) {
     console.error('[fiscal/emit-nfe55]', err);
@@ -339,9 +401,33 @@ router.post('/finalize-nfe-draft/:id', async (req, res) => {
     const issuer = doc.issuer;
     if (!issuer.active) return res.status(400).json({ error: 'Emissor inativo' });
 
-    const pfxPath = pfxPathFor(issuer.cnpj);
-    const pfxSenha = pfxSenhaFor(issuer.cnpj);
-    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+    // Resolve a Store do issuer → roteia via Fiscal Agent (PFX local da loja) quando
+    // habilitado; senão SEFAZ-direto com PFX em disco (fallback intacto).
+    const store = await prisma.store.findFirst({ where: { fiscalIssuerId: issuer.id } });
+    const useAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
+
+    // IDEMPOTÊNCIA — se já existe OUTRA NFE autorizada pra essa mesma venda/pedido,
+    // não finaliza o draft de novo (devolve a existente). Exclui o próprio doc.
+    const dedupeOr = [];
+    if (doc.saleId) dedupeOr.push({ saleId: doc.saleId });
+    const orderId = doc.payload?.orderId;
+    if (orderId) dedupeOr.push({ payload: { path: ['orderId'], equals: orderId } });
+    if (dedupeOr.length) {
+      const existingDoc = await prisma.fiscalDocument.findFirst({
+        where: { id: { not: doc.id }, docType: 'NFE', status: 'authorized', OR: dedupeOr },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingDoc) {
+        return res.json({ ok: true, alreadyEmitted: true, documentId: existingDoc.id, number: existingDoc.number, accessKey: existingDoc.accessKey, status: '100', message: 'Pedido já possui NFe autorizada #' + existingDoc.number });
+      }
+    }
+
+    let pfxPath = null, pfxSenha = null;
+    if (!useAgent) {
+      pfxPath = pfxPathFor(issuer.cnpj);
+      pfxSenha = pfxSenhaFor(issuer.cnpj);
+      if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado e Store sem Fiscal Agent — configure fiscalAgentUrl+Token na loja' });
+    }
 
     // Items vindos da Sale
     const items = doc.sale.items.map((si) => ({
@@ -387,37 +473,61 @@ router.post('/finalize-nfe-draft/:id', async (req, res) => {
       nuvemshopOrderId: doc.payload?.orderId || null,
     };
 
+    // Numeração robusta: recalcula no momento de emitir (não confia no doc.number congelado no webhook,
+    // que pode colidir se 2 pedidos viraram draft com o mesmo nfeNextNumber). Espelha o NFC-e.
+    const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1 }, _max: { number: true } });
+    const nNF = Math.max(issuer.nfeNextNumber || 1, (maxDoc._max.number || 0) + 1);
+
     // Marca processing antes de chamar SEFAZ (idempotência)
     await prisma.fiscalDocument.update({
       where: { id: doc.id },
       data: { status: 'processing' },
     });
 
-    const { emitNFe55 } = await getSefazDirect();
-    const result = await emitNFe55({
-      issuer, pfxPath, pfxSenha, items, customer, payment,
-      nNF: doc.number || issuer.nfeNextNumber,
-    });
+    // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
+    let result;
+    if (useAgent) {
+      const agentClient = require('../services/fiscalAgentClient');
+      result = await agentClient.emitNFe55(store, {
+        issuer, items, customer, payment,
+        nNF,
+      });
+    } else {
+      const { emitNFe55 } = await getSefazDirect();
+      result = await emitNFe55({
+        issuer, pfxPath, pfxSenha, items, customer, payment,
+        nNF,
+      });
+    }
 
-    const updated = await prisma.fiscalDocument.update({
-      where: { id: doc.id },
-      data: {
-        status: result.ok ? 'authorized' : 'rejected',
-        accessKey: result.accessKey,
-        protocol: result.protocol,
-        rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
-        xmlContent: result.xmlSigned,
-        response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
-      },
-    });
-    if (result.ok) {
-      // Só bumpa o counter se usamos o número do issuer
-      if ((doc.number || 0) === issuer.nfeNextNumber) {
+    let updated = doc;
+    if (result.ok || result.accessKey) {
+      // Autorizada, ou rejeitada PELA SEFAZ (tem chave) → grava o desfecho
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          number: nNF,
+          status: result.ok ? 'authorized' : 'rejected',
+          accessKey: result.accessKey,
+          protocol: result.protocol,
+          rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
+          xmlContent: result.xmlSigned,
+          response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) },
+        },
+      });
+      if (result.ok) {
         await prisma.fiscalIssuer.update({
           where: { id: issuer.id },
-          data: { nfeNextNumber: issuer.nfeNextNumber + 1 },
+          data: { nfeNextNumber: nNF + 1 },
         });
       }
+    } else {
+      // Falhou ANTES da SEFAZ (rede/agente) — volta pra draft pra permitir retry
+      // (não deleta: preserva o payload do webhook Nuvemshop)
+      updated = await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: { status: 'draft', rejectReason: (result.motivo || result.error || 'Falha de transmissão').slice(0, 250) },
+      });
     }
 
     res.json({
@@ -427,8 +537,8 @@ router.post('/finalize-nfe-draft/:id', async (req, res) => {
       protocol: result.protocol,
       status: result.status,
       motivo: result.motivo,
-      rejectReason: result.ok ? null : result.motivo,
-      error: result.ok ? null : result.motivo,
+      rejectReason: result.ok ? null : (result.motivo || result.error),
+      error: result.ok ? null : (result.motivo || result.error),
     });
   } catch (err) {
     console.error('[fiscal/finalize-nfe-draft]', err);
@@ -761,6 +871,25 @@ router.post('/nfe', async (req, res) => {
     const issuer = await prisma.fiscalIssuer.findUnique({ where: { id: issuerId } });
     if (!issuer || !issuer.active) return res.status(400).json({ error: 'Emissor inválido ou inativo' });
     if (!issuer.apiToken) return res.status(400).json({ error: 'Emissor sem token Brasil NFe' });
+
+    // IDEMPOTÊNCIA — mesma venda = no MÁXIMO uma NFe. Se já há doc NFE autorizado
+    // pra esse saleId, devolve ele e NÃO re-emite. (Este caminho usa o provedor
+    // Brasil NFe via apiToken — não passa por Fiscal Agent/PFX, então não sofre o
+    // problema de path C:\Chianca no Railway.)
+    if (saleId) {
+      const existingDoc = await prisma.fiscalDocument.findFirst({
+        where: { saleId, docType: 'NFE', status: { in: ['authorized', 'processing'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existingDoc) {
+        if (existingDoc.status === 'authorized') {
+          return res.json({ ok: true, alreadyEmitted: true, document: existingDoc, message: 'Venda já possui NFe autorizada #' + existingDoc.number });
+        }
+        const ageMs = Date.now() - new Date(existingDoc.createdAt).getTime();
+        if (ageMs < 95000) return res.status(409).json({ error: 'Emissão desta NFe já está em andamento — aguarde alguns segundos', documentId: existingDoc.id });
+        // 'processing' antigo (>95s, provavelmente travado): segue e tenta de novo
+      }
+    }
 
     const productIds = items.map(i => i.productId).filter(Boolean);
     const products = productIds.length

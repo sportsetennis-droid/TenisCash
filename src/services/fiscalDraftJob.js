@@ -85,12 +85,40 @@ async function processFiscalDrafts() {
           failed++; continue;
         }
 
-        const pfxPath = pfxPathFor(doc.issuer.cnpj);
-        const pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
-        if (!pfxPath || !pfxSenha) {
-          // Não marca error — talvez PFX será configurado depois
-          console.log('[fiscalDraftJob] skip', doc.id, '— PFX não config pro CNPJ', doc.issuer.cnpj);
-          continue;
+        // IDEMPOTÊNCIA — se já há OUTRA NFE autorizada pra essa mesma venda/pedido,
+        // descarta o draft (cancela duplicidade) e não emite de novo.
+        const dedupeOr = [];
+        if (doc.saleId) dedupeOr.push({ saleId: doc.saleId });
+        const orderId = doc.payload?.orderId;
+        if (orderId) dedupeOr.push({ payload: { path: ['orderId'], equals: orderId } });
+        if (dedupeOr.length) {
+          const dup = await prisma.fiscalDocument.findFirst({
+            where: { id: { not: doc.id }, docType: 'NFE', status: 'authorized', OR: dedupeOr },
+          });
+          if (dup) {
+            await prisma.fiscalDocument.update({
+              where: { id: doc.id },
+              data: { status: 'cancelled', rejectReason: 'Duplicada — pedido já tem NFe autorizada #' + dup.number },
+            });
+            console.log('[fiscalDraftJob] dup', doc.id, '→ já existe NFe', dup.number);
+            continue;
+          }
+        }
+
+        // Resolve a Store do issuer → roteia via Fiscal Agent (PFX local da loja)
+        // quando habilitado; senão SEFAZ-direto com PFX em disco.
+        const store = await prisma.store.findFirst({ where: { fiscalIssuerId: doc.issuer.id } });
+        const useAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
+
+        let pfxPath = null, pfxSenha = null;
+        if (!useAgent) {
+          pfxPath = pfxPathFor(doc.issuer.cnpj);
+          pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
+          if (!pfxPath || !pfxSenha) {
+            // Não marca error — talvez PFX será configurado depois (ou loja terá agente)
+            console.log('[fiscalDraftJob] skip', doc.id, '— sem Fiscal Agent e PFX não config pro CNPJ', doc.issuer.cnpj);
+            continue;
+          }
         }
 
         const items = doc.sale.items.map((si) => ({
@@ -118,6 +146,7 @@ async function processFiscalDrafts() {
             xMun: addrSrc.city,
             UF: addrSrc.state,
             CEP: addrSrc.zip,
+            cMun: addrSrc.cityCode,
           } : null,
           indPres: 2,
         };
@@ -130,41 +159,65 @@ async function processFiscalDrafts() {
           nuvemshopOrderId: doc.payload?.orderId || null,
         };
 
+        // Numeração robusta: recalcula no momento de emitir (o doc.number foi congelado no webhook e
+        // 2 pedidos distintos podem ter o mesmo número) — espelha o NFC-e.
+        const maxNfe = await prisma.fiscalDocument.aggregate({ where: { issuerId: doc.issuer.id, docType: 'NFE', serie: doc.issuer.nfeSerie || 1 }, _max: { number: true } });
+        const nNF = Math.max(doc.issuer.nfeNextNumber || 1, (maxNfe._max.number || 0) + 1);
+
         // Marca processing
         await prisma.fiscalDocument.update({
           where: { id: doc.id },
           data: { status: 'processing' },
         });
 
-        const { emitNFe55 } = await getSefazDirect();
-        const result = await emitNFe55({
-          issuer: doc.issuer, pfxPath, pfxSenha, items, customer, payment,
-          nNF: doc.number || doc.issuer.nfeNextNumber,
-        });
+        // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
+        let result;
+        if (useAgent) {
+          const agentClient = require('./fiscalAgentClient');
+          result = await agentClient.emitNFe55(store, {
+            issuer: doc.issuer, items, customer, payment,
+            nNF,
+          });
+        } else {
+          const { emitNFe55 } = await getSefazDirect();
+          result = await emitNFe55({
+            issuer: doc.issuer, pfxPath, pfxSenha, items, customer, payment,
+            nNF,
+          });
+        }
 
-        await prisma.fiscalDocument.update({
-          where: { id: doc.id },
-          data: {
-            status: result.ok ? 'authorized' : 'rejected',
-            accessKey: result.accessKey,
-            protocol: result.protocol,
-            rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
-            xmlContent: result.xmlSigned,
-            response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000), source: 'fiscalDraftJob' },
-          },
-        });
+        if (result.ok || result.accessKey) {
+          // Autorizada, ou rejeitada PELA SEFAZ (tem chave) → grava desfecho
+          await prisma.fiscalDocument.update({
+            where: { id: doc.id },
+            data: {
+              number: nNF,
+              status: result.ok ? 'authorized' : 'rejected',
+              accessKey: result.accessKey,
+              protocol: result.protocol,
+              rejectReason: result.ok ? null : (result.motivo || 'Erro desconhecido'),
+              xmlContent: result.xmlSigned,
+              response: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000), source: 'fiscalDraftJob' },
+            },
+          });
+        } else {
+          // Falhou ANTES da SEFAZ (rede/agente) — volta pra draft pro próximo run tentar
+          await prisma.fiscalDocument.update({
+            where: { id: doc.id },
+            data: { status: 'draft', rejectReason: (result.motivo || result.error || 'Falha de transmissão').slice(0, 250) },
+          });
+        }
+
         if (result.ok) {
-          if ((doc.number || 0) === doc.issuer.nfeNextNumber) {
-            await prisma.fiscalIssuer.update({
-              where: { id: doc.issuer.id },
-              data: { nfeNextNumber: doc.issuer.nfeNextNumber + 1 },
-            });
-          }
+          await prisma.fiscalIssuer.update({
+            where: { id: doc.issuer.id },
+            data: { nfeNextNumber: nNF + 1 },
+          });
           ok++;
           console.log('[fiscalDraftJob] ✓', doc.id, '→', result.accessKey?.slice(-12));
         } else {
           failed++;
-          console.log('[fiscalDraftJob] ✗', doc.id, result.motivo);
+          console.log('[fiscalDraftJob] ✗', doc.id, result.motivo || result.error);
         }
       } catch (e) {
         failed++;
