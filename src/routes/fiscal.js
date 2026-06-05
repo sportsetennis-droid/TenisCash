@@ -40,8 +40,22 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
-    const { saleId, paymentMethod, acquirerKey, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
+    const { saleId, paymentMethod, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
+    let { acquirerKey } = req.body || {};
     if (!saleId) return res.status(400).json({ error: 'saleId obrigatório' });
+
+    // Cartão (crédito 03 / débito 04): regras de conformidade SEFAZ-PB.
+    const isCardPay = paymentMethod === '03' || paymentMethod === '04';
+    if (isCardPay) {
+      // EXIGE o código de autorização do comprovante — sem ele a NFCe sairia com
+      // placeholder '000000'. Bloqueia aqui em vez de emitir nota inválida.
+      if (!cardAuthCode || String(cardAuthCode).trim() === '' || String(cardAuthCode).trim() === '000000') {
+        return res.status(400).json({ error: 'Cartão exige código de autorização do comprovante (digite o Auth/NSU do recibo da maquininha)' });
+      }
+      // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas).
+      // Sem isso cai em CNPJ zerado no detPag. CNPJ PAGSEGURO 08561701000101.
+      if (!acquirerKey) acquirerKey = 'PAGSEGURO';
+    }
 
     const sale = await prisma.sale.findUnique({
       where: { id: saleId },
@@ -50,6 +64,22 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
       },
     });
     if (!sale) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    // IDEMPOTÊNCIA — uma venda = no MÁXIMO um cupom. (Bug de dupla emissão pego na LOJA03 2026-06-04:
+    // a mesma venda gerou #100001 e #100002.) Se já há cupom autorizado, devolve ele (não re-emite);
+    // se há um 'processing' recente, outra emissão está em andamento → recusa o segundo.
+    const existingDoc = await prisma.fiscalDocument.findFirst({
+      where: { saleId: sale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingDoc) {
+      if (existingDoc.status === 'authorized') {
+        return res.json({ ok: true, alreadyEmitted: true, documentId: existingDoc.id, number: existingDoc.number, accessKey: existingDoc.accessKey, status: '100', message: 'Venda já possui cupom autorizado #' + existingDoc.number });
+      }
+      const ageMs = Date.now() - new Date(existingDoc.createdAt).getTime();
+      if (ageMs < 95000) return res.status(409).json({ error: 'Emissão desta venda já está em andamento — aguarde alguns segundos', documentId: existingDoc.id });
+      // 'processing' antigo (>95s, provavelmente travado): segue e tenta de novo
+    }
 
     // Sale tem so o escalar `storeId` (nao a relacao `store`) — busca a Store separada.
     const store = sale.storeId

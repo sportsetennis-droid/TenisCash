@@ -661,7 +661,15 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         const tPag = tPagMap[paymentMethod] || '99';
         // Pra cartão sem cAut, pula a emissão automática (operador digita depois)
         const isCard = tPag === '03' || tPag === '04';
-        if (!isCard || req.body.cardAuthCode) {
+        // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas).
+        // Sem isso o detPag sai com CNPJ zerado. Só aplica em cartão.
+        const acquirerKey = isCard ? (req.body.acquirerKey || 'PAGSEGURO') : req.body.acquirerKey;
+        // IDEMPOTÊNCIA — não auto-emite se a venda já tem cupom (autorizado ou em andamento).
+        // Evita dupla emissão quando o auto-emit e a rota manual disparam pra mesma venda (bug LOJA03 2026-06-04).
+        const existingNfce = await prisma.fiscalDocument.findFirst({ where: { saleId: result.sale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
+        if (existingNfce) {
+          fiscalResult = { ok: existingNfce.status === 'authorized', alreadyEmitted: true, number: existingNfce.number, message: 'Venda já tem cupom #' + existingNfce.number };
+        } else if (!isCard || req.body.cardAuthCode) {
           // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
           const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
           const nNF = Math.max(issuer.nfceNextNumber || 1, (maxDoc._max.number || 0) + 1);
@@ -678,7 +686,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
               emittedById: operatorId,
               paymentMethod: tPag,
               paymentBrand: req.body.cardBrand || null,
-              paymentAcquirer: req.body.acquirerKey || null,
+              paymentAcquirer: acquirerKey || null,
               paymentAuthCode: req.body.cardAuthCode || null,
               paymentTpIntegra: req.body.tpIntegra || (isCard ? 2 : null),
             },
@@ -709,7 +717,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
             items: fiscalItems,
             payment: {
               tPag, valor: totalAmount,
-              acquirerKey: req.body.acquirerKey,
+              acquirerKey,
               tBand: req.body.cardBrand,
               cAut: req.body.cardAuthCode,
               tpIntegra: req.body.tpIntegra || 2,

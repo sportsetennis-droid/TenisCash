@@ -573,11 +573,11 @@
             <div>
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
               <select id="sellCardAcquirer" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
+                <option value="PAGSEGURO" selected>PagBank / PagSeguro</option>
                 <option value="STONE">Stone</option>
                 <option value="CIELO">Cielo</option>
                 <option value="REDE">Rede</option>
                 <option value="GETNET">GetNet</option>
-                <option value="PAGSEGURO">PagSeguro</option>
                 <option value="MERCADO_PAGO">Mercado Pago</option>
                 <option value="SAFRAPAY">Safrapay</option>
                 <option value="BIN">Banco Inter / BIN</option>
@@ -1109,14 +1109,15 @@ async function emitNfceFromSale() {
       paymentMethod: tPagMap[method] || '99',
     };
     if (method === 'credit_card' || method === 'debit_card') {
+      const auth = document.getElementById('sellCardAuthCode').value.trim();
+      if (!auth || auth === '000000') {
+        alert('Cartão exige o código de autorização do comprovante. Digite o Auth/NSU que veio no recibo da maquininha antes de emitir.');
+        document.getElementById('sellCardAuthCode').focus();
+        btn.disabled = false; btn.textContent = '📄 EMITIR CUPOM NA SEFAZ'; return;
+      }
       payload.acquirerKey = document.getElementById('sellCardAcquirer').value;
       payload.cardBrand = document.getElementById('sellCardBrand').value;
-      payload.cardAuthCode = document.getElementById('sellCardAuthCode').value.trim() || '000000';
-      if (!payload.cardAuthCode || payload.cardAuthCode === '000000') {
-        if (!confirm('Você não digitou o código de autorização da maquininha. Continuar mesmo assim? (vai usar 000000)')) {
-          btn.disabled = false; btn.textContent = '📄 EMITIR CUPOM NA SEFAZ'; return;
-        }
-      }
+      payload.cardAuthCode = auth;
     }
     const r = await api('/api/admin/fiscal/emit-nfce-from-sale', { method: 'POST', body: JSON.stringify(payload) });
     if (r.ok && r.accessKey) {
@@ -1681,6 +1682,16 @@ async function finalizeSale() {
     // Dados de cartão (Decreto SEFAZ-PB 43.077/2022)
     const paymentMethod = document.getElementById('sellPayment').value;
     const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
+    if (isCard) {
+      const auth = document.getElementById('sellCardAuthCode').value.trim();
+      if (!auth || auth === '000000') {
+        if (!confirm('Cartão SEM código de autorização: a venda será salva mas o cupom fiscal NÃO sai automático. Você terá que digitar o Auth/NSU do recibo e emitir manualmente. Continuar assim?')) {
+          btn.disabled = false; btn.textContent = 'Finalizar venda';
+          document.getElementById('sellCardAuthCode').focus();
+          return;
+        }
+      }
+    }
     const cardData = isCard ? {
       acquirerKey: document.getElementById('sellCardAcquirer').value,
       cardBrand: document.getElementById('sellCardBrand').value,
