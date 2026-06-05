@@ -23,6 +23,8 @@ const { listRecentLogs } = require('../logs/ai-log.service');
 const instagram = require('../../services/instagram');
 const cc = require('../command-center/command-center.service');
 const memory = require('../memory/memory.service');
+const dailyMarket = require('../daily/daily-market-engine.service');
+const learning = require('../learning/learning.service');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -71,6 +73,31 @@ router.post('/orchestrate', async (req, res) => {
 });
 
 // Lista orquestrações recentes
+router.post('/daily-market/run', async (req, res) => {
+  try {
+    const { force = false, dryRun = false, agentVariant = null } = req.body || {};
+    const result = await dailyMarket.runDailyMarketEngine({
+      force: !!force,
+      dryRun: !!dryRun,
+      agentVariant,
+      createdById: req.userId || null,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[ai/daily-market/run] erro:', err);
+    res.status(500).json({ error: 'Erro ao rodar comando comercial diario', detail: err.message });
+  }
+});
+
+router.get('/daily-market/status', async (_req, res) => {
+  try {
+    res.json(await dailyMarket.getDailyMarketStatus());
+  } catch (err) {
+    console.error('[ai/daily-market/status] erro:', err);
+    res.status(500).json({ error: 'Erro ao ler status diario', detail: err.message });
+  }
+});
+
 router.get('/orchestrations', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit || '20', 10);
@@ -133,6 +160,13 @@ router.post('/approvals/:id/decision', async (req, res) => {
       note: note || null,
       approvedById: req.userId,
     });
+    let promotedMemory = null;
+    if (updated.type === 'memory_promotion' && updated.status === 'approved') {
+      promotedMemory = await learning.promoteLearningFromApproval(updated, req.userId || null).catch((err) => {
+        console.error('[learning/promote] erro:', err);
+        return null;
+      });
+    }
     // Memória: a decisão do dono é registro permanente do "porquê".
     memory.recordEvent({
       category: 'decisao',
@@ -144,7 +178,7 @@ router.post('/approvals/:id/decision', async (req, res) => {
       importance: 2,
       createdById: req.userId || null,
     });
-    res.json({ approval: updated });
+    res.json({ approval: updated, promotedMemory });
   } catch (err) {
     console.error('[ai/approvals/decision] erro:', err);
     res.status(500).json({ error: 'Erro ao registrar decisão', detail: err.message });

@@ -11,6 +11,7 @@ const reportAgent = require('./report.agent');
 const operationsAgent = require('./operations.agent');
 const partnerAgent = require('./partner.agent');
 const productAgent = require('./product.agent');
+const marketIntelligenceAgent = require('./market-intelligence.agent');
 const lifeAssessorAgent = require('./life-assessor.agent');
 const safetyAgent = require('./safety.agent');
 const designBriefAgent = require('./design-brief.agent');
@@ -25,6 +26,7 @@ const agents = {
   'operations-agent': operationsAgent,
   'partner-agent': partnerAgent,
   'product-agent': productAgent,
+  'market-intelligence-agent': marketIntelligenceAgent,
   'design-brief-agent': designBriefAgent,
   'life-assessor-agent': lifeAssessorAgent,
   'safety-agent': safetyAgent,
@@ -40,10 +42,22 @@ const metadata = {
   'operations-agent': { name: 'Operações', category: 'operations', description: 'Checklist, rotina, execução por horário' },
   'partner-agent': { name: 'Parceiros', category: 'commercial', description: 'Programa de Parceiros Sports & Tennis' },
   'product-agent': { name: 'Produto', category: 'commercial', description: 'Recomendações, lacunas, conexão com perfil' },
+  'market-intelligence-agent': { name: 'Inteligência de Mercado', category: 'commercial', description: 'Lê sinais de mercado, preço, demanda e concorrência sem executar sozinho' },
   'design-brief-agent': { name: 'Briefing Visual', category: 'commercial', description: 'Briefing pronto pra claude.ai/design, Canva ou designer' },
   'life-assessor-agent': { name: 'Assessor (Clareza)', category: 'life', description: 'Possibilidades personalizadas com clareza real' },
   'safety-agent': { name: 'Segurança', category: 'safety', description: 'Revisão de risco antes de apresentar resposta' },
 };
+
+const DAILY_CLASSIC_AGENTS = Object.freeze([
+  'stock-agent', 'finance-agent', 'marketing-agent', 'design-brief-agent',
+  'sales-agent', 'whatsapp-agent', 'report-agent', 'operations-agent',
+  'product-agent', 'safety-agent',
+]);
+
+const DAILY_MARKET_AGENTS = Object.freeze([
+  'market-intelligence-agent',
+  ...DAILY_CLASSIC_AGENTS,
+]);
 
 function getAgent(agentCode) {
   return agents[agentCode] || null;
@@ -64,9 +78,26 @@ function normalize(s) {
     .replace(/[̀-ͯ]/g, '');
 }
 
-function selectAgentsForObjective(objective) {
+function resolveAgentVariant(options = {}) {
+  const requested = normalize(
+    options.agentVariant
+      || options.variant
+      || process.env.AI_AGENT_SQUAD
+      || process.env.DAILY_MARKET_AGENT_VARIANT
+      || ''
+  );
+  return ['market', 'experimental', 'v2', 'new'].includes(requested) ? 'market' : 'classic';
+}
+
+function selectAgentsForObjective(objective, options = {}) {
   const o = normalize(objective);
   const has = (terms) => terms.some((t) => o.includes(t));
+  const variant = resolveAgentVariant(options);
+  const useMarketAgent = variant === 'market';
+
+  if (has(['comando comercial diario', 'comando diario', 'daily market', 'engenharia de mercado'])) {
+    return useMarketAgent ? [...DAILY_MARKET_AGENTS] : [...DAILY_CLASSIC_AGENTS];
+  }
 
   // Life Agent — pessoa/cliente/vida/rotina/sentimento
   if (
@@ -86,16 +117,21 @@ function selectAgentsForObjective(objective) {
 
   // Produto/catálogo
   if (has(['produto', 'catalogo', 'recomendacao', 'recomendar', 'sku', 'modelo'])) {
-    return ['product-agent', 'stock-agent', 'marketing-agent', 'safety-agent'];
+    return useMarketAgent
+      ? ['product-agent', 'market-intelligence-agent', 'stock-agent', 'marketing-agent', 'safety-agent']
+      : ['product-agent', 'stock-agent', 'marketing-agent', 'safety-agent'];
   }
 
   // Venda/campanha/loja/meta
   if (has(['venda', 'vender', 'campanha', 'loja', 'meta', 'parad', 'giro', 'desconto'])) {
-    return [
+    const classicSalesAgents = [
       'stock-agent', 'finance-agent', 'marketing-agent', 'design-brief-agent',
       'sales-agent', 'whatsapp-agent', 'report-agent', 'operations-agent',
       'safety-agent',
     ];
+    return useMarketAgent
+      ? ['market-intelligence-agent', ...classicSalesAgents]
+      : classicSalesAgents;
   }
 
   // Genérico
@@ -107,5 +143,8 @@ module.exports = {
   metadata,
   getAgent,
   listAgents,
+  resolveAgentVariant,
   selectAgentsForObjective,
+  DAILY_CLASSIC_AGENTS,
+  DAILY_MARKET_AGENTS,
 };

@@ -4,6 +4,7 @@
 
 const { callAI } = require('../ai-client');
 const { logAIAction } = require('../logs/ai-log.service');
+const { getAgentSchema } = require('../prompts/agent-schemas');
 
 /**
  * runAgent — executa um agente padrão.
@@ -13,7 +14,7 @@ const { logAIAction } = require('../logs/ai-log.service');
  * @param {string} opts.userPrompt
  * @param {Object} opts.input - para registro em log
  * @param {Object} [opts.fallback] - JSON retornado quando IA falha
- * @param {number} [opts.maxTokens=1200]
+ * @param {number} [opts.maxTokens=2600]
  * @param {string} [opts.createdById]
  */
 async function runAgent({
@@ -22,10 +23,16 @@ async function runAgent({
   userPrompt,
   input,
   fallback,
-  maxTokens = 1200,
+  maxTokens = 2600,
   createdById,
 }) {
-  const result = await callAI({ systemPrompt, userPrompt, jsonMode: true, maxTokens });
+  const result = await callAI({
+    systemPrompt,
+    userPrompt,
+    jsonMode: true,
+    maxTokens,
+    jsonSchema: getAgentSchema(agentCode),
+  });
 
   if (!result.ok) {
     const safeFallback = {
@@ -69,7 +76,7 @@ function compactContext(context) {
   if (!context) return '';
   try {
     const json = JSON.stringify(context, null, 0);
-    if (json.length > 12000) return json.slice(0, 12000) + '... [truncated]';
+    if (json.length > 24000) return json.slice(0, 24000) + '... [truncated]';
     return json;
   } catch (_) {
     return String(context);

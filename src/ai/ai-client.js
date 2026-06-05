@@ -1,45 +1,130 @@
 // =====================================================================
-// AI Client — wrapper único para chamadas ao Anthropic SDK
+// AI Client - wrapper unico para chamadas de IA
 // =====================================================================
 // Centraliza:
-//  - construção do cliente
-//  - modelo padrão (env AI_ORCHESTRATOR_MODEL > AI_MODEL > haiku-4-5)
+//  - escolha de provedor (OpenAI preferencial quando configurado)
+//  - modelo padrao por provedor
 //  - parsing de JSON com fallback
-//  - cálculo de custo (mesma fórmula do /api/ai/chat)
-//  - tratamento de erro sem derrubar a aplicação chamadora
+//  - calculo de custo
+//  - tratamento de erro sem derrubar a aplicacao chamadora
 // =====================================================================
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-function buildClient() {
+function hasOpenAIKey() {
+  return !!process.env.OPENAI_API_KEY;
+}
+
+function hasAnthropicKey() {
+  return !!process.env.ANTHROPIC_API_KEY;
+}
+
+function isOpenAIModel(model) {
+  return /^(gpt-|o\d|chatgpt-|computer-use-|codex-)/i.test(String(model || ''));
+}
+
+function isAnthropicModel(model) {
+  return /^claude-/i.test(String(model || ''));
+}
+
+function defaultProvider() {
+  const configured = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
+  if (['openai', 'anthropic'].includes(configured)) return configured;
+
+  // OpenAI e o motor preferencial para agentes quando a chave existe. Quem
+  // quiser manter Anthropic como padrao pode setar AI_PROVIDER=anthropic.
+  if (hasOpenAIKey()) return 'openai';
+  if (hasAnthropicKey()) return 'anthropic';
+  return 'anthropic';
+}
+
+function defaultOpenAIModel() {
+  const candidates = [
+    process.env.OPENAI_ORCHESTRATOR_MODEL,
+    process.env.OPENAI_MODEL,
+    isOpenAIModel(process.env.AI_ORCHESTRATOR_MODEL) ? process.env.AI_ORCHESTRATOR_MODEL : null,
+    isOpenAIModel(process.env.AI_MODEL) ? process.env.AI_MODEL : null,
+  ].filter(Boolean);
+  return candidates[0] || 'gpt-5.5';
+}
+
+function defaultAnthropicModel() {
+  const candidates = [
+    isAnthropicModel(process.env.AI_ORCHESTRATOR_MODEL) ? process.env.AI_ORCHESTRATOR_MODEL : null,
+    isAnthropicModel(process.env.AI_MODEL) ? process.env.AI_MODEL : null,
+  ].filter(Boolean);
+  return candidates[0] || 'claude-haiku-4-5-20251001';
+}
+
+function buildClient(provider = defaultProvider()) {
+  if (provider === 'openai') {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) {
+      const err = new Error('OPENAI_API_KEY nao configurada');
+      err.code = 'NO_API_KEY';
+      throw err;
+    }
+    return { provider, apiKey: key };
+  }
+
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
-    const err = new Error('ANTHROPIC_API_KEY não configurada');
+    const err = new Error('ANTHROPIC_API_KEY nao configurada');
     err.code = 'NO_API_KEY';
     throw err;
   }
-  return new Anthropic({ apiKey: key });
+  return { provider: 'anthropic', client: new Anthropic({ apiKey: key }) };
 }
 
-function defaultModel() {
-  return (
-    process.env.AI_ORCHESTRATOR_MODEL
-    || process.env.AI_MODEL
-    || 'claude-haiku-4-5-20251001'
+function defaultModel(provider = defaultProvider()) {
+  return provider === 'openai' ? defaultOpenAIModel() : defaultAnthropicModel();
+}
+
+function defaultPriceForModel(provider, model) {
+  const m = String(model || '').toLowerCase();
+  if (provider === 'openai') {
+    if (m.startsWith('gpt-5.5')) return { input: 1.75, output: 14 };
+    if (m.startsWith('gpt-5.2')) return { input: 1.75, output: 14 };
+    if (m.startsWith('gpt-5.1') || m === 'gpt-5' || m.startsWith('gpt-5-')) return { input: 1.25, output: 10 };
+    if (m.startsWith('gpt-5-mini')) return { input: 0.25, output: 2 };
+    if (m.startsWith('gpt-5-nano')) return { input: 0.05, output: 0.4 };
+  }
+  return { input: 1, output: 5 };
+}
+
+function normalizeUsage(provider, usage) {
+  if (!usage) return { inputTokens: 0, outputTokens: 0 };
+  if (provider === 'openai') {
+    return {
+      inputTokens: usage.input_tokens || 0,
+      outputTokens: usage.output_tokens || 0,
+    };
+  }
+  return {
+    inputTokens: usage.input_tokens || 0,
+    outputTokens: usage.output_tokens || 0,
+  };
+}
+
+function computeCostBRL(usage, { provider = defaultProvider(), model = defaultModel(provider) } = {}) {
+  const defaults = defaultPriceForModel(provider, model);
+  const inM = parseFloat(
+    process.env.AI_PRICE_INPUT_PER_1M
+    || (provider === 'openai' ? process.env.OPENAI_PRICE_INPUT_PER_1M : '')
+    || String(defaults.input)
   );
-}
-
-function computeCostBRL(usage) {
-  const inM = parseFloat(process.env.AI_PRICE_INPUT_PER_1M || '1');
-  const outM = parseFloat(process.env.AI_PRICE_OUTPUT_PER_1M || '5');
+  const outM = parseFloat(
+    process.env.AI_PRICE_OUTPUT_PER_1M
+    || (provider === 'openai' ? process.env.OPENAI_PRICE_OUTPUT_PER_1M : '')
+    || String(defaults.output)
+  );
   const brl = parseFloat(process.env.BRL_PER_USD || '5.5');
-  const inT = usage?.input_tokens || 0;
-  const outT = usage?.output_tokens || 0;
+  const { inputTokens: inT, outputTokens: outT } = normalizeUsage(provider, usage);
   const usd = (inT / 1e6) * inM + (outT / 1e6) * outM;
-  return { usd, brl: usd * brl, inT, outT };
+  return { usd, brl: usd * brl, inT, outT, provider, model };
 }
 
-function extractText(resp) {
+function extractAnthropicText(resp) {
   const blocks = resp?.content || [];
   return blocks
     .filter((b) => b.type === 'text')
@@ -48,8 +133,18 @@ function extractText(resp) {
     .trim();
 }
 
-// Remove vírgulas penduradas antes de } ou ] (erro comum de LLM), sem
-// tocar em vírgulas dentro de strings.
+function extractOpenAIText(resp) {
+  if (typeof resp?.output_text === 'string') return resp.output_text.trim();
+  const out = [];
+  for (const item of resp?.output || []) {
+    for (const c of item?.content || []) {
+      if (typeof c?.text === 'string') out.push(c.text);
+      if (typeof c?.output_text === 'string') out.push(c.output_text);
+    }
+  }
+  return out.join('\n').trim();
+}
+
 function stripTrailingCommas(s) {
   let out = '';
   let inStr = false;
@@ -65,19 +160,15 @@ function stripTrailingCommas(s) {
     }
     if (c === '"') { inStr = true; out += c; continue; }
     if (c === ',') {
-      // olha o próximo caractere não-branco
       let j = i + 1;
       while (j < s.length && /\s/.test(s[j])) j++;
-      if (s[j] === '}' || s[j] === ']') continue; // descarta a vírgula
+      if (s[j] === '}' || s[j] === ']') continue;
     }
     out += c;
   }
   return out;
 }
 
-// Varredura balanceada a partir de `start` (que aponta para { ou [),
-// respeitando strings e escapes. Retorna a substring fechada ou null
-// (null = não fechou → provável truncamento por max_tokens).
 function balancedFrom(raw, start) {
   const open = raw[start];
   const close = open === '{' ? '}' : ']';
@@ -102,17 +193,19 @@ function balancedFrom(raw, start) {
   return null;
 }
 
-// Tenta achar o primeiro valor JSON que REALMENTE parseia, testando cada
-// posição de abertura ({ ou [). Robusto a prosa e a chaves soltas no texto
-// (ex.: placeholders "{valor}") antes do JSON de verdade.
 function extractFirstValidJSON(raw) {
+  const first = String(raw || '').search(/[{\[]/);
+  if (first >= 0 && raw[first] === '{' && !balancedFrom(raw, first)) {
+    return null;
+  }
+
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i];
     if (c !== '{' && c !== '[') continue;
     const candidate = balancedFrom(raw, i);
     if (!candidate) continue;
-    try { return JSON.parse(candidate); } catch (_) { /* segue */ }
-    try { return JSON.parse(stripTrailingCommas(candidate)); } catch (_) { /* segue */ }
+    try { return JSON.parse(candidate); } catch (_) { /* keep scanning */ }
+    try { return JSON.parse(stripTrailingCommas(candidate)); } catch (_) { /* keep scanning */ }
   }
   return null;
 }
@@ -121,44 +214,92 @@ function tryParseJSON(raw) {
   if (!raw) return null;
   const trimmed = String(raw).trim();
 
-  // Tentativa 1: parse direto
-  try { return JSON.parse(trimmed); } catch (_) { /* segue */ }
+  try { return JSON.parse(trimmed); } catch (_) { /* keep trying */ }
 
-  // Tentativa 2: se vier em cerca tripla ```json ... ```, usa o miolo
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const fenced = fence && fence[1] ? fence[1].trim() : null;
   if (fenced) {
-    try { return JSON.parse(fenced); } catch (_) { /* segue */ }
+    try { return JSON.parse(fenced); } catch (_) { /* keep trying */ }
   }
 
-  // Tentativa 3: primeiro valor JSON válido (objeto OU array), varrendo cada
-  // posição de abertura e reparando vírgulas penduradas. Tenta no miolo da
-  // cerca primeiro, depois no texto inteiro.
   for (const src of [fenced, trimmed]) {
     if (!src) continue;
     const parsed = extractFirstValidJSON(src);
     if (parsed !== null) return parsed;
   }
 
-  // Tentativa 4: último recurso — repara o texto inteiro
-  try { return JSON.parse(stripTrailingCommas(trimmed)); } catch (_) { /* desiste */ }
-
+  try { return JSON.parse(stripTrailingCommas(trimmed)); } catch (_) { /* give up */ }
   return null;
 }
 
+async function callOpenAI({
+  built,
+  selectedModel,
+  finalSystem,
+  userPrompt,
+  jsonMode,
+  jsonSchema,
+  maxTokens,
+  temperature,
+  reasoningEffort,
+}) {
+  const format = jsonMode
+    ? {
+        type: 'json_schema',
+        name: jsonSchema?.name || 'agent_response',
+        strict: false,
+        schema: jsonSchema?.schema || { type: 'object', additionalProperties: true },
+      }
+    : { type: 'text' };
+
+  const requestBody = {
+    model: selectedModel,
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: finalSystem }] },
+      { role: 'user', content: [{ type: 'input_text', text: userPrompt }] },
+    ],
+    max_output_tokens: maxTokens,
+    text: {
+      format,
+      verbosity: process.env.OPENAI_VERBOSITY || 'medium',
+    },
+  };
+
+  const effort = reasoningEffort || process.env.OPENAI_REASONING_EFFORT || process.env.AI_REASONING_EFFORT;
+  if (effort) requestBody.reasoning = { effort };
+  if (typeof temperature === 'number') requestBody.temperature = temperature;
+
+  const resp = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${built.apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!resp.ok) {
+    let detail = '';
+    try {
+      const errJson = await resp.json();
+      detail = errJson?.error?.message || JSON.stringify(errJson).slice(0, 500);
+    } catch (_) {
+      detail = await resp.text();
+    }
+    throw new Error(`OpenAI ${resp.status}: ${detail}`);
+  }
+
+  return resp.json();
+}
+
+async function callAnthropic({ built, requestBody }) {
+  return built.client.messages.create(requestBody);
+}
+
 /**
- * callAI — chamada padronizada ao modelo.
- *
- * @param {Object} options
- * @param {string} options.systemPrompt - prompt de sistema (obrigatório)
- * @param {string} options.userPrompt - prompt do usuário (obrigatório)
- * @param {boolean} [options.jsonMode=true] - se true, força resposta em JSON e faz parse
- * @param {number} [options.maxTokens=1200]
- * @param {number} [options.temperature]
- * @param {string} [options.model] - override do modelo padrão
+ * callAI - chamada padronizada ao modelo.
  *
  * @returns {Promise<{ok: boolean, json: any|null, text: string, usage: object, cost: object, error: string|null}>}
- *   - ok=false NUNCA lança — sempre retorna estrutura para callers tratarem fallback.
  */
 async function callAI({
   systemPrompt,
@@ -167,6 +308,9 @@ async function callAI({
   maxTokens = 1200,
   temperature,
   model,
+  provider,
+  reasoningEffort,
+  jsonSchema,
 } = {}) {
   if (!systemPrompt || !userPrompt) {
     return {
@@ -175,69 +319,115 @@ async function callAI({
       text: '',
       usage: null,
       cost: { usd: 0, brl: 0, inT: 0, outT: 0 },
-      error: 'systemPrompt e userPrompt são obrigatórios',
+      error: 'systemPrompt e userPrompt sao obrigatorios',
     };
   }
 
-  let client;
+  const selectedProvider = provider || defaultProvider();
+  const selectedModel = model || defaultModel(selectedProvider);
+  let built;
   try {
-    client = buildClient();
+    built = buildClient(selectedProvider);
   } catch (err) {
     return {
       ok: false,
       json: null,
       text: '',
       usage: null,
-      cost: { usd: 0, brl: 0, inT: 0, outT: 0 },
+      cost: { usd: 0, brl: 0, inT: 0, outT: 0, provider: selectedProvider, model: selectedModel },
+      provider: selectedProvider,
+      model: selectedModel,
       error: err.message || 'Falha ao inicializar cliente IA',
     };
   }
 
   const finalSystem = jsonMode
     ? systemPrompt
-      + '\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown e sem texto antes ou depois. '
-      + 'O JSON deve seguir exatamente o formato pedido pelo prompt do usuário.'
+      + '\n\nIMPORTANTE: Responda APENAS com JSON valido, sem markdown e sem texto antes ou depois. '
+      + 'O JSON deve seguir exatamente o formato pedido pelo prompt do usuario.'
     : systemPrompt;
 
-  const requestBody = {
-    model: model || defaultModel(),
-    max_tokens: maxTokens,
-    system: finalSystem,
-    messages: [{ role: 'user', content: userPrompt }],
-  };
-  if (typeof temperature === 'number') {
-    requestBody.temperature = temperature;
-  }
-
   try {
-    const resp = await client.messages.create(requestBody);
-    const text = extractText(resp);
+    if (selectedProvider === 'openai') {
+      const resp = await callOpenAI({
+        built,
+        selectedModel,
+        finalSystem,
+        userPrompt,
+        jsonMode,
+        jsonSchema,
+        maxTokens,
+        temperature,
+        reasoningEffort,
+      });
+      const text = extractOpenAIText(resp);
+      const usage = resp?.usage || null;
+      const cost = computeCostBRL(usage, { provider: 'openai', model: selectedModel });
+
+      if (jsonMode) {
+        const parsed = tryParseJSON(text);
+        if (!parsed || Array.isArray(parsed)) {
+          return {
+            ok: false,
+            json: null,
+            text,
+            usage,
+            cost,
+            provider: 'openai',
+            model: selectedModel,
+            error: Array.isArray(parsed)
+              ? 'Resposta da IA veio como array, mas o contrato exige objeto JSON'
+              : 'Resposta da IA nao pode ser parseada como JSON',
+          };
+        }
+        return { ok: true, json: parsed, text, usage, cost, provider: 'openai', model: selectedModel, error: null };
+      }
+
+      return { ok: true, json: null, text, usage, cost, provider: 'openai', model: selectedModel, error: null };
+    }
+
+    const requestBody = {
+      model: selectedModel,
+      max_tokens: maxTokens,
+      system: finalSystem,
+      messages: [{ role: 'user', content: userPrompt }],
+    };
+    if (typeof temperature === 'number') requestBody.temperature = temperature;
+
+    const resp = await callAnthropic({ built, requestBody });
+    const text = extractAnthropicText(resp);
     const usage = resp?.usage || null;
-    const cost = computeCostBRL(usage);
+    const cost = computeCostBRL(usage, { provider: 'anthropic', model: selectedModel });
 
     if (jsonMode) {
       const parsed = tryParseJSON(text);
-      if (!parsed) {
+      if (!parsed || Array.isArray(parsed)) {
         return {
           ok: false,
           json: null,
           text,
           usage,
           cost,
-          error: 'Resposta da IA não pôde ser parseada como JSON',
+          provider: 'anthropic',
+          model: selectedModel,
+          error: Array.isArray(parsed)
+            ? 'Resposta da IA veio como array, mas o contrato exige objeto JSON'
+            : 'Resposta da IA nao pode ser parseada como JSON',
         };
       }
-      return { ok: true, json: parsed, text, usage, cost, error: null };
+      return { ok: true, json: parsed, text, usage, cost, provider: 'anthropic', model: selectedModel, error: null };
     }
 
-    return { ok: true, json: null, text, usage, cost, error: null };
+    return { ok: true, json: null, text, usage, cost, provider: 'anthropic', model: selectedModel, error: null };
   } catch (err) {
     return {
       ok: false,
       json: null,
       text: '',
       usage: null,
-      cost: { usd: 0, brl: 0, inT: 0, outT: 0 },
+      cost: computeCostBRL(null, { provider: selectedProvider, model: selectedModel }),
+      provider: selectedProvider,
+      model: selectedModel,
       error: err?.message || 'Erro desconhecido ao chamar IA',
     };
   }
@@ -247,6 +437,7 @@ module.exports = {
   callAI,
   buildClient,
   defaultModel,
+  defaultProvider,
   computeCostBRL,
   tryParseJSON,
 };

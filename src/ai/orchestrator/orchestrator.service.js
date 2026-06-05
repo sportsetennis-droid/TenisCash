@@ -16,14 +16,17 @@ const { prisma } = require('../../middleware');
 const { callAI } = require('../ai-client');
 const { ORCHESTRATOR_PROMPT } = require('../prompts/system-prompts');
 const { logAIAction } = require('../logs/ai-log.service');
+const { getAgentSchema } = require('../prompts/agent-schemas');
 const {
   getAgent,
+  resolveAgentVariant,
   selectAgentsForObjective,
   listAgents,
 } = require('../agents/agent.registry');
 const safetyAgent = require('../agents/safety.agent');
 const { loadBusinessContext } = require('../context/business-context.service');
 const { createManyApprovals } = require('../approvals/approval.service');
+const learning = require('../learning/learning.service');
 
 function describeTaskForAgent(agentCode, objective) {
   const map = {
@@ -36,21 +39,41 @@ function describeTaskForAgent(agentCode, objective) {
     'operations-agent': 'Transformar plano em checklist e timeline operacional.',
     'partner-agent': 'Preparar campanha e texto de divulgação para parceiros.',
     'product-agent': 'Sugerir produtos relevantes para o objetivo e identificar lacunas.',
+    'market-intelligence-agent': 'Ler sinais de mercado, preço, demanda e concorrência para orientar as jogadas do dia.',
     'life-assessor-agent': 'Gerar possibilidades personalizadas para o usuário.',
   };
   return map[agentCode] || `Contribuir com a especialidade do agente para o objetivo: ${objective}`;
 }
 
-async function runOrchestration({ objective, storeId, notes, userId, createdById } = {}) {
+async function runOrchestration({
+  objective,
+  storeId,
+  notes,
+  userId,
+  createdById,
+  extraContext,
+  source,
+  metadata,
+} = {}) {
   if (!objective || typeof objective !== 'string' || !objective.trim()) {
     throw new Error('objective é obrigatório');
   }
 
   // 1) Contexto de negócio
-  const businessContext = await loadBusinessContext({ storeId, userId });
+  const baseBusinessContext = await loadBusinessContext({ storeId, userId });
+  const { aiMemory, ...businessContextWithoutMemory } = baseBusinessContext || {};
+  const businessContext = extraContext
+    ? { ...businessContextWithoutMemory, extraContext, aiMemory }
+    : baseBusinessContext;
+
+  const requestedAgentVariant = metadata?.agentVariant
+    || metadata?.squadVariant
+    || extraContext?.operatingMode?.agentVariant
+    || null;
+  const agentVariant = resolveAgentVariant({ agentVariant: requestedAgentVariant });
 
   // 2) Seleção de agentes (filtrando safety — chamado por último, em separado)
-  const selected = selectAgentsForObjective(objective).filter((c) => c !== 'safety-agent');
+  const selected = selectAgentsForObjective(objective, { agentVariant }).filter((c) => c !== 'safety-agent');
 
   // 3) Cria orquestração
   const orchestration = await prisma.aIOrchestration.create({
@@ -58,7 +81,16 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
       objective,
       company: 'Sports & Tennis',
       status: 'running',
-      input: { storeId: storeId || null, notes: notes || null, userId: userId || null },
+      input: {
+        storeId: storeId || null,
+        notes: notes || null,
+        userId: userId || null,
+        source: source || 'manual',
+        metadata: {
+          ...(metadata || {}),
+          agentVariant,
+        },
+      },
       context: businessContext,
       createdById: createdById || null,
     },
@@ -123,7 +155,8 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
     systemPrompt: ORCHESTRATOR_PROMPT,
     userPrompt: consolidationPrompt,
     jsonMode: true,
-    maxTokens: 2000,
+    jsonSchema: getAgentSchema('orchestrator-agent'),
+    maxTokens: 8000,
   });
 
   let consolidated;
@@ -150,10 +183,14 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
   // Normalização defensiva
   consolidated.objective = consolidated.objective || objective;
   consolidated.companyContext = 'Sports & Tennis';
-  consolidated.agentsUsed = Array.isArray(consolidated.agentsUsed) && consolidated.agentsUsed.length
-    ? consolidated.agentsUsed
-    : selected;
-  consolidated.readyMaterials = consolidated.readyMaterials || agentOutputs;
+  consolidated.agentsUsed = [...new Set([
+    ...selected,
+    ...(Array.isArray(consolidated.agentsUsed) ? consolidated.agentsUsed : []),
+  ])];
+  consolidated.readyMaterials = {
+    ...agentOutputs,
+    ...((consolidated.readyMaterials && typeof consolidated.readyMaterials === 'object') ? consolidated.readyMaterials : {}),
+  };
   consolidated.approvalRequired = Array.isArray(consolidated.approvalRequired) ? consolidated.approvalRequired : [];
   consolidated.risks = Array.isArray(consolidated.risks) ? consolidated.risks : [];
   consolidated.canExecuteNow = Array.isArray(consolidated.canExecuteNow) ? consolidated.canExecuteNow : [];
@@ -172,6 +209,15 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
       }
     }
   }
+
+  const seenApprovalKeys = new Set();
+  consolidated.approvalRequired = consolidated.approvalRequired.filter((a) => {
+    if (!a || !a.type || !a.title) return false;
+    const key = `${String(a.type).toLowerCase()}::${String(a.title).toLowerCase().trim()}`;
+    if (seenApprovalKeys.has(key)) return false;
+    seenApprovalKeys.add(key);
+    return true;
+  });
 
   // 6) Safety pass
   const safetyResult = await safetyAgent({
@@ -211,11 +257,16 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
     agentCode: 'orchestrator-agent',
     action: 'orchestrate',
     input: { objective, storeId, notes, userId },
-    output: { orchestrationId: orchestration.id, approvalsCreated: createdApprovals.length },
+    output: { orchestrationId: orchestration.id, approvalsCreated: createdApprovals.length, source: source || 'manual' },
     cost: consolidation.cost?.brl || 0,
     tokens: (consolidation.cost?.inT || 0) + (consolidation.cost?.outT || 0),
     error: consolidation.ok ? null : consolidation.error,
     createdById,
+  });
+
+  const learningResult = await learning.recordOrchestrationLearning(orchestration.id).catch((err) => {
+    console.error('[learning.recordOrchestrationLearning] falhou (ignorado):', err.message);
+    return null;
   });
 
   return {
@@ -237,6 +288,7 @@ async function runOrchestration({ objective, storeId, notes, userId, createdById
     canExecuteNow: consolidated.canExecuteNow,
     needsHumanValidation: consolidated.needsHumanValidation,
     nextRecommendedAction: consolidated.nextRecommendedAction || '',
+    learning: learningResult,
   };
 }
 

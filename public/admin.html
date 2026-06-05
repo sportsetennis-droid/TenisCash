@@ -162,6 +162,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
 @media(max-width:768px){
   .stats-grid{grid-template-columns:1fr 1fr}
+  .cc-grid-2{grid-template-columns:1fr!important}
   .section-head{flex-direction:column;gap:12px;align-items:flex-start}
   .search-box{width:100%}
   .top-bar{flex-direction:column;gap:12px;align-items:flex-start}
@@ -964,7 +965,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   </div>
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-    <button type="button" class="tab active js-ai-sub" data-ai-sub="command">📊 Centro de Comando</button>
+    <button type="button" class="tab active js-ai-sub" data-ai-sub="daily">Comando do Dia</button>
+    <button type="button" class="tab js-ai-sub" data-ai-sub="command">📊 Centro de Comando</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="memory">🧠 Memória</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="run">Rodar Orquestrador</button>
     <button type="button" class="tab js-ai-sub" data-ai-sub="approvals">Aprovações</button>
@@ -972,8 +974,13 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" class="tab js-ai-sub" data-ai-sub="agents">Agentes</button>
   </div>
 
+  <!-- COMANDO DO DIA (motor diario: agentes, plano, aprovacao e execucao) -->
+  <div id="ai-panel-daily">
+    <div id="ai-daily-content" class="muted" style="font-size:13px">Carregando Comando do Dia...</div>
+  </div>
+
   <!-- CENTRO DE COMANDO (governança: COO briefing, FinOps, scorecard, funil) -->
-  <div id="ai-panel-command">
+  <div id="ai-panel-command" style="display:none">
     <div id="cc-content" class="muted" style="font-size:13px">Carregando Centro de Comando...</div>
   </div>
 
@@ -6803,6 +6810,7 @@ document.addEventListener('keydown', function(e) {
 // ==================== CENTRAL IA Sports & Tennis ====================
 
 let _aiCenterInitialized = false;
+const AI_CENTER_SUBS = ['daily','command','memory','run','approvals','history','agents'];
 
 async function initAdminAICenter() {
   // Sub-tabs
@@ -6811,10 +6819,11 @@ async function initAdminAICenter() {
       document.querySelectorAll('.js-ai-sub').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const sub = btn.dataset.aiSub;
-      ['command','memory','run','approvals','history','agents'].forEach(s => {
+      AI_CENTER_SUBS.forEach(s => {
         const el = document.getElementById('ai-panel-' + s);
         if (el) el.style.display = (s === sub) ? 'block' : 'none';
       });
+      if (sub === 'daily') loadAIDailyCommand();
       if (sub === 'command') loadAICommandCenter();
       if (sub === 'memory') loadAIMemory();
       if (sub === 'approvals') loadAIApprovals();
@@ -6832,8 +6841,9 @@ async function initAdminAICenter() {
   if (btnRefresh && !btnRefresh._wired) {
     btnRefresh._wired = true;
     btnRefresh.onclick = () => {
-      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'command';
-      if (activeSub === 'command') loadAICommandCenter();
+      const activeSub = document.querySelector('.js-ai-sub.active')?.dataset.aiSub || 'daily';
+      if (activeSub === 'daily') loadAIDailyCommand();
+      else if (activeSub === 'command') loadAICommandCenter();
       else if (activeSub === 'memory') loadAIMemory();
       else if (activeSub === 'approvals') loadAIApprovals();
       else if (activeSub === 'history') loadAIHistory();
@@ -6847,7 +6857,13 @@ async function initAdminAICenter() {
   const btnClose = document.getElementById('ai-orch-modal-close');
   if (btnClose && !btnClose._wired) {
     btnClose._wired = true;
-    btnClose.onclick = () => { document.getElementById('ai-orch-modal').style.display = 'none'; };
+    btnClose.onclick = () => {
+      const modal = document.getElementById('ai-orch-modal');
+      if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = '';
+      }
+    };
   }
 
   if (!_aiCenterInitialized) {
@@ -6867,8 +6883,309 @@ async function initAdminAICenter() {
     } catch (e) { /* ignora — campo segue como "Todas as lojas" */ }
   }
 
-  // Centro de Comando é a aba padrão — carrega ao abrir a Central IA.
-  loadAICommandCenter();
+  // Comando do Dia é a aba padrão: plano diario, aprovacoes e execucao.
+  loadAIDailyCommand();
+}
+
+// ==================== COMANDO DO DIA ====================
+// Camada diaria: status do motor, plano consolidado, produtos foco,
+// inteligencia de mercado, aprovacao humana e execucao.
+
+function aiFmtDate(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('pt-BR');
+}
+
+function aiFmtShortDate(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function aiRiskColor(risk) {
+  if (risk === 'high') return '#ff5470';
+  if (risk === 'medium') return '#ffb020';
+  return '#2ecc71';
+}
+
+function aiStatusColor(status) {
+  if (status === 'completed' || status === 'executed' || status === 'approved') return '#2ecc71';
+  if (status === 'failed' || status === 'rejected') return '#ff5470';
+  if (status === 'running' || status === 'pending' || status === 'correction_requested') return '#ffb020';
+  return '#9aa1b2';
+}
+
+function aiBadge(label, color) {
+  return `<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid ${color}66;background:${color}12;color:${color};border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;white-space:nowrap">${escapeHtml(label || '—')}</span>`;
+}
+
+function aiPanel(inner, tone) {
+  const border = tone ? `${tone}55` : '#232838';
+  return `<div style="background:#10131b;border:1px solid ${border};border-radius:8px;padding:14px 16px;color:#eef1f8">${inner}</div>`;
+}
+
+function aiMetric(label, value, note, color) {
+  return aiPanel(`
+    <div style="font-size:11px;letter-spacing:1px;color:#7a8194;margin-bottom:6px">${escapeHtml(label)}</div>
+    <div style="font-size:22px;font-weight:800;color:${color || '#eef1f8'};line-height:1.1">${escapeHtml(String(value ?? '—'))}</div>
+    ${note ? `<div style="font-size:11px;color:#9aa1b2;margin-top:6px;line-height:1.35">${escapeHtml(note)}</div>` : ''}
+  `, color || null);
+}
+
+function aiDailyRunState(lastRun, runDate) {
+  if (!lastRun) return { label: 'Ainda nao rodou', color: '#9aa1b2', note: 'Sem execucao registrada' };
+  const parts = String(lastRun).split(':');
+  const date = parts[0] || '';
+  const state = parts[1] || '';
+  const at = parts.slice(2).join(':');
+  const isToday = date === runDate;
+  const labels = { completed: 'Completo', running: 'Rodando', failed: 'Falhou' };
+  const colors = { completed: '#2ecc71', running: '#ffb020', failed: '#ff5470' };
+  return {
+    label: `${labels[state] || state || 'Registrado'}${isToday ? ' hoje' : ''}`,
+    color: colors[state] || '#9aa1b2',
+    note: `${date || runDate}${at ? ' as ' + aiFmtShortDate(at) : ''}`,
+  };
+}
+
+function aiDailyGetMaterials(orchestration) {
+  return (orchestration && orchestration.result && orchestration.result.readyMaterials) || {};
+}
+
+function aiDailyList(items, empty, formatter) {
+  if (!Array.isArray(items) || !items.length) {
+    return `<div style="font-size:13px;color:#7a8194">${escapeHtml(empty || 'Sem itens.')}</div>`;
+  }
+  return `<div style="display:grid;gap:8px">${items.map((item) => `
+    <div style="border:1px solid #232838;border-radius:8px;padding:10px 12px;background:#0c0f16;font-size:13px;line-height:1.45">
+      ${formatter ? formatter(item) : escapeHtml(String(item))}
+    </div>
+  `).join('')}</div>`;
+}
+
+function aiDailyProductLine(p) {
+  if (!p || typeof p !== 'object') return escapeHtml(String(p || ''));
+  const sku = p.sku ? `<code style="color:#ffb020">${escapeHtml(p.sku)}</code> ` : '';
+  const name = escapeHtml(p.name || p.productName || p.products || 'Produto foco');
+  const reason = escapeHtml(p.reason || p.forWhom || p.currentSignal || p.recommendedMove || '');
+  return `<strong>${sku}${name}</strong>${reason ? `<div style="color:#9aa1b2;margin-top:3px">${reason}</div>` : ''}`;
+}
+
+function aiDailyApprovalTable(approvals) {
+  if (!Array.isArray(approvals) || !approvals.length) {
+    return '<div style="font-size:13px;color:#7a8194">Nenhuma aprovacao criada nesta rodada.</div>';
+  }
+  const rows = approvals.slice(0, 8).map(a => {
+    const color = aiStatusColor(a.status);
+    return `<tr style="border-top:1px solid #232838">
+      <td style="padding:8px;font-size:12px">${aiBadge(a.status || 'pending', color)}</td>
+      <td style="padding:8px;font-size:12px;color:${aiRiskColor(a.riskLevel)}">${escapeHtml(a.riskLevel || 'medium')}</td>
+      <td style="padding:8px;font-size:13px;color:#eef1f8">${escapeHtml(a.title || '')}<div style="font-size:11px;color:#7a8194;margin-top:2px"><code>${escapeHtml(a.type || '')}</code></div></td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">
+    <thead><tr style="color:#7a8194;font-size:11px;letter-spacing:1px;text-align:left">
+      <th style="padding:6px 8px">STATUS</th><th style="padding:6px 8px">RISCO</th><th style="padding:6px 8px">APROVACAO</th>
+    </tr></thead><tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+async function loadAIDailyCommand() {
+  const box = document.getElementById('ai-daily-content');
+  if (!box) return;
+  box.innerHTML = '<span class="muted" style="font-size:13px">Carregando Comando do Dia...</span>';
+
+  const status = await api('/admin/ai/daily-market/status');
+  if (status && status.error) {
+    box.innerHTML = `<div style="color:#ff5470">Erro ao carregar Comando do Dia: ${escapeHtml(status.error)}</div>`;
+    return;
+  }
+
+  let orchestration = status.orchestration || null;
+  if (status.lastOrchestrationId && (!orchestration || !orchestration.result)) {
+    const full = await api('/admin/ai/orchestrations/' + status.lastOrchestrationId);
+    if (full && full.orchestration) orchestration = full.orchestration;
+  }
+
+  box.innerHTML = renderAIDailyCommand(status, orchestration);
+  wireAIDailyCommand();
+}
+
+function renderAIDailyCommand(status, orchestration) {
+  const runState = aiDailyRunState(status.lastRun, status.runDate);
+  const result = orchestration?.result || {};
+  const materials = aiDailyGetMaterials(orchestration);
+  const approvals = orchestration?.approvals || [];
+  const tasks = orchestration?.tasks || [];
+  const pendingCount = approvals.filter(a => a.status === 'pending').length;
+  const executedCount = approvals.filter(a => a.status === 'executed').length;
+  const agentsUsed = result.agentsUsed || tasks.map(t => t.agentCode).filter(Boolean);
+  const market = materials['market-intelligence-agent'] || {};
+  const stock = materials['stock-agent'] || {};
+  const product = materials['product-agent'] || {};
+  const operations = materials['operations-agent'] || {};
+
+  const focusProducts = []
+    .concat(stock.recommendedProducts || [])
+    .concat(product.productRecommendations || [])
+    .concat(market.pricePositioning || [])
+    .slice(0, 6);
+
+  const marketBets = []
+    .concat(market.dailyBets || [])
+    .concat(market.demandSignals || [])
+    .slice(0, 5);
+
+  const taskBadges = tasks.length
+    ? tasks.map(t => aiBadge(`${t.agentCode}: ${t.status}`, aiStatusColor(t.status))).join(' ')
+    : '<span style="font-size:13px;color:#7a8194">Sem tarefas registradas.</span>';
+
+  const nextAction = result.nextRecommendedAction || (orchestration ? 'Revisar o plano consolidado e as aprovacoes pendentes.' : 'Rodar agora para gerar o plano comercial do dia.');
+
+  return `
+    <div style="display:grid;gap:14px">
+      ${aiPanel(`
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:8px">MOTOR DIARIO DE AGENTES</div>
+            <div style="font-size:24px;font-weight:900;line-height:1.15;color:#eef1f8">Comando comercial de ${escapeHtml(status.runDate || 'hoje')}</div>
+            <div style="font-size:13px;color:#9aa1b2;margin-top:8px;line-height:1.45;max-width:820px">${escapeHtml(nextAction)}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            <button type="button" class="btn" id="ai-daily-refresh">Atualizar</button>
+            <button type="button" class="btn" id="ai-daily-history">Historico</button>
+            <button type="button" class="btn" id="ai-daily-dry">Simular snapshot</button>
+            <button type="button" class="btn" id="ai-daily-run-market">Rodar experimento mercado</button>
+            <button type="button" class="btn btn-primary" id="ai-daily-run">Rodar agora</button>
+          </div>
+        </div>
+        <div id="ai-daily-action-status" style="font-size:12px;color:#9aa1b2;margin-top:10px"></div>
+      `, runState.color)}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+        ${aiMetric('RODAGEM', runState.label, runState.note, runState.color)}
+        ${aiMetric('AGENTES', agentsUsed.length || 0, agentsUsed.length ? agentsUsed.slice(0, 4).join(', ') : 'Aguardando rodada', '#eef1f8')}
+        ${aiMetric('APROVACOES', pendingCount, `${executedCount} executada(s)`, pendingCount ? '#ffb020' : '#2ecc71')}
+        ${aiMetric('ORQUESTRACAO', orchestration?.status || 'sem plano', orchestration?.id ? `${orchestration.id} · ${orchestration.agentVariant || 'classic'}` : 'Nenhum plano salvo', aiStatusColor(orchestration?.status))}
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:14px" class="cc-grid-2">
+        ${aiPanel(`
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px">
+            <div style="font-size:11px;letter-spacing:2px;color:#7a8194">PLANO PRONTO PARA OPERAR</div>
+            ${orchestration?.id ? `<button type="button" class="btn" id="ai-daily-detail" data-orchestration-id="${escapeHtml(orchestration.id)}" style="font-size:11px;padding:6px 10px">Ver detalhe</button>` : ''}
+          </div>
+          ${result.consolidatedPlan ? `<div style="font-size:14px;line-height:1.55;white-space:pre-wrap;color:#dfe3ee">${escapeHtml(result.consolidatedPlan)}</div>` : '<div style="font-size:13px;color:#7a8194">Nenhum plano consolidado ainda.</div>'}
+        `)}
+        ${aiPanel(`
+          <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:10px">APROVAR E EXECUTAR</div>
+          ${aiDailyApprovalTable(approvals)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button type="button" class="btn btn-primary" id="ai-daily-open-approvals">Ver aprovacoes</button>
+            <button type="button" class="btn" id="ai-daily-force">Forcar nova rodada</button>
+          </div>
+        `, pendingCount ? '#ffb020' : null)}
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+        ${aiPanel(`
+          <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:10px">PRODUTOS FOCO</div>
+          ${aiDailyList(focusProducts, 'Sem produtos foco no ultimo plano.', aiDailyProductLine)}
+        `)}
+        ${aiPanel(`
+          <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:10px">INTELIGENCIA DE MERCADO</div>
+          ${market.marketRead ? `<div style="font-size:13px;color:#dfe3ee;line-height:1.45;margin-bottom:10px">${escapeHtml(market.marketRead)}</div>` : ''}
+          ${aiDailyList(marketBets, 'Sem leitura de mercado no ultimo plano.', x => {
+            const title = x.bet || x.signal || x.recommendedMove || x.whatToCheck || 'Sinal';
+            const detail = x.reason || x.evidence || x.action || x.whyItMatters || '';
+            return `<strong>${escapeHtml(title)}</strong>${detail ? `<div style="color:#9aa1b2;margin-top:3px">${escapeHtml(detail)}</div>` : ''}`;
+          })}
+        `)}
+        ${aiPanel(`
+          <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:10px">EXECUCAO DA LOJA</div>
+          ${aiDailyList(operations.executionTimeline || operations.checklist || [], 'Sem checklist operacional no ultimo plano.', x => {
+            if (typeof x === 'string') return escapeHtml(x);
+            return `<strong>${escapeHtml(x.time || x.when || 'Hoje')}</strong><div style="color:#9aa1b2;margin-top:3px">${escapeHtml(x.action || x.task || '')}</div>`;
+          })}
+        `)}
+      </div>
+
+      ${aiPanel(`
+        <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:10px">SAUDE DOS AGENTES</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${taskBadges}</div>
+        <div id="ai-daily-snapshot" style="margin-top:12px"></div>
+      `)}
+    </div>
+  `;
+}
+
+function wireAIDailyCommand() {
+  const refresh = document.getElementById('ai-daily-refresh');
+  if (refresh) refresh.onclick = loadAIDailyCommand;
+
+  const dry = document.getElementById('ai-daily-dry');
+  if (dry) dry.onclick = () => aiRunDailyMarket({ dryRun: true });
+
+  const run = document.getElementById('ai-daily-run');
+  if (run) run.onclick = () => aiRunDailyMarket({ force: false });
+
+  const runMarket = document.getElementById('ai-daily-run-market');
+  if (runMarket) runMarket.onclick = () => {
+    if (!confirm('Rodar experimento com agente de mercado? Isso pode gerar novas aprovacoes e custo de IA.')) return;
+    aiRunDailyMarket({ force: true, agentVariant: 'market' });
+  };
+
+  const force = document.getElementById('ai-daily-force');
+  if (force) force.onclick = () => {
+    if (!confirm('Rodar uma nova rodada hoje? Isso pode gerar novas aprovacoes e custo de IA.')) return;
+    aiRunDailyMarket({ force: true });
+  };
+
+  const approvals = document.getElementById('ai-daily-open-approvals');
+  if (approvals) approvals.onclick = () => document.querySelector('.js-ai-sub[data-ai-sub="approvals"]')?.click();
+
+  const history = document.getElementById('ai-daily-history');
+  if (history) history.onclick = () => document.querySelector('.js-ai-sub[data-ai-sub="history"]')?.click();
+
+  const detail = document.getElementById('ai-daily-detail');
+  const orchId = detail ? detail.dataset.orchestrationId : null;
+  if (detail && orchId) detail.onclick = () => aiShowOrch(orchId);
+}
+
+async function aiRunDailyMarket({ force = false, dryRun = false, agentVariant = null } = {}) {
+  const st = document.getElementById('ai-daily-action-status');
+  const snapshotBox = document.getElementById('ai-daily-snapshot');
+  if (st) st.textContent = dryRun ? 'Montando snapshot...' : 'Rodando agentes...';
+  const result = await api('/admin/ai/daily-market/run', 'POST', { force, dryRun, agentVariant });
+  if (result.error) {
+    if (st) st.textContent = 'Erro: ' + result.error;
+    return;
+  }
+  if (dryRun) {
+    const h = result.highlights || {};
+    if (snapshotBox) {
+      snapshotBox.innerHTML = `<div style="border:1px solid #232838;border-radius:8px;padding:12px;background:#0c0f16">
+        <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:8px">SNAPSHOT SIMULADO</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+          <div><strong style="color:#eef1f8">${escapeHtml(String(h.sales30d?.count || 0))}</strong><div style="font-size:11px;color:#7a8194">vendas 30d</div></div>
+          <div><strong style="color:#eef1f8">R$ ${Number(h.sales30d?.revenue || 0).toFixed(2)}</strong><div style="font-size:11px;color:#7a8194">receita 30d</div></div>
+          <div><strong style="color:#eef1f8">${escapeHtml(String((h.slowMovers || []).length))}</strong><div style="font-size:11px;color:#7a8194">parados no radar</div></div>
+          <div><strong style="color:#eef1f8">${escapeHtml(String(h.pendingApprovals || 0))}</strong><div style="font-size:11px;color:#7a8194">aprovacoes pendentes</div></div>
+        </div>
+      </div>`;
+    }
+    if (st) st.textContent = 'Snapshot pronto. Nada foi gravado.';
+    return;
+  }
+  if (result.skipped) {
+    if (st) st.textContent = result.reason || 'Rodada de hoje ja existe.';
+    return;
+  }
+  if (st) st.textContent = 'Plano gerado. Recarregando...';
+  await loadAIDailyCommand();
 }
 
 // ==================== CENTRO DE COMANDO ====================
@@ -6883,7 +7200,9 @@ function ccBar(pct, danger) {
 }
 
 function ccCard(inner, accent) {
-  return `<div style="background:#10131b;border:1px solid #232838;${accent ? 'border-left:3px solid ' + accent + ';' : ''}border-radius:10px;padding:14px 16px">${inner}</div>`;
+  const border = accent ? `${accent}55` : '#232838';
+  const glow = accent ? `box-shadow:0 0 0 1px ${accent}18 inset;` : '';
+  return `<div style="background:#10131b;border:1px solid ${border};${glow}border-radius:10px;padding:14px 16px">${inner}</div>`;
 }
 
 async function loadAICommandCenter() {
@@ -7053,7 +7372,8 @@ async function loadAICommandCenter() {
 const MEM_CAT_LABEL = {
   empresa:'Empresa', loja:'Loja', marca:'Marca', produto:'Produto', fornecedor:'Fornecedor',
   meta:'Meta', regra:'Regra', financeiro:'Financeiro', venda:'Venda', estoque:'Estoque',
-  cliente:'Cliente', campanha:'Campanha', decisao:'Decisão', ia:'IA', nota:'Anotação', geral:'Geral'
+  cliente:'Cliente', campanha:'Campanha', decisao:'Decisão', ia:'IA', aprendizado:'Aprendizado',
+  nota:'Anotação', geral:'Geral'
 };
 function memCatLabel(c){ return MEM_CAT_LABEL[c] || c || 'Geral'; }
 
@@ -7091,7 +7411,7 @@ async function loadAIMemory() {
   const since = stats.since ? new Date(stats.since).toLocaleDateString('pt-BR') : '—';
   const items = (tl && tl.items) || [];
 
-  const catOptions = ['empresa','loja','marca','produto','fornecedor','meta','regra','financeiro']
+  const catOptions = ['empresa','loja','marca','produto','fornecedor','meta','regra','financeiro','aprendizado']
     .map(c=>`<option value="${c}">${memCatLabel(c)}</option>`).join('');
 
   const statCard = ccCard(`
@@ -7456,6 +7776,7 @@ async function aiShowOrch(id) {
     'operations-agent': '⚙ Operação',
     'partner-agent': '🤝 Creation',
     'product-agent': '🛍 Produto',
+    'market-intelligence-agent': 'Inteligência de Mercado',
     'design-brief-agent': '🎨 Briefing Visual',
     'safety-agent': '🛡 Segurança',
   };
@@ -7586,6 +7907,15 @@ function renderAgentDetail(code, m) {
     h += aiList('Recomendações de produto', m.productRecommendations, p => `<strong>${escapeHtml(p.sku || '')}</strong> ${escapeHtml(p.name || '')} — ${escapeHtml(p.forWhom || '')} — ${escapeHtml(p.reason || '')}`);
     h += aiList('Lacunas no catálogo', m.productGaps);
     h += aiList('Melhorias sugeridas', m.catalogImprovements);
+  }
+
+  if (code === 'market-intelligence-agent') {
+    h += aiKV('Leitura de mercado', m.marketRead);
+    h += aiList('Posicionamento de preço', m.pricePositioning, p => `<strong>${escapeHtml(p.sku || '')}</strong> ${escapeHtml(p.name || '')} — ${escapeHtml(p.recommendedMove || '')}<br><span style="color:var(--text2)">${escapeHtml(p.currentSignal || '')}</span>`);
+    h += aiList('Sinais de demanda', m.demandSignals, x => `<strong>${escapeHtml(x.signal || '')}</strong><br>${escapeHtml(x.evidence || '')}${x.action ? `<br><span style="color:var(--orange)">${escapeHtml(x.action)}</span>` : ''}`);
+    h += aiList('Radar de concorrência', m.competitorWatch, x => `<strong>${escapeHtml(x.sku || '')}</strong> ${escapeHtml(x.name || '')}<br>${escapeHtml(x.whatToCheck || '')}${x.whyItMatters ? `<br><span style="color:var(--text2)">${escapeHtml(x.whyItMatters)}</span>` : ''}`);
+    h += aiList('Apostas do dia', m.dailyBets, x => `<strong>${escapeHtml(x.bet || '')}</strong><br>${escapeHtml(x.products || '')}${x.channel ? ` — ${escapeHtml(x.channel)}` : ''}${x.reason ? `<br><span style="color:var(--text2)">${escapeHtml(x.reason)}</span>` : ''}`);
+    h += aiList('Cuidados', m.watchouts);
   }
 
   if (code === 'design-brief-agent') {

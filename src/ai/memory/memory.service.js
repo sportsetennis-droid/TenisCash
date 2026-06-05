@@ -62,8 +62,33 @@ async function recordEvent({
 }
 
 // Atalho: registrar um FATO da empresa (o que ela É). Por padrão fixado.
-function addFact({ category = 'empresa', title, detail = null, data = null, company, importance = 2, pinned = true, createdById = null } = {}) {
-  return recordEvent({ kind: 'fact', category, title, detail, data, company, source: 'manual', importance, pinned, createdById });
+function addFact({
+  category = 'empresa',
+  title,
+  detail = null,
+  data = null,
+  company,
+  source = 'manual',
+  refType = null,
+  refId = null,
+  importance = 2,
+  pinned = true,
+  createdById = null,
+} = {}) {
+  return recordEvent({
+    kind: 'fact',
+    category,
+    title,
+    detail,
+    data,
+    company,
+    source,
+    refType,
+    refId,
+    importance,
+    pinned,
+    createdById,
+  });
 }
 
 // Atalho: anotação manual do dono na linha do tempo.

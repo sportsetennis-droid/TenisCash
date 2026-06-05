@@ -7,7 +7,7 @@ async function designBriefAgent({ task, context, objective, createdById }) {
     systemPrompt: DESIGN_BRIEF_AGENT,
     userPrompt: buildUserPrompt({ objective, task, context }),
     input: { task, objective, context },
-    maxTokens: 2500,
+    maxTokens: 5000,
     fallback: {
       campaignName: '',
       feed: {

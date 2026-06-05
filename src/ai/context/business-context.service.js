@@ -5,6 +5,7 @@
 // vendas recentes, clientes, vendedores, parceiros, transações.
 
 const { prisma } = require('../../middleware');
+const memory = require('../memory/memory.service');
 
 function safeNumber(n, def = 0) {
   return typeof n === 'number' && Number.isFinite(n) ? n : def;
@@ -162,6 +163,7 @@ async function loadBusinessContext({ storeId, userId } = {}) {
     sellersSummary,
     partnersSummary,
     transactionsSummary,
+    aiMemory,
   ] = await Promise.all([
     getStoresSummary(),
     getProductsSummary({ storeId }),
@@ -170,6 +172,12 @@ async function loadBusinessContext({ storeId, userId } = {}) {
     getSellersSummary({ storeId }),
     getPartnersSummary(),
     getRecentTransactionsSummary({}),
+    memory.getBrain({ maxEvents: 50, eventDays: 30 }).catch((err) => ({
+      promptText: '',
+      factCount: 0,
+      eventCount: 0,
+      _error: err.message,
+    })),
   ]);
 
   if (storeId) {
@@ -189,6 +197,12 @@ async function loadBusinessContext({ storeId, userId } = {}) {
     sellersSummary,
     partnersSummary,
     transactionsSummary,
+    aiMemory: {
+      promptText: aiMemory.promptText || '',
+      factCount: aiMemory.factCount || 0,
+      eventCount: aiMemory.eventCount || 0,
+      _error: aiMemory._error || null,
+    },
     warnings,
   };
 }
