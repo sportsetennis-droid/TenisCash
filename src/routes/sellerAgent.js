@@ -1216,14 +1216,21 @@ async function handleInternalMessageIntent(req, text) {
 
 function isStockIntent(text) {
   const msg = normalizeStoreNeedle(text);
+  const hasShoeSize = /\b(3[0-9]|4[0-9]|5[0-2])\b/.test(msg);
+  const hasProductTerm = msg
+    .split(/\s+/)
+    .some((term) => /^[a-z0-9-]{3,}$/.test(term) && !['qual', 'quais', 'onde', 'loja', 'lojas', 'tem', 'para', 'pra', 'com'].includes(term));
   return (
     /\bestoque\b/.test(msg) ||
     /\bdisponivel\b/.test(msg) ||
     /\bdisponibilidade\b/.test(msg) ||
     /\btamanho\b/.test(msg) ||
     /\btamanhos\b/.test(msg) ||
+    (hasShoeSize && hasProductTerm) ||
     /\b(tam|numero|numeros|n)\b\s*[:#-]?\s*([a-z]{1,3}|3[0-9]|4[0-9]|5[0-2])\b/.test(msg) ||
     /\bonde tem\b/.test(msg) ||
+    /\b(em\s+qual|qual|quais|onde)\s+lojas?\b/.test(msg) ||
+    /\blojas?\b.*\b(3[0-9]|4[0-9]|5[0-2])\b/.test(msg) ||
     /\btem\b.*\bloja/.test(msg) ||
     /\btem\b.*\b(3[0-9]|4[0-9]|5[0-2])\b/.test(msg)
   );
