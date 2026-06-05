@@ -570,7 +570,7 @@
         <div id="sellCardDetails" style="display:none;margin-top:14px;padding:12px;background:#FFEBDC;border-radius:10px;border:1px solid #FCDAC4;">
           <div id="sellFiscalTitle" style="font-size:11px;font-weight:700;color:#E5571E;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div>
+            <div id="sellAcquirerField" style="display:none;">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
               <select id="sellCardAcquirer" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
                 <option value="PAGSEGURO" selected>PagBank / PagSeguro</option>
@@ -584,7 +584,7 @@
                 <option value="SIPAG">Sipag</option>
               </select>
             </div>
-            <div id="sellBrandField">
+            <div id="sellBrandField" style="grid-column:span 2;">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">BANDEIRA</label>
               <select id="sellCardBrand" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
                 <option value="01">Visa</option>
