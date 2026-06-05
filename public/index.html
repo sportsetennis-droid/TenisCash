@@ -138,9 +138,14 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .seller-store-stock-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .seller-store-stock-title{font-size:13px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
 .seller-store-stock-sub{font-size:11px;color:rgba(255,255,255,0.68);line-height:1.35;margin-top:4px}
+.seller-store-stock-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.seller-store-stock-tab{padding:8px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.24);background:rgba(255,255,255,0.08);color:#fff;font-size:11px;font-weight:800;font-family:'Chakra Petch';cursor:pointer}
+.seller-store-stock-tab.active{background:#fff;color:#E5571E;border-color:#fff}
+.seller-store-stock-select{width:100%;margin-top:10px;padding:12px 14px;border:1px solid rgba(255,255,255,0.22);border-radius:12px;background:rgba(0,0,0,0.14);color:#fff;font-family:'Chakra Petch';font-size:13px;outline:none}
+.seller-store-stock-select option{color:#111;background:#fff}
 .seller-store-stock-tools{display:flex;gap:8px;margin-top:12px;align-items:center}
 .seller-store-stock-tools input{margin-top:0;flex:1}
-.seller-store-stock-refresh{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:#fff;font-size:18px;cursor:pointer}
+.seller-store-stock-refresh{min-width:84px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:#fff;font-size:11px;font-weight:800;font-family:'Chakra Petch';cursor:pointer}
 .seller-store-stock-list{margin-top:10px;max-height:380px;overflow-y:auto;padding-right:4px}
 .seller-store-stock-meta{font-size:11px;color:rgba(255,255,255,0.7);margin-top:10px}
 .seller-stock-pill{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,0.13);font-size:11px;font-weight:800;color:#fff}
@@ -1087,19 +1092,27 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="back-header" style="display:flex;align-items:center;gap:12px">
     <span class="back-arrow" data-back="seller-home">←</span>
     <p style="font-size:18px;font-weight:700;flex:1">Catálogo</p>
-    <button type="button" class="catalog-search-btn" id="seller-catalog-fab" title="Buscar produto"><span aria-hidden="true">🔍</span><span>Buscar produto</span></button>
+    <button type="button" class="catalog-search-btn" id="seller-catalog-fab" title="Buscar produto">Buscar produto</button>
   </div>
   <div class="seller-store-stock" id="seller-store-stock-panel">
     <div class="seller-store-stock-head">
       <div>
-        <div class="seller-store-stock-title">Estoque da minha loja</div>
-        <div class="seller-store-stock-sub" id="seller-store-stock-store">Carregando loja...</div>
+        <div class="seller-store-stock-title">Estoque disponivel</div>
+        <div class="seller-store-stock-sub" id="seller-store-stock-store">Estoque geral de todas as lojas</div>
       </div>
-      <button type="button" class="catalog-search-btn" id="seller-store-stock-open"><span aria-hidden="true">ðŸ”</span><span>Buscar</span></button>
+      <button type="button" class="catalog-search-btn" id="seller-store-stock-open">Busca avancada</button>
     </div>
+    <div class="seller-store-stock-tabs" id="seller-store-stock-tabs">
+      <button type="button" class="seller-store-stock-tab active" data-stock-scope="all">Estoque geral</button>
+      <button type="button" class="seller-store-stock-tab" data-stock-scope="mine">Minha loja</button>
+      <button type="button" class="seller-store-stock-tab" data-stock-scope="store">Por loja</button>
+    </div>
+    <select id="seller-store-stock-select" class="seller-store-stock-select" style="display:none">
+      <option value="">Escolha uma loja</option>
+    </select>
     <div class="seller-store-stock-tools">
-      <input id="seller-store-stock-q" class="input-field" placeholder="Filtrar estoque da loja..." autocomplete="off">
-      <button type="button" class="seller-store-stock-refresh" id="seller-store-stock-refresh" title="Atualizar">â†»</button>
+      <input id="seller-store-stock-q" class="input-field" placeholder="Filtrar por produto, SKU ou marca..." autocomplete="off">
+      <button type="button" class="seller-store-stock-refresh" id="seller-store-stock-refresh" title="Atualizar">Atualizar</button>
     </div>
     <div class="seller-store-stock-meta" id="seller-store-stock-meta">Buscando produtos com saldo...</div>
     <div class="seller-store-stock-list" id="seller-store-stock-list"></div>
@@ -1530,7 +1543,7 @@ let sellerAiUiReady = false;
 let clientAiUiReady = false;
 let sellerCatSearchReady = false;
 let sellerStoreStockReady = false;
-let sellerStoreStockState = { page: 1, totalPages: 1, loading: false, query: '', store: null };
+let sellerStoreStockState = { page: 1, totalPages: 1, loading: false, query: '', store: null, scope: 'all', stores: [], selectedStoreId: '' };
 let sellerAgentUiReady = false;
 let sellerAgentState = { recommendations: [], conversationId: null, loading: false };
 
@@ -1570,10 +1583,59 @@ function initSellerCatalogAi() {
 function setupSellerStoreStock() {
   if (sellerStoreStockReady) return;
   sellerStoreStockReady = true;
+  const panel = document.getElementById('seller-store-stock-panel');
+  const title = panel ? panel.querySelector('.seller-store-stock-title') : null;
   const q = document.getElementById('seller-store-stock-q');
   const refresh = document.getElementById('seller-store-stock-refresh');
   const more = document.getElementById('seller-store-stock-more');
   const open = document.getElementById('seller-store-stock-open');
+  const tools = panel ? panel.querySelector('.seller-store-stock-tools') : null;
+  const catalogFab = document.getElementById('seller-catalog-fab');
+  if (catalogFab) catalogFab.textContent = 'Buscar produto';
+  if (open) open.textContent = 'Busca avancada';
+  if (refresh) refresh.textContent = 'Atualizar';
+  if (title) title.textContent = 'Estoque disponivel';
+  if (panel && tools && !document.getElementById('seller-store-stock-tabs')) {
+    const tabs = document.createElement('div');
+    tabs.className = 'seller-store-stock-tabs';
+    tabs.id = 'seller-store-stock-tabs';
+    [
+      { scope: 'all', label: 'Estoque geral' },
+      { scope: 'mine', label: 'Minha loja' },
+      { scope: 'store', label: 'Por loja' },
+    ].forEach(function (item) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'seller-store-stock-tab' + (item.scope === sellerStoreStockState.scope ? ' active' : '');
+      btn.dataset.stockScope = item.scope;
+      btn.textContent = item.label;
+      tabs.appendChild(btn);
+    });
+    panel.insertBefore(tabs, tools);
+    const select = document.createElement('select');
+    select.id = 'seller-store-stock-select';
+    select.className = 'seller-store-stock-select';
+    select.style.display = 'none';
+    select.innerHTML = '<option value="">Escolha uma loja</option>';
+    panel.insertBefore(select, tools);
+  }
+  document.querySelectorAll('#seller-store-stock-tabs .seller-store-stock-tab').forEach(function (btn) {
+    if (btn.dataset.ready === '1') return;
+    btn.dataset.ready = '1';
+    btn.addEventListener('click', function () {
+      sellerStoreStockState.scope = btn.dataset.stockScope || 'all';
+      updateSellerStoreStockControls();
+      loadSellerStoreStock(true);
+    });
+  });
+  const select = document.getElementById('seller-store-stock-select');
+  if (select && select.dataset.ready !== '1') {
+    select.dataset.ready = '1';
+    select.addEventListener('change', function () {
+      sellerStoreStockState.selectedStoreId = select.value;
+      loadSellerStoreStock(true);
+    });
+  }
   if (q) {
     let timer = null;
     q.addEventListener('input', function () {
@@ -1587,6 +1649,66 @@ function setupSellerStoreStock() {
   if (refresh) refresh.addEventListener('click', function () { loadSellerStoreStock(true); });
   if (more) more.addEventListener('click', function () { loadSellerStoreStock(false); });
   if (open) open.addEventListener('click', function () { showScreen('seller-catalog-search'); });
+  loadSellerStoreOptions();
+  updateSellerStoreStockControls();
+}
+
+function loadSellerStoreOptions() {
+  api('/stores').then(function (data) {
+    sellerStoreStockState.stores = data.stores || [];
+    renderSellerStoreSelect();
+  });
+}
+
+function renderSellerStoreSelect() {
+  const select = document.getElementById('seller-store-stock-select');
+  if (!select) return;
+  const current = sellerStoreStockState.selectedStoreId;
+  select.innerHTML = '<option value="">Escolha uma loja</option>';
+  (sellerStoreStockState.stores || []).forEach(function (store) {
+    const opt = document.createElement('option');
+    opt.value = store.id;
+    opt.textContent = (store.code ? store.code + ' - ' : '') + (store.name || 'Loja');
+    select.appendChild(opt);
+  });
+  if (current) select.value = current;
+}
+
+function updateSellerStoreStockControls() {
+  document.querySelectorAll('.seller-store-stock-tab').forEach(function (btn) {
+    btn.classList.toggle('active', btn.dataset.stockScope === sellerStoreStockState.scope);
+  });
+  const select = document.getElementById('seller-store-stock-select');
+  if (select) select.style.display = sellerStoreStockState.scope === 'store' ? 'block' : 'none';
+}
+
+function sellerStoreScopeLabel() {
+  if (sellerStoreStockState.scope === 'all') return 'Estoque geral de todas as lojas';
+  if (sellerStoreStockState.scope === 'store') {
+    const store = (sellerStoreStockState.stores || []).find(function (s) { return s.id === sellerStoreStockState.selectedStoreId; });
+    return store ? ((store.code ? store.code + ' - ' : '') + store.name) : 'Escolha uma loja para filtrar';
+  }
+  const st = sellerStoreStockState.store || {};
+  return st.name ? ((st.code ? st.code + ' - ' : '') + st.name) : 'Loja vinculada ao vendedor';
+}
+
+function sellerStockScopeParams() {
+  const params = ['stockScope=' + encodeURIComponent(sellerStoreStockState.scope || 'all')];
+  if (sellerStoreStockState.scope === 'store' && sellerStoreStockState.selectedStoreId) {
+    params.push('storeId=' + encodeURIComponent(sellerStoreStockState.selectedStoreId));
+  }
+  return params;
+}
+
+function buildSellerStoreStockParams(page, queryOverride) {
+  const params = [
+    ...sellerStockScopeParams(),
+    'page=' + page,
+    'pageSize=20',
+  ];
+  const query = queryOverride != null ? queryOverride : (sellerStoreStockState.query || '');
+  if (query) params.push('search=' + encodeURIComponent(query));
+  return params;
 }
 
 function sellerStoreStockLabel(p) {
@@ -1600,7 +1722,7 @@ function sellerStoreStockLabel(p) {
       sizes.push((s.size || '-') + ': ' + qty);
     }
   });
-  return total ? (total + ' un. na loja' + (sizes.length ? ' (' + sizes.join(', ') + ')' : '')) : 'Sem estoque nesta loja';
+  return total ? (total + ' un. disponiveis' + (sizes.length ? ' (' + sizes.join(', ') + ')' : '')) : 'Sem estoque nesse filtro';
 }
 
 function renderSellerStoreStockCard(p) {
@@ -1619,12 +1741,12 @@ function renderSellerStoreStockCard(p) {
   meta.style.fontSize = '12px';
   meta.style.opacity = '0.75';
   meta.style.marginTop = '4px';
-  meta.textContent = (p.brand || 'Marca') + ' â€¢ ' + (p.sku || 'SKU');
   const price = document.createElement('div');
+  meta.textContent = (p.brand || 'Marca') + ' - ' + (p.sku || 'SKU');
   price.className = 'pprice';
   const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
-  price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : 'â€”');
   const pill = document.createElement('div');
+  price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '-');
   pill.className = 'seller-stock-pill';
   pill.textContent = sellerStoreStockLabel(p);
   info.appendChild(title);
@@ -1644,20 +1766,23 @@ function loadSellerStoreStock(reset) {
   const storeEl = document.getElementById('seller-store-stock-store');
   const qEl = document.getElementById('seller-store-stock-q');
   if (!list || !meta) return;
+  if (sellerStoreStockState.scope === 'store' && !sellerStoreStockState.selectedStoreId) {
+    updateSellerStoreStockControls();
+    list.innerHTML = '<div class="seller-store-stock-sub">Escolha uma loja para ver o estoque disponivel.</div>';
+    meta.textContent = 'Filtro por loja ativo.';
+    if (storeEl) storeEl.textContent = sellerStoreScopeLabel();
+    if (more) more.style.display = 'none';
+    return;
+  }
   if (reset) {
     sellerStoreStockState.page = 1;
     sellerStoreStockState.totalPages = 1;
-    list.innerHTML = '<div class="loading">Carregando estoque da loja...</div>';
+    list.innerHTML = '<div class="loading">Carregando estoque...</div>';
   }
   sellerStoreStockState.loading = true;
   const query = (qEl && qEl.value ? qEl.value.trim() : '');
   sellerStoreStockState.query = query;
-  const params = [
-    'myStoreStock=1',
-    'page=' + sellerStoreStockState.page,
-    'pageSize=20',
-  ];
-  if (query) params.push('search=' + encodeURIComponent(query));
+  const params = buildSellerStoreStockParams(sellerStoreStockState.page);
   api('/catalog/products?' + params.join('&')).then(function (data) {
     sellerStoreStockState.loading = false;
     if (data.error) {
@@ -1668,17 +1793,14 @@ function loadSellerStoreStock(reset) {
     const products = data.products || [];
     sellerStoreStockState.totalPages = data.totalPages || 1;
     sellerStoreStockState.store = data.store || sellerStoreStockState.store;
-    if (storeEl) {
-      const st = sellerStoreStockState.store || {};
-      storeEl.textContent = st.name ? ((st.code ? st.code + ' â€¢ ' : '') + st.name) : 'Produtos com saldo na loja vinculada ao vendedor';
-    }
+    if (storeEl) storeEl.textContent = sellerStoreScopeLabel();
     if (reset) list.innerHTML = '';
     if (!products.length && sellerStoreStockState.page === 1) {
-      list.innerHTML = '<div class="seller-store-stock-sub">Nenhum produto com estoque nesta loja para esse filtro.</div>';
+      list.innerHTML = '<div class="seller-store-stock-sub">Nenhum produto com estoque para esse filtro.</div>';
     } else {
       products.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
     }
-    meta.textContent = (data.total || 0) + ' produto(s) com saldo' + (query ? ' para "' + query + '"' : '') + '.';
+    meta.textContent = (data.total || 0) + ' produto(s) disponiveis em ' + sellerStoreScopeLabel() + (query ? ' para "' + query + '"' : '') + '.';
     sellerStoreStockState.page += 1;
     if (more) {
       more.style.display = sellerStoreStockState.page <= sellerStoreStockState.totalPages ? 'block' : 'none';
@@ -2107,8 +2229,12 @@ function initSellerCatalogSearchScreen() {
 function runSellerCatalogSearch() {
   const q = document.getElementById('seller-cat-q').value.trim();
   const res = document.getElementById('seller-cat-results');
+  if (sellerStoreStockState.scope === 'store' && !sellerStoreStockState.selectedStoreId) {
+    res.innerHTML = '<div class="seller-store-stock-sub">Escolha uma loja no catalogo antes de buscar por loja.</div>';
+    return;
+  }
   res.innerHTML = '<div class="loading">Buscando...</div>';
-  const qs = '?myStoreStock=1' + (q ? ('&search=' + encodeURIComponent(q)) : '');
+  const qs = '?' + buildSellerStoreStockParams(1, q).join('&');
   api('/catalog/products' + qs).then(function (data) {
     if (data.error) { res.innerHTML = '<div class="error-msg">' + data.error + '</div>'; return; }
     const list = data.products || [];
@@ -2132,11 +2258,11 @@ function runSellerCatalogSearch() {
       meta.style.fontSize = '12px';
       meta.style.opacity = '0.75';
       meta.style.marginTop = '4px';
-      meta.textContent = p.brand + ' • ' + p.sku;
+      meta.textContent = (p.brand || 'Marca') + ' - ' + (p.sku || 'SKU');
       const price = document.createElement('div');
       price.className = 'pprice';
       const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
-      price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
+      price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '-');
       info.appendChild(title);
       info.appendChild(meta);
       info.appendChild(price);
@@ -2152,7 +2278,7 @@ function runSellerCatalogSearch() {
 }
 
 function openProductDetailScreen(id, mode) {
-  const suffix = mode === 'seller' ? '?myStoreStock=1' : '';
+  const suffix = mode === 'seller' ? ('?' + sellerStockScopeParams().join('&')) : '';
   api('/catalog/products/' + encodeURIComponent(id) + suffix).then(function (data) {
     if (data.error) { alert(data.error); return; }
     const p = data.product;
@@ -2171,7 +2297,7 @@ function openProductDetailScreen(id, mode) {
         big.classList.add('placeholder');
         const ic = document.createElement('span');
         ic.className = 'prod-thumb-ico';
-        ic.textContent = '🖼';
+        ic.textContent = 'IMG';
         big.appendChild(ic);
       });
       img.src = p.imageUrl;
@@ -2180,7 +2306,7 @@ function openProductDetailScreen(id, mode) {
       big.className = 'prod-thumb-large placeholder';
       const ic = document.createElement('span');
       ic.className = 'prod-thumb-ico';
-      ic.textContent = '🖼';
+      ic.textContent = 'IMG';
       big.appendChild(ic);
     }
     big.style.marginBottom = '14px';
@@ -2193,12 +2319,12 @@ function openProductDetailScreen(id, mode) {
     sub.style.fontSize = '12px';
     sub.style.opacity = '0.75';
     sub.style.marginTop = '6px';
-    sub.textContent = p.brand + ' • SKU ' + p.sku + ' • ' + p.category;
+    sub.textContent = (p.brand || 'Marca') + ' - SKU ' + (p.sku || '-') + ' - ' + (p.category || 'Categoria');
     const pr = document.createElement('p');
     pr.className = 'pprice';
     pr.style.fontSize = '22px';
     const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
-    pr.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '—');
+    pr.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : '-');
     wrap.appendChild(h);
     wrap.appendChild(sub);
     wrap.appendChild(pr);
@@ -2213,14 +2339,16 @@ function openProductDetailScreen(id, mode) {
     const szTitle = document.createElement('p');
     szTitle.style.marginTop = '16px';
     szTitle.style.fontWeight = '700';
-    szTitle.textContent = mode === 'seller' ? 'Estoque nesta loja' : 'Tamanhos e estoque';
+    szTitle.textContent = mode === 'seller'
+      ? (sellerStoreStockState.scope === 'all' ? 'Estoque geral' : 'Estoque selecionado')
+      : 'Tamanhos e estoque';
     wrap.appendChild(szTitle);
     const detailSizes = mode === 'seller' ? (p.storeStockBySize || []) : (p.sizes || []);
     if (!detailSizes.length) {
       const empty = document.createElement('div');
       empty.style.fontSize = '13px';
       empty.style.padding = '8px 0';
-      empty.textContent = mode === 'seller' ? 'Sem estoque registrado nesta loja.' : 'Sem grade cadastrada.';
+      empty.textContent = mode === 'seller' ? 'Sem estoque registrado nesse filtro.' : 'Sem grade cadastrada.';
       wrap.appendChild(empty);
     }
     detailSizes.forEach(function (s) {

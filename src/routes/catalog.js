@@ -26,8 +26,9 @@ function optionalCatalogAuth(req, res, next) {
 }
 
 async function resolveMyStoreScope(req) {
-  const wantsMyStore = String(req.query.myStoreStock || req.query.myStore || req.query.mine || '') === '1';
-  if (!wantsMyStore) return { wantsMyStore: false, storeId: '', store: null };
+  const requestedScope = String(req.query.stockScope || '').trim().toLowerCase();
+  const wantsMyStore = String(req.query.myStoreStock || req.query.myStore || req.query.mine || '') === '1' || !!requestedScope;
+  if (!wantsMyStore) return { wantsMyStore: false, stockScope: '', storeId: '', store: null };
   if (!req.userId || !['seller', 'store', 'manager', 'admin', 'superadmin'].includes(req.userRole)) {
     const err = new Error('Login de vendedor obrigatorio para ver estoque da loja');
     err.statusCode = 401;
@@ -42,15 +43,47 @@ async function resolveMyStoreScope(req) {
       store: { select: { id: true, code: true, name: true, city: true } },
     },
   });
-  if (!user?.storeId) {
-    const err = new Error('Vendedor sem loja vinculada');
+  const stockScope = ['all', 'mine', 'store'].includes(requestedScope)
+    ? requestedScope
+    : 'mine';
+  if (stockScope === 'all') {
+    return { wantsMyStore: true, stockScope, storeId: '', store: null };
+  }
+  if (!user?.storeId && stockScope !== 'store') {
+    const err = new Error('Usuario sem loja vinculada');
     err.statusCode = 400;
     throw err;
   }
-  return { wantsMyStore: true, storeId: user.storeId, store: user.store || null };
+  if (stockScope === 'store') {
+    const requestedStoreId = String(req.query.storeId || '').trim();
+    const requestedStoreCode = String(req.query.storeCode || '').trim();
+    if (!requestedStoreId && !requestedStoreCode && !user?.storeId) {
+      const err = new Error('Escolha uma loja para consultar o estoque');
+      err.statusCode = 400;
+      throw err;
+    }
+    const store = await prisma.store.findFirst({
+      where: {
+        active: true,
+        ...(requestedStoreId
+          ? { id: requestedStoreId }
+          : requestedStoreCode
+            ? { code: requestedStoreCode }
+            : { id: user.storeId }),
+      },
+      select: { id: true, code: true, name: true, city: true },
+    });
+    if (!store) {
+      const err = new Error('Loja nao encontrada');
+      err.statusCode = 404;
+      throw err;
+    }
+    return { wantsMyStore: true, stockScope, storeId: store.id, store };
+  }
+  return { wantsMyStore: true, stockScope, storeId: user.storeId, store: user.store || null };
 }
 
-function addStoreStockSummary(card, storeId, store = null) {
+function addStoreStockSummary(card, storeId, store = null, stockScope = 'mine') {
   const bySize = new Map();
   let total = 0;
   for (const size of card.sizes || []) {
@@ -73,8 +106,8 @@ function addStoreStockSummary(card, storeId, store = null) {
     storeAvailableSizes: storeStockBySize,
     storeStockBySize,
     storeStockLabel: total > 0
-      ? `${total} un. na loja${storeStockBySize.length ? ` (${storeStockBySize.map((s) => `${s.size}: ${s.stock}`).join(', ')})` : ''}`
-      : 'Sem estoque nesta loja',
+      ? `${total} un. ${stockScope === 'all' ? 'no estoque geral' : 'na loja'}${storeStockBySize.length ? ` (${storeStockBySize.map((s) => `${s.size}: ${s.stock}`).join(', ')})` : ''}`
+      : (stockScope === 'all' ? 'Sem estoque geral' : 'Sem estoque nesta loja'),
   };
 }
 
@@ -96,14 +129,15 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const size = String(req.query.size || '').trim();
     // inStore=1 → só produtos que TÊM estoque físico em alguma loja (StoreStock>0).
     // Usado pela Curadoria pra mostrar os bipados (com tamanhos por loja no card).
-    const inStore = String(req.query.inStore || req.query.instore || '') === '1';
+    let inStore = String(req.query.inStore || req.query.instore || '') === '1';
     // storeCode/storeId → vitrine de UMA loja: só produtos com estoque NESSA loja.
     const storeCode = String(req.query.storeCode || '').trim();
-    let storeId = myStore.storeId || String(req.query.storeId || '').trim();
-    if (storeCode && !storeId) {
+    let storeId = myStore.wantsMyStore ? myStore.storeId : String(req.query.storeId || '').trim();
+    if (!myStore.wantsMyStore && storeCode && !storeId) {
       const st = await prisma.store.findFirst({ where: { code: storeCode }, select: { id: true } });
       storeId = st ? st.id : '__none__';
     }
+    if (myStore.wantsMyStore && !storeId) inStore = true;
     const aiFilters = [];
     // Casa com a 1ª OU a 2ª classificação (classification2)
     if (type) aiFilters.push({ OR: [
@@ -132,8 +166,15 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // GARANTIA (só staff logado: vendedor/admin) — mostra produto ATIVO **ou** com ESTOQUE,
     // pra dar pra VENDER qualquer produto comprado, mesmo sem bipe. Cliente anônimo: só ativo.
     const isStaff = ['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole);
+    const staffVisibleProduct = {
+      OR: [
+        { active: true },
+        { sizes: { some: { stock: { gt: 0 } } } },
+        { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+      ],
+    };
     const andConds = [
-      isStaff ? { OR: [{ active: true }, { sizes: { some: { stock: { gt: 0 } } } }] } : { active: true },
+      isStaff ? staffVisibleProduct : { active: true },
     ];
     if (brand) andConds.push({ brand: { equals: brand, mode: 'insensitive' } });
     if (category) andConds.push({ category: { equals: category, mode: 'insensitive' } });
@@ -192,7 +233,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
 
     const products = rows.map((p) => {
       const card = formatProductCard(p);
-      return myStore.wantsMyStore ? addStoreStockSummary(card, myStore.storeId, myStore.store) : card;
+      return myStore.wantsMyStore ? addStoreStockSummary(card, storeId, myStore.store, myStore.stockScope) : card;
     });
 
     res.json({
@@ -201,7 +242,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize) || 1,
-      ...(myStore.wantsMyStore ? { store: myStore.store } : {}),
+      ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}),
     });
   } catch (err) {
     console.error('catalog/products', err);
@@ -212,8 +253,18 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
 router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
   try {
     const myStore = await resolveMyStoreScope(req);
+    const isStaff = ['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole);
+    const visibleProduct = isStaff
+      ? {
+          OR: [
+            { active: true },
+            { sizes: { some: { stock: { gt: 0 } } } },
+            { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+          ],
+        }
+      : { active: true };
     const p = await prisma.product.findFirst({
-      where: { id: req.params.id, active: true },
+      where: { id: req.params.id, ...visibleProduct },
       select: {
         id: true,
         sku: true,
@@ -247,8 +298,8 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
       },
     });
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
-    const product = myStore.wantsMyStore ? addStoreStockSummary(p, myStore.storeId, myStore.store) : p;
-    res.json({ product, ...(myStore.wantsMyStore ? { store: myStore.store } : {}) });
+    const product = myStore.wantsMyStore ? addStoreStockSummary(p, myStore.storeId, myStore.store, myStore.stockScope) : p;
+    res.json({ product, ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}) });
   } catch (err) {
     console.error('catalog/product id', err);
     res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Erro ao carregar produto' });
