@@ -1256,6 +1256,10 @@ function cleanStockQuery(text, stores, size, store) {
     .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  q = q
+    .replace(/\b(busca|buscar|ver|ve|veja|olha|olhar|confere|conferir|mim|pra|favor|por|algum|alguma|alguns|algumas|item|itens)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!q || q.length < 2) return '';
   return q;
 }
