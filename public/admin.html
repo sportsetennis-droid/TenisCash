@@ -1036,8 +1036,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <!-- AGENTES -->
   <div id="ai-panel-agents" style="display:none">
-    <div style="margin-bottom:12px">
-      <strong style="font-family:Orbitron;letter-spacing:2px;font-size:13px">Agentes registrados</strong>
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <strong style="font-family:Orbitron;letter-spacing:2px;font-size:13px">Times de agentes</strong>
+        <div style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.45">Classico e Mercado ficam separados aqui. O Mercado usa o novo agente de inteligencia antes dos agentes antigos.</div>
+      </div>
+      <button type="button" class="btn btn-primary" id="ai-btn-reload-agents">Recarregar</button>
     </div>
     <div id="ai-agents-wrap"><div class="loading-spinner">Carregando...</div></div>
   </div>
@@ -6854,6 +6858,8 @@ async function initAdminAICenter() {
   if (btnA && !btnA._wired) { btnA._wired = true; btnA.onclick = loadAIApprovals; }
   const btnH = document.getElementById('ai-btn-reload-history');
   if (btnH && !btnH._wired) { btnH._wired = true; btnH.onclick = loadAIHistory; }
+  const btnAgents = document.getElementById('ai-btn-reload-agents');
+  if (btnAgents && !btnAgents._wired) { btnAgents._wired = true; btnAgents.onclick = loadAIAgents; }
   const btnClose = document.getElementById('ai-orch-modal-close');
   if (btnClose && !btnClose._wired) {
     btnClose._wired = true;
@@ -7056,6 +7062,7 @@ function renderAIDailyCommand(status, orchestration) {
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
             <button type="button" class="btn" id="ai-daily-refresh">Atualizar</button>
+            <button type="button" class="btn" id="ai-daily-agents">Ver times</button>
             <button type="button" class="btn" id="ai-daily-history">Historico</button>
             <button type="button" class="btn" id="ai-daily-dry">Simular snapshot</button>
             <button type="button" class="btn" id="ai-daily-run-market">Rodar experimento mercado</button>
@@ -7149,6 +7156,9 @@ function wireAIDailyCommand() {
 
   const history = document.getElementById('ai-daily-history');
   if (history) history.onclick = () => document.querySelector('.js-ai-sub[data-ai-sub="history"]')?.click();
+
+  const agents = document.getElementById('ai-daily-agents');
+  if (agents) agents.onclick = () => document.querySelector('.js-ai-sub[data-ai-sub="agents"]')?.click();
 
   const detail = document.getElementById('ai-daily-detail');
   const orchId = detail ? detail.dataset.orchestrationId : null;
@@ -7953,7 +7963,190 @@ function renderAgentDetail(code, m) {
   return h || '<div style="color:var(--text2);font-size:13px">Sem dados estruturados deste agente.</div>';
 }
 
+function aiAgentMap(list) {
+  return (list || []).reduce((m, a) => {
+    if (a && a.code) m[a.code] = a;
+    return m;
+  }, {});
+}
+
+function aiSquadsFallback(list) {
+  const byCode = aiAgentMap(list);
+  const meta = (code) => byCode[code] || { code, name: code, category: '', description: '' };
+  const classicCodes = [
+    'stock-agent', 'finance-agent', 'marketing-agent', 'design-brief-agent',
+    'sales-agent', 'whatsapp-agent', 'report-agent', 'operations-agent',
+    'product-agent', 'safety-agent',
+  ];
+  const marketCodes = ['market-intelligence-agent'].concat(classicCodes);
+  return {
+    classic: {
+      code: 'classic',
+      name: 'Time Classico',
+      mode: 'padrao',
+      agentVariant: null,
+      description: 'Fluxo antigo preservado.',
+      agents: classicCodes.map(meta),
+    },
+    market: {
+      code: 'market',
+      name: 'Time Mercado',
+      mode: 'experimental',
+      agentVariant: 'market',
+      description: 'Novo fluxo separado com inteligencia de mercado antes dos especialistas classicos.',
+      agents: marketCodes.map(meta),
+    },
+  };
+}
+
+function aiAgentLine(agent, options = {}) {
+  const isNew = options.isNew;
+  const color = isNew ? '#2ecc71' : '#7a8194';
+  return `
+    <div style="display:grid;grid-template-columns:minmax(150px,.34fr) minmax(0,1fr);gap:10px;align-items:start;border-top:1px solid #232838;padding:10px 0">
+      <div>
+        <code style="font-size:12px;color:${color};word-break:break-word">${escapeHtml(agent.code || '')}</code>
+        <div style="font-size:11px;color:#7a8194;margin-top:4px">${escapeHtml(agent.category || 'agent')}</div>
+      </div>
+      <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <strong style="font-size:13px;color:#eef1f8">${escapeHtml(agent.name || agent.code || '')}</strong>
+          ${isNew ? aiBadge('novo', '#2ecc71') : ''}
+        </div>
+        <div style="font-size:12px;color:#9aa1b2;line-height:1.4;margin-top:4px">${escapeHtml(agent.description || '')}</div>
+      </div>
+    </div>
+  `;
+}
+
+function aiPlainStat(label, value, note, color) {
+  return `
+    <div style="min-width:0">
+      <div style="font-size:11px;letter-spacing:1px;color:#7a8194;margin-bottom:4px">${escapeHtml(label)}</div>
+      <div style="font-size:20px;font-weight:800;color:${color || '#eef1f8'};line-height:1.1;word-break:break-word">${escapeHtml(String(value ?? '-'))}</div>
+      ${note ? `<div style="font-size:11px;color:#9aa1b2;margin-top:5px;line-height:1.35">${escapeHtml(note)}</div>` : ''}
+    </div>
+  `;
+}
+
+function aiRenderSquadCard(squad, options = {}) {
+  const color = options.color || '#eef1f8';
+  const isMarket = squad.code === 'market';
+  const marketOnly = (squad.agents || []).filter(a => a.code === 'market-intelligence-agent').length;
+  const runLabel = isMarket ? 'Rodar Mercado' : 'Rodar Classico';
+  const modeLabel = isMarket ? 'separado do padrao' : 'padrao preservado';
+  return aiPanel(`
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
+      <div>
+        <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin-bottom:6px">${escapeHtml(String(squad.mode || '').toUpperCase())}</div>
+        <div style="font-size:22px;font-weight:900;line-height:1.1;color:#eef1f8">${escapeHtml(squad.name || squad.code)}</div>
+        <div style="font-size:12px;color:#9aa1b2;line-height:1.45;margin-top:8px">${escapeHtml(squad.description || '')}</div>
+      </div>
+      ${aiBadge(modeLabel, color)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:12px;border-top:1px solid #232838;border-bottom:1px solid #232838;padding:12px 0">
+      ${aiPlainStat('AGENTES', (squad.agents || []).length, isMarket ? '+1 agente novo' : 'sem agente novo', color)}
+      ${aiPlainStat('VARIANTE', isMarket ? 'market' : 'classic', isMarket ? 'usa market-intelligence-agent' : 'nao chama market-intelligence-agent', color)}
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button type="button" class="btn ${isMarket ? 'btn-primary' : ''}" data-ai-run-squad="${escapeHtml(squad.code)}">${runLabel}</button>
+      <button type="button" class="btn" data-ai-squad-history="${escapeHtml(squad.code)}">Ver historico</button>
+    </div>
+
+    <div style="font-size:11px;letter-spacing:2px;color:#7a8194;margin:10px 0 2px">COMPOSICAO</div>
+    ${(squad.agents || []).map(a => aiAgentLine(a, { isNew: isMarket && a.code === 'market-intelligence-agent' })).join('')}
+    ${isMarket && !marketOnly ? `<div style="font-size:12px;color:#ff5470;margin-top:8px">market-intelligence-agent nao veio na lista da API.</div>` : ''}
+  `, color);
+}
+
+function aiRenderSquadDiff(classic, market) {
+  const classicCodes = new Set((classic.agents || []).map(a => a.code));
+  const marketOnly = (market.agents || []).filter(a => !classicCodes.has(a.code));
+  const shared = (market.agents || []).filter(a => classicCodes.has(a.code)).length;
+  return aiPanel(`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:18px">
+      ${aiPlainStat('SEPARACAO', '2 times', 'o botao escolhido define a variante', '#eef1f8')}
+      ${aiPlainStat('DIFERENCA', marketOnly.length ? marketOnly.map(a => a.code).join(', ') : 'nenhuma', `${shared} agente(s) reaproveitado(s)`, '#2ecc71')}
+      ${aiPlainStat('PADRAO', 'classic', 'o Mercado so roda quando voce pede', '#ffb020')}
+    </div>
+    <div id="ai-agents-run-status" style="font-size:12px;color:#9aa1b2;margin-top:12px"></div>
+  `);
+}
+
+function aiRenderAgentsCatalog(list) {
+  if (!Array.isArray(list) || !list.length) return '';
+  const rows = list.map(a => `<tr>
+    <td><code>${escapeHtml(a.code || '')}</code></td>
+    <td>${escapeHtml(a.name || '')}</td>
+    <td>${escapeHtml(a.category || '')}</td>
+    <td>${escapeHtml(a.description || '')}</td>
+  </tr>`).join('');
+  return `<details style="margin-top:14px">
+    <summary style="cursor:pointer;font-size:12px;color:#7a8194">Catalogo tecnico completo (${list.length})</summary>
+    <div style="overflow-x:auto;margin-top:10px">
+      <table><thead><tr><th>Codigo</th><th>Nome</th><th>Categoria</th><th>Descricao</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>
+  </details>`;
+}
+
+async function aiRunAgentsSquad(variant) {
+  const isMarket = variant === 'market';
+  const st = document.getElementById('ai-agents-run-status');
+  const msg = isMarket
+    ? 'Rodar o Time Mercado agora? Isso cria uma nova rodada experimental com custo de IA e aprovacoes.'
+    : 'Rodar o Time Classico agora? Se ja rodou hoje, o motor pode pular por seguranca.';
+  if (!confirm(msg)) return;
+  if (st) st.textContent = isMarket ? 'Rodando Time Mercado...' : 'Rodando Time Classico...';
+  const result = await api('/admin/ai/daily-market/run', 'POST', {
+    force: isMarket,
+    agentVariant: isMarket ? 'market' : 'classic',
+  });
+  if (result.error) {
+    if (st) st.textContent = 'Erro: ' + result.error;
+    return;
+  }
+  const suffix = result.skipped ? `pulou: ${result.reason || ''}` : `orquestracao ${result.result?.orchestrationId || 'criada'}`;
+  if (st) st.textContent = `${isMarket ? 'Time Mercado' : 'Time Classico'} pronto, ${suffix}.`;
+  loadAIDailyCommand();
+}
+
+function wireAIAgents() {
+  document.querySelectorAll('[data-ai-run-squad]').forEach(btn => {
+    btn.onclick = () => aiRunAgentsSquad(btn.dataset.aiRunSquad);
+  });
+  document.querySelectorAll('[data-ai-squad-history]').forEach(btn => {
+    btn.onclick = () => document.querySelector('.js-ai-sub[data-ai-sub="history"]')?.click();
+  });
+}
+
+async function loadAIAgentsSeparated() {
+  const wrap = document.getElementById('ai-agents-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
+  const data = await api('/admin/ai/agents');
+  if (data.error) { wrap.innerHTML = `<div style="color:#e35">Erro: ${escapeHtml(data.error)}</div>`; return; }
+  const list = data.agents || [];
+  const fallback = aiSquadsFallback(list);
+  const squads = data.squads || fallback;
+  const classic = squads.classic || fallback.classic;
+  const market = squads.market || fallback.market;
+
+  wrap.innerHTML = `
+    <div style="display:grid;gap:14px">
+      ${aiRenderSquadDiff(classic, market)}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+        ${aiRenderSquadCard(classic, { color: '#ffb020' })}
+        ${aiRenderSquadCard(market, { color: '#2ecc71' })}
+      </div>
+      ${aiRenderAgentsCatalog(list)}
+    </div>
+  `;
+  wireAIAgents();
+}
+
 async function loadAIAgents() {
+  return loadAIAgentsSeparated();
   const wrap = document.getElementById('ai-agents-wrap');
   wrap.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   const data = await api('/admin/ai/agents');

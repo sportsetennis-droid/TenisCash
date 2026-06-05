@@ -22,6 +22,7 @@ const {
   resolveAgentVariant,
   selectAgentsForObjective,
   listAgents,
+  listAgentSquads,
 } = require('../agents/agent.registry');
 const safetyAgent = require('../agents/safety.agent');
 const { loadBusinessContext } = require('../context/business-context.service');
@@ -323,4 +324,5 @@ module.exports = {
   listOrchestrations,
   getOrchestration,
   listAgents,
+  listAgentSquads,
 };

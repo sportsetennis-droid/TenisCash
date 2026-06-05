@@ -67,6 +67,31 @@ function listAgents() {
   return Object.keys(agents).map((code) => ({ code, ...(metadata[code] || {}) }));
 }
 
+function enrichAgent(code) {
+  return { code, ...(metadata[code] || {}) };
+}
+
+function listAgentSquads() {
+  return {
+    classic: {
+      code: 'classic',
+      name: 'Time Classico',
+      mode: 'padrao',
+      agentVariant: null,
+      description: 'Fluxo antigo preservado: especialistas comerciais geram campanha, operacao, WhatsApp e aprovacao humana.',
+      agents: DAILY_CLASSIC_AGENTS.map(enrichAgent),
+    },
+    market: {
+      code: 'market',
+      name: 'Time Mercado',
+      mode: 'experimental',
+      agentVariant: 'market',
+      description: 'Novo fluxo separado: adiciona inteligencia de mercado antes dos especialistas classicos decidirem a campanha.',
+      agents: DAILY_MARKET_AGENTS.map(enrichAgent),
+    },
+  };
+}
+
 /**
  * selectAgentsForObjective — heurística baseada em palavras-chave do objetivo.
  * O objetivo é dado em PT-BR; a função normaliza para lowercase sem acentos.
@@ -143,6 +168,7 @@ module.exports = {
   metadata,
   getAgent,
   listAgents,
+  listAgentSquads,
   resolveAgentVariant,
   selectAgentsForObjective,
   DAILY_CLASSIC_AGENTS,

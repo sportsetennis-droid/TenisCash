@@ -11,6 +11,7 @@ const {
   listOrchestrations,
   getOrchestration,
   listAgents,
+  listAgentSquads,
 } = require('./orchestrator.service');
 const {
   listPendingApprovals,
@@ -33,7 +34,7 @@ router.use(adminMiddleware);
 // Lista os agentes disponíveis
 router.get('/agents', (_req, res) => {
   try {
-    res.json({ agents: listAgents() });
+    res.json({ agents: listAgents(), squads: listAgentSquads() });
   } catch (err) {
     console.error('[ai/agents] erro:', err);
     res.status(500).json({ error: 'Erro ao listar agentes' });
