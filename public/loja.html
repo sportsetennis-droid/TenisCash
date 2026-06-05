@@ -626,13 +626,16 @@
       <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFEBDC 100%);border:2px solid var(--primary-light);">
         <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">✅</span>Resumo</h3>
         <div style="margin-bottom:14px;">
-          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">🏷️ Desconto na venda (R$)</label>
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">🏷️ Desconto na venda</label>
           <div style="display:flex;gap:6px;align-items:center;">
-            <input type="number" id="sellDiscount" step="0.01" value="0" min="0" oninput="updateSummary()" style="font-size:16px;flex:1;">
-            <button type="button" onclick="setDiscPct(5)" style="padding:0 10px;height:38px;border:1px solid var(--border);background:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">5%</button>
-            <button type="button" onclick="setDiscPct(10)" style="padding:0 10px;height:38px;border:1px solid var(--border);background:#fff;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">10%</button>
-            <button type="button" onclick="setDiscPct(0)" style="padding:0 10px;height:38px;border:1px solid var(--border);background:#fff;border-radius:8px;font-size:13px;cursor:pointer;">limpar</button>
+            <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:none;">
+              <button type="button" id="discModeRs" onclick="setDiscMode('rs')" style="padding:0 13px;height:40px;border:none;background:var(--primary);color:#fff;font-weight:800;font-size:15px;cursor:pointer;">R$</button>
+              <button type="button" id="discModePct" onclick="setDiscMode('pct')" style="padding:0 13px;height:40px;border:none;background:#fff;color:var(--text);font-weight:800;font-size:15px;cursor:pointer;">%</button>
+            </div>
+            <input type="number" id="sellDiscount" step="0.01" value="0" min="0" oninput="updateSummary()" placeholder="ex: 5,00  (R$)" style="font-size:16px;flex:1;">
+            <button type="button" onclick="limparDesc()" style="padding:0 10px;height:40px;border:1px solid var(--border);background:#fff;border-radius:8px;font-size:13px;cursor:pointer;">limpar</button>
           </div>
+          <div id="discHelper" style="font-size:12px;color:var(--text-muted);margin-top:4px;"></div>
         </div>
         <div id="sellSummary" style="margin-bottom:16px;"></div>
         <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled style="font-size:16px;padding:16px;">Finalizar venda</button>
@@ -1674,9 +1677,9 @@ function renderCart() {
 function updateSummary() {
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
-  let discount = parseFloat(document.getElementById('sellDiscount')?.value || 0);
-  if (!(discount > 0)) discount = 0;
-  if (discount > subtotal) discount = subtotal;
+  const discount = getDiscountRS();
+  const helper = document.getElementById('discHelper');
+  if (helper) helper.textContent = discount > 0 ? ('Desconto: ' + fmt(discount) + (subtotal > 0 ? ' (' + (Math.round(discount / subtotal * 1000) / 10) + '%)' : '')) : '';
   const base = Math.round((subtotal - discount) * 100) / 100;
   const tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
   const tcEarned = customer ? Math.round((base - tcUsed) * 0.04 * 100) / 100 : 0;
@@ -1696,18 +1699,33 @@ function updateSummary() {
     <div class="summary-row total"><span class="label">Total a pagar</span><span class="value">${fmt(liquido)}</span></div>
   `;
 }
+let _discMode = 'rs'; // 'rs' = valor em R$ | 'pct' = porcentagem
+function setDiscMode(m) {
+  _discMode = m;
+  const rs = document.getElementById('discModeRs'), pct = document.getElementById('discModePct');
+  if (rs && pct) {
+    rs.style.background = m === 'rs' ? 'var(--primary)' : '#fff'; rs.style.color = m === 'rs' ? '#fff' : 'var(--text)';
+    pct.style.background = m === 'pct' ? 'var(--primary)' : '#fff'; pct.style.color = m === 'pct' ? '#fff' : 'var(--text)';
+  }
+  const inp = document.getElementById('sellDiscount');
+  if (inp) inp.placeholder = m === 'pct' ? 'ex: 10  (= 10%)' : 'ex: 5,00  (R$)';
+  updateSummary();
+}
+function limparDesc() { const i = document.getElementById('sellDiscount'); if (i) i.value = 0; updateSummary(); }
+// Converte o que o operador digitou (R$ ou %) no desconto EM REAIS, limitado ao subtotal.
+function getDiscountRS() {
+  const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const raw = parseFloat(document.getElementById('sellDiscount')?.value || 0);
+  if (!(raw > 0) || subtotal <= 0) return 0;
+  let rs = _discMode === 'pct' ? (subtotal * raw / 100) : raw;
+  rs = Math.round(rs * 100) / 100;
+  return Math.min(rs, Math.round(subtotal * 100) / 100);
+}
 function usarTodoTc() {
   if (!customer) return;
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const discount = Math.min(parseFloat(document.getElementById('sellDiscount')?.value || 0) || 0, subtotal);
-  const usar = Math.min(customer.balance || 0, Math.max(0, subtotal - discount));
+  const usar = Math.min(customer.balance || 0, Math.max(0, subtotal - getDiscountRS()));
   document.getElementById('sellTcUsed').value = (Math.round(usar * 100) / 100).toFixed(2);
-  updateSummary();
-}
-function setDiscPct(p) {
-  const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const v = p > 0 ? Math.round(subtotal * p) / 100 : 0;
-  document.getElementById('sellDiscount').value = v.toFixed(2);
   updateSummary();
 }
 async function registerCustomerInline() {
@@ -1795,7 +1813,7 @@ async function finalizeSale() {
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
         paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
-        discount: parseFloat(document.getElementById('sellDiscount')?.value || 0),
+        discount: getDiscountRS(),
         storeId: activeStore?.id,
         vendorId,
         ...cardData,
