@@ -470,6 +470,7 @@ model Sale {
   paymentMethod String?
   status        String        @default("completed")
   erpReference  String?
+  pagbankOrderId String?      // PagBank order id (ORDE_...) do PIX-QR; webhook mapeia por aqui
   note          String?
   createdAt     DateTime      @default(now())
 

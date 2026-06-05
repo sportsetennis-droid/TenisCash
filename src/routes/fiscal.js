@@ -35,7 +35,7 @@ function pfxSenhaFor(cnpj) {
 // ============================================================
 // Emissão NFCe a partir de uma Sale finalizada (vendedor pode usar)
 // ============================================================
-router.post('/emit-nfce-from-sale', async (req, res) => {
+async function emitNfceFromSaleHandler(req, res) {
   try {
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
@@ -216,7 +216,8 @@ router.post('/emit-nfce-from-sale', async (req, res) => {
     console.error('[fiscal/emit-nfce-from-sale]', err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+router.post('/emit-nfce-from-sale', emitNfceFromSaleHandler);
 
 // ============================================================
 // Emissão NFe modelo 55 (B2C/B2B com destinatário) — payload livre.
@@ -1072,3 +1073,4 @@ router.post('/documents/:id/cancel', async (req, res) => {
 // disponível antes do adminMiddleware acima usando node-sped-pdf local.
 
 module.exports = router;
+module.exports.emitNfceFromSaleHandler = emitNfceFromSaleHandler;

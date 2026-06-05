@@ -1,5 +1,6 @@
 const express = require('express');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
+const pagbank = require('../services/pagbank');
 
 const router = express.Router();
 
@@ -655,7 +656,26 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       }) : null;
 
       const useAgentAuto = store?.fiscalAgentEnabled && store?.fiscalAgentUrl && store?.fiscalAgentToken;
-      if (store?.fiscalIssuer?.csc && !req.body.skipFiscal && useAgentAuto) {
+      const pixQr = paymentMethod === 'pix' && store?.pagbankEnabled && pagbank.isConfigured(store);
+      if (pixQr) {
+        // PIX-QR PagBank: gera o QR na conta DESTA loja e NÃO emite agora.
+        // O webhook /api/pagbank/webhook emite o cupom quando o pagamento cair.
+        try {
+          const webhookUrl = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br') + '/api/pagbank/webhook';
+          const pix = await pagbank.createPixOrder(store, {
+            amountCents: Math.round(totalAmount * 100),
+            saleId: result.sale.id,
+            customerName: customer?.name || null,
+            customerTaxId: customer?.cpf || null,
+            notificationUrl: webhookUrl,
+          });
+          await prisma.sale.update({ where: { id: result.sale.id }, data: { pagbankOrderId: pix.orderId, status: 'pending_payment' } });
+          fiscalResult = { pixPending: true, orderId: pix.orderId, qrText: pix.qrText, qrPngUrl: pix.qrPngUrl, expiration: pix.expiration };
+        } catch (e) {
+          console.error('[PIX-QR] erro ao gerar QR:', e.message);
+          fiscalResult = { ok: false, pixError: true, error: 'Falha ao gerar QR PagBank: ' + e.message };
+        }
+      } else if (store?.fiscalIssuer?.csc && !req.body.skipFiscal && useAgentAuto) {
         const issuer = store.fiscalIssuer;
         const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
         const tPag = tPagMap[paymentMethod] || '99';

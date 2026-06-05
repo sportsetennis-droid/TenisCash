@@ -58,9 +58,11 @@ const professionalsRoutes = require('./routes/professionals');
 const liveCommerceRoutes = require('./routes/liveCommerce');
 const infoproductsRoutes = require('./routes/infoproducts');
 const desapegaRoutes = require('./routes/desapega');
+const pagbankRoutes = require('./routes/pagbank');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
+const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -164,6 +166,7 @@ app.use('/api/professionals', professionalsRoutes);
 app.use('/api/live', liveCommerceRoutes);
 app.use('/api/infoproducts', infoproductsRoutes);
 app.use('/api/desapega', desapegaRoutes);
+app.use('/api/pagbank', pagbankRoutes); // webhook PIX PagBank + status (fora de /api/admin)
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
@@ -938,6 +941,12 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Cron marketing IA (trend 05:00 + content 06:00 America/Fortaleza)
   // Só ativa se FAL_KEY estiver configurada (senão não tem como gerar)
+  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+    try { startDailyAgentsCron(); } catch (e) { console.error('[dailyAgentsCron] falha ao iniciar:', e.message); }
+  } else {
+    console.log('[dailyAgentsCron] desativado - sem OPENAI_API_KEY/ANTHROPIC_API_KEY');
+  }
+
   if (process.env.FAL_KEY) {
     try { startMarketingCron(); } catch (e) { console.error('[marketingCron] falha ao iniciar:', e.message); }
   } else {
