@@ -710,7 +710,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div id="seller-agent-chat-log" class="ai-chat-log" style="max-height:calc(100vh - 430px);min-height:180px"></div>
   <div id="seller-agent-sugg" class="ai-sugg"></div>
   <div class="ai-input-row">
-    <input id="seller-agent-input" class="input-field" placeholder="Peça ajuda para vender, mandar mensagem ou montar tarefa..." style="margin-top:0">
+    <input id="seller-agent-input" class="input-field" placeholder="Peça produto, estoque, pesquisa, mensagem ou tarefa..." style="margin-top:0">
     <button id="seller-agent-send" type="button" style="width:52px;border:none;border-radius:12px;background:#fff;color:#E5571E;font-weight:900;font-size:18px;font-family:'Chakra Petch';cursor:pointer">OK</button>
   </div>
   <div id="seller-agent-err" class="error-msg" style="display:none"></div>
@@ -1622,7 +1622,7 @@ function initSellerAgent() {
     log.dataset.seeded = '1';
     const w = document.createElement('div');
     w.className = 'ai-msg-bot';
-    w.textContent = 'Sou a IA ST Vendedor. Posso organizar seu turno, consultar estoque e enviar mensagens internas para outros vendedores quando voce pedir.';
+    w.textContent = 'Sou a IA ST Vendedor. Uso catalogo, detalhes do produto, estoque real e pesquisa na internet. O que eu pesquisar ou aprender fica salvo para melhorar as proximas respostas.';
     log.appendChild(w);
   }
   if (!sellerAgentUiReady) {
@@ -1633,7 +1633,7 @@ function initSellerAgent() {
     document.getElementById('seller-agent-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAgent(); });
   }
   sellerAgentState.conversationId = sessionStorage.getItem('tc_seller_agent_conv') || null;
-  sellerAgentSetSuggestions(['Quem eu chamo primeiro?', 'Mande mensagem para um vendedor', 'Tem estoque desse produto?', 'Monte meu plano de hoje']);
+  sellerAgentSetSuggestions(['Indique produto para corrida', 'Pesquise um produto na internet', 'Tem estoque desse produto?', 'Guarde este aprendizado']);
   loadSellerAgentToday(false);
   aiChatScrollToBottom(log, true);
 }
