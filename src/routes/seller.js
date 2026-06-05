@@ -489,12 +489,12 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
     // Vendedor da comissão: vem do frontend (PDV institucional escolhe quem atendeu).
     // Se NÃO veio (login pessoal de vendedor antigo), assume o próprio logado.
-    const sellerId = vendorId || (operator.role === 'seller' ? operator.id : null);
-    if (!sellerId) return res.status(400).json({ error: 'Informe o vendedor (vendorId) da venda' });
-
+    // Vendedor OPCIONAL: se não escolher, a venda fecha atribuída ao operador logado (sem comissão de vendedor).
+    const sellerId = vendorId || (operator.role === 'seller' ? operator.id : operatorId);
     const seller = await prisma.user.findUnique({ where: { id: sellerId } });
-    if (!seller || !seller.active) return res.status(400).json({ error: 'Vendedor inválido ou inativo' });
-    if (seller.role !== 'seller' && seller.role !== 'admin') return res.status(400).json({ error: 'Vendedor deve ter perfil de seller' });
+    if (!seller || !seller.active) return res.status(400).json({ error: 'Operador inválido' });
+    // valida perfil de vendedor só quando um vendedor foi EXPLICITAMENTE escolhido
+    if (vendorId && seller.role !== 'seller' && seller.role !== 'admin') return res.status(400).json({ error: 'Vendedor deve ter perfil de seller' });
 
     // Loja ativa: enviada pelo frontend. Fallback: loja do operador.
     // Lock: conta institucional sempre vende NA PRÓPRIA loja
@@ -505,7 +505,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });
     }
     // Vendedor escolhido precisa ser DA loja ativa (anti tunneling)
-    if (req.scope?.isStoreLocked && seller.storeId && seller.storeId !== activeStoreId) {
+    if (vendorId && req.scope?.isStoreLocked && seller.storeId && seller.storeId !== activeStoreId) {
       return res.status(403).json({ error: 'Vendedor escolhido não pertence a esta loja' });
     }
 
@@ -631,9 +631,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       for (const it of saleItemsData) {
         itemsByBrand.set(it.brand, (itemsByBrand.get(it.brand) || 0) + it.totalPrice);
       }
-      const brandCommissions = await tx.brandCommission.findMany({
+      const brandCommissions = vendorId ? await tx.brandCommission.findMany({
         where: { brand: { in: [...itemsByBrand.keys()] }, active: true },
-      });
+      }) : []; // sem vendedor escolhido => sem comissão de vendedor
       const commissionsData = [];
       for (const bc of brandCommissions) {
         const brandSale = itemsByBrand.get(bc.brand) || 0;

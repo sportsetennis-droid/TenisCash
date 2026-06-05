@@ -525,7 +525,7 @@
     <!-- LINHA 2: Vendedor | Cliente (lado a lado) -->
     <div class="sell-row" style="margin-bottom:14px;">
       <div class="card">
-        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">👤</span>Quem atendeu o cliente *</h3>
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">👤</span>Quem atendeu <span style="font-weight:400;color:var(--text-muted);font-size:13px;">(opcional)</span></h3>
         <div id="sellVendorCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;"></div>
         <select id="sellVendor" style="display:none;"></select>
       </div>
@@ -1781,8 +1781,7 @@ document.addEventListener('input', e => { if (e.target.id === 'sellTcUsed') upda
 
 async function finalizeSale() {
   if (!cart.length) return;
-  const vendorId = document.getElementById('sellVendor').value;
-  if (!vendorId) { alert('Selecione o vendedor que atendeu o cliente.'); return; }
+  const vendorId = document.getElementById('sellVendor').value; // opcional: sem vendedor a venda fecha mesmo assim
   // Cartão/PIX passam na maquininha externa: dados fiscais OBRIGATÓRIOS pra emitir o cupom.
   // Sem adquirente + código (Auth/NSU/ID do comprovante) a venda NÃO finaliza (SEFAZ-PB).
   const paymentMethod = document.getElementById('sellPayment').value;
