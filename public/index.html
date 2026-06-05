@@ -118,6 +118,20 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .ai-sugg button{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;cursor:pointer;font-family:'Chakra Petch'}
 .ai-input-row{display:flex;gap:8px;margin-top:6px;align-items:stretch}
 .ai-input-row input{flex:1}
+.ai-msg-user,.ai-msg-bot{white-space:pre-wrap}
+.seller-agent-panel{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);border-radius:16px;padding:16px;margin-top:14px}
+.seller-agent-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.seller-agent-kpi{background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px}
+.seller-agent-kpi strong{display:block;font-family:'Orbitron';font-size:18px}
+.seller-agent-kpi span{display:block;font-size:10px;color:rgba(255,255,255,0.62);margin-top:4px;line-height:1.25}
+.seller-agent-task{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
+.seller-agent-task:last-child{border-bottom:none}
+.seller-agent-priority{min-width:58px;text-align:center;border-radius:999px;padding:5px 7px;background:rgba(255,255,255,0.14);font-size:10px;font-weight:800;letter-spacing:.6px}
+.seller-agent-task-title{font-size:13px;font-weight:800;line-height:1.35}
+.seller-agent-task-sub{font-size:11px;color:rgba(255,255,255,0.58);line-height:1.4;margin-top:4px}
+.seller-agent-focus{display:flex;gap:10px;align-items:center;margin-top:10px}
+.seller-agent-focus img{width:48px;height:48px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,0.08)}
+.seller-agent-small-btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.24);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch'}
 .catalog-search-btn{margin-left:auto;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:'Chakra Petch';display:inline-flex;align-items:center;gap:6px}
 .catalog-search-btn:hover{background:#fff;color:#E5571E}
 .prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
@@ -658,10 +672,10 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 
   <div class="actions" style="margin-top:16px" id="seller-actions">
+    <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>Meu Agente</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
-    <div class="action-btn" onclick="alert('Em breve: Vendas')"><span>🧾</span><span>Vendas</span></div>
   </div>
 
   <div class="section-title" style="margin-top:26px">
@@ -671,12 +685,35 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div style="background:rgba(255,255,255,0.1);border-radius:18px;padding:18px;border:1px solid rgba(255,255,255,0.18)">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
-        <p style="font-size:13px;font-weight:700;letter-spacing:1px">PONTO DIGITAL</p>
-        <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px">Registrar entrada, pausa e saída</p>
+        <p style="font-size:13px;font-weight:700;letter-spacing:1px">COMECE O TURNO</p>
+        <p style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:6px">Plano diario, clientes e tarefas sugeridas</p>
       </div>
-      <button onclick="showScreen('seller-clock')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#E5571E;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
+      <button onclick="showScreen('seller-agent')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#E5571E;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
     </div>
   </div>
+</div>
+
+<!-- SELLER AGENT -->
+<div id="seller-agent" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Meu Agente</p></div>
+  <div id="seller-agent-today" style="margin-top:8px">
+    <div class="loading">Carregando agente...</div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button type="button" class="seller-agent-small-btn" id="seller-agent-refresh" style="flex:1">Atualizar</button>
+    <button type="button" class="seller-agent-small-btn" id="seller-agent-apply" style="flex:1;background:#fff;color:#E5571E;border-color:#fff">Criar tarefas</button>
+  </div>
+  <div id="seller-agent-status" style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.72)"></div>
+
+  <p class="ai-consultor-head" style="margin-top:22px">Agente do Vendedor</p>
+  <div id="seller-agent-chat-log" class="ai-chat-log" style="max-height:calc(100vh - 430px);min-height:180px"></div>
+  <div id="seller-agent-sugg" class="ai-sugg"></div>
+  <div class="ai-input-row">
+    <input id="seller-agent-input" class="input-field" placeholder="Peça ajuda para vender, priorizar ou montar tarefa..." style="margin-top:0">
+    <button id="seller-agent-send" type="button" style="width:52px;border:none;border-radius:12px;background:#fff;color:#E5571E;font-weight:900;font-size:18px;font-family:'Chakra Petch';cursor:pointer">OK</button>
+  </div>
+  <div id="seller-agent-err" class="error-msg" style="display:none"></div>
 </div>
 
 <!-- SELLER CLOCK-IN -->
@@ -1287,7 +1324,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 <div class="bottom-nav" id="bottomNavSeller" style="display:none">
   <div class="nav-item active" data-screen="seller-home"><span>⌂</span><span>Início</span></div>
   <div class="nav-item" data-screen="seller-clock"><span>⏱</span><span>Ponto</span></div>
-  <div class="nav-item" data-nav="seller-wallet"><span>💳</span><span>Carteira</span></div>
+  <div class="nav-item" data-screen="seller-agent"><span>IA</span><span>Agente</span></div>
   <div class="nav-item" data-screen="seller-messages"><span style="position:relative">✉️<span id="seller-msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;background:#FF5252;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span></span><span>Mensagens</span></div>
   <div class="nav-item" data-screen="seller-catalog"><span>🛍</span><span>Catálogo</span></div>
   <div class="nav-item" data-screen="profile"><span>●</span><span>Perfil</span></div>
@@ -1374,7 +1411,7 @@ function showScreen(id) {
   const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
-  const sellerScreens = ['seller-home','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-campaigns','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
@@ -1399,6 +1436,7 @@ function showScreen(id) {
 
   if (id === 'home') loadHome();
   if (id === 'seller-home') loadSellerHome();
+  if (id === 'seller-agent') initSellerAgent();
   if (id === 'seller-clock') initSellerClock();
   if (id === 'seller-messages') initSellerMessages();
   if (id === 'seller-message-new') initSellerMessageNew();
@@ -1464,6 +1502,8 @@ if (!window._tcUiNavBound) {
 let sellerAiUiReady = false;
 let clientAiUiReady = false;
 let sellerCatSearchReady = false;
+let sellerAgentUiReady = false;
+let sellerAgentState = { recommendations: [], conversationId: null, loading: false };
 
 function initSellerCatalogAi() {
   if (!isSeller()) { showScreen('seller-home'); return; }
@@ -1545,6 +1585,201 @@ function sendSellerAi() {
       sg.appendChild(btn);
     });
     if (wasNearBottom) aiChatScrollToBottom(log, true);
+  });
+}
+
+function sellerAgentDateLabel(value) {
+  if (!value) return 'sem horario';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return 'sem horario';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function sellerAgentPriorityLabel(value) {
+  const map = { URGENT: 'URGENTE', HIGH: 'ALTA', MEDIUM: 'MEDIA', LOW: 'BAIXA' };
+  return map[value] || value || 'MEDIA';
+}
+
+function sellerAgentSetSuggestions(items) {
+  const sugg = document.getElementById('seller-agent-sugg');
+  const inp = document.getElementById('seller-agent-input');
+  if (!sugg || !inp) return;
+  sugg.innerHTML = '';
+  (items || ['Quem eu chamo primeiro?', 'Monte minha abordagem', 'Qual tarefa faco agora?']).slice(0, 4).forEach(function (st) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = st;
+    b.addEventListener('click', function () { inp.value = st; inp.focus(); });
+    sugg.appendChild(b);
+  });
+}
+
+function initSellerAgent() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  const log = document.getElementById('seller-agent-chat-log');
+  if (!log) return;
+  if (!log.dataset.seeded) {
+    log.dataset.seeded = '1';
+    const w = document.createElement('div');
+    w.className = 'ai-msg-bot';
+    w.textContent = 'Estou pronto para organizar seu turno. Vou olhar sua carteira, tarefas e sinais da loja para te dizer o melhor proximo passo.';
+    log.appendChild(w);
+  }
+  if (!sellerAgentUiReady) {
+    sellerAgentUiReady = true;
+    document.getElementById('seller-agent-refresh').addEventListener('click', function () { loadSellerAgentToday(true); });
+    document.getElementById('seller-agent-apply').addEventListener('click', applySellerAgentTasks);
+    document.getElementById('seller-agent-send').addEventListener('click', sendSellerAgent);
+    document.getElementById('seller-agent-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAgent(); });
+  }
+  sellerAgentState.conversationId = sessionStorage.getItem('tc_seller_agent_conv') || null;
+  sellerAgentSetSuggestions(['Quem eu chamo primeiro?', 'Monte meu plano de hoje', 'Como responder objecao de preco?', 'Que produto eu foco?']);
+  loadSellerAgentToday(false);
+  aiChatScrollToBottom(log, true);
+}
+
+function renderSellerAgentToday(data) {
+  const wrap = document.getElementById('seller-agent-today');
+  const status = document.getElementById('seller-agent-status');
+  const applyBtn = document.getElementById('seller-agent-apply');
+  if (!wrap) return;
+  const plan = data.plan || {};
+  const stats = data.stats || {};
+  const tasks = plan.recommendedTasks || [];
+  const customers = data.priorityCustomers || [];
+  const focus = data.focusProducts || [];
+  sellerAgentState.recommendations = tasks;
+  if (applyBtn) {
+    applyBtn.disabled = !tasks.length;
+    applyBtn.style.opacity = tasks.length ? '1' : '.55';
+  }
+  if (status) status.textContent = tasks.length ? 'Revise e crie as tarefas sugeridas quando fizer sentido.' : 'Sem tarefas sugeridas agora.';
+
+  const prioritiesHtml = (plan.priorities || []).map(function (p) {
+    return '<li style="font-size:12px;color:rgba(255,255,255,0.72);margin-top:5px">' + escapeHtmlSellerMsg(p) + '</li>';
+  }).join('');
+  const taskHtml = tasks.length ? tasks.map(function (t) {
+    return '<div class="seller-agent-task">' +
+      '<div class="seller-agent-priority">' + escapeHtmlSellerMsg(sellerAgentPriorityLabel(t.priority)) + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div class="seller-agent-task-title">' + escapeHtmlSellerMsg(t.title) + '</div>' +
+      '<div class="seller-agent-task-sub">' + escapeHtmlSellerMsg(t.customerName || t.type || 'Tarefa') + ' · ' + escapeHtmlSellerMsg(sellerAgentDateLabel(t.dueDate)) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div class="seller-agent-task-sub" style="margin-top:8px">Sem tarefas sugeridas. Use o chat para pedir um plano.</div>';
+  const customersHtml = customers.slice(0, 3).map(function (c) {
+    return '<div class="seller-agent-task">' +
+      '<div class="seller-agent-priority">' + escapeHtmlSellerMsg(sellerAgentPriorityLabel(c.priority)) + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div class="seller-agent-task-title">' + escapeHtmlSellerMsg(c.customerName || 'Cliente') + '</div>' +
+      '<div class="seller-agent-task-sub">' + escapeHtmlSellerMsg(c.relationshipStatus || 'status') + ' · ' + escapeHtmlSellerMsg(c.nextAction || 'sem proxima acao') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  const focusHtml = focus.slice(0, 2).map(function (p) {
+    const name = ((p.brand || '') + ' ' + (p.name || '')).trim() || 'Produto foco';
+    return '<div class="seller-agent-focus">' +
+      (p.imageUrl ? '<img src="' + escapeHtmlSellerMsg(p.imageUrl) + '" alt="">' : '<div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-size:12px">PROD</div>') +
+      '<div style="min-width:0">' +
+      '<div style="font-size:13px;font-weight:800;line-height:1.3">' + escapeHtmlSellerMsg(name) + '</div>' +
+      '<div class="seller-agent-task-sub">' + escapeHtmlSellerMsg(p.category || 'catalogo') + (p.quantity ? ' · ' + p.quantity + ' vendas 30d' : '') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  wrap.innerHTML =
+    '<div class="seller-agent-panel">' +
+      '<p class="balance-label">PLANO DE HOJE</p>' +
+      '<p style="font-size:19px;font-weight:900;margin-top:8px;line-height:1.25">' + escapeHtmlSellerMsg(plan.headline || 'Plano pronto') + '</p>' +
+      '<p style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:8px;line-height:1.45">' + escapeHtmlSellerMsg(plan.firstAction || 'Revise sua carteira e escolha o primeiro contato.') + '</p>' +
+      '<div class="seller-agent-kpis">' +
+        '<div class="seller-agent-kpi"><strong>' + (stats.customersDue || 0) + '</strong><span>clientes hoje</span></div>' +
+        '<div class="seller-agent-kpi"><strong>' + (stats.tasksOpen || 0) + '</strong><span>tarefas abertas</span></div>' +
+        '<div class="seller-agent-kpi"><strong>' + (stats.rebuyOpportunities || 0) + '</strong><span>recompras</span></div>' +
+      '</div>' +
+      (prioritiesHtml ? '<ul style="padding-left:18px;margin-top:12px">' + prioritiesHtml + '</ul>' : '') +
+    '</div>' +
+    '<div class="seller-agent-panel">' +
+      '<p class="balance-label">TAREFAS SUGERIDAS</p>' +
+      taskHtml +
+    '</div>' +
+    '<div class="seller-agent-panel">' +
+      '<p class="balance-label">CLIENTES PRIORITARIOS</p>' +
+      (customersHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Nenhum cliente prioritario encontrado.</div>') +
+    '</div>' +
+    '<div class="seller-agent-panel">' +
+      '<p class="balance-label">FOCO DE VENDA</p>' +
+      (focusHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Sem produto foco. Pergunte ao agente pelo melhor produto para abordar.</div>') +
+    '</div>';
+}
+
+async function loadSellerAgentToday(force) {
+  if (sellerAgentState.loading && !force) return;
+  sellerAgentState.loading = true;
+  const wrap = document.getElementById('seller-agent-today');
+  if (wrap && force) wrap.innerHTML = '<div class="loading">Atualizando agente...</div>';
+  const data = await api('/seller/agent/today');
+  sellerAgentState.loading = false;
+  if (data.error) {
+    if (wrap) wrap.innerHTML = '<div class="error-msg">' + escapeHtmlSellerMsg(data.error) + '</div>';
+    return;
+  }
+  renderSellerAgentToday(data);
+}
+
+async function applySellerAgentTasks() {
+  const status = document.getElementById('seller-agent-status');
+  const btn = document.getElementById('seller-agent-apply');
+  const tasks = sellerAgentState.recommendations || [];
+  if (!tasks.length) {
+    if (status) status.textContent = 'Nao ha tarefas sugeridas para criar.';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+  const res = await api('/seller/agent/tasks/apply', 'POST', { tasks });
+  if (btn) { btn.disabled = false; btn.textContent = 'Criar tarefas'; }
+  if (res.error) {
+    if (status) status.textContent = res.error;
+    return;
+  }
+  const created = (res.created || []).length;
+  const skipped = (res.skipped || []).length;
+  if (status) status.textContent = created + ' tarefa(s) criada(s)' + (skipped ? ' · ' + skipped + ' ja existiam' : '') + '.';
+  await loadSellerAgentToday(true);
+}
+
+function sendSellerAgent() {
+  const inp = document.getElementById('seller-agent-input');
+  const log = document.getElementById('seller-agent-chat-log');
+  const err = document.getElementById('seller-agent-err');
+  const msg = (inp.value || '').trim();
+  if (!msg || !log) return;
+  if (err) err.style.display = 'none';
+  inp.value = '';
+  const u = document.createElement('div');
+  u.className = 'ai-msg-user';
+  u.textContent = msg;
+  log.appendChild(u);
+  aiChatScrollToBottom(log, true);
+  const convId = sellerAgentState.conversationId || sessionStorage.getItem('tc_seller_agent_conv') || undefined;
+  api('/seller/agent/chat', 'POST', { message: msg, conversationId: convId }).then(function (r) {
+    if (r.error) {
+      if (err) {
+        err.textContent = r.error;
+        err.style.display = 'block';
+      }
+      return;
+    }
+    if (r.conversationId) {
+      sellerAgentState.conversationId = r.conversationId;
+      sessionStorage.setItem('tc_seller_agent_conv', r.conversationId);
+    }
+    const b = document.createElement('div');
+    b.className = 'ai-msg-bot';
+    b.textContent = r.reply || 'Sem resposta agora.';
+    log.appendChild(b);
+    sellerAgentSetSuggestions(r.suggestions);
+    aiChatScrollToBottom(log, true);
   });
 }
 
