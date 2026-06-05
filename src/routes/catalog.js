@@ -25,8 +25,62 @@ function optionalCatalogAuth(req, res, next) {
   next();
 }
 
+async function resolveMyStoreScope(req) {
+  const wantsMyStore = String(req.query.myStoreStock || req.query.myStore || req.query.mine || '') === '1';
+  if (!wantsMyStore) return { wantsMyStore: false, storeId: '', store: null };
+  if (!req.userId || !['seller', 'store', 'manager', 'admin', 'superadmin'].includes(req.userRole)) {
+    const err = new Error('Login de vendedor obrigatorio para ver estoque da loja');
+    err.statusCode = 401;
+    throw err;
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: {
+      id: true,
+      role: true,
+      storeId: true,
+      store: { select: { id: true, code: true, name: true, city: true } },
+    },
+  });
+  if (!user?.storeId) {
+    const err = new Error('Vendedor sem loja vinculada');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { wantsMyStore: true, storeId: user.storeId, store: user.store || null };
+}
+
+function addStoreStockSummary(card, storeId, store = null) {
+  const bySize = new Map();
+  let total = 0;
+  for (const size of card.sizes || []) {
+    const rows = Array.isArray(size.storeStocks) ? size.storeStocks : [];
+    const qty = rows
+      .filter((ss) => !storeId || ss.storeId === storeId || ss.store?.id === storeId)
+      .reduce((sum, ss) => sum + Math.max(0, ss.stock || 0), 0);
+    if (qty > 0) {
+      bySize.set(size.size, (bySize.get(size.size) || 0) + qty);
+      total += qty;
+    }
+  }
+  const storeStockBySize = Array.from(bySize.entries())
+    .map(([size, stock]) => ({ size, stock }))
+    .sort((a, b) => String(a.size).localeCompare(String(b.size), 'pt-BR', { numeric: true }));
+  return {
+    ...card,
+    store,
+    storeStockTotal: total,
+    storeAvailableSizes: storeStockBySize,
+    storeStockBySize,
+    storeStockLabel: total > 0
+      ? `${total} un. na loja${storeStockBySize.length ? ` (${storeStockBySize.map((s) => `${s.size}: ${s.stock}`).join(', ')})` : ''}`
+      : 'Sem estoque nesta loja',
+  };
+}
+
 router.get('/products', optionalCatalogAuth, async (req, res) => {
   try {
+    const myStore = await resolveMyStoreScope(req);
     const search = String(req.query.search || req.query.q || '').trim();
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
@@ -45,7 +99,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const inStore = String(req.query.inStore || req.query.instore || '') === '1';
     // storeCode/storeId → vitrine de UMA loja: só produtos com estoque NESSA loja.
     const storeCode = String(req.query.storeCode || '').trim();
-    let storeId = String(req.query.storeId || '').trim();
+    let storeId = myStore.storeId || String(req.query.storeId || '').trim();
     if (storeCode && !storeId) {
       const st = await prisma.store.findFirst({ where: { code: storeCode }, select: { id: true } });
       storeId = st ? st.id : '__none__';
@@ -126,28 +180,38 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
             select: {
               size: true,
               stock: true,
-              storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } },
+              storeStocks: {
+                ...(storeId ? { where: { storeId } } : {}),
+                include: { store: { select: { id: true, code: true, name: true } } },
+              },
             },
           },
         },
       }),
     ]);
 
+    const products = rows.map((p) => {
+      const card = formatProductCard(p);
+      return myStore.wantsMyStore ? addStoreStockSummary(card, myStore.storeId, myStore.store) : card;
+    });
+
     res.json({
-      products: rows.map(formatProductCard),
+      products,
       page,
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize) || 1,
+      ...(myStore.wantsMyStore ? { store: myStore.store } : {}),
     });
   } catch (err) {
     console.error('catalog/products', err);
-    res.status(500).json({ error: 'Erro ao listar produtos' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Erro ao listar produtos' });
   }
 });
 
 router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
   try {
+    const myStore = await resolveMyStoreScope(req);
     const p = await prisma.product.findFirst({
       where: { id: req.params.id, active: true },
       select: {
@@ -168,14 +232,26 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
         promoPrice: true,
         featured: true,
         source: true,
-        sizes: { orderBy: { size: 'asc' }, select: { size: true, stock: true, barcode: true } },
+        sizes: {
+          orderBy: { size: 'asc' },
+          select: {
+            size: true,
+            stock: true,
+            barcode: true,
+            storeStocks: {
+              ...(myStore.storeId ? { where: { storeId: myStore.storeId } } : {}),
+              include: { store: { select: { id: true, code: true, name: true } } },
+            },
+          },
+        },
       },
     });
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
-    res.json({ product: p });
+    const product = myStore.wantsMyStore ? addStoreStockSummary(p, myStore.storeId, myStore.store) : p;
+    res.json({ product, ...(myStore.wantsMyStore ? { store: myStore.store } : {}) });
   } catch (err) {
     console.error('catalog/product id', err);
-    res.status(500).json({ error: 'Erro ao carregar produto' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Erro ao carregar produto' });
   }
 });
 

@@ -134,6 +134,17 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .seller-agent-small-btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.24);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch'}
 .catalog-search-btn{margin-left:auto;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:'Chakra Petch';display:inline-flex;align-items:center;gap:6px}
 .catalog-search-btn:hover{background:#fff;color:#E5571E}
+.seller-store-stock{margin:14px 0 18px;padding:14px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.14);border-radius:14px}
+.seller-store-stock-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.seller-store-stock-title{font-size:13px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
+.seller-store-stock-sub{font-size:11px;color:rgba(255,255,255,0.68);line-height:1.35;margin-top:4px}
+.seller-store-stock-tools{display:flex;gap:8px;margin-top:12px;align-items:center}
+.seller-store-stock-tools input{margin-top:0;flex:1}
+.seller-store-stock-refresh{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:#fff;font-size:18px;cursor:pointer}
+.seller-store-stock-list{margin-top:10px;max-height:380px;overflow-y:auto;padding-right:4px}
+.seller-store-stock-meta{font-size:11px;color:rgba(255,255,255,0.7);margin-top:10px}
+.seller-stock-pill{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,0.13);font-size:11px;font-weight:800;color:#fff}
+.seller-store-stock-more{width:100%;margin-top:10px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:#fff;font-family:'Chakra Petch';font-weight:800;cursor:pointer}
 .prod-card{border:1px solid rgba(255,255,255,0.2);border-radius:14px;padding:10px;margin:10px 0;background:rgba(0,0,0,0.18);display:flex;gap:10px;align-items:flex-start}
 .prod-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0}
 .prod-thumb{width:76px;height:76px;border-radius:10px;background:rgba(255,255,255,0.08);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -1078,6 +1089,22 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p style="font-size:18px;font-weight:700;flex:1">Catálogo</p>
     <button type="button" class="catalog-search-btn" id="seller-catalog-fab" title="Buscar produto"><span aria-hidden="true">🔍</span><span>Buscar produto</span></button>
   </div>
+  <div class="seller-store-stock" id="seller-store-stock-panel">
+    <div class="seller-store-stock-head">
+      <div>
+        <div class="seller-store-stock-title">Estoque da minha loja</div>
+        <div class="seller-store-stock-sub" id="seller-store-stock-store">Carregando loja...</div>
+      </div>
+      <button type="button" class="catalog-search-btn" id="seller-store-stock-open"><span aria-hidden="true">ðŸ”</span><span>Buscar</span></button>
+    </div>
+    <div class="seller-store-stock-tools">
+      <input id="seller-store-stock-q" class="input-field" placeholder="Filtrar estoque da loja..." autocomplete="off">
+      <button type="button" class="seller-store-stock-refresh" id="seller-store-stock-refresh" title="Atualizar">â†»</button>
+    </div>
+    <div class="seller-store-stock-meta" id="seller-store-stock-meta">Buscando produtos com saldo...</div>
+    <div class="seller-store-stock-list" id="seller-store-stock-list"></div>
+    <button type="button" class="seller-store-stock-more" id="seller-store-stock-more" style="display:none">Carregar mais</button>
+  </div>
   <p class="ai-consultor-head">Consultor Sports &amp; Tennis</p>
   <div id="seller-ai-chat-log" class="ai-chat-log"></div>
   <div class="ai-sugg" id="seller-ai-sugg"></div>
@@ -1502,6 +1529,8 @@ if (!window._tcUiNavBound) {
 let sellerAiUiReady = false;
 let clientAiUiReady = false;
 let sellerCatSearchReady = false;
+let sellerStoreStockReady = false;
+let sellerStoreStockState = { page: 1, totalPages: 1, loading: false, query: '', store: null };
 let sellerAgentUiReady = false;
 let sellerAgentState = { recommendations: [], conversationId: null, loading: false };
 
@@ -1532,8 +1561,130 @@ function initSellerCatalogAi() {
     document.getElementById('seller-ai-send').addEventListener('click', sendSellerAi);
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAi(); });
     document.getElementById('seller-catalog-fab').addEventListener('click', function () { showScreen('seller-catalog-search'); });
+    setupSellerStoreStock();
   }
+  loadSellerStoreStock(true);
   aiChatScrollToBottom(log, true);
+}
+
+function setupSellerStoreStock() {
+  if (sellerStoreStockReady) return;
+  sellerStoreStockReady = true;
+  const q = document.getElementById('seller-store-stock-q');
+  const refresh = document.getElementById('seller-store-stock-refresh');
+  const more = document.getElementById('seller-store-stock-more');
+  const open = document.getElementById('seller-store-stock-open');
+  if (q) {
+    let timer = null;
+    q.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { loadSellerStoreStock(true); }, 300);
+    });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loadSellerStoreStock(true);
+    });
+  }
+  if (refresh) refresh.addEventListener('click', function () { loadSellerStoreStock(true); });
+  if (more) more.addEventListener('click', function () { loadSellerStoreStock(false); });
+  if (open) open.addEventListener('click', function () { showScreen('seller-catalog-search'); });
+}
+
+function sellerStoreStockLabel(p) {
+  if (p.storeStockLabel) return p.storeStockLabel;
+  const sizes = [];
+  let total = 0;
+  (p.sizes || []).forEach(function (s) {
+    const qty = (s.storeStocks || []).reduce(function (sum, ss) { return sum + Math.max(0, ss.stock || 0); }, 0);
+    if (qty > 0) {
+      total += qty;
+      sizes.push((s.size || '-') + ': ' + qty);
+    }
+  });
+  return total ? (total + ' un. na loja' + (sizes.length ? ' (' + sizes.join(', ') + ')' : '')) : 'Sem estoque nesta loja';
+}
+
+function renderSellerStoreStockCard(p) {
+  const row = document.createElement('div');
+  row.className = 'prod-card';
+  row.style.cursor = 'pointer';
+  row.addEventListener('click', function () { openProductDetailScreen(p.id, 'seller'); });
+  const thumb = buildProductThumb(p);
+  const info = document.createElement('div');
+  info.className = 'pinfo';
+  const title = document.createElement('div');
+  title.style.fontWeight = '800';
+  title.style.lineHeight = '1.28';
+  title.textContent = p.name || 'Produto';
+  const meta = document.createElement('div');
+  meta.style.fontSize = '12px';
+  meta.style.opacity = '0.75';
+  meta.style.marginTop = '4px';
+  meta.textContent = (p.brand || 'Marca') + ' â€¢ ' + (p.sku || 'SKU');
+  const price = document.createElement('div');
+  price.className = 'pprice';
+  const val = (p.promoPrice != null && p.promoPrice > 0) ? p.promoPrice : p.price;
+  price.textContent = 'R$ ' + (val != null ? Number(val).toFixed(2) : 'â€”');
+  const pill = document.createElement('div');
+  pill.className = 'seller-stock-pill';
+  pill.textContent = sellerStoreStockLabel(p);
+  info.appendChild(title);
+  info.appendChild(meta);
+  info.appendChild(price);
+  info.appendChild(pill);
+  row.appendChild(thumb);
+  row.appendChild(info);
+  return row;
+}
+
+function loadSellerStoreStock(reset) {
+  if (!isSeller() || sellerStoreStockState.loading) return;
+  const list = document.getElementById('seller-store-stock-list');
+  const meta = document.getElementById('seller-store-stock-meta');
+  const more = document.getElementById('seller-store-stock-more');
+  const storeEl = document.getElementById('seller-store-stock-store');
+  const qEl = document.getElementById('seller-store-stock-q');
+  if (!list || !meta) return;
+  if (reset) {
+    sellerStoreStockState.page = 1;
+    sellerStoreStockState.totalPages = 1;
+    list.innerHTML = '<div class="loading">Carregando estoque da loja...</div>';
+  }
+  sellerStoreStockState.loading = true;
+  const query = (qEl && qEl.value ? qEl.value.trim() : '');
+  sellerStoreStockState.query = query;
+  const params = [
+    'myStoreStock=1',
+    'page=' + sellerStoreStockState.page,
+    'pageSize=20',
+  ];
+  if (query) params.push('search=' + encodeURIComponent(query));
+  api('/catalog/products?' + params.join('&')).then(function (data) {
+    sellerStoreStockState.loading = false;
+    if (data.error) {
+      list.innerHTML = '<div class="error-msg">' + escapeHtmlSellerMsg(data.error) + '</div>';
+      if (more) more.style.display = 'none';
+      return;
+    }
+    const products = data.products || [];
+    sellerStoreStockState.totalPages = data.totalPages || 1;
+    sellerStoreStockState.store = data.store || sellerStoreStockState.store;
+    if (storeEl) {
+      const st = sellerStoreStockState.store || {};
+      storeEl.textContent = st.name ? ((st.code ? st.code + ' â€¢ ' : '') + st.name) : 'Produtos com saldo na loja vinculada ao vendedor';
+    }
+    if (reset) list.innerHTML = '';
+    if (!products.length && sellerStoreStockState.page === 1) {
+      list.innerHTML = '<div class="seller-store-stock-sub">Nenhum produto com estoque nesta loja para esse filtro.</div>';
+    } else {
+      products.forEach(function (p) { list.appendChild(renderSellerStoreStockCard(p)); });
+    }
+    meta.textContent = (data.total || 0) + ' produto(s) com saldo' + (query ? ' para "' + query + '"' : '') + '.';
+    sellerStoreStockState.page += 1;
+    if (more) {
+      more.style.display = sellerStoreStockState.page <= sellerStoreStockState.totalPages ? 'block' : 'none';
+      more.textContent = sellerStoreStockState.loading ? 'Carregando...' : 'Carregar mais';
+    }
+  });
 }
 
 function aiChatIsNearBottom(log) {
@@ -1957,7 +2108,7 @@ function runSellerCatalogSearch() {
   const q = document.getElementById('seller-cat-q').value.trim();
   const res = document.getElementById('seller-cat-results');
   res.innerHTML = '<div class="loading">Buscando...</div>';
-  const qs = q ? ('?search=' + encodeURIComponent(q)) : '';
+  const qs = '?myStoreStock=1' + (q ? ('&search=' + encodeURIComponent(q)) : '');
   api('/catalog/products' + qs).then(function (data) {
     if (data.error) { res.innerHTML = '<div class="error-msg">' + data.error + '</div>'; return; }
     const list = data.products || [];
@@ -1989,6 +2140,10 @@ function runSellerCatalogSearch() {
       info.appendChild(title);
       info.appendChild(meta);
       info.appendChild(price);
+      const stock = document.createElement('div');
+      stock.className = 'seller-stock-pill';
+      stock.textContent = sellerStoreStockLabel(p);
+      info.appendChild(stock);
       row.appendChild(thumb);
       row.appendChild(info);
       res.appendChild(row);
@@ -1997,7 +2152,8 @@ function runSellerCatalogSearch() {
 }
 
 function openProductDetailScreen(id, mode) {
-  api('/catalog/products/' + encodeURIComponent(id)).then(function (data) {
+  const suffix = mode === 'seller' ? '?myStoreStock=1' : '';
+  api('/catalog/products/' + encodeURIComponent(id) + suffix).then(function (data) {
     if (data.error) { alert(data.error); return; }
     const p = data.product;
     const wrapId = mode === 'seller' ? 'seller-pd-wrap' : 'client-pd-wrap';
@@ -2057,9 +2213,17 @@ function openProductDetailScreen(id, mode) {
     const szTitle = document.createElement('p');
     szTitle.style.marginTop = '16px';
     szTitle.style.fontWeight = '700';
-    szTitle.textContent = 'Tamanhos e estoque';
+    szTitle.textContent = mode === 'seller' ? 'Estoque nesta loja' : 'Tamanhos e estoque';
     wrap.appendChild(szTitle);
-    (p.sizes || []).forEach(function (s) {
+    const detailSizes = mode === 'seller' ? (p.storeStockBySize || []) : (p.sizes || []);
+    if (!detailSizes.length) {
+      const empty = document.createElement('div');
+      empty.style.fontSize = '13px';
+      empty.style.padding = '8px 0';
+      empty.textContent = mode === 'seller' ? 'Sem estoque registrado nesta loja.' : 'Sem grade cadastrada.';
+      wrap.appendChild(empty);
+    }
+    detailSizes.forEach(function (s) {
       const line = document.createElement('div');
       line.style.fontSize = '13px';
       line.style.padding = '6px 0';
