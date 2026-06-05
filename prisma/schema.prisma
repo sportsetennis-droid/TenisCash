@@ -237,6 +237,14 @@ model Store {
   fiscalAgentToken   String? // shared secret, header X-Agent-Token
   fiscalAgentEnabled Boolean @default(false)
 
+  // PagBank (PIX QR por loja) — conta PagBank do CNPJ desta loja.
+  // SEGREDO: mesmo padrão do fiscalAgentToken (só no banco, nunca no código).
+  // Setado por scripts/pagbank-register-store.js (rodado na matriz).
+  pagbankToken   String? // Bearer da conta PagBank DESTA loja (define pra qual conta o PIX cai)
+  pagbankPixKey  String? // chave PIX ativa da conta (referência/auditoria)
+  pagbankSandbox Boolean @default(true) // sandbox vs produção
+  pagbankEnabled Boolean @default(false) // liga o fluxo PIX-QR automático nessa loja
+
   sellers  User[]
   clockIns ClockIn[]
   messages Message[]    @relation("storeMessages")
