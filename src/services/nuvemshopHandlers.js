@@ -12,21 +12,6 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
-const { recalcSizeStock } = require('./stockSync');
-
-// Loja do e-commerce (Nuvemshop). O estoque vindo do NS entra no StoreStock DESSA loja,
-// não no espelho ProductSize.stock. Resolvida por code (default LOJA04), cacheada.
-let _ecomStoreId; // undefined = ainda não resolvido; null = não existe
-async function getEcommerceStoreId() {
-  if (_ecomStoreId !== undefined) return _ecomStoreId;
-  const code = process.env.NUVEMSHOP_STORE_CODE || 'LOJA04';
-  const st = await prisma.store.findFirst({ where: { code } });
-  _ecomStoreId = st ? st.id : null;
-  if (!_ecomStoreId) {
-    console.warn(`[nuvemshop] Loja e-commerce '${code}' não encontrada — estoque do NS não será gravado no StoreStock.`);
-  }
-  return _ecomStoreId;
-}
 
 function pickStr(v) {
   if (v == null) return null;
@@ -134,9 +119,7 @@ async function upsertLocalProduct(nsProduct) {
     });
   }
 
-  // Variants → ProductSize (+ StoreStock da loja e-commerce).
-  // ESTOQUE ÚNICO: o número do Nuvemshop entra no StoreStock[e-commerce], NÃO no espelho.
-  const ecomStoreId = await getEcommerceStoreId();
+  // Variants → ProductSize
   for (const v of variants) {
     const size = pickStr(v.values?.[0]?.name) || pickStr(v.option1) || 'único';
     const stock = parseInt(v.stock, 10) || 0;
@@ -147,24 +130,14 @@ async function upsertLocalProduct(nsProduct) {
     });
     let psize;
     if (existingSize) {
-      // não escreve stock no espelho; só completa o EAN se faltava
-      psize = (barcode && !existingSize.barcode)
-        ? await prisma.productSize.update({ where: { id: existingSize.id }, data: { barcode } })
-        : existingSize;
+      psize = await prisma.productSize.update({
+        where: { id: existingSize.id },
+        data: { stock, barcode },
+      });
     } else {
       psize = await prisma.productSize.create({
-        data: { productId: product.id, size, stock: 0, barcode },
+        data: { productId: product.id, size, stock, barcode },
       });
-    }
-
-    // Estoque do NS → StoreStock da loja e-commerce; depois recalcula o espelho.
-    if (ecomStoreId) {
-      await prisma.storeStock.upsert({
-        where: { storeId_productSizeId: { storeId: ecomStoreId, productSizeId: psize.id } },
-        update: { stock },
-        create: { storeId: ecomStoreId, productSizeId: psize.id, stock },
-      });
-      await recalcSizeStock(prisma, psize.id);
     }
 
     // VariantMapping
