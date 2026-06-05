@@ -1094,8 +1094,8 @@ function selectPayment(method) {
   // Cartão E PIX passam na maquininha externa → exigem dados fiscais (Decreto SEFAZ-PB)
   const isCard = method === 'credit_card' || method === 'debit_card';
   const isPix = method === 'pix';
-  // Só CARTÃO exige o código do comprovante (Decreto SEFAZ-PB). PIX (tPag 17) NÃO precisa de código.
-  document.getElementById('sellCardDetails').style.display = isCard ? 'block' : 'none';
+  // Cartão E PIX: operador digita o código do comprovante da maquininha pra emitir o cupom.
+  document.getElementById('sellCardDetails').style.display = (isCard || isPix) ? 'block' : 'none';
   const brandField = document.getElementById('sellBrandField');
   if (brandField) brandField.style.display = isCard ? 'block' : 'none'; // PIX não tem bandeira
   const titleEl = document.getElementById('sellFiscalTitle');
@@ -1787,7 +1787,7 @@ async function finalizeSale() {
   const paymentMethod = document.getElementById('sellPayment').value;
   const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
   const isPix = paymentMethod === 'pix';
-  const needsFiscal = isCard; // só CARTÃO exige o código (PIX tPag 17 não precisa; TEF preenche o cartão automático no futuro)
+  const needsFiscal = isCard || isPix; // cartão E PIX: exige o código do comprovante da maquininha pra emitir o cupom
   let cardData = {};
   if (needsFiscal) {
     const acquirer = document.getElementById('sellCardAcquirer').value;
