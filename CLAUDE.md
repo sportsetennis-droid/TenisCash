@@ -149,6 +149,17 @@ EXCEÇÃO: ações que afetam preço, cliente final ou contas financeiras precis
 - Sem jargão técnico desnecessário
 - Sem emojis excessivos
 
+## REGRA PERMANENTE — USAR A MÁQUINA (disco local) antes de dizer "não existe"
+
+Antes de concluir que um arquivo/NFe/dado "não está" ou "não existe", **SEMPRE varrer o disco da máquina** (C:/Users/sport), não só o banco. NÃO confiar só no banco nem em uma pasta única.
+
+- Pastas-chave de NFe: `~/Downloads`, `~/Documents`, `~/Desktop`, `~/OneDrive`, `C:/Users/sport/TenisCash/tmp`.
+- NFe = `*.xml` (e `.XML`) com `<infNFe>`. O nome do arquivo costuma ser a **chave de acesso de 44 dígitos**; dígitos 3–6 = `AAMM` da emissão (ex: `…26 03…` = mar/2026).
+- Cruzar a chave com `XmlFiscalDocument.accessKey` pra saber se já foi importado.
+- Só afirmar "faltam" / "não existe" **DEPOIS** de varrer o disco e cruzar com o banco. Buscar em TODAS as pastas-chave, não só uma.
+
+**Erro 04/06/2026 (origem desta regra):** afirmei "não tem XML de 2026 em disco" tendo checado só `tmp/`. Os XMLs de 2026 estavam em `~/Downloads` o tempo todo. O dono: "eu quero que vc coloque como regra usar a maquina."
+
 ## REGRA PERMANENTE — Mobile-first em TUDO que cliente/vendedor usa
 
 99% do tráfego das telas voltadas pra **cliente, vendedor em loja, ou uso operacional fora do escritório** vem de celular. NUNCA construir tela com split-layout desktop-first pra esse público — sempre mobile-first.
@@ -484,3 +495,25 @@ Quando o owner do business é o mesmo do app Meta (caso TenisCash CRM + Sports &
 Caminho seguro pra mover SMB → Cloud API SEM perdas:
 - Chip novo dedicado pra Cloud API (zero risco no número existente)
 - OU contratar BSP (Wati, 360Dialog, Chakra) que já é Tech Provider verificado
+
+## REGRA PERMANENTE — Curadoria de FOTO precisa da COR (card = REF + cor)
+
+A foto é **por CARD** (Product = referência + cor), nunca por tamanho. O curador (`src/services/curationAgent.js` → `curateProduct`) busca a imagem usando `aiContext.color`. **Se a cor estiver vazia, o Vision recebe "Cor declarada: (qualquer)"** (`src/services/visionValidator.js`, ~linha 63) e **NÃO penaliza cor errada** → entra foto do colorway errado.
+
+**Regra:** antes de puxar foto, garantir `aiContext.color` preenchido. No curador, exigir `minScore >= 8` quando há cor (escala Vision: 8-9 = produto certo + cor certa/quase; **5-7 = modelo certo mas COR ERRADA** → rejeita; minScore default 4 deixa passar cor errada).
+
+**De onde vem a cor:**
+- **ADIDAS**: o código de **referência (REF) JÁ É o colorway**. Cada artigo (IE3100, JP9198, JC9555…) tem 1 página adidas com a cor exata. Buscar `marca + REF` na web → o título traz a cor (ex "DURAMO RC2 - Amarelo", "Samba ADV - Core Black/White/Gum"). Extrair daí.
+- **HOKA / REEBOK / sem REF no nome**: a cor NÃO sai do código → precisa de outra fonte (cProd/supplierCode da NFe, ou manual). NÃO inventar cor.
+
+**Erro 04/06/2026 (origem):** puxei 161 fotos dos produtos de 2026 SEM cor (0/163 tinham cor). Cor errada (JP9198 Duramo era amarelo, peguei branco/preto; JC9555 era camiseta preta, peguei conjunto verde infantil). Dono: "a porra da cor vc ta levando em consideração?". Corrigido derivando cor do REF + Vision score>=8. Final: **100/163 com cor, 150/163 com foto cor-validada, 13 sem foto** (preferir sem foto a cor errada).
+
+**Endpoint temporário fora de /api/admin:** pra rodar curador server-side por curl sem JWT (chaves Serper/Vision só no servidor), a rota tem que ficar **FORA de `/api/admin`** — o `adminRoutes` montado em `/api/admin` (index.js ~linha 120) tem `authMiddleware` blanket que sombreia TUDO sob esse prefixo, mesmo rotas registradas depois. Usar `app.post('/api/_xxx', handler)` antes dos mounts + guard `?g=`. Remover após uso.
+
+## REGRA PERMANENTE — Bipes órfãos voltam quando a NFe de entrada chega
+
+Bipe `StocktakeBipe.found=false` = barcode não casou com `ProductSize.barcode` NEM `XmlFiscalItem.ean` **na hora do bipe**. Quando a NFe de entrada do produto é importada depois (traz o EAN), esses bipes ficam **recuperáveis**.
+
+Reconciliar com `scripts/match-bipes-com-xml.js --apply`: cruza barcode↔ean, cria/vincula ProductSize (tamanho lido da descrição da NFe) **DENTRO do card existente** (nunca card novo) e marca `found=true`. **NÃO mexe em StoreStock** (localização fica pro "aplicar" do dono em bipes.html). Sempre rodar `scripts/_bipes_backup.js` antes.
+
+04/06/2026: importadas NFes de 2026 → cruzei os 7.012 bipes órfãos: 2.147 viraram found=true (740 ProductSize criados + 442 vinculados). 346 eram especificamente de 2026 (73 produtos). Origem da regra: dono perguntou "vc já conferiu se os bips nao achados podem ser destes?".
