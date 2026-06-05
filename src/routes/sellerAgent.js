@@ -409,12 +409,20 @@ function cleanStockQuery(text, stores, size, store) {
       .forEach((p) => { q = q.replace(new RegExp(`\\b${p}\\b`, 'g'), ' '); });
   }
   q = q
-    .replace(/\b(tem|tenho|estoque|disponivel|disponibilidade|onde|loja|lojas|nas|nos|na|no|em|de|do|da|das|dos|para|pra|esse|essa|este|esta|produto|produtos)\b/g, ' ')
+    .replace(/\b(vc|voce|você|consegue|conseguiria|pode|poderia|sabe|saber|consulta|consultar|localiza|localizar|procura|procurar|acha|achar|me|dizer|qual|quais|tem|tenho|estoque|disponivel|disponibilidade|onde|loja|lojas|nas|nos|na|no|em|de|do|da|das|dos|para|pra|um|uma|uns|umas|esse|essa|este|esta|produto|produtos)\b/g, ' ')
     .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!q || q.length < 2) return safeText(text, 120);
+  if (!q || q.length < 2) return '';
   return q;
+}
+
+function stockNeedsProductReply() {
+  return [
+    'Sim, consigo saber onde tem um produto no estoque das lojas.',
+    'Me diga o produto, modelo ou SKU. Se quiser, mande tambem tamanho e loja.',
+    'Exemplo: "Nimbus 27 tamanho 41" ou "bolsa yoga tote na Tambau".',
+  ].join('\n');
 }
 
 async function parseStockInputFromText(text) {
@@ -1142,6 +1150,14 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
 
     if (isStockIntent(text)) {
       const stockInput = await parseStockInputFromText(text);
+      if (!stockInput.query) {
+        return res.json({
+          conversationId: null,
+          reply: stockNeedsProductReply(),
+          suggestions: ['Consultar Nimbus 27 tamanho 41', 'Consultar bolsa yoga tote', 'Buscar em uma loja especifica'],
+          stock: null,
+        });
+      }
       const stockResult = await searchStoreStockForAgent(stockInput, snapshot);
       return res.json({
         conversationId: null,
