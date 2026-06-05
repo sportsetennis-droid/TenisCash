@@ -182,6 +182,17 @@ Uma revisão adversarial achou 17 bugs (caminho feliz OK; quebram sob carga/time
 
 ---
 
+## 7. Lições da LOJA03 (2026-06-04) — aplicar nas próximas (01/05/06)
+
+- **`node-forge` já está no `package.json`** (corrigido). Antes faltava → o agente instalava mas **quebrava no 1º emit** (`Cannot find package 'node-forge'`). Hoje o `npm install` do `setup.ps1` já traz. Se pegar uma loja já quebrada: `cd C:\TenisCashAgent; Set-ExecutionPolicy -Scope Process Bypass -Force; npm install node-forge` + reinicia a task (`Stop-ScheduledTask`/`Start-ScheduledTask TenisCashFiscalAgent`).
+- **Numeração: use SÉRIE SEPARADA (ex. `nfceSerie: 2`), não série 1 + offset.** A Chianca emite na **série 1**; pôr o TenisCash na **série 2** (campo `nfceSerie` no CONFIG do `fiscal-register-store.js`, já parametrizado) torna colisão **impossível sem precisar saber o contador da Chianca**. Mais limpo que o offset 100000 da LOJA02.
+- **CSC/idCSC: `C:\Chianca\ConfigCHShop.ini`** → tags `<codigo_csc>` + `<identificador_csc>` (linha única XML). **IE + endereço:** a Receita (BrasilAPI `https://brasilapi.com.br/api/cnpj/v1/<14díg>`) dá razão + endereço completo; a **IE** só o dono/contador ou a config da Chianca tem (a Receita NÃO devolve IE).
+- **Funnel "frio":** depois do `tailscale funnel --bg 8765`, o 1º acesso público leva **~10-30s** (provisiona o cert TLS). **Aquecer** (GET `/health` com timeout 25s, 2-3 tentativas) ANTES do teste R$1 — senão o ping de 10s dá falso-negativo.
+- **Dupla emissão (corrigido no central, commit `4f3aebb`):** o auto-emit (`seller.js`) + a rota manual (`fiscal.js`) podiam gerar **2 cupons pra mesma venda**. Agora os dois checam idempotência por `saleId`. Se ainda vir 2 cupons pra 1 venda, cancela o extra.
+- **`npm` em janela PowerShell NOVA** precisa de `Set-ExecutionPolicy -Scope Process Bypass -Force` antes (o `npm` no Windows é `.ps1`, barrado pela execution policy).
+
+> **LOJA04 (e-commerce / Nuvemshop):** NÃO usa este runbook. É **NFe modelo 55** (não NFC-e 65), disparada a partir do pedido da Nuvemshop com os dados do cliente (CPF/CNPJ + endereço + transporte). O agente já tem `/emit-nfe55`, mas a orquestração Nuvemshop→NFe é um build à parte (fase 2).
+
 ## Arquivos-chave
 
 - Agente (roda na loja): `agents/fiscal-agent/{index.js, fiscalSefazDirect.mjs, fiscalAcquirers.js, setup.ps1}`
