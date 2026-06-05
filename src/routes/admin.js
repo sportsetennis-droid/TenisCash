@@ -1378,4 +1378,36 @@ router.get('/messages/stats', async (req, res) => {
   }
 });
 
+// ===== PagBank (PIX-QR) por loja — lista + salvar (token tratado como segredo) =====
+router.get('/pagbank-stores', async (_req, res) => {
+  try {
+    const stores = await prisma.store.findMany({
+      where: { active: true },
+      select: { id: true, name: true, code: true, pagbankToken: true, pagbankPixKey: true, pagbankSandbox: true, pagbankEnabled: true },
+      orderBy: { code: 'asc' },
+    });
+    res.json({ stores: stores.map((s) => ({
+      id: s.id, name: s.name, code: s.code,
+      pixKey: s.pagbankPixKey || '',
+      sandbox: s.pagbankSandbox, enabled: s.pagbankEnabled,
+      hasToken: !!s.pagbankToken,
+      tokenMasked: s.pagbankToken ? '••••' + s.pagbankToken.slice(-4) : '',
+    })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/pagbank-stores/:id', async (req, res) => {
+  try {
+    const { token, pixKey, sandbox, enabled } = req.body || {};
+    const data = {};
+    if (typeof token === 'string' && token.trim()) data.pagbankToken = token.trim(); // só sobrescreve se mandar token novo
+    if (typeof pixKey === 'string') data.pagbankPixKey = pixKey.trim() || null;
+    if (typeof sandbox === 'boolean') data.pagbankSandbox = sandbox;
+    if (typeof enabled === 'boolean') data.pagbankEnabled = enabled;
+    if (!Object.keys(data).length) return res.status(400).json({ error: 'nada pra salvar' });
+    await prisma.store.update({ where: { id: req.params.id }, data });
+    const s = await prisma.store.findUnique({ where: { id: req.params.id }, select: { pagbankToken: true, pagbankPixKey: true, pagbankSandbox: true, pagbankEnabled: true } });
+    res.json({ ok: true, hasToken: !!s.pagbankToken, tokenMasked: s.pagbankToken ? '••••' + s.pagbankToken.slice(-4) : '', pixKey: s.pagbankPixKey || '', sandbox: s.pagbankSandbox, enabled: s.pagbankEnabled });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
