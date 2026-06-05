@@ -192,6 +192,256 @@ function summarizeSaleItems(items) {
     .slice(0, 5);
 }
 
+function productSearchWhere(query) {
+  const q = safeText(query, 120);
+  const terms = q.split(/\s+/).map((t) => t.trim()).filter((t) => t.length >= 2);
+  if (!terms.length) {
+    return { OR: [{ active: true }, { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } }] };
+  }
+  return {
+    AND: [
+      { OR: [{ active: true }, { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } }] },
+      ...terms.map((term) => ({
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          { sku: { contains: term, mode: 'insensitive' } },
+          { brand: { contains: term, mode: 'insensitive' } },
+          { category: { contains: term, mode: 'insensitive' } },
+          { subcategory: { contains: term, mode: 'insensitive' } },
+          { sizes: { some: { barcode: { contains: term, mode: 'insensitive' } } } },
+        ],
+      })),
+    ],
+  };
+}
+
+function normalizeStoreNeedle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function matchesStore(store, wanted) {
+  const needle = normalizeStoreNeedle(wanted);
+  if (!needle) return true;
+  const hay = normalizeStoreNeedle(`${store?.id || ''} ${store?.code || ''} ${store?.name || ''}`);
+  return hay.includes(needle);
+}
+
+function isStockIntent(text) {
+  const msg = normalizeStoreNeedle(text);
+  return (
+    /\bestoque\b/.test(msg) ||
+    /\bdisponivel\b/.test(msg) ||
+    /\bdisponibilidade\b/.test(msg) ||
+    /\btamanho\b/.test(msg) ||
+    /\bonde tem\b/.test(msg) ||
+    /\btem\b.*\bloja/.test(msg) ||
+    /\btem\b.*\b(3[0-9]|4[0-9]|5[0-2])\b/.test(msg)
+  );
+}
+
+function detectSizeFromText(text) {
+  const raw = String(text || '');
+  const explicit = raw.match(/(?:tamanho|tam|numero|n[úu]mero)\s*[:#-]?\s*([0-9]{2}|[A-Za-z]{1,3})/i);
+  if (explicit) return explicit[1].toUpperCase();
+  const numeric = raw.match(/\b(3[0-9]|4[0-9]|5[0-2])\b/);
+  return numeric ? numeric[1] : '';
+}
+
+function detectStoreFromText(text, stores) {
+  const msg = normalizeStoreNeedle(text);
+  return (stores || []).find((store) => {
+    const code = normalizeStoreNeedle(store.code);
+    const name = normalizeStoreNeedle(store.name);
+    const parts = name.split(/\s+/).filter((p) => p.length >= 4 && !['sports', 'tennis', 'loja'].includes(p));
+    return (code && msg.includes(code)) || parts.some((p) => msg.includes(p));
+  }) || null;
+}
+
+function cleanStockQuery(text, stores, size, store) {
+  let q = normalizeStoreNeedle(text);
+  q = q.replace(/(?:tamanho|tam|numero|n[uú]mero)\s*[:#-]?\s*([0-9]{2}|[a-z]{1,3})/gi, ' ');
+  if (size) q = q.replace(new RegExp(`\\b${String(size).toLowerCase()}\\b`, 'g'), ' ');
+  if (store) {
+    q = q.replace(new RegExp(`\\b${normalizeStoreNeedle(store.code)}\\b`, 'g'), ' ');
+    normalizeStoreNeedle(store.name)
+      .split(/\s+/)
+      .filter((p) => p.length >= 4)
+      .forEach((p) => { q = q.replace(new RegExp(`\\b${p}\\b`, 'g'), ' '); });
+  }
+  q = q
+    .replace(/\b(tem|tenho|estoque|disponivel|disponibilidade|onde|loja|lojas|nas|nos|na|no|em|de|do|da|das|dos|para|pra|esse|essa|este|esta|produto|produtos)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!q || q.length < 2) return safeText(text, 120);
+  return q;
+}
+
+async function parseStockInputFromText(text) {
+  const stores = await prisma.store.findMany({
+    where: { active: true },
+    orderBy: { code: 'asc' },
+    select: { id: true, code: true, name: true, city: true },
+  });
+  const size = detectSizeFromText(text);
+  const store = detectStoreFromText(text, stores);
+  return {
+    query: cleanStockQuery(text, stores, size, store),
+    size,
+    store: store ? (store.code || store.name) : '',
+    limit: 6,
+  };
+}
+
+function formatStoreSizeList(store) {
+  return (store.sizes || [])
+    .map((s) => `${s.size}: ${s.stock}`)
+    .join(', ');
+}
+
+function formatStockReply(stockResult) {
+  if (!stockResult?.products?.length) {
+    return `Consultei o estoque das lojas e nao localizei estoque registrado para "${stockResult?.query || 'esse produto'}"${stockResult?.size ? ` no tamanho ${stockResult.size}` : ''}.`;
+  }
+  const lines = [];
+  lines.push(`Consultei o estoque real das lojas para "${stockResult.query}"${stockResult.size ? ` tamanho ${stockResult.size}` : ''}:`);
+  stockResult.products.slice(0, 4).forEach((p, idx) => {
+    const title = `${idx + 1}. ${p.brand || ''} ${p.name || ''}`.trim();
+    lines.push(`${title} - total ${p.totalStock} un.`);
+    p.stores.slice(0, 6).forEach((store) => {
+      lines.push(`   ${store.code} ${store.name}: ${store.totalStock} un. (${formatStoreSizeList(store)})`);
+    });
+  });
+  lines.push('Nao mostrei custo, apenas disponibilidade por loja e tamanho.');
+  return lines.join('\n');
+}
+
+function mapProductStock(product, stores, filters = {}) {
+  const sizeWanted = safeText(filters.size, 20).toLowerCase();
+  const storeWanted = safeText(filters.store, 80);
+  const storeMap = new Map(stores.map((s) => [s.id, s]));
+  const byStore = new Map(stores.map((s) => [s.id, {
+    id: s.id,
+    code: s.code,
+    name: s.name,
+    totalStock: 0,
+    sizes: [],
+  }]));
+  const sizeTotals = new Map();
+
+  for (const size of product.sizes || []) {
+    if (sizeWanted && String(size.size || '').toLowerCase() !== sizeWanted) continue;
+    let totalForSize = 0;
+    for (const ss of size.storeStocks || []) {
+      const store = storeMap.get(ss.storeId) || ss.store;
+      if (!store || !matchesStore(store, storeWanted)) continue;
+      const qty = Math.max(0, ss.stock || 0);
+      if (qty <= 0) continue;
+      const entry = byStore.get(store.id);
+      if (!entry) continue;
+      entry.totalStock += qty;
+      entry.sizes.push({ size: size.size, stock: qty });
+      totalForSize += qty;
+    }
+    if (totalForSize > 0) {
+      sizeTotals.set(size.size, (sizeTotals.get(size.size) || 0) + totalForSize);
+    }
+  }
+
+  const storesWithStock = Array.from(byStore.values())
+    .filter((s) => s.totalStock > 0)
+    .sort((a, b) => b.totalStock - a.totalStock || String(a.code).localeCompare(String(b.code)));
+  const totalStock = storesWithStock.reduce((sum, s) => sum + s.totalStock, 0);
+
+  return {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    brand: product.brand,
+    category: product.category,
+    subcategory: product.subcategory,
+    price: product.price,
+    promoPrice: product.promoPrice,
+    imageUrl: product.imageUrl,
+    totalStock,
+    sizes: Array.from(sizeTotals.entries()).map(([size, stock]) => ({ size, stock })),
+    stores: storesWithStock,
+  };
+}
+
+async function searchStoreStockForAgent(input, snapshot) {
+  const query = safeText(input?.query, 120);
+  const size = safeText(input?.size, 20);
+  const store = safeText(input?.store || input?.storeCode || input?.storeName, 80);
+  const limit = Math.min(parseInt(input?.limit, 10) || 8, 15);
+  if (!query || query.length < 2) {
+    return { products: [], message: 'Informe pelo menos 2 caracteres do produto para consultar estoque.' };
+  }
+
+  const [stores, products] = await Promise.all([
+    prisma.store.findMany({
+      where: { active: true },
+      orderBy: { code: 'asc' },
+      select: { id: true, code: true, name: true, city: true },
+    }),
+    prisma.product.findMany({
+      where: productSearchWhere(query),
+      orderBy: [{ featured: 'desc' }, { name: 'asc' }],
+      take: 25,
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        brand: true,
+        category: true,
+        subcategory: true,
+        price: true,
+        promoPrice: true,
+        imageUrl: true,
+        sizes: {
+          orderBy: { size: 'asc' },
+          select: {
+            id: true,
+            size: true,
+            barcode: true,
+            storeStocks: {
+              select: {
+                storeId: true,
+                stock: true,
+                store: { select: { id: true, code: true, name: true, city: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const mapped = products
+    .map((p) => mapProductStock(p, stores, { size, store }))
+    .filter((p) => p.totalStock > 0)
+    .slice(0, limit);
+
+  const currentStoreId = snapshot?.seller?.storeId || null;
+  const currentStore = stores.find((s) => s.id === currentStoreId) || null;
+
+  return {
+    query,
+    size: size || null,
+    store: store || null,
+    currentStore,
+    products: mapped,
+    count: mapped.length,
+    message: mapped.length
+      ? 'Estoque consultado em StoreStock por loja e tamanho.'
+      : 'Nenhum estoque localizado para esse termo/filtro. Pode existir produto no catalogo sem localizacao registrada.',
+  };
+}
+
 function buildRecommendedTasks(snapshot) {
   const tasks = [];
   const now = new Date();
@@ -578,6 +828,9 @@ function compactSnapshotForPrompt(snapshot) {
 function offlineCoachReply(message, snapshot) {
   const msg = message.toLowerCase();
   const first = snapshot.priorityCustomers[0];
+  if (msg.includes('estoque') || msg.includes('tem ') || msg.includes('tamanho') || msg.includes('disponivel') || msg.includes('disponível')) {
+    return 'Eu tenho acesso ao estoque das lojas. Me diga o produto ou modelo e, se quiser, o tamanho e a loja. Exemplo: "Nimbus 27 tamanho 41 em Tambia".';
+  }
   if (msg.includes('quem') || msg.includes('cliente') || msg.includes('cham')) {
     if (!first) return 'Hoje eu comecaria organizando sua carteira: selecione clientes com recompra, alto interesse ou atendimento recente sem retorno.';
     return `Eu comecaria por ${first.customerName}. Motivo: status ${first.relationshipStatus}, prioridade ${first.priority}. Proximo passo: ${first.nextAction || 'fazer contato curto, entender a necessidade e registrar o resultado.'}`;
@@ -605,11 +858,26 @@ const TOOLS = [
     description: 'Lista marcas e categorias presentes no catalogo atual.',
     input_schema: { type: 'object', properties: {} },
   },
+  {
+    name: 'search_store_stock',
+    description: 'Consulta estoque REAL por loja e tamanho usando StoreStock. Use sempre que o vendedor perguntar disponibilidade, estoque, tamanho, loja, tem ou nao tem, quantas unidades, onde tem, ou transferencia entre lojas. Nao mostra custo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Produto, marca, SKU, modelo ou codigo de barras. Ex.: Nimbus 27, Adidas, chuteira, 789...' },
+        size: { type: 'string', description: 'Tamanho desejado, opcional. Ex.: 39, 40, G, M.' },
+        store: { type: 'string', description: 'Loja desejada, opcional. Pode ser codigo LOJA06, Tambia, Bessa, Tambau etc.' },
+        limit: { type: 'number', description: 'Quantidade maxima de produtos no retorno.' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
-async function execTool(name, input) {
+async function execTool(name, input, snapshot) {
   if (name === 'search_products') return searchProductsForAI(input?.query);
   if (name === 'list_catalog') return listCatalogSummary();
+  if (name === 'search_store_stock') return searchStoreStockForAgent(input, snapshot);
   return { error: 'Tool desconhecida' };
 }
 
@@ -621,9 +889,11 @@ Missao: ajudar o vendedor logado a vender melhor hoje, organizar tarefas, priori
 Regras:
 - Responda em portugues brasileiro, direto e pratico.
 - Use apenas os dados do contexto e das tools. Nao invente cliente, estoque, preco, desconto, meta ou produto.
+- Voce TEM acesso ao estoque real das lojas via search_store_stock. Se o vendedor perguntar estoque, disponibilidade, tamanho, "tem?", "onde tem?", "quantas unidades?", use search_store_stock antes de responder.
+- Ao responder estoque, diga loja, tamanho e quantidade. Se nao localizar, diga que nao localizou estoque registrado para aquele filtro, sem mandar o vendedor procurar outro sistema.
 - O vendedor continua no controle. Para criar tarefas, oriente a usar o botao "Criar tarefas" quando a sugestao ja existir no plano.
 - Nao envie WhatsApp de verdade, nao aprove desconto e nao prometa condicao comercial sem confirmacao da loja.
-- Se o vendedor pedir produto especifico, use search_products antes de recomendar.
+- Se o vendedor pedir produto sem falar de estoque, use search_products antes de recomendar.
 - Diga no maximo 180 palavras. Nada de texto motivacional generico.
 
 Contexto do vendedor:
@@ -720,6 +990,17 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Mensagem obrigatoria' });
 
     const snapshot = await loadSellerSnapshot(req);
+    if (isStockIntent(text)) {
+      const stockInput = await parseStockInputFromText(text);
+      const stockResult = await searchStoreStockForAgent(stockInput, snapshot);
+      return res.json({
+        conversationId: null,
+        reply: formatStockReply(stockResult),
+        suggestions: ['Ver outro tamanho', 'Buscar em uma loja especifica', 'Montar abordagem com esse produto'],
+        stock: stockResult,
+      });
+    }
+
     const client = anthropicClient();
     if (!client) {
       return res.json({
@@ -787,7 +1068,7 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
         const toolResults = [];
         for (const block of resp.content || []) {
           if (block.type !== 'tool_use') continue;
-          const out = await execTool(block.name, block.input);
+          const out = await execTool(block.name, block.input, snapshot);
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
