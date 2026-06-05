@@ -1188,6 +1188,7 @@ function isStockIntent(text) {
     /\bdisponivel\b/.test(msg) ||
     /\bdisponibilidade\b/.test(msg) ||
     /\btamanho\b/.test(msg) ||
+    /\btamanhos\b/.test(msg) ||
     /\bonde tem\b/.test(msg) ||
     /\btem\b.*\bloja/.test(msg) ||
     /\btem\b.*\b(3[0-9]|4[0-9]|5[0-2])\b/.test(msg)
@@ -1222,7 +1223,17 @@ function isLearningIntent(text) {
   );
 }
 
+function isStockSizeDisplayComplaint(text) {
+  const msg = normalizeStoreNeedle(text);
+  return /\btamanhos?\b/.test(msg) && /\b(nao|consigo|mostrando|mostrar|aparece|aparecendo|exibe|exibir|sumiu)\b/.test(msg);
+}
+
 function detectSizeFromText(text) {
+  const normalizedSizeText = normalizeStoreNeedle(text);
+  const explicitSize = normalizedSizeText.match(/\b(?:tamanho|tam|numero)\b\s*[:#-]?\s*([0-9]{2}|[a-z]{1,3})\b/i);
+  if (explicitSize) return explicitSize[1].toUpperCase();
+  const numericSize = normalizedSizeText.match(/\b(3[0-9]|4[0-9]|5[0-2])\b/);
+  return numericSize ? numericSize[1] : '';
   const raw = String(text || '');
   const explicit = raw.match(/(?:tamanho|tam|numero|n[úu]mero)\s*[:#-]?\s*([0-9]{2}|[A-Za-z]{1,3})/i);
   if (explicit) return explicit[1].toUpperCase();
@@ -1260,6 +1271,10 @@ function cleanStockQuery(text, stores, size, store) {
     .replace(/\b(busca|buscar|ver|ve|veja|olha|olhar|confere|conferir|mim|pra|favor|por|algum|alguma|alguns|algumas|item|itens)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  q = q
+    .replace(/\b(ai|nao|ta|esta|estou|to|consigo|consegui|mostrar|mostra|mostrando|aparece|aparecendo|exibe|exibir|tamanho|tamanhos|numero|numeros|entao|os|as|o|a)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!q || q.length < 2) return '';
   return q;
 }
@@ -1269,6 +1284,14 @@ function stockNeedsProductReply() {
     'Sim, consigo saber onde tem um produto no estoque das lojas.',
     'Me diga o produto, modelo ou SKU. Se quiser, mande tambem tamanho e loja.',
     'Exemplo: "Nimbus 27 tamanho 41" ou "bolsa yoga tote na Tambau".',
+  ].join('\n');
+}
+
+function stockSizeDisplayHelpReply() {
+  return [
+    'Entendi. Quando o tamanho aparece como "Tamanho nao identificado", o estoque existe, mas a grade desse item esta cadastrada sem tamanho no sistema.',
+    'Me diga o produto ou SKU que eu mostro loja, quantidade e se o tamanho veio sem identificacao.',
+    'Depois precisa corrigir esse tamanho no cadastro/estoque para o vendedor conseguir vender sem conferir fisicamente.',
   ].join('\n');
 }
 
@@ -1288,14 +1311,37 @@ async function parseStockInputFromText(text) {
   };
 }
 
+function isUnknownStockSize(size) {
+  const s = String(size || '').trim().toLowerCase();
+  return !s || s === '?' || s === '-' || s === 'nan' || s === 'null' || s === 'undefined';
+}
+
+function displayStockSize(size) {
+  return isUnknownStockSize(size) ? 'Tamanho nao identificado' : size;
+}
+
 function formatStoreSizeList(store) {
   return (store.sizes || [])
-    .map((s) => `${s.size}: ${s.stock}`)
+    .map((s) => `${displayStockSize(s.size)}: ${s.stock}`)
     .join(', ');
 }
 
 function formatStockReply(stockResult) {
   if (!stockResult?.products?.length) {
+    if (stockResult?.alternatives?.length) {
+      const lines = [];
+      lines.push(`Nao localizei estoque registrado para "${stockResult.query || 'esse produto'}"${stockResult.size ? ` no tamanho ${stockResult.size}` : ''}.`);
+      lines.push('Mas encontrei o produto com saldo em outro tamanho ou com tamanho nao identificado no cadastro:');
+      stockResult.alternatives.slice(0, 3).forEach((p, idx) => {
+        const title = `${idx + 1}. ${p.brand || ''} ${p.name || ''}`.trim();
+        lines.push(`${title} - total ${p.totalStock} un.`);
+        p.stores.slice(0, 4).forEach((store) => {
+          lines.push(`   ${store.code} ${store.name}: ${store.totalStock} un. (${formatStoreSizeList(store)})`);
+        });
+      });
+      lines.push('Se aparecer "Tamanho nao identificado", o cadastro do estoque precisa ser corrigido ou conferido fisicamente na loja.');
+      return lines.join('\n');
+    }
     return `Consultei o estoque das lojas e nao localizei estoque registrado para "${stockResult?.query || 'esse produto'}"${stockResult?.size ? ` no tamanho ${stockResult.size}` : ''}.`;
   }
   const lines = [];
@@ -1308,6 +1354,9 @@ function formatStockReply(stockResult) {
     });
   });
   lines.push('Nao mostrei custo, apenas disponibilidade por loja e tamanho.');
+  if (stockResult.hasUnknownSize) {
+    lines.push('Atenção: alguma unidade esta com tamanho nao identificado no cadastro.');
+  }
   return lines.join('\n');
 }
 
@@ -1347,6 +1396,7 @@ function mapProductStock(product, stores, filters = {}) {
     .filter((s) => s.totalStock > 0)
     .sort((a, b) => b.totalStock - a.totalStock || String(a.code).localeCompare(String(b.code)));
   const totalStock = storesWithStock.reduce((sum, s) => sum + s.totalStock, 0);
+  const hasUnknownSize = storesWithStock.some((s) => (s.sizes || []).some((x) => isUnknownStockSize(x.size)));
 
   return {
     id: product.id,
@@ -1359,6 +1409,7 @@ function mapProductStock(product, stores, filters = {}) {
     promoPrice: product.promoPrice,
     imageUrl: product.imageUrl,
     totalStock,
+    hasUnknownSize,
     sizes: Array.from(sizeTotals.entries()).map(([size, stock]) => ({ size, stock })),
     stores: storesWithStock,
   };
@@ -1416,6 +1467,12 @@ async function searchStoreStockForAgent(input, snapshot) {
     .map((p) => mapProductStock(p, stores, { size, store }))
     .filter((p) => p.totalStock > 0)
     .slice(0, limit);
+  const alternatives = size && !mapped.length
+    ? products
+        .map((p) => mapProductStock(p, stores, { store }))
+        .filter((p) => p.totalStock > 0)
+        .slice(0, limit)
+    : [];
 
   const currentStoreId = snapshot?.seller?.storeId || null;
   const currentStore = stores.find((s) => s.id === currentStoreId) || null;
@@ -1426,7 +1483,9 @@ async function searchStoreStockForAgent(input, snapshot) {
     store: store || null,
     currentStore,
     products: mapped,
+    alternatives,
     count: mapped.length,
+    hasUnknownSize: mapped.some((p) => p.hasUnknownSize) || alternatives.some((p) => p.hasUnknownSize),
     message: mapped.length
       ? 'Estoque consultado em StoreStock por loja e tamanho.'
       : 'Nenhum estoque localizado para esse termo/filtro. Pode existir produto no catalogo sem localizacao registrada.',
@@ -2079,7 +2138,7 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     if (isStockIntent(text)) {
       const stockInput = await parseStockInputFromText(text);
       if (!stockInput.query) {
-        const reply = stockNeedsProductReply();
+        const reply = isStockSizeDisplayComplaint(text) ? stockSizeDisplayHelpReply() : stockNeedsProductReply();
         const conversationId = await persistSellerAgentTurn(req, text, reply, { intent: 'stock_help' });
         return res.json({
           conversationId,
