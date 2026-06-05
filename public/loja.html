@@ -1077,13 +1077,12 @@ function selectPayment(method) {
   });
   // Cartão E PIX passam na maquininha externa → exigem dados fiscais (Decreto SEFAZ-PB)
   const isCard = method === 'credit_card' || method === 'debit_card';
-  const isPix = method === 'pix';
-  document.getElementById('sellCardDetails').style.display = (isCard || isPix) ? 'block' : 'none';
-  // PIX não tem bandeira
+  // PIX virou QR automático (PagBank) — não pede dados aqui. Só cartão mostra os campos.
+  document.getElementById('sellCardDetails').style.display = isCard ? 'block' : 'none';
   const brandField = document.getElementById('sellBrandField');
   if (brandField) brandField.style.display = isCard ? 'block' : 'none';
   const titleEl = document.getElementById('sellFiscalTitle');
-  if (titleEl) titleEl.textContent = isPix ? '📋 Dados do PIX na maquininha (obrigatório SEFAZ-PB)' : '📋 Dados do cartão (obrigatório SEFAZ-PB)';
+  if (titleEl) titleEl.textContent = '📋 Dados do cartão (obrigatório SEFAZ-PB)';
 }
 
 // Após finalizar venda, mostra bloco de NFCe (e habilita o botão)
@@ -1097,6 +1096,45 @@ function showNfceBlock(sale) {
   btn.disabled = false;
   status.textContent = 'Venda #' + (sale.id || sale.saleId || '?').slice(0, 8) + ' finalizada. Pronta pra emitir cupom fiscal.';
   document.getElementById('sellNfceResult').innerHTML = '';
+}
+
+// ===== PIX QR (PagBank) — QR grande pro cliente; cupom sai sozinho no pagamento =====
+function closePixQr() { const o = document.getElementById('pixQrOverlay'); if (o) o.remove(); if (window._pixPoll) { clearTimeout(window._pixPoll); window._pixPoll = null; } }
+function showPixQr(saleId, fiscal) {
+  closePixQr();
+  const ov = document.createElement('div');
+  ov.id = 'pixQrOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const img = fiscal.qrPngUrl
+    ? '<img src="' + fiscal.qrPngUrl + '" alt="QR PIX" style="width:min(82vw,380px);height:auto;background:#fff;padding:14px;border-radius:14px;">'
+    : '<div style="color:#fff;padding:30px;">QR indisponível — use o copia-e-cola</div>';
+  const copyBtn = fiscal.qrText
+    ? '<button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent=\'✅ Código copiado\'})" data-t="' + (fiscal.qrText || '').replace(/"/g, '&quot;') + '" style="margin-top:12px;width:100%;padding:14px;background:#2bb678;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:15px;">📋 Copiar código PIX</button>'
+    : '';
+  ov.innerHTML = '<div style="background:#111;border-radius:18px;padding:22px;max-width:440px;width:100%;text-align:center;">'
+    + '<div style="color:#2bb678;font-weight:800;font-size:22px;">PIX — escaneie com o celular</div>'
+    + '<div style="color:#bbb;font-size:13px;margin:6px 0 14px;">O cupom fiscal sai sozinho assim que o pagamento cair.</div>'
+    + img
+    + '<div id="pixQrStatus" style="color:#ffd33d;font-weight:800;margin-top:16px;font-size:17px;">⏳ Aguardando pagamento…</div>'
+    + copyBtn
+    + '<button onclick="closePixQr()" style="margin-top:8px;width:100%;padding:11px;background:#333;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;">Fechar</button>'
+    + '</div>';
+  document.body.appendChild(ov);
+  pollPixStatus(saleId, 0);
+}
+async function pollPixStatus(saleId, tries) {
+  if (!document.getElementById('pixQrOverlay')) return;
+  if (tries > 120) { const s = document.getElementById('pixQrStatus'); if (s) s.innerHTML = '⌛ Tempo esgotado — confira o pagamento no painel'; return; }
+  try {
+    const d = await api('/api/pagbank/pix-status/' + saleId);
+    if (d && d.paid) {
+      const s = document.getElementById('pixQrStatus');
+      if (s) s.innerHTML = '✅ PAGO! ' + (d.cupom && d.cupom.number ? 'Cupom #' + d.cupom.number : 'emitindo cupom…');
+      if (d.cupom && d.cupom.documentId) setTimeout(() => window.open('/api/admin/fiscal/documents/' + d.cupom.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 700);
+      return;
+    }
+  } catch (_) {}
+  window._pixPoll = setTimeout(() => pollPixStatus(saleId, tries + 1), 3000);
 }
 
 async function emitNfceFromSale() {
@@ -1686,7 +1724,7 @@ async function finalizeSale() {
   const paymentMethod = document.getElementById('sellPayment').value;
   const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
   const isPix = paymentMethod === 'pix';
-  const needsFiscal = isCard || isPix;
+  const needsFiscal = isCard; // PIX agora é QR automático (PagBank) — não exige dados na finalização
   let cardData = {};
   if (needsFiscal) {
     const acquirer = document.getElementById('sellCardAcquirer').value;
@@ -1721,6 +1759,19 @@ async function finalizeSale() {
     showNfceBlock(r);
     const result = document.getElementById('sellNfceResult');
     const status = document.getElementById('sellNfceStatus');
+    if (fiscal?.pixPending) {
+      // PIX-QR: mostra o QR grande pro cliente; o cupom sai sozinho no pagamento (webhook).
+      showPixQr(r.saleId || r.id, fiscal);
+      status.innerHTML = '<strong style="color:#0a843d">⏳ PIX gerado — aguardando pagamento</strong>';
+      cart = []; customer = null;
+      document.getElementById('sellCustomerPhone').value = '';
+      document.getElementById('sellCustomerInfo').innerHTML = '';
+      document.getElementById('sellTcUsed').value = 0;
+      document.getElementById('sellSearchInput').value = '';
+      document.getElementById('sellSearchResults').innerHTML = '';
+      renderCart(); loadDashboard();
+      return;
+    }
     if (fiscal?.ok && fiscal.accessKey) {
       // 🎉 EMITIDA AUTOMATICAMENTE
       status.innerHTML = '<strong style="color:#0a843d">✅ NFCe AUTORIZADA automaticamente</strong>';
