@@ -573,8 +573,16 @@ router.get('/documents/:id/danfe', async (req, res) => {
 
     const { DANFCe, DANFe } = await getSpedPdf();
     const fn = doc.docType === 'NFCE' ? DANFCe : DANFe;
+    // DANFE mostra o NOME FANTASIA (a marca, ex "Baratão dos Esportes") no cabeçalho,
+    // no lugar da razão social — SÓ na impressão. O XML assinado/enviado à SEFAZ
+    // mantém a razão social (xNome) intacta, como exige a lei.
+    let renderXml = doc.xmlContent;
+    const razao = doc.issuer?.companyName, fant = doc.issuer?.fantasyName;
+    if (razao && fant && fant !== razao && renderXml.includes('<xNome>' + razao + '</xNome>')) {
+      renderXml = renderXml.replace('<xNome>' + razao + '</xNome>', '<xNome>' + fant + '</xNome>');
+    }
     const pdfBuffer = await fn({
-      xml: doc.xmlContent,
+      xml: renderXml,
       // logo: opcional — URL da logo Sports & Tennis se quiser
     });
 
