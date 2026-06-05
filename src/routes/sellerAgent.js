@@ -1375,10 +1375,21 @@ function formatKnownSizeList(sizes, opts = {}) {
   }).join(', ');
 }
 
+function formatUnlocatedSizeList(sizes, opts = {}) {
+  return (sizes || [])
+    .filter((s) => s.stock > 0)
+    .slice(0, opts.limit || 10)
+    .map((s) => `${displayStockSize(s.size)}: ${s.stock}`)
+    .join(', ');
+}
+
 function formatProductSizeSummary(product, requestedSize = '') {
   const lines = [];
   const knownSizes = (product.knownSizes || [])
     .filter((s) => !isUnknownStockSize(s.size))
+    .sort((a, b) => String(a.size).localeCompare(String(b.size), 'pt-BR', { numeric: true }));
+  const unlocatedKnownSizes = (product.unlocatedKnownSizes || [])
+    .filter((s) => !isUnknownStockSize(s.size) && s.stock > 0)
     .sort((a, b) => String(a.size).localeCompare(String(b.size), 'pt-BR', { numeric: true }));
 
   if (requestedSize) {
@@ -1386,6 +1397,9 @@ function formatProductSizeSummary(product, requestedSize = '') {
       lines.push(product.requestedSizeStock > 0
         ? `Tamanho ${requestedSize}: ${product.requestedSizeStock} un.`
         : `Tamanho ${requestedSize}: cadastrado, mas sem saldo nas lojas consultadas`);
+      if (product.requestedSizeUnlocatedStock > 0) {
+        lines.push(`Tamanho ${requestedSize}: ${product.requestedSizeUnlocatedStock} un. no estoque geral sem loja vinculada`);
+      }
     } else {
       lines.push(`Tamanho ${requestedSize}: nao aparece como grade cadastrada desse produto`);
     }
@@ -1397,6 +1411,8 @@ function formatProductSizeSummary(product, requestedSize = '') {
   if (available.length) lines.push(`Tamanhos com saldo: ${formatKnownSizeList(available)}`);
   if (withoutStock.length) lines.push(`Tamanhos cadastrados sem saldo: ${withoutStock.slice(0, 10).map((s) => displayStockSize(s.size)).join(', ')}`);
   if (product.unknownSizeStock > 0) lines.push(`${product.unknownSizeStock} un. com tamanho nao identificado no cadastro`);
+  if (unlocatedKnownSizes.length) lines.push(`Estoque geral sem loja vinculada: ${formatUnlocatedSizeList(unlocatedKnownSizes)}`);
+  if (product.unlocatedUnknownSizeStock > 0) lines.push(`Estoque geral sem loja vinculada e sem tamanho identificado: ${product.unlocatedUnknownSizeStock} un.`);
   return lines.join(' | ') || 'Nao encontrei grade de tamanho legivel no cadastro.';
 }
 
@@ -1415,6 +1431,18 @@ function formatStockReply(stockResult) {
         });
       });
       lines.push('Se aparecer "Tamanho nao identificado", eu nao vou assumir que e o tamanho pedido; precisa corrigir o cadastro ou conferir fisicamente na loja.');
+      return lines.join('\n');
+    }
+    if (stockResult?.catalogMatches?.length) {
+      const lines = [];
+      lines.push(`Nao encontrei saldo por loja para "${stockResult.query || 'esse produto'}"${stockResult.size ? ` no tamanho ${stockResult.size}` : ''}.`);
+      lines.push('Mas eu li o cadastro do produto e a grade registrada:');
+      stockResult.catalogMatches.slice(0, 3).forEach((p, idx) => {
+        const title = `${idx + 1}. ${p.brand || ''} ${p.name || ''}`.trim();
+        lines.push(`${title}`);
+        lines.push(`   Tamanhos lidos: ${formatProductSizeSummary(p, stockResult.size)}`);
+      });
+      lines.push('Quando aparecer estoque geral sem loja vinculada, eu nao consigo afirmar em qual loja esta. Precisa distribuir/corrigir o estoque antes de prometer ao cliente.');
       return lines.join('\n');
     }
     return `Consultei o estoque das lojas e nao localizei estoque registrado para "${stockResult?.query || 'esse produto'}"${stockResult?.size ? ` no tamanho ${stockResult.size}` : ''}.`;
@@ -1450,9 +1478,13 @@ function mapProductStock(product, stores, filters = {}) {
   }]));
   const sizeTotals = new Map();
   const knownSizeTotals = new Map();
+  const unlocatedKnownSizeTotals = new Map();
   let unknownSizeStock = 0;
+  let unlocatedUnknownSizeStock = 0;
+  let unlocatedStockTotal = 0;
   let requestedSizeKnown = false;
   let requestedSizeStock = 0;
+  let requestedSizeUnlocatedStock = 0;
 
   for (const size of product.sizes || []) {
     const matchesRequestedSize = sizeWanted && stockSizeMatches(size.size, sizeWanted);
@@ -1461,14 +1493,20 @@ function mapProductStock(product, stores, filters = {}) {
       return store && matchesStore(store, storeWanted);
     });
     const totalForAnyMatchedStore = matchedStoreStocks.reduce((sum, ss) => sum + Math.max(0, ss.stock || 0), 0);
+    const productSizeStock = Math.max(0, size.stock || 0);
+    const unlocatedQty = Math.max(0, productSizeStock - totalForAnyMatchedStore);
+    unlocatedStockTotal += unlocatedQty;
     if (isUnknownStockSize(size.size)) {
       unknownSizeStock += totalForAnyMatchedStore;
+      unlocatedUnknownSizeStock += unlocatedQty;
     } else {
       knownSizeTotals.set(size.size, (knownSizeTotals.get(size.size) || 0) + totalForAnyMatchedStore);
+      unlocatedKnownSizeTotals.set(size.size, (unlocatedKnownSizeTotals.get(size.size) || 0) + unlocatedQty);
     }
     if (matchesRequestedSize) {
       requestedSizeKnown = true;
       requestedSizeStock += totalForAnyMatchedStore;
+      requestedSizeUnlocatedStock += unlocatedQty;
     }
     if (filterBySize && !matchesRequestedSize) continue;
     let totalForSize = 0;
@@ -1507,10 +1545,15 @@ function mapProductStock(product, stores, filters = {}) {
     hasUnknownSize,
     sizes: Array.from(sizeTotals.entries()).map(([size, stock]) => ({ size, stock })),
     knownSizes: Array.from(knownSizeTotals.entries()).map(([size, stock]) => ({ size, stock })),
+    unlocatedKnownSizes: Array.from(unlocatedKnownSizeTotals.entries()).map(([size, stock]) => ({ size, stock })),
     unknownSizeStock,
+    unlocatedUnknownSizeStock,
+    unlocatedStockTotal,
+    catalogStockTotal: totalStock + unlocatedStockTotal,
     requestedSize: sizeWanted || null,
     requestedSizeKnown,
     requestedSizeStock,
+    requestedSizeUnlocatedStock,
     stores: storesWithStock,
   };
 }
@@ -1549,6 +1592,7 @@ async function searchStoreStockForAgent(input, snapshot) {
           select: {
             id: true,
             size: true,
+            stock: true,
             barcode: true,
             storeStocks: {
               select: {
@@ -1576,6 +1620,12 @@ async function searchStoreStockForAgent(input, snapshot) {
         .filter((p) => p.totalStock > 0)
         .slice(0, limit)
     : [];
+  const catalogMatches = !mapped.length && !alternatives.length
+    ? productPool
+        .map((p) => mapProductStock(p, stores, { size, store, filterBySize: false }))
+        .filter((p) => p.catalogStockTotal > 0 || p.requestedSizeKnown || (p.knownSizes || []).length)
+        .slice(0, limit)
+    : [];
 
   const currentStoreId = snapshot?.seller?.storeId || null;
   const currentStore = stores.find((s) => s.id === currentStoreId) || null;
@@ -1587,8 +1637,11 @@ async function searchStoreStockForAgent(input, snapshot) {
     currentStore,
     products: mapped,
     alternatives,
+    catalogMatches,
     count: mapped.length,
-    hasUnknownSize: mapped.some((p) => p.hasUnknownSize) || alternatives.some((p) => p.hasUnknownSize),
+    hasUnknownSize: mapped.some((p) => p.hasUnknownSize)
+      || alternatives.some((p) => p.hasUnknownSize)
+      || catalogMatches.some((p) => p.hasUnknownSize || p.unlocatedUnknownSizeStock > 0),
     message: mapped.length
       ? 'Estoque consultado em StoreStock por loja e tamanho.'
       : 'Nenhum estoque localizado para esse termo/filtro. Pode existir produto no catalogo sem localizacao registrada.',
