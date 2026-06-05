@@ -1409,7 +1409,10 @@ function goPage(pageId) {
     onInventorySearch();
   }
   if (pageId === 'crm') initCrm();
-  if (pageId === 'sell' && !document.querySelectorAll('#sellVendorCards .vendor-card').length) loadVendors();
+  if (pageId === 'sell') {
+    if (!document.querySelectorAll('#sellVendorCards .vendor-card').length) loadVendors();
+    selectPayment(document.getElementById('sellPayment').value || 'pix'); // renderiza os campos do método já selecionado (PIX é o default)
+  }
 }
 
 // Fechar modal clicando fora
