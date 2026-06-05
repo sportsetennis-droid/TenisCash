@@ -101,6 +101,7 @@ const RELATIONSHIP_WEIGHT = {
 const chatLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 8,
+  skip: () => process.env.NODE_ENV === 'test',
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `seller-agent:${req.userId || req.ip}`,
