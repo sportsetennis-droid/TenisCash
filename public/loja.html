@@ -568,7 +568,7 @@
 
         <!-- Dados do cartão (Decreto SEFAZ-PB 43.077/2022) — aparece só pra crédito/débito -->
         <div id="sellCardDetails" style="display:none;margin-top:14px;padding:12px;background:#FFEBDC;border-radius:10px;border:1px solid #FCDAC4;">
-          <div style="font-size:11px;font-weight:700;color:#E5571E;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
+          <div id="sellFiscalTitle" style="font-size:11px;font-weight:700;color:#E5571E;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
@@ -584,7 +584,7 @@
                 <option value="SIPAG">Sipag</option>
               </select>
             </div>
-            <div>
+            <div id="sellBrandField">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">BANDEIRA</label>
               <select id="sellCardBrand" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:13px;margin-top:4px;">
                 <option value="01">Visa</option>
@@ -1075,9 +1075,15 @@ function selectPayment(method) {
   document.querySelectorAll('#sellPaymentCards .payment-card').forEach(el => {
     el.classList.toggle('active', el.dataset.method === method);
   });
-  // Mostra detalhes do cartão se crédito/débito (Decreto SEFAZ-PB)
-  const needsCard = method === 'credit_card' || method === 'debit_card';
-  document.getElementById('sellCardDetails').style.display = needsCard ? 'block' : 'none';
+  // Cartão E PIX passam na maquininha externa → exigem dados fiscais (Decreto SEFAZ-PB)
+  const isCard = method === 'credit_card' || method === 'debit_card';
+  const isPix = method === 'pix';
+  document.getElementById('sellCardDetails').style.display = (isCard || isPix) ? 'block' : 'none';
+  // PIX não tem bandeira
+  const brandField = document.getElementById('sellBrandField');
+  if (brandField) brandField.style.display = isCard ? 'block' : 'none';
+  const titleEl = document.getElementById('sellFiscalTitle');
+  if (titleEl) titleEl.textContent = isPix ? '📋 Dados do PIX na maquininha (obrigatório SEFAZ-PB)' : '📋 Dados do cartão (obrigatório SEFAZ-PB)';
 }
 
 // Após finalizar venda, mostra bloco de NFCe (e habilita o botão)
@@ -1675,30 +1681,29 @@ async function finalizeSale() {
   if (!cart.length) return;
   const vendorId = document.getElementById('sellVendor').value;
   if (!vendorId) { alert('Selecione o vendedor que atendeu o cliente.'); return; }
+  // Cartão/PIX passam na maquininha externa: dados fiscais OBRIGATÓRIOS pra emitir o cupom.
+  // Sem adquirente + código (Auth/NSU/ID do comprovante) a venda NÃO finaliza (SEFAZ-PB).
+  const paymentMethod = document.getElementById('sellPayment').value;
+  const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
+  const isPix = paymentMethod === 'pix';
+  const needsFiscal = isCard || isPix;
+  let cardData = {};
+  if (needsFiscal) {
+    const acquirer = document.getElementById('sellCardAcquirer').value;
+    const auth = document.getElementById('sellCardAuthCode').value.trim();
+    if (!acquirer) { alert('Selecione a adquirente (a maquininha usada).'); document.getElementById('sellCardAcquirer').focus(); return; }
+    if (!auth || auth === '000000') {
+      alert((isPix ? 'PIX' : 'Cartão') + ': passe na maquininha, pegue o código do comprovante (Auth / NSU / ID) e digite aqui. Sem o código a venda não finaliza — o cupom fiscal precisa dele.');
+      document.getElementById('sellCardAuthCode').focus();
+      return;
+    }
+    cardData = { acquirerKey: acquirer, cardAuthCode: auth, tpIntegra: 2 };
+    if (isCard) cardData.cardBrand = document.getElementById('sellCardBrand').value;
+  }
   if (!confirm('Confirmar venda de ' + cart.length + ' itens?')) return;
   const btn = document.getElementById('sellFinalize');
   btn.disabled = true; btn.textContent = 'Processando...';
   try {
-    // Dados de cartão (Decreto SEFAZ-PB 43.077/2022)
-    const paymentMethod = document.getElementById('sellPayment').value;
-    const isCard = paymentMethod === 'credit_card' || paymentMethod === 'debit_card';
-    if (isCard) {
-      const auth = document.getElementById('sellCardAuthCode').value.trim();
-      if (!auth || auth === '000000') {
-        if (!confirm('Cartão SEM código de autorização: a venda será salva mas o cupom fiscal NÃO sai automático. Você terá que digitar o Auth/NSU do recibo e emitir manualmente. Continuar assim?')) {
-          btn.disabled = false; btn.textContent = 'Finalizar venda';
-          document.getElementById('sellCardAuthCode').focus();
-          return;
-        }
-      }
-    }
-    const cardData = isCard ? {
-      acquirerKey: document.getElementById('sellCardAcquirer').value,
-      cardBrand: document.getElementById('sellCardBrand').value,
-      cardAuthCode: document.getElementById('sellCardAuthCode').value.trim(),
-      tpIntegra: 2, // POS standalone (não TEF integrado)
-    } : {};
-
     const r = await api('/api/seller/sale', {
       method: 'POST',
       body: JSON.stringify({
