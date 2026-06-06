@@ -10416,18 +10416,30 @@ function renderCatClassifyGrid() {
       e.stopPropagation();
       if (cb.checked) _catClassifySelected.add(cb.dataset.cid);
       else _catClassifySelected.delete(cb.dataset.cid);
-      renderCatClassifyGrid();
+      // Atualiza SÓ o card + contador, sem re-render — o renderCatClassifyGrid() refazia
+      // os 200 cards pesados (estoque/NFe) e jogava o scroll pro topo a cada clique (bug do vídeo).
+      const card = cb.closest('.cat-classify-card');
+      if (card) { card.style.outline = cb.checked ? '3px solid #E5571E' : ''; card.style.borderRadius = cb.checked ? '14px' : ''; }
+      _catClassifyUpdateStats();
     };
   });
   grid.querySelectorAll('.cat-classify-card').forEach(card => {
     card.addEventListener('click', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
       const id = card.dataset.pid;
-      if (_catClassifySelected.has(id)) _catClassifySelected.delete(id);
-      else _catClassifySelected.add(id);
-      renderCatClassifyGrid();
+      const nowSel = !_catClassifySelected.has(id);
+      if (nowSel) _catClassifySelected.add(id); else _catClassifySelected.delete(id);
+      const cb = card.querySelector('input[data-cid]');
+      if (cb) cb.checked = nowSel;
+      card.style.outline = nowSel ? '3px solid #E5571E' : '';
+      card.style.borderRadius = nowSel ? '14px' : '';
+      _catClassifyUpdateStats();
     });
   });
+}
+function _catClassifyUpdateStats() {
+  const stats = document.getElementById('cat-classify-stats');
+  if (stats) stats.textContent = _filteredCatProducts().length + ' produtos visíveis · ' + _catClassifySelected.size + ' selecionados (de ' + _catClassifyProducts.length + ' total)';
 }
 
 function _catChildrenOf(parentId) {
