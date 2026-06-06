@@ -15,7 +15,9 @@ async function catEngineRunHandler(req, res) {
     if (!engine) return res.status(500).json({ error: 'engine off' });
     const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 6));
     const mode = req.query.mode || 'quase';
-    const out = await engine.runBatch({ limit, mode });
+    const part = Math.max(0, Number(req.query.part) || 0);
+    const of = Math.max(1, Number(req.query.of) || 1);
+    const out = await engine.runBatch({ limit, mode, part, of });
     res.json({ ok: true, ...out, results: out.results.map((r) => ({ id: r.productId, name: (r.name || '').slice(0, 40), score: r.plan?.score, ready: r.plan?.ready, actions: r.plan?.actions, err: r.error })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

@@ -168,15 +168,17 @@ async function analyzeProduct(productId) {
 
 // ---- runBatch: pega N produtos prioritários e analisa ----
 // mode: 'quase' (perto de pronto: tem imagem, falta classif/estoque) | 'sem-imagem' | 'all'
-async function runBatch({ limit = 8, mode = 'quase' } = {}) {
+async function runBatch({ limit = 8, mode = 'quase', part = 0, of = 1 } = {}) {
   let where = `pr.active=true`;
   if (mode === 'quase') where += ` AND pr."imageUrl" IS NOT NULL`;
   else if (mode === 'sem-imagem') where += ` AND pr."imageUrl" IS NULL`;
+  const ofN = Math.max(1, Number(of) || 1), partN = Math.max(0, Number(part) || 0);
+  if (ofN > 1) where += ` AND (abs(hashtext(pr.id)) % ${ofN}) = ${partN}`; // partição p/ rodar paralelo sem colidir
   // prioriza quem ainda não tem plano OU plano antigo
   const rows = await prisma.$queryRawUnsafe(
     `SELECT pr.id FROM "Product" pr
      WHERE ${where} AND (pr."aiContext"->'catalogPlan'->>'v' IS NULL OR (pr."aiContext"->'catalogPlan'->>'v')::int < ${ENGINE_V})
-     ORDER BY pr."updatedAt" DESC LIMIT ${Math.min(30, Math.max(1, limit))}`);
+     ORDER BY pr.id LIMIT ${Math.min(30, Math.max(1, limit))}`);
   const results = [];
   for (const r of rows) {
     try { results.push(await analyzeProduct(r.id)); }
