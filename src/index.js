@@ -60,6 +60,7 @@ const liveCommerceRoutes = require('./routes/liveCommerce');
 const infoproductsRoutes = require('./routes/infoproducts');
 const desapegaRoutes = require('./routes/desapega');
 const pagbankRoutes = require('./routes/pagbank');
+const catalogEngineRoutes = require('./routes/catalogEngine');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -118,6 +119,7 @@ app.use('/api/auth/', authLimiter);
 // Rotas
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
 app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
+app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transfer', transferRoutes);
@@ -150,6 +152,7 @@ app.use('/api/admin/product-images', productImagesRoutes);
 app.use('/api/admin/markup', markupRoutes);
 app.use('/api/admin/products', productsRoutes);
 app.use('/api/admin/ai-curation', aiCurationRoutes);
+app.use('/api/admin/catalog-engine', catalogEngineRoutes);
 app.use('/api/admin/anthropic-tools', anthropicToolsRoutes);
 app.use('/api/admin/orchestrator', orchestratorRoutes);
 app.use('/api/admin/classification', adminClassificationRoutes);
