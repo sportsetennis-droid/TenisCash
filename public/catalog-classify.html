@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Classificar em lote — TenisCash</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--line:#2a2e38;--text:#e8eaed;--mut:#9aa0aa;--ac:#22c55e;--ac2:#3b82f6;--warn:#f59e0b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+  header{position:sticky;top:0;z-index:20;background:#0f1115ee;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 14px}
+  h1{font-size:16px;margin:0 0 8px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 9px;color:var(--mut)}
+  .pill b{color:var(--text)}
+  select,input{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 8px;font-size:13px}
+  button{background:var(--ac2);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;font-size:13px}
+  button.ghost{background:var(--card);border:1px solid var(--line);color:var(--text)}
+  button.go{background:var(--ac)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px;padding:14px}
+  .c{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:10px}
+  .c.sel{outline:2px solid var(--ac)}
+  .thumb{width:74px;height:74px;border-radius:8px;object-fit:cover;background:#0b0d11;flex:0 0 74px}
+  .noimg{display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;text-align:center}
+  .meta{flex:1;min-width:0}
+  .nm{font-weight:600;font-size:13px;line-height:1.25;max-height:2.5em;overflow:hidden}
+  .br{color:var(--mut);font-size:11px;margin:2px 0 6px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .fields select,.fields input{width:100%;padding:5px 6px;font-size:12px}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .conf{font-size:10px;padding:2px 6px;border-radius:999px;font-weight:700}
+  .hi{background:#14532d;color:#86efac}.lo{background:#78350f;color:#fcd34d}
+  .cb{width:18px;height:18px;accent-color:var(--ac)}
+  .bar{position:sticky;bottom:0;background:#0f1115ee;backdrop-filter:blur(6px);border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+  .muted{color:var(--mut);font-size:12px}
+  a{color:var(--ac2)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏷️ Classificar em lote <span class="muted">— sugestões por regra (grátis). Revise, corrija e aprove.</span></h1>
+  <div class="row">
+    <span class="pill">Pendentes: <b id="kTotal">—</b></span>
+    <select id="fCat">
+      <option value="">Todas categorias</option>
+      <option>Calçados</option><option>Vestuário</option><option>Acessórios</option><option>INSUMO</option>
+    </select>
+    <select id="fConf">
+      <option value="0">Qualquer confiança</option>
+      <option value="0.85">Só alta confiança (85%+)</option>
+      <option value="0.6">Média+ (60%+)</option>
+    </select>
+    <label class="pill"><input type="checkbox" id="fImg" class="cb" style="vertical-align:-3px"> só com foto</label>
+    <button class="ghost" onclick="load(0)">Atualizar</button>
+    <span style="flex:1"></span>
+    <button class="ghost" onclick="page>0&&load(page-1)">◀</button>
+    <span class="pill">pág <b id="kPage">1</b></span>
+    <button class="ghost" onclick="load(page+1)">▶</button>
+  </div>
+</header>
+
+<div id="grid" class="grid"></div>
+
+<div class="bar">
+  <div>
+    <button class="ghost" onclick="selAll(true)">Selecionar tudo da página</button>
+    <button class="ghost" onclick="selAll(false)">Limpar</button>
+    <span class="muted" id="kSel">0 selecionados</span>
+  </div>
+  <button class="go" id="btnApprove" onclick="approve()" disabled>✓ Aprovar selecionados</button>
+</div>
+
+<script>
+const CATS=['Calçados','Vestuário','Acessórios','INSUMO'];
+const GEN=['Homem','Mulher','Unissex','Menino','Menina'];
+const MODS=['Camiseta','Regata','Short','Calça','Legging','Top','Cropped','Corrida','LifeStyle','Futsal','Society','Campo','Sapatilha','Sandália','Natação','Bola','Meia','Bolsa','Prancha','Musculação / CrossFit / Hyrox','Estilo de Vida','Caminhada / Treino leve','Recuperação','Outro'];
+const TIERS=['Básica','casual','custo benefício','pro','Profissional','DryFit','máximo conforto','confortável','velocidade','Proteção UV','Iniciante','Poliamida','Treino','clássico','Outro'];
+let page=0;
+
+function token(){ let t=localStorage.getItem('tc_admin_token'); if(!t){ t=prompt('Token admin (tc_admin_token):')||''; if(t) localStorage.setItem('tc_admin_token',t); } return t; }
+function api(path,opts){ return fetch('/api/admin/catalog-engine'+path,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token(),...(opts&&opts.headers||{})}}); }
+function opt(arr,v){ return arr.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join(''); }
+function esc(s){ return (s||'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+async function load(p){
+  page=Math.max(0,p||0);
+  const cat=document.getElementById('fCat').value, conf=document.getElementById('fConf').value, img=document.getElementById('fImg').checked?'1':'';
+  const q=new URLSearchParams({page,minConf:conf,category:cat,img}).toString();
+  const grid=document.getElementById('grid'); grid.innerHTML='<p class="muted" style="padding:14px">carregando…</p>';
+  try{
+    const r=await api('/suggestions?'+q); if(r.status===401){grid.innerHTML='<p class="muted" style="padding:14px">Token inválido. <a href="javascript:localStorage.removeItem(\'tc_admin_token\');location.reload()">trocar</a></p>';return;}
+    const d=await r.json();
+    document.getElementById('kTotal').textContent=d.total;
+    document.getElementById('kPage').textContent=page+1;
+    if(!d.rows.length){ grid.innerHTML='<p class="muted" style="padding:14px">Nada pendente com esse filtro. 🎉</p>'; updSel(); return; }
+    grid.innerHTML=d.rows.map(card).join('');
+    updSel();
+  }catch(e){ grid.innerHTML='<p class="muted" style="padding:14px">erro: '+e.message+'</p>'; }
+}
+
+function card(r){
+  const s=r.suggestion||{}; const c=Math.round((r.confidence||0)*100);
+  const img=r.image?`<img class="thumb" src="${esc(r.image)}" loading="lazy" onerror="this.classList.add('noimg');this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb noimg',textContent:'sem foto'}))">`:`<div class="thumb noimg">sem foto</div>`;
+  return `<div class="c" data-id="${r.id}">
+    ${img}
+    <div class="meta">
+      <div class="top">
+        <span class="conf ${c>=80?'hi':'lo'}">${c}%</span>
+        <input type="checkbox" class="cb pick" onchange="onPick(this)">
+      </div>
+      <div class="nm">${esc(r.name)}</div>
+      <div class="br">${esc(r.brand||'—')}</div>
+      <div class="fields">
+        <select class="f-cat">${opt(CATS,s.category)}</select>
+        <select class="f-gen">${opt(GEN,s.subcategory)}</select>
+        <input class="f-mod" list="dlMod" value="${esc(s.modality||'')}">
+        <input class="f-tier" list="dlTier" value="${esc(s.tier||'')}">
+      </div>
+    </div>
+  </div>`;
+}
+
+function onPick(cb){ cb.closest('.c').classList.toggle('sel',cb.checked); updSel(); }
+function selAll(v){ document.querySelectorAll('.pick').forEach(cb=>{cb.checked=v;cb.closest('.c').classList.toggle('sel',v);}); updSel(); }
+function updSel(){ const n=document.querySelectorAll('.pick:checked').length; document.getElementById('kSel').textContent=n+' selecionados'; document.getElementById('btnApprove').disabled=!n; document.getElementById('btnApprove').textContent='✓ Aprovar selecionados ('+n+')'; }
+
+async function approve(){
+  const cards=[...document.querySelectorAll('.c')].filter(c=>c.querySelector('.pick').checked);
+  if(!cards.length) return;
+  const items=cards.map(c=>({id:c.dataset.id, category:c.querySelector('.f-cat').value, subcategory:c.querySelector('.f-gen').value, modality:c.querySelector('.f-mod').value.trim(), tier:c.querySelector('.f-tier').value.trim()}));
+  const btn=document.getElementById('btnApprove'); btn.disabled=true; btn.textContent='aplicando…';
+  try{
+    const r=await api('/approve-bulk',{method:'POST',body:JSON.stringify({items})});
+    const d=await r.json();
+    const okIds=new Set(d.results.filter(x=>x.ok).map(x=>x.id));
+    cards.forEach(c=>{ if(okIds.has(c.dataset.id)) c.remove(); });
+    const t=document.getElementById('kTotal'); t.textContent=Math.max(0,(parseInt(t.textContent)||0)-d.applied);
+    updSel();
+    if(!document.querySelectorAll('.c').length) load(page); // recarrega se esvaziou
+  }catch(e){ alert('erro: '+e.message); }
+  finally{ updSel(); }
+}
+
+document.getElementById('fCat').onchange=()=>load(0);
+document.getElementById('fConf').onchange=()=>load(0);
+document.getElementById('fImg').onchange=()=>load(0);
+load(0);
+</script>
+<datalist id="dlMod"></datalist>
+<datalist id="dlTier"></datalist>
+<script>
+  document.getElementById('dlMod').innerHTML=MODS.map(m=>`<option value="${m}">`).join('');
+  document.getElementById('dlTier').innerHTML=TIERS.map(t=>`<option value="${t}">`).join('');
+</script>
+</body>
+</html>

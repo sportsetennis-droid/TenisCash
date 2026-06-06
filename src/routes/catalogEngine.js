@@ -121,5 +121,59 @@ router.post('/approve/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Lista sugestões de classificação (regra) pendentes de aprovação — pra tela de revisão em lote.
+router.get('/suggestions', async (req, res) => {
+  try {
+    const PAGE = 50;
+    const page = Math.max(0, Number(req.query.page) || 0);
+    const minConf = Number(req.query.minConf) || 0;
+    const cat = (req.query.category || '').replace(/[^A-Za-zÀ-ÿ ]/g, '');
+    const onlyImg = req.query.img === '1';
+    let where = `pr.active=true
+      AND pr."aiContext"->'catalogPlan'->'classification'->'suggestion' IS NOT NULL
+      AND COALESCE(pr."aiContext"->'catalogPlan'->'classification'->>'classified','false')='false'
+      AND (pr.category IS NULL OR pr.category='A CLASSIFICAR' OR pr.subcategory IS NULL OR pr."aiContext"->'classification'->>'modality' IS NULL OR pr."aiContext"->'classification'->>'tier' IS NULL)`;
+    if (cat) where += ` AND pr."aiContext"->'catalogPlan'->'classification'->'suggestion'->>'category'='${cat}'`;
+    if (minConf) where += ` AND COALESCE((pr."aiContext"->'catalogPlan'->'classification'->>'confidence')::float,0) >= ${minConf}`;
+    if (onlyImg) where += ` AND pr."imageUrl" IS NOT NULL`;
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT pr.id, pr.name, pr.brand, pr."imageUrl" image,
+        pr."aiContext"->'catalogPlan'->'classification'->'suggestion' suggestion,
+        (pr."aiContext"->'catalogPlan'->'classification'->>'confidence')::float confidence
+      FROM "Product" pr WHERE ${where}
+      ORDER BY confidence DESC NULLS LAST, pr.brand NULLS LAST, pr.name LIMIT ${PAGE} OFFSET ${page * PAGE}`);
+    const tot = await prisma.$queryRawUnsafe(`SELECT count(*)::int n FROM "Product" pr WHERE ${where}`);
+    res.json({ total: tot[0].n, page, pageSize: PAGE, rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Aprova classificação em LOTE (o dono revisou/editou). Aplica as 4 nos produtos.
+router.post('/approve-bulk', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+    if (!items.length) return res.json({ ok: true, applied: 0, results: [] });
+    const results = [];
+    for (const it of items) {
+      try {
+        const p = await prisma.product.findUnique({ where: { id: it.id } });
+        if (!p) { results.push({ id: it.id, ok: false, err: 'não encontrado' }); continue; }
+        const cat = (it.category || '').trim(), sub = (it.subcategory || '').trim();
+        const mod = (it.modality || '').trim(), tier = (it.tier || '').trim();
+        if (!cat || !sub || !mod || !tier) { results.push({ id: it.id, ok: false, err: 'faltam campos' }); continue; }
+        let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch (_) {}
+        ctx.classification = { ...(ctx.classification || {}), modality: mod, tier,
+          type: cat === 'Calçados' ? 'Calçado' : (cat === 'Vestuário' ? 'Roupa' : (cat === 'INSUMO' ? 'Insumo' : 'Acessório')),
+          gender: sub, source: 'regra-aprovada', classifiedAt: new Date().toISOString() };
+        const plan = ctx.catalogPlan || {};
+        if (plan.classification) { plan.classification.classified = true; }
+        plan.status = 'classified'; ctx.catalogPlan = plan;
+        await prisma.product.update({ where: { id: p.id }, data: { category: cat, subcategory: sub, aiContext: ctx } });
+        results.push({ id: it.id, ok: true });
+      } catch (e) { results.push({ id: it.id, ok: false, err: e.message }); }
+    }
+    res.json({ ok: true, applied: results.filter((r) => r.ok).length, results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
 module.exports.catEngineRunHandler = catEngineRunHandler;
