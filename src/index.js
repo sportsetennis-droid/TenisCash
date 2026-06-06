@@ -65,6 +65,7 @@ const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
 const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
+const { startCatalogEngineCron } = require('./services/catalogEngineCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -954,6 +955,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
   if (process.env.FAL_KEY) {
     try { startMarketingCron(); } catch (e) { console.error('[marketingCron] falha ao iniciar:', e.message); }
+    try { startCatalogEngineCron(); } catch (e) { console.error('[catalogEngineCron] falha ao iniciar:', e.message); }
   } else {
     console.log('[marketingCron] desativado — FAL_KEY não configurada');
   }

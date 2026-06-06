@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motor de Catálogo</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f2f2f7;color:#1d1d1f}
+  .wrap{max-width:1100px;margin:0 auto;padding:18px}
+  h1{font-size:22px;margin:4px 0}
+  .sub{color:#6e6e73;font-size:13px;margin-bottom:14px}
+  .funnel{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  .kpi{background:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);min-width:120px}
+  .kpi .n{font-size:22px;font-weight:800}
+  .kpi .l{font-size:11px;color:#8e8e93;text-transform:uppercase;letter-spacing:.5px}
+  .bar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  button{padding:9px 14px;border:none;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer}
+  .btn-run{background:#0a843d;color:#fff}
+  .btn-g{background:#fff;border:1px solid #d1d1d6;color:#1d1d1f}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
+  th,td{padding:9px 10px;text-align:left;font-size:13px;border-bottom:1px solid #f0f0f0}
+  th{font-size:11px;text-transform:uppercase;color:#8e8e93;background:#fafafa}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .pill.r{background:#e3f7e9;color:#0a843d}.pill.n{background:#f2f2f7;color:#8e8e93}
+  .score{font-weight:800}
+  .acts{font-size:11px;color:#6e6e73}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:20px}
+  .row{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #f5f5f7}
+  .lbl{color:#8e8e93}
+  label.ck{display:flex;align-items:center;gap:8px;font-size:14px;margin:10px 0}
+  input[type=number]{padding:8px;border:1px solid #d1d1d6;border-radius:8px;width:120px}
+  a.imglnk{color:#0066cc;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧠 Motor de Catálogo</h1>
+  <div class="sub">Agentes revisam imagem, estoque, referência, preço e classificação → plano por produto. Você aprova, ele executa.</div>
+  <div class="funnel" id="funnel">Carregando…</div>
+  <div class="bar">
+    <button class="btn-run" onclick="runBatch()">▶ Rodar lote (analisar produtos)</button>
+    <button class="btn-g" onclick="load(true)">Só prontos</button>
+    <button class="btn-g" onclick="load(false)">Todos analisados</button>
+    <span id="runmsg" style="font-size:12px;color:#6e6e73"></span>
+  </div>
+  <div id="list">—</div>
+</div>
+
+<div class="modal-bg" id="mbg" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" id="mbox"></div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token') || '';
+async function api(path, opts={}) {
+  const r = await fetch('/api/admin/catalog-engine' + path, { ...opts, headers:{ 'Authorization':'Bearer '+TOKEN, 'Content-Type':'application/json', ...(opts.headers||{}) } });
+  const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+let _onlyReady=false;
+async function loadFunnel(){
+  try{ const d=await api('/summary'); const f=d.funnel||{};
+    document.getElementById('funnel').innerHTML=[
+      ['Ativos',f.total],['Classificados',f.classificado],['Com imagem',f.com_imagem],
+      ['Estoque OK',f.estoque_ok],['PRONTOS',f.pronto],['Analisados',f.com_plano]
+    ].map(([l,n])=>`<div class="kpi"><div class="n">${n??'—'}</div><div class="l">${l}</div></div>`).join('');
+  }catch(e){ document.getElementById('funnel').innerHTML='<span style="color:#d70015">Erro: '+esc(e.message)+' — logue no /admin.html antes.</span>'; }
+}
+async function load(onlyReady){
+  if(typeof onlyReady==='boolean')_onlyReady=onlyReady;
+  const el=document.getElementById('list'); el.innerHTML='Carregando…';
+  try{
+    const d=await api('/plans'+(_onlyReady?'?ready=1':''));
+    if(!d.plans||!d.plans.length){ el.innerHTML='<div class="kpi">Nenhum plano ainda. Clique "Rodar lote".</div>'; return; }
+    el.innerHTML='<table><thead><tr><th>Produto</th><th>Marca</th><th>Score</th><th>Pronto</th><th>Ações sugeridas</th><th></th></tr></thead><tbody>'+
+      d.plans.map(p=>`<tr>
+        <td>${esc((p.name||'').slice(0,46))}</td>
+        <td>${esc(p.brand||'')}</td>
+        <td class="score">${p.score??'—'}</td>
+        <td>${p.ready==='true'?'<span class="pill r">PRONTO</span>':'<span class="pill n">—</span>'}</td>
+        <td class="acts">${(p.actions||[]).slice(0,3).map(esc).join(' · ')}</td>
+        <td><button class="btn-g" onclick="openPlan('${p.id}')">Ver</button></td>
+      </tr>`).join('')+'</tbody></table>';
+  }catch(e){ el.innerHTML='<span style="color:#d70015">Erro: '+esc(e.message)+'</span>'; }
+}
+async function runBatch(){
+  const m=document.getElementById('runmsg'); m.textContent='Rodando agentes… (pode levar 1-2 min)';
+  try{ const d=await api('/run',{method:'POST',body:JSON.stringify({limit:10,mode:'quase'})}); m.textContent='✅ '+d.processed+' analisados · '+d.ready+' prontos'; loadFunnel(); load(); }
+  catch(e){ m.textContent='Erro: '+e.message; }
+}
+async function openPlan(id){
+  const box=document.getElementById('mbox'); box.innerHTML='Carregando…'; document.getElementById('mbg').style.display='flex';
+  try{
+    const d=await api('/plan/'+id); const pl=d.plan||{};
+    const im=pl.image||{}, st=pl.stock||{}, mk=pl.market||{}, cl=pl.classification||{};
+    box.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:start"><h3 style="margin:0">${esc((d.name||'').slice(0,50))}</h3><button class="btn-g" onclick="document.getElementById('mbg').style.display='none'">×</button></div>
+      <div style="color:#8e8e93;font-size:12px;margin-bottom:8px">${esc(d.brand||'')} · R$ ${d.price||'—'} · score ${pl.score||0} ${pl.ready?'· <span class="pill r">PRONTO</span>':''}</div>
+      <div class="row"><span class="lbl">🖼️ Imagem</span><span>${im.hasImage?(im.nImages+' fotos'):'SEM imagem'} ${im.validated?('· Vision '+im.visionScore+(im.correct?' ✅':' ⚠️ pode estar errada')):''}</span></div>
+      ${im.reason?`<div style="font-size:11px;color:#8e8e93;margin:-4px 0 6px">${esc(im.reason)}</div>`:''}
+      <div class="row"><span class="lbl">📦 Estoque</span><span>comprado ${st.comprado??'—'} · localizado ${st.localizado??'—'} (${st.pct??0}%) ${st.gate?'✅':'⚠️ falta bipar'}</span></div>
+      <div class="row"><span class="lbl">🔗 Referência</span><span>${pl.ref&&pl.ref.suggestMerge?('juntar '+pl.ref.siblingCount+' card(s)'):'—'}</span></div>
+      <div class="row"><span class="lbl">💰 Mercado</span><span>${mk.marketLow?('R$'+mk.marketLow+'–'+mk.marketHigh+(mk.suggestedPrice?' · sugerido R$'+mk.suggestedPrice:'')):'—'}</span></div>
+      ${mk.note?`<div style="font-size:11px;color:#8e8e93;margin:-4px 0 6px">${esc(mk.note)}</div>`:''}
+      <div class="row"><span class="lbl">🏷️ Classificação</span><span>${cl.classified?'já classificado':(cl.suggestion?`sugerido: ${esc(cl.suggestion.category)}/${esc(cl.suggestion.subcategory)}/${esc(cl.suggestion.modality)}/${esc(cl.suggestion.tier)}`:'falta')}</span></div>
+      <hr style="border:none;border-top:1px solid #eee;margin:14px 0">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px">Aprovar e executar:</div>
+      ${cl.suggestion?`<label class="ck"><input type="checkbox" id="ap-class"> Aplicar a classificação sugerida</label>`:''}
+      <label class="ck">Preço (R$): <input type="number" id="ap-price" step="0.01" placeholder="${mk.suggestedPrice||d.price||''}"></label>
+      <label class="ck"><input type="checkbox" id="ap-pub" ${pl.ready?'checked':''}> Publicar no Nuvemshop ${pl.ready?'':'(só quando pronto)'}</label>
+      <button class="btn-run" style="width:100%;margin-top:10px" onclick="approve('${id}')">Executar</button>
+      <div id="ap-msg" style="font-size:12px;margin-top:8px"></div>`;
+  }catch(e){ box.innerHTML='Erro: '+esc(e.message); }
+}
+async function approve(id){
+  const msg=document.getElementById('ap-msg'); msg.textContent='Executando…';
+  const body={};
+  if(document.getElementById('ap-class')?.checked) body.applyClassification=true;
+  const pr=parseFloat(document.getElementById('ap-price')?.value); if(pr>0) body.price=pr;
+  if(document.getElementById('ap-pub')?.checked) body.publish=true;
+  try{ const d=await api('/approve/'+id,{method:'POST',body:JSON.stringify(body)});
+    msg.style.color='#0a843d'; msg.textContent='✅ '+(d.done||[]).join(' · ')+(d.published&&!d.published.ok?(' | publicar: '+(d.published.error||'falhou')):'');
+    loadFunnel(); load();
+  }catch(e){ msg.style.color='#d70015'; msg.textContent='Erro: '+e.message; }
+}
+if(!TOKEN) document.getElementById('list').innerHTML='<div class="kpi">Faça login no /admin.html (mesmo navegador) e recarregue.</div>';
+loadFunnel(); load(false);
+</script>
+</body>
+</html>
