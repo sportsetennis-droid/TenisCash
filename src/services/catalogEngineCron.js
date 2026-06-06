@@ -7,21 +7,20 @@ const TZ = 'America/Fortaleza';
 
 function startCatalogEngineCron() {
   const engine = require('./catalogEngine');
-  // :15 de cada hora — lote de produtos perto de prontos (tem imagem).
-  cron.schedule('15 * * * *', async () => {
+  let busy = false;
+  // A cada 10 min: grinda o catálogo (server-side = sem limite de timeout do Cloudflare).
+  // Prioriza quem tem imagem (mais perto de pronto); quando esgota, vai pros sem-imagem.
+  cron.schedule('*/10 * * * *', async () => {
+    if (busy) return; // não empilha se um lote ainda está rodando
+    busy = true;
     try {
-      const out = await engine.runBatch({ limit: 12, mode: 'quase' });
-      console.log('[catalogEngineCron] lote:', out.processed, 'analisados ·', out.ready, 'prontos');
+      let out = await engine.runBatch({ limit: 20, mode: 'quase' });
+      if ((out.processed || 0) === 0) out = await engine.runBatch({ limit: 15, mode: 'sem-imagem' });
+      console.log('[catalogEngineCron] +' + out.processed + ' analisados · ' + out.ready + ' prontos');
     } catch (e) { console.error('[catalogEngineCron] erro:', e.message); }
+    finally { busy = false; }
   }, { timezone: TZ });
-  // :45 — lote dos sem imagem (pra ir buscando/flagando foto).
-  cron.schedule('45 * * * *', async () => {
-    try {
-      const out = await engine.runBatch({ limit: 8, mode: 'sem-imagem' });
-      console.log('[catalogEngineCron] lote sem-imagem:', out.processed, 'analisados');
-    } catch (e) { console.error('[catalogEngineCron] erro:', e.message); }
-  }, { timezone: TZ });
-  console.log('[catalogEngineCron] agendado (de hora em hora — :15 e :45, ' + TZ + ')');
+  console.log('[catalogEngineCron] agendado (a cada 10 min, ' + TZ + ') — grind autônomo do catálogo');
 }
 
 module.exports = { startCatalogEngineCron };
