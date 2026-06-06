@@ -31,17 +31,28 @@ const M = {
   '100210034WROYAZ': { model: 'Royal Ultra Flash', color: 'Azul', gen: 'Mulher', mod: 'LifeStyle', tier: 'casual' },
   '100205021WZIGPT': { model: 'Zig Dynamica 5', color: 'Preto', gen: 'Mulher', mod: 'Corrida', tier: 'velocidade' },
   '100205015MZIGBC': { model: 'Zig Dynamica 5', color: 'Branco', gen: 'Homem', mod: 'Corrida', tier: 'velocidade' },
+  // +10 colorways adicionais (2ª rodada, cor decodificada na web)
+  '100209118MBB4AZ': { model: 'BB 4500 DMX', color: 'Azul', gen: 'Homem', mod: 'LifeStyle', tier: 'casual' },
+  '100209119MBB4PT': { model: 'BB 4500 DMX', color: 'Preto', gen: 'Homem', mod: 'LifeStyle', tier: 'casual' },
+  '100000317UCLCOF': { model: 'Club C 85 Vintage', color: 'Chalk/Glen Green', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  '100244428UNANLA': { model: 'Nano X5 Edge', color: 'Flash Orange/Branco/Preto', gen: 'Unissex', mod: 'Musculação / CrossFit / Hyrox', tier: 'Profissional' },
+  '100227994UPRSBC': { model: 'Prime Set', color: 'Branco/Vermelho', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  '100227995UPRSBC': { model: 'Prime Set', color: 'Branco/Vermelho', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  'UCNV001BRLPT': { model: 'Streetride', color: 'Preto', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  'UCNV003BRLMR': { model: 'Streetride', color: 'Marrom', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  'UCNV004BRLCZ': { model: 'Streetride', color: 'Cinza', gen: 'Unissex', mod: 'LifeStyle', tier: 'casual' },
+  'UCHI002BRLBC': { model: 'Reebok Slide', color: 'Branco', gen: 'Unissex', mod: 'Sandália', tier: 'Básica' },
 };
 
 (async () => {
   const lines = await prisma.$queryRawUnsafe(`
     SELECT xi.ean, xi."supplierCode" sc, sum(xi.quantity)::int qty
     FROM "XmlFiscalItem" xi JOIN "XmlFiscalDocument" xd ON xd.id=xi."fiscalDocumentId"
-    WHERE xd."docType"='entrada' AND xi.ean IS NOT NULL AND xi."supplierCode" ~ '^100[0-9]{6}[MW]'
+    WHERE xd."docType"='entrada' AND xi.ean IS NOT NULL AND xi."supplierCode" ~ '^(100[0-9]{6}|UCNV|UCHI)'
     GROUP BY xi.ean, xi."supplierCode"`);
   const byRef = {};
   for (const l of lines) {
-    const ref = l.sc.replace(/[0-9]{2}$/, '');
+    const ref = l.sc.replace(/[0-9]{2}(\.5)?$/, '');
     if (!M[ref]) continue;
     const size = l.sc.slice(ref.length);
     (byRef[ref] = byRef[ref] || []).push({ ean: l.ean, size, qty: l.qty });
