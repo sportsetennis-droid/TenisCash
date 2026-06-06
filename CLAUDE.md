@@ -522,3 +522,27 @@ Bipe `StocktakeBipe.found=false` = barcode não casou com `ProductSize.barcode` 
 Reconciliar com `scripts/match-bipes-com-xml.js --apply`: cruza barcode↔ean, cria/vincula ProductSize (tamanho lido da descrição da NFe) **DENTRO do card existente** (nunca card novo) e marca `found=true`. **NÃO mexe em StoreStock** (localização fica pro "aplicar" do dono em bipes.html). Sempre rodar `scripts/_bipes_backup.js` antes.
 
 04/06/2026: importadas NFes de 2026 → cruzei os 7.012 bipes órfãos: 2.147 viraram found=true (740 ProductSize criados + 442 vinculados). 346 eram especificamente de 2026 (73 produtos). Origem da regra: dono perguntou "vc já conferiu se os bips nao achados podem ser destes?".
+
+## MÉTODO PERMANENTE — Limpeza/unificação de marca pelo CÓDIGO da NFe (o "modo de agir pra não errar")
+
+**Quando usar:** marca com cards fragmentados, cor errada/vazia, tamanhos faltando, ou cards que "nasceram do bipe" (só têm os tamanhos bipados). Aplicado: HOKA (06/06/2026: 30 cards bagunçados → 12 certos), Reebok (23 colorways limpos).
+
+**A FONTE DA VERDADE é a NFe de ENTRADA, NUNCA a foto/cor de revendedor.** O `XmlFiscalItem.supplierCode` (cProd) é o código de artigo = `ESTILO + (GÊNERO) + COR + TAMANHO`. Dele sai TUDO:
+- **Referência (1 card)** = supplierCode SEM os 2 dígitos finais (o tamanho). Cada código distinto = 1 colorway = 1 card.
+- **Tamanho real** = os 2 dígitos finais (calçado 33–48). Half size = `.5`.
+- **Gênero** = letra M/W no código OU nº do estilo (HOKA: Clifton 10 masc=1162030, fem=1162031; Reebok: `100xxxxxxx[M/W]`).
+- **Cor** = decodificar o código de cor na web (WebSearch/WebFetch = ferramenta MINHA = grátis pro dono). Ex HOKA CBLL=Cobalt Blue, PTYG=Putty/Grout; Reebok ROYCZ/ROYAZ etc → buscar "Reebok [modelo] [artigo]".
+
+**Passo a passo:** (1) diagnosticar a NFe entrada da marca, agrupar por (código−tamanho), ver fragmentação + tamanhos sem ProductSize. (2) decodificar cada cor na web pelo artigo. (3) montar mapa CÓDIGO→{modelo,cor,gênero,modalidade,tier}. (4) script de sync (modelo `sync-hoka-nfe.js`/`sync-reebok-nfe.js`): 1 card/código, tamanho real, cor+gênero+classificação, cria tamanhos faltando (comprado=qtd NFe), desativa cards antigos esvaziados — **backup antes, DRY-RUN antes de --apply**. (5) foto OFICIAL por código (WebFetch retailer com a URL do código exato; HOKA=runningxpert/beckshoes/animasportiva, Reebok=novelship — reebok.com bloqueia; artigo BR às vezes só na loja → equipe fotografa). **CONFERIR cada foto baixando + Read (eu OLHO).** Salvar base64 no banco.
+
+**AS 6 REGRAS ANTI-ERRO (cada uma = erro que cometi e o dono pegou):**
+1. ❌ **NUNCA unificar por FOTO.** Revendedor usa a mesma foto pra cores diferentes → junta colorways/gêneros errados (erro HOKA: Clifton 10 = 3 cores + 2 gêneros num card só). ✅ Unificar SÓ pelo código da NFe.
+2. ❌ **NUNCA chutar cor de foto de revendedor** (erro: Bondi 9 era Azul Cobalto, pus "Branco/Cinza"; Mach 7 era Frost claro, pus "Preto"). ✅ Cor sai do código, decodificada na web.
+3. ❌ **NUNCA assumir que o card tem todos os tamanhos.** Card nascido do bipe só tem os tamanhos bipados — os comprados-não-bipados somem. ✅ Sincronizar da NFe (`create-missing-nfe-sizes.js` recuperou 406 tam/790 un em 06/06).
+4. ❌ **Tamanho: não chutar do código se não for plausível** (ia botar "90"/"88"). ✅ Só 33–48 ou P–GG; senão placeholder `T-<EAN>`, nunca número errado.
+5. ❌ **Bipe found=true NÃO conta se applied=false** (não entra no StoreStock). ✅ Aplicar (`apply-found-bipes.js`: 2.910 bipes/507 produtos em 06/06). Mexe SÓ no localizado, nunca no comprado.
+6. ❌ **NÃO fazer metade nem hedge** (dono: "eu nao entendo pq vc cogita fazer metade"). ✅ Terminar a marca INTEIRA. Se um pedaço estiver REALMENTE travado (foto de artigo BR sem fonte web), rotear certo (equipe na conferência / curador pago) — explicar, não "pular".
+
+**Disciplina sempre:** backup antes de escrever · dry-run antes de --apply · transação por item · CONFERIR olhando · respeitar regras inquebráveis (comprado=NFe e NUNCA recalc do StoreStock; transferência NUNCA cria card).
+
+**Scripts reutilizáveis:** `sync-hoka-nfe.js` · `sync-reebok-nfe.js` (sync por código) · `rebuild-hoka.js` · `create-missing-nfe-sizes.js` (tamanhos faltando) · `apply-found-bipes.js` (aplica bipes reconhecidos) · `unify-by-reference.js` (unifica por REF:/cProd, catálogo todo).
