@@ -9766,7 +9766,7 @@ async function supplierShowNFes(id) {
 
         <div style="padding:14px 24px;background:#f5f5f7;border-bottom:1px solid #e5e5ea;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input id="sup-nfes-filter" type="text" placeholder="Filtrar nome / SKU / REF / marca..." value="${escapeHtml(filterText)}" style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
-          <span style="font-size:12px;color:#8e8e93;font-weight:600;">Selecionados: ${selected.size}</span>
+          <span id="sup-nfes-selcount" style="font-size:12px;color:#8e8e93;font-weight:600;">Selecionados: ${selected.size}</span>
           <select id="sup-nfes-bulk-brand" style="padding:8px 10px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;background:white;">
             <option value="">— escolha marca —</option>
             ${brandOpts}
@@ -9818,7 +9818,14 @@ async function supplierShowNFes(id) {
       cb.onclick = (e) => {
         if (e.target.checked) selected.add(cb.dataset.id);
         else selected.delete(cb.dataset.id);
-        render();
+        // Atualiza SÓ o necessário, sem re-render — o render() refazia o modal inteiro e
+        // resetava o scroll pro topo a cada clique (o bug do vídeo: a lista "pulava").
+        const tr = cb.closest('tr');
+        if (tr) tr.style.background = e.target.checked ? '#FFF7EB' : '';
+        const cnt = modal.querySelector('#sup-nfes-selcount');
+        if (cnt) cnt.textContent = 'Selecionados: ' + selected.size;
+        const all = modal.querySelector('#sup-nfes-check-all');
+        if (all) all.checked = filtered.length > 0 && filtered.slice(0, 800).every(p => selected.has(p.id));
       };
     });
     modal.querySelector('#sup-nfes-bulk-apply').onclick = async () => {
