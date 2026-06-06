@@ -504,7 +504,12 @@ A foto é **por CARD** (Product = referência + cor), nunca por tamanho. O curad
 
 **De onde vem a cor:**
 - **ADIDAS**: o código de **referência (REF) JÁ É o colorway**. Cada artigo (IE3100, JP9198, JC9555…) tem 1 página adidas com a cor exata. Buscar `marca + REF` na web → o título traz a cor (ex "DURAMO RC2 - Amarelo", "Samba ADV - Core Black/White/Gum"). Extrair daí.
-- **HOKA / REEBOK / sem REF no nome**: a cor NÃO sai do código → precisa de outra fonte (cProd/supplierCode da NFe, ou manual). NÃO inventar cor.
+- **HOKA / REEBOK / marcas sem REF no nome**: a cor sai do **`supplierCode` (cProd) da NFe**, que é o código de artigo `ESTILO+COR+TAMANHO` (ex HOKA `1162011CBLL44` = estilo 1162011 + cor CBLL + tam 44). MÉTODO VALIDADO (HOKA, 06/06/2026):
+  1. **Agrupar/unificar por ESTILO+COR** (cProd sem os 2 dígitos finais): `1162011CBLL` = 1 card. Cada cProd = 1 colorway = 1 card. NUNCA juntar por foto (revendedor usa a mesma foto pra cores diferentes → junta errado).
+  2. **Tamanho real** = 2 dígitos finais do cProd (39,40,41…). **Gênero** = pelo nº do estilo (ex Clifton 10 masc=1162030, fem=1162031; Mach 7 masc=1171904, fem=1171938).
+  3. **Cor**: decodificar o código na web (WebSearch, ferramenta minha = grátis): "HOKA [modelo] [cProd]" → ex CBLL=Cobalt Blue/Ultramarine, PTYG=Putty/Grout, FYZ=Frost/Neon Yuzu, SLSSN=Sea Glass/Neon Flame, WWH=White/White, STLC=Stardust/Electric Cobalt, FCT=Frost/Citrus, FNK=Frost/Pink Twilight, FSTS=Frost/Solar Flare, EQB=Electric Aqua/Black.
+  4. **Foto OFICIAL pelo cProd exato** (WebFetch numa loja com a URL do código exato: runningxpert/beckshoes/animasportiva deram URL direta). Conferir CADA foto **olhando** (download + Read) — fontes às vezes devolvem o colorway errado.
+  - **Erro 06/06/2026 (origem):** unifiquei HOKA por foto de revendedor → juntei cores+gêneros diferentes (Clifton 10 = 3 colorways num card só; Mach 7 = 2) e chutei cores erradas (Bondi 9 = Azul Cobalto, eu pus "Branco/Cinza"; Mach 7 = Frost claro, eu pus "Preto"). Dono: "vixe como ta errado". Refeito pelo cProd da NFe: 30 cards bagunçados → 11 corretos, foto oficial verificada. Scripts: `scripts/rebuild-hoka.js`.
 
 **Erro 04/06/2026 (origem):** puxei 161 fotos dos produtos de 2026 SEM cor (0/163 tinham cor). Cor errada (JP9198 Duramo era amarelo, peguei branco/preto; JC9555 era camiseta preta, peguei conjunto verde infantil). Dono: "a porra da cor vc ta levando em consideração?". Corrigido derivando cor do REF + Vision score>=8. Final: **100/163 com cor, 150/163 com foto cor-validada, 13 sem foto** (preferir sem foto a cor errada).
 
