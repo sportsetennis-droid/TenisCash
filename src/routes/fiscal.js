@@ -682,14 +682,14 @@ async function buildCupomThermalHtml(doc) {
 <style>
   @page { size: 80mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 80mm; background: #fff; }
-  body { padding: 2mm 2.5mm; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; line-height: 1.3; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html { width: 80mm; background: #fff; }
+  body { width: 72mm; background: #fff; padding: 2mm 3mm; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; line-height: 1.3; color: #000; overflow-wrap: anywhere; word-break: break-word; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .c { text-align: center; } .b { font-weight: 700; } .sm { font-size: 8.5px; } .lg { font-size: 13px; }
   hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
   .row { display: flex; justify-content: space-between; gap: 6px; }
   .it { margin: 2px 0; }
   .chave { word-break: break-all; font-size: 9.5px; letter-spacing: .3px; }
-  img.qr { width: 38mm; height: 38mm; display: block; margin: 5px auto; }
+  img.qr { width: 34mm; height: 34mm; display: block; margin: 5px auto; }
   .btn { display: block; width: 100%; padding: 12px; margin: 10px 0 4px; background: #0a843d; color: #fff; border: 0; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; }
   @media print { .btn { display: none !important; } }
 </style></head><body>
