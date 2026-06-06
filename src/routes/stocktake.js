@@ -50,6 +50,22 @@ function inferSizeFromDescription(description) {
   return 'Único';
 }
 
+// Variantes do código pra casar UPC-12 ↔ GTIN-13/14 (zero à esquerda).
+// A caixa traz UPC-12 (ex 195394510652); a NFe salva GTIN-13 (0195394510652).
+// O leitor lê 12 díg e não batia no banco. Aqui geramos as duas formas.
+function barcodeVariants(code) {
+  const c = String(code || '').trim();
+  if (!c) return [];
+  const out = new Set([c]);
+  if (/^\d+$/.test(c)) {
+    const noLead = c.replace(/^0+/, '');
+    if (noLead) out.add(noLead);
+    if (c.length <= 13) out.add(c.padStart(13, '0'));
+    if (c.length <= 14) out.add(c.padStart(14, '0'));
+  }
+  return [...out];
+}
+
 // ============== PÚBLICOS ==============
 
 // GET /api/stocktake/stores → lojas ativas (dropdown)
@@ -181,10 +197,11 @@ router.post('/bipe', async (req, res) => {
     // ========================================================================
     // PASSO 2: lookups enriquecedores (rede de proteção: erros não derrubam o bipe)
     // ========================================================================
+    // Casa por barcode tolerando zero à esquerda (UPC-12 ↔ GTIN-13/14).
     let matched = [];
     try {
       matched = await prisma.productSize.findMany({
-        where: { barcode: code },
+        where: { barcode: { in: barcodeVariants(code) } },
         include: {
           product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } },
         },
@@ -193,26 +210,11 @@ router.post('/bipe', async (req, res) => {
       console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_productSize', error: e.message }));
     }
 
-    // Variante sem zeros à esquerda
-    if (matched.length === 0) {
-      try {
-        const stripped = code.replace(/^0+/, '');
-        if (stripped && stripped !== code) {
-          matched = await prisma.productSize.findMany({
-            where: { barcode: stripped },
-            include: { product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
-          });
-        }
-      } catch (e) {
-        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_stripped', error: e.message }));
-      }
-    }
-
     // FALLBACK NFe — regra CLAUDE.md ativa.
     if (matched.length === 0) {
       try {
         const nfeItem = await prisma.xmlFiscalItem.findFirst({
-          where: { ean: code, productId: { not: null } },
+          where: { ean: { in: barcodeVariants(code) }, productId: { not: null } },
           select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
           orderBy: { createdAt: 'desc' },
         });
@@ -323,7 +325,7 @@ router.get('/lookup/:barcode', async (req, res) => {
   try {
     const code = String(req.params.barcode || '').trim();
     if (!code) return res.status(400).json({ error: 'barcode vazio' });
-    const sizes = await prisma.productSize.findMany({ where: { barcode: code }, include: { product: { select: { id: true, name: true, brand: true, active: true } } }, take: 5 });
+    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, active: true } } }, take: 5 });
     const active = sizes.filter((s) => s.product && s.product.active);
     if (active.length) {
       const s = active[0];
@@ -372,7 +374,8 @@ router.get('/unrecognized', async (req, res) => {
         count(*)::int vezes,
         max(b."bipedAt") ultimo,
         array_agg(DISTINCT COALESCE(s.name,'(sem loja)')) lojas,
-        bool_or(EXISTS(SELECT 1 FROM "XmlFiscalItem" x WHERE x.ean=b.barcode)) em_nfe,
+        bool_or(EXISTS(SELECT 1 FROM "XmlFiscalItem" x WHERE ltrim(x.ean,'0')=ltrim(b.barcode,'0'))) em_nfe,
+        bool_or(EXISTS(SELECT 1 FROM "ProductSize" z JOIN "Product" pr ON pr.id=z."productId" WHERE ltrim(z.barcode,'0')=ltrim(b.barcode,'0') AND pr.active)) tem_card,
         bool_or(EXISTS(SELECT 1 FROM "ProductCapture" c WHERE c.barcode=b.barcode)) tem_foto
       FROM "StocktakeBipe" b
       LEFT JOIN "Store" s ON s.id=b."storeId"
@@ -396,7 +399,7 @@ router.get('/captures', async (req, res) => {
     const out = [];
     for (const c of caps) {
       let emNfe = false;
-      if (c.barcode) { const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: c.barcode }, select: { id: true } }); emNfe = !!x; }
+      if (c.barcode) { const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: { in: barcodeVariants(c.barcode) } }, select: { id: true } }); emNfe = !!x; }
       out.push({ ...c, storeName: sm[c.storeId] || null, emNfe });
     }
     res.json({ total: caps.length, captures: out });
