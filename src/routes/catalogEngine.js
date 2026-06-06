@@ -130,7 +130,7 @@ router.get('/suggestions', async (req, res) => {
     const cat = (req.query.category || '').replace(/[^A-Za-zÀ-ÿ ]/g, '');
     const onlyImg = req.query.img === '1';
     let where = `pr.active=true
-      AND pr."aiContext"->'catalogPlan'->'classification'->'suggestion' IS NOT NULL
+      AND pr."aiContext"->'catalogPlan'->'classification'->'suggestion'->>'category' IS NOT NULL
       AND COALESCE(pr."aiContext"->'catalogPlan'->'classification'->>'classified','false')='false'
       AND (pr.category IS NULL OR pr.category='A CLASSIFICAR' OR pr.subcategory IS NULL OR pr."aiContext"->'classification'->>'modality' IS NULL OR pr."aiContext"->'classification'->>'tier' IS NULL)`;
     if (cat) where += ` AND pr."aiContext"->'catalogPlan'->'classification'->'suggestion'->>'category'='${cat}'`;
