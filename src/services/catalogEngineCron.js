@@ -6,6 +6,12 @@ const cron = require('node-cron');
 const TZ = 'America/Fortaleza';
 
 function startCatalogEngineCron() {
+  // DESLIGADO por padrão pra NÃO gastar API à toa. O dono liga só quando quiser,
+  // setando CATALOG_ENGINE_CRON=on no Railway. Sem isso, não roda e não gasta nada.
+  if (process.env.CATALOG_ENGINE_CRON !== 'on') {
+    console.log('[catalogEngineCron] DESLIGADO (sem CATALOG_ENGINE_CRON=on) — nao gasta API');
+    return;
+  }
   const engine = require('./catalogEngine');
   let busy = false;
   // A cada 10 min: grinda o catálogo (server-side = sem limite de timeout do Cloudflare).
