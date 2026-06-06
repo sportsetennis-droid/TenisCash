@@ -21,10 +21,15 @@ const prisma = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
 const ONLY = (process.argv.find(a => a.startsWith('--only=')) || '').split('=')[1] || null;
 
-function extractRef(desc) {
-  if (!desc) return null;
-  const m = String(desc).match(/REF:\s*([A-Za-z0-9.\-]+)/i);
-  return m ? m[1].toUpperCase() : null;
+// chave de agrupamento por REFERÊNCIA (= modelo+cor): prioridade
+//  1) "REF: XXX" explícito na descrição (imports 2026)
+//  2) código do fornecedor (cProd) escopado por CNPJ emissor, quando não é o próprio EAN
+function groupKey(desc, sc, cnpj, ean) {
+  const m = desc && String(desc).match(/REF:\s*([A-Za-z0-9.\-]+)/i);
+  if (m) return 'REF:' + m[1].toUpperCase();
+  const s = String(sc || '').trim();
+  if (s.length >= 3 && ean && s.indexOf(String(ean)) === -1 && String(ean).indexOf(s) === -1) return 'SC:' + (cnpj || '') + ':' + s;
+  return null;
 }
 const last4 = (ean) => String(ean || '').slice(-4);
 function isUnknownLabel(s) {
@@ -35,12 +40,12 @@ function isUnknownLabel(s) {
 
 async function buildPlan() {
   const items = await prisma.$queryRawUnsafe(`
-    SELECT xi.description, xi.ean, xi.quantity
+    SELECT xi.description, xi.ean, xi.quantity, xi."supplierCode" sc, xd."issuerCnpj" cnpj
     FROM "XmlFiscalItem" xi JOIN "XmlFiscalDocument" xd ON xd.id=xi."fiscalDocumentId"
-    WHERE xd."docType"='entrada' AND xi.ean IS NOT NULL AND xi.description LIKE '%REF:%'`);
+    WHERE xd."docType"='entrada' AND xi.ean IS NOT NULL`);
   const refs = new Map();
   for (const it of items) {
-    const ref = extractRef(it.description);
+    const ref = groupKey(it.description, it.sc, it.cnpj, it.ean);
     if (!ref) continue;
     if (!refs.has(ref)) refs.set(ref, { eans: new Set(), qty: {} });
     const r = refs.get(ref);
@@ -88,15 +93,22 @@ async function applyRef(ref, r) {
      FROM "ProductSize" pz JOIN "Product" pr ON pr.id=pz."productId" WHERE pz.barcode = ANY($1::text[])`, eans);
   const prodIds = new Set(involved.filter(s => s.active).map(s => s.productId));
   if (prodIds.size === 0) return { ref, skipped: 'sem card' };
+  // TRAVA: não funde se o grupo mistura marcas diferentes (sinal de agrupamento errado)
+  const brands = new Set(involved.filter(s => s.active && s.brand && String(s.brand).toUpperCase() !== 'A DEFINIR').map(s => String(s.brand).toUpperCase()));
+  if (brands.size > 1) return { ref, skipped: 'multi-marca:' + [...brands].join('/') };
   const canon = pickCanonical(prodIds, involved);
   const otherProds = [...prodIds].filter(id => id !== canon.id);
 
   await prisma.$transaction(async (tx) => {
-    const usedLabels = new Set(involved.filter(s => s.productId === canon.id).map(s => s.size));
+    // usedLabels = TODOS os tamanhos ATUAIS do canônico (não só os dessa ref) — evita colisão
+    const canonSizes = await tx.productSize.findMany({ where: { productId: canon.id }, select: { size: true } });
+    const usedLabels = new Set(canonSizes.map(s => s.size));
     const uniqLabel = (preferred, ean) => {
       let l = (preferred && !isUnknownLabel(preferred)) ? preferred : ('T-' + last4(ean));
       if (usedLabels.has(l)) l = 'T-' + last4(ean);
-      while (usedLabels.has(l)) l = 'T-' + String(ean).slice(-6) + '-' + (usedLabels.size);
+      if (usedLabels.has(l)) l = 'T-' + String(ean).slice(-6);
+      if (usedLabels.has(l)) l = 'T-' + String(ean); // EAN inteiro = garante único
+      while (usedLabels.has(l)) l = 'T-' + String(ean) + '-' + (usedLabels.size);
       usedLabels.add(l);
       return l;
     };
@@ -133,7 +145,7 @@ async function applyRef(ref, r) {
       const left = await tx.productSize.count({ where: { productId: pid } });
       if (left === 0) await tx.product.update({ where: { id: pid }, data: { active: false } });
     }
-  }, { timeout: 30000 });
+  }, { timeout: 60000, maxWait: 20000 });
 
   return { ref, canonical: canon.id, fundidos: otherProds.length, tamanhos: eans.length };
 }
@@ -144,16 +156,21 @@ async function applyRef(ref, r) {
   const sizesAll = await loadSizesFor(allEans);
 
   if (!APPLY) {
-    let cardsBefore = 0, deact = 0, newSizes = 0;
+    let cardsBefore = 0, deact = 0, newSizes = 0, withCard = 0, skBrand = 0, noCard = 0;
     for (const [, r] of multi) {
       const eans = [...r.eans];
       const inv = sizesAll.filter(s => eans.includes(s.barcode) && s.active);
       const pids = new Set(inv.map(s => s.productId));
-      cardsBefore += pids.size; if (pids.size) deact += pids.size - 1;
+      if (pids.size === 0) { noCard++; continue; }
+      const brands = new Set(inv.filter(s => s.brand && String(s.brand).toUpperCase() !== 'A DEFINIR').map(s => String(s.brand).toUpperCase()));
+      if (brands.size > 1) { skBrand++; continue; }
+      withCard++;
+      cardsBefore += pids.size; deact += pids.size - 1;
       newSizes += eans.filter(e => !inv.some(s => s.barcode === e)).length;
     }
-    console.log(`DRY-RUN — refs:${multi.length} cardsAntes:${cardsBefore} desativar:${deact} tamanhosCriar:${newSizes}`);
-    console.log('rode com --apply (ou --apply --only=IF1404 pra testar 1).');
+    console.log(`DRY-RUN — grupos:${multi.length} comCard:${withCard} semCard:${noCard} multimarcaPulados:${skBrand}`);
+    console.log(`  cardsAntes:${cardsBefore} → cardsDepois:${withCard} · desativar:${deact} · tamanhosCriar:${newSizes}`);
+    console.log('rode com --apply pra executar (faz backup antes).');
     await prisma.$disconnect(); return;
   }
 
