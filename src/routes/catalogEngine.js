@@ -171,8 +171,10 @@ router.post('/approve-bulk', async (req, res) => {
         plan.status = 'classified'; ctx.catalogPlan = plan;
         await prisma.product.update({ where: { id: p.id }, data: { category: cat, subcategory: sub, aiContext: ctx } });
 
+        const iq = (ctx.catalogPlan && ctx.catalogPlan.imageQuality) || {};
+        const badImg = ['quebrada', 'pessima', 'desconhecida'].includes(iq.flag); // não publica foto ruim
         let pub = null;
-        if (doPublish && cat !== 'INSUMO' && pubCap > 0 && p.imageUrl) {
+        if (doPublish && cat !== 'INSUMO' && pubCap > 0 && p.imageUrl && !badImg) {
           try {
             const sizes = await prisma.productSize.findMany({ where: { productId: p.id }, select: { id: true, stock: true } });
             const comprado = sizes.reduce((s, x) => s + (x.stock || 0), 0);
