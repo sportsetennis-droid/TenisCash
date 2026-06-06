@@ -11,8 +11,10 @@ const { prisma } = require('../middleware');
 const serperWeb = require('./serperWebSearch');
 const vision = require('./visionValidator');
 const { callAI } = require('../ai/ai-client');
+const { classifyByRules } = require('./catalogRules');
 
 const ENGINE_V = 2;
+// Por padrão o motor roda GRÁTIS (sem Vision/Serper/Claude). IA só se opts.useVision/useMarket.
 
 function parseCtx(p) {
   try { return p.aiContext ? (typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext) : {}; }
@@ -43,10 +45,10 @@ async function stockAgent(productId) {
 }
 
 // ---- Agente IMAGEM: tem foto? bate com o produto? >=6 fotos? ----
-async function imageAgent(p, ctx) {
+async function imageAgent(p, ctx, useVision = false) {
   const nImages = nImagesOf(p);
   const out = { hasImage: !!p.imageUrl, nImages, need6: nImages < 6, validated: false, visionScore: null, correct: null, reason: null };
-  if (p.imageUrl && vision.isConfigured()) {
+  if (useVision && p.imageUrl && vision.isConfigured()) {
     try {
       const r = await vision.scoreImageMatch(p.imageUrl, { name: p.name, brand: p.brand, color: ctx.color, category: p.category });
       if (r && r.ok) { out.validated = true; out.visionScore = r.score; out.correct = r.score >= 7 && r.isCorrectProduct; out.reason = r.reason; }
@@ -70,9 +72,11 @@ async function refAgent(p, ctx) {
 }
 
 // ---- Agente MERCADO/PREÇO: pesquisa quanto vende + estratégia ----
-async function marketAgent(p) {
-  const out = { searched: false, sources: [], marketLow: null, marketHigh: null, ourPrice: p.price || null, suggestedPrice: null, note: null };
-  if (!serperWeb.isConfigured()) return out;
+async function marketAgent(p, useMarket = false) {
+  const cost = p.costPrice || null; const ourPrice = p.price || null;
+  const marginPct = (ourPrice && cost) ? Math.round(((ourPrice - cost) / ourPrice) * 100) : null;
+  const out = { searched: false, sources: [], marketLow: null, marketHigh: null, ourPrice, costPrice: cost, marginPct, suggestedPrice: null, note: marginPct != null ? ('margem ' + marginPct + '%') : null };
+  if (!useMarket || !serperWeb.isConfigured()) return out; // grátis: só margem do custo da NFe
   const q = [p.brand, (p.name || '').replace(/^REF:\s*[A-Z0-9]+\s*-\s*/i, '').slice(0, 50), 'preço'].filter(Boolean).join(' ');
   let results = [];
   try { const w = await serperWeb.searchWeb(q, { count: 6 }); if (w.ok) results = w.results || []; out.searched = true; } catch (_) {}
@@ -95,32 +99,12 @@ const CAT = ['Calçados', 'Vestuário', 'Acessórios'];
 const GEN = ['Homem', 'Mulher', 'Menino', 'Menina', 'Unissex'];
 async function classifyAgent(p, ctx, alreadyClassified) {
   if (alreadyClassified) return { needed: false, suggestion: null };
-  if (!callAI) return { needed: true, suggestion: null };
-  try {
-    const r = await callAI({
-      systemPrompt: `Classifique o produto esportivo. Retorne SÓ JSON {"category","subcategory","modality","tier"}.
-- category: ${CAT.join('|')} (bola/meia/mochila/boné=Acessórios; roupa=Vestuário; tênis/chuteira=Calçados).
-- subcategory(gênero): ${GEN.join('|')}.
-- modality: o que é (Corrida|Caminhada|Musculação/CrossFit|LifeStyle|Futsal|Society|Campo|Camiseta|Short|Legging|Bola|etc).
-- tier: nível (confortável|velocidade|custo benefício|pro|DryFit|Básica|Profissional|etc). Se incerto: "Básica".`,
-      userPrompt: `Nome: ${p.name}\nMarca: ${p.brand || ''}\nRetorne só o JSON.`,
-      jsonMode: true, maxTokens: 150,
-    });
-    if (r && r.ok && r.json) {
-      const j = r.json;
-      return { needed: true, suggestion: {
-        category: CAT.includes(j.category) ? j.category : 'Acessórios',
-        subcategory: GEN.includes(j.subcategory) ? j.subcategory : 'Unissex',
-        modality: (j.modality && String(j.modality).trim()) || 'Outro',
-        tier: (j.tier && String(j.tier).trim()) || 'Básica',
-      } };
-    }
-  } catch (_) {}
-  return { needed: true, suggestion: null };
+  const c = classifyByRules(p); // REGRAS — zero IA, zero custo
+  return { needed: true, suggestion: c.suggestion, source: 'rules', confidence: c.confidence, reason: c.reason };
 }
 
 // ---- ORQUESTRADOR: roda os 5 agentes e monta o plano de 1 produto ----
-async function analyzeProduct(productId) {
+async function analyzeProduct(productId, opts = {}) {
   const p = await prisma.product.findUnique({ where: { id: productId } });
   if (!p) throw new Error('produto não encontrado');
   const ctx = parseCtx(p);
@@ -128,9 +112,9 @@ async function analyzeProduct(productId) {
 
   const [stock, image, ref, market, classif] = await Promise.all([
     stockAgent(p.id),
-    imageAgent(p, ctx),
+    imageAgent(p, ctx, opts.useVision),
     refAgent(p, ctx),
-    marketAgent(p),
+    marketAgent(p, opts.useMarket),
     classifyAgent(p, ctx, classified),
   ]);
 
@@ -156,7 +140,7 @@ async function analyzeProduct(productId) {
     v: ENGINE_V, at: new Date().toISOString(),
     score: Math.min(100, score), ready,
     image, stock, ref, market,
-    classification: { classified, suggestion: classif.suggestion },
+    classification: { classified, suggestion: classif.suggestion, suggestionSource: classif.source || 'rules', confidence: classif.confidence },
     actions,
     status: 'draft',
   };
