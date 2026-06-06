@@ -539,11 +539,8 @@
     if (colorTag) html += `<span title="Cor do modelo" style="background:#fff;color:#1d1d1f;padding:1px 6px;border-radius:4px;font-weight:700;border:1px solid #e5e5ea;">🎨 ${esc(colorTag)}</span>`;
     html += '</div>';
 
-    // SLOT de variantes de cor — carregado lazy via PCard.loadColorVariants
-    // Só faz sentido se o produto tem modelGroup definido (Converse + outras marcas com padrão identificado)
-    if (ctx.modelGroup) {
-      html += `<div class="pcard-colorvar-slot" data-pid="${p.id}" data-modelgroup="${esc(ctx.modelGroup)}"></div>`;
-    }
+    // Variantes de cor por MODELO (modelGroup) REMOVIDAS — o dono pediu unificação
+    // SÓ por REFERÊNCIA. Cada ref é seu próprio card; sem fileira "outras cores desse modelo".
 
     // Botão specs
     if (actions === 'admin' && p.longDescription) {

@@ -9001,27 +9001,8 @@ async function loadCurationProducts(opts) {
     list = list.filter(p => ls.has(p.id));
   }
 
-  // Dedupe por modelGroup (mesma lógica do Estoque) — 1 card por modelo
-  const groupsByModel = {};
-  const ungrouped = [];
-  for (const p of list) {
-    let mg = null;
-    try { const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); mg = ctx.modelGroup; } catch {}
-    if (!mg) { ungrouped.push(p); continue; }
-    const key = (p.brand || '') + '||' + mg;
-    if (!groupsByModel[key]) groupsByModel[key] = [];
-    groupsByModel[key].push(p);
-  }
-  const reps = Object.values(groupsByModel).map(arr => {
-    const sorted = [...arr].sort((a, b) => {
-      const aHasImg = a.imageUrl ? 1 : 0;
-      const bHasImg = b.imageUrl ? 1 : 0;
-      if (bHasImg !== aHasImg) return bHasImg - aHasImg;
-      return (b.sizes || []).length - (a.sizes || []).length;
-    });
-    return sorted[0];
-  });
-  list = [...reps, ...ungrouped];
+  // SEM agrupamento por modelo (modelGroup) — cada REFERÊNCIA é seu próprio card.
+  // Unificação é só por referência; os tamanhos já ficam dentro do card.
 
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
   if (!window.PCard) { wrap.innerHTML = '<div class="muted">PCard não carregado</div>'; return; }
@@ -11289,38 +11270,8 @@ async function loadInvProducts(opts) {
     list = list.filter(p => ls.has(p.id));
   }
 
-  // DEDUPE POR MODELO: agrupa Products com mesmo (brand + modelGroup) e mostra
-  // só 1 card representativo por modelo. As outras cores aparecem como
-  // miniaturas DENTRO do card (via pcard-colorvar-slot). Produtos sem
-  // modelGroup ficam como estão (1 card cada).
-  // Pra escolher qual variante é a "representativa" de um modelo: prioriza
-  // a que tem imageUrl preenchida + maior estoque/sizes, senão a 1ª.
-  const groupsByModel = {};
-  const ungrouped = [];
-  for (const p of list) {
-    let mg = null;
-    try {
-      const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
-      mg = ctx.modelGroup;
-    } catch {}
-    if (!mg) { ungrouped.push(p); continue; }
-    const key = (p.brand || '') + '||' + mg;
-    if (!groupsByModel[key]) groupsByModel[key] = [];
-    groupsByModel[key].push(p);
-  }
-  // Pra cada grupo, escolhe representante (com foto + mais sizes)
-  const representatives = Object.values(groupsByModel).map(arr => {
-    const sorted = [...arr].sort((a, b) => {
-      const aHasImg = a.imageUrl ? 1 : 0;
-      const bHasImg = b.imageUrl ? 1 : 0;
-      if (bHasImg !== aHasImg) return bHasImg - aHasImg;
-      const aSizes = (a.sizes || []).length;
-      const bSizes = (b.sizes || []).length;
-      return bSizes - aSizes;
-    });
-    return sorted[0];
-  });
-  list = [...representatives, ...ungrouped];
+  // SEM agrupamento por modelo (modelGroup) — cada REFERÊNCIA é seu próprio card.
+  // Unificação é só por referência; os tamanhos já ficam dentro do card.
 
   if (!list.length) { wrap.innerHTML = '<div class="muted" style="text-align:center;padding:40px;">Nenhum produto.</div>'; return; }
 

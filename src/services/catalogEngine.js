@@ -59,16 +59,10 @@ async function imageAgent(p, ctx, useVision = false) {
 }
 
 // ---- Agente REFERÊNCIA: cards do mesmo modelo separados (pra juntar) ----
-async function refAgent(p, ctx) {
-  const group = ctx.modelGroup || null;
-  let siblings = [];
-  if (group) {
-    siblings = await prisma.product.findMany({
-      where: { id: { not: p.id }, active: true, aiContext: { path: ['modelGroup'], equals: group } },
-      select: { id: true, name: true }, take: 12,
-    }).catch(() => []);
-  }
-  return { modelGroup: group, siblingCount: siblings.length, siblings: siblings.slice(0, 12).map((s) => ({ id: s.id, name: s.name })), suggestMerge: siblings.length > 0 };
+async function refAgent(_p, _ctx) {
+  // Agrupamento por MODELO desativado (dono: unificação só por REFERÊNCIA, 1 ref = 1 card).
+  // Não sugere mais "juntar cards do mesmo modelo".
+  return { modelGroup: null, siblingCount: 0, siblings: [], suggestMerge: false };
 }
 
 // ---- Agente MERCADO/PREÇO: pesquisa quanto vende + estratégia ----
