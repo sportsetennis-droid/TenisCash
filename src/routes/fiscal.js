@@ -683,7 +683,7 @@ async function buildCupomThermalHtml(doc) {
   @page { size: 80mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { width: 80mm; background: #fff; }
-  body { width: 62mm; margin: 0 auto; background: #fff; padding: 1.5mm 2mm; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 9.5px; line-height: 1.3; color: #000; overflow-wrap: anywhere; word-break: break-word; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { width: 62mm; margin: 0 0 0 5mm; background: #fff; padding: 1.5mm 2mm; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 9.5px; line-height: 1.3; color: #000; overflow-wrap: anywhere; word-break: break-word; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .c { text-align: center; } .b { font-weight: 700; } .sm { font-size: 8.5px; } .lg { font-size: 13px; }
   hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
   .row { display: flex; justify-content: space-between; gap: 6px; }
