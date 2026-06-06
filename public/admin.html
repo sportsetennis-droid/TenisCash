@@ -1206,6 +1206,21 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <option value="never">🚫 Nunca bipados</option>
       </select>
     </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">% localizado</label>
+      <select id="cur-locpct" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Todos</option>
+        <option value="100">📍 100% (tudo achado)</option>
+        <option value="90">📍 ≥ 90%</option>
+        <option value="80">📍 ≥ 80%</option>
+        <option value="70">📍 ≥ 70%</option>
+        <option value="50">📍 ≥ 50%</option>
+        <option value="30">📍 ≥ 30%</option>
+        <option value="10">📍 ≥ 10%</option>
+        <option value="1">📍 ao menos 1 bipe</option>
+        <option value="101">⚠ &gt; 100% (erro contagem)</option>
+      </select>
+    </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cur-f-search" class="form-input" placeholder="nome / SKU / REF / marca / modalidade" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -1480,6 +1495,21 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <option value="never">🚫 Nunca foram bipados</option>
       </select>
     </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">% localizado</label>
+      <select id="cat-classify-locpct" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Todos</option>
+        <option value="100">📍 100% (tudo achado)</option>
+        <option value="90">📍 ≥ 90%</option>
+        <option value="80">📍 ≥ 80%</option>
+        <option value="70">📍 ≥ 70%</option>
+        <option value="50">📍 ≥ 50%</option>
+        <option value="30">📍 ≥ 30%</option>
+        <option value="10">📍 ≥ 10%</option>
+        <option value="1">📍 ao menos 1 bipe</option>
+        <option value="101">⚠ &gt; 100% (erro contagem)</option>
+      </select>
+    </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -1712,6 +1742,21 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           <option value="30">📍 Bipados últimos 30 dias</option>
           <option value="7">📍 Bipados últimos 7 dias</option>
           <option value="never">🚫 Nunca bipados</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">% localizado</label>
+        <select id="inv-locpct" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+          <option value="">Todos</option>
+          <option value="100">📍 100% (tudo achado)</option>
+          <option value="90">📍 ≥ 90%</option>
+          <option value="80">📍 ≥ 80%</option>
+          <option value="70">📍 ≥ 70%</option>
+          <option value="50">📍 ≥ 50%</option>
+          <option value="30">📍 ≥ 30%</option>
+          <option value="10">📍 ≥ 10%</option>
+          <option value="1">📍 ao menos 1 bipe</option>
+          <option value="101">⚠ &gt; 100% (erro contagem)</option>
         </select>
       </div>
       <div style="grid-column:span 2;">
@@ -8854,12 +8899,13 @@ async function initCurationTab() {
     document.getElementById('curation-refresh').onclick = loadCurationProducts;
     document.getElementById('cur-filter').onclick = loadCurationProducts;
     document.getElementById('cur-clear').onclick = () => {
-      ['cur-f-brand','cur-f-category','cur-f-supplier','cur-f-store','cur-f-subcategory','cur-f-modality','cur-f-tier','cur-lifecycle','cur-biped'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+      ['cur-f-brand','cur-f-category','cur-f-supplier','cur-f-store','cur-f-subcategory','cur-f-modality','cur-f-tier','cur-lifecycle','cur-biped','cur-locpct'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
       document.getElementById('cur-f-search').value = '';
       document.getElementById('cur-lowstock').checked = false;
       loadCurationProducts();
     };
     document.getElementById('cur-biped').addEventListener('change', loadCurationProducts);
+    document.getElementById('cur-locpct').addEventListener('change', loadCurationProducts);
     document.getElementById('cur-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadCurationProducts(); });
 
     // Popula filtros (marca, fornecedor, modalidade, especialidade) — mesma fonte do Estoque
@@ -8909,9 +8955,10 @@ async function loadCurationProducts(opts) {
   const lowStock = document.getElementById('cur-lowstock').checked;
   const biped = document.getElementById('cur-biped').value || '';
   const storeId = document.getElementById('cur-f-store')?.value || '';
+  const locpct = document.getElementById('cur-locpct')?.value || '';
 
   // GUARDA: precisa de pelo menos 1 filtro pra não travar com 7k+ cards
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId || locpct);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -8946,6 +8993,12 @@ async function loadCurationProducts(opts) {
     const set = _bipedProductIds || new Set();
     if (biped === 'never') list = list.filter(p => !set.has(p.id));
     else list = list.filter(p => set.has(p.id));
+  }
+  // Filtro % localizado (frontend)
+  if (locpct) {
+    await _loadLocatedIds(locpct);
+    const ls = _locatedIds || new Set();
+    list = list.filter(p => ls.has(p.id));
   }
 
   // Dedupe por modelGroup (mesma lógica do Estoque) — 1 card por modelo
@@ -10226,6 +10279,14 @@ async function initCategoriesTab() {
         renderCatClassifyGrid();
       });
     }
+    // Filtro % localizado — recarrega o Set antes de renderizar
+    const locSelC = document.getElementById('cat-classify-locpct');
+    if (locSelC) {
+      locSelC.addEventListener('change', async () => {
+        await _loadLocatedIds(locSelC.value);
+        renderCatClassifyGrid();
+      });
+    }
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
     // Modalidade + Especialidade vêm DA ÁRVORE (dinâmico). Resetar é safe.
     try {
@@ -10329,6 +10390,17 @@ async function _loadBipedProductIds(filterValue) {
   _bipedProductIdsKey = cacheKey;
 }
 
+// Set de productIds com % localizado (bipado/comprado) >= minPct. Mesmo padrão do biped.
+let _locatedIds = null; let _locatedIdsKey = '';
+async function _loadLocatedIds(minPct) {
+  if (!minPct) { _locatedIds = null; _locatedIdsKey = ''; return; }
+  const key = 'min' + minPct;
+  if (_locatedIdsKey === key && _locatedIds) return;
+  const data = await api('/stocktake/located-product-ids?minPct=' + encodeURIComponent(minPct));
+  _locatedIds = (data.error || !Array.isArray(data.productIds)) ? new Set() : new Set(data.productIds);
+  _locatedIdsKey = key;
+}
+
 function _filteredCatProducts() {
   const brand = document.getElementById('cat-classify-brand').value;
   const category = document.getElementById('cat-classify-category')?.value || '';
@@ -10339,6 +10411,7 @@ function _filteredCatProducts() {
   const tier = document.getElementById('cat-classify-tier')?.value || '';
   const status = document.getElementById('cat-classify-status').value;
   const biped = (document.getElementById('cat-classify-biped')?.value) || '';
+  const locpct = (document.getElementById('cat-classify-locpct')?.value) || '';
   const search = (document.getElementById('cat-classify-search').value || '').toLowerCase().trim();
   return _catClassifyProducts.filter(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
@@ -10371,6 +10444,8 @@ function _filteredCatProducts() {
       if (biped === 'never' && isBiped) return false;
       if ((biped === 'any' || biped === '30' || biped === '7') && !isBiped) return false;
     }
+    // Filtro % localizado
+    if (locpct && !(_locatedIds && _locatedIds.has(p.id))) return false;
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
       const mod = (cls.modality || '').toLowerCase();
@@ -11104,7 +11179,7 @@ async function initInventoryTab() {
     document.getElementById('inv-f-search').addEventListener('keydown', e => { if (e.key === 'Enter') loadInvProducts(); });
     // Limpar
     document.getElementById('inv-clear').onclick = () => {
-      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-store','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle','inv-biped'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-store','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle','inv-biped','inv-locpct'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       document.getElementById('inv-f-search').value = '';
       document.getElementById('inv-lowstock').checked = false;
       loadInvProducts();
@@ -11112,6 +11187,9 @@ async function initInventoryTab() {
     // Filtro Bipados: recarrega quando muda
     const bipedSel = document.getElementById('inv-biped');
     if (bipedSel) bipedSel.addEventListener('change', () => loadInvProducts());
+    // Filtro % localizado: recarrega quando muda
+    const locSelI = document.getElementById('inv-locpct');
+    if (locSelI) locSelI.addEventListener('change', () => loadInvProducts());
 
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
@@ -11154,9 +11232,10 @@ async function loadInvProducts(opts) {
   const lowStock = document.getElementById('inv-lowstock').checked;
   const storeId = document.getElementById('inv-f-store')?.value || '';
   const biped = document.getElementById('inv-biped')?.value || '';
+  const locpct = document.getElementById('inv-locpct')?.value || '';
 
   // GUARDA: nao carregar 7k+ cards sem nenhum filtro (trava o browser)
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId || locpct);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -11202,6 +11281,12 @@ async function loadInvProducts(opts) {
     const set = _bipedProductIds || new Set();
     if (biped === 'never') list = list.filter(p => !set.has(p.id));
     else list = list.filter(p => set.has(p.id));
+  }
+  // FILTRO % LOCALIZADO (frontend)
+  if (locpct) {
+    await _loadLocatedIds(locpct);
+    const ls = _locatedIds || new Set();
+    list = list.filter(p => ls.has(p.id));
   }
 
   // DEDUPE POR MODELO: agrupa Products com mesmo (brand + modelGroup) e mostra

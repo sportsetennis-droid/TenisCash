@@ -419,6 +419,20 @@ router.post('/captures/:id/resolve', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/stocktake/located-product-ids?minPct=&maxPct= → productIds com localizado/comprado na faixa
+router.get('/located-product-ids', async (req, res) => {
+  try {
+    const minPct = Math.max(0, Math.min(100000, Number(req.query.minPct) || 0));
+    const maxPct = Math.max(minPct, Math.min(100000, Number(req.query.maxPct) || 100000));
+    const rows = await prisma.$queryRawUnsafe(`
+      WITH ps AS (SELECT "productId", SUM(stock) c FROM "ProductSize" GROUP BY "productId"),
+      loc AS (SELECT pz."productId", SUM(ss.stock) l FROM "StoreStock" ss JOIN "ProductSize" pz ON pz.id=ss."productSizeId" GROUP BY pz."productId")
+      SELECT ps."productId" id FROM ps LEFT JOIN loc ON loc."productId"=ps."productId"
+      WHERE ps.c>0 AND round(COALESCE(loc.l,0)::numeric*100/ps.c) >= ${minPct} AND round(COALESCE(loc.l,0)::numeric*100/ps.c) <= ${maxPct}`);
+    res.json({ productIds: rows.map((r) => r.id), total: rows.length, minPct, maxPct });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/stocktake/biped-product-ids
 // Retorna lista única de productIds que já apareceram em bipes (com found=true)
 // Usado pelo card de classificação pra filtrar só produtos que foram bipados.
