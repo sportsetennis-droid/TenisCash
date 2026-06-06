@@ -556,6 +556,23 @@ async function getSpedPdf() {
   return _spedPdf;
 }
 
+// Monta o nfeProc (NFe assinada + protNFe) a partir do doc autorizado, pra a DANFE
+// mostrar o PROTOCOLO. O xmlContent guarda só a NFe assinada (sem protNFe); o protocolo
+// real fica em doc.protocol no banco. Sem isso, a DANFE sai com "Protocolo 00000000".
+function buildNfeProcForDanfe(signedXml, doc) {
+  try {
+    if (!signedXml || signedXml.includes('<protNFe') || signedXml.includes('<nfeProc')) return signedXml;
+    if (!doc || !doc.protocol || !doc.accessKey) return signedXml;
+    const nfe = signedXml.replace(/^﻿?\s*<\?xml[^>]*\?>\s*/i, '');
+    const dig = (nfe.match(/<DigestValue>([^<]*)<\/DigestValue>/) || [])[1] || '';
+    const tpAmb = (doc.issuer && doc.issuer.environment === 'production') ? '1' : '2';
+    const dt = doc.createdAt ? new Date(doc.createdAt) : new Date();
+    const dhRecbto = new Date(dt.getTime() - 3 * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, '-03:00');
+    const protNFe = '<protNFe versao="4.00"><infProt><tpAmb>' + tpAmb + '</tpAmb><verAplic>SVRS</verAplic><chNFe>' + doc.accessKey + '</chNFe><dhRecbto>' + dhRecbto + '</dhRecbto><nProt>' + doc.protocol + '</nProt><digVal>' + dig + '</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>';
+    return '<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">' + nfe + protNFe + '</nfeProc>';
+  } catch (e) { return signedXml; }
+}
+
 router.get('/documents/:id/danfe', async (req, res) => {
   try {
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
@@ -581,6 +598,9 @@ router.get('/documents/:id/danfe', async (req, res) => {
     if (razao && fant && fant !== razao && renderXml.includes('<xNome>' + razao + '</xNome>')) {
       renderXml = renderXml.replace('<xNome>' + razao + '</xNome>', '<xNome>' + fant + '</xNome>');
     }
+    // Envolve a NFe assinada num nfeProc com o protNFe (protocolo vem do banco) — sem isso
+    // a DANFE imprime "Protocolo 000000000000000". Só afeta a impressão, não o XML da SEFAZ.
+    renderXml = buildNfeProcForDanfe(renderXml, doc);
     const pdfBuffer = await fn({
       xml: renderXml,
       // logo: opcional — URL da logo Sports & Tennis se quiser

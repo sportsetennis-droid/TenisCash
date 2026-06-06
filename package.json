@@ -4,6 +4,7 @@
   "description": "TenisCash - Banco digital esportivo da Sports & Tennis",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "node scripts/patch-sped-pdf.js",
     "start": "node src/index.js",
     "dev": "node src/index.js",
     "db:push": "npx prisma db push",
