@@ -618,71 +618,130 @@ router.get('/documents/:id/danfe', async (req, res) => {
   }
 });
 
-// Auto-print: página HTML com PDF embed + window.print() automático.
-// Configurada pra Epson TM-T20 (largura 80mm, sem margem).
-// Acesso via token query param (impressora não consegue mandar header).
+// ============================================================
+// Cupom térmico em HTML (80mm) — imprime EXATAMENTE na altura do conteúdo
+// e a impressora corta no fim (sem sobra de papel, sem depender de config
+// da impressora). Usa @page { size: 80mm auto }. O PDF legal continua no
+// endpoint /documents/:id/danfe.
+// ============================================================
+const TPAG_LABEL = { '01': 'Dinheiro', '02': 'Cheque', '03': 'Cartão de Crédito', '04': 'Cartão de Débito', '05': 'Crédito Loja', '10': 'Vale Alimentação', '11': 'Vale Refeição', '12': 'Vale Presente', '13': 'Vale Combustível', '15': 'Boleto', '16': 'Depósito', '17': 'PIX', '18': 'Transf. Bancária', '19': 'Fidelidade', '90': 'Sem pagamento', '99': 'Outros' };
+function _brl(v) { return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function _fmtCnpj(c) { c = String(c || '').replace(/\D/g, ''); return c.length === 14 ? c.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : c; }
+function _fmtCep(c) { c = String(c || '').replace(/\D/g, ''); return c.length === 8 ? c.replace(/(\d{5})(\d{3})/, '$1-$2') : c; }
+
+async function buildCupomThermalHtml(doc) {
+  const { XMLParser } = require('fast-xml-parser');
+  const QRCode = require('qrcode');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@', parseTagValue: false });
+  const x = parser.parse(doc.xmlContent);
+  const NFe = x.NFe || (x.nfeProc && x.nfeProc.NFe);
+  const inf = NFe.infNFe;
+  const supl = NFe.infNFeSupl || {};
+  const ide = inf.ide || {}, emit = inf.emit || {}, ender = emit.enderEmit || {};
+  const dets = inf.det ? (Array.isArray(inf.det) ? inf.det : [inf.det]) : [];
+  const tot = (inf.total && inf.total.ICMSTot) || {};
+  const pag = inf.pag || {};
+  const pgs = pag.detPag ? (Array.isArray(pag.detPag) ? pag.detPag : [pag.detPag]) : [];
+  const vTroco = Number(pag.vTroco || 0);
+
+  const nomeTopo = (doc.issuer && doc.issuer.fantasyName) || emit.xFant || emit.xNome || '';
+  const dataEmi = ide.dhEmi ? new Date(ide.dhEmi).toLocaleString('pt-BR') : '';
+  const dataAut = doc.createdAt ? new Date(doc.createdAt).toLocaleString('pt-BR') : dataEmi;
+
+  const dest = inf.dest;
+  let consumidor = 'CONSUMIDOR NÃO IDENTIFICADO';
+  if (dest) {
+    if (dest.CPF) consumidor = 'CPF: ' + dest.CPF;
+    else if (dest.CNPJ) consumidor = 'CNPJ: ' + _fmtCnpj(dest.CNPJ);
+    if (dest.xNome) consumidor += ' - ' + dest.xNome;
+  }
+  const chaveFmt = (doc.accessKey || '').replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+
+  let qrDataUrl = '';
+  try { qrDataUrl = await QRCode.toDataURL(String(supl.qrCode || ''), { margin: 0, scale: 6, errorCorrectionLevel: 'M' }); } catch (e) {}
+
+  const itensHtml = dets.map((d, i) => {
+    const p = d.prod || {};
+    const qt = Number(p.qCom || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    return '<div class="it"><div class="sm"><span class="b">' + (i + 1) + '</span> ' + _esc(p.cProd) + ' ' + _esc(p.xProd) + '</div>'
+      + '<div class="row sm"><span>' + qt + ' ' + _esc(p.uCom) + ' x ' + _brl(p.vUnCom) + '</span><span class="b">' + _brl(p.vProd) + '</span></div></div>';
+  }).join('');
+
+  let pagHtml = pgs.map(pp => '<div class="row"><span>' + (TPAG_LABEL[pp.tPag] || 'Pagamento') + '</span><span>' + _brl(pp.vPag) + '</span></div>').join('');
+  if (vTroco > 0) pagHtml += '<div class="row"><span>Troco</span><span>' + _brl(vTroco) + '</span></div>';
+
+  const homolog = String(ide.tpAmb) === '2';
+  const descHtml = Number(tot.vDesc) > 0 ? '<div class="row"><span>Descontos R$</span><span>-' + _brl(tot.vDesc) + '</span></div>' : '';
+  const homologHtml = homolog ? '<div class="c b" style="margin-top:4px">EMITIDA EM HOMOLOGAÇÃO - SEM VALOR FISCAL</div>' : '';
+  const qrHtml = qrDataUrl ? '<img class="qr" src="' + qrDataUrl + '">' : '';
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cupom ${_esc(doc.number)}</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 80mm; background: #fff; }
+  body { padding: 2mm 2.5mm; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; line-height: 1.3; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .c { text-align: center; } .b { font-weight: 700; } .sm { font-size: 8.5px; } .lg { font-size: 13px; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
+  .row { display: flex; justify-content: space-between; gap: 6px; }
+  .it { margin: 2px 0; }
+  .chave { word-break: break-all; font-size: 9.5px; letter-spacing: .3px; }
+  img.qr { width: 38mm; height: 38mm; display: block; margin: 5px auto; }
+  .btn { display: block; width: 100%; padding: 12px; margin: 10px 0 4px; background: #0a843d; color: #fff; border: 0; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; }
+  @media print { .btn { display: none !important; } }
+</style></head><body>
+<div class="c b lg">${_esc(nomeTopo)}</div>
+<div class="c sm">CNPJ ${_fmtCnpj(emit.CNPJ)} - IE ${_esc(emit.IE)}</div>
+<div class="c sm">${_esc(ender.xLgr)}, ${_esc(ender.nro)} - ${_esc(ender.xBairro)}</div>
+<div class="c sm">${_esc(ender.xMun)}/${_esc(ender.UF)} - CEP ${_fmtCep(ender.CEP)}</div>
+<hr>
+<div class="c b sm">DANFE NFC-e - Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica</div>
+<hr>
+${itensHtml}
+<hr>
+<div class="row"><span>Qtde. total de itens</span><span class="b">${dets.length}</span></div>
+<div class="row"><span>Valor total R$</span><span>${_brl(tot.vProd)}</span></div>
+${descHtml}
+<div class="row b lg"><span>VALOR A PAGAR R$</span><span>${_brl(tot.vNF)}</span></div>
+<hr>
+<div class="b sm">FORMA DE PAGAMENTO</div>
+<div class="sm">${pagHtml}</div>
+<hr>
+<div class="c sm">Consulte pela Chave de Acesso em</div>
+<div class="c sm b">${_esc(supl.urlChave || 'www.sefaz.pb.gov.br/nfce/consulta')}</div>
+<div class="c chave">${chaveFmt}</div>
+<hr>
+<div class="c b sm">${_esc(consumidor)}</div>
+<div class="c sm">NFC-e n. ${_esc(ide.nNF)}  Serie ${_esc(ide.serie)}</div>
+<div class="c sm">Emissao: ${dataEmi}</div>
+<div class="c sm" style="margin-top:3px">Protocolo de Autorizacao</div>
+<div class="c b">${_esc(doc.protocol || '')}</div>
+<div class="c sm">${dataAut}</div>
+${qrHtml}
+<div class="c sm">Tributos Totais Incidentes (Lei Fed. 12.741/2012): R$ ${_brl(tot.vTotTrib)}</div>
+${homologHtml}
+<button class="btn" onclick="window.print()">IMPRIMIR CUPOM</button>
+<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},350);});</script>
+</body></html>`;
+}
+
 router.get('/documents/:id/print', async (req, res) => {
   try {
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
-    const docId = req.params.id;
-    const printToken = req.query.token || (req.headers.authorization || '').replace('Bearer ', '');
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<title>Imprimindo DANFE...</title>
-<style>
-  @page { size: 80mm auto; margin: 0; }
-  @media print { body { margin: 0; padding: 0; } iframe { width: 100%; height: 100vh; border: 0; } }
-  body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background: #f5f5f7; }
-  .header { background: #E5571E; color: white; padding: 12px; text-align: center; font-weight: 700; }
-  .info { padding: 12px; background: white; font-size: 13px; color: #1d1d1f; }
-  iframe { width: 100%; height: calc(100vh - 100px); border: 0; display: block; }
-  button { padding: 10px 18px; background: #E5571E; color: white; border: 0; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 14px; }
-</style>
-</head><body>
-<div class="header">🖨️ Imprimindo na Epson TM-T20...</div>
-<div class="info" id="status">Carregando DANFE...</div>
-<iframe id="danfeFrame" name="danfeFrame"></iframe>
-<script>
-  (async () => {
-    const docId = ${JSON.stringify(docId)};
-    const token = ${JSON.stringify(printToken)} || localStorage.getItem('loja_token') || localStorage.getItem('tc_admin_token') || localStorage.getItem('jwt') || '';
-    try {
-      const r = await fetch('/api/admin/fiscal/documents/' + docId + '/danfe?token=' + encodeURIComponent(token), {
-        headers: token ? { Authorization: 'Bearer ' + token } : {}
-      });
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({}));
-        document.getElementById('status').innerHTML = '<span style="color:#d70015">❌ ' + (e.error || 'Erro ' + r.status) + '</span>';
-        return;
-      }
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const frame = document.getElementById('danfeFrame');
-      frame.src = url;
-      document.getElementById('status').innerHTML = '✅ DANFE carregado. Clique <button onclick="frame.contentWindow.focus();frame.contentWindow.print()">🖨️ IMPRIMIR AGORA</button> ou aperte Ctrl+P';
-      // Auto-print após carregar
-      frame.onload = () => {
-        setTimeout(() => {
-          try {
-            frame.contentWindow.focus();
-            frame.contentWindow.print();
-          } catch (e) {
-            console.warn('Auto-print bloqueado:', e);
-          }
-        }, 500);
-      };
-    } catch (err) {
-      document.getElementById('status').innerHTML = '<span style="color:#d70015">❌ ' + err.message + '</span>';
-    }
-  })();
-</script>
-</body></html>`;
+    const doc = await prisma.fiscalDocument.findUnique({ where: { id: req.params.id }, include: { issuer: true } });
+    if (!doc) return res.status(404).send('Documento não encontrado');
+    if (!doc.xmlContent) return res.status(400).send('Documento sem XML armazenado');
+    if (doc.status !== 'authorized' && doc.status !== 'cancelled') return res.status(400).send('Documento não autorizado');
+    const html = await buildCupomThermalHtml(doc);
     res.type('text/html').send(html);
   } catch (err) {
     console.error('[fiscal/print]', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).send('Erro ao gerar cupom: ' + err.message);
   }
 });
 
