@@ -197,5 +197,45 @@ router.post('/approve-bulk', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Priorização pro site: produtos por % LOCALIZADO (bipado/comprado). minPct/maxPct ajustáveis.
+router.get('/prioritize', async (req, res) => {
+  try {
+    const minPct = Math.max(0, Math.min(100, Number(req.query.minPct) || 50));
+    const maxPct = Math.max(minPct, Math.min(1000, Number(req.query.maxPct) || 1000));
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const CLASS = `pr.category IS NOT NULL AND pr.category<>'A CLASSIFICAR' AND pr.subcategory IS NOT NULL AND pr."aiContext"->'classification'->>'modality' IS NOT NULL AND pr."aiContext"->'classification'->>'tier' IS NOT NULL`;
+    const rows = await prisma.$queryRawUnsafe(`
+      WITH ps AS (SELECT "productId", SUM(stock) c FROM "ProductSize" GROUP BY "productId"),
+      loc AS (SELECT pz."productId", SUM(ss.stock) l FROM "StoreStock" ss JOIN "ProductSize" pz ON pz.id=ss."productSizeId" GROUP BY pz."productId")
+      SELECT pr.id, pr.name, pr.brand, pr."imageUrl" image,
+        COALESCE(ps.c,0)::int comprado, COALESCE(loc.l,0)::int localizado,
+        CASE WHEN COALESCE(ps.c,0)>0 THEN round(COALESCE(loc.l,0)::numeric*100/ps.c)::int ELSE 0 END pct,
+        (${CLASS}) classificado,
+        (pr."imageUrl" IS NOT NULL) tem_imagem,
+        pr."aiContext"->'catalogPlan'->'imageQuality'->>'flag' img_flag,
+        (pr."aiContext"->'catalogPlan'->'classification'->'suggestion'->>'category') sugestao_cat,
+        EXISTS(SELECT 1 FROM "NuvemshopProductMapping" m WHERE m."localProductId"=pr.id) publicado
+      FROM "Product" pr JOIN ps ON ps."productId"=pr.id LEFT JOIN loc ON loc."productId"=pr.id
+      WHERE pr.active AND COALESCE(ps.c,0)>0
+        AND round(COALESCE(loc.l,0)::numeric*100/ps.c) >= ${minPct}
+        AND round(COALESCE(loc.l,0)::numeric*100/ps.c) <= ${maxPct}
+      ORDER BY pct DESC, comprado DESC LIMIT ${limit}`);
+    res.json({ minPct, maxPct, total: rows.length, rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Publica 1 produto no Nuvemshop (respeita o gate das 4 — pula se incompleto).
+router.post('/publish/:id', async (req, res) => {
+  try {
+    const p = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: 'não encontrado' });
+    const nh = require('../services/nuvemshopHandlers');
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return res.json({ ok: false, error: 'sem conexão Nuvemshop' });
+    const r = await nh.pushProductToNuvemshop(p.id, conn);
+    res.json({ ok: !!(r && (r.ok || r.synced || r.nuvemshopProductId)), result: r });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
 module.exports.catEngineRunHandler = catEngineRunHandler;

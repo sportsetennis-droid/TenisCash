@@ -2364,6 +2364,29 @@ model StocktakeBipe {
   @@index([applied, bipedAt])
 }
 
+// Fila de CONFERÊNCIA: produto bipado que NÃO foi reconhecido. A equipe bate
+// foto -> entra aqui -> o dono/IA busca na NFe e monta o card (ou descarta).
+model ProductCapture {
+  id               String    @id @default(cuid())
+  barcode          String? // código bipado (se houver)
+  storeId          String?
+  sellerId         String?
+  sellerName       String?
+  photo            String? // foto principal (data URL webp base64)
+  photos           Json? // fotos extras (array de data URLs)
+  note             String?
+  status           String    @default("pendente") // pendente | em_nfe | vinculado | criado | descartado
+  matchedProductId String? // casou com Product existente
+  createdProductId String? // virou card novo
+  nfeItemId        String? // XmlFiscalItem casado
+  bipeId           String? // StocktakeBipe de origem
+  createdAt        DateTime  @default(now())
+  resolvedAt       DateTime?
+
+  @@index([status, createdAt])
+  @@index([barcode])
+}
+
 // =====================================================================
 // MENSAGENS V2 — Timeline ("Como está o dia hoje?") + Conversas (DMs)
 // =====================================================================

@@ -13,9 +13,19 @@
 // =====================================================================
 
 const express = require('express');
+const multer = require('multer');
+const sharp = require('sharp');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
 const router = express.Router();
+
+// Upload em memória pra foto de conferência (máx 12MB), comprimida com sharp -> webp base64.
+const captureUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_r, f, cb) => (/^image\//i.test(f.mimetype) ? cb(null, true) : cb(new Error('arquivo não é imagem'))) });
+async function shrinkPhoto(buf) {
+  const out = await sharp(buf, { failOn: 'none' }).rotate().resize(900, 1200, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
+  return `data:image/webp;base64,${out.toString('base64')}`;
+}
 
 // Extrai tamanho da descricao da NFe (mesmo regex do script create-products-from-nfe-pending.js)
 function inferSizeFromDescription(description) {
@@ -308,9 +318,106 @@ router.post('/bipe', async (req, res) => {
   }
 });
 
+// GET /api/stocktake/lookup/:barcode (PÚBLICO) — só CONSULTA se o código é reconhecido (NÃO grava bipe)
+router.get('/lookup/:barcode', async (req, res) => {
+  try {
+    const code = String(req.params.barcode || '').trim();
+    if (!code) return res.status(400).json({ error: 'barcode vazio' });
+    const sizes = await prisma.productSize.findMany({ where: { barcode: code }, include: { product: { select: { id: true, name: true, brand: true, active: true } } }, take: 5 });
+    const active = sizes.filter((s) => s.product && s.product.active);
+    if (active.length) {
+      const s = active[0];
+      return res.json({ recognized: true, ambiguous: active.length > 1, product: { id: s.product.id, name: s.product.name, brand: s.product.brand, size: s.size } });
+    }
+    const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: code }, select: { id: true, description: true } });
+    res.json({ recognized: false, inNfe: !!x, nfeDescription: x ? x.description : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/stocktake/capture (PÚBLICO) — equipe bate foto de produto NÃO reconhecido.
+// FormData: barcode?, storeId?, sellerId?, sellerName?, note?, bipeId?, files[] (1-4 fotos)
+router.post('/capture',
+  (req, res, next) => captureUpload.array('files', 4)(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  }),
+  async (req, res) => {
+    try {
+      const { barcode, storeId, sellerId, sellerName, note, bipeId } = req.body || {};
+      const files = req.files || [];
+      if (!files.length && !barcode) return res.status(400).json({ error: 'mande ao menos uma foto ou o código' });
+      const shots = [];
+      for (const f of files.slice(0, 4)) { try { shots.push(await shrinkPhoto(f.buffer)); } catch (_) {} }
+      const cap = await prisma.productCapture.create({ data: {
+        barcode: barcode ? String(barcode).trim() : null,
+        storeId: storeId || null, sellerId: sellerId || null, sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
+        note: note ? String(note).slice(0, 500) : null,
+        photo: shots[0] || null, photos: shots.length > 1 ? shots.slice(1) : undefined,
+        bipeId: bipeId || null, status: 'pendente',
+      } });
+      res.json({ ok: true, id: cap.id, fotos: shots.length });
+    } catch (e) { console.error('[capture] erro:', e.message); res.status(500).json({ error: e.message }); }
+  }
+);
+
 // ============== ADMIN ==============
 
 router.use(authMiddleware, adminMiddleware);
+
+// GET /api/stocktake/unrecognized — bipes NÃO reconhecidos agrupados por código (pra recontagem)
+router.get('/unrecognized', async (req, res) => {
+  try {
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT b.barcode,
+        count(*)::int vezes,
+        max(b."bipedAt") ultimo,
+        array_agg(DISTINCT COALESCE(s.name,'(sem loja)')) lojas,
+        bool_or(EXISTS(SELECT 1 FROM "XmlFiscalItem" x WHERE x.ean=b.barcode)) em_nfe,
+        bool_or(EXISTS(SELECT 1 FROM "ProductCapture" c WHERE c.barcode=b.barcode)) tem_foto
+      FROM "StocktakeBipe" b
+      LEFT JOIN "Store" s ON s.id=b."storeId"
+      WHERE b.found=false
+      GROUP BY b.barcode
+      ORDER BY vezes DESC, ultimo DESC
+      LIMIT 1500`);
+    res.json({ total: rows.length, rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/stocktake/captures?status=pendente — fila de fotos de conferência
+router.get('/captures', async (req, res) => {
+  try {
+    const status = req.query.status || 'pendente';
+    const caps = await prisma.productCapture.findMany({ where: status === 'all' ? {} : { status }, orderBy: { createdAt: 'desc' }, take: 300 });
+    const storeIds = [...new Set(caps.map((c) => c.storeId).filter(Boolean))];
+    const stores = storeIds.length ? await prisma.store.findMany({ where: { id: { in: storeIds } }, select: { id: true, name: true } }) : [];
+    const sm = Object.fromEntries(stores.map((s) => [s.id, s.name]));
+    // marca se o barcode existe em NFe (recuperável automático)
+    const out = [];
+    for (const c of caps) {
+      let emNfe = false;
+      if (c.barcode) { const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: c.barcode }, select: { id: true } }); emNfe = !!x; }
+      out.push({ ...c, storeName: sm[c.storeId] || null, emNfe });
+    }
+    res.json({ total: caps.length, captures: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/stocktake/captures/:id/resolve { status, matchedProductId?, createdProductId?, note? }
+router.post('/captures/:id/resolve', async (req, res) => {
+  try {
+    const { status, matchedProductId, createdProductId, note } = req.body || {};
+    const ok = ['pendente', 'em_nfe', 'vinculado', 'criado', 'descartado'];
+    if (status && !ok.includes(status)) return res.status(400).json({ error: 'status inválido' });
+    const data = {};
+    if (status) { data.status = status; if (status !== 'pendente') data.resolvedAt = new Date(); }
+    if (matchedProductId !== undefined) data.matchedProductId = matchedProductId || null;
+    if (createdProductId !== undefined) data.createdProductId = createdProductId || null;
+    if (note !== undefined) data.note = note ? String(note).slice(0, 500) : null;
+    const cap = await prisma.productCapture.update({ where: { id: req.params.id }, data });
+    res.json({ ok: true, capture: { id: cap.id, status: cap.status } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // GET /api/stocktake/biped-product-ids
 // Retorna lista única de productIds que já apareceram em bipes (com found=true)

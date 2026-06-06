@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Conferência de Bipes</title>
+<style>
+  :root{--bg:#0f1115;--card:#191c23;--line:#2a2e38;--text:#e8eaed;--mut:#9aa0aa;--ok:#22c55e;--no:#f59e0b;--ac:#3b82f6}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .wrap{max-width:480px;margin:0 auto;padding:14px;min-height:100vh}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:13px;font-size:16px}
+  button{width:100%;border:0;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;min-height:50px;margin-top:10px;color:#fff}
+  .pri{background:var(--ac)} .go{background:var(--ok)} .warn{background:var(--no);color:#1a1206} .ghost{background:var(--card);border:1px solid var(--line);color:var(--text)}
+  .bar{display:flex;gap:8px;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+  .bar b{font-size:18px}
+  .scan{font-size:22px;text-align:center;letter-spacing:1px;font-weight:700}
+  #result{border-radius:14px;padding:16px;margin-top:14px;text-align:center;display:none}
+  #result.ok{display:block;background:#0f2e1b;border:1px solid #1f5135}
+  #result.no{display:block;background:#3a2a0a;border:1px solid #6b4e12}
+  #result .big{font-size:20px;font-weight:800;margin-bottom:4px}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;justify-content:center}
+  .thumbs img{width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .hidden{display:none}
+  .filebtn{display:block;background:var(--ac);border-radius:12px;padding:18px;text-align:center;font-weight:700;margin-top:10px}
+  .filebtn input{display:none}
+  .cnt{display:flex;gap:10px;margin-bottom:10px}
+  .cnt .c{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:center}
+  .cnt .c b{display:block;font-size:22px}
+  .muted{color:var(--mut);font-size:12px}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#000a;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:.2s;z-index:50}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SETUP -->
+  <div id="setup">
+    <h1>🔍 Conferência de Bipes</h1>
+    <div class="sub">Escaneie os produtos. O que não for reconhecido, bata foto pra montarmos o card.</div>
+    <label>Loja</label>
+    <select id="store"><option value="">Carregando…</option></select>
+    <label>Seu nome</label>
+    <input id="name" placeholder="quem está conferindo" autocomplete="name">
+    <button class="pri" onclick="start()">Começar</button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main" class="hidden">
+    <div class="bar">
+      <span id="who" class="muted"></span>
+      <button class="ghost" style="width:auto;margin:0;padding:6px 10px;font-size:12px" onclick="reset()">trocar</button>
+    </div>
+    <div class="cnt">
+      <div class="c"><b id="cOk" style="color:var(--ok)">0</b><span class="muted">reconhecidos</span></div>
+      <div class="c"><b id="cNo" style="color:var(--no)">0</b><span class="muted">fotos enviadas</span></div>
+    </div>
+
+    <label>Código de barras (escaneie ou digite)</label>
+    <input id="code" class="scan" inputmode="numeric" autocomplete="off" placeholder="bipe aqui">
+    <button class="pri" onclick="check()">Conferir</button>
+
+    <div id="result"></div>
+
+    <button class="ghost" onclick="noCodeFlow()">📷 Produto SEM código de barras</button>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+let stores=[], cur={storeId:'',storeName:'',name:''}, pending=null; // pending = {barcode}
+let okCount=0, noCount=0;
+
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+async function loadStores(){
+  try{ const r=await fetch('/api/stocktake/stores'); const d=await r.json(); stores=d.stores||[];
+    $('store').innerHTML='<option value="">Escolha a loja</option>'+stores.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  }catch(_){ $('store').innerHTML='<option value="">erro ao carregar</option>'; }
+  const sv=JSON.parse(localStorage.getItem('conf_cur')||'{}');
+  if(sv.storeId){ $('store').value=sv.storeId; } if(sv.name){ $('name').value=sv.name; }
+}
+function start(){
+  const storeId=$('store').value, name=($('name').value||'').trim();
+  if(!storeId){ toast('escolha a loja'); return; }
+  if(!name){ toast('digite seu nome'); return; }
+  cur={storeId, storeName:(stores.find(s=>s.id===storeId)||{}).name||'', name};
+  localStorage.setItem('conf_cur',JSON.stringify({storeId,name}));
+  $('who').textContent=cur.storeName+' · '+cur.name;
+  $('setup').classList.add('hidden'); $('main').classList.remove('hidden');
+  $('code').focus();
+}
+function reset(){ $('main').classList.add('hidden'); $('setup').classList.remove('hidden'); }
+
+$('code').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); check(); } });
+
+async function check(){
+  const code=($('code').value||'').trim();
+  if(!code) return;
+  $('result').className=''; $('result').style.display='none';
+  try{
+    const r=await fetch('/api/stocktake/lookup/'+encodeURIComponent(code));
+    const d=await r.json();
+    if(d.recognized){
+      okCount++; $('cOk').textContent=okCount;
+      showResult('ok', '✓ Reconhecido', `${d.product.brand||''} ${d.product.name||''} ${d.product.size?('· '+d.product.size):''}`);
+      clearCode(true);
+    }else{
+      pending={barcode:code, inNfe:d.inNfe, nfeDescription:d.nfeDescription};
+      const extra = d.inNfe ? 'Está na NFe — foto ajuda a montar o card.' : 'Não está em NFe nenhuma — foto é essencial.';
+      showResult('no', '✗ NÃO reconhecido', extra, true);
+    }
+  }catch(e){ toast('erro: '+e.message); }
+}
+
+function showResult(kind, big, sub, withCapture){
+  const el=$('result'); el.className=kind;
+  el.innerHTML=`<div class="big">${big}</div><div class="muted">${sub||''}</div>`+
+    (withCapture? captureBlock() : '');
+  el.style.display='block';
+}
+function captureBlock(){
+  return `
+    <label class="filebtn">📷 Bater foto do produto
+      <input type="file" accept="image/*" capture="environment" multiple onchange="onPhotos(this)">
+    </label>
+    <div id="thumbs" class="thumbs"></div>
+    <input id="note" placeholder="obs (opcional): cor, modelo…" style="margin-top:10px">
+    <button class="go" id="send" onclick="sendCapture()" disabled>Enviar</button>`;
+}
+let photoFiles=[];
+function onPhotos(inp){
+  photoFiles=[...inp.files].slice(0,4);
+  const t=$('thumbs'); t.innerHTML='';
+  photoFiles.forEach(f=>{ const img=document.createElement('img'); img.src=URL.createObjectURL(f); t.appendChild(img); });
+  $('send').disabled=!photoFiles.length;
+}
+async function sendCapture(){
+  const btn=$('send'); if(btn) { btn.disabled=true; btn.textContent='enviando…'; }
+  const fd=new FormData();
+  if(pending && pending.barcode) fd.append('barcode', pending.barcode);
+  fd.append('storeId', cur.storeId); fd.append('sellerName', cur.name);
+  const note=$('note'); if(note && note.value) fd.append('note', note.value);
+  photoFiles.forEach(f=>fd.append('files', f));
+  try{
+    const r=await fetch('/api/stocktake/capture',{method:'POST',body:fd});
+    const d=await r.json();
+    if(d.ok){ noCount++; $('cNo').textContent=noCount; toast('✓ foto enviada ('+(d.fotos||0)+')'); clearCode(true); }
+    else toast('erro: '+(d.error||'falhou'));
+  }catch(e){ toast('erro: '+e.message); }
+  photoFiles=[]; pending=null;
+}
+function noCodeFlow(){ pending={barcode:null}; showResult('no','📷 Produto sem código','Bata foto pra registrar.',true); }
+function clearCode(refocus){ $('code').value=''; if(refocus){ setTimeout(()=>{ $('result').style.display='none'; $('result').className=''; $('code').focus(); },1200); } }
+
+loadStores();
+</script>
+</body>
+</html>
