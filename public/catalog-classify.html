@@ -67,8 +67,12 @@
     <button class="ghost" onclick="selAll(true)">Selecionar tudo da página</button>
     <button class="ghost" onclick="selAll(false)">Limpar</button>
     <span class="muted" id="kSel">0 selecionados</span>
+    <span class="muted" id="kDone" style="color:var(--ac)"></span>
   </div>
-  <button class="go" id="btnApprove" onclick="approve()" disabled>✓ Aprovar selecionados</button>
+  <div class="row">
+    <label class="muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="cbPub" class="cb" style="width:16px;height:16px"> publicar prontos no site</label>
+    <button class="go" id="btnApprove" onclick="approve()" disabled>✓ Aprovar selecionados</button>
+  </div>
 </div>
 
 <script>
@@ -129,13 +133,15 @@ async function approve(){
   const cards=[...document.querySelectorAll('.c')].filter(c=>c.querySelector('.pick').checked);
   if(!cards.length) return;
   const items=cards.map(c=>({id:c.dataset.id, category:c.querySelector('.f-cat').value, subcategory:c.querySelector('.f-gen').value, modality:c.querySelector('.f-mod').value.trim(), tier:c.querySelector('.f-tier').value.trim()}));
-  const btn=document.getElementById('btnApprove'); btn.disabled=true; btn.textContent='aplicando…';
+  const pub=document.getElementById('cbPub').checked;
+  const btn=document.getElementById('btnApprove'); btn.disabled=true; btn.textContent=pub?'aprovando + publicando…':'aplicando…';
   try{
-    const r=await api('/approve-bulk',{method:'POST',body:JSON.stringify({items})});
+    const r=await api('/approve-bulk',{method:'POST',body:JSON.stringify({items,publish:pub})});
     const d=await r.json();
     const okIds=new Set(d.results.filter(x=>x.ok).map(x=>x.id));
     cards.forEach(c=>{ if(okIds.has(c.dataset.id)) c.remove(); });
     const t=document.getElementById('kTotal'); t.textContent=Math.max(0,(parseInt(t.textContent)||0)-d.applied);
+    document.getElementById('kDone').textContent='✓ aprovados '+d.applied+(d.published?(' · publicados '+d.published+' no site'):'');
     updSel();
     if(!document.querySelectorAll('.c').length) load(page); // recarrega se esvaziou
   }catch(e){ alert('erro: '+e.message); }

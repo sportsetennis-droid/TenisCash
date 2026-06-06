@@ -151,7 +151,9 @@ router.get('/suggestions', async (req, res) => {
 router.post('/approve-bulk', async (req, res) => {
   try {
     const items = Array.isArray(req.body && req.body.items) ? req.body.items : [];
-    if (!items.length) return res.json({ ok: true, applied: 0, results: [] });
+    if (!items.length) return res.json({ ok: true, applied: 0, published: 0, results: [] });
+    const doPublish = !!(req.body && req.body.publish);
+    let published = 0, pubCap = 25, conn = null; // trava: no máx 25 publish por requisição (Cloudflare 100s)
     const results = [];
     for (const it of items) {
       try {
@@ -168,10 +170,28 @@ router.post('/approve-bulk', async (req, res) => {
         if (plan.classification) { plan.classification.classified = true; }
         plan.status = 'classified'; ctx.catalogPlan = plan;
         await prisma.product.update({ where: { id: p.id }, data: { category: cat, subcategory: sub, aiContext: ctx } });
-        results.push({ id: it.id, ok: true });
+
+        let pub = null;
+        if (doPublish && cat !== 'INSUMO' && pubCap > 0 && p.imageUrl) {
+          try {
+            const sizes = await prisma.productSize.findMany({ where: { productId: p.id }, select: { id: true, stock: true } });
+            const comprado = sizes.reduce((s, x) => s + (x.stock || 0), 0);
+            let loc = 0;
+            if (sizes.length) { const ss = await prisma.storeStock.aggregate({ where: { productSizeId: { in: sizes.map((s) => s.id) } }, _sum: { stock: true } }); loc = ss._sum.stock || 0; }
+            if (comprado > 0 && loc >= 0.8 * comprado) { // pronto: foto + estoque>=80% localizado
+              if (!conn) conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+              if (conn) {
+                const nh = require('../services/nuvemshopHandlers');
+                const pr = await nh.pushProductToNuvemshop(p.id, conn);
+                if (pr && (pr.ok || pr.synced || pr.nuvemshopProductId)) { published++; pubCap--; pub = 'publicado'; }
+              }
+            }
+          } catch (_) {}
+        }
+        results.push({ id: it.id, ok: true, published: pub });
       } catch (e) { results.push({ id: it.id, ok: false, err: e.message }); }
     }
-    res.json({ ok: true, applied: results.filter((r) => r.ok).length, results });
+    res.json({ ok: true, applied: results.filter((r) => r.ok).length, published, results });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
