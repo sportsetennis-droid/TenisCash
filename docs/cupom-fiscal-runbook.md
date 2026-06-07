@@ -39,6 +39,21 @@ servido por `GET /api/admin/fiscal/documents/:id/print` (em `src/routes/fiscal.j
 - `@page { size: 80mm auto }` → altura = conteúdo → impressora corta no fim (sem desperdício).
 - **O PDF legal continua intacto** em `GET /api/admin/fiscal/documents/:id/danfe`.
 
+### 1.2 Fluxo do código do comprovante (cartão/PIX) — também CENTRAL
+
+Quando a venda é **cartão** (crédito/débito) ou **PIX** (passou na maquininha externa), o operador
+digita o **código do comprovante** (Auth/NSU/cAut) no PDV antes de emitir — exigência do
+Decreto SEFAZ-PB 43.077/2022. **Isso é sistema-wide, não tem nada por loja:**
+- **PDV** (`public/loja.html` → `selectPayment()`): cartão → mostra **bandeira + código**; PIX →
+  mostra **só o código**. Decidido pelo MÉTODO de pagamento (`isCard`/`isPix`), **sem checagem de
+  loja**. Campos: `sellCardBrand`, `sellCardAuthCode`.
+- **Backend** (`src/routes/seller.js`, auto-emit ~L714-765): `cardAuthCode → cAut`,
+  `cardBrand → tBand`, `tpIntegra` (2=não integrado) no `<card>` da NFC-e. A emissão é roteada pro
+  **agente fiscal da loja** (`Store.fiscalAgentUrl`). PIX sem código = "manual" (não auto-emite,
+  espera o pagamento — compliance).
+- **Conclusão:** vendedor de qualquer loja vê os mesmos campos e o cupom sai com o `cAut`. Único
+  pré-requisito por loja: **ter o agente fiscal** (pra assinar/emitir). 02/03/04 ✅; 05/06 falta.
+
 ---
 
 ## 2. Calibração da impressora (valores no `cupomThermal.js`)
