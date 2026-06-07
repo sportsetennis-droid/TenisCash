@@ -213,11 +213,13 @@ app.get('/loja', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/loja.html'), { cacheControl: false });
 });
 
-// Rota amigável: teniscash.com.br/barbeiros → marketplace de barbearias/salões + agendamento
-app.get('/barbeiros', (req, res) => {
+// Rota amigável: teniscash.com.br/barber → marketplace de barbearias/salões + agendamento
+app.get('/barber', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(__dirname, '../public/barbeiros.html'), { cacheControl: false });
+  res.sendFile(path.join(__dirname, '../public/barber.html'), { cacheControl: false });
 });
+// alias do nome antigo → redireciona pro novo /barber
+app.get('/barbeiros', (req, res) => res.redirect(301, '/barber'));
 
 // Vitrine por loja — consumidor vê só os produtos com estoque NAQUELA loja.
 // Ex: teniscash.com.br/praiadobessa  (a página lê o slug pelo path)
