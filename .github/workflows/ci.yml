@@ -1,0 +1,35 @@
+name: CI — o app sobe?
+
+# Roda a cada push na main e em PR. NÃO bloqueia o deploy do Railway (que é automático),
+# mas avisa NA HORA (✅/❌ no GitHub) se o commit não sobe — pega o tipo de erro que
+# derrubou o prod em 2026-06-07 (require de arquivo gitignored -> MODULE_NOT_FOUND -> 502).
+# Junto com o healthcheck do Railway, deploy quebrado vira "deploy falhou", não "prod fora".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  boot-check:
+    name: deps + sintaxe + requires resolvem
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+
+      - name: Instala deps (sem postinstall, pra ser determinístico)
+        run: npm ci --ignore-scripts
+
+      - name: Gera Prisma Client
+        run: npx prisma generate
+
+      - name: Sintaxe — node --check em todo src/
+        run: find src -name '*.js' -print0 | xargs -0 -r -n1 node --check
+
+      - name: Requires resolvem no git? (pega MODULE_NOT_FOUND / 502)
+        run: node scripts/check-requires.js
