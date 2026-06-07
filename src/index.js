@@ -61,6 +61,7 @@ const infoproductsRoutes = require('./routes/infoproducts');
 const desapegaRoutes = require('./routes/desapega');
 const pagbankRoutes = require('./routes/pagbank');
 const catalogEngineRoutes = require('./routes/catalogEngine');
+const servicesRoutes = require('./routes/services');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -173,6 +174,7 @@ app.use('/api/live', liveCommerceRoutes);
 app.use('/api/infoproducts', infoproductsRoutes);
 app.use('/api/desapega', desapegaRoutes);
 app.use('/api/pagbank', pagbankRoutes); // webhook PIX PagBank + status (fora de /api/admin)
+app.use('/api/services', servicesRoutes); // agendamento + marketplace + T$ no serviço
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
@@ -209,6 +211,12 @@ app.use(express.static(path.join(__dirname, '../public'), {
 app.get('/loja', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(__dirname, '../public/loja.html'), { cacheControl: false });
+});
+
+// Rota amigável: teniscash.com.br/barbeiros → marketplace de barbearias/salões + agendamento
+app.get('/barbeiros', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/barbeiros.html'), { cacheControl: false });
 });
 
 // Vitrine por loja — consumidor vê só os produtos com estoque NAQUELA loja.

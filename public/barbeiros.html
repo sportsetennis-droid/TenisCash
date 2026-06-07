@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#E5571E">
+<title>Barbearias & Salões — TenisCash</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root{
+    --primary:#E5571E; --primary-dark:#c8460f; --primary-light:#FCDAC4;
+    --bg:#FFEBDC; --surface:#fff; --text:#1d1d1f; --muted:#8e8e93; --soft:#6e6e73;
+    --border:#e5e5ea; --border-soft:#f0f0f3;
+    --success:#0a843d; --success-bg:#e8f7ee; --danger:#d70015; --danger-bg:#fff1f0;
+    --radius:14px; --radius-sm:10px;
+    --gradient:linear-gradient(135deg,#E5571E 0%,#EE7240 100%);
+    --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+    --shadow-md:0 6px 18px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  /* container = "celular" centralizado */
+  .app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;
+       padding-top:env(safe-area-inset-top);padding-bottom:calc(72px + env(safe-area-inset-bottom));}
+  @media(min-width:900px){
+    body{background:#2a2a2e;display:flex;align-items:flex-start;justify-content:center;padding:24px 0;}
+    .app{box-shadow:0 20px 60px rgba(0,0,0,.4);border-radius:28px;overflow:hidden;min-height:calc(100vh - 48px);}
+  }
+  /* header */
+  .hdr{background:var(--gradient);color:#fff;padding:18px 18px 16px;}
+  .hdr h1{font-size:21px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:8px;}
+  .hdr p{font-size:12.5px;opacity:.92;margin-top:2px;}
+  .hdr .back{background:rgba(255,255,255,.2);border:none;color:#fff;width:34px;height:34px;border-radius:10px;font-size:18px;cursor:pointer;margin-bottom:10px;}
+  .search{margin-top:12px;display:flex;gap:8px;}
+  .search input{flex:1;border:none;border-radius:10px;padding:11px 13px;font-size:14px;background:rgba(255,255,255,.95);}
+  .search input:focus{outline:none;}
+  /* content */
+  .content{padding:16px 16px 8px;}
+  .view{display:none;} .view.show{display:block;animation:fade .2s;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+  /* venue card */
+  .vcard{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:13px;cursor:pointer;border:1px solid var(--border-soft);transition:transform .08s,box-shadow .15s;}
+  .vcard:active{transform:scale(.99);}
+  .vcard .cover{height:96px;background:var(--primary-light) center/cover;display:flex;align-items:flex-end;}
+  .vcard .body{padding:13px 14px;}
+  .vcard .nm{font-size:16px;font-weight:700;}
+  .vcard .meta{font-size:12.5px;color:var(--muted);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;}
+  .pill.cash{background:var(--success-bg);color:var(--success);}
+  .pill.seg{background:var(--primary-light);color:var(--primary-dark);}
+  .pill.verified{background:#e3f2fd;color:#0066cc;}
+  /* barber + service rows */
+  .sec-title{font-size:13px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.4px;margin:18px 2px 8px;}
+  .barber{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:13px 14px;margin-bottom:12px;border:1px solid var(--border-soft);}
+  .barber .top{display:flex;align-items:center;gap:11px;}
+  .avatar{width:42px;height:42px;border-radius:50%;background:var(--gradient);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;}
+  .barber .nm{font-weight:700;font-size:15px;}
+  .barber .hl{font-size:12px;color:var(--muted);}
+  .srv{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--border-soft);}
+  .srv:first-of-type{margin-top:8px;}
+  .srv .info .t{font-size:14px;font-weight:600;}
+  .srv .info .d{font-size:12px;color:var(--muted);margin-top:1px;}
+  .srv .price{text-align:right;}
+  .srv .price .v{font-weight:800;font-size:15px;color:var(--primary-dark);}
+  .btn-mini{background:var(--gradient);color:#fff;border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;min-height:38px;}
+  /* generic */
+  .btn{width:100%;background:var(--gradient);color:#fff;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;min-height:50px;box-shadow:0 4px 12px rgba(229,87,30,.25);}
+  .btn:disabled{background:#c7c7cc;box-shadow:none;}
+  .btn.sec{background:var(--surface);color:var(--text);border:1.5px solid var(--border);box-shadow:none;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--soft);margin-bottom:6px;}
+  .field input,.field select{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:13px;font-size:15px;background:#fff;}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light);}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:16px;border:1px solid var(--border-soft);margin-bottom:13px;}
+  .empty{text-align:center;padding:36px 20px;color:var(--muted);}
+  .empty .ico{font-size:42px;margin-bottom:10px;}
+  .empty p{font-size:14px;margin-bottom:16px;}
+  /* date + slots */
+  .dates{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none;}
+  .dates::-webkit-scrollbar{display:none;}
+  .datechip{flex-shrink:0;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:9px 12px;text-align:center;cursor:pointer;min-width:58px;}
+  .datechip.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .datechip .dow{font-size:11px;text-transform:uppercase;font-weight:600;opacity:.8;}
+  .datechip .dnum{font-size:18px;font-weight:800;}
+  .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px;}
+  .slot{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:11px 0;text-align:center;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;}
+  .slot.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  /* bottom nav */
+  .nav{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:50;}
+  .nav button{flex:1;background:none;border:none;padding:10px 0;cursor:pointer;color:var(--muted);font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:56px;}
+  .nav button .ic{font-size:21px;}
+  .nav button.active{color:var(--primary);}
+  /* toast */
+  .toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:12px 18px;border-radius:12px;font-size:13.5px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;text-align:center;}
+  .toast.show{opacity:1;}
+  .loading{text-align:center;padding:30px;color:var(--muted);font-size:14px;}
+  .badge-tc{background:var(--success-bg);color:var(--success);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600;margin:6px 0 2px;display:flex;align-items:center;gap:7px;}
+  .linkbtn{background:none;border:none;color:var(--primary);font-weight:700;font-size:13.5px;cursor:pointer;text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- HEADER -->
+  <div class="hdr">
+    <button class="back" id="backBtn" style="display:none" onclick="goBack()">‹</button>
+    <h1 id="hdrTitle">✂️ Barbearias & Salões</h1>
+    <p id="hdrSub">Agende seu horário e ganhe TenisCash</p>
+    <div class="search" id="searchBox">
+      <input id="q" placeholder="Buscar barbearia ou cidade..." oninput="debouncedSearch()">
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- VIEW: DISCOVER -->
+    <div class="view show" id="view-discover">
+      <div id="venueList"><div class="loading">Carregando...</div></div>
+    </div>
+
+    <!-- VIEW: VENUE -->
+    <div class="view" id="view-venue"></div>
+
+    <!-- VIEW: BOOK -->
+    <div class="view" id="view-book"></div>
+
+    <!-- VIEW: OWNER -->
+    <div class="view" id="view-owner"></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="nav">
+    <button id="nav-discover" class="active" onclick="showTab('discover')"><span class="ic">🔎</span>Barbearias</button>
+    <button id="nav-owner" onclick="showTab('owner')"><span class="ic">💈</span>Minha barbearia</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let TOKEN = localStorage.getItem('tc_token') || null;
+let state = { venue:null, barber:null, offer:null, date:null, slot:null, history:[] };
+
+// ---------- helpers ----------
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+async function api(path, opts={}){
+  const h = opts.headers||{}; h['Content-Type']='application/json';
+  if(TOKEN) h['Authorization']='Bearer '+TOKEN;
+  const r = await fetch(API+path,{...opts,headers:h});
+  let data=null; try{data=await r.json();}catch(_){}
+  if(!r.ok) throw new Error((data&&data.error)||('Erro '+r.status));
+  return data;
+}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function money(v){return 'R$ '+Number(v||0).toFixed(2).replace('.',',');}
+function initials(n){return (n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();}
+function fmtTime(iso){return new Date(iso).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'});}
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+// ---------- view router ----------
+function setView(v,{title,sub,back,search}={}){
+  document.querySelectorAll('.view').forEach(e=>e.classList.remove('show'));
+  document.getElementById('view-'+v).classList.add('show');
+  document.getElementById('hdrTitle').textContent=title||'✂️ Barbearias & Salões';
+  document.getElementById('hdrSub').textContent=sub||'Agende seu horário e ganhe TenisCash';
+  document.getElementById('backBtn').style.display=back?'block':'none';
+  document.getElementById('searchBox').style.display=search?'flex':'none';
+  window.scrollTo(0,0);
+}
+function showTab(tab){
+  state.history=[];
+  document.getElementById('nav-discover').classList.toggle('active',tab==='discover');
+  document.getElementById('nav-owner').classList.toggle('active',tab==='owner');
+  if(tab==='discover'){ setView('discover',{search:true}); loadVenues(); }
+  else { renderOwner(); }
+}
+function goBack(){
+  const prev=state.history.pop();
+  if(prev==='discover'){ setView('discover',{search:true}); loadVenues(); }
+  else if(prev==='venue'){ openVenue(state.venue.slug,true); }
+  else { showTab('discover'); }
+}
+
+// ---------- DISCOVER ----------
+let searchT=null;
+function debouncedSearch(){clearTimeout(searchT);searchT=setTimeout(loadVenues,350);}
+async function loadVenues(){
+  const list=document.getElementById('venueList');
+  list.innerHTML='<div class="loading">Carregando...</div>';
+  try{
+    const q=document.getElementById('q').value.trim();
+    const d=await api('/api/services/discover'+(q?('?q='+encodeURIComponent(q)):''));
+    if(!d.venues.length){
+      list.innerHTML=`<div class="empty"><div class="ico">💈</div>
+        <p>${q?'Nenhuma barbearia encontrada.':'Ainda não há barbearias cadastradas na sua região.'}</p>
+        <button class="btn" onclick="showTab('owner')">Tenho uma barbearia — cadastrar</button></div>`;
+      return;
+    }
+    list.innerHTML=d.venues.map(v=>`
+      <div class="vcard" onclick="openVenue('${v.slug}')">
+        <div class="cover" style="${v.coverUrl?`background-image:url('${esc(v.coverUrl)}')`:''}"></div>
+        <div class="body">
+          <div class="nm">${esc(v.name)} ${v.verified?'<span class="pill verified">✓ Verificado</span>':''}</div>
+          <div class="meta">
+            <span class="pill seg">${esc(v.segment||'barbearia')}</span>
+            ${v.city?`<span>📍 ${esc(v.city)}${v.neighborhood?' · '+esc(v.neighborhood):''}</span>`:''}
+            ${v.cashbackPct>0?`<span class="pill cash">💰 ${v.cashbackPct}% em T$</span>`:''}
+          </div>
+        </div>
+      </div>`).join('');
+  }catch(e){ list.innerHTML=`<div class="empty"><p>Erro ao carregar: ${esc(e.message)}</p></div>`; }
+}
+
+// ---------- VENUE ----------
+async function openVenue(slug,noPush){
+  if(!noPush) state.history.push('discover');
+  setView('venue',{title:'Carregando...',back:true});
+  document.getElementById('view-venue').innerHTML='<div class="loading">Carregando...</div>';
+  try{
+    const d=await api('/api/services/venue/'+slug);
+    state.venue=d.venue;
+    setView('venue',{title:d.venue.name,sub:d.venue.city||'',back:true});
+    let html='';
+    if(d.venue.cashbackPct>0) html+=`<div class="badge-tc">💰 Ganhe ${d.venue.cashbackPct}% de volta em TenisCash neste serviço</div>`;
+    if(!d.professionals.length){ html+='<div class="empty"><p>Esta barbearia ainda não tem profissionais com agenda.</p></div>'; }
+    d.professionals.forEach(p=>{
+      html+=`<div class="barber">
+        <div class="top"><div class="avatar">${initials(p.displayName)}</div>
+          <div><div class="nm">${esc(p.displayName)}</div><div class="hl">${esc(p.headline||'Profissional')}</div></div></div>`;
+      if(!p.offers.length){ html+='<div class="srv"><div class="info"><div class="d">Sem serviços cadastrados</div></div></div>'; }
+      p.offers.forEach(o=>{
+        html+=`<div class="srv"><div class="info"><div class="t">${esc(o.title)}</div>
+          <div class="d">${o.durationMin?o.durationMin+' min':''}${o.price>0?' · '+money(o.price):' · grátis'}</div></div>
+          <div class="price"><button class="btn-mini" onclick='startBook(${JSON.stringify(p).replace(/'/g,"&#39;")},${JSON.stringify(o).replace(/'/g,"&#39;")})'>Agendar</button></div></div>`;
+      });
+      html+='</div>';
+    });
+    document.getElementById('view-venue').innerHTML=html;
+  }catch(e){ document.getElementById('view-venue').innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+
+// ---------- BOOK ----------
+function startBook(barber,offer){
+  state.barber=barber; state.offer=offer; state.date=null; state.slot=null;
+  state.history.push('venue');
+  setView('book',{title:'Agendar',sub:offer.title,back:true});
+  const dates=[];const now=new Date();
+  for(let i=0;i<14;i++){const d=new Date(now);d.setDate(now.getDate()+i);dates.push(d);}
+  const dow=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  document.getElementById('view-book').innerHTML=`
+    <div class="card">
+      <div style="font-weight:700;font-size:15px;">${esc(offer.title)}</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:2px;">com ${esc(barber.displayName)} · ${offer.durationMin||30} min · ${offer.price>0?money(offer.price):'grátis'}</div>
+    </div>
+    <div class="sec-title">Escolha o dia</div>
+    <div class="dates" id="dates">${dates.map((d,i)=>`<div class="datechip" data-d="${ymd(d)}" onclick="pickDate(this)"><div class="dow">${dow[d.getDay()]}</div><div class="dnum">${d.getDate()}</div></div>`).join('')}</div>
+    <div class="sec-title">Horário</div>
+    <div id="slotsWrap"><div class="loading" style="padding:14px;">Escolha um dia acima</div></div>
+    <div id="bookForm" style="display:none;margin-top:14px;">
+      <div class="field"><label>Seu nome</label><input id="bkName" placeholder="Nome completo"></div>
+      <div class="field"><label>WhatsApp</label><input id="bkPhone" placeholder="(83) 9 9999-9999" inputmode="tel"></div>
+      <button class="btn" id="confirmBtn" onclick="confirmBook()">Confirmar agendamento</button>
+    </div>`;
+}
+async function pickDate(el){
+  document.querySelectorAll('#dates .datechip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); state.date=el.dataset.d; state.slot=null;
+  const wrap=document.getElementById('slotsWrap');
+  wrap.innerHTML='<div class="loading" style="padding:14px;">Carregando horários...</div>';
+  document.getElementById('bookForm').style.display='none';
+  try{
+    const d=await api(`/api/services/slots?professionalId=${state.barber.id}&date=${state.date}&offerId=${state.offer.id}`);
+    if(!d.slots.length){ wrap.innerHTML='<div class="empty" style="padding:18px;"><p>Sem horários livres nesse dia.</p></div>'; return; }
+    wrap.innerHTML='<div class="slots">'+d.slots.map(s=>`<div class="slot" data-s="${s}" onclick="pickSlot(this)">${fmtTime(s)}</div>`).join('')+'</div>';
+  }catch(e){ wrap.innerHTML=`<div class="empty" style="padding:18px;"><p>${esc(e.message)}</p></div>`; }
+}
+function pickSlot(el){
+  document.querySelectorAll('#slotsWrap .slot').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); state.slot=el.dataset.s;
+  document.getElementById('bookForm').style.display='block';
+}
+async function confirmBook(){
+  const name=document.getElementById('bkName').value.trim();
+  const phone=document.getElementById('bkPhone').value.trim();
+  if(!name||!phone){ toast('Preencha nome e WhatsApp'); return; }
+  if(!state.slot){ toast('Escolha um horário'); return; }
+  const btn=document.getElementById('confirmBtn'); btn.disabled=true; btn.textContent='Agendando...';
+  try{
+    await api('/api/services/book',{method:'POST',body:JSON.stringify({
+      professionalId:state.barber.id, venueId:state.venue.id, offerId:state.offer.id,
+      startAt:state.slot, customerName:name, customerPhone:phone, source:'marketplace'
+    })});
+    document.getElementById('view-book').innerHTML=`<div class="empty" style="padding:50px 20px;">
+      <div class="ico">✅</div><p style="font-size:17px;font-weight:700;color:var(--text);">Agendado!</p>
+      <p>${esc(state.offer.title)} com ${esc(state.barber.displayName)}<br>${new Date(state.slot).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'long',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</p>
+      <button class="btn" style="margin-top:18px;" onclick="showTab('discover')">Voltar</button></div>`;
+  }catch(e){ toast(e.message); btn.disabled=false; btn.textContent='Confirmar agendamento'; }
+}
+
+// ---------- OWNER ----------
+async function renderOwner(){
+  setView('owner',{title:'Minha barbearia',sub:'Gerencie sua agenda'});
+  const el=document.getElementById('view-owner');
+  if(!TOKEN){
+    el.innerHTML=`<div class="card">
+      <div style="font-weight:700;font-size:16px;margin-bottom:4px;">Entrar</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:14px;">Use seu login TenisCash pra cadastrar/gerenciar sua barbearia.</div>
+      <div class="field"><label>WhatsApp</label><input id="loginPhone" inputmode="tel" placeholder="(83) 9 9999-9999"></div>
+      <div class="field"><label>Senha</label><input id="loginPass" type="password" placeholder="••••••"></div>
+      <button class="btn" id="loginBtn" onclick="doLogin()">Entrar</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML='<div class="loading">Carregando...</div>';
+  try{
+    const venues=await api('/api/services/me/venues');
+    if(!venues.length){ renderCreateVenue(el); return; }
+    const v=venues[0];
+    let appts=[]; try{ appts=await api('/api/services/manage/appointments'); }catch(_){}
+    el.innerHTML=`
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div><div style="font-weight:800;font-size:17px;">${esc(v.name)}</div>
+          <div style="color:var(--muted);font-size:12.5px;margin-top:2px;">${esc(v.segment)} · ${v.published?'<span style="color:var(--success);font-weight:700;">no ar</span>':'<span style="color:var(--danger);font-weight:700;">não publicada</span>'}</div></div>
+        </div>
+        <div class="badge-tc" style="margin-top:12px;">💰 Devolve ${v.cashbackPct||0}% em TenisCash</div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          ${v.published?`<button class="btn sec" onclick="navigator.clipboard.writeText(location.origin+'/barbeiros?v=${v.slug}');toast('Link copiado!')">📋 Copiar link</button>`
+            :`<button class="btn" onclick="publishVenue('${v.id}')">Publicar agora</button>`}
+        </div>
+      </div>
+      <div class="sec-title">Agenda (próximos)</div>
+      ${appts.length?appts.map(a=>`<div class="card" style="padding:12px 14px;">
+        <div style="font-weight:700;">${esc(a.serviceName)} — ${esc(a.customerName||'cliente')}</div>
+        <div style="color:var(--muted);font-size:12.5px;">${new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${a.status}</div>
+      </div>`).join(''):'<div class="empty" style="padding:20px;"><p>Nenhum agendamento ainda.</p></div>'}
+      <div style="margin-top:10px;"><button class="linkbtn" onclick="logout()">Sair</button></div>`;
+  }catch(e){
+    if(/401|inválido|expirado/i.test(e.message)){ logout(); return; }
+    el.innerHTML=`<div class="empty"><p>${esc(e.message)}</p><button class="linkbtn" onclick="logout()">Sair</button></div>`;
+  }
+}
+function renderCreateVenue(el){
+  el.innerHTML=`<div class="card">
+    <div style="font-weight:700;font-size:16px;margin-bottom:3px;">Cadastrar minha barbearia</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:14px;">Em 1 minuto você fica no ar no /barbeiros.</div>
+    <div class="field"><label>Nome do estabelecimento</label><input id="cvName" placeholder="Ex: Barbearia do Zé"></div>
+    <div class="row2">
+      <div class="field"><label>Tipo</label><select id="cvSeg"><option value="barbearia">Barbearia</option><option value="salao">Salão</option><option value="estetica">Estética</option><option value="tattoo">Tattoo</option></select></div>
+      <div class="field"><label>Cidade</label><input id="cvCity" placeholder="João Pessoa"></div>
+    </div>
+    <div class="field"><label>Cashback em TenisCash (%)</label><input id="cvCash" type="number" value="5" inputmode="numeric"></div>
+    <div class="sec-title" style="margin-top:6px;">Primeiro serviço</div>
+    <div class="row2">
+      <div class="field"><label>Nome</label><input id="cvSrv" value="Corte"></div>
+      <div class="field"><label>Preço (R$)</label><input id="cvPrice" type="number" value="40" inputmode="decimal"></div>
+    </div>
+    <div class="field"><label>Duração (min)</label><input id="cvDur" type="number" value="30" inputmode="numeric"></div>
+    <button class="btn" id="cvBtn" onclick="createVenue()">Criar e publicar</button>
+    <div style="margin-top:12px;text-align:center;"><button class="linkbtn" onclick="logout()">Sair</button></div>
+  </div>`;
+}
+async function doLogin(){
+  const phone=document.getElementById('loginPhone').value.replace(/\D/g,'');
+  const password=document.getElementById('loginPass').value;
+  if(!phone||!password){ toast('Preencha telefone e senha'); return; }
+  const btn=document.getElementById('loginBtn'); btn.disabled=true; btn.textContent='Entrando...';
+  try{
+    const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({phone,password})});
+    TOKEN=d.token; localStorage.setItem('tc_token',TOKEN); renderOwner();
+  }catch(e){ toast(e.message); btn.disabled=false; btn.textContent='Entrar'; }
+}
+function logout(){ TOKEN=null; localStorage.removeItem('tc_token'); renderOwner(); }
+
+async function createVenue(){
+  const name=document.getElementById('cvName').value.trim();
+  if(!name){ toast('Informe o nome'); return; }
+  const seg=document.getElementById('cvSeg').value;
+  const city=document.getElementById('cvCity').value.trim();
+  const cashbackPct=Number(document.getElementById('cvCash').value)||0;
+  const srv=document.getElementById('cvSrv').value.trim()||'Corte';
+  const price=Number(document.getElementById('cvPrice').value)||0;
+  const dur=Number(document.getElementById('cvDur').value)||30;
+  const btn=document.getElementById('cvBtn'); btn.disabled=true; btn.textContent='Criando...';
+  try{
+    // 1) garante perfil profissional (o barbeiro = você)
+    let pro; try{ pro=await api('/api/professionals/me'); }catch(_){ pro=null; }
+    if(!pro){ pro=await api('/api/professionals/me',{method:'POST',body:JSON.stringify({displayName:name,headline:seg,category:'barber',city})}); }
+    // 2) cria estabelecimento
+    const venue=await api('/api/services/venues',{method:'POST',body:JSON.stringify({name,segment:seg,city,cashbackPct})});
+    // 3) adiciona você como membro
+    await api(`/api/services/venues/${venue.id}/members`,{method:'POST',body:JSON.stringify({professionalId:pro.id,role:'owner'})});
+    // 4) primeiro serviço
+    await api('/api/professionals/me/offers',{method:'POST',body:JSON.stringify({type:'class_presential',title:srv,price,durationMin:dur})});
+    // 5) horário padrão seg-sáb 09:00-18:00
+    for(let wd=1;wd<=6;wd++){ try{ await api('/api/services/me/availability',{method:'POST',body:JSON.stringify({weekday:wd,startMin:540,endMin:1080})}); }catch(_){} }
+    // 6) publica
+    await api(`/api/services/venues/${venue.id}`,{method:'PATCH',body:JSON.stringify({published:true})});
+    toast('Barbearia no ar! 🎉'); renderOwner();
+  }catch(e){ toast(e.message); btn.disabled=false; btn.textContent='Criar e publicar'; }
+}
+
+// ---------- init ----------
+(function(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('v')){ openVenue(params.get('v')); document.getElementById('nav-discover').classList.add('active'); }
+  else loadVenues();
+})();
+</script>
+</body>
+</html>

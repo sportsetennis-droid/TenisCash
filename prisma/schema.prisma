@@ -3119,6 +3119,149 @@ model Charge {
 }
 
 // ============================================================
+// SERVIÇOS — Agendamento + Marketplace + TenisCash na rede
+// ------------------------------------------------------------
+// Generaliza o Professional (esportivo) p/ QUALQUER prestador de
+// serviço (barbearia, salão, estética, tattoo). A camada que
+// faltava: AGENDA (slots/booking) + ESTABELECIMENTO (multi-pro)
+// + moeda ganha/gasta no serviço (o moat vs AppBarber/Booksy).
+//
+// 100% ADITIVO (mesmo princípio do LiveChannel): tabelas novas,
+// links pra User/Professional/Offer como String SOLTA (sem FK) →
+// `prisma db push` só CRIA tabelas, zero risco nas de produção.
+// FK só DENTRO do módulo novo (VenueMember → ServiceVenue).
+// ============================================================
+
+model ServiceVenue {
+  id          String  @id @default(cuid())
+  ownerUserId String // User dono do estabelecimento (vira admin)
+  slug        String  @unique // /v/barbearia-do-ze
+  name        String
+  segment     String? // barbearia | salao | estetica | tattoo | other
+  bio         String? @db.Text
+  avatarUrl   String?
+  coverUrl    String?
+
+  // Endereço — marketplace por cidade / "perto de mim"
+  address      String?
+  neighborhood String?
+  city         String?
+  state        String?
+  cep          String?
+  latitude     Float?
+  longitude    Float?
+
+  whatsapp  String?
+  instagram String?
+
+  // TenisCash (moat)
+  cashbackPct Float   @default(0) // % do serviço devolvido ao cliente em T$
+  acceptsTC   Boolean @default(true) // pode pagar serviço com T$ (burn)
+
+  // Recebimento
+  pixKey        String?
+  asaasWalletId String? // split on-platform (futuro)
+
+  published Boolean @default(false)
+  verified  Boolean @default(false)
+
+  memberCount Int   @default(0)
+  totalBilled Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members VenueMember[]
+
+  @@index([segment])
+  @@index([city])
+  @@index([published])
+}
+
+model VenueMember {
+  id      String       @id @default(cuid())
+  venueId String
+  venue   ServiceVenue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  professionalId String // link p/ Professional existente (String solta, sem FK)
+  role           String  @default("staff") // owner | manager | staff
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([venueId, professionalId])
+  @@index([venueId])
+  @@index([professionalId])
+}
+
+model ProfessionalAvailability {
+  id             String  @id @default(cuid())
+  professionalId String // Professional (String solta, sem FK)
+  weekday        Int // 0=domingo ... 6=sábado
+  startMin       Int // minutos desde 00:00 local (540 = 09:00)
+  endMin         Int // 1080 = 18:00
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([professionalId, weekday])
+}
+
+model AvailabilityException {
+  id             String   @id @default(cuid())
+  professionalId String
+  date           DateTime // dia bloqueado (data local, 00:00)
+  startMin       Int? // null = dia inteiro
+  endMin         Int?
+  reason         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([professionalId, date])
+}
+
+model ServiceAppointment {
+  id             String  @id @default(cuid())
+  venueId        String? // ServiceVenue (opcional p/ solo)
+  professionalId String // Professional que executa
+  offerId        String? // ProfessionalOffer (serviço)
+
+  // Cliente: User TenisCash (ganha cashback) OU avulso
+  clientUserId  String?
+  clientId      String? // ProfessionalClient (ficha)
+  customerName  String?
+  customerPhone String?
+
+  startAt     DateTime
+  endAt       DateTime
+  durationMin Int
+
+  serviceName String
+  price       Float  @default(0)
+  cashbackPct Float  @default(0) // snapshot do % no momento do booking
+
+  status String @default("booked") // booked | confirmed | done | no_show | cancelled
+  source String @default("marketplace") // marketplace | venue | whatsapp | manual
+
+  // TenisCash
+  tcEarned Float   @default(0) // creditado ao cliente quando done
+  tcUsed   Float   @default(0) // T$ usado como pagamento (burn)
+  chargeId String? // Charge gerado p/ registro do pagamento
+
+  reminderSentAt DateTime?
+  doneAt         DateTime?
+  cancelledAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professionalId, startAt])
+  @@index([venueId, startAt])
+  @@index([clientUserId])
+  @@index([status, startAt])
+}
+
+// ============================================================
 // LIVE COMMERCE — vitrine ao vivo + chat de atendimento
 // O visitante é ANÔNIMO (não é User), por isso usa modelos
 // dedicados em vez de Conversation/ChatMessage (que exigem
