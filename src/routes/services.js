@@ -185,7 +185,7 @@ router.get(
       orderBy: [{ verified: 'desc' }, { createdAt: 'desc' }],
       select: {
         id: true, slug: true, name: true, segment: true, avatarUrl: true, coverUrl: true,
-        city: true, neighborhood: true, cashbackPct: true, acceptsTC: true, verified: true,
+        city: true, neighborhood: true, cashbackPct: true, givesCashback: true, acceptsTC: true, verified: true,
         reviewRating: true, reviewCount: true,
       },
     });
@@ -472,7 +472,9 @@ router.post(
     if (appt.status === 'done') return res.json(appt);
 
     const enabled = await cashbackOn();
-    const cashback = round2((appt.price * (appt.cashbackPct || 0)) / 100);
+    const venue = appt.venueId ? await prisma.serviceVenue.findUnique({ where: { id: appt.venueId } }) : null;
+    // Regra: cliente ganha 100% (1:1) do que pagou, em T$ — sem % configurável.
+    const cashback = (enabled && appt.clientUserId && venue && venue.givesCashback) ? round2(appt.price) : 0;
 
     const out = await prisma.$transaction(async (tx) => {
       // Registro de cobrança do serviço
@@ -602,7 +604,7 @@ router.post(
         cep: b.cep || null,
         whatsapp: b.whatsapp || null,
         instagram: b.instagram || null,
-        cashbackPct: b.cashbackPct != null ? Number(b.cashbackPct) : 0,
+        givesCashback: b.givesCashback !== false,
         acceptsTC: b.acceptsTC !== false,
         pixKey: b.pixKey || null,
       },
@@ -645,7 +647,7 @@ router.patch(
       if (b[f] !== undefined) data[f] = b[f];
     }
     if (b.segment !== undefined && SEGMENTS.includes(b.segment)) data.segment = b.segment;
-    if (b.cashbackPct !== undefined) data.cashbackPct = Number(b.cashbackPct);
+    if (b.givesCashback !== undefined) data.givesCashback = !!b.givesCashback;
     if (b.acceptsTC !== undefined) data.acceptsTC = !!b.acceptsTC;
     if (b.published !== undefined) data.published = !!b.published;
     const row = await prisma.serviceVenue.update({ where: { id: v.id }, data });
@@ -808,8 +810,8 @@ router.post('/appointments/:id/checkout', authMiddleware, wrap(async (req, res) 
       clientUserId: appt.clientUserId, customerName: appt.customerName,
     });
     let cashback = 0;
-    if (enabled && appt.clientUserId) {
-      cashback = round2(comanda.total * (appt.cashbackPct || 0) / 100);
+    if (enabled && appt.clientUserId && venue.givesCashback) {
+      cashback = round2(comanda.total); // 100% (1:1) do que o cliente pagou
       if (cashback > 0) {
         const u = await tx.user.update({ where: { id: appt.clientUserId }, data: { balance: { increment: cashback } } });
         await tx.transaction.create({ data: { type: 'cashback_service', amount: cashback, description: `Cashback: ${appt.serviceName}`, receiverId: appt.clientUserId, balanceAfter: u.balance, metadata: JSON.stringify({ comandaId: comanda.id }) } });

@@ -3154,9 +3154,10 @@ model ServiceVenue {
   whatsapp  String?
   instagram String?
 
-  // TenisCash (moat)
-  cashbackPct Float   @default(0) // % do serviço devolvido ao cliente em T$
-  acceptsTC   Boolean @default(true) // pode pagar serviço com T$ (burn)
+  // TenisCash (moat) — regra: cliente ganha 100% (1:1) do que paga, em T$. SEM % configurável.
+  givesCashback Boolean @default(true) // estabelecimento oferece TenisCash ao cliente (sim/não)
+  cashbackPct   Float   @default(0) // legado, NÃO usado (a regra é 100% fixo)
+  acceptsTC     Boolean @default(true) // pode pagar serviço com T$ (burn)
 
   // Recebimento
   pixKey        String?

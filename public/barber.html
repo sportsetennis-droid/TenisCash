@@ -261,7 +261,7 @@ async function loadVenues(){
           <div class="meta">
             <span class="pill seg">${esc(v.segment||'barbearia')}</span>
             ${v.city?`<span>📍 ${esc(v.city)}${v.neighborhood?' · '+esc(v.neighborhood):''}</span>`:''}
-            ${v.cashbackPct>0?`<span class="pill cash">💰 ${v.cashbackPct}% T$</span>`:''}
+            ${v.givesCashback?`<span class="pill cash">💰 100% em T$</span>`:''}
             ${v.reviewCount>0?`<span>⭐ ${Number(v.reviewRating).toFixed(1)} (${v.reviewCount})</span>`:''}
           </div>
         </div>
@@ -279,7 +279,7 @@ async function openVenue(slug,noPush){
     state.venue=d.venue; state.venueData=d;
     setView('venue',{title:d.venue.name,sub:d.venue.city||'',back:true});
     let html='';
-    if(d.venue.cashbackPct>0)html+=`<div class="badge-tc">💰 Ganhe ${d.venue.cashbackPct}% de volta em TenisCash</div>`;
+    if(d.venue.givesCashback)html+=`<div class="badge-tc">💰 Ganhe 100% de volta em TenisCash — o que você paga, volta pra você</div>`;
     if(!d.professionals.length)html+='<div class="empty"><p>Sem profissionais com agenda ainda.</p></div>';
     html+='<div class="barbers">';
     d.professionals.forEach(p=>{
@@ -390,7 +390,7 @@ function renderCreateVenue(el){
       <div class="field"><label>Tipo</label><select id="cvSeg"><option value="barbearia">Barbearia</option><option value="salao">Salão</option><option value="estetica">Estética</option><option value="tattoo">Tattoo</option></select></div>
       <div class="field"><label>Cidade</label><input id="cvCity" placeholder="João Pessoa"></div>
     </div>
-    <div class="field"><label>Cashback em TenisCash (%)</label><input id="cvCash" type="number" value="5" inputmode="numeric"></div>
+    <div class="field"><label>Oferecer TenisCash ao cliente?</label><select id="cvGives"><option value="1">Sim — cliente ganha 100% de volta</option><option value="0">Não</option></select></div>
     <div class="sec-title" style="margin-top:6px;">Primeiro serviço</div>
     <div class="row2">
       <div class="field"><label>Nome</label><input id="cvSrv" value="Corte"></div>
@@ -417,7 +417,7 @@ async function createVenue(){
   if(!name){toast('Informe o nome');return;}
   const seg=document.getElementById('cvSeg').value;
   const city=document.getElementById('cvCity').value.trim();
-  const cashbackPct=Number(document.getElementById('cvCash').value)||0;
+  const givesCashback=val('cvGives')!=='0';
   const srv=document.getElementById('cvSrv').value.trim()||'Corte';
   const price=Number(document.getElementById('cvPrice').value)||0;
   const dur=Number(document.getElementById('cvDur').value)||30;
@@ -425,7 +425,7 @@ async function createVenue(){
   try{
     let pro;try{pro=await api('/api/professionals/me');}catch(_){pro=null;}
     if(!pro)pro=await api('/api/professionals/me',{method:'POST',body:JSON.stringify({displayName:name,headline:seg,category:'barber',city})});
-    const venue=await api('/api/services/venues',{method:'POST',body:JSON.stringify({name,segment:seg,city,cashbackPct})});
+    const venue=await api('/api/services/venues',{method:'POST',body:JSON.stringify({name,segment:seg,city,givesCashback})});
     await api(`/api/services/venues/${venue.id}/members`,{method:'POST',body:JSON.stringify({professionalId:pro.id,role:'owner'})});
     await api('/api/professionals/me/offers',{method:'POST',body:JSON.stringify({type:'class_presential',title:srv,price,durationMin:dur})});
     for(let wd=1;wd<=6;wd++){try{await api('/api/services/me/availability',{method:'POST',body:JSON.stringify({weekday:wd,startMin:540,endMin:1080})});}catch(_){}}
@@ -443,7 +443,7 @@ function renderOwnerDash(){
     <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div><div style="font-weight:800;font-size:17px;">${esc(v.name)}</div>
-        <div style="color:var(--muted);font-size:12.5px;margin-top:2px;">${esc(v.segment)} · ${v.published?'<span style="color:var(--success);font-weight:700;">no ar</span>':'<span style="color:var(--danger);font-weight:700;">não publicada</span>'} · 💰 ${v.cashbackPct||0}% T$</div></div>
+        <div style="color:var(--muted);font-size:12.5px;margin-top:2px;">${esc(v.segment)} · ${v.published?'<span style="color:var(--success);font-weight:700;">no ar</span>':'<span style="color:var(--danger);font-weight:700;">não publicada</span>'} · ${v.givesCashback?'💰 cliente ganha 100% em T$':'sem TenisCash'}</div></div>
         <button class="linkbtn" data-action="logout">Sair</button>
       </div>
       ${v.published?`<button class="btn sec" style="margin-top:10px;" data-action="copylink" data-slug="${esc(v.slug)}">📋 Copiar link da barbearia</button>`:`<button class="btn" style="margin-top:10px;" data-action="publish" data-vid="${esc(v.id)}">Publicar agora</button>`}
