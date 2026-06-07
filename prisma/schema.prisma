@@ -3273,6 +3273,8 @@ model VenueProduct {
   price     Float    @default(0)
   cost      Float    @default(0)
   stock     Int      @default(0)
+  minStock Int @default(0)
+  expiresAt DateTime?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3364,6 +3366,170 @@ model AppointmentWaitlist {
   createdAt      DateTime  @default(now())
 
   @@index([venueId, status])
+}
+
+// ----- Paridade AppBarber: pacotes, financeiro, estoque+, marketing, clube -----
+
+model ServicePackage {
+  id           String   @id @default(cuid())
+  venueId      String
+  name         String
+  sessions     Int
+  price        Float
+  validityDays Int?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  purchases    PackagePurchase[]
+
+  @@index([venueId])
+}
+
+model PackagePurchase {
+  id            String   @id @default(cuid())
+  venueId       String
+  packageId     String
+  clientUserId  String?
+  customerName  String?
+  customerPhone String?
+  sessionsTotal Int
+  sessionsUsed  Int      @default(0)
+  pricePaid     Float
+  expiresAt     DateTime?
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  package       ServicePackage    @relation(fields: [packageId], references: [id])
+  uses          PackageSessionUse[]
+
+  @@index([venueId])
+  @@index([packageId])
+  @@index([clientUserId])
+}
+
+model PackageSessionUse {
+  id            String   @id @default(cuid())
+  purchaseId    String
+  appointmentId String?
+  usedAt        DateTime @default(now())
+  purchase      PackagePurchase @relation(fields: [purchaseId], references: [id])
+
+  @@index([purchaseId])
+}
+
+model StaffAdvance {
+  id             String    @id @default(cuid())
+  venueId        String
+  professionalId String
+  amount         Float
+  note           String?
+  status         String    @default("open")
+  createdAt      DateTime  @default(now())
+  paidAt         DateTime?
+
+  @@index([venueId])
+  @@index([venueId, status])
+  @@index([professionalId])
+}
+
+model Payable {
+  id          String    @id @default(cuid())
+  venueId     String
+  description String
+  amount      Float
+  dueDate     DateTime?
+  category    String?
+  supplier    String?
+  status      String    @default("open")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([venueId])
+  @@index([venueId, status])
+}
+
+model Receivable {
+  id          String    @id @default(cuid())
+  venueId     String
+  description String
+  amount      Float
+  dueDate     DateTime?
+  clientName  String?
+  status      String    @default("open")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([venueId])
+  @@index([venueId, status])
+}
+
+model StockMovement {
+  id              String   @id @default(cuid())
+  venueId         String
+  venueProductId  String
+  type            String
+  qty             Int
+  reason          String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  @@index([venueId, createdAt])
+  @@index([venueProductId])
+}
+
+model MarketingCampaign {
+  id        String   @id @default(cuid())
+  venueId   String
+  type      String
+  title     String
+  message   String
+  segment   String?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  logs      MessageLog[]
+  @@index([venueId])
+}
+
+model MessageLog {
+  id            String            @id @default(cuid())
+  venueId       String
+  campaignId    String?
+  clientUserId  String?
+  customerName  String?
+  customerPhone String?
+  channel       String            @default("whatsapp")
+  status        String            @default("queued")
+  createdAt     DateTime          @default(now())
+  campaign      MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  @@index([venueId])
+  @@index([campaignId])
+}
+
+model ServiceClubTier {
+  id          String   @id @default(cuid())
+  venueId     String
+  name        String
+  monthlyFee  Float    @default(0)
+  discountPct Float    @default(0)
+  benefits    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  memberships ServiceClubMembership[]
+
+  @@index([venueId])
+}
+
+model ServiceClubMembership {
+  id            String          @id @default(cuid())
+  venueId       String
+  tierId        String
+  clientUserId  String?
+  customerName  String?
+  customerPhone String?
+  since         DateTime        @default(now())
+  status        String          @default("active")
+  tier          ServiceClubTier @relation(fields: [tierId], references: [id])
+
+  @@index([venueId])
+  @@index([tierId])
 }
 
 // ============================================================

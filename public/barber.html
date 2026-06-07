@@ -147,6 +147,24 @@
     .toast{bottom:28px;}
   }
   @media(min-width:900px){ .app{border-radius:0;} }
+  .st-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .st-box{background:var(--surface);border:1px solid var(--border-soft);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow-sm);}
+  .st-box h4{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--soft);}
+  .st-alert{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:7px 9px;border-radius:8px;margin-bottom:5px;}
+  .st-alert-low,.st-alert-soon{background:#fff8e0;color:#b06b00;}
+  .st-alert-exp{background:var(--danger-bg);color:var(--danger);}
+  .st-form{display:flex;flex-direction:column;gap:8px;}
+  .st-form select,.st-form input{border:1.5px solid var(--border);border-radius:10px;padding:11px;font-size:14px;width:100%;}
+  .st-btn{background:var(--gradient);color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer;min-height:44px;}
+  .st-btn-sm{background:var(--surface);border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;}
+  .st-totals{font-size:12.5px;color:var(--soft);margin-bottom:8px;}
+  .st-tablewrap{overflow-x:auto;}
+  .st-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .st-table th,.st-table td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border-soft);white-space:nowrap;}
+  .st-tag{padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;}
+  .st-tag-in{background:var(--success-bg);color:var(--success);}
+  .st-tag-out{background:var(--danger-bg);color:var(--danger);}
+  .st-tag-adjust{background:#e3f2fd;color:#0066cc;}
 </style>
 </head>
 <body>
@@ -420,7 +438,7 @@ async function createVenue(){
 function val(id){const e=document.getElementById(id);return e?e.value:'';}
 function renderOwnerDash(){
   const v=state.ownerVenue, el=document.getElementById('view-owner');
-  const tabs={agenda:'Agenda',caixa:'Caixa',produtos:'Produtos',relatorio:'Relatório'};
+  const tabs={agenda:'Agenda',caixa:'Caixa',produtos:'Produtos',relatorio:'Relatório',pacotes:'Pacotes',finance:'Financeiro',stock:'Estoque+',marketing:'Marketing',club:'Clube'};
   el.innerHTML=`
     <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -443,6 +461,11 @@ async function ownerLoadTab(){
     if(t==='caixa')return renderCaixa(body);
     if(t==='produtos')return renderProdutos(body);
     if(t==='relatorio')return renderRelatorio(body);
+    if(t==='pacotes')return renderPacotes(body);
+    if(t==='finance') return renderFinance(body);
+    if(t==="stock") return renderStock(body);
+    if(t==="marketing") return renderMarketing(body);
+    if(t==='club')return renderClube(body);
   }catch(e){body.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;}
 }
 function ownerTab(t){state.ownerTab=t;document.querySelectorAll('.subnav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));ownerLoadTab();}
@@ -553,6 +576,340 @@ async function renderRelatorio(body){
 }
 async function apptAction(id,action){try{await api(`/api/services/appointments/${id}/${action}`,{method:'POST'});toast('Feito');ownerLoadTab();}catch(e){toast(e.message);}}
 
+
+// ===== packages =====
+async function renderPacotes(body){
+  const vid=state.ownerVenue.id;
+  let pkgs=[],purchases=[];
+  try{[pkgs,purchases]=await Promise.all([api(`/api/services/venues/${vid}/packages`),api(`/api/services/venues/${vid}/package-purchases`)]);}catch(e){body.innerHTML=`<div class="empty" style="padding:18px;"><p>${esc(e.message)}</p></div>`;return;}
+  const pkgOptions=pkgs.length?pkgs.map(p=>`<option value="${p.id}">${esc(p.name)} · ${p.sessions} sessões · ${money(p.price)}</option>`).join(''):'<option value="">Nenhum pacote — crie abaixo</option>';
+  body.innerHTML=`
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px;">Vender pacote</div>
+      <div class="field"><label>Pacote</label><select id="sellPkgId">${pkgOptions}</select></div>
+      <div class="row2"><div class="field"><label>Cliente</label><input id="sellName" placeholder="nome do cliente"></div><div class="field"><label>Telefone (opcional)</label><input id="sellPhone" inputmode="tel"></div></div>
+      <button class="btn" data-action="pkgSell">Vender</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:8px;">Novo pacote</div>
+      <div class="row2"><div class="field"><label>Nome</label><input id="npkName" placeholder="ex: 5 cortes"></div><div class="field"><label>Sessões</label><input id="npkSessions" type="number" inputmode="numeric"></div></div>
+      <div class="row2"><div class="field"><label>Preço (R$)</label><input id="npkPrice" type="number" inputmode="decimal"></div><div class="field"><label>Validade (dias, opcional)</label><input id="npkValidity" type="number" inputmode="numeric"></div></div>
+      <button class="btn" data-action="pkgCreate">Criar pacote</button>
+    </div>
+    ${pkgs.length?`<div class="sec-title">Catálogo</div>`+pkgs.map(p=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:700;">${esc(p.name)}</div><div style="color:var(--muted);font-size:12.5px;">${p.sessions} sessões · ${money(p.price)}${p.validityDays?' · vale '+p.validityDays+'d':''}</div></div><button class="linkbtn" data-action="pkgDelete" data-pid="${p.id}">remover</button></div>`).join(''):''}
+    <div class="sec-title">Vendas</div>
+    ${purchases.length?purchases.map(pu=>{const left=pu.sessionsLeft!=null?pu.sessionsLeft:Math.max(0,pu.sessionsTotal-pu.sessionsUsed);const done=left<=0;const canUse=!done&&!pu.expired;return `<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:700;">${esc(pu.customerName||'Cliente')}</div><div style="color:var(--muted);font-size:12.5px;">${esc(pu.packageName||'Pacote')} · ${pu.sessionsUsed}/${pu.sessionsTotal} usadas${pu.expired?' · <span style=\"color:var(--danger);\">expirado</span>':''}</div></div>${canUse?`<button class="btn-mini" data-action="pkgUse" data-pid="${pu.id}">usar sessão</button>`:`<span style="color:var(--muted);font-size:12px;">${pu.expired?'expirado':'esgotado'}</span>`}</div>`;}).join(''):'<div class="empty" style="padding:18px;"><p>Nenhuma venda de pacote ainda.</p></div>'}`;
+}
+async function pkgCreate(){
+  const name=val('npkName');if(!name){toast('Informe o nome');return;}
+  const sessions=val('npkSessions');if(!sessions||Number(sessions)<1){toast('Informe as sessões');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/packages`,{method:'POST',body:JSON.stringify({name,sessions,price:val('npkPrice'),validityDays:val('npkValidity')})});toast('Pacote criado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function pkgDelete(pid){try{await api(`/api/services/venues/${state.ownerVenue.id}/packages/${pid}`,{method:'DELETE'});toast('Removido');ownerLoadTab();}catch(e){toast(e.message);}}
+async function pkgSell(){
+  const packageId=val('sellPkgId');if(!packageId){toast('Crie um pacote primeiro');return;}
+  const customerName=val('sellName');if(!customerName){toast('Informe o cliente');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/package-purchases`,{method:'POST',body:JSON.stringify({packageId,customerName,customerPhone:val('sellPhone')})});toast('Pacote vendido');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function pkgUse(pid){try{await api(`/api/services/venues/${state.ownerVenue.id}/package-purchases/${pid}/use`,{method:'POST'});toast('Sessão usada');ownerLoadTab();}catch(e){toast(e.message);}}
+
+// ===== finance =====
+async function renderFinance(body){
+  const vid=state.ownerVenue.id;
+  const [adv,pay,rec]=await Promise.all([
+    api(`/api/services/venues/${vid}/advances`),
+    api(`/api/services/venues/${vid}/payables`),
+    api(`/api/services/venues/${vid}/receivables`)
+  ]);
+  const pros=await financeLoadPros();
+  const proField = pros.length
+    ? `<select id="faPro">${pros.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>`
+    : `<input id="faPro" placeholder="ID do profissional">`;
+  const advCard=(a)=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <div><div style="font-weight:700;">${esc(financeProName(pros,a.professionalId))}</div>
+    <div style="color:var(--muted);font-size:11.5px;">${esc(a.note||'vale')} · ${new Date(a.createdAt).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'})}</div></div>
+    <div style="text-align:right;"><div style="font-weight:800;color:var(--danger);">${money(a.amount)}</div>
+    ${a.status==='open'?`<button class="linkbtn" data-action="finAdvSettle" data-id="${a.id}">marcar quitado</button>`:`<span class="pill seg">quitado</span>`}</div></div>`;
+  const payCard=(p)=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <div><div style="font-weight:700;">${esc(p.description)}</div>
+    <div style="color:var(--muted);font-size:11.5px;">${p.supplier?esc(p.supplier)+' · ':''}${p.dueDate?'vence '+new Date(p.dueDate).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'}):'sem vencimento'}</div></div>
+    <div style="text-align:right;"><div style="font-weight:800;color:var(--danger);">${money(p.amount)}</div>
+    ${p.status==='open'?`<button class="linkbtn" data-action="finPayPay" data-id="${p.id}">pagar</button>`:`<span class="pill seg">pago</span>`}</div></div>`;
+  const recCard=(r)=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+    <div><div style="font-weight:700;">${esc(r.description)}</div>
+    <div style="color:var(--muted);font-size:11.5px;">${r.clientName?esc(r.clientName)+' · ':''}${r.dueDate?'vence '+new Date(r.dueDate).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'}):'sem vencimento'}</div></div>
+    <div style="text-align:right;"><div style="font-weight:800;color:var(--success);">${money(r.amount)}</div>
+    ${r.status==='open'?`<button class="linkbtn" data-action="finRecReceive" data-id="${r.id}">receber</button>`:`<span class="pill seg">recebido</span>`}</div></div>`;
+  body.innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:800;font-size:15px;">Vales / adiantamentos</div><div style="font-weight:800;color:var(--danger);">${money(adv.openTotal)} <span style="color:var(--muted);font-weight:600;font-size:11px;">em aberto</span></div></div>
+      <div class="row2" style="margin-top:8px;"><div class="field"><label>Profissional</label>${proField}</div><div class="field"><label>Valor (R$)</label><input id="faAmount" type="number" inputmode="decimal"></div></div>
+      <div class="field"><label>Observação</label><input id="faNote" placeholder="ex: adiantamento quinzena"></div>
+      <button class="btn" data-action="finAdvAdd">Lançar vale</button>
+    </div>
+    ${adv.advances.length?adv.advances.map(advCard).join(''):'<div class="empty" style="padding:14px;"><p>Nenhum vale lançado.</p></div>'}
+
+    <div class="card" style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:800;font-size:15px;">Contas a pagar</div><div style="font-weight:800;color:var(--danger);">${money(pay.openTotal)} <span style="color:var(--muted);font-weight:600;font-size:11px;">em aberto</span></div></div>
+      <div class="field" style="margin-top:8px;"><label>Descrição</label><input id="fpDesc" placeholder="ex: aluguel, energia"></div>
+      <div class="row2"><div class="field"><label>Valor (R$)</label><input id="fpAmount" type="number" inputmode="decimal"></div><div class="field"><label>Vencimento</label><input id="fpDue" type="date"></div></div>
+      <div class="row2"><div class="field"><label>Fornecedor</label><input id="fpSupplier" placeholder="opcional"></div><div class="field"><label>Categoria</label><input id="fpCategory" placeholder="opcional"></div></div>
+      <button class="btn" data-action="finPayAdd">Adicionar conta</button>
+    </div>
+    ${pay.payables.length?pay.payables.map(payCard).join(''):'<div class="empty" style="padding:14px;"><p>Nenhuma conta a pagar.</p></div>'}
+
+    <div class="card" style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:800;font-size:15px;">Contas a receber</div><div style="font-weight:800;color:var(--success);">${money(rec.openTotal)} <span style="color:var(--muted);font-weight:600;font-size:11px;">em aberto</span></div></div>
+      <div class="field" style="margin-top:8px;"><label>Descrição</label><input id="frDesc" placeholder="ex: pacote 5 cortes"></div>
+      <div class="row2"><div class="field"><label>Valor (R$)</label><input id="frAmount" type="number" inputmode="decimal"></div><div class="field"><label>Vencimento</label><input id="frDue" type="date"></div></div>
+      <div class="field"><label>Cliente</label><input id="frClient" placeholder="opcional"></div>
+      <button class="btn" data-action="finRecAdd">Adicionar conta</button>
+    </div>
+    ${rec.receivables.length?rec.receivables.map(recCard).join(''):'<div class="empty" style="padding:14px;"><p>Nenhuma conta a receber.</p></div>'}`;
+}
+async function financeLoadPros(){
+  const v=state.ownerVenue;
+  if(!v||!v.slug||!v.published)return [];
+  try{
+    const d=await api(`/api/services/venue/${v.slug}`);
+    return (d.professionals||[]).map(p=>({id:p.id,name:p.displayName||'Profissional'}));
+  }catch(_){return [];}
+}
+function financeProName(pros,id){
+  const p=pros.find(x=>x.id===id);
+  return p?p.name:'Profissional';
+}
+async function finAdvAdd(){
+  const professionalId=val('faPro');if(!professionalId){toast('Informe o profissional');return;}
+  const amount=val('faAmount');if(!amount){toast('Informe o valor');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/advances`,{method:'POST',body:JSON.stringify({professionalId,amount,note:val('faNote')})});toast('Vale lançado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function finAdvSettle(id){try{await api(`/api/services/venues/${state.ownerVenue.id}/advances/${id}/settle`,{method:'POST'});toast('Vale quitado');ownerLoadTab();}catch(e){toast(e.message);}}
+async function finPayAdd(){
+  const description=val('fpDesc');if(!description){toast('Informe a descrição');return;}
+  const amount=val('fpAmount');if(!amount){toast('Informe o valor');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/payables`,{method:'POST',body:JSON.stringify({description,amount,dueDate:val('fpDue'),supplier:val('fpSupplier'),category:val('fpCategory')})});toast('Conta adicionada');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function finPayPay(id){try{await api(`/api/services/venues/${state.ownerVenue.id}/payables/${id}/pay`,{method:'POST'});toast('Conta paga');ownerLoadTab();}catch(e){toast(e.message);}}
+async function finRecAdd(){
+  const description=val('frDesc');if(!description){toast('Informe a descrição');return;}
+  const amount=val('frAmount');if(!amount){toast('Informe o valor');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/receivables`,{method:'POST',body:JSON.stringify({description,amount,dueDate:val('frDue'),clientName:val('frClient')})});toast('Conta adicionada');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function finRecReceive(id){try{await api(`/api/services/venues/${state.ownerVenue.id}/receivables/${id}/receive`,{method:'POST'});toast('Recebido');ownerLoadTab();}catch(e){toast(e.message);}}
+
+// ===== stock =====
+async function renderStock(body){
+  const vid = state.ownerVenue.id;
+  body.innerHTML = '<div style="padding:8px 0;color:#888">Carregando estoque...</div>';
+  let alerts={lowStock:[],expiring:[],lowStockCount:0,expiringCount:0}, profit={items:[],totals:{}}, products=[], movements=[];
+  try {
+    [alerts, profit, products, movements] = await Promise.all([
+      api('/api/services/venues/'+vid+'/stock/alerts'),
+      api('/api/services/venues/'+vid+'/stock/profit'),
+      api('/api/services/venues/'+vid+'/products'),
+      api('/api/services/venues/'+vid+'/stock/movements')
+    ]);
+  } catch(e){ body.innerHTML = '<div style="color:#c00;padding:12px">Erro ao carregar: '+esc(e.message)+'</div>'; return; }
+
+  const lowCards = alerts.lowStock.map(p=>'<div class="st-alert st-alert-low"><b>'+esc(p.name)+'</b><span>'+p.stock+' / mín '+p.minStock+'</span></div>').join('') || '<div style="color:#888;font-size:13px">Nenhum produto com estoque baixo.</div>';
+  const expCards = alerts.expiring.map(p=>'<div class="st-alert '+(p.expired?'st-alert-exp':'st-alert-soon')+'"><b>'+esc(p.name)+'</b><span>'+(p.expired?'VENCIDO':'vence')+' '+stockFmtDate(p.expiresAt)+'</span></div>').join('') || '<div style="color:#888;font-size:13px">Nenhuma validade próxima.</div>';
+
+  const opts = products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' (estq '+(p.stock||0)+')</option>').join('');
+
+  const profitRows = profit.items.map(it=>'<tr><td>'+esc(it.name)+'</td><td>'+money(it.price)+'</td><td>'+money(it.cost)+'</td><td>'+money(it.margin)+'</td><td>'+it.marginPct+'%</td><td>'+it.stock+'</td><td>'+money(it.potentialProfit)+'</td><td><button class="st-btn-sm" data-action="stockConfig" data-id="'+it.id+'" data-name="'+esc(it.name)+'">min/validade</button></td></tr>').join('') || '<tr><td colspan="8" style="color:#888">Sem produtos. Cadastre na aba Produtos.</td></tr>';
+  const t = profit.totals||{};
+
+  const moveRows = movements.map(m=>'<tr><td>'+stockFmtDateTime(m.createdAt)+'</td><td>'+esc(m.productName||'')+'</td><td><span class="st-tag st-tag-'+m.type+'">'+stockMoveLabel(m.type)+'</span></td><td>'+m.qty+'</td><td>'+esc(m.reason||'')+'</td></tr>').join('') || '<tr><td colspan="5" style="color:#888">Sem movimentações ainda.</td></tr>';
+
+  body.innerHTML =
+    '<div class="st-grid2">'+
+      '<div class="st-box"><h4>Estoque baixo ('+alerts.lowStockCount+')</h4>'+lowCards+'</div>'+
+      '<div class="st-box"><h4>Validade ('+alerts.expiringCount+')</h4>'+expCards+'</div>'+
+    '</div>'+
+    '<div class="st-box"><h4>Movimentar estoque</h4>'+
+      '<div class="st-form">'+
+        '<select id="stMoveProd">'+opts+'</select>'+
+        '<select id="stMoveType"><option value="in">Entrada (+)</option><option value="out">Saída (-)</option><option value="adjust">Ajuste (=)</option></select>'+
+        '<input id="stMoveQty" type="number" min="0" step="1" placeholder="qtd">'+
+        '<input id="stMoveReason" type="text" placeholder="motivo (opcional)">'+
+        '<button class="st-btn" data-action="stockMove">Aplicar</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="st-box"><h4>Custo x Lucro</h4>'+
+      '<div class="st-totals">Valor de custo: <b>'+money(t.stockCostValue||0)+'</b> &nbsp;|&nbsp; Valor de venda: <b>'+money(t.stockSaleValue||0)+'</b> &nbsp;|&nbsp; Lucro potencial: <b>'+money(t.potentialProfit||0)+'</b></div>'+
+      '<div class="st-tablewrap"><table class="st-table"><thead><tr><th>Produto</th><th>Preço</th><th>Custo</th><th>Margem</th><th>%</th><th>Estq</th><th>Lucro pot.</th><th></th></tr></thead><tbody>'+profitRows+'</tbody></table></div>'+
+    '</div>'+
+    '<div class="st-box"><h4>Histórico de movimentação</h4>'+
+      '<div class="st-tablewrap"><table class="st-table"><thead><tr><th>Quando</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Motivo</th></tr></thead><tbody>'+moveRows+'</tbody></table></div>'+
+    '</div>';
+}
+function stockFmtDate(s){ if(!s) return '-'; const d=new Date(s); return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear(); }
+function stockFmtDateTime(s){ if(!s) return '-'; const d=new Date(new Date(s).getTime()-180*60000); return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+' '+String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0'); }
+function stockMoveLabel(t){ return t==='in'?'Entrada':t==='out'?'Saída':'Ajuste'; }
+async function stockMove(){
+  const vid = state.ownerVenue.id;
+  const venueProductId = val('stMoveProd');
+  const type = val('stMoveType');
+  const qty = Number(val('stMoveQty'));
+  const reason = val('stMoveReason');
+  if(!venueProductId){ toast('Selecione um produto'); return; }
+  if(!(qty>=0) || (type!=='adjust' && qty<=0)){ toast('Quantidade inválida'); return; }
+  try {
+    await api('/api/services/venues/'+vid+'/stock/movement', { method:'POST', body: JSON.stringify({ venueProductId, type, qty, reason }) });
+    toast('Movimentação registrada');
+    ownerLoadTab();
+  } catch(e){ toast(e.message); }
+}
+async function stockConfig(id, name){
+  const vid = state.ownerVenue.id;
+  const ms = prompt('Estoque mínimo para alerta de "'+name+'" (0 = sem alerta):');
+  if(ms===null) return;
+  const exp = prompt('Validade de "'+name+'" (AAAA-MM-DD, vazio para limpar):','');
+  if(exp===null) return;
+  const payload = {};
+  if(ms.trim()!=='') payload.minStock = Number(ms);
+  payload.expiresAt = exp.trim()==='' ? null : exp.trim();
+  try {
+    await api('/api/services/venues/'+vid+'/stock/config/'+id, { method:'PATCH', body: JSON.stringify(payload) });
+    toast('Config salva');
+    ownerLoadTab();
+  } catch(e){ toast(e.message); }
+}
+
+// ===== marketing =====
+async function renderMarketing(body){
+  const vid=state.ownerVenue.id;
+  const days=(state.mktDays!=null)?state.mktDays:30;
+  let bdays={birthdays:[],count:0},inact={inactive:[],count:0,days:days},camps=[];
+  try{bdays=await api(`/api/services/venues/${vid}/marketing/birthdays`);}catch(_){}
+  try{inact=await api(`/api/services/venues/${vid}/marketing/inactive?days=${days}`);}catch(_){}
+  try{camps=await api(`/api/services/venues/${vid}/marketing/campaigns`);}catch(_){}
+  const meses=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const bdayCards=(bdays.birthdays||[]).map(b=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-weight:700;">🎂 ${esc(b.name)}</div><div style="color:var(--muted);font-size:12px;">dia ${b.day||'?'}${b.phone?' · '+esc(b.phone):''}</div></div></div>`).join('');
+  const inactCards=(inact.inactive||[]).map(i=>{
+    const lv=i.lastVisit?new Date(i.lastVisit).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza',day:'2-digit',month:'2-digit',year:'2-digit'}):'-';
+    return `<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-weight:700;">${esc(i.name)}</div><div style="color:var(--muted);font-size:12px;">última visita ${lv}${i.phone?' · '+esc(i.phone):''}</div></div></div>`;
+  }).join('');
+  const campCards=(camps||[]).map(c=>{
+    const dt=c.createdAt?new Date(c.createdAt).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza',day:'2-digit',month:'2-digit'}):'';
+    const seg=c.segment==='birthdays'?'aniversariantes':c.segment==='inactive'?'inativos':'todos';
+    return `<div class="card" style="padding:10px 14px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;">${esc(c.title)}</div><span class="pill seg">${c.recipients||0} fila</span></div>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:2px;">${dt} · ${seg} · <span style="color:var(--warning,#b8860b);font-weight:700;">enfileirada</span></div></div>`;
+  }).join('');
+  body.innerHTML=`
+    <div class="card">
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px;">📣 Nova promoção</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Cria a campanha e enfileira pra cada cliente do segmento. O envio real depende de aprovação humana.</div>
+      <div class="field"><label>Título</label><input id="mkTitle" placeholder="ex: Corte + barba 20% off"></div>
+      <div class="field"><label>Mensagem</label><textarea id="mkMsg" rows="3" placeholder="Olá! Temos uma oferta especial pra você essa semana..."></textarea></div>
+      <div class="field"><label>Para quem</label><select id="mkSeg">
+        <option value="all">Todos os clientes</option>
+        <option value="inactive">Inativos (sumidos)</option>
+        <option value="birthdays">Aniversariantes do mês</option>
+      </select></div>
+      <button class="btn" data-action="mktQueue">Enfileirar campanha</button>
+    </div>
+
+    <div class="sec-title">🎂 Aniversariantes do mês <span style="color:var(--muted);font-weight:400;">(${meses[(new Date().getMonth())]})</span></div>
+    ${bdayCards||'<div class="empty" style="padding:16px;"><p>Nenhum aniversariante este mês.</p></div>'}
+
+    <div class="card" style="margin-top:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div style="font-weight:700;">😴 Clientes inativos</div>
+        <div class="field" style="margin:0;width:130px;"><label>Sem vir há (dias)</label><input id="mkDays" type="number" inputmode="numeric" value="${days}"></div>
+        <button class="btn-mini" data-action="mktInactive">Filtrar</button>
+      </div>
+    </div>
+    ${inactCards||'<div class="empty" style="padding:16px;"><p>Nenhum cliente inativo nesse período.</p></div>'}
+
+    ${campCards?`<div class="sec-title">Campanhas enviadas</div>`+campCards:''}`;
+}
+async function mktQueue(){
+  const title=val('mkTitle'); if(!title){toast('Informe o título');return;}
+  const message=val('mkMsg'); if(!message){toast('Escreva a mensagem');return;}
+  const segment=val('mkSeg')||'all';
+  const days=(state.mktDays!=null)?state.mktDays:30;
+  try{
+    const r=await api(`/api/services/venues/${state.ownerVenue.id}/marketing/campaign`,{method:'POST',body:JSON.stringify({type:'promo',title:title,message:message,segment:segment,days:days})});
+    toast(`Campanha criada: ${r.queued} na fila. Envio real precisa de aprovação 👍`);
+    ownerLoadTab();
+  }catch(e){toast(e.message);}
+}
+function mktInactive(){
+  const d=Number(val('mkDays'))||30;
+  state.mktDays=d;
+  ownerLoadTab();
+}
+
+// ===== club =====
+async function renderClube(body){
+  const vid=state.ownerVenue.id;
+  const [tiers,members,staff]=await Promise.all([
+    api(`/api/services/venues/${vid}/club/tiers`),
+    api(`/api/services/venues/${vid}/club/members`),
+    api(`/api/services/venues/${vid}/members`)
+  ]);
+  let prods=[];try{prods=await api(`/api/services/venues/${vid}/products`);}catch(_){}
+  state.clubStaff=staff; state.clubProds=prods; state.clubConsume=state.clubConsume||[];
+  const tierOpts=tiers.map(t=>`<option value="${t.id}">${esc(t.name)} · ${money(t.monthlyFee)}/mês · ${t.discountPct||0}% desc</option>`).join('');
+  const staffOpts=staff.length?staff.map(s=>`<option value="${s.professionalId}">${esc(s.name)}</option>`).join(''):'<option value="">Nenhum profissional</option>';
+  body.innerHTML=`<div class="card">
+    <div style="font-weight:700;margin-bottom:8px;">Novo nível</div>
+    <div class="row2"><div class="field"><label>Nome</label><input id="ctName" placeholder="ex: VIP"></div><div class="field"><label>Mensalidade (R$)</label><input id="ctFee" type="number" inputmode="decimal"></div></div>
+    <div class="field"><label>Desconto (%)</label><input id="ctDisc" type="number" inputmode="decimal"></div>
+    <button class="btn" data-action="clubAddTier">Criar nível</button></div>
+    ${tiers.length?tiers.map(t=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-weight:700;">${esc(t.name)}</div><div style="color:var(--muted);font-size:12.5px;">${money(t.monthlyFee)}/mês · ${t.discountPct||0}% desc · ${t.memberCount||0} membro(s)</div></div>
+      <button class="linkbtn" data-action="clubDelTier" data-tid="${t.id}">remover</button></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Nenhum nível criado.</p></div>'}
+    <div class="sec-title">Assinar cliente</div>
+    <div class="card">
+      <div class="field"><label>Nome do cliente</label><input id="cmName" placeholder="Nome"></div>
+      <div class="row2"><div class="field"><label>Telefone (opcional)</label><input id="cmPhone" inputmode="tel"></div><div class="field"><label>Nível</label><select id="cmTier">${tierOpts||'<option value="">Crie um nível antes</option>'}</select></div></div>
+      <button class="btn" data-action="clubAddMember">Assinar</button></div>
+    ${members.length?`<div class="sec-title">Membros (${members.length})</div>`+members.map(m=>`<div class="card" style="padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;"><div>${esc(m.customerName||'Cliente')}<div style="color:var(--muted);font-size:11px;">${esc(m.tierName||'-')} · ${money(m.monthlyFee||0)}/mês${m.customerPhone?' · '+esc(m.customerPhone):''}</div></div><div style="font-weight:800;">${m.discountPct||0}%</div></div>`).join(''):''}
+    <div class="sec-title">Consumo do profissional</div>
+    <div class="card">
+      <div class="field"><label>Profissional</label><select id="scPro">${staffOpts}</select></div>
+      ${prods.length?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">${prods.map(p=>`<button class="btn-mini" style="background:var(--surface);color:var(--text);border:1.5px solid var(--border);" data-action="clubAddConsume" data-pid="${p.id}">+ ${esc(p.name)} ${money(p.price)}</button>`).join('')}</div>`:'<div style="color:var(--muted);font-size:12px;margin-bottom:8px;">Cadastre produtos na aba Produtos.</div>'}
+      <div id="scList">${renderConsumeList()}</div>
+      <button class="btn" data-action="clubDoConsume">Registrar consumo (baixa estoque, sem receita)</button>
+      <div style="color:var(--muted);font-size:11px;margin-top:6px;">Consumo interno: baixa o estoque mas não entra no caixa.</div></div>`;
+}
+function renderConsumeList(){
+  const list=state.clubConsume||[];
+  if(!list.length)return '<div style="color:var(--muted);font-size:12px;margin-bottom:8px;">Nenhum produto adicionado.</div>';
+  return list.map((it,i)=>`<div class="srv"><div class="info"><div class="t">${esc(it.name)} x${it.qty}</div></div><div class="price"><span class="v">${money(it.price*it.qty)}</span> <button class="linkbtn" data-action="clubRmConsume" data-i="${i}">remover</button></div></div>`).join('');
+}
+function clubRefreshConsume(){const el=document.getElementById('scList');if(el)el.innerHTML=renderConsumeList();}
+async function clubAddTier(){
+  const name=val('ctName');if(!name){toast('Informe o nome');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/club/tiers`,{method:'POST',body:JSON.stringify({name,monthlyFee:val('ctFee'),discountPct:val('ctDisc')})});toast('Nível criado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function clubDelTier(tid){try{await api(`/api/services/venues/${state.ownerVenue.id}/club/tiers/${tid}`,{method:'DELETE'});toast('Removido');ownerLoadTab();}catch(e){toast(e.message);}}
+async function clubAddMember(){
+  const name=val('cmName');const tierId=val('cmTier');
+  if(!name){toast('Informe o nome do cliente');return;}
+  if(!tierId){toast('Crie e selecione um nível');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/club/members`,{method:'POST',body:JSON.stringify({customerName:name,customerPhone:val('cmPhone'),tierId})});toast('Cliente assinado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+function clubAddConsume(pid){
+  const p=(state.clubProds||[]).find(x=>x.id===pid);if(!p)return;
+  state.clubConsume=state.clubConsume||[];
+  const ex=state.clubConsume.find(x=>x.productId===pid);
+  if(ex)ex.qty++;else state.clubConsume.push({productId:pid,name:p.name,price:p.price,qty:1});
+  clubRefreshConsume();
+}
+function clubRmConsume(i){state.clubConsume.splice(i,1);clubRefreshConsume();}
+async function clubDoConsume(){
+  const professionalId=val('scPro');if(!professionalId){toast('Selecione um profissional');return;}
+  const list=state.clubConsume||[];if(!list.length){toast('Adicione ao menos 1 produto');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/staff-consumption`,{method:'POST',body:JSON.stringify({professionalId,products:list.map(x=>({productId:x.productId,qty:x.qty}))})});toast('Consumo registrado');state.clubConsume=[];ownerLoadTab();}catch(e){toast(e.message);}
+}
+
 // ---- event wiring (sem onclick em HTML gerado: data-action + delegation) ----
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 document.getElementById('backBtn').addEventListener('click',goBack);
@@ -583,6 +940,26 @@ document.getElementById('content').addEventListener('click',(e)=>{
   else if(a==='addProduct')addProduct();
   else if(a==='delProduct')delProduct(el.dataset.pid);
   else if(a==='cashEntry')cashEntry();
+  else if(a==='pkgCreate')pkgCreate();
+  else if(a==='pkgDelete')pkgDelete(el.dataset.pid);
+  else if(a==='pkgSell')pkgSell();
+  else if(a==='pkgUse')pkgUse(el.dataset.pid);
+  else if(a==='finAdvAdd')finAdvAdd();
+  else if(a==='finAdvSettle')finAdvSettle(el.dataset.id);
+  else if(a==='finPayAdd')finPayAdd();
+  else if(a==='finPayPay')finPayPay(el.dataset.id);
+  else if(a==='finRecAdd')finRecAdd();
+  else if(a==='finRecReceive')finRecReceive(el.dataset.id);
+  else if(a==="stockMove") stockMove();
+  else if(a==="stockConfig") stockConfig(el.dataset.id, el.dataset.name);
+  else if(a==="mktQueue") mktQueue();
+  else if(a==="mktInactive") mktInactive();
+  else if(a==='clubAddTier')clubAddTier();
+  else if(a==='clubDelTier')clubDelTier(el.dataset.tid);
+  else if(a==='clubAddMember')clubAddMember();
+  else if(a==='clubAddConsume')clubAddConsume(el.dataset.pid);
+  else if(a==='clubRmConsume')clubRmConsume(Number(el.dataset.i));
+  else if(a==='clubDoConsume')clubDoConsume();
 });
 
 // ---- init ----

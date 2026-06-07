@@ -62,6 +62,11 @@ const desapegaRoutes = require('./routes/desapega');
 const pagbankRoutes = require('./routes/pagbank');
 const catalogEngineRoutes = require('./routes/catalogEngine');
 const servicesRoutes = require('./routes/services');
+const servicesPackagesRouter = require('./routes/services-packages');
+const servicesFinanceRoutes = require('./routes/services-finance');
+const servicesStockRouter = require('./routes/services-stock');
+const servicesMarketingRoutes = require('./routes/services-marketing');
+const servicesClubRouter = require('./routes/services-club');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
@@ -176,6 +181,11 @@ app.use('/api/infoproducts', infoproductsRoutes);
 app.use('/api/desapega', desapegaRoutes);
 app.use('/api/pagbank', pagbankRoutes); // webhook PIX PagBank + status (fora de /api/admin)
 app.use('/api/services', servicesRoutes); // agendamento + marketplace + T$ no serviço
+app.use('/api/services', servicesPackagesRouter);
+app.use('/api/services', servicesFinanceRoutes);
+app.use('/api/services', servicesStockRouter);
+app.use('/api/services', servicesMarketingRoutes);
+app.use('/api/services', servicesClubRouter);
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
