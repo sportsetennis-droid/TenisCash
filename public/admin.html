@@ -1510,6 +1510,21 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <option value="101">⚠ &gt; 100% (erro contagem)</option>
       </select>
     </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Comprado (un)</label>
+      <select id="cat-classify-comprado" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;">
+        <option value="">Qualquer</option>
+        <option value="0">0 — sem compra</option>
+        <option value="1">= 1 ⚠ (fragmento)</option>
+        <option value="2-5">2 a 5</option>
+        <option value="6-11">6 a 11</option>
+        <option value="12+">12 ou mais</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Comprado = exato</label>
+      <input id="cat-classify-comprado-exact" type="number" min="0" class="form-input" placeholder="ex: 1" style="margin-top:4px;background:white;color:#1d1d1f;">
+    </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -10248,7 +10263,7 @@ async function initCategoriesTab() {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
     // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search'].forEach(id => {
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
@@ -10269,6 +10284,8 @@ async function initCategoriesTab() {
       });
     }
     document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
+    const compExactEl = document.getElementById('cat-classify-comprado-exact');
+    if (compExactEl) compExactEl.addEventListener('input', () => { clearTimeout(window._catCompT); window._catCompT = setTimeout(renderCatClassifyGrid, 250); });
     // Modalidade + Especialidade vêm DA ÁRVORE (dinâmico). Resetar é safe.
     try {
       const treeRes = await api('/admin/categories/tree');
@@ -10348,7 +10365,7 @@ async function loadCategoriesClassify() {
     id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category, subcategory: p.subcategory,
     imageUrl: p.imageUrl, imageUrls: p.imageUrls,
     aiContext: p.aiContext, price: p.price,
-    sizes: p.sizes,
+    sizes: p.sizes, stockTotal: p.stockTotal,
   }));
   renderCatClassifyGrid();
 }
@@ -10394,6 +10411,9 @@ function _filteredCatProducts() {
   const biped = (document.getElementById('cat-classify-biped')?.value) || '';
   const locpct = (document.getElementById('cat-classify-locpct')?.value) || '';
   const search = (document.getElementById('cat-classify-search').value || '').toLowerCase().trim();
+  const compRange = document.getElementById('cat-classify-comprado')?.value || '';
+  const compExactRaw = document.getElementById('cat-classify-comprado-exact')?.value;
+  const compExact = (compExactRaw !== '' && compExactRaw != null) ? parseInt(compExactRaw, 10) : null;
   return _catClassifyProducts.filter(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
     const cls = ctx.classification || {};
@@ -10439,6 +10459,16 @@ function _filteredCatProducts() {
           && !(p.subcategory || '').toLowerCase().includes(search)
           && !mod.includes(search)
           && !ti.includes(search)) return false;
+    }
+    // Filtro COMPRADO (quantidade comprada = stockTotal ou Σ sizes.stock)
+    if (compExact != null || compRange) {
+      const comprado = p.stockTotal != null ? p.stockTotal : (p.sizes || []).reduce((a, s) => a + (s.stock || 0), 0);
+      if (compExact != null && !isNaN(compExact)) { if (comprado !== compExact) return false; }
+      else if (compRange === '0') { if (comprado !== 0) return false; }
+      else if (compRange === '1') { if (comprado !== 1) return false; }
+      else if (compRange === '2-5') { if (!(comprado >= 2 && comprado <= 5)) return false; }
+      else if (compRange === '6-11') { if (!(comprado >= 6 && comprado <= 11)) return false; }
+      else if (compRange === '12+') { if (comprado < 12) return false; }
     }
     return true;
   });
