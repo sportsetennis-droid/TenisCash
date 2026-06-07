@@ -37,9 +37,9 @@ const PATCHES = [
   },
   {
     name: 'DANFCe URL de consulta (urlChave do XML)',
-    marker: '${supl.urlChave || "www.sefaz.mt.gov.br/nfce/consulta"}',
+    marker: '${supl.urlChave || "www.sefaz.pb.gov.br/nfce/consulta"}',
     from: 'text: `www.sefaz.mt.gov.br/nfce/consulta`,',
-    to:   'text: `${supl.urlChave || "www.sefaz.mt.gov.br/nfce/consulta"}`,',
+    to:   'text: `${supl.urlChave || "www.sefaz.pb.gov.br/nfce/consulta"}`,',
   },
   {
     name: 'DANFe protocolo fallback xml.infProt',
