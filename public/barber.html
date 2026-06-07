@@ -6,21 +6,24 @@
 <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#E5571E">
-<meta name="description" content="Barber — agende barbearia/salão e ganhe TenisCash. Sports & Tennis.">
-<title>Barber — TenisCash</title>
+<meta name="theme-color" content="#17171A">
+<meta name="description" content="BARBER — ache seu barbeiro. Agende em segundos. Estilo masculino, do seu jeito.">
+<title>BARBER — ache seu barbeiro</title>
 <link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --primary:#E5571E; --primary-dark:#c8460f; --primary-light:#FCDAC4;
-    --bg:#FFEBDC; --surface:#fff; --text:#1d1d1f; --muted:#8e8e93; --soft:#6e6e73;
-    --border:#e5e5ea; --border-soft:#f0f0f3;
-    --success:#0a843d; --success-bg:#e8f7ee; --danger:#d70015;
+    --primary:#C1121F; --primary-dark:#8E0E18; --primary-light:#2A1416;
+    --bg:#17171A; --surface:#1F1F23; --text:#EFE7D8; --muted:#8d877d; --soft:#b8b1a4;
+    --border:#34343A; --border-soft:#2a2a30;
+    --success:#3BA776; --success-bg:#15281f; --danger:#E5484D;
+    --cream:#EFE7D8; --navy:#1B2A4A; --gold:#C9A24B;
     --radius:14px;
-    --gradient:linear-gradient(135deg,#E5571E 0%,#EE7240 100%);
-    --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-    --shadow-md:0 6px 18px rgba(0,0,0,.08);
-    --shadow-lg:0 14px 40px rgba(0,0,0,.12);
+    --gradient:linear-gradient(135deg,#C1121F 0%,#8E0E18 100%);
+    --shadow-sm:0 1px 3px rgba(0,0,0,.4);
+    --shadow-md:0 10px 28px rgba(0,0,0,.5);
+    --shadow-lg:0 18px 50px rgba(0,0,0,.6);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;}
   html,body{min-height:100%;}
@@ -165,23 +168,98 @@
   .st-tag-in{background:var(--success-bg);color:var(--success);}
   .st-tag-out{background:var(--danger-bg);color:var(--danger);}
   .st-tag-adjust{background:#e3f2fd;color:#0066cc;}
+
+  /* ============== AMERICANA RED — redesign (dark/vintage/masculino) ============== */
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  .app{background:var(--bg);}
+  /* barber pole */
+  .pole{width:11px;height:28px;border-radius:3px;flex-shrink:0;background:repeating-linear-gradient(45deg,var(--primary) 0 6px,#EFE7D8 6px 12px,var(--navy) 12px 18px);box-shadow:0 0 0 1px rgba(0,0,0,.45);}
+  /* header slim */
+  .hdr{background:#101013;color:var(--cream);padding:0;border-bottom:1px solid var(--border);}
+  .hdr-bar{display:flex;align-items:center;gap:12px;padding:12px 16px;}
+  .brand{display:flex;align-items:center;gap:10px;flex:1;}
+  .wordmark{font-family:'Oswald',sans-serif;font-size:23px;font-weight:700;letter-spacing:4px;color:#fff;text-transform:uppercase;}
+  .ownerlink{background:transparent;border:1px solid var(--border);color:var(--soft);font-size:11.5px;font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;}
+  .ownerlink:hover{border-color:var(--primary);color:#fff;}
+  .topnav{display:none !important;}
+  .back{background:rgba(255,255,255,.08);color:var(--cream);}
+  .hdr-title{display:block;padding:8px 16px 2px;}
+  .hdr-title h1{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;color:var(--cream);letter-spacing:.5px;text-transform:uppercase;}
+  .hdr-title p{font-size:12px;color:var(--muted);margin-top:1px;}
+  .search{padding:10px 16px 14px;}
+  .search input{background:#1C1C20;border:1px solid var(--border);color:var(--cream);border-radius:12px;padding:14px 16px;font-size:15px;width:100%;}
+  .search input::placeholder{color:#6f6a61;}
+  /* HERO no discover */
+  .app[data-view="discover"] .hdr{background:linear-gradient(180deg,rgba(16,16,19,.5) 0%,rgba(16,16,19,.8) 60%,#101013 100%),url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1100&q=70') center/cover;}
+  .app[data-view="discover"] .back{display:none !important;}
+  .app[data-view="discover"] .hdr-title{padding:30px 16px 10px;}
+  .app[data-view="discover"] .hdr-title h1{font-size:35px;font-weight:700;line-height:.96;color:#fff;text-shadow:0 2px 22px rgba(0,0,0,.7);}
+  .app[data-view="discover"] .hdr-title p{color:rgba(239,231,216,.88);font-size:13px;margin-top:7px;}
+  /* venue cards = foto pesada */
+  .venues{gap:16px;}
+  .vcard{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border);background:#1C1C20;min-height:208px;display:flex;align-items:flex-end;box-shadow:var(--shadow-md);}
+  .vcard:active{transform:scale(.99);}
+  .vcard .cover{position:absolute;inset:0;height:auto;background-size:cover;background-position:center;filter:grayscale(.55) contrast(1.05) brightness(.82);}
+  .vcard::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(23,23,26,0) 0%,rgba(23,23,26,.4) 42%,rgba(23,23,26,.96) 100%);}
+  .vcard .body{position:relative;z-index:2;padding:16px;width:100%;}
+  .vcard .nm{font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;color:#fff;text-transform:uppercase;letter-spacing:.5px;}
+  .vcard .meta{margin-top:7px;color:rgba(239,231,216,.82);}
+  .vcard .meta>span{color:rgba(239,231,216,.85);}
+  /* pills */
+  .pill{border-radius:6px;font-weight:700;}
+  .pill.seg{background:rgba(27,42,74,.7);color:#9db4e0;text-transform:uppercase;letter-spacing:.5px;}
+  .pill.cash{background:var(--primary);color:#fff;}
+  .pill.verified{background:var(--gold);color:#1a1a1a;}
+  /* sec-title */
+  .sec-title{font-family:'Oswald',sans-serif;color:var(--soft);letter-spacing:1px;}
+  /* cards/inputs/buttons dark */
+  .card{background:var(--surface);border:1px solid var(--border);color:var(--text);}
+  .field label{color:var(--soft);}
+  .field input,.field select,.field textarea{background:#1C1C20;border:1px solid var(--border);color:var(--cream);}
+  .field input::placeholder,.field textarea::placeholder{color:#6f6a61;}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(193,18,31,.25);}
+  .btn{background:var(--gradient);color:#fff;border-radius:12px;font-family:'Oswald',sans-serif;letter-spacing:1.2px;text-transform:uppercase;box-shadow:0 6px 18px rgba(193,18,31,.3);}
+  .btn.sec{background:transparent;color:var(--cream);border:1px solid var(--border);box-shadow:none;}
+  .btn-mini{background:var(--primary);color:#fff;font-family:'Oswald',sans-serif;letter-spacing:.5px;}
+  .linkbtn{color:var(--primary);}
+  /* bottom nav */
+  .botnav{background:#0C0C0E;border-top:1px solid var(--border);}
+  .bnav{color:#6f6a61;}
+  .bnav.active{color:var(--primary);}
+  /* venue detail hero + barbers */
+  .venue-hero{position:relative;height:190px;border-radius:16px;overflow:hidden;margin-bottom:14px;display:flex;align-items:flex-end;border:1px solid var(--border);}
+  .venue-hero .cover{position:absolute;inset:0;background-size:cover;background-position:center;filter:grayscale(.55) contrast(1.05) brightness(.78);}
+  .venue-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,rgba(23,23,26,.95));}
+  .venue-hero .vh-name{position:relative;z-index:2;padding:14px 16px;font-family:'Oswald',sans-serif;font-size:25px;font-weight:600;color:#fff;text-transform:uppercase;letter-spacing:.5px;}
+  .barber{background:var(--surface);border:1px solid var(--border);}
+  .barber .nm{font-family:'Oswald',sans-serif;letter-spacing:.3px;}
+  .avatar{background:var(--gradient);}
+  .srv{border-top:1px solid var(--border-soft);}
+  .srv .price .v{color:#e8888d;}
+  .badge-tc{background:rgba(193,18,31,.14);color:#f0a6aa;border:1px solid rgba(193,18,31,.32);}
+  /* dates/slots/subnav dark */
+  .datechip,.slot{background:#1C1C20;border:1px solid var(--border);color:var(--cream);}
+  .datechip.active,.slot.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .subnav-btn{background:#1C1C20;border:1px solid var(--border);color:var(--soft);}
+  .subnav-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .empty{color:var(--muted);}
+  .empty .ico{filter:grayscale(.3);}
+  @media(min-width:900px){ body{background:#0a0a0b;} .app{box-shadow:0 0 0 1px var(--border);} }
 </style>
 </head>
 <body>
 <div class="app">
   <header class="hdr">
-    <div class="hdr-main">
+    <div class="hdr-bar">
       <button class="back" id="backBtn">‹</button>
-      <div class="hdr-titles">
-        <h1 id="hdrTitle">✂️ Barber</h1>
-        <p id="hdrSub">Agende e ganhe TenisCash</p>
-      </div>
-      <nav class="topnav">
-        <button class="tnav active" data-tab="discover">🔎 Barbearias</button>
-        <button class="tnav" data-tab="owner">💈 Minha barbearia</button>
-      </nav>
+      <div class="brand"><span class="pole"></span><span class="wordmark">BARBER</span></div>
+      <button class="ownerlink" data-tab="owner">Sou barbeiro</button>
     </div>
-    <div class="search" id="searchBox"><input id="q" placeholder="Buscar barbearia ou cidade..."></div>
+    <div class="hdr-title">
+      <h1 id="hdrTitle">ENCONTRE SEU BARBEIRO</h1>
+      <p id="hdrSub">os melhores perto de você</p>
+    </div>
+    <div class="search" id="searchBox"><input id="q" placeholder="Busque barbearia, barbeiro ou cidade"></div>
   </header>
 
   <main class="content" id="content">
@@ -221,8 +299,9 @@ function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'
 function setView(v,{title,sub,back,search}={}){
   document.querySelectorAll('.view').forEach(e=>e.classList.remove('show'));
   document.getElementById('view-'+v).classList.add('show');
-  document.getElementById('hdrTitle').textContent=title||'✂️ Barber';
-  document.getElementById('hdrSub').textContent=sub||'Agende e ganhe TenisCash';
+  const _app=document.querySelector('.app'); if(_app)_app.dataset.view=v;
+  document.getElementById('hdrTitle').textContent=title||'BARBER';
+  document.getElementById('hdrSub').textContent=sub||'';
   document.getElementById('backBtn').style.display=back?'block':'none';
   document.getElementById('searchBox').style.display=search?'block':'none';
   window.scrollTo(0,0);
@@ -230,7 +309,7 @@ function setView(v,{title,sub,back,search}={}){
 function setActiveTab(tab){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));}
 function showTab(tab){
   state.history=[]; setActiveTab(tab);
-  if(tab==='discover'){setView('discover',{search:true});loadVenues();}
+  if(tab==='discover'){setView('discover',{search:true,title:'ENCONTRE SEU BARBEIRO',sub:'os melhores perto de você'});loadVenues();}
   else{renderOwner();}
 }
 function goBack(){
@@ -241,6 +320,8 @@ function goBack(){
 
 // ---- DISCOVER ----
 let searchT=null;
+const VENUE_IMGS=['photo-1503951914875-452162b0f3f1','photo-1585747860715-2ba37e788b70','photo-1599351431202-1e0f0137899a','photo-1521590832167-7bcbfaa6381f','photo-1605497788044-5a32c7078486','photo-1622286342621-4bd786c2447c'];
+function venueImg(v){if(v&&v.coverUrl)return v.coverUrl;const s=(v&&v.slug)||'';let h=0;for(let i=0;i<s.length;i++)h=(h+s.charCodeAt(i))%VENUE_IMGS.length;return `https://images.unsplash.com/${VENUE_IMGS[h]}?auto=format&fit=crop&w=900&q=70`;}
 async function loadVenues(){
   const list=document.getElementById('venueList');
   list.innerHTML='<div class="loading">Carregando...</div>';
@@ -249,20 +330,21 @@ async function loadVenues(){
     const d=await api('/api/services/discover'+(q?('?q='+encodeURIComponent(q)):''));
     if(!d.venues.length){
       list.innerHTML=`<div class="empty"><div class="ico">💈</div>
-        <p>${q?'Nenhuma barbearia encontrada.':'Ainda não há barbearias cadastradas aqui.'}</p>
-        <button class="btn" data-action="goOwner" style="max-width:320px;margin:0 auto;">Tenho uma barbearia — cadastrar</button></div>`;
+        <p>${q?'Nenhuma barbearia encontrada.':'Nenhuma barbearia na sua região ainda.'}</p>
+        <button class="btn" data-action="goOwner" style="max-width:320px;margin:8px auto 0;">Tenho uma barbearia</button></div>`;
       return;
     }
     list.innerHTML=d.venues.map(v=>`
       <div class="vcard" data-action="openVenue" data-slug="${esc(v.slug)}">
-        <div class="cover" style="${v.coverUrl?`background-image:url('${esc(v.coverUrl)}')`:''}"></div>
+        <div class="cover" style="background-image:url('${esc(venueImg(v))}')"></div>
         <div class="body">
-          <div class="nm">${esc(v.name)} ${v.verified?'<span class="pill verified">✓</span>':''}</div>
+          <div class="nm">${esc(v.name)}</div>
           <div class="meta">
             <span class="pill seg">${esc(v.segment||'barbearia')}</span>
-            ${v.city?`<span>📍 ${esc(v.city)}${v.neighborhood?' · '+esc(v.neighborhood):''}</span>`:''}
-            ${v.givesCashback?`<span class="pill cash">💰 100% em T$</span>`:''}
-            ${v.reviewCount>0?`<span>⭐ ${Number(v.reviewRating).toFixed(1)} (${v.reviewCount})</span>`:''}
+            ${v.city?`<span>📍 ${esc(v.neighborhood||v.city)}</span>`:''}
+            ${v.reviewCount>0?`<span>⭐ ${Number(v.reviewRating).toFixed(1)}</span>`:''}
+            ${v.verified?`<span class="pill verified">✓</span>`:''}
+            ${v.givesCashback?`<span class="pill cash">100% em T$</span>`:''}
           </div>
         </div>
       </div>`).join('');
@@ -278,7 +360,7 @@ async function openVenue(slug,noPush){
     const d=await api('/api/services/venue/'+slug);
     state.venue=d.venue; state.venueData=d;
     setView('venue',{title:d.venue.name,sub:d.venue.city||'',back:true});
-    let html='';
+    let html=`<div class="venue-hero"><div class="cover" style="background-image:url('${esc(venueImg(d.venue))}')"></div><div class="vh-name">${esc(d.venue.name)}</div></div>`;
     if(d.venue.givesCashback)html+=`<div class="badge-tc">💰 Ganhe 100% de volta em TenisCash — o que você paga, volta pra você</div>`;
     if(!d.professionals.length)html+='<div class="empty"><p>Sem profissionais com agenda ainda.</p></div>';
     html+='<div class="barbers">';
@@ -966,7 +1048,7 @@ document.getElementById('content').addEventListener('click',(e)=>{
 (function(){
   const params=new URLSearchParams(location.search);
   if(params.get('v')){setActiveTab('discover');openVenue(params.get('v'));}
-  else loadVenues();
+  else showTab('discover');
 })();
 </script>
 </body>
