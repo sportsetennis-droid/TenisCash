@@ -4,6 +4,7 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { recalcSizeStock } = require('../services/stockSync');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -104,7 +105,7 @@ router.get('/:id/products', async (req, res) => {
     // Match por supplierCnpj OU supplierId em aiContext
     // LEFT JOIN com XmlFiscalItem pra somar unidades reais (docType=entrada)
     const products = await prisma.$queryRaw`
-      SELECT p.id, p.sku, p.name, p.brand, p.active, p.price,
+      SELECT p.id, p.sku, p.name, p.brand, p.active, p.price, p."costPrice", p."markupPercent",
              p."aiContext"->>'supplierRef' AS "supplierRef",
              p."updatedAt",
              COALESCE(SUM(CASE WHEN d."docType"='entrada' THEN i.quantity ELSE 0 END), 0)::float AS "unitsBought",
@@ -118,7 +119,7 @@ router.get('/:id/products', async (req, res) => {
         p."aiContext"->>'supplierCnpj' = ${supplier.cnpj || ''}
         OR p."aiContext"->>'supplierId' = ${supplier.id}
       )
-      GROUP BY p.id, p.sku, p.name, p.brand, p.active, p.price, p."aiContext", p."updatedAt"
+      GROUP BY p.id, p.sku, p.name, p.brand, p.active, p.price, p."costPrice", p."markupPercent", p."aiContext", p."updatedAt"
       ORDER BY p.brand NULLS LAST, p.name ASC
       LIMIT 2000`;
     res.json({ products, supplier });
@@ -253,13 +254,15 @@ router.post('/:id/products/unify', async (req, res) => {
       for (const o of originals) {
         for (const s of (o.sizes || [])) {
           const ps = await prisma.productSize.create({
-            data: { productId: master.id, size: String(s.size), stock: s.stock || 0 },
+            data: { productId: master.id, size: String(s.size), stock: 0 }, // espelho; recalc abaixo
           });
           if (s.storeStocks && s.storeStocks.length) {
             await prisma.storeStock.updateMany({
               where: { productSizeId: s.id },
               data: { productSizeId: ps.id },
             });
+            // espelho ProductSize.stock = soma do StoreStock movido
+            await recalcSizeStock(prisma, ps.id);
           }
           movedSizes++;
         }
