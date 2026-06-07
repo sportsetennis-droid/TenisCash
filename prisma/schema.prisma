@@ -3165,8 +3165,10 @@ model ServiceVenue {
   published Boolean @default(false)
   verified  Boolean @default(false)
 
-  memberCount Int   @default(0)
-  totalBilled Float @default(0)
+  memberCount  Int   @default(0)
+  totalBilled  Float @default(0)
+  reviewRating Float @default(0) // média das avaliações (denormalizado)
+  reviewCount  Int   @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3185,6 +3187,7 @@ model VenueMember {
 
   professionalId String // link p/ Professional existente (String solta, sem FK)
   role           String  @default("staff") // owner | manager | staff
+  commissionPct  Float   @default(0) // % de comissão do barbeiro sobre serviços/produtos
   active         Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -3259,6 +3262,108 @@ model ServiceAppointment {
   @@index([venueId, startAt])
   @@index([clientUserId])
   @@index([status, startAt])
+}
+
+// ----- Serviços: gestão do estabelecimento (comanda, caixa, produtos, avaliação, lista de espera) -----
+
+model VenueProduct {
+  id        String   @id @default(cuid())
+  venueId   String
+  name      String
+  price     Float    @default(0)
+  cost      Float    @default(0)
+  stock     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([venueId, active])
+}
+
+model Comanda {
+  id              String    @id @default(cuid())
+  venueId         String
+  professionalId  String
+  appointmentId   String?
+  clientUserId    String?
+  customerName    String?
+  status          String    @default("open") // open | paid | cancelled
+  subtotal        Float     @default(0)
+  discount        Float     @default(0)
+  total           Float     @default(0)
+  tcUsed          Float     @default(0)
+  tcEarned        Float     @default(0)
+  commissionTotal Float     @default(0)
+  paymentMethod   String? // cash | pix | card | tc
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  items ComandaItem[]
+
+  @@index([venueId, createdAt])
+  @@index([professionalId, createdAt])
+  @@index([status])
+}
+
+model ComandaItem {
+  id               String  @id @default(cuid())
+  comandaId        String
+  comanda          Comanda @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  kind             String // service | product
+  refId            String? // offerId ou productId
+  name             String
+  qty              Int     @default(1)
+  unitPrice        Float
+  total            Float
+  commissionPct    Float   @default(0)
+  commissionAmount Float   @default(0)
+
+  @@index([comandaId])
+}
+
+model CashEntry {
+  id             String   @id @default(cuid())
+  venueId        String
+  type           String // in | out
+  category       String? // service | product | withdrawal | expense | other
+  amount         Float
+  description    String?
+  method         String? // cash | pix | card | tc
+  comandaId      String?
+  professionalId String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([venueId, createdAt])
+}
+
+model VenueReview {
+  id             String   @id @default(cuid())
+  venueId        String
+  professionalId String?
+  appointmentId  String?  @unique
+  clientUserId   String?
+  customerName   String?
+  rating         Int // 1..5
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  @@index([venueId, createdAt])
+}
+
+model AppointmentWaitlist {
+  id             String    @id @default(cuid())
+  venueId        String
+  professionalId String?
+  customerName   String
+  customerPhone  String?
+  date           DateTime?
+  status         String    @default("waiting") // waiting | notified | converted | cancelled
+  notified       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  @@index([venueId, status])
 }
 
 // ============================================================

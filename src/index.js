@@ -67,6 +67,7 @@ const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
 const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
 const { startCatalogEngineCron } = require('./services/catalogEngineCron');
+const { startServicesCron } = require('./services/servicesCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -968,6 +969,11 @@ app.listen(PORT, '0.0.0.0', () => {
     try { startCatalogEngineCron(); } catch (e) { console.error('[catalogEngineCron] falha ao iniciar:', e.message); }
   } else {
     console.log('[marketingCron] desativado — FAL_KEY não configurada');
+  }
+
+  // Cron serviços (barbearia/salão): cobrança do clube de assinatura + lembretes
+  if (process.env.DISABLE_SERVICES_CRON !== '1') {
+    try { startServicesCron(); } catch (e) { console.error('[servicesCron] falha ao iniciar:', e.message); }
   }
 
   // Cron jobs em background

@@ -85,6 +85,13 @@
   .btn.sec{background:var(--surface);color:var(--text);border:1.5px solid var(--border);box-shadow:none;}
   .btn-mini{background:var(--gradient);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;min-height:40px;white-space:nowrap;}
   .linkbtn{background:none;border:none;color:var(--primary);font-weight:700;font-size:13.5px;cursor:pointer;text-decoration:underline;}
+  .subnav{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;}
+  .subnav::-webkit-scrollbar{display:none;}
+  .subnav-btn{flex:1;min-width:78px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:10px 8px;font-size:13px;font-weight:600;color:var(--soft);cursor:pointer;white-space:nowrap;min-height:42px;}
+  .subnav-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .stat3{display:flex;justify-content:space-between;text-align:center;gap:8px;flex-wrap:wrap;}
+  .stat3 .lbl{color:var(--muted);font-size:11px;font-weight:600;}
+  .stat3 .val{font-weight:800;font-size:17px;margin-top:2px;}
 
   /* forms */
   .field{margin-bottom:13px;}
@@ -237,6 +244,7 @@ async function loadVenues(){
             <span class="pill seg">${esc(v.segment||'barbearia')}</span>
             ${v.city?`<span>📍 ${esc(v.city)}${v.neighborhood?' · '+esc(v.neighborhood):''}</span>`:''}
             ${v.cashbackPct>0?`<span class="pill cash">💰 ${v.cashbackPct}% T$</span>`:''}
+            ${v.reviewCount>0?`<span>⭐ ${Number(v.reviewRating).toFixed(1)} (${v.reviewCount})</span>`:''}
           </div>
         </div>
       </div>`).join('');
@@ -347,24 +355,9 @@ async function renderOwner(){
   try{
     const venues=await api('/api/services/me/venues');
     if(!venues.length){renderCreateVenue(el);return;}
-    const v=venues[0];
-    let appts=[];try{appts=await api('/api/services/manage/appointments');}catch(_){}
-    el.innerHTML=`
-      <div class="card">
-        <div style="font-weight:800;font-size:17px;">${esc(v.name)}</div>
-        <div style="color:var(--muted);font-size:12.5px;margin-top:2px;">${esc(v.segment)} · ${v.published?'<span style="color:var(--success);font-weight:700;">no ar</span>':'<span style="color:var(--danger);font-weight:700;">não publicada</span>'}</div>
-        <div class="badge-tc" style="margin-top:12px;">💰 Devolve ${v.cashbackPct||0}% em TenisCash</div>
-        <div style="display:flex;gap:8px;margin-top:6px;">
-          ${v.published?`<button class="btn sec" data-action="copylink" data-slug="${esc(v.slug)}">📋 Copiar link</button>`
-            :`<button class="btn" data-action="publish" data-vid="${esc(v.id)}">Publicar agora</button>`}
-        </div>
-      </div>
-      <div class="sec-title">Agenda (próximos)</div>
-      ${appts.length?appts.map(a=>`<div class="card" style="padding:12px 14px;margin-bottom:10px;">
-        <div style="font-weight:700;">${esc(a.serviceName)} — ${esc(a.customerName||'cliente')}</div>
-        <div style="color:var(--muted);font-size:12.5px;">${new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${a.status}</div>
-      </div>`).join(''):'<div class="empty" style="padding:20px;"><p>Nenhum agendamento ainda.</p></div>'}
-      <div style="margin-top:10px;"><button class="linkbtn" data-action="logout">Sair</button></div>`;
+    state.ownerVenue=venues[0];
+    if(!state.ownerTab)state.ownerTab='agenda';
+    renderOwnerDash();
   }catch(e){
     if(/401|inválido|expirado/i.test(e.message)){logout();return;}
     el.innerHTML=`<div class="empty"><p>${esc(e.message)}</p><button class="linkbtn" data-action="logout">Sair</button></div>`;
@@ -423,6 +416,143 @@ async function createVenue(){
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent='Criar e publicar';}
 }
 
+// ---- PAINEL DO BARBEIRO (dashboard) ----
+function val(id){const e=document.getElementById(id);return e?e.value:'';}
+function renderOwnerDash(){
+  const v=state.ownerVenue, el=document.getElementById('view-owner');
+  const tabs={agenda:'Agenda',caixa:'Caixa',produtos:'Produtos',relatorio:'Relatório'};
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div><div style="font-weight:800;font-size:17px;">${esc(v.name)}</div>
+        <div style="color:var(--muted);font-size:12.5px;margin-top:2px;">${esc(v.segment)} · ${v.published?'<span style="color:var(--success);font-weight:700;">no ar</span>':'<span style="color:var(--danger);font-weight:700;">não publicada</span>'} · 💰 ${v.cashbackPct||0}% T$</div></div>
+        <button class="linkbtn" data-action="logout">Sair</button>
+      </div>
+      ${v.published?`<button class="btn sec" style="margin-top:10px;" data-action="copylink" data-slug="${esc(v.slug)}">📋 Copiar link da barbearia</button>`:`<button class="btn" style="margin-top:10px;" data-action="publish" data-vid="${esc(v.id)}">Publicar agora</button>`}
+    </div>
+    <div class="subnav">${Object.keys(tabs).map(t=>`<button class="subnav-btn ${state.ownerTab===t?'active':''}" data-action="ownerTab" data-tab="${t}">${tabs[t]}</button>`).join('')}</div>
+    <div id="ownerBody"><div class="loading">Carregando...</div></div>`;
+  ownerLoadTab();
+}
+async function ownerLoadTab(){
+  const t=state.ownerTab, body=document.getElementById('ownerBody');
+  if(!body)return;
+  body.innerHTML='<div class="loading">Carregando...</div>';
+  try{
+    if(t==='agenda')return renderAgenda(body);
+    if(t==='caixa')return renderCaixa(body);
+    if(t==='produtos')return renderProdutos(body);
+    if(t==='relatorio')return renderRelatorio(body);
+  }catch(e){body.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;}
+}
+function ownerTab(t){state.ownerTab=t;document.querySelectorAll('.subnav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));ownerLoadTab();}
+
+async function renderAgenda(body){
+  const appts=await api('/api/services/manage/appointments');
+  const up=appts.filter(a=>['booked','confirmed'].includes(a.status));
+  const past=appts.filter(a=>!['booked','confirmed'].includes(a.status)).slice(0,10);
+  const card=(a)=>{
+    const dt=new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    let actions='';
+    if(a.status==='booked')actions=`<button class="btn-mini" data-action="apptConfirm" data-id="${a.id}">Confirmar</button> <button class="btn-mini" data-action="openCheckout" data-id="${a.id}">Concluir</button>`;
+    else if(a.status==='confirmed')actions=`<button class="btn-mini" data-action="openCheckout" data-id="${a.id}">Concluir</button>`;
+    else actions=`<span class="pill seg">${a.status==='done'?'concluído':a.status==='no_show'?'faltou':a.status}</span>`;
+    const extra=(a.status==='booked'||a.status==='confirmed')?`<button class="linkbtn" data-action="apptNoshow" data-id="${a.id}">faltou</button> <button class="linkbtn" data-action="apptCancel" data-id="${a.id}">cancelar</button>`:'';
+    return `<div class="card" style="padding:12px 14px;margin-bottom:10px;">
+      <div style="font-weight:700;">${esc(a.serviceName)} — ${esc(a.customerName||'cliente')}</div>
+      <div style="color:var(--muted);font-size:12.5px;margin:2px 0 8px;">${dt}${a.price>0?' · '+money(a.price):''}${a.customerPhone?' · '+esc(a.customerPhone):''}</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">${actions} ${extra}</div></div>`;
+  };
+  body.innerHTML=(up.length?`<div class="sec-title">Próximos</div>`+up.map(card).join(''):'<div class="empty" style="padding:24px;"><p>Nenhum agendamento futuro.</p></div>')
+    +(past.length?`<div class="sec-title">Histórico</div>`+past.map(card).join(''):'');
+}
+
+async function openCheckout(id){
+  const appts=await api('/api/services/manage/appointments');
+  const a=appts.find(x=>x.id===id);if(!a){toast('Agendamento não achado');return;}
+  let catalog=[];try{catalog=await api(`/api/services/venues/${state.ownerVenue.id}/products`);}catch(_){}
+  state.checkout={appt:a,catalog,products:[]};
+  renderCheckout();
+}
+function renderCheckout(){
+  const {appt,catalog,products}=state.checkout, body=document.getElementById('ownerBody');
+  const prodTotal=products.reduce((s,p)=>s+p.price*p.qty,0);
+  const total=(appt.price||0)+prodTotal;
+  body.innerHTML=`<div class="card">
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px;">Fechar conta — ${esc(appt.customerName||'cliente')}</div>
+    <div class="srv"><div class="info"><div class="t">${esc(appt.serviceName)}</div></div><div class="price"><span class="v">${money(appt.price)}</span></div></div>
+    ${products.map((p,i)=>`<div class="srv"><div class="info"><div class="t">${esc(p.name)} x${p.qty}</div></div><div class="price"><span class="v">${money(p.price*p.qty)}</span> <button class="linkbtn" data-action="rmCoProd" data-i="${i}">remover</button></div></div>`).join('')}
+    ${catalog.length?`<div class="sec-title">Adicionar produto</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${catalog.map(c=>`<button class="btn-mini" style="background:var(--surface);color:var(--text);border:1.5px solid var(--border);" data-action="addCoProd" data-pid="${c.id}">+ ${esc(c.name)} ${money(c.price)}</button>`).join('')}</div>`:'<div style="color:var(--muted);font-size:12px;margin-top:8px;">Cadastre produtos na aba Produtos pra vender junto.</div>'}
+    <div class="field" style="margin-top:12px;"><label>Forma de pagamento</label><select id="coPay"><option value="cash">Dinheiro</option><option value="pix">PIX</option><option value="card">Cartão</option></select></div>
+    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:18px;margin:12px 0;"><span>Total</span><span>${money(total)}</span></div>
+    <button class="btn" data-action="doCheckout" data-id="${appt.id}">Fechar conta e concluir</button>
+    <div style="margin-top:10px;text-align:center;"><button class="linkbtn" data-action="ownerTab" data-tab="agenda">voltar</button></div></div>`;
+}
+function addCoProd(pid){
+  const c=state.checkout.catalog.find(x=>x.id===pid);if(!c)return;
+  const ex=state.checkout.products.find(x=>x.id===pid);
+  if(ex)ex.qty++;else state.checkout.products.push({id:c.id,name:c.name,price:c.price,qty:1});
+  renderCheckout();
+}
+function rmCoProd(i){state.checkout.products.splice(i,1);renderCheckout();}
+async function doCheckout(id){
+  const products=state.checkout.products.map(p=>({productId:p.id,qty:p.qty}));
+  const paymentMethod=val('coPay')||'cash';
+  try{await api(`/api/services/appointments/${id}/checkout`,{method:'POST',body:JSON.stringify({products,paymentMethod})});
+    toast('Conta fechada! 🎉');state.ownerTab='agenda';renderOwnerDash();
+  }catch(e){toast(e.message);}
+}
+
+async function renderProdutos(body){
+  const prods=await api(`/api/services/venues/${state.ownerVenue.id}/products`);
+  body.innerHTML=`<div class="card">
+    <div style="font-weight:700;margin-bottom:8px;">Novo produto</div>
+    <div class="row2"><div class="field"><label>Nome</label><input id="npName"></div><div class="field"><label>Preço (R$)</label><input id="npPrice" type="number" inputmode="decimal"></div></div>
+    <div class="row2"><div class="field"><label>Custo (R$)</label><input id="npCost" type="number" inputmode="decimal"></div><div class="field"><label>Estoque</label><input id="npStock" type="number" inputmode="numeric"></div></div>
+    <button class="btn" data-action="addProduct">Adicionar</button></div>
+    ${prods.length?prods.map(p=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-weight:700;">${esc(p.name)}</div><div style="color:var(--muted);font-size:12.5px;">${money(p.price)} · estoque ${p.stock}</div></div>
+      <button class="linkbtn" data-action="delProduct" data-pid="${p.id}">remover</button></div>`).join(''):'<div class="empty" style="padding:18px;"><p>Nenhum produto cadastrado.</p></div>'}`;
+}
+async function addProduct(){
+  const name=val('npName');if(!name){toast('Informe o nome');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/products`,{method:'POST',body:JSON.stringify({name,price:val('npPrice'),cost:val('npCost'),stock:val('npStock')})});toast('Produto adicionado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+async function delProduct(pid){try{await api(`/api/services/venues/${state.ownerVenue.id}/products/${pid}`,{method:'DELETE'});toast('Removido');ownerLoadTab();}catch(e){toast(e.message);}}
+
+async function renderCaixa(body){
+  const d=await api(`/api/services/venues/${state.ownerVenue.id}/cash`);
+  body.innerHTML=`<div class="card"><div class="stat3">
+      <div><div class="lbl">ENTRADAS</div><div class="val" style="color:var(--success);">${money(d.totalIn)}</div></div>
+      <div><div class="lbl">SAÍDAS</div><div class="val" style="color:var(--danger);">${money(d.totalOut)}</div></div>
+      <div><div class="lbl">SALDO</div><div class="val">${money(d.net)}</div></div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px;">Lançar no caixa</div>
+      <div class="row2"><div class="field"><label>Tipo</label><select id="ceType"><option value="out">Saída</option><option value="in">Entrada</option></select></div><div class="field"><label>Valor (R$)</label><input id="ceAmount" type="number" inputmode="decimal"></div></div>
+      <div class="field"><label>Descrição</label><input id="ceDesc" placeholder="ex: vale, troco, compra"></div>
+      <button class="btn" data-action="cashEntry">Lançar</button></div>
+    <div class="sec-title">Movimentações de hoje</div>
+    ${d.entries.length?d.entries.map(e=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div>${esc(e.description||e.category||'-')}<div style="color:var(--muted);font-size:11px;">${new Date(e.createdAt).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit'})}${e.method?' · '+e.method:''}</div></div>
+      <div style="font-weight:800;color:${e.type==='in'?'var(--success)':'var(--danger)'};">${e.type==='in'?'+':'−'}${money(e.amount)}</div></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Nada lançado hoje.</p></div>'}`;
+}
+async function cashEntry(){
+  const amount=val('ceAmount');if(!amount){toast('Informe o valor');return;}
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/cash`,{method:'POST',body:JSON.stringify({type:val('ceType'),amount,description:val('ceDesc')})});toast('Lançado');ownerLoadTab();}catch(e){toast(e.message);}
+}
+
+async function renderRelatorio(body){
+  const r=await api(`/api/services/venues/${state.ownerVenue.id}/report`);
+  body.innerHTML=`<div class="card"><div class="stat3">
+      <div><div class="lbl">FATURAMENTO</div><div class="val">${money(r.revenue)}</div></div>
+      <div><div class="lbl">ATENDS.</div><div class="val">${r.count}</div></div>
+      <div><div class="lbl">TICKET</div><div class="val">${money(r.ticket)}</div></div>
+      <div><div class="lbl">COMISSÃO</div><div class="val">${money(r.commission)}</div></div></div>
+      <div style="color:var(--muted);font-size:11px;text-align:center;margin-top:8px;">hoje · ${r.from}</div></div>
+    ${r.byProfessional.length?`<div class="sec-title">Por barbeiro</div>`+r.byProfessional.map(p=>`<div class="card" style="padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;"><div>${esc(p.name)}<div style="color:var(--muted);font-size:11px;">${p.count} atend. · comissão ${money(p.commission)}</div></div><div style="font-weight:800;">${money(p.revenue)}</div></div>`).join(''):''}
+    ${Object.keys(r.byService).length?`<div class="sec-title">Por serviço/produto</div>`+Object.entries(r.byService).map(([n,s])=>`<div class="card" style="padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;"><div>${esc(n)} <span style="color:var(--muted);">x${s.qty}</span></div><div style="font-weight:800;">${money(s.total)}</div></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem comandas no período.</p></div>'}`;
+}
+async function apptAction(id,action){try{await api(`/api/services/appointments/${id}/${action}`,{method:'POST'});toast('Feito');ownerLoadTab();}catch(e){toast(e.message);}}
+
 // ---- event wiring (sem onclick em HTML gerado: data-action + delegation) ----
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 document.getElementById('backBtn').addEventListener('click',goBack);
@@ -442,6 +572,17 @@ document.getElementById('content').addEventListener('click',(e)=>{
   else if(a==='createVenue')createVenue();
   else if(a==='publish')publishVenue(el.dataset.vid);
   else if(a==='copylink'){navigator.clipboard.writeText(location.origin+'/barber?v='+el.dataset.slug);toast('Link copiado!');}
+  else if(a==='ownerTab')ownerTab(el.dataset.tab);
+  else if(a==='apptConfirm')apptAction(el.dataset.id,'confirm');
+  else if(a==='apptNoshow')apptAction(el.dataset.id,'no-show');
+  else if(a==='apptCancel')apptAction(el.dataset.id,'cancel');
+  else if(a==='openCheckout')openCheckout(el.dataset.id);
+  else if(a==='addCoProd')addCoProd(el.dataset.pid);
+  else if(a==='rmCoProd')rmCoProd(Number(el.dataset.i));
+  else if(a==='doCheckout')doCheckout(el.dataset.id);
+  else if(a==='addProduct')addProduct();
+  else if(a==='delProduct')delProduct(el.dataset.pid);
+  else if(a==='cashEntry')cashEntry();
 });
 
 // ---- init ----

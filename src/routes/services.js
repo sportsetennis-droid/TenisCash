@@ -186,6 +186,7 @@ router.get(
       select: {
         id: true, slug: true, name: true, segment: true, avatarUrl: true, coverUrl: true,
         city: true, neighborhood: true, cashbackPct: true, acceptsTC: true, verified: true,
+        reviewRating: true, reviewCount: true,
       },
     });
     res.json({ count: venues.length, venues });
@@ -712,5 +713,207 @@ router.post(
     res.json({ cashbackEnabled: !!req.body?.cashbackEnabled });
   })
 );
+
+// =====================================================================
+// GESTÃO DO ESTABELECIMENTO — produtos, comanda, caixa, comissão,
+// relatório, avaliação (NPS), lista de espera. Tudo escopado pelo dono.
+// =====================================================================
+
+async function memberCommission(venueId, professionalId) {
+  if (!venueId) return 0;
+  const m = await prisma.venueMember.findUnique({ where: { venueId_professionalId: { venueId, professionalId } } }).catch(() => null);
+  return m ? m.commissionPct || 0 : 0;
+}
+
+// ----- PRODUTOS (estoque) -----
+router.get('/venues/:id/products', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  res.json(await prisma.venueProduct.findMany({ where: { venueId: v.id, active: true }, orderBy: { name: 'asc' } }));
+}));
+router.post('/venues/:id/products', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'name obrigatório' });
+  const p = await prisma.venueProduct.create({ data: { venueId: v.id, name: b.name, price: Number(b.price) || 0, cost: Number(b.cost) || 0, stock: Number(b.stock) || 0 } });
+  res.status(201).json(p);
+}));
+router.patch('/venues/:id/products/:pid', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const b = req.body || {}; const data = {};
+  for (const f of ['name']) if (b[f] !== undefined) data[f] = b[f];
+  for (const f of ['price', 'cost', 'stock']) if (b[f] !== undefined) data[f] = Number(b[f]);
+  if (b.active !== undefined) data.active = !!b.active;
+  const p = await prisma.venueProduct.updateMany({ where: { id: req.params.pid, venueId: v.id }, data });
+  res.json({ ok: p.count > 0 });
+}));
+router.delete('/venues/:id/products/:pid', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  await prisma.venueProduct.updateMany({ where: { id: req.params.pid, venueId: v.id }, data: { active: false } });
+  res.json({ ok: true });
+}));
+
+// ----- Núcleo da comanda: cria comanda paga, baixa estoque, comissão, caixa, cashback -----
+async function buildComanda(tx, { venue, professionalId, appointment, services, products, discount, paymentMethod, clientUserId, customerName }) {
+  const commissionPct = await memberCommission(venue.id, professionalId);
+  const items = [];
+  for (const s of services) {
+    const total = round2((s.price || 0) * (s.qty || 1));
+    items.push({ kind: 'service', refId: s.refId || null, name: s.name, qty: s.qty || 1, unitPrice: s.price || 0, total, commissionPct, commissionAmount: round2(total * commissionPct / 100) });
+  }
+  const stockOps = [];
+  for (const pi of products || []) {
+    const prod = await tx.venueProduct.findFirst({ where: { id: pi.productId, venueId: venue.id } });
+    if (!prod) continue;
+    const qty = Math.max(1, Number(pi.qty) || 1);
+    const total = round2(prod.price * qty);
+    items.push({ kind: 'product', refId: prod.id, name: prod.name, qty, unitPrice: prod.price, total, commissionPct, commissionAmount: round2(total * commissionPct / 100) });
+    stockOps.push({ id: prod.id, qty });
+  }
+  const subtotal = round2(items.reduce((a, i) => a + i.total, 0));
+  const disc = round2(Number(discount) || 0);
+  const total = round2(Math.max(0, subtotal - disc));
+  const commissionTotal = round2(items.reduce((a, i) => a + i.commissionAmount, 0));
+
+  const comanda = await tx.comanda.create({
+    data: {
+      venueId: venue.id, professionalId, appointmentId: appointment ? appointment.id : null,
+      clientUserId: clientUserId || null, customerName: customerName || null,
+      status: 'paid', subtotal, discount: disc, total, commissionTotal,
+      paymentMethod: paymentMethod || 'cash', paidAt: new Date(),
+      items: { create: items },
+    },
+    include: { items: true },
+  });
+  for (const op of stockOps) await tx.venueProduct.update({ where: { id: op.id }, data: { stock: { decrement: op.qty } } });
+  await tx.cashEntry.create({ data: { venueId: venue.id, type: 'in', category: 'service', amount: total, description: `Comanda #${comanda.id.slice(-5)}`, method: paymentMethod || 'cash', comandaId: comanda.id, professionalId } });
+  await tx.serviceVenue.update({ where: { id: venue.id }, data: { totalBilled: { increment: total } } }).catch(() => {});
+  await tx.professional.update({ where: { id: professionalId }, data: { totalPaid: { increment: total } } }).catch(() => {});
+  return comanda;
+}
+
+// Fechar conta de um agendamento (concluir + comanda com produtos + cashback)
+router.post('/appointments/:id/checkout', authMiddleware, wrap(async (req, res) => {
+  const ctx = await loadOwnedAppointment(req, res); if (!ctx) return;
+  const { appt } = ctx;
+  if (!appt.venueId) return res.status(400).json({ error: 'Agendamento sem estabelecimento' });
+  if (appt.status === 'done') return res.status(400).json({ error: 'Já concluído' });
+  const venue = await prisma.serviceVenue.findUnique({ where: { id: appt.venueId } });
+  const b = req.body || {};
+  const enabled = await cashbackOn();
+  const out = await prisma.$transaction(async (tx) => {
+    const comanda = await buildComanda(tx, {
+      venue, professionalId: appt.professionalId, appointment: appt,
+      services: [{ refId: appt.offerId, name: appt.serviceName, price: appt.price, qty: 1 }],
+      products: b.products, discount: b.discount, paymentMethod: b.paymentMethod,
+      clientUserId: appt.clientUserId, customerName: appt.customerName,
+    });
+    let cashback = 0;
+    if (enabled && appt.clientUserId) {
+      cashback = round2(comanda.total * (appt.cashbackPct || 0) / 100);
+      if (cashback > 0) {
+        const u = await tx.user.update({ where: { id: appt.clientUserId }, data: { balance: { increment: cashback } } });
+        await tx.transaction.create({ data: { type: 'cashback_service', amount: cashback, description: `Cashback: ${appt.serviceName}`, receiverId: appt.clientUserId, balanceAfter: u.balance, metadata: JSON.stringify({ comandaId: comanda.id }) } });
+        await tx.comanda.update({ where: { id: comanda.id }, data: { tcEarned: cashback } });
+      }
+    }
+    await tx.serviceAppointment.update({ where: { id: appt.id }, data: { status: 'done', doneAt: new Date(), tcEarned: cashback } });
+    return { comanda, cashback };
+  }, { timeout: 20000, maxWait: 10000 });
+  res.json({ comanda: out.comanda, cashbackCredited: out.cashback, cashbackEnabled: enabled });
+}));
+
+// Comanda avulsa (cliente sem agendamento — walk-in)
+router.post('/venues/:id/comanda', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const b = req.body || {};
+  const professionalId = b.professionalId;
+  if (!professionalId) return res.status(400).json({ error: 'professionalId obrigatório' });
+  const services = Array.isArray(b.services) ? b.services : [];
+  if (!services.length && !(b.products || []).length) return res.status(400).json({ error: 'Adicione ao menos 1 item' });
+  const comanda = await prisma.$transaction((tx) => buildComanda(tx, {
+    venue: v, professionalId, appointment: null, services, products: b.products,
+    discount: b.discount, paymentMethod: b.paymentMethod, customerName: b.customerName,
+  }), { timeout: 20000, maxWait: 10000 });
+  res.status(201).json(comanda);
+}));
+
+// ----- CAIXA -----
+router.get('/venues/:id/cash', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const date = req.query.date ? String(req.query.date) : new Date(Date.now() + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+  const from = localToUtc(date, 0), to = localToUtc(date, 24 * 60);
+  const entries = await prisma.cashEntry.findMany({ where: { venueId: v.id, createdAt: { gte: from, lt: to } }, orderBy: { createdAt: 'desc' } });
+  const totalIn = round2(entries.filter((e) => e.type === 'in').reduce((a, e) => a + e.amount, 0));
+  const totalOut = round2(entries.filter((e) => e.type === 'out').reduce((a, e) => a + e.amount, 0));
+  res.json({ date, totalIn, totalOut, net: round2(totalIn - totalOut), count: entries.length, entries });
+}));
+router.post('/venues/:id/cash', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const b = req.body || {};
+  const amount = Number(b.amount);
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'amount inválido' });
+  const e = await prisma.cashEntry.create({ data: { venueId: v.id, type: b.type === 'in' ? 'in' : 'out', category: b.category || (b.type === 'in' ? 'other' : 'expense'), amount, description: b.description || null, method: b.method || 'cash', createdById: req.userId } });
+  res.status(201).json(e);
+}));
+
+// ----- RELATÓRIO -----
+router.get('/venues/:id/report', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  const toStr = req.query.to ? String(req.query.to) : new Date(Date.now() + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+  const fromStr = req.query.from ? String(req.query.from) : toStr;
+  const from = localToUtc(fromStr, 0), to = localToUtc(toStr, 24 * 60);
+  const comandas = await prisma.comanda.findMany({ where: { venueId: v.id, status: 'paid', paidAt: { gte: from, lt: to } }, include: { items: true } });
+  const revenue = round2(comandas.reduce((a, c) => a + c.total, 0));
+  const commission = round2(comandas.reduce((a, c) => a + c.commissionTotal, 0));
+  const count = comandas.length;
+  const ticket = count ? round2(revenue / count) : 0;
+  const byPro = {}; const byService = {};
+  for (const c of comandas) {
+    byPro[c.professionalId] = byPro[c.professionalId] || { revenue: 0, commission: 0, count: 0 };
+    byPro[c.professionalId].revenue = round2(byPro[c.professionalId].revenue + c.total);
+    byPro[c.professionalId].commission = round2(byPro[c.professionalId].commission + c.commissionTotal);
+    byPro[c.professionalId].count += 1;
+    for (const it of c.items) { byService[it.name] = byService[it.name] || { qty: 0, total: 0 }; byService[it.name].qty += it.qty; byService[it.name].total = round2(byService[it.name].total + it.total); }
+  }
+  // nomes dos profissionais
+  const proIds = Object.keys(byPro);
+  const pros = await prisma.professional.findMany({ where: { id: { in: proIds } }, select: { id: true, displayName: true } });
+  const byProfessional = pros.map((p) => ({ id: p.id, name: p.displayName, ...byPro[p.id] }));
+  res.json({ from: fromStr, to: toStr, revenue, commission, count, ticket, byProfessional, byService });
+}));
+
+// ----- AVALIAÇÃO (NPS) -----
+router.post('/appointments/:id/review', optionalAuth, wrap(async (req, res) => {
+  const appt = await prisma.serviceAppointment.findUnique({ where: { id: req.params.id } });
+  if (!appt) return res.status(404).json({ error: 'Agendamento não encontrado' });
+  const rating = Math.max(1, Math.min(5, Number(req.body?.rating) || 0));
+  if (!rating) return res.status(400).json({ error: 'rating 1..5' });
+  const exists = await prisma.venueReview.findUnique({ where: { appointmentId: appt.id } }).catch(() => null);
+  if (exists) return res.status(400).json({ error: 'Já avaliado' });
+  const review = await prisma.venueReview.create({ data: { venueId: appt.venueId, professionalId: appt.professionalId, appointmentId: appt.id, clientUserId: appt.clientUserId, customerName: appt.customerName, rating, comment: req.body?.comment || null } });
+  if (appt.venueId) {
+    const agg = await prisma.venueReview.aggregate({ where: { venueId: appt.venueId }, _avg: { rating: true }, _count: true });
+    await prisma.serviceVenue.update({ where: { id: appt.venueId }, data: { reviewRating: round2(agg._avg.rating || 0), reviewCount: agg._count } }).catch(() => {});
+  }
+  res.status(201).json(review);
+}));
+
+// ----- LISTA DE ESPERA -----
+router.post('/waitlist', optionalAuth, wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.venueId || !b.customerName) return res.status(400).json({ error: 'venueId e customerName obrigatórios' });
+  const w = await prisma.appointmentWaitlist.create({ data: { venueId: b.venueId, professionalId: b.professionalId || null, customerName: b.customerName, customerPhone: b.customerPhone || null, date: b.date ? localToUtc(String(b.date), 0) : null } });
+  res.status(201).json(w);
+}));
+router.get('/venues/:id/waitlist', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  res.json(await prisma.appointmentWaitlist.findMany({ where: { venueId: v.id, status: 'waiting' }, orderBy: { createdAt: 'asc' } }));
+}));
+router.post('/venues/:id/waitlist/:wid/notify', authMiddleware, wrap(async (req, res) => {
+  const v = await ownedVenue(req, res); if (!v) return;
+  // TODO(skeleton): disparo real via WhatsApp exige aprovação (regra do projeto). Por ora só marca.
+  await prisma.appointmentWaitlist.updateMany({ where: { id: req.params.wid, venueId: v.id }, data: { notified: true, status: 'notified' } });
+  res.json({ ok: true, note: 'marcado como notificado (envio WhatsApp = TODO)' });
+}));
 
 module.exports = router;
