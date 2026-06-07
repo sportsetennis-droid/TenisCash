@@ -3,8 +3,11 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "npx prisma db push && node src/seed.js && node src/index.js"
+# Healthcheck: o Railway bate em /api/health depois de subir o deploy novo.
+# Se NÃO responder 200 (ex: app crashou no boot), o deploy é marcado como falho e o
+# Railway MANTÉM a versão anterior no ar -> deploy quebrado nao derruba o prod.
+# (Estava em [healthchecks].path, que o Railway ignora -> por isso o 502 de hoje.)
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[healthchecks]
-path = "/api/health"
