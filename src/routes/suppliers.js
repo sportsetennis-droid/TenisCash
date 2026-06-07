@@ -4,7 +4,8 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
-const { recalcSizeStock } = require('../services/stockSync');
+// recalcSizeStock REMOVIDO — regra inquebrável: NUNCA recalcular ProductSize.stock a partir do StoreStock
+// (corrompe o comprado). O módulo stockSync não é deployado; o require quebrava o build do Railway.
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -254,15 +255,14 @@ router.post('/:id/products/unify', async (req, res) => {
       for (const o of originals) {
         for (const s of (o.sizes || [])) {
           const ps = await prisma.productSize.create({
-            data: { productId: master.id, size: String(s.size), stock: 0 }, // espelho; recalc abaixo
+            data: { productId: master.id, size: String(s.size), stock: s.stock ?? 0 }, // herda o COMPRADO do original (NUNCA recalc do StoreStock)
           });
           if (s.storeStocks && s.storeStocks.length) {
             await prisma.storeStock.updateMany({
               where: { productSizeId: s.id },
               data: { productSizeId: ps.id },
             });
-            // espelho ProductSize.stock = soma do StoreStock movido
-            await recalcSizeStock(prisma, ps.id);
+            // StoreStock movido pro novo ProductSize; comprado preservado acima (sem recalc)
           }
           movedSizes++;
         }
