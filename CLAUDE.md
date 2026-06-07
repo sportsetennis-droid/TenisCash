@@ -22,6 +22,7 @@ Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS
 - SEMPRE registrar ação com timestamp + agente responsável
 - SEMPRE usar dados REAIS (banco TenisCash, não simulados)
 - NUNCA committar `.env`, tokens, secrets — `.env` está no `.gitignore`
+- **ANTES de commitar arquivo backend (`src/`): conferir que TODOS os `require` resolvem NO REPOSITÓRIO** (`git ls-files <arquivo>` / `git check-ignore`), não só no PC. Arquivo gitignored existe local mas NÃO no build do Railway → `MODULE_NOT_FOUND` → app cai no startup (**502, prod fora do ar**). Push força rebuild e expõe esse tipo de bomba-relógio. **Erro 2026-06-07:** `suppliers.js` importava `../services/stockSync` (gitignored, regra de não-deploy do recalc) → meu push rebuildou → prod 502. Corrigido removendo o require + a chamada `recalcSizeStock` (proibida). Depois de QUALQUER push que mexe em `src/`, **curl no site e confirmar HTTP 200**.
 - **REGRA INQUEBRÁVEL — Nuvemshop:** só sobe produto pro Nuvemshop classificado nas **4** (Categoria + Sub + Modalidade + Especialidade). Sem as 4, NÃO sobe (nem cria, nem atualiza). Enforced em `pushProductToNuvemshop` (skip se incompleto).
 - **REGRA INQUEBRÁVEL — Markup / custo / preço de venda (dono 2026-06-07):**
   1. **No card/aba FORNECEDORES (onde se calcula o markup): SEMPRE constar o CUSTO e o PREÇO DE VENDA com markup** (os dois visíveis). Preço de venda = `costPrice × (1 + markup/100)`, markup = `product.markupPercent ?? supplier.averageMarkup`.
