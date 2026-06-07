@@ -23,6 +23,9 @@ Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS
 - SEMPRE usar dados REAIS (banco TenisCash, não simulados)
 - NUNCA committar `.env`, tokens, secrets — `.env` está no `.gitignore`
 - **REGRA INQUEBRÁVEL — Nuvemshop:** só sobe produto pro Nuvemshop classificado nas **4** (Categoria + Sub + Modalidade + Especialidade). Sem as 4, NÃO sobe (nem cria, nem atualiza). Enforced em `pushProductToNuvemshop` (skip se incompleto).
+- **REGRA INQUEBRÁVEL — Markup / custo / preço de venda (dono 2026-06-07):**
+  1. **No card/aba FORNECEDORES (onde se calcula o markup): SEMPRE constar o CUSTO e o PREÇO DE VENDA com markup** (os dois visíveis). Preço de venda = `costPrice × (1 + markup/100)`, markup = `product.markupPercent ?? supplier.averageMarkup`.
+  2. **Produto que vai pra LOJA (storefront/Nuvemshop) SÓ pode ir com o PREÇO DE VENDA COM MARKUP — NUNCA com o custo.** Se `price` estiver igual ao `costPrice` (markup não aplicado) ou `costPrice` vazio, NÃO sobe pra loja. O custo é interno; a loja só vê o preço de venda.
 
 ## Hierarquia de agentes
 
@@ -546,3 +549,112 @@ Reconciliar com `scripts/match-bipes-com-xml.js --apply`: cruza barcode↔ean, c
 **Disciplina sempre:** backup antes de escrever · dry-run antes de --apply · transação por item · CONFERIR olhando · respeitar regras inquebráveis (comprado=NFe e NUNCA recalc do StoreStock; transferência NUNCA cria card).
 
 **Scripts reutilizáveis:** `sync-hoka-nfe.js` · `sync-reebok-nfe.js` (sync por código) · `rebuild-hoka.js` · `create-missing-nfe-sizes.js` (tamanhos faltando) · `apply-found-bipes.js` (aplica bipes reconhecidos) · `unify-by-reference.js` (unifica por REF:/cProd, catálogo todo).
+
+## REGRA PERMANENTE — Tratamento da BASE pela NFe de entrada (LEITURA LITERAL) — dono 2026-06-06
+
+**ORDEM INQUEBRÁVEL:** arruma a BASE primeiro (referência → tamanhos certos no card, em TODOS os produtos). SÓ DEPOIS mexe em bipe. A base não pode estar errada porque o bipe é comparado com ela — base errada = comparação errada. Dono: *"antes de mexer nos bipes vc tem que ajeitar a base."*
+
+**LER SÓ O QUE ESTÁ ESCRITO NO XML. Tudo que está escrito na NFe é válido. NÃO inventar, NÃO decodificar, NÃO gastar (sem web).** ⚠️ Isto **SUPERA** o método anterior de "decodificar cor na web" — no tratamento de base a cor **NÃO se decodifica**.
+
+**DE-PARA DOS CAMPOS (item `prod` da NFe):**
+| Conceito | Campo XML |
+|---|---|
+| **SKU** (do tamanho) | `cEAN` (código de barras), único por tamanho |
+| **Descrição** | `xProd` |
+| **Referência** (do card) | `cProd` SEM o tamanho (sufixo final) |
+| **Tamanho** | sufixo final do `cProd` (ex `...NANLA42` → 42) |
+| **Comprado** | `qCom` (fixo, NUNCA recalcula) |
+
+**NÃO FAZER (cada um = ordem direta do dono):**
+- ❌ NÃO ler/gravar **CUSTO** (`vUnCom`). Dono: *"custo nada, nao vai gastar nada."*
+- ❌ NÃO preencher **CATEGORIA**. ❌ NÃO preencher **GÊNERO**. Ficam pro dono/equipe.
+- ❌ NÃO inventar **COR**. Cor só se estiver escrita literal no XML; senão **deixa VAZIO**. NÃO decodificar na web.
+- ❌ NÃO **MEXER EM IMAGEM/FOTO**. Dono: *"nao mexa nada de imagem."*
+
+**ESTRUTURA:** 1 card = 1 referência (modelo+cor). Tamanhos entram como ProductSize dentro do card (`barcode=cEAN`, `size=sufixo cProd`, `stock=qCom`). NUNCA 1 card por tamanho. SÓ entrada cria card (transferência não). Tamanho: só 33–48/half ou P–GG; se não for plausível, placeholder `T-<EAN>`, NUNCA número errado.
+
+**CONFERÊNCIA (por referência):** os tamanhos que a NFe comprou (cEAN por cProd) têm que existir no card. Erros a achar: referência **sem card** · card **faltando tamanho** · referência **fragmentada** em vários cards · barcode no card **sem NFe** (fantasma).
+
+**EXECUÇÃO:** executar o correto **direto**, COM backup, self-verify, **SEM trazer lista pra aprovação**. Dono: *"quero q vc execute o correto. me traga nada nao, quero que aprenda e memorize no sistema o q ta fazendo."* Script read-only de conferência: `_conferir_referencia.js` (1 ref) e `_conferir_base_tudo.js` (catálogo todo).
+
+**ORIGEM (2026-06-06):** rodei sem regra e fiz merda — importei 614 produtos lendo só a descrição, sem cor/referência decompostas, categoria 'A definir', preço 0; e misturei bipes de cores/tamanhos diferentes no mesmo size (572 mal-atribuídos). Daí a ordem: base primeiro, leitura literal do XML, sem inventar, sem imagem, sem custo.
+
+### Consolidação de duplicatas + COMPRADO somado (aprendido 2026-06-07)
+
+**CARD CANÔNICO = o CURADO, nunca o card cru linkado na NFe.** Quando a mesma referência tem 2+ cards (um curado com cor/sku-referência + um cru "NANO COURTTENIS"), o canônico é o **card cujo `sku` é o MAIOR prefixo do `cProd`** (ex sku `100205030MNANLA` é prefixo de `100205030MNANLA42`); empate → o que tem cor. Mover os ProductSize/links PRA ELE e desativar a duplicata-fonte. ❌ ERRO 07/06: consolidei pro card cru (seguindo o `XmlFiscalItem.productId`) e esvaziei 195 cards curados; corrigido com `fix-base-canonical-by-sku.js` (272 voltaram). Regra: **sku-âncora vence link da NFe.**
+
+**COMPRADO = SOMA de `qCom` de TODAS as NFes de entrada daquele código** (não de 1 NFe). SEMPRE setar `ProductSize.stock = sum(qCom)` ao criar/mover/consolidar. ❌ ERRO 07/06: 4.911 tamanhos com comprado errado (4.312 subestimados/zerados) porque movi sem setar stock; corrigido com `fix-comprado-sum.js`.
+
+**BIPE (fase 2, só depois da base):** `fix-bipes-rebuild.js` religa cada bipe ao ProductSize do **código EXATO** (1 código→1 ps, sem poluição cruzada) e **reconstrói StoreStock = contagem real de bipes por (loja,tamanho)** — elimina inflação. Comprado intocado.
+
+**Resultado 07/06:** base faltando-tamanho 481→0 · comprado divergente →0 · bipes mal-atribuídos 572→0 · Nano Court tam42 29→1 (físico ≤ comprado). Resíduo legítimo: 3.530 bipes não-achados + 254 localizado>comprado = falta importar NFe antiga (não é bug, é sinal visível).
+
+**Pipeline reusável (nesta ordem):** `fix-base-resolve-conflicts.js` (cada código→card de maior prefixo cProd, NFe desempata) → `fix-base-realign-nfe.js` (alinha link NFe ao ps) → `fix-base-canonical-by-sku.js` (curado vence) → `fix-comprado-sum.js` (comprado=Σqcom) → `fix-bipes-rebuild.js` (StoreStock=contagem). Conferência read-only: `_conferir_base_tudo.js`.
+
+### comprado=1 = primícia + consolidação marca-por-marca por DESCRIÇÃO (dono 2026-06-07)
+
+**PRIMÍCIA DO DONO:** "não existe card com comprado de 1 unidade; se tiver é exceção, 99% tem >1". Card de verdade = modelo, comprado em VÁRIOS tamanhos. **comprado=1 com TAMANHO real (33-48/P-GG) = FRAGMENTO errado.** Exceção legítima = "Único"/acessório (óculos EVOKE/Oakley, bola, garrafa — 1 SKU sem tamanho). Filtro no admin: aba classificação do catálogo → "Comprado (un)" / "Comprado = exato".
+
+**Achar os irmãos: por DESCRIÇÃO, não só código.** Muitos fornecedores põem um número que VARIA por unidade no cProd (prefixo falha), mas a descrição é "MODELO / COR / TAMANHO" (ou "... TAM. X", ou "COR: NNN TAM: X", ou tamanho no fim). `fix-brand-desc-consolidate.js <prefixoEAN> "<marca>" [--apply]` agrupa pela descrição (modelo+cor), tamanho = último segmento, cores separadas. Rodado 07/06: Caju(7909167) N1(0040141/0631430) Penalty(7909342) AltoGiro(7890171) Diadora(7908578) → ~115 modelos, comprado=1 514→367. **Cada marca um prefixo/formato** — rodar uma a uma.
+
+**REGRA NOVA (dono): quando NÃO entender o que está escrito no XML, PESQUISAR NO SITE DA MARCA** (WebSearch/WebFetch = grátis) pra decodificar referência/cor/modelo. Só pros casos REALMENTE opacos — a maioria (FILA F01SD/F02SD masc-fem, UMBRO U01L00032+cor, Skechers GTW-modelo-cor-tam, RAINHA RA000X, Body for Sure "COR: NNN TAM:") dá pra ler do próprio XML.
+
+**Resíduo que SÓ fecha com NFe nova:** comprado=1 sized SEM irmão na base (fornecedor 6907587, Let's Gym, Salomon deram 0) = falta importar a NFe antiga dos outros tamanhos.
+
+### ⚠️ MARCA com COR no cProd NÃO se organiza por DESCRIÇÃO (erro 2026-06-07, dono pegou)
+
+**ANTES de rodar `fix-brand-repartition.js` (agrupa por DESCRIÇÃO/xProd) numa marca, checar se a COR/GÊNERO dela vive no `cProd` e NÃO na descrição.** Se vive no cProd → agrupar por **cProd** (`fix-puma-by-cprod.js` como molde, key = cProd sem o tamanho final), NUNCA por descrição.
+
+**Marcas cProd-cor (a descrição NÃO distingue modelo/cor):** HOKA, REEBOK, PUMA, MIZUNO, ASICS, Caju, Skechers, Botafogo, Spalding, Speedo, Lupo, Kappa. Ex: HOKA "Clifton 10" masc e fem têm xProd quase igual — só o cProd separa (`1162030`=masc Putty vs `1162031`=fem). Rodar description-repartition nelas **cola referências/gêneros/cores diferentes no mesmo card**.
+
+**O erro:** rodei `fix-brand-repartition.js` (descrição) no HOKA e REEBOK no batch de organização → Clifton 10 colou 3 cores + 2 gêneros num card, Mach 7 colou masc(1171904)+fem(1171938), REEBOK Slide colou branco(UCHI002BRLBC)+cinza(UCHI002BRLCZ). Dono: *"juntou tenis da hoka, mas nao respeitou que é referencia diferente, clifton 10 e mach 7."*
+
+**O conserto:** `fix-revert-repartition.js <marca> --apply` — lê o backup `scripts/backups/fix-repart-<marca>-applied.json`, volta cada ProductSize pro card original (`de`), recalcula o tamanho real pelo cProd, reativa os cards desativados, religa o XmlFiscalItem. HOKA 8→12 cards certos · REEBOK tênis 45→63.
+
+**Verificação certa pra marca cProd:** `_diag_cprod_merge.js <marca>` (card com >1 cProd-sem-tamanho = merge errado). ❌ NÃO usar verificador por descrição (`_verificar_organizacao.js`/`_diag_bagunca_marcas.js`) em marca cProd — eles são CEGOS pra esse erro (foi por isso que não peguei sozinho; o dono pegou olhando). Acessório (boné/bola/caneleira/joelheira, tam U/P-GG/5-7) dá falso-positivo no `_diag_cprod_merge` (tamanho não é 2 dígitos) — ignorar; só tênis com 2 cProd-estilo no card é erro real.
+
+## OPERAÇÃO DE CONFERÊNCIA — fornecedor por fornecedor (dono 2026-06-07)
+
+Varrer a base **fornecedor por fornecedor** (emissor da NFe de entrada) e achar/consertar: produto comprado **sem card**, **marca trocada**, card fragmentado, cor faltando — lendo a NFe LITERAL. São **44 fornecedores**.
+
+**ACHADO-RAIZ:** a marca NÃO está preenchida em NENHUMA NFe (`XmlFiscalDocument.brand` = null em todas). Logo NÃO confiar nesse campo nem no rótulo `pr.brand` (sujo — ex Drastosa apareceu com 6 "marcas", o nome do fornecedor virou marca). **A marca certa vem do DONO + da descrição.** Mapa confirmado pelo dono:
+- ALPAR = Adidas · DRASTOSA = Puma/Asics/Stanley · TOP CONFECÇÕES = Caju Brasil · VECTRON = Kappa · HIPERFLEX = Speedo · BRANDS BRASIL = Diadora · NESK = Everlast.
+
+**CADA MARCA ESCREVE DIFERENTE — ler o formato ANTES de criar (senão fragmenta):**
+| Fornecedor/Marca | cProd | Chave do card (modelo+cor) | Cor |
+|---|---|---|---|
+| Vectron/Kappa | `K100.05.37` | cProd sem o tamanho (`K100.05`) | descrição `REF Kxxx COR tam` |
+| Hiperflex/Speedo | `SPO01.01-02.36` | cProd sem o tamanho | descrição, bloco antes do tam |
+| Nesk/Everlast | `SEMA195.195B.38` | cProd sem o tamanho | descrição (tira `REF cod` do FIM antes) |
+| Brands/Diadora | = **código de barras** | **DESCRIÇÃO** sem o tamanho | descrição (sequência de cor no fim) |
+
+**REGRA DE CARD — KAPPA / cada REF é um card (dono 2026-06-07, MUITO firme):**
+- **Cada referência (cProd) = 1 card.** K100 é um card, K101 é outro, K102 é outro. A REF é a identidade do card.
+- **NUNCA juntar referências diferentes, mesmo com o texto IDÊNTICO.** Ex real: K101 e K102 = "CHUTEIRA KAPPA MAESTRO SINTETICO SOLA EVA/BORRACHA AMARELO/VERDE" (texto byte-igual, só muda "REF. K101"/"REF. K102") → continuam **2 cards separados**. Referência diferente = produto diferente, ponto.
+- Dentro da mesma REF, cor diferente = card diferente (K100 Amarelo/Verde e K100 Laranja/Preto = 2 cards). Sola diferente também (a sola está escrita: PVC vs EVA/Borracha).
+- **NOME do card tem que ter COR + REF** senão dois refs viram nome idêntico e parecem duplicata. Padrão: `<modelo+sola> <COR> REF <Kxxx>` (ex `CHUTEIRA KAPPA MAESTRO SINTETICO SOLA EVA/BORRACHA AMARELO/VERDE REF K101`). Script: `fix-kappa-names-ref.js`.
+- ❌ **ERRO que cometi:** organizei certo (1 card por cProd, separados), mas DEPOIS sugeri JUNTAR K101+K102 por terem texto igual. O dono: "k100 é um card, k101 é outro card, k102 é outro card. entendeu?" → NÃO junto. `merge-dups-by-desc` NÃO pode rodar em Kappa (a REF no meio da descrição já mantém as chaves distintas, mas mesmo assim: ref diferente nunca junta).
+- ⚠️ Distinção do "partial-split" (Diadora): lá era a MESMA ref+cor partida em 2 cards (acidente da criação) → junta. Aqui são refs DIFERENTES → nunca junta. Antes de mesclar qualquer "duplicata", checar se a REF é a mesma.
+
+**FERRAMENTAS (read-only menos a de criar):**
+- `_conf_geral.js` — raio-x dos 44 (produtos, sem-card, cards, cor vazia, fragmentos, rótulos de marca sujos).
+- `_conf_fornecedor.js "<forn>"` · `_conf_marca_fornecedor.js "<forn>"` (marca-na-NFe vs marca-no-card).
+- `create-cards-from-supplier.js "<forn>" "<MARCA>" [--apply]` — cria cards FALTANTES da NFe: 1 card por modelo+cor (cProd ou descrição), tamanho real, comprado=Σqcom, **cor preenchida da descrição**, SEM categoria/custo/foto. Detecta cProd=barcode→agrupa por descrição. Se o barcode já existe (card inativo), move+reativa.
+- `_conf_verifica.js "<forn>" "<MARCA>"` — confere DEPOIS: cards criados, com cor, pares, **DUPLICATAS** (cor em >1 card — chave pela DESCRIÇÃO; ❌ NÃO chavear por cProd-parse, erra acessório de código flat e dá falso-positivo), sem-card.
+- `merge-dups-by-desc.js "<MARCA>" [--apply]` — junta cor-duplicada (mesma descrição em >1 card) no card antigo/curado, move tamanhos, desativa o esvaziado. **Rodar SEMPRE que `_conf_verifica` achar DUPLICATAS.**
+
+**⚠️ RISCO "partial-split" (achado na Diadora 2026-06-07):** se uma cor JÁ tinha card com alguns tamanhos e a criação fez card NOVO pros tamanhos que faltavam → 2 cards da mesma cor. Por isso o fluxo de cada fornecedor é: **criar → `_conf_verifica` → se DUPLICATAS, `merge-dups-by-desc --apply` → re-conferir 0 dup.** Diadora teve 2 (DFSC066-01/-02), juntadas no antigo.
+
+**DISCIPLINA:** mudança em massa (criar/mesclar/desativar) = mostra dry-run + espera "pode". Conferência (read-only) roda livre. SEMPRE rodar `_conf_verifica` depois — "rodou" não é "certo". O dono autorizou criar os de **marca-única** em sequência sem OK a cada um, MAS **conferindo cada um** e **lendo o formato antes** (não rodar no molde errado).
+
+### ⛔ ERRO GRAVE 2026-06-07 — "criar card" quando o card JÁ EXISTE curado (dono pegou pelo print)
+
+**O QUE ACONTECEU:** rodei `create-cards-from-supplier.js` em ~11 fornecedores e criei **211 cards** achando que eram produtos sem card. **TODOS os 211 eram DUPLICATA** — os produtos JÁ existiam no catálogo como cards **curados** (com FOTO, PREÇO), só estavam **sem o estoque da NFe ligado**. Os curados tinham **tamanhos-placeholder** (barcode NULL/não-numérico), então o filtro "sem-card" (que olha barcode numérico) NÃO os viu → criei card novo cru (foto vazia, R$0) ao lado do curado. Dono viu no admin: 2 cards do mesmo Maestro, um com foto/R$300 e outro com estoque/sem-foto.
+
+**A REGRA (inquebrável):** ANTES de criar um card, **procurar se já existe um card (curado ou não) pro mesmo produto** — inclusive cards com só tamanho-placeholder (sem barcode real). Se existe → **LIGAR o estoque da NFe nele** (preencher o barcode no placeholder + stock), **NUNCA criar card novo**. O card canônico é o CURADO (foto/preço). Casar por: EAN do `sku` do curado (formato `0258-<ean>`), ou cProd-key (modelo+codcor), ou descrição.
+
+**CONSERTO aplicado:** `fix-restore-curated-all.js` — casa curado-vazio↔meu-duplicado pelo EAN, apaga placeholders, devolve os tamanhos pro curado, limpa nome, religa NFe, desativa o duplicado. 175 curados restaurados · 211 duplicados desativados · sem-card seguiu 0. `fix-kappa-restore-curated.js` = versão Kappa por cProd-key.
+
+**LIÇÃO:** "sem-card" (sem ProductSize de barcode numérico) ≠ "sem produto no catálogo". Muito produto JÁ tem card curado com placeholder. `create-cards-from-supplier.js` está com esse bug (cria duplicata) — **não usar pra criar até ter o passo "achar card existente e ligar"**. O certo é um `link-nfe-to-existing-card.js` (preenche barcode+stock no card que já existe).
+
+**PROGRESSO real (sem-card → 0, mas via cards CURADOS, não novos):** Kappa/Speedo/Diadora/Everlast/Salomon/Progne/Olympikus/Caju/Asics/Puma/Botafogo — todos 0 sem-card, estoque ligado nos curados. Falta: **Adidas** (5, camiseta tam "P/GG" mal-formatado) + os **812 cards curados-vazios pré-existentes** (foto sem estoque — não são meus, são produto curado que nunca recebeu NFe).

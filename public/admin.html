@@ -11444,14 +11444,17 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda (c/ markup)</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
     const effMarkup = p.effectiveMarkup != null ? `${p.effectiveMarkup}%` : '—';
-    const price = p.price > 0 ? `R$ ${Number(p.price).toFixed(2)}` : '<span style="color:#e35">R$ 0,00</span>';
-    const computedDiff = p.computedPrice != null && Math.abs((p.computedPrice || 0) - (p.price || 0)) > 0.01
-      ? `<div style="font-size:10px;color:var(--text2)">→ deveria ser R$ ${Number(p.computedPrice).toFixed(2)}</div>`
+    // REGRA: o card de fornecedor mostra o PREÇO DE VENDA COM MARKUP (custo × (1+markup)), não o custo.
+    const sellPrice = p.computedPrice != null
+      ? `<strong style="color:var(--orange)">R$ ${Number(p.computedPrice).toFixed(2)}</strong>`
+      : '<span style="color:#e35">sem custo (não calcula)</span>';
+    const computedDiff = (p.computedPrice != null && Math.abs((p.computedPrice || 0) - (p.price || 0)) > 0.01)
+      ? `<div style="font-size:10px;color:#e35">⚠ salvo: R$ ${Number(p.price || 0).toFixed(2)} (desatualizado — clique Editar p/ aplicar)</div>`
       : '';
     html += `<tr>
       <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
@@ -11467,7 +11470,7 @@ async function loadMarkupProducts(cnpj) {
       <td>${cost}</td>
       <td>${overrideMarkup}</td>
       <td><strong>${effMarkup}</strong></td>
-      <td>${price}${computedDiff}</td>
+      <td>${sellPrice}${computedDiff}</td>
       <td style="white-space:nowrap">
         <button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 8px" onclick="editProductMarkup('${p.id}','${escapeHtml(p.name).replace(/'/g,"\\'")}',${p.costPrice ?? 'null'},${p.markupPercent ?? 'null'})">Editar</button>
       </td>
