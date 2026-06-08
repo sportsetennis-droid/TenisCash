@@ -10516,10 +10516,13 @@ function _filteredCatProducts() {
     if (subcategory && (p.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
     if (modality && (cls.modality || '') !== modality) return false;
     if (tier && (cls.tier || '') !== tier) return false;
-    if (status === 'unclassified') {
+    // Status de classificação — IGNORADO quando filtra por Nuvemshop/Liberação (produto na loja é
+    // classificado por definição; senão o default "unclassified" zera o resultado).
+    const _nsRelActive = !!(nsF || relF);
+    if (!_nsRelActive && status === 'unclassified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (isFull) return false;
-    } else if (status === 'classified') {
+    } else if (!_nsRelActive && status === 'classified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (!isFull) return false;
     }
