@@ -398,6 +398,7 @@ router.get('/products', adminOnly, async (req, res) => {
     const modality = String(req.query.modality || '').trim();
     const tier = String(req.query.tier || req.query.especialidade || '').trim();
     const supplier = String(req.query.supplier || '').trim(); // CNPJ ou supplierId
+    const nuvemshop = String(req.query.nuvemshop || '').trim(); // 'yes' = só os que foram pra Nuvemshop | 'no' = só os que não foram
     const active = req.query.active;
     const featured = req.query.featured;
 
@@ -416,11 +417,18 @@ router.get('/products', adminOnly, async (req, res) => {
       });
     }
 
+    // Produtos já enviados pra Nuvemshop (mapeados por localProductId — não há relação Prisma, então busca o set)
+    const nsMaps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+    const nsSet = new Set(nsMaps.map((m) => m.localProductId));
+    const nsIds = [...nsSet];
+
     const where = {
+      ...(nuvemshop === 'yes' ? { id: { in: nsIds } } : nuvemshop === 'no' ? { id: { notIn: nsIds } } : {}),
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       // Default: só ativos. Pra ver inativos use ?active=false. Pra todos use ?active=all
-      ...(active === 'all' ? {} : active === 'false' ? { active: false } : { active: true }),
+      // Exceção: filtro "Foi pra Nuvemshop" mostra TODOS (inclusive inativos) — o dono quer ver tudo que subiu pra loja
+      ...(active === 'all' || (nuvemshop === 'yes' && !active) ? {} : active === 'false' ? { active: false } : { active: true }),
       ...(featured === 'true' ? { featured: true } : {}),
       ...(search
         ? {
@@ -445,7 +453,7 @@ router.get('/products', adminOnly, async (req, res) => {
         createdBy: { select: { id: true, name: true } },
       },
     });
-    res.json({ products });
+    res.json({ products: products.map((p) => ({ ...p, naNuvemshop: nsSet.has(p.id) })) });
   } catch (err) {
     console.error('admin catalog products list', err);
     res.status(500).json({ error: 'Erro ao listar produtos' });

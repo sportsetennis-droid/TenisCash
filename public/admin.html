@@ -826,6 +826,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <select class="search-box" id="cat-filter-gender" style="width:120px"><option value="">Gênero</option><option value="Masculino">Homem</option><option value="Feminino">Mulher</option><option value="Inf. M">Menino</option><option value="Inf. F">Menina</option></select>
         <select class="search-box" id="cat-filter-modality" style="width:170px"><option value="">Modalidade</option></select>
         <select class="search-box" id="cat-filter-tier" style="width:150px"><option value="">Especialidade</option></select>
+        <select class="search-box" id="cat-filter-nuvemshop" style="width:185px"><option value="">Nuvemshop (todos)</option><option value="yes">🛒 Foi pra Nuvemshop</option><option value="no">Não foi pra Nuvemshop</option></select>
         <button type="button" class="btn btn-primary" id="cat-btn-filter">Filtrar</button>
         <button type="button" class="btn" id="cat-btn-clear-filter" title="Limpar filtros">✕</button>
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
@@ -3309,9 +3310,12 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
+    // Filtro Nuvemshop aplica na hora ao mudar
+    const nsFilterSel = document.getElementById('cat-filter-nuvemshop');
+    if (nsFilterSel) nsFilterSel.addEventListener('change', loadCatalogProductsAdmin);
     const clearFilterBtn = document.getElementById('cat-btn-clear-filter');
     if (clearFilterBtn) clearFilterBtn.addEventListener('click', function () {
-      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier'].forEach(id => {
+      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier','cat-filter-nuvemshop'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
       loadCatalogProductsAdmin();
@@ -3593,6 +3597,7 @@ async function loadCatalogProductsAdmin() {
   const gen = document.getElementById('cat-filter-gender')?.value.trim() || '';
   const mod = document.getElementById('cat-filter-modality')?.value.trim() || '';
   const tier = document.getElementById('cat-filter-tier')?.value.trim() || '';
+  const ns = document.getElementById('cat-filter-nuvemshop')?.value.trim() || '';
   if (s) q.set('search', s);
   if (b) q.set('brand', b);
   if (c) q.set('category', c);
@@ -3600,6 +3605,7 @@ async function loadCatalogProductsAdmin() {
   if (mod) q.set('modality', mod);
   if (tier) q.set('tier', tier);
   if (sup) q.set('supplier', sup);
+  if (ns) q.set('nuvemshop', ns);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
@@ -3614,6 +3620,9 @@ async function loadCatalogProductsAdmin() {
     const statusBadge = enriched
       ? '<span style="background:#e8f7ee;color:#0a843d;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">✨ COMPLETO</span>'
       : '<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⚠ FALTANTE</span>';
+    const nsBadge = p.naNuvemshop
+      ? '<span title="Já enviado pra Nuvemshop" style="background:#e7f0ff;color:#0a55c4;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛒 NUVEMSHOP</span>'
+      : '';
     const brandText = (p.brand || '').trim();
     const hasBrand = brandText && brandText !== 'A DEFINIR';
     const cat = (p.category || '') + (p.subcategory ? ' / ' + p.subcategory : '');
@@ -3730,7 +3739,7 @@ async function loadCatalogProductsAdmin() {
     }
 
     // Status + Ativo
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">' + statusBadge;
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + statusBadge + nsBadge + '</span>';
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
     // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
