@@ -716,7 +716,10 @@
       </div>
       <div class="form-group" id="clockPinGroup" style="display:none;">
         <label>PIN do vendedor</label>
-        <input type="password" id="clockPin" placeholder="••••" maxlength="6" inputmode="numeric" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;letter-spacing:6px;">
+        <div style="position:relative;">
+          <input type="password" id="clockPin" placeholder="••••" maxlength="6" inputmode="numeric" style="width:100%;padding:10px;padding-right:46px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;letter-spacing:6px;">
+          <button type="button" id="clockPinToggle" onclick="toggleClockPin()" aria-label="Mostrar ou ocultar PIN" title="Mostrar/ocultar PIN" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:20px;line-height:1;padding:4px;">👁️</button>
+        </div>
       </div>
       <div id="clockStatus" style="font-size:14px;margin-bottom:12px;color:#8e8e93;">Selecione vendedor pra ver pontos do dia</div>
       <div class="clock-grid" id="clockButtons"></div>
@@ -2224,6 +2227,13 @@ async function loadStoreInventory() {
 }
 
 // ============== PONTO ==============
+function toggleClockPin() {
+  const i = document.getElementById('clockPin');
+  const b = document.getElementById('clockPinToggle');
+  if (i.type === 'password') { i.type = 'text'; if (b) b.textContent = '🙈'; }
+  else { i.type = 'password'; if (b) b.textContent = '👁️'; }
+}
+
 async function loadClockin() {
   // Popula dropdown com vendedores da loja ativa
   if (!activeStore?.id) return;
