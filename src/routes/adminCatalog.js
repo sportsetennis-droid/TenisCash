@@ -399,6 +399,7 @@ router.get('/products', adminOnly, async (req, res) => {
     const tier = String(req.query.tier || req.query.especialidade || '').trim();
     const supplier = String(req.query.supplier || '').trim(); // CNPJ ou supplierId
     const nuvemshop = String(req.query.nuvemshop || '').trim(); // 'yes' = só os que foram pra Nuvemshop | 'no' = só os que não foram
+    const release = String(req.query.release || '').trim(); // 'yes' = marcados p/ liberar | 'no' = não marcados
     const active = req.query.active;
     const featured = req.query.featured;
 
@@ -424,6 +425,8 @@ router.get('/products', adminOnly, async (req, res) => {
 
     const where = {
       ...(nuvemshop === 'yes' ? { id: { in: nsIds } } : nuvemshop === 'no' ? { id: { notIn: nsIds } } : {}),
+      ...(release === 'yes' ? { aiContext: { path: ['releaseToNuvemshop'], equals: true } }
+        : release === 'no' ? { NOT: { aiContext: { path: ['releaseToNuvemshop'], equals: true } } } : {}),
       ...(brand ? { brand: { equals: brand, mode: 'insensitive' } } : {}),
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       // Default: só ativos. Pra ver inativos use ?active=false. Pra todos use ?active=all
@@ -453,10 +456,83 @@ router.get('/products', adminOnly, async (req, res) => {
         createdBy: { select: { id: true, name: true } },
       },
     });
-    res.json({ products: products.map((p) => ({ ...p, naNuvemshop: nsSet.has(p.id) })) });
+    res.json({
+      products: products.map((p) => {
+        const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true };
+      }),
+    });
   } catch (err) {
     console.error('admin catalog products list', err);
     res.status(500).json({ error: 'Erro ao listar produtos' });
+  }
+});
+
+// Marca/desmarca um produto p/ liberar na Nuvemshop. Ao MARCAR, tenta subir na hora
+// (respeita as regras de pushProductToNuvemshop: 4 classificações + estoque físico).
+router.post('/products/:id/release', adminOnly, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const release = req.body?.release !== false; // default true
+    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, aiContext: true } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+    const ctx = parseJsonSafe(product.aiContext) || {};
+    if (release) ctx.releaseToNuvemshop = true; else delete ctx.releaseToNuvemshop;
+    await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
+
+    let upload = null;
+    if (release) {
+      const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+      if (!conn) upload = { ok: false, reason: 'sem conexão Nuvemshop ativa' };
+      else {
+        try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); upload = { ok: !r?.skipped, action: r?.action || 'ok', reason: r?.reason || null }; }
+        catch (e) { upload = { ok: false, reason: String(e.message).slice(0, 160) }; }
+      }
+    }
+    res.json({ ok: true, release, upload });
+  } catch (err) {
+    console.error('release product', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marca/desmarca VÁRIOS de uma vez. Sobe os que der na hora; o cron pega o resto.
+router.post('/products/bulk-release', adminOnly, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const release = req.body?.release !== false;
+    if (!ids.length) return res.status(400).json({ error: 'nenhum produto selecionado' });
+    const conn = release ? await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } }) : null;
+    let marked = 0, uploaded = 0, skipped = 0;
+    for (const id of ids) {
+      const product = await prisma.product.findUnique({ where: { id }, select: { aiContext: true } });
+      if (!product) continue;
+      const ctx = parseJsonSafe(product.aiContext) || {};
+      if (release) ctx.releaseToNuvemshop = true; else delete ctx.releaseToNuvemshop;
+      await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
+      marked++;
+      if (release && conn) {
+        try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); if (r?.skipped) skipped++; else uploaded++; }
+        catch { skipped++; }
+      }
+    }
+    res.json({ ok: true, marked, uploaded, skipped });
+  } catch (err) {
+    console.error('bulk-release', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove o produto da loja Nuvemshop (deleta lá + limpa mappings + desmarca liberação).
+router.post('/products/:id/remove-nuvemshop', adminOnly, async (req, res) => {
+  try {
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return res.status(400).json({ error: 'sem conexão Nuvemshop ativa' });
+    const r = await nsHandlers.removeProductFromNuvemshop(req.params.id, conn);
+    res.json(r);
+  } catch (err) {
+    console.error('remove from nuvemshop', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

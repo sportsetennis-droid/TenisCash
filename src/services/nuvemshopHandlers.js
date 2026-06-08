@@ -296,6 +296,39 @@ async function handleCustomerEvent(eventType, resourceId, connection) {
 // ORDER HANDLERS
 // =====================================================================
 
+// Baixa o estoque FÍSICO (StoreStock) dos itens de um pedido Nuvemshop.
+// Regra do dono: baixa de onde o produto ESTÁ — prioridade LOJA04, senão qualquer outra loja.
+// Mexe só no StoreStock (localizado); não toca no comprado. Nunca deixa negativo.
+async function decrementPhysicalStockForOrder(nsOrder) {
+  const items = Array.isArray(nsOrder.products) ? nsOrder.products : [];
+  const loja04 = await prisma.store.findFirst({ where: { code: 'LOJA04' }, select: { id: true } });
+  const loja04Id = loja04?.id || null;
+  for (const it of items) {
+    const code = String(it.sku || it.barcode || '').trim();
+    const qty = Number(it.quantity) || 1;
+    if (!code || qty <= 0) continue;
+    const ps = await prisma.productSize.findFirst({ where: { barcode: code }, select: { id: true } });
+    if (!ps) continue;
+    const stocks = await prisma.storeStock.findMany({
+      where: { productSizeId: ps.id, stock: { gt: 0 } },
+      select: { id: true, storeId: true, stock: true },
+    });
+    // LOJA04 primeiro; depois loja com maior estoque
+    stocks.sort((a, b) => {
+      const a4 = loja04Id && a.storeId === loja04Id ? 0 : 1;
+      const b4 = loja04Id && b.storeId === loja04Id ? 0 : 1;
+      return a4 - b4 || b.stock - a.stock;
+    });
+    let remaining = qty;
+    for (const s of stocks) {
+      if (remaining <= 0) break;
+      const dec = Math.min(remaining, s.stock);
+      await prisma.storeStock.update({ where: { id: s.id }, data: { stock: { decrement: dec } } });
+      remaining -= dec;
+    }
+  }
+}
+
 async function upsertSaleFromOrder(nsOrder) {
   // 1. Resolve cliente (cria se necessário)
   let user = null;
@@ -360,6 +393,18 @@ async function upsertSaleFromOrder(nsOrder) {
         payload: nsOrder,
       },
     });
+  }
+
+  // 3a. Baixa estoque FÍSICO (StoreStock) na venda online — prioridade LOJA04, senão qualquer loja.
+  // Idempotente por pedido (flag _stockDecremented no payload do mapping). O cron espelha o físico → Nuvemshop.
+  if (nsOrder.payment_status === 'paid' && !(existing && existing.payload && existing.payload._stockDecremented)) {
+    try {
+      await decrementPhysicalStockForOrder(nsOrder);
+      await prisma.nuvemshopOrderMapping.updateMany({
+        where: { nuvemshopOrderId: String(nsOrder.id) },
+        data: { payload: { ...nsOrder, _stockDecremented: true } },
+      });
+    } catch (e) { await logSync('order', 'error', `Baixa estoque pedido ${nsOrder.id}: ${e.message}`); }
   }
 
   // 3. Se pago → credita TenisCash pro cliente (idempotente)
@@ -1531,7 +1576,41 @@ async function pushStockUpdate(localProductId) {
   return { updates };
 }
 
+// Remove o produto da loja Nuvemshop: deleta na NS, apaga os mappings locais (produto + variants)
+// e limpa a marca de liberação (pra não re-subir no cron). NÃO apaga o Product local — só tira da loja.
+async function removeProductFromNuvemshop(localProductId, connection) {
+  const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId } });
+  if (!mapping) return { removed: false, reason: 'não está na Nuvemshop' };
+
+  let nsDeleted = false;
+  try {
+    await ns.deleteProduct(connection, mapping.nuvemshopProductId);
+    nsDeleted = true;
+  } catch (e) {
+    // 404 = já não existe na loja → segue limpando o local. Outro erro → loga mas segue.
+    if (/404|not found/i.test(String(e.message))) nsDeleted = true;
+    else console.warn('[ns remove] delete na loja falhou:', e.message);
+  }
+
+  await prisma.nuvemshopVariantMapping.deleteMany({ where: { localProductId } });
+  await prisma.nuvemshopProductMapping.deleteMany({ where: { localProductId } });
+
+  // limpa marca de liberação + assinatura de estoque pra não re-subir
+  try {
+    const p = await prisma.product.findUnique({ where: { id: localProductId }, select: { aiContext: true } });
+    const ctx = (() => { try { return typeof p?.aiContext === 'string' ? JSON.parse(p.aiContext) : (p?.aiContext || {}); } catch { return {}; } })();
+    if (ctx.releaseToNuvemshop != null || ctx.nsStockSig != null) {
+      delete ctx.releaseToNuvemshop; delete ctx.nsStockSig;
+      await prisma.product.update({ where: { id: localProductId }, data: { aiContext: ctx } });
+    }
+  } catch (_) {}
+
+  await logSync('product', 'ok', `Removido da Nuvemshop: ${localProductId} (NS#${mapping.nuvemshopProductId})`);
+  return { removed: true, nsDeleted, nuvemshopProductId: mapping.nuvemshopProductId };
+}
+
 module.exports = {
+  removeProductFromNuvemshop,
   processWebhookEvent,
   importAllProducts,
   importAllCustomers,

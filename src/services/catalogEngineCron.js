@@ -6,6 +6,10 @@ const cron = require('node-cron');
 const TZ = 'America/Fortaleza';
 
 function startCatalogEngineCron() {
+  // Pendura junto o cron de SINCRONIZAÇÃO DE ESTOQUE Nuvemshop (sempre ligado, independente
+  // do gate abaixo) — espelha físico → loja + sobe marcados. Hook aqui pra não tocar no index.js.
+  try { require('./nuvemshopStockCron').startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
+
   // DESLIGADO por padrão pra NÃO gastar API à toa. O dono liga só quando quiser,
   // setando CATALOG_ENGINE_CRON=on no Railway. Sem isso, não roda e não gasta nada.
   if (process.env.CATALOG_ENGINE_CRON !== 'on') {

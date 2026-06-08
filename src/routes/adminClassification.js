@@ -42,6 +42,13 @@ router.get('/products', async (req, res) => {
     const lowConfidence = req.query.lowConfidence === '1' || req.query.lowConfidence === 'true';
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const cursor = req.query.cursor;
+    const nuvemshop = String(req.query.nuvemshop || '').trim(); // 'yes' = na Nuvemshop | 'no' = fora
+    const release = String(req.query.release || '').trim();     // 'yes' = marcado p/ liberar | 'no' = não
+
+    // Produtos já na Nuvemshop (mapeados por localProductId)
+    const nsMaps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+    const nsSet = new Set(nsMaps.map((m) => m.localProductId));
+    const nsIds = [...nsSet];
 
     const filters = [];
     // Casa com a 1ª OU a 2ª classificação (classification2)
@@ -68,6 +75,9 @@ router.get('/products', async (req, res) => {
 
     const where = {
       active: true,
+      ...(nuvemshop === 'yes' ? { id: { in: nsIds } } : nuvemshop === 'no' ? { id: { notIn: nsIds } } : {}),
+      ...(release === 'yes' ? { aiContext: { path: ['releaseToNuvemshop'], equals: true } }
+        : release === 'no' ? { NOT: { aiContext: { path: ['releaseToNuvemshop'], equals: true } } } : {}),
       ...(filters.length ? { AND: filters } : {}),
       ...(brand ? { brand: { contains: brand, mode: 'insensitive' } } : {}),
       ...(q ? {
@@ -93,18 +103,17 @@ router.get('/products', async (req, res) => {
 
     const hasMore = products.length > limit;
     const list = (hasMore ? products.slice(0, limit) : products).map(p => {
-      let cls = null;
-      try {
-        const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext;
-        cls = ctx?.classification || null;
-      } catch {}
+      let ctx = {};
+      try { ctx = (typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext) || {}; } catch {}
       return {
         id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category,
         imageUrl: p.imageUrl, price: p.price, promoPrice: p.promoPrice,
         sizes: p.sizes || [],
-        classification: cls,
-        supplierRef: ctx?.supplierRef || null,
+        classification: ctx.classification || null,
+        supplierRef: ctx.supplierRef || null,
         shortDescription: p.shortDescription || null,
+        naNuvemshop: nsSet.has(p.id),
+        releaseToNuvemshop: ctx.releaseToNuvemshop === true,
       };
     });
 

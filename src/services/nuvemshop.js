@@ -111,6 +111,10 @@ async function getProduct(connection, productId) {
   return nuvemshopApi(connection, 'GET', `/products/${productId}`);
 }
 
+async function deleteProduct(connection, productId) {
+  return nuvemshopApi(connection, 'DELETE', `/products/${productId}`);
+}
+
 async function getOrder(connection, orderId) {
   return nuvemshopApi(connection, 'GET', `/orders/${orderId}`);
 }
@@ -197,6 +201,7 @@ module.exports = {
   listOrders,
   listCustomers,
   getProduct,
+  deleteProduct,
   getOrder,
   getCustomer,
   updateVariantStock,
