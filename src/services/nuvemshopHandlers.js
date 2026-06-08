@@ -56,6 +56,31 @@ async function upsertLocalProduct(nsProduct) {
   const sku = firstVariant.sku || `NS-${nsProduct.id}`;
   const imageUrl = nsProduct.images?.[0]?.src || null;
 
+  // GUARDA ANTI-ECO (2026-06-08): se alguma variante casa com um ProductSize existente
+  // (o sku/barcode da variante NO NS é o EAN = ProductSize.barcode), este produto NASCEU
+  // no TenisCash e foi empurrado pro Nuvemshop — o webhook product/created é só o ECO do push.
+  // NÃO espelhar (não criar card-fantasma nem sobrescrever o card curado): só GARANTIR o
+  // mapping no card local existente (upsert, idempotente p/ corrida com o push) e sair.
+  {
+    const codes = variants
+      .map((v) => v.barcode || v.sku)
+      .filter((c) => c && /^[0-9]{6,}$/.test(String(c)));
+    if (codes.length) {
+      const ps = await prisma.productSize.findFirst({
+        where: { barcode: { in: codes } },
+        select: { productId: true },
+      });
+      if (ps) {
+        await prisma.nuvemshopProductMapping.upsert({
+          where: { localProductId: ps.productId },
+          create: { localProductId: ps.productId, nuvemshopProductId: String(nsProduct.id), syncStatus: 'synced', lastSyncedAt: new Date() },
+          update: { nuvemshopProductId: String(nsProduct.id), syncStatus: 'synced', lastSyncedAt: new Date() },
+        });
+        return prisma.product.findUnique({ where: { id: ps.productId } });
+      }
+    }
+  }
+
   // Tenta achar por mapeamento existente
   const mapping = await prisma.nuvemshopProductMapping.findFirst({
     where: { nuvemshopProductId: String(nsProduct.id) },
@@ -1328,9 +1353,17 @@ async function pushProductToNuvemshop(localProductId, connection) {
       mode: 'create',
     });
     nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
-    await prisma.nuvemshopProductMapping.create({
-      data: {
+    // upsert (idempotente): a guarda anti-eco do webhook product/created pode ter criado
+    // este mapping nesta corrida — não pode estourar unique em localProductId.
+    await prisma.nuvemshopProductMapping.upsert({
+      where: { localProductId: product.id },
+      create: {
         localProductId: product.id,
+        nuvemshopProductId: String(nsProduct.id),
+        syncStatus: 'synced',
+        lastSyncedAt: new Date(),
+      },
+      update: {
         nuvemshopProductId: String(nsProduct.id),
         syncStatus: 'synced',
         lastSyncedAt: new Date(),
