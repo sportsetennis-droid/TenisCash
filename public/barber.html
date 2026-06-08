@@ -245,6 +245,21 @@
   .empty{color:var(--muted);}
   .empty .ico{filter:grayscale(.3);}
   @media(min-width:900px){ body{background:#0a0a0b;} .app{box-shadow:0 0 0 1px var(--border);} }
+  /* ===== 4 vias — home ===== */
+  .home-cards{display:grid;gap:14px;}
+  .hcard{position:relative;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 18px 16px;cursor:pointer;display:flex;flex-direction:column;gap:5px;min-height:108px;box-shadow:var(--shadow-md);overflow:hidden;}
+  .hcard:active{transform:scale(.99);}
+  .hcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--primary);}
+  .hcard .hc-ic{font-size:28px;line-height:1;}
+  .hcard .hc-t{font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;letter-spacing:1px;color:#fff;text-transform:uppercase;}
+  .hcard .hc-d{font-size:12.5px;color:var(--muted);}
+  .hcard.hbusca::before{background:repeating-linear-gradient(45deg,var(--primary) 0 5px,#EFE7D8 5px 10px,var(--navy) 10px 15px);}
+  .app[data-view="home"] .hdr{background:linear-gradient(180deg,rgba(16,16,19,.55),rgba(16,16,19,.92)),url('https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=1100&q=70') center/cover;}
+  .app[data-view="home"] .hdr-title{padding:26px 16px 14px;}
+  .app[data-view="home"] .hdr-title h1{font-size:30px;color:#fff;}
+  .app[data-view="home"] .back{display:none !important;}
+  .app[data-view="home"] .ownerlink{display:none;}
+  @media(min-width:900px){ .home-cards{grid-template-columns:1fr 1fr;} }
 </style>
 </head>
 <body>
@@ -253,7 +268,7 @@
     <div class="hdr-bar">
       <button class="back" id="backBtn">‹</button>
       <div class="brand"><span class="pole"></span><span class="wordmark">BARBER</span></div>
-      <button class="ownerlink" data-tab="owner">Sou barbeiro</button>
+      <button class="ownerlink" data-tab="home">Início</button>
     </div>
     <div class="hdr-title">
       <h1 id="hdrTitle">ENCONTRE SEU BARBEIRO</h1>
@@ -263,15 +278,19 @@
   </header>
 
   <main class="content" id="content">
-    <div class="view show" id="view-discover"><div class="venues" id="venueList"><div class="loading">Carregando...</div></div></div>
+    <div class="view show" id="view-home"></div>
+    <div class="view" id="view-discover"><div class="venues" id="venueList"><div class="loading">Carregando...</div></div></div>
     <div class="view" id="view-venue"></div>
     <div class="view" id="view-book"></div>
+    <div class="view" id="view-cliente"></div>
+    <div class="view" id="view-barbeiro"></div>
     <div class="view" id="view-owner"></div>
   </main>
 
   <nav class="botnav">
-    <button class="bnav active" data-tab="discover"><span class="ic">🔎</span>Barbearias</button>
-    <button class="bnav" data-tab="owner"><span class="ic">💈</span>Minha barbearia</button>
+    <button class="bnav active" data-tab="home"><span class="ic">🏠</span>Início</button>
+    <button class="bnav" data-tab="discover"><span class="ic">🔎</span>Buscar</button>
+    <button class="bnav" data-tab="cliente"><span class="ic">👤</span>Conta</button>
   </nav>
 </div>
 <div class="toast" id="toast"></div>
@@ -309,13 +328,16 @@ function setView(v,{title,sub,back,search}={}){
 function setActiveTab(tab){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));}
 function showTab(tab){
   state.history=[]; setActiveTab(tab);
-  if(tab==='discover'){setView('discover',{search:true,title:'ENCONTRE SEU BARBEIRO',sub:'os melhores perto de você'});loadVenues();}
-  else{renderOwner();}
+  if(tab==='home')return renderHome();
+  if(tab==='discover'){setView('discover',{search:true,title:'ENCONTRE SEU BARBEIRO',sub:'os melhores perto de você'});loadVenues();return;}
+  if(tab==='cliente')return renderCliente();
+  if(tab==='barbeiro')return renderBarbeiro();
+  renderOwner();
 }
 function goBack(){
   const prev=state.history.pop();
   if(prev==='venue'&&state.venue){openVenue(state.venue.slug,true);}
-  else{showTab('discover');}
+  else{showTab('home');}
 }
 
 // ---- DISCOVER ----
@@ -399,8 +421,6 @@ function startBook(pid,oid){
     <div class="sec-title">Horário</div>
     <div id="slotsWrap"><div class="loading" style="padding:14px;">Escolha um dia acima</div></div>
     <div id="bookForm" style="display:none;margin-top:14px;">
-      <div class="field"><label>Seu nome</label><input id="bkName" placeholder="Nome completo"></div>
-      <div class="field"><label>WhatsApp</label><input id="bkPhone" placeholder="(83) 9 9999-9999" inputmode="tel"></div>
       <button class="btn" id="confirmBtn" data-action="confirm">Confirmar agendamento</button>
     </div>`;
 }
@@ -422,20 +442,9 @@ function pickSlot(el){
   document.getElementById('bookForm').style.display='block';
 }
 async function confirmBook(){
-  const name=document.getElementById('bkName').value.trim();
-  const phone=document.getElementById('bkPhone').value.trim();
-  if(!name||!phone){toast('Preencha nome e WhatsApp');return;}
   if(!state.slot){toast('Escolha um horário');return;}
-  const btn=document.getElementById('confirmBtn');btn.disabled=true;btn.textContent='Agendando...';
-  try{
-    await api('/api/services/book',{method:'POST',body:JSON.stringify({
-      professionalId:state.barber.id,venueId:state.venue.id,offerId:state.offer.id,
-      startAt:state.slot,customerName:name,customerPhone:phone,source:'marketplace'})});
-    document.getElementById('view-book').innerHTML=`<div class="empty" style="padding:50px 20px;">
-      <div class="ico">✅</div><p style="font-size:17px;font-weight:700;color:var(--text);">Agendado!</p>
-      <p>${esc(state.offer.title)} com ${esc(state.barber.displayName)}<br>${new Date(state.slot).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'long',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</p>
-      <button class="btn" style="margin-top:18px;max-width:320px;margin-left:auto;margin-right:auto;" data-action="backDiscover">Voltar</button></div>`;
-  }catch(e){toast(e.message);btn.disabled=false;btn.textContent='Confirmar agendamento';}
+  if(!TOKEN){document.getElementById('view-book').innerHTML='<div class="card" style="margin-bottom:10px;"><div style="font-weight:800;font-size:16px;">Pra marcar, entre ou cadastre-se</div><div style="color:var(--muted);font-size:13px;margin-top:4px;">É rápido — e seu histórico fica salvo.</div></div>'+authForm('book');return;}
+  doBook();
 }
 
 // ---- OWNER ----
@@ -992,6 +1001,150 @@ async function clubDoConsume(){
   try{await api(`/api/services/venues/${state.ownerVenue.id}/staff-consumption`,{method:'POST',body:JSON.stringify({professionalId,products:list.map(x=>({productId:x.productId,qty:x.qty}))})});toast('Consumo registrado');state.clubConsume=[];ownerLoadTab();}catch(e){toast(e.message);}
 }
 
+// ================= 4 VIAS — fundacao (cliente / barbeiro / barbearia / busca) =================
+function statusLabel(s){return ({booked:'aguardando',confirmed:'confirmado',done:'concluído',no_show:'faltou',cancelled:'cancelado'})[s]||s;}
+
+function renderHome(){
+  setView('home',{title:'BARBER',sub:'ache, agende, atenda'});
+  document.getElementById('view-home').innerHTML=`
+    <div class="home-cards">
+      <button class="hcard" data-action="goVia" data-via="cliente"><span class="hc-ic">🧔</span><span class="hc-t">Cliente</span><span class="hc-d">Marque seu corte e veja sua agenda</span></button>
+      <button class="hcard" data-action="goVia" data-via="barbeiro"><span class="hc-ic">✂️</span><span class="hc-t">Barbeiro</span><span class="hc-d">Sua agenda, clientes e comissão</span></button>
+      <button class="hcard" data-action="goVia" data-via="barbearia"><span class="hc-ic">🏪</span><span class="hc-t">Barbearia</span><span class="hc-d">Gerencie a casa e a equipe</span></button>
+      <button class="hcard hbusca" data-action="goVia" data-via="busca"><span class="hc-ic">🔎</span><span class="hc-t">Busca rápida</span><span class="hc-d">Ache uma barbearia — sem cadastro</span></button>
+    </div>`;
+}
+function goVia(via){
+  state.history=[];
+  if(via==='busca'){showTab('discover');return;}
+  if(via==='cliente'){setActiveTab('cliente');renderCliente();return;}
+  if(via==='barbeiro'){setActiveTab('home');renderBarbeiro();return;}
+  if(via==='barbearia'){setActiveTab('home');renderOwner();return;}
+}
+
+// ---- AUTH compartilhado (cliente / barbeiro / gate de marcação) ----
+function authForm(role){
+  return `<div class="card">
+    <div style="font-weight:800;font-size:17px;margin-bottom:2px;">Entrar</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:14px;">Use seu login TenisCash ou crie sua conta.</div>
+    <div class="field"><label>WhatsApp</label><input id="auPhone" inputmode="tel" placeholder="(83) 9 9999-9999"></div>
+    <div class="field"><label>Senha</label><input id="auPass" type="password" placeholder="••••••"></div>
+    <button class="btn" data-action="authLogin" data-role="${role}">Entrar</button>
+    <div style="text-align:center;margin-top:12px;color:var(--muted);font-size:13px;">Não tem conta? <button class="linkbtn" data-action="authReg" data-role="${role}">Cadastrar</button></div>
+  </div>`;
+}
+function authRegForm(role){
+  return `<div class="card">
+    <div style="font-weight:800;font-size:17px;margin-bottom:12px;">Criar conta</div>
+    <div class="field"><label>Nome</label><input id="rgName"></div>
+    <div class="field"><label>WhatsApp</label><input id="rgPhone" inputmode="tel"></div>
+    <div class="field"><label>Senha</label><input id="rgPass" type="password"></div>
+    <button class="btn" data-action="authDoReg" data-role="${role}">Criar e entrar</button>
+    <div style="text-align:center;margin-top:12px;"><button class="linkbtn" data-action="authBackLogin" data-role="${role}">Já tenho conta</button></div>
+  </div>`;
+}
+function authTarget(role){return role==='barbeiro'?'view-barbeiro':role==='book'?'view-book':'view-cliente';}
+function authShow(role,reg){const t=document.getElementById(authTarget(role));if(t)t.innerHTML=(reg?authRegForm:authForm)(role);}
+function afterAuth(role){if(role==='book')return doBook();if(role==='barbeiro')return renderBarbeiro();return renderCliente();}
+async function authLogin(role){
+  const phone=(val('auPhone')||'').replace(/\D/g,'');const password=val('auPass');
+  if(!phone||!password){toast('Preencha telefone e senha');return;}
+  try{const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({phone,password})});TOKEN=d.token;localStorage.setItem('tc_token',TOKEN);afterAuth(role);}catch(e){toast(e.message);}
+}
+async function authRegister(role){
+  const name=val('rgName').trim();const phone=(val('rgPhone')||'').replace(/\D/g,'');const password=val('rgPass');
+  if(!name||!phone||!password){toast('Preencha nome, telefone e senha');return;}
+  try{const d=await api('/api/auth/register',{method:'POST',body:JSON.stringify({name,phone,password,lgpdAccepted:true,registerMethod:'phone'})});TOKEN=d.token;localStorage.setItem('tc_token',TOKEN);afterAuth(role);}catch(e){toast(e.message);}
+}
+
+// ---- CLIENTE ----
+async function renderCliente(){
+  setView('cliente',{title:'CLIENTE',sub:'sua agenda',back:true});
+  const el=document.getElementById('view-cliente');
+  if(!TOKEN){el.innerHTML=authForm('cliente');return;}
+  el.innerHTML='<div class="loading">Carregando...</div>';
+  try{
+    const appts=await api('/api/services/me/appointments');
+    const up=appts.filter(a=>['booked','confirmed'].includes(a.status));
+    const past=appts.filter(a=>!['booked','confirmed'].includes(a.status)).slice(0,15);
+    el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+        <div><div style="font-weight:800;font-size:16px;">Minha agenda</div><div style="color:var(--muted);font-size:12px;">seus horários marcados</div></div>
+        <button class="btn-mini" data-action="goVia" data-via="busca">+ Marcar</button></div>
+      ${up.length?'<div class="sec-title">Próximos</div>'+up.map(clienteApptCard).join(''):'<div class="empty" style="padding:24px;"><p>Nenhum horário marcado.</p><button class="btn" data-action="goVia" data-via="busca" style="max-width:280px;margin:10px auto 0;">Marcar agora</button></div>'}
+      ${past.length?'<div class="sec-title">Histórico</div>'+past.map(clienteApptCard).join(''):''}
+      <div style="margin-top:14px;text-align:center;"><button class="linkbtn" data-action="logout">Sair</button></div>`;
+  }catch(e){if(/401|inválido|expirado/i.test(e.message)){logout();renderCliente();return;}el.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;}
+}
+function clienteApptCard(a){
+  const dt=new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const cancelable=['booked','confirmed'].includes(a.status);
+  return `<div class="card" style="padding:12px 14px;margin-bottom:10px;"><div style="font-weight:700;">${esc(a.serviceName)}</div>
+    <div style="color:var(--muted);font-size:12.5px;margin:2px 0 ${cancelable?'8px':'0'};">${dt}${a.price>0?' · '+money(a.price):''} · ${statusLabel(a.status)}</div>
+    ${cancelable?`<button class="linkbtn" data-action="clienteCancel" data-id="${a.id}">cancelar</button>`:''}</div>`;
+}
+async function clienteCancel(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Cancelado');renderCliente();}catch(e){toast(e.message);}}
+
+// ---- BARBEIRO (autonomo ou em casa) ----
+async function renderBarbeiro(){
+  setView('barbeiro',{title:'BARBEIRO',sub:'sua agenda',back:true});
+  const el=document.getElementById('view-barbeiro');
+  if(!TOKEN){el.innerHTML=authForm('barbeiro');return;}
+  el.innerHTML='<div class="loading">Carregando...</div>';
+  let pro=null;try{pro=await api('/api/professionals/me');}catch(e){if(/401|inválido|expirado/i.test(e.message)){logout();renderBarbeiro();return;}pro=null;}
+  if(!pro){
+    el.innerHTML=`<div class="card"><div style="font-weight:800;font-size:17px;">Vire barbeiro</div>
+      <div style="color:var(--muted);font-size:13px;margin:6px 0 12px;">Crie seu perfil pra receber agendamentos (autônomo ou numa barbearia).</div>
+      <div class="field"><label>Seu nome</label><input id="brName"></div>
+      <div class="field"><label>Especialidade</label><input id="brHead" placeholder="ex: degradê e barba"></div>
+      <button class="btn" data-action="barberCreate">Criar meu perfil</button>
+      <div style="margin-top:10px;text-align:center;"><button class="linkbtn" data-action="logout">Sair</button></div></div>`;
+    return;
+  }
+  state.barberPro=pro;
+  const tab=state.barberTab||'agenda';
+  const dows=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  let body='';
+  if(tab==='agenda'){
+    let appts=[];try{appts=(await api('/api/services/manage/appointments')).filter(a=>a.professionalId===pro.id);}catch(_){}
+    const up=appts.filter(a=>['booked','confirmed'].includes(a.status));
+    body=up.length?up.map(barberApptCard).join(''):'<div class="empty" style="padding:24px;"><p>Nenhum agendamento. Configure sua jornada pra receber.</p></div>';
+  }else{
+    let av=[];try{av=await api('/api/services/me/availability');}catch(_){}
+    const fmt=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+    body=`<div class="card"><div style="font-weight:700;margin-bottom:8px;">Adicionar dia/horário</div>
+      <div class="row2"><div class="field"><label>Dia</label><select id="avDow">${dows.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select></div><div class="field"><label>Das</label><input id="avFrom" type="time" value="09:00"></div></div>
+      <div class="field"><label>Até</label><input id="avTo" type="time" value="18:00"></div>
+      <button class="btn" data-action="barberAddAvail">Adicionar</button></div>
+      ${av.length?av.sort((a,b)=>a.weekday-b.weekday||a.startMin-b.startMin).map(a=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div>${dows[a.weekday]} · ${fmt(a.startMin)}–${fmt(a.endMin)}</div><button class="linkbtn" data-action="barberDelAvail" data-id="${a.id}">remover</button></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem jornada. Adicione seus dias/horários pra aparecer livre.</p></div>'}`;
+  }
+  el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-weight:800;font-size:16px;">${esc(pro.displayName)}</div><div style="color:var(--muted);font-size:12px;">${esc(pro.headline||'barbeiro')}</div></div>
+      <button class="linkbtn" data-action="logout">Sair</button></div>
+    <div class="subnav"><button class="subnav-btn ${tab==='agenda'?'active':''}" data-action="barberTab" data-tab="agenda">Minha Agenda</button><button class="subnav-btn ${tab==='jornada'?'active':''}" data-action="barberTab" data-tab="jornada">Jornada</button></div>
+    ${body}`;
+}
+function barberApptCard(a){
+  const dt=new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const act=a.status==='booked'?`<button class="btn-mini" data-action="barberConfirm" data-id="${a.id}">Confirmar</button> <button class="btn-mini" data-action="barberDone" data-id="${a.id}">Concluir</button>`:`<button class="btn-mini" data-action="barberDone" data-id="${a.id}">Concluir</button>`;
+  return `<div class="card" style="padding:12px 14px;margin-bottom:10px;"><div style="font-weight:700;">${esc(a.serviceName)} — ${esc(a.customerName||'cliente')}</div><div style="color:var(--muted);font-size:12.5px;margin:2px 0 8px;">${dt}${a.price>0?' · '+money(a.price):''}</div><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">${act} <button class="linkbtn" data-action="barberCancel" data-id="${a.id}">cancelar</button></div></div>`;
+}
+async function barberConfirm(id){try{await api(`/api/services/appointments/${id}/confirm`,{method:'POST'});toast('Confirmado');renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberDone(id){try{await api(`/api/services/appointments/${id}/checkout`,{method:'POST',body:JSON.stringify({paymentMethod:'cash'})});toast('Concluído ✓');renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberCancel(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Cancelado');renderBarbeiro();}catch(e){toast(e.message);}}
+function barberTab(t){state.barberTab=t;renderBarbeiro();}
+async function barberCreate(){const displayName=val('brName').trim();if(!displayName){toast('Informe seu nome');return;}try{await api('/api/professionals/me',{method:'POST',body:JSON.stringify({displayName,headline:val('brHead')||'Barbeiro',category:'barber'})});toast('Perfil criado');state.barberTab='jornada';renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberAddAvail(){const weekday=Number(val('avDow'));const f=(val('avFrom')||'09:00').split(':'),t=(val('avTo')||'18:00').split(':');const startMin=Number(f[0])*60+Number(f[1]),endMin=Number(t[0])*60+Number(t[1]);if(!(endMin>startMin)){toast('Horário inválido');return;}try{await api('/api/services/me/availability',{method:'POST',body:JSON.stringify({weekday,startMin,endMin})});toast('Adicionado');renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberDelAvail(id){try{await api(`/api/services/me/availability/${id}`,{method:'DELETE'});toast('Removido');renderBarbeiro();}catch(e){toast(e.message);}}
+
+// ---- GATE de marcação: marcar exige conta de cliente ----
+async function doBook(){
+  if(!state.slot||!state.barber||!state.offer){toast('Escolha um horário');return;}
+  try{await api('/api/services/book',{method:'POST',body:JSON.stringify({professionalId:state.barber.id,venueId:state.venue.id,offerId:state.offer.id,startAt:state.slot,source:'cliente'})});
+    state.pendingBook=false;
+    document.getElementById('view-book').innerHTML=`<div class="empty" style="padding:48px 20px;"><div class="ico">✅</div><p style="font-size:17px;font-weight:700;color:var(--text);">Agendado!</p><p>${esc(state.offer.title)} com ${esc(state.barber.displayName)}<br>${new Date(state.slot).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'long',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</p><button class="btn" style="margin:18px auto 0;max-width:300px;" data-action="goVia" data-via="cliente">Ver minha agenda</button></div>`;
+  }catch(e){toast(e.message);}
+}
+
 // ---- event wiring (sem onclick em HTML gerado: data-action + delegation) ----
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 document.getElementById('backBtn').addEventListener('click',goBack);
@@ -999,7 +1152,20 @@ document.getElementById('q').addEventListener('input',()=>{clearTimeout(searchT)
 document.getElementById('content').addEventListener('click',(e)=>{
   const el=e.target.closest('[data-action]');if(!el)return;
   const a=el.dataset.action;
-  if(a==='openVenue')openVenue(el.dataset.slug);
+  if(a==='goVia')goVia(el.dataset.via);
+  else if(a==='authLogin')authLogin(el.dataset.role);
+  else if(a==='authReg')authShow(el.dataset.role,true);
+  else if(a==='authDoReg')authRegister(el.dataset.role);
+  else if(a==='authBackLogin')authShow(el.dataset.role,false);
+  else if(a==='clienteCancel')clienteCancel(el.dataset.id);
+  else if(a==='barberCreate')barberCreate();
+  else if(a==='barberTab')barberTab(el.dataset.tab);
+  else if(a==='barberAddAvail')barberAddAvail();
+  else if(a==='barberDelAvail')barberDelAvail(el.dataset.id);
+  else if(a==='barberConfirm')barberConfirm(el.dataset.id);
+  else if(a==='barberDone')barberDone(el.dataset.id);
+  else if(a==='barberCancel')barberCancel(el.dataset.id);
+  else if(a==='openVenue')openVenue(el.dataset.slug);
   else if(a==='goOwner')showTab('owner');
   else if(a==='book')startBook(el.dataset.pid,el.dataset.oid);
   else if(a==='pickDate')pickDate(el);
@@ -1048,7 +1214,7 @@ document.getElementById('content').addEventListener('click',(e)=>{
 (function(){
   const params=new URLSearchParams(location.search);
   if(params.get('v')){setActiveTab('discover');openVenue(params.get('v'));}
-  else showTab('discover');
+  else showTab('home');
 })();
 </script>
 </body>
