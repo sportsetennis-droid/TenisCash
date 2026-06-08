@@ -529,7 +529,7 @@ async function createVenue(){
 function val(id){const e=document.getElementById(id);return e?e.value:'';}
 function renderOwnerDash(){
   const v=state.ownerVenue, el=document.getElementById('view-owner');
-  const tabs={agenda:'Agenda',caixa:'Caixa',produtos:'Produtos',relatorio:'Relatório',pacotes:'Pacotes',finance:'Financeiro',stock:'Estoque+',marketing:'Marketing',club:'Clube'};
+  const tabs={agenda:'Agenda',caixa:'Caixa',equipe:'Equipe',produtos:'Produtos',relatorio:'Relatório',pacotes:'Pacotes',finance:'Financeiro',stock:'Estoque+',marketing:'Marketing',club:'Clube'};
   el.innerHTML=`
     <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -557,6 +557,7 @@ async function ownerLoadTab(){
     if(t==="stock") return renderStock(body);
     if(t==="marketing") return renderMarketing(body);
     if(t==='club')return renderClube(body);
+    if(t==='equipe')return renderEquipe(body);
   }catch(e){body.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`;}
 }
 function ownerTab(t){state.ownerTab=t;document.querySelectorAll('.subnav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));ownerLoadTab();}
@@ -666,6 +667,22 @@ async function renderRelatorio(body){
     ${Object.keys(r.byService).length?`<div class="sec-title">Por serviço/produto</div>`+Object.entries(r.byService).map(([n,s])=>`<div class="card" style="padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;"><div>${esc(n)} <span style="color:var(--muted);">x${s.qty}</span></div><div style="font-weight:800;">${money(s.total)}</div></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem comandas no período.</p></div>'}`;
 }
 async function apptAction(id,action){try{await api(`/api/services/appointments/${id}/${action}`,{method:'POST'});toast('Feito');ownerLoadTab();}catch(e){toast(e.message);}}
+async function renderEquipe(body){
+  const vid=state.ownerVenue.id;
+  let members=[];try{members=await api(`/api/services/venues/${vid}/members`);}catch(_){}
+  body.innerHTML=`<div class="card"><div style="font-weight:700;margin-bottom:6px;">Adicionar barbeiro à equipe</div>
+    <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">O barbeiro cria a conta dele na aba <b>Barbeiro</b> e te passa o usuário. Cole aqui pra ele cair na sua agenda.</div>
+    <div class="row2"><div class="field"><label>Usuário do barbeiro</label><input id="eqSlug" placeholder="ex: joao-navalha"></div><div class="field"><label>Comissão (%)</label><input id="eqComm" type="number" inputmode="numeric" placeholder="0"></div></div>
+    <button class="btn" data-action="equipeAdd">Adicionar à equipe</button></div>
+    ${members.length?`<div class="sec-title">Equipe (${members.length})</div>`+members.map(m=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:700;">${esc(m.name)}${m.role==='owner'?' · dono':''}</div><div style="color:var(--muted);font-size:12.5px;">@${esc(m.slug||'—')}${m.commissionPct?' · comissão '+m.commissionPct+'%':''}</div></div>${m.role==='owner'?'':`<button class="linkbtn" data-action="equipeRemove" data-pid="${m.professionalId}">remover</button>`}</div>`).join(''):'<div class="empty" style="padding:18px;"><p>Sua equipe aparece aqui. Adicione barbeiros pelo usuário deles.</p></div>'}`;
+}
+async function equipeAdd(){
+  const slug=val('eqSlug').trim().toLowerCase();if(!slug){toast('Informe o usuário do barbeiro');return;}
+  const commissionPct=Number(val('eqComm'))||0;
+  try{await api(`/api/services/venues/${state.ownerVenue.id}/members`,{method:'POST',body:JSON.stringify({slug,commissionPct,role:'staff'})});toast('Barbeiro adicionado');ownerLoadTab();}
+  catch(e){toast(e.message||'Não achei esse barbeiro');}
+}
+async function equipeRemove(pid){try{await api(`/api/services/venues/${state.ownerVenue.id}/members/${pid}`,{method:'DELETE'});toast('Removido');ownerLoadTab();}catch(e){toast(e.message);}}
 
 
 // ===== packages =====
@@ -1202,6 +1219,8 @@ document.getElementById('content').addEventListener('click',(e)=>{
   else if(a==='apptConfirm')apptAction(el.dataset.id,'confirm');
   else if(a==='apptNoshow')apptAction(el.dataset.id,'no-show');
   else if(a==='apptCancel')apptAction(el.dataset.id,'cancel');
+  else if(a==='equipeAdd')equipeAdd();
+  else if(a==='equipeRemove')equipeRemove(el.dataset.pid);
   else if(a==='openCheckout')openCheckout(el.dataset.id);
   else if(a==='addCoProd')addCoProd(el.dataset.pid);
   else if(a==='rmCoProd')rmCoProd(Number(el.dataset.i));

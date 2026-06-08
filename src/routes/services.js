@@ -655,6 +655,35 @@ router.patch(
   })
 );
 
+// Listar barbeiros do estabelecimento (escopo do dono)
+router.get(
+  '/venues/:id/members',
+  authMiddleware,
+  wrap(async (req, res) => {
+    const v = await ownedVenue(req, res);
+    if (!v) return;
+    const members = await prisma.venueMember.findMany({ where: { venueId: v.id, active: true } });
+    const pros = await prisma.professional.findMany({
+      where: { id: { in: members.map((m) => m.professionalId) } },
+      select: { id: true, slug: true, displayName: true, headline: true, avatarUrl: true },
+    });
+    res.json(
+      members.map((m) => {
+        const p = pros.find((x) => x.id === m.professionalId);
+        return {
+          professionalId: m.professionalId,
+          role: m.role,
+          commissionPct: m.commissionPct,
+          name: p?.displayName || 'Barbeiro',
+          slug: p?.slug || '',
+          headline: p?.headline || '',
+          avatarUrl: p?.avatarUrl || '',
+        };
+      })
+    );
+  })
+);
+
 // Adicionar barbeiro (Professional) ao estabelecimento
 router.post(
   '/venues/:id/members',
@@ -662,14 +691,26 @@ router.post(
   wrap(async (req, res) => {
     const v = await ownedVenue(req, res);
     if (!v) return;
-    const professionalId = req.body?.professionalId;
-    if (!professionalId) return res.status(400).json({ error: 'professionalId obrigatório' });
+    let professionalId = req.body?.professionalId;
+    if (!professionalId && req.body?.slug) {
+      const bySlug = await prisma.professional.findUnique({
+        where: { slug: String(req.body.slug).trim().toLowerCase() },
+      });
+      if (!bySlug) return res.status(404).json({ error: 'Barbeiro não encontrado com esse usuário' });
+      professionalId = bySlug.id;
+    }
+    if (!professionalId) return res.status(400).json({ error: 'professionalId ou slug obrigatório' });
     const pro = await prisma.professional.findUnique({ where: { id: professionalId } });
     if (!pro) return res.status(404).json({ error: 'Profissional não encontrado' });
+    const role = req.body?.role || 'staff';
+    const commissionPct =
+      req.body?.commissionPct != null && !Number.isNaN(Number(req.body.commissionPct))
+        ? Math.max(0, Math.min(100, Number(req.body.commissionPct)))
+        : undefined;
     const m = await prisma.venueMember.upsert({
       where: { venueId_professionalId: { venueId: v.id, professionalId } },
-      create: { venueId: v.id, professionalId, role: req.body?.role || 'staff' },
-      update: { active: true, role: req.body?.role || 'staff' },
+      create: { venueId: v.id, professionalId, role, ...(commissionPct != null ? { commissionPct } : {}) },
+      update: { active: true, role, ...(commissionPct != null ? { commissionPct } : {}) },
     });
     const count = await prisma.venueMember.count({ where: { venueId: v.id, active: true } });
     await prisma.serviceVenue.update({ where: { id: v.id }, data: { memberCount: count } });
