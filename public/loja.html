@@ -937,7 +937,7 @@ async function doLogin() {
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Erro ao entrar'; errEl.classList.add('show'); return; }
-    if (data.user.role !== 'seller' && data.user.role !== 'admin' && data.user.role !== 'superadmin') {
+    if (!['seller', 'store', 'admin', 'superadmin'].includes(data.user.role)) {
       errEl.textContent = 'Esta área é só pra funcionários da loja'; errEl.classList.add('show'); return;
     }
     token = data.token;
@@ -967,7 +967,7 @@ async function checkSession() {
     if (!r.ok) { logout(); return; }
     const data = await r.json();
     me = data.user || data;
-    if (me.role !== 'seller' && me.role !== 'admin' && me.role !== 'superadmin') { logout(); return; }
+    if (!['seller', 'store', 'admin', 'superadmin'].includes(me.role)) { logout(); return; }
     if (activeStore) showApp();
     else showStoreSelector();
   } catch (e) { logout(); }
