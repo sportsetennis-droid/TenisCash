@@ -1080,9 +1080,10 @@ function clienteApptCard(a){
   const cancelable=['booked','confirmed'].includes(a.status);
   return `<div class="card" style="padding:12px 14px;margin-bottom:10px;"><div style="font-weight:700;">${esc(a.serviceName)}</div>
     <div style="color:var(--muted);font-size:12.5px;margin:2px 0 ${cancelable?'8px':'0'};">${dt}${a.price>0?' · '+money(a.price):''} · ${statusLabel(a.status)}</div>
-    ${cancelable?`<button class="linkbtn" data-action="clienteCancel" data-id="${a.id}">cancelar</button>`:''}</div>`;
+    ${cancelable?`<button class="linkbtn" data-action="clienteReagendar" data-id="${a.id}">reagendar</button> &nbsp;·&nbsp; <button class="linkbtn" data-action="clienteCancel" data-id="${a.id}">cancelar</button>`:''}</div>`;
 }
 async function clienteCancel(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Cancelado');renderCliente();}catch(e){toast(e.message);}}
+async function clienteReschedule(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Escolha o novo horário');showTab('discover');}catch(e){toast(e.message);}}
 
 // ---- BARBEIRO (autonomo ou em casa) ----
 async function renderBarbeiro(){
@@ -1103,24 +1104,39 @@ async function renderBarbeiro(){
   state.barberPro=pro;
   const tab=state.barberTab||'agenda';
   const dows=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const fmtm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
   let body='';
   if(tab==='agenda'){
     let appts=[];try{appts=(await api('/api/services/manage/appointments')).filter(a=>a.professionalId===pro.id);}catch(_){}
     const up=appts.filter(a=>['booked','confirmed'].includes(a.status));
-    body=up.length?up.map(barberApptCard).join(''):'<div class="empty" style="padding:24px;"><p>Nenhum agendamento. Configure sua jornada pra receber.</p></div>';
-  }else{
+    body=up.length?up.map(barberApptCard).join(''):'<div class="empty" style="padding:24px;"><p>Nenhum agendamento. Configure sua jornada e serviços pra receber.</p></div>';
+  }else if(tab==='jornada'){
     let av=[];try{av=await api('/api/services/me/availability');}catch(_){}
-    const fmt=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
     body=`<div class="card"><div style="font-weight:700;margin-bottom:8px;">Adicionar dia/horário</div>
       <div class="row2"><div class="field"><label>Dia</label><select id="avDow">${dows.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select></div><div class="field"><label>Das</label><input id="avFrom" type="time" value="09:00"></div></div>
       <div class="field"><label>Até</label><input id="avTo" type="time" value="18:00"></div>
       <button class="btn" data-action="barberAddAvail">Adicionar</button></div>
-      ${av.length?av.sort((a,b)=>a.weekday-b.weekday||a.startMin-b.startMin).map(a=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div>${dows[a.weekday]} · ${fmt(a.startMin)}–${fmt(a.endMin)}</div><button class="linkbtn" data-action="barberDelAvail" data-id="${a.id}">remover</button></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem jornada. Adicione seus dias/horários pra aparecer livre.</p></div>'}`;
+      ${av.length?av.sort((a,b)=>a.weekday-b.weekday||a.startMin-b.startMin).map(a=>`<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><div>${dows[a.weekday]} · ${fmtm(a.startMin)}–${fmtm(a.endMin)}</div><button class="linkbtn" data-action="barberDelAvail" data-id="${a.id}">remover</button></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem jornada. Adicione seus dias/horários pra aparecer livre.</p></div>'}
+      <div class="sec-title">Folga / bloqueio</div>
+      <div class="card"><div class="field"><label>Dia de folga</label><input id="flDate" type="date"></div><button class="btn sec" data-action="barberFolga">Bloquear o dia inteiro</button></div>`;
+  }else if(tab==='servicos'){
+    let offers=[];try{offers=await api('/api/professionals/me/offers');}catch(_){}
+    body=`<div class="card"><div style="font-weight:700;margin-bottom:8px;">Novo serviço</div>
+      <div class="row2"><div class="field"><label>Nome</label><input id="ofTitle" placeholder="ex: Corte degradê"></div><div class="field"><label>Preço (R$)</label><input id="ofPrice" type="number" inputmode="decimal"></div></div>
+      <div class="field"><label>Duração (min)</label><input id="ofDur" type="number" inputmode="numeric" value="30"></div>
+      <button class="btn" data-action="barberAddOffer">Adicionar serviço</button></div>
+      ${offers.length?offers.map(o=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;"><div style="font-weight:700;">${esc(o.title)}</div><div style="color:var(--muted);font-size:12.5px;">${o.durationMin||30} min · ${o.price>0?money(o.price):'grátis'}</div></div>`).join(''):'<div class="empty" style="padding:16px;"><p>Sem serviços. Cadastre o que você faz pra o cliente poder marcar.</p></div>'}`;
+  }else{
+    let appts=[];try{appts=(await api('/api/services/manage/appointments')).filter(a=>a.professionalId===pro.id);}catch(_){}
+    const map={};
+    appts.forEach(a=>{const k=a.clientUserId||a.customerPhone||a.customerName||'?';if(!map[k])map[k]={name:a.customerName||'Cliente',phone:a.customerPhone||'',count:0,last:0};map[k].count++;const t=new Date(a.startAt).getTime();if(t>map[k].last)map[k].last=t;});
+    const clients=Object.values(map).sort((a,b)=>b.last-a.last);
+    body=clients.length?clients.map(c=>`<div class="card" style="padding:12px 14px;margin-bottom:8px;"><div style="font-weight:700;">${esc(c.name)}</div><div style="color:var(--muted);font-size:12.5px;">${c.count} atend.${c.phone?' · '+esc(c.phone):''}${c.last?' · último '+new Date(c.last).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza',day:'2-digit',month:'2-digit'}):''}</div></div>`).join(''):'<div class="empty" style="padding:20px;"><p>Nenhum cliente ainda.</p></div>';
   }
   el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;">
       <div><div style="font-weight:800;font-size:16px;">${esc(pro.displayName)}</div><div style="color:var(--muted);font-size:12px;">${esc(pro.headline||'barbeiro')}</div></div>
       <button class="linkbtn" data-action="logout">Sair</button></div>
-    <div class="subnav"><button class="subnav-btn ${tab==='agenda'?'active':''}" data-action="barberTab" data-tab="agenda">Minha Agenda</button><button class="subnav-btn ${tab==='jornada'?'active':''}" data-action="barberTab" data-tab="jornada">Jornada</button></div>
+    <div class="subnav">${[['agenda','Agenda'],['jornada','Jornada'],['servicos','Serviços'],['clientes','Clientes']].map(x=>`<button class="subnav-btn ${tab===x[0]?'active':''}" data-action="barberTab" data-tab="${x[0]}">${x[1]}</button>`).join('')}</div>
     ${body}`;
 }
 function barberApptCard(a){
@@ -1131,6 +1147,8 @@ function barberApptCard(a){
 async function barberConfirm(id){try{await api(`/api/services/appointments/${id}/confirm`,{method:'POST'});toast('Confirmado');renderBarbeiro();}catch(e){toast(e.message);}}
 async function barberDone(id){try{await api(`/api/services/appointments/${id}/checkout`,{method:'POST',body:JSON.stringify({paymentMethod:'cash'})});toast('Concluído ✓');renderBarbeiro();}catch(e){toast(e.message);}}
 async function barberCancel(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Cancelado');renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberAddOffer(){const title=val('ofTitle').trim();if(!title){toast('Informe o nome do serviço');return;}try{await api('/api/professionals/me/offers',{method:'POST',body:JSON.stringify({type:'class_presential',title,price:Number(val('ofPrice'))||0,durationMin:Number(val('ofDur'))||30})});toast('Serviço adicionado');renderBarbeiro();}catch(e){toast(e.message);}}
+async function barberFolga(){const date=val('flDate');if(!date){toast('Escolha o dia');return;}try{await api('/api/services/me/availability/exception',{method:'POST',body:JSON.stringify({date,reason:'folga'})});toast('Dia bloqueado');state.barberTab='jornada';renderBarbeiro();}catch(e){toast(e.message);}}
 function barberTab(t){state.barberTab=t;renderBarbeiro();}
 async function barberCreate(){const displayName=val('brName').trim();if(!displayName){toast('Informe seu nome');return;}try{await api('/api/professionals/me',{method:'POST',body:JSON.stringify({displayName,headline:val('brHead')||'Barbeiro',category:'barber'})});toast('Perfil criado');state.barberTab='jornada';renderBarbeiro();}catch(e){toast(e.message);}}
 async function barberAddAvail(){const weekday=Number(val('avDow'));const f=(val('avFrom')||'09:00').split(':'),t=(val('avTo')||'18:00').split(':');const startMin=Number(f[0])*60+Number(f[1]),endMin=Number(t[0])*60+Number(t[1]);if(!(endMin>startMin)){toast('Horário inválido');return;}try{await api('/api/services/me/availability',{method:'POST',body:JSON.stringify({weekday,startMin,endMin})});toast('Adicionado');renderBarbeiro();}catch(e){toast(e.message);}}
@@ -1158,7 +1176,10 @@ document.getElementById('content').addEventListener('click',(e)=>{
   else if(a==='authDoReg')authRegister(el.dataset.role);
   else if(a==='authBackLogin')authShow(el.dataset.role,false);
   else if(a==='clienteCancel')clienteCancel(el.dataset.id);
+  else if(a==='clienteReagendar')clienteReschedule(el.dataset.id);
   else if(a==='barberCreate')barberCreate();
+  else if(a==='barberAddOffer')barberAddOffer();
+  else if(a==='barberFolga')barberFolga();
   else if(a==='barberTab')barberTab(el.dataset.tab);
   else if(a==='barberAddAvail')barberAddAvail();
   else if(a==='barberDelAvail')barberDelAvail(el.dataset.id);
