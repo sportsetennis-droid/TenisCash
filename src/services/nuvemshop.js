@@ -60,7 +60,16 @@ async function nuvemshopApi(connection, method, path, body = null) {
     },
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
+  // Retry em 429 (rate limit — Nuvemshop usa leaky bucket ~2 req/s) e 503. Sem isso, rajadas
+  // de PUT/DELETE (ex: reconciliar variantes) falham silenciosamente e deixam resíduo na loja.
+  let res;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    res = await fetch(url, opts);
+    if (res.status !== 429 && res.status !== 503) break;
+    const ra = Number(res.headers.get('Retry-After')) || 0;
+    const waitMs = ra > 0 ? ra * 1000 : 600 * (attempt + 1);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
   const data = res.status === 204 ? null : await res.json();
   if (!res.ok) {
     throw new Error('[Nuvemshop ' + res.status + '] ' + (data?.message || JSON.stringify(data)));

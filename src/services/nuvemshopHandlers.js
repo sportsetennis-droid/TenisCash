@@ -1055,6 +1055,8 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     && localProduct.subcategory
     && opts.modality
     && opts.tier
+    // Regra do dono 2026-06-08: só publica se houver estoque físico (sized → ≥1 tamanho com stock>0).
+    && (!Array.isArray(sizes) || sizes.length === 0 || sizes.some((s) => Number(s.stock || 0) > 0))
   );
 
   const payload = {
@@ -1094,40 +1096,73 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   return payload;
 }
 
-// Atualiza variants de um produto na Nuvemshop (chamado depois de PUT no produto)
+// Reconcilia variants de um produto na Nuvemshop com os tamanhos DISPONÍVEIS (estoque físico > 0).
+// A loja deve ter EXATAMENTE os tamanhos disponíveis: atualiza os que existem, CRIA os que passaram
+// a ter estoque, e DELETA os que zeraram (pra o tamanho sumir da loja — não basta esgotar, o tema
+// continua exibindo). Regra do dono 2026-06-08: "sincronizar apenas com os tamanhos disponíveis".
 async function updateNuvemshopVariants(connection, nsProductId, localProduct, sizes) {
-  if (!sizes || !sizes.length) return { updated: 0, skipped: 0, errors: [] };
+  const desired = Array.isArray(sizes) ? sizes.filter((s) => Number(s.stock || 0) > 0) : [];
 
-  // Pega variants atuais da NS
   let nsVariants;
   try {
     nsVariants = await ns.nuvemshopApi(connection, 'GET', `/products/${nsProductId}/variants`);
   } catch (e) {
-    return { updated: 0, skipped: 0, errors: [{ reason: 'failed to fetch variants: ' + e.message }] };
+    return { updated: 0, created: 0, deleted: 0, errors: [{ reason: 'failed to fetch variants: ' + e.message }] };
   }
-  if (!Array.isArray(nsVariants)) return { updated: 0, skipped: 0, errors: [{ reason: 'unexpected response' }] };
+  if (!Array.isArray(nsVariants)) return { updated: 0, created: 0, deleted: 0, errors: [{ reason: 'unexpected response' }] };
 
-  const result = { updated: 0, skipped: 0, errors: [] };
-  for (const sz of sizes) {
-    // Match por SKU ou por valor de tamanho
-    const expectedSku = `${localProduct.sku}-${sz.size}`;
-    const nsVar = nsVariants.find(v =>
-      v.sku === expectedSku ||
-      v.sku === sz.barcode ||
-      (Array.isArray(v.values) && v.values.some(val => String(val?.pt || val).trim() === String(sz.size).trim()))
-    );
-    if (!nsVar) { result.skipped++; continue; }
-    const variantPayload = {
-      price: String(Number(localProduct.price || 0).toFixed(2)),
-      stock_management: true,
-      stock: parseInt(sz.stock || 0, 10),
-    };
-    if (localProduct.promoPrice != null) variantPayload.promotional_price = String(Number(localProduct.promoPrice).toFixed(2));
+  const result = { updated: 0, created: 0, deleted: 0, errors: [] };
+  const price = String(Number(localProduct.price || 0).toFixed(2));
+  const promo = localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null;
+  const sizeOf = (v) => (Array.isArray(v.values) && v.values[0]) ? String(v.values[0].pt || v.values[0].name || '').trim() : '';
+  const matchVar = (sz) => nsVariants.find((v) =>
+    v.sku === `${localProduct.sku}-${sz.size}` ||
+    (sz.barcode && (v.sku === sz.barcode || v.barcode === sz.barcode)) ||
+    sizeOf(v) === String(sz.size).trim()
+  );
+
+  // Sem nenhum tamanho disponível: zera tudo (esgotado) e NÃO deleta (NS exige >=1 variante);
+  // o produto é despublicado no PUT do produto (isFullyClassified exige estoque).
+  if (!desired.length) {
+    for (const v of nsVariants) {
+      try { await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${v.id}`, { stock_management: true, stock: 0 }); result.updated++; }
+      catch (e) { result.errors.push({ variantId: v.id, error: e.message }); }
+    }
+    return result;
+  }
+
+  // 1) UPSERT dos disponíveis: PUT se a variante existe, POST se o tamanho passou a ter estoque.
+  const keepIds = new Set();
+  for (const sz of desired) {
+    const nsVar = matchVar(sz);
+    const payload = { price, stock_management: true, stock: parseInt(sz.stock || 0, 10) };
+    if (promo != null) payload.promotional_price = promo;
     try {
-      await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${nsVar.id}`, variantPayload);
-      result.updated++;
+      if (nsVar) {
+        keepIds.add(String(nsVar.id));
+        await ns.nuvemshopApi(connection, 'PUT', `/products/${nsProductId}/variants/${nsVar.id}`, payload);
+        result.updated++;
+      } else {
+        payload.values = [{ pt: String(sz.size) }];
+        payload.sku = sz.barcode || `${localProduct.sku}-${sz.size}`;
+        if (sz.barcode) payload.barcode = sz.barcode;
+        const created = await ns.nuvemshopApi(connection, 'POST', `/products/${nsProductId}/variants`, payload);
+        if (created && created.id) keepIds.add(String(created.id));
+        result.created++;
+      }
     } catch (e) {
-      result.errors.push({ variantId: nsVar.id, size: sz.size, error: e.message });
+      result.errors.push({ size: sz.size, error: e.message });
+    }
+  }
+
+  // 2) DELETE das variantes de tamanho SEM estoque (somem da loja). Guarda: keepIds tem >=1.
+  for (const v of nsVariants) {
+    if (keepIds.has(String(v.id))) continue;
+    try {
+      await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProductId}/variants/${v.id}`);
+      result.deleted++;
+    } catch (e) {
+      result.errors.push({ variantId: v.id, del: true, error: e.message });
     }
   }
   return result;
@@ -1224,7 +1259,7 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
 async function pushProductToNuvemshop(localProductId, connection) {
   const product = await prisma.product.findUnique({
     where: { id: localProductId },
-    include: { sizes: true },
+    include: { sizes: { include: { storeStocks: { select: { stock: true } } } } },
   });
   if (!product) throw new Error(`Produto ${localProductId} não encontrado`);
 
@@ -1317,13 +1352,36 @@ async function pushProductToNuvemshop(localProductId, connection) {
   categoryIds.length = 0;
   categoryIds.push(...dedupCategoryIds);
 
+  // ===== ESTOQUE REAL + SÓ TAMANHOS DISPONÍVEIS (regra do dono 2026-06-08) =====
+  // A loja respeita o ESTOQUE FÍSICO real = Σ StoreStock de TODAS as lojas (o LOCALIZADO/bipado),
+  // NÃO o comprado e NÃO vinculado a nenhuma loja específica (produto no site não "vai pro
+  // estoque da LOJA04"). E só sincroniza tamanho com estoque > 0 — pra NUNCA vender um número
+  // que não tem. Tamanho que zerou vira esgotado (stock 0) na loja; produto sem nenhum tamanho
+  // disponível não é publicado.
+  const hasSizes = (product.sizes || []).length > 0;
+  const sizesLocated = (product.sizes || []).map((s) => ({
+    ...s,
+    stock: (s.storeStocks || []).reduce((a, x) => a + (x.stock || 0), 0),
+  }));
+  const saleableSizes = sizesLocated.filter((s) => s.stock > 0);
+  // CREATE só com tamanhos disponíveis; UPDATE manda todos (os zerados viram esgotado).
+  // Acessório (sem tamanhos) mantém o comportamento antigo.
+  const createSizes = hasSizes ? saleableSizes : (product.sizes || []);
+  const updateSizes = hasSizes ? sizesLocated : (product.sizes || []);
+
+  // Produto COM tamanhos mas SEM estoque físico em nenhum: não cria na loja (não há o que vender).
+  if (!existingMapping && hasSizes && saleableSizes.length === 0) {
+    console.log('[ns push] PULADO — sem estoque físico em nenhum tamanho:', localProductId);
+    return { skipped: true, action: 'skipped', reason: 'sem estoque fisico (nenhum tamanho disponivel)' };
+  }
+
   let nsProduct;
   let action;
   let variantSync = null;
   let imageSync = null;
   if (existingMapping) {
     // UPDATE — payload SEM variants (NS rejeita variants em PUT)
-    const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
+    const payload = buildNuvemshopProductPayload(product, updateSizes, {
       categoryIds, extraTags: aiTags, gender: aiGender,
       modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
       mode: 'update',
@@ -1335,7 +1393,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
       payload,
     );
     // Atualiza variants separadamente via /products/:id/variants/:vid
-    variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, product.sizes || []);
+    variantSync = await updateNuvemshopVariants(connection, existingMapping.nuvemshopProductId, product, updateSizes);
     // Sincroniza imagens (PUT não aceita images — usa endpoints dedicados).
     // Só age quando o conjunto local mudou de fato (assinatura).
     try {
@@ -1347,7 +1405,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
     });
     action = 'updated';
   } else {
-    const payload = buildNuvemshopProductPayload(product, product.sizes || [], {
+    const payload = buildNuvemshopProductPayload(product, createSizes, {
       categoryIds, extraTags: aiTags, gender: aiGender,
       modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
       mode: 'create',
@@ -1385,7 +1443,7 @@ async function pushProductToNuvemshop(localProductId, connection) {
   if (action === 'created' && Array.isArray(nsProduct.variants)) {
     for (let i = 0; i < nsProduct.variants.length; i++) {
       const nsVar = nsProduct.variants[i];
-      const localSize = (product.sizes || [])[i];
+      const localSize = createSizes[i];
       if (localSize) {
         try {
           await prisma.nuvemshopVariantMapping.create({
