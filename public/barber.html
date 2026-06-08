@@ -1019,7 +1019,7 @@ async function clubDoConsume(){
 }
 
 // ================= 4 VIAS — fundacao (cliente / barbeiro / barbearia / busca) =================
-function statusLabel(s){return ({booked:'aguardando',confirmed:'confirmado',done:'concluído',no_show:'faltou',cancelled:'cancelado'})[s]||s;}
+function statusLabel(s){return ({booked:'aguardando',confirmed:'confirmado',done:'concluído',paid:'pago',no_show:'faltou',cancelled:'cancelado'})[s]||s;}
 
 function renderHome(){
   setView('home',{title:'BARBER',sub:'ache, agende, atenda'});
@@ -1095,12 +1095,24 @@ async function renderCliente(){
 function clienteApptCard(a){
   const dt=new Date(a.startAt).toLocaleString('pt-BR',{timeZone:'America/Fortaleza',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const cancelable=['booked','confirmed'].includes(a.status);
+  const reviewable=['done','paid'].includes(a.status);
+  const reviewed=isReviewed(a.id);
+  let actions='';
+  if(cancelable)actions=`<button class="linkbtn" data-action="clienteReagendar" data-id="${a.id}">reagendar</button> &nbsp;·&nbsp; <button class="linkbtn" data-action="clienteCancel" data-id="${a.id}">cancelar</button>`;
+  else if(reviewable&&state.reviewing===a.id)actions=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:4px;">Toque nas estrelas:</div>`+[1,2,3,4,5].map(n=>`<button data-action="clienteRate" data-id="${a.id}" data-n="${n}" style="background:none;border:none;font-size:26px;line-height:1;color:#E8B23A;cursor:pointer;padding:0 3px;">★</button>`).join('');
+  else if(reviewable&&reviewed)actions='<span style="color:var(--muted);font-size:12px;">avaliado ✓</span>';
+  else if(reviewable)actions=`<button class="linkbtn" data-action="clienteAvaliar" data-id="${a.id}">avaliar ⭐</button>`;
   return `<div class="card" style="padding:12px 14px;margin-bottom:10px;"><div style="font-weight:700;">${esc(a.serviceName)}</div>
-    <div style="color:var(--muted);font-size:12.5px;margin:2px 0 ${cancelable?'8px':'0'};">${dt}${a.price>0?' · '+money(a.price):''} · ${statusLabel(a.status)}</div>
-    ${cancelable?`<button class="linkbtn" data-action="clienteReagendar" data-id="${a.id}">reagendar</button> &nbsp;·&nbsp; <button class="linkbtn" data-action="clienteCancel" data-id="${a.id}">cancelar</button>`:''}</div>`;
+    <div style="color:var(--muted);font-size:12.5px;margin:2px 0 ${actions?'8px':'0'};">${dt}${a.price>0?' · '+money(a.price):''} · ${statusLabel(a.status)}</div>
+    ${actions}</div>`;
 }
 async function clienteCancel(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Cancelado');renderCliente();}catch(e){toast(e.message);}}
 async function clienteReschedule(id){try{await api(`/api/services/appointments/${id}/cancel`,{method:'POST'});toast('Escolha o novo horário');showTab('discover');}catch(e){toast(e.message);}}
+function reviewedSet(){try{return JSON.parse(localStorage.getItem('barberReviewed')||'[]');}catch(_){return [];}}
+function isReviewed(id){return reviewedSet().includes(id);}
+function markReviewed(id){const s=reviewedSet();if(!s.includes(id)){s.push(id);localStorage.setItem('barberReviewed',JSON.stringify(s));}}
+function clienteAvaliar(id){state.reviewing=id;renderCliente();}
+async function clienteRate(id,n){const rating=Math.max(1,Math.min(5,Number(n)||0));if(!rating)return;try{await api(`/api/services/appointments/${id}/review`,{method:'POST',body:JSON.stringify({rating})});markReviewed(id);state.reviewing=null;toast('Obrigado pela avaliação! ⭐');renderCliente();}catch(e){toast(e.message);}}
 
 // ---- BARBEIRO (autonomo ou em casa) ----
 async function renderBarbeiro(){
@@ -1194,6 +1206,8 @@ document.getElementById('content').addEventListener('click',(e)=>{
   else if(a==='authBackLogin')authShow(el.dataset.role,false);
   else if(a==='clienteCancel')clienteCancel(el.dataset.id);
   else if(a==='clienteReagendar')clienteReschedule(el.dataset.id);
+  else if(a==='clienteAvaliar')clienteAvaliar(el.dataset.id);
+  else if(a==='clienteRate')clienteRate(el.dataset.id,el.dataset.n);
   else if(a==='barberCreate')barberCreate();
   else if(a==='barberAddOffer')barberAddOffer();
   else if(a==='barberFolga')barberFolga();
