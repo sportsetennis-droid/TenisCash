@@ -1611,6 +1611,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div style="display:flex;gap:8px;">
       <button id="cat-select-all-page" class="btn">Selecionar visíveis</button>
       <button id="cat-clear-sel" class="btn">Limpar seleção</button>
+      <button id="cat-bulk-release" class="btn btn-primary" style="background:#0a55c4;border-color:#0a55c4">⬆ Liberar selecionados p/ Nuvemshop</button>
     </div>
   </div>
 
@@ -10388,6 +10389,19 @@ async function initCategoriesTab() {
     document.getElementById('cat-clear-sel').addEventListener('click', () => {
       _catClassifySelected.clear();
       renderCatClassifyGrid();
+    });
+    const bulkRelBtn = document.getElementById('cat-bulk-release');
+    if (bulkRelBtn) bulkRelBtn.addEventListener('click', async () => {
+      const ids = [..._catClassifySelected];
+      if (!ids.length) { alert('Selecione ao menos 1 produto (clique nos cards).'); return; }
+      if (!confirm('Liberar ' + ids.length + ' produto(s) p/ Nuvemshop?\nOs que estiverem prontos (4 classificações + estoque físico) sobem agora; o resto sobe sozinho quando ficar pronto.')) return;
+      bulkRelBtn.disabled = true; const orig = bulkRelBtn.textContent; bulkRelBtn.textContent = 'Liberando...';
+      const r = await api('/admin/catalog/products/bulk-release', 'POST', { ids, release: true });
+      bulkRelBtn.disabled = false; bulkRelBtn.textContent = orig;
+      if (r && r.error) { alert('Erro: ' + r.error); return; }
+      alert('Marcados: ' + (r.marked || 0) + '\nSubiram agora: ' + (r.uploaded || 0) + '\nFaltam (sobem no automático): ' + (r.skipped || 0));
+      _catClassifySelected.clear();
+      loadCategoriesClassify();
     });
   }
   await loadCategoriesClassify();
