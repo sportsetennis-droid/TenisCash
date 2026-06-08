@@ -302,7 +302,7 @@
       <input type="tel" id="loginPhone" placeholder="83912345678" autocomplete="tel">
     </div>
     <div class="form-group">
-      <label>PIN (4 dígitos)</label>
+      <label>SENHA (4 dígitos)</label>
       <input type="password" id="loginPin" placeholder="••••" maxlength="6" inputmode="numeric">
     </div>
     <button class="btn" id="loginBtn" onclick="doLogin()">Entrar</button>
@@ -705,7 +705,7 @@
   <!-- PONTO -->
   <div class="page" id="page-clockin">
     <h2 class="page-title">Bater ponto</h2>
-    <p class="page-subtitle">Vendedor escolhe seu nome, digita PIN pessoal e bate. GPS obrigatório.</p>
+    <p class="page-subtitle">Vendedor escolhe seu nome, digita a SENHA pessoal e bate. GPS obrigatório.</p>
 
     <div class="card">
       <div class="form-group">
@@ -715,10 +715,10 @@
         </select>
       </div>
       <div class="form-group" id="clockPinGroup" style="display:none;">
-        <label>PIN do vendedor</label>
+        <label>SENHA do vendedor</label>
         <div style="position:relative;">
           <input type="password" id="clockPin" placeholder="••••" maxlength="6" inputmode="numeric" style="width:100%;padding:10px;padding-right:46px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;letter-spacing:6px;">
-          <button type="button" id="clockPinToggle" onclick="toggleClockPin()" aria-label="Mostrar ou ocultar PIN" title="Mostrar/ocultar PIN" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:20px;line-height:1;padding:4px;">👁️</button>
+          <button type="button" id="clockPinToggle" onclick="toggleClockPin()" aria-label="Mostrar ou ocultar SENHA" title="Mostrar/ocultar SENHA" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:20px;line-height:1;padding:4px;">👁️</button>
         </div>
       </div>
       <div id="clockStatus" style="font-size:14px;margin-bottom:12px;color:#8e8e93;">Selecione vendedor pra ver pontos do dia</div>
@@ -926,7 +926,7 @@ async function doLogin() {
   errEl.classList.remove('show');
 
   if (!phone || phone.length < 10) { errEl.textContent = 'Telefone inválido'; errEl.classList.add('show'); return; }
-  if (!pin) { errEl.textContent = 'Informe o PIN'; errEl.classList.add('show'); return; }
+  if (!pin) { errEl.textContent = 'Informe a SENHA'; errEl.classList.add('show'); return; }
 
   document.getElementById('loginBtn').disabled = true;
   try {
@@ -2296,7 +2296,7 @@ async function doClockIn(type) {
   const vendorId = document.getElementById('clockVendor').value;
   const pin = document.getElementById('clockPin').value;
   if (!vendorId) { alert('Selecione o vendedor.'); return; }
-  if (!pin) { alert('Digite o PIN do vendedor.'); document.getElementById('clockPin').focus(); return; }
+  if (!pin) { alert('Digite a SENHA do vendedor.'); document.getElementById('clockPin').focus(); return; }
   if (!navigator.geolocation) { alert('Seu navegador não tem GPS'); return; }
   if (!confirm('Confirmar bater ponto: ' + type + '?')) return;
 
@@ -2672,7 +2672,7 @@ function openCrmCustomerModal() {
 
   document.getElementById('crmActionContent').innerHTML = `
     <h3 class="modal-title">+ Cadastrar cliente</h3>
-    <p style="font-size:12px;color:#8e8e93;margin-bottom:12px;">Vincula o cliente a uma loja e a um vendedor. Cliente entra no TenisCash com PIN = últimos 4 do telefone.</p>
+    <p style="font-size:12px;color:#8e8e93;margin-bottom:12px;">Vincula o cliente a uma loja e a um vendedor. Cliente entra no TenisCash com SENHA = últimos 4 do telefone.</p>
 
     <div class="form-group">
       <label>Loja onde está sendo atendido *</label>
