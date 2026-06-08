@@ -5597,10 +5597,10 @@ async function assignSeller() {
   if (!selectedSellerUser) { msg.innerHTML = '<div class=\"login-error\">Selecione um usuário</div>'; return; }
   if (!storeCode) { msg.innerHTML = '<div class=\"login-error\">Selecione a loja</div>'; return; }
 
-  const phone = (selectedSellerUser.phone || '').toString();
-  if (!phone) { msg.innerHTML = '<div class=\"login-error\">Usuário sem telefone</div>'; return; }
+  const userId = selectedSellerUser.id;
+  if (!userId) { msg.innerHTML = '<div class=\"login-error\">Selecione um usuário</div>'; return; }
 
-  const data = await api('/admin/seller/assign-store', 'POST', { phone, storeCode });
+  const data = await api('/admin/seller/assign-store', 'POST', { userId, storeCode });
   if (data.error) { msg.innerHTML = '<div class=\"login-error\">' + data.error + '</div>'; return; }
 
   msg.innerHTML = '<div style=\"color:var(--green);font-size:13px\">' + (data.message || 'Vendedor vinculado') + '</div>';
@@ -5678,13 +5678,13 @@ async function promoteManager() {
   const msg = document.getElementById('manager-assign-msg');
   msg.innerHTML = '';
   if (!selectedManagerUser) { msg.innerHTML = '<div class="login-error">Selecione um usuário</div>'; return; }
-  const phone = (selectedManagerUser.phone || '').toString();
-  if (!phone) { msg.innerHTML = '<div class="login-error">Usuário sem telefone</div>'; return; }
+  const userId = selectedManagerUser.id;
+  if (!userId) { msg.innerHTML = '<div class="login-error">Selecione um usuário</div>'; return; }
 
   const ok = confirm('Promover ' + selectedManagerUser.name + ' a GERENTE?\\n\\nIsso dá acesso a TODAS as lojas (bipes, estoque, vendas, NFe, marketing, curadoria).');
   if (!ok) return;
 
-  const data = await api('/admin/manager/promote', 'POST', { phone });
+  const data = await api('/admin/manager/promote', 'POST', { userId });
   if (data.error) { msg.innerHTML = '<div class="login-error">' + data.error + '</div>'; return; }
 
   msg.innerHTML = '<div style="color:var(--green);font-size:13px">' + (data.message || 'Gerente promovido') + '</div>';
