@@ -114,6 +114,13 @@ router.get('/products', async (req, res) => {
     });
     const lcByProductId = Object.fromEntries(lifecycles.map((l) => [l.productId, l]));
 
+    // Flags Nuvemshop: quais já estão na loja (mapeados). releaseToNuvemshop vem do aiContext.
+    const nsMaps = await prisma.nuvemshopProductMapping.findMany({
+      where: { localProductId: { in: products.map((p) => p.id) } },
+      select: { localProductId: true },
+    });
+    const nsSet = new Set(nsMaps.map((m) => m.localProductId));
+
     const items = products
       .map((p) => {
         const totalStock = (p.sizes || []).reduce((s, x) => s + (x.stock || 0), 0);
@@ -145,6 +152,8 @@ router.get('/products', async (req, res) => {
           aiContext: p.aiContext || null,
           active: p.active,
           featured: p.featured || false,
+          naNuvemshop: nsSet.has(p.id),
+          releaseToNuvemshop: ctx.releaseToNuvemshop === true,
           totalStock,
           sizes: p.sizes,
           lifecycle,

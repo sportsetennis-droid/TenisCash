@@ -827,6 +827,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <select class="search-box" id="cat-filter-modality" style="width:170px"><option value="">Modalidade</option></select>
         <select class="search-box" id="cat-filter-tier" style="width:150px"><option value="">Especialidade</option></select>
         <select class="search-box" id="cat-filter-nuvemshop" style="width:185px"><option value="">Nuvemshop (todos)</option><option value="yes">🛒 Foi pra Nuvemshop</option><option value="no">Não foi pra Nuvemshop</option></select>
+        <select class="search-box" id="cat-filter-release" style="width:175px"><option value="">Liberação (todos)</option><option value="yes">⬆ Liberados p/ Nuvemshop</option><option value="no">Não liberados</option></select>
         <button type="button" class="btn btn-primary" id="cat-btn-filter">Filtrar</button>
         <button type="button" class="btn" id="cat-btn-clear-filter" title="Limpar filtros">✕</button>
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
@@ -1526,6 +1527,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Comprado = exato</label>
       <input id="cat-classify-comprado-exact" type="number" min="0" class="form-input" placeholder="ex: 1" style="margin-top:4px;background:white;color:#1d1d1f;">
     </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Nuvemshop</label>
+      <select id="cat-classify-nuvemshop" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">🛒 Na Nuvemshop</option><option value="no">Fora da Nuvemshop</option></select>
+    </div>
+    <div>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Liberação</label>
+      <select id="cat-classify-release" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">⬆ Liberados p/ NS</option><option value="no">Não liberados</option></select>
+    </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
       <input id="cat-classify-search" class="form-input" placeholder="nome / SKU / REF" style="margin-top:4px;background:white;color:#1d1d1f;">
@@ -1759,6 +1768,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           <option value="7">📍 Bipados últimos 7 dias</option>
           <option value="never">🚫 Nunca bipados</option>
         </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Nuvemshop</label>
+        <select id="inv-f-nuvemshop" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">🛒 Na Nuvemshop</option><option value="no">Fora da Nuvemshop</option></select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Liberação</label>
+        <select id="inv-f-release" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">⬆ Liberados p/ NS</option><option value="no">Não liberados</option></select>
       </div>
       <div>
         <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">% localizado</label>
@@ -3313,9 +3330,11 @@ function initAdminCatalogTab() {
     // Filtro Nuvemshop aplica na hora ao mudar
     const nsFilterSel = document.getElementById('cat-filter-nuvemshop');
     if (nsFilterSel) nsFilterSel.addEventListener('change', loadCatalogProductsAdmin);
+    const relFilterSel = document.getElementById('cat-filter-release');
+    if (relFilterSel) relFilterSel.addEventListener('change', loadCatalogProductsAdmin);
     const clearFilterBtn = document.getElementById('cat-btn-clear-filter');
     if (clearFilterBtn) clearFilterBtn.addEventListener('click', function () {
-      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier','cat-filter-nuvemshop'].forEach(id => {
+      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier','cat-filter-nuvemshop','cat-filter-release'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
       loadCatalogProductsAdmin();
@@ -3583,6 +3602,38 @@ function buildAdminProductThumb(url) {
   return wrap;
 }
 
+// ===== Helpers Nuvemshop (compartilhados pelos cards Catálogo / Estoque / Categoria) =====
+async function nsRelease(id, release, reloadFn) {
+  const r = await api('/admin/catalog/products/' + id + '/release', 'POST', { release });
+  if (r && r.error) { alert('Erro: ' + r.error); return; }
+  if (release && r && r.upload && r.upload.ok === false) {
+    alert('Marcado p/ liberar, mas NÃO subiu agora:\n' + (r.upload.reason || '?') + '\n\nSobe sozinho quando resolver (classificação nas 4 + estoque físico).');
+  }
+  if (typeof reloadFn === 'function') reloadFn();
+}
+async function nsRemove(id, reloadFn) {
+  if (!confirm('Remover este produto da Nuvemshop?\nEle SOME da loja online (despublica + apaga lá).')) return;
+  const r = await api('/admin/catalog/products/' + id + '/remove-nuvemshop', 'POST', {});
+  if (r && r.error) { alert('Erro: ' + r.error); return; }
+  if (typeof reloadFn === 'function') reloadFn();
+}
+function nsBadges(p) {
+  let h = '';
+  if (p.naNuvemshop) h += '<span title="Está na loja Nuvemshop" style="background:#e7f0ff;color:#0a55c4;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛒 NUVEMSHOP</span> ';
+  if (p.releaseToNuvemshop) h += '<span title="Marcado p/ liberar na Nuvemshop" style="background:#fff3d6;color:#8a6100;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⬆ LIBERADO</span> ';
+  return h;
+}
+// reloadName = nome global da função de recarregar a view (ex: loadInvProducts)
+function nsButtons(p, reloadName) {
+  if (p.naNuvemshop) {
+    return '<button class="btn" style="font-size:11px;padding:4px 8px;color:#d70015;border-color:#d70015" onclick="nsRemove(\'' + p.id + '\',' + reloadName + ')">✕ Remover da loja</button>';
+  }
+  if (p.releaseToNuvemshop) {
+    return '<button class="btn" style="font-size:11px;padding:4px 8px" onclick="nsRelease(\'' + p.id + '\',false,' + reloadName + ')">Desmarcar liberação</button>';
+  }
+  return '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#0a55c4;border-color:#0a55c4" onclick="nsRelease(\'' + p.id + '\',true,' + reloadName + ')">⬆ Liberar Nuvemshop</button>';
+}
+
 async function loadCatalogProductsAdmin() {
   const wrap = document.getElementById('cat-products-wrap');
   if (!wrap) return;
@@ -3598,6 +3649,7 @@ async function loadCatalogProductsAdmin() {
   const mod = document.getElementById('cat-filter-modality')?.value.trim() || '';
   const tier = document.getElementById('cat-filter-tier')?.value.trim() || '';
   const ns = document.getElementById('cat-filter-nuvemshop')?.value.trim() || '';
+  const rel = document.getElementById('cat-filter-release')?.value.trim() || '';
   if (s) q.set('search', s);
   if (b) q.set('brand', b);
   if (c) q.set('category', c);
@@ -3606,6 +3658,7 @@ async function loadCatalogProductsAdmin() {
   if (tier) q.set('tier', tier);
   if (sup) q.set('supplier', sup);
   if (ns) q.set('nuvemshop', ns);
+  if (rel) q.set('release', rel);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
   const rows = data.products || [];
@@ -3620,9 +3673,7 @@ async function loadCatalogProductsAdmin() {
     const statusBadge = enriched
       ? '<span style="background:#e8f7ee;color:#0a843d;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">✨ COMPLETO</span>'
       : '<span style="background:#fff8e0;color:#b06b00;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⚠ FALTANTE</span>';
-    const nsBadge = p.naNuvemshop
-      ? '<span title="Já enviado pra Nuvemshop" style="background:#e7f0ff;color:#0a55c4;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛒 NUVEMSHOP</span>'
-      : '';
+    const nsBadge = nsBadges(p);
     const brandText = (p.brand || '').trim();
     const hasBrand = brandText && brandText !== 'A DEFINIR';
     const cat = (p.category || '') + (p.subcategory ? ' / ' + p.subcategory : '');
@@ -3748,6 +3799,7 @@ async function loadCatalogProductsAdmin() {
       + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
       + '<button type="button" class="js-cat-del" data-id="' + p.id + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);color:#d70015;font-size:12px;cursor:pointer;" title="Excluir">🗑</button>'
       + '</div>';
+    html += '<div style="margin-top:6px;display:flex;">' + nsButtons(p, 'loadCatalogProductsAdmin') + '</div>';
     html += '</div></div>';
   });
   html += '</div>';
@@ -10278,7 +10330,7 @@ async function initCategoriesTab() {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
     // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado'].forEach(id => {
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado','cat-classify-nuvemshop','cat-classify-release'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
@@ -10429,6 +10481,8 @@ function _filteredCatProducts() {
   const compRange = document.getElementById('cat-classify-comprado')?.value || '';
   const compExactRaw = document.getElementById('cat-classify-comprado-exact')?.value;
   const compExact = (compExactRaw !== '' && compExactRaw != null) ? parseInt(compExactRaw, 10) : null;
+  const nsF = document.getElementById('cat-classify-nuvemshop')?.value || '';
+  const relF = document.getElementById('cat-classify-release')?.value || '';
   return _catClassifyProducts.filter(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
     const cls = ctx.classification || {};
@@ -10462,6 +10516,11 @@ function _filteredCatProducts() {
     }
     // Filtro % localizado
     if (locpct && !(_locatedIds && _locatedIds.has(p.id))) return false;
+    // Filtro Nuvemshop / Liberação
+    if (nsF === 'yes' && !p.naNuvemshop) return false;
+    if (nsF === 'no' && p.naNuvemshop) return false;
+    if (relF === 'yes' && !p.releaseToNuvemshop) return false;
+    if (relF === 'no' && p.releaseToNuvemshop) return false;
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
       const mod = (cls.modality || '').toLowerCase();
@@ -10507,6 +10566,10 @@ function renderCatClassifyGrid() {
     html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
       <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
       ${cardHtml}
+      <div onclick="event.stopPropagation()" style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">${nsBadges(p)}</div>
+        <div style="display:flex;">${nsButtons(p, 'loadCategoriesClassify')}</div>
+      </div>
     </div>`;
   });
   html += '</div>' + moreText;
@@ -11216,6 +11279,11 @@ async function initInventoryTab() {
     // Filtro % localizado: recarrega quando muda
     const locSelI = document.getElementById('inv-locpct');
     if (locSelI) locSelI.addEventListener('change', () => loadInvProducts());
+    // Filtros Nuvemshop / Liberação: recarrega quando muda
+    const nsSelI = document.getElementById('inv-f-nuvemshop');
+    if (nsSelI) nsSelI.addEventListener('change', () => loadInvProducts());
+    const relSelI = document.getElementById('inv-f-release');
+    if (relSelI) relSelI.addEventListener('change', () => loadInvProducts());
 
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
@@ -11259,9 +11327,11 @@ async function loadInvProducts(opts) {
   const storeId = document.getElementById('inv-f-store')?.value || '';
   const biped = document.getElementById('inv-biped')?.value || '';
   const locpct = document.getElementById('inv-locpct')?.value || '';
+  const nsF = document.getElementById('inv-f-nuvemshop')?.value || '';
+  const relF = document.getElementById('inv-f-release')?.value || '';
 
   // GUARDA: nao carregar 7k+ cards sem nenhum filtro (trava o browser)
-  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId || locpct);
+  const hasFilter = !!(brand || category || supplier || subcategory || modality || tier || search || lifecycleStatus || lowStock || biped || storeId || locpct || nsF || relF);
   if (!hasFilter && !opts.force) {
     wrap.innerHTML = `
       <div style="text-align:center;padding:48px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;">
@@ -11314,6 +11384,11 @@ async function loadInvProducts(opts) {
     const ls = _locatedIds || new Set();
     list = list.filter(p => ls.has(p.id));
   }
+  // FILTRO Nuvemshop / Liberação (frontend, pelas flags do backend)
+  if (nsF === 'yes') list = list.filter(p => p.naNuvemshop);
+  else if (nsF === 'no') list = list.filter(p => !p.naNuvemshop);
+  if (relF === 'yes') list = list.filter(p => p.releaseToNuvemshop);
+  else if (relF === 'no') list = list.filter(p => !p.releaseToNuvemshop);
 
   // SEM agrupamento por modelo (modelGroup) — cada REFERÊNCIA é seu próprio card.
   // Unificação é só por referência; os tamanhos já ficam dentro do card.
@@ -11352,6 +11427,19 @@ async function loadInvProducts(opts) {
     body.appendChild(badge);
   };
 
+  // Badges + botões Nuvemshop (liberar/remover) em cada card
+  const injectNs = (p) => {
+    const card = document.getElementById('pcrsl-' + p.id)?.parentElement;
+    if (!card) return;
+    const body = card.querySelector('div[style*="padding:14px"]');
+    if (!body) return;
+    const box = document.createElement('div');
+    box.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:5px;';
+    box.innerHTML = '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + nsBadges(p) + '</div><div style="display:flex;">' + nsButtons(p, 'loadInvProducts') + '</div>';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    body.appendChild(box);
+  };
+
   let cursor = 0;
   function renderChunk() {
     const slice = list.slice(cursor, cursor + CHUNK);
@@ -11365,6 +11453,7 @@ async function loadInvProducts(opts) {
       while (inner.firstChild) host.appendChild(inner.firstChild);
     }
     slice.forEach(injectBadge);
+    slice.forEach(injectNs);
     cursor += slice.length;
     if (cursor < TOTAL) {
       tail.textContent = `· carregando ${cursor}/${TOTAL}…`;
