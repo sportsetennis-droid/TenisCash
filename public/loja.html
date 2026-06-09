@@ -507,6 +507,13 @@
     <!-- LINHA 1: Buscar produto | Carrinho (lado a lado) -->
     <div class="sell-row" style="margin-bottom:14px;">
       <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔫</span>Bipar produto</h3>
+        <div class="search-bar" style="margin-bottom:0;">
+          <span style="font-size:18px;">🔫</span>
+          <input type="text" id="sellBipeInput" placeholder="Bipe o código de barras e dê Enter…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();onSellBipe();}">
+        </div>
+        <div id="sellBipeMsg" style="font-size:12px;margin-top:6px;min-height:16px;color:var(--text-muted);"></div>
+        <div style="border-top:1px dashed var(--border);margin:14px 0;"></div>
         <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔎</span>Buscar produto</h3>
         <div class="search-bar" style="margin-bottom:0;">
           <span style="font-size:18px;">🔍</span>
@@ -1686,16 +1693,63 @@ function renderSellResults() {
 }
 
 // Clique no card (Vender) adiciona ao carrinho — acha o produto no resultado da busca.
+let _pendingBarcode = null; // código bipado mas NÃO reconhecido, aguardando o vendedor achar o produto
+
+// Bipe na venda: identifica produto + tamanho pelo código de barras (lookup, sem mexer estoque).
+async function onSellBipe() {
+  const inp = document.getElementById('sellBipeInput');
+  const code = (inp.value || '').trim();
+  const msg = document.getElementById('sellBipeMsg');
+  if (!code) return;
+  inp.value = '';
+  msg.style.color = '#6e6e73'; msg.textContent = 'Consultando ' + code + '…';
+  try {
+    const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
+    if (d.recognized && d.product) {
+      const price = d.product.promoPrice || d.product.price || 0;
+      addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { size: d.product.size, barcode: code });
+      msg.style.color = '#0a843d';
+      msg.textContent = '✅ ' + (d.product.name || '') + ' — tam ' + (d.product.size || '?') + ' adicionado';
+    } else {
+      _pendingBarcode = code;
+      msg.style.color = '#b06b00';
+      msg.innerHTML = '⚠️ Código <b>' + code + '</b> ainda não cadastrado. Ache o produto na busca abaixo e diga o tamanho — vou amarrar o código a ele nesta venda.';
+      document.getElementById('sellSearchInput').focus();
+    }
+  } catch (e) { msg.style.color = '#d70015'; msg.textContent = 'Erro: ' + (e.message || e); }
+  inp.focus();
+}
+
+function _askSizeForBipe(p) {
+  const known = (p.sizes || []).map(s => s.size).filter(Boolean);
+  const hint = known.length ? '\nTamanhos já cadastrados: ' + known.join(', ') : '';
+  const sz = prompt('TAMANHO deste produto (o código bipado é desse número):' + hint, '');
+  return sz ? String(sz).trim() : null;
+}
+
 function addToCartById(productId) {
   const p = _sellSearchAll.find(x => x.id === productId);
   if (!p) return;
-  addToCart(p.id, p.name || '', p.brand || '', (p.promoPrice || p.price), p.imageUrl || '');
+  const price = (p.promoPrice || p.price);
+  if (_pendingBarcode) {
+    // vincular o código órfão bipado a este produto + tamanho
+    const sz = _askSizeForBipe(p);
+    if (!sz) return; // cancelou — mantém o código pendente
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { size: sz, barcode: _pendingBarcode, isNewBarcode: true });
+    const msg = document.getElementById('sellBipeMsg');
+    if (msg) { msg.style.color = '#0a843d'; msg.innerHTML = '✅ Código <b>' + _pendingBarcode + '</b> amarrado a ' + (p.name || '') + ' tam ' + sz + ' (grava ao finalizar a venda).'; }
+    _pendingBarcode = null;
+  } else {
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '');
+  }
 }
 
-function addToCart(productId, name, brand, price, imageUrl) {
-  const existing = cart.find(i => i.productId === productId);
+function addToCart(productId, name, brand, price, imageUrl, opts) {
+  opts = opts || {};
+  // Item de bipe (tem código/tamanho) é uma LINHA própria — não agrupa com o item genérico.
+  const existing = !opts.barcode ? cart.find(i => i.productId === productId && !i.barcode) : null;
   if (existing) existing.quantity++;
-  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1, imageUrl });
+  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1, imageUrl, size: opts.size || null, barcode: opts.barcode || null, isNewBarcode: !!opts.isNewBarcode });
   renderCart();
 }
 
@@ -1719,7 +1773,7 @@ function renderCart() {
     <div class="cart-item">
       <img class="cart-item-img" src="${it.imageUrl || ''}" onerror="this.style.opacity='0.3'">
       <div class="cart-item-info">
-        <div class="cart-item-name">${it.name}</div>
+        <div class="cart-item-name">${it.name}${it.size ? ' · <b>tam ' + it.size + '</b>' : ''}${it.isNewBarcode ? ' <span style="background:#fff3d6;color:#8a6100;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;">🔗 código novo</span>' : ''}</div>
         <div class="cart-item-sub">${it.brand} · ${fmt(it.unitPrice)} × ${it.quantity} = <strong>${fmt(it.unitPrice * it.quantity)}</strong></div>
       </div>
       <div class="qty-controls">
@@ -1868,7 +1922,7 @@ async function finalizeSale() {
       method: 'POST',
       body: JSON.stringify({
         customerPhone: customer?.phone || null,
-        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice })),
+        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode })),
         paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
         discount: getDiscountRS(),

@@ -325,11 +325,11 @@ router.get('/lookup/:barcode', async (req, res) => {
   try {
     const code = String(req.params.barcode || '').trim();
     if (!code) return res.status(400).json({ error: 'barcode vazio' });
-    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, active: true } } }, take: 5 });
+    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, active: true, price: true, promoPrice: true } } }, take: 5 });
     const active = sizes.filter((s) => s.product && s.product.active);
     if (active.length) {
       const s = active[0];
-      return res.json({ recognized: true, ambiguous: active.length > 1, product: { id: s.product.id, name: s.product.name, brand: s.product.brand, size: s.size } });
+      return res.json({ recognized: true, ambiguous: active.length > 1, product: { id: s.product.id, name: s.product.name, brand: s.product.brand, size: s.size, price: s.product.price, promoPrice: s.product.promoPrice } });
     }
     const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: code }, select: { id: true, description: true } });
     res.json({ recognized: false, inNfe: !!x, nfeDescription: x ? x.description : null });

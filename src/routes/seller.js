@@ -537,6 +537,12 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       };
     });
 
+    // Códigos de barras ÓRFÃOS bipados na venda (bipou, não reconheceu, o vendedor achou o produto
+    // e informou o tamanho) → vincular DEPOIS da venda pra ensinar o sistema a reconhecer o código.
+    const barcodeLinks = (items || [])
+      .filter((i) => i.isNewBarcode && i.barcode && i.size && i.productId)
+      .map((i) => ({ productId: i.productId, size: String(i.size).trim(), barcode: String(i.barcode).trim() }));
+
     // Desconto em R$ na venda (sem limite). Reduz os itens proporcionalmente pro cupom bater
     // (vProd = soma dos itens, vDesc=0 no agente). Só roda se desconto>0 — venda sem desconto = idêntica a hoje.
     const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -651,6 +657,24 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
       return { sale, commissionsCount: commissionsData.length };
     });
+
+    // ===== Vincula códigos de barras ÓRFÃOS bipados (fora da transação — não derruba a venda) =====
+    // NÃO mexe no comprado (stock=0 no tamanho novo); só ensina o sistema a reconhecer o código.
+    for (const lk of barcodeLinks) {
+      try {
+        const existente = await prisma.productSize.findFirst({ where: { barcode: lk.barcode } });
+        if (existente) continue; // código já reconhecido por algum tamanho
+        const ps = await prisma.productSize.findFirst({ where: { productId: lk.productId, size: lk.size } });
+        if (ps && !ps.barcode) {
+          await prisma.productSize.update({ where: { id: ps.id }, data: { barcode: lk.barcode } });
+        } else if (!ps) {
+          await prisma.productSize.create({ data: { productId: lk.productId, size: lk.size, barcode: lk.barcode, stock: 0 } });
+        }
+        // reconhece bipes órfãos antigos do mesmo código (sem mexer StoreStock nem comprado)
+        await prisma.stocktakeBipe.updateMany({ where: { barcode: lk.barcode, found: false }, data: { found: true } });
+        console.log('[sale] barcode orfao vinculado', JSON.stringify({ barcode: lk.barcode, productId: lk.productId, size: lk.size }));
+      } catch (e) { console.error('[sale] vincular barcode orfao', lk.barcode, e.message); }
+    }
 
     // ===== Bot "TenisCash" avisa cliente do cashback =====
     if (customer && (tcEarned - tcConsumed) > 0) {
