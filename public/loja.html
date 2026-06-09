@@ -1666,8 +1666,9 @@ function renderSellResults() {
   const visible = _sellSearchAll.slice(0, _sellSearchShown);
   const remaining = _sellSearchAll.length - _sellSearchShown;
 
-  // MESMO card da Curadoria/Preços: PCard public (sem custo, sem editar). Clique = adiciona ao carrinho.
-  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onClick: "addToCartById('%id%')" })).join('');
+  // MESMO card da Curadoria/Preços, MAS só o estoque da loja que está vendendo (onlyStoreId).
+  // Na venda não pode aparecer numeração de outra loja. Demais telas mostram todas.
+  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onlyStoreId: activeStore?.id, onClick: "addToCartById('%id%')" })).join('');
 
   const moreBtn = remaining > 0 ? `
     <div style="grid-column:1/-1;text-align:center;padding:8px 0;">

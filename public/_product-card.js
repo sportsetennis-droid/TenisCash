@@ -455,6 +455,9 @@
     const byStore = {};
     (p.sizes || []).forEach(sz => {
       (sz.storeStocks || []).forEach(ss => {
+        // Tela VENDER (opts.onlyStoreId setado): só a loja que está vendendo.
+        // Demais telas (Estoque, Curadoria, Preços): mostram todas as lojas.
+        if (opts.onlyStoreId != null && ss.storeId !== opts.onlyStoreId && ss.store?.id !== opts.onlyStoreId) return;
         const code = ss.store?.code || ss.storeCode || '?';
         const storeName = ss.store?.name || ss.storeName || code;
         if (!byStore[code]) byStore[code] = { color: storeColors[code] || '#8e8e93', name: storeName, items: [] };
@@ -463,7 +466,7 @@
       });
     });
     // Fallback: sem storeStocks, só agregado de tamanhos
-    const sizesFlat = !Object.keys(byStore).length && (p.sizes || []).length
+    const sizesFlat = !opts.onlyStoreId && !Object.keys(byStore).length && (p.sizes || []).length
       ? (p.sizes || []).map(s => ({ size: s.size, stock: s.stock || 0 })).filter(s => s.stock > 0)
       : [];
 
@@ -617,6 +620,8 @@
           html += `<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:white;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;font-weight:700;color:#1d1d1f;">${esc(s.size)}${s.stock > 1 ? `<span style="background:#0a843d;color:white;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;">×${s.stock}</span>` : ''}</span>`;
         });
         html += '</div></div>';
+      } else if (opts.onlyStoreId) {
+        html += `<div style="margin-top:8px;padding:12px;background:#fff1f0;border-radius:10px;border:1.5px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">Sem estoque nesta loja</div>`;
       } else if (actions === 'admin') {
         html += `<div style="margin-top:8px;padding:14px;background:#fff1f0;border-radius:10px;border:2px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">⚠ Nenhuma loja vinculada</div>`;
       }
