@@ -1476,6 +1476,7 @@ async function loadSalesList() {
     if (from) params.push('from=' + from);
     if (to) params.push('to=' + to);
     if (q.length >= 2) params.push('q=' + encodeURIComponent(q));
+    if (activeStore?.id) params.push('storeId=' + activeStore.id); // só as vendas da loja LOGADA (não todas as lojas)
     params.push('limit=100');
 
     try {
