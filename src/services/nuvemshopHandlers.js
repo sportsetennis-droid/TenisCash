@@ -1104,11 +1104,17 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     && (!Array.isArray(sizes) || sizes.length === 0 || sizes.some((s) => Number(s.stock || 0) > 0))
   );
 
+  // Marcação manual do dono: aiContext.hideFromNuvemshop força published=false (tira da VITRINE
+  // sem APAGAR o produto — link/dados/avaliações ficam). Vale no create E no update, então
+  // qualquer sync (clique ou cron de 5 min) mantém oculto enquanto a marca estiver ligada.
+  const _hideCtx = (() => { try { return typeof localProduct.aiContext === 'string' ? JSON.parse(localProduct.aiContext) : (localProduct.aiContext || {}); } catch { return {}; } })();
+  const hiddenManually = _hideCtx.hideFromNuvemshop === true;
+
   const payload = {
     name: ptObj(localProduct.name),
     description: ptObj(description),
     brand: localProduct.brand || null,
-    published: !!isFullyClassified,
+    published: !!isFullyClassified && !hiddenManually,
     free_shipping: false,
     attributes: sizes && sizes.length ? [{ pt: 'Tamanho' }] : [],
     seo_title: ptObj(seoTitle),

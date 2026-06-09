@@ -459,7 +459,7 @@ router.get('/products', adminOnly, async (req, res) => {
     res.json({
       products: products.map((p) => {
         const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
-        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true };
+        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
       }),
     });
   } catch (err) {
@@ -492,6 +492,40 @@ router.post('/products/:id/release', adminOnly, async (req, res) => {
     res.json({ ok: true, release, upload });
   } catch (err) {
     console.error('release product', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Oculta/mostra o produto na loja Nuvemshop SEM apagar (despublica/republica). Reversível.
+// hide=true → published=false na loja (some da vitrine, mantém link/dados); o cron NÃO republica.
+// hide=false → tira a marca e republica (se classificado + estoque).
+router.post('/products/:id/hide-nuvemshop', adminOnly, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const hide = req.body?.hide !== false; // default true
+    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, aiContext: true } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+    const ctx = parseJsonSafe(product.aiContext) || {};
+    if (hide) ctx.hideFromNuvemshop = true; else delete ctx.hideFromNuvemshop;
+    // muda o físico → invalida assinatura do cron pra forçar re-sync no próximo ciclo
+    delete ctx.nsStockSig;
+    await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
+
+    let applied = null;
+    const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: id } });
+    if (!mapping) {
+      applied = { ok: true, reason: 'não está na loja — marcação salva (vale quando subir)' };
+    } else {
+      const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+      if (!conn) applied = { ok: false, reason: 'sem conexão Nuvemshop ativa' };
+      else {
+        try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); applied = { ok: !r?.skipped, reason: r?.reason || null }; }
+        catch (e) { applied = { ok: false, reason: String(e.message).slice(0, 160) }; }
+      }
+    }
+    res.json({ ok: true, hide, applied });
+  } catch (err) {
+    console.error('hide nuvemshop', err);
     res.status(500).json({ error: err.message });
   }
 });

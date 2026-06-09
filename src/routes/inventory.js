@@ -154,6 +154,7 @@ router.get('/products', async (req, res) => {
           featured: p.featured || false,
           naNuvemshop: nsSet.has(p.id),
           releaseToNuvemshop: ctx.releaseToNuvemshop === true,
+          hideFromNuvemshop: ctx.hideFromNuvemshop === true,
           totalStock,
           sizes: p.sizes,
           lifecycle,

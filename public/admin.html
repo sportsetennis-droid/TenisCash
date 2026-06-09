@@ -3618,16 +3618,30 @@ async function nsRemove(id, reloadFn) {
   if (r && r.error) { alert('Erro: ' + r.error); return; }
   if (typeof reloadFn === 'function') reloadFn();
 }
+// Oculta (despublica) ou mostra de novo SEM apagar da loja. Reversível.
+async function nsHide(id, hide, reloadFn) {
+  const r = await api('/admin/catalog/products/' + id + '/hide-nuvemshop', 'POST', { hide });
+  if (r && r.error) { alert('Erro: ' + r.error); return; }
+  if (r.applied && r.applied.ok === false) {
+    alert((hide ? 'Ocultar' : 'Mostrar') + ': marca salva, mas NÃO aplicou na loja agora:\n' + (r.applied.reason || '?'));
+  }
+  if (typeof reloadFn === 'function') reloadFn();
+}
 function nsBadges(p) {
   let h = '';
   if (p.naNuvemshop) h += '<span title="Está na loja Nuvemshop" style="background:#e7f0ff;color:#0a55c4;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛒 NUVEMSHOP</span> ';
+  if (p.hideFromNuvemshop) h += '<span title="Oculto na loja — despublicado, NÃO apagado (link/dados preservados)" style="background:#fde7e9;color:#b00020;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🙈 OCULTO</span> ';
   if (p.releaseToNuvemshop) h += '<span title="Marcado p/ liberar na Nuvemshop" style="background:#fff3d6;color:#8a6100;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⬆ LIBERADO</span> ';
   return h;
 }
 // reloadName = nome global da função de recarregar a view (ex: loadInvProducts)
 function nsButtons(p, reloadName) {
   if (p.naNuvemshop) {
-    return '<button class="btn" style="font-size:11px;padding:4px 8px;color:#d70015;border-color:#d70015" onclick="nsRemove(\'' + p.id + '\',' + reloadName + ')">✕ Remover da loja</button>';
+    const hideBtn = p.hideFromNuvemshop
+      ? '<button class="btn" style="font-size:11px;padding:4px 8px;color:#0a843d;border-color:#0a843d" onclick="nsHide(\'' + p.id + '\',false,' + reloadName + ')">👁 Mostrar na loja</button>'
+      : '<button class="btn" style="font-size:11px;padding:4px 8px;color:#8a6100;border-color:#e0a800" onclick="nsHide(\'' + p.id + '\',true,' + reloadName + ')">🙈 Ocultar da loja</button>';
+    const removeBtn = '<button class="btn" style="font-size:11px;padding:4px 8px;color:#d70015;border-color:#d70015" onclick="nsRemove(\'' + p.id + '\',' + reloadName + ')">✕ Remover da loja</button>';
+    return '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + hideBtn + removeBtn + '</div>';
   }
   if (p.releaseToNuvemshop) {
     return '<button class="btn" style="font-size:11px;padding:4px 8px" onclick="nsRelease(\'' + p.id + '\',false,' + reloadName + ')">Desmarcar liberação</button>';
