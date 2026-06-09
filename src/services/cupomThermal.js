@@ -26,8 +26,8 @@ async function buildCupomThermalHtml(doc) {
   const vTroco = Number(pag.vTroco || 0);
 
   const nomeTopo = (doc.issuer && doc.issuer.fantasyName) || emit.xFant || emit.xNome || '';
-  const dataEmi = ide.dhEmi ? new Date(ide.dhEmi).toLocaleString('pt-BR') : '';
-  const dataAut = doc.createdAt ? new Date(doc.createdAt).toLocaleString('pt-BR') : dataEmi;
+  const dataEmi = ide.dhEmi ? new Date(ide.dhEmi).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : '';
+  const dataAut = doc.createdAt ? new Date(doc.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Fortaleza' }) : dataEmi;
 
   const dest = inf.dest;
   let consumidor = 'CONSUMIDOR NÃO IDENTIFICADO';
