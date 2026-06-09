@@ -572,7 +572,7 @@
 
         <!-- Dados do cartão (Decreto SEFAZ-PB 43.077/2022) — aparece só pra crédito/débito -->
         <div id="sellCardDetails" style="display:none;margin-top:14px;padding:12px;background:#FFEBDC;border-radius:10px;border:1px solid #FCDAC4;">
-          <div id="sellFiscalTitle" style="font-size:11px;font-weight:700;color:#E5571E;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
+          <div id="sellFiscalTitle" style="display:none;">📋 Dados do cartão (obrigatório SEFAZ-PB)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div id="sellAcquirerField" style="display:none;">
               <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">ADQUIRENTE</label>
@@ -604,7 +604,7 @@
               </select>
             </div>
             <div style="grid-column:span 2;">
-              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">CÓDIGO DE AUTORIZAÇÃO (do recibo da maquininha)</label>
+              <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">NSU (recibo de pagamento da maquininha)</label>
               <input type="text" id="sellCardAuthCode" placeholder="Ex: 123456" maxlength="20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:14px;font-family:monospace;font-weight:700;margin-top:4px;">
             </div>
           </div>
