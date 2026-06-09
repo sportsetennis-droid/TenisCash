@@ -577,7 +577,8 @@ router.post('/select/:productId', async (req, res) => {
       where: { id: req.params.productId },
       data,
     });
-    res.json({ product });
+    const nuvemshop = await syncToNuvemshopIfMapped(product.id);
+    res.json({ product, nuvemshop });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -728,6 +729,7 @@ router.post('/upload/:productId',
       }
       const success = processed.filter(p => !p.error);
 
+      let nuvemshop = null;
       if (mode !== 'preview' && success.length) {
         const main = success[0].dataUrl;
         const extras = success.slice(1).map(p => p.dataUrl);
@@ -735,6 +737,8 @@ router.post('/upload/:productId',
           where: { id: product.id },
           data: { imageUrl: main, imageUrls: extras.length ? extras : (product.imageUrls || []) },
         });
+        // Foto trocada → reflete na loja na hora (se o produto já está na Nuvemshop)
+        nuvemshop = await syncToNuvemshopIfMapped(product.id);
       }
 
       res.json({
@@ -742,6 +746,7 @@ router.post('/upload/:productId',
         productId: product.id,
         sku: product.sku,
         mode,
+        nuvemshop,
         count: success.length,
         images: processed.map((p, i) => p.error
           ? { idx: i, error: p.error }

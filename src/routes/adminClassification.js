@@ -7,6 +7,18 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const nsHandlers = require('../services/nuvemshopHandlers');
+
+// Re-empurra pra Nuvemshop se o produto já está na loja. Mudar a classificação muda as
+// categorias/tags na loja → tem que refletir. Não trava a resposta se falhar.
+async function syncIfMapped(productId) {
+  try {
+    const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: productId } });
+    if (!mapping) return;
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (conn) await nsHandlers.pushProductToNuvemshop(productId, conn);
+  } catch (e) { console.error('[classification ns sync]', e.message); }
+}
 
 const router = express.Router();
 router.use(authMiddleware, adminMiddleware);
@@ -180,6 +192,7 @@ router.patch('/:productId', async (req, res) => {
     }
 
     await prisma.product.update({ where: { id: p.id }, data: updateData });
+    await syncIfMapped(p.id);
 
     res.json({ ok: true, classification: newClassification, brand: updateData.brand || p.brand });
   } catch (err) {
@@ -255,6 +268,7 @@ Retorne SOMENTE JSON: {"type":"...","gender":"...","modality":"...","tier":"..."
       where: { id: p.id },
       data: { aiContext: { ...existingCtx, classification: newClassification } },
     });
+    await syncIfMapped(p.id);
 
     res.json({ ok: true, classification: newClassification });
   } catch (err) {

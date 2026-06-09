@@ -4,8 +4,9 @@
 // ESTOQUE FÍSICO real (Σ StoreStock de todas as lojas) e só os tamanhos com estoque.
 //   1) AUTO-UPLOAD: produtos marcados (aiContext.releaseToNuvemshop) que ainda não
 //      estão na loja → sobe (respeita as regras de pushProductToNuvemshop).
-//   2) ESPELHO: pra cada produto ATIVO já na loja, se o físico mudou (assinatura),
-//      re-sincroniza (sobe/baixa/esgota/deleta tamanho) — cobre venda, bipe, ajuste, NFe.
+//   2) ESPELHO: pra cada produto ATIVO já na loja, se QUALQUER campo do card mudou
+//      (assinatura ampla: estoque, nome, descrição, preço, classificação, hide),
+//      re-sincroniza — cobre venda, bipe, ajuste, NFe, edição, classificação, ocultar.
 // Timezone explícito (Railway roda em UTC). Otimizado por assinatura: só bate na API
 // quando o estoque físico realmente mudou.
 // =====================================================================
@@ -21,6 +22,33 @@ function physicalSig(product) {
     .map((s) => `${s.size}:${(s.storeStocks || []).reduce((a, x) => a + (x.stock || 0), 0)}`)
     .sort()
     .join('|');
+}
+
+// Hash leve (djb2) pra detectar mudança de texto sem carregar/guardar o texto inteiro.
+function strHash(s) { let h = 5381; for (let i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) | 0; } return h >>> 0; }
+
+// Assinatura AMPLA do card: estoque + TODOS os campos que a loja mostra (nome, descrição,
+// preço, classificação, hide). Muda quando QUALQUER alteração relevante ocorre → o cron
+// re-sincroniza, não importa qual endpoint editou (rede de segurança). Imagem fica de fora
+// (coberta no push via nsImagesSig + pelos endpoints de foto) pra não carregar base64 a cada
+// ciclo. NÃO inclui os campos ns*Sig (gravados pelo próprio push) pra evitar loop infinito.
+function cardSig(product) {
+  let ctx = {};
+  try { ctx = (typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext) || {}; } catch {}
+  const cls = ctx.classification || {};
+  return [
+    physicalSig(product),
+    'name=' + (product.name || ''),
+    'desc=' + strHash((product.longDescription || '') + '\x1f' + (product.shortDescription || '')),
+    'price=' + (product.price || 0),
+    'promo=' + (product.promoPrice ?? ''),
+    'cat=' + (product.category || ''),
+    'sub=' + (product.subcategory || ''),
+    'mod=' + (cls.modality || ''),
+    'tier=' + (cls.tier || ''),
+    'gen=' + (cls.gender || ''),
+    'hide=' + (ctx.hideFromNuvemshop === true ? 1 : 0),
+  ].join('|');
 }
 
 let busy = false;
@@ -57,20 +85,24 @@ async function runNuvemshopStockSync() {
       try {
         const product = await prisma.product.findUnique({
           where: { id: m.localProductId },
-          include: { sizes: { include: { storeStocks: { select: { stock: true } } } } },
+          select: {
+            id: true, active: true, name: true, longDescription: true, shortDescription: true,
+            price: true, promoPrice: true, category: true, subcategory: true, aiContext: true,
+            sizes: { include: { storeStocks: { select: { stock: true } } } },
+          },
         });
         if (!product || product.active === false) continue; // inativo: não mexe (remoção é ação explícita)
-        const sig = physicalSig(product);
+        const sig = cardSig(product);
         let ctx = {};
         try { ctx = (typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext) || {}; } catch {}
-        if (ctx.nsStockSig === sig) continue; // físico não mudou → pula (sem bater na API)
+        if (ctx.nsCardSig === sig) continue; // nada relevante mudou no card → pula (sem bater na API)
         await nsHandlers.pushProductToNuvemshop(m.localProductId, conn);
         synced++;
         // grava a assinatura SEM clobberar o que o push escreveu (ex: nsImagesSig)
         const fresh = await prisma.product.findUnique({ where: { id: m.localProductId }, select: { aiContext: true } });
         let fctx = {};
         try { fctx = (typeof fresh.aiContext === 'string' ? JSON.parse(fresh.aiContext) : fresh.aiContext) || {}; } catch {}
-        fctx.nsStockSig = sig;
+        fctx.nsCardSig = sig;
         await prisma.product.update({ where: { id: m.localProductId }, data: { aiContext: fctx } });
       } catch (e) { console.error('[nsStockCron] sync', m.localProductId, e.message); }
     }
