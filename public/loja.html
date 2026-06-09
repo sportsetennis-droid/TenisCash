@@ -1473,6 +1473,7 @@ async function loadSalesList() {
 
     try {
       const d = await api('/api/seller/sales?' + params.join('&'));
+      window._salesById = {}; (d.sales || []).forEach(s => { window._salesById[s.id] = s; });
       // KPIs
       document.getElementById('salesTotals').innerHTML = `
         <div class="kpi-card"><div class="kpi-icon orange">📋</div><div class="kpi-content"><div class="kpi-title">Vendas</div><div class="kpi-value">${d.totals.count}</div></div></div>
@@ -1491,6 +1492,7 @@ async function loadSalesList() {
             <th>Data</th>
             <th>Vendedor</th>
             <th>Itens</th>
+            <th>Cupom</th>
             <th style="text-align:right;">TC usado</th>
             <th style="text-align:right;">Cashback</th>
             <th style="text-align:right;">Total</th>
@@ -1501,6 +1503,7 @@ async function loadSalesList() {
               const data = dt.toLocaleDateString('pt-BR');
               const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
               const itemsLabel = s.items.slice(0, 2).map(i => i.productName).join(' · ') + (s.items.length > 2 ? ` (+${s.items.length - 2})` : '');
+              const cupomBadge = s.fiscal && s.fiscal.status === 'authorized' ? `<span style="color:#0a843d;font-weight:700;font-size:12px;">✅ #${s.fiscal.number}</span>` : `<span style="color:#b06b00;font-weight:700;font-size:12px;">⚠ emitir</span>`;
               return `
                 <tr class="clickable" onclick="showSaleDetail('${s.id}')">
                   <td><strong>${data}</strong><br><span style="font-size:11px;color:var(--text-muted);">${hora}</span></td>
@@ -1511,6 +1514,7 @@ async function loadSalesList() {
                     </div>
                   </td>
                   <td style="font-size:12px;">${itemsLabel || '—'}</td>
+                  <td>${cupomBadge}</td>
                   <td style="text-align:right;color:var(--text-muted);">${s.tcUsed > 0 ? '−' + fmt(s.tcUsed) : '—'}</td>
                   <td style="text-align:right;color:var(--success);">${s.tcEarned > 0 ? '+' + fmt(s.tcEarned) : '—'}</td>
                   <td style="text-align:right;font-weight:700;color:var(--primary);">${fmt(s.totalAmount)}</td>
@@ -1526,12 +1530,60 @@ async function loadSalesList() {
   }, 200);
 }
 
+function closeSaleModal() { const o = document.getElementById('saleModalOverlay'); if (o) o.remove(); }
+
 function showSaleDetail(saleId) {
-  // Modal simples com detalhes (busca já tem tudo, mostra direto)
-  const list = document.getElementById('salesList');
-  const row = list.querySelector(`tr[onclick*="${saleId}"]`);
-  // Pra MVP: mostra alert. Pode evoluir pra modal completo depois.
-  alert('Detalhes da venda ' + saleId.slice(0, 8) + ' — em breve modal completo.');
+  const s = (window._salesById || {})[saleId];
+  if (!s) { alert('Venda nao encontrada — recarregue a lista.'); return; }
+  closeSaleModal();
+  const PAY = { cash: 'Dinheiro', credit_card: 'Credito', debit_card: 'Debito', pix: 'PIX', other: 'Outro' };
+  const dt = new Date(s.createdAt);
+  const quando = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const itensHtml = (s.items || []).map(i => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;"><span>${i.quantity}x ${i.productName}</span><span>${fmt(i.unitPrice * i.quantity)}</span></div>`).join('');
+  const pay = PAY[s.paymentMethod] || s.paymentMethod || '—';
+  const f = s.fiscal;
+  const isCardPix = ['credit_card', 'debit_card', 'pix'].includes(s.paymentMethod);
+  let fiscalBlock;
+  if (f && f.status === 'authorized') {
+    fiscalBlock = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#0a843d;font-weight:800;font-size:15px;">✅ Cupom #${f.number} emitido</div><div style="font-family:monospace;font-size:10px;word-break:break-all;color:#6e6e73;margin:6px 0;">${f.accessKey || ''}</div><button onclick="reprintSale('${f.id}')" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🖨️ Imprimir 2ª via</button></div>`;
+  } else {
+    fiscalBlock = `<div style="background:#fff8e6;border:2px solid #b06b00;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#b06b00;font-weight:800;font-size:15px;">⚠️ Cupom ${f ? 'nao autorizado (' + f.status + ')' : 'nao emitido'}</div><div style="font-size:12px;color:#6e6e73;margin:4px 0 10px;">Pagamento: ${pay}. ${isCardPix ? 'Digite o codigo do comprovante da maquininha pra emitir.' : 'Clique pra emitir o cupom agora.'}</div>${isCardPix ? '<input id="saleAuthCode" placeholder="Codigo do comprovante (Auth / NSU)" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:8px;font-size:14px;">' : ''}<button id="saleEmitBtn" onclick="emitSaleNfce('${s.id}','${s.paymentMethod}')" style="width:100%;padding:13px;background:linear-gradient(135deg,#0a843d,#2bb678);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">📄 Emitir cupom agora</button></div>`;
+  }
+  const ov = document.createElement('div');
+  ov.id = 'saleModalOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;display:flex;align-items:flex-end;justify-content:center;';
+  ov.onclick = (e) => { if (e.target === ov) closeSaleModal(); };
+  ov.innerHTML = `<div style="background:#fff;border-radius:18px 18px 0 0;max-width:480px;width:100%;max-height:88vh;overflow:auto;padding:18px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-weight:800;font-size:17px;">Venda #${s.id.slice(0, 8)}</div><button onclick="closeSaleModal()" style="background:#eee;border:none;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;">×</button></div><div style="font-size:12px;color:#6e6e73;margin-bottom:8px;">${quando} · ${s.sellerName || ''} · ${pay}</div><div style="border-top:1px solid #eee;border-bottom:1px solid #eee;padding:8px 0;">${itensHtml || '<span style="color:#999">sem itens</span>'}</div><div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;padding:10px 0;"><span>Total</span><span style="color:#E5571E;">${fmt(s.totalAmount)}</span></div>${fiscalBlock}</div>`;
+  document.body.appendChild(ov);
+}
+
+function reprintSale(documentId) {
+  if (!documentId) { alert('Sem documento fiscal pra imprimir.'); return; }
+  window.open('/api/admin/fiscal/documents/' + documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700');
+}
+
+async function emitSaleNfce(saleId, paymentMethod) {
+  const TPAG = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
+  const payload = { saleId, paymentMethod: TPAG[paymentMethod] || '99' };
+  if (['credit_card', 'debit_card', 'pix'].includes(paymentMethod)) {
+    const auth = (document.getElementById('saleAuthCode')?.value || '').trim();
+    if (!auth || auth === '000000') { alert('Digite o codigo do comprovante (Auth/NSU) da maquininha.'); return; }
+    payload.cardAuthCode = auth; payload.acquirerKey = 'PAGSEGURO'; payload.tpIntegra = 2;
+  }
+  const btn = document.getElementById('saleEmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo na SEFAZ…'; }
+  try {
+    const r = await api('/api/admin/fiscal/emit-nfce-from-sale', { method: 'POST', body: JSON.stringify(payload) });
+    if ((r.ok && r.accessKey) || r.alreadyEmitted) {
+      closeSaleModal(); loadSalesList(); reprintSale(r.documentId);
+    } else {
+      alert('Nao emitiu: ' + (r.error || r.rejectReason || 'erro desconhecido'));
+      if (btn) { btn.disabled = false; btn.textContent = '📄 Emitir cupom agora'; }
+    }
+  } catch (e) {
+    alert('Erro: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '📄 Emitir cupom agora'; }
+  }
 }
 
 async function loadDashboard() {

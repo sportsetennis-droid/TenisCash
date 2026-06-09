@@ -884,6 +884,16 @@ router.get('/sales', sellerOnly, async (req, res) => {
       sellerCode: sMap.get(s.sellerId)?.employeeCode || null,
     }));
 
+    // Status fiscal por venda (cupom emitido #N / falhou / sem cupom) — pro PDV emitir depois + 2a via
+    const _fiscalDocs = await prisma.fiscalDocument.findMany({
+      where: { saleId: { in: enriched.map(s => s.id) }, docType: 'NFCE' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, saleId: true, status: true, number: true, accessKey: true },
+    });
+    const _docBySale = new Map();
+    for (const d of _fiscalDocs) if (!_docBySale.has(d.saleId)) _docBySale.set(d.saleId, d);
+    for (const s of enriched) s.fiscal = _docBySale.get(s.id) || null;
+
     // Totais
     const totals = {
       count: enriched.length,
