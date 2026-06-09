@@ -145,6 +145,7 @@ router.get('/products', async (req, res) => {
           longDescription: p.longDescription || null,
           shortDescription: p.shortDescription || null,
           price: p.price,
+          costPrice: p.costPrice || 0,
           promoPrice: p.promoPrice,
           // Campos visuais usados pelo PCard.render
           imageUrl: p.imageUrl || null,
