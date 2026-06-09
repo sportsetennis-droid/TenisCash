@@ -1694,6 +1694,7 @@ function renderSellResults() {
 
 // Clique no card (Vender) adiciona ao carrinho — acha o produto no resultado da busca.
 let _pendingBarcode = null; // código bipado mas NÃO reconhecido, aguardando o vendedor achar o produto
+let _saleIdemKey = null;    // chave única do carrinho atual (anti-duplicação de venda no re-clique)
 
 // Bipe na venda: identifica produto + tamanho pelo código de barras (lookup, sem mexer estoque).
 async function onSellBipe() {
@@ -1894,6 +1895,7 @@ document.addEventListener('input', e => { if (e.target.id === 'sellTcUsed') upda
 
 async function finalizeSale() {
   if (!cart.length) return;
+  if (!_saleIdemKey) _saleIdemKey = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('k' + Date.now() + Math.random().toString(36).slice(2));
   const vendorId = document.getElementById('sellVendor').value; // opcional: sem vendedor a venda fecha mesmo assim
   // Cartão/PIX passam na maquininha externa: dados fiscais OBRIGATÓRIOS pra emitir o cupom.
   // Sem adquirente + código (Auth/NSU/ID do comprovante) a venda NÃO finaliza (SEFAZ-PB).
@@ -1928,6 +1930,7 @@ async function finalizeSale() {
         discount: getDiscountRS(),
         storeId: activeStore?.id,
         vendorId,
+        idemKey: _saleIdemKey,
         ...cardData,
       }),
     });
@@ -1940,7 +1943,7 @@ async function finalizeSale() {
       // PIX-QR: mostra o QR grande pro cliente; o cupom sai sozinho no pagamento (webhook).
       showPixQr(r.saleId || r.id, fiscal);
       status.innerHTML = '<strong style="color:#0a843d">⏳ PIX gerado — aguardando pagamento</strong>';
-      cart = []; customer = null;
+      cart = []; customer = null; _saleIdemKey = null;
       document.getElementById('sellCustomerPhone').value = '';
       document.getElementById('sellCustomerInfo').innerHTML = '';
       document.getElementById('sellTcUsed').value = 0;
@@ -1962,20 +1965,21 @@ async function finalizeSale() {
       </div>`;
       // Auto-abre janela de impressão (operador só confirma)
       setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 500);
-      // Limpa carrinho automaticamente — venda completa
-      cart = []; customer = null;
-      document.getElementById('sellCustomerPhone').value = '';
-      document.getElementById('sellCustomerInfo').innerHTML = '';
-      document.getElementById('sellTcUsed').value = 0;
-      document.getElementById('sellDiscount').value = 0;
-      document.getElementById('sellSearchInput').value = '';
-      document.getElementById('sellSearchResults').innerHTML = '';
-      renderCart();
     } else if (fiscal?.skipped) {
       status.innerHTML = '<strong style="color:#b06b00">⚠ ' + (fiscal.reason || 'Emissão pulada') + '</strong>';
     } else if (fiscal && !fiscal.ok) {
       status.innerHTML = '<strong style="color:#d70015">❌ NFCe rejeitada: ' + (fiscal.error || 'erro') + '</strong>';
     }
+    // Venda REGISTRADA (qualquer forma de pagamento, com ou sem cupom) → LIMPA o carrinho SEMPRE.
+    // Antes só limpava quando o cupom autorizava; em dinheiro/cupom-pulado o carrinho ficava e o re-clique duplicava.
+    cart = []; customer = null; _saleIdemKey = null;
+    document.getElementById('sellCustomerPhone').value = '';
+    document.getElementById('sellCustomerInfo').innerHTML = '';
+    document.getElementById('sellTcUsed').value = 0;
+    document.getElementById('sellDiscount').value = 0;
+    document.getElementById('sellSearchInput').value = '';
+    document.getElementById('sellSearchResults').innerHTML = '';
+    renderCart();
     const summary = `✓ Venda registrada! Total: ${fmt(r.totalAmount)} | Cashback: ${fmt(r.tcEarned)} | Comissões: ${r.commissionsCreated}`;
     document.getElementById('sellSummary').insertAdjacentHTML('afterbegin',
       `<div style="background:#e8f7ee;color:#0a843d;padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;font-weight:600;">${summary}</div>`);

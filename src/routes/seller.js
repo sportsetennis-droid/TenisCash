@@ -472,6 +472,8 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
 // =====================================================================
 // REGISTRAR VENDA — vendedor fecha venda + cliente ganha cashback
 // =====================================================================
+// Dedup de venda por chave de idempotência (anti duplo-clique / re-envio do mesmo carrinho). TTL 15min, em memória.
+const _recentSaleKeys = new Map();
 router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const operatorId = req.userId; // quem operou o PDV (loja ou vendedor)
@@ -479,6 +481,20 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos 1 item' });
+    }
+
+    // ANTI-DUPLICAÇÃO: se o MESMO carrinho (idemKey) já virou venda há <15min, devolve a existente
+    // em vez de criar outra. Cobre duplo-clique e re-clique quando o operador acha que "não foi".
+    const idemKey = req.body.idemKey ? String(req.body.idemKey).slice(0, 80) : null;
+    if (idemKey) {
+      const prev = _recentSaleKeys.get(idemKey);
+      if (prev && Date.now() - prev.at < 15 * 60 * 1000) {
+        const existing = await prisma.sale.findUnique({ where: { id: prev.saleId } }).catch(() => null);
+        if (existing) {
+          console.log('[sale] DUPLICATA BLOQUEADA (idemKey)', idemKey, '->', existing.id);
+          return res.json({ ok: true, saleId: existing.id, id: existing.id, totalAmount: existing.totalAmount, tcEarned: existing.tcEarned, commissionsCreated: 0, duplicate: true });
+        }
+      }
     }
 
     const operator = await prisma.user.findUnique({
@@ -657,6 +673,12 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
       return { sale, commissionsCount: commissionsData.length };
     });
+
+    // Registra a chave de idempotência (bloqueia duplicação no re-clique do mesmo carrinho)
+    if (idemKey) {
+      _recentSaleKeys.set(idemKey, { saleId: result.sale.id, at: Date.now() });
+      if (_recentSaleKeys.size > 2000) { const cut = Date.now() - 15 * 60 * 1000; for (const [k, v] of _recentSaleKeys) if (v.at < cut) _recentSaleKeys.delete(k); }
+    }
 
     // ===== Vincula códigos de barras ÓRFÃOS bipados (fora da transação — não derruba a venda) =====
     // NÃO mexe no comprado (stock=0 no tamanho novo); só ensina o sistema a reconhecer o código.
