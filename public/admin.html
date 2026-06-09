@@ -10331,32 +10331,29 @@ let _catTreeData = null;
 const _catTreeExpanded = new Set();
 let _catClassifyProducts = [];
 let _catClassifySelected = new Set();
-let _invSelected = new Set();      // seleção da aba Estoque
-let _invFilteredList = [];         // produtos filtrados atualmente na aba Estoque
 let _catTreeFlat = []; // árvore flatten pra populating selects
 
-// ===== Totais Compra/Venda dos selecionados (Estoque + Categoria) =====
-// Quantidade = COMPRADO (p.totalStock = total da NF-e). Valor compra = custo×qtd; venda = preço×qtd.
-function _calcStockTotals(selectedSet, allProducts) {
-  const map = new Map((allProducts || []).map(p => [p.id, p]));
-  let compra = 0, venda = 0, qtd = 0, semCusto = 0;
-  selectedSet.forEach(id => {
-    const p = map.get(id);
-    if (!p) return;
+// ===== Totais Compra/Venda do FILTRO (Estoque + Categoria) — soma AUTOMÁTICA do que está filtrado =====
+// Sem precisar selecionar: escolheu marca/categoria/etc → soma todo o conjunto filtrado.
+// Quantidade = COMPRADO (p.totalStock = total da NF-e). Compra = custo×qtd; Venda = preço×qtd.
+function _calcStockTotals(products) {
+  let compra = 0, venda = 0, qtd = 0, semCusto = 0, n = 0;
+  (products || []).forEach(p => {
+    n++;
     const q = Number(p.totalStock || 0);
     qtd += q;
     venda += Number(p.price || 0) * q;
     const c = Number(p.costPrice || 0);
     if (c > 0) compra += c * q; else if (q > 0) semCusto++;
   });
-  return { compra, venda, qtd, semCusto, n: selectedSet.size };
+  return { compra, venda, qtd, semCusto, n };
 }
 function _fmtMoney(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function _fmtStockTotals(t) {
-  if (!t.n) return '<span style="color:#8e8e93;font-weight:400;">Selecione produtos pra ver compra/venda</span>';
-  const margem = t.compra > 0 ? ' · 📈 Margem: ' + _fmtMoney(t.venda - t.compra) : '';
-  const aviso = t.semCusto ? ` <span style="color:#b06b00;font-weight:400;">(${t.semCusto} sem custo)</span>` : '';
-  return `🛒 Compra: <span style="color:#0a55c4;">${_fmtMoney(t.compra)}</span> · 💰 Venda: <span style="color:#0a843d;">${_fmtMoney(t.venda)}</span>${margem} <span style="color:#8e8e93;font-weight:400;">· ${t.qtd} un comprado</span>${aviso}`;
+  if (!t.n) return '<span style="color:#8e8e93;font-weight:400;">Nenhum produto no filtro</span>';
+  const margem = t.compra > 0 ? ' · 📈 Margem ' + _fmtMoney(t.venda - t.compra) : '';
+  const aviso = t.semCusto ? ` <span style="color:#b06b00;font-weight:400;">(${t.semCusto} sem custo cadastrado)</span>` : '';
+  return `<span style="color:#8e8e93;font-weight:400;">Filtro atual (${t.n} prod):</span> 🛒 Compra <span style="color:#0a55c4;">${_fmtMoney(t.compra)}</span> · 💰 Venda <span style="color:#0a843d;">${_fmtMoney(t.venda)}</span>${margem} <span style="color:#8e8e93;font-weight:400;">· ${t.qtd} un</span>${aviso}`;
 }
 
 async function initCategoriesTab() {
@@ -10664,10 +10661,11 @@ function renderCatClassifyGrid() {
   });
 }
 function _catClassifyUpdateStats() {
+  const filtered = _filteredCatProducts();
   const stats = document.getElementById('cat-classify-stats');
-  if (stats) stats.textContent = _filteredCatProducts().length + ' produtos visíveis · ' + _catClassifySelected.size + ' selecionados (de ' + _catClassifyProducts.length + ' total)';
+  if (stats) stats.textContent = filtered.length + ' produtos visíveis · ' + _catClassifySelected.size + ' selecionados (de ' + _catClassifyProducts.length + ' total)';
   const totals = document.getElementById('cat-classify-totals');
-  if (totals) totals.innerHTML = _fmtStockTotals(_calcStockTotals(_catClassifySelected, _catClassifyProducts));
+  if (totals) totals.innerHTML = _fmtStockTotals(_calcStockTotals(filtered));
 }
 
 function _catChildrenOf(parentId) {
@@ -11469,37 +11467,18 @@ async function loadInvProducts(opts) {
 
   const TOTAL = list.length;
   const CHUNK = 60;
-  // Reseta a seleção pro conjunto filtrado atual e guarda pra calcular os totais.
-  _invSelected.clear();
-  _invFilteredList = list;
-  // Cabeçalho: contador + totais (Compra/Venda dos selecionados) + botões de seleção
+  // Cabeçalho: contador + TOTAL do filtro (Compra/Venda) — soma automática do conjunto filtrado.
   const headerHtml = `
-    <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
-      <div style="display:flex;flex-direction:column;gap:4px;">
-        <div style="font-size:12px;color:#8e8e93;"><strong>${TOTAL}</strong> produto${TOTAL===1?'':'s'} encontrado${TOTAL===1?'':'s'}<span id="inv-loading-tail" style="margin-left:8px;color:#E5571E;"></span></div>
-        <div id="inv-totals" style="font-size:13px;font-weight:700;"></div>
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button id="inv-select-visible" class="btn">Selecionar visíveis</button>
-        <button id="inv-clear-sel" class="btn">Limpar seleção</button>
-      </div>
+    <div style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px;">
+      <div style="font-size:12px;color:#8e8e93;"><strong>${TOTAL}</strong> produto${TOTAL===1?'':'s'} encontrado${TOTAL===1?'':'s'}<span id="inv-loading-tail" style="margin-left:8px;color:#E5571E;"></span></div>
+      <div id="inv-totals" style="font-size:13px;font-weight:700;"></div>
     </div>`;
   // Container do grid
   wrap.innerHTML = headerHtml + '<div id="inv-grid-host" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;"></div>';
   const host = document.getElementById('inv-grid-host');
   const tail = document.getElementById('inv-loading-tail');
-  const invTotals = () => { const el = document.getElementById('inv-totals'); if (el) el.innerHTML = _fmtStockTotals(_calcStockTotals(_invSelected, _invFilteredList)); };
-  invTotals();
-  document.getElementById('inv-select-visible').onclick = () => {
-    _invFilteredList.forEach(p => _invSelected.add(p.id));
-    host.querySelectorAll('input[data-iid]').forEach(cb => { cb.checked = true; const c = cb.closest('[data-inv-card]'); if (c) { c.style.outline = '3px solid #E5571E'; c.style.borderRadius = '14px'; } });
-    invTotals();
-  };
-  document.getElementById('inv-clear-sel').onclick = () => {
-    _invSelected.clear();
-    host.querySelectorAll('input[data-iid]').forEach(cb => { cb.checked = false; const c = cb.closest('[data-inv-card]'); if (c) { c.style.outline = ''; c.style.borderRadius = ''; } });
-    invTotals();
-  };
+  // Total do filtro: soma a LISTA filtrada inteira (não só os cards renderizados em chunk).
+  { const el = document.getElementById('inv-totals'); if (el) el.innerHTML = _fmtStockTotals(_calcStockTotals(list)); }
 
   const injectBadge = (p) => {
     const lc = p.lifecycle?.lifecycleStatus;
@@ -11529,29 +11508,6 @@ async function loadInvProducts(opts) {
     body.appendChild(box);
   };
 
-  // Checkbox de seleção em cada card (alimenta os totais Compra/Venda)
-  const injectSelect = (p) => {
-    const card = document.getElementById('pcrsl-' + p.id)?.parentElement;
-    if (!card) return;
-    card.setAttribute('data-inv-card', p.id);
-    card.style.position = 'relative';
-    const sel = _invSelected.has(p.id);
-    if (sel) { card.style.outline = '3px solid #E5571E'; card.style.borderRadius = '14px'; }
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.dataset.iid = p.id;
-    cb.checked = sel;
-    cb.style.cssText = 'position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:5;background:#fff;';
-    cb.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (cb.checked) _invSelected.add(p.id); else _invSelected.delete(p.id);
-      card.style.outline = cb.checked ? '3px solid #E5571E' : '';
-      card.style.borderRadius = cb.checked ? '14px' : '';
-      invTotals();
-    });
-    card.appendChild(cb);
-  };
-
   let cursor = 0;
   function renderChunk() {
     const slice = list.slice(cursor, cursor + CHUNK);
@@ -11566,7 +11522,6 @@ async function loadInvProducts(opts) {
     }
     slice.forEach(injectBadge);
     slice.forEach(injectNs);
-    slice.forEach(injectSelect);
     cursor += slice.length;
     if (cursor < TOTAL) {
       tail.textContent = `· carregando ${cursor}/${TOTAL}…`;
