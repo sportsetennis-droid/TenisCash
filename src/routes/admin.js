@@ -3,7 +3,12 @@ const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+// /api/admin/fiscal tem guard PROPRIO (caixa store/seller pode emitir/imprimir cupom) —
+// nao aplica o adminMiddleware blanket aqui; deixa cair pro mount /api/admin/fiscal.
+router.use((req, res, next) => {
+  if (req.path === '/fiscal' || req.path.startsWith('/fiscal/')) return next();
+  return adminMiddleware(req, res, next);
+});
 
 function recifeDayBoundsFromDate(dateYYYYMMDD) {
   const [yStr, mStr, dStr] = String(dateYYYYMMDD || '').split('-');

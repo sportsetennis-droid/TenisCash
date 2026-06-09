@@ -1844,7 +1844,8 @@ async function finalizeSale() {
       return;
     }
     if (fiscal?.ok && fiscal.accessKey) {
-      // 🎉 EMITIDA AUTOMATICAMENTE
+      // 🎉 EMITIDA AUTOMATICAMENTE — esconde o botão manual (redundante; só confundia o caixa)
+      const _emitBtn = document.getElementById('sellEmitNfce'); if (_emitBtn) _emitBtn.style.display = 'none';
       status.innerHTML = '<strong style="color:#0a843d">✅ NFCe AUTORIZADA automaticamente</strong>';
       result.innerHTML = `<div style="background:white;padding:10px;border-radius:8px;border:2px solid #0a843d;">
         <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ ${fiscal.accessKey ? fiscal.accessKey.slice(-12) : ''}</div>

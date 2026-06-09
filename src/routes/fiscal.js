@@ -13,6 +13,20 @@ const fiscal = require('../services/fiscalApi');
 const router = express.Router();
 router.use(authMiddleware);
 
+// Guard de papel: admin/superadmin/manager acessam tudo. O CAIXA (role store/seller),
+// que opera o PDV (loja.html), só pode emitir o cupom da venda e imprimir o DANFE.
+// Cancelar, CCe (correção), emissão avulsa e mexer em issuer continuam SÓ admin.
+const CAIXA_FISCAL_OK = [
+  ['POST', /^\/emit-nfce-from-sale\/?$/],
+  ['GET', /^\/documents\/[^/]+\/print\/?$/],
+  ['GET', /^\/documents\/[^/]+\/danfe\/?$/],
+];
+router.use((req, res, next) => {
+  if (['admin', 'superadmin', 'manager'].includes(req.userRole)) return next();
+  if (['seller', 'store'].includes(req.userRole) && CAIXA_FISCAL_OK.some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  return res.status(403).json({ error: 'Acesso restrito a administradores' });
+});
+
 // Dynamic import do módulo ESM fiscalSefazDirect (Node permite via import())
 let _sefazDirect = null;
 async function getSefazDirect() {
