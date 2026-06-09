@@ -599,12 +599,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           if (!current) continue; // não havia estoque dessa loja → nada a baixar
           const newStock = Math.max(0, current.stock - it.quantity);
           await tx.storeStock.update({ where: { id: current.id }, data: { stock: newStock } });
-          // Mantém o agregado ProductSize.stock = soma das lojas
-          const agg = await tx.storeStock.aggregate({
-            where: { productSizeId: ps.id },
-            _sum: { stock: true },
-          });
-          await tx.productSize.update({ where: { id: ps.id }, data: { stock: agg._sum.stock || 0 } });
+          // NÃO mexe em ProductSize.stock (= COMPRADO, total FIXO da NFe de entrada).
+          // Regra inquebrável do dono (2026-06-02): o comprado NUNCA é recalculado a partir
+          // do StoreStock. A venda baixa SÓ o estoque físico da loja (localização).
         }
       }
 
