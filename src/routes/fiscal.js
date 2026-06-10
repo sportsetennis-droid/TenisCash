@@ -109,6 +109,13 @@ async function emitNfceFromSaleHandler(req, res) {
     if (!issuer || !issuer.active) return res.status(400).json({ error: 'Loja sem emissor fiscal vinculado' });
     if (!issuer.csc) return res.status(400).json({ error: 'Emissor ' + issuer.fantasyName + ' sem CSC cadastrado — gere no portal SEFAZ-PB primeiro' });
 
+    // NSU ÚNICO: um código de comprovante (cartão/PIX) só pode gerar UM cupom (1 transação = 1 nota).
+    if (cardAuthCode && String(cardAuthCode).trim() && String(cardAuthCode).trim() !== '000000') {
+      const _nsu = String(cardAuthCode).trim();
+      const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, saleId: { not: sale.id } } });
+      if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number + '. Cada transação de cartão/PIX gera UM cupom — passe de novo na maquininha pra um código novo.' });
+    }
+
     // PFX só é necessário se a loja NÃO usa fiscal agent (agente tem PFX local)
     let pfxPath = null, pfxSenha = null;
     const willUseAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl;

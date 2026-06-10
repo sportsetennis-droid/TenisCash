@@ -752,8 +752,13 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         // IDEMPOTÊNCIA — não auto-emite se a venda já tem cupom (autorizado ou em andamento).
         // Evita dupla emissão quando o auto-emit e a rota manual disparam pra mesma venda (bug LOJA03 2026-06-04).
         const existingNfce = await prisma.fiscalDocument.findFirst({ where: { saleId: result.sale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
+        // NSU ÚNICO: um código de comprovante (cartão/PIX) só pode gerar UM cupom (1 transação = 1 nota).
+        const _nsu = req.body.cardAuthCode ? String(req.body.cardAuthCode).trim() : '';
+        const _nsuDup = (_nsu && _nsu !== '000000') ? await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, saleId: { not: result.sale.id } } }) : null;
         if (existingNfce) {
           fiscalResult = { ok: existingNfce.status === 'authorized', alreadyEmitted: true, number: existingNfce.number, message: 'Venda já tem cupom #' + existingNfce.number };
+        } else if (_nsuDup) {
+          fiscalResult = { ok: false, error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number + '. Cada transação de cartão/PIX gera UM cupom — passe de novo na maquininha pra um código novo.' };
         } else if ((!isCard && !isPixManual) || req.body.cardAuthCode) {
           // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
           const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
