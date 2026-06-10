@@ -15,7 +15,9 @@ router.get('/', async (req, res) => {
   try {
     const { search, active } = req.query;
     const where = {
-      ...(active != null ? { active: active === 'true' } : {}),
+      // Default: lista só ATIVOS (esconde inativos/soft-deletados, ex grupo próprio cadastrado por engano).
+      // ?active=false pra ver os inativos explicitamente.
+      active: active != null ? active === 'true' : true,
       ...(search
         ? {
             OR: [
