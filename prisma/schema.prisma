@@ -1660,6 +1660,72 @@ model NuvemshopCustomerMapping {
 }
 
 // ============================================================
+// TIKTOK SHOP (Partner API v202309)
+// ============================================================
+
+model TiktokShopConnection {
+  id                   String    @id @default(cuid())
+  shopId               String    @unique
+  shopCipher           String?
+  shopName             String?
+  region               String?
+  sellerName           String?
+  openId               String?
+  accessToken          String
+  refreshToken         String
+  accessTokenExpireAt  DateTime?
+  refreshTokenExpireAt DateTime?
+  scope                String?
+  status               String    @default("active") // active | revoked | error
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model TiktokShopProductMapping {
+  id              String   @id @default(cuid())
+  localProductId  String   @unique
+  tiktokProductId String
+  syncStatus      String   @default("synced")
+  lastSyncedAt    DateTime @default(now())
+
+  @@index([tiktokProductId])
+}
+
+model TiktokShopVariantMapping {
+  id               String   @id @default(cuid())
+  localInventoryId String   @unique
+  localProductId   String
+  tiktokProductId  String
+  tiktokSkuId      String
+  sellerSku        String?
+  barcode          String?
+  lastSyncedAt     DateTime @default(now())
+
+  @@index([tiktokSkuId])
+  @@index([localProductId])
+}
+
+model TiktokShopOrderMapping {
+  id            String   @id @default(cuid())
+  saleId        String?  @unique
+  tiktokOrderId String   @unique
+  payload       Json?
+  createdAt     DateTime @default(now())
+}
+
+model TiktokShopSyncLog {
+  id        String   @id @default(cuid())
+  type      String // export | webhook | oauth
+  entity    String // product | order | category | connection
+  status    String // ok | error
+  message   String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, createdAt])
+}
+
+// ============================================================
 // AI / Regras de Recomendação operacional
 // ============================================================
 
