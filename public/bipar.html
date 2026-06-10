@@ -63,6 +63,27 @@
   .item .del { background: none; border: none; color: #d70015; cursor: pointer; font-size: 16px; padding: 0 4px; }
   .empty { padding: 30px 20px; text-align: center; color: #888; font-size: 14px; }
 
+  /* ===== Modal TAMANHO (regra Adidas) — bottom-sheet mobile-first ===== */
+  #size-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 99999; display: flex; align-items: flex-end; justify-content: center; }
+  .size-sheet { background: #fff; border-radius: 18px 18px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); width: 100%; max-width: 480px; box-shadow: 0 -8px 40px rgba(0,0,0,0.35); }
+  .size-sheet .ss-title { font-size: 19px; font-weight: 800; color: #1d1d1f; }
+  .size-sheet .ss-sub { font-size: 13px; color: #8e8e93; margin: 4px 0 12px; }
+  .size-sheet .ss-prod { display: flex; align-items: center; gap: 10px; background: #fff4ee; border: 1.5px solid #E5571E; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+  .size-sheet .ss-prod img { width: 44px; height: 52px; object-fit: cover; border-radius: 6px; background: #eee; }
+  .size-sheet .ss-prod .nm { font-size: 13px; font-weight: 700; line-height: 1.25; }
+  .size-sheet .ss-prod .cd { font-size: 11px; font-family: 'SF Mono', Monaco, monospace; color: #777; margin-top: 2px; }
+  .size-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .size-grid button { min-height: 50px; font-size: 18px; font-weight: 800; border: 1.5px solid #d2d2d7; border-radius: 10px; background: #fff; cursor: pointer; color: #1d1d1f; }
+  .size-grid button:active { background: #E5571E; color: #fff; border-color: #E5571E; }
+  .size-other-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  #size-other { flex: 1; min-width: 0; padding: 14px; font-size: 18px; font-family: 'SF Mono', Monaco, monospace; border: 1.5px solid #d2d2d7; border-radius: 10px; text-align: center; }
+  #size-other:focus { border-color: #E5571E; outline: none; }
+  #size-other-ok { padding: 14px 18px; min-height: 50px; background: #25d366; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+  #size-skip { width: 100%; min-height: 46px; background: #f0f0f3; color: #8e8e93; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  #size-error { display: none; background: #fee; color: #d70015; font-size: 13px; font-weight: 600; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; }
+  .size-warn { font-size: 12px; color: #b06b00; background: #fff8e0; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  .item .needs-size { background: #E5571E; color: #fff; border: none; border-radius: 6px; font-size: 11px; font-weight: 800; padding: 5px 9px; cursor: pointer; white-space: nowrap; }
+
   @media (max-width: 600px) {
     body { padding: 10px; }
     .setup-row { grid-template-columns: 1fr; }
@@ -365,7 +386,13 @@
           // sucesso: atualiza o bipe local existente
           const local = bipes.find(b => b._pending && b.clientScanId === item.clientScanId);
           if (local) {
-            try { const d = await r.json(); Object.assign(local, d); delete local._pending; } catch {}
+            try {
+              const d = await r.json();
+              Object.assign(local, d);
+              delete local._pending;
+              // Regra Adidas: retry confirmou e o tamanho está pendente → pede o número da caixa
+              if (d.needsSize && d.bipeId) queueSizeRequest(local);
+            } catch {}
           }
         } catch (e) { remaining.push(item); }
       }
@@ -435,6 +462,8 @@
       renderLast(localBipe);
       renderLista();
       renderStats();
+      // Regra Adidas: tamanho pendente → pede o número da caixa
+      if (d.needsSize && d.bipeId) queueSizeRequest(localBipe);
     } catch (e) {
       // Erro de rede, timeout ou 5xx — bipe FICA na fila, retry vai pegar
       console.warn('[bipe] enviarBipe falhou, mantém na fila pra retry:', e.message);
@@ -487,12 +516,15 @@
       const realIdx = bipes.length - 1 - idx;
       const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cls = b.found ? '' : 'not-found';
+      const tamTxt = b.needsSize ? ' · 📏 SEM TAMANHO' : (b.product?.size ? ' · Tam ' + b.product.size : '');
+      const tamBtn = b.needsSize ? `<button class="needs-size" onclick="reabrirTamanho(${realIdx})">📏 TAM</button>` : '';
       return `<div class="item ${cls}">
         <span class="ts">${hora}</span>
         <span class="info">
           <div class="name">${b.found && b.product ? b.product.name : '❌ Não encontrado'}</div>
-          <div class="code">${b.code}${b.product?.size ? ' · Tam ' + b.product.size : ''}</div>
+          <div class="code">${b.code}${tamTxt}</div>
         </span>
+        ${tamBtn}
         <button class="del" onclick="removerBipe(${realIdx})" title="Remover da tela">✕</button>
       </div>`;
     }).join('');
@@ -700,6 +732,108 @@
     setTimeout(() => document.getElementById('codigo')?.focus(), 100);
   };
 
+  // ============================================================
+  // TAMANHO MANUAL — REGRA ADIDAS (dono 2026-06-10)
+  // A Adidas NÃO informa o tamanho no código de barras (NFe sem
+  // de-para código→tamanho). Ao bipar Adidas com tamanho pendente,
+  // o sistema PEDE o tamanho lido na CAIXA física. 1 código = 1
+  // tamanho: confirmou uma vez, os próximos bipes já vêm certos.
+  // ============================================================
+  let sizeQueue = [];
+  let sizeModalBipe = null; // bipe local em edição no modal
+
+  function queueSizeRequest(localBipe) {
+    localBipe.needsSize = true;
+    if (!sizeQueue.includes(localBipe)) sizeQueue.push(localBipe);
+    renderLista();
+    if (!sizeModalBipe) showNextSizeModal();
+  }
+
+  function showNextSizeModal() {
+    document.getElementById('size-overlay')?.remove();
+    sizeModalBipe = sizeQueue.shift() || null;
+    if (!sizeModalBipe) {
+      // fila vazia → devolve o foco pro campo de bipe
+      const i = document.getElementById('codigo');
+      if (i && !i.disabled) setTimeout(() => i.focus(), 50);
+      return;
+    }
+    const b = sizeModalBipe;
+    const nome = b.product?.name || 'Produto Adidas';
+    const img = b.product?.imageUrl ? `<img src="${b.product.imageUrl}" onerror="this.style.display='none'">` : '';
+    const grade = ['34','35','36','37','38','39','40','41','42','43','44','45']
+      .map(t => `<button type="button" onclick="confirmarTamanho('${t}')">${t}</button>`).join('');
+    const overlay = document.createElement('div');
+    overlay.id = 'size-overlay';
+    overlay.innerHTML = `
+      <div class="size-sheet">
+        <div class="ss-title">📏 Qual o tamanho?</div>
+        <div class="ss-sub">Produto ADIDAS — o código não traz o tamanho. Olhe o número na CAIXA / etiqueta.</div>
+        <div class="ss-prod">${img}<div><div class="nm">${nome}</div><div class="cd">${b.code || ''}</div></div></div>
+        <div id="size-error"></div>
+        <div class="size-grid">${grade}</div>
+        <div class="size-other-row">
+          <input id="size-other" type="text" maxlength="4" autocomplete="off" placeholder="Outro: 33, 38.5, M, 8A...">
+          <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
+        </div>
+        <div class="size-warn">⚠️ Informe o tamanho ANTES de bipar o próximo produto.</div>
+        <button type="button" id="size-skip" onclick="pularTamanho()">Pular — deixo o tamanho depois</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    const other = document.getElementById('size-other');
+    other.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); confirmarTamanhoOutro(); } });
+  }
+
+  function sizeModalError(msg) {
+    const el = document.getElementById('size-error');
+    if (el) { el.style.display = 'block'; el.textContent = msg; }
+  }
+
+  window.confirmarTamanhoOutro = function () {
+    const v = (document.getElementById('size-other')?.value || '').trim();
+    if (!v) { sizeModalError('Digite o tamanho ou toque num número.'); return; }
+    confirmarTamanho(v);
+  };
+
+  window.confirmarTamanho = async function (size) {
+    const b = sizeModalBipe;
+    if (!b || !b.bipeId) { showNextSizeModal(); return; }
+    try {
+      const r = await fetch('/api/stocktake/bipe/' + encodeURIComponent(b.bipeId) + '/size', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ size }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        sizeModalError(d.error || ('Erro HTTP ' + r.status));
+        return; // modal fica aberto pra corrigir
+      }
+      // sucesso (ou já estava confirmado): atualiza o bipe local
+      b.needsSize = false;
+      if (b.product) b.product.size = d.size || size;
+      renderLast(b);
+      renderLista();
+      showNextSizeModal();
+    } catch (e) {
+      sizeModalError('Sem rede — tente de novo em segundos.');
+    }
+  };
+
+  window.pularTamanho = function () {
+    const b = sizeModalBipe;
+    if (b) b.needsSize = true; // continua pendente: badge na lista + pede de novo no próximo bipe
+    renderLista();
+    showNextSizeModal();
+  };
+
+  // Reabrir o modal a partir do badge na lista
+  window.reabrirTamanho = function (idx) {
+    const b = bipes[idx];
+    if (!b || !b.bipeId) return;
+    queueSizeRequest(b);
+  };
+
   // Reset automático se ficar input parado >2s sem Enter (leitor enviou parcial e parou)
   setInterval(() => {
     if (input.value.length > 0 && Date.now() - lastKeyTime > 2000) {
@@ -718,6 +852,7 @@
   // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select
   // Não rouba foco de inputs (vendedor-manual) nem dropdowns.
   document.addEventListener('click', (e) => {
+    if (document.getElementById('size-overlay')) return; // modal de tamanho aberto — não rouba foco
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' ||
         e.target.tagName === 'OPTION' || e.target.tagName === 'INPUT' ||
         e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;

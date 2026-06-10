@@ -66,6 +66,50 @@ function barcodeVariants(code) {
   return [...out];
 }
 
+// ============================================================
+// TAMANHO MANUAL NO BIPE — regra Adidas (dono 2026-06-10)
+// A NFe da Adidas (ALPAR) NÃO traz o tamanho por código (cProd = o
+// próprio EAN, descrição só com a faixa "38/43"). O de-para
+// código→tamanho vem da CAIXA física. Então: ao bipar produto ADIDAS
+// cujo tamanho ainda é placeholder, a tela PEDE o tamanho manual.
+// ============================================================
+
+// Tamanho "placeholder" = ainda não confirmado pela caixa física.
+// Padrões: 'T-<EAN>' (desvinculo dos chutados), '?' (faixa na NFe), vazio.
+function isPlaceholderSize(size) {
+  const s = String(size || '').trim();
+  return !s || s === '?' || /^T-/i.test(s);
+}
+
+function isAdidas(brand) {
+  return String(brand || '').toUpperCase().includes('ADIDAS');
+}
+
+// needsSize = bipe de ADIDAS com tamanho pendente → frontend pede o número da caixa
+function needsManualSize(brand, size) {
+  return isAdidas(brand) && isPlaceholderSize(size);
+}
+
+// Normaliza/valida o tamanho digitado. Aceita:
+//   calçado: 15–50, meio tamanho com .5 (ex "38.5", "41")
+//   vestuário: PP P M G GG XG XGG EG EGG
+//   infantil por idade: 2A–16A (ex "8A", "14A")
+// Retorna null se não for plausível — NUNCA grava lixo.
+function normalizeManualSize(raw) {
+  let s = String(raw || '').trim().toUpperCase().replace(',', '.').replace(/\s+/g, '');
+  if (!s) return null;
+  if (/^\d{2}(\.5)?$/.test(s)) {
+    const n = parseFloat(s);
+    return n >= 15 && n <= 50 ? s : null;
+  }
+  if (/^(PP|P|M|G|GG|XG|XGG|EG|EGG)$/.test(s)) return s;
+  if (/^\d{1,2}A$/.test(s)) {
+    const n = parseInt(s, 10);
+    return n >= 2 && n <= 16 ? s : null;
+  }
+  return null;
+}
+
 // ============== PÚBLICOS ==============
 
 // GET /api/stocktake/stores → lojas ativas (dropdown)
@@ -143,6 +187,14 @@ router.post('/bipe', async (req, res) => {
         });
         if (existing) {
           console.log('[bipe] BIPE_DUPLICADO_IGNORADO', JSON.stringify({ bipeIdExistente: existing.id, clientScanId: csId }));
+          // Regra Adidas: checa o tamanho ATUAL do ProductSize (snapshot pode estar velho)
+          let needsSizeIdem = false;
+          if (existing.productSizeId && isAdidas(existing.productBrand)) {
+            try {
+              const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true } });
+              needsSizeIdem = psNow ? isPlaceholderSize(psNow.size) : false;
+            } catch (_) {}
+          }
           return res.json({
             success: true,
             bipeId: existing.id,
@@ -150,6 +202,7 @@ router.post('/bipe', async (req, res) => {
             found: existing.found,
             duplicate: existing.duplicate,
             idempotent: true,
+            needsSize: needsSizeIdem,
             product: existing.productName ? {
               name: existing.productName,
               brand: existing.productBrand,
@@ -302,6 +355,8 @@ router.post('/bipe', async (req, res) => {
       appliedToStock,
       found,
       duplicate,
+      // Regra Adidas (dono 2026-06-10): tamanho pendente → frontend pede o número da caixa
+      needsSize: chosen ? needsManualSize(chosen.product.brand, chosen.size) : false,
       product: chosen
         ? {
             name: chosen.product.name,
@@ -317,6 +372,53 @@ router.post('/bipe', async (req, res) => {
   } catch (err) {
     console.error('[bipe] BIPE_ERRO', JSON.stringify({ error: err.message }));
     res.status(500).json({ error: err.message, retry: true });
+  }
+});
+
+// POST /api/stocktake/bipe/:id/size (PÚBLICO) — vendedor informa o TAMANHO lido na CAIXA física.
+// Regra Adidas (dono 2026-06-10): a NFe não traz tamanho por código → ao bipar Adidas
+// com tamanho placeholder a tela pede o número da caixa. Aqui ele é gravado.
+// Proteções: só preenche PLACEHOLDER (nunca sobrescreve tamanho real já confirmado);
+// valida formato plausível; recusa tamanho que já existe noutro código do mesmo card.
+router.post('/bipe/:id/size', async (req, res) => {
+  try {
+    const size = normalizeManualSize(req.body?.size);
+    if (!size) {
+      return res.status(400).json({ error: 'Tamanho inválido. Use número (ex: 41, 38.5), letra (P, M, G, GG) ou idade (8A).' });
+    }
+    const bipe = await prisma.stocktakeBipe.findUnique({ where: { id: req.params.id } });
+    if (!bipe) return res.status(404).json({ error: 'Bipe não encontrado' });
+    if (!bipe.productSizeId) return res.status(400).json({ error: 'Bipe sem produto vinculado — bipe de novo' });
+
+    const ps = await prisma.productSize.findUnique({
+      where: { id: bipe.productSizeId },
+      select: { id: true, size: true, barcode: true, productId: true },
+    });
+    if (!ps) return res.status(404).json({ error: 'Tamanho do produto não existe mais' });
+
+    // Já confirmado antes (1 código = 1 tamanho, pra sempre). Não sobrescreve.
+    if (!isPlaceholderSize(ps.size)) {
+      return res.json({ ok: true, size: ps.size, alreadySet: true });
+    }
+
+    // Conflito: o MESMO card já tem esse tamanho noutro código → alguém leu errado. Não grava.
+    const clash = await prisma.productSize.findFirst({
+      where: { productId: ps.productId, size, NOT: { id: ps.id } },
+      select: { id: true, barcode: true },
+    });
+    if (clash) {
+      console.warn('[bipe] SIZE_CONFLITO', JSON.stringify({ bipeId: bipe.id, productId: ps.productId, size, barcodeNovo: ps.barcode, barcodeJaTem: clash.barcode }));
+      return res.status(409).json({ error: `O tamanho ${size} já está em outro código deste produto. Confira o número na caixa.`, conflict: true });
+    }
+
+    await prisma.productSize.update({ where: { id: ps.id }, data: { size } });
+    // Snapshot de TODOS os bipes desse código fica consistente na revisão do admin
+    await prisma.stocktakeBipe.updateMany({ where: { productSizeId: ps.id }, data: { productSize: size } });
+    console.log('[bipe] SIZE_MANUAL_GRAVADO', JSON.stringify({ bipeId: bipe.id, productSizeId: ps.id, barcode: ps.barcode, size }));
+    res.json({ ok: true, size });
+  } catch (e) {
+    console.error('[bipe] SIZE_MANUAL_ERRO', JSON.stringify({ error: e.message }));
+    res.status(500).json({ error: e.message });
   }
 });
 
