@@ -4,26 +4,60 @@
 // =====================================================================
 // O agente é stateless: o central manda issuer completo + nNF + items
 // no body. Agente assina com PFX local + envia pra SEFAZ + retorna.
+// Como TODO agente assina com o cert do grupo (CNPJ-raiz), qualquer
+// agente vivo serve qualquer loja → FAILOVER automático: se o agente
+// da loja não responder, a chamada sai pelo agente de outra loja.
 // =====================================================================
 
-const TIMEOUT_MS = 60000; // SEFAZ pode demorar; matriz já experimentou ~30s
+// Cinto-e-suspensorio: o agente tem budget de pior caso ~2x18s + backoff < 40s
+// (ver _sefazPost em fiscalSefazDirect.mjs). 90s aqui garante que o agente SEMPRE
+// termina e devolve {accessKey, xmlSigned, transmitError} antes do central abortar.
+const TIMEOUT_MS = 90000;
 
-async function callAgent(store, path, body) {
-  if (!store?.fiscalAgentEnabled) {
-    throw new Error('Store ' + store?.code + ' sem agent enabled');
+let _prisma = null;
+function getPrisma() {
+  if (!_prisma) {
+    const { PrismaClient } = require('@prisma/client');
+    _prisma = new PrismaClient();
   }
-  if (!store.fiscalAgentUrl || !store.fiscalAgentToken) {
-    throw new Error('Store ' + store.code + ' fiscalAgentUrl/Token não configurado');
+  return _prisma;
+}
+
+// Lista de agentes vivos cadastrados (1 por URL distinta), cache 60s.
+let _agentsCache = { at: 0, list: [] };
+async function listAgents() {
+  if (Date.now() - _agentsCache.at < 60000) return _agentsCache.list;
+  try {
+    const stores = await getPrisma().store.findMany({
+      where: { fiscalAgentEnabled: true, fiscalAgentUrl: { not: null }, fiscalAgentToken: { not: null } },
+      select: { code: true, fiscalAgentUrl: true, fiscalAgentToken: true },
+      orderBy: { code: 'asc' },
+    });
+    const seen = new Set();
+    const list = [];
+    for (const s of stores) {
+      const url = (s.fiscalAgentUrl || '').replace(/\/$/, '');
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      list.push({ code: s.code, url, token: s.fiscalAgentToken });
+    }
+    _agentsCache = { at: Date.now(), list };
+  } catch (err) {
+    // sem DB acessível segue só com o agente primário
+    console.error('[fiscalAgent] listAgents falhou:', err.message);
   }
-  const url = store.fiscalAgentUrl.replace(/\/$/, '') + path;
+  return _agentsCache.list;
+}
+
+async function postAgent(url, token, path, body) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch(url + path, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Agent-Token': store.fiscalAgentToken,
+        'X-Agent-Token': token,
       },
       body: JSON.stringify(body),
       signal: ctrl.signal,
@@ -39,6 +73,44 @@ async function callAgent(store, path, body) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Falha de TRANSPORTE (agente/funnel fora) = pode tentar outro agente.
+// Resposta de NEGÓCIO (SEFAZ respondeu, mesmo rejeitando) = NÃO troca de agente.
+// 'agent timeout' também NÃO troca: o pedido pode ter chegado na SEFAZ (evita duplicar).
+function isTransportFail(json) {
+  if (!json) return true;
+  if (json.ok) return false;
+  if (json.status) return false; // SEFAZ deu cStat — resposta definitiva
+  const e = String(json.error || '');
+  if (e === 'agent timeout') return false;
+  if (e.startsWith('agent unreachable')) return true;
+  if (e === 'invalid_json') return true; // funnel/edge devolveu HTML = sem backend
+  if (/^HTTP (401|403|5\d\d)/.test(e)) return true; // auth/funnel/edge — outro agente tem outro token
+  return false;
+}
+
+async function callAgent(store, path, body) {
+  if (!store?.fiscalAgentEnabled) {
+    throw new Error('Store ' + store?.code + ' sem agent enabled');
+  }
+  if (!store.fiscalAgentUrl || !store.fiscalAgentToken) {
+    throw new Error('Store ' + store.code + ' fiscalAgentUrl/Token não configurado');
+  }
+  const primaryUrl = store.fiscalAgentUrl.replace(/\/$/, '');
+
+  // 1) agente da própria loja
+  let result = await postAgent(primaryUrl, store.fiscalAgentToken, path, body);
+  if (!isTransportFail(result)) return result;
+
+  // 2) failover: outros agentes vivos (stateless — o issuer vai no body)
+  const others = (await listAgents()).filter(a => a.url !== primaryUrl);
+  for (const a of others) {
+    console.warn('[fiscalAgent] ' + store.code + ': agente primário indisponível (' + (result.error || '?') + ') — failover via ' + a.code + ' (' + path + ')');
+    result = await postAgent(a.url, a.token, path, body);
+    if (!isTransportFail(result)) return result;
+  }
+  return result; // todos fora — devolve o último erro
 }
 
 async function ping(store) {
