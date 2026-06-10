@@ -272,7 +272,11 @@ router.post('/bipe', async (req, res) => {
           orderBy: { createdAt: 'desc' },
         });
         if (nfeItem && nfeItem.product) {
-          const sizeStr = inferSizeFromDescription(nfeItem.description);
+          // ADIDAS: a NFe NUNCA traz o tamanho por código (levantamento 2026-06-09) —
+          // inferir da descrição dá lixo. Cria como placeholder → modal pede o da caixa.
+          const sizeStr = isAdidas(nfeItem.product.brand)
+            ? ('T-' + code)
+            : inferSizeFromDescription(nfeItem.description);
           try {
             const newSize = await prisma.productSize.create({
               data: { productId: nfeItem.productId, size: sizeStr, barcode: code, stock: 0 },
