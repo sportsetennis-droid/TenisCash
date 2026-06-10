@@ -10336,24 +10336,41 @@ let _catTreeFlat = []; // árvore flatten pra populating selects
 // ===== Totais Compra/Venda do FILTRO (Estoque + Categoria) — soma AUTOMÁTICA do que está filtrado =====
 // Sem precisar selecionar: escolheu marca/categoria/etc → soma todo o conjunto filtrado.
 // Quantidade = COMPRADO (p.totalStock = total da NF-e). Compra = custo×qtd; Venda = preço×qtd.
-function _calcStockTotals(products) {
+// Quantidade de um produto conforme a BASE escolhida:
+//  'comprado'   = total da NF-e (p.totalStock) — patrimônio comprado
+//  'localizado' = Σ StoreStock de TODAS as lojas (o que foi BIPADO/contado fisicamente)
+//  'loja'       = Σ StoreStock só da loja storeId (estoque daquela loja)
+function _stockQtyOf(p, mode, storeId) {
+  if (!mode || mode === 'comprado') return Number(p.totalStock || 0);
+  let q = 0;
+  (p.sizes || []).forEach(s => (s.storeStocks || []).forEach(ss => {
+    if (mode === 'loja') { if (ss.storeId === storeId) q += Number(ss.stock || 0); }
+    else q += Number(ss.stock || 0); // localizado = soma de todas as lojas
+  }));
+  return q;
+}
+function _calcStockTotals(products, mode, storeId) {
+  mode = mode || 'comprado';
   let compra = 0, venda = 0, qtd = 0, semCusto = 0, n = 0;
   (products || []).forEach(p => {
+    const q = _stockQtyOf(p, mode, storeId);
+    // Nas bases de localização (bipado/loja), só conta produto que TEM unidade ali — senão poluiria com zeros.
+    if (mode !== 'comprado' && q <= 0) return;
     n++;
-    const q = Number(p.totalStock || 0);
     qtd += q;
     venda += Number(p.price || 0) * q;
     const c = Number(p.costPrice || 0);
     if (c > 0) compra += c * q; else if (q > 0) semCusto++;
   });
-  return { compra, venda, qtd, semCusto, n };
+  return { compra, venda, qtd, semCusto, n, mode };
 }
 function _fmtMoney(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function _fmtStockTotals(t) {
-  if (!t.n) return '<span style="color:#8e8e93;font-weight:400;">Nenhum produto no filtro</span>';
+  const baseTxt = { comprado: 'comprado', localizado: '📍 bipado/localizado', loja: '📍 estoque da loja' }[t.mode || 'comprado'];
+  if (!t.n) return '<span style="color:#8e8e93;font-weight:400;">Nenhum produto' + ((t.mode && t.mode !== 'comprado') ? ' com ' + baseTxt : '') + ' no filtro</span>';
   const margem = t.compra > 0 ? ' · 📈 Margem ' + _fmtMoney(t.venda - t.compra) : '';
   const aviso = t.semCusto ? ` <span style="color:#b06b00;font-weight:400;">(${t.semCusto} sem custo cadastrado)</span>` : '';
-  return `<span style="color:#8e8e93;font-weight:400;">Filtro atual (${t.n} prod):</span> 🛒 Compra <span style="color:#0a55c4;">${_fmtMoney(t.compra)}</span> · 💰 Venda <span style="color:#0a843d;">${_fmtMoney(t.venda)}</span>${margem} <span style="color:#8e8e93;font-weight:400;">· ${t.qtd} un</span>${aviso}`;
+  return `<span style="color:#8e8e93;font-weight:400;">Filtro atual (${t.n} prod · ${baseTxt}):</span> 🛒 Compra <span style="color:#0a55c4;">${_fmtMoney(t.compra)}</span> · 💰 Venda <span style="color:#0a843d;">${_fmtMoney(t.venda)}</span>${margem} <span style="color:#8e8e93;font-weight:400;">· ${t.qtd} un</span>${aviso}`;
 }
 
 async function initCategoriesTab() {
@@ -10660,12 +10677,22 @@ function renderCatClassifyGrid() {
     });
   });
 }
+function _catStockMode() {
+  // Base do totalizador segue o filtro de localização ativo (decisão do dono):
+  //  loja selecionada → 'loja'; bipados(any/30/7) ou %localizado → 'localizado'; senão → 'comprado'.
+  const storeId = document.getElementById('cat-classify-store')?.value || '';
+  const biped = document.getElementById('cat-classify-biped')?.value || '';
+  const locpct = document.getElementById('cat-classify-locpct')?.value || '';
+  if (storeId) return { mode: 'loja', storeId };
+  if ((biped && biped !== 'never') || locpct) return { mode: 'localizado', storeId: '' };
+  return { mode: 'comprado', storeId: '' };
+}
 function _catClassifyUpdateStats() {
   const filtered = _filteredCatProducts();
   const stats = document.getElementById('cat-classify-stats');
   if (stats) stats.textContent = filtered.length + ' produtos visíveis · ' + _catClassifySelected.size + ' selecionados (de ' + _catClassifyProducts.length + ' total)';
   const totals = document.getElementById('cat-classify-totals');
-  if (totals) totals.innerHTML = _fmtStockTotals(_calcStockTotals(filtered));
+  if (totals) { const m = _catStockMode(); totals.innerHTML = _fmtStockTotals(_calcStockTotals(filtered, m.mode, m.storeId)); }
 }
 
 function _catChildrenOf(parentId) {
@@ -11478,7 +11505,14 @@ async function loadInvProducts(opts) {
   const host = document.getElementById('inv-grid-host');
   const tail = document.getElementById('inv-loading-tail');
   // Total do filtro: soma a LISTA filtrada inteira (não só os cards renderizados em chunk).
-  { const el = document.getElementById('inv-totals'); if (el) el.innerHTML = _fmtStockTotals(_calcStockTotals(list)); }
+  // Base segue o filtro de localização: loja → estoque da loja; bipados/%loc → localizado; senão → comprado.
+  {
+    const el = document.getElementById('inv-totals');
+    if (el) {
+      const invMode = storeId ? 'loja' : (((biped && biped !== 'never') || locpct) ? 'localizado' : 'comprado');
+      el.innerHTML = _fmtStockTotals(_calcStockTotals(list, invMode, storeId));
+    }
+  }
 
   const injectBadge = (p) => {
     const lc = p.lifecycle?.lifecycleStatus;
