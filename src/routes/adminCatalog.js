@@ -278,7 +278,7 @@ router.get('/products/:id/nfe-summary', adminOnly, async (req, res) => {
 
     // CNPJ → loja (pra mostrar pra que loja a NFe foi destinada)
     // FiscalIssuer.stores é PLURAL (1 CNPJ pode ter várias lojas físicas)
-    const cnpjs = [...new Set(entradas.map(e => e.fiscalDocument?.recipientCnpj).filter(Boolean))];
+    const cnpjs = [...new Set([...entradas, ...transferencias].map(e => e.fiscalDocument?.recipientCnpj).filter(Boolean))];
     const issuers = cnpjs.length ? await prisma.fiscalIssuer.findMany({
       where: { cnpj: { in: cnpjs } },
       select: { cnpj: true, stores: { select: { code: true, name: true } } },
