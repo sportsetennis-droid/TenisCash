@@ -389,6 +389,61 @@ router.get('/products/:id', adminOnly, async (req, res) => {
   }
 });
 
+// Lista as UNIDADES (bipes) de codigos SEM tamanho (placeholder T-) agrupadas por loja.
+router.get('/products/:id/unidades-sem-tamanho', adminOnly, async (req, res) => {
+  try {
+    const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, sizes: { select: { barcode: true, size: true } } } });
+    if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
+    const phBarcodes = p.sizes.filter((s) => s.barcode && /^T-/.test(String(s.size))).map((s) => s.barcode);
+    if (!phBarcodes.length) return res.json({ productName: p.name, lojas: [] });
+    const bipes = await prisma.stocktakeBipe.findMany({ where: { productId: p.id, barcode: { in: phBarcodes } }, select: { id: true, barcode: true, storeId: true, productSize: true, bipedAt: true }, orderBy: { bipedAt: 'asc' } });
+    const storeIds = [...new Set(bipes.map((b) => b.storeId).filter(Boolean))];
+    const stores = await prisma.store.findMany({ where: { id: { in: storeIds } }, select: { id: true, code: true, name: true } });
+    const sm = {}; for (const s of stores) sm[s.id] = s;
+    const byLoja = {};
+    for (const b of bipes) {
+      const st = sm[b.storeId] || { code: '?', name: '(sem loja)' };
+      byLoja[st.code] = byLoja[st.code] || { code: st.code, name: st.name, unidades: [] };
+      const tam = b.productSize && !/^T-/.test(String(b.productSize)) ? b.productSize : '';
+      byLoja[st.code].unidades.push({ bipeId: b.id, barcode: b.barcode, size: tam });
+    }
+    res.json({ productName: p.name, lojas: Object.values(byLoja).sort((a, b) => a.code.localeCompare(b.code)) });
+  } catch (err) {
+    console.error('[unidades-sem-tamanho]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Salva o tamanho de cada UNIDADE (bipe) em StocktakeBipe.productSize. Rollup: se todos os bipes de um codigo
+// tem o MESMO tamanho, grava no ProductSize (o card passa a mostrar o numero). Nunca chuta — so o que voce digitou.
+router.post('/products/:id/bipe-tamanhos', adminOnly, async (req, res) => {
+  try {
+    const sizes = Array.isArray(req.body && req.body.sizes) ? req.body.sizes : [];
+    let saved = 0;
+    for (const it of sizes) {
+      if (!it || !it.bipeId) continue;
+      const tam = String(it.size || '').trim().slice(0, 20);
+      await prisma.stocktakeBipe.update({ where: { id: String(it.bipeId) }, data: { productSize: tam || null } }).then(() => { saved++; }).catch(() => {});
+    }
+    const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true, sizes: { select: { id: true, barcode: true, size: true } } } });
+    const resolvidos = [];
+    for (const s of (p && p.sizes) || []) {
+      if (!s.barcode || !/^T-/.test(String(s.size))) continue;
+      const bps = await prisma.stocktakeBipe.findMany({ where: { productId: p.id, barcode: s.barcode }, select: { productSize: true } });
+      if (!bps.length) continue;
+      const tams = [...new Set(bps.map((b) => (b.productSize || '').trim()).filter(Boolean))];
+      const allFilled = bps.every((b) => (b.productSize || '').trim());
+      if (allFilled && tams.length === 1) {
+        try { await prisma.productSize.update({ where: { id: s.id }, data: { size: tams[0] } }); resolvidos.push({ barcode: s.barcode, size: tams[0] }); } catch (e) { /* conflito de tamanho unico no card — mantem placeholder */ }
+      }
+    }
+    res.json({ ok: true, saved, resolvidos });
+  } catch (err) {
+    console.error('[bipe-tamanhos]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/products', adminOnly, async (req, res) => {
   try {
     const search = String(req.query.search || '').trim();

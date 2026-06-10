@@ -592,12 +592,20 @@
         storesArr.forEach(code => {
           const info = byStore[code];
           const counts = {};
-          info.items.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
+          let semTam = 0;
+          info.items.forEach(s => {
+            if (/^T-/.test(String(s))) semTam++;            // codigo sem tamanho definido (ex Adidas): conta, mas NAO mostra o placeholder
+            else counts[s] = (counts[s] || 0) + 1;
+          });
           const sortedSizes = Object.keys(counts).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
-          const pillsHtml = sortedSizes.map(sz => {
+          let pillsHtml = sortedSizes.map(sz => {
             const qty = counts[sz];
             return `<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:white;border:2px solid ${info.color};border-radius:10px;font-size:14px;font-weight:800;color:#1d1d1f;">${esc(sz)}${qty > 1 ? `<span style="background:${info.color};color:white;padding:2px 7px;border-radius:7px;font-size:11px;font-weight:700;">×${qty}</span>` : ''}</span>`;
           }).join('');
+          // unidades SEM tamanho (Adidas etc.): mostra so a quantidade + botao pra definir o tamanho de cada bipe. NUNCA mostra o placeholder T-.
+          if (semTam > 0) {
+            pillsHtml += `<button type="button" onclick="event.stopPropagation();window.PCardDefinirTamanhos&&window.PCardDefinirTamanhos('${p.id}','${esc(code)}')" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#fff8e0;border:2px dashed #b06b00;border-radius:10px;font-size:13px;font-weight:800;color:#b06b00;cursor:pointer;">📏 ${semTam} un. sem tamanho — definir</button>`;
+          }
           html += `<div style="margin-bottom:10px;padding:10px;background:white;border-radius:8px;border-left:4px solid ${info.color};">`;
           html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">`;
           html += `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${info.color};flex-shrink:0;"></span>`;
@@ -680,6 +688,51 @@
     html += '</div>';
     return html;
   };
+
+  // Modal: definir o tamanho de CADA UNIDADE (bipe) de codigo sem tamanho (ex Adidas). Bottom-sheet mobile-first.
+  if (typeof window !== 'undefined') {
+    window.PCardDefinirTamanhos = async function (productId, storeCode) {
+      const token = localStorage.getItem('tc_admin_token') || '';
+      const old = document.getElementById('pcard-tam-modal'); if (old) old.remove();
+      const ov = document.createElement('div');
+      ov.id = 'pcard-tam-modal';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:flex-end;justify-content:center;';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = '<div style="background:#fff;width:100%;max-width:480px;max-height:88vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation()">'
+        + '<div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:15px;">📏 Definir tamanhos (1 por unidade)</b><button id="pcard-tam-x" style="border:none;background:#f0f0f3;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer;">×</button></div>'
+        + '<div id="pcard-tam-body" style="padding:14px 16px;overflow:auto;flex:1;color:#8e8e93;">Carregando…</div>'
+        + '<div style="padding:12px 16px;border-top:1px solid #eee;"><button id="pcard-tam-save" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;">Salvar tamanhos</button></div></div>';
+      document.body.appendChild(ov);
+      ov.querySelector('#pcard-tam-x').onclick = function () { ov.remove(); };
+      const body = ov.querySelector('#pcard-tam-body');
+      try {
+        const r = await fetch('/api/admin/catalog/products/' + productId + '/unidades-sem-tamanho', { headers: { Authorization: 'Bearer ' + token } });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'erro ao carregar');
+        let h = '';
+        (d.lojas || []).forEach(function (lj) {
+          h += '<div style="font-size:12px;font-weight:800;color:#E5571E;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px;">' + esc(lj.code) + ' · ' + esc(lj.name) + ' — ' + lj.unidades.length + ' un.</div>';
+          lj.unidades.forEach(function (u, i) {
+            h += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f3f3f5;"><span style="flex:1;font-size:12px;color:#555;">Unidade ' + (i + 1) + ' <span style="color:#aaa;">· cód ' + esc(u.barcode) + '</span></span><input data-bipe="' + esc(u.bipeId) + '" value="' + esc(u.size || '') + '" placeholder="tam" inputmode="numeric" style="width:74px;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;font-weight:700;text-align:center;outline:none;"></div>';
+          });
+        });
+        body.style.color = '#1d1d1f';
+        body.innerHTML = h || '<div style="text-align:center;padding:20px;color:#8e8e93;">Nenhuma unidade sem tamanho.</div>';
+      } catch (e) { body.innerHTML = '<div style="color:#d70015;padding:10px;">Erro: ' + esc(e.message) + '</div>'; }
+      ov.querySelector('#pcard-tam-save').onclick = async function () {
+        const btn = this; btn.disabled = true; btn.textContent = 'Salvando…';
+        const sizes = Array.prototype.slice.call(ov.querySelectorAll('input[data-bipe]')).map(function (inp) { return { bipeId: inp.getAttribute('data-bipe'), size: (inp.value || '').trim() }; }).filter(function (x) { return x.size; });
+        try {
+          const r = await fetch('/api/admin/catalog/products/' + productId + '/bipe-tamanhos', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ sizes: sizes }) });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'erro ao salvar');
+          ov.remove();
+          alert('✓ ' + d.saved + ' tamanho(s) salvo(s)' + (d.resolvidos && d.resolvidos.length ? ' · ' + d.resolvidos.length + ' código(s) já aparecem no card' : ''));
+          if (window.location && window.location.reload) window.location.reload();
+        } catch (e) { btn.disabled = false; btn.textContent = 'Salvar tamanhos'; alert('Erro: ' + e.message); }
+      };
+    };
+  }
 
   if (typeof window !== 'undefined') window.PCard = PCard;
   if (typeof module !== 'undefined' && module.exports) module.exports = PCard;

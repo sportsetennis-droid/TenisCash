@@ -15,6 +15,7 @@ Plataforma técnica: Node.js + Express + Prisma + PostgreSQL (Railway), CommonJS
 
 ## Regras globais — NUNCA VIOLAR
 
+- ⛔⛔ **NUNCA INVENTAR / ADIVINHAR / CHUTAR NENHUM DADO** — tamanho, cor, classificação, preço, gênero, modelo, QUALQUER campo. Se o dado não está **LITERAL na fonte** (NFe / caixa física / dado confirmado pelo dono), o campo fica **EM BRANCO / placeholder `T-<EAN>`** e é marcado pra conferência humana. **Adivinhar CORROMPE O ESTOQUE INTEIRO.** Na dúvida: **PARA e pergunta, não chuta.** (Erro grave 2026-06-09: chutei o tamanho de 829 códigos Adidas que a NFe não traz — só "38/43" pra todos → desvinculados. Dono: *"NUNCA MAIS ADIVINHE NADA. ISSO FOI UM PROBLEMA MUITO SÉRIO QUE VC CAUSOU."* O código (EAN) é a chave; o número do tamanho só vem da CAIXA.)
 - NUNCA enviar mensagem ao cliente sem aprovação humana (exceto `crm-whatsapp-agent` em modo rascunho)
 - NUNCA aprovar descontos > 15% sem `pricing-margin-agent` validar
 - NUNCA publicar conteúdo de marketing sem `safety-agent` revisar
@@ -495,6 +496,89 @@ O bipe e o ajuste por loja mexem **só no StoreStock**. O comprado (`ProductSize
 - Se BIPADO > COMPRADO → bipagem duplicada, dono identifica olhando
 
 Não há "desfazer bipe" automático. Se erro for detectado, dono deleta o bipe manual em `/bipes.html` e ajusta StoreStock manual.
+
+### ⛔ REGRA INQUEBRÁVEL — Bipe NÃO se apaga; CONFIRMA NA LOJA (dono 2026-06-09)
+
+**O mesmo código de barras PODE ser 2+ pés REAIS** (mesmo EAN = mesma cor+tamanho, várias unidades compradas). Logo **bipe "duplicado" NÃO é necessariamente erro**, e a IA **NUNCA apaga bipe automaticamente**. Quem apaga bipe = o DONO, manual, em `/bipes.html`.
+
+**CRITÉRIO ÚNICO (dono 2026-06-09): bipe repetido só é problema se `Σbipes(código) > COMPRADO(NFe)` daquele tamanho.**
+- `Σbipes ≤ comprado` → **OK**, são pés reais. O **timing NÃO importa** (2 bipes em 0,078s com comprado=2 está CERTO — eu errei achando que era double-trigger).
+- `Σbipes > comprado` → **SINALIZAR pra CONFERIR NA LOJA** (contagem física decide), nunca deletar.
+- Report: `scripts/sweep-dup-bipes.js` (read-only, lista os tamanhos bipado>comprado por produto/loja). 09/06: 179 tamanhos / 171 produtos / +270 bipes pra conferir.
+
+- ❌ **ERRO 2026-06-09 (origem):** rodei `sweep-dup-bipes.js --apply` e apaguei 473 bipes "duplicados" (gap ≤1s) do catálogo + 2 do Megaride (JH7925), achando que eram double-trigger do leitor. O dono: *"pode haver o mesmo bip igual, então não podemos excluir o bip e sim confirmar na loja."* Restaurei tudo com `restore-deleted-bipes.js` (473 bipes + 313 StoreStock). `sweep-dup-bipes.js` foi **neutralizado** (`APPLY=false` fixo) → vira só **relatório de conferência**, nunca apaga.
+- **Distinguir 2 casos (NÃO confundir):**
+  - **(a) Duplicata DENTRO de uma contagem** (mesmo código, mesma sessão/vendedor, em segundos) = PODE ser 2 pés reais → **confirma na loja**, não apaga.
+  - **(b) RE-CONTAGEM** (mesma loja, dias diferentes, vendedor diferente) = a contagem NOVA deve **SUBSTITUIR** a anterior daquele produto+loja, **não somar**. Bug atual: o bipe em tempo real EMPILHA (`+1` sempre) → re-contar **INFLA** (ex Megaride: jonas contou 6 no Bessa em 27/05, bruno re-contou os mesmos 6 em 09/06 → sistema somou = 12 no Bessa, físico saltou pra 16). Pendência: fazer re-contagem de uma loja zerar/substituir a contagem anterior daquele produto naquela loja.
+- **Verdade do estoque = contagem FÍSICA na loja**, não a soma crua de bipes. Divergência (comprado vs bipado vs físico) são 3 medidas diferentes, não 3 erros.
+
+### ⛔ REGRA INQUEBRÁVEL — Tamanho NÃO se inventa; se a NFe não distingue, DESVINCULA (dono 2026-06-09)
+
+Quando a NFe traz a **MESMA descrição pra vários códigos (EAN)** de um modelo, ou o **cProd = o próprio código de barras** (sem sufixo de tamanho), então **a NFe NÃO carrega o tamanho de cada código** — só dá a FAIXA. Ex Adidas/ALPAR: os 6 EANs do Megaride O1 todos com `REF: JH7925 - TENIS MEGARIDE O1 38/43`, cProd = `0`+EAN. **É PROIBIDO CHUTAR O NÚMERO DO TAMANHO.**
+
+- O **CÓDIGO (EAN) é a chave única** do tamanho na vida real. O de-para código→número vem da **CAIXA física** (ou base oficial da marca), **NUNCA da NFe nem de palpite**.
+- Sem fonte real do número → **placeholder `T-<EAN>`**, jamais um número inventado.
+- **Detectar p/ desvincular:** produto com 2+ códigos de **descrição IDÊNTICA** na NFe (ou cProd=EAN) = tamanhos chutados → **limpar o número (→ placeholder)** até a caixa confirmar. Mantém código + comprado (qCom).
+- ❌ **ERRO 2026-06-09 (origem):** a importação Adidas atribuiu 38/39/40/41/42/43 no chute (a NFe só tinha "38/43"). EAN …472049 virou "tam 43" sendo **BR 41** na caixa. Dono: *"eu não autorizei isso"*. Desvincular tudo. Mapa/conserto: `scripts/sweep-guessed-sizes.js`.
+
+### 📋 LEVANTAMENTO — 85 fornecedores de entrada: de onde vem o TAMANHO (registro 2026-06-09)
+
+Varri TODOS os 85 fornecedores (emissor de NFe de entrada) pra achar onde o tamanho pode ter sido chutado igual à Adidas. Script read-only: `scripts/levantamento-fornecedores.js`. Os suspeitos foram conferidos na **NFe REAL** (não no filtro).
+
+**RESULTADO: só a ADIDAS (ALPAR) teve tamanho CHUTADO.** Os outros 84 têm tamanho de fonte real. Desvinculados: 829 tamanhos Adidas → placeholder `T-<EAN>`.
+- **cProd** (tamanho no sufixo do código/artigo): ~76 fornecedores.
+- **descrição** (tamanho no texto da NFe): 8 — Fila, Umbro (Dass), Body for Sure (Filo, "TAM: X"), Army, N1 (Aura), New Balance, Munich (BR8), Diadora (Brands Brasil, "…STRATUS II … 40").
+- **SEM tamanho na NFe = chutado**: 1 — **ALPAR/Adidas** (cProd = o próprio EAN + descrição só a faixa "38/43").
+
+⚠️ **Lição (anti-chute):** o filtro automático (`cProd==EAN` sem "TAM") deu **FALSO-POSITIVO** em Body for Sure, OXN, Fiber, Army, Alto Giro, Reebok, Hoka e Diadora — todos têm o tamanho de fonte real (número no fim da descrição, sufixo do cProd, ou produto sem GTIN). **SEMPRE conferir a NFe real antes de desvincular — o filtro sozinho ERRA.**
+
+Lista completa (Nº · fornecedor · marca · fonte do tamanho):
+```
+ 1 ALPAR · ADIDAS · SEM=CHUTADO (desvinculado 829)      44 MALLEI · Hurley · cProd
+ 2 DRASTOSA · Puma/Asics/Stanley · cProd                45 Cauduro · Vollo · cProd
+ 3 COOPERSHOES · Converse · cProd                       46 LEADER · Leader · cProd
+ 4 DASS NORDESTE · Umbro · descricao                    47 Vistho · Vistho · cProd
+ 5 FILA BRASIL · Fila · descricao                       48 DR COMERCIO · Hoka · cProd
+ 6 TOP CONFECCOES · Caju Brasil · cProd                 49 BEIRA RIO · Actvitta · cProd
+ 7 VULCABRAS-CE · Under Armour/Mizuno/Olympikus · cProd 50 Kindai · Atama · cProd
+ 8 TOPSHOES · Topper/Rainha · cProd                     51 DAKOTA · Kolosh · cProd
+ 9 CAMBUCI-BA30 · Penalty · cProd                       52 HITECH · (a definir) · cProd
+10 FILO SA · Body for Sure · descricao                  53 SPORTCOM · Reebok/DRB · cProd
+11 CAMBUCI-PB15 · Penalty · cProd                       54 MUNDI · Topper/Kagiva/Rainha · cProd
+12 LU MARTINS · Let's Gym · cProd                       55 Premium Skate · Paterson/Zero · cProd
+13 SKECHERS · Skechers · cProd                          56 SIKER · Siker · cProd
+14 RB BRASIL · Reebok · cProd                           57 SUNTECH · Oakley · cProd
+15 VECTRON · Kappa · cProd                              58 BR8 · Munich/Mikasa · descricao
+16 HIPERFLEX · Speedo · cProd                           59 REFRICRIL · Elgin · cProd
+17 DILLY NORDESTE · Ous/Mormaii/Dilly · cProd           60 FOOTPRINT · Powell Peralta/Wu-Tang · cProd
+18 FIRST SPORTS · Joma/Uhlsport/Spalding · cProd        61 NEW BRASIL · New Balance · descricao
+19 RECCO · Alto Giro · cProd                            62 FOMO VERTICAL · Thunder · cProd
+20 KENERSON · Evoke · cProd                             63 PITUKA · Topper/Reebok/Pituka · cProd
+21 ARMY FITNESS · Army · descricao                      64 COMERCIAL MV · Bagun · cProd
+22 FIBER COMPANY · Fiber · cProd                        65 THIGOLINE · Thigoline · cProd
+23 CHX · Progne · cProd                                 66 VULCABRAS DIST · Olympikus · cProd
+24 VIESS · OXN · cProd                                  67 EZ TEXTIL · (a definir) · cProd
+25 BETEL · Topper · cProd                               68 BEL FIX · Bel/Mormaii · cProd
+26 LUPO S/A · Lupo · cProd                              69 IMPACTO · Impacto · cProd
+27 HAF · Nike · cProd                                   70 ALQUIMIA · Impulse · cProd
+28 SPR · Kappa · cProd                                  71 ALTIPISOS · (a definir) · cProd
+29 RR VESTUARIO · Botafogo · cProd                      72 BEL IMP/EXP · Bel/Mormaii · cProd
+30 REALTEX · Realtex · cProd                            73 MAIN MAGAZINE · (a definir) · cProd
+31 BRANDS BRASIL · DIADORA · descricao (conferido)      74 CAMBUCI-SR11 · (a definir) · cProd
+32 MACROPORT · Brooks · cProd                           75 AUTECH · (a definir) · cProd
+33 Vitoria · Vitoria · cProd                            76 ANIDSON COSTA · Rhumell · cProd
+34 VULCABRAS-SP · Olympikus/Mizuno · cProd              77 NITROSK8 · (a definir) · cProd
+35 HIDROLIGHT · Hidrolight · cProd                      78 ALLBAGS · (a definir) · cProd
+36 TESS · Kenner · cProd                                79 DACI · Penalty · cProd
+37 NESK · Everlast · cProd                              80 MALHAS RVB · (a definir) · cProd
+38 HOPE · Hope Resort · cProd                           81 DALILA TEXTIL · (a definir) · cProd
+39 WINNERS · Salomon · cProd                            82 JOEL ADRIANO · (a definir) · cProd
+40 VOLLO · Vollo · cProd                                83 ASGA BRINDES · (a definir) · cProd
+41 VULCABRAS-BA · Olympikus/Under Armour · cProd        84 AUTENTICA · (a definir) · cProd
+42 LUPO NORDESTE · Lupo · cProd                         85 KENERSON(2) · (a definir) · cProd
+43 AURA · N1 · descricao
+```
+Re-rodar o levantamento: `node scripts/levantamento-fornecedores.js`.
 
 ## REGRA PERMANENTE — WhatsApp Business app (NUNCA QUEBRAR)
 
