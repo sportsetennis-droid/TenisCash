@@ -514,7 +514,7 @@ router.get('/products', adminOnly, async (req, res) => {
     res.json({
       products: products.map((p) => {
         const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
-        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
+        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, confirmedForNuvemshop: ctx.confirmedForNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
       }),
     });
   } catch (err) {
@@ -523,8 +523,8 @@ router.get('/products', adminOnly, async (req, res) => {
   }
 });
 
-// Marca/desmarca um produto p/ liberar na Nuvemshop. Ao MARCAR, tenta subir na hora
-// (respeita as regras de pushProductToNuvemshop: 4 classificações + estoque físico).
+// PASSO 1 — LIBERAR (candidato). Só MARCA pra conferência; NÃO sobe pra loja.
+// A subida acontece só no PASSO 2 (confirmar). Desliberar tira da fila e desconfirma.
 router.post('/products/:id/release', adminOnly, async (req, res) => {
   try {
     const id = req.params.id;
@@ -532,11 +532,31 @@ router.post('/products/:id/release', adminOnly, async (req, res) => {
     const product = await prisma.product.findUnique({ where: { id }, select: { id: true, aiContext: true } });
     if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
     const ctx = parseJsonSafe(product.aiContext) || {};
-    if (release) ctx.releaseToNuvemshop = true; else delete ctx.releaseToNuvemshop;
+    if (release) { ctx.releaseToNuvemshop = true; }
+    else { delete ctx.releaseToNuvemshop; delete ctx.confirmedForNuvemshop; }
+    await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
+    res.json({ ok: true, release }); // NÃO sobe aqui — vai pra fila de confirmação
+  } catch (err) {
+    console.error('release product', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PASSO 2 — CONFIRMAR + SUBIR. Marca confirmado e sobe pra loja AGORA
+// (respeita as 4 classificações + estoque físico). confirm=false só desconfirma (não remove da loja).
+router.post('/products/:id/confirm', adminOnly, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const confirm = req.body?.confirm !== false; // default true
+    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, aiContext: true } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+    const ctx = parseJsonSafe(product.aiContext) || {};
+    if (confirm) { ctx.releaseToNuvemshop = true; ctx.confirmedForNuvemshop = true; }
+    else { delete ctx.confirmedForNuvemshop; }
     await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
 
     let upload = null;
-    if (release) {
+    if (confirm) {
       const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
       if (!conn) upload = { ok: false, reason: 'sem conexão Nuvemshop ativa' };
       else {
@@ -544,9 +564,33 @@ router.post('/products/:id/release', adminOnly, async (req, res) => {
         catch (e) { upload = { ok: false, reason: String(e.message).slice(0, 160) }; }
       }
     }
-    res.json({ ok: true, release, upload });
+    res.json({ ok: true, confirm, upload });
   } catch (err) {
-    console.error('release product', err);
+    console.error('confirm product', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PASSO 2 em MASSA — confirma + sobe os selecionados (retorna o que subiu e o que travou + motivo).
+router.post('/products/bulk-confirm', adminOnly, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    if (!ids.length) return res.status(400).json({ error: 'nenhum produto selecionado' });
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return res.status(400).json({ error: 'sem conexão Nuvemshop ativa' });
+    let uploaded = 0, skipped = 0; const skips = [];
+    for (const id of ids) {
+      const product = await prisma.product.findUnique({ where: { id }, select: { aiContext: true, name: true } });
+      if (!product) continue;
+      const ctx = parseJsonSafe(product.aiContext) || {};
+      ctx.releaseToNuvemshop = true; ctx.confirmedForNuvemshop = true;
+      await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
+      try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); if (r?.skipped) { skipped++; skips.push({ name: product.name, reason: r.reason }); } else uploaded++; }
+      catch (e) { skipped++; skips.push({ name: product.name, reason: String(e.message).slice(0, 100) }); }
+    }
+    res.json({ ok: true, uploaded, skipped, skips: skips.slice(0, 20) });
+  } catch (err) {
+    console.error('bulk-confirm', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -585,27 +629,23 @@ router.post('/products/:id/hide-nuvemshop', adminOnly, async (req, res) => {
   }
 });
 
-// Marca/desmarca VÁRIOS de uma vez. Sobe os que der na hora; o cron pega o resto.
+// PASSO 1 em massa — LIBERAR vários (candidatos). Só marca; NÃO sobe (subir = confirmar).
 router.post('/products/bulk-release', adminOnly, async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
     const release = req.body?.release !== false;
     if (!ids.length) return res.status(400).json({ error: 'nenhum produto selecionado' });
-    const conn = release ? await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } }) : null;
-    let marked = 0, uploaded = 0, skipped = 0;
+    let marked = 0;
     for (const id of ids) {
       const product = await prisma.product.findUnique({ where: { id }, select: { aiContext: true } });
       if (!product) continue;
       const ctx = parseJsonSafe(product.aiContext) || {};
-      if (release) ctx.releaseToNuvemshop = true; else delete ctx.releaseToNuvemshop;
+      if (release) { ctx.releaseToNuvemshop = true; }
+      else { delete ctx.releaseToNuvemshop; delete ctx.confirmedForNuvemshop; }
       await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
       marked++;
-      if (release && conn) {
-        try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); if (r?.skipped) skipped++; else uploaded++; }
-        catch { skipped++; }
-      }
     }
-    res.json({ ok: true, marked, uploaded, skipped });
+    res.json({ ok: true, marked }); // NÃO sobe — vão pra fila de confirmação
   } catch (err) {
     console.error('bulk-release', err);
     res.status(500).json({ error: err.message });

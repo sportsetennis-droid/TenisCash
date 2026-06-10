@@ -126,6 +126,7 @@ router.get('/products', async (req, res) => {
         shortDescription: p.shortDescription || null,
         naNuvemshop: nsSet.has(p.id),
         releaseToNuvemshop: ctx.releaseToNuvemshop === true,
+        confirmedForNuvemshop: ctx.confirmedForNuvemshop === true,
         hideFromNuvemshop: ctx.hideFromNuvemshop === true,
       };
     });

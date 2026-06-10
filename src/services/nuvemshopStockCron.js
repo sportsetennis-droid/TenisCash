@@ -62,19 +62,17 @@ async function runNuvemshopStockSync() {
     const maps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
     const mappedIds = new Set(maps.map((m) => m.localProductId));
 
-    // 1) AUTO-UPLOAD dos marcados que ainda não estão na loja
-    // TRAVA (dono 2026-06-08 "não sobe"): card com aiContext.noAutoUpload === true fica no
-    // filtro "Liberar p/ Nuvemshop" mas NUNCA sobe sozinho pelo cron, mesmo classificado.
-    // Upload desses só por ação explícita do dono. Reversível: tirar a flag.
+    // 1) AUTO-UPLOAD dos CONFIRMADOS que ainda não estão na loja.
+    // GATE de 2 passos (dono 2026-06-10): LIBERAR (releaseToNuvemshop) só marca candidato e NÃO
+    // sobe; o dono RECONFERE e CONFIRMA (confirmedForNuvemshop) — só aí sobe. O cron sobe somente
+    // os CONFIRMADOS; os apenas-liberados ficam parados na fila de conferência.
     let uploaded = 0;
-    const released = await prisma.product.findMany({
-      where: { active: true, aiContext: { path: ['releaseToNuvemshop'], equals: true } },
-      select: { id: true, aiContext: true },
+    const confirmed = await prisma.product.findMany({
+      where: { active: true, aiContext: { path: ['confirmedForNuvemshop'], equals: true } },
+      select: { id: true },
     });
-    for (const p of released) {
+    for (const p of confirmed) {
       if (mappedIds.has(p.id)) continue;
-      const rctx = (p.aiContext && typeof p.aiContext === 'object') ? p.aiContext : {};
-      if (rctx.noAutoUpload === true) continue; // trava dura: não sobe sozinho
       try { const r = await nsHandlers.pushProductToNuvemshop(p.id, conn); if (!r?.skipped) uploaded++; }
       catch (e) { console.error('[nsStockCron] upload', p.id, e.message); }
     }

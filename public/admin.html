@@ -1532,8 +1532,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <select id="cat-classify-nuvemshop" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">🛒 Na Nuvemshop</option><option value="no">Fora da Nuvemshop</option></select>
     </div>
     <div>
-      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Liberação</label>
-      <select id="cat-classify-release" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="yes">⬆ Liberados p/ NS</option><option value="no">Não liberados</option></select>
+      <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Nuvemshop</label>
+      <select id="cat-classify-release" class="form-input" style="margin-top:4px;background:white;color:#1d1d1f;"><option value="">— todos —</option><option value="aguardando">🕓 Aguardando conferência</option><option value="confirmado">✅ Confirmados (subindo)</option><option value="yes">Liberados (todos)</option><option value="no">Não liberados</option></select>
     </div>
     <div style="grid-column:span 2;">
       <label style="font-size:10px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Buscar</label>
@@ -1614,7 +1614,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div style="display:flex;gap:8px;">
       <button id="cat-select-all-page" class="btn">Selecionar visíveis</button>
       <button id="cat-clear-sel" class="btn">Limpar seleção</button>
-      <button id="cat-bulk-release" class="btn btn-primary" style="background:#0a55c4;border-color:#0a55c4">⬆ Liberar selecionados p/ Nuvemshop</button>
+      <button id="cat-bulk-release" class="btn btn-primary" style="background:#0a55c4;border-color:#0a55c4">⬆ Liberar selecionados (p/ conferência)</button>
+      <button id="cat-bulk-confirm" class="btn btn-primary" style="background:#0a843d;border-color:#0a843d">✅ Conferir e subir selecionados</button>
     </div>
   </div>
 
@@ -3607,11 +3608,18 @@ function buildAdminProductThumb(url) {
 }
 
 // ===== Helpers Nuvemshop (compartilhados pelos cards Catálogo / Estoque / Categoria) =====
+// PASSO 1 — Liberar: só MARCA como candidato (vai pra fila de conferência). NÃO sobe pra loja.
 async function nsRelease(id, release, reloadFn) {
   const r = await api('/admin/catalog/products/' + id + '/release', 'POST', { release });
   if (r && r.error) { alert('Erro: ' + r.error); return; }
-  if (release && r && r.upload && r.upload.ok === false) {
-    alert('Marcado p/ liberar, mas NÃO subiu agora:\n' + (r.upload.reason || '?') + '\n\nSobe sozinho quando resolver (classificação nas 4 + estoque físico).');
+  if (typeof reloadFn === 'function') reloadFn();
+}
+// PASSO 2 — Conferir e subir: confirma e SOBE pra loja agora.
+async function nsConfirm(id, confirm, reloadFn) {
+  const r = await api('/admin/catalog/products/' + id + '/confirm', 'POST', { confirm });
+  if (r && r.error) { alert('Erro: ' + r.error); return; }
+  if (confirm && r && r.upload && r.upload.ok === false) {
+    alert('Confirmado, mas NÃO subiu:\n' + (r.upload.reason || '?') + '\n\n(precisa das 4 classificações + estoque físico bipado)');
   }
   if (typeof reloadFn === 'function') reloadFn();
 }
@@ -3634,7 +3642,8 @@ function nsBadges(p) {
   let h = '';
   if (p.naNuvemshop) h += '<span title="Está na loja Nuvemshop" style="background:#e7f0ff;color:#0a55c4;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛒 NUVEMSHOP</span> ';
   if (p.hideFromNuvemshop) h += '<span title="Oculto na loja — despublicado, NÃO apagado (link/dados preservados)" style="background:#fde7e9;color:#b00020;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🙈 OCULTO</span> ';
-  if (p.releaseToNuvemshop) h += '<span title="Marcado p/ liberar na Nuvemshop" style="background:#fff3d6;color:#8a6100;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">⬆ LIBERADO</span> ';
+  if (!p.naNuvemshop && p.confirmedForNuvemshop) h += '<span title="Confirmado — sobe pra loja no próximo ciclo" style="background:#dff5e1;color:#0a7d2c;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">✅ CONFIRMADO</span> ';
+  else if (!p.naNuvemshop && p.releaseToNuvemshop) h += '<span title="Liberado — aguardando sua conferência (não sobe até você confirmar)" style="background:#fff3d6;color:#8a6100;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🕓 AGUARDANDO CONFERÊNCIA</span> ';
   return h;
 }
 // reloadName = nome global da função de recarregar a view (ex: loadInvProducts)
@@ -3646,10 +3655,14 @@ function nsButtons(p, reloadName) {
     const removeBtn = '<button class="btn" style="font-size:11px;padding:4px 8px;color:#d70015;border-color:#d70015" onclick="nsRemove(\'' + p.id + '\',' + reloadName + ')">✕ Remover da loja</button>';
     return '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + hideBtn + removeBtn + '</div>';
   }
+  // PASSO 2: já liberado (candidato) → conferir e subir, ou tirar da fila
   if (p.releaseToNuvemshop) {
-    return '<button class="btn" style="font-size:11px;padding:4px 8px" onclick="nsRelease(\'' + p.id + '\',false,' + reloadName + ')">Desmarcar liberação</button>';
+    const confirmBtn = '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#0a843d;border-color:#0a843d" onclick="nsConfirm(\'' + p.id + '\',true,' + reloadName + ')">✅ Conferir e subir</button>';
+    const unrelBtn = '<button class="btn" style="font-size:11px;padding:4px 8px" onclick="nsRelease(\'' + p.id + '\',false,' + reloadName + ')">Tirar da fila</button>';
+    return '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + confirmBtn + unrelBtn + '</div>';
   }
-  return '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#0a55c4;border-color:#0a55c4" onclick="nsRelease(\'' + p.id + '\',true,' + reloadName + ')">⬆ Liberar Nuvemshop</button>';
+  // PASSO 1: ainda nada → liberar (vira candidato, NÃO sobe)
+  return '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#0a55c4;border-color:#0a55c4" onclick="nsRelease(\'' + p.id + '\',true,' + reloadName + ')">⬆ Liberar p/ conferência</button>';
 }
 
 async function loadCatalogProductsAdmin() {
@@ -10451,12 +10464,28 @@ async function initCategoriesTab() {
     if (bulkRelBtn) bulkRelBtn.addEventListener('click', async () => {
       const ids = [..._catClassifySelected];
       if (!ids.length) { alert('Selecione ao menos 1 produto (clique nos cards).'); return; }
-      if (!confirm('Liberar ' + ids.length + ' produto(s) p/ Nuvemshop?\nOs que estiverem prontos (4 classificações + estoque físico) sobem agora; o resto sobe sozinho quando ficar pronto.')) return;
+      if (!confirm('Liberar ' + ids.length + ' produto(s) p/ conferência?\nEles NÃO sobem ainda — vão pra fila "Aguardando conferência". Depois você revisa e clica "Conferir e subir".')) return;
       bulkRelBtn.disabled = true; const orig = bulkRelBtn.textContent; bulkRelBtn.textContent = 'Liberando...';
       const r = await api('/admin/catalog/products/bulk-release', 'POST', { ids, release: true });
       bulkRelBtn.disabled = false; bulkRelBtn.textContent = orig;
       if (r && r.error) { alert('Erro: ' + r.error); return; }
-      alert('Marcados: ' + (r.marked || 0) + '\nSubiram agora: ' + (r.uploaded || 0) + '\nFaltam (sobem no automático): ' + (r.skipped || 0));
+      alert('✅ ' + (r.marked || 0) + ' produto(s) liberado(s) p/ conferência.\nFiltre por "🕓 Aguardando conferência", revise e clique "Conferir e subir".');
+      _catClassifySelected.clear();
+      loadCategoriesClassify();
+    });
+    // PASSO 2 em massa — conferir e SUBIR os selecionados
+    const bulkConfBtn = document.getElementById('cat-bulk-confirm');
+    if (bulkConfBtn) bulkConfBtn.addEventListener('click', async () => {
+      const ids = [..._catClassifySelected];
+      if (!ids.length) { alert('Selecione ao menos 1 produto (clique nos cards).'); return; }
+      if (!confirm('Conferir e SUBIR ' + ids.length + ' produto(s) pra loja Nuvemshop AGORA?\nSó sobem os que estiverem prontos (4 classificações + estoque físico bipado).')) return;
+      bulkConfBtn.disabled = true; const orig = bulkConfBtn.textContent; bulkConfBtn.textContent = 'Subindo...';
+      const r = await api('/admin/catalog/products/bulk-confirm', 'POST', { ids });
+      bulkConfBtn.disabled = false; bulkConfBtn.textContent = orig;
+      if (r && r.error) { alert('Erro: ' + r.error); return; }
+      let msg = '✅ Subiram pra loja: ' + (r.uploaded || 0) + '\n⏳ Não subiram: ' + (r.skipped || 0);
+      if (r.skips && r.skips.length) msg += '\n\nMotivos:\n' + r.skips.map(s => '• ' + (s.name || '').slice(0, 28) + ': ' + (s.reason || '?')).join('\n');
+      alert(msg);
       _catClassifySelected.clear();
       loadCategoriesClassify();
     });
@@ -10504,7 +10533,7 @@ async function loadCategoriesClassify() {
     imageUrl: p.imageUrl, imageUrls: p.imageUrls,
     aiContext: p.aiContext, price: p.price, costPrice: p.costPrice, totalStock: p.totalStock,
     sizes: p.sizes, stockTotal: p.stockTotal,
-    naNuvemshop: p.naNuvemshop, releaseToNuvemshop: p.releaseToNuvemshop,
+    naNuvemshop: p.naNuvemshop, releaseToNuvemshop: p.releaseToNuvemshop, confirmedForNuvemshop: p.confirmedForNuvemshop,
   }));
   renderCatClassifyGrid();
 }
@@ -10596,6 +10625,8 @@ function _filteredCatProducts() {
     if (nsF === 'no' && p.naNuvemshop) return false;
     if (relF === 'yes' && !p.releaseToNuvemshop) return false;
     if (relF === 'no' && p.releaseToNuvemshop) return false;
+    if (relF === 'aguardando' && !(p.releaseToNuvemshop && !p.confirmedForNuvemshop && !p.naNuvemshop)) return false;
+    if (relF === 'confirmado' && !(p.confirmedForNuvemshop && !p.naNuvemshop)) return false;
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
       const mod = (cls.modality || '').toLowerCase();
