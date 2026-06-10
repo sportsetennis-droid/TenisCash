@@ -11373,6 +11373,14 @@ async function initInventoryTab() {
     if (nsSelI) nsSelI.addEventListener('change', () => loadInvProducts());
     const relSelI = document.getElementById('inv-f-release');
     if (relSelI) relSelI.addEventListener('change', () => loadInvProducts());
+    // TODOS os demais filtros (marca/categoria/fornecedor/LOJA/sub/modalidade/especialidade/ciclo/baixo estoque)
+    // recarregam ao mudar — a soma do totalizador fica SEMPRE interligada com o filtro ativo (pedido do dono).
+    ['inv-f-brand','inv-f-category','inv-f-supplier','inv-f-store','inv-f-subcategory','inv-f-modality','inv-f-tier','inv-lifecycle'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', () => loadInvProducts());
+    });
+    const lowStockEl = document.getElementById('inv-lowstock');
+    if (lowStockEl) lowStockEl.addEventListener('change', () => loadInvProducts());
 
     document.getElementById('inv-reclassify').onclick = async () => {
       if (!confirm('Reclassificar lifecycle de TODOS os produtos? Pode levar alguns segundos.')) return;
