@@ -10485,7 +10485,7 @@ async function loadCategoriesClassify() {
   _catClassifyProducts = (prods.products || []).map(p => ({
     id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category, subcategory: p.subcategory,
     imageUrl: p.imageUrl, imageUrls: p.imageUrls,
-    aiContext: p.aiContext, price: p.price,
+    aiContext: p.aiContext, price: p.price, costPrice: p.costPrice, totalStock: p.totalStock,
     sizes: p.sizes, stockTotal: p.stockTotal,
     naNuvemshop: p.naNuvemshop, releaseToNuvemshop: p.releaseToNuvemshop,
   }));
