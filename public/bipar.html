@@ -546,7 +546,7 @@
   // SALVA em fila com confirmação (✅) e segue pro próximo — o reconhecimento (visão no servidor)
   // roda em background e o resultado aparece na listinha (poll). Nada trava o fluxo.
   let etiqFila = []; try { etiqFila = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
-  let etiqReader = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
+  let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
   function etiqSave() { try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {} }
   function etiqBeep() {
     try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 1250; g.gain.value = 0.18; o.start(); setTimeout(() => { o.stop(); a.close(); }, 130); } catch (_) {}
@@ -565,6 +565,7 @@
     ov.innerHTML =
       '<div style="position:relative;flex:1;min-height:0">' +
         '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
+        '<div style="position:absolute;left:8%;right:8%;top:32%;height:34%;border:3px solid rgba(255,255,255,.9);border-radius:14px;box-shadow:0 0 0 2000px rgba(0,0,0,.28);pointer-events:none"></div>' +
         '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px"></div>' +
         '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 4px #000;text-align:center">Aponte pro CÓDIGO DE BARRAS — aproxima até ele ocupar metade da tela</div>' +
       '</div>' +
@@ -579,24 +580,44 @@
     document.body.appendChild(ov);
     renderEtiqLista();
     try {
-      // modo reforçado: só formatos de etiqueta + TRY_HARDER + resolução alta (código pequeno não resolve em 640p)
+      // MOTOR DE LEITURA: stream manual + loop decodificando SÓ A FAIXA DE MIRA (recorte central).
+      // Recorte + TRY_HARDER + zoom 2x = leitura de código pequeno que o modo frame-inteiro não fecha.
+      const video = document.getElementById('etiq-video');
+      etiqStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      video.srcObject = etiqStream;
+      await video.play();
+      try { // zoom 2x quando o aparelho suporta (ajuda MUITO em etiqueta pequena)
+        const tr = etiqStream.getVideoTracks()[0];
+        const cap = tr.getCapabilities && tr.getCapabilities();
+        if (cap && cap.zoom && cap.zoom.max) { await tr.applyConstraints({ advanced: [{ zoom: Math.min(2, cap.zoom.max) }] }); }
+      } catch (_) {}
       const hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF]);
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      etiqReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+      const core = new ZXing.MultiFormatReader();
+      core.setHints(hints);
+      const cv = document.createElement('canvas');
       let tent = 0;
-      await etiqReader.decodeFromConstraints({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, document.getElementById('etiq-video'), (result, err) => {
-        if (!result) { // mostra que o leitor está VIVO tentando (NotFound a cada frame é normal)
-          tent++; if (tent % 8 === 0) { const h = document.getElementById('etiq-hint'); if (h) h.textContent = '🔎 lendo… (' + tent + ' tentativas) — aproxima do código, segura firme'; }
-          return;
+      etiqLoop = setInterval(() => {
+        try {
+          if (!video.videoWidth) return;
+          const W = video.videoWidth, H = video.videoHeight;
+          const cw = Math.round(W * 0.84), ch = Math.round(H * 0.36); // a faixa do retângulo de mira
+          cv.width = cw; cv.height = ch;
+          cv.getContext('2d').drawImage(video, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, cw, ch);
+          const bin = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
+          const result = core.decode(bin); // lança NotFound quando não acha (normal)
+          const v = String(result.getText() || '').replace(/\D/g, '');
+          if (v.length < 12 || v.length > 14) return;
+          const now = Date.now();
+          if (v === etiqUltimo && now - etiqUltimoTs < 3000) return;
+          etiqUltimo = v; etiqUltimoTs = now;
+          capturarFrame(v);
+        } catch (_) {
+          tent++;
+          if (tent % 10 === 0) { const h = document.getElementById('etiq-hint'); if (h) h.textContent = '🔎 lendo… (' + tent + ') — código DENTRO do retângulo, aproxima e segura 1s'; }
         }
-        const v = String(result.getText() || '').replace(/\D/g, '');
-        if (v.length < 12 || v.length > 14) return;
-        const now = Date.now();
-        if (v === etiqUltimo && now - etiqUltimoTs < 3000) return;
-        etiqUltimo = v; etiqUltimoTs = now;
-        capturarFrame(v);
-      });
+      }, 280);
     } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
     etiqPoll = setInterval(consultarStatus, 5000);
     etiqSendTimer = setInterval(enviarFila, 2000);
@@ -605,7 +626,9 @@
 
   window.fecharScanner = function () {
     try { etiqReader && etiqReader.reset(); } catch (_) {}
-    clearInterval(etiqPoll); clearInterval(etiqSendTimer);
+    try { if (etiqStream) etiqStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    etiqStream = null;
+    clearInterval(etiqLoop); clearInterval(etiqPoll); clearInterval(etiqSendTimer);
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
