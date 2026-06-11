@@ -136,6 +136,26 @@ model User {
   athleteRatings     AthleteRating[]
   challengesSent     PlayChallenge[] @relation("challenger")
   challengesReceived PlayChallenge[] @relation("challenged")
+
+  // ===== LOGIN BIOMÉTRICO (WebAuthn — Face ID / digital / Windows Hello) =====
+  webauthnCredentials WebauthnCredential[]
+}
+
+// Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
+// chave pública. Quem confirma "é você" é o próprio dispositivo. Senha continua como fallback.
+model WebauthnCredential {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique // base64url do credential ID
+  publicKey    Bytes // chave pública COSE
+  counter      Int       @default(0)
+  transports   String? // csv: internal,hybrid,usb...
+  deviceLabel  String? // ex "iPhone do João"
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
 }
 
 // ============================================================
