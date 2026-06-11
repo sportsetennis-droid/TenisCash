@@ -125,9 +125,9 @@
     <span class="chip" data-status="found" onclick="setStatusFilter('found')">✓ Achados</span>
     <span class="chip" data-status="notfound" onclick="setStatusFilter('notfound')">✗ Não achados</span>
     <label style="margin-left:auto">Loja:</label>
-    <select id="filter-store" onchange="loadBipes()"><option value="">Todas</option></select>
+    <select id="filter-store" onchange="loadBipes();loadCapturas()"><option value="">Todas</option></select>
     <label>Vendedor:</label>
-    <select id="filter-seller" onchange="loadBipes()"><option value="">Todos</option></select>
+    <select id="filter-seller" onchange="loadBipes();loadCapturas()"><option value="">Todos</option></select>
   </div>
 
   <div class="bipes-table" id="bipes-list"><div class="empty">Carregando bipes...</div></div>
@@ -213,9 +213,15 @@ async function loadCapturas() {
   try {
     const d = await api('/captures?status=all');
     const date = STATE.date || todayFortaleza();
+    const stval = document.getElementById('filter-store')?.value || '';
+    const sval = document.getElementById('filter-seller')?.value || '';
     const doDia = (d.captures || []).filter((c) => {
       const local = new Date(new Date(c.createdAt).getTime() - 3 * 3600 * 1000); // America/Fortaleza = UTC-3
-      return local.toISOString().slice(0, 10) === date;
+      if (local.toISOString().slice(0, 10) !== date) return false;
+      if (stval && c.storeId !== stval) return false; // mesmo filtro de loja dos bipes
+      if (sval.startsWith('id:') && c.sellerId !== sval.slice(3)) return false;
+      if (sval.startsWith('name:') && String(c.sellerName || '').toLowerCase() !== sval.slice(5).toLowerCase()) return false;
+      return true;
     });
     const el = document.getElementById('capturas-list');
     const cnt = document.getElementById('cap-count');
@@ -307,13 +313,17 @@ async function loadSummary() {
       return `<option value="${escH(val)}" ${val === current ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`;
     }).join('');
 
-    // Popular filtro de loja
-    const selStore = document.getElementById('filter-store');
-    const currentStore = selStore.value;
-    selStore.innerHTML = '<option value="">Todas lojas</option>' + (r.byStore || []).map(s => {
-      const val = s.id || '';
-      return `<option value="${escH(val)}" ${val === currentStore ? 'selected' : ''}>${escH(s.name)} (${s.total})</option>`;
-    }).join('');
+    // Popular filtro de loja — TODAS as lojas (CÓDIGO · nome), com a contagem do dia quando houver
+    try {
+      const all = await api('/stores');
+      const cnt = {}; (r.byStore || []).forEach(s => { if (s.id) cnt[s.id] = s.total; });
+      const selStore = document.getElementById('filter-store');
+      const currentStore = selStore.value;
+      const lojas = (all.stores || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+      selStore.innerHTML = '<option value="">Todas lojas</option>' + lojas.map(s =>
+        `<option value="${escH(s.id)}" ${s.id === currentStore ? 'selected' : ''}>${escH((s.code ? s.code + ' · ' : '') + s.name)}${cnt[s.id] ? ' (' + cnt[s.id] + ')' : ''}</option>`
+      ).join('');
+    } catch (_) {}
   } catch (e) { console.warn('summary', e); }
 }
 
