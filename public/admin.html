@@ -10700,6 +10700,7 @@ function renderCatClassifyGrid() {
       ${cardHtml}
       <div onclick="event.stopPropagation()" style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
         <div style="display:flex;gap:4px;flex-wrap:wrap;">${nsBadges(p)}</div>
+        <div style="display:flex;"><button type="button" onclick="event.stopPropagation();openCatProductModal('${p.id}')" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button></div>
         <div style="display:flex;">${nsButtons(p, 'loadCategoriesClassify')}</div>
       </div>
     </div>`;
