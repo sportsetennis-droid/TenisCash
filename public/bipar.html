@@ -666,11 +666,11 @@
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
       if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
-        st.textContent = '✅ SALVO!';
+        st.textContent = it.bipou ? '✅ SALVO + BIPADO!' : '✅ SALVO!';
         st.style.color = '#7CFFA9';
         if (it.st === 'vinculado' && it.msg) det.textContent = it.msg;
         else if (it.st === 'pendente' && it.msg) det.textContent = it.msg;
-        else det.textContent = (ean ? 'código ' + ean + ' — ' : '') + 'reconhecimento rodando por trás';
+        else det.textContent = it.bipou ? ('código ' + ean + ' contado no estoque da loja') : (ean ? 'código ' + ean + ' — reconhecimento por trás' : 'sem código lido — salvou a foto, NÃO conta estoque até vincular');
         btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
         clearInterval(etiqWatch);
       }
@@ -721,7 +721,7 @@
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.b64 = ''; etiqSave(); renderEtiqLista(); }
+        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.bipou = !!d.bipou; item.b64 = ''; etiqSave(); renderEtiqLista(); }
       }
     } catch (_) { /* mantém na fila, tenta no próximo tick */ }
     etiqBusy = false;

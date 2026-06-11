@@ -637,14 +637,40 @@ router.post('/etiqueta',
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
       const { storeId, sellerId, sellerName, eanLocal } = req.body || {};
       const photo = await shrinkPhoto(req.file.buffer);
+      const eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
+      // O SCANNER TAMBÉM É CONTAGEM (dono 2026-06-11: equipe usa o scanner no lugar do bipe).
+      // Código lido pela câmera => registra StocktakeBipe igual ao bipe normal: achou card -> conta no físico;
+      // não achou -> órfão (casa sozinho quando a etiqueta for vinculada).
+      let bipeId = null;
+      if (eanCam && eanCam.length >= 8) {
+        try {
+          const variants = [eanCam, eanCam.replace(/^0+/, ''), '0' + eanCam];
+          const ps = await prisma.productSize.findFirst({ where: { barcode: { in: variants } }, select: { id: true, productId: true, size: true, product: { select: { name: true, brand: true } } } });
+          const bipe = await prisma.stocktakeBipe.create({ data: {
+            barcode: eanCam, storeId: storeId || null, sellerId: sellerId || null,
+            sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
+            productId: ps ? ps.productId : null, productSizeId: ps ? ps.id : null,
+            productName: ps ? ps.product.name : null, productSize: ps ? ps.size : null, productBrand: ps ? ps.product.brand : null,
+            found: !!ps, applied: !!ps,
+            ip: (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || null,
+            userAgent: 'scanner-etiqueta',
+          } });
+          bipeId = bipe.id;
+          if (ps && storeId) {
+            const ex = await prisma.storeStock.findFirst({ where: { productSizeId: ps.id, storeId }, select: { id: true, stock: true } });
+            if (ex) await prisma.storeStock.update({ where: { id: ex.id }, data: { stock: (ex.stock || 0) + 1 } });
+            else await prisma.storeStock.create({ data: { productSizeId: ps.id, storeId, stock: 1 } });
+          }
+        } catch (e) { console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
+      }
       const cap = await prisma.productCapture.create({ data: {
-        barcode: eanLocal ? String(eanLocal).replace(/\D/g, '') : null,
+        barcode: eanCam,
         storeId: storeId || null, sellerId: sellerId || null,
         sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
-        note: 'etiqueta processando…', photo, status: 'processando',
+        note: 'etiqueta processando…', photo, status: 'processando', bipeId,
       } });
       // responde JÁ — a pessoa segue pro próximo produto; reconhecimento roda em background
-      res.json({ ok: true, salvo: true, capId: cap.id });
+      res.json({ ok: true, salvo: true, capId: cap.id, bipou: !!bipeId });
       setImmediate(() => processarEtiqueta(cap.id, photo, eanLocal ? String(eanLocal).replace(/\D/g, '') : null, {})
         .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'pendente', note: 'etiqueta erro-processamento' } }).catch(() => {}); }));
     } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(500).json({ error: e.message }); }
