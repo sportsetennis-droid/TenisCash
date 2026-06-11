@@ -546,6 +546,76 @@ router.post('/capture',
   }
 );
 
+// POST /api/stocktake/etiqueta (PÚBLICO) — modo "fotografar etiquetas" (Nike/FIBER: o de-para código↔produto
+// só existe na etiqueta física). Foto -> visão extrai {ean, sku, nome, tamanho} -> VINCULA NA HORA:
+//   a) sku extraído casa ProductSize.barcode (cProd, ex FIBER) -> barcode vira o EAN + bipes órfãos casam + StoreStock
+//   b) ean já existe em ProductSize -> só religa bipes órfãos
+//   c) senão -> fica ProductCapture pendente com os dados lidos (resolvo no backoffice)
+router.post('/etiqueta',
+  (req, res, next) => captureUpload.single('file')(req, res, (err) => (err ? res.status(400).json({ error: err.message }) : next())),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'sem foto' });
+      const { storeId, sellerId, sellerName } = req.body || {};
+      const photo = await shrinkPhoto(req.file.buffer);
+
+      // 1) visão lê a etiqueta
+      let lido = null;
+      try {
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const b64 = photo.split(',')[1];
+        const r = await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 200, messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: b64 } },
+          { type: 'text', text: 'Etiqueta/caixa de produto esportivo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"tamanho BR/letra visível ou null"}. Copie LITERAL, não invente.' },
+        ] ] });
+        const t = (r.content.find((c) => c.type === 'text') || {}).text || '';
+        const m = t.match(/\{[\s\S]*\}/);
+        if (m) lido = JSON.parse(m[0]);
+      } catch (e) { console.warn('[etiqueta] visão falhou:', e.message); }
+
+      const ean = lido && lido.ean ? String(lido.ean).replace(/\D/g, '') : null;
+      const sku = lido && lido.sku ? String(lido.sku).trim().toUpperCase() : null;
+      let vinculado = false, bipesCasados = 0, cardNome = null, matchedProductId = null, psId = null;
+
+      // 2a) match pelo SKU/cProd (barcode do ProductSize ainda é o cProd — FIBER etc.)
+      if (sku) {
+        const ps = await prisma.productSize.findFirst({ where: { barcode: sku }, select: { id: true, productId: true, barcode: true, product: { select: { name: true } } } });
+        if (ps) { psId = ps.id; matchedProductId = ps.productId; cardNome = ps.product.name; if (ean) await prisma.productSize.update({ where: { id: ps.id }, data: { barcode: ean } }).catch(() => {}); vinculado = true; }
+      }
+      // 2b) match direto pelo EAN
+      if (!vinculado && ean) {
+        const variants = [ean, ean.replace(/^0+/, ''), '0' + ean];
+        const ps = await prisma.productSize.findFirst({ where: { barcode: { in: variants } }, select: { id: true, productId: true, product: { select: { name: true } } } });
+        if (ps) { psId = ps.id; matchedProductId = ps.productId; cardNome = ps.product.name; vinculado = true; }
+      }
+      // 3) religa bipes órfãos do EAN + StoreStock do tamanho
+      if (vinculado && ean && psId) {
+        const upd = await prisma.stocktakeBipe.updateMany({ where: { barcode: ean }, data: { productId: matchedProductId, productSizeId: psId, found: true, applied: true } });
+        bipesCasados = upd.count;
+        const bipes = await prisma.stocktakeBipe.findMany({ where: { barcode: ean }, select: { storeId: true } });
+        const cnt = {}; for (const b of bipes) if (b.storeId) cnt[b.storeId] = (cnt[b.storeId] || 0) + 1;
+        const old = await prisma.storeStock.findMany({ where: { productSizeId: psId }, select: { id: true } });
+        for (const o of old) await prisma.storeStock.delete({ where: { id: o.id } }).catch(() => {});
+        for (const [st, n] of Object.entries(cnt)) await prisma.storeStock.create({ data: { productSizeId: psId, storeId: st, stock: n } }).catch(() => {});
+      }
+
+      // 4) registra a captura (auditoria / fila dos pendentes)
+      await prisma.productCapture.create({ data: {
+        barcode: ean || null, storeId: storeId || null, sellerId: sellerId || null,
+        sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
+        note: 'etiqueta ' + JSON.stringify(lido || {}).slice(0, 400),
+        photo, status: vinculado ? 'vinculado' : 'pendente', matchedProductId: matchedProductId || null,
+      } }).catch((e) => console.warn('[etiqueta] capture save:', e.message));
+
+      res.json({ ok: true, lido, vinculado, bipesCasados, card: cardNome,
+        mensagem: vinculado
+          ? '✓ ' + (cardNome || '').slice(0, 60) + (bipesCasados ? ' — ' + bipesCasados + ' bipe(s) casaram' : ' — vinculado')
+          : (lido && (lido.sku || lido.ean) ? '📥 Li "' + (lido.sku || lido.ean) + '" — guardada pra vincular (sem card com esse código ainda)' : '📥 Foto guardada — não consegui ler a etiqueta, vai pra conferência') });
+    } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(500).json({ error: e.message }); }
+  }
+);
+
 // ============== ADMIN ==============
 
 router.use(authMiddleware, adminMiddleware);
