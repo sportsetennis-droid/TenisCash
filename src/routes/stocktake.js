@@ -709,6 +709,29 @@ async function tratarPendentesEtiqueta() {
           if (cands.length === 1) pid = cands[0].id;
         }
       }
+      // AUTO-CRIAR (dono 2026-06-11: "todas automaticamente"): com SKU ou EAN lido e sem destino,
+      // o card nasce do scanner (1 card por sku-base; comprado=0 — não inventa compra; categoria A CLASSIFICAR).
+      if (!pid && (sku || (c.barcode && /^\d{8,14}$/.test(c.barcode)))) {
+        const ean2 = c.barcode && /^\d{8,14}$/.test(c.barcode) ? c.barcode : null;
+        const sizeDoSku = (s) => { let mm = String(s).match(/[-.](3[3-9]|4[0-8])$/); if (mm) return mm[1]; mm = String(s).match(/[-.](PP|P|M|G|GG|XG|XGG)$/i); return mm ? mm[1].toUpperCase() : null; };
+        const base = sku ? (sizeDoSku(sku) ? sku.replace(new RegExp('[-.]' + sizeDoSku(sku) + '$', 'i'), '') : sku) : ('EAN-' + ean2);
+        const ex2 = await prisma.product.findFirst({ where: { OR: [{ sku: base }, { aiContext: { path: ['supplierRef'], equals: base } }] }, select: { id: true } });
+        if (ex2) pid = ex2.id;
+        else {
+          const MARCAS = ['NIKE', 'ADIDAS', 'KENNER', 'FIBER', 'PUMA', 'MIZUNO', 'OLYMPIKUS', 'FILA', 'UMBRO', 'ASICS', 'REEBOK', 'OAKLEY', 'MORMAII', 'DILLY', 'OUS', 'CONVERSE'];
+          const marca = MARCAS.find((x) => (nome || '').toUpperCase().includes(x)) || 'A DEFINIR';
+          let skuCard = base, n2 = 1; while (await prisma.product.findFirst({ where: { sku: skuCard }, select: { id: true } })) { n2++; skuCard = base + '-' + n2; }
+          const np = await prisma.product.create({ data: { sku: skuCard, name: ((nome ? nome.toUpperCase() + ' ' : 'PRODUTO ') + 'REF ' + base).slice(0, 120), brand: marca, category: 'A CLASSIFICAR', price: 0, active: true, source: 'scanner-auto', aiContext: { supplierRef: base, scannerAuto: true, photoPending: true } }, select: { id: true } }).catch(() => null);
+          if (np) pid = np.id;
+        }
+        if (pid) {
+          const bc2 = ean2 || sku;
+          const tam2 = (sku && sizeDoSku(sku)) || (lido && lido.tamanho ? String(lido.tamanho).replace(/[^0-9A-Z]/gi, '').replace(/^BR/i, '') : null);
+          let ps2 = await prisma.productSize.findFirst({ where: { barcode: bc2 }, select: { id: true } });
+          if (!ps2) ps2 = await prisma.productSize.create({ data: { productId: pid, barcode: bc2, size: tam2 || ('T-' + String(bc2).slice(-6)), stock: 0 } }).catch(() => null);
+          if (ps2) psId = ps2.id;
+        }
+      }
       if (!pid) continue;
       await prisma.productCapture.update({ where: { id: c.id }, data: { status: 'vinculado', matchedProductId: pid, note: (String(c.note || '').replace(/^etiqueta\s*📥?/, 'etiqueta ✓') + ' [auto]').slice(0, 400) } });
       if (c.barcode && psId) {
