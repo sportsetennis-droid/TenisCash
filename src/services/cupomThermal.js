@@ -56,6 +56,19 @@ async function buildCupomThermalHtml(doc) {
   const homologHtml = homolog ? '<div class="c b" style="margin-top:4px">EMITIDA EM HOMOLOGAÇÃO - SEM VALOR FISCAL</div>' : '';
   const qrHtml = qrDataUrl ? '<img class="qr" src="' + qrDataUrl + '">' : '';
 
+  // PROCON Municipal no cupom (boa prática CDC — a Chianca imprime). Escolhido pela
+  // CIDADE DO EMITENTE lida do XML (xMun). Dados LITERAIS das fontes: João Pessoa =
+  // cupom Chianca (foto do dono 2026-06-11); Campina Grande = portal oficial
+  // procon.campinagrande.pb.gov.br. Cidade fora do mapa → bloco não sai (nunca chutar).
+  const PROCONS = [
+    { re: /joao pessoa|joão pessoa/i, end: 'Av. Dom Pedro I, 473 - Centro, Joao Pessoa - PB', fone: '(83) 3213-4702' },
+    { re: /campina grande/i, end: 'Rua Pref. Ernani Lautitzen, 226 - Centro, Campina Grande - PB', fone: '151 / (83) 3065-8980' },
+  ];
+  const _procon = PROCONS.find(p => p.re.test(String(ender.xMun || '')));
+  const proconHtml = _procon
+    ? '<hr><div class="c b sm">PROCON Municipal</div><div class="c sm">' + esc(_procon.end) + '</div><div class="c sm">Fone: ' + esc(_procon.fone) + '</div>'
+    : '';
+
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cupom ${esc(doc.number)}</title>
@@ -89,6 +102,7 @@ ${descHtml}
 <hr>
 <div class="b sm">FORMA DE PAGAMENTO</div>
 <div class="sm">${pagHtml}</div>
+${proconHtml}
 <hr>
 <div class="c sm">Consulte pela Chave de Acesso em</div>
 <div class="c sm b">${esc(supl.urlChave || 'www.sefaz.pb.gov.br/nfce/consulta')}</div>
