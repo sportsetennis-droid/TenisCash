@@ -78,6 +78,36 @@
     },
 
     async status(token) { try { const r = await fetch('/api/webauthn/status', { headers: { Authorization: 'Bearer ' + token } }); return await r.json(); } catch { return { enrolled: false }; } },
+
+    // Atalho p/ telas que entram via "token no localStorage + reload": entra com o rosto,
+    // salva o token na chave da tela e recarrega (a própria tela valida role + entra).
+    async loginAndReload(tokenKey) {
+      const data = await this.login();
+      try { localStorage.setItem(tokenKey, data.token); } catch (_) {}
+      location.reload();
+    },
+
+    // Mostra um botão flutuante "Ativar entrada com o rosto" em QUALQUER tela, se: aparelho
+    // suporta + está logado (token) + ainda não cadastrou. Some após ativar. Reutilizável.
+    async mountEnrollChip(token, opts) {
+      try {
+        if (!token || !(await this.available())) return;
+        const st = await this.status(token);
+        if (st && st.enrolled) return;
+        if (document.getElementById('tcBioChip')) return;
+        const chip = document.createElement('button');
+        chip.id = 'tcBioChip';
+        chip.type = 'button';
+        chip.textContent = '👤 Ativar entrada com o rosto';
+        chip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:99999;background:#E5571E;color:#fff;border:none;border-radius:24px;padding:12px 18px;font-size:13px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25);cursor:pointer;max-width:92vw;';
+        chip.onclick = async () => {
+          chip.disabled = true; chip.textContent = 'Aguarde…';
+          try { await this.register(token, (navigator.userAgent || '').slice(0, 50)); chip.textContent = '✅ Rosto ativado'; chip.style.background = '#0a843d'; setTimeout(() => chip.remove(), 2500); }
+          catch (e) { const m = String((e && e.message) || ''); if (!/cancel|NotAllowed|abort|The operation/i.test(m)) alert('Não deu pra ativar: ' + m); chip.disabled = false; chip.textContent = '👤 Ativar entrada com o rosto'; }
+        };
+        document.body.appendChild(chip);
+      } catch (_) {}
+    },
   };
   window.TCBio = TCBio;
 })();

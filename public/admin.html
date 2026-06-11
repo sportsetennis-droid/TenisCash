@@ -178,6 +178,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
 <script src="/_product-card.js?v=20260602-comprado"></script>
+<script src="/_webauthn.js?v=20260611"></script>
 </head>
 <body>
 
@@ -189,6 +190,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <input class="login-input" id="admin-phone" placeholder="Telefone ou e-mail">
     <input class="login-input" id="admin-pass" type="password" placeholder="Senha">
     <button class="login-btn" onclick="doAdminLogin()">ENTRAR</button>
+    <button class="login-btn" id="admin-bio-btn" onclick="doAdminLoginBio()" style="display:none;margin-top:10px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;">👤 Entrar com o rosto</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
@@ -3264,6 +3266,20 @@ async function doAdminLogin() {
   showDashboard();
 }
 
+// Entrar com o rosto (Face ID / digital / Windows Hello). Mesma validação de role do login por senha.
+async function doAdminLoginBio() {
+  try {
+    const data = await TCBio.login();
+    if (data.user.role !== 'admin' && data.user.role !== 'superadmin' && data.user.role !== 'manager') {
+      document.getElementById('login-error').textContent = 'Acesso restrito a administradores e gerentes'; return;
+    }
+    token = data.token; adminUser = data.user; localStorage.setItem('tc_admin_token', token); showDashboard();
+  } catch (e) {
+    const m = String((e && e.message) || '');
+    if (!/cancel|NotAllowed|abort|The operation/i.test(m)) document.getElementById('login-error').textContent = m || 'Não deu pra entrar com o rosto. Use a senha.';
+  }
+}
+
 function doLogout() {
   token = null;
   adminUser = null;
@@ -3275,6 +3291,7 @@ function doLogout() {
 async function showDashboard() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
+  if (window.TCBio) TCBio.mountEnrollChip(token); // oferece ativar "entrar com o rosto"
   if (!adminUser) {
     const me = await api('/auth/me');
     if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin' && me.user.role !== 'manager')) { doLogout(); return; }
@@ -6984,6 +7001,8 @@ function initAdminMessagesUI() {
 // AUTO LOGIN
 if (token) {
   showDashboard();
+} else if (window.TCBio) {
+  TCBio.available().then(ok => { if (ok) { const b = document.getElementById('admin-bio-btn'); if (b) b.style.display = 'block'; } });
 }
 
 // Keyboard shortcut
