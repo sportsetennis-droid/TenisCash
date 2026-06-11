@@ -109,6 +109,11 @@
     </div>
   </div>
 
+  <div class="by-seller" id="capturas-box" style="margin-bottom:14px">
+    <div class="by-seller-title">📷 Capturas do SCANNER de etiquetas — hoje <span id="cap-count" style="color:#888;font-weight:600"></span></div>
+    <div id="capturas-list" style="font-size:13px;line-height:1.6">Carregando…</div>
+  </div>
+
   <div class="filters">
     <label>Data:</label>
     <input type="date" id="filter-date" onchange="onDateChange()">
@@ -200,8 +205,50 @@ function setStatusFilter(s) {
 }
 
 async function loadAll() {
-  await Promise.all([loadSummary(), loadBipes()]);
+  await Promise.all([loadSummary(), loadBipes(), loadCapturas()]);
 }
+
+// 📷 Capturas do SCANNER de etiquetas (ProductCapture) — fila separada dos bipes; aqui pra acompanhar no mesmo painel
+async function loadCapturas() {
+  try {
+    const d = await api('/captures?status=all');
+    const date = STATE.date || todayFortaleza();
+    const doDia = (d.captures || []).filter((c) => {
+      const local = new Date(new Date(c.createdAt).getTime() - 3 * 3600 * 1000); // America/Fortaleza = UTC-3
+      return local.toISOString().slice(0, 10) === date;
+    });
+    const el = document.getElementById('capturas-list');
+    const cnt = document.getElementById('cap-count');
+    const nV = doDia.filter((c) => c.status === 'vinculado').length;
+    const nP = doDia.filter((c) => c.status === 'pendente').length;
+    const nPr = doDia.filter((c) => c.status === 'processando').length;
+    cnt.textContent = '— ' + doDia.length + ' captura(s): 🔗 ' + nV + ' vinculadas · 📥 ' + nP + ' pendentes' + (nPr ? ' · ⏳ ' + nPr : '');
+    if (!doDia.length) { el.innerHTML = '<span style="color:#999">Nenhuma captura do scanner nesta data.</span>'; return; }
+    el.innerHTML = doDia.slice(0, 40).map((c) => {
+      const hora = new Date(new Date(c.createdAt).getTime() - 3 * 3600 * 1000).toISOString().slice(11, 16);
+      const badge = c.status === 'vinculado' ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">🔗 vinculada</span>'
+        : c.status === 'processando' ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">⏳ processando</span>'
+        : '<span style="background:#ffe9d6;color:#b45309;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">📥 pendente</span>';
+      const lido = String(c.note || '').replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim().slice(0, 70);
+      const foto = c.photo ? '<a href="#" onclick="verFotoCaptura(this);return false" data-cap="' + c.id + '" style="color:#0a84ff;font-weight:700;text-decoration:none">👁 foto</a>' : '';
+      window['_capfoto_' + c.id] = c.photo || '';
+      return '<div style="display:flex;gap:10px;align-items:center;border-bottom:1px solid #f0f0f5;padding:5px 0;flex-wrap:wrap">' +
+        '<span class="bipe-time">' + hora + '</span>' + badge +
+        '<span style="color:#555">' + (c.storeName || '—') + ' · ' + (c.sellerName || '—') + (c.barcode ? ' · <b style="font-family:monospace">' + c.barcode + '</b>' : '') + '</span>' +
+        '<span style="flex:1;min-width:140px;color:#333">' + lido + '</span>' + foto +
+        '</div>';
+    }).join('');
+  } catch (e) { if (e.message !== 'unauth') console.warn('capturas:', e.message); }
+}
+window.verFotoCaptura = function (a) {
+  const ph = window['_capfoto_' + a.dataset.cap];
+  if (!ph) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer';
+  ov.onclick = () => ov.remove();
+  ov.innerHTML = '<img src="' + ph + '" style="max-width:100%;max-height:100%;border-radius:12px">';
+  document.body.appendChild(ov);
+};
 
 async function loadSummary() {
   try {
