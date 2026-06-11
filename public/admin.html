@@ -10444,9 +10444,21 @@ async function initCategoriesTab() {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
     // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado','cat-classify-nuvemshop','cat-classify-release'].forEach(id => {
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
+    });
+    // Nuvemshop/Liberação: se o status ainda está no default "Sem classificação", muda pra "Todos"
+    // (produto na loja/liberado é classificado por definição — senão a lista zera e parece bug).
+    ['cat-classify-nuvemshop','cat-classify-release'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', () => {
+        const stSel = document.getElementById('cat-classify-status');
+        const naLoja = (document.getElementById('cat-classify-nuvemshop')?.value === 'yes') ||
+                       ['aguardando','confirmado','yes'].includes(document.getElementById('cat-classify-release')?.value);
+        if (el.value && naLoja && stSel && stSel.value === 'unclassified') stSel.value = 'all';
+        renderCatClassifyGrid();
+      });
     });
     // Filtro Bipados — recarrega lista de productIds bipados antes de renderizar
     const bipedSel = document.getElementById('cat-classify-biped');
@@ -10643,13 +10655,11 @@ function _filteredCatProducts() {
     if (subcategory && (p.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
     if (modality && (cls.modality || '') !== modality) return false;
     if (tier && (cls.tier || '') !== tier) return false;
-    // Status de classificação — IGNORADO quando filtra por Nuvemshop/Liberação (produto na loja é
-    // classificado por definição; senão o default "unclassified" zera o resultado).
-    const _nsRelActive = !!(nsF || relF);
-    if (!_nsRelActive && status === 'unclassified') {
+    // Status de classificação — aplica SEMPRE (com qualquer combinação de filtros)
+    if (status === 'unclassified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (isFull) return false;
-    } else if (!_nsRelActive && status === 'classified') {
+    } else if (status === 'classified') {
       const isFull = p.category && p.subcategory && cls.modality && cls.tier;
       if (!isFull) return false;
     }
