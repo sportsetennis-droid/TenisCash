@@ -566,13 +566,20 @@
       '<div style="position:relative;flex:1;min-height:0">' +
         '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
         '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px;pointer-events:none"></div>' +
-        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:14px;font-weight:800;text-shadow:0 1px 4px #000;text-align:center;pointer-events:none">Aponte pra etiqueta e TOQUE NA TELA pra capturar</div>' +
-        '<div id="etiq-tap" onclick="window.capturaManual()" style="position:absolute;inset:0;cursor:pointer"></div>' +
+        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:14px;font-weight:800;text-shadow:0 1px 4px #000;text-align:center;pointer-events:none">Aponte pra etiqueta…</div>' +
+        '<div id="etiq-confirm" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.78);padding:24px;text-align:center">' +
+          '<div id="etiq-confirm-status" style="color:#fff;font-size:26px;font-weight:900;margin-bottom:8px">⏳ Salvando…</div>' +
+          '<div id="etiq-confirm-det" style="color:#bbb;font-size:14px;font-weight:600;margin-bottom:24px;min-height:20px"></div>' +
+          '<button id="etiq-confirm-btn" onclick="window.proximaEtiqueta()" disabled style="width:100%;max-width:340px;min-height:58px;font-size:19px;font-weight:900;background:#555;color:#fff;border:none;border-radius:14px">AGUARDE…</button>' +
+        '</div>' +
       '</div>' +
       '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
         '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
-        '<div id="etiq-lista" style="max-height:110px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
-        '<button onclick="window.fecharScanner()" style="margin-top:8px;width:100%;min-height:46px;font-size:15px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR SCANNER</button>' +
+        '<div id="etiq-lista" style="max-height:90px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button id="etiq-capturar" onclick="window.capturaManual()" style="flex:2;min-height:54px;font-size:16px;font-weight:900;background:#0a84ff;color:#fff;border:none;border-radius:12px">📸 CAPTURAR AGORA</button>' +
+          '<button onclick="window.fecharScanner()" style="flex:1;min-height:54px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:12px">✕ FECHAR</button>' +
+        '</div>' +
       '</div>';
     document.body.appendChild(ov);
     renderEtiqLista();
@@ -597,6 +604,7 @@
       let tent = 0;
       etiqLoop = setInterval(() => {
         try {
+          if (etiqPausado) return; // painel de confirmação aberto — não lê
           if (!video.videoWidth) return;
           const W = video.videoWidth, H = video.videoHeight;
           const cw = Math.round(W * 0.84), ch = Math.round(H * 0.36); // a faixa do retângulo de mira
@@ -606,13 +614,13 @@
           const result = core.decode(bin); // lança NotFound quando não acha (normal)
           const v = String(result.getText() || '').replace(/\D/g, '');
           if (v.length < 12 || v.length > 14) return;
-          // NÃO captura sozinho — só memoriza o código lido pra ir junto no próximo TOQUE
+          // NÃO salva sozinho — reconhece AO VIVO e mostra; quem salva é o botão CAPTURAR AGORA
           etiqUltimo = v; etiqUltimoTs = Date.now();
           const h = document.getElementById('etiq-hint');
-          if (h) { h.textContent = '✓ código ' + v + ' lido — TOQUE NA TELA pra capturar'; h.style.color = '#7CFFA9'; }
+          if (h) { h.textContent = '✓ código ' + v + ' reconhecido — clica em CAPTURAR AGORA'; h.style.color = '#7CFFA9'; }
         } catch (_) {
           tent++;
-          if (Date.now() - etiqUltimoTs > 4000 && tent % 12 === 0) { const h = document.getElementById('etiq-hint'); if (h) { h.textContent = 'Aponte pra etiqueta e TOQUE NA TELA pra capturar'; h.style.color = '#fff'; } }
+          if (Date.now() - etiqUltimoTs > 4000 && tent % 12 === 0) { const h = document.getElementById('etiq-hint'); if (h) { h.textContent = 'Aponte pra etiqueta…'; h.style.color = '#fff'; } }
         }
       }, 280);
     } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
@@ -629,32 +637,67 @@
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
-  // 📸 TOQUE NA TELA = captura o frame; se o leitor leu o código nos últimos 4s, ele vai junto (precisão);
-  // sem código lido a foto vai mesmo assim e o servidor lê pela visão.
+  // 📸 CAPTURAR AGORA: captura o frame (com o código lido ao vivo, se houver) e abre o painel de
+  // CONFIRMAÇÃO: ⏳ Salvando… → ✅ SALVO (botão PRÓXIMA só libera com o salvo confirmado pelo servidor).
+  let etiqPausado = false, etiqWatch = null;
   window.capturaManual = function () {
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) { alert('Câmera ainda abrindo…'); return; }
+    if (etiqPausado) return;
+    etiqPausado = true;
     const ean = (Date.now() - etiqUltimoTs < 4000) ? etiqUltimo : '';
-    capturarFrame(ean);
+    const lid = capturarFrame(ean);
+    const pane = document.getElementById('etiq-confirm');
+    const st = document.getElementById('etiq-confirm-status');
+    const det = document.getElementById('etiq-confirm-det');
+    const btn = document.getElementById('etiq-confirm-btn');
+    pane.style.display = 'flex';
+    st.textContent = '⏳ Salvando…';
+    det.textContent = ean ? 'código ' + ean : 'sem código lido — o servidor vai ler pela foto';
+    btn.disabled = true; btn.textContent = 'AGUARDE…'; btn.style.background = '#555';
+    clearInterval(etiqWatch);
+    etiqWatch = setInterval(() => {
+      const it = etiqFila.find((x) => x.lid === lid);
+      if (!it) return;
+      if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
+        st.textContent = '✅ SALVO!';
+        st.style.color = '#7CFFA9';
+        if (it.st === 'vinculado' && it.msg) det.textContent = it.msg;
+        else if (it.st === 'pendente' && it.msg) det.textContent = it.msg;
+        else det.textContent = (ean ? 'código ' + ean + ' — ' : '') + 'reconhecimento rodando por trás';
+        btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
+        clearInterval(etiqWatch);
+      }
+    }, 350);
+  };
+
+  window.proximaEtiqueta = function () {
+    clearInterval(etiqWatch);
+    const pane = document.getElementById('etiq-confirm');
+    if (pane) pane.style.display = 'none';
+    const st = document.getElementById('etiq-confirm-status'); if (st) st.style.color = '#fff';
+    etiqUltimo = ''; etiqUltimoTs = 0; etiqPausado = false;
     const h = document.getElementById('etiq-hint');
-    if (h) { h.textContent = 'Aponte pra etiqueta e TOQUE NA TELA pra capturar'; h.style.color = '#fff'; }
+    if (h) { h.textContent = 'Aponte pra etiqueta…'; h.style.color = '#fff'; }
   };
 
   function capturarFrame(ean) {
     const video = document.getElementById('etiq-video');
-    if (!video || !video.videoWidth) return;
+    if (!video || !video.videoWidth) return null;
+    const lid = 'e' + Date.now();
+    const item = { lid, b64: null, ean, st: 'fila' };
+    etiqFila.push(item); renderEtiqLista();
     const k = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
     const c = document.createElement('canvas');
     c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k);
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
     c.toBlob((b) => {
       const fr = new FileReader();
-      fr.onload = () => { etiqFila.push({ lid: 'e' + Date.now(), b64: fr.result, ean, st: 'fila' }); etiqSave(); renderEtiqLista(); enviarFila(); };
+      fr.onload = () => { item.b64 = fr.result; etiqSave(); enviarFila(); };
       fr.readAsDataURL(b);
     }, 'image/jpeg', 0.62);
     etiqBeep();
-    const fl = document.getElementById('etiq-flash');
-    if (fl) { fl.style.display = 'flex'; fl.textContent = '✓ ' + ean + ' capturado'; setTimeout(() => { fl.style.display = 'none'; }, 900); }
+    return lid;
   }
 
   async function enviarFila() {
