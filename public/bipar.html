@@ -804,6 +804,17 @@
   window.confirmarTamanhoOutro = function () {
     const v = (document.getElementById('size-other')?.value || '').trim();
     if (!v) { sizeModalError('Digite o tamanho ou toque num número.'); return; }
+    // BIPE NUNCA SE PERDE (dono 2026-06-11): se o vendedor BIPAR com o modal
+    // aberto, o scanner digita o código aqui. 8+ dígitos = código de barras,
+    // não tamanho → registra o bipe normal (repetido conta! mesmo código =
+    // vários pares reais) e o modal continua esperando o tamanho do anterior.
+    if (/^\d{8,14}$/.test(v)) {
+      document.getElementById('size-other').value = '';
+      enviarBipe(v);
+      if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
+      sizeModalError('📦 Bipe do código ' + v + ' REGISTRADO. Agora informe o tamanho deste produto aqui.');
+      return;
+    }
     confirmarTamanho(v);
   };
 
@@ -824,6 +835,15 @@
       // sucesso (ou já estava confirmado): atualiza o bipe local
       b.needsSize = false;
       if (b.product) b.product.size = d.size || size;
+      // 1 código = 1 tamanho: os OUTROS bipes do MESMO código (pares repetidos)
+      // não precisam confirmar de novo — limpa pendência e tira da fila
+      for (const outro of bipes) {
+        if (outro !== b && outro.code === b.code && outro.needsSize) {
+          outro.needsSize = false;
+          if (outro.product) outro.product.size = d.size || size;
+        }
+      }
+      sizeQueue = sizeQueue.filter(q => q.code !== b.code);
       renderLast(b);
       renderLista();
       showNextSizeModal();
