@@ -3608,10 +3608,27 @@ function buildAdminProductThumb(url) {
 }
 
 // ===== Helpers Nuvemshop (compartilhados pelos cards Catálogo / Estoque / Categoria) =====
+// Atualiza o estado NS dos produtos JÁ carregados na aba Categoria SEM rebuscar a base inteira
+// (mata o "Carregando..." pesado após liberar/confirmar). Só age se a aba Categoria está visível.
+// Retorna true se aplicou local (aí o chamador NÃO recarrega).
+function _catPatchLocalNs(ids, patch) {
+  const grid = document.getElementById('cat-classify-grid');
+  if (!grid || grid.offsetParent === null) return false; // aba Categoria não está na tela
+  if (!Array.isArray(_catClassifyProducts) || !_catClassifyProducts.length) return false;
+  const set = new Set(ids);
+  let hit = false;
+  _catClassifyProducts.forEach(p => { if (set.has(p.id)) { Object.assign(p, patch); hit = true; } });
+  if (!hit) return false;
+  if (typeof _catClassifySelected !== 'undefined' && _catClassifySelected.clear) _catClassifySelected.clear();
+  if (typeof renderCatClassifyGrid === 'function') renderCatClassifyGrid();
+  return true;
+}
 // PASSO 1 — Liberar: só MARCA como candidato (vai pra fila de conferência). NÃO sobe pra loja.
 async function nsRelease(id, release, reloadFn) {
   const r = await api('/admin/catalog/products/' + id + '/release', 'POST', { release });
   if (r && r.error) { alert('Erro: ' + r.error); return; }
+  const patch = release ? { releaseToNuvemshop: true } : { releaseToNuvemshop: false, confirmedForNuvemshop: false };
+  if (_catPatchLocalNs([id], patch)) return; // atualizou na hora, sem reload
   if (typeof reloadFn === 'function') reloadFn();
 }
 // PASSO 2 — Conferir e subir: confirma e SOBE pra loja agora.
@@ -3621,6 +3638,8 @@ async function nsConfirm(id, confirm, reloadFn) {
   if (confirm && r && r.upload && r.upload.ok === false) {
     alert('Confirmado, mas NÃO subiu:\n' + (r.upload.reason || '?') + '\n\n(precisa das 4 classificações + estoque físico bipado)');
   }
+  const patch = confirm ? { releaseToNuvemshop: true, confirmedForNuvemshop: true } : { confirmedForNuvemshop: false };
+  if (_catPatchLocalNs([id], patch)) return;
   if (typeof reloadFn === 'function') reloadFn();
 }
 async function nsRemove(id, reloadFn) {
@@ -10475,8 +10494,7 @@ async function initCategoriesTab() {
       bulkRelBtn.disabled = false; bulkRelBtn.textContent = orig;
       if (r && r.error) { alert('Erro: ' + r.error); return; }
       alert('✅ ' + (r.marked || 0) + ' produto(s) liberado(s) p/ conferência.\nFiltre por "🕓 Aguardando conferência", revise e clique "Conferir e subir".');
-      _catClassifySelected.clear();
-      loadCategoriesClassify();
+      _catPatchLocalNs(ids, { releaseToNuvemshop: true }); // atualiza os cards na hora, sem rebuscar
     });
     // PASSO 2 em massa — conferir e SUBIR os selecionados
     const bulkConfBtn = document.getElementById('cat-bulk-confirm');
@@ -10491,8 +10509,7 @@ async function initCategoriesTab() {
       let msg = '✅ Subiram pra loja: ' + (r.uploaded || 0) + '\n⏳ Não subiram: ' + (r.skipped || 0);
       if (r.skips && r.skips.length) msg += '\n\nMotivos:\n' + r.skips.map(s => '• ' + (s.name || '').slice(0, 28) + ': ' + (s.reason || '?')).join('\n');
       alert(msg);
-      _catClassifySelected.clear();
-      loadCategoriesClassify();
+      _catPatchLocalNs(ids, { releaseToNuvemshop: true, confirmedForNuvemshop: true }); // atualiza na hora, sem rebuscar
     });
   }
   await loadCategoriesClassify();
