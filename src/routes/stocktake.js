@@ -98,6 +98,7 @@ function needsManualSize(brand, productSizeRow) {
 //   calçado: 15–50, meio tamanho com .5 (ex "38.5", "41")
 //   vestuário: PP P M G GG XG XGG EG EGG
 //   infantil por idade: 2A–16A (ex "8A", "14A")
+//   acessório sem tamanho: U / UNICO / ÚNICO → 'Único'
 // Retorna null se não for plausível — NUNCA grava lixo.
 function normalizeManualSize(raw) {
   let s = String(raw || '').trim().toUpperCase().replace(',', '.').replace(/\s+/g, '');
@@ -111,6 +112,7 @@ function normalizeManualSize(raw) {
     const n = parseInt(s, 10);
     return n >= 2 && n <= 16 ? s : null;
   }
+  if (/^(U|UNICO|ÚNICO)$/.test(s)) return 'Único';
   return null;
 }
 

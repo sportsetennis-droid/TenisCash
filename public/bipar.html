@@ -778,9 +778,10 @@
         <div id="size-error"></div>
         <div class="size-grid">${grade}</div>
         <div class="size-other-row">
-          <input id="size-other" type="text" maxlength="4" autocomplete="off" placeholder="Outro: 33, 38.5, M, 8A...">
+          <input id="size-other" type="text" maxlength="5" autocomplete="off" placeholder="Outro: 33, 38.5, M, 8A...">
           <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
         </div>
+        <button type="button" id="size-unico" onclick="confirmarTamanho('U')" style="width:100%;min-height:46px;background:#fff;border:1.5px solid #d2d2d7;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;color:#1d1d1f;margin-bottom:12px;">Único — acessório sem tamanho (bolsa, bola, boné...)</button>
         <div class="size-warn">⚠️ Informe o tamanho ANTES de bipar o próximo produto.</div>
         <button type="button" id="size-skip" onclick="pularTamanho()">Pular — deixo o tamanho depois</button>
       </div>`;
