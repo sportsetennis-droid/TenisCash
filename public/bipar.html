@@ -607,11 +607,17 @@
           if (etiqPausado) return; // painel de confirmação aberto — não lê
           if (!video.videoWidth) return;
           const W = video.videoWidth, H = video.videoHeight;
-          const cw = Math.round(W * 0.84), ch = Math.round(H * 0.36); // a faixa do retângulo de mira
-          cv.width = cw; cv.height = ch;
-          cv.getContext('2d').drawImage(video, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, cw, ch);
-          const bin = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
-          const result = core.decode(bin); // lança NotFound quando não acha (normal)
+          // REGRA DO DONO: vale o código mais CENTRALIZADO (produto de canto é acidente).
+          // 1ª passada: centro estreito; 2ª: faixa larga (fallback).
+          const tenta = (fw, fh) => {
+            const cw = Math.round(W * fw), ch = Math.round(H * fh);
+            cv.width = cw; cv.height = ch;
+            cv.getContext('2d').drawImage(video, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, cw, ch);
+            const bin = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
+            return core.decode(bin); // lança NotFound quando não acha (normal)
+          };
+          let result;
+          try { result = tenta(0.6, 0.32); } catch (_) { result = tenta(0.84, 0.36); }
           const v = String(result.getText() || '').replace(/\D/g, '');
           if (v.length < 12 || v.length > 14) return;
           // NÃO salva sozinho — reconhece AO VIVO e mostra; quem salva é o botão CAPTURAR AGORA

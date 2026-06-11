@@ -560,7 +560,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     const b64 = photo.split(',')[1];
     const r = await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 200, messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: b64 } },
-      { type: 'text', text: 'Etiqueta/caixa de produto esportivo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"tamanho BR/letra visível ou null"}. Copie LITERAL, não invente.' },
+      { type: 'text', text: 'Etiqueta/caixa de produto esportivo. REGRA: se houver MAIS DE UMA etiqueta/produto na foto, considere SOMENTE a mais CENTRALIZADA/em destaque — ignore as de canto/fundo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"tamanho BR/letra visível ou null"}. Copie LITERAL, não invente.' },
     ] }] });
     const t = (r.content.find((c) => c.type === 'text') || {}).text || '';
     const m = t.match(/\{[\s\S]*\}/);
