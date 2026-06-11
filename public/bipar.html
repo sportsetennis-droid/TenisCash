@@ -483,6 +483,7 @@
         <div class="last-bipe-info">
           <div class="name">${bipe.product.name}</div>
           <div class="meta">${bipe.product.brand || ''} · Tam ${bipe.product.size || '—'} · ${bipe.code}</div>
+          ${bipe.alerta ? `<div style="margin-top:6px;background:#fff3e0;color:#b45309;border:1.5px solid #f0b146;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800">${bipe.alerta}</div>` : ''}
         </div>
       `;
     } else if (bipe._pending) {
@@ -666,11 +667,17 @@
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
       if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
-        st.textContent = it.bipou ? '✅ SALVO + BIPADO!' : '✅ SALVO!';
-        st.style.color = '#7CFFA9';
-        if (it.st === 'vinculado' && it.msg) det.textContent = it.msg;
-        else if (it.st === 'pendente' && it.msg) det.textContent = it.msg;
-        else det.textContent = it.bipou ? ('código ' + ean + ' contado no estoque da loja') : (ean ? 'código ' + ean + ' — reconhecimento por trás' : 'sem código lido — salvou a foto, NÃO conta estoque até vincular');
+        if (it.alerta) { // checagem inteligente: passou do comprado
+          st.textContent = '⚠ BIPADO — CONFERIR!';
+          st.style.color = '#FFB14A';
+          det.textContent = it.alerta;
+        } else {
+          st.textContent = it.bipou ? '✅ SALVO + BIPADO!' : '✅ SALVO!';
+          st.style.color = '#7CFFA9';
+          if (it.st === 'vinculado' && it.msg) det.textContent = it.msg;
+          else if (it.st === 'pendente' && it.msg) det.textContent = it.msg;
+          else det.textContent = it.bipou ? ('código ' + ean + ' contado no estoque da loja') : (ean ? 'código ' + ean + ' — reconhecimento por trás' : 'sem código lido — salvou a foto, NÃO conta estoque até vincular');
+        }
         btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
         clearInterval(etiqWatch);
       }
@@ -721,7 +728,7 @@
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.bipou = !!d.bipou; item.b64 = ''; etiqSave(); renderEtiqLista(); }
+        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.bipou = !!d.bipou; item.alerta = d.alerta || null; item.b64 = ''; etiqSave(); renderEtiqLista(); }
       }
     } catch (_) { /* mantém na fila, tenta no próximo tick */ }
     etiqBusy = false;

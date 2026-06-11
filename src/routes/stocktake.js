@@ -415,12 +415,25 @@ router.post('/bipe', async (req, res) => {
     const needsSizeResp = chosen ? needsManualSize(chosen.product.brand, chosen) : false;
     const sizeOptionsResp = needsSizeResp ? await sizeOptionsForBipe(chosen.product.name, code) : null;
 
+    // CHECAGEM INTELIGENTE (dono 2026-06-11): contraprova pelo COMPRADO — Σbipes do código
+    // não pode passar do comprado. Passou => alerta na tela (registro fica; regra: conferir, não apagar).
+    let alertaDup = null;
+    if (chosen) {
+      try {
+        const psRow = await prisma.productSize.findUnique({ where: { id: chosen.id }, select: { stock: true } });
+        const comprado = (psRow && psRow.stock) || 0;
+        const jaBipados = await prisma.stocktakeBipe.count({ where: { barcode: code } });
+        if (comprado > 0 && jaBipados > comprado) alertaDup = '⚠ Este código já tem ' + jaBipados + ' bipes e o COMPRADO é ' + comprado + ' — possível DUPLICADO, confira na prateleira';
+      } catch (_) {}
+    }
+
     res.json({
       success: true,
       bipeId: bipe.id,
       appliedToStock,
       found,
       duplicate,
+      alerta: alertaDup || undefined,
       needsSize: needsSizeResp,
       sizeOptions: sizeOptionsResp || undefined,
       product: chosen
@@ -641,11 +654,11 @@ router.post('/etiqueta',
       // O SCANNER TAMBÉM É CONTAGEM (dono 2026-06-11: equipe usa o scanner no lugar do bipe).
       // Código lido pela câmera => registra StocktakeBipe igual ao bipe normal: achou card -> conta no físico;
       // não achou -> órfão (casa sozinho quando a etiqueta for vinculada).
-      let bipeId = null;
+      let bipeId = null, alertaDup = null;
       if (eanCam && eanCam.length >= 8) {
         try {
           const variants = [eanCam, eanCam.replace(/^0+/, ''), '0' + eanCam];
-          const ps = await prisma.productSize.findFirst({ where: { barcode: { in: variants } }, select: { id: true, productId: true, size: true, product: { select: { name: true, brand: true } } } });
+          const ps = await prisma.productSize.findFirst({ where: { barcode: { in: variants } }, select: { id: true, productId: true, size: true, stock: true, product: { select: { name: true, brand: true } } } });
           const bipe = await prisma.stocktakeBipe.create({ data: {
             barcode: eanCam, storeId: storeId || null, sellerId: sellerId || null,
             sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
@@ -661,6 +674,11 @@ router.post('/etiqueta',
             if (ex) await prisma.storeStock.update({ where: { id: ex.id }, data: { stock: (ex.stock || 0) + 1 } });
             else await prisma.storeStock.create({ data: { productSizeId: ps.id, storeId, stock: 1 } });
           }
+          // CHECAGEM INTELIGENTE: Σbipes do código não pode passar do COMPRADO — passou => alerta (registro fica)
+          if (ps && (ps.stock || 0) > 0) {
+            const jaBipados = await prisma.stocktakeBipe.count({ where: { barcode: eanCam } });
+            if (jaBipados > ps.stock) alertaDup = '⚠ Este código já tem ' + jaBipados + ' bipes e o COMPRADO é ' + ps.stock + ' — possível DUPLICADO, confira na prateleira';
+          }
         } catch (e) { console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
       }
       const cap = await prisma.productCapture.create({ data: {
@@ -670,7 +688,7 @@ router.post('/etiqueta',
         note: 'etiqueta processando…', photo, status: 'processando', bipeId,
       } });
       // responde JÁ — a pessoa segue pro próximo produto; reconhecimento roda em background
-      res.json({ ok: true, salvo: true, capId: cap.id, bipou: !!bipeId });
+      res.json({ ok: true, salvo: true, capId: cap.id, bipou: !!bipeId, alerta: alertaDup || undefined });
       setImmediate(() => processarEtiqueta(cap.id, photo, eanLocal ? String(eanLocal).replace(/\D/g, '') : null, {})
         .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'pendente', note: 'etiqueta erro-processamento' } }).catch(() => {}); }));
     } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(500).json({ error: e.message }); }
