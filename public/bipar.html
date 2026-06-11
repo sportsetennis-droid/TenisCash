@@ -784,7 +784,7 @@
     const visiveis = bipes.slice().reverse().slice(0, 100);
     lista.innerHTML = visiveis.map((b, idx) => {
       const realIdx = bipes.length - 1 - idx;
-      const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cls = b.found ? '' : 'not-found';
       const tamTxt = b.needsSize ? ' · 📏 SEM TAMANHO' : (b.product?.size ? ' · Tam ' + b.product.size : '');
       const tamBtn = b.needsSize ? `<button class="needs-size" onclick="reabrirTamanho(${realIdx})">📏 TAM</button>` : '';

@@ -231,7 +231,7 @@ async function loadCapturas() {
     cnt.textContent = '— ' + doDia.length + ' captura(s): 🔗 ' + nV + ' vinculadas · 📥 ' + nP + ' pendentes' + (nPr ? ' · ⏳ ' + nPr : '');
     if (!doDia.length) { el.innerHTML = '<span style="color:#999">Nenhuma captura do scanner nesta data.</span>'; return; }
     el.innerHTML = doDia.slice(0, 40).map((c) => {
-      const hora = new Date(new Date(c.createdAt).getTime() - 3 * 3600 * 1000).toISOString().slice(11, 16);
+      const hora = new Date(c.createdAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit' });
       const badge = c.status === 'vinculado' ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">🔗 vinculada</span>'
         : c.status === 'processando' ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">⏳ processando</span>'
         : '<span style="background:#ffe9d6;color:#b45309;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">📥 pendente</span>';
