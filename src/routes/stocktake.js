@@ -677,6 +677,56 @@ router.post('/etiqueta',
   }
 );
 
+// TRATADOR CONTÍNUO (dono 2026-06-11: "todos os scanner já vá automaticamente pro card e seja tratado").
+// A cada 10min re-tenta vincular as capturas pendentes: SKU lido ↔ linha do card ↔ cProd da NFe ↔ nome único.
+// Pendente sem destino = produto sem NFe importada; quando a nota entrar, casa sozinho na próxima rodada.
+async function tratarPendentesEtiqueta() {
+  try {
+    const caps = await prisma.productCapture.findMany({ where: { status: 'pendente' }, select: { id: true, note: true, barcode: true }, take: 300 });
+    let vinc = 0;
+    for (const c of caps) {
+      const m = String(c.note || '').match(/\{[\s\S]*\}/);
+      let lido = null; try { lido = m ? JSON.parse(m[0]) : null; } catch (_) {}
+      const sku = lido && lido.sku ? String(lido.sku).trim().toUpperCase() : null;
+      const nome = lido && lido.nome ? String(lido.nome).trim() : null;
+      let pid = null, psId = null;
+      if (sku) { const ps = await prisma.productSize.findFirst({ where: { barcode: sku }, select: { id: true, productId: true } }); if (ps) { pid = ps.productId; psId = ps.id; } }
+      if (!pid && sku) {
+        const it = await prisma.xmlFiscalItem.findFirst({ where: { supplierCode: sku, productId: { not: null }, fiscalDocument: { docType: 'entrada' } }, select: { productId: true, ean: true } });
+        if (it) {
+          pid = it.productId;
+          const tam = (sku.match(/[-.]?(PP|P|M|G|GG|XG|U|\d{2})$/i) || [])[1];
+          const bc = (it.ean && it.ean !== 'SEM GTIN') ? it.ean : sku;
+          let ps = await prisma.productSize.findFirst({ where: { productId: pid, barcode: bc }, select: { id: true } });
+          if (!ps && tam) ps = await prisma.productSize.create({ data: { productId: pid, barcode: bc, size: tam, stock: 0 } }).catch(() => null);
+          if (ps) psId = ps.id;
+        }
+      }
+      if (!pid && nome) {
+        const tokens = nome.toUpperCase().split(/[^A-Z0-9]+/).filter((t) => t.length > 2 && !['NIKE', 'TENIS', 'THE'].includes(t));
+        if (tokens.length >= 2) {
+          const cands = await prisma.product.findMany({ where: { active: true, AND: tokens.map((t) => ({ name: { contains: t, mode: 'insensitive' } })) }, select: { id: true }, take: 2 });
+          if (cands.length === 1) pid = cands[0].id;
+        }
+      }
+      if (!pid) continue;
+      await prisma.productCapture.update({ where: { id: c.id }, data: { status: 'vinculado', matchedProductId: pid, note: (String(c.note || '').replace(/^etiqueta\s*📥?/, 'etiqueta ✓') + ' [auto]').slice(0, 400) } });
+      if (c.barcode && psId) {
+        await prisma.stocktakeBipe.updateMany({ where: { barcode: c.barcode }, data: { productId: pid, productSizeId: psId, found: true, applied: true } });
+        const bipes = await prisma.stocktakeBipe.findMany({ where: { barcode: c.barcode }, select: { storeId: true } });
+        const cnt = {}; for (const b of bipes) if (b.storeId) cnt[b.storeId] = (cnt[b.storeId] || 0) + 1;
+        const old = await prisma.storeStock.findMany({ where: { productSizeId: psId }, select: { id: true } });
+        for (const o of old) await prisma.storeStock.delete({ where: { id: o.id } }).catch(() => {});
+        for (const [st, n] of Object.entries(cnt)) await prisma.storeStock.create({ data: { productSizeId: psId, storeId: st, stock: n } }).catch(() => {});
+      }
+      vinc++;
+    }
+    if (vinc) console.log('[etiqueta-cron] vinculadas automaticamente: ' + vinc);
+  } catch (e) { console.warn('[etiqueta-cron] erro:', e.message); }
+}
+setInterval(tratarPendentesEtiqueta, 10 * 60 * 1000);
+setTimeout(tratarPendentesEtiqueta, 90 * 1000); // 1ª rodada após o boot
+
 // GET /api/stocktake/etiqueta-status?ids=a,b,c (PÚBLICO) — front consulta o resultado do reconhecimento
 router.get('/etiqueta-status', async (req, res) => {
   try {
