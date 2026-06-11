@@ -73,11 +73,14 @@ async function agentVersion(url) {
   return ver;
 }
 
-// Payload que só agente v2.1+ entende (troca/devolução)?
+// Payload que só agente v2.1+ atende bem: troca/devolução (payments[]/finNFe)
+// e QUALQUER operação em chave modelo 55 (cancelamento/consulta) — o agente 2.0
+// aponta NFe 55 pro host morto nfe.sefaz.pb.gov.br; o 2.1 usa a SVRS correta.
 function needsV21(body) {
   return !!(body && (
     (Array.isArray(body.payments) && body.payments.length) ||
-    body.finNFe === 4 || body.tpNF === 0 || body.refNFe
+    body.finNFe === 4 || body.tpNF === 0 || body.refNFe ||
+    (body.accessKey && String(body.accessKey).slice(20, 22) === '55')
   ));
 }
 
