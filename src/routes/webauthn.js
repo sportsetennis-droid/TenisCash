@@ -9,6 +9,10 @@ const {
   generateAuthenticationOptions, verifyAuthenticationResponse,
 } = require('@simplewebauthn/server');
 
+// @simplewebauthn usa a WebCrypto global. Node < 20 (ou alguns runtimes) não expõem
+// globalThis.crypto por padrão → "An instance of the Crypto API could not be located".
+if (!globalThis.crypto) { try { globalThis.crypto = require('node:crypto').webcrypto; } catch (_) {} }
+
 const router = express.Router();
 
 const RP_ID = process.env.WEBAUTHN_RP_ID || 'teniscash.com.br';
