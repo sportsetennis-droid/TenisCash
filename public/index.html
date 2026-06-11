@@ -2516,7 +2516,15 @@ async function forgotSendCode() {
   if (!phone || phone.length < 10) { showError('forgot-phone-error','Informe um telefone válido'); return; }
   forgotPhone = phone;
   const data = await api('/auth/forgot-send-code','POST',{phone,method:'whatsapp'});
-  if (data.error) { showError('forgot-phone-error',data.error); return; }
+  if (data.error) {
+    const e = String(data.error || '');
+    if (/cadastrad/i.test(e)) {
+      showError('forgot-phone-error','Esse telefone não está cadastrado.');
+    } else {
+      document.getElementById('forgot-phone-error').innerHTML = '<div style="background:rgba(255,255,255,0.12);border-radius:8px;padding:12px;margin-top:8px;font-size:13px;color:#fff;line-height:1.5">Não foi possível enviar pelo WhatsApp agora.<br><span onclick="showForgotMethod(\'email\')" style="text-decoration:underline;cursor:pointer;font-weight:700">Recuperar por e-mail</span> ou fale com a loja.</div>';
+    }
+    return;
+  }
   document.getElementById('forgot-code-msg').textContent = 'Código enviado para seu WhatsApp!';
   showForgotStep('code');
 }
