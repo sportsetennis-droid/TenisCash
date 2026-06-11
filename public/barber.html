@@ -295,6 +295,7 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="/_webauthn.js?v=20260611"></script>
 <script>
 const API='';
 let TOKEN=localStorage.getItem('tc_token')||null;
@@ -458,10 +459,13 @@ async function renderOwner(){
       <div style="color:var(--muted);font-size:13px;margin-bottom:14px;">Use seu login TenisCash pra cadastrar/gerenciar sua barbearia.</div>
       <div class="field"><label>WhatsApp</label><input id="loginPhone" inputmode="tel" placeholder="(83) 9 9999-9999"></div>
       <div class="field"><label>Senha</label><input id="loginPass" type="password" placeholder="••••••"></div>
-      <button class="btn" id="loginBtn" data-action="login">Entrar</button></div>`;
+      <button class="btn" id="loginBtn" data-action="login">Entrar</button>
+      <button class="btn" id="bioBtn" onclick="barberBioLogin()" style="display:none;margin-top:8px;background:#fff;color:#E5571E;border:1.5px solid #E5571E">👤 Entrar com o rosto</button></div>`;
+    if(window.TCBio)TCBio.available().then(function(ok){if(ok){var b=document.getElementById('bioBtn');if(b)b.style.display='block';}});
     return;
   }
   el.innerHTML='<div class="loading">Carregando...</div>';
+  if(window.TCBio)TCBio.mountEnrollChip(TOKEN);
   try{
     const venues=await api('/api/services/me/venues');
     if(!venues.length){renderCreateVenue(el);return;}
@@ -501,6 +505,10 @@ async function doLogin(){
     const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({phone,password})});
     TOKEN=d.token;localStorage.setItem('tc_token',TOKEN);renderOwner();
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent='Entrar';}
+}
+async function barberBioLogin(){
+  try{const d=await TCBio.login();TOKEN=d.token;localStorage.setItem('tc_token',TOKEN);renderOwner();}
+  catch(e){const m=String((e&&e.message)||'');if(!/cancel|NotAllowed|abort|The operation/i.test(m))toast(m||'Não deu pra entrar com o rosto');}
 }
 function logout(){TOKEN=null;localStorage.removeItem('tc_token');renderOwner();}
 async function publishVenue(id){try{await api(`/api/services/venues/${id}`,{method:'PATCH',body:JSON.stringify({published:true})});toast('Publicada! 🎉');renderOwner();}catch(e){toast(e.message);}}

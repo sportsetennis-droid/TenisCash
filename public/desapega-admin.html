@@ -57,6 +57,7 @@
     <input id="li-user" placeholder="Telefone ou e-mail" inputmode="email">
     <input id="li-pass" type="password" placeholder="Senha">
     <button onclick="doLogin()">Entrar</button>
+    <button id="bioBtn" onclick="doLoginBio()" style="display:none;margin-top:8px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;">👤 Entrar com o rosto</button>
     <div class="err" id="loginErr"></div>
   </div>
 </div>
@@ -78,6 +79,7 @@
 
 <div class="lightbox" id="lb" onclick="this.classList.remove('show')"><img id="lbimg"></div>
 
+<script src="/_webauthn.js?v=20260611"></script>
 <script>
 const API='/api/desapega';
 let TOKEN=localStorage.getItem('tc_token')||'';
@@ -98,7 +100,7 @@ async function api(path,opts){
 }
 
 function showLogin(msg){$('app').style.display='none';$('login').style.display='block';if(msg)$('loginErr').textContent=msg;}
-function showApp(){$('login').style.display='none';$('app').style.display='block';load();}
+function showApp(){$('login').style.display='none';$('app').style.display='block';load();if(window.TCBio)TCBio.mountEnrollChip(TOKEN);}
 
 async function doLogin(){
   const u=$('li-user').value.trim(),p=$('li-pass').value;
@@ -113,6 +115,10 @@ async function doLogin(){
     if(!['admin','superadmin','manager'].includes(role)){$('loginErr').textContent='Esta conta não é admin.';return;}
     TOKEN=j.token;localStorage.setItem('tc_token',TOKEN);showApp();
   }catch(e){$('loginErr').textContent=e.message;}
+}
+async function doLoginBio(){
+  try{const d=await TCBio.login();const role=d.user&&d.user.role;if(!['admin','superadmin','manager'].includes(role)){$('loginErr').textContent='Esta conta não é admin.';return;}TOKEN=d.token;localStorage.setItem('tc_token',TOKEN);showApp();}
+  catch(e){const m=String(e&&e.message||'');if(!/cancel|NotAllowed|abort|The operation/i.test(m))$('loginErr').textContent=m||'Não deu pra entrar com o rosto';}
 }
 function logout(){localStorage.removeItem('tc_token');TOKEN='';showLogin();}
 
@@ -179,7 +185,7 @@ async function setStatus(id,status){try{await api('/admin/listings/'+id+'/status
 function lb(u){$('lbimg').src=u;$('lb').classList.add('show');}
 
 // boot
-if(!TOKEN)showLogin();else api('/admin/listings?status=pending&limit=1').then(showApp).catch(e=>{if(e.message==='auth')showLogin();});
+if(!TOKEN){showLogin();if(window.TCBio)TCBio.available().then(ok=>{if(ok){const b=document.getElementById('bioBtn');if(b)b.style.display='block';}});}else api('/admin/listings?status=pending&limit=1').then(showApp).catch(e=>{if(e.message==='auth')showLogin();});
 </script>
 </body>
 </html>

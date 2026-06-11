@@ -131,6 +131,7 @@
         <input id="lgPass" type="password" placeholder="Sua senha" autocomplete="current-password">
       </div>
       <button class="btn" id="lgBtn" style="margin-top:8px">Entrar</button>
+      <button class="btn" id="bioBtn" style="display:none;margin-top:8px;background:#fff;color:#E5571E;border:1.5px solid #E5571E">👤 Entrar com o rosto</button>
     </div>
 
     <!-- APP -->
@@ -190,6 +191,7 @@
 
   <div class="toast" id="toast"></div>
 
+<script src="/_webauthn.js?v=20260611"></script>
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
@@ -281,6 +283,7 @@
   // ---------- APP ----------
   function enterApp(){
     document.body.classList.add('logged');
+    if(window.TCBio)TCBio.mountEnrollChip(TOKEN);
     $('tbStore').textContent = sess.storeName || (LOJA ? ('Loja '+LOJA) : 'Loja');
     $('tbUser').textContent = sess.name || 'vendedor';
     loadChannel();
@@ -482,6 +485,15 @@
 
   // ---------- wire ----------
   $('lgBtn').addEventListener('click', doLogin);
+  async function doLoginBio(){
+    try{
+      var d=await TCBio.login();var u=d.user||{};
+      sess={token:d.token,name:u.name,role:u.role,storeName:(u.store&&u.store.name)||'',storeCode:(u.store&&u.store.code)||''};
+      TOKEN=d.token;localStorage.setItem(SKEY,JSON.stringify(sess));enterApp();
+    }catch(e){var m=String((e&&e.message)||'');if(!/cancel|NotAllowed|abort|The operation/i.test(m))showLoginErr(m||'Não deu pra entrar com o rosto');}
+  }
+  var _bb=document.getElementById('bioBtn');
+  if(_bb){ _bb.addEventListener('click', doLoginBio); if(window.TCBio)TCBio.available().then(function(ok){ if(ok&&!TOKEN)_bb.style.display='block'; }); }
   $('lgPass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
   $('btnOut').addEventListener('click', function(){ if(confirm('Sair do atendimento?')) logout(); });
   $('btnCfg').addEventListener('click', function(){ document.body.classList.toggle('show-cfg'); });
