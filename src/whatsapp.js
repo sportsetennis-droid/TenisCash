@@ -47,6 +47,7 @@ async function sendMetaCode(phone, code) {
   if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
 
   if (META_WA_CODE_TEMPLATE) {
+    // Template AUTHENTICATION da Meta exige o código no body E no botão copiar (sub_type url)
     return sendMetaWhatsAppPayload({
       to: formattedPhone,
       type: 'template',
@@ -55,6 +56,7 @@ async function sendMetaCode(phone, code) {
         language: { code: META_WA_CODE_TEMPLATE_LANG },
         components: [
           { type: 'body', parameters: [{ type: 'text', text: code }] },
+          { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] },
         ],
       },
     });
