@@ -574,7 +574,21 @@ router.post('/etiqueta',
         if (m) lido = JSON.parse(m[0]);
       } catch (e) { console.warn('[etiqueta] visão falhou:', e.message); }
 
-      const ean = lido && lido.ean ? String(lido.ean).replace(/\D/g, '') : null;
+      // EAN confiável: o decodificado NO CELULAR (BarcodeDetector) vence; o da visão (OCR) só vale se
+      // JÁ EXISTE no sistema (bipes/NFe/ProductSize) — caixas Nike têm códigos secundários que enganam o OCR.
+      const eanLocal = (req.body && req.body.eanLocal ? String(req.body.eanLocal).replace(/\D/g, '') : '') || null;
+      let ean = eanLocal;
+      let eanVisaoRejeitado = false;
+      if (!ean && lido && lido.ean) {
+        const cand = String(lido.ean).replace(/\D/g, '');
+        if (cand.length >= 8) {
+          const variants = [cand, cand.replace(/^0+/, ''), '0' + cand];
+          const conhece = (await prisma.stocktakeBipe.count({ where: { barcode: { in: variants } } }))
+            || (await prisma.xmlFiscalItem.count({ where: { ean: { in: variants } } }))
+            || (await prisma.productSize.count({ where: { barcode: { in: variants } } }));
+          if (conhece) ean = cand; else eanVisaoRejeitado = true;
+        }
+      }
       const sku = lido && lido.sku ? String(lido.sku).trim().toUpperCase() : null;
       let vinculado = false, bipesCasados = 0, cardNome = null, matchedProductId = null, psId = null;
 
@@ -588,6 +602,23 @@ router.post('/etiqueta',
         const variants = [ean, ean.replace(/^0+/, ''), '0' + ean];
         const ps = await prisma.productSize.findFirst({ where: { barcode: { in: variants } }, select: { id: true, productId: true, product: { select: { name: true } } } });
         if (ps) { psId = ps.id; matchedProductId = ps.productId; cardNome = ps.product.name; vinculado = true; }
+      }
+      // 2c) fallback MODELO ÚNICO (Nike etc.): nome lido na etiqueta casa EXATAMENTE 1 card ativo -> vincula.
+      // Precisa de EAN confiável (chave do tamanho). Tokens literais do nome; 2+ candidatos = ambíguo, fica pendente.
+      if (!vinculado && ean && lido && lido.nome) {
+        const tokens = String(lido.nome).toUpperCase().split(/[^A-Z0-9]+/).filter((t) => t.length > 2 && !['NIKE', 'TENIS', 'THE'].includes(t));
+        if (tokens.length >= 2) {
+          const cands = await prisma.product.findMany({ where: { active: true, AND: tokens.map((t) => ({ name: { contains: t, mode: 'insensitive' } })) }, select: { id: true, name: true, sizes: { select: { id: true, size: true, barcode: true } } }, take: 3 });
+          if (cands.length === 1) {
+            const card = cands[0];
+            const tamLido = lido.tamanho ? String(lido.tamanho).replace(/[^0-9A-Z]/gi, '').replace(/^BR/i, '') : null;
+            let ps = card.sizes.find((s) => s.barcode === ean)
+              || (tamLido ? card.sizes.find((s) => String(s.size) === tamLido && (!s.barcode || /GTIN/i.test(String(s.barcode)))) : null);
+            if (!ps && tamLido) ps = await prisma.productSize.create({ data: { productId: card.id, barcode: ean, size: tamLido, stock: 0 } }).catch(() => null);
+            else if (ps && ps.barcode !== ean) await prisma.productSize.update({ where: { id: ps.id }, data: { barcode: ean, ...(tamLido ? { size: tamLido } : {}) } }).catch(() => {});
+            if (ps) { psId = ps.id; matchedProductId = card.id; cardNome = card.name; vinculado = true; }
+          }
+        }
       }
       // 3) religa bipes órfãos do EAN + StoreStock do tamanho
       if (vinculado && ean && psId) {
@@ -611,7 +642,9 @@ router.post('/etiqueta',
       res.json({ ok: true, lido, vinculado, bipesCasados, card: cardNome,
         mensagem: vinculado
           ? '✓ ' + (cardNome || '').slice(0, 60) + (bipesCasados ? ' — ' + bipesCasados + ' bipe(s) casaram' : ' — vinculado')
-          : (lido && (lido.sku || lido.ean) ? '📥 Li "' + (lido.sku || lido.ean) + '" — guardada pra vincular (sem card com esse código ainda)' : '📥 Foto guardada — não consegui ler a etiqueta, vai pra conferência') });
+          : (eanVisaoRejeitado
+              ? '⚠ Li "' + ((lido && (lido.nome || lido.sku)) || '?') + '" mas o código de barras saiu duvidoso — fotografa DE NOVO focando o código de barras GRANDE, de perto'
+              : (lido && (lido.sku || lido.ean || lido.nome) ? '📥 Li "' + (lido.sku || lido.nome || lido.ean) + '" — guardada pra vincular (sem card único com esse código ainda)' : '📥 Foto guardada — não consegui ler a etiqueta, vai pra conferência')) });
     } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(500).json({ error: e.message }); }
   }
 );

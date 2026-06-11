@@ -558,6 +558,16 @@
         const blob = await comprimirFoto(f);
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
+        // Decodifica o código de barras NO CELULAR (precisão de leitor) — Chrome/Android tem BarcodeDetector
+        try {
+          if ('BarcodeDetector' in window) {
+            const det = new BarcodeDetector({ formats: ['ean_13', 'upc_a', 'ean_8', 'code_128', 'itf'] });
+            const bmp = await createImageBitmap(f);
+            const codes = await det.detect(bmp);
+            const hit = (codes || []).map((c) => String(c.rawValue || '').replace(/\D/g, '')).find((v) => v.length >= 12 && v.length <= 14);
+            if (hit) fd.append('eanLocal', hit);
+          }
+        } catch (_) {}
         fd.append('storeId', document.getElementById('loja').value || '');
         const vsel = document.getElementById('vendedor').value;
         fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
