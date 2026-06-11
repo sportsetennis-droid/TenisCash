@@ -565,17 +565,14 @@
     ov.innerHTML =
       '<div style="position:relative;flex:1;min-height:0">' +
         '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
-        '<div style="position:absolute;left:8%;right:8%;top:32%;height:34%;border:3px solid rgba(255,255,255,.9);border-radius:14px;box-shadow:0 0 0 2000px rgba(0,0,0,.28);pointer-events:none"></div>' +
-        '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px"></div>' +
-        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 4px #000;text-align:center">Aponte pro CÓDIGO DE BARRAS — aproxima até ele ocupar metade da tela</div>' +
+        '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px;pointer-events:none"></div>' +
+        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:14px;font-weight:800;text-shadow:0 1px 4px #000;text-align:center;pointer-events:none">Aponte pra etiqueta e TOQUE NA TELA pra capturar</div>' +
+        '<div id="etiq-tap" onclick="window.capturaManual()" style="position:absolute;inset:0;cursor:pointer"></div>' +
       '</div>' +
       '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
         '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
         '<div id="etiq-lista" style="max-height:110px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
-        '<div style="display:flex;gap:8px;margin-top:8px">' +
-          '<button onclick="window.capturaManual()" style="flex:2;min-height:46px;font-size:14px;font-weight:800;background:#0a84ff;color:#fff;border:none;border-radius:10px">📸 CAPTURAR AGORA</button>' +
-          '<button onclick="window.fecharScanner()" style="flex:1;min-height:46px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR</button>' +
-        '</div>' +
+        '<button onclick="window.fecharScanner()" style="margin-top:8px;width:100%;min-height:46px;font-size:15px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR SCANNER</button>' +
       '</div>';
     document.body.appendChild(ov);
     renderEtiqLista();
@@ -609,13 +606,13 @@
           const result = core.decode(bin); // lança NotFound quando não acha (normal)
           const v = String(result.getText() || '').replace(/\D/g, '');
           if (v.length < 12 || v.length > 14) return;
-          const now = Date.now();
-          if (v === etiqUltimo && now - etiqUltimoTs < 3000) return;
-          etiqUltimo = v; etiqUltimoTs = now;
-          capturarFrame(v);
+          // NÃO captura sozinho — só memoriza o código lido pra ir junto no próximo TOQUE
+          etiqUltimo = v; etiqUltimoTs = Date.now();
+          const h = document.getElementById('etiq-hint');
+          if (h) { h.textContent = '✓ código ' + v + ' lido — TOQUE NA TELA pra capturar'; h.style.color = '#7CFFA9'; }
         } catch (_) {
           tent++;
-          if (tent % 10 === 0) { const h = document.getElementById('etiq-hint'); if (h) h.textContent = '🔎 lendo… (' + tent + ') — código DENTRO do retângulo, aproxima e segura 1s'; }
+          if (Date.now() - etiqUltimoTs > 4000 && tent % 12 === 0) { const h = document.getElementById('etiq-hint'); if (h) { h.textContent = 'Aponte pra etiqueta e TOQUE NA TELA pra capturar'; h.style.color = '#fff'; } }
         }
       }, 280);
     } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
@@ -632,11 +629,15 @@
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
-  // 📸 garantia manual: captura o frame atual MESMO sem leitura do código — o servidor lê pela visão
+  // 📸 TOQUE NA TELA = captura o frame; se o leitor leu o código nos últimos 4s, ele vai junto (precisão);
+  // sem código lido a foto vai mesmo assim e o servidor lê pela visão.
   window.capturaManual = function () {
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) { alert('Câmera ainda abrindo…'); return; }
-    capturarFrame('');
+    const ean = (Date.now() - etiqUltimoTs < 4000) ? etiqUltimo : '';
+    capturarFrame(ean);
+    const h = document.getElementById('etiq-hint');
+    if (h) { h.textContent = 'Aponte pra etiqueta e TOQUE NA TELA pra capturar'; h.style.color = '#fff'; }
   };
 
   function capturarFrame(ean) {
