@@ -120,7 +120,7 @@
     <label for="codigo">CÓDIGO DE BARRAS</label>
     <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Aguardando loja/vendedor..." disabled>
     <button type="button" onclick="window.abrirDigitacaoManual && window.abrirDigitacaoManual()" style="margin-top:8px;width:100%;min-height:44px;font-size:14px;font-weight:800;background:#f0f0f3;color:#1d1d1f;border:1.5px solid #d2d2d7;border-radius:10px;cursor:pointer">⌨️ DIGITAR CÓDIGO MANUALMENTE</button>
-    <button type="button" id="btn-etiqueta" onclick="window.fotografarEtiqueta && window.fotografarEtiqueta()" style="margin-top:8px;width:100%;min-height:48px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#25d366,#1faf52);color:#fff;border:none;border-radius:10px;cursor:pointer">📷 FOTOGRAFAR ETIQUETA (Nike/Fiber)</button>
+    <button type="button" id="btn-etiqueta" onclick="window.fotografarEtiqueta && window.fotografarEtiqueta()" style="margin-top:8px;width:100%;min-height:48px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#25d366,#1faf52);color:#fff;border:none;border-radius:10px;cursor:pointer">📷 SCANNER DE ETIQUETAS (Nike/Fiber)</button>
     <div id="etiqueta-result" style="display:none;margin-top:8px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700"></div>
   </div>
 
@@ -541,51 +541,130 @@
     inp.click();
   };
 
-  // 📷 MODO ETIQUETA (Nike/FIBER): fotografa etiqueta atrás de etiqueta — o servidor LÊ (visão),
-  // VINCULA ao card na hora e casa os bipes órfãos. Resultado aparece embaixo do botão.
-  window.fotografarEtiqueta = function () {
-    const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
-    inp.onchange = async () => {
-      const f = inp.files && inp.files[0];
-      if (!f) return;
-      const btn = document.getElementById('btn-etiqueta');
-      const out = document.getElementById('etiqueta-result');
-      btn.disabled = true; btn.textContent = '⏳ Lendo etiqueta…';
-      out.style.display = 'block'; out.style.background = '#fff8e0'; out.style.color = '#b06b00';
-      out.textContent = 'Enviando foto e reconhecendo…';
-      try {
-        const blob = await comprimirFoto(f);
+  // ===== 📷 SCANNER DE ETIQUETAS AO VIVO (Nike/FIBER) =====
+  // Câmera contínua: lê o código de barras em tempo real (zxing), captura o frame sozinho,
+  // SALVA em fila com confirmação (✅) e segue pro próximo — o reconhecimento (visão no servidor)
+  // roda em background e o resultado aparece na listinha (poll). Nada trava o fluxo.
+  let etiqFila = []; try { etiqFila = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
+  let etiqReader = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
+  function etiqSave() { try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {} }
+  function etiqBeep() {
+    try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 1250; g.gain.value = 0.18; o.start(); setTimeout(() => { o.stop(); a.close(); }, 130); } catch (_) {}
+    try { navigator.vibrate && navigator.vibrate(90); } catch (_) {}
+  }
+
+  window.fotografarEtiqueta = async function () {
+    if (!document.getElementById('loja').value) { alert('Selecione loja e vendedor primeiro!'); return; }
+    if (!window.ZXing) {
+      await new Promise((ok) => { const s = document.createElement('script'); s.src = '/vendor/zxing.min.js'; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
+    }
+    if (!window.ZXing) { alert('Falhou carregar o leitor — recarrega a página'); return; }
+    const ov = document.createElement('div');
+    ov.id = 'etiq-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99998;display:flex;flex-direction:column';
+    ov.innerHTML =
+      '<div style="position:relative;flex:1;min-height:0">' +
+        '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
+        '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px"></div>' +
+        '<div style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 4px #000;text-align:center">Aponte pro CÓDIGO DE BARRAS da etiqueta — captura sozinho</div>' +
+      '</div>' +
+      '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
+        '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
+        '<div id="etiq-lista" style="max-height:120px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
+        '<button onclick="window.fecharScanner()" style="margin-top:8px;width:100%;min-height:46px;font-size:15px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR SCANNER</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    renderEtiqLista();
+    try {
+      etiqReader = new ZXing.BrowserMultiFormatReader();
+      await etiqReader.decodeFromConstraints({ audio: false, video: { facingMode: 'environment' } }, document.getElementById('etiq-video'), (result) => {
+        if (!result) return;
+        const v = String(result.getText() || '').replace(/\D/g, '');
+        if (v.length < 12 || v.length > 14) return;
+        const now = Date.now();
+        if (v === etiqUltimo && now - etiqUltimoTs < 3000) return;
+        etiqUltimo = v; etiqUltimoTs = now;
+        capturarFrame(v);
+      });
+    } catch (e) { alert('Câmera falhou: ' + e.message); window.fecharScanner(); return; }
+    etiqPoll = setInterval(consultarStatus, 5000);
+    etiqSendTimer = setInterval(enviarFila, 2000);
+    enviarFila();
+  };
+
+  window.fecharScanner = function () {
+    try { etiqReader && etiqReader.reset(); } catch (_) {}
+    clearInterval(etiqPoll); clearInterval(etiqSendTimer);
+    const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
+  };
+
+  function capturarFrame(ean) {
+    const video = document.getElementById('etiq-video');
+    if (!video || !video.videoWidth) return;
+    const k = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k);
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    c.toBlob((b) => {
+      const fr = new FileReader();
+      fr.onload = () => { etiqFila.push({ lid: 'e' + Date.now(), b64: fr.result, ean, st: 'fila' }); etiqSave(); renderEtiqLista(); enviarFila(); };
+      fr.readAsDataURL(b);
+    }, 'image/jpeg', 0.62);
+    etiqBeep();
+    const fl = document.getElementById('etiq-flash');
+    if (fl) { fl.style.display = 'flex'; fl.textContent = '✓ ' + ean + ' capturado'; setTimeout(() => { fl.style.display = 'none'; }, 900); }
+  }
+
+  async function enviarFila() {
+    if (etiqBusy) return; etiqBusy = true;
+    try {
+      const item = etiqFila.find((x) => x.st === 'fila' && x.b64);
+      if (item) {
+        const blob = await (await fetch(item.b64)).blob();
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
-        // Decodifica o código de barras NO CELULAR (precisão de leitor) — Chrome/Android tem BarcodeDetector
-        try {
-          if ('BarcodeDetector' in window) {
-            const det = new BarcodeDetector({ formats: ['ean_13', 'upc_a', 'ean_8', 'code_128', 'itf'] });
-            const bmp = await createImageBitmap(f);
-            const codes = await det.detect(bmp);
-            const hit = (codes || []).map((c) => String(c.rawValue || '').replace(/\D/g, '')).find((v) => v.length >= 12 && v.length <= 14);
-            if (hit) fd.append('eanLocal', hit);
-          }
-        } catch (_) {}
+        fd.append('eanLocal', item.ean || '');
         fd.append('storeId', document.getElementById('loja').value || '');
         const vsel = document.getElementById('vendedor').value;
         fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-        if (d.vinculado) { out.style.background = '#e7f9ee'; out.style.color = '#1d7a3c'; }
-        else { out.style.background = '#fff8e0'; out.style.color = '#b06b00'; }
-        out.textContent = d.mensagem || (d.vinculado ? '✓ vinculado' : 'guardada');
-      } catch (e) {
-        out.style.background = '#fee'; out.style.color = '#d70015';
-        out.textContent = '✗ Falhou: ' + e.message + ' — tenta de novo';
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.b64 = ''; etiqSave(); renderEtiqLista(); }
       }
-      btn.disabled = false; btn.textContent = '📷 PRÓXIMA ETIQUETA';
-    };
-    inp.click();
-  };
+    } catch (_) { /* mantém na fila, tenta no próximo tick */ }
+    etiqBusy = false;
+  }
+
+  async function consultarStatus() {
+    const pend = etiqFila.filter((x) => x.st === 'salvo' && x.capId).slice(-20);
+    if (!pend.length) return;
+    try {
+      const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
+      const d = await r.json();
+      for (const row of (d.rows || [])) {
+        const it = etiqFila.find((x) => x.capId === row.id);
+        if (it && row.status !== 'processando') { it.st = row.status; it.msg = row.mensagem; }
+      }
+      etiqSave(); renderEtiqLista();
+    } catch (_) {}
+  }
+
+  function renderEtiqLista() {
+    const cont = document.getElementById('etiq-contador');
+    const ul = document.getElementById('etiq-lista');
+    if (!cont || !ul) return;
+    const nFila = etiqFila.filter((x) => x.st === 'fila').length;
+    const nSalvo = etiqFila.filter((x) => x.st === 'salvo').length;
+    const nVinc = etiqFila.filter((x) => x.st === 'vinculado').length;
+    const nPend = etiqFila.filter((x) => x.st === 'pendente').length;
+    cont.textContent = 'enviando ' + nFila + ' · salvas ' + nSalvo + ' · ✓ vinculadas ' + nVinc + (nPend ? ' · 📥 pra conferir ' + nPend : '');
+    ul.innerHTML = etiqFila.slice(-6).reverse().map((x) => {
+      const ic = x.st === 'fila' ? '⏳' : x.st === 'salvo' ? '✅' : x.st === 'vinculado' ? '🔗' : '📥';
+      return '<div>' + ic + ' ' + (x.ean || '') + (x.msg ? ' — ' + x.msg.slice(0, 60) : (x.st === 'salvo' ? ' — SALVO, reconhecendo…' : x.st === 'fila' ? ' — enviando…' : '')) + '</div>';
+    }).join('');
+  }
+
 
   function comprimirFoto(file) {
     return new Promise((resolve, reject) => {
