@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
 const webauthnRoutes = require('./routes/webauthn');
+const faceRoutes = require('./routes/face');
 const walletRoutes = require('./routes/wallet');
 const transferRoutes = require('./routes/transfer');
 const promoRoutes = require('./routes/promo');
@@ -131,6 +132,7 @@ app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
+app.use('/api/face', faceRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transfer', transferRoutes);
 app.use('/api/promos', promoRoutes);

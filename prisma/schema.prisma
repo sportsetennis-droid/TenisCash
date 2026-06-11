@@ -139,6 +139,7 @@ model User {
 
   // ===== LOGIN BIOMÉTRICO (WebAuthn — Face ID / digital / Windows Hello) =====
   webauthnCredentials WebauthnCredential[]
+  faceDescriptors     FaceDescriptor[]
 }
 
 // Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
@@ -154,6 +155,21 @@ model WebauthnCredential {
   deviceLabel  String? // ex "iPhone do João"
   createdAt    DateTime  @default(now())
   lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+// Reconhecimento facial pela CÂMERA (face-api) — alternativa universal ao Face ID nativo,
+// pra aparelhos SEM biometria de hardware. Guarda só o "descriptor" (128 números do rosto),
+// NUNCA a foto. Menos seguro que Face ID (câmera 2D pode ser enganada por foto) — só onde o dono aceitar.
+model FaceDescriptor {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  descriptor Float[] // 128 floats do face-api (NÃO é a imagem)
+  label      String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
 
   @@index([userId])
 }
