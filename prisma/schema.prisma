@@ -395,6 +395,10 @@ model ProductSize {
   size      String
   stock     Int     @default(0) // estoque AGREGADO (legado) — fonte da verdade vira StoreStock
   barcode   String?
+  // Tamanho CONFIRMADO por leitura da CAIXA física (fluxo manual do bipe).
+  // null = veio de NFe/import/chute — pra Adidas, o bipe pede confirmação.
+  // Caixa VENCE chute: tamanho confirmado nunca é remanejado por conflito.
+  sizeConfirmedAt DateTime?
 
   storeStocks StoreStock[]
 

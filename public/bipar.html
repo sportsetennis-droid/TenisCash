@@ -761,6 +761,10 @@
     const b = sizeModalBipe;
     const nome = b.product?.name || 'Produto Adidas';
     const img = b.product?.imageUrl ? `<img src="${b.product.imageUrl}" onerror="this.style.display='none'">` : '';
+    // Tamanho atual no sistema (chute de importação, nunca confirmado) → mostrar pra confirmar/corrigir
+    const sizeAtual = b.product?.size || '';
+    const ehChute = sizeAtual && !/^T-/i.test(sizeAtual) && sizeAtual !== '?';
+    const avisoChute = ehChute ? `<div class="size-warn" style="background:#eef4ff;color:#1d4ed8;">No sistema está: <b>${sizeAtual}</b> (não confirmado). Olhe a caixa — se bater, toque em ${sizeAtual}; se não, toque no número certo.</div>` : '';
     const grade = ['34','35','36','37','38','39','40','41','42','43','44','45']
       .map(t => `<button type="button" onclick="confirmarTamanho('${t}')">${t}</button>`).join('');
     const overlay = document.createElement('div');
@@ -770,6 +774,7 @@
         <div class="ss-title">📏 Qual o tamanho?</div>
         <div class="ss-sub">Produto ADIDAS — o código não traz o tamanho. Olhe o número na CAIXA / etiqueta.</div>
         <div class="ss-prod">${img}<div><div class="nm">${nome}</div><div class="cd">${b.code || ''}</div></div></div>
+        ${avisoChute}
         <div id="size-error"></div>
         <div class="size-grid">${grade}</div>
         <div class="size-other-row">

@@ -85,9 +85,13 @@ function isAdidas(brand) {
   return String(brand || '').toUpperCase().includes('ADIDAS');
 }
 
-// needsSize = bipe de ADIDAS com tamanho pendente → frontend pede o número da caixa
-function needsManualSize(brand, size) {
-  return isAdidas(brand) && isPlaceholderSize(size);
+// needsSize = bipe de ADIDAS com tamanho ainda NÃO confirmado por caixa física.
+// Cobre placeholder (T-<EAN>/?) E chute antigo de importação (número presente
+// mas sizeConfirmedAt null). Confirmou uma vez → nunca mais pede.
+function needsManualSize(brand, productSizeRow) {
+  if (!isAdidas(brand)) return false;
+  if (!productSizeRow) return false;
+  return !productSizeRow.sizeConfirmedAt;
 }
 
 // Normaliza/valida o tamanho digitado. Aceita:
@@ -187,12 +191,12 @@ router.post('/bipe', async (req, res) => {
         });
         if (existing) {
           console.log('[bipe] BIPE_DUPLICADO_IGNORADO', JSON.stringify({ bipeIdExistente: existing.id, clientScanId: csId }));
-          // Regra Adidas: checa o tamanho ATUAL do ProductSize (snapshot pode estar velho)
+          // Regra Adidas: checa o estado ATUAL do ProductSize (snapshot pode estar velho)
           let needsSizeIdem = false;
           if (existing.productSizeId && isAdidas(existing.productBrand)) {
             try {
-              const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true } });
-              needsSizeIdem = psNow ? isPlaceholderSize(psNow.size) : false;
+              const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true, sizeConfirmedAt: true } });
+              needsSizeIdem = needsManualSize(existing.productBrand, psNow);
             } catch (_) {}
           }
           return res.json({
@@ -359,8 +363,8 @@ router.post('/bipe', async (req, res) => {
       appliedToStock,
       found,
       duplicate,
-      // Regra Adidas (dono 2026-06-10): tamanho pendente → frontend pede o número da caixa
-      needsSize: chosen ? needsManualSize(chosen.product.brand, chosen.size) : false,
+      // Regra Adidas (dono 2026-06-10): tamanho não-confirmado → frontend pede o número da caixa
+      needsSize: chosen ? needsManualSize(chosen.product.brand, chosen) : false,
       product: chosen
         ? {
             name: chosen.product.name,
@@ -396,30 +400,46 @@ router.post('/bipe/:id/size', async (req, res) => {
 
     const ps = await prisma.productSize.findUnique({
       where: { id: bipe.productSizeId },
-      select: { id: true, size: true, barcode: true, productId: true },
+      select: { id: true, size: true, barcode: true, productId: true, sizeConfirmedAt: true },
     });
     if (!ps) return res.status(404).json({ error: 'Tamanho do produto não existe mais' });
 
-    // Já confirmado antes (1 código = 1 tamanho, pra sempre). Não sobrescreve.
-    if (!isPlaceholderSize(ps.size)) {
+    // Já confirmado por CAIXA antes (1 código = 1 tamanho, pra sempre). Não sobrescreve.
+    if (ps.sizeConfirmedAt && !isPlaceholderSize(ps.size)) {
       return res.json({ ok: true, size: ps.size, alreadySet: true });
     }
 
-    // Conflito: o MESMO card já tem esse tamanho noutro código → alguém leu errado. Não grava.
+    // Conflito: o MESMO card já tem esse tamanho noutro código.
+    // CAIXA VENCE CHUTE (dono 2026-06-10: "eu nao tenho autonomia pra escolher o tamanho"):
+    //   - se o ocupante NUNCA foi confirmado por caixa (chute de importação) → REMANEJA:
+    //     ocupante volta pra placeholder (vai pedir tamanho quando for bipado) e o
+    //     código bipado AGORA (caixa na mão) fica com o número.
+    //   - se o ocupante FOI confirmado por caixa → conflito real entre 2 leituras → 409.
     const clash = await prisma.productSize.findFirst({
       where: { productId: ps.productId, size, NOT: { id: ps.id } },
-      select: { id: true, barcode: true },
+      select: { id: true, barcode: true, sizeConfirmedAt: true },
     });
-    if (clash) {
-      console.warn('[bipe] SIZE_CONFLITO', JSON.stringify({ bipeId: bipe.id, productId: ps.productId, size, barcodeNovo: ps.barcode, barcodeJaTem: clash.barcode }));
-      return res.status(409).json({ error: `O tamanho ${size} já está em outro código deste produto. Confira o número na caixa.`, conflict: true });
+
+    if (clash && clash.sizeConfirmedAt) {
+      console.warn('[bipe] SIZE_CONFLITO_CONFIRMADO', JSON.stringify({ bipeId: bipe.id, productId: ps.productId, size, barcodeNovo: ps.barcode, barcodeJaTem: clash.barcode }));
+      return res.status(409).json({ error: `O tamanho ${size} já foi CONFIRMADO em outro código deste produto. Confira o número na caixa — se a caixa diz ${size} mesmo, avise o admin.`, conflict: true });
     }
 
-    await prisma.productSize.update({ where: { id: ps.id }, data: { size } });
-    // Snapshot de TODOS os bipes desse código fica consistente na revisão do admin
-    await prisma.stocktakeBipe.updateMany({ where: { productSizeId: ps.id }, data: { productSize: size } });
-    console.log('[bipe] SIZE_MANUAL_GRAVADO', JSON.stringify({ bipeId: bipe.id, productSizeId: ps.id, barcode: ps.barcode, size }));
-    res.json({ ok: true, size });
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      if (clash) {
+        // chute do ocupante → placeholder único ('T-<barcode>'; sem barcode usa o id)
+        const ph = 'T-' + (clash.barcode || clash.id.slice(0, 12));
+        await tx.productSize.update({ where: { id: clash.id }, data: { size: ph, sizeConfirmedAt: null } });
+        await tx.stocktakeBipe.updateMany({ where: { productSizeId: clash.id }, data: { productSize: ph } });
+        console.log('[bipe] SIZE_REMANEJADO_CHUTE', JSON.stringify({ productId: ps.productId, size, deBarcode: clash.barcode, paraBarcode: ps.barcode }));
+      }
+      await tx.productSize.update({ where: { id: ps.id }, data: { size, sizeConfirmedAt: now } });
+      // Snapshot de TODOS os bipes desse código fica consistente na revisão do admin
+      await tx.stocktakeBipe.updateMany({ where: { productSizeId: ps.id }, data: { productSize: size } });
+    });
+    console.log('[bipe] SIZE_MANUAL_GRAVADO', JSON.stringify({ bipeId: bipe.id, productSizeId: ps.id, barcode: ps.barcode, size, remanejou: !!clash }));
+    res.json({ ok: true, size, moved: !!clash });
   } catch (e) {
     console.error('[bipe] SIZE_MANUAL_ERRO', JSON.stringify({ error: e.message }));
     res.status(500).json({ error: e.message });
