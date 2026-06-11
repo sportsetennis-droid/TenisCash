@@ -286,6 +286,7 @@
 <script src="/_design-system.js?v=20260520k-1841"></script>
 <script src="/_product-search-bar.js?v=20260520k-1841"></script>
 <script src="/_product-card.js?v=20260604-unif"></script>
+<script src="/_webauthn.js?v=20260611"></script>
 </head>
 <body>
 
@@ -306,6 +307,7 @@
       <input type="password" id="loginPin" placeholder="••••" maxlength="6" inputmode="numeric">
     </div>
     <button class="btn" id="loginBtn" onclick="doLogin()">Entrar</button>
+    <button class="btn" id="bioLoginBtn" onclick="doLoginBio()" style="display:none;margin-top:10px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;font-weight:700;">👤 Entrar com o rosto</button>
     <p style="text-align:center; font-size:12px; color:#8e8e93; margin-top:16px;">
       Acesso restrito a funcionários cadastrados
     </p>
@@ -321,7 +323,8 @@
     </div>
     <div id="storeSelectErr" class="err"></div>
     <div id="storeList" style="display:grid;gap:10px;"></div>
-    <button class="btn btn-secondary" onclick="logout()" style="margin-top:16px;">Sair</button>
+    <button class="btn" id="bioEnrollBtn" onclick="doBioEnroll()" style="display:none;margin-top:16px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;font-weight:700;">👤 Ativar entrada com o rosto neste aparelho</button>
+    <button class="btn btn-secondary" onclick="logout()" style="margin-top:10px;">Sair</button>
   </div>
 </div>
 
@@ -966,6 +969,46 @@ async function doLogin() {
   }
 }
 
+// Entrar com o rosto (Face ID / digital). Sucesso = mesmo fluxo do login por senha.
+async function doLoginBio() {
+  const errEl = document.getElementById('loginErr'); errEl.classList.remove('show');
+  const btn = document.getElementById('bioLoginBtn'); if (btn) btn.disabled = true;
+  try {
+    const data = await TCBio.login();
+    if (!['seller', 'store', 'admin', 'superadmin'].includes(data.user.role)) { errEl.textContent = 'Esta área é só pra funcionários da loja'; errEl.classList.add('show'); return; }
+    token = data.token; localStorage.setItem('loja_token', token); me = data.user; showStoreSelector();
+  } catch (e) {
+    const m = String((e && e.message) || '');
+    if (!/cancel|NotAllowed|abort|timed|The operation/i.test(m)) { errEl.textContent = m || 'Não deu pra entrar com o rosto. Use a senha.'; errEl.classList.add('show'); }
+  } finally { if (btn) btn.disabled = false; }
+}
+
+// Ativar a biometria neste aparelho (precisa estar logado).
+async function doBioEnroll() {
+  const btn = document.getElementById('bioEnrollBtn'); if (btn) btn.disabled = true;
+  try {
+    await TCBio.register(token, (navigator.userAgent || 'Aparelho').slice(0, 50));
+    if (btn) { btn.textContent = '✅ Rosto ativado neste aparelho'; btn.style.color = '#0a843d'; btn.style.borderColor = '#0a843d'; btn.onclick = null; }
+    alert('Pronto! Da próxima vez é só tocar em "Entrar com o rosto" na tela de login.');
+  } catch (e) {
+    const m = String((e && e.message) || '');
+    if (!/cancel|NotAllowed|abort|The operation/i.test(m)) alert('Não deu pra ativar: ' + m);
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Mostra os botões biométricos se o aparelho tem Face ID/digital/Windows Hello.
+async function _bioRevealButtons() {
+  try {
+    if (!window.TCBio || !(await TCBio.available())) return;
+    const lb = document.getElementById('bioLoginBtn'); if (lb) lb.style.display = 'block';
+    if (token) {
+      const st = await TCBio.status(token);
+      const eb = document.getElementById('bioEnrollBtn'); if (eb && !(st && st.enrolled)) eb.style.display = 'block';
+    }
+  } catch (_) {}
+}
+
 function logout() {
   localStorage.removeItem('loja_token');
   localStorage.removeItem('loja_activeStore');
@@ -993,6 +1036,7 @@ async function showStoreSelector() {
   document.getElementById('appWrap').classList.remove('show');
   document.getElementById('storeSelectWrap').style.display = 'flex';
   document.getElementById('storeSelectHello').textContent = `Olá, ${me.name}`;
+  _bioRevealButtons(); // oferece "Ativar entrada com o rosto" se ainda não cadastrou
   document.getElementById('storeSelectErr').classList.remove('show');
 
   try {
@@ -3288,6 +3332,7 @@ async function loadMessages() {
 
 // ============== START ==============
 checkSession();
+_bioRevealButtons(); // mostra "Entrar com o rosto" se o aparelho tiver Face ID/digital
 
 // Esconde login se já tem sessão (cosmético)
 if (!token) document.getElementById('loginWrap').style.display = 'flex';
