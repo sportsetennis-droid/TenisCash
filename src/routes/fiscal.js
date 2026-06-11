@@ -20,6 +20,11 @@ const CAIXA_FISCAL_OK = [
   ['POST', /^\/emit-nfce-from-sale\/?$/],
   ['GET', /^\/documents\/[^/]+\/print\/?$/],
   ['GET', /^\/documents\/[^/]+\/danfe\/?$/],
+  // Botões do PDV (dono 2026-06-10): troca, cancelar cupom, 2ª via.
+  // Cancelamento de caixa é restrito a NFC-e da própria loja (validado no handler).
+  ['GET', /^\/troca\/cupons\/?$/],
+  ['POST', /^\/troca\/?$/],
+  ['POST', /^\/documents\/[^/]+\/cancel\/?$/],
 ];
 router.use((req, res, next) => {
   if (['admin', 'superadmin', 'manager'].includes(req.userRole)) return next();
@@ -239,6 +244,321 @@ async function emitNfceFromSaleHandler(req, res) {
   }
 }
 router.post('/emit-nfce-from-sale', emitNfceFromSaleHandler);
+
+// ============================================================
+// TROCA (PDV) — devolução NFe55 referenciada + cupom novo com
+// Crédito Loja + diferença. Regra fiscal: cupom novo sai pelo
+// VALOR CHEIO dos produtos novos; a "diferença" vive no detPag.
+// ============================================================
+const r2 = (v) => Math.round(Number(v) * 100) / 100;
+const TPAG_TO_SALEPAY = { '01': 'cash', '03': 'credit_card', '04': 'debit_card', '17': 'pix' };
+
+// Cupons autorizados recentes da loja (pro caixa escolher o original da troca / cancelar / 2ª via)
+router.get('/troca/cupons', async (req, res) => {
+  try {
+    const { storeId, q } = req.query;
+    if (!storeId) return res.status(400).json({ error: 'storeId obrigatório' });
+    const store = await prisma.store.findUnique({ where: { id: storeId }, include: { fiscalIssuer: true } });
+    if (!store?.fiscalIssuer) return res.status(400).json({ error: 'Loja sem emissor fiscal' });
+    const where = { issuerId: store.fiscalIssuer.id, docType: 'NFCE', status: 'authorized' };
+    if (q && /^\d+$/.test(String(q).trim())) where.number = parseInt(String(q).trim(), 10);
+    const docs = await prisma.fiscalDocument.findMany({ where, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, number: true, serie: true, accessKey: true, totalValue: true, createdAt: true, saleId: true, paymentMethod: true } });
+    const saleIds = docs.map(d => d.saleId).filter(Boolean);
+    const sales = saleIds.length ? await prisma.sale.findMany({ where: { id: { in: saleIds } }, include: { items: true } }) : [];
+    const byId = Object.fromEntries(sales.map(s => [s.id, s]));
+    res.json({
+      cupons: docs.map(d => ({
+        docId: d.id, number: d.number, serie: d.serie, accessKey: d.accessKey,
+        totalValue: d.totalValue, createdAt: d.createdAt, saleId: d.saleId, paymentMethod: d.paymentMethod,
+        items: (byId[d.saleId]?.items || []).map(i => ({ saleItemId: i.id, productId: i.productId, productName: i.productName, size: i.size, quantity: i.quantity, unitPrice: i.unitPrice })),
+      })),
+    });
+  } catch (err) {
+    console.error('[fiscal/troca/cupons]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/troca', async (req, res) => {
+  try {
+    const { storeId, originalDocId, returned, newItems, diffPayment, devolucaoDocId, saleId } = req.body || {};
+    if (!storeId || !originalDocId) return res.status(400).json({ error: 'storeId e originalDocId obrigatórios' });
+    if (!Array.isArray(returned) || !returned.length) return res.status(400).json({ error: 'Marque o que o cliente devolveu' });
+    if (!Array.isArray(newItems) || !newItems.length) return res.status(400).json({ error: 'Bipe o que o cliente levou' });
+
+    const store = await prisma.store.findUnique({ where: { id: storeId }, include: { fiscalIssuer: true } });
+    const issuer = store?.fiscalIssuer;
+    if (!issuer?.active) return res.status(400).json({ error: 'Loja sem emissor fiscal ativo' });
+    if (!store.fiscalAgentEnabled || !store.fiscalAgentUrl) return res.status(400).json({ error: 'Loja sem agente fiscal' });
+
+    const origDoc = await prisma.fiscalDocument.findUnique({ where: { id: originalDocId } });
+    if (!origDoc || origDoc.docType !== 'NFCE' || origDoc.status !== 'authorized' || !origDoc.accessKey) {
+      return res.status(400).json({ error: 'Cupom original precisa ser um NFC-e AUTORIZADO' });
+    }
+    if (origDoc.issuerId !== issuer.id) return res.status(403).json({ error: 'Cupom original é de outra loja' });
+    if (!origDoc.saleId) return res.status(400).json({ error: 'Cupom original sem venda vinculada — troca manual só pelo admin' });
+    const origSale = await prisma.sale.findUnique({ where: { id: origDoc.saleId }, include: { items: true } });
+    if (!origSale) return res.status(400).json({ error: 'Venda do cupom original não encontrada' });
+
+    // ---- DEVOLVIDOS: validar contra a venda original (preço NUNCA vem do cliente) ----
+    // Cap anti-dupla-troca: o já devolvido em trocas anteriores deste cupom sai do saldo.
+    const prevDevs = await prisma.fiscalDocument.findMany({
+      where: { docType: 'NFE', status: { in: ['authorized', 'processing'] }, response: { path: ['troca', 'originalDocId'], equals: originalDocId } },
+      select: { id: true, response: true },
+    });
+    const prevQty = {};
+    for (const d of prevDevs) for (const it of (d.response?.troca?.returned || [])) prevQty[it.saleItemId] = (prevQty[it.saleItemId] || 0) + (it.qty || 0);
+
+    const retItems = [];
+    for (const r of returned) {
+      const si = origSale.items.find(i => i.id === r.saleItemId);
+      const qty = parseInt(r.qty, 10) || 0;
+      if (!si || qty < 1) return res.status(400).json({ error: 'Item devolvido inválido' });
+      const restante = si.quantity - (prevQty[si.id] || 0);
+      if (qty > restante) return res.status(400).json({ error: si.productName + ': só ' + restante + ' un disponível pra devolver (vendido ' + si.quantity + ', já devolvido ' + (prevQty[si.id] || 0) + ')' });
+      retItems.push({ saleItem: si, qty });
+    }
+    const returnedTotal = r2(retItems.reduce((s, r) => s + r.qty * r.saleItem.unitPrice, 0));
+
+    // ---- NOVOS: resolver pelo código de barras; preço = preço de VENDA do card ----
+    const newResolved = [];
+    for (const n of newItems) {
+      const qty = parseInt(n.qty, 10) || 1;
+      const ps = n.barcode ? await prisma.productSize.findFirst({ where: { barcode: String(n.barcode).trim() }, include: { product: true } }) : null;
+      if (!ps?.product) return res.status(400).json({ error: 'Código ' + (n.barcode || '?') + ' não cadastrado — bipe um produto do catálogo' });
+      const price = (ps.product.promoPrice > 0 ? ps.product.promoPrice : ps.product.price) || 0;
+      if (price <= 0) return res.status(400).json({ error: ps.product.name + ' sem preço de venda — ajuste o preço antes de vender' });
+      newResolved.push({ ps, product: ps.product, qty, price: r2(price) });
+    }
+    const newTotal = r2(newResolved.reduce((s, n) => s + n.qty * n.price, 0));
+    const diff = r2(newTotal - returnedTotal);
+    const credit = Math.min(returnedTotal, newTotal);
+    const vale = diff < 0 ? r2(-diff) : 0;
+
+    // ---- pagamentos do cupom novo: Crédito Loja (05) + diferença ----
+    const payments = [{ tPag: '05', valor: credit }];
+    if (diff > 0) {
+      const dp = diffPayment || {};
+      if (!dp.tPag) return res.status(400).json({ error: 'Diferença de ' + diff.toFixed(2) + ' — informe a forma de pagamento' });
+      const isCard = ['03', '04', '17'].includes(dp.tPag);
+      if (['03', '04'].includes(dp.tPag) && (!dp.cardAuthCode || String(dp.cardAuthCode).trim() === '' || String(dp.cardAuthCode).trim() === '000000')) {
+        return res.status(400).json({ error: 'Cartão exige o código de autorização (Auth/NSU) do comprovante' });
+      }
+      if (dp.cardAuthCode && String(dp.cardAuthCode).trim() && String(dp.cardAuthCode).trim() !== '000000') {
+        const _nsu = String(dp.cardAuthCode).trim();
+        const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
+        if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number });
+      }
+      payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: dp.cardAuthCode, acquirerKey: isCard ? (dp.acquirerKey || 'PAGSEGURO') : dp.acquirerKey, tpIntegra: 2 });
+    }
+
+    const agentClient = require('../services/fiscalAgentClient');
+
+    // ============ PASSO 1 — NFe de DEVOLUÇÃO (entrada, referencia o cupom) ============
+    let devDoc = devolucaoDocId ? await prisma.fiscalDocument.findUnique({ where: { id: devolucaoDocId } }) : null;
+    if (devDoc && (devDoc.issuerId !== issuer.id || devDoc.status !== 'authorized')) devDoc = null;
+    if (!devDoc) {
+      const retProdIds = retItems.map(r => r.saleItem.productId).filter(Boolean);
+      const retProds = retProdIds.length ? await prisma.product.findMany({ where: { id: { in: retProdIds } } }) : [];
+      const prodById = Object.fromEntries(retProds.map(p => [p.id, p]));
+      const maxNfe = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1 }, _max: { number: true } });
+      const nNF55 = Math.max(issuer.nfeNextNumber || 1, (maxNfe._max.number || 0) + 1);
+
+      devDoc = await prisma.fiscalDocument.create({
+        data: {
+          issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1, number: nNF55,
+          status: 'processing', totalValue: returnedTotal,
+          recipientName: issuer.companyName, recipientCnpjCpf: issuer.cnpj,
+          emittedById: req.userId, paymentMethod: '90',
+          productIds: retItems.map(r => r.saleItem.productId || r.saleItem.productName),
+        },
+      });
+
+      const devResult = await agentClient.emitNFe55(store, {
+        issuer, nNF: nNF55, finNFe: 4, tpNF: 0, refNFe: origDoc.accessKey, natOp: 'DEVOLUCAO DE VENDA',
+        customer: {
+          cpfCnpj: issuer.cnpj, name: issuer.companyName, ie: issuer.ie, indIEDest: '1', indPres: 0,
+          addr: { xLgr: issuer.street, nro: issuer.number, xBairro: issuer.neighborhood, cMun: issuer.cityCode, xMun: issuer.city, UF: issuer.state, CEP: issuer.zip },
+        },
+        items: retItems.map(r => {
+          const p = r.saleItem.productId ? prodById[r.saleItem.productId] : null;
+          return {
+            sku: p?.sku || r.saleItem.productId || 'DEV', name: ('DEVOLUCAO ' + r.saleItem.productName).slice(0, 110),
+            ncm: (p?.ncm && /^\d{8}$/.test(p.ncm)) ? p.ncm : '64041100',
+            cfop: '1202', unidade: 'UN', qty: r.qty, unitPrice: r.saleItem.unitPrice,
+          };
+        }),
+        payment: { tPag: '90', valor: 0 },
+      });
+
+      if (!(devResult.ok && String(devResult.status) === '100')) {
+        if (devResult.accessKey) {
+          await prisma.fiscalDocument.update({ where: { id: devDoc.id }, data: { status: 'rejected', accessKey: devResult.accessKey, rejectReason: devResult.motivo || devResult.error || 'Rejeitada', response: { status: devResult.status, motivo: devResult.motivo } } });
+        } else {
+          await prisma.fiscalDocument.delete({ where: { id: devDoc.id } }).catch(() => {});
+        }
+        // 200 + ok:false de propósito: o api() do PDV descarta o corpo em HTTP de erro
+        return res.json({ ok: false, step: 'devolucao', error: 'Devolução não autorizada: ' + (devResult.motivo || devResult.error || devResult.status) });
+      }
+
+      devDoc = await prisma.fiscalDocument.update({
+        where: { id: devDoc.id },
+        data: {
+          status: 'authorized', accessKey: devResult.accessKey, protocol: devResult.protocol, xmlContent: devResult.xmlSigned,
+          response: {
+            status: devResult.status, motivo: devResult.motivo,
+            troca: { originalDocId, originalSaleId: origSale.id, returned: retItems.map(r => ({ saleItemId: r.saleItem.id, qty: r.qty })), stockApplied: true },
+          },
+        },
+      });
+      await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfeNextNumber: nNF55 + 1 } });
+
+      // Estoque: devolvido volta pra LOCALIZAÇÃO da loja (StoreStock). Comprado intocado (regra do dono).
+      for (const r of retItems) {
+        if (!r.saleItem.productId || !r.saleItem.size) continue;
+        const ps = await prisma.productSize.findFirst({ where: { productId: r.saleItem.productId, size: r.saleItem.size } });
+        if (!ps) continue;
+        const cur = await prisma.storeStock.findFirst({ where: { storeId: store.id, productSizeId: ps.id } });
+        if (cur) await prisma.storeStock.update({ where: { id: cur.id }, data: { stock: cur.stock + r.qty } });
+        else await prisma.storeStock.create({ data: { storeId: store.id, productSizeId: ps.id, stock: r.qty } });
+      }
+    }
+
+    // ============ PASSO 2 — venda nova + cupom novo (valor cheio, Crédito Loja + diferença) ============
+    let newSale = saleId ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } }) : null;
+    if (!newSale) {
+      newSale = await prisma.sale.create({
+        data: {
+          sellerId: req.userId, storeId: store.id, totalAmount: newTotal,
+          paymentMethod: diff > 0 ? (TPAG_TO_SALEPAY[diffPayment.tPag] || 'other') : 'troca',
+          status: 'completed', tcUsed: 0, tcEarned: 0,
+          note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : ''),
+          items: { create: newResolved.map(n => ({ productId: n.product.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price) })) },
+        },
+        include: { items: true },
+      });
+      // Estoque: novos saem da LOCALIZAÇÃO da loja (igual venda normal — só StoreStock)
+      for (const n of newResolved) {
+        const cur = await prisma.storeStock.findFirst({ where: { storeId: store.id, productSizeId: n.ps.id } });
+        if (cur) await prisma.storeStock.update({ where: { id: cur.id }, data: { stock: Math.max(0, cur.stock - n.qty) } });
+      }
+    }
+
+    const maxNfce = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
+    const nNF = Math.max(issuer.nfceNextNumber || 1, (maxNfce._max.number || 0) + 1);
+    const cupomDoc = await prisma.fiscalDocument.create({
+      data: {
+        issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1, number: nNF,
+        status: 'processing', totalValue: newTotal, saleId: newSale.id,
+        productIds: newResolved.map(n => n.product.sku || n.product.id),
+        emittedById: req.userId,
+        paymentMethod: diff > 0 ? diffPayment.tPag : '05',
+        paymentBrand: diff > 0 ? (diffPayment.cardBrand || null) : null,
+        paymentAcquirer: diff > 0 ? (diffPayment.acquirerKey || null) : null,
+        paymentAuthCode: diff > 0 ? (diffPayment.cardAuthCode || null) : null,
+        paymentTpIntegra: diff > 0 ? 2 : null,
+      },
+    });
+
+    const cupomResult = await agentClient.emitNFCe(store, {
+      issuer, nNF,
+      items: newResolved.map(n => ({ sku: n.product.sku || n.product.id, name: n.product.name, ncm: (n.product.ncm && /^\d{8}$/.test(n.product.ncm)) ? n.product.ncm : '64041100', cfop: '5102', unidade: 'UN', qty: n.qty, unitPrice: n.price })),
+      payments,
+    });
+
+    if (!(cupomResult.ok && String(cupomResult.status) === '100')) {
+      if (cupomResult.accessKey) {
+        await prisma.fiscalDocument.update({ where: { id: cupomDoc.id }, data: { status: 'rejected', accessKey: cupomResult.accessKey, rejectReason: cupomResult.motivo || cupomResult.error || 'Rejeitada', response: { status: cupomResult.status, motivo: cupomResult.motivo } } });
+      } else {
+        await prisma.fiscalDocument.delete({ where: { id: cupomDoc.id } }).catch(() => {});
+      }
+      // devolução JÁ saiu — devolve os ids pro PDV re-tentar SÓ o cupom (sem duplicar nada).
+      // 200 + ok:false de propósito: o api() do PDV descarta o corpo em HTTP de erro.
+      return res.json({ ok: false, step: 'cupom', devolucaoDocId: devDoc.id, saleId: newSale.id, error: 'Devolução OK, mas o cupom novo falhou: ' + (cupomResult.motivo || cupomResult.error || cupomResult.status) + ' — toque em EMITIR de novo (não duplica a devolução)' });
+    }
+
+    const cupomOk = await prisma.fiscalDocument.update({
+      where: { id: cupomDoc.id },
+      data: {
+        status: 'authorized', accessKey: cupomResult.accessKey, protocol: cupomResult.protocol, xmlContent: cupomResult.xmlSigned,
+        response: { status: cupomResult.status, motivo: cupomResult.motivo, troca: { originalDocId, devolucaoDocId: devDoc.id, credit, diff } },
+      },
+    });
+    await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfceNextNumber: nNF + 1 } });
+
+    res.json({
+      ok: true,
+      devolucao: { docId: devDoc.id, number: devDoc.number, accessKey: devDoc.accessKey },
+      cupom: { docId: cupomOk.id, number: cupomOk.number, accessKey: cupomOk.accessKey },
+      saleId: newSale.id,
+      valores: { devolvido: returnedTotal, novos: newTotal, diferenca: diff > 0 ? diff : 0, vale },
+    });
+  } catch (err) {
+    console.error('[fiscal/troca]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// Cancelamento — registrado ANTES do adminMiddleware pro caixa
+// alcançar (o guard CAIXA_FISCAL_OK limita o papel; aqui limita
+// o ESCOPO: caixa só cancela NFC-e). Janela legal quem valida é
+// a SEFAZ (NFC-e ~30min) — o erro dela volta literal pro PDV.
+// Emite o evento via AGENTE da loja (Railway não tem PFX local).
+// ============================================================
+router.post('/documents/:id/cancel', async (req, res) => {
+  try {
+    const { reason } = req.body || {};
+    if (!reason || reason.length < 15) return res.status(400).json({ error: 'Justificativa deve ter 15+ caracteres (regra SEFAZ)' });
+
+    const doc = await prisma.fiscalDocument.findUnique({
+      where: { id: req.params.id },
+      include: { issuer: true },
+    });
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
+    if (doc.status !== 'authorized') return res.status(400).json({ error: 'Só documentos autorizados podem ser cancelados (status atual: ' + doc.status + ')' });
+    if (!doc.accessKey || !doc.protocol) return res.status(400).json({ error: 'Documento sem chave/protocolo — não pode cancelar' });
+    if (doc.docType !== 'NFCE' && doc.docType !== 'NFE') return res.status(400).json({ error: 'Cancelamento direto SEFAZ suporta só NFCe e NFe (tipo: ' + doc.docType + ')' });
+    if (!['admin', 'superadmin', 'manager'].includes(req.userRole) && doc.docType !== 'NFCE') {
+      return res.status(403).json({ error: 'Caixa só cancela cupom (NFC-e) — NFe modelo 55 é com o admin' });
+    }
+
+    const store = await prisma.store.findFirst({ where: { fiscalIssuerId: doc.issuerId } });
+    let result;
+    if (store?.fiscalAgentEnabled && store?.fiscalAgentUrl) {
+      const agentClient = require('../services/fiscalAgentClient');
+      result = await agentClient.cancel(store, { issuer: doc.issuer, accessKey: doc.accessKey, protocol: doc.protocol, reason });
+    } else {
+      const pfxPath = pfxPathFor(doc.issuer.cnpj);
+      const pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
+      if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
+      const { cancelDocument } = await getSefazDirect();
+      result = await cancelDocument({ issuer: doc.issuer, pfxPath, pfxSenha, accessKey: doc.accessKey, protocol: doc.protocol, reason });
+    }
+
+    if (result.ok) {
+      await prisma.fiscalDocument.update({
+        where: { id: doc.id },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancelReason: reason,
+          cancelProtocol: result.cancelProtocol || null,
+          response: { ...(doc.response || {}), cancel: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) } },
+        },
+      });
+      return res.json({ ok: true, cancelProtocol: result.cancelProtocol, motivo: result.motivo });
+    }
+    res.status(400).json({
+      error: result.motivo || result.error || 'Erro ao cancelar',
+      status: result.status,
+      detail: result.rawResponse?.slice(0, 1000),
+    });
+  } catch (err) {
+    console.error('[fiscal/cancel]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============================================================
 // Emissão NFe modelo 55 (B2C/B2B com destinatário) — payload livre.
@@ -1025,55 +1345,9 @@ router.post('/documents/:id/correction', async (req, res) => {
   }
 });
 
-router.post('/documents/:id/cancel', async (req, res) => {
-  try {
-    const { reason } = req.body || {};
-    if (!reason || reason.length < 15) return res.status(400).json({ error: 'Justificativa deve ter 15+ caracteres (regra SEFAZ)' });
-
-    const doc = await prisma.fiscalDocument.findUnique({
-      where: { id: req.params.id },
-      include: { issuer: true },
-    });
-    if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
-    if (doc.status !== 'authorized') return res.status(400).json({ error: 'Só documentos autorizados podem ser cancelados (status atual: ' + doc.status + ')' });
-    if (!doc.accessKey || !doc.protocol) return res.status(400).json({ error: 'Documento sem chave/protocolo — não pode cancelar' });
-    if (doc.docType !== 'NFCE' && doc.docType !== 'NFE') return res.status(400).json({ error: 'Cancelamento direto SEFAZ suporta só NFCe e NFe (tipo: ' + doc.docType + ')' });
-
-    const pfxPath = pfxPathFor(doc.issuer.cnpj);
-    const pfxSenha = pfxSenhaFor(doc.issuer.cnpj);
-    if (!pfxPath || !pfxSenha) return res.status(400).json({ error: 'PFX não configurado pra esse CNPJ' });
-
-    const { cancelDocument } = await getSefazDirect();
-    const result = await cancelDocument({
-      issuer: doc.issuer, pfxPath, pfxSenha,
-      accessKey: doc.accessKey,
-      protocol: doc.protocol,
-      reason,
-    });
-
-    if (result.ok) {
-      await prisma.fiscalDocument.update({
-        where: { id: doc.id },
-        data: {
-          status: 'cancelled',
-          cancelledAt: new Date(),
-          cancelReason: reason,
-          cancelProtocol: result.cancelProtocol || null,
-          response: { ...(doc.response || {}), cancel: { status: result.status, motivo: result.motivo, raw: result.rawResponse?.slice(0, 4000) } },
-        },
-      });
-      return res.json({ ok: true, cancelProtocol: result.cancelProtocol, motivo: result.motivo });
-    }
-    res.status(400).json({
-      error: result.motivo || 'Erro ao cancelar',
-      status: result.status,
-      detail: result.rawResponse?.slice(0, 1000),
-    });
-  } catch (err) {
-    console.error('[fiscal/cancel]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// (cancelamento mudou de lugar: está registrado ANTES do adminMiddleware,
+// junto das rotas de troca — caixa cancela NFC-e, admin cancela tudo, e o
+// evento sai via agente da loja em vez de PFX local.)
 
 // DANFE legado (Brasil NFe) — removido. A rota /documents/:id/danfe está
 // disponível antes do adminMiddleware acima usando node-sped-pdf local.

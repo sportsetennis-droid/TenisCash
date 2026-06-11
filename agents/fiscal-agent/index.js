@@ -69,27 +69,27 @@ app.get('/health', (req, res) => {
     port: PORT,
     pfxExists: fs.existsSync(PFX_PATH),
     pfxSize: fs.existsSync(PFX_PATH) ? fs.statSync(PFX_PATH).size : 0,
-    version: '2.0-stateless',
+    version: '2.1-troca',
     timestamp: new Date().toISOString(),
   });
 });
 
-// Emissão NFCe (modelo 65) — issuer + items + payment + nNF vêm do central
+// Emissão NFCe (modelo 65) — issuer + items + payment(s) + nNF vêm do central
 app.post('/emit-nfce', async (req, res) => {
   try {
-    const { issuer, items, payment, customer, nNF } = req.body || {};
+    const { issuer, items, payment, payments, customer, nNF } = req.body || {};
     if (!issuer) return res.status(400).json({ ok: false, error: 'issuer obrigatório' });
     if (!items?.length) return res.status(400).json({ ok: false, error: 'items obrigatório' });
-    if (!payment) return res.status(400).json({ ok: false, error: 'payment obrigatório' });
+    if (!payment && !payments?.length) return res.status(400).json({ ok: false, error: 'payment obrigatório' });
     if (!nNF) return res.status(400).json({ ok: false, error: 'nNF obrigatório' });
     if (issuer.cnpj?.replace(/\D/g, '').length !== 14) return res.status(400).json({ ok: false, error: 'issuer.cnpj inválido' });
 
     const { emitNFCe } = await getSefaz();
-    log('INFO', 'emit-nfce', 'cnpj=' + issuer.cnpj, 'nNF=' + nNF);
+    log('INFO', 'emit-nfce', 'cnpj=' + issuer.cnpj, 'nNF=' + nNF, payments?.length ? ('pagamentos=' + payments.length) : '');
     const result = await emitNFCe({
       issuer: { ...issuer, nfceSerie: issuer.nfceSerie || 1, nfceNextNumber: nNF },
       pfxPath: PFX_PATH, pfxSenha: PFX_SENHA,
-      items, payment, customer, nNF,
+      items, payment, payments, customer, nNF,
     });
     log('INFO', 'emit-nfce', result.ok ? 'OK' : 'FAIL', result.status || '', (result.accessKey || '').slice(-12), result.motivo || '');
     res.json(result);
@@ -99,19 +99,19 @@ app.post('/emit-nfce', async (req, res) => {
   }
 });
 
-// Emissão NFe modelo 55
+// Emissão NFe modelo 55 — normal (saída) ou DEVOLUÇÃO (finNFe=4, tpNF=0, refNFe=chave do cupom)
 app.post('/emit-nfe55', async (req, res) => {
   try {
-    const { issuer, items, payment, customer, natOp, nNF } = req.body || {};
-    if (!issuer || !items?.length || !payment || !nNF || !customer?.cpfCnpj) {
+    const { issuer, items, payment, payments, customer, natOp, nNF, finNFe, tpNF, refNFe } = req.body || {};
+    if (!issuer || !items?.length || (!payment && !payments?.length) || !nNF || !customer?.cpfCnpj) {
       return res.status(400).json({ ok: false, error: 'issuer, items, payment, nNF e customer.cpfCnpj obrigatórios' });
     }
     const { emitNFe55 } = await getSefaz();
-    log('INFO', 'emit-nfe55', 'cnpj=' + issuer.cnpj, 'nNF=' + nNF);
+    log('INFO', 'emit-nfe55', 'cnpj=' + issuer.cnpj, 'nNF=' + nNF, finNFe === 4 ? ('DEVOLUCAO ref=' + String(refNFe || '').slice(-12)) : '');
     const result = await emitNFe55({
       issuer: { ...issuer, nfeSerie: issuer.nfeSerie || 1, nfeNextNumber: nNF },
       pfxPath: PFX_PATH, pfxSenha: PFX_SENHA,
-      items, payment, customer, natOp, nNF,
+      items, payment, payments, customer, natOp, nNF, finNFe, tpNF, refNFe,
     });
     log('INFO', 'emit-nfe55', result.ok ? 'OK' : 'FAIL', result.status || '', (result.accessKey || '').slice(-12), result.motivo || '');
     res.json(result);
@@ -180,7 +180,7 @@ app.post('/correction', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  log('INFO', 'TenisCash Fiscal Agent v2.0 iniciado',
+  log('INFO', 'TenisCash Fiscal Agent v2.1-troca iniciado',
     'STORE=' + STORE_LABEL,
     'PORT=' + PORT,
     'PFX=' + path.basename(PFX_PATH));

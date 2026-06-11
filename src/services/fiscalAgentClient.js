@@ -24,29 +24,61 @@ function getPrisma() {
 }
 
 // Lista de agentes vivos cadastrados (1 por URL distinta), cache 60s.
+// FISCAL_EXTRA_AGENTS (env, "url|token;url|token") adiciona agentes fora do
+// cadastro de loja — ex: agente da matriz atualizado antes das lojas.
 let _agentsCache = { at: 0, list: [] };
 async function listAgents() {
   if (Date.now() - _agentsCache.at < 60000) return _agentsCache.list;
+  const seen = new Set();
+  const list = [];
+  const push = (code, url, token) => {
+    url = (url || '').replace(/\/$/, '');
+    if (!url || !token || seen.has(url)) return;
+    seen.add(url);
+    list.push({ code, url, token });
+  };
   try {
     const stores = await getPrisma().store.findMany({
       where: { fiscalAgentEnabled: true, fiscalAgentUrl: { not: null }, fiscalAgentToken: { not: null } },
       select: { code: true, fiscalAgentUrl: true, fiscalAgentToken: true },
       orderBy: { code: 'asc' },
     });
-    const seen = new Set();
-    const list = [];
-    for (const s of stores) {
-      const url = (s.fiscalAgentUrl || '').replace(/\/$/, '');
-      if (!url || seen.has(url)) continue;
-      seen.add(url);
-      list.push({ code: s.code, url, token: s.fiscalAgentToken });
-    }
-    _agentsCache = { at: Date.now(), list };
+    for (const s of stores) push(s.code, s.fiscalAgentUrl, s.fiscalAgentToken);
   } catch (err) {
     // sem DB acessível segue só com o agente primário
     console.error('[fiscalAgent] listAgents falhou:', err.message);
   }
+  for (const part of String(process.env.FISCAL_EXTRA_AGENTS || '').split(';')) {
+    const [url, token] = part.split('|').map(s => (s || '').trim());
+    if (url && token) push('EXTRA', url, token);
+  }
+  _agentsCache = { at: Date.now(), list };
   return _agentsCache.list;
+}
+
+// Versão do agente (/health), cache 120s por URL. Troca exige >= 2.1
+// (pagamentos múltiplos + NFe de devolução) — agente 2.0 rejeitaria o payload.
+const _verCache = new Map();
+async function agentVersion(url) {
+  const hit = _verCache.get(url);
+  if (hit && Date.now() - hit.at < 120000) return hit.ver;
+  let ver = 0;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const resp = await fetch(url + '/health', { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    if (resp.ok) ver = parseFloat(((await resp.json()).version || '0')) || 0;
+  } catch { /* fora do ar = versão 0 */ }
+  _verCache.set(url, { at: Date.now(), ver });
+  return ver;
+}
+
+// Payload que só agente v2.1+ entende (troca/devolução)?
+function needsV21(body) {
+  return !!(body && (
+    (Array.isArray(body.payments) && body.payments.length) ||
+    body.finNFe === 4 || body.tpNF === 0 || body.refNFe
+  ));
 }
 
 async function postAgent(url, token, path, body) {
@@ -98,6 +130,19 @@ async function callAgent(store, path, body) {
     throw new Error('Store ' + store.code + ' fiscalAgentUrl/Token não configurado');
   }
   const primaryUrl = store.fiscalAgentUrl.replace(/\/$/, '');
+
+  // Payload de troca/devolução: roteia SÓ pra agente v2.1+ (2.0 não conhece payments/finNFe).
+  if (needsV21(body)) {
+    const all = [{ code: store.code, url: primaryUrl, token: store.fiscalAgentToken }, ...(await listAgents()).filter(a => a.url !== primaryUrl)];
+    let result = null;
+    for (const a of all) {
+      if ((await agentVersion(a.url)) < 2.1) continue;
+      if (result) console.warn('[fiscalAgent] ' + store.code + ': failover v2.1 via ' + a.code + ' (' + path + ')');
+      result = await postAgent(a.url, a.token, path, body);
+      if (!isTransportFail(result)) return result;
+    }
+    return result || { ok: false, error: 'Nenhum agente fiscal v2.1 disponível — atualize o agente das lojas pra usar troca/devolução' };
+  }
 
   // 1) agente da própria loja
   let result = await postAgent(primaryUrl, store.fiscalAgentToken, path, body);

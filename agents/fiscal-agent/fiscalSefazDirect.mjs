@@ -24,10 +24,11 @@ const SVRS_URLS = {
   production:   'https://nfce.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
 };
 
-// NFe modelo 55 — SEFAZ-PB autoriza diretamente (não via SVRS)
+// NFe modelo 55 — a PB também é estado SVRS pro modelo 55 (o host
+// nfe.sefaz.pb.gov.br NÃO existe em DNS — descoberto no 1º teste real 2026-06-10)
 const NFE_PB_URLS = {
-  homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/NFeAutorizacao4',
-  production:   'https://nfe.sefaz.pb.gov.br/nfews/v2/services/NFeAutorizacao4',
+  homologation: 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
+  production:   'https://nfe.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
 };
 
 // URLs de Recepção de Evento (cancelamento, carta de correção)
@@ -35,9 +36,9 @@ const EVENT_URLS = {
   // NFCe modelo 65 — SVRS
   nfce_homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
   nfce_production:   'https://nfce.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
-  // NFe modelo 55 — SEFAZ-PB
-  nfe_homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/RecepcaoEvento4',
-  nfe_production:   'https://nfe.sefaz.pb.gov.br/nfews/v2/services/RecepcaoEvento4',
+  // NFe modelo 55 — SVRS (PB)
+  nfe_homologation: 'https://nfe-homologacao.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
+  nfe_production:   'https://nfe.svrs.rs.gov.br/ws/recepcaoevento/recepcaoevento4.asmx',
 };
 
 // Cache PEM por CNPJ pra não reextrair toda emissão
@@ -110,7 +111,7 @@ function _delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
 // (cStat 539) e devolve a autorizacao existente; NAO duplica a nota. Alem disso
 // o reset aqui acontece no estabelecimento da conexao (antes da SEFAZ processar
 // o lote), entao reenviar e seguro.
-function _sefazPost(url, soap, pem, attempts = 4) {
+function _sefazPost(url, soap, pem, attempts = 2) {
   const once = () => new Promise((res, rej) => {
     const req = https.request({
       hostname: url.hostname, port: 443, path: url.pathname, method: 'POST',
@@ -119,7 +120,7 @@ function _sefazPost(url, soap, pem, attempts = 4) {
         'Content-Type': 'application/soap+xml; charset=utf-8',
         'Content-Length': Buffer.byteLength(soap, 'utf8'),
       },
-      rejectUnauthorized: false, timeout: 30000,
+      rejectUnauthorized: false, timeout: 18000,
       minVersion: 'TLSv1.2', maxVersion: 'TLSv1.2', // SVRS reseta TLS 1.3
       secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT
         | crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION, // SVRS renegocia p/ pedir cert
@@ -160,11 +161,12 @@ function _sefazPost(url, soap, pem, attempts = 4) {
  * @param {string} args.pfxSenha — senha do PFX
  * @param {Array}  args.items — [{ name, sku, ncm, cfop, unidade, qty, unitPrice }]
  * @param {Object} args.payment — { tPag, valor, acquirerKey?, tBand?, cAut?, tpIntegra? }
+ * @param {Array}  [args.payments] — N pagamentos (troca: 05 Crédito Loja + diferença); se vier, ignora payment
  * @param {Object} [args.customer] — { cpf, name } opcional
  * @param {number} [args.nNF] — número da NF (default: issuer.nfceNextNumber)
  * @returns {Promise<{ok, accessKey, protocol, status, motivo, xmlSigned, rawResponse}>}
  */
-export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, customer, nNF }) {
+export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, payments, customer, nNF }) {
   const tpAmb = issuer.environment === 'production' ? 1 : 2;
   nNF = nNF || issuer.nfceNextNumber || 1;
   const serie = issuer.nfceSerie || 1;
@@ -172,7 +174,7 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
   // Validações básicas
   if (!issuer.csc) throw new Error('Issuer sem CSC');
   if (!items?.length) throw new Error('Sem itens');
-  if (!payment) throw new Error('Sem pagamento');
+  if (!payment && !(Array.isArray(payments) && payments.length)) throw new Error('Sem pagamento');
 
   const tools = new Tools({
     mod: 65, tpAmb, UF: 'PB', versao: '4.00',
@@ -265,16 +267,22 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
 
   nfe.tagTransp({ modFrete: 9 });
 
-  // Pagamento — usa buildDetPag pro cartão
-  const detPagObj = buildDetPag({
-    valor: payment.valor || totalProd,
-    tPag: payment.tPag || '01',
-    acquirerKey: payment.acquirerKey,
-    tBand: payment.tBand,
-    cAut: payment.cAut,
-    tpIntegra: payment.tpIntegra || 2,
-  });
-  nfe.tagDetPag([detPagObj]);
+  // Pagamento — 1 (payment) ou N (payments[]: troca = 05 Crédito Loja + diferença).
+  // A SEFAZ exige Σ vPag == vNF; valida aqui pra dar erro legível antes de transmitir.
+  const payList = (Array.isArray(payments) && payments.length) ? payments : [payment];
+  const detPagArr = payList.map((p) => buildDetPag({
+    valor: p.valor != null ? p.valor : totalProd,
+    tPag: p.tPag || '01',
+    acquirerKey: p.acquirerKey,
+    tBand: p.tBand,
+    cAut: p.cAut,
+    tpIntegra: p.tpIntegra || 2,
+  }));
+  const sumPag = detPagArr.reduce((s, d) => s + Number(d.vPag), 0);
+  if (Math.abs(sumPag - totalProd) > 0.009) {
+    throw new Error('Soma dos pagamentos (' + sumPag.toFixed(2) + ') difere do total da nota (' + totalProd.toFixed(2) + ')');
+  }
+  nfe.tagDetPag(detPagArr);
 
   // XML
   let xml = nfe.xml();
@@ -336,8 +344,8 @@ export async function consultarNFe({ issuer, pfxPath, pfxSenha, accessKey }) {
   const CONSULTA_URLS = {
     nfce_production: 'https://nfce.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
     nfce_homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
-    nfe_production: 'https://nfe.sefaz.pb.gov.br/nfews/v2/services/NFeConsultaProtocolo4',
-    nfe_homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/NFeConsultaProtocolo4',
+    nfe_production: 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+    nfe_homologation: 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
   };
   const urlKey = (mod === 65 ? 'nfce_' : 'nfe_') + (tpAmb === 1 ? 'production' : 'homologation');
   const url = new URL(CONSULTA_URLS[urlKey]);
@@ -556,18 +564,25 @@ export async function sendCorrectionLetter({ issuer, pfxPath, pfxSenha, accessKe
  * @param {string} args.pfxPath / args.pfxSenha
  * @param {Array}  args.items
  * @param {Object} args.payment — { tPag, valor, acquirerKey?, tBand?, cAut?, tpIntegra? }
- * @param {Object} args.customer — { tipo:'F'|'J', cpfCnpj, name, email?, addr?:{xLgr,nro,xBairro,cMun,xMun,UF,CEP}, ie?, indIEDest? }
+ * @param {Object} args.customer — { tipo:'F'|'J', cpfCnpj, name, email?, addr?:{xLgr,nro,xBairro,cMun,xMun,UF,CEP}, ie?, indIEDest?, indPres? }
  * @param {number} [args.nNF]
  * @param {string} [args.natOp] — natureza da operação (default: 'VENDA DE MERCADORIA')
+ * @param {number} [args.finNFe] — 1=normal (default) | 4=devolução (troca: entrada referenciando o cupom)
+ * @param {number} [args.tpNF] — 1=saída (default) | 0=entrada (devolução)
+ * @param {string} [args.refNFe] — chave (44 díg) da NFe/NFC-e referenciada (obrigatória em devolução)
+ * @param {Array}  [args.payments] — N pagamentos; se vier, ignora payment
  */
-export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, customer, nNF, natOp }) {
+export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, payments, customer, nNF, natOp, finNFe, tpNF, refNFe }) {
   const tpAmb = issuer.environment === 'production' ? 1 : 2;
   nNF = nNF || issuer.nfeNextNumber || 1;
   const serie = issuer.nfeSerie || 1;
 
   if (!items?.length) throw new Error('Sem itens');
-  if (!payment) throw new Error('Sem pagamento');
+  if (!payment && !(Array.isArray(payments) && payments.length)) throw new Error('Sem pagamento');
   if (!customer || !customer.cpfCnpj) throw new Error('NFe 55 exige destinatário com CPF/CNPJ');
+  if (finNFe === 4 && !(refNFe && String(refNFe).replace(/\D/g, '').length === 44)) {
+    throw new Error('Devolução (finNFe=4) exige refNFe com a chave de 44 dígitos do documento original');
+  }
 
   const tools = new Tools({
     mod: 55, tpAmb, UF: 'PB', versao: '4.00',
@@ -588,17 +603,18 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
 
   nfe.tagInfNFe({ versao: '4.00', Id: null, pk_nItem: null });
   nfe.tagIde({
-    cUF: 25, cNF, natOp: natOp || 'VENDA DE MERCADORIA',
+    cUF: 25, cNF, natOp: natOp || (finNFe === 4 ? 'DEVOLUCAO DE VENDA' : 'VENDA DE MERCADORIA'),
     mod: 55, serie, nNF, dhEmi,
-    tpNF: 1,
+    tpNF: tpNF != null ? tpNF : 1, // 0=entrada (devolução), 1=saída
     idDest: isInterstate ? 2 : 1, // 1=mesma UF, 2=interestadual
     cMunFG: parseInt(issuer.cityCode || '2507507', 10),
     tpImp: 1, // 1=retrato A4
     tpEmis: 1, cDV: null, tpAmb,
-    finNFe: 1, indFinal: 1,
-    indPres: customer.indPres || 2, // 2=operação não-presencial pela internet (Nuvemshop)
+    finNFe: finNFe || 1, indFinal: 1,
+    indPres: customer.indPres != null ? customer.indPres : 2, // 0=não se aplica (devolução), 2=internet (Nuvemshop)
     procEmi: 0, verProc: 'TenisCash/1.0',
   });
+  if (refNFe) nfe.tagRefNFe(String(refNFe).replace(/\D/g, ''));
   nfe.tagEmit({
     CNPJ: issuer.cnpj, xNome: issuer.companyName,
     xFant: issuer.fantasyName || issuer.companyName,
@@ -697,25 +713,28 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
   }}, true);
 
   // Transporte — frete por conta do destinatário/terceiro (modFrete=9 = sem ocorrência)
-  // Em e-commerce Nuvemshop, modFrete=2 (por conta destinatário) é mais correto
-  nfe.tagTransp({ modFrete: payment.modFrete != null ? payment.modFrete : 2 });
+  // Em e-commerce Nuvemshop, modFrete=2 (por conta destinatário) é mais correto.
+  // Devolução (entrada): sem frete a cobrar — usa 9 por padrão.
+  const pay0 = payment || (Array.isArray(payments) && payments[0]) || {};
+  nfe.tagTransp({ modFrete: pay0.modFrete != null ? pay0.modFrete : (finNFe === 4 ? 9 : 2) });
 
-  // Pagamento — pode ser dinheiro/pix/cartão (mesmo helper)
-  const detPagObj = buildDetPag({
-    valor: payment.valor || totalProd,
-    tPag: payment.tPag || '01',
-    acquirerKey: payment.acquirerKey,
-    tBand: payment.tBand,
-    cAut: payment.cAut,
-    tpIntegra: payment.tpIntegra,
-  });
-  nfe.tagDetPag([detPagObj]);
+  // Pagamento — 1 (payment) ou N (payments[]). Devolução usa tPag 90 (sem pagamento) com vPag 0.
+  const payList = (Array.isArray(payments) && payments.length) ? payments : [payment];
+  const detPagArr = payList.map((p) => buildDetPag({
+    valor: p.valor != null ? p.valor : totalProd,
+    tPag: p.tPag || '01',
+    acquirerKey: p.acquirerKey,
+    tBand: p.tBand,
+    cAut: p.cAut,
+    tpIntegra: p.tpIntegra,
+  }));
+  nfe.tagDetPag(detPagArr);
 
   // Pedido / referência opcional
-  if (payment.xPed || payment.nuvemshopOrderId) {
+  if (pay0.xPed || pay0.nuvemshopOrderId) {
     nfe.tagInfAdic({
-      infCpl: (payment.xPed ? ('Pedido: ' + payment.xPed + '. ') : '') +
-              (payment.nuvemshopOrderId ? ('Nuvemshop ID: ' + payment.nuvemshopOrderId) : ''),
+      infCpl: (pay0.xPed ? ('Pedido: ' + pay0.xPed + '. ') : '') +
+              (pay0.nuvemshopOrderId ? ('Nuvemshop ID: ' + pay0.nuvemshopOrderId) : ''),
     });
   }
 
