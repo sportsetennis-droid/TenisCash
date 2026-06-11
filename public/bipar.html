@@ -566,19 +566,30 @@
       '<div style="position:relative;flex:1;min-height:0">' +
         '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
         '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px"></div>' +
-        '<div style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 4px #000;text-align:center">Aponte pro CÓDIGO DE BARRAS da etiqueta — captura sozinho</div>' +
+        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 4px #000;text-align:center">Aponte pro CÓDIGO DE BARRAS — aproxima até ele ocupar metade da tela</div>' +
       '</div>' +
       '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
         '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
-        '<div id="etiq-lista" style="max-height:120px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
-        '<button onclick="window.fecharScanner()" style="margin-top:8px;width:100%;min-height:46px;font-size:15px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR SCANNER</button>' +
+        '<div id="etiq-lista" style="max-height:110px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button onclick="window.capturaManual()" style="flex:2;min-height:46px;font-size:14px;font-weight:800;background:#0a84ff;color:#fff;border:none;border-radius:10px">📸 CAPTURAR AGORA</button>' +
+          '<button onclick="window.fecharScanner()" style="flex:1;min-height:46px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:10px">✕ FECHAR</button>' +
+        '</div>' +
       '</div>';
     document.body.appendChild(ov);
     renderEtiqLista();
     try {
-      etiqReader = new ZXing.BrowserMultiFormatReader();
-      await etiqReader.decodeFromConstraints({ audio: false, video: { facingMode: 'environment' } }, document.getElementById('etiq-video'), (result) => {
-        if (!result) return;
+      // modo reforçado: só formatos de etiqueta + TRY_HARDER + resolução alta (código pequeno não resolve em 640p)
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      etiqReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+      let tent = 0;
+      await etiqReader.decodeFromConstraints({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, document.getElementById('etiq-video'), (result, err) => {
+        if (!result) { // mostra que o leitor está VIVO tentando (NotFound a cada frame é normal)
+          tent++; if (tent % 8 === 0) { const h = document.getElementById('etiq-hint'); if (h) h.textContent = '🔎 lendo… (' + tent + ' tentativas) — aproxima do código, segura firme'; }
+          return;
+        }
         const v = String(result.getText() || '').replace(/\D/g, '');
         if (v.length < 12 || v.length > 14) return;
         const now = Date.now();
@@ -596,6 +607,13 @@
     try { etiqReader && etiqReader.reset(); } catch (_) {}
     clearInterval(etiqPoll); clearInterval(etiqSendTimer);
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
+  };
+
+  // 📸 garantia manual: captura o frame atual MESMO sem leitura do código — o servidor lê pela visão
+  window.capturaManual = function () {
+    const video = document.getElementById('etiq-video');
+    if (!video || !video.videoWidth) { alert('Câmera ainda abrindo…'); return; }
+    capturarFrame('');
   };
 
   function capturarFrame(ean) {
