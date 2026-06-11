@@ -11074,11 +11074,28 @@ async function _catApplyClassification() {
   const nodeId = specId || modId || subId || catId;
   if (!nodeId) { alert('Escolha pelo menos a Categoria.'); return; }
   if (!confirm(`Aplicar classificação a ${_catClassifySelected.size} produto(s)?`)) return;
-  const r = await api('/admin/categories/' + nodeId + '/assign-products', 'POST', { productIds: Array.from(_catClassifySelected) });
+  const ids = Array.from(_catClassifySelected);
+  const r = await api('/admin/categories/' + nodeId + '/assign-products', 'POST', { productIds: ids });
   if (r.error) { alert('Erro: ' + r.error); return; }
-  alert('✓ ' + r.updated + ' produtos atualizados.');
+  // Atualiza os cards na HORA, sem rebuscar os ~4 mil produtos (mata o "Carregando..." pesado).
+  const nameOf = (selId) => { const s = document.getElementById(selId); return (s && s.value && s.options[s.selectedIndex]) ? (s.options[s.selectedIndex].text || '').trim() : ''; };
+  const catName = nameOf('cat-apply-category'), subName = nameOf('cat-apply-sub'), modName = nameOf('cat-apply-mod'), specName = nameOf('cat-apply-spec');
+  const set = new Set(ids);
+  _catClassifyProducts.forEach(p => {
+    if (!set.has(p.id)) return;
+    if (catName) p.category = catName;
+    if (subName) p.subcategory = subName;
+    if (modName || specName) {
+      let ctx; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { ctx = {}; }
+      ctx.classification = Object.assign({}, ctx.classification);
+      if (modName) ctx.classification.modality = modName;
+      if (specName) ctx.classification.tier = specName;
+      p.aiContext = ctx;
+    }
+  });
   _catClassifySelected.clear();
-  await loadCategoriesClassify();
+  renderCatClassifyGrid();
+  alert('✓ ' + r.updated + ' produto(s) classificado(s).');
 }
 
 async function loadCategoryTree() {
