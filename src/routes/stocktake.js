@@ -739,7 +739,7 @@ async function tratarPendentesEtiqueta() {
           const MARCAS = ['NIKE', 'ADIDAS', 'KENNER', 'FIBER', 'PUMA', 'MIZUNO', 'OLYMPIKUS', 'FILA', 'UMBRO', 'ASICS', 'REEBOK', 'OAKLEY', 'MORMAII', 'DILLY', 'OUS', 'CONVERSE'];
           const marca = MARCAS.find((x) => (nome || '').toUpperCase().includes(x)) || 'A DEFINIR';
           let skuCard = base, n2 = 1; while (await prisma.product.findFirst({ where: { sku: skuCard }, select: { id: true } })) { n2++; skuCard = base + '-' + n2; }
-          const np = await prisma.product.create({ data: { sku: skuCard, name: ((nome ? nome.toUpperCase() + ' ' : 'PRODUTO ') + 'REF ' + base).slice(0, 120), brand: marca, category: 'A CLASSIFICAR', price: 0, active: true, source: 'scanner-auto', aiContext: { supplierRef: base, scannerAuto: true, photoPending: true } }, select: { id: true } }).catch(() => null);
+          const np = await prisma.product.create({ data: { sku: skuCard, name: ((nome ? nome.toUpperCase() + ' ' : 'PRODUTO ') + 'REF ' + base).slice(0, 120), brand: marca, category: 'A CLASSIFICAR', price: 0, active: true, source: 'scanner-auto', aiContext: { supplierRef: base, scannerAuto: true, photoPending: true, observacao: 'SEM NFE DE COMPRA' } }, select: { id: true } }).catch(() => null);
           if (np) pid = np.id;
         }
         if (pid) {

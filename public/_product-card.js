@@ -540,6 +540,7 @@
     if (p.sku) html += `<span title="Referência do modelo (1 ref por modelo+cor)" style="background:#f5f5f7;color:#1d1d1f;padding:1px 6px;border-radius:4px;font-weight:700;">REF: ${esc(p.sku)}</span>`;
     if (ref && ref !== p.sku) html += `<span title="Referência do fornecedor" style="background:#FCDAC4;color:#E5571E;padding:1px 6px;border-radius:4px;font-weight:700;">FORN: ${esc(ref)}</span>`;
     if (colorTag) html += `<span title="Cor do modelo" style="background:#fff;color:#1d1d1f;padding:1px 6px;border-radius:4px;font-weight:700;border:1px solid #e5e5ea;">🎨 ${esc(colorTag)}</span>`;
+    if (ctx.observacao) html += `<span title="Observação" style="background:#fff3e0;color:#b45309;padding:1px 6px;border-radius:4px;font-weight:800;border:1px solid #f0b146;">⚠ ${esc(ctx.observacao)}</span>`;
     html += '</div>';
 
     // Variantes de cor por MODELO (modelGroup) REMOVIDAS — o dono pediu unificação
