@@ -1049,6 +1049,66 @@ async function findOrCreateCategoryWithParent(connection, name, parentId) {
   }
 }
 
+// Aliases de nome na resolução de categoria — a árvore do menu usa "Treinamento"
+// onde a classificação interna diz "Treino", e existe o typo histórico "Profissinal"
+// numa categoria do admin. Match nos DOIS sentidos.
+const CATEGORY_NAME_ALIASES = { treino: 'treinamento', profissinal: 'profissional', lifestyle: 'estilo de vida' };
+
+function categoryNameMatches(catName, wantedName) {
+  const a = normalize(catName);
+  const b = normalize(wantedName);
+  return a === b || CATEGORY_NAME_ALIASES[a] === b || CATEGORY_NAME_ALIASES[b] === a;
+}
+
+function findCategoryInLevel(cats, name, parentId) {
+  const cands = cats.filter((c) => categoryNameMatches(c.name, name) && (c.parentId || null) === (parentId || null));
+  if (!cands.length) return null;
+  // Entre nomes duplicados no mesmo nível, o MENOR id é o nó original do menu
+  // (duplicatas de id maior foram criadas por pushes antigos que não achavam o nome).
+  return cands.reduce((a, b) => (Number(a.id) <= Number(b.id) ? a : b));
+}
+
+// Resolve a cadeia Categoria > Sub > Modalidade > Especialidade contra a árvore REAL
+// da loja, pra o produto cair nas categorias que o menu do site aponta:
+// - match por nome normalizado sob o pai atual; duplicata → menor id (nó do menu)
+// - nível que NÃO existe sob o pai é PULADO se o nível seguinte casar — ex. classificação
+//   "Chuteiras > Homem > Futsal" numa árvore "Chuteiras > Futsal" (sem nível de gênero)
+// - só cria categoria quando o nome não existe nem com skip (árvore genuinamente nova)
+async function resolveChainAgainstTree(connection, names) {
+  const wanted = (names || []).map((n) => String(n || '').trim()).filter(Boolean);
+  if (!wanted.length) return [];
+  const cats = await loadNsCategories(connection);
+  const ids = [];
+  let parentId = null;
+  for (let i = 0; i < wanted.length; i++) {
+    const found = findCategoryInLevel(cats, wanted[i], parentId);
+    if (found) { ids.push(found.id); parentId = found.id; continue; }
+    const next = wanted[i + 1];
+    if (next && findCategoryInLevel(cats, next, parentId)) continue; // pula nível ausente (gênero)
+    const createdId = await findOrCreateCategoryWithParent(connection, wanted[i], parentId);
+    if (!createdId) break; // falha de API — não deixa o resto da cadeia casar na raiz errada
+    ids.push(createdId); parentId = createdId;
+  }
+  return ids;
+}
+
+// Categoria de MARCA: filha da raiz "Marcas" do menu (handle histórico "roupas").
+// O produto SEMPRE entra na página da sua marca — sem isso as 24 páginas de marca
+// do menu ficam vazias pra sempre (o push antigo nunca atribuía marca).
+async function findOrCreateBrandCategory(connection, brandName) {
+  const brand = String(brandName || '').trim();
+  if (!brand) return null;
+  const cats = await loadNsCategories(connection);
+  const roots = cats.filter((c) => !c.parentId && normalize(c.name) === 'marcas');
+  if (!roots.length) return null;
+  const root = roots.reduce((a, b) => (Number(a.id) <= Number(b.id) ? a : b));
+  const existing = cats.filter((c) => (c.parentId || null) === root.id && normalize(c.name) === normalize(brand));
+  if (existing.length) return existing.reduce((a, b) => (Number(a.id) <= Number(b.id) ? a : b)).id;
+  // marca local costuma vir TODA-CAPS ("NEW BALANCE") — cria com capitalização de título
+  const pretty = brand.replace(/\S+/g, (w) => (w === w.toUpperCase() && w.length > 2 ? w[0] + w.slice(1).toLowerCase() : w));
+  return findOrCreateCategoryWithParent(connection, pretty, root.id);
+}
+
 function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   // opts.mode: 'create' (default) inclui variants; 'update' omite (NS rejeita variants em PUT)
   const mode = opts.mode || 'create';
@@ -1354,50 +1414,26 @@ async function pushProductToNuvemshop(localProductId, connection) {
     if (Array.isArray(aiMapping.tags)) aiTags = aiMapping.tags;
     if (aiMapping.gender) aiGender = aiMapping.gender;
   } else {
-    // Constrói cadeia HIERÁRQUICA: Categoria > Subcategoria > Modalidade > Especialidade
-    // Cada nível tem como pai o nó anterior, evitando colisão de nomes
-    // (ex: 'LifeStyle' sob Feminino vs Homem vs Menina vs Menino).
+    // Cadeia Categoria > Subcategoria > Modalidade > Especialidade resolvida contra a
+    // árvore REAL do menu da loja (resolveChainAgainstTree): duplicata → nó original
+    // (menor id), nível de gênero ausente é pulado, e NÃO recria ramo paralelo.
     const modality = aiCtx?.classification?.modality || null;
     const tier = aiCtx?.classification?.tier || null;
-    let parentId = null;
-    if (product.category) {
-      const catId = await findOrCreateCategoryWithParent(connection, product.category, null);
-      if (catId) { categoryIds.push(catId); parentId = catId; }
-    }
-    if (product.subcategory && parentId) {
-      const subId = await findOrCreateCategoryWithParent(connection, product.subcategory, parentId);
-      if (subId) { categoryIds.push(subId); parentId = subId; }
-    }
-    if (modality && parentId) {
-      const modId = await findOrCreateCategoryWithParent(connection, modality, parentId);
-      if (modId) { categoryIds.push(modId); parentId = modId; }
-    }
-    if (tier && parentId) {
-      const tierId = await findOrCreateCategoryWithParent(connection, tier, parentId);
-      if (tierId) { categoryIds.push(tierId); }
-    }
+    const chain = await resolveChainAgainstTree(connection, [product.category, product.subcategory, modality, tier]);
+    categoryIds.push(...chain);
   }
 
   // 2ª classificação (opcional) — produto pode estar em DUAS cadeias de categoria
   // no Nuvemshop. Monta a 2ª cadeia a partir de aiContext.classification2 e ANEXA.
   const c2 = aiCtx?.classification2;
   if (c2 && c2.category) {
-    let p2 = null;
-    const cat2 = await findOrCreateCategoryWithParent(connection, c2.category, null);
-    if (cat2) { categoryIds.push(cat2); p2 = cat2; }
-    if (c2.subcategory && p2) {
-      const sub2 = await findOrCreateCategoryWithParent(connection, c2.subcategory, p2);
-      if (sub2) { categoryIds.push(sub2); p2 = sub2; }
-    }
-    if (c2.modality && p2) {
-      const mod2 = await findOrCreateCategoryWithParent(connection, c2.modality, p2);
-      if (mod2) { categoryIds.push(mod2); p2 = mod2; }
-    }
-    if (c2.tier && p2) {
-      const tier2 = await findOrCreateCategoryWithParent(connection, c2.tier, p2);
-      if (tier2) { categoryIds.push(tier2); }
-    }
+    const chain2 = await resolveChainAgainstTree(connection, [c2.category, c2.subcategory, c2.modality, c2.tier]);
+    categoryIds.push(...chain2);
   }
+
+  // Categoria de MARCA — todo produto entra na página da sua marca no menu Marcas.
+  const brandCatId = await findOrCreateBrandCategory(connection, product.brand);
+  if (brandCatId) categoryIds.push(brandCatId);
   // Dedupe IDs (caso as duas cadeias compartilhem nós)
   const dedupCategoryIds = [...new Set(categoryIds.map(String))];
   categoryIds.length = 0;
@@ -1626,6 +1662,11 @@ module.exports = {
   upsertSaleFromOrder,
   pushProductToNuvemshop,
   pushAllProducts,
+  resolveChainAgainstTree,
+  findOrCreateBrandCategory,
+  loadNsCategories,
+  findCategoryInLevel,
+  clearNsCache,
   pushStockUpdate,
   syncNuvemshopImages,
   collectLocalImages,
