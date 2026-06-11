@@ -89,6 +89,8 @@ router.get('/products', async (req, res) => {
         { aiContext: { path: ['classification', 'modality'], string_contains: t } },
         { aiContext: { path: ['classification', 'tier'], string_contains: t } },
         { aiContext: { path: ['supplierRef'], string_contains: t } },
+        { aiContext: { path: ['color'], string_contains: t } },
+        { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
       ]);
       const termos = String(search).split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2);
       for (const t of (termos.length ? termos : [String(search)])) andConds.push({ OR: fields(t) });

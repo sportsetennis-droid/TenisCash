@@ -493,6 +493,12 @@ router.get('/products', adminOnly, async (req, res) => {
             OR: [
               { name: { contains: search, mode: 'insensitive' } },
               { sku: { contains: search, mode: 'insensitive' } },
+              { brand: { contains: search, mode: 'insensitive' } },
+              { category: { contains: search, mode: 'insensitive' } },
+              { subcategory: { contains: search, mode: 'insensitive' } },
+              { aiContext: { path: ['supplierRef'], string_contains: search } },
+              { aiContext: { path: ['color'], string_contains: search } },
+              { sizes: { some: { barcode: { contains: search, mode: 'insensitive' } } } },
             ],
           }
         : {}),

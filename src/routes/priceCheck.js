@@ -134,6 +134,11 @@ router.get('/', async (req, res) => {
         { name: { contains: t, mode: 'insensitive' } },
         { brand: { contains: t, mode: 'insensitive' } },
         { sku: { contains: t, mode: 'insensitive' } },
+        { category: { contains: t, mode: 'insensitive' } },
+        { subcategory: { contains: t, mode: 'insensitive' } },
+        { aiContext: { path: ['supplierRef'], string_contains: t } },
+        { aiContext: { path: ['color'], string_contains: t } },
+        { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
       ],
     }));
     // produto casa se: (TODAS as palavras batem) OU (veio de fornecedor que casa com a frase)

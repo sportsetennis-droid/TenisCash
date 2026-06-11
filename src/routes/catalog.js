@@ -182,12 +182,19 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     if (Object.keys(sizesSome).length) andConds.push({ sizes: { some: sizesSome } });
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
+      // Busca ABRANGENTE: nome, REF (sku), marca, categoria/sub, FORN (supplierRef),
+      // modalidade/especialidade, cor E código de barras (EAN) de qualquer tamanho.
       const fields = t => ([
         { name: { contains: t, mode: 'insensitive' } },
         { sku: { contains: t, mode: 'insensitive' } },
         { brand: { contains: t, mode: 'insensitive' } },
         { category: { contains: t, mode: 'insensitive' } },
         { subcategory: { contains: t, mode: 'insensitive' } },
+        { aiContext: { path: ['supplierRef'], string_contains: t } },
+        { aiContext: { path: ['classification', 'modality'], string_contains: t } },
+        { aiContext: { path: ['classification', 'tier'], string_contains: t } },
+        { aiContext: { path: ['color'], string_contains: t } },
+        { sizes: { some: { barcode: { contains: t, mode: 'insensitive' } } } },
       ]);
       const termos = search.split(/\s+/).map(s => s.trim()).filter(s => s.length >= 2);
       for (const t of (termos.length ? termos : [search])) andConds.push({ OR: fields(t) });

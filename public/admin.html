@@ -10165,9 +10165,14 @@ function renderProductImages() {
     if (status === 'missing' && has) return false;
     if (search) {
       const ref = (ctx.supplierRef || '').toLowerCase();
+      const color = (ctx.color || '').toLowerCase();
+      const hasBc = (p.sizes || []).some(s => (s.barcode || '').toLowerCase().includes(search));
       if (!(p.name || '').toLowerCase().includes(search)
           && !(p.sku || '').toLowerCase().includes(search)
-          && !ref.includes(search)) return false;
+          && !ref.includes(search)
+          && !(p.brand || '').toLowerCase().includes(search)
+          && !color.includes(search)
+          && !hasBc) return false;
     }
     return true;
   });
@@ -10631,6 +10636,8 @@ function _filteredCatProducts() {
       const ref = (ctx.supplierRef || '').toLowerCase();
       const mod = (cls.modality || '').toLowerCase();
       const ti = (cls.tier || '').toLowerCase();
+      const color = (ctx.color || '').toLowerCase();
+      const hasBc = (p.sizes || []).some(s => (s.barcode || '').toLowerCase().includes(search));
       if (!(p.name || '').toLowerCase().includes(search)
           && !(p.sku || '').toLowerCase().includes(search)
           && !ref.includes(search)
@@ -10638,7 +10645,9 @@ function _filteredCatProducts() {
           && !(p.category || '').toLowerCase().includes(search)
           && !(p.subcategory || '').toLowerCase().includes(search)
           && !mod.includes(search)
-          && !ti.includes(search)) return false;
+          && !ti.includes(search)
+          && !color.includes(search)
+          && !hasBc) return false;
     }
     // Filtro COMPRADO (quantidade comprada = stockTotal ou Σ sizes.stock)
     if (compExact != null || compRange) {
