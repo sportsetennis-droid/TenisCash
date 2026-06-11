@@ -116,6 +116,54 @@ function normalizeManualSize(raw) {
   return null;
 }
 
+// Extrai a FAIXA de tamanhos escrita no ITEM do produto (descrição ALPAR/Adidas)
+// e devolve a lista de opções pro modal — só os tamanhos POSSÍVEIS daquele produto.
+//   "TENIS TURNAROUND 34/39"   → ['34','35','36','37','38','39']
+//   "CAMISA ESTRO INF 7A/14A"  → ['7A','8A',...,'14A']
+//   "CAMISA ESTRO P/GG"        → ['P','M','G','GG']
+//   "TENSAUR SPORT 18/24"      → ['18',...,'24']
+// Sem faixa detectável (acessório etc) → null (front usa grade padrão + Único).
+const LETTER_SEQ = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG'];
+function extractSizeOptions(text) {
+  const t = String(text || '').toUpperCase();
+  if (!t) return null;
+  // idades infantis: 7A/14A
+  let m = t.match(/\b(\d{1,2})A\s*\/\s*(\d{1,2})A\b/);
+  if (m) {
+    const a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    if (a >= 1 && b > a && b <= 16) return Array.from({ length: b - a + 1 }, (_, i) => (a + i) + 'A');
+  }
+  // numérica (calçado/infantil): 38/43, 34/39, 18/24
+  m = t.match(/\b(\d{2})\s*\/\s*(\d{2})\b/);
+  if (m) {
+    const a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    if (a >= 15 && b > a && b <= 50 && b - a <= 14) return Array.from({ length: b - a + 1 }, (_, i) => String(a + i));
+  }
+  // letras (vestuário): P/GG, PP/XGG
+  m = t.match(/\b(PP|P|M|G|GG|XG|XGG)\s*\/\s*(PP|P|M|G|GG|XG|XGG)\b/);
+  if (m) {
+    const i0 = LETTER_SEQ.indexOf(m[1]), i1 = LETTER_SEQ.indexOf(m[2]);
+    if (i0 >= 0 && i1 > i0) return LETTER_SEQ.slice(i0, i1 + 1);
+  }
+  return null;
+}
+
+// Opções de tamanho pro bipe: tenta o nome do card; se não tiver faixa,
+// tenta a descrição da NFe de entrada do próprio código bipado.
+async function sizeOptionsForBipe(productName, code) {
+  let opts = extractSizeOptions(productName);
+  if (opts) return opts;
+  try {
+    const item = await prisma.xmlFiscalItem.findFirst({
+      where: { ean: { in: barcodeVariants(code) } },
+      select: { description: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (item) opts = extractSizeOptions(item.description);
+  } catch (_) {}
+  return opts;
+}
+
 // ============== PÚBLICOS ==============
 
 // GET /api/stocktake/stores → lojas ativas (dropdown)
@@ -195,10 +243,12 @@ router.post('/bipe', async (req, res) => {
           console.log('[bipe] BIPE_DUPLICADO_IGNORADO', JSON.stringify({ bipeIdExistente: existing.id, clientScanId: csId }));
           // Regra Adidas: checa o estado ATUAL do ProductSize (snapshot pode estar velho)
           let needsSizeIdem = false;
+          let sizeOptionsIdem;
           if (existing.productSizeId && isAdidas(existing.productBrand)) {
             try {
               const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true, sizeConfirmedAt: true } });
               needsSizeIdem = needsManualSize(existing.productBrand, psNow);
+              if (needsSizeIdem) sizeOptionsIdem = await sizeOptionsForBipe(existing.productName, code);
             } catch (_) {}
           }
           return res.json({
@@ -209,6 +259,7 @@ router.post('/bipe', async (req, res) => {
             duplicate: existing.duplicate,
             idempotent: true,
             needsSize: needsSizeIdem,
+            sizeOptions: sizeOptionsIdem || undefined,
             product: existing.productName ? {
               name: existing.productName,
               brand: existing.productBrand,
@@ -359,14 +410,19 @@ router.post('/bipe', async (req, res) => {
       }
     }
 
+    // Regra Adidas (dono 2026-06-10): tamanho não-confirmado → frontend pede o número da caixa.
+    // As opções vêm da FAIXA escrita no item (dono 2026-06-11): só os tamanhos daquele produto.
+    const needsSizeResp = chosen ? needsManualSize(chosen.product.brand, chosen) : false;
+    const sizeOptionsResp = needsSizeResp ? await sizeOptionsForBipe(chosen.product.name, code) : null;
+
     res.json({
       success: true,
       bipeId: bipe.id,
       appliedToStock,
       found,
       duplicate,
-      // Regra Adidas (dono 2026-06-10): tamanho não-confirmado → frontend pede o número da caixa
-      needsSize: chosen ? needsManualSize(chosen.product.brand, chosen) : false,
+      needsSize: needsSizeResp,
+      sizeOptions: sizeOptionsResp || undefined,
       product: chosen
         ? {
             name: chosen.product.name,

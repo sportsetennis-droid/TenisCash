@@ -765,8 +765,13 @@
     const sizeAtual = b.product?.size || '';
     const ehChute = sizeAtual && !/^T-/i.test(sizeAtual) && sizeAtual !== '?';
     const avisoChute = ehChute ? `<div class="size-warn" style="background:#eef4ff;color:#1d4ed8;">No sistema está: <b>${sizeAtual}</b> (não confirmado). Olhe a caixa — se bater, toque em ${sizeAtual}; se não, toque no número certo.</div>` : '';
-    const grade = ['34','35','36','37','38','39','40','41','42','43','44','45']
-      .map(t => `<button type="button" onclick="confirmarTamanho('${t}')">${t}</button>`).join('');
+    // GRADE = a FAIXA escrita no item do produto (vem do servidor: sizeOptions).
+    // Só os tamanhos POSSÍVEIS daquele produto. Sem faixa → grade padrão + botão Único.
+    const temFaixa = Array.isArray(b.sizeOptions) && b.sizeOptions.length > 0;
+    const opcoes = temFaixa ? b.sizeOptions : ['34','35','36','37','38','39','40','41','42','43','44','45'];
+    const grade = opcoes.map(t => `<button type="button" onclick="confirmarTamanho('${t}')">${t}</button>`).join('');
+    const infoFaixa = temFaixa ? `<div class="ss-sub" style="margin:0 0 8px;">Tamanhos deste produto: <b>${opcoes[0]} ao ${opcoes[opcoes.length-1]}</b></div>` : '';
+    const btnUnico = temFaixa ? '' : `<button type="button" id="size-unico" onclick="confirmarTamanho('U')" style="width:100%;min-height:46px;background:#fff;border:1.5px solid #d2d2d7;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;color:#1d1d1f;margin-bottom:12px;">Único — acessório sem tamanho (bolsa, bola, boné...)</button>`;
     const overlay = document.createElement('div');
     overlay.id = 'size-overlay';
     overlay.innerHTML = `
@@ -776,12 +781,13 @@
         <div class="ss-prod">${img}<div><div class="nm">${nome}</div><div class="cd">${b.code || ''}</div></div></div>
         ${avisoChute}
         <div id="size-error"></div>
+        ${infoFaixa}
         <div class="size-grid">${grade}</div>
         <div class="size-other-row">
           <input id="size-other" type="text" maxlength="5" autocomplete="off" placeholder="Outro: 33, 38.5, M, 8A...">
           <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
         </div>
-        <button type="button" id="size-unico" onclick="confirmarTamanho('U')" style="width:100%;min-height:46px;background:#fff;border:1.5px solid #d2d2d7;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;color:#1d1d1f;margin-bottom:12px;">Único — acessório sem tamanho (bolsa, bola, boné...)</button>
+        ${btnUnico}
         <div class="size-warn">⚠️ Informe o tamanho ANTES de bipar o próximo produto.</div>
         <button type="button" id="size-skip" onclick="pularTamanho()">Pular — deixo o tamanho depois</button>
       </div>`;
