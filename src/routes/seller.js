@@ -1298,11 +1298,14 @@ router.post('/customer/quick-register', sellerOnly, async (req, res) => {
 router.get('/customer/lookup', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const phone = String(req.query.phone || '').replace(/\D/g, '');
-    if (phone.length < 10) return res.json({ customer: null });
-    const customer = await prisma.user.findUnique({
-      where: { phone },
-      select: { id: true, name: true, phone: true, balance: true, profileComplete: true, cpf: true },
-    });
+    const cpf = String(req.query.cpf || '').replace(/\D/g, '');
+    const select = { id: true, name: true, phone: true, balance: true, profileComplete: true, cpf: true };
+    let customer = null;
+    if (cpf.length === 11) {
+      customer = await prisma.user.findUnique({ where: { cpf }, select });
+    } else if (phone.length >= 10) {
+      customer = await prisma.user.findUnique({ where: { phone }, select });
+    }
     res.json({ customer });
   } catch (err) {
     res.status(500).json({ error: err.message });

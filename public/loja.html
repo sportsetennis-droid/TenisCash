@@ -568,7 +568,7 @@
               🧾 CPF/CNPJ na nota
               <span id="sellCpfReq" style="font-size:11px;font-weight:700;color:#b06b00;">(obrigatório acima de R$ 500)</span>
             </label>
-            <input type="text" id="sellCustomerCpf" inputmode="numeric" autocomplete="off" placeholder="CPF ou CNPJ do cliente — só números" maxlength="18" oninput="maskCpfCnpj(this);updateSummary()" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;font-family:monospace;font-weight:700;box-sizing:border-box;">
+            <input type="text" id="sellCustomerCpf" inputmode="numeric" autocomplete="off" placeholder="CPF ou CNPJ do cliente — só números" maxlength="18" oninput="maskCpfCnpj(this);onCpfLookup();updateSummary()" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;font-family:monospace;font-weight:700;box-sizing:border-box;">
             <div id="sellCpfHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Vai vinculado na emissão da NFC-e. Acima de R$ 500 a SEFAZ exige o documento.</div>
           </div>
         </div>
@@ -1245,7 +1245,8 @@ async function emitNfceFromSale() {
       saleId: sale.id || sale.saleId,
       paymentMethod: tPagMap[method] || '99',
       customerCpf: (_cpfEmit.length === 11 || _cpfEmit.length === 14) ? _cpfEmit : null,
-      customerCpfName: (customer && customer.name) || null,
+      // Nome na nota só se bater com o CPF (evita nome de A com CPF de B).
+      customerCpfName: (customer && (!customer.cpf || customer.cpf.replace(/\D/g, '') === _cpfEmit)) ? customer.name : null,
     };
     if (method === 'credit_card' || method === 'debit_card') {
       const auth = document.getElementById('sellCardAuthCode').value.trim();
@@ -2188,6 +2189,48 @@ async function registerCustomerInline() {
   } catch (e) { alert('Erro ao cadastrar: ' + e.message); }
 }
 
+// Mostra o cliente achado (por telefone OU CPF): caixa verde + libera usar TenisCash.
+// Com o cliente setado, o NOME vai na nota (customerCpfName) e a venda gera/usa cashback.
+function renderCustomerFound(c) {
+  customer = c;
+  const infoEl = document.getElementById('sellCustomerInfo');
+  const tcGroup = document.getElementById('sellTcUsedGroup');
+  if (infoEl) infoEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--success-bg);border-radius:10px;border-left:3px solid var(--success);">
+      <div class="avatar ${avatarColor(c.name)}">${initials(c.name)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;color:var(--success);">✓ ${c.name}</div>
+        <div style="font-size:12px;color:var(--text-muted);">Saldo: <strong style="color:var(--text);">${fmt(c.balance)}</strong></div>
+      </div>
+    </div>`;
+  if (tcGroup) tcGroup.style.display = 'block';
+}
+
+// Acha o cliente CADASTRADO pelo CPF digitado (11 dígitos) e preenche o nome — pro nome sair na nota.
+let cpfLookupTimer;
+function onCpfLookup() {
+  clearTimeout(cpfLookupTimer);
+  const cpfInp = document.getElementById('sellCustomerCpf');
+  const hint = document.getElementById('sellCpfHint');
+  const dig = (cpfInp?.value || '').replace(/\D/g, '');
+  if (dig.length !== 11) return; // só CPF completo; CNPJ (14) não tem cadastro de pessoa
+  if (customer && customer.cpf && customer.cpf.replace(/\D/g, '') === dig) return; // já é o cliente atual
+  cpfLookupTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/seller/customer/lookup?cpf=' + dig);
+      if (d.customer) {
+        renderCustomerFound(d.customer);
+        const ph = document.getElementById('sellCustomerPhone');
+        if (ph && !ph.value.replace(/\D/g, '') && d.customer.phone) ph.value = d.customer.phone;
+        if (hint) hint.innerHTML = '✓ Cliente <strong>' + d.customer.name + '</strong> — o nome vai na nota.';
+      } else if (hint) {
+        hint.innerHTML = 'CPF não cadastrado — a nota sai só com o CPF (o nome não é obrigatório no cupom).';
+      }
+      updateSummary();
+    } catch (e) { console.error(e); }
+  }, 400);
+}
+
 let customerLookupTimer;
 function onCustomerLookup() {
   clearTimeout(customerLookupTimer);
@@ -2200,16 +2243,7 @@ function onCustomerLookup() {
       const d = await api('/api/seller/customer/lookup?phone=' + phone);
       customer = d.customer;
       if (customer) {
-        infoEl.innerHTML = `
-          <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--success-bg);border-radius:10px;border-left:3px solid var(--success);">
-            <div class="avatar ${avatarColor(customer.name)}">${initials(customer.name)}</div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;color:var(--success);">✓ ${customer.name}</div>
-              <div style="font-size:12px;color:var(--text-muted);">Saldo: <strong style="color:var(--text);">${fmt(customer.balance)}</strong></div>
-            </div>
-          </div>
-        `;
-        tcGroup.style.display = 'block';
+        renderCustomerFound(customer);
         // Puxa o CPF do cadastro pra nota (se houver e o campo estiver vazio) — não precisa redigitar.
         const cpfInp = document.getElementById('sellCustomerCpf');
         if (cpfInp && customer.cpf && !(cpfInp.value || '').replace(/\D/g, '')) {
@@ -2283,7 +2317,8 @@ async function finalizeSale() {
         vendorId,
         idemKey: _saleIdemKey,
         customerCpf: (_cpfNota.length === 11 || _cpfNota.length === 14) ? _cpfNota : null,
-        customerCpfName: customer?.name || null,
+        // Nome na nota só se bater com o CPF (evita mandar nome de A com CPF de B).
+        customerCpfName: (customer && (!customer.cpf || customer.cpf.replace(/\D/g, '') === _cpfNota)) ? customer.name : null,
         ...cardData,
       }),
     });
