@@ -1367,7 +1367,20 @@ async function syncNuvemshopImages(connection, nsProductId, localProduct) {
   return { changed: true, added, removed, sig, errors };
 }
 
-async function pushProductToNuvemshop(localProductId, connection) {
+// Trava anti-corrida POR PRODUTO (mesmo processo): cron + clique do admin no mesmo
+// instante reaproveitam a MESMA execução em vez de fazer 2 CREATEs (origem da
+// duplicata Caju TOP MX 2026-06-12: dois pushes no mesmo segundo → 2 produtos na loja).
+const _pushInFlight = new Map();
+function pushProductToNuvemshop(localProductId, connection) {
+  const inflight = _pushInFlight.get(localProductId);
+  if (inflight) return inflight;
+  const p = _pushProductToNuvemshopInner(localProductId, connection)
+    .finally(() => _pushInFlight.delete(localProductId));
+  _pushInFlight.set(localProductId, p);
+  return p;
+}
+
+async function _pushProductToNuvemshopInner(localProductId, connection) {
   const product = await prisma.product.findUnique({
     where: { id: localProductId },
     include: { sizes: { include: { storeStocks: { select: { stock: true } } } } },
@@ -1492,28 +1505,49 @@ async function pushProductToNuvemshop(localProductId, connection) {
     });
     action = 'updated';
   } else {
+    // Re-check anti-corrida ENTRE PROCESSOS (overlap de deploy = 2 instâncias com o
+    // mesmo cron): se outro processo criou o produto e gravou o mapping depois que
+    // este push começou, NÃO cria de novo — o próximo tick (cardSig) sincroniza.
+    const lateMapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: product.id } });
+    if (lateMapping) {
+      console.log('[ns push] corrida detectada (mapping apareceu durante o push) — create abortado:', localProductId);
+      return { skipped: true, action: 'raced', reason: 'mapping criado por execução concorrente', nuvemshopProductId: String(lateMapping.nuvemshopProductId) };
+    }
     const payload = buildNuvemshopProductPayload(product, createSizes, {
       categoryIds, extraTags: aiTags, gender: aiGender,
       modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
       mode: 'create',
     });
     nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
-    // upsert (idempotente): a guarda anti-eco do webhook product/created pode ter criado
-    // este mapping nesta corrida — não pode estourar unique em localProductId.
-    await prisma.nuvemshopProductMapping.upsert({
-      where: { localProductId: product.id },
-      create: {
-        localProductId: product.id,
-        nuvemshopProductId: String(nsProduct.id),
-        syncStatus: 'synced',
-        lastSyncedAt: new Date(),
-      },
-      update: {
-        nuvemshopProductId: String(nsProduct.id),
-        syncStatus: 'synced',
-        lastSyncedAt: new Date(),
-      },
+    // Grava o mapping com COMPENSAÇÃO: se outro processo ganhou a corrida entre o
+    // re-check e o POST (gravou mapping com OUTRO NS#), o produto que ESTE push criou
+    // é duplicata → deleta na loja e usa o do vencedor. (O upsert era idempotente pro
+    // eco do webhook do PRÓPRIO create, que grava o MESMO NS# — esse segue ok.)
+    const winner = await prisma.$transaction(async (tx) => {
+      const cur = await tx.nuvemshopProductMapping.findUnique({ where: { localProductId: product.id } });
+      if (cur && String(cur.nuvemshopProductId) !== String(nsProduct.id)) return cur;
+      await tx.nuvemshopProductMapping.upsert({
+        where: { localProductId: product.id },
+        create: {
+          localProductId: product.id,
+          nuvemshopProductId: String(nsProduct.id),
+          syncStatus: 'synced',
+          lastSyncedAt: new Date(),
+        },
+        update: {
+          nuvemshopProductId: String(nsProduct.id),
+          syncStatus: 'synced',
+          lastSyncedAt: new Date(),
+        },
+      });
+      return null;
     });
+    if (winner) {
+      console.log(`[ns push] corrida perdida — deletando duplicata NS#${nsProduct.id}, mantendo NS#${winner.nuvemshopProductId}:`, localProductId);
+      try { await ns.nuvemshopApi(connection, 'DELETE', `/products/${nsProduct.id}`); }
+      catch (e) { console.warn('[ns push] compensação: falha ao deletar duplicata NS#' + nsProduct.id + ':', e.message); }
+      return { skipped: true, action: 'raced-deduped', reason: 'execução concorrente criou primeiro — duplicata removida', nuvemshopProductId: String(winner.nuvemshopProductId) };
+    }
     // Imagens já subiram no payload do create — grava a assinatura como baseline
     // pra que o próximo update não as re-suba sem necessidade.
     try {
