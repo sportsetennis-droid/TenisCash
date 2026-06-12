@@ -59,7 +59,8 @@ router.post('/send-code', async (req, res) => {
     if (result.success) {
       res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
     } else {
-      res.status(400).json({ error: result.message });
+      // WhatsApp fora do ar → sinaliza pra tela oferecer cadastro por e-mail
+      res.status(400).json({ error: result.message, whatsappDown: true });
     }
   } catch (err) {
     console.error('Erro ao enviar código:', err);
@@ -508,8 +509,18 @@ router.post('/forgot-send-code', async (req, res) => {
       user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
       if (!user) return res.status(400).json({ error: 'Telefone não cadastrado' });
       const result = await sendVerificationCode(cleanPhone);
-      if (!result.success) return res.status(400).json({ error: result.message });
-      res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+      if (result.success) {
+        return res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
+      }
+      // WhatsApp fora do ar → cai automaticamente no e-mail do cliente, se houver
+      if (user.email) {
+        const emailResult = await sendEmailCode(user.email);
+        if (emailResult.success) {
+          const masked = user.email.replace(/^(.).*(@.*)$/, '$1***$2');
+          return res.json({ success: true, via: 'email', message: `WhatsApp indisponível — enviamos o código para seu e-mail (${masked})` });
+        }
+      }
+      return res.status(400).json({ error: result.message, whatsappDown: true, hasEmail: !!user.email });
     } else if (method === 'email' && email) {
       user = await prisma.user.findFirst({ where: { email } });
       if (!user) return res.status(400).json({ error: 'E-mail não cadastrado' });

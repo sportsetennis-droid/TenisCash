@@ -2568,7 +2568,15 @@ async function sendCode() {
   const phone = document.getElementById('reg-phone').value.replace(/\D/g,'');
   if (!phone || phone.length < 10) { showError('reg-phone-error','Informe um telefone válido com DDD'); return; }
   const data = await api('/auth/send-code','POST',{phone});
-  if (data.error) { showError('reg-phone-error',data.error); return; }
+  if (data.error) {
+    // WhatsApp fora do ar → joga o cliente pro cadastro por e-mail automaticamente
+    if (data.whatsappDown) {
+      setRegisterMethod('email');
+      showError('reg-email-error','WhatsApp temporariamente indisponível. Cadastre-se pelo e-mail aqui embaixo. 👇');
+      return;
+    }
+    showError('reg-phone-error',data.error); return;
+  }
   document.getElementById('reg-code-sent').style.display = 'block';
   document.getElementById('reg-send-btn').style.display = 'none';
   document.getElementById('reg-phone').disabled = true;
