@@ -584,17 +584,19 @@ router.post('/products/bulk-confirm', adminOnly, async (req, res) => {
     if (!ids.length) return res.status(400).json({ error: 'nenhum produto selecionado' });
     const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
     if (!conn) return res.status(400).json({ error: 'sem conexão Nuvemshop ativa' });
-    let uploaded = 0, skipped = 0; const skips = [];
+    let uploaded = 0, skipped = 0; const skips = []; const uploadedIds = [];
     for (const id of ids) {
       const product = await prisma.product.findUnique({ where: { id }, select: { aiContext: true, name: true } });
       if (!product) continue;
       const ctx = parseJsonSafe(product.aiContext) || {};
       ctx.releaseToNuvemshop = true; ctx.confirmedForNuvemshop = true;
       await prisma.product.update({ where: { id }, data: { aiContext: ctx } });
-      try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); if (r?.skipped) { skipped++; skips.push({ name: product.name, reason: r.reason }); } else uploaded++; }
+      try { const r = await nsHandlers.pushProductToNuvemshop(id, conn); if (r?.skipped) { skipped++; skips.push({ name: product.name, reason: r.reason }); } else { uploaded++; uploadedIds.push(id); } }
       catch (e) { skipped++; skips.push({ name: product.name, reason: String(e.message).slice(0, 100) }); }
     }
-    res.json({ ok: true, uploaded, skipped, skips: skips.slice(0, 20) });
+    // uploadedIds: o front marca naNuvemshop=true na hora — sem isso o filtro
+    // "🛒 Na Nuvemshop" não acha o produto recém-subido até recarregar a página.
+    res.json({ ok: true, uploaded, skipped, skips: skips.slice(0, 20), uploadedIds });
   } catch (err) {
     console.error('bulk-confirm', err);
     res.status(500).json({ error: err.message });

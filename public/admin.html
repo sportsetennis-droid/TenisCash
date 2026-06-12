@@ -3655,7 +3655,12 @@ async function nsConfirm(id, confirm, reloadFn) {
   if (confirm && r && r.upload && r.upload.ok === false) {
     alert('Confirmado, mas NÃO subiu:\n' + (r.upload.reason || '?') + '\n\n(precisa das 4 classificações + estoque físico bipado)');
   }
-  const patch = confirm ? { releaseToNuvemshop: true, confirmedForNuvemshop: true } : { confirmedForNuvemshop: false };
+  // Se SUBIU de fato (upload.ok), marca naNuvemshop na hora — senão o filtro
+  // "🛒 Na Nuvemshop" só acha o produto depois de recarregar a página.
+  const subiu = confirm && r && r.upload && r.upload.ok === true;
+  const patch = confirm
+    ? { releaseToNuvemshop: true, confirmedForNuvemshop: true, ...(subiu ? { naNuvemshop: true } : {}) }
+    : { confirmedForNuvemshop: false };
   if (_catPatchLocalNs([id], patch)) return;
   if (typeof reloadFn === 'function') reloadFn();
 }
@@ -10540,7 +10545,11 @@ async function initCategoriesTab() {
       let msg = '✅ Subiram pra loja: ' + (r.uploaded || 0) + '\n⏳ Não subiram: ' + (r.skipped || 0);
       if (r.skips && r.skips.length) msg += '\n\nMotivos:\n' + r.skips.map(s => '• ' + (s.name || '').slice(0, 28) + ': ' + (s.reason || '?')).join('\n');
       alert(msg);
-      _catPatchLocalNs(ids, { releaseToNuvemshop: true, confirmedForNuvemshop: true }); // atualiza na hora, sem rebuscar
+      // Atualiza na hora, sem rebuscar: todos confirmados; os que SUBIRAM ganham também
+      // naNuvemshop=true — sem isso o filtro "🛒 Na Nuvemshop" não acha o recém-subido
+      // até recarregar a página (era o "subi mas não aparece no filtro").
+      _catPatchLocalNs(ids, { releaseToNuvemshop: true, confirmedForNuvemshop: true });
+      if (Array.isArray(r.uploadedIds) && r.uploadedIds.length) _catPatchLocalNs(r.uploadedIds, { naNuvemshop: true });
     });
   }
   await loadCategoriesClassify();
