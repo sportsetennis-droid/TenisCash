@@ -145,9 +145,11 @@ async function callAgent(store, path, body) {
   const minVer = minVersionFor(path, body);
   if (minVer) {
     const all = [{ code: store.code, url: primaryUrl, token: store.fiscalAgentToken }, ...(await listAgents()).filter(a => a.url !== primaryUrl)];
+    console.log('[fiscalAgent] ' + store.code + ' ' + path + ' exige v' + minVer + ' — candidatos: ' + all.map(a => a.code).join(','));
     let result = null;
     for (const a of all) {
-      if ((await agentVersion(a.url)) < minVer) continue;
+      const ver = await agentVersion(a.url);
+      if (ver < minVer) { console.log('[fiscalAgent]   ' + a.code + ' (' + a.url + ') = ' + (ver ? 'v' + ver : 'SEM RESPOSTA') + ' — pula'); continue; }
       if (result) console.warn('[fiscalAgent] ' + store.code + ': failover v' + minVer + ' via ' + a.code + ' (' + path + ')');
       result = await postAgent(a.url, a.token, path, body);
       if (!isTransportFail(result)) return result;
