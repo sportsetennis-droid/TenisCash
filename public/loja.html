@@ -551,8 +551,9 @@
       <div class="card">
         <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">📱</span>Cliente TenisCash</h3>
         <div class="form-group" style="margin-bottom:0;">
-          <input type="tel" id="sellCustomerPhone" placeholder="Telefone do cliente (acha o cadastro p/ cashback)" oninput="onCustomerLookup()" style="font-size:16px;">
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Opcional. Identifica o cliente pra dar/usar cashback. Sem telefone, a venda sai normal (sem cashback).</div>
+          <input type="text" id="sellCustomerPhone" autocomplete="off" placeholder="Buscar cliente — nome, CPF, e-mail ou celular" oninput="onCustomerSearch()" style="font-size:16px;">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Acha o cadastro por qualquer um dos 4 (pra dar/usar cashback e puxar o nome). Sem cadastro, preencha nome e CPF abaixo pra nota.</div>
+          <div id="sellCustomerResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
           <div id="sellCustomerInfo" style="margin-top:10px;font-size:14px;"></div>
           <div id="sellTcUsedGroup" style="display:none;margin-top:12px;">
             <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">💳 Usar TenisCash do cliente (R$)</label>
@@ -569,7 +570,8 @@
               <span id="sellCpfReq" style="font-size:11px;font-weight:700;color:#b06b00;">(obrigatório acima de R$ 500)</span>
             </label>
             <input type="text" id="sellCustomerCpf" inputmode="numeric" autocomplete="off" placeholder="CPF ou CNPJ do cliente — só números" maxlength="18" oninput="maskCpfCnpj(this);onCpfLookup();updateSummary()" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;font-family:monospace;font-weight:700;box-sizing:border-box;">
-            <div id="sellCpfHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Vai vinculado na emissão da NFC-e. Acima de R$ 500 a SEFAZ exige o documento.</div>
+            <input type="text" id="sellCustomerNome" autocomplete="off" placeholder="Nome do cliente na nota" maxlength="60" oninput="updateSummary()" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;box-sizing:border-box;margin-top:8px;">
+            <div id="sellCpfHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Nome + CPF vão vinculados na emissão da NFC-e. Acima de R$ 500 a SEFAZ exige o CPF.</div>
           </div>
         </div>
       </div>
@@ -1245,8 +1247,8 @@ async function emitNfceFromSale() {
       saleId: sale.id || sale.saleId,
       paymentMethod: tPagMap[method] || '99',
       customerCpf: (_cpfEmit.length === 11 || _cpfEmit.length === 14) ? _cpfEmit : null,
-      // Nome na nota só se bater com o CPF (evita nome de A com CPF de B).
-      customerCpfName: (customer && (!customer.cpf || customer.cpf.replace(/\D/g, '') === _cpfEmit)) ? customer.name : null,
+      // Nome na nota = campo "Nome do cliente na nota" (auto do cadastro ou digitado à mão).
+      customerCpfName: (document.getElementById('sellCustomerNome')?.value || '').trim() || null,
     };
     if (method === 'credit_card' || method === 'debit_card') {
       const auth = document.getElementById('sellCardAuthCode').value.trim();
@@ -2206,7 +2208,23 @@ function renderCustomerFound(c) {
   if (tcGroup) tcGroup.style.display = 'block';
 }
 
-// Acha o cliente CADASTRADO pelo CPF digitado (11 dígitos) e preenche o nome — pro nome sair na nota.
+// Seleciona o cliente achado (por busca ou CPF): caixa verde + libera TenisCash + preenche
+// CPF e NOME na nota (auto do cadastro). Com cliente setado, nome+CPF vão na emissão e a venda gera/usa cashback.
+function selectCustomer(c) {
+  renderCustomerFound(c);
+  // Selecionou um cliente de propósito → nome E CPF passam a ser os dele (sobrescreve).
+  const cpfInp = document.getElementById('sellCustomerCpf');
+  if (cpfInp && c.cpf) { cpfInp.value = c.cpf; maskCpfCnpj(cpfInp); }
+  const nomeInp = document.getElementById('sellCustomerNome');
+  if (nomeInp) nomeInp.value = c.name || '';
+  const res = document.getElementById('sellCustomerResults'); if (res) res.innerHTML = '';
+  const hint = document.getElementById('sellCpfHint');
+  if (hint) hint.innerHTML = '✓ Cliente <strong>' + c.name + '</strong> selecionado — nome e CPF vão na nota.';
+  updateSummary();
+}
+function selectCustomerByIdx(i) { const c = (window._custResults || [])[i]; if (c) selectCustomer(c); }
+
+// Acha o cliente CADASTRADO pelo CPF digitado (11 dígitos) e puxa o nome — pro nome sair na nota.
 let cpfLookupTimer;
 function onCpfLookup() {
   clearTimeout(cpfLookupTimer);
@@ -2217,56 +2235,54 @@ function onCpfLookup() {
   if (customer && customer.cpf && customer.cpf.replace(/\D/g, '') === dig) return; // já é o cliente atual
   cpfLookupTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/seller/customer/lookup?cpf=' + dig);
-      if (d.customer) {
-        renderCustomerFound(d.customer);
-        const ph = document.getElementById('sellCustomerPhone');
-        if (ph && !ph.value.replace(/\D/g, '') && d.customer.phone) ph.value = d.customer.phone;
-        if (hint) hint.innerHTML = '✓ Cliente <strong>' + d.customer.name + '</strong> — o nome vai na nota.';
-      } else if (hint) {
-        hint.innerHTML = 'CPF não cadastrado — a nota sai só com o CPF (o nome não é obrigatório no cupom).';
-      }
-      updateSummary();
+      const d = await api('/api/seller/customer/search?q=' + dig);
+      const c = (d.customers || [])[0];
+      if (c) selectCustomer(c);
+      else if (hint) hint.innerHTML = 'CPF não cadastrado — preencha o "Nome do cliente na nota" abaixo (ou deixe só o CPF).';
     } catch (e) { console.error(e); }
   }, 400);
 }
 
-let customerLookupTimer;
-function onCustomerLookup() {
-  clearTimeout(customerLookupTimer);
-  const phone = document.getElementById('sellCustomerPhone').value.replace(/\D/g, '');
+// Busca UNIVERSAL do cliente: nome, CPF, e-mail OU celular — qualquer um acha o cadastro.
+let customerSearchTimer;
+function onCustomerSearch() {
+  clearTimeout(customerSearchTimer);
+  const q = (document.getElementById('sellCustomerPhone').value || '').trim();
   const infoEl = document.getElementById('sellCustomerInfo');
+  const resEl = document.getElementById('sellCustomerResults');
   const tcGroup = document.getElementById('sellTcUsedGroup');
-  if (phone.length < 10) { customer = null; infoEl.innerHTML = ''; tcGroup.style.display = 'none'; updateSummary(); return; }
-  customerLookupTimer = setTimeout(async () => {
+  if (q.length < 3) { customer = null; if (resEl) resEl.innerHTML = ''; if (infoEl) infoEl.innerHTML = ''; if (tcGroup) tcGroup.style.display = 'none'; updateSummary(); return; }
+  customerSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/seller/customer/lookup?phone=' + phone);
-      customer = d.customer;
-      if (customer) {
-        renderCustomerFound(customer);
-        // Puxa o CPF do cadastro pra nota (se houver e o campo estiver vazio) — não precisa redigitar.
-        const cpfInp = document.getElementById('sellCustomerCpf');
-        if (cpfInp && customer.cpf && !(cpfInp.value || '').replace(/\D/g, '')) {
-          cpfInp.value = customer.cpf;
-          maskCpfCnpj(cpfInp);
-          const hint = document.getElementById('sellCpfHint');
-          if (hint) hint.innerHTML = '✓ CPF puxado do cadastro de <strong>' + customer.name + '</strong>. Confere/edita se precisar.';
-        }
-        updateSummary();
+      const d = await api('/api/seller/customer/search?q=' + encodeURIComponent(q));
+      const list = d.customers || [];
+      window._custResults = list;
+      if (list.length === 1) {
+        selectCustomer(list[0]);
+      } else if (list.length > 1) {
+        customer = null;
+        infoEl.innerHTML = '';
+        if (tcGroup) tcGroup.style.display = 'none';
+        resEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;">' + list.length + ' clientes — toque no certo:</div>' +
+          list.map((c, i) => {
+            const doc = c.cpf ? ('CPF ' + String(c.cpf).replace(/\D/g, '').replace(/^(\d{3})\d{5}(\d{3})$/, '$1.***.***-$2')) : (c.email || '');
+            return '<button type="button" onclick="selectCustomerByIdx(' + i + ')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;">' +
+              '<div class="avatar ' + avatarColor(c.name) + '" style="width:32px;height:32px;font-size:12px;flex:none;">' + initials(c.name) + '</div>' +
+              '<div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--text);">' + c.name + '</div>' +
+              '<div style="font-size:11px;color:var(--text-muted);">' + (c.phone || '') + (doc ? ' · ' + doc : '') + '</div></div></button>';
+          }).join('');
       } else {
-        infoEl.innerHTML = `
-          <div style="padding:12px;background:#fff7e6;border-radius:10px;border-left:3px solid #f0a500;font-size:13px;">
-            <div style="color:#8a5a00;font-weight:700;margin-bottom:8px;">Telefone não cadastrado. Cadastrar o cliente agora?</div>
-            <input type="text" id="sellNewCustomerName" placeholder="Nome do cliente" style="width:100%;font-size:15px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
-            <button type="button" onclick="registerCustomerInline()" style="width:100%;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">+ Cadastrar cliente</button>
-          </div>
-        `;
-        tcGroup.style.display = 'none';
+        customer = null;
+        resEl.innerHTML = '';
+        if (tcGroup) tcGroup.style.display = 'none';
+        infoEl.innerHTML = '<div style="padding:12px;background:#fff7e6;border-radius:10px;border-left:3px solid #f0a500;font-size:13px;color:#8a5a00;">Sem cadastro com "' + q + '". Pode seguir: preencha <strong>nome</strong> e <strong>CPF na nota</strong> abaixo pra emitir o cupom.</div>';
       }
       updateSummary();
     } catch (e) { console.error(e); }
-  }, 300);
+  }, 320);
 }
+// alias legado (chamadas antigas continuam funcionando)
+function onCustomerLookup() { onCustomerSearch(); }
 
 document.addEventListener('input', e => { if (e.target.id === 'sellTcUsed') updateSummary(); });
 
@@ -2317,8 +2333,8 @@ async function finalizeSale() {
         vendorId,
         idemKey: _saleIdemKey,
         customerCpf: (_cpfNota.length === 11 || _cpfNota.length === 14) ? _cpfNota : null,
-        // Nome na nota só se bater com o CPF (evita mandar nome de A com CPF de B).
-        customerCpfName: (customer && (!customer.cpf || customer.cpf.replace(/\D/g, '') === _cpfNota)) ? customer.name : null,
+        // Nome na nota = campo "Nome do cliente na nota" (auto do cadastro ou digitado à mão).
+        customerCpfName: (document.getElementById('sellCustomerNome')?.value || '').trim() || null,
         ...cardData,
       }),
     });
@@ -2334,6 +2350,9 @@ async function finalizeSale() {
       cart = []; customer = null; _saleIdemKey = null;
       document.getElementById('sellCustomerPhone').value = '';
       document.getElementById('sellCustomerInfo').innerHTML = '';
+      document.getElementById('sellCustomerResults').innerHTML = '';
+      document.getElementById('sellCustomerCpf').value = '';
+      document.getElementById('sellCustomerNome').value = '';
       document.getElementById('sellTcUsed').value = 0;
       document.getElementById('sellDiscount').value = 0;
       document.getElementById('sellSearchInput').value = '';
@@ -2363,6 +2382,9 @@ async function finalizeSale() {
     cart = []; customer = null; _saleIdemKey = null;
     document.getElementById('sellCustomerPhone').value = '';
     document.getElementById('sellCustomerInfo').innerHTML = '';
+    document.getElementById('sellCustomerResults').innerHTML = '';
+    document.getElementById('sellCustomerCpf').value = '';
+    document.getElementById('sellCustomerNome').value = '';
     document.getElementById('sellTcUsed').value = 0;
     document.getElementById('sellDiscount').value = 0;
     document.getElementById('sellSearchInput').value = '';

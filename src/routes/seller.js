@@ -1312,5 +1312,32 @@ router.get('/customer/lookup', authMiddleware, sellerOnly, async (req, res) => {
   }
 });
 
+// Busca UNIVERSAL do cliente pelo PDV: nome, CPF, e-mail OU celular (os 4 interligados).
+// Qualquer um acha o cadastro. CPF/celular/e-mail são únicos → 0/1 resultado; nome pode trazer vários.
+router.get('/customer/search', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 3) return res.json({ customers: [] });
+    const digits = q.replace(/\D/g, '');
+    const select = { id: true, name: true, phone: true, email: true, balance: true, cpf: true };
+    const OR = [];
+    if (digits.length >= 10) {
+      // 11 dígitos é ambíguo (celular OU CPF) → casa os dois; 10 = telefone fixo/parcial
+      OR.push({ phone: digits });
+      if (digits.length === 11) OR.push({ cpf: digits });
+    } else if (digits.length >= 3 && !/[a-zA-Z@]/.test(q)) {
+      OR.push({ phone: { startsWith: digits } });
+      OR.push({ cpf: { startsWith: digits } });
+    }
+    if (q.includes('@')) OR.push({ email: { contains: q, mode: 'insensitive' } });
+    if (/[a-zA-Z]/.test(q)) OR.push({ name: { contains: q, mode: 'insensitive' } });
+    if (!OR.length) return res.json({ customers: [] });
+    const customers = await prisma.user.findMany({ where: { OR }, select, take: 8, orderBy: { name: 'asc' } });
+    res.json({ customers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 
