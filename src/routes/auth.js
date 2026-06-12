@@ -628,4 +628,56 @@ router.delete('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// =====================================================================
+// AUTO-UPDATE DO FISCAL-AGENT DAS LOJAS (mount público de propósito)
+// =====================================================================
+// O agente da loja NÃO tem JWT — a credencial é o PRÓPRIO AGENT_TOKEN,
+// validado contra Store.fiscalAgentToken. Os arquivos servidos são os de
+// agents/fiscal-agent, que vêm versionados no repo (presentes no build do
+// Railway). É assim que o agente v2.3+ se atualiza sozinho e que o
+// instalador público /atualizar-agente.ps1 baixa a versão nova.
+const _agPath = require('node:path');
+const _agFs = require('node:fs');
+const _agCrypto = require('node:crypto');
+const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'package.json'];
+const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
+
+async function agentTokenOk(req) {
+  const tok = String(req.headers['x-agent-token'] || req.query.token || '').trim();
+  if (tok.length < 16) return false;
+  const store = await prisma.store.findFirst({ where: { fiscalAgentToken: tok }, select: { id: true } });
+  return !!store;
+}
+
+router.get('/agent-update/manifest', async (req, res) => {
+  try {
+    if (!(await agentTokenOk(req))) return res.status(401).json({ error: 'token de agente inválido' });
+    const idx = _agFs.readFileSync(_agPath.join(agentDir(), 'index.js'), 'utf8');
+    const version = (idx.match(/version:\s*'([^']+)'/) || [])[1] || 'desconhecida';
+    const files = AGENT_FILES.filter(f => _agFs.existsSync(_agPath.join(agentDir(), f))).map(f => {
+      const buf = _agFs.readFileSync(_agPath.join(agentDir(), f));
+      return { name: f, sha256: _agCrypto.createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
+    });
+    res.json({ version, files });
+  } catch (err) {
+    console.error('[agent-update/manifest]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/agent-update/file/:name', async (req, res) => {
+  try {
+    if (!(await agentTokenOk(req))) return res.status(401).json({ error: 'token de agente inválido' });
+    const name = _agPath.basename(String(req.params.name)); // sem path traversal
+    if (!AGENT_FILES.includes(name)) return res.status(404).json({ error: 'arquivo não publicado' });
+    const full = _agPath.join(agentDir(), name);
+    if (!_agFs.existsSync(full)) return res.status(404).json({ error: 'arquivo ausente no build' });
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(_agFs.readFileSync(full));
+  } catch (err) {
+    console.error('[agent-update/file]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

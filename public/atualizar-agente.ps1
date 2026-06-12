@@ -1,0 +1,49 @@
+# =====================================================================
+# Atualiza o TenisCash Fiscal Agent DESTA loja a partir do servidor.
+# Uso (PowerShell como ADMINISTRADOR, qualquer funcionario):
+#   irm https://teniscash.com.br/atualizar-agente.ps1 | iex
+# Le o token do proprio agente (C:\TenisCashAgent\.env), baixa os arquivos
+# novos do central com verificacao de hash e reinicia a tarefa do agente.
+# (ASCII puro de proposito - PowerShell 5.1 sem BOM quebra com acentos.)
+# =====================================================================
+$ErrorActionPreference = 'Stop'
+$dir = if ($env:AGENT_DIR) { $env:AGENT_DIR } else { 'C:\TenisCashAgent' }
+$base = 'https://teniscash.com.br/api/auth/agent-update'
+
+if (-not (Test-Path (Join-Path $dir '.env'))) { Write-Host "ERRO: $dir\.env nao existe - este PC nao tem o agente instalado."; return }
+$tok = if ($env:AGENT_TOKEN_OVERRIDE) { $env:AGENT_TOKEN_OVERRIDE } else {
+  ((Get-Content (Join-Path $dir '.env')) | Where-Object { $_ -match '^AGENT_TOKEN=' } | Select-Object -First 1) -replace '^AGENT_TOKEN=', ''
+}
+if (-not $tok) { Write-Host 'ERRO: AGENT_TOKEN nao encontrado no .env do agente.'; return }
+$h = @{ 'X-Agent-Token' = $tok.Trim() }
+
+Write-Host 'Consultando versao no servidor...'
+$man = Invoke-RestMethod -Uri "$base/manifest" -Headers $h -TimeoutSec 30
+Write-Host ("Versao no servidor: " + $man.version)
+
+foreach ($f in $man.files) {
+  if ($f.name -eq 'package.json') { continue } # dependencia nova = reinstalacao manual, nao update
+  $dest = Join-Path $dir $f.name
+  if (Test-Path $dest) { Copy-Item $dest "$dest.bak" -Force }
+  Invoke-WebRequest -Uri "$base/file/$($f.name)" -Headers $h -OutFile $dest -TimeoutSec 60 -UseBasicParsing
+  $sha = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
+  if ($sha -ne $f.sha256) {
+    Write-Host ("ERRO: hash diferente em " + $f.name + " - restaurando backup e abortando.")
+    if (Test-Path "$dest.bak") { Copy-Item "$dest.bak" $dest -Force }
+    return
+  }
+  Write-Host ("  ok " + $f.name)
+}
+
+Write-Host 'Reiniciando o agente...'
+try { Stop-ScheduledTask -TaskName TenisCashFiscalAgent -ErrorAction Stop } catch {}
+Start-Sleep 2
+$taskOk = $true
+try { Start-ScheduledTask -TaskName TenisCashFiscalAgent -ErrorAction Stop } catch { $taskOk = $false; Write-Host 'AVISO: tarefa TenisCashFiscalAgent nao encontrada - inicie o agente manualmente (node index.js na pasta do agente).' }
+if ($taskOk) {
+  Start-Sleep 6
+  try {
+    $hl = Invoke-RestMethod -Uri 'http://localhost:8765/health' -TimeoutSec 10
+    Write-Host ("PRONTO! Agente no ar - versao " + $hl.version)
+  } catch { Write-Host 'Agente reiniciando... confira em alguns segundos: http://localhost:8765/health' }
+}
