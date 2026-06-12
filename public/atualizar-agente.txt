@@ -1,7 +1,7 @@
 # =====================================================================
 # Atualiza o TenisCash Fiscal Agent DESTA loja a partir do servidor.
 # Uso (PowerShell como ADMINISTRADOR, qualquer funcionario):
-#   irm https://teniscash.com.br/atualizar-agente.ps1 | iex
+#   irm https://teniscash.com.br/atualizar-agente.txt | iex
 # Le o token do proprio agente (C:\TenisCashAgent\.env), baixa os arquivos
 # novos do central com verificacao de hash e reinicia a tarefa do agente.
 # (ASCII puro de proposito - PowerShell 5.1 sem BOM quebra com acentos.)
@@ -34,6 +34,10 @@ foreach ($f in $man.files) {
   }
   Write-Host ("  ok " + $f.name)
 }
+
+Write-Host 'Garantindo Tailscale + tunel publico (Funnel)...'
+try { & tailscale up --timeout=30s 2>$null | Out-Null } catch {}
+try { & tailscale funnel --bg 8765 2>$null | Out-Null; Write-Host '  tunel ok' } catch { Write-Host '  AVISO: funnel nao subiu - rode na mao: tailscale funnel --bg 8765' }
 
 Write-Host 'Reiniciando o agente...'
 try { Stop-ScheduledTask -TaskName TenisCashFiscalAgent -ErrorAction Stop } catch {}
