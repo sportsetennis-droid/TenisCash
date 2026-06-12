@@ -63,6 +63,10 @@ Rotas: `GET /api/admin/fiscal/troca/cupons?storeId&q=` · `POST /api/admin/fisca
 
 **Loja nova / credenciamento:** runbook `agents/fiscal-agent/DEPLOY-NOVA-LOJA.md` + `scripts/fiscal-register-store.js`. Credenciar NFC-e na SEFAZ-PB: DTE primeiro, depois o credenciamento (LOJA06 ativou ~2h depois do DTE). Enquanto não ativa, a SEFAZ devolve **781** pra qualquer CSC. Testar: emissão real R$1 e cancelar.
 
+## 4.1 CPF/CNPJ na nota (agente v2.2-cpf — 2026-06-12)
+
+**SEFAZ-PB exige CPF/CNPJ do consumidor em NFC-e de R$ 500 ou mais** (rejeição automática "valor total superior ao permitido p/ destinatário não identificado" desde 04/05/2026). O sistema: PDV pede o documento no Vender/emitir-depois/troca quando o total >= R$ 500 (campo "CPF/CNPJ NA NOTA"); o central trava com mensagem clara se faltar; o agente v2.2 monta o `tagDest`. Roteamento: NFC-e **com** CPF exige agente **>= 2.2** (o 2.1 ignorava o customer e a nota sairia anônima). Abaixo de R$ 500 o CPF é opcional (cliente pede = preenche). Rejeitou 787/relacionado? Conferir versão do agente da loja (`/health`).
+
 ## 5. Armadilhas conhecidas (cada uma já mordeu)
 
 - **`nfe.sefaz.pb.gov.br` NÃO EXISTE** — PB é SVRS no modelo 55 também (autorização/eventos/consulta = `nfe.svrs.rs.gov.br`). Corrigido no agente 2.1; agente 2.0 quebra em QUALQUER operação de 55 (por isso o roteamento por versão).
