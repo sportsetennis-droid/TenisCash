@@ -38,6 +38,8 @@ async function resolveSale({ orderId, referenceId }) {
 
 // Confirma pagamento (re-consulta a API) e emite o cupom — idempotente.
 async function confirmAndEmit(sale, store, orderId, tag) {
+  // Venda CANCELADA não ressuscita: PIX que cair depois do cancelamento NÃO emite cupom nem volta pra 'completed'.
+  if (sale.status === 'canceled') { console.warn(`[pagbank ${tag}] venda CANCELADA — ignora pagamento`, sale.id); return { paid: false, canceled: true }; }
   if (!store || !pagbank.isConfigured(store)) { console.warn(`[pagbank ${tag}] loja sem pagbank`, sale.id); return { paid: false }; }
   if (!orderId) { console.warn(`[pagbank ${tag}] sale sem orderId`, sale.id); return { paid: false }; }
   const order = await pagbank.getOrder(store, orderId);

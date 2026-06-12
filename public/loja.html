@@ -1583,9 +1583,12 @@ async function loadSalesList() {
               const data = dt.toLocaleDateString('pt-BR');
               const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
               const itemsLabel = s.items.slice(0, 2).map(i => i.productName).join(' · ') + (s.items.length > 2 ? ` (+${s.items.length - 2})` : '');
-              const cupomBadge = s.fiscal && s.fiscal.status === 'authorized' ? `<span style="color:#0a843d;font-weight:700;font-size:12px;">✅ #${s.fiscal.number}</span>` : `<span style="color:#b06b00;font-weight:700;font-size:12px;">⚠ emitir</span>`;
+              const _canceled = s.status === 'canceled';
+              const cupomBadge = _canceled
+                ? `<span style="color:#d70015;font-weight:800;font-size:12px;">🚫 CANCELADA</span>`
+                : (s.fiscal && s.fiscal.status === 'authorized' ? `<span style="color:#0a843d;font-weight:700;font-size:12px;">✅ #${s.fiscal.number}</span>` : `<span style="color:#b06b00;font-weight:700;font-size:12px;">⚠ emitir</span>`);
               return `
-                <tr class="clickable" onclick="showSaleDetail('${s.id}')">
+                <tr class="clickable" onclick="showSaleDetail('${s.id}')" style="${_canceled ? 'opacity:.5;' : ''}">
                   <td><strong>${data}</strong><br><span style="font-size:11px;color:var(--text-muted);">${hora}</span></td>
                   <td>
                     <div class="row">
@@ -1597,7 +1600,7 @@ async function loadSalesList() {
                   <td>${cupomBadge}</td>
                   <td style="text-align:right;color:var(--text-muted);">${s.tcUsed > 0 ? '−' + fmt(s.tcUsed) : '—'}</td>
                   <td style="text-align:right;color:var(--success);">${s.tcEarned > 0 ? '+' + fmt(s.tcEarned) : '—'}</td>
-                  <td style="text-align:right;font-weight:700;color:var(--primary);">${fmt(s.totalAmount)}</td>
+                  <td style="text-align:right;font-weight:700;color:var(--primary);${_canceled ? 'text-decoration:line-through;' : ''}">${fmt(s.totalAmount)}</td>
                 </tr>
               `;
             }).join('')}
@@ -1624,10 +1627,16 @@ function showSaleDetail(saleId) {
   const f = s.fiscal;
   const isCardPix = ['credit_card', 'debit_card', 'pix'].includes(s.paymentMethod);
   let fiscalBlock;
-  if (f && f.status === 'authorized') {
+  if (s.status === 'canceled') {
+    fiscalBlock = `<div style="background:#fff1f0;border:2px solid #d70015;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#d70015;font-weight:800;font-size:15px;">🚫 Venda cancelada</div>${s.note ? `<div style="font-size:12px;color:#6e6e73;margin-top:6px;">${s.note}</div>` : ''}<div style="font-size:12px;color:#6e6e73;margin-top:6px;">Estoque devolvido, cashback estornado e comissões removidas.</div></div>`;
+  } else if (f && f.status === 'authorized') {
     fiscalBlock = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#0a843d;font-weight:800;font-size:15px;">✅ Cupom #${f.number} emitido</div><div style="font-family:monospace;font-size:10px;word-break:break-all;color:#6e6e73;margin:6px 0;">${f.accessKey || ''}</div><button onclick="reprintSale('${f.id}')" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🖨️ Imprimir 2ª via</button></div>`;
   } else {
     fiscalBlock = `<div style="background:#fff8e6;border:2px solid #b06b00;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#b06b00;font-weight:800;font-size:15px;">⚠️ Cupom ${f ? 'nao autorizado (' + f.status + ')' : 'nao emitido'}</div><div style="font-size:12px;color:#6e6e73;margin:4px 0 10px;">Pagamento: ${pay}. ${isCardPix ? 'Digite o codigo do comprovante da maquininha pra emitir.' : 'Clique pra emitir o cupom agora.'}</div>${isCardPix ? '<input id="saleAuthCode" placeholder="Codigo do comprovante (Auth / NSU)" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:8px;font-size:14px;">' : ''}<input id="saleCpfNota" inputmode="numeric" maxlength="18" placeholder="CPF/CNPJ na nota${s.totalAmount >= 500 ? ' — OBRIGATÓRIO (venda R$ 500+)' : ' (opcional)'}" style="width:100%;padding:11px;border:1px solid ${s.totalAmount >= 500 ? '#b06b00' : '#ddd'};border-radius:8px;margin-bottom:8px;font-size:14px;font-family:monospace;font-weight:700;"><button id="saleEmitBtn" onclick="emitSaleNfce('${s.id}','${s.paymentMethod}')" style="width:100%;padding:13px;background:linear-gradient(135deg,#0a843d,#2bb678);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">📄 Emitir cupom agora</button></div>`;
+  }
+  // Cancelar venda: só quando NÃO está cancelada E NÃO tem cupom autorizado (com cupom = cancelar na SEFAZ).
+  if (s.status !== 'canceled' && !(f && f.status === 'authorized')) {
+    fiscalBlock += `<button onclick="cancelSale('${s.id}')" style="width:100%;margin-top:10px;padding:13px;background:#fff;color:#d70015;border:2px solid #d70015;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🚫 Cancelar venda</button>`;
   }
   const ov = document.createElement('div');
   ov.id = 'saleModalOverlay';
@@ -1641,6 +1650,22 @@ function showSaleDetail(saleId) {
 function reprintSale(documentId) {
   if (!documentId) { alert('Sem documento fiscal pra imprimir.'); return; }
   window.open('/api/admin/fiscal/documents/' + documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700');
+}
+
+// Cancela uma venda registrada que AINDA NÃO emitiu cupom: devolve estoque, estorna cashback, remove comissões.
+async function cancelSale(saleId) {
+  const reason = prompt('Por que está cancelando esta venda? (motivo fica registrado)');
+  if (reason === null) return;              // fechou o prompt
+  if (!reason.trim()) { alert('Informe o motivo pra cancelar.'); return; }
+  if (!confirm('Cancelar esta venda?\n\nVai DEVOLVER o estoque, ESTORNAR o cashback do cliente e REMOVER as comissões.\nNão dá pra desfazer.')) return;
+  try {
+    const r = await api('/api/seller/sale/' + saleId + '/cancel', { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) });
+    alert('✅ Venda cancelada.\n↩️ Estoque devolvido: ' + (r.stockBack || 0) + ' un\n💳 Cashback estornado: ' + fmt(r.balanceReversed || 0) + '\n🧾 Comissões removidas: ' + (r.commissionsRemoved || 0));
+    closeSaleModal();
+    loadSalesList();
+  } catch (e) {
+    alert('Não cancelou: ' + e.message);
+  }
 }
 
 async function emitSaleNfce(saleId, paymentMethod) {

@@ -405,8 +405,8 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
     const storeId = isStoreAccount ? operator.storeId : (req.query.storeId || operator?.storeId);
 
     const baseWhere = isStoreAccount
-      ? { storeId } // dados da loja inteira
-      : { sellerId: operator.id }; // dados do vendedor pessoal
+      ? { storeId, status: { not: 'canceled' } } // dados da loja inteira (sem canceladas)
+      : { sellerId: operator.id, status: { not: 'canceled' } }; // dados do vendedor pessoal (sem canceladas)
 
     const [salesToday, salesMonth, topSellersToday] = await Promise.all([
       prisma.sale.aggregate({
@@ -423,7 +423,7 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
         by: ['sellerId'],
         _sum: { totalAmount: true },
         _count: { _all: true },
-        where: { storeId, createdAt: { gte: todayStart, lt: todayEnd } },
+        where: { storeId, status: { not: 'canceled' }, createdAt: { gte: todayStart, lt: todayEnd } },
         orderBy: { _sum: { totalAmount: 'desc' } },
         take: 5,
       }) : Promise.resolve([]),
@@ -950,12 +950,13 @@ router.get('/sales', sellerOnly, async (req, res) => {
     for (const d of _fiscalDocs) if (!_docBySale.has(d.saleId)) _docBySale.set(d.saleId, d);
     for (const s of enriched) s.fiscal = _docBySale.get(s.id) || null;
 
-    // Totais
+    // Totais — vendas CANCELADAS não contam (ficam na lista, mas fora dos KPIs)
+    const _ativas = enriched.filter((s) => s.status !== 'canceled');
     const totals = {
-      count: enriched.length,
-      totalAmount: enriched.reduce((sum, s) => sum + (s.totalAmount || 0), 0),
-      tcEarned: enriched.reduce((sum, s) => sum + (s.tcEarned || 0), 0),
-      tcUsed: enriched.reduce((sum, s) => sum + (s.tcUsed || 0), 0),
+      count: _ativas.length,
+      totalAmount: _ativas.reduce((sum, s) => sum + (s.totalAmount || 0), 0),
+      tcEarned: _ativas.reduce((sum, s) => sum + (s.tcEarned || 0), 0),
+      tcUsed: _ativas.reduce((sum, s) => sum + (s.tcUsed || 0), 0),
     };
 
     res.json({ sales: enriched, totals });
@@ -1003,8 +1004,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       return res.status(400).json({ error: 'period inválido' });
     }
 
-    // Filtro de vendas
-    const saleWhere = { createdAt: { gte: startUtc, lt: endUtc } };
+    // Filtro de vendas (canceladas não entram no ranking)
+    const saleWhere = { createdAt: { gte: startUtc, lt: endUtc }, status: { not: 'canceled' } };
     if (storeId) saleWhere.storeId = storeId;
 
     // Agrega vendas por vendedor
@@ -1335,6 +1336,85 @@ router.get('/customer/search', authMiddleware, sellerOnly, async (req, res) => {
     const customers = await prisma.user.findMany({ where: { OR }, select, take: 8, orderBy: { name: 'asc' } });
     res.json({ customers });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// CANCELAR VENDA (registrada, SEM cupom emitido) — estorna estoque, cashback e comissões.
+// Trava: se a venda já tem cupom autorizado/emitindo, NÃO cancela aqui (aí é cancelar o cupom na SEFAZ).
+// =====================================================================
+router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => {
+  try {
+    const saleId = String(req.params.id || '');
+    const reason = String((req.body && req.body.reason) || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Informe o motivo do cancelamento.' });
+
+    const sale = await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } });
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
+    if (sale.status === 'canceled') return res.status(400).json({ error: 'Venda já está cancelada.' });
+
+    // TRAVA: cupom autorizado/emitindo → não dá pra cancelar a venda aqui (cancele o CUPOM na SEFAZ).
+    const cupom = await prisma.fiscalDocument.findFirst({
+      where: { saleId, docType: 'NFCE', status: { in: ['authorized', 'processing'] } },
+      select: { number: true, status: true },
+    });
+    if (cupom) return res.status(409).json({ hasCupom: true, error: 'Esta venda já tem cupom' + (cupom.number ? ' #' + cupom.number : '') + ' (' + cupom.status + '). Cancele o CUPOM na SEFAZ — não dá pra cancelar a venda por aqui.' });
+
+    const operatorId = req.userId;
+    const result = await prisma.$transaction(async (tx) => {
+      // 1) DEVOLVE o estoque (StoreStock) por tamanho — espelha a baixa feita na venda.
+      let stockBack = 0;
+      if (sale.storeId) {
+        for (const it of sale.items) {
+          if (!it.size || !it.productId || !(it.quantity > 0)) continue;
+          const ps = await tx.productSize.findFirst({ where: { productId: it.productId, size: it.size }, select: { id: true } });
+          if (!ps) continue;
+          const ss = await tx.storeStock.findUnique({ where: { storeId_productSizeId: { storeId: sale.storeId, productSizeId: ps.id } } });
+          if (!ss) continue; // não havia linha de estoque dessa loja → a venda também não baixou
+          await tx.storeStock.update({ where: { id: ss.id }, data: { stock: ss.stock + it.quantity } });
+          stockBack += it.quantity;
+        }
+      }
+
+      // 2) ESTORNA o cashback/saldo do cliente — acha a transação 'sale' desta venda (receiver + valor líquido).
+      let balanceReversed = 0;
+      const saleTxn = await tx.transaction.findFirst({ where: { type: 'sale', metadata: { contains: saleId } } });
+      if (saleTxn && saleTxn.receiverId && saleTxn.amount) {
+        const u = await tx.user.findUnique({ where: { id: saleTxn.receiverId }, select: { id: true, balance: true } });
+        if (u) {
+          const novo = Math.max(0, Math.round(((u.balance || 0) - saleTxn.amount) * 100) / 100);
+          await tx.user.update({ where: { id: u.id }, data: { balance: novo } });
+          await tx.transaction.create({
+            data: {
+              type: 'sale_canceled',
+              amount: -saleTxn.amount,
+              description: `Estorno venda #${saleId.slice(0, 8)} (cancelada)`,
+              receiverId: u.id,
+              balanceAfter: novo,
+              metadata: JSON.stringify({ saleId, canceledBy: operatorId, reason }),
+            },
+          });
+          balanceReversed = saleTxn.amount;
+        }
+      }
+
+      // 3) REMOVE as comissões da venda (não entram no pagamento dos vendedores).
+      const delComm = await tx.saleCommission.deleteMany({ where: { saleId } });
+
+      // 4) Marca a venda CANCELADA + guarda o motivo no note.
+      await tx.sale.update({
+        where: { id: saleId },
+        data: { status: 'canceled', note: 'CANCELADA (' + reason + ')' + (sale.note ? ' | ' + sale.note : '') },
+      });
+
+      return { stockBack, balanceReversed, commissionsRemoved: delComm.count };
+    });
+
+    console.log('[sale cancel]', JSON.stringify({ saleId, by: operatorId, reason, ...result }));
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('Erro cancelar venda:', err);
     res.status(500).json({ error: err.message });
   }
 });
