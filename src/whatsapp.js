@@ -40,11 +40,16 @@ async function sendEvolutionText(phone, message) {
   if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
   const formattedPhone = formatPhoneBR(phone);
   if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
+  // Timeout curto: instancia desconectada NAO pode pendurar o envio do codigo.
+  // Sem isso, o fetch fica preso e trava o cadastro/reset por dezenas de segundos.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
     const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
       method: 'POST',
       headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ number: formattedPhone, text: String(message || '') }),
+      signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -53,7 +58,10 @@ async function sendEvolutionText(phone, message) {
     }
     return { ok: true, messageId: data?.key?.id, data };
   } catch (err) {
-    return { ok: false, error: err.message || 'Erro de conexao Evolution' };
+    const msg = err.name === 'AbortError' ? 'Evolution timeout (instancia desconectada)' : (err.message || 'Erro de conexao Evolution');
+    return { ok: false, error: msg };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
