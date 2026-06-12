@@ -52,8 +52,9 @@ model User {
   favBrands      String?
 
   // Dados do vendedor (apenas role=seller)
-  storeId      String?
+  storeId      String?   // loja PRINCIPAL (default no login pessoal)
   store        Store?    @relation(fields: [storeId], references: [id])
+  storeIds     String[]  @default([]) // TODAS as lojas onde o vendedor atua (multi-loja); inclui a principal
   hireDate     DateTime?
   baseSalary   Float?
   employeeCode String?   @unique // V001, V002, etc

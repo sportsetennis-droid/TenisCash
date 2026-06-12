@@ -633,7 +633,7 @@ router.get('/users', async (req, res) => {
 
     const users = await prisma.user.findMany({
       where,
-      select: { id: true, name: true, phone: true, balance: true, active: true, createdAt: true, role: true },
+      select: { id: true, name: true, phone: true, balance: true, active: true, createdAt: true, role: true, storeId: true, storeIds: true },
       orderBy: { createdAt: 'desc' },
       take: limit,
       skip: (page - 1) * limit,
@@ -651,13 +651,16 @@ router.get('/users', async (req, res) => {
 // Define role=seller e storeId do usuário
 router.post('/seller/assign-store', async (req, res) => {
   try {
-    const { userId, phone, employeeCode, storeCode, storeId } = req.body || {};
+    const { userId, phone, employeeCode, storeCode, storeId, storeCodes, storeIds } = req.body || {};
 
     if (!userId && !phone && !employeeCode) {
       return res.status(400).json({ error: 'Informe userId, phone ou employeeCode' });
     }
-    if (!storeId && !storeCode) {
-      return res.status(400).json({ error: 'Informe storeId ou storeCode' });
+    // Aceita 1 loja (legado: storeCode/storeId) OU várias (storeCodes[]/storeIds[]).
+    const codes = [].concat(storeCodes || [], storeCode ? [storeCode] : []).filter(Boolean);
+    const ids = [].concat(storeIds || [], storeId ? [storeId] : []).filter(Boolean);
+    if (!codes.length && !ids.length) {
+      return res.status(400).json({ error: 'Informe ao menos uma loja' });
     }
 
     const user = await prisma.user.findFirst({
@@ -671,20 +674,25 @@ router.post('/seller/assign-store', async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    const store = await prisma.store.findFirst({
-      where: {
-        ...(storeId ? { id: storeId } : {}),
-        ...(storeCode ? { code: storeCode } : {}),
-      },
+    const found = await prisma.store.findMany({
+      where: { OR: [...(ids.length ? [{ id: { in: ids } }] : []), ...(codes.length ? [{ code: { in: codes } }] : [])] },
       select: { id: true, code: true, name: true },
     });
+    if (!found.length) return res.status(404).json({ error: 'Loja(s) não encontrada(s)' });
 
-    if (!store) return res.status(404).json({ error: 'Loja não encontrada' });
+    // dedup + preserva a ORDEM em que o admin marcou (1ª = principal)
+    const order = codes.length ? codes : ids;
+    const byKey = codes.length ? (s) => s.code : (s) => s.id;
+    const uniq = [];
+    const seen = new Set();
+    for (const s of [...found].sort((a, b) => order.indexOf(byKey(a)) - order.indexOf(byKey(b)))) {
+      if (!seen.has(s.id)) { seen.add(s.id); uniq.push(s); }
+    }
 
     const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { role: 'seller', storeId: store.id },
-      select: { id: true, name: true, role: true, storeId: true },
+      data: { role: 'seller', storeId: uniq[0].id, storeIds: uniq.map((s) => s.id) },
+      select: { id: true, name: true, role: true, storeId: true, storeIds: true },
     });
 
     await prisma.adminAction.create({
@@ -692,16 +700,16 @@ router.post('/seller/assign-store', async (req, res) => {
         adminId: req.userId,
         action: 'seller_assign_store',
         targetUserId: user.id,
-        description: `Vinculou vendedor à loja ${store.code} (${store.name})`,
-        metadata: JSON.stringify({ storeId: store.id, storeCode: store.code }),
+        description: `Vinculou vendedor às lojas: ${uniq.map((s) => s.code).join(', ')}`,
+        metadata: JSON.stringify({ storeIds: uniq.map((s) => s.id), storeCodes: uniq.map((s) => s.code) }),
       }
     });
 
     res.json({
       success: true,
-      message: `Vendedor vinculado: ${updated.name} → ${store.code} (${store.name})`,
+      message: `Vendedor vinculado: ${updated.name} → ${uniq.map((s) => s.code + ' (' + s.name + ')').join(', ')}`,
       user: updated,
-      store,
+      stores: uniq,
     });
   } catch (err) {
     console.error('Erro ao vincular vendedor:', err);
@@ -722,12 +730,22 @@ router.get('/sellers', async (req, res) => {
         employeeCode: true,
         hireDate: true,
         storeId: true,
+        storeIds: true,
         store: { select: { id: true, code: true, name: true } },
         createdAt: true,
       },
     });
 
-    res.json({ sellers });
+    // Resolve os nomes de TODAS as lojas do vendedor (multi-loja)
+    const allIds = [...new Set(sellers.flatMap((s) => [...(s.storeIds || []), ...(s.storeId ? [s.storeId] : [])]))];
+    const storesDb = allIds.length ? await prisma.store.findMany({ where: { id: { in: allIds } }, select: { id: true, code: true, name: true } }) : [];
+    const storeMap = new Map(storesDb.map((s) => [s.id, s]));
+    const enriched = sellers.map((s) => {
+      const idsAll = (s.storeIds && s.storeIds.length) ? s.storeIds : (s.storeId ? [s.storeId] : []);
+      return { ...s, stores: idsAll.map((id) => storeMap.get(id)).filter(Boolean) };
+    });
+
+    res.json({ sellers: enriched });
   } catch (err) {
     console.error('Erro ao listar vendedores:', err);
     res.status(500).json({ error: 'Erro ao listar vendedores' });

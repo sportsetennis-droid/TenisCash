@@ -359,8 +359,9 @@ router.get('/store-sellers', sellerOnly, async (req, res) => {
     const storeId = req.query.storeId;
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
 
+    // Inclui o vendedor multi-loja: aparece na loja PRINCIPAL (storeId) E nas adicionais (storeIds).
     const sellers = await prisma.user.findMany({
-      where: { role: 'seller', active: true, storeId },
+      where: { role: 'seller', active: true, OR: [{ storeId }, { storeIds: { has: storeId } }] },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, employeeCode: true },
     });
