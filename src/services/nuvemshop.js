@@ -86,7 +86,17 @@ async function fetchAllPages(connection, path, { perPage = 50, max = 1000 } = {}
   let page = 1;
   while (items.length < max) {
     const sep = path.includes('?') ? '&' : '?';
-    const data = await nuvemshopApi(connection, 'GET', `${path}${sep}per_page=${perPage}&page=${page}`);
+    let data;
+    try {
+      data = await nuvemshopApi(connection, 'GET', `${path}${sep}per_page=${perPage}&page=${page}`);
+    } catch (e) {
+      // Tiendanube responde 404 quando a página passa do FIM (total múltiplo exato de perPage).
+      // Isso é "acabou", não erro — sem este guard, 1 página vazia derruba TODA a listagem
+      // (ex: 200 categorias / per_page 100 → page 3 = 404 → loadNsCategories quebra → nenhum
+      // produto sincroniza). Em página > 1, 404 = fim. Em página 1, propaga (erro real).
+      if (page > 1 && /\[Nuvemshop 404\]/.test(e.message || '')) break;
+      throw e;
+    }
     if (!Array.isArray(data) || data.length === 0) break;
     items.push(...data);
     if (data.length < perPage) break;
