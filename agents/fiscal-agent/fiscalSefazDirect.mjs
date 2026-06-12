@@ -213,6 +213,19 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, paym
     cPais: 1058, xPais: 'BRASIL', fone: issuer.phone,
   }));
 
+  // Destinatário (consumidor) OPCIONAL na NFC-e — mas a SEFAZ-PB EXIGE CPF/CNPJ
+  // quando vNF >= R$500 (rejeição "valor total superior ao permitido p/ destinatário
+  // não identificado", pega LOJA06 2026-06-12). customer = { cpf|cpfCnpj, name? }.
+  const docDest = String((customer && (customer.cpfCnpj || customer.cpf)) || '').replace(/\D/g, '');
+  if (docDest.length === 11 || docDest.length === 14) {
+    nfe.tagDest(noNull({
+      [docDest.length === 14 ? 'CNPJ' : 'CPF']: docDest,
+      xNome: tpAmb === 2 ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                         : (customer.name ? String(customer.name).slice(0, 60) : null),
+      indIEDest: '9',
+    }));
+  }
+
   // Items
   let totalProd = 0, totalICMS = 0, totalPIS = 0, totalCOFINS = 0;
   const prodArr = items.map((it, idx) => {

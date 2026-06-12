@@ -69,7 +69,7 @@ app.get('/health', (req, res) => {
     port: PORT,
     pfxExists: fs.existsSync(PFX_PATH),
     pfxSize: fs.existsSync(PFX_PATH) ? fs.statSync(PFX_PATH).size : 0,
-    version: '2.1-troca',
+    version: '2.2-cpf',
     timestamp: new Date().toISOString(),
   });
 });
@@ -180,7 +180,7 @@ app.post('/correction', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  log('INFO', 'TenisCash Fiscal Agent v2.1-troca iniciado',
+  log('INFO', 'TenisCash Fiscal Agent v2.2-cpf iniciado',
     'STORE=' + STORE_LABEL,
     'PORT=' + PORT,
     'PFX=' + path.basename(PFX_PATH));

@@ -73,15 +73,22 @@ async function agentVersion(url) {
   return ver;
 }
 
-// Payload que só agente v2.1+ atende bem: troca/devolução (payments[]/finNFe)
-// e QUALQUER operação em chave modelo 55 (cancelamento/consulta) — o agente 2.0
-// aponta NFe 55 pro host morto nfe.sefaz.pb.gov.br; o 2.1 usa a SVRS correta.
-function needsV21(body) {
-  return !!(body && (
+// Versão MÍNIMA de agente que o payload exige:
+// >=2.2 — NFC-e com CPF/CNPJ do consumidor (agente antigo IGNORA o customer e a
+//         nota sairia sem identificação → rejeição da SEFAZ-PB em venda >= R$500).
+// >=2.1 — troca/devolução (payments[]/finNFe) e QUALQUER operação em chave modelo 55
+//         (o 2.0 aponta NFe 55 pro host morto nfe.sefaz.pb.gov.br).
+function minVersionFor(path, body) {
+  if (path === '/emit-nfce' && body) {
+    const d = String((body.customer && (body.customer.cpfCnpj || body.customer.cpf)) || '').replace(/\D/g, '');
+    if (d.length === 11 || d.length === 14) return 2.2;
+  }
+  if (body && (
     (Array.isArray(body.payments) && body.payments.length) ||
     body.finNFe === 4 || body.tpNF === 0 || body.refNFe ||
     (body.accessKey && String(body.accessKey).slice(20, 22) === '55')
-  ));
+  )) return 2.1;
+  return 0;
 }
 
 async function postAgent(url, token, path, body) {
@@ -134,17 +141,18 @@ async function callAgent(store, path, body) {
   }
   const primaryUrl = store.fiscalAgentUrl.replace(/\/$/, '');
 
-  // Payload de troca/devolução: roteia SÓ pra agente v2.1+ (2.0 não conhece payments/finNFe).
-  if (needsV21(body)) {
+  // Payload que exige versão mínima: roteia SÓ pra agente atualizado.
+  const minVer = minVersionFor(path, body);
+  if (minVer) {
     const all = [{ code: store.code, url: primaryUrl, token: store.fiscalAgentToken }, ...(await listAgents()).filter(a => a.url !== primaryUrl)];
     let result = null;
     for (const a of all) {
-      if ((await agentVersion(a.url)) < 2.1) continue;
-      if (result) console.warn('[fiscalAgent] ' + store.code + ': failover v2.1 via ' + a.code + ' (' + path + ')');
+      if ((await agentVersion(a.url)) < minVer) continue;
+      if (result) console.warn('[fiscalAgent] ' + store.code + ': failover v' + minVer + ' via ' + a.code + ' (' + path + ')');
       result = await postAgent(a.url, a.token, path, body);
       if (!isTransportFail(result)) return result;
     }
-    return result || { ok: false, error: 'Nenhum agente fiscal v2.1 disponível — atualize o agente das lojas pra usar troca/devolução' };
+    return result || { ok: false, error: 'Nenhum agente fiscal v' + minVer + '+ disponível — atualize o agente da loja (1 comando) pra usar este recurso' };
   }
 
   // 1) agente da própria loja

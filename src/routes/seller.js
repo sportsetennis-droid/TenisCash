@@ -755,10 +755,16 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         // NSU ÚNICO: um código de comprovante (cartão/PIX) só pode gerar UM cupom (1 transação = 1 nota).
         const _nsu = req.body.cardAuthCode ? String(req.body.cardAuthCode).trim() : '';
         const _nsuDup = (_nsu && _nsu !== '000000') ? await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, saleId: { not: result.sale.id } } }) : null;
+        // SEFAZ-PB: NFC-e >= R$500 exige CPF/CNPJ do consumidor (rejeição 'valor total
+        // superior ao permitido p/ destinatário não identificado').
+        const _docCli = String(req.body.customerCpf || '').replace(/\D/g, '');
+        const _docCliOk = _docCli.length === 11 || _docCli.length === 14;
         if (existingNfce) {
           fiscalResult = { ok: existingNfce.status === 'authorized', alreadyEmitted: true, number: existingNfce.number, message: 'Venda já tem cupom #' + existingNfce.number };
         } else if (_nsuDup) {
           fiscalResult = { ok: false, error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number + '. Cada transação de cartão/PIX gera UM cupom — passe de novo na maquininha pra um código novo.' };
+        } else if (Number(totalAmount) >= 500 && !_docCliOk) {
+          fiscalResult = { ok: false, needsCpf: true, error: 'Venda de R$ ' + Number(totalAmount).toFixed(2) + ': a SEFAZ exige CPF/CNPJ do cliente na nota a partir de R$ 500. Abra a venda na lista e emita com o CPF.' };
         } else if ((!isCard && !isPixManual) || req.body.cardAuthCode) {
           // Número robusto: nunca abaixo do maior doc já existente (evita unique-constraint travado)
           const maxDoc = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
@@ -812,8 +818,10 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
               cAut: req.body.cardAuthCode,
               tpIntegra: req.body.tpIntegra || 2,
             },
+            customer: _docCliOk ? { cpfCnpj: _docCli, name: req.body.customerCpfName || null } : undefined,
             nNF,
           });
+          if (_docCliOk) await prisma.fiscalDocument.update({ where: { id: fiscalDoc.id }, data: { recipientCnpjCpf: _docCli } }).catch(() => {});
 
           if (r.ok) {
             await prisma.fiscalDocument.update({

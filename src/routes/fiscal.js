@@ -59,7 +59,7 @@ async function emitNfceFromSaleHandler(req, res) {
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
-    const { saleId, paymentMethod, cardBrand, cardAuthCode, tpIntegra } = req.body || {};
+    const { saleId, paymentMethod, cardBrand, cardAuthCode, tpIntegra, customerCpf, customerName } = req.body || {};
     let { acquirerKey } = req.body || {};
     if (!saleId) return res.status(400).json({ error: 'saleId obrigatório' });
 
@@ -113,6 +113,15 @@ async function emitNfceFromSaleHandler(req, res) {
     }
     if (!issuer || !issuer.active) return res.status(400).json({ error: 'Loja sem emissor fiscal vinculado' });
     if (!issuer.csc) return res.status(400).json({ error: 'Emissor ' + issuer.fantasyName + ' sem CSC cadastrado — gere no portal SEFAZ-PB primeiro' });
+
+    // SEFAZ-PB: NFC-e >= R$500 EXIGE CPF/CNPJ do consumidor (rejeição "valor total
+    // superior ao permitido p/ destinatário não identificado"). Trava aqui com
+    // mensagem clara em vez de deixar a SEFAZ rejeitar.
+    const _docCli = String(customerCpf || '').replace(/\D/g, '');
+    const _docCliOk = _docCli.length === 11 || _docCli.length === 14;
+    if (Number(sale.totalAmount) >= 500 && !_docCliOk) {
+      return res.status(400).json({ needsCpf: true, error: 'Venda de R$ ' + Number(sale.totalAmount).toFixed(2) + ': a SEFAZ exige CPF/CNPJ do cliente na nota a partir de R$ 500. Peça o documento e preencha o campo CPF/CNPJ.' });
+    }
 
     // NSU ÚNICO: um código de comprovante (cartão/PIX) só pode gerar UM cupom (1 transação = 1 nota).
     if (cardAuthCode && String(cardAuthCode).trim() && String(cardAuthCode).trim() !== '000000') {
@@ -173,10 +182,13 @@ async function emitNfceFromSaleHandler(req, res) {
         paymentAcquirer: acquirerKey || null,
         paymentAuthCode: cardAuthCode || null,
         paymentTpIntegra: tpIntegra || null,
+        recipientCnpjCpf: _docCliOk ? _docCli : null,
+        recipientName: _docCliOk && customerName ? String(customerName).slice(0, 60) : null,
       },
     });
 
     // Emite — via Fiscal Agent da loja (preferido) ou fallback SEFAZ direto
+    const customerDest = _docCliOk ? { cpfCnpj: _docCli, name: customerName || null } : undefined;
     let result;
     const useAgent = store?.fiscalAgentEnabled && store?.fiscalAgentUrl;
     if (useAgent) {
@@ -184,12 +196,14 @@ async function emitNfceFromSaleHandler(req, res) {
       result = await agentClient.emitNFCe(store, {
         issuer,
         items, payment,
+        customer: customerDest,
         nNF,
       });
     } else {
       const { emitNFCe } = await getSefazDirect();
       result = await emitNFCe({
         issuer, pfxPath, pfxSenha, items, payment,
+        customer: customerDest,
         nNF,
       });
     }
@@ -281,7 +295,7 @@ router.get('/troca/cupons', async (req, res) => {
 
 router.post('/troca', async (req, res) => {
   try {
-    const { storeId, originalDocId, returned, newItems, diffPayment, devolucaoDocId, saleId } = req.body || {};
+    const { storeId, originalDocId, returned, newItems, diffPayment, devolucaoDocId, saleId, customerCpf, customerName } = req.body || {};
     if (!storeId || !originalDocId) return res.status(400).json({ error: 'storeId e originalDocId obrigatórios' });
     if (!Array.isArray(returned) || !returned.length) return res.status(400).json({ error: 'Marque o que o cliente devolveu' });
     if (!Array.isArray(newItems) || !newItems.length) return res.status(400).json({ error: 'Bipe o que o cliente levou' });
@@ -334,6 +348,13 @@ router.post('/troca', async (req, res) => {
     const diff = r2(newTotal - returnedTotal);
     const credit = Math.min(returnedTotal, newTotal);
     const vale = diff < 0 ? r2(-diff) : 0;
+
+    // SEFAZ-PB: cupom (mesmo de troca) >= R$500 exige CPF/CNPJ do consumidor.
+    const _docCli = String(customerCpf || '').replace(/\D/g, '');
+    const _docCliOk = _docCli.length === 11 || _docCli.length === 14;
+    if (newTotal >= 500 && !_docCliOk) {
+      return res.status(400).json({ needsCpf: true, error: 'Cupom novo de R$ ' + newTotal.toFixed(2) + ': a SEFAZ exige CPF/CNPJ do cliente na nota a partir de R$ 500. Preencha o campo CPF/CNPJ.' });
+    }
 
     // ---- pagamentos do cupom novo: Crédito Loja (05) + diferença ----
     const payments = [{ tPag: '05', valor: credit }];
@@ -457,6 +478,8 @@ router.post('/troca', async (req, res) => {
         paymentAcquirer: diff > 0 ? (diffPayment.acquirerKey || null) : null,
         paymentAuthCode: diff > 0 ? (diffPayment.cardAuthCode || null) : null,
         paymentTpIntegra: diff > 0 ? 2 : null,
+        recipientCnpjCpf: _docCliOk ? _docCli : null,
+        recipientName: _docCliOk && customerName ? String(customerName).slice(0, 60) : null,
       },
     });
 
@@ -464,6 +487,7 @@ router.post('/troca', async (req, res) => {
       issuer, nNF,
       items: newResolved.map(n => ({ sku: n.product.sku || n.product.id, name: n.product.name, ncm: (n.product.ncm && /^\d{8}$/.test(n.product.ncm)) ? n.product.ncm : '64041100', cfop: '5102', unidade: 'UN', qty: n.qty, unitPrice: n.price })),
       payments,
+      customer: _docCliOk ? { cpfCnpj: _docCli, name: customerName || null } : undefined,
     });
 
     if (!(cupomResult.ok && String(cupomResult.status) === '100')) {
