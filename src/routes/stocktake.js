@@ -565,6 +565,31 @@ router.post('/capture',
 //   a) sku lido casa ProductSize.barcode (cProd, ex FIBER) -> barcode vira o EAN + bipes órfãos casam + StoreStock
 //   b) ean já existe em ProductSize -> religa bipes órfãos
 //   c) nome lido casa EXATAMENTE 1 card ativo -> vincula (cria tamanho stock=0; 2+ candidatos = pendente)
+// O VÍNCULO TARDIO TAMBÉM É CONTAGEM (dono 2026-06-11: cada foto de etiqueta = 1 peça na mão).
+// Captura vinculada pela visão/cron SEM bipe síncrono (câmera não leu o código na hora) ganha o
+// StocktakeBipe aqui — senão a peça some do ranking e do físico. bipedAt = hora da foto (dia certo).
+async function garantirBipeDaCaptura(capId, pid, psId, barcodePref) {
+  try {
+    const cap = await prisma.productCapture.findUnique({ where: { id: capId }, select: { bipeId: true, barcode: true, storeId: true, sellerId: true, sellerName: true, createdAt: true } });
+    if (!cap || cap.bipeId) return;
+    const ps = await prisma.productSize.findUnique({ where: { id: psId }, select: { id: true, productId: true, size: true, barcode: true, product: { select: { name: true, brand: true } } } });
+    if (!ps) return;
+    const bipe = await prisma.stocktakeBipe.create({ data: {
+      barcode: barcodePref || cap.barcode || ps.barcode || 'ETIQ',
+      storeId: cap.storeId || null, sellerId: cap.sellerId || null, sellerName: cap.sellerName || null,
+      productId: ps.productId, productSizeId: ps.id,
+      productName: ps.product.name, productSize: ps.size, productBrand: ps.product.brand,
+      found: true, applied: true, userAgent: 'scanner-etiqueta', bipedAt: cap.createdAt,
+    } });
+    await prisma.productCapture.update({ where: { id: capId }, data: { bipeId: bipe.id } });
+    if (cap.storeId) {
+      const ex = await prisma.storeStock.findFirst({ where: { productSizeId: ps.id, storeId: cap.storeId }, select: { id: true, stock: true } });
+      if (ex) await prisma.storeStock.update({ where: { id: ex.id }, data: { stock: (ex.stock || 0) + 1 } });
+      else await prisma.storeStock.create({ data: { productSizeId: ps.id, storeId: cap.storeId, stock: 1 } });
+    }
+  } catch (e) { console.warn('[etiqueta] bipe-tardio falhou:', e.message); }
+}
+
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
   let lido = null;
   try {
@@ -619,6 +644,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
       }
     }
   }
+  if (vinculado && psId) await garantirBipeDaCaptura(capId, matchedProductId, psId, ean || sku || null);
   if (vinculado && ean && psId) {
     const upd = await prisma.stocktakeBipe.updateMany({ where: { barcode: ean }, data: { productId: matchedProductId, productSizeId: psId, found: true, applied: true } });
     bipesCasados = upd.count;
@@ -752,6 +778,7 @@ async function tratarPendentesEtiqueta() {
       }
       if (!pid) continue;
       await prisma.productCapture.update({ where: { id: c.id }, data: { status: 'vinculado', matchedProductId: pid, note: (String(c.note || '').replace(/^etiqueta\s*📥?/, 'etiqueta ✓') + ' [auto]').slice(0, 400) } });
+      if (psId) await garantirBipeDaCaptura(c.id, pid, psId, c.barcode || sku || null);
       if (c.barcode && psId) {
         await prisma.stocktakeBipe.updateMany({ where: { barcode: c.barcode }, data: { productId: pid, productSizeId: psId, found: true, applied: true } });
         const bipes = await prisma.stocktakeBipe.findMany({ where: { barcode: c.barcode }, select: { storeId: true } });
