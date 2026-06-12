@@ -561,6 +561,16 @@
               <button type="button" onclick="usarTodoTc()" style="padding:0 14px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">Usar tudo</button>
             </div>
           </div>
+
+          <!-- CPF/CNPJ na nota — fica AQUI, junto do cliente; vai vinculado na emissao da NFC-e (SEFAZ-PB exige >= R$ 500) -->
+          <div id="sellCpfBox" style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+            <label for="sellCustomerCpf" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
+              🧾 CPF/CNPJ na nota
+              <span id="sellCpfReq" style="font-size:11px;font-weight:700;color:#b06b00;">(obrigatório acima de R$ 500)</span>
+            </label>
+            <input type="text" id="sellCustomerCpf" inputmode="numeric" autocomplete="off" placeholder="CPF ou CNPJ do cliente — só números" maxlength="18" oninput="maskCpfCnpj(this);updateSummary()" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;font-family:monospace;font-weight:700;box-sizing:border-box;">
+            <div id="sellCpfHint" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Vai vinculado na emissão da NFC-e. Acima de R$ 500 a SEFAZ exige o documento.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -629,11 +639,7 @@
           <p style="font-size:10px;color:#6e6e73;margin-top:8px;line-height:1.4;">Aprovou na maquininha → digita aqui o número que veio no recibo (Auth, NSU ou Aprovação).</p>
         </div>
 
-        <!-- CPF/CNPJ na nota — SEFAZ-PB exige em venda de R$ 500 ou mais -->
-        <div style="margin-top:14px;">
-          <label style="font-size:10px;font-weight:700;color:#6e6e73;letter-spacing:1px;">CPF/CNPJ NA NOTA <span style="color:#b06b00;">(obrigatório em venda de R$ 500+)</span></label>
-          <input type="text" id="sellCustomerCpf" inputmode="numeric" placeholder="Só números — opcional abaixo de R$ 500" maxlength="18" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:white;color:#1d1d1f;font-size:14px;font-family:monospace;font-weight:700;margin-top:4px;">
-        </div>
+        <!-- CPF/CNPJ na nota foi movido pro card "Cliente TenisCash" (#sellCpfBox), junto da busca do cliente -->
 
         <!-- Emissão NFCe (após venda) -->
         <div id="sellNfceWrap" style="display:none;margin-top:14px;padding:14px;background:#e8f7ee;border-radius:10px;border:2px solid #0a843d;">
@@ -2087,6 +2093,18 @@ function renderCart() {
   document.getElementById('sellFinalize').disabled = false;
 }
 
+// Máscara CPF (000.000.000-00) / CNPJ (00.000.000/0000-00). O backend tira a pontuação de qualquer forma.
+function maskCpfCnpj(el) {
+  const d = (el.value || '').replace(/\D/g, '').slice(0, 14);
+  let out = '';
+  if (d.length <= 11) { // CPF
+    for (let i = 0; i < d.length; i++) { if (i === 3 || i === 6) out += '.'; else if (i === 9) out += '-'; out += d[i]; }
+  } else { // CNPJ
+    for (let i = 0; i < d.length; i++) { if (i === 2 || i === 5) out += '.'; else if (i === 8) out += '/'; else if (i === 12) out += '-'; out += d[i]; }
+  }
+  el.value = out;
+}
+
 function updateSummary() {
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
@@ -2097,6 +2115,18 @@ function updateSummary() {
   const tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
   const tcEarned = customer ? Math.round((base - tcUsed) * 0.04 * 100) / 100 : 0;
   const liquido = Math.round((base - tcUsed) * 100) / 100;
+
+  // CPF na nota: a SEFAZ-PB exige a partir de R$ 500 — destaca o campo quando a venda passa do teto.
+  const cpfReq = document.getElementById('sellCpfReq');
+  const cpfInp = document.getElementById('sellCustomerCpf');
+  if (cpfReq && cpfInp) {
+    const dig = (cpfInp.value || '').replace(/\D/g, '').length;
+    const falta = liquido >= 500 && !(dig === 11 || dig === 14);
+    cpfReq.textContent = liquido >= 500 ? '⚠ obrigatório nesta venda (≥ R$ 500)' : '(obrigatório acima de R$ 500)';
+    cpfReq.style.color = falta ? '#d70015' : '#b06b00';
+    cpfInp.style.borderColor = falta ? '#d70015' : 'var(--border)';
+    cpfInp.style.background = falta ? '#fff6f6' : '#fff';
+  }
 
   const cartCount = document.getElementById('cartCount');
   if (cartCount) cartCount.textContent = itemCount ? `(${itemCount} ${itemCount === 1 ? 'item' : 'itens'})` : '';
@@ -2175,6 +2205,15 @@ function onCustomerLookup() {
           </div>
         `;
         tcGroup.style.display = 'block';
+        // Puxa o CPF do cadastro pra nota (se houver e o campo estiver vazio) — não precisa redigitar.
+        const cpfInp = document.getElementById('sellCustomerCpf');
+        if (cpfInp && customer.cpf && !(cpfInp.value || '').replace(/\D/g, '')) {
+          cpfInp.value = customer.cpf;
+          maskCpfCnpj(cpfInp);
+          const hint = document.getElementById('sellCpfHint');
+          if (hint) hint.innerHTML = '✓ CPF puxado do cadastro de <strong>' + customer.name + '</strong>. Confere/edita se precisar.';
+        }
+        updateSummary();
       } else {
         infoEl.innerHTML = `
           <div style="padding:12px;background:#fff7e6;border-radius:10px;border-left:3px solid #f0a500;font-size:13px;">
@@ -2239,6 +2278,7 @@ async function finalizeSale() {
         vendorId,
         idemKey: _saleIdemKey,
         customerCpf: (_cpfNota.length === 11 || _cpfNota.length === 14) ? _cpfNota : null,
+        customerCpfName: customer?.name || null,
         ...cardData,
       }),
     });

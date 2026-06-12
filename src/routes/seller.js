@@ -1301,7 +1301,7 @@ router.get('/customer/lookup', authMiddleware, sellerOnly, async (req, res) => {
     if (phone.length < 10) return res.json({ customer: null });
     const customer = await prisma.user.findUnique({
       where: { phone },
-      select: { id: true, name: true, phone: true, balance: true, profileComplete: true },
+      select: { id: true, name: true, phone: true, balance: true, profileComplete: true, cpf: true },
     });
     res.json({ customer });
   } catch (err) {
