@@ -1239,9 +1239,13 @@ async function emitNfceFromSale() {
   try {
     const method = document.getElementById('sellPayment').value;
     const tPagMap = { cash: '01', credit_card: '03', debit_card: '04', pix: '17', other: '99' };
+    // CPF/CNPJ na nota — mesmo campo do card do cliente; vai vinculado na emissão (obrigatório >= R$ 500).
+    const _cpfEmit = (document.getElementById('sellCustomerCpf')?.value || '').replace(/\D/g, '');
     const payload = {
       saleId: sale.id || sale.saleId,
       paymentMethod: tPagMap[method] || '99',
+      customerCpf: (_cpfEmit.length === 11 || _cpfEmit.length === 14) ? _cpfEmit : null,
+      customerCpfName: (customer && customer.name) || null,
     };
     if (method === 'credit_card' || method === 'debit_card') {
       const auth = document.getElementById('sellCardAuthCode').value.trim();
@@ -1265,6 +1269,7 @@ async function emitNfceFromSale() {
       btn.style.display = 'none';
     } else {
       result.innerHTML = `<div style="background:#fff1f0;padding:10px;border-radius:8px;color:#d70015;font-size:12px;">❌ ${r.error || r.rejectReason || 'Erro desconhecido'}</div>`;
+      if (r.needsCpf) { const c = document.getElementById('sellCustomerCpf'); if (c) { c.scrollIntoView({ block: 'center' }); c.focus(); } }
       btn.disabled = false;
       btn.textContent = '🔄 TENTAR NOVAMENTE';
     }
