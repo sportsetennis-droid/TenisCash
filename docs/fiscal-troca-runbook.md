@@ -52,10 +52,10 @@ Rotas: `GET /api/admin/fiscal/troca/cupons?storeId&q=` · `POST /api/admin/fisca
 
 **Testar uma loja com emissão real (R$2, cancela sozinho):** `node scripts/fiscal-test-emit.js LOJA0X 9000NN` — usar nNF de teste novo a cada rodada (número autorizado+cancelado NÃO pode ser reutilizado → 539).
 
-**Atualizar o agente de uma loja** (PowerShell ADMIN no PC da loja):
-1. Na matriz, subir o file server: `node "$env:TEMP\serve_agent.js"` (serve `agents/fiscal-agent` na :8000).
-2. Na loja: `Invoke-WebRequest http://100.106.212.108:8000/index.js -OutFile C:\TenisCashAgent\index.js; Invoke-WebRequest http://100.106.212.108:8000/fiscalSefazDirect.mjs -OutFile C:\TenisCashAgent\fiscalSefazDirect.mjs; Stop-ScheduledTask TenisCashFiscalAgent; Start-ScheduledTask TenisCashFiscalAgent`
-3. Validar: `/health` da loja deve responder `version: 2.1-troca`.
+**Atualizar o agente de uma loja:**
+- **Agente >= v2.3: NINGUÉM precisa ir na máquina.** O agente se atualiza sozinho (checa o central no boot + a cada 6h) e aceita ordem remota: `POST <url-da-loja>/selfupdate` com header `X-Agent-Token` (body `{"force":true}` pra reaplicar a mesma versão). O código novo é servido pelo central em `/api/auth/agent-update/*` (arquivos do `agents/fiscal-agent` no build do Railway, autenticação = token do agente, sha256 conferido).
+- **Agente antigo (< 2.3, sem auto-update): UMA última vez manual** — qualquer funcionário, PowerShell **como Administrador**: `irm https://teniscash.com.br/atualizar-agente.txt | iex` (o instalador lê o token local, baixa do central, confere hash e reinicia a tarefa). É `.txt` de propósito: o express serve como texto e o `irm | iex` funciona (como `.ps1` vira download binário e quebra).
+- Validar depois: `/health` da loja responde a versão nova.
 
 **Agente caiu numa loja:** o Scheduled Task `TenisCashFiscalAgent` reinicia sozinho (boot + 99x/1min). Manual: `Stop-ScheduledTask TenisCashFiscalAgent; Start-ScheduledTask TenisCashFiscalAgent`. Enquanto isso o failover cobre pelas outras lojas.
 

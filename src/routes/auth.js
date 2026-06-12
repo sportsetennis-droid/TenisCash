@@ -664,7 +664,8 @@ router.get('/agent-update/manifest', async (req, res) => {
   try {
     if (!(await agentTokenOk(req))) return res.status(401).json({ error: 'token de agente inválido' });
     const idx = _agFs.readFileSync(_agPath.join(agentDir(), 'index.js'), 'utf8');
-    const version = (idx.match(/version:\s*'([^']+)'/) || [])[1] || 'desconhecida';
+    // v2.3+: const VERSION = 'x.y-z'; legado: version: 'x.y-z' direto no /health
+    const version = (idx.match(/VERSION\s*=\s*'([^']+)'/) || idx.match(/version:\s*'([^']+)'/) || [])[1] || 'desconhecida';
     const files = AGENT_FILES.filter(f => _agFs.existsSync(_agPath.join(agentDir(), f))).map(f => {
       const buf = _agFs.readFileSync(_agPath.join(agentDir(), f));
       return { name: f, sha256: _agCrypto.createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
