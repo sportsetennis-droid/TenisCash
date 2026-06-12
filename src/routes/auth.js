@@ -426,6 +426,7 @@ router.get('/me', authMiddleware, async (req, res) => {
         role: user.role,
         profileComplete: user.profileComplete,
         storeId: user.storeId,
+        storeIds: user.storeIds || [],
         store: user.store || null,
         birthDate: user.birthDate,
         cep: user.cep,

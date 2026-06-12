@@ -1040,6 +1040,11 @@ async function checkSession() {
     const data = await r.json();
     me = data.user || data;
     if (!['seller', 'store', 'admin', 'superadmin'].includes(me.role)) { logout(); return; }
+    // Vendedor: a loja salva só vale se ainda estiver vinculada ao cadastro dele (storeId + storeIds).
+    if (activeStore && me.role === 'seller') {
+      const myIds = [...(me.storeIds || []), ...(me.storeId ? [me.storeId] : [])];
+      if (!myIds.includes(activeStore.id)) { activeStore = null; localStorage.removeItem('loja_activeStore'); }
+    }
     if (activeStore) showApp();
     else showStoreSelector();
   } catch (e) { logout(); }
@@ -1056,10 +1061,19 @@ async function showStoreSelector() {
   try {
     const d = await api('/api/seller/stores');
     const stores = d.stores || [];
-    // Conta institucional (role=store) ou vendedor pessoal pula direto pra loja padrão
-    if ((me.role === 'store' || me.role === 'seller') && me.storeId) {
+    // Conta institucional (role=store) cai direto na loja dela.
+    if (me.role === 'store' && me.storeId) {
       const own = stores.find(s => s.id === me.storeId);
       if (own) { selectStore(own); return; }
+    }
+    // Vendedor: as lojas já vêm escopadas ao cadastro dele (storeId + storeIds).
+    // 1 loja -> entra direto; várias -> escolhe entre AS DELE; nenhuma -> avisa o gerente.
+    if (me.role === 'seller') {
+      if (stores.length === 1) { selectStore(stores[0]); return; }
+      if (stores.length === 0) {
+        document.getElementById('storeList').innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:12px;">Você ainda não está vinculado a nenhuma loja.<br>Avise o gerente pra liberar seu acesso no cadastro.</p>';
+        return;
+      }
     }
     const list = document.getElementById('storeList');
     const defaultStoreId = me.storeId;

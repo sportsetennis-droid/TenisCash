@@ -374,10 +374,18 @@ router.get('/store-sellers', sellerOnly, async (req, res) => {
 // =====================================================================
 // LISTA LOJAS — pra escolher onde está trabalhando hoje
 // =====================================================================
-router.get('/stores', sellerOnly, async (_req, res) => {
+router.get('/stores', sellerOnly, async (req, res) => {
   try {
+    const where = { active: true };
+    // VENDEDOR (role=seller) só acessa as lojas vinculadas ao cadastro dele (storeId + storeIds).
+    // Admin/gerente/conta-de-loja continuam vendo todas.
+    if (req.userRole === 'seller') {
+      const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { storeId: true, storeIds: true } });
+      const ids = [...new Set([...((me && me.storeIds) || []), ...(me && me.storeId ? [me.storeId] : [])])];
+      where.id = { in: ids.length ? ids : ['__none__'] };
+    }
     const stores = await prisma.store.findMany({
-      where: { active: true },
+      where,
       orderBy: { code: 'asc' },
       select: { id: true, name: true, code: true, city: true, mall: true, latitude: true, longitude: true },
     });
