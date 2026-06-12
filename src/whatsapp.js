@@ -5,8 +5,56 @@ const META_WA_PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID || pro
 const META_WA_CODE_TEMPLATE = process.env.META_WHATSAPP_CODE_TEMPLATE || process.env.WHATSAPP_CODE_TEMPLATE;
 const META_WA_CODE_TEMPLATE_LANG = process.env.META_WHATSAPP_CODE_TEMPLATE_LANG || 'pt_BR';
 
+// Evolution API (WhatsApp Web nao-oficial) — provedor enquanto a Cloud API esta travada no numero de teste
+const EVOLUTION_API_URL = (process.env.EVOLUTION_API_URL || '').replace(/\/+$/, '');
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || 'teniscash';
+// 'auto' (padrao) = Evolution primeiro, Meta fallback; 'meta' = Meta primeiro (usar quando a Cloud API liberar)
+const WHATSAPP_PROVIDER = (process.env.WHATSAPP_PROVIDER || 'auto').toLowerCase();
+
 function isMetaWhatsAppConfigured() {
   return !!(META_WA_ACCESS_TOKEN && META_WA_PHONE_NUMBER_ID);
+}
+
+function isEvolutionConfigured() {
+  return !!(EVOLUTION_API_URL && EVOLUTION_API_KEY);
+}
+
+function isWhatsAppConfigured() {
+  return isMetaWhatsAppConfigured() || isEvolutionConfigured();
+}
+
+function whatsappProviderOrder() {
+  const order = [];
+  if (WHATSAPP_PROVIDER === 'meta') {
+    if (isMetaWhatsAppConfigured()) order.push('meta');
+    if (isEvolutionConfigured()) order.push('evolution');
+  } else {
+    if (isEvolutionConfigured()) order.push('evolution');
+    if (isMetaWhatsAppConfigured()) order.push('meta');
+  }
+  return order;
+}
+
+async function sendEvolutionText(phone, message) {
+  if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
+  try {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+      method: 'POST',
+      headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: formattedPhone, text: String(message || '') }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = Array.isArray(data?.response?.message) ? data.response.message.join('; ') : (data?.message || `Evolution ${response.status}`);
+      return { ok: false, error: msg, data };
+    }
+    return { ok: true, messageId: data?.key?.id, data };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Erro de conexao Evolution' };
+  }
 }
 
 async function sendMetaWhatsAppPayload(payload) {
@@ -89,16 +137,26 @@ async function sendVerificationCode(phone) {
     attempts: 0,
   });
 
-  if (!isMetaWhatsAppConfigured()) {
-    return { success: false, message: 'Meta WhatsApp nao configurado' };
+  const providers = whatsappProviderOrder();
+  if (!providers.length) {
+    return { success: false, message: 'WhatsApp nao configurado' };
   }
 
-  const metaResult = await sendMetaCode(formattedPhone, code);
-  if (metaResult.ok) {
-    return { success: true, message: 'Codigo enviado por WhatsApp', provider: 'meta', messageId: metaResult.messageId };
+  let lastResult = null;
+  for (const provider of providers) {
+    const result = provider === 'meta'
+      ? await sendMetaCode(formattedPhone, code)
+      : await sendEvolutionText(
+          formattedPhone,
+          `TenisCash - Sports & Tennis\n\nSeu codigo de verificacao e: ${code}\n\nEsse codigo expira em 10 minutos.`
+        );
+    if (result.ok) {
+      return { success: true, message: 'Codigo enviado por WhatsApp', provider, messageId: result.messageId };
+    }
+    lastResult = result;
+    console.error(`WhatsApp ${provider} falhou:`, result.error);
   }
-  console.error('Meta WhatsApp response:', metaResult);
-  return { success: false, message: metaResult.error || 'Erro ao enviar mensagem pela Meta WhatsApp' };
+  return { success: false, message: lastResult?.error || 'Erro ao enviar WhatsApp' };
 }
 
 // Telefones verificados temporariamente (expira em 15 min)
@@ -171,17 +229,24 @@ function formatPhoneBR(raw) {
 }
 
 async function sendCustomMessage(phone, message) {
-  if (!isMetaWhatsAppConfigured()) {
-    return { ok: false, provider: 'meta', error: 'Meta WhatsApp nao configurado' };
+  const providers = whatsappProviderOrder();
+  if (!providers.length) {
+    return { ok: false, provider: null, error: 'WhatsApp nao configurado' };
   }
 
   const formattedPhone = formatPhoneBR(phone);
-  if (!formattedPhone) return { ok: false, provider: 'meta', error: 'Telefone invalido' };
-  if (!message || !String(message).trim()) return { ok: false, provider: 'meta', error: 'Mensagem vazia' };
+  if (!formattedPhone) return { ok: false, provider: null, error: 'Telefone invalido' };
+  if (!message || !String(message).trim()) return { ok: false, provider: null, error: 'Mensagem vazia' };
 
-  const out = await sendMetaText(formattedPhone, message);
-  if (out.ok) return { ok: true, provider: 'meta', messageId: out.messageId };
-  return { ok: false, provider: 'meta', error: out.error || 'Falha no envio Meta WhatsApp' };
+  let lastResult = null;
+  for (const provider of providers) {
+    const out = provider === 'meta'
+      ? await sendMetaText(formattedPhone, message)
+      : await sendEvolutionText(formattedPhone, message);
+    if (out.ok) return { ok: true, provider, messageId: out.messageId };
+    lastResult = out;
+  }
+  return { ok: false, provider: providers[providers.length - 1], error: lastResult?.error || 'Falha no envio WhatsApp' };
 }
 
 /**
@@ -223,5 +288,8 @@ module.exports = {
   sendCampaignBatch,
   formatPhoneBR,
   isMetaWhatsAppConfigured,
+  isEvolutionConfigured,
+  isWhatsAppConfigured,
   sendMetaText,
+  sendEvolutionText,
 };

@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { sendCustomMessage, isMetaWhatsAppConfigured, formatPhoneBR } = require('../whatsapp');
+const { sendCustomMessage, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
 
 const router = express.Router();
@@ -71,11 +71,14 @@ router.post('/webhook', async (req, res) => {
 
 router.get('/status', authMiddleware, adminMiddleware, (_req, res) => {
   const metaConfigured = isMetaWhatsAppConfigured();
+  const evolutionConfigured = isEvolutionConfigured();
 
   res.json({
-    provider: 'meta',
-    ready: metaConfigured,
+    provider: evolutionConfigured ? 'evolution' : 'meta',
+    ready: metaConfigured || evolutionConfigured,
     metaConfigured,
+    evolutionConfigured,
+    evolutionInstance: process.env.EVOLUTION_INSTANCE || 'teniscash',
     phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.META_WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID || null,
     businessId: process.env.META_WHATSAPP_BUSINESS_ID || process.env.WHATSAPP_BUSINESS_ID || null,
     webhookUrl: '/api/whatsapp/webhook',
@@ -106,8 +109,8 @@ router.post('/send-test', authMiddleware, adminMiddleware, async (req, res) => {
 // =====================================================================
 
 router.get('/embedded-signup-config', authMiddleware, adminMiddleware, (_req, res) => {
-  const appId = process.env.META_APP_ID || '1971698716790878';
-  const configId = process.env.META_LOGIN_CONFIG_ID || '903001139468001';
+  const appId = process.env.META_APP_ID || '2450210998825590';
+  const configId = process.env.META_LOGIN_CONFIG_ID || '961531953387744';
   const graphVersion = process.env.META_WHATSAPP_API_VERSION || 'v22.0';
   res.json({
     appId,
@@ -123,7 +126,7 @@ router.post('/embedded-signup-callback', authMiddleware, adminMiddleware, async 
     const { code, phone_number_id, waba_id, business_id } = req.body || {};
     if (!code) return res.status(400).json({ error: 'code ausente' });
 
-    const appId = process.env.META_APP_ID || '1971698716790878';
+    const appId = process.env.META_APP_ID || '2450210998825590';
     const appSecret = process.env.META_APP_SECRET;
     const graphVersion = process.env.META_WHATSAPP_API_VERSION || 'v22.0';
     if (!appSecret) {

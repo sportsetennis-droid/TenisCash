@@ -82,8 +82,8 @@ async function notifySellers(store, { title, body, url, whatsapp: waText }) {
     });
     for (const s of sellers) {
       pushSvc.sendToUser(s.id, { title, body, url, tag: 'live-' + store.id }).catch(() => {});
-      if (waText && s.phone && whatsapp.isMetaWhatsAppConfigured && whatsapp.isMetaWhatsAppConfigured()) {
-        whatsapp.sendMetaText(s.phone, waText).catch(() => {});
+      if (waText && s.phone && whatsapp.isWhatsAppConfigured && whatsapp.isWhatsAppConfigured()) {
+        whatsapp.sendCustomMessage(s.phone, waText).catch(() => {});
       }
     }
   } catch (e) {
