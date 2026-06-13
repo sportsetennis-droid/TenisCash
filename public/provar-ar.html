@@ -161,7 +161,7 @@
       showLayer(null);
       show('ar-screen'); show('top'); show('bottom'); show('hint'); show('demoBadge');
 
-      // 5) Carrega o tênis demo POR CIMA (se falhar, a câmera/pé continua valendo = diagnóstico).
+      // 5) Carrega o tênis demo POR CIMA (se falhar, câmera/pé continuam = diagnóstico).
       let effOk = effPreloaded;
       if(!effOk){
         $('demoBadge').textContent = 'Carregando o tênis demo…';
@@ -170,9 +170,27 @@
           catch(e){ console.warn('efeito falhou:', eff, e); }
         }
       }
-      $('demoBadge').textContent = effOk
-        ? 'Tênis demonstração — nosso catálogo vem já já'
-        : '⚠️ Câmera e pé OK, mas o tênis demo não renderizou — me avise!';
+      window.__effOk = effOk;
+
+      // 6) STATUS AO VIVO do rastreamento do pé (diagnóstico: o pé é detectado?).
+      const badge = $('demoBadge');
+      function footState(){
+        if(!deepAR) return;
+        let initd = true, l = false, r = false;
+        try { if(deepAR.isFootTrackingInitialized) initd = deepAR.isFootTrackingInitialized(); } catch(e){}
+        try { if(deepAR.isLeftFootDetected)  l = deepAR.isLeftFootDetected(); } catch(e){}
+        try { if(deepAR.isRightFootDetected) r = deepAR.isRightFootDetected(); } catch(e){}
+        if(!initd){ badge.style.color = '#ffd27a'; badge.textContent = '🔍 Ligando o rastreamento de pé…'; return; }
+        if(l || r){
+          badge.style.color = '#7CFC9E';
+          badge.textContent = effOk ? '✅ Pé detectado · tênis demo' : '✅ Pé detectado · (tênis demo não renderiza no v5)';
+        } else {
+          badge.style.color = '#ffd27a';
+          badge.textContent = '🔍 Procurando seu pé… aponte a câmera de cima pros pés (~40–60cm)';
+        }
+      }
+      footState();
+      setInterval(footState, 400);
       setTimeout(()=>hide('hint'), 6000);
     }
 
