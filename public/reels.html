@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Agência de Reels · Sports & Tennis</title>
+<style>
+  :root{ --bg:#0a1a10; --bg2:#06120b; --card:#0f2417; --line:#1c3a26; --ink:#eef3ec; --mut:#8fae98;
+         --orange:#E0531E; --yellow:#ffd400; --green:#16a34a; --red:#d62628; }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:
+        radial-gradient(1200px 600px at 30% -10%, #103a22 0%, var(--bg) 55%, var(--bg2) 100%);
+        color:var(--ink); min-height:100vh; padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  .wrap{ max-width:1000px; margin:0 auto; padding:22px 0 80px; }
+  .gate{ display:none; background:#2a1410; border:1px solid #5a2a1e; color:#ffd9cc; padding:16px; border-radius:14px; margin:40px 0; font-size:15px; }
+  h1{ font-size:30px; font-weight:800; letter-spacing:-.5px; }
+  h1 .tag{ color:var(--orange); }
+  .sub{ color:var(--mut); margin-top:6px; font-size:14px; }
+  .section-t{ font-size:12px; letter-spacing:3px; color:var(--mut); text-transform:uppercase; margin:30px 0 12px; font-weight:700; }
+  /* squad */
+  .squad{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .agent{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px; position:relative; }
+  .agent .em{ font-size:24px; }
+  .agent .nm{ font-weight:700; margin-top:6px; font-size:15px; }
+  .agent .rl{ color:var(--mut); font-size:12px; margin-top:4px; line-height:1.35; }
+  .dot{ position:absolute; top:13px; right:13px; width:9px; height:9px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px rgba(22,163,74,.18); }
+  .dot.idle{ background:#7a7; opacity:.45; box-shadow:none; }
+  /* stores */
+  .stores{ display:flex; gap:10px; flex-wrap:wrap; }
+  .store{ flex:1 1 200px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; transition:.15s; text-align:left; color:var(--ink); }
+  .store:hover{ border-color:var(--orange); }
+  .store.active{ border-color:var(--orange); background:#1a2b1f; box-shadow:0 0 0 1px var(--orange) inset; }
+  .store .sn{ font-weight:800; font-size:16px; }
+  .store .sd{ color:var(--yellow); font-size:12px; margin-top:3px; font-weight:600; }
+  .store .sh{ color:var(--mut); font-size:11px; margin-top:2px; }
+  /* candidates */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; }
+  .prod{ background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; }
+  .prod .ph{ aspect-ratio:1; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .prod .ph img{ width:100%; height:100%; object-fit:contain; }
+  .prod .bd{ padding:11px; flex:1; display:flex; flex-direction:column; }
+  .prod .br{ font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
+  .prod .pn{ font-size:13px; font-weight:600; margin:3px 0 6px; line-height:1.25; min-height:32px; }
+  .prod .meta{ display:flex; justify-content:space-between; align-items:center; margin-top:auto; }
+  .prod .pr{ color:var(--orange); font-weight:800; font-size:16px; }
+  .prod .qt{ font-size:11px; color:var(--mut); background:#14271a; padding:3px 7px; border-radius:20px; }
+  .prod button{ margin:0 11px 11px; padding:10px; border:0; border-radius:10px; background:var(--orange); color:#fff; font-weight:700; font-size:13px; cursor:pointer; min-height:42px; }
+  .prod button:disabled{ background:#2a3b2f; color:#7a8; }
+  .empty,.load{ color:var(--mut); padding:24px 0; font-size:14px; }
+  /* toast */
+  .toast{ position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(40px); opacity:0;
+          background:#16331f; border:1px solid var(--green); color:#dff5e5; padding:13px 18px; border-radius:12px;
+          font-size:14px; transition:.25s; max-width:90%; z-index:50; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+  .toast.on{ transform:translateX(-50%) translateY(0); opacity:1; }
+  .hint{ background:#14271a; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; color:var(--mut); font-size:13px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gate" class="gate"></div>
+  <div id="app" style="display:none">
+    <h1>Agência de <span class="tag">Reels</span></h1>
+    <div class="sub">Os agentes puxam estoque e foto REAIS de cada loja. Você escolhe o produto — eles montam o reel de origem.</div>
+
+    <div class="section-t">O time</div>
+    <div id="squad" class="squad"></div>
+
+    <div class="section-t">1 · Escolha a loja</div>
+    <div id="stores" class="stores"><div class="load">carregando lojas…</div></div>
+
+    <div class="section-t">2 · Escolha o produto-herói (estoque real)</div>
+    <div id="candWrap"><div class="hint">Toque numa loja acima pra ver os produtos em estoque.</div></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const API='/api/admin/reels-agency';
+const TOKEN=localStorage.getItem('tc_admin_token')||'';
+const H={ Authorization:'Bearer '+TOKEN };
+const $=(s)=>document.querySelector(s);
+let activeStore=null;
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),3200); }
+function brl(v){ return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+if(!TOKEN){
+  $('#gate').style.display='block';
+  $('#gate').innerHTML='Faça login no <b>/admin.html</b> primeiro — esta tela usa o seu token de administrador.';
+}else{
+  $('#app').style.display='block';
+  boot();
+}
+
+async function boot(){
+  try{
+    const sq=await (await fetch(API+'/squad',{headers:H})).json();
+    $('#squad').innerHTML=(sq.squad||[]).map(a=>`
+      <div class="agent"><span class="dot ${a.status==='idle'?'idle':''}"></span>
+        <div class="em">${a.emoji}</div><div class="nm">${a.name}</div><div class="rl">${a.role}</div></div>`).join('');
+  }catch(e){ $('#squad').innerHTML='<div class="empty">erro ao carregar agentes</div>'; }
+
+  try{
+    const st=await (await fetch(API+'/stores',{headers:H})).json();
+    const stores=st.stores||[];
+    if(!stores.length){ $('#stores').innerHTML='<div class="empty">nenhuma loja</div>'; return; }
+    $('#stores').innerHTML=stores.map(s=>`
+      <button class="store" data-id="${s.id}" onclick="pickStore(this,'${s.id}','${(s.name||'').replace(/'/g,'')}')">
+        <div class="sn">${s.name.replace('Sports & Tennis','S&T')}</div>
+        <div class="sd">${s.dnaHint||s.dna||''}</div>
+        <div class="sh">${s.mall||s.city||''}</div></button>`).join('');
+  }catch(e){ $('#stores').innerHTML='<div class="empty">erro ao carregar lojas</div>'; }
+}
+
+async function pickStore(el,id,name){
+  document.querySelectorAll('.store').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active'); activeStore={id,name};
+  $('#candWrap').innerHTML='<div class="load">o Estoquista está puxando o estoque real…</div>';
+  try{
+    const r=await (await fetch(API+'/candidates?storeId='+encodeURIComponent(id),{headers:H})).json();
+    const c=r.candidates||[];
+    if(!c.length){ $('#candWrap').innerHTML='<div class="empty">nenhum produto com estoque + foto + preço nessa loja.</div>'; return; }
+    $('#candWrap').innerHTML='<div class="grid">'+c.map(p=>`
+      <div class="prod">
+        <div class="ph"><img src="${p.imageUrl}" loading="lazy" onerror="this.parentNode.style.background='#14271a';this.style.display='none'"></div>
+        <div class="bd">
+          <div class="br">${p.brand||''}</div>
+          <div class="pn">${(p.name||'').replace(/REF:.*?-\s*/,'').slice(0,52)}</div>
+          <div class="meta"><span class="pr">${brl(p.price)}</span><span class="qt">${p.qt} un</span></div>
+        </div>
+        <button onclick='choose(${JSON.stringify(p.id)},${JSON.stringify((p.brand||'')+" "+(p.name||""))})'>Fazer reel disso</button>
+      </div>`).join('')+'</div>';
+  }catch(e){ $('#candWrap').innerHTML='<div class="empty">erro ao puxar candidatos</div>'; }
+}
+
+async function choose(productId,label){
+  if(!activeStore) return;
+  try{
+    const r=await fetch(API+'/pick',{method:'POST',headers:{...H,'Content-Type':'application/json'},
+      body:JSON.stringify({storeId:activeStore.id,productId})});
+    const j=await r.json();
+    if(j.ok){ toast('✅ Escolhido: '+label.slice(0,40)+' — '+activeStore.name.replace('Sports & Tennis','S&T')); }
+    else toast('erro: '+(j.error||'falhou'));
+  }catch(e){ toast('erro ao registrar'); }
+}
+</script>
+</body>
+</html>
