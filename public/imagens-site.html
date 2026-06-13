@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>IMAGENS DE SITE — Orquestrador</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --orange:#E5571E; --orange2:#EE7240; --ink:#1d1d1f; --muted:#8a8a8e;
+    --ok:#0a843d; --warn:#b25e00; --err:#d70015; --line:#e5e5ea; --bg:#f5f5f7;
+  }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1180px; margin:0 auto; padding:16px; }
+  .head { background:linear-gradient(135deg,var(--orange),var(--orange2)); color:#fff; border-radius:16px; padding:18px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .head .brand { font-size:12px; font-weight:800; letter-spacing:1px; opacity:.9; }
+  .head h1 { font-size:21px; margin:2px 0; }
+  .head .sub { font-size:13px; opacity:.92; }
+  .head .spacer { flex:1; }
+  .ctrl { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .seg { display:flex; background:rgba(255,255,255,.18); border-radius:10px; padding:3px; }
+  .seg button { background:none; border:none; color:#fff; font-weight:700; font-size:13px; padding:7px 12px; border-radius:8px; cursor:pointer; opacity:.8; }
+  .seg button.on { background:#fff; color:var(--orange); opacity:1; }
+  .run { background:#fff; color:var(--orange); border:none; font-weight:800; font-size:15px; padding:11px 18px; border-radius:11px; cursor:pointer; min-height:44px; }
+  .run:disabled { opacity:.55; cursor:default; }
+
+  .status { display:flex; align-items:center; gap:14px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin:14px 0; flex-wrap:wrap; }
+  .status .big { font-size:15px; font-weight:700; }
+  .status .pill { font-size:12px; font-weight:800; padding:4px 10px; border-radius:999px; background:#f0f0f3; color:var(--muted); }
+  .status .pill.run { background:#fff4ec; color:var(--orange); }
+  .status .pill.ok { background:#e8f7ee; color:var(--ok); }
+  .status .pill.err { background:#fde8ea; color:var(--err); }
+
+  .lanes { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  @media (max-width:900px){ .lanes{ grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:560px){ .lanes{ grid-template-columns:1fr;} }
+  .lane { background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; min-height:230px; }
+  .lane .top { padding:11px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; }
+  .lane .dot { width:10px; height:10px; border-radius:50%; background:#c7c7cc; flex:none; transition:background .2s; }
+  .lane .dot.run { background:var(--orange); box-shadow:0 0 0 4px #fff4ec; animation:pulse 1s infinite; }
+  .lane .dot.ok { background:var(--ok); } .lane .dot.warn { background:var(--warn);} .lane .dot.err { background:var(--err);}
+  @keyframes pulse { 0%{transform:scale(1);} 50%{transform:scale(1.25);} 100%{transform:scale(1);} }
+  .lane .name { font-size:13px; font-weight:800; }
+  .lane .desc { font-size:11px; color:var(--muted); padding:0 12px; margin:6px 0 4px; }
+  .lane .log { flex:1; overflow-y:auto; padding:6px 12px 12px; font-size:11px; line-height:1.5; font-family:ui-monospace,Menlo,Consolas,monospace; max-height:240px; }
+  .lane .log div { padding:1px 0; color:#444; border-bottom:1px dashed #f0f0f0; }
+  .lane .log .info{color:#555;} .lane .log .ok{color:var(--ok);} .lane .log .warn{color:var(--warn);} .lane .log .err{color:var(--err);font-weight:700;}
+
+  h2.sec { font-size:14px; font-weight:800; margin:20px 2px 10px; color:#333; }
+  .planwrap { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:760px){ .planwrap{ grid-template-columns:1fr;} }
+  .gendcol h3 { font-size:13px; font-weight:800; color:var(--orange); margin:0 0 8px; }
+  .slotgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .slot { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .slot .frame { position:relative; width:100%; background:#f0f0f3; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .slot .frame img { width:100%; height:100%; object-fit:cover; }
+  .slot .frame .empty { color:#c0c0c5; font-size:24px; }
+  .slot .frame .tag { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.62); color:#fff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px; }
+  .slot .frame .fb { position:absolute; top:6px; right:6px; background:var(--warn); color:#fff; font-size:9px; font-weight:800; padding:2px 6px; border-radius:6px; }
+  .slot .meta { padding:8px 9px; }
+  .slot .meta .brand { font-size:9px; font-weight:800; color:var(--orange); letter-spacing:.3px; }
+  .slot .meta .pname { font-size:11px; font-weight:600; line-height:1.25; max-height:28px; overflow:hidden; }
+  .slot .meta .dim { font-size:10px; color:var(--muted); margin-top:3px; }
+  .slot .meta .un { font-size:10px; font-weight:800; color:var(--ok); }
+
+  .gate { background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--muted); font-size:14px; line-height:1.6; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <div class="brand">SPORTS &amp; TENNIS · TENISCASH</div>
+      <h1>🖼️ Imagens de Site</h1>
+      <div class="sub">Orquestrador — escolhe por estoque bipado, gera, audita e publica os 22 banners da home</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="ctrl">
+      <div class="seg" id="seg">
+        <button data-g="ambos" class="on">Ambos</button>
+        <button data-g="feminino">Feminino</button>
+        <button data-g="masculino">Masculino</button>
+      </div>
+      <button class="run" id="runBtn">▶ Rodar esteira</button>
+    </div>
+  </div>
+
+  <div id="gate" class="gate hidden"></div>
+
+  <div id="app" class="hidden">
+    <div class="status">
+      <span class="dot" id="oDot" style="width:12px;height:12px;border-radius:50%;background:#c7c7cc;display:inline-block"></span>
+      <span class="big" id="oMsg">Pronto. Clique em “Rodar esteira”.</span>
+      <span class="pill" id="oState">ocioso</span>
+      <span class="pill" id="oTimer"></span>
+      <span class="pill" id="oFill"></span>
+    </div>
+
+    <div class="lanes" id="lanes"></div>
+
+    <h2 class="sec">Plano — o que vai em cada slot (preview no tamanho real)</h2>
+    <div class="planwrap" id="planwrap">
+      <div class="gendcol"><h3>FEMININO</h3><div class="slotgrid" id="grid-feminino"></div></div>
+      <div class="gendcol"><h3>MASCULINO</h3><div class="slotgrid" id="grid-masculino"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token') || '';
+const API = '/api/admin/imagens-site';
+const AGENTS = [
+  { key:'mapeador',   name:'🧭 Mapeador',   desc:'lê e memoriza os 22 slots (tamanho/local)' },
+  { key:'estoque',    name:'📦 Estoque',    desc:'escolhe o melhor BIPADO por slot, sem repetir' },
+  { key:'criador',    name:'🎨 Criador',    desc:'gera os 22 nos tamanhos exatos (foto real)' },
+  { key:'auditoria',  name:'🔍 Auditoria',  desc:'confere dimensão, produto e legibilidade' },
+  { key:'publicador', name:'🚀 Publicador', desc:'publica via FTPS + verifica ao vivo' },
+];
+let gender = 'ambos';
+let t0 = 0, timer = null;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+if (!TOKEN) {
+  document.getElementById('gate').classList.remove('hidden');
+  document.getElementById('gate').innerHTML = 'Faça login no <b>/admin.html</b> primeiro — esta tela usa o seu token de administrador.';
+} else {
+  document.getElementById('app').classList.remove('hidden');
+  buildLanes();
+  connect();
+  loadState();
+}
+
+function buildLanes(){
+  document.getElementById('lanes').innerHTML = AGENTS.map(a => `
+    <div class="lane" id="lane-${a.key}">
+      <div class="top"><span class="dot" id="dot-${a.key}"></span><span class="name">${a.name}</span></div>
+      <div class="desc">${a.desc}</div>
+      <div class="log" id="log-${a.key}"></div>
+    </div>`).join('');
+}
+
+function setDot(id, level){
+  const d = document.getElementById(id); if (!d) return;
+  d.className = (id.startsWith('dot-') ? 'dot ' : '') + (level||'');
+  if (id === 'oDot') { d.style.background = ({info:'#E5571E',ok:'#0a843d',warn:'#b25e00',err:'#d70015'}[level] || '#c7c7cc'); }
+}
+
+function pushLog(agent, ev){
+  const el = document.getElementById('log-'+agent); if (!el) return;
+  const line = document.createElement('div');
+  line.className = ev.level || 'info';
+  line.textContent = (ev.slot ? '#'+ev.slot+' ' : '') + ev.msg;
+  el.appendChild(line);
+  while (el.children.length > 90) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function onEvent(ev){
+  if (ev.agent === 'orquestrador') {
+    document.getElementById('oMsg').textContent = ev.msg;
+    setDot('oDot', ev.level);
+    if (ev.phase === 'start') { startTimer(); setState('rodando','run'); AGENTS.forEach(a=>{ document.getElementById('log-'+a.key).innerHTML=''; setDot('dot-'+a.key,''); }); clearGrids(); }
+    if (ev.phase === 'done') {
+      stopTimer(); setState(ev.level==='err'?'erro':'concluído', ev.level==='err'?'err':'ok');
+      if (ev.data) document.getElementById('oFill').textContent = (ev.data.filled+'/'+ev.data.total+' slots');
+      loadState();
+      document.getElementById('runBtn').disabled = false;
+    }
+    return;
+  }
+  pushLog(ev.agent, ev);
+  setDot('dot-'+ev.agent, ev.level === 'err' ? 'err' : (ev.phase && isLastPhaseFor(ev) ? 'ok' : 'run'));
+}
+function isLastPhaseFor(ev){ return ev.level === 'ok' && /memorizado|montado|salvo|conclu/i.test(ev.msg); }
+
+function setState(txt, cls){ const p=document.getElementById('oState'); p.textContent=txt; p.className='pill '+(cls||''); }
+function startTimer(){ t0=Date.now(); clearInterval(timer); timer=setInterval(()=>{ document.getElementById('oTimer').textContent=((Date.now()-t0)/1000).toFixed(0)+'s'; },200); }
+function stopTimer(){ clearInterval(timer); if(t0) document.getElementById('oTimer').textContent=((Date.now()-t0)/1000).toFixed(1)+'s'; }
+
+let es = null;
+function connect(){
+  if (es) es.close();
+  es = new EventSource(API + '/stream?token=' + encodeURIComponent(TOKEN));
+  es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch(_){} };
+  es.onerror = () => { /* o navegador reconecta sozinho */ };
+}
+
+async function loadState(){
+  try {
+    const r = await fetch(API + '/state', { headers:{ Authorization:'Bearer '+TOKEN } });
+    const d = await r.json();
+    if (d.plan && d.plan.plan) renderPlan(d.plan.plan);
+    document.getElementById('runBtn').disabled = !!d.running;
+    if (d.running) setState('rodando','run');
+  } catch(_){}
+}
+
+function clearGrids(){ document.getElementById('grid-feminino').innerHTML=''; document.getElementById('grid-masculino').innerHTML=''; }
+
+function renderPlan(plan){
+  clearGrids();
+  for (const it of plan) {
+    const g = it.gender; const grid = document.getElementById('grid-'+g); if (!grid) continue;
+    const [w,h] = it.dims || [1,1];
+    const p = it.product;
+    const img = p && p.imageUrl
+      ? `<img src="${esc(p.imageUrl)}" referrerpolicy="no-referrer-when-downgrade" onerror="this.outerHTML='<div class=empty>📦</div>'">`
+      : `<div class="empty">📦</div>`;
+    const fb = it.how === 'fallback' ? `<span class="fb">fallback</span>` : (it.how==='vazio' ? `<span class="fb">vazio</span>`:'');
+    const brand = p && p.brand && p.brand!=='A DEFINIR' ? `<div class="brand">${esc(p.brand)}</div>` : '';
+    const name = p ? esc(p.name) : '<i>sem produto bipado</i>';
+    const un = p ? `<span class="un">${p.bipado} un bipadas</span>` : '';
+    grid.insertAdjacentHTML('beforeend', `
+      <div class="slot">
+        <div class="frame" style="aspect-ratio:${w}/${h}">
+          <span class="tag">#${it.slot} ${esc(it.label)}</span>${fb}${img}
+        </div>
+        <div class="meta">${brand}<div class="pname">${name}</div>
+          <div class="dim">${w}×${h} · ${esc(it.section)} · ${esc(it.file||'')}</div>${un}
+        </div>
+      </div>`);
+  }
+}
+
+// controles
+document.getElementById('seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  gender = b.dataset.g;
+  [...document.querySelectorAll('#seg button')].forEach(x=>x.classList.toggle('on', x===b));
+});
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('runBtn'); btn.disabled = true;
+  const genders = gender === 'ambos' ? null : [gender];
+  try {
+    const r = await fetch(API + '/run', {
+      method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+TOKEN },
+      body: JSON.stringify({ genders }),
+    });
+    if (!r.ok) { const d = await r.json().catch(()=>({})); alert('Não rodou: ' + (d.error||r.status)); btn.disabled=false; }
+  } catch (e) { alert('Erro: '+e.message); btn.disabled=false; }
+});
+</script>
+</body>
+</html>
