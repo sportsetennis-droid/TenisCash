@@ -50,6 +50,22 @@ function inferSizeFromDescription(description) {
   return 'Único';
 }
 
+// Tamanho lido da ETIQUETA pela VISÃO (foto). A caixa de tênis mostra US/UK/EUR/CM/BR ao
+// mesmo tempo → número solto é AMBÍGUO. Regra do dono: NUNCA chutar/converter tamanho.
+// Então SÓ aceita: número marcado "BR" (ex "BR 38", "BR 39.5") no range 16–48; letra
+// (PP..XGG); ou Único. Qualquer outra coisa (US/UK/CM, número sem BR, "10/11.5", "9.5"
+// que viraria "95") → null = placeholder T-<EAN> (confirma na CAIXA ao bipar).
+function normalizeScannedSize(raw) {
+  if (!raw) return null;
+  const s = String(raw).toUpperCase().replace(',', '.').trim();
+  if (/^(U|UNICO|ÚNICO)$/.test(s)) return 'Único';
+  const mBR = s.match(/\bBR\s*0*(\d{2})(\.5)?\b/); // só número EXPLICITAMENTE BR
+  if (mBR) { const n = +mBR[1]; if (n >= 16 && n <= 48) return mBR[1] + (mBR[2] || ''); }
+  const mL = s.match(/^(PP|XGG|XG|GG|G|M|P)$/); // letra é universal (roupa)
+  if (mL) return mL[1];
+  return null; // US/UK/CM/número-sem-BR/multi-valor/lixo → placeholder, nunca chuta
+}
+
 // Variantes do código pra casar UPC-12 ↔ GTIN-13/14 (zero à esquerda).
 // A caixa traz UPC-12 (ex 195394510652); a NFe salva GTIN-13 (0195394510652).
 // O leitor lê 12 díg e não batia no banco. Aqui geramos as duas formas.
@@ -598,7 +614,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     const b64 = photo.split(',')[1];
     const r = await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 200, messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: b64 } },
-      { type: 'text', text: 'Etiqueta/caixa de produto esportivo. REGRA: se houver MAIS DE UMA etiqueta/produto na foto, considere SOMENTE a mais CENTRALIZADA/em destaque — ignore as de canto/fundo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"tamanho BR/letra visível ou null"}. Copie LITERAL, não invente.' },
+      { type: 'text', text: 'Etiqueta/caixa de produto esportivo. REGRA: se houver MAIS DE UMA etiqueta/produto na foto, considere SOMENTE a mais CENTRALIZADA/em destaque — ignore as de canto/fundo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"SÓ o tamanho BRASILEIRO, prefixado BR (ex \\"BR 38\\", \\"BR 39.5\\"). Se a etiqueta só mostra US/UK/EUR/CM e NENHUM BR, devolva null. Roupa = letra PP/P/M/G/GG."}. Copie LITERAL, não invente.' },
     ] }] });
     const t = (r.content.find((c) => c.type === 'text') || {}).text || '';
     const m = t.match(/\{[\s\S]*\}/);
@@ -635,7 +651,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
       const cands = await prisma.product.findMany({ where: { active: true, AND: tokens.map((t) => ({ name: { contains: t, mode: 'insensitive' } })) }, select: { id: true, name: true, sizes: { select: { id: true, size: true, barcode: true } } }, take: 3 });
       if (cands.length === 1) {
         const card = cands[0];
-        const tamLido = lido.tamanho ? String(lido.tamanho).replace(/[^0-9A-Z]/gi, '').replace(/^BR/i, '') : null;
+        const tamLido = normalizeScannedSize(lido.tamanho);
         let ps = card.sizes.find((s) => s.barcode === ean)
           || (tamLido ? card.sizes.find((s) => String(s.size) === tamLido && (!s.barcode || /GTIN/i.test(String(s.barcode)))) : null);
         if (!ps && tamLido) ps = await prisma.productSize.create({ data: { productId: card.id, barcode: ean, size: tamLido, stock: 0 } }).catch(() => null);
@@ -768,7 +784,7 @@ async function tratarPendentesEtiqueta() {
         // sozinha quando o card real existir / NFe ligar. Re-ligar só com de-para caixa↔NFe resolvido.
         if (pid) {
           const bc2 = ean2 || sku;
-          const tam2 = (sku && sizeDoSku(sku)) || (lido && lido.tamanho ? String(lido.tamanho).replace(/[^0-9A-Z]/gi, '').replace(/^BR/i, '') : null);
+          const tam2 = (sku && sizeDoSku(sku)) || normalizeScannedSize(lido && lido.tamanho);
           let ps2 = await prisma.productSize.findFirst({ where: { barcode: bc2 }, select: { id: true } });
           if (!ps2) ps2 = await prisma.productSize.create({ data: { productId: pid, barcode: bc2, size: tam2 || ('T-' + String(bc2).slice(-6)), stock: 0 } }).catch(() => null);
           if (ps2) psId = ps2.id;
