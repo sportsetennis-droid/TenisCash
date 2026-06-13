@@ -14,6 +14,8 @@ let curador = null;
 try { curador = require('./curationAgent'); } catch (_) {}
 let nsHandlers = null;
 try { nsHandlers = require('./nuvemshopHandlers'); } catch (_) {}
+let brandBrain = null;
+try { brandBrain = require('./brandBrain'); } catch (_) {}
 
 const AGENTES = ['classificador', 'fotografo', 'designer', 'auditor', 'publicador'];
 
@@ -83,6 +85,21 @@ async function caminhosValidos() {
 async function agenteClassificador(runId, product, paths) {
   await log(runId, 'classificador', 'trabalhando', 'analisando ' + (product.name || '').slice(0, 50), product);
   if (isFull(product)) { await log(runId, 'classificador', 'skip', 'já classificado nas 4', product); return true; }
+  // CÉREBRO DE MARCA primeiro (determinístico, sem chute): resolve categoria+subcategoria+modalidade
+  // pela linha do modelo. Especialidade NÃO sai daqui (vem da descrição/humano). Só usa se o
+  // caminho existir na árvore. Se a marca/linha não for conhecida, cai pro Haiku abaixo.
+  try {
+    const bb = brandBrain && brandBrain.classify(product.brand, product.name);
+    if (bb && bb.category && bb.subcategory && bb.modality &&
+        paths.some((p) => p.category === bb.category && p.subcategory === bb.subcategory && p.modality === bb.modality)) {
+      const ctx = ctxOf(product);
+      ctx.classification = { ...(ctx.classification || {}), category: bb.category, subcategory: bb.subcategory, modality: bb.modality, classifiedBy: 'brandBrain' };
+      await prisma.product.update({ where: { id: product.id }, data: { category: bb.category, subcategory: bb.subcategory, aiContext: ctx } });
+      product.category = bb.category; product.subcategory = bb.subcategory; product.aiContext = ctx;
+      await log(runId, 'classificador', 'ok', 'marca › ' + bb.category + ' › ' + bb.subcategory + ' › ' + bb.modality + ' (especialidade p/ humano)', product);
+      await bump(runId, 'classified'); return true;
+    }
+  } catch (_) { /* desconhecido → Haiku */ }
   // monta lista compacta de caminhos válidos
   const lista = paths.map((p, i) => i + ') ' + p.category + ' > ' + p.subcategory + ' > ' + p.modality + ' > ' + p.specialty).join('\n');
   let nfeDesc = '';
