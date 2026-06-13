@@ -101,11 +101,20 @@ function isAdidas(brand) {
   return String(brand || '').toUpperCase().includes('ADIDAS');
 }
 
-// needsSize = bipe de ADIDAS com tamanho ainda NÃO confirmado por caixa física.
-// Cobre placeholder (T-<EAN>/?) E chute antigo de importação (número presente
-// mas sizeConfirmedAt null). Confirmou uma vez → nunca mais pede.
+// Marcas onde o tamanho BR só é confiável LIDO DA CAIXA pela pessoa (NFe/OCR erram):
+//  - ADIDAS: a NFe não traz o tamanho (só a faixa).
+//  - NIKE: a NFe não traz tamanho E a caixa mostra US/UK/EUR/cm/BR juntos — o OCR
+//    confunde (gravava EUR no lugar do BR, ex BECO box BR 41 virou 43). Conferido 2026-06-13.
+function needsBoxSize(brand) {
+  const b = String(brand || '').toUpperCase();
+  return b.includes('ADIDAS') || b.includes('NIKE');
+}
+
+// needsSize = bipe de marca-caixa (Adidas/Nike) com tamanho ainda NÃO confirmado por caixa física.
+// Cobre placeholder (T-<EAN>/?) E número não-confirmado (sizeConfirmedAt null).
+// Confirmou uma vez → nunca mais pede.
 function needsManualSize(brand, productSizeRow) {
-  if (!isAdidas(brand)) return false;
+  if (!needsBoxSize(brand)) return false;
   if (!productSizeRow) return false;
   return !productSizeRow.sizeConfirmedAt;
 }
@@ -260,7 +269,7 @@ router.post('/bipe', async (req, res) => {
           // Regra Adidas: checa o estado ATUAL do ProductSize (snapshot pode estar velho)
           let needsSizeIdem = false;
           let sizeOptionsIdem;
-          if (existing.productSizeId && isAdidas(existing.productBrand)) {
+          if (existing.productSizeId && needsBoxSize(existing.productBrand)) {
             try {
               const psNow = await prisma.productSize.findUnique({ where: { id: existing.productSizeId }, select: { size: true, sizeConfirmedAt: true } });
               needsSizeIdem = needsManualSize(existing.productBrand, psNow);
@@ -345,9 +354,9 @@ router.post('/bipe', async (req, res) => {
           orderBy: { createdAt: 'desc' },
         });
         if (nfeItem && nfeItem.product) {
-          // ADIDAS: a NFe NUNCA traz o tamanho por código (levantamento 2026-06-09) —
-          // inferir da descrição dá lixo. Cria como placeholder → modal pede o da caixa.
-          const sizeStr = isAdidas(nfeItem.product.brand)
+          // ADIDAS/NIKE: a NFe não traz o tamanho por código — inferir da descrição dá lixo.
+          // Cria como placeholder → modal pede o da caixa (BR). (Nike incluída 2026-06-13.)
+          const sizeStr = needsBoxSize(nfeItem.product.brand)
             ? ('T-' + code)
             : inferSizeFromDescription(nfeItem.description);
           try {
