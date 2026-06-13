@@ -52,7 +52,7 @@ model User {
   favBrands      String?
 
   // Dados do vendedor (apenas role=seller)
-  storeId      String?   // loja PRINCIPAL (default no login pessoal)
+  storeId      String? // loja PRINCIPAL (default no login pessoal)
   store        Store?    @relation(fields: [storeId], references: [id])
   storeIds     String[]  @default([]) // TODAS as lojas onde o vendedor atua (multi-loja); inclui a principal
   hireDate     DateTime?
@@ -164,12 +164,12 @@ model WebauthnCredential {
 // pra aparelhos SEM biometria de hardware. Guarda só o "descriptor" (128 números do rosto),
 // NUNCA a foto. Menos seguro que Face ID (câmera 2D pode ser enganada por foto) — só onde o dono aceitar.
 model FaceDescriptor {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   descriptor Float[] // 128 floats do face-api (NÃO é a imagem)
   label      String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
   @@index([userId])
@@ -426,12 +426,12 @@ model AIConversation {
 }
 
 model ProductSize {
-  id        String  @id @default(uuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  size      String
-  stock     Int     @default(0) // estoque AGREGADO (legado) — fonte da verdade vira StoreStock
-  barcode   String?
+  id              String    @id @default(uuid())
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id])
+  size            String
+  stock           Int       @default(0) // estoque AGREGADO (legado) — fonte da verdade vira StoreStock
+  barcode         String?
   // Tamanho CONFIRMADO por leitura da CAIXA física (fluxo manual do bipe).
   // null = veio de NFe/import/chute — pra Adidas, o bipe pede confirmação.
   // Caixa VENCE chute: tamanho confirmado nunca é remanejado por conflito.
@@ -499,22 +499,22 @@ model SellerClient {
 // ============================================================
 
 model Sale {
-  id            String        @id @default(uuid())
-  sellerId      String
-  seller        User          @relation("sellerSales", fields: [sellerId], references: [id])
-  clientId      String?
-  client        SellerClient? @relation(fields: [clientId], references: [id])
-  storeId       String?
-  totalAmount   Float
-  discount      Float         @default(0) // desconto em R$ aplicado na venda (já embutido no totalAmount líquido)
-  tcUsed        Float         @default(0)
-  tcEarned      Float         @default(0)
-  paymentMethod String?
-  status        String        @default("completed")
-  erpReference  String?
-  pagbankOrderId String?      // PagBank order id (ORDE_...) do PIX-QR; webhook mapeia por aqui
-  note          String?
-  createdAt     DateTime      @default(now())
+  id             String        @id @default(uuid())
+  sellerId       String
+  seller         User          @relation("sellerSales", fields: [sellerId], references: [id])
+  clientId       String?
+  client         SellerClient? @relation(fields: [clientId], references: [id])
+  storeId        String?
+  totalAmount    Float
+  discount       Float         @default(0) // desconto em R$ aplicado na venda (já embutido no totalAmount líquido)
+  tcUsed         Float         @default(0)
+  tcEarned       Float         @default(0)
+  paymentMethod  String?
+  status         String        @default("completed")
+  erpReference   String?
+  pagbankOrderId String? // PagBank order id (ORDE_...) do PIX-QR; webhook mapeia por aqui
+  note           String?
+  createdAt      DateTime      @default(now())
 
   items       SaleItem[]
   commissions SaleCommission[]
@@ -3375,17 +3375,17 @@ model ServiceAppointment {
 // ----- Serviços: gestão do estabelecimento (comanda, caixa, produtos, avaliação, lista de espera) -----
 
 model VenueProduct {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   venueId   String
   name      String
-  price     Float    @default(0)
-  cost      Float    @default(0)
-  stock     Int      @default(0)
-  minStock Int @default(0)
+  price     Float     @default(0)
+  cost      Float     @default(0)
+  stock     Int       @default(0)
+  minStock  Int       @default(0)
   expiresAt DateTime?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([venueId, active])
 }
@@ -3479,33 +3479,33 @@ model AppointmentWaitlist {
 // ----- Paridade AppBarber: pacotes, financeiro, estoque+, marketing, clube -----
 
 model ServicePackage {
-  id           String   @id @default(cuid())
+  id           String            @id @default(cuid())
   venueId      String
   name         String
   sessions     Int
   price        Float
   validityDays Int?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
   purchases    PackagePurchase[]
 
   @@index([venueId])
 }
 
 model PackagePurchase {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   venueId       String
   packageId     String
   clientUserId  String?
   customerName  String?
   customerPhone String?
   sessionsTotal Int
-  sessionsUsed  Int      @default(0)
+  sessionsUsed  Int                 @default(0)
   pricePaid     Float
   expiresAt     DateTime?
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  package       ServicePackage    @relation(fields: [packageId], references: [id])
+  status        String              @default("active")
+  createdAt     DateTime            @default(now())
+  package       ServicePackage      @relation(fields: [packageId], references: [id])
   uses          PackageSessionUse[]
 
   @@index([venueId])
@@ -3514,10 +3514,10 @@ model PackagePurchase {
 }
 
 model PackageSessionUse {
-  id            String   @id @default(cuid())
+  id            String          @id @default(cuid())
   purchaseId    String
   appointmentId String?
-  usedAt        DateTime @default(now())
+  usedAt        DateTime        @default(now())
   purchase      PackagePurchase @relation(fields: [purchaseId], references: [id])
 
   @@index([purchaseId])
@@ -3570,56 +3570,58 @@ model Receivable {
 }
 
 model StockMovement {
-  id              String   @id @default(cuid())
-  venueId         String
-  venueProductId  String
-  type            String
-  qty             Int
-  reason          String?
-  createdById     String?
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  venueId        String
+  venueProductId String
+  type           String
+  qty            Int
+  reason         String?
+  createdById    String?
+  createdAt      DateTime @default(now())
 
   @@index([venueId, createdAt])
   @@index([venueProductId])
 }
 
 model MarketingCampaign {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   venueId   String
   type      String
   title     String
   message   String
   segment   String?
-  status    String   @default("draft")
-  createdAt DateTime @default(now())
+  status    String       @default("draft")
+  createdAt DateTime     @default(now())
   logs      MessageLog[]
+
   @@index([venueId])
 }
 
 model MessageLog {
-  id            String            @id @default(cuid())
+  id            String             @id @default(cuid())
   venueId       String
   campaignId    String?
   clientUserId  String?
   customerName  String?
   customerPhone String?
-  channel       String            @default("whatsapp")
-  status        String            @default("queued")
-  createdAt     DateTime          @default(now())
+  channel       String             @default("whatsapp")
+  status        String             @default("queued")
+  createdAt     DateTime           @default(now())
   campaign      MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
   @@index([venueId])
   @@index([campaignId])
 }
 
 model ServiceClubTier {
-  id          String   @id @default(cuid())
+  id          String                  @id @default(cuid())
   venueId     String
   name        String
-  monthlyFee  Float    @default(0)
-  discountPct Float    @default(0)
+  monthlyFee  Float                   @default(0)
+  discountPct Float                   @default(0)
   benefits    String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  active      Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
   memberships ServiceClubMembership[]
 
   @@index([venueId])
@@ -3990,7 +3992,7 @@ model DigitalSale {
   cashbackAmount  Float @default(0) // TenisCash pro comprador
 
   // Pagamento
-  settlementMode String @default("off_platform") // off_platform | on_platform
+  settlementMode String  @default("off_platform") // off_platform | on_platform
   method         String? // pix | card | boleto
   installments   Int     @default(1)
 
@@ -4135,4 +4137,40 @@ model DesapegaListing {
   @@index([status, createdAt])
   @@index([sellerPhone])
   @@index([category, status])
+}
+
+// =====================================================================
+// AGENTES — Esteira "Classificação de Card" (orquestrador + sub-agentes)
+// Painel ao vivo em /classificacao.html
+// =====================================================================
+model AgentRun {
+  id         String    @id @default(cuid())
+  brand      String?
+  status     String    @default("running") // running | paused | done | error
+  total      Int       @default(0)
+  done       Int       @default(0)
+  classified Int       @default(0)
+  photo      Int       @default(0)
+  needsArt   Int       @default(0)
+  audited    Int       @default(0)
+  published  Int       @default(0)
+  errors     Int       @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([status])
+}
+
+model AgentEvent {
+  id          String   @id @default(cuid())
+  runId       String?
+  agent       String // orquestrador | classificador | fotografo | designer | auditor | publicador
+  productId   String?
+  productName String?
+  status      String // info | trabalhando | ok | erro | skip | arte
+  message     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([runId, createdAt])
+  @@index([createdAt])
 }

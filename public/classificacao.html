@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Esteira de Classificação — Agentes</title>
+<style>
+  :root{ --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a323d; --txt:#e6edf3; --mut:#8b949e; --or:#E5571E; --gr:#2ea043; --rd:#da3633; --bl:#388bfd; --am:#d29922; --pp:#a371f7; }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px}
+  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  h1{font-size:17px;margin:0;font-weight:700}.dot{width:9px;height:9px;border-radius:50%;background:#444;display:inline-block;margin-right:6px}
+  .dot.on{background:var(--gr);box-shadow:0 0 8px var(--gr);animation:pulse 1.2s infinite}.dot.pa{background:var(--am)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  select,button{font:inherit;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);padding:8px 12px;cursor:pointer}
+  button.primary{background:var(--or);border-color:var(--or);color:#fff;font-weight:700}button.ghost{background:transparent}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .wrap{padding:16px;max-width:1200px;margin:0 auto}
+  .counters{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px}
+  .ct{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .ct .n{font-size:22px;font-weight:800}.ct .l{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+  .lanes{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px}
+  .lane{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;min-height:96px}
+  .lane h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);display:flex;align-items:center;gap:6px}
+  .lane .now{font-size:13px;line-height:1.35;min-height:34px}.lane .idle{color:var(--mut);font-style:italic}
+  .lane.act{border-color:var(--or);box-shadow:0 0 0 1px var(--or) inset}
+  .badge{font-size:10px;padding:2px 6px;border-radius:5px;font-weight:700}
+  .feed{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .feed .fh{padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:13px;display:flex;justify-content:space-between}
+  .ev{padding:7px 14px;border-bottom:1px solid #20262e;display:flex;gap:10px;align-items:baseline;font-size:13px}
+  .ev:nth-child(even){background:#12171e}
+  .ev .t{color:var(--mut);font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .ev .ag{font-weight:700;min-width:96px;font-size:11px;text-transform:uppercase}
+  .ev .m{flex:1}.ev .p{color:var(--mut);font-size:11px}
+  .s-ok{color:var(--gr)}.s-erro{color:var(--rd)}.s-trabalhando{color:var(--bl)}.s-skip{color:var(--mut)}.s-arte{color:var(--pp)}.s-info{color:var(--am)}
+  .ag-classificador{color:var(--bl)}.ag-fotografo{color:var(--gr)}.ag-designer{color:var(--pp)}.ag-auditor{color:var(--am)}.ag-publicador{color:var(--or)}.ag-orquestrador{color:var(--txt)}
+  @media(max-width:820px){.counters{grid-template-columns:repeat(4,1fr)}.lanes{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 Esteira de Classificação</h1>
+  <span id="live"><span class="dot" id="dot"></span><span id="livetxt" style="font-size:12px;color:var(--mut)">parada</span></span>
+  <div style="flex:1"></div>
+  <select id="brand"><option value="">Carregando marcas…</option></select>
+  <button class="primary" id="btnStart">▶ Iniciar</button>
+  <button class="ghost" id="btnPause" disabled>⏸ Pausar</button>
+  <button class="ghost" id="btnStop" disabled>⏹ Parar</button>
+</header>
+<div class="wrap">
+  <div class="counters" id="counters"></div>
+  <div class="lanes" id="lanes"></div>
+  <div class="feed">
+    <div class="fh"><span>📜 O que os agentes estão fazendo</span><span id="evcount" style="color:var(--mut);font-weight:400"></span></div>
+    <div id="feed"></div>
+  </div>
+</div>
+<script>
+const TOKEN = localStorage.getItem('tc_admin_token');
+if(!TOKEN){ document.body.innerHTML='<div style="padding:40px;text-align:center">Faça login no <a href="/admin.html" style="color:#E5571E">/admin</a> primeiro.</div>'; }
+const api = (path,method='GET',body)=>fetch('/api/classification'+path,{method,headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json());
+const AG=[['classificador','🏷️ Classificador'],['fotografo','📷 Fotógrafo'],['designer','🎨 Designer'],['auditor','🔍 Auditor'],['publicador','🛒 Publicador']];
+const CT=[['total','Fila'],['classified','Classificados'],['photo','Com foto'],['needsArt','Precisa arte'],['audited','Auditados'],['published','Publicados'],['errors','Erros']];
+let lastId=null, seen=new Set();
+
+function renderLanes(atual){
+  document.getElementById('lanes').innerHTML = AG.map(([k,label])=>{
+    const a = atual && atual[k];
+    const act = a ? ' act':'';
+    const inner = a ? ('<div class="now"><span class="badge s-'+(a.status||'')+'">'+(a.status||'')+'</span><br>'+esc(a.productName||'')+'</div>') : '<div class="now idle">aguardando…</div>';
+    return '<div class="lane'+act+'"><h3 class="ag-'+k+'">'+label+'</h3>'+inner+'</div>';
+  }).join('');
+}
+function renderCounters(run){
+  document.getElementById('counters').innerHTML = CT.map(([k,l])=>{
+    const v = run? (run[k]||0):0;
+    return '<div class="ct"><div class="n">'+v+'</div><div class="l">'+l+'</div></div>';
+  }).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function addEvents(evs){
+  const feed=document.getElementById('feed');
+  for(const e of evs){
+    if(seen.has(e.id))continue; seen.add(e.id); lastId=e.id;
+    const t=new Date(e.createdAt).toLocaleTimeString('pt-BR',{timeZone:'America/Fortaleza',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const div=document.createElement('div'); div.className='ev';
+    div.innerHTML='<span class="t">'+t+'</span><span class="ag ag-'+e.agent+'">'+e.agent+'</span><span class="m s-'+e.status+'">'+esc(e.message)+'</span><span class="p">'+esc(e.productName||'')+'</span>';
+    feed.insertBefore(div, feed.firstChild);
+  }
+  while(feed.children.length>200) feed.removeChild(feed.lastChild);
+  document.getElementById('evcount').textContent = seen.size+' eventos';
+}
+async function tick(){
+  try{
+    const st=await api('/status');
+    const running = st.state && st.state.running, paused = st.state && st.state.paused;
+    document.getElementById('dot').className='dot'+(running&&!paused?' on':paused?' pa':'');
+    document.getElementById('livetxt').textContent = running?(paused?'pausada':'trabalhando…'):'parada';
+    document.getElementById('btnStart').disabled = running;
+    document.getElementById('btnPause').disabled = !running;
+    document.getElementById('btnPause').textContent = paused?'▶ Retomar':'⏸ Pausar';
+    document.getElementById('btnStop').disabled = !running;
+    renderLanes(st.state&&st.state.atual); renderCounters(st.run);
+    const ev=await api('/events'+(lastId?('?since='+lastId):'')); if(ev.events) addEvents(ev.events);
+  }catch(_){}
+}
+async function loadBrands(){
+  const d=await api('/brands'); const sel=document.getElementById('brand');
+  sel.innerHTML='<option value="">— marca (faltando classificar) —</option>'+(d.brands||[]).map(b=>'<option value="'+esc(b.brand)+'">'+esc(b.brand)+' ('+b.faltam+' faltam)</option>').join('');
+}
+document.getElementById('btnStart').onclick=async()=>{ const brand=document.getElementById('brand').value; if(!brand && !confirm('Sem marca = roda o catálogo TODO. Continuar?'))return; await api('/start','POST',{brand}); lastId=null; seen.clear(); document.getElementById('feed').innerHTML=''; tick(); };
+document.getElementById('btnPause').onclick=async()=>{ const st=await api('/status'); if(st.state&&st.state.paused){await api('/resume','POST');}else{await api('/pause','POST');} tick(); };
+document.getElementById('btnStop').onclick=async()=>{ if(confirm('Parar a esteira?')){await api('/stop','POST'); tick();} };
+if(TOKEN){ loadBrands(); tick(); setInterval(tick,2000); }
+</script>
+</body>
+</html>
