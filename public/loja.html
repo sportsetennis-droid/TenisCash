@@ -1325,7 +1325,9 @@ async function api(path, opts = {}) {
   const headers = opts.headers || {};
   headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const r = await fetch(API + path, { ...opts, headers });
+  // no-store: dados da loja (preço/estoque/catálogo) mudam o tempo todo —
+  // nunca servir do cache do navegador (causava "preço/estoque velho na tela").
+  const r = await fetch(API + path, { ...opts, headers, cache: 'no-store' });
   if (r.status === 401) { logout(); throw new Error('Sessão expirada'); }
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || `Erro ${r.status}`); }
   return r.json();

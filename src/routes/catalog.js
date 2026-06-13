@@ -113,6 +113,8 @@ function addStoreStockSummary(card, storeId, store = null, stockScope = 'mine') 
 
 router.get('/products', optionalCatalogAuth, async (req, res) => {
   try {
+    // preço/estoque mudam o tempo todo — nunca deixar o navegador servir do cache
+    res.set('Cache-Control', 'no-store');
     const myStore = await resolveMyStoreScope(req);
     const search = String(req.query.search || req.query.q || '').trim();
     const brand = String(req.query.brand || '').trim();
