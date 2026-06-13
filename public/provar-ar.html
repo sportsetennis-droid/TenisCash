@@ -12,7 +12,6 @@
     #ar-screen { position:fixed; inset:0; width:100%; height:100%; background:#000; z-index:1; }
     #ar-screen canvas { width:100% !important; height:100% !important; object-fit:cover; }
 
-    /* overlays */
     .layer { position:fixed; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center;
              text-align:center; padding:24px; gap:16px; }
     .layer.hide { display:none; }
@@ -27,7 +26,6 @@
     .spinner { width:42px; height:42px; border:4px solid rgba(255,255,255,.2); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* top bar */
     #top { position:fixed; top:0; left:0; right:0; z-index:6; display:flex; align-items:center; justify-content:space-between;
            padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:linear-gradient(180deg,rgba(0,0,0,.6),transparent); }
     .pill { background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
@@ -35,11 +33,9 @@
     .x { width:38px; height:38px; border-radius:999px; background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15);
          color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; text-decoration:none; }
 
-    /* hint */
     #hint { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
     #hint .box { background:rgba(0,0,0,.55); backdrop-filter:blur(10px); padding:12px 18px; border-radius:14px; font-size:15px; font-weight:600; }
 
-    /* bottom bar */
     #bottom { position:fixed; left:0; right:0; bottom:0; z-index:6; padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);
               display:flex; gap:10px; align-items:center; background:linear-gradient(0deg,rgba(0,0,0,.8),transparent); }
     .btn { min-height:54px; border-radius:14px; border:0; font-size:16px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
@@ -47,12 +43,11 @@
     .btn.buy { flex:1; background:var(--ok); color:#063; }
     .demo-badge { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 84px); z-index:6;
                   background:rgba(0,0,0,.55); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
-                  padding:6px 12px; font-size:11px; font-weight:700; color:#ffd27a; }
+                  padding:6px 12px; font-size:11px; font-weight:700; color:#ffd27a; max-width:90%; text-align:center; }
     .hide { display:none !important; }
   </style>
 </head>
 <body>
-  <!-- DeepAR renders here -->
   <div id="ar-screen" class="hide"></div>
 
   <!-- START (tap to open camera — needed for iOS gesture) -->
@@ -62,13 +57,13 @@
     <h1>Provador AR</h1>
     <p class="sub">Aponte a câmera para os seus <b>pés</b> e veja o tênis no seu pé, em tempo real.</p>
     <button class="cta" id="startBtn">▶️ Abrir a câmera</button>
-    <p class="sub" style="font-size:12px;opacity:.7">Vai pedir permissão da câmera — toque em <b>Permitir</b>.</p>
+    <p class="sub" style="font-size:12px;opacity:.7">Vai pedir permissão da câmera — toque em <b>Permitir</b>. No 1º uso pode levar alguns segundos pra carregar.</p>
   </div>
 
   <!-- LOADING -->
   <div id="loading" class="layer hide">
     <div class="spinner"></div>
-    <p class="sub" id="loadingMsg">Iniciando o provador…</p>
+    <p class="sub" id="loadingMsg">Iniciando…</p>
   </div>
 
   <!-- ERROR -->
@@ -89,7 +84,7 @@
   <!-- HINT -->
   <div id="hint" class="hide"><div class="box">👇 Aponte para os seus pés</div></div>
 
-  <!-- DEMO BADGE -->
+  <!-- DEMO/STATUS BADGE -->
   <div id="demoBadge" class="demo-badge hide">Tênis demonstração — nosso catálogo vem já já</div>
 
   <!-- BOTTOM BAR -->
@@ -105,69 +100,86 @@
     function show(id){ $(id).classList.remove('hide'); }
     function hide(id){ $(id).classList.add('hide'); }
     function showLayer(id){ ['start','loading','error'].forEach(hide); if(id) show(id); }
-
-    let deepAR = null;
-
-    async function getLicenseKey(){
-      try {
-        const r = await fetch('/api/tryon/ar-config', { cache:'no-store' });
-        const j = await r.json();
-        return j.licenseKey || '';
-      } catch(e){ return ''; }
+    function setMsg(t){ $('loadingMsg').textContent = t; }
+    function emsg(e){ return String((e && (e.message||e.name)) || e || 'erro'); }
+    function withTimeout(p, ms, tag){
+      return Promise.race([ p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('demorou demais ('+tag+')')), ms)) ]);
     }
+
+    let deepAR = null, camStream = null, camVideo = null, licenseKey = '';
+
+    // Pré-carrega a chave AGORA (no load), pra que no toque do botão não haja
+    // nenhum 'await' antes de pedir a câmera — senão o iOS bloqueia a permissão.
+    (async function preload(){
+      try { const r = await fetch('/api/tryon/ar-config',{cache:'no-store'}); licenseKey = (await r.json()).licenseKey || ''; } catch(e){}
+    })();
 
     async function startAR(){
       showLayer('loading');
-      $('loadingMsg').textContent = 'Iniciando o provador…';
+      setMsg('Pedindo acesso à câmera…');
 
-      const licenseKey = await getLicenseKey();
-      if(!licenseKey){
-        return fail('Provador indisponível', 'A configuração do provador AR não está pronta no servidor. Avise o suporte.');
-      }
-
-      if(typeof deepar === 'undefined'){
-        return fail('Falha ao carregar', 'A biblioteca de AR não carregou. Verifique sua internet e tente de novo.');
-      }
-
-      $('loadingMsg').textContent = 'Abrindo a câmera e o tênis 3D…';
-      const initOpts = (effect) => ({
-        licenseKey,
-        previewElement: $('ar-screen'),
-        effect,
-        additionalOptions: { cameraConfig: { facingMode: 'environment' } } // câmera traseira (aponta pros pés)
-      });
-
+      // 1) CÂMERA PRIMEIRO, dentro do toque (crítico no iPhone). Traseira = aponta pros pés.
       try {
-        deepAR = await deepar.initialize(initOpts('/effects/Shoe_PBR.deepar'));
-      } catch(e1){
-        console.warn('Shoe_PBR falhou, tentando Shoe:', e1);
+        camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } }, audio:false });
+      } catch(e){
+        return fail('Câmera bloqueada',
+          'Toque em "Tentar de novo" e escolha PERMITIR a câmera. Se já negou antes, libere a câmera nas configurações do navegador para este site. (' + emsg(e) + ')');
+      }
+      camVideo = document.createElement('video');
+      camVideo.setAttribute('playsinline',''); camVideo.muted = true; camVideo.autoplay = true;
+      camVideo.style.cssText = 'position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+      camVideo.srcObject = camStream; document.body.appendChild(camVideo);
+      try { await camVideo.play(); } catch(e){}
+
+      // 2) Biblioteca + chave
+      if(typeof deepar === 'undefined') return fail('Falha ao carregar', 'A biblioteca de AR não baixou. Confira a internet e tente de novo.');
+      if(!licenseKey){ try { const r=await fetch('/api/tryon/ar-config',{cache:'no-store'}); licenseKey=(await r.json()).licenseKey||''; } catch(e){} }
+      if(!licenseKey) return fail('Provador indisponível', 'A configuração do provador não está pronta no servidor.');
+
+      // 3) Inicia o DeepAR SEM a câmera dele (usamos a nossa). Sem efeito = câmera aparece rápido.
+      setMsg('Iniciando o motor AR… (pode levar alguns segundos)');
+      let effPreloaded = false;
+      try {
+        deepAR = await withTimeout(deepar.initialize({
+          licenseKey, previewElement: $('ar-screen'),
+          additionalOptions: { cameraConfig: { disableDefaultCamera: true } }
+        }), 45000, 'motor');
+      } catch(e){
+        // alguns builds exigem um efeito já no init — tenta com o tênis direto
         try {
-          deepAR = await deepar.initialize(initOpts('/effects/Shoe.deepar'));
-        } catch(e2){
-          console.error(e2);
-          const denied = String(e2 && e2.message || '').toLowerCase().includes('permission');
-          return fail(
-            denied ? 'Câmera bloqueada' : 'Não consegui iniciar',
-            denied ? 'Você precisa permitir o acesso à câmera nas configurações do navegador e tentar de novo.'
-                   : 'Tente de novo. Se persistir, use o provador simples por enquanto.'
-          );
-        }
+          deepAR = await withTimeout(deepar.initialize({
+            licenseKey, previewElement: $('ar-screen'), effect: '/effects/Shoe_PBR.deepar',
+            additionalOptions: { cameraConfig: { disableDefaultCamera: true } }
+          }), 45000, 'motor2');
+          effPreloaded = true;
+        } catch(e2){ return fail('Não consegui iniciar o AR', emsg(e2) + '. Tente de novo, de preferência no Wi-Fi.'); }
       }
 
-      // Foot tracking carrega sob demanda com o efeito; força o preload pra detectar o pé mais rápido.
+      // 4) Liga a NOSSA câmera + foot tracking. Mostra a câmera já.
+      try { deepAR.setVideoElement(camVideo, false); } catch(e){ return fail('Erro ligando a câmera', emsg(e)); }
       try { deepAR.initializeFootTracking(); } catch(e){}
-
-      // UI do provador
       showLayer(null);
       show('ar-screen'); show('top'); show('bottom'); show('hint'); show('demoBadge');
+
+      // 5) Carrega o tênis demo POR CIMA (se falhar, a câmera/pé continua valendo = diagnóstico).
+      let effOk = effPreloaded;
+      if(!effOk){
+        $('demoBadge').textContent = 'Carregando o tênis demo…';
+        for(const eff of ['/effects/Shoe_PBR.deepar','/effects/Shoe.deepar']){
+          try { await withTimeout(deepAR.switchEffect(eff), 35000, 'efeito'); effOk = true; break; }
+          catch(e){ console.warn('efeito falhou:', eff, e); }
+        }
+      }
+      $('demoBadge').textContent = effOk
+        ? 'Tênis demonstração — nosso catálogo vem já já'
+        : '⚠️ Câmera e pé OK, mas o tênis demo não renderizou — me avise!';
       setTimeout(()=>hide('hint'), 6000);
     }
 
     function fail(title, msg){
+      try { if(camStream){ camStream.getTracks().forEach(t=>t.stop()); } } catch(e){}
       if(deepAR){ try{ deepAR.shutdown && deepAR.shutdown(); }catch(e){} deepAR=null; }
-      $('errTitle').textContent = title;
-      $('errMsg').textContent = msg;
-      showLayer('error');
+      $('errTitle').textContent = title; $('errMsg').textContent = msg; showLayer('error');
     }
 
     async function takeShot(){
