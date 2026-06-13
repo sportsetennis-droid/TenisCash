@@ -6,14 +6,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Provador AR — Sports & Tennis</title>
   <style>
-    :root { --primary:#E5571E; --bg:#0d0d0f; --ok:#25D366; }
+    :root { --primary:#E5571E; --bg:#0d0d0f; --ok:#25D366; --green:#7CFC9E; }
     * { box-sizing:border-box; -webkit-tap-highlight-color:rgba(0,0,0,0); }
     html,body { margin:0; height:100%; background:var(--bg); color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden; }
     #ar-screen { position:fixed; inset:0; width:100%; height:100%; background:#000; z-index:1; }
     #ar-screen canvas { width:100% !important; height:100% !important; object-fit:cover; }
 
-    .layer { position:fixed; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center;
-             text-align:center; padding:24px; gap:16px; }
+    .layer { position:fixed; inset:0; z-index:9; display:flex; flex-direction:column; align-items:center; justify-content:center;
+             text-align:center; padding:24px; gap:16px; background:var(--bg); }
     .layer.hide { display:none; }
     .logo { font-weight:900; letter-spacing:.5px; font-size:15px; opacity:.9; }
     .logo b { color:var(--primary); }
@@ -33,31 +33,63 @@
     .x { width:38px; height:38px; border-radius:999px; background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15);
          color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; text-decoration:none; }
 
-    #hint { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
+    #hint { position:fixed; top:42%; left:50%; transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
     #hint .box { background:rgba(0,0,0,.55); backdrop-filter:blur(10px); padding:12px 18px; border-radius:14px; font-size:15px; font-weight:600; }
 
-    #bottom { position:fixed; left:0; right:0; bottom:0; z-index:6; padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);
-              display:flex; gap:10px; align-items:center; background:linear-gradient(0deg,rgba(0,0,0,.8),transparent); }
+    #demoBadge { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 156px); z-index:6;
+                 background:rgba(0,0,0,.6); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
+                 padding:6px 14px; font-size:12px; font-weight:700; color:#cfe8ff; max-width:92%; text-align:center; }
+
+    /* DOCK = produto + tamanhos + ações */
+    #dock { position:fixed; left:0; right:0; bottom:0; z-index:6; padding:12px 12px calc(env(safe-area-inset-bottom) + 12px);
+            display:flex; flex-direction:column; gap:10px; background:linear-gradient(0deg,rgba(0,0,0,.9),rgba(0,0,0,.55) 62%,transparent); }
+    #prodbar { display:flex; align-items:center; gap:10px; }
+    #prodimg { width:50px; height:50px; border-radius:12px; background:#fff center/contain no-repeat; flex:none; border:1px solid rgba(255,255,255,.2); }
+    #prodinfo { flex:1; min-width:0; }
+    #prodname { font-weight:800; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #prodprice { font-size:14px; font-weight:800; color:var(--green); margin-top:2px; }
+    .trocar { flex:none; min-height:42px; padding:0 16px; border-radius:999px; border:2px solid rgba(255,255,255,.3);
+              background:rgba(255,255,255,.1); color:#fff; font-weight:800; font-size:13px; cursor:pointer; }
+    #sizes { display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; min-height:2px; }
+    #sizes::-webkit-scrollbar { display:none; }
+    #sizes .chip { flex:none; min-height:42px; padding:8px 15px; border-radius:999px; border:2px solid rgba(255,255,255,.25);
+                   background:rgba(255,255,255,.08); color:#fff; font-weight:800; font-size:14px; cursor:pointer; }
+    #sizes .chip.on { background:#fff; color:#111; border-color:#fff; }
+    .sz-empty { font-size:12px; color:#cfcfd4; padding:9px 2px; }
+    #actions { display:flex; gap:10px; align-items:center; }
     .btn { min-height:54px; border-radius:14px; border:0; font-size:16px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
     .btn.shot { width:60px; flex:none; background:rgba(255,255,255,.16); color:#fff; }
     .btn.buy { flex:1; background:var(--ok); color:#063; }
-    .demo-badge { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 84px); z-index:6;
-                  background:rgba(0,0,0,.55); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
-                  padding:6px 12px; font-size:11px; font-weight:700; color:#ffd27a; max-width:90%; text-align:center; }
+
+    /* PICKER (bottom-sheet) */
+    .sheet { position:fixed; left:0; right:0; bottom:0; z-index:8; max-height:74vh; background:#15151a; border-radius:20px 20px 0 0;
+             border-top:1px solid rgba(255,255,255,.12); display:flex; flex-direction:column; box-shadow:0 -12px 40px rgba(0,0,0,.55); }
+    .sheet-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 8px; font-size:16px; font-weight:800; }
+    .x2 { width:34px; height:34px; border-radius:999px; background:rgba(255,255,255,.1); border:0; color:#fff; font-size:16px; cursor:pointer; }
+    #pickSearch { margin:0 16px 10px; height:44px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06);
+                  color:#fff; padding:0 14px; font-size:15px; outline:none; }
+    #pickerList { overflow-y:auto; padding:0 12px 18px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .pcard { display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+             border-radius:14px; padding:10px; text-align:left; color:#fff; cursor:pointer; }
+    .pthumb { width:100%; height:92px; border-radius:10px; background:#fff center/contain no-repeat; }
+    .pmeta { display:flex; flex-direction:column; gap:1px; min-width:0; }
+    .pmeta b { font-size:12px; line-height:1.2; max-height:2.4em; overflow:hidden; }
+    .pmeta i { font-size:11px; color:#bfbfc6; font-style:normal; }
+    .pmeta u { font-size:13px; font-weight:800; color:var(--green); text-decoration:none; margin-top:2px; }
     .hide { display:none !important; }
   </style>
 </head>
 <body>
   <div id="ar-screen" class="hide"></div>
 
-  <!-- START (tap to open camera — needed for iOS gesture) -->
+  <!-- START -->
   <div id="start" class="layer">
     <div class="logo"><b>SPORTS</b> &amp; TENNIS</div>
     <div class="big">👟</div>
     <h1>Provador AR</h1>
     <p class="sub">Aponte a câmera para os seus <b>pés</b> e veja o tênis no seu pé, em tempo real.</p>
     <button class="cta" id="startBtn">▶️ Abrir a câmera</button>
-    <p class="sub" style="font-size:12px;opacity:.7">Vai pedir permissão da câmera — toque em <b>Permitir</b>. No 1º uso pode levar alguns segundos pra carregar.</p>
+    <p class="sub" style="font-size:12px;opacity:.7">Vai pedir permissão da câmera — toque em <b>Permitir</b>. No 1º uso pode levar alguns segundos.</p>
   </div>
 
   <!-- LOADING -->
@@ -84,13 +116,31 @@
   <!-- HINT -->
   <div id="hint" class="hide"><div class="box">👇 Aponte para os seus pés</div></div>
 
-  <!-- DEMO/STATUS BADGE -->
-  <div id="demoBadge" class="demo-badge hide">Tênis demonstração — nosso catálogo vem já já</div>
+  <!-- STATUS / PREVIEW -->
+  <div id="demoBadge" class="hide">👟 Tênis demo ativo</div>
 
-  <!-- BOTTOM BAR -->
-  <div id="bottom" class="hide">
-    <button class="btn shot" id="shotBtn" title="Foto">📸</button>
-    <button class="btn buy" id="buyBtn">🛒 Quero esse</button>
+  <!-- DOCK -->
+  <div id="dock" class="hide">
+    <div id="prodbar">
+      <div id="prodimg"></div>
+      <div id="prodinfo">
+        <div id="prodname">Escolha um tênis do catálogo</div>
+        <div id="prodprice"></div>
+      </div>
+      <button class="trocar" id="pickBtn">👟 Trocar</button>
+    </div>
+    <div id="sizes"></div>
+    <div id="actions">
+      <button class="btn shot" id="shotBtn" title="Foto">📸</button>
+      <button class="btn buy" id="buyBtn">🛒 Quero esse</button>
+    </div>
+  </div>
+
+  <!-- PICKER SHEET -->
+  <div id="picker" class="sheet hide">
+    <div class="sheet-head"><span>Escolha um tênis</span><button class="x2" id="pickClose">✕</button></div>
+    <input id="pickSearch" placeholder="Buscar por nome ou marca…" autocomplete="off">
+    <div id="pickerList"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/deepar@5.6.22/js/deepar.js"></script>
@@ -102,28 +152,29 @@
     function showLayer(id){ ['start','loading','error'].forEach(hide); if(id) show(id); }
     function setMsg(t){ $('loadingMsg').textContent = t; }
     function emsg(e){ return String((e && (e.message||e.name)) || e || 'erro'); }
-    function withTimeout(p, ms, tag){
-      return Promise.race([ p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('demorou demais ('+tag+')')), ms)) ]);
-    }
+    function withTimeout(p, ms, tag){ return Promise.race([ p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('demorou demais ('+tag+')')), ms)) ]); }
+    function brl(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
+    function esc(s){ return String(s||'').replace(/[<>&'"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&#39;','"':'&quot;'}[c])); }
+    function imgProxy(u){ return u ? ('/api/tryon/img?u=' + encodeURIComponent(u)) : ''; }
 
     let deepAR = null, camStream = null, camVideo = null, licenseKey = '';
+    let featured = [], selProduct = null, selSize = null;
+    window.__effOk = false;
 
-    // Pré-carrega a chave AGORA (no load), pra que no toque do botão não haja
-    // nenhum 'await' antes de pedir a câmera — senão o iOS bloqueia a permissão.
+    // Pré-carrega chave + catálogo no load (sem await antes da câmera no toque — iOS).
     (async function preload(){
       try { const r = await fetch('/api/tryon/ar-config',{cache:'no-store'}); licenseKey = (await r.json()).licenseKey || ''; } catch(e){}
+      try { const r = await fetch('/api/tryon/featured'); featured = (await r.json()).items || []; } catch(e){ featured = []; }
     })();
 
     async function startAR(){
-      showLayer('loading');
-      setMsg('Pedindo acesso à câmera…');
+      showLayer('loading'); setMsg('Pedindo acesso à câmera…');
 
-      // 1) CÂMERA PRIMEIRO, dentro do toque (crítico no iPhone). Traseira = aponta pros pés.
+      // 1) CÂMERA PRIMEIRO, dentro do toque (iOS). Traseira = aponta pros pés.
       try {
         camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } }, audio:false });
       } catch(e){
-        return fail('Câmera bloqueada',
-          'Toque em "Tentar de novo" e escolha PERMITIR a câmera. Se já negou antes, libere a câmera nas configurações do navegador para este site. (' + emsg(e) + ')');
+        return fail('Câmera bloqueada', 'Toque em "Tentar de novo" e escolha PERMITIR a câmera. Se já negou, libere a câmera nas configurações do navegador. (' + emsg(e) + ')');
       }
       camVideo = document.createElement('video');
       camVideo.setAttribute('playsinline',''); camVideo.muted = true; camVideo.autoplay = true;
@@ -136,62 +187,97 @@
       if(!licenseKey){ try { const r=await fetch('/api/tryon/ar-config',{cache:'no-store'}); licenseKey=(await r.json()).licenseKey||''; } catch(e){} }
       if(!licenseKey) return fail('Provador indisponível', 'A configuração do provador não está pronta no servidor.');
 
-      // 3) Inicia o DeepAR SEM a câmera dele (usamos a nossa). Sem efeito = câmera aparece rápido.
+      // 3) Inicia DeepAR sem a câmera dele; sem efeito = câmera aparece rápido.
       setMsg('Iniciando o motor AR… (pode levar alguns segundos)');
       let effPreloaded = false;
+      const initOpts = (effect) => {
+        const o = { licenseKey, previewElement: $('ar-screen'),
+          additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit','enableFootTracking'] } };
+        if(effect) o.effect = effect; return o;
+      };
       try {
-        deepAR = await withTimeout(deepar.initialize({
-          licenseKey, previewElement: $('ar-screen'),
-          additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit', 'enableFootTracking'] }
-        }), 45000, 'motor');
+        deepAR = await withTimeout(deepar.initialize(initOpts()), 45000, 'motor');
       } catch(e){
-        // alguns builds exigem um efeito já no init — tenta com o tênis direto
-        try {
-          deepAR = await withTimeout(deepar.initialize({
-            licenseKey, previewElement: $('ar-screen'), effect: '/effects/Shoe_PBR.deepar',
-            additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit', 'enableFootTracking'] }
-          }), 45000, 'motor2');
-          effPreloaded = true;
-        } catch(e2){ return fail('Não consegui iniciar o AR', emsg(e2) + '. Tente de novo, de preferência no Wi-Fi.'); }
+        try { deepAR = await withTimeout(deepar.initialize(initOpts('/effects/Shoe_PBR.deepar')), 45000, 'motor2'); effPreloaded = true; }
+        catch(e2){ return fail('Não consegui iniciar o AR', emsg(e2) + '. Tente de novo, de preferência no Wi-Fi.'); }
       }
 
-      // 4) Liga a NOSSA câmera + foot tracking. Mostra a câmera já.
+      // 4) Liga a nossa câmera + foot tracking. Mostra a UI.
       try { deepAR.setVideoElement(camVideo, false); } catch(e){ return fail('Erro ligando a câmera', emsg(e)); }
       try { deepAR.initializeFootTracking(); } catch(e){}
-      // detecção do pé AO VIVO via callback (mais confiável que polling)
-      try { deepAR.onFeetTracked = function(l, r){ window.__footDet = !!((l && l.detected) || (r && r.detected)); }; } catch(e){}
-      try { deepAR.onFootTrackingInitialized = function(){ window.__footReady = true; }; } catch(e){}
       showLayer(null);
-      show('ar-screen'); show('top'); show('bottom'); show('hint'); show('demoBadge');
+      show('ar-screen'); show('top'); show('dock'); show('hint'); show('demoBadge');
 
-      // 5) Carrega o tênis demo POR CIMA (se falhar, câmera/pé continuam = diagnóstico).
+      // 5) Carrega o tênis demo (placeholder do caimento).
       let effOk = effPreloaded;
       if(!effOk){
-        $('demoBadge').textContent = 'Carregando o tênis demo…';
         for(const eff of ['/effects/Shoe_PBR.deepar','/effects/Shoe.deepar']){
           try { await withTimeout(deepAR.switchEffect(eff), 35000, 'efeito'); effOk = true; break; }
           catch(e){ console.warn('efeito falhou:', eff, e); }
         }
       }
       window.__effOk = effOk;
-
-      // 6) STATUS AO VIVO do rastreamento do pé (diagnóstico: o pé é detectado?).
-      const badge = $('demoBadge');
-      function footState(){
-        if(!deepAR) return;
-        // O efeito faz o PRÓPRIO rastreamento e desenha o tênis quando vê o pé.
-        // A API isLeftFootDetected/onFeetTracked é instável nesta versão — uso só como
-        // bônus pra trocar o texto, NUNCA pra dizer "não achou" (isso me enganou antes).
-        let det = false;
-        if(typeof window.__footDet === 'boolean') det = window.__footDet;
-        else { try { det = (deepAR.isLeftFootDetected && deepAR.isLeftFootDetected()) || (deepAR.isRightFootDetected && deepAR.isRightFootDetected()); } catch(e){} }
-        if(!effOk){ badge.style.color = '#ffd27a'; badge.textContent = 'Carregando o tênis demo…'; return; }
-        if(det){ badge.style.color = '#7CFC9E'; badge.textContent = '✅ Tênis no seu pé! (demo)'; }
-        else { badge.style.color = '#cfe8ff'; badge.textContent = '👟 Tênis demo ativo — aponte a câmera pros pés'; }
-      }
-      footState();
-      setInterval(footState, 400);
+      footState(); setInterval(footState, 700);
       setTimeout(()=>hide('hint'), 6000);
+    }
+
+    function footState(){
+      if(!deepAR) return;
+      const b = $('demoBadge');
+      if(!window.__effOk){ b.style.color='#ffd27a'; b.textContent='Carregando o tênis…'; return; }
+      if(selProduct && selProduct.arEffect){ b.style.color='var(--green)'; b.textContent='✅ ' + selProduct.name; }
+      else if(selProduct){ b.style.color='#ffd27a'; b.textContent='👟 Prévia do caimento — modelo 3D real em breve'; }
+      else { b.style.color='#cfe8ff'; b.textContent='👟 Toque em "Trocar" e escolha um tênis'; }
+    }
+
+    // ---------- CATÁLOGO ----------
+    function renderPicker(list){
+      const el = $('pickerList');
+      if(!list.length){ el.innerHTML = '<p class="sub" style="grid-column:1/-1;padding:18px">Nenhum tênis encontrado.</p>'; return; }
+      el.innerHTML = list.map(p => (
+        '<button class="pcard" data-id="'+esc(p.id)+'">' +
+          '<span class="pthumb" style="background-image:url(\''+imgProxy(p.imageUrl)+'\')"></span>' +
+          '<span class="pmeta"><b>'+esc(p.name)+'</b><i>'+esc(p.brand||'')+'</i><u>'+brl(p.price)+'</u></span>' +
+        '</button>'
+      )).join('');
+    }
+    function openPicker(){ renderPicker(featured); $('pickSearch').value=''; show('picker'); }
+    function closePicker(){ hide('picker'); }
+
+    let searchTimer = null;
+    async function onSearch(q){
+      q = (q||'').trim();
+      if(q.length < 2){ renderPicker(featured); return; }
+      try { const r = await fetch('/api/tryon/search?q=' + encodeURIComponent(q)); renderPicker((await r.json()).items || []); }
+      catch(e){ renderPicker(featured); }
+    }
+
+    async function selectProduct(id){
+      closePicker();
+      let p = null;
+      try { const r = await fetch('/api/tryon/product/' + encodeURIComponent(id)); p = await r.json(); } catch(e){}
+      if(!p || p.error) return;
+      selProduct = p; selSize = null;
+      $('prodimg').style.backgroundImage = "url('" + imgProxy(p.imageUrl) + "')";
+      $('prodname').textContent = p.name;
+      $('prodprice').textContent = brl(p.price);
+      const sizes = (p.sizes||[]).filter(s=>s.stock>0);
+      $('sizes').innerHTML = sizes.length
+        ? sizes.map(s => '<button class="chip" data-sz="'+esc(s.size)+'">'+esc(s.size)+'</button>').join('')
+        : '<span class="sz-empty">Confira os tamanhos com o vendedor</span>';
+      // Quando existir efeito 3D real do modelo, troca pra ele; senão segue o demo (prévia).
+      if(p.arEffect && deepAR){ try { await deepAR.switchEffect(p.arEffect); } catch(e){ console.warn('arEffect falhou', e); } }
+      footState();
+    }
+
+    function buy(){
+      let msg;
+      if(selProduct){
+        msg = 'Oi! Quero o *' + selProduct.name + '*' + (selSize ? (' (tam ' + selSize + ')') : '') + ' que experimentei no Provador AR da Sports & Tennis. 👟';
+      } else {
+        msg = 'Oi! Acabei de usar o Provador AR da Sports & Tennis e quero falar com um vendedor sobre um tênis. 👟';
+      }
+      window.open('https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
     }
 
     function fail(title, msg){
@@ -203,7 +289,7 @@
     async function takeShot(){
       if(!deepAR) return;
       try {
-        const dataUrl = await deepAR.takeScreenshot(); // data:image/png
+        const dataUrl = await deepAR.takeScreenshot();
         const blob = await (await fetch(dataUrl)).blob();
         const file = new File([blob], 'provador-sportsetennis.png', { type:'image/png' });
         if(navigator.canShare && navigator.canShare({ files:[file] })){
@@ -214,15 +300,17 @@
       } catch(e){ console.error('screenshot', e); }
     }
 
-    function buy(){
-      const msg = 'Oi! Acabei de usar o Provador AR da Sports & Tennis e quero falar com um vendedor sobre um tênis. 👟';
-      window.open('https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
-    }
-
+    // wiring
     $('startBtn').onclick = startAR;
     $('retryBtn').onclick = startAR;
     $('shotBtn').onclick = takeShot;
     $('buyBtn').onclick = buy;
+    $('pickBtn').onclick = openPicker;
+    $('pickClose').onclick = closePicker;
+    $('pickerList').onclick = (e) => { const c = e.target.closest('.pcard'); if(c) selectProduct(c.dataset.id); };
+    $('sizes').onclick = (e) => { const c = e.target.closest('.chip'); if(!c) return;
+      document.querySelectorAll('#sizes .chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); selSize = c.dataset.sz; };
+    $('pickSearch').oninput = (e) => { clearTimeout(searchTimer); const v = e.target.value; searchTimer = setTimeout(()=>onSearch(v), 280); };
   </script>
 </body>
 </html>

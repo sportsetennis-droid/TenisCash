@@ -20,7 +20,7 @@ router.get('/featured', async (_req, res) => {
       select: { id: true, name: true, brand: true, price: true, imageUrl: true, aiContext: true,
         sizes: { select: { storeStocks: { select: { stock: true } } } } },
     });
-    const items = prods.map((p) => ({ id: p.id, name: p.name, brand: p.brand, price: p.price || 0, imageUrl: p.imageUrl, color: ctxOf(p).color || '', bipado: bipadoOf(p) }))
+    const items = prods.map((p) => ({ id: p.id, name: p.name, brand: p.brand, price: p.price || 0, imageUrl: p.imageUrl, color: ctxOf(p).color || '', bipado: bipadoOf(p), arEffect: ctxOf(p).arEffect || null }))
       .filter((x) => x.bipado > 0).sort((a, b) => b.bipado - a.bipado).slice(0, 18);
     res.json({ items });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -69,7 +69,7 @@ router.get('/product/:id', async (req, res) => {
         LIMIT 12`;
       variants = others.map((o) => ({ id: o.id, name: o.name, color: o.color || '', price: o.price || 0, imageUrl: o.imageUrl }));
     }
-    res.json({ id: p.id, name: p.name, brand: p.brand, price: p.price || 0, color: ctx.color || '', imageUrl: p.imageUrl, sizes, variants });
+    res.json({ id: p.id, name: p.name, brand: p.brand, price: p.price || 0, color: ctx.color || '', imageUrl: p.imageUrl, sizes, variants, arEffect: ctx.arEffect || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
