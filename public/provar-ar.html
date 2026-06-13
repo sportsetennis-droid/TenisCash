@@ -142,14 +142,14 @@
       try {
         deepAR = await withTimeout(deepar.initialize({
           licenseKey, previewElement: $('ar-screen'),
-          additionalOptions: { cameraConfig: { disableDefaultCamera: true } }
+          additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit'] }
         }), 45000, 'motor');
       } catch(e){
         // alguns builds exigem um efeito já no init — tenta com o tênis direto
         try {
           deepAR = await withTimeout(deepar.initialize({
             licenseKey, previewElement: $('ar-screen'), effect: '/effects/Shoe_PBR.deepar',
-            additionalOptions: { cameraConfig: { disableDefaultCamera: true } }
+            additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit'] }
           }), 45000, 'motor2');
           effPreloaded = true;
         } catch(e2){ return fail('Não consegui iniciar o AR', emsg(e2) + '. Tente de novo, de preferência no Wi-Fi.'); }
@@ -158,6 +158,9 @@
       // 4) Liga a NOSSA câmera + foot tracking. Mostra a câmera já.
       try { deepAR.setVideoElement(camVideo, false); } catch(e){ return fail('Erro ligando a câmera', emsg(e)); }
       try { deepAR.initializeFootTracking(); } catch(e){}
+      // detecção do pé AO VIVO via callback (mais confiável que polling)
+      try { deepAR.onFeetTracked = function(l, r){ window.__footDet = !!((l && l.detected) || (r && r.detected)); }; } catch(e){}
+      try { deepAR.onFootTrackingInitialized = function(){ window.__footReady = true; }; } catch(e){}
       showLayer(null);
       show('ar-screen'); show('top'); show('bottom'); show('hint'); show('demoBadge');
 
@@ -176,17 +179,20 @@
       const badge = $('demoBadge');
       function footState(){
         if(!deepAR) return;
-        let initd = true, l = false, r = false;
+        let initd = true, det = false;
         try { if(deepAR.isFootTrackingInitialized) initd = deepAR.isFootTrackingInitialized(); } catch(e){}
-        try { if(deepAR.isLeftFootDetected)  l = deepAR.isLeftFootDetected(); } catch(e){}
-        try { if(deepAR.isRightFootDetected) r = deepAR.isRightFootDetected(); } catch(e){}
+        if(window.__footReady) initd = true;
+        if(typeof window.__footDet === 'boolean'){ det = window.__footDet; }
+        else {
+          try { det = (deepAR.isLeftFootDetected && deepAR.isLeftFootDetected()) || (deepAR.isRightFootDetected && deepAR.isRightFootDetected()); } catch(e){}
+        }
         if(!initd){ badge.style.color = '#ffd27a'; badge.textContent = '🔍 Ligando o rastreamento de pé…'; return; }
-        if(l || r){
+        if(det){
           badge.style.color = '#7CFC9E';
-          badge.textContent = effOk ? '✅ Pé detectado · tênis demo' : '✅ Pé detectado · (tênis demo não renderiza no v5)';
+          badge.textContent = effOk ? '✅ Pé detectado · tênis demo' : '✅ Pé detectado! (motor OK — falta o modelo do tênis)';
         } else {
           badge.style.color = '#ffd27a';
-          badge.textContent = '🔍 Procurando seu pé… aponte a câmera de cima pros pés (~40–60cm)';
+          badge.textContent = '🔍 Procurando o pé… CALCE UM TÊNIS e aponte de cima pros pés (~50cm)';
         }
       }
       footState();
