@@ -31,9 +31,10 @@ const emit = (e) => {
   console.log('\n=== PLANO (resumo) ===');
   for (const it of plan) {
     const p = it.product;
-    const who = p ? `${(p.brand || '').trim()} ${p.name} [${p.bipado}un]` : '(vazio)';
+    const who = p ? `${(p.brand || '').trim()} ${p.name} [${p.bipado}un]` : (it.engine === false ? '(à parte)' : '(vazio)');
+    const dim = it.dims && it.dims.length ? it.dims.join('x') : '-';
     console.log(
-      `#${String(it.slot).padStart(2)} ${it.gender.padEnd(9)} ${it.section.padEnd(6)} ${String(it.label).padEnd(16)} ${it.dims.join('x').padEnd(9)} → ${who}`,
+      `#${String(it.slot).padStart(2)} ${String(it.gender).padEnd(9)} ${String(it.section).padEnd(11)} ${String(it.label).padEnd(24)} ${dim.padEnd(9)} → ${who}`,
     );
   }
   const filled = plan.filter((x) => x.product).length;

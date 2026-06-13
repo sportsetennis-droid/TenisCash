@@ -47,10 +47,13 @@
   .lane .log .info{color:#555;} .lane .log .ok{color:var(--ok);} .lane .log .warn{color:var(--warn);} .lane .log .err{color:var(--err);font-weight:700;}
 
   h2.sec { font-size:14px; font-weight:800; margin:20px 2px 10px; color:#333; }
-  .planwrap { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media (max-width:760px){ .planwrap{ grid-template-columns:1fr;} }
-  .gendcol h3 { font-size:13px; font-weight:800; color:var(--orange); margin:0 0 8px; }
-  .slotgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .plantotals { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px; font-size:14px; margin-bottom:14px; }
+  .plantotals b { color:var(--orange); }
+  .blockSec { margin-bottom:18px; }
+  .bk-head { font-size:13px; font-weight:700; color:#333; margin:0 2px 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .bk-eng { font-size:10px; font-weight:800; background:#fff4ec; color:var(--orange); padding:2px 8px; border-radius:999px; }
+  .bk-apart { font-size:10px; font-weight:800; background:#eef0f3; color:#6b7280; padding:2px 8px; border-radius:999px; }
+  .slotgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; }
   .slot { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
   .slot .frame { position:relative; width:100%; background:#f0f0f3; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   .slot .frame img { width:100%; height:100%; object-fit:cover; }
@@ -99,11 +102,9 @@
 
     <div class="lanes" id="lanes"></div>
 
-    <h2 class="sec">Plano — o que vai em cada slot (preview no tamanho real)</h2>
-    <div class="planwrap" id="planwrap">
-      <div class="gendcol"><h3>FEMININO</h3><div class="slotgrid" id="grid-feminino"></div></div>
-      <div class="gendcol"><h3>MASCULINO</h3><div class="slotgrid" id="grid-masculino"></div></div>
-    </div>
+    <h2 class="sec">Plano — todas as imagens do site, por bloco</h2>
+    <div id="plantotals" class="plantotals">Clique em “Rodar esteira” pra montar o plano.</div>
+    <div id="planblocks"></div>
   </div>
 </div>
 
@@ -197,30 +198,45 @@ async function loadState(){
   } catch(_){}
 }
 
-function clearGrids(){ document.getElementById('grid-feminino').innerHTML=''; document.getElementById('grid-masculino').innerHTML=''; }
+function clearGrids(){ document.getElementById('planblocks').innerHTML=''; document.getElementById('plantotals').textContent='Rodando…'; }
+
+function slotCard(it){
+  const dims = it.dims && it.dims.length ? it.dims : null;
+  const w = dims ? dims[0] : 3, h = dims ? dims[1] : 4;
+  const p = it.product;
+  const img = p && p.imageUrl
+    ? `<img src="${esc(p.imageUrl)}" referrerpolicy="no-referrer-when-downgrade" onerror="this.outerHTML='<div class=empty>📦</div>'">`
+    : `<div class="empty">${it.engine===false?'🎨':'📦'}</div>`;
+  let badge='';
+  if (it.how==='fallback') badge=`<span class="fb">fallback</span>`;
+  else if (it.how==='apart') badge=`<span class="fb" style="background:#6b7280">à parte</span>`;
+  else if (it.how==='vazio') badge=`<span class="fb">vazio</span>`;
+  const brand = p && p.brand && p.brand!=='A DEFINIR' ? `<div class="brand">${esc(p.brand)}</div>` : '';
+  const name = p ? esc(p.name) : (it.engine===false?'<i>produção à parte</i>':'<i>sem produto bipado</i>');
+  const un = p ? `<span class="un">${p.bipado} un</span>` : '';
+  const dimtxt = dims ? `${w}×${h}` : 'a confirmar';
+  return `<div class="slot"><div class="frame" style="aspect-ratio:${w}/${h}"><span class="tag">#${it.slot} ${esc(it.label)}</span>${badge}${img}</div>`
+    + `<div class="meta">${brand}<div class="pname">${name}</div><div class="dim">${dimtxt} · ${esc(it.gender)}</div>${un}</div></div>`;
+}
 
 function renderPlan(plan){
-  clearGrids();
-  for (const it of plan) {
-    const g = it.gender; const grid = document.getElementById('grid-'+g); if (!grid) continue;
-    const [w,h] = it.dims || [1,1];
-    const p = it.product;
-    const img = p && p.imageUrl
-      ? `<img src="${esc(p.imageUrl)}" referrerpolicy="no-referrer-when-downgrade" onerror="this.outerHTML='<div class=empty>📦</div>'">`
-      : `<div class="empty">📦</div>`;
-    const fb = it.how === 'fallback' ? `<span class="fb">fallback</span>` : (it.how==='vazio' ? `<span class="fb">vazio</span>`:'');
-    const brand = p && p.brand && p.brand!=='A DEFINIR' ? `<div class="brand">${esc(p.brand)}</div>` : '';
-    const name = p ? esc(p.name) : '<i>sem produto bipado</i>';
-    const un = p ? `<span class="un">${p.bipado} un bipadas</span>` : '';
-    grid.insertAdjacentHTML('beforeend', `
-      <div class="slot">
-        <div class="frame" style="aspect-ratio:${w}/${h}">
-          <span class="tag">#${it.slot} ${esc(it.label)}</span>${fb}${img}
-        </div>
-        <div class="meta">${brand}<div class="pname">${name}</div>
-          <div class="dim">${w}×${h} · ${esc(it.section)} · ${esc(it.file||'')}</div>${un}
-        </div>
-      </div>`);
+  const root = document.getElementById('planblocks'); root.innerHTML='';
+  const eng = plan.filter(p=>p.engine!==false);
+  const filled = eng.filter(p=>p.product).length;
+  const apart = plan.filter(p=>p.engine===false).length;
+  document.getElementById('plantotals').innerHTML =
+    `<b>${plan.length}</b> imagens mapeadas · <b>${eng.length}</b> pelo motor (${filled} preenchidas) · <b>${apart}</b> à parte (logo/ícone/pessoa)`;
+  const order=[]; const groups={};
+  for (const it of plan){ if(!groups[it.block]){ groups[it.block]=[]; order.push(it.block); } groups[it.block].push(it); }
+  for (const bk of order){
+    const items=groups[bk]; const f=items[0];
+    const dims = f.dims && f.dims.length ? `${f.dims[0]}×${f.dims[1]}` : 'tam. a confirmar';
+    const badge = f.engine===false ? `<span class="bk-apart">produção à parte</span>` : `<span class="bk-eng">motor</span>`;
+    const sec=document.createElement('div'); sec.className='blockSec';
+    sec.innerHTML = `<div class="bk-head"><b>${esc(f.blockLabel)}</b> · ${items.length} img · ${dims} ${badge}</div>`;
+    const grid=document.createElement('div'); grid.className='slotgrid';
+    for (const it of items) grid.insertAdjacentHTML('beforeend', slotCard(it));
+    sec.appendChild(grid); root.appendChild(sec);
   }
 }
 

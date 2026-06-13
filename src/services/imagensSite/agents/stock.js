@@ -26,26 +26,13 @@ function bipado(sizes) {
   return { total, sizes: arr };
 }
 
-async function poolForGender(prisma, gender) {
-  const syn = GENDER_SYNONYMS[gender] || [];
-  const ors = syn.map((v) => ({ aiContext: { path: ['classification', 'gender'], equals: v } }));
-  ors.push({ subcategory: { contains: gender === 'feminino' ? 'emin' : 'asculin', mode: 'insensitive' } });
+const SELECT = {
+  id: true, sku: true, name: true, brand: true, category: true, subcategory: true,
+  imageUrl: true, price: true, promoPrice: true, aiContext: true,
+  sizes: { select: { size: true, storeStocks: { select: { stock: true } } } },
+};
 
-  const products = await prisma.product.findMany({
-    where: {
-      active: true,
-      OR: ors,
-      // SÓ BIPADO: pelo menos um tamanho com StoreStock > 0
-      sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } },
-    },
-    take: 1200,
-    select: {
-      id: true, sku: true, name: true, brand: true, category: true, subcategory: true,
-      imageUrl: true, price: true, promoPrice: true, aiContext: true,
-      sizes: { select: { size: true, storeStocks: { select: { stock: true } } } },
-    },
-  });
-
+function shape(products) {
   return products.map((p) => {
     const b = bipado(p.sizes);
     const ctx = parseCtx(p.aiContext);
@@ -58,6 +45,26 @@ async function poolForGender(prisma, gender) {
       bipado: b.total, sizes: b.sizes,
     };
   }).filter((p) => p.bipado > 0).sort((a, b) => b.bipado - a.bipado);
+}
+
+async function poolForGender(prisma, gender) {
+  const syn = GENDER_SYNONYMS[gender] || [];
+  const ors = syn.map((v) => ({ aiContext: { path: ['classification', 'gender'], equals: v } }));
+  ors.push({ subcategory: { contains: gender === 'feminino' ? 'emin' : 'asculin', mode: 'insensitive' } });
+  const products = await prisma.product.findMany({
+    where: { active: true, OR: ors, sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+    take: 1200, select: SELECT,
+  });
+  return shape(products);
+}
+
+// Pool GERAL (slots 'shared' — sem filtro de gênero): todo produto bipado.
+async function poolGeneral(prisma) {
+  const products = await prisma.product.findMany({
+    where: { active: true, sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+    take: 2500, select: SELECT,
+  });
+  return shape(products);
 }
 
 function isTenis(p) {
@@ -78,29 +85,36 @@ function matchesFilter(p, filter) {
 }
 
 function slotBrief(s) {
-  return { gender: s.gender, section: s.section, label: s.label, dims: s.dims, file: s.file, category: s.category };
+  return {
+    gender: s.gender, section: s.section, label: s.label, dims: s.dims, file: s.file, category: s.category,
+    block: s.block, blockLabel: s.blockLabel, engine: s.engine !== false, planned: !!s.planned,
+  };
 }
 
 async function run({ prisma, emit, slots }) {
-  emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: 'Lendo estoque BIPADO (StoreStock>0) por gênero…' });
+  emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: 'Lendo estoque BIPADO (StoreStock>0)…' });
 
+  const engineSlots = slots.filter((s) => s.engine !== false);
+  const need = (g) => engineSlots.some((s) => s.gender === g);
   const pools = {};
-  for (const g of ['feminino', 'masculino']) {
-    if (!slots.some((s) => s.gender === g)) continue;
-    pools[g] = await poolForGender(prisma, g);
-    emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: `${g}: ${pools[g].length} produtos bipados elegíveis.` });
-  }
+  if (need('feminino')) { pools.feminino = await poolForGender(prisma, 'feminino'); emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: `feminino: ${pools.feminino.length} bipados elegíveis.` }); }
+  if (need('masculino')) { pools.masculino = await poolForGender(prisma, 'masculino'); emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: `masculino: ${pools.masculino.length} bipados elegíveis.` }); }
+  if (need('shared')) { pools.shared = await poolGeneral(prisma); emit({ phase: 'estoque', agent: 'estoque', level: 'info', msg: `geral (compartilhado): ${pools.shared.length} bipados elegíveis.` }); }
 
   const used = new Set();
   const plan = [];
+  let apart = 0;
   for (const s of slots) {
+    // Produção à parte (logo/ícone/pessoa) — o motor não escolhe produto bipado.
+    if (s.engine === false) { plan.push({ slot: s.id, ...slotBrief(s), how: 'apart', product: null }); apart++; continue; }
+
     const pool = pools[s.gender] || [];
     let how = 'match';
     let pick = pool.find((p) => !used.has(p.id) && matchesFilter(p, s.filter));
     if (!pick) { pick = pool.find((p) => !used.has(p.id)); how = 'fallback'; }
 
     if (!pick) {
-      emit({ phase: 'estoque', agent: 'estoque', level: 'warn', slot: s.id, msg: `slot ${s.id} ${s.label} (${s.gender}): sem produto bipado disponível.` });
+      emit({ phase: 'estoque', agent: 'estoque', level: 'warn', slot: s.id, msg: `#${s.id} ${s.label} (${s.gender}): sem produto bipado disponível.` });
       plan.push({ slot: s.id, ...slotBrief(s), how: 'vazio', product: null });
       continue;
     }
@@ -108,15 +122,15 @@ async function run({ prisma, emit, slots }) {
     plan.push({ slot: s.id, ...slotBrief(s), how, product: pick });
     emit({
       phase: 'estoque', agent: 'estoque', level: how === 'match' ? 'ok' : 'warn', slot: s.id,
-      msg: `slot ${s.id} ${s.label} (${s.gender}) ${how === 'match' ? '→' : '≈ fallback'} ${(pick.brand || '').trim()} ${pick.name} · ${pick.bipado} un bipadas`,
+      msg: `#${s.id} ${s.label} (${s.gender}) ${how === 'match' ? '→' : '≈ fallback'} ${(pick.brand || '').trim()} ${pick.name} · ${pick.bipado} un`,
       data: { productId: pick.id, sku: pick.sku, img: pick.imageUrl, bipado: pick.bipado },
     });
   }
 
   const filled = plan.filter((x) => x.product).length;
   emit({
-    phase: 'estoque', agent: 'estoque', level: filled === slots.length ? 'ok' : 'warn',
-    msg: `Plano montado: ${filled}/${slots.length} slots preenchidos.`,
+    phase: 'estoque', agent: 'estoque', level: filled === engineSlots.length ? 'ok' : 'warn',
+    msg: `Motor: ${filled}/${engineSlots.length} slots preenchidos · ${apart} à parte (logo/ícone/pessoa).`,
   });
   return plan;
 }

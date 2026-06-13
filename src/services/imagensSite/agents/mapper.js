@@ -1,26 +1,29 @@
 // =====================================================================
-// Agente MAPEADOR — lê e MEMORIZA os 22 slots (tamanhos, locais, destinos).
-// Não toca no site; só registra o mapa no Config pra os outros agentes.
+// Agente MAPEADOR — lê e MEMORIZA TODOS os slots de imagem do site
+// (tamanhos, locais, destinos), agrupados por bloco. Não toca no site.
 // =====================================================================
-const { SLOTS } = require('../slots');
+const { SLOTS, blockSummary } = require('../slots');
 
 const CFG_KEY = 'imagens_site_slots_v1';
 
 async function run({ prisma, emit }) {
-  emit({ phase: 'mapear', agent: 'mapeador', level: 'info', msg: 'Lendo o mapa de imagens da home (tema Morelia)…' });
+  emit({ phase: 'mapear', agent: 'mapeador', level: 'info', msg: 'Lendo o mapa de TODAS as imagens do site (tema Morelia)…' });
 
-  const byGender = { feminino: 0, masculino: 0 };
-  for (const s of SLOTS) {
-    byGender[s.gender] = (byGender[s.gender] || 0) + 1;
+  const blocks = blockSummary();
+  for (const b of blocks) {
+    const dim = b.dims ? `${b.dims[0]}×${b.dims[1]}` : 'tam. a confirmar';
+    const tag = b.engine ? 'motor' : 'à parte';
     emit({
-      phase: 'mapear', agent: 'mapeador', level: 'info', slot: s.id,
-      msg: `slot ${s.id} · ${s.gender}/${s.section} · ${s.label} · ${s.width}×${s.height} → ${s.file}`,
-      data: { gender: s.gender, section: s.section, dims: s.dims, file: s.file, category: s.category },
+      phase: 'mapear', agent: 'mapeador', level: 'info',
+      msg: `${b.label}: ${b.count} img · ${dim} · ${tag}${b.planned ? ' (planejado)' : ''}`,
+      data: { block: b.block, count: b.count, engine: b.engine },
     });
   }
 
-  // memoriza no Config (idempotente)
-  const payload = JSON.stringify({ slots: SLOTS, updatedAt: new Date().toISOString() });
+  const total = SLOTS.length;
+  const eng = SLOTS.filter((s) => s.engine !== false).length;
+
+  const payload = JSON.stringify({ slots: SLOTS, blocks, updatedAt: new Date().toISOString() });
   try {
     await prisma.config.upsert({
       where: { key: CFG_KEY },
@@ -29,7 +32,7 @@ async function run({ prisma, emit }) {
     });
     emit({
       phase: 'mapear', agent: 'mapeador', level: 'ok',
-      msg: `Mapa memorizado: ${SLOTS.length} slots (fem ${byGender.feminino} · masc ${byGender.masculino}).`,
+      msg: `Mapa memorizado: ${total} imagens em ${blocks.length} blocos (${eng} pelo motor · ${total - eng} à parte).`,
     });
   } catch (e) {
     emit({ phase: 'mapear', agent: 'mapeador', level: 'warn', msg: `Não persistiu no Config (${e.message}); seguindo em memória.` });
