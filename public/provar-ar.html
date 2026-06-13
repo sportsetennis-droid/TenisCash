@@ -142,14 +142,14 @@
       try {
         deepAR = await withTimeout(deepar.initialize({
           licenseKey, previewElement: $('ar-screen'),
-          additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit'] }
+          additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit', 'enableFootTracking'] }
         }), 45000, 'motor');
       } catch(e){
         // alguns builds exigem um efeito já no init — tenta com o tênis direto
         try {
           deepAR = await withTimeout(deepar.initialize({
             licenseKey, previewElement: $('ar-screen'), effect: '/effects/Shoe_PBR.deepar',
-            additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit'] }
+            additionalOptions: { cameraConfig: { disableDefaultCamera: true }, hint: ['footInit', 'enableFootTracking'] }
           }), 45000, 'motor2');
           effPreloaded = true;
         } catch(e2){ return fail('Não consegui iniciar o AR', emsg(e2) + '. Tente de novo, de preferência no Wi-Fi.'); }
