@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Provar Tênis — Sports & Tennis</title>
+<style>
+  :root { --primary:#E5571E; --bg:#0d0d0f; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0; }
+  #cam, #overlay { position:absolute; inset:0; width:100%; height:100%; }
+  #cam { object-fit:cover; }
+  #overlay { pointer-events:none; }
+  /* topo */
+  #top { position:fixed; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; display:flex; gap:10px; align-items:center; justify-content:space-between; z-index:20;
+         background:linear-gradient(180deg,rgba(0,0,0,.55),transparent); }
+  .pill { background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px; padding:9px 14px; font-weight:700; font-size:13px; color:#fff; }
+  .pill.brand { color:var(--primary); }
+  #hint { position:fixed; top:42%; left:0; right:0; text-align:center; z-index:15; pointer-events:none; transition:opacity .3s; }
+  #hint .box { display:inline-block; background:rgba(0,0,0,.6); backdrop-filter:blur(10px); padding:14px 20px; border-radius:16px; font-size:15px; line-height:1.4; max-width:80%; }
+  /* painel inferior */
+  #panel { position:fixed; left:0; right:0; bottom:0; z-index:20; padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);
+           background:linear-gradient(0deg,rgba(0,0,0,.85),rgba(0,0,0,.55) 70%,transparent); }
+  #prodbar { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  #prodimg { width:54px; height:54px; border-radius:12px; background:#fff center/contain no-repeat; flex:none; }
+  #prodinfo { flex:1; min-width:0; }
+  #prodname { font-weight:800; font-size:14px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #prodprice { font-size:15px; font-weight:800; color:#7CFC9E; margin-top:2px; }
+  .row { display:flex; gap:8px; overflow-x:auto; padding:4px 0; scrollbar-width:none; }
+  .row::-webkit-scrollbar { display:none; }
+  .chip { flex:none; min-height:40px; padding:8px 14px; border-radius:999px; border:2px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08);
+          color:#fff; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
+  .chip.on { background:#fff; color:#111; border-color:#fff; }
+  .swatch { flex:none; width:46px; height:46px; border-radius:12px; border:2px solid rgba(255,255,255,.3); background:#fff center/contain no-repeat; cursor:pointer; }
+  .swatch.on { border-color:var(--primary); box-shadow:0 0 0 2px var(--primary); }
+  .lbl { font-size:11px; color:#bbb; margin:8px 0 2px; letter-spacing:.5px; }
+  #actions { display:flex; gap:10px; margin-top:12px; }
+  .btn { flex:1; min-height:50px; border:none; border-radius:14px; font-weight:800; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; }
+  .btn.shot { background:rgba(255,255,255,.15); color:#fff; flex:none; width:56px; }
+  .btn.buy { background:#25D366; color:#063; }
+  .btn.prim { background:var(--primary); color:#fff; }
+  /* picker */
+  #picker { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.92); display:none; flex-direction:column; padding:calc(env(safe-area-inset-top) + 14px) 14px 14px; }
+  #picker.show { display:flex; }
+  #pksearch { width:100%; padding:13px; border-radius:12px; border:1px solid #333; background:#1a1a1d; color:#fff; font-size:16px; margin-bottom:12px; }
+  #pkgrid { flex:1; overflow-y:auto; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .pk { background:#1a1a1d; border-radius:14px; padding:10px; cursor:pointer; }
+  .pk img { width:100%; height:110px; object-fit:contain; background:#fff; border-radius:10px; }
+  .pk .n { font-size:12px; font-weight:700; margin-top:6px; line-height:1.2; max-height:30px; overflow:hidden; }
+  .pk .p { font-size:13px; font-weight:800; color:#7CFC9E; margin-top:3px; }
+  #toast { position:fixed; bottom:120px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.85); padding:10px 18px; border-radius:999px; z-index:50; font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div id="top">
+  <span class="pill brand">👟 Provar tênis</span>
+  <span class="pill" onclick="openPicker()">Trocar tênis ▾</span>
+</div>
+
+<div id="hint"><div class="box" id="hintbox">Preparando a câmera…</div></div>
+
+<div id="panel">
+  <div id="prodbar">
+    <div id="prodimg"></div>
+    <div id="prodinfo"><div id="prodname">—</div><div id="prodprice"></div></div>
+  </div>
+  <div id="colorsWrap" style="display:none;"><div class="lbl">CORES</div><div class="row" id="colors"></div></div>
+  <div class="lbl" id="sizelbl" style="display:none;">TAMANHO</div>
+  <div class="row" id="sizes"></div>
+  <div id="actions">
+    <button class="btn shot" onclick="takeShot()" title="Foto">📸</button>
+    <button class="btn buy" id="buyBtn" onclick="buy()">🛒 Quero esse</button>
+  </div>
+</div>
+
+<div id="picker">
+  <input id="pksearch" placeholder="Buscar tênis…" oninput="onSearch()">
+  <div id="pkgrid"></div>
+  <button class="btn prim" style="margin-top:12px;min-height:48px;" onclick="closePicker()">Fechar</button>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+// MediaPipe entra por import DINÂMICO dentro do start() — se a CDN falhar, a UI ainda funciona.
+let PoseLandmarker = null, FilesetResolver = null;
+
+const WA_NUMBER = '5583996713153'; // ⚠️ VERIFICAR: WhatsApp da loja (memória: 83 9671-3153)
+const $ = (id) => document.getElementById(id);
+const cam = $('cam'), overlay = $('overlay'), ctx = overlay.getContext('2d');
+let landmarker = null, running = false, lastVideoTime = -1;
+let product = null, shoeImg = null, selectedSize = null, demoMode = false;
+let footState = null; // {heel:{x,y}, toe:{x,y}, vis}
+
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1800); }
+function setHint(html) { const h = $('hint'); if (!html) { h.style.opacity = 0; return; } $('hintbox').innerHTML = html; h.style.opacity = 1; }
+function fmt(n) { return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ','); }
+const proxy = (u) => '/api/tryon/img?u=' + encodeURIComponent(u);
+
+// ---- carrega imagem do tênis e remove o fundo branco (vira "adesivo") ----
+async function loadShoe(url) {
+  return new Promise((resolve) => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const cc = c.getContext('2d'); cc.drawImage(img, 0, 0);
+      try {
+        const d = cc.getImageData(0, 0, c.width, c.height); const p = d.data;
+        for (let i = 0; i < p.length; i += 4) { if (p[i] > 238 && p[i + 1] > 238 && p[i + 2] > 238) p[i + 3] = 0; }
+        cc.putImageData(d, 0, 0);
+      } catch (e) { /* imagem tainted: usa como está */ }
+      resolve(c);
+    };
+    img.onerror = () => resolve(null);
+    img.src = proxy(url);
+  });
+}
+
+// ---- desenha o tênis ancorado no pé ----
+function drawShoe() {
+  const W = overlay.width, H = overlay.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!shoeImg || !footState) return;
+  const { heel, toe } = footState;
+  const dx = toe.x - heel.x, dy = toe.y - heel.y;
+  const footLen = Math.hypot(dx, dy);
+  if (footLen < 10) return;
+  const angle = Math.atan2(dy, dx);
+  const facingLeft = dx < 0; // pé apontando pra esquerda → espelha o tênis
+  // o tênis deve cobrir ~1.35x o comprimento heel→ponta (a foto tem folga)
+  const targetW = footLen * 1.35;
+  const scale = targetW / shoeImg.width;
+  const sh = shoeImg.height * scale;
+  ctx.save();
+  // ancora no calcanhar, sobe um pouco (o tênis fica acima da linha do chão)
+  ctx.translate(heel.x - dx * 0.18, heel.y - dy * 0.18 - sh * 0.32);
+  ctx.rotate(angle);
+  if (facingLeft) ctx.scale(1, 1); else ctx.scale(-1, 1); // foto perfil aponta p/ esquerda por padrão
+  ctx.globalAlpha = 0.96;
+  ctx.drawImage(shoeImg, facingLeft ? 0 : -targetW, 0, targetW, sh);
+  ctx.restore();
+}
+
+// ---- loop de render ----
+function resize() { overlay.width = cam.videoWidth || window.innerWidth; overlay.height = cam.videoHeight || window.innerHeight; }
+function pickFoot(lm) {
+  // landmarks: 27/28 tornozelo, 29/30 calcanhar, 31/32 ponta. Escolhe o pé mais visível.
+  const W = overlay.width, H = overlay.height;
+  const cand = [{ heel: 29, toe: 31 }, { heel: 30, toe: 32 }].map((f) => {
+    const h = lm[f.heel], t = lm[f.toe];
+    const vis = Math.min(h.visibility ?? 1, t.visibility ?? 1);
+    return { heel: { x: h.x * W, y: h.y * H }, toe: { x: t.x * W, y: t.y * H }, vis };
+  });
+  cand.sort((a, b) => b.vis - a.vis);
+  return cand[0].vis > 0.4 ? cand[0] : null;
+}
+function renderLoop() {
+  if (!running) return;
+  if (!demoMode && landmarker && cam.readyState >= 2) {
+    if (overlay.width !== cam.videoWidth) resize();
+    const now = performance.now();
+    if (cam.currentTime !== lastVideoTime) {
+      lastVideoTime = cam.currentTime;
+      try {
+        const res = landmarker.detectForVideo(cam, now);
+        const lm = res.landmarks && res.landmarks[0];
+        footState = lm ? pickFoot(lm) : null;
+        setHint(footState ? '' : '🦶 Aponte a câmera pro seu pé');
+      } catch (e) { /* frame ruim */ }
+    }
+  }
+  drawShoe();
+  requestAnimationFrame(renderLoop);
+}
+
+// ---- câmera + modelo ----
+async function start() {
+  try {
+    setHint('Carregando provador…');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    cam.srcObject = stream;
+    await cam.play();
+    resize();
+  } catch (e) {
+    setHint('📷 Não consegui abrir a câmera.<br>Libere a permissão e recarregue.<br><br><button class="chip on" onclick="window.__demo()">Ver em modo demo</button>');
+    return;
+  }
+  try {
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    PoseLandmarker = vision.PoseLandmarker; FilesetResolver = vision.FilesetResolver;
+    const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    landmarker = await PoseLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: 'GPU' },
+      runningMode: 'VIDEO', numPoses: 1,
+    });
+    setHint('🦶 Aponte a câmera pro seu pé');
+  } catch (e) {
+    setHint('Não carregou o detector (sem internet?).<br>Você ainda vê o tênis no modo demo.<br><br><button class="chip on" onclick="window.__demo()">Modo demo</button>');
+  }
+  running = true; renderLoop();
+}
+window.__demo = () => { demoMode = true; const W = overlay.width = window.innerWidth, H = overlay.height = window.innerHeight; footState = { heel: { x: W * 0.35, y: H * 0.6 }, toe: { x: W * 0.65, y: H * 0.6 }, vis: 1 }; setHint(''); if (!running) { running = true; renderLoop(); } toast('Modo demo (pé fixo)'); };
+
+// ---- produto / cores / tamanhos ----
+async function selectProduct(id) {
+  try {
+    const r = await fetch('/api/tryon/product/' + id); const d = await r.json();
+    if (d.error) { toast('Erro ao carregar'); return; }
+    product = d; selectedSize = null;
+    $('prodname').textContent = (d.brand ? d.brand + ' ' : '') + d.name;
+    $('prodprice').textContent = fmt(d.price);
+    $('prodimg').style.backgroundImage = `url('${proxy(d.imageUrl)}')`;
+    shoeImg = await loadShoe(d.imageUrl);
+    // cores
+    const cw = $('colorsWrap'), cr = $('colors');
+    const variants = [{ id: d.id, imageUrl: d.imageUrl, color: d.color, price: d.price }, ...(d.variants || [])];
+    if (variants.length > 1) {
+      cw.style.display = 'block';
+      cr.innerHTML = variants.map((v) => `<div class="swatch ${v.id === d.id ? 'on' : ''}" style="background-image:url('${proxy(v.imageUrl)}')" onclick="window.__pickColor('${v.id}')"></div>`).join('');
+    } else { cw.style.display = 'none'; }
+    // tamanhos
+    const sz = $('sizes');
+    if ((d.sizes || []).length) {
+      $('sizelbl').style.display = 'block';
+      sz.innerHTML = d.sizes.map((s) => `<div class="chip" onclick="window.__pickSize(this,'${s.size}')">${s.size}</div>`).join('');
+    } else {
+      $('sizelbl').style.display = 'block';
+      sz.innerHTML = '<div style="color:#bbb;font-size:13px;padding:8px 0;">Tamanhos: confira na loja 👟</div>';
+    }
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+window.__pickColor = (id) => selectProduct(id);
+window.__pickSize = (el, s) => { document.querySelectorAll('#sizes .chip').forEach((c) => c.classList.remove('on')); el.classList.add('on'); selectedSize = s; };
+
+// ---- screenshot ----
+async function takeShot() {
+  const W = cam.videoWidth || window.innerWidth, H = cam.videoHeight || window.innerHeight;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const cc = c.getContext('2d');
+  try { cc.drawImage(cam, 0, 0, W, H); } catch (e) {}
+  cc.drawImage(overlay, 0, 0, W, H);
+  // marca d'água
+  cc.fillStyle = 'rgba(255,255,255,.9)'; cc.font = 'bold ' + Math.round(W / 28) + 'px sans-serif';
+  cc.fillText('Sports & Tennis 👟', 20, H - 24);
+  c.toBlob(async (blob) => {
+    if (!blob) { toast('Não consegui salvar'); return; }
+    const file = new File([blob], 'meu-tenis.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text: 'Provei esse tênis na Sports & Tennis 👟' }); return; } catch (e) {}
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'meu-tenis.png'; a.click(); toast('📸 Foto salva');
+  }, 'image/png');
+}
+window.takeShot = takeShot;
+
+// ---- comprar (WhatsApp) ----
+function buy() {
+  if (!product) return;
+  const sz = selectedSize ? (' tamanho ' + selectedSize) : '';
+  const msg = `Oi! Provei o *${product.brand || ''} ${product.name}*${sz} no app e quero garantir o meu 👟 (${fmt(product.price)})`;
+  window.open('https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+}
+window.buy = buy;
+
+// ---- picker ----
+let searchTimer;
+function renderGrid(items) {
+  $('pkgrid').innerHTML = items.map((i) => `<div class="pk" onclick="window.__pick('${i.id}')"><img src="${proxy(i.imageUrl)}" loading="lazy"><div class="n">${i.brand || ''} ${i.name}</div><div class="p">${fmt(i.price)}</div></div>`).join('') || '<div style="color:#888;padding:20px;">Nada encontrado.</div>';
+}
+window.__pick = (id) => { closePicker(); selectProduct(id); };
+async function openPicker() { $('picker').classList.add('show'); const r = await fetch('/api/tryon/featured'); const d = await r.json(); renderGrid(d.items || []); }
+function closePicker() { $('picker').classList.remove('show'); }
+window.openPicker = openPicker; window.closePicker = closePicker;
+function onSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $('pksearch').value.trim();
+    if (q.length < 2) { const r = await fetch('/api/tryon/featured'); renderGrid((await r.json()).items || []); return; }
+    const r = await fetch('/api/tryon/search?q=' + encodeURIComponent(q)); renderGrid((await r.json()).items || []);
+  }, 300);
+}
+window.onSearch = onSearch;
+
+// ---- boot ----
+(async () => {
+  await start();
+  try { const r = await fetch('/api/tryon/featured'); const d = await r.json(); if (d.items && d.items.length) selectProduct(d.items[0].id); } catch (e) {}
+})();
+</script>
+</body>
+</html>
