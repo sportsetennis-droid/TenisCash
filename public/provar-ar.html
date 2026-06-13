@@ -179,21 +179,15 @@
       const badge = $('demoBadge');
       function footState(){
         if(!deepAR) return;
-        let initd = true, det = false;
-        try { if(deepAR.isFootTrackingInitialized) initd = deepAR.isFootTrackingInitialized(); } catch(e){}
-        if(window.__footReady) initd = true;
-        if(typeof window.__footDet === 'boolean'){ det = window.__footDet; }
-        else {
-          try { det = (deepAR.isLeftFootDetected && deepAR.isLeftFootDetected()) || (deepAR.isRightFootDetected && deepAR.isRightFootDetected()); } catch(e){}
-        }
-        if(!initd){ badge.style.color = '#ffd27a'; badge.textContent = '🔍 Ligando o rastreamento de pé…'; return; }
-        if(det){
-          badge.style.color = '#7CFC9E';
-          badge.textContent = effOk ? '✅ Pé detectado · tênis demo' : '✅ Pé detectado! (motor OK — falta o modelo do tênis)';
-        } else {
-          badge.style.color = '#ffd27a';
-          badge.textContent = '🔍 Procurando o pé… CALCE UM TÊNIS e aponte de cima pros pés (~50cm)';
-        }
+        // O efeito faz o PRÓPRIO rastreamento e desenha o tênis quando vê o pé.
+        // A API isLeftFootDetected/onFeetTracked é instável nesta versão — uso só como
+        // bônus pra trocar o texto, NUNCA pra dizer "não achou" (isso me enganou antes).
+        let det = false;
+        if(typeof window.__footDet === 'boolean') det = window.__footDet;
+        else { try { det = (deepAR.isLeftFootDetected && deepAR.isLeftFootDetected()) || (deepAR.isRightFootDetected && deepAR.isRightFootDetected()); } catch(e){} }
+        if(!effOk){ badge.style.color = '#ffd27a'; badge.textContent = 'Carregando o tênis demo…'; return; }
+        if(det){ badge.style.color = '#7CFC9E'; badge.textContent = '✅ Tênis no seu pé! (demo)'; }
+        else { badge.style.color = '#cfe8ff'; badge.textContent = '👟 Tênis demo ativo — aponte a câmera pros pés'; }
       }
       footState();
       setInterval(footState, 400);
