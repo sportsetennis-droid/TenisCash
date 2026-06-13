@@ -41,9 +41,17 @@ async function bump(runId, field, by = 1) { try { await prisma.agentRun.update({
 function isFull(p) { const c = ctxOf(p); const cl = c.classification || {}; return !!(p.category && p.subcategory && cl.modality && cl.tier); }
 function temFoto(p) { return !!(p.imageUrl && String(p.imageUrl).length > 10); }
 
-// ---- marcas com produtos faltando classificação (pro seletor) ----
+// REGRA DO DONO: só mexe em produto BIPADO — é a garantia de que o estoque está
+// controlado/conferido na loja. Produto nunca bipado NÃO entra na esteira.
+async function bipadoIds() {
+  const rows = await prisma.stocktakeBipe.findMany({ where: { found: true, productId: { not: null } }, select: { productId: true }, distinct: ['productId'] });
+  return new Set(rows.map((r) => r.productId).filter(Boolean));
+}
+
+// ---- marcas com produtos BIPADOS faltando classificação (pro seletor) ----
 async function listBrands() {
-  const prods = await prisma.product.findMany({ where: { active: true }, select: { brand: true, category: true, subcategory: true, aiContext: true } });
+  const bip = await bipadoIds();
+  const prods = await prisma.product.findMany({ where: { active: true, id: { in: [...bip] } }, select: { brand: true, category: true, subcategory: true, aiContext: true } });
   const map = {};
   for (const p of prods) {
     const b = (p.brand || '(sem marca)').trim();
@@ -154,12 +162,15 @@ async function processRun(runId, brand) {
   await log(runId, 'orquestrador', 'info', 'esteira iniciada' + (brand ? ' — marca ' + brand : ''), null);
   const paths = await caminhosValidos();
   if (!paths.length) await log(runId, 'orquestrador', 'erro', 'árvore de categorias vazia — classificação vai falhar', null);
-  const where = { active: true };
+  // REGRA DO DONO: só produto BIPADO entra (estoque conferido na loja).
+  const bip = await bipadoIds();
+  await log(runId, 'orquestrador', 'info', 'só produtos BIPADOS entram (estoque controlado) — ' + bip.size + ' bipados no catálogo', null);
+  const where = { active: true, id: { in: [...bip] } };
   if (brand && brand !== '(sem marca)') where.brand = { equals: brand, mode: 'insensitive' };
   const produtos = await prisma.product.findMany({ where, select: { id: true, name: true, brand: true, category: true, subcategory: true, price: true, imageUrl: true, imageUrls: true, aiContext: true }, orderBy: { createdAt: 'desc' } });
   const fila = produtos.filter((p) => !isFull(p) || !temFoto(p));
   await prisma.agentRun.update({ where: { id: runId }, data: { total: fila.length } }).catch(() => {});
-  await log(runId, 'orquestrador', 'info', fila.length + ' produtos na fila', null);
+  await log(runId, 'orquestrador', 'info', fila.length + ' produtos bipados na fila', null);
 
   for (const product of fila) {
     // pausa
