@@ -761,13 +761,11 @@ async function tratarPendentesEtiqueta() {
         const base = sku ? (sizeDoSku(sku) ? sku.replace(new RegExp('[-.]' + sizeDoSku(sku) + '$', 'i'), '') : sku) : ('EAN-' + ean2);
         const ex2 = await prisma.product.findFirst({ where: { OR: [{ sku: base }, { aiContext: { path: ['supplierRef'], equals: base } }] }, select: { id: true } });
         if (ex2) pid = ex2.id;
-        else {
-          const MARCAS = ['NIKE', 'ADIDAS', 'KENNER', 'FIBER', 'PUMA', 'MIZUNO', 'OLYMPIKUS', 'FILA', 'UMBRO', 'ASICS', 'REEBOK', 'OAKLEY', 'MORMAII', 'DILLY', 'OUS', 'CONVERSE'];
-          const marca = MARCAS.find((x) => (nome || '').toUpperCase().includes(x)) || 'A DEFINIR';
-          let skuCard = base, n2 = 1; while (await prisma.product.findFirst({ where: { sku: skuCard }, select: { id: true } })) { n2++; skuCard = base + '-' + n2; }
-          const np = await prisma.product.create({ data: { sku: skuCard, name: ((nome ? nome.toUpperCase() + ' ' : 'PRODUTO ') + 'REF ' + base).slice(0, 120), brand: marca, category: 'A CLASSIFICAR', price: 0, active: true, source: 'scanner-auto', aiContext: { supplierRef: base, scannerAuto: true, photoPending: true, observacao: 'SEM NFE DE COMPRA' } }, select: { id: true } }).catch(() => null);
-          if (np) pid = np.id;
-        }
+        // AUTO-CRIAR DESLIGADO (dono 2026-06-12: "não pode haver nada duplicado").
+        // Criava card novo quando não achava — mas marcas SEM GTIN (Nike: NFe da HAF não traz o
+        // EAN da caixa) NÃO casam, então o scanner gerava 1 card-fantasma por leitura (154 só de Nike).
+        // Agora: se não há card existente, a captura fica PENDENTE (sem criar dup). Volta a casar
+        // sozinha quando o card real existir / NFe ligar. Re-ligar só com de-para caixa↔NFe resolvido.
         if (pid) {
           const bc2 = ean2 || sku;
           const tam2 = (sku && sizeDoSku(sku)) || (lido && lido.tamanho ? String(lido.tamanho).replace(/[^0-9A-Z]/gi, '').replace(/^BR/i, '') : null);
