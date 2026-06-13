@@ -165,14 +165,18 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     if (storeId) sizesSome.storeStocks = { some: { stock: { gt: 0 }, storeId } };
     else if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
 
-    // GARANTIA (só staff logado: vendedor/admin) — mostra produto ATIVO **ou** com ESTOQUE,
-    // pra dar pra VENDER qualquer produto comprado, mesmo sem bipe. Cliente anônimo: só ativo.
+    // GARANTIA (só staff logado: vendedor/admin) — mostra produto ATIVO **ou** inativo-mas-REAL
+    // (tem PREÇO>0 e estoque), pra dar pra VENDER qualquer produto comprado. Cliente anônimo: só ativo.
+    // ⛔ Cópia-lixo do scanner (inativa + R$0, SEM nota) NUNCA aparece — era ela que poluía a busca
+    // com dezenas de "Nike Revolution zerado" acima dos 2 cards reais. (dono 2026-06-13)
     const isStaff = ['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole);
     const staffVisibleProduct = {
       OR: [
         { active: true },
-        { sizes: { some: { stock: { gt: 0 } } } },
-        { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+        { AND: [{ price: { gt: 0 } }, { OR: [
+          { sizes: { some: { stock: { gt: 0 } } } },
+          { sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } } },
+        ] }] },
       ],
     };
     const andConds = [
