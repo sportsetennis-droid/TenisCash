@@ -73,6 +73,14 @@ router.get('/product/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/tryon/ar-config — License Key do DeepAR pro provador AR (provar-ar.html).
+// A chave Web do DeepAR é client-side por design (trava por domínio = teniscash.com.br),
+// mas mesmo assim fica em ENV (DEEPAR_LICENSE_KEY), nunca hardcoded no repo.
+router.get('/ar-config', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ licenseKey: process.env.DEEPAR_LICENSE_KEY || '' });
+});
+
 // GET /api/tryon/img?u=<url> — PROXY de imagem (CORS-safe). Sem isso o canvas vira
 // "tainted" e o screenshot falha. Só https; bloqueia host interno/privado (anti-SSRF).
 router.get('/img', async (req, res) => {

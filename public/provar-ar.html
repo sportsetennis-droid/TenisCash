@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Provador AR — Sports & Tennis</title>
+  <style>
+    :root { --primary:#E5571E; --bg:#0d0d0f; --ok:#25D366; }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:rgba(0,0,0,0); }
+    html,body { margin:0; height:100%; background:var(--bg); color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden; }
+    #ar-screen { position:fixed; inset:0; width:100%; height:100%; background:#000; z-index:1; }
+    #ar-screen canvas { width:100% !important; height:100% !important; object-fit:cover; }
+
+    /* overlays */
+    .layer { position:fixed; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center;
+             text-align:center; padding:24px; gap:16px; }
+    .layer.hide { display:none; }
+    .logo { font-weight:900; letter-spacing:.5px; font-size:15px; opacity:.9; }
+    .logo b { color:var(--primary); }
+    .big { font-size:64px; line-height:1; }
+    h1 { font-size:22px; margin:0; font-weight:800; }
+    p.sub { margin:0; font-size:15px; line-height:1.45; color:#cfcfd4; max-width:300px; }
+    .cta { min-height:54px; padding:0 28px; border-radius:999px; border:0; font-size:17px; font-weight:800;
+           background:var(--primary); color:#fff; display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+    .cta.ghost { background:rgba(255,255,255,.12); }
+    .spinner { width:42px; height:42px; border:4px solid rgba(255,255,255,.2); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* top bar */
+    #top { position:fixed; top:0; left:0; right:0; z-index:6; display:flex; align-items:center; justify-content:space-between;
+           padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:linear-gradient(180deg,rgba(0,0,0,.6),transparent); }
+    .pill { background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
+            padding:8px 14px; font-weight:800; font-size:13px; }
+    .x { width:38px; height:38px; border-radius:999px; background:rgba(0,0,0,.5); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15);
+         color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; text-decoration:none; }
+
+    /* hint */
+    #hint { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4; pointer-events:none; }
+    #hint .box { background:rgba(0,0,0,.55); backdrop-filter:blur(10px); padding:12px 18px; border-radius:14px; font-size:15px; font-weight:600; }
+
+    /* bottom bar */
+    #bottom { position:fixed; left:0; right:0; bottom:0; z-index:6; padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);
+              display:flex; gap:10px; align-items:center; background:linear-gradient(0deg,rgba(0,0,0,.8),transparent); }
+    .btn { min-height:54px; border-radius:14px; border:0; font-size:16px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
+    .btn.shot { width:60px; flex:none; background:rgba(255,255,255,.16); color:#fff; }
+    .btn.buy { flex:1; background:var(--ok); color:#063; }
+    .demo-badge { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 84px); z-index:6;
+                  background:rgba(0,0,0,.55); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.15); border-radius:999px;
+                  padding:6px 12px; font-size:11px; font-weight:700; color:#ffd27a; }
+    .hide { display:none !important; }
+  </style>
+</head>
+<body>
+  <!-- DeepAR renders here -->
+  <div id="ar-screen" class="hide"></div>
+
+  <!-- START (tap to open camera — needed for iOS gesture) -->
+  <div id="start" class="layer">
+    <div class="logo"><b>SPORTS</b> &amp; TENNIS</div>
+    <div class="big">👟</div>
+    <h1>Provador AR</h1>
+    <p class="sub">Aponte a câmera para os seus <b>pés</b> e veja o tênis no seu pé, em tempo real.</p>
+    <button class="cta" id="startBtn">▶️ Abrir a câmera</button>
+    <p class="sub" style="font-size:12px;opacity:.7">Vai pedir permissão da câmera — toque em <b>Permitir</b>.</p>
+  </div>
+
+  <!-- LOADING -->
+  <div id="loading" class="layer hide">
+    <div class="spinner"></div>
+    <p class="sub" id="loadingMsg">Iniciando o provador…</p>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error" class="layer hide">
+    <div class="big">😕</div>
+    <h1 id="errTitle">Não consegui abrir a câmera</h1>
+    <p class="sub" id="errMsg">Verifique se deu permissão de câmera ao navegador.</p>
+    <button class="cta" id="retryBtn">Tentar de novo</button>
+    <a class="cta ghost" href="/provar.html" style="text-decoration:none">Usar provador simples</a>
+  </div>
+
+  <!-- TOP BAR -->
+  <div id="top" class="hide">
+    <span class="pill">Provador AR · S&amp;T</span>
+    <a class="x" href="/loja" title="Fechar">✕</a>
+  </div>
+
+  <!-- HINT -->
+  <div id="hint" class="hide"><div class="box">👇 Aponte para os seus pés</div></div>
+
+  <!-- DEMO BADGE -->
+  <div id="demoBadge" class="demo-badge hide">Tênis demonstração — nosso catálogo vem já já</div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottom" class="hide">
+    <button class="btn shot" id="shotBtn" title="Foto">📸</button>
+    <button class="btn buy" id="buyBtn">🛒 Quero esse</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/deepar@5.6.22/js/deepar.js"></script>
+  <script>
+    const WA_NUMBER = '5583996713153';
+    const $ = (id) => document.getElementById(id);
+    function show(id){ $(id).classList.remove('hide'); }
+    function hide(id){ $(id).classList.add('hide'); }
+    function showLayer(id){ ['start','loading','error'].forEach(hide); if(id) show(id); }
+
+    let deepAR = null;
+
+    async function getLicenseKey(){
+      try {
+        const r = await fetch('/api/tryon/ar-config', { cache:'no-store' });
+        const j = await r.json();
+        return j.licenseKey || '';
+      } catch(e){ return ''; }
+    }
+
+    async function startAR(){
+      showLayer('loading');
+      $('loadingMsg').textContent = 'Iniciando o provador…';
+
+      const licenseKey = await getLicenseKey();
+      if(!licenseKey){
+        return fail('Provador indisponível', 'A configuração do provador AR não está pronta no servidor. Avise o suporte.');
+      }
+
+      if(typeof deepar === 'undefined'){
+        return fail('Falha ao carregar', 'A biblioteca de AR não carregou. Verifique sua internet e tente de novo.');
+      }
+
+      $('loadingMsg').textContent = 'Abrindo a câmera e o tênis 3D…';
+      const initOpts = (effect) => ({
+        licenseKey,
+        previewElement: $('ar-screen'),
+        effect,
+        additionalOptions: { cameraConfig: { facingMode: 'environment' } } // câmera traseira (aponta pros pés)
+      });
+
+      try {
+        deepAR = await deepar.initialize(initOpts('/effects/Shoe_PBR.deepar'));
+      } catch(e1){
+        console.warn('Shoe_PBR falhou, tentando Shoe:', e1);
+        try {
+          deepAR = await deepar.initialize(initOpts('/effects/Shoe.deepar'));
+        } catch(e2){
+          console.error(e2);
+          const denied = String(e2 && e2.message || '').toLowerCase().includes('permission');
+          return fail(
+            denied ? 'Câmera bloqueada' : 'Não consegui iniciar',
+            denied ? 'Você precisa permitir o acesso à câmera nas configurações do navegador e tentar de novo.'
+                   : 'Tente de novo. Se persistir, use o provador simples por enquanto.'
+          );
+        }
+      }
+
+      // Foot tracking carrega sob demanda com o efeito; força o preload pra detectar o pé mais rápido.
+      try { deepAR.initializeFootTracking(); } catch(e){}
+
+      // UI do provador
+      showLayer(null);
+      show('ar-screen'); show('top'); show('bottom'); show('hint'); show('demoBadge');
+      setTimeout(()=>hide('hint'), 6000);
+    }
+
+    function fail(title, msg){
+      if(deepAR){ try{ deepAR.shutdown && deepAR.shutdown(); }catch(e){} deepAR=null; }
+      $('errTitle').textContent = title;
+      $('errMsg').textContent = msg;
+      showLayer('error');
+    }
+
+    async function takeShot(){
+      if(!deepAR) return;
+      try {
+        const dataUrl = await deepAR.takeScreenshot(); // data:image/png
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], 'provador-sportsetennis.png', { type:'image/png' });
+        if(navigator.canShare && navigator.canShare({ files:[file] })){
+          await navigator.share({ files:[file], text:'Experimentei na Sports & Tennis 👟 #ProvadorAR' });
+        } else {
+          const a = document.createElement('a'); a.href = dataUrl; a.download = 'provador-sportsetennis.png'; a.click();
+        }
+      } catch(e){ console.error('screenshot', e); }
+    }
+
+    function buy(){
+      const msg = 'Oi! Acabei de usar o Provador AR da Sports & Tennis e quero falar com um vendedor sobre um tênis. 👟';
+      window.open('https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+    }
+
+    $('startBtn').onclick = startAR;
+    $('retryBtn').onclick = startAR;
+    $('shotBtn').onclick = takeShot;
+    $('buyBtn').onclick = buy;
+  </script>
+</body>
+</html>
