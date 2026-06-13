@@ -264,6 +264,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
+    <button class="tab" onclick="switchTab('competitivo',this)">📊 Competitivo</button>
     <button class="tab" onclick="switchTab('partners',this)">Creation</button>
     <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
     <button class="tab" onclick="switchTab('labels',this)">Etiquetas</button>
@@ -2049,6 +2050,17 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   </div>
 
   <div id="img-products-wrap"></div>
+</div>
+
+<!-- MONITORAMENTO COMPETITIVO — top tênis por bipado vs concorrentes -->
+<div class="section" id="tab-competitivo" style="display:none">
+  <h2 style="margin:0 0 4px;">📊 Monitoramento Competitivo</h2>
+  <p style="color:#8e8e93;font-size:13px;margin:0 0 14px;line-height:1.5;max-width:760px;">Nossos tênis com mais estoque <strong>bipado</strong> × preço e disponibilidade nos concorrentes (Centauro, Netshoes, Amazon, Nike, FutFanatics, Converse, Adidas, Puma) + <strong>nosso giro real</strong>. Pra atacar: somos mais baratos → anuncia forte; estamos caros/encalhados → revisa preço.</p>
+  <div id="competitivoMeta" style="font-size:12px;color:#8e8e93;margin-bottom:10px;"></div>
+  <div id="competitivoBody"><div style="text-align:center;padding:30px;color:#8e8e93;">Carregando…</div></div>
+  <div style="margin-top:14px;padding:12px;background:#f0f7ff;border:1px solid #cfe3ff;border-radius:10px;font-size:13px;color:#1d4e89;line-height:1.5;">
+    🔄 <strong>Atualização do concorrente:</strong> os preços são pesquisados <strong>sob demanda</strong> (dado real, nunca chutado). Peça pro Claude <em>"atualiza o monitoramento competitivo"</em> — ele puxa os preços atuais e preenche a coluna. O <strong>giro</strong> e o <strong>bipado</strong> já são ao vivo.
+  </div>
 </div>
 
 <!-- MARKUP & PREÇOS — gestão de custo, markup e preço de venda -->
@@ -12904,6 +12916,55 @@ function switchInvSub(which) {
     clsPane.style.display = 'none';
   }
 }
+
+// ===== MONITORAMENTO COMPETITIVO =====
+async function loadCompetitiveMonitor() {
+  const body = document.getElementById('competitivoBody');
+  const meta = document.getElementById('competitivoMeta');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:#8e8e93;">Carregando…</div>';
+  try {
+    const d = await api('/admin/catalog/competitive-monitor?limit=30');
+    if (d.error) { body.innerHTML = '<div style="padding:20px;color:#d70015;">Erro: ' + d.error + '</div>'; return; }
+    const items = d.items || [];
+    if (meta) meta.textContent = items.length + ' tênis monitorados · giro/bipado ao vivo' + (d.lastUpdated ? ' · concorrente pesquisado em ' + new Date(d.lastUpdated).toLocaleDateString('pt-BR') : ' · concorrente ainda não pesquisado');
+    if (!items.length) { body.innerHTML = '<div style="padding:30px;text-align:center;color:#8e8e93;">Nenhum tênis com estoque bipado.</div>'; return; }
+    const toneBg = { good: '#e8f7ee', bad: '#fff1f0', mid: '#fff8e6', pending: '#f5f5f7' };
+    const toneFg = { good: '#0a843d', bad: '#d70015', mid: '#b06b00', pending: '#8e8e93' };
+    const money = (n) => 'R$ ' + Number(n || 0).toFixed(2).replace('.', ',');
+    let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+      + '<thead><tr style="text-align:left;border-bottom:2px solid #e5e5ea;color:#8e8e93;font-size:11px;">'
+      + '<th style="padding:8px;">TÊNIS</th><th style="padding:8px;text-align:right;">BIPADO</th><th style="padding:8px;text-align:right;">GIRO 30d</th><th style="padding:8px;text-align:right;">NOSSO</th><th style="padding:8px;">CONCORRENTE</th><th style="padding:8px;text-align:right;">Δ vs NÓS</th><th style="padding:8px;">AÇÃO</th></tr></thead><tbody>';
+    items.forEach((it) => {
+      const comp = (it.competitors || []).length
+        ? it.competitors.map((c) => '<div>' + escapeHtml(c.site || '') + (typeof c.price === 'number' ? ' <strong>' + money(c.price) + '</strong>' : ' <span style="color:#8e8e93;">s/ preço</span>') + (c.note ? ' <span style="color:#8e8e93;font-size:11px;">· ' + escapeHtml(c.note) + '</span>' : '') + '</div>').join('')
+        : '<span style="color:#8e8e93;">— não pesquisado</span>';
+      const delta = it.gapPct == null ? '<span style="color:#8e8e93;">—</span>'
+        : '<span style="color:' + (it.gapPct > 5 ? '#d70015' : (it.gapPct < -5 ? '#0a843d' : '#b06b00')) + ';font-weight:700;">' + (it.gap > 0 ? '+' : '') + money(it.gap) + '<br>(' + (it.gapPct > 0 ? '+' : '') + it.gapPct + '%)</span>';
+      html += '<tr style="border-bottom:1px solid #f0f0f2;vertical-align:top;">'
+        + '<td style="padding:8px;"><strong>' + escapeHtml(it.brand || '') + '</strong> ' + escapeHtml((it.name || '').slice(0, 48)) + (it.cor ? '<br><span style="font-size:11px;color:#8e8e93;">🎨 ' + escapeHtml(it.cor) + '</span>' : '') + '</td>'
+        + '<td style="padding:8px;text-align:right;font-weight:700;">' + it.bipado + '</td>'
+        + '<td style="padding:8px;text-align:right;font-weight:700;color:' + (it.giro30 > 0 ? '#0a843d' : '#d70015') + ';">' + it.giro30 + '</td>'
+        + '<td style="padding:8px;text-align:right;font-weight:700;">' + money(it.ourPrice) + '</td>'
+        + '<td style="padding:8px;font-size:12px;">' + comp + '</td>'
+        + '<td style="padding:8px;text-align:right;">' + delta + '</td>'
+        + '<td style="padding:8px;"><span style="display:inline-block;padding:4px 8px;border-radius:6px;font-weight:600;font-size:12px;background:' + (toneBg[it.tone] || '#fff') + ';color:' + (toneFg[it.tone] || '#1d1d1f') + ';">' + escapeHtml(it.action || '') + '</span></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+  } catch (e) { body.innerHTML = '<div style="padding:20px;color:#d70015;">Erro: ' + e.message + '</div>'; }
+}
+// Liga/desliga a aba competitivo + carrega ao abrir (chaina no switchTab final, seja qual for).
+(function () {
+  const orig = window.switchTab;
+  window.switchTab = function (name, btn) {
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-competitivo');
+    if (el) el.style.display = name === 'competitivo' ? 'block' : 'none';
+    if (name === 'competitivo') loadCompetitiveMonitor();
+  };
+})();
 
 </script>
 </body>

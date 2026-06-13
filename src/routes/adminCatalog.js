@@ -1729,4 +1729,76 @@ name, brand, category, subcategory, shortDescription, longDescription, features 
   }
 });
 
+// =====================================================================
+// MONITORAMENTO COMPETITIVO — top tênis por BIPADO vs concorrentes (preço/estoque)
+// + NOSSO GIRO real. O snapshot do concorrente fica em aiContext.competitorWatch
+// (atualizado SOB DEMANDA pelo Claude via scripts/save-competitor-watch.js).
+// O giro é calculado AO VIVO das vendas (dado 100% nosso). NUNCA inventa preço.
+// =====================================================================
+router.get('/competitive-monitor', adminOnly, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 25, 60);
+    const EXCLUDE = /\b(meia|mei[aã]o|bola|chinelo|sandal|sapato|kit|garrafa|bon[eé]|mochila|bolsa|cueca|sunga|camisa|short|bermuda|calc[aã]|jaqueta|moleton|legging|top)\b/i;
+    const prods = await prisma.product.findMany({
+      where: { active: true, category: { in: ['tenis', 'Tênis', 'Calçados'] } },
+      select: {
+        id: true, name: true, brand: true, sku: true, price: true, aiContext: true,
+        sizes: { select: { storeStocks: { select: { stock: true } } } },
+      },
+    });
+    let rows = prods.map((p) => {
+      const bip = p.sizes.reduce((a, s) => a + s.storeStocks.reduce((b, x) => b + (x.stock || 0), 0), 0);
+      const ctx = parseJsonSafe(p.aiContext) || {};
+      return { id: p.id, name: p.name, brand: p.brand, ref: p.sku, ourPrice: p.price || 0, cor: ctx.color || '', bipado: bip, watch: ctx.competitorWatch || null };
+    }).filter((r) => r.bipado > 0 && !EXCLUDE.test(r.name || ''));
+    rows.sort((a, b) => b.bipado - a.bipado);
+    rows = rows.slice(0, limit);
+
+    // GIRO real (nosso): unidades vendidas em 30d e 60d (venda não cancelada).
+    const ids = rows.map((r) => r.id);
+    const now = Date.now();
+    const d30 = new Date(now - 30 * 864e5), d60 = new Date(now - 60 * 864e5);
+    const [g30, g60] = ids.length ? await Promise.all([
+      prisma.saleItem.groupBy({ by: ['productId'], where: { productId: { in: ids }, sale: { status: { not: 'canceled' }, createdAt: { gte: d30 } } }, _sum: { quantity: true } }),
+      prisma.saleItem.groupBy({ by: ['productId'], where: { productId: { in: ids }, sale: { status: { not: 'canceled' }, createdAt: { gte: d60 } } }, _sum: { quantity: true } }),
+    ]) : [[], []];
+    const m30 = new Map(g30.map((x) => [x.productId, x._sum.quantity || 0]));
+    const m60 = new Map(g60.map((x) => [x.productId, x._sum.quantity || 0]));
+
+    let lastUpdated = null;
+    const items = rows.map((r) => {
+      const giro30 = m30.get(r.id) || 0;
+      const giro60 = m60.get(r.id) || 0;
+      const w = r.watch;
+      let cheapest = null, gap = null, gapPct = null;
+      if (w && Array.isArray(w.competitors)) {
+        const priced = w.competitors.filter((c) => typeof c.price === 'number' && c.price > 0);
+        if (priced.length) cheapest = priced.reduce((a, b) => (a.price <= b.price ? a : b));
+        if (cheapest && r.ourPrice > 0) { gap = Math.round((r.ourPrice - cheapest.price) * 100) / 100; gapPct = Math.round((gap / cheapest.price) * 1000) / 10; }
+        if (w.updatedAt && (!lastUpdated || w.updatedAt > lastUpdated)) lastUpdated = w.updatedAt;
+      }
+      let action, tone;
+      if (!w) { action = '⏳ Pesquisar concorrente'; tone = 'pending'; }
+      else if (cheapest == null) { action = '⏳ Está nos sites — falta preço exato'; tone = 'pending'; }
+      else if (gapPct != null && gapPct > 5) { action = `🔴 Caro: ${gapPct}% acima do ${cheapest.site} — revisar preço`; tone = 'bad'; }
+      else if (gapPct != null && gapPct < -5) { action = `🟢 Barato: ${Math.abs(gapPct)}% abaixo — anunciar agressivo`; tone = 'good'; }
+      else { action = '🟡 No preço — diferenciar (cashback/frete/atendimento)'; tone = 'mid'; }
+      let stockNote = '';
+      if (r.bipado >= 10 && giro30 === 0) stockNote = ' · encalhado (0 venda/30d)';
+      else if (giro30 >= 5) stockNote = ' · girando bem';
+      return {
+        id: r.id, name: r.name, brand: r.brand, ref: r.ref, cor: r.cor,
+        bipado: r.bipado, ourPrice: r.ourPrice, giro30, giro60,
+        competitors: w ? (w.competitors || []) : [], cheapest, gap, gapPct,
+        watchUpdatedAt: w ? w.updatedAt : null, action: action + stockNote, tone,
+      };
+    });
+
+    res.json({ items, lastUpdated, totalTenis: rows.length });
+  } catch (err) {
+    console.error('competitive-monitor', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
