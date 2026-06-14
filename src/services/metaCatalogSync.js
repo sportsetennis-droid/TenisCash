@@ -67,6 +67,7 @@ async function getBaratoId() {
 // `id` = retailer_id (GTIN se válido, senão sku-size). item_group_id agrupa as variações.
 function buildItemsForProduct(p, baratoId) {
   const ctx = ctxOf(p);
+  if (ctx.hideFromNuvemshop === true) return []; // oculto na loja → fora do Meta também
   const cls = ctx.classification || {};
   const badCat = ['', 'A CLASSIFICAR', 'A DEFINIR'];
   const has = (v) => v != null && String(v).trim() !== '';
@@ -123,8 +124,15 @@ function buildItemsForProduct(p, baratoId) {
 
 async function buildAllItems() {
   const baratoId = await getBaratoId();
+  // ESPELHO DA LOJA (decisão do dono 2026-06-14): o catálogo Meta sobe SÓ o que está
+  // na loja online (Nuvemshop) — produtos MAPEADOS na Nuvemshop, ativos, não-ocultos
+  // e na régua (classificado + estoque loja S&T). 1 controle só: o que você libera pra
+  // loja vai pro Meta; o que tira da loja, sai do Meta (reconciliação no syncAll).
+  const maps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+  const mappedIds = maps.map((m) => m.localProductId);
+  if (!mappedIds.length) return [];
   const products = await prisma.product.findMany({
-    where: { active: true },
+    where: { active: true, id: { in: mappedIds } },
     include: { sizes: { include: { storeStocks: true } } },
     orderBy: [{ brand: 'asc' }, { name: 'asc' }],
   });
@@ -144,33 +152,62 @@ function isEnabled() {
   return !!process.env.META_CATALOG_ID && !!catalogToken();
 }
 
-// Sincroniza TODOS os vendáveis (upsert). items_batch aceita até 5000/req;
-// usamos lotes de 1000 por segurança. dryRun só monta (não chama a Meta).
+const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v22.0'}`;
+
+// Lista os retailer_id que JÁ estão no catálogo (paginado) — pra remover os que saíram da loja.
+async function fetchExistingRetailerIds(catalogId, token) {
+  const ids = new Set();
+  let url = `${GRAPH}/${catalogId}/products?fields=retailer_id&limit=200&access_token=${encodeURIComponent(token)}`;
+  let guard = 0;
+  while (url && guard++ < 300) {
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message || 'list products');
+    (d.data || []).forEach((x) => { if (x.retailer_id != null) ids.add(String(x.retailer_id)); });
+    url = d.paging && d.paging.next ? d.paging.next : null;
+  }
+  return ids;
+}
+
+async function batchOp(catalogId, token, requests) {
+  await meta.graphApi(`/${catalogId}/items_batch`, {
+    method: 'POST', token,
+    params: { item_type: 'PRODUCT_ITEM', requests: JSON.stringify(requests) },
+  });
+}
+
+// Espelha a loja no catálogo da Meta: UPSERT dos produtos da loja + DELETE dos que
+// saíram (estão no catálogo mas não na loja). items_batch em lotes de 1000.
+// dryRun só monta (não chama a Meta).
 async function syncAll({ dryRun = false } = {}) {
   if (!isEnabled()) {
-    return { ok: false, skip: !process.env.META_CATALOG_ID ? 'META_CATALOG_ID ausente' : 'Meta nao configurado' };
+    return { ok: false, skip: !process.env.META_CATALOG_ID ? 'META_CATALOG_ID ausente' : 'META_CATALOG_TOKEN ausente' };
   }
   const catalogId = process.env.META_CATALOG_ID;
   const token = catalogToken();
   const items = await buildAllItems();
+  const desired = new Set(items.map((i) => String(i.id)));
   if (dryRun) return { ok: true, dryRun: true, items: items.length, sample: items.slice(0, 2) };
 
-  let sent = 0; const errors = [];
+  let sent = 0, deleted = 0; const errors = [];
+  // 1) UPSERT (UPDATE = upsert) os produtos que estão na loja
   for (let i = 0; i < items.length; i += 1000) {
     const chunk = items.slice(i, i + 1000);
-    const requests = chunk.map((data) => ({ method: 'UPDATE', data })); // UPDATE = upsert
-    try {
-      await meta.graphApi(`/${catalogId}/items_batch`, {
-        method: 'POST',
-        token,
-        params: { item_type: 'PRODUCT_ITEM', requests: JSON.stringify(requests) },
-      });
-      sent += chunk.length;
-    } catch (e) {
-      errors.push(e.message);
-    }
+    try { await batchOp(catalogId, token, chunk.map((data) => ({ method: 'UPDATE', data }))); sent += chunk.length; }
+    catch (e) { errors.push('update: ' + e.message); }
   }
-  return { ok: errors.length === 0, items: items.length, sent, errors };
+  // 2) DELETE os que saíram da loja (no catálogo mas não na lista desejada)
+  try {
+    const existing = await fetchExistingRetailerIds(catalogId, token);
+    const toDelete = [...existing].filter((id) => !desired.has(id));
+    for (let i = 0; i < toDelete.length; i += 1000) {
+      const chunk = toDelete.slice(i, i + 1000);
+      try { await batchOp(catalogId, token, chunk.map((id) => ({ method: 'DELETE', data: { id } }))); deleted += chunk.length; }
+      catch (e) { errors.push('delete: ' + e.message); }
+    }
+  } catch (e) { errors.push('reconcile: ' + e.message); }
+
+  return { ok: errors.length === 0, items: items.length, sent, deleted, errors };
 }
 
 module.exports = { isEnabled, syncAll, buildAllItems, buildItemsForProduct, getBaratoId };
