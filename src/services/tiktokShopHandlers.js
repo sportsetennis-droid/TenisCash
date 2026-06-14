@@ -18,6 +18,45 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const tk = require('./tiktokShop');
+const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk');
+
+let _anthropic = null;
+function getAnthropic() {
+  if (_anthropic) return _anthropic;
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY não configurada');
+  _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
+
+// Claude mapeia cada categoria da LOJA pra uma categoria-FOLHA real do TikTok.
+// leaves: [{id, path}] (árvore oficial). keys: ['Calçados > Tênis', ...].
+// Retorna { '<key>': '<id ou null>' }. O id é validado contra as folhas depois.
+async function mapStoreCategoriesToTikTok(leaves, keys) {
+  const list = leaves.map((l) => `${l.id}\t${l.path}`).join('\n');
+  const prompt = `Você mapeia categorias de uma loja de artigos esportivos (tênis, roupas, acessórios) para a árvore OFICIAL de categorias-folha do TikTok Shop Brasil.
+
+CATEGORIAS-FOLHA DO TIKTOK (formato: id<TAB>caminho completo):
+${list}
+
+CATEGORIAS DA LOJA (uma por linha):
+${keys.join('\n')}
+
+Para CADA categoria da loja, escolha o id da categoria-folha do TikTok MAIS adequada da lista acima.
+Regras: use SOMENTE ids que aparecem na lista; se nenhuma servir, use null.
+Responda APENAS um objeto JSON, sem texto extra: { "<categoria da loja exatamente como escrita>": "<id ou null>" }`;
+
+  const client = getAnthropic();
+  const resp = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const text = (resp.content || []).map((b) => b.text || '').join('');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Claude não retornou JSON de mapeamento');
+  return JSON.parse(m[0]);
+}
+
 
 const DEFAULT_WAREHOUSE_ID = process.env.TIKTOK_SHOP_WAREHOUSE_ID || null;
 const DEFAULT_WEIGHT_KG = process.env.TIKTOK_SHOP_DEFAULT_WEIGHT_KG || '0.6';
@@ -419,31 +458,57 @@ async function recommendCategoriesForProducts({ limit = 200, force = false } = {
     orderBy: { createdAt: 'asc' },
   });
 
+  // ===== Mapa categoria-da-loja -> categoria-folha do TikTok (lista oficial + Claude) =====
+  // A ferramenta automática do TikTok (categories/recommend) recusa quase todo título
+  // pt-BR ("No matching categories"). Em vez dela: puxamos a ÁRVORE oficial de categorias
+  // e o Claude escolhe a folha certa pra cada par (categoria > subcategoria) da loja —
+  // escolhendo SÓ de ids reais da lista (validado abaixo). NUNCA inventa categoria.
+  const tree = await tk.getCategories(connection, { locale: 'pt-BR' });
+  const cats = Array.isArray(tree?.categories) ? tree.categories : (Array.isArray(tree) ? tree : []);
+  if (!cats.length) throw new Error('TikTok não retornou a lista de categorias');
+  const byId = new Map(cats.map((c) => [String(c.id), c]));
+  const pathOf = (c) => {
+    const parts = []; let cur = c; let guard = 0;
+    while (cur && guard++ < 12) {
+      parts.unshift(cur.local_name || cur.name || String(cur.id));
+      const pid = cur.parent_id != null ? String(cur.parent_id) : null;
+      cur = pid && pid !== '0' ? byId.get(pid) : null;
+    }
+    return parts.join(' > ');
+  };
+  const leaves = cats.filter((c) => c.is_leaf).map((c) => ({ id: String(c.id), path: pathOf(c) })).slice(0, 4000);
+  const leafIds = new Set(leaves.map((l) => l.id));
+
+  const keyOf = (p) => `${(p.category || '').trim()} > ${(p.subcategory || '').trim()}`;
+
+  // Só mapeia as chaves dos produtos que faltam (vendáveis e sem categoria ainda).
+  const pending = products.filter((p) => !classificationGate(p) && !priceGate(p) && (force || !ctxOf(p).tiktokMapping?.categoryId));
+  const keys = [...new Set(pending.map(keyOf))];
+  let categoryMap = {};
+  if (keys.length) {
+    categoryMap = await mapStoreCategoriesToTikTok(leaves, keys);
+  }
+
   let resolved = 0; let skipped = 0; let failed = 0;
+  const applied = {};
   for (const p of products) {
-    // Não gasta chamada de API em produto que não passaria nos portões do push.
     if (classificationGate(p) || priceGate(p)) { skipped++; continue; }
     const ctx = ctxOf(p);
     if (!force && ctx.tiktokMapping?.categoryId) { skipped++; continue; }
-    try {
-      const rec = await tk.recommendCategory(connection, {
-        productTitle: `${p.brand ? p.brand + ' ' : ''}${p.name}`.trim(),
-        description: p.shortDescription || p.longDescription || undefined,
-      });
-      const categoryId = rec?.category_id || rec?.leaf_category_id || (Array.isArray(rec?.categories) ? rec.categories.at(-1)?.id : null);
-      if (categoryId) {
-        ctx.tiktokMapping = { ...(ctx.tiktokMapping || {}), categoryId: String(categoryId) };
+    const cid = categoryMap[keyOf(p)];
+    if (cid && leafIds.has(String(cid))) {
+      ctx.tiktokMapping = { ...(ctx.tiktokMapping || {}), categoryId: String(cid) };
+      try {
         await prisma.product.update({ where: { id: p.id }, data: { aiContext: ctx } });
         resolved++;
-      } else { skipped++; }
-      await new Promise((res) => setTimeout(res, 300));
-    } catch (err) {
-      failed++;
-      await logSync('category', 'error', `recommend ${p.sku}: ${err.message}`);
+        applied[keyOf(p)] = String(cid);
+      } catch (_) { failed++; }
+    } else {
+      skipped++; // categoria da loja sem folha equivalente (ou Claude devolveu null/ id inválido)
     }
   }
-  await logSync('category', 'ok', `Recommend categorias: ${resolved} resolvidas, ${skipped} puladas, ${failed} falhas`);
-  return { total: products.length, resolved, skipped, failed };
+  await logSync('category', 'ok', `Map categorias (lista TikTok): ${resolved} resolvidas, ${skipped} puladas, ${failed} falhas`);
+  return { total: products.length, resolved, skipped, failed, mapped: applied };
 }
 
 module.exports = {
