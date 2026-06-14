@@ -169,7 +169,9 @@ function renderSlate(s){
       <div class="pcard">
         <div class="pk">👟 ${esc(p.produto)} · ${esc(p.preco||'')}</div>
         <div class="pg">"${esc(p.gancho)}"</div>
-        <div class="ps">${esc(p.skin)}</div>
+        ${p.pra_quem?`<div class="ps"><b style="color:var(--ink)">Pra quem:</b> ${esc(p.pra_quem)}</div>`:''}
+        ${p.resolve?`<div class="ps"><b style="color:var(--ink)">Resolve:</b> ${esc(p.resolve)}</div>`:''}
+        ${(p.skin||p.palette)?`<div class="ps" style="opacity:.7">skin: ${esc(p.skin||'')}${p.palette?' · '+esc(p.palette):''}</div>`:''}
         ${p.videoUrl?`<video class="rv" src="${esc(p.videoUrl)}" controls preload="metadata" playsinline></video><a class="dl" href="${esc(p.videoUrl)}" download target="_blank">⬇ baixar reel</a>`:'<div class="rv-wait">⏳ reel sendo renderizado…</div>'}
         ${(p.fato_a_verificar||[]).length?'<div class="pf">⚠ checar: '+esc((p.fato_a_verificar||[]).join('; '))+'</div>':''}
       </div>`).join('');

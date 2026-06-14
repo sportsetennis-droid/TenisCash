@@ -26,6 +26,8 @@ function slug(s) { return String(s || '').replace(/[^a-z0-9]+/gi, '').slice(0, 1
   const slate = JSON.parse(row.value);
   let prods = slate.produtos || [];
   const targets = limit > 0 ? prods.slice(0, limit) : prods;
+  const SKIN_ORDER = ['centro', 'lateral', 'manchete', 'ficha']; // NUNCA repetir dentro da loja
+  const contaCount = {};
   let okN = 0;
   for (let i = 0; i < prods.length; i++) {
     const p = prods[i];
@@ -35,7 +37,10 @@ function slug(s) { return String(s || '').replace(/[^a-z0-9]+/gi, '').slice(0, 1
       const buf = await getImg(p.imageUrl);
       const foto = path.join(TMPDIR, `p${i}.jpg`); fs.writeFileSync(foto, buf);
       const base = `REEL_${slug(p.conta)}_${i}`; const out = path.join(OUTDIR, base + '.mp4');
-      const spec = { handle: p.conta, loja: p.loja, produto: p.produto, preco: p.preco, gancho: p.gancho, sub: p.sub || '', foto, palette: p.palette || 'bessa', out };
+      const cnt = (contaCount[p.conta] = (contaCount[p.conta] || 0)); contaCount[p.conta]++;
+      const skin = SKIN_ORDER[cnt % SKIN_ORDER.length];
+      p.skin = skin;
+      const spec = { handle: p.conta, loja: p.loja, produto: p.produto, preco: p.preco, gancho: p.gancho, pra_quem: p.pra_quem || '', resolve: p.resolve || '', foto, palette: p.palette || 'bessa', skin, out };
       fs.writeFileSync(path.join(TMPDIR, base + '.json'), JSON.stringify(spec));
       execFileSync('python', [path.join(ST, 'render_reel.py'), path.join(TMPDIR, base + '.json')], { encoding: 'utf-8' });
       let url = '';

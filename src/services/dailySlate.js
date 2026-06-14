@@ -40,9 +40,9 @@ async function topStock(lojaName) {
 async function geraProdutos(l, stock) {
   if (!stock.length) return [];
   const sys = `Você é o estrategista de conteúdo da Sports & Tennis. ${RULES}`;
-  const up = `Conta ${l.handle} [DNA: ${l.dna}]. Hoje a loja vai postar 4 REELS de PRODUTO (do estoque real abaixo, sem colaboração com outra loja). Escolha 4 produtos DIFERENTES e crie 1 reel pra cada. Responda com o NÚMERO (idx) exato de cada produto da lista.
+  const up = `Conta ${l.handle} [DNA: ${l.dna}]. Hoje a loja posta 4 REELS de PRODUTO (estoque real abaixo, SEM collab). Escolha 4 produtos DIFERENTES (idx exato) e VENDA cada um: diga PRA QUEM é e O QUE RESOLVE (benefício/uso real — NÃO invente specs técnicas; specs vão em fato_a_verificar). Cada reel tem que sugerir uma SKIN diferente.
 ESTOQUE REAL:\n${stock.map((s, i) => `${i + 1}. ${cleanName(s.brand, s.name)} — ${brl(s.price)}`).join('\n')}
-JSON: {"produtos":[{"idx":N,"gancho":"frase 3s (gancho do reel)","sub":"linha curta de benefício (opcional)","skin":"conceito visual","fato_a_verificar":["..."]}]}`;
+JSON: {"produtos":[{"idx":N,"gancho":"gancho 3s","pra_quem":"pra quem é (público/ocasião)","resolve":"o que resolve (benefício real, curto)","skin":"conceito visual","fato_a_verificar":["..."]}]}`;
   let r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 1800, model: MODEL });
   let picks = r.ok && r.json ? (r.json.produtos || []) : [];
   if (!picks.length) { // retry 1x (IA flaky às vezes devolve vazio)
@@ -57,7 +57,7 @@ JSON: {"produtos":[{"idx":N,"gancho":"frase 3s (gancho do reel)","sub":"linha cu
     if (!s || seen.has(s.id)) return null; seen.add(s.id);
     return {
       produtoId: s.id, produto: cleanName(s.brand, s.name), preco: brl(s.price), imageUrl: s.imageUrl,
-      gancho: p.gancho || '', sub: p.sub || '', skin: p.skin || '', fato_a_verificar: p.fato_a_verificar || [],
+      gancho: p.gancho || '', pra_quem: p.pra_quem || '', resolve: p.resolve || '', skin: p.skin || '', fato_a_verificar: p.fato_a_verificar || [],
     };
   }).filter(Boolean);
   // garante 4: completa com top-estoque ainda não escolhido (gancho genérico DNA-safe)
@@ -65,7 +65,7 @@ JSON: {"produtos":[{"idx":N,"gancho":"frase 3s (gancho do reel)","sub":"linha cu
     if (out.length >= 4) break;
     if (seen.has(s.id)) continue; seen.add(s.id);
     out.push({ produtoId: s.id, produto: cleanName(s.brand, s.name), preco: brl(s.price), imageUrl: s.imageUrl,
-      gancho: 'Chegou na loja. Garanta o seu.', sub: '', skin: 'card limpo do produto', fato_a_verificar: ['gancho genérico (backfill) — revisar/trocar antes de publicar'] });
+      gancho: 'Chegou na loja. Garanta o seu.', pra_quem: '', resolve: '', skin: 'card limpo', fato_a_verificar: ['backfill — escrever gancho/pra-quem/resolve antes de publicar'] });
   }
   return out;
 }

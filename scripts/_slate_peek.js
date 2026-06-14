@@ -13,8 +13,10 @@ const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaCli
   for (const p of s.produtos) byC[p.conta] = (byC[p.conta] || 0) + 1;
   console.log('por conta:', JSON.stringify(byC));
   console.log('com produtoId+foto:', s.produtos.filter((p) => p.produtoId && p.imageUrl).length, '/', s.produtos.length);
+  const comVenda = s.produtos.filter((p) => p.pra_quem && p.resolve).length;
+  console.log('com pra_quem+resolve:', comVenda, '/', s.produtos.length);
   const x = s.produtos[0];
-  console.log('exemplo:', JSON.stringify({ conta: x.conta, palette: x.palette, produto: x.produto, preco: x.preco, temFoto: !!x.imageUrl, gancho: x.gancho, sub: x.sub }, null, 0));
+  console.log('exemplo:', JSON.stringify({ conta: x.conta, produto: x.produto, gancho: x.gancho, pra_quem: x.pra_quem, resolve: x.resolve }, null, 0));
   if (s.errors && s.errors.length) console.log('ERROS:', s.errors.join(' | '));
   await prisma.$disconnect();
 })();
