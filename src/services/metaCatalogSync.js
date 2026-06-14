@@ -177,6 +177,16 @@ async function setConfig({ token, catalogId } = {}) {
 function catalogToken() { return _cfg.token || process.env.META_CATALOG_TOKEN || null; }
 function catalogIdValue() { return _cfg.catalogId || process.env.META_CATALOG_ID || null; }
 
+// Catálogos a sincronizar. Por padrão só o principal (FB/IG). Pra espelhar a loja
+// TAMBÉM no catálogo do WhatsApp (Catalog_Products), setar env
+// META_CATALOG_IDS="<id_fb_ig>,<id_whatsapp>" — o sync roda em todos eles.
+function catalogIdsToSync() {
+  const csv = (process.env.META_CATALOG_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (csv.length) return csv;
+  const main = catalogIdValue();
+  return main ? [main] : [];
+}
+
 function isEnabled() {
   return !!catalogIdValue() && !!catalogToken();
 }
@@ -212,31 +222,32 @@ async function syncAll({ dryRun = false } = {}) {
   if (!isEnabled()) {
     return { ok: false, skip: !catalogIdValue() ? 'META_CATALOG_ID ausente' : 'META_CATALOG_TOKEN ausente' };
   }
-  const catalogId = catalogIdValue();
   const token = catalogToken();
+  const ids = catalogIdsToSync();
   const items = await buildAllItems();
   const desired = new Set(items.map((i) => String(i.id)));
-  if (dryRun) return { ok: true, dryRun: true, items: items.length, sample: items.slice(0, 2) };
+  if (dryRun) return { ok: true, dryRun: true, items: items.length, catalogs: ids };
 
   let sent = 0, deleted = 0; const errors = [];
-  // 1) UPSERT (UPDATE = upsert) os produtos que estão na loja
-  for (let i = 0; i < items.length; i += 1000) {
-    const chunk = items.slice(i, i + 1000);
-    try { await batchOp(catalogId, token, chunk.map((data) => ({ method: 'UPDATE', data }))); sent += chunk.length; }
-    catch (e) { errors.push('update: ' + e.message); }
-  }
-  // 2) DELETE os que saíram da loja (no catálogo mas não na lista desejada)
-  try {
-    const existing = await fetchExistingRetailerIds(catalogId, token);
-    const toDelete = [...existing].filter((id) => !desired.has(id));
-    for (let i = 0; i < toDelete.length; i += 1000) {
-      const chunk = toDelete.slice(i, i + 1000);
-      try { await batchOp(catalogId, token, chunk.map((id) => ({ method: 'DELETE', data: { id } }))); deleted += chunk.length; }
-      catch (e) { errors.push('delete: ' + e.message); }
+  // Espelha a loja em CADA catálogo (FB/IG + WhatsApp): UPSERT os da loja + DELETE os que saíram.
+  for (const catalogId of ids) {
+    for (let i = 0; i < items.length; i += 1000) {
+      const chunk = items.slice(i, i + 1000);
+      try { await batchOp(catalogId, token, chunk.map((data) => ({ method: 'UPDATE', data }))); sent += chunk.length; }
+      catch (e) { errors.push(catalogId + ' update: ' + e.message); }
     }
-  } catch (e) { errors.push('reconcile: ' + e.message); }
+    try {
+      const existing = await fetchExistingRetailerIds(catalogId, token);
+      const toDelete = [...existing].filter((id) => !desired.has(id));
+      for (let i = 0; i < toDelete.length; i += 1000) {
+        const chunk = toDelete.slice(i, i + 1000);
+        try { await batchOp(catalogId, token, chunk.map((id) => ({ method: 'DELETE', data: { id } }))); deleted += chunk.length; }
+        catch (e) { errors.push(catalogId + ' delete: ' + e.message); }
+      }
+    } catch (e) { errors.push(catalogId + ' reconcile: ' + e.message); }
+  }
 
-  return { ok: errors.length === 0, items: items.length, sent, deleted, errors };
+  return { ok: errors.length === 0, items: items.length, catalogs: ids.length, sent, deleted, errors };
 }
 
 // Status pro botão do admin: ligado?, id do catálogo, e quantos produtos a Meta tem.
