@@ -94,9 +94,17 @@ const TOOLS = [
   },
 ];
 
-function lojasDoTamanho(s) {
+// Baratao dos Esportes (LOJA01) e OUTRA empresa, com OUTRO WhatsApp de atendimento ao
+// cliente. Por isso o estoque do Baratao SO aparece no GRUPO de vendedores; no
+// atendimento ao CLIENTE da S&T ele e invisivel (filtrado). Regra do dono 2026-06-14.
+function ehBaratao(st) {
+  return /barat/i.test((st && st.name) || '') || /barat/i.test((st && st.neighborhood) || '');
+}
+
+function lojasDoTamanho(s, { isGroup } = {}) {
   return (s.storeStocks || [])
     .filter((ss) => (ss.stock || 0) > 0)
+    .filter((ss) => isGroup || !ehBaratao(ss.store)) // cliente NAO ve o Baratao
     .map((ss) => {
       const st = ss.store || {};
       const nome = st.neighborhood || st.name || st.code || 'loja';
@@ -106,19 +114,19 @@ function lojasDoTamanho(s) {
 
 // REGRA DO DONO: estoque que vale e o que ESTA NA LOJA (StoreStock = localizado/bipado).
 // NUNCA o comprado (ProductSize.stock = NFe de compra). So entra tamanho com loja > 0.
-function tamanhosEmLoja(p) {
+function tamanhosEmLoja(p, opts) {
   return (p.sizes || [])
-    .map((s) => ({ tamanho: s.size, lojas: lojasDoTamanho(s) }))
+    .map((s) => ({ tamanho: s.size, lojas: lojasDoTamanho(s, opts) }))
     .filter((t) => t.lojas.length > 0);
 }
 
-function resumoProdutos(result) {
+function resumoProdutos(result, opts = {}) {
   const prods = (result && result.products) || [];
   if (!prods.length) {
     return { encontrados: 0, mensagem: result?.message || 'Nenhum produto encontrado.' };
   }
   const lista = prods.slice(0, 8).map((p) => {
-    const tamanhos = tamanhosEmLoja(p);
+    const tamanhos = tamanhosEmLoja(p, opts);
     return {
       nome: p.name,
       marca: p.brand,
@@ -137,7 +145,7 @@ async function runTool(name, input, ctx) {
   try {
     if (name === 'buscar_produtos') {
       const r = await searchProductsForAI(input?.query || '');
-      return resumoProdutos(r);
+      return resumoProdutos(r, { isGroup: ctx.isGroup });
     }
     if (name === 'consultar_cashback') {
       const phoneFmt = formatPhoneBR(ctx.phone);
@@ -180,6 +188,7 @@ QUANDO VOCE RESPONDE (modo vendedor, NAO cliente):
 - ESTOQUE = LOJA. O que vale e a lista "tamanhos_em_loja" (so o que TEM FISICAMENTE NA LOJA, por bipe). O "comprado"/NFe NAO conta. Se te perguntarem por um tamanho especifico, confira se ele esta em "tamanhos_em_loja": se nao estiver, diga que NAO tem em loja (nunca cite o comprado como se fosse disponivel). SEMPRE diga em QUAL LOJA esta cada tamanho (campo "lojas": Bessa, Tambau, Rainha da Borborema, Tambia + a quantidade).
 - LINK: cada produto traz o campo "link" (pagina do produto com foto/preco/lojas). Ao passar um produto, mande tambem esse link, exatamente como veio.
 - Resposta curta e objetiva, como um colega que sabe o sistema de cor.
+- Formato WhatsApp: NUNCA use tabela nem markdown de titulo (nao renderizam no zap) — use linhas curtas e *negrito*.
 - Voce SO tem o catalogo da SPORTS & TENNIS. Se perguntarem de produto do BARATAO, diga que ainda nao tem o catalogo do Baratao no sistema.
 - Quem falou no grupo se chama "${senderName || 'colega'}".`;
 }
@@ -201,6 +210,7 @@ REGRAS INQUEBRAVEIS:
 5. Mencione o cashback TenisCash quando fizer sentido (o cliente ganha cashback comprando).
 6. LOJA — cada tamanho em "tamanhos_disponiveis" traz "lojas" (em qual loja tem e quanto). Quando o cliente perguntar onde encontra / em qual loja, ou ao confirmar que tem, DIGA a loja (ex: "tem no Bessa e no Tambau"). NUNCA invente a loja.
 7. LINK — cada produto traz o campo "link" (a pagina do produto: foto, preco e em quais lojas tem). Quando recomendar ou confirmar um produto, MANDE esse link pro cliente ver os detalhes. Mande o link EXATAMENTE como veio (nao encurte, nao troque, nao invente).
+8. Voce atende SO as lojas Sports & Tennis (Bessa, Tambau, Rainha da Borborema, Tambia e a loja online). NUNCA cite "Baratao dos Esportes" pro cliente — e OUTRA empresa, com OUTRO WhatsApp de atendimento. Os dados ja chegam sem o Baratao; se um produto so tiver estoque la, pra voce ele esta INDISPONIVEL (trate como sem estoque e ofereca alternativa real).
 
 ESTILO:
 - Respostas CURTAS, de WhatsApp (2 a 5 linhas no maximo). Nada de textao.
@@ -223,7 +233,7 @@ async function getAttendantReply({ phone, text, pushName, isGroup = false, sende
   const histKey = sessionKey || phone;
   const history = getHistory(histKey);
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: text }];
-  const ctx = { phone, pushName };
+  const ctx = { phone, pushName, isGroup };
 
   try {
     let working = messages;
