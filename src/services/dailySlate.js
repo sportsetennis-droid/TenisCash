@@ -12,11 +12,18 @@ const SLATE_KEY = 'daily_slate';
 
 // DNA definitivo (dono 14/06). Cada loja puxa do próprio StoreStock, que já é do DNA dela.
 const LOJAS = [
-  { handle: '@sportsetennisbessa', loja: 'Praia do Bessa', dna: 'MASCULINA — corrida, lifestyle, treino masculino' },
-  { handle: '@sportsetenniscg', loja: 'Rainha da Borborema', dna: 'SÓ FUTEBOL — chuteira, society, várzea (Campina Grande)' },
-  { handle: '@sportsetennistambau', loja: 'Praia de Tambaú', dna: 'FEMININA — LUXO MINIMALISTA com verde+amarelo, elegante e legível; NUNCA rosa-clichê' },
-  { handle: '@sportsetennistambia', loja: 'Tambiá', dna: 'MASCULINA E FEMININA — produto de homem E de mulher' },
+  { handle: '@sportsetennisbessa', loja: 'Praia do Bessa', palette: 'bessa', dna: 'MASCULINA — corrida, lifestyle, treino masculino' },
+  { handle: '@sportsetenniscg', loja: 'Rainha da Borborema', palette: 'cg', dna: 'SÓ FUTEBOL — chuteira, society, várzea (Campina Grande)' },
+  { handle: '@sportsetennistambau', loja: 'Praia de Tambaú', palette: 'tambau', dna: 'FEMININA — LUXO MINIMALISTA com verde+amarelo, elegante e legível; NUNCA rosa-clichê' },
+  { handle: '@sportsetennistambia', loja: 'Tambiá', palette: 'tambia', dna: 'MASCULINA E FEMININA — produto de homem E de mulher' },
 ];
+
+function brl(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function cleanName(brand, name) {
+  return (String(brand || '') + ' ' + String(name || ''))
+    .replace(/REF:.*?-\s*/, '').replace(/\bCHUTEIRA\b/i, '').replace(/\b\d{2}\/\d{2}\b/g, '')
+    .replace(/[\s-]*\b\d{4,}\b\s*$/, '').replace(/\s+/g, ' ').trim();
+}
 
 const RULES = 'Regras DURAS: SÓ FATO VERIFICADO (todo dado factível vai em "fato_a_verificar", a copy não crava número não confirmado). Sem citar fornecedor/malha. Respeitar o DNA da conta. INFO é a estrela, gancho de 3s, cada reel uma skin/conceito diferente. Não inventar preço/estoque (usar só o que for passado).';
 
@@ -24,7 +31,7 @@ async function topStock(lojaName) {
   const store = await prisma.store.findFirst({ where: { name: { contains: lojaName }, active: true }, select: { id: true } });
   if (!store) return [];
   return prisma.$queryRawUnsafe(`
-    SELECT p.brand, p.name, p.price FROM "StoreStock" ss
+    SELECT p.id, p.brand, p.name, p.price, p."imageUrl" FROM "StoreStock" ss
     JOIN "ProductSize" psz ON psz.id=ss."productSizeId" JOIN "Product" p ON p.id=psz."productId"
     WHERE ss."storeId"=$1 AND ss.stock>0 AND p.active=true AND p."imageUrl" IS NOT NULL AND p.price>0
     GROUP BY p.id HAVING SUM(ss.stock)>=2 ORDER BY SUM(ss.stock) DESC LIMIT 14`, store.id);
@@ -33,11 +40,34 @@ async function topStock(lojaName) {
 async function geraProdutos(l, stock) {
   if (!stock.length) return [];
   const sys = `Você é o estrategista de conteúdo da Sports & Tennis. ${RULES}`;
-  const up = `Conta ${l.handle} [DNA: ${l.dna}]. Hoje a loja vai postar 4 REELS de PRODUTO (do estoque real abaixo, sem colaboração com outra loja). Escolha 4 produtos e crie um reel pra cada.
-ESTOQUE REAL:\n${stock.map((s, i) => `${i + 1}. ${s.brand} ${String(s.name).replace(/REF:.*?-\s*/, '').slice(0, 50)} — R$${s.price}`).join('\n')}
-JSON: {"produtos":[{"produto":"marca+modelo","preco":"R$x","gancho":"frase 3s","skin":"conceito visual","fato_a_verificar":["..."]}]}`;
-  const r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 1800, model: MODEL });
-  return r.ok && r.json ? (r.json.produtos || []).slice(0, 4) : [];
+  const up = `Conta ${l.handle} [DNA: ${l.dna}]. Hoje a loja vai postar 4 REELS de PRODUTO (do estoque real abaixo, sem colaboração com outra loja). Escolha 4 produtos DIFERENTES e crie 1 reel pra cada. Responda com o NÚMERO (idx) exato de cada produto da lista.
+ESTOQUE REAL:\n${stock.map((s, i) => `${i + 1}. ${cleanName(s.brand, s.name)} — ${brl(s.price)}`).join('\n')}
+JSON: {"produtos":[{"idx":N,"gancho":"frase 3s (gancho do reel)","sub":"linha curta de benefício (opcional)","skin":"conceito visual","fato_a_verificar":["..."]}]}`;
+  let r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 1800, model: MODEL });
+  let picks = r.ok && r.json ? (r.json.produtos || []) : [];
+  if (!picks.length) { // retry 1x (IA flaky às vezes devolve vazio)
+    r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 1800, model: MODEL });
+    picks = r.ok && r.json ? (r.json.produtos || []) : [];
+  }
+  picks = picks.slice(0, 4);
+  const seen = new Set();
+  let out = picks.map((p) => {
+    let s = Number(p.idx) > 0 ? stock[Number(p.idx) - 1] : null;
+    if (!s && p.produto) { const q = String(p.produto).toLowerCase(); s = stock.find((st) => cleanName(st.brand, st.name).toLowerCase().includes(q.slice(0, 14))); }
+    if (!s || seen.has(s.id)) return null; seen.add(s.id);
+    return {
+      produtoId: s.id, produto: cleanName(s.brand, s.name), preco: brl(s.price), imageUrl: s.imageUrl,
+      gancho: p.gancho || '', sub: p.sub || '', skin: p.skin || '', fato_a_verificar: p.fato_a_verificar || [],
+    };
+  }).filter(Boolean);
+  // garante 4: completa com top-estoque ainda não escolhido (gancho genérico DNA-safe)
+  for (const s of stock) {
+    if (out.length >= 4) break;
+    if (seen.has(s.id)) continue; seen.add(s.id);
+    out.push({ produtoId: s.id, produto: cleanName(s.brand, s.name), preco: brl(s.price), imageUrl: s.imageUrl,
+      gancho: 'Chegou na loja. Garanta o seu.', sub: '', skin: 'card limpo do produto', fato_a_verificar: ['gancho genérico (backfill) — revisar/trocar antes de publicar'] });
+  }
+  return out;
 }
 
 async function geraTemas(hoje, ctx) {
@@ -63,7 +93,7 @@ async function generateDailySlate({ date, ctx } = {}) {
     try {
       const stock = await topStock(l.loja);
       const prods = await geraProdutos(l, stock);
-      prods.forEach((p) => slate.produtos.push({ conta: l.handle, loja: l.loja, ...p }));
+      prods.forEach((p) => slate.produtos.push({ conta: l.handle, loja: l.loja, palette: l.palette, ...p }));
     } catch (e) {
       slate.errors.push(`produtos ${l.handle}: ${e.message}`);
     }

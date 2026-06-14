@@ -65,6 +65,9 @@
   .pcard .ps{ font-size:12px; color:var(--mut); line-height:1.35; }
   .pcard .pf{ font-size:11px; color:#ffd9a8; margin-top:7px; line-height:1.3; border-top:1px dashed var(--line); padding-top:6px; }
   .pcard.tema{ border-left:3px solid var(--orange); }
+  .pcard .rv{ width:100%; border-radius:10px; margin-top:9px; background:#000; aspect-ratio:9/16; max-height:440px; display:block; }
+  .pcard .dl{ display:inline-block; margin-top:7px; font-size:12px; color:var(--orange); text-decoration:none; font-weight:700; }
+  .pcard .rv-wait{ margin-top:9px; font-size:12px; color:var(--mut); background:#14271a; border:1px dashed var(--line); border-radius:8px; padding:8px 10px; }
 </style>
 </head>
 <body>
@@ -167,6 +170,7 @@ function renderSlate(s){
         <div class="pk">👟 ${esc(p.produto)} · ${esc(p.preco||'')}</div>
         <div class="pg">"${esc(p.gancho)}"</div>
         <div class="ps">${esc(p.skin)}</div>
+        ${p.videoUrl?`<video class="rv" src="${esc(p.videoUrl)}" controls preload="metadata" playsinline></video><a class="dl" href="${esc(p.videoUrl)}" download target="_blank">⬇ baixar reel</a>`:'<div class="rv-wait">⏳ reel sendo renderizado…</div>'}
         ${(p.fato_a_verificar||[]).length?'<div class="pf">⚠ checar: '+esc((p.fato_a_verificar||[]).join('; '))+'</div>':''}
       </div>`).join('');
     html+='</div>';
