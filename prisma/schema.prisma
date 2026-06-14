@@ -1660,6 +1660,54 @@ model NuvemshopCustomerMapping {
 }
 
 // ============================================================
+// TikTok Shop — OAuth + mapeamento de produto/variante
+// (espelha o modelo do Nuvemshop; ver src/services/tiktokShop.js)
+// ============================================================
+
+model TikTokShopConnection {
+  id           String    @id @default(cuid())
+  // Loja TikTok Shop (cada seller pode ter >1 shop). shopId/shopCipher
+  // vêm de GET /authorization/202309/shops após o OAuth.
+  shopId       String?   @unique
+  shopCipher   String?
+  sellerName   String?
+  region       String?   // ex: BR
+  accessToken  String
+  refreshToken String?
+  // TikTok tokens expiram (access ~7d, refresh ~30d). Guardamos o epoch
+  // de expiração pra renovar antes de cada uso.
+  accessExpireAt  DateTime?
+  refreshExpireAt DateTime?
+  scope        String?
+  status       String    @default("active") // active | revoked | error
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model TikTokShopProductMapping {
+  id             String   @id @default(cuid())
+  localProductId String   @unique
+  tiktokProductId String
+  syncStatus     String   @default("synced")
+  lastSyncedAt   DateTime @default(now())
+
+  @@index([tiktokProductId])
+}
+
+model TikTokShopVariantMapping {
+  id               String   @id @default(cuid())
+  localInventoryId String   @unique
+  localProductId   String
+  tiktokProductId  String
+  tiktokSkuId      String
+  sku              String?
+  barcode          String?
+  lastSyncedAt     DateTime @default(now())
+
+  @@index([tiktokSkuId])
+}
+
+// ============================================================
 // AI / Regras de Recomendação operacional
 // ============================================================
 

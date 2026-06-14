@@ -31,6 +31,7 @@ const weeklyInterviewRoutes = require('./routes/weeklyInterview');
 const xmlImportRoutes = require('./routes/xmlImport');
 const recommendationsRoutes = require('./routes/recommendations');
 const nuvemshopRoutes = require('./routes/nuvemshop');
+const tiktokRoutes = require('./routes/tiktok');
 const shippingRoutes = require('./routes/shipping');
 const financialRoutes = require('./routes/financial');
 const suppliersRoutes = require('./routes/suppliers');
@@ -189,6 +190,7 @@ app.use('/api/services', servicesClubRouter);
 // Seed inicial das 9 marcas (idempotente)
 brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
 app.use('/api', nuvemshopRoutes);
+app.use('/api', tiktokRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', partnersRoutes);
 app.use('/api', creationCampaignsRoutes);
