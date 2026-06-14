@@ -10,6 +10,9 @@ function startCatalogEngineCron() {
   // do gate abaixo) — espelha físico → loja + sobe marcados. Hook aqui pra não tocar no index.js.
   try { require('./nuvemshopStockCron').startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
 
+  // Catálogo da Meta (FB/IG/WhatsApp) — reflete sozinho. Gated por META_CATALOG_ID+TOKEN.
+  try { require('./metaCatalogCron').startMetaCatalogCron(); } catch (e) { console.error('[metaCatalogCron] falha ao iniciar:', e.message); }
+
   // DESLIGADO por padrão pra NÃO gastar API à toa. O dono liga só quando quiser,
   // setando CATALOG_ENGINE_CRON=on no Railway. Sem isso, não roda e não gasta nada.
   if (process.env.CATALOG_ENGINE_CRON !== 'on') {
