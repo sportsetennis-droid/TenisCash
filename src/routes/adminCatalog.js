@@ -1809,4 +1809,37 @@ router.get('/competitive-monitor', adminOnly, async (req, res) => {
   }
 });
 
+// =====================================================================
+// Catálogo da Meta (FB/IG/WhatsApp) — conectar + status + sincronizar
+// =====================================================================
+const metaCatalog = require('../services/metaCatalogSync');
+
+router.get('/meta/status', adminOnly, async (_req, res) => {
+  try { res.json(await metaCatalog.getStatus()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/meta/connect', adminOnly, async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    const catalogId = String(req.body?.catalogId || '').trim();
+    if (!token && !catalogId) return res.status(400).json({ error: 'Cole o token de acesso (e o ID do catálogo, se for trocar).' });
+    await metaCatalog.setConfig({ token: token || undefined, catalogId: catalogId || undefined });
+    await metaCatalog.loadConfig();
+    if (!metaCatalog.isEnabled()) return res.status(400).json({ error: 'Faltou o token ou o ID do catálogo.' });
+    const sync = await metaCatalog.syncAll();
+    const status = await metaCatalog.getStatus();
+    res.json({ ok: sync.ok, ...status, sync });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/meta/sync-now', adminOnly, async (_req, res) => {
+  try {
+    await metaCatalog.loadConfig();
+    if (!metaCatalog.isEnabled()) return res.status(400).json({ error: 'Conecte o catálogo primeiro (cole o token).' });
+    const r = await metaCatalog.syncAll();
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

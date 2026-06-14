@@ -141,15 +141,44 @@ async function buildAllItems() {
   return items;
 }
 
-// Token do catálogo: EXIGE META_CATALOG_TOKEN (System User c/ catalog_management).
-// NÃO cai no META_USER_TOKEN — esse não tem catalog_management (dá #100). Sem o
-// token de catálogo setado, isEnabled()=false e o cron fica inerte (não erra à toa).
-function catalogToken() {
-  return process.env.META_CATALOG_TOKEN || null;
+// Config do catálogo: env tem prioridade; senão lê da tabela Config (banco), que é
+// onde o BOTÃO "Conectar Catálogo Meta" do admin salva — assim o dono liga sem mexer
+// em servidor nem redeploy. Cacheado em _cfg; loadConfig() recarrega do banco.
+let _cfg = { token: null, catalogId: null };
+
+async function loadConfig() {
+  let token = process.env.META_CATALOG_TOKEN || null;
+  let catalogId = process.env.META_CATALOG_ID || null;
+  if (!token || !catalogId) {
+    try {
+      const rows = await prisma.config.findMany({ where: { key: { in: ['meta_catalog_token', 'meta_catalog_id'] } } });
+      for (const r of rows) {
+        if (r.key === 'meta_catalog_token' && !token) token = r.value || null;
+        if (r.key === 'meta_catalog_id' && !catalogId) catalogId = r.value || null;
+      }
+    } catch (_) {}
+  }
+  _cfg = { token, catalogId };
+  return _cfg;
 }
 
+async function setConfig({ token, catalogId } = {}) {
+  if (token != null && token !== '') {
+    await prisma.config.upsert({ where: { key: 'meta_catalog_token' }, update: { value: token }, create: { id: 'meta_catalog_token', key: 'meta_catalog_token', value: token } });
+    _cfg.token = token;
+  }
+  if (catalogId != null && catalogId !== '') {
+    await prisma.config.upsert({ where: { key: 'meta_catalog_id' }, update: { value: catalogId }, create: { id: 'meta_catalog_id', key: 'meta_catalog_id', value: catalogId } });
+    _cfg.catalogId = catalogId;
+  }
+  return { catalogId: _cfg.catalogId, hasToken: !!_cfg.token };
+}
+
+function catalogToken() { return _cfg.token || process.env.META_CATALOG_TOKEN || null; }
+function catalogIdValue() { return _cfg.catalogId || process.env.META_CATALOG_ID || null; }
+
 function isEnabled() {
-  return !!process.env.META_CATALOG_ID && !!catalogToken();
+  return !!catalogIdValue() && !!catalogToken();
 }
 
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v22.0'}`;
@@ -181,9 +210,9 @@ async function batchOp(catalogId, token, requests) {
 // dryRun só monta (não chama a Meta).
 async function syncAll({ dryRun = false } = {}) {
   if (!isEnabled()) {
-    return { ok: false, skip: !process.env.META_CATALOG_ID ? 'META_CATALOG_ID ausente' : 'META_CATALOG_TOKEN ausente' };
+    return { ok: false, skip: !catalogIdValue() ? 'META_CATALOG_ID ausente' : 'META_CATALOG_TOKEN ausente' };
   }
-  const catalogId = process.env.META_CATALOG_ID;
+  const catalogId = catalogIdValue();
   const token = catalogToken();
   const items = await buildAllItems();
   const desired = new Set(items.map((i) => String(i.id)));
@@ -210,4 +239,25 @@ async function syncAll({ dryRun = false } = {}) {
   return { ok: errors.length === 0, items: items.length, sent, deleted, errors };
 }
 
-module.exports = { isEnabled, syncAll, buildAllItems, buildItemsForProduct, getBaratoId };
+// Status pro botão do admin: ligado?, id do catálogo, e quantos produtos a Meta tem.
+async function getStatus() {
+  await loadConfig();
+  const enabled = isEnabled();
+  let productCount = null;
+  let catalogName = null;
+  if (enabled) {
+    try {
+      const r = await fetch(`${GRAPH}/${catalogIdValue()}?fields=name,product_count&access_token=${encodeURIComponent(catalogToken())}`);
+      const d = await r.json();
+      if (!d.error) { productCount = d.product_count; catalogName = d.name; }
+    } catch (_) {}
+  }
+  let esperados = 0;
+  try { esperados = (await buildAllItems()).length; } catch (_) {}
+  return { enabled, catalogId: catalogIdValue(), catalogName, hasToken: !!catalogToken(), productCount, itensDaLoja: esperados };
+}
+
+module.exports = {
+  isEnabled, syncAll, buildAllItems, buildItemsForProduct, getBaratoId,
+  loadConfig, setConfig, getStatus, catalogToken, catalogIdValue,
+};

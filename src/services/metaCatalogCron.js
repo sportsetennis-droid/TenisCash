@@ -10,24 +10,24 @@ const cron = require('node-cron');
 const TZ = 'America/Fortaleza';
 const metaSync = require('./metaCatalogSync');
 
+let busy = false;
 function startMetaCatalogCron() {
-  if (!metaSync.isEnabled()) {
-    console.log('[metaCatalogCron] inativo (falta META_CATALOG_ID/META_CATALOG_TOKEN) — nao roda');
-    return;
-  }
-  let busy = false;
-  // A cada 15 min: upsert (items_batch) de todos os vendáveis no catálogo da Meta.
+  // Agenda SEMPRE. A cada tick recarrega a config (env ou banco/botão) e só roda se
+  // estiver conectado (token+catalogId). Assim, quando o dono conecta pelo botão do
+  // admin, liga no próximo ciclo SEM redeploy.
   cron.schedule('*/15 * * * *', async () => {
     if (busy) return; // não empilha
     busy = true;
     try {
+      await metaSync.loadConfig();
+      if (!metaSync.isEnabled()) return; // ainda não conectado — não erra à toa
       const r = await metaSync.syncAll();
-      if (r.ok) console.log('[metaCatalogCron] sync ok: ' + r.sent + '/' + r.items + ' itens enviados');
+      if (r.ok) console.log('[metaCatalogCron] sync ok: ' + r.sent + ' enviados, ' + (r.deleted || 0) + ' removidos');
       else console.log('[metaCatalogCron] skip/erro: ' + (r.skip || JSON.stringify(r.errors || []).slice(0, 200)));
     } catch (e) { console.error('[metaCatalogCron] erro:', e.message); }
     finally { busy = false; }
   }, { timezone: TZ });
-  console.log('[metaCatalogCron] agendado (a cada 15 min, ' + TZ + ') — catalogo Meta reflete sozinho');
+  console.log('[metaCatalogCron] agendado (a cada 15 min, ' + TZ + ') — reflete a loja quando conectado');
 }
 
 module.exports = { startMetaCatalogCron };
