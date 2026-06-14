@@ -6,15 +6,16 @@
 // REGRA DE OURO: nunca inventa preco/estoque/tamanho — so o que a tool traz.
 //
 // Liga/desliga: env AI_ATTENDANT_ENABLED ('false' desliga). Default = ligado.
-// Modelo: env AI_ATTENDANT_MODEL (default claude-haiku-4-5-20251001).
+// Modelo: env AI_ATTENDANT_MODEL (default claude-sonnet-4-6 — rigor no cruzamento de estoque;
+//   haiku afirmava tamanho fantasma que so existia no comprado/NFe).
 // =====================================================================
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { prisma } = require('../middleware');
 const { formatPhoneBR } = require('../whatsapp');
-const { searchProductsForAI } = require('./catalogSearch');
+const { searchProductsForAI, resolveProductLink } = require('./catalogSearch');
 
-const MODEL = process.env.AI_ATTENDANT_MODEL || 'claude-haiku-4-5-20251001';
+const MODEL = process.env.AI_ATTENDANT_MODEL || 'claude-sonnet-4-6';
 const HISTORY_TTL_MS = 30 * 60 * 1000; // 30 min de janela de conversa
 const MAX_HISTORY = 12; // ultimas N mensagens (user+assistant) guardadas
 
@@ -103,26 +104,33 @@ function lojasDoTamanho(s) {
     });
 }
 
+// REGRA DO DONO: estoque que vale e o que ESTA NA LOJA (StoreStock = localizado/bipado).
+// NUNCA o comprado (ProductSize.stock = NFe de compra). So entra tamanho com loja > 0.
+function tamanhosEmLoja(p) {
+  return (p.sizes || [])
+    .map((s) => ({ tamanho: s.size, lojas: lojasDoTamanho(s) }))
+    .filter((t) => t.lojas.length > 0);
+}
+
 function resumoProdutos(result) {
   const prods = (result && result.products) || [];
   if (!prods.length) {
-    return { encontrados: 0, mensagem: result?.message || 'Nenhum produto encontrado.', nota: result?.note || null };
+    return { encontrados: 0, mensagem: result?.message || 'Nenhum produto encontrado.' };
   }
-  const lista = prods.slice(0, 8).map((p) => ({
-    nome: p.name,
-    marca: p.brand,
-    preco: p.price,
-    preco_promocional: p.promoPrice || null,
-    tamanhos: (p.availableSizes || []).map((s) => {
-      const lojas = lojasDoTamanho(s);
-      return {
-        tamanho: s.size,
-        lojas: lojas.length ? lojas : null, // null = comprado existe mas ainda nao localizado em loja
-      };
-    }),
-    tem_estoque: p.inStock,
-  }));
-  return { encontrados: prods.length, produtos: lista, nota: result?.note || null };
+  const lista = prods.slice(0, 8).map((p) => {
+    const tamanhos = tamanhosEmLoja(p);
+    return {
+      nome: p.name,
+      marca: p.brand,
+      preco: p.price,
+      preco_promocional: p.promoPrice || null,
+      link: resolveProductLink(p.id, p.name), // pagina do produto (card) p/ mandar pro cliente
+      tamanhos_em_loja: tamanhos.map((t) => t.tamanho), // lista simples p/ cruzar o tamanho pedido
+      tamanhos_disponiveis: tamanhos, // detalhe: cada tamanho com loja(s) + qtd (SO o que tem NA LOJA)
+      tem_em_loja: tamanhos.length > 0,
+    };
+  });
+  return { encontrados: prods.length, produtos: lista };
 }
 
 async function runTool(name, input, ctx) {
@@ -169,7 +177,8 @@ REGRA DE SILENCIO (CRITICA): se a mensagem for conversa entre os vendedores que 
 QUANDO VOCE RESPONDE (modo vendedor, NAO cliente):
 - Seja DIRETO e operacional. Eles sao a equipe, nao clientes. SEM papo de venda, SEM "quer que eu separe?", SEM oferecer cashback pra eles.
 - De a info pedida: estoque por tamanho, preco, modelos disponiveis — usando SEMPRE a ferramenta buscar_produtos. NUNCA invente preco, tamanho ou estoque.
-- SEMPRE diga em QUAL LOJA esta cada tamanho (campo "lojas" de cada tamanho: Bessa, Tambau, Rainha da Borborema, Tambia + a quantidade). Se "lojas" vier null, diga que tem no comprado mas ainda nao foi localizado/bipado em loja nenhuma.
+- ESTOQUE = LOJA. O que vale e a lista "tamanhos_em_loja" (so o que TEM FISICAMENTE NA LOJA, por bipe). O "comprado"/NFe NAO conta. Se te perguntarem por um tamanho especifico, confira se ele esta em "tamanhos_em_loja": se nao estiver, diga que NAO tem em loja (nunca cite o comprado como se fosse disponivel). SEMPRE diga em QUAL LOJA esta cada tamanho (campo "lojas": Bessa, Tambau, Rainha da Borborema, Tambia + a quantidade).
+- LINK: cada produto traz o campo "link" (pagina do produto com foto/preco/lojas). Ao passar um produto, mande tambem esse link, exatamente como veio.
 - Resposta curta e objetiva, como um colega que sabe o sistema de cor.
 - Voce SO tem o catalogo da SPORTS & TENNIS. Se perguntarem de produto do BARATAO, diga que ainda nao tem o catalogo do Baratao no sistema.
 - Quem falou no grupo se chama "${senderName || 'colega'}".`;
@@ -185,9 +194,13 @@ REGRAS INQUEBRAVEIS:
 1. NUNCA invente preco, estoque, tamanho, prazo, cor ou qualquer dado. Use SEMPRE a ferramenta buscar_produtos para falar de produto/preco/tamanho. Se a ferramenta nao retornar o que o cliente quer, diga com honestidade que vai confirmar com a equipe — NUNCA chute.
 2. NUNCA prometa desconto, frete gratis, brinde ou condicao especial por conta propria. Se o cliente pedir desconto, fale das vantagens do cashback TenisCash e diga que condicoes especiais voce confirma com a equipe.
 3. Para FECHAR a compra: oriente o cliente a finalizar pela loja online (https://www.sportsetennis.com.br) OU a passar numa loja fisica. Se for algo que precisa de uma pessoa (negociar, problema com pedido, troca/devolucao, reclamacao), diga que vai chamar um atendente da equipe.
-4. So fale de tamanho que aparece como DISPONIVEL na ferramenta. Se o tamanho que o cliente quer nao esta disponivel, diga isso e ofereca alternativas reais.
+4. ESTOQUE = LOJA (A REGRA MAIS IMPORTANTE). O UNICO estoque que vale e o campo "tamanhos_em_loja" (a lista dos tamanhos que TEM FISICAMENTE NA LOJA, por bipe). O "comprado"/NFe NAO conta — ignore. Quando o cliente pedir um tamanho especifico, siga este processo SEM EXCECAO:
+   a) Olhe a lista "tamanhos_em_loja" do produto.
+   b) O numero que o cliente pediu esta nessa lista? Se SIM: confirme ("temos sim, o 42") e diga a loja. Se NAO (mesmo que o produto exista no catalogo): diga claramente "no momento nao temos o [tamanho] disponivel nas lojas" e ofereca os tamanhos que ESTAO em tamanhos_em_loja.
+   NUNCA diga "temos o [tamanho]" se esse numero NAO esta em "tamanhos_em_loja". Na duvida, diga que confirma com a equipe — nunca afirme por otimismo.
 5. Mencione o cashback TenisCash quando fizer sentido (o cliente ganha cashback comprando).
-6. LOJA — cada tamanho vem com o campo "lojas" (em qual loja tem e quanto). Quando o cliente perguntar onde encontra / em qual loja, ou ao confirmar que tem, DIGA a loja (ex: "tem no Bessa e no Tambau"). Se "lojas" vier null, diga que tem no estoque mas peca pra confirmar a loja com a equipe — NUNCA invente a loja.
+6. LOJA — cada tamanho em "tamanhos_disponiveis" traz "lojas" (em qual loja tem e quanto). Quando o cliente perguntar onde encontra / em qual loja, ou ao confirmar que tem, DIGA a loja (ex: "tem no Bessa e no Tambau"). NUNCA invente a loja.
+7. LINK — cada produto traz o campo "link" (a pagina do produto: foto, preco e em quais lojas tem). Quando recomendar ou confirmar um produto, MANDE esse link pro cliente ver os detalhes. Mande o link EXATAMENTE como veio (nao encurte, nao troque, nao invente).
 
 ESTILO:
 - Respostas CURTAS, de WhatsApp (2 a 5 linhas no maximo). Nada de textao.

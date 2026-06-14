@@ -1,5 +1,20 @@
 const { prisma } = require('../middleware');
 
+// ---------------------------------------------------------------------
+// LINK do produto — "pega o card e vira link" (pedido do dono).
+// Usa a PDP publica do PROPRIO TenisCash (/p/:id, src/index.js): cobre 100%
+// dos produtos (nao so os ~3% publicados na loja online), mostra fotos, preco
+// e ESTOQUE POR LOJA, e ja roda em prod. teniscash.com.br/p/<id> -> sempre 200.
+// ---------------------------------------------------------------------
+const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '');
+const STORE_BASE = (process.env.STORE_PUBLIC_URL || 'https://www.sportsetennis.com.br').replace(/\/+$/, '');
+
+function resolveProductLink(localProductId, name) {
+  if (localProductId) return `${PUBLIC_BASE}/p/${localProductId}`;
+  // fallback raro (produto sem id): leva pra busca da loja online
+  return `${STORE_BASE}/?q=${encodeURIComponent(String(name || '').trim())}`;
+}
+
 const baseProductSelect = {
   id: true,
   sku: true,
@@ -86,33 +101,27 @@ async function searchProductsForAI(query) {
   const matchedBrands = await detectBrandsInQuery(q);
   console.log('[ai] tool search_products matchedBrands:', matchedBrands);
 
-  let where;
-  if (matchedBrands.length) {
-    where = {
-      active: true,
-      OR: matchedBrands.map((br) => ({ brand: { equals: br, mode: 'insensitive' } })),
-    };
-  } else {
-    where = {
-      active: true,
-      OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { sku: { contains: q, mode: 'insensitive' } },
-        { brand: { contains: q, mode: 'insensitive' } },
-        { category: { contains: q, mode: 'insensitive' } },
-        { subcategory: { contains: q, mode: 'insensitive' } },
-        { shortDescription: { contains: q, mode: 'insensitive' } },
-        { longDescription: { contains: q, mode: 'insensitive' } },
-      ],
-    };
-  }
+  const orderBy = [{ featured: 'desc' }, { name: 'asc' }];
+  const fields = ['name', 'sku', 'category', 'subcategory', 'shortDescription', 'longDescription'];
+  const anyFieldContains = (term) => ({ OR: fields.map((f) => ({ [f]: { contains: term, mode: 'insensitive' } })) });
+  const run = (where) => prisma.product.findMany({ where, take: 25, orderBy, select: baseProductSelect });
 
-  const rows = await prisma.product.findMany({
-    where,
-    take: 25,
-    orderBy: [{ featured: 'desc' }, { name: 'asc' }],
-    select: baseProductSelect,
-  });
+  let rows = [];
+  if (matchedBrands.length) {
+    const brandOR = matchedBrands.map((br) => ({ brand: { equals: br, mode: 'insensitive' } }));
+    // termos da query que NAO sao o nome da marca (ex.: "sparta" em "kappa sparta")
+    const restTokens = tokenize(q).filter(
+      (t) => !matchedBrands.some((br) => br.toLowerCase().includes(t) || t.includes(br.toLowerCase())),
+    );
+    if (restTokens.length) {
+      // marca + modelo: refina por marca E pelos termos restantes (acha o modelo certo)
+      rows = await run({ active: true, AND: [{ OR: brandOR }, { OR: restTokens.map(anyFieldContains) }] });
+    }
+    // sem termos extras, ou refino vazio -> todos da marca (nunca nega produto que existe)
+    if (!rows.length) rows = await run({ active: true, OR: brandOR });
+  } else {
+    rows = await run({ active: true, OR: [{ brand: { contains: q, mode: 'insensitive' } }, anyFieldContains(q)] });
+  }
 
   const products = rows.map(formatProductCard);
 
@@ -203,4 +212,5 @@ module.exports = {
   getProductBySkuForAI,
   listCatalogSummary,
   formatProductCard,
+  resolveProductLink,
 };
