@@ -274,6 +274,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('recs',this)">Recomendações</button>
     <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
     <button class="tab" onclick="switchTab('tiktok',this)">🛍️ TikTok Shop</button>
+    <button class="tab" onclick="switchTab('metacatalog',this)">📘 Catálogo Meta</button>
     <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
     <button class="tab" onclick="switchTab('productImages',this)">Imagens</button>
@@ -501,6 +502,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-icon">🛍️</div>
         <div class="hub-card-title">TikTok Shop</div>
         <div class="hub-card-desc">Subir produtos pro TikTok Shop: status, depósito, categorias, push</div>
+        <span class="hub-card-badge">ECOMMERCE</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('metacatalog')">
+        <div class="hub-card-icon">📘</div>
+        <div class="hub-card-title">Catálogo da Meta</div>
+        <div class="hub-card-desc">Espelha a loja no Facebook, Instagram e WhatsApp — conecta uma vez, sincroniza sozinho</div>
         <span class="hub-card-badge">ECOMMERCE</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('financial')">
@@ -1430,6 +1437,41 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <div style="font-size:12px;letter-spacing:1px;color:var(--text2);margin-bottom:6px">RESULTADO</div>
   <pre id="tt-out" style="background:#0b0b0c;color:#d6e3ff;border-radius:10px;padding:12px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;margin:0">Clique num botão acima…</pre>
+</div>
+
+<!-- CATÁLOGO DA META -->
+<div class="section" id="tab-metacatalog" style="display:none">
+  <div class="section-head">
+    <span class="section-title">Catálogo da Meta — Facebook · Instagram · WhatsApp</span>
+    <button type="button" class="refresh-btn" id="mc-refresh" title="Atualizar status">↻</button>
+  </div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:18px">Espelha a sua loja online. O que você libera pra loja vai pro catálogo da Meta, e qualquer alteração (estoque, preço, foto) reflete sozinha.</p>
+
+  <!-- STATUS -->
+  <div id="mc-status-wrap" style="margin-bottom:20px">
+    <div class="loading-spinner">Carregando status...</div>
+  </div>
+
+  <!-- CONECTAR -->
+  <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:10px">🔑 CONECTAR</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Cole o token de acesso do catálogo (permissão <code>catalog_management</code>). Você só conecta uma vez — depois é automático.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <input type="password" id="mc-token-input" class="search-box" placeholder="Cole aqui o token de acesso do catálogo (catalog_management)" style="flex:1;min-width:260px">
+      <button type="button" class="btn btn-primary" id="mc-connect-btn">Conectar</button>
+    </div>
+    <div id="mc-connect-result" style="font-size:12px;margin-top:10px"></div>
+  </div>
+
+  <!-- SINCRONIZAR -->
+  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🔄 SINCRONIZAR AGORA</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Força uma sincronização imediata com o catálogo da Meta. Normalmente roda sozinho a cada 15 minutos.</p>
+    <button type="button" class="btn btn-primary" id="mc-sync-btn" disabled>Sincronizar agora</button>
+    <div id="mc-sync-result" style="font-size:12px;margin-top:10px"></div>
+  </div>
+
+  <p class="note">Você só conecta uma vez. Depois é automático — o cron sincroniza a cada 15 minutos.</p>
 </div>
 
 <!-- FINANCEIRO -->
@@ -13122,6 +13164,139 @@ function ttPollStatus() {
   tick();
   _ttPoll = setInterval(tick, 3000);
 }
+
+// ===== Catálogo da Meta =====
+function mcHeaders() {
+  return {
+    'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+    'Content-Type': 'application/json',
+  };
+}
+
+function mcRenderStatus(d) {
+  const wrap = document.getElementById('mc-status-wrap');
+  const syncBtn = document.getElementById('mc-sync-btn');
+  if (!d) { wrap.innerHTML = '<p style="font-size:13px;color:var(--text2)">Não foi possível carregar o status.</p>'; return; }
+
+  const connected = d.enabled && d.hasToken;
+  const badge = connected
+    ? '<span class="pill pill-ok">Conectado</span>'
+    : '<span class="pill pill-warn">Não conectado</span>';
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  let info = '';
+  if (connected) {
+    info = `<span style="font-size:12px;color:var(--text2);margin-left:10px">Catálogo: <strong>${esc(d.catalogName || d.catalogId || '—')}</strong> &middot; ${Number(d.productCount) || 0} produtos no ar &middot; ${Number(d.itensDaLoja) || 0} na loja</span>`;
+  }
+
+  wrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${badge}${info}</div>`;
+  if (syncBtn) syncBtn.disabled = !connected;
+}
+
+async function mcLoadStatus() {
+  const wrap = document.getElementById('mc-status-wrap');
+  wrap.innerHTML = '<div class="loading-spinner">Carregando status...</div>';
+  try {
+    const r = await fetch('/api/admin/catalog/meta/status', { headers: mcHeaders() });
+    const d = await r.json().catch(() => ({}));
+    mcRenderStatus(r.ok ? d : null);
+  } catch (e) {
+    document.getElementById('mc-status-wrap').innerHTML = '<p style="font-size:13px;color:var(--text2)">Falha de rede ao buscar status.</p>';
+  }
+}
+
+async function mcConnect() {
+  const token = document.getElementById('mc-token-input').value.trim();
+  const resultEl = document.getElementById('mc-connect-result');
+  if (!token) { resultEl.style.color = 'var(--red)'; resultEl.textContent = 'Cole o token antes de conectar.'; return; }
+
+  const btn = document.getElementById('mc-connect-btn');
+  btn.disabled = true;
+  resultEl.style.color = 'var(--text2)';
+  resultEl.textContent = 'Conectando...';
+
+  try {
+    const r = await fetch('/api/admin/catalog/meta/connect', {
+      method: 'POST',
+      headers: mcHeaders(),
+      body: JSON.stringify({ token }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = `Conectado. ${d.productCount ?? '—'} produtos no ar · ${d.itensDaLoja ?? '—'} na loja. Sincronização concluida.`;
+      document.getElementById('mc-token-input').value = '';
+      mcRenderStatus(d);
+    } else {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = 'Erro: ' + (d.error || d.message || ('HTTP ' + r.status));
+    }
+  } catch (e) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = 'Falha de rede: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function mcSyncNow() {
+  const btn = document.getElementById('mc-sync-btn');
+  const resultEl = document.getElementById('mc-sync-result');
+  btn.disabled = true;
+  resultEl.style.color = 'var(--text2)';
+  resultEl.textContent = 'Sincronizando...';
+
+  try {
+    const r = await fetch('/api/admin/catalog/meta/sync-now', {
+      method: 'POST',
+      headers: mcHeaders(),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = `${d.sent ?? 0} enviados · ${d.deleted ?? 0} removidos · ${d.errors ?? 0} erros.`;
+      mcLoadStatus();
+    } else {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = 'Erro: ' + (d.error || d.message || ('HTTP ' + r.status));
+    }
+  } catch (e) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = 'Falha de rede: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Inicialização dos listeners do Catálogo da Meta
+(function() {
+  function initMc() {
+    const refreshBtn = document.getElementById('mc-refresh');
+    const connectBtn = document.getElementById('mc-connect-btn');
+    const syncBtn = document.getElementById('mc-sync-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', mcLoadStatus);
+    if (connectBtn) connectBtn.addEventListener('click', mcConnect);
+    if (syncBtn) syncBtn.addEventListener('click', mcSyncNow);
+  }
+
+  // Carrega status quando a aba é aberta
+  const origSwitch = window.switchTab;
+  window.switchTab = function(tab, el) {
+    origSwitch && origSwitch(tab, el);
+    if (tab === 'metacatalog') mcLoadStatus();
+  };
+  const origSwitchByName = window.switchTabByName;
+  window.switchTabByName = function(name) {
+    origSwitchByName && origSwitchByName(name);
+    if (name === 'metacatalog') mcLoadStatus();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMc);
+  } else {
+    initMc();
+  }
+})();
 
 </script>
 </body>
