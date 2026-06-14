@@ -5,6 +5,7 @@
 // =====================================================================
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { generateDailySlate, getSavedSlate } = require('../services/dailySlate');
 
 const router = express.Router();
 router.use(authMiddleware, adminMiddleware);
@@ -93,6 +94,29 @@ router.post('/pick', async (req, res) => {
   } catch (err) {
     console.error('[reels-agency/pick]', err);
     res.status(500).json({ error: 'Erro ao registrar escolha', detail: err.message });
+  }
+});
+
+// MOLDE do dia (pauta): lê o slate salvo (gerado pelo cron 05:30 ou sob demanda).
+router.get('/slate', async (_req, res) => {
+  try {
+    const slate = await getSavedSlate();
+    res.json({ slate });
+  } catch (err) {
+    console.error('[reels-agency/slate]', err);
+    res.status(500).json({ error: 'Erro ao ler o molde', detail: err.message });
+  }
+});
+
+// Gera o molde de hoje sob demanda (botão "Gerar pauta"). ~30s. NÃO publica.
+router.post('/slate/run', async (req, res) => {
+  try {
+    const ctx = req.body && typeof req.body.ctx === 'string' ? req.body.ctx : undefined;
+    const slate = await generateDailySlate({ ctx });
+    res.json({ ok: true, slate });
+  } catch (err) {
+    console.error('[reels-agency/slate/run]', err);
+    res.status(500).json({ error: 'Erro ao gerar o molde', detail: err.message });
   }
 });
 

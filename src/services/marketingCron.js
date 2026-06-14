@@ -10,12 +10,29 @@
 
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
+const { generateDailySlate } = require('./dailySlate');
 
 const prisma = new PrismaClient();
 const TZ = 'America/Fortaleza';
 
 // Disable via env (ex: testes locais)
 const DISABLED = process.env.DISABLE_MARKETING_CRON === '1';
+
+// ====================================================
+// 05:30 → daily-slate (MOLDE do dia: 4 produtos/loja + 5 temas)
+// Gera pauta+copy do estoque real e salva no Config (key=daily_slate).
+// A Agência /reels.html lê esse molde. NÃO publica.
+// ====================================================
+async function runDailySlate() {
+  const startedAt = new Date();
+  console.log(`[marketingCron] daily-slate start | PB=${startedAt.toLocaleString('pt-BR', { timeZone: TZ })}`);
+  try {
+    const slate = await generateDailySlate({});
+    console.log(`[marketingCron] daily-slate ok: ${slate.produtos.length} produtos + ${slate.temas.length} temas${slate.errors.length ? ' | erros: ' + slate.errors.join('; ') : ''}`);
+  } catch (err) {
+    console.error('[marketingCron] daily-slate erro:', err.message);
+  }
+}
 
 // ====================================================
 // 05:00 → trend-watcher (placeholder)
@@ -223,8 +240,9 @@ function startMarketingCron() {
     return;
   }
   cron.schedule('0 5 * * *', runTrendWatcher, { timezone: TZ });
+  cron.schedule('30 5 * * *', runDailySlate, { timezone: TZ });
   cron.schedule('0 6 * * *', runContentCreative, { timezone: TZ });
-  console.log(`[marketingCron] agendado: trend 05:00 + content 06:00 (timezone ${TZ})`);
+  console.log(`[marketingCron] agendado: trend 05:00 + slate 05:30 + content 06:00 (timezone ${TZ})`);
 }
 
-module.exports = { startMarketingCron, runTrendWatcher, runContentCreative };
+module.exports = { startMarketingCron, runTrendWatcher, runContentCreative, runDailySlate };

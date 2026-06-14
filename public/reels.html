@@ -53,6 +53,18 @@
           font-size:14px; transition:.25s; max-width:90%; z-index:50; box-shadow:0 10px 30px rgba(0,0,0,.4); }
   .toast.on{ transform:translateX(-50%) translateY(0); opacity:1; }
   .hint{ background:#14271a; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; color:var(--mut); font-size:13px; margin-top:10px; }
+  /* pauta do dia */
+  .act{ padding:11px 16px; border:0; border-radius:10px; background:var(--orange); color:#fff; font-weight:700; font-size:13px; cursor:pointer; min-height:44px; }
+  .act.ghost{ background:#14271a; border:1px solid var(--line); color:var(--ink); }
+  .act:disabled{ background:#2a3b2f; color:#7a8; cursor:default; }
+  .slate-acct{ margin:16px 0 6px; font-weight:800; font-size:14px; color:var(--yellow); }
+  .pauta{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+  .pcard{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .pcard .pk{ font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+  .pcard .pg{ font-size:14px; font-weight:700; margin:5px 0; line-height:1.3; }
+  .pcard .ps{ font-size:12px; color:var(--mut); line-height:1.35; }
+  .pcard .pf{ font-size:11px; color:#ffd9a8; margin-top:7px; line-height:1.3; border-top:1px dashed var(--line); padding-top:6px; }
+  .pcard.tema{ border-left:3px solid var(--orange); }
 </style>
 </head>
 <body>
@@ -61,6 +73,13 @@
   <div id="app" style="display:none">
     <h1>Agência de <span class="tag">Reels</span></h1>
     <div class="sub">Os agentes puxam estoque e foto REAIS de cada loja. Você escolhe o produto — eles montam o reel de origem.</div>
+
+    <div class="section-t">📋 Pauta do dia<span id="slateDate" style="color:var(--mut);font-weight:600;letter-spacing:0;text-transform:none"></span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="btnRun" class="act" onclick="runSlate()">⚡ Gerar pauta de hoje</button>
+      <button class="act ghost" onclick="loadSlate()">↻ Atualizar</button>
+    </div>
+    <div id="slateWrap"><div class="hint">A pauta é o molde do dia: 4 produtos por loja (estoque real) + 5 temas. O cron gera às 05:30; ou toque em "Gerar pauta de hoje".</div></div>
 
     <div class="section-t">O time</div>
     <div id="squad" class="squad"></div>
@@ -110,6 +129,61 @@ async function boot(){
         <div class="sd">${s.dnaHint||s.dna||''}</div>
         <div class="sh">${s.mall||s.city||''}</div></button>`).join('');
   }catch(e){ $('#stores').innerHTML='<div class="empty">erro ao carregar lojas</div>'; }
+
+  loadSlate();
+}
+
+function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
+
+async function loadSlate(){
+  $('#slateWrap').innerHTML='<div class="load">lendo a pauta…</div>';
+  try{
+    const r=await (await fetch(API+'/slate',{headers:H})).json();
+    renderSlate(r.slate);
+  }catch(e){ $('#slateWrap').innerHTML='<div class="empty">erro ao ler a pauta</div>'; }
+}
+
+async function runSlate(){
+  const b=$('#btnRun'); const old=b.textContent; b.disabled=true; b.textContent='⏳ gerando (~30s)…';
+  $('#slateWrap').innerHTML='<div class="load">os agentes estão montando o molde do dia (estoque real → pauta → copy)…</div>';
+  try{
+    const r=await (await fetch(API+'/slate/run',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.ok){ renderSlate(r.slate); toast('✅ Pauta de hoje gerada'); }
+    else $('#slateWrap').innerHTML='<div class="empty">erro: '+esc(r.detail||r.error||'falhou')+'</div>';
+  }catch(e){ $('#slateWrap').innerHTML='<div class="empty">erro ao gerar</div>'; }
+  b.disabled=false; b.textContent=old;
+}
+
+function renderSlate(s){
+  if(!s){ $('#slateWrap').innerHTML='<div class="hint">Ainda não há pauta de hoje. Toque em "Gerar pauta de hoje".</div>'; return; }
+  $('#slateDate').textContent=' · '+(s.data||'')+' · '+(s.totalPosts||((s.produtos||[]).length+(s.temas||[]).length))+' posts';
+  let html='';
+  const byAcct={};
+  (s.produtos||[]).forEach(p=>{ (byAcct[p.conta]=byAcct[p.conta]||[]).push(p); });
+  Object.keys(byAcct).forEach(acct=>{
+    html+='<div class="slate-acct">'+esc(acct)+'</div><div class="pauta">';
+    html+=byAcct[acct].map(p=>`
+      <div class="pcard">
+        <div class="pk">👟 ${esc(p.produto)} · ${esc(p.preco||'')}</div>
+        <div class="pg">"${esc(p.gancho)}"</div>
+        <div class="ps">${esc(p.skin)}</div>
+        ${(p.fato_a_verificar||[]).length?'<div class="pf">⚠ checar: '+esc((p.fato_a_verificar||[]).join('; '))+'</div>':''}
+      </div>`).join('');
+    html+='</div>';
+  });
+  if((s.temas||[]).length){
+    html+='<div class="slate-acct">🎯 Temas do dia</div><div class="pauta">';
+    html+=(s.temas||[]).map(t=>`
+      <div class="pcard tema">
+        <div class="pk">${esc(t.tema)} · ${esc(t.conta)}</div>
+        <div class="pg">"${esc(t.gancho)}"</div>
+        <div class="ps">${esc(t.legenda||t.skin||'')}</div>
+        ${(t.fato_a_verificar||[]).length?'<div class="pf">⚠ checar: '+esc((t.fato_a_verificar||[]).join('; '))+'</div>':''}
+      </div>`).join('');
+    html+='</div>';
+  }
+  if(s.errors&&s.errors.length) html+='<div class="pf" style="margin-top:12px">erros: '+esc(s.errors.join('; '))+'</div>';
+  $('#slateWrap').innerHTML=html;
 }
 
 async function pickStore(el,id,name){
