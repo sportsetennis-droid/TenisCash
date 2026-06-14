@@ -13,9 +13,10 @@
 //   4. Autorizar a loja: o dono abre buildAuthUrl(), loga no seller,
 //      autoriza → TikTok redireciona pra callback com ?code=...
 //   5. Setar env vars no Railway:
-//        TIKTOK_APP_KEY
-//        TIKTOK_APP_SECRET
-//        TIKTOK_REDIRECT_URI=https://teniscash.com.br/api/tiktok/oauth/callback
+//        TIKTOK_SHOP_APP_KEY
+//        TIKTOK_SHOP_APP_SECRET
+//        TIKTOK_SHOP_REDIRECT_URI=https://teniscash.com.br/api/tiktok/oauth/callback
+//        TIKTOK_SHOP_SERVICE_ID  (vai na URL de autorização do seller — custom app)
 //      (opcionais, têm default global/não-US):
 //        TIKTOK_API_BASE_URL=https://open-api.tiktokglobalshop.com
 //        TIKTOK_AUTH_BASE_URL=https://auth.tiktok-shops.com
@@ -33,9 +34,12 @@
 
 const crypto = require('crypto');
 
-const APP_KEY = process.env.TIKTOK_APP_KEY;
-const APP_SECRET = process.env.TIKTOK_APP_SECRET;
-const REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI;
+// Nomes alinhados às env vars do Railway (TIKTOK_SHOP_*). Mantém fallback
+// pros nomes curtos (TIKTOK_*) pra não quebrar se alguém usar os antigos.
+const APP_KEY = process.env.TIKTOK_SHOP_APP_KEY || process.env.TIKTOK_APP_KEY;
+const APP_SECRET = process.env.TIKTOK_SHOP_APP_SECRET || process.env.TIKTOK_APP_SECRET;
+const REDIRECT_URI = process.env.TIKTOK_SHOP_REDIRECT_URI || process.env.TIKTOK_REDIRECT_URI;
+const SERVICE_ID = process.env.TIKTOK_SHOP_SERVICE_ID || process.env.TIKTOK_SERVICE_ID;
 const API_BASE = process.env.TIKTOK_API_BASE_URL || 'https://open-api.tiktokglobalshop.com';
 const AUTH_BASE = process.env.TIKTOK_AUTH_BASE_URL || 'https://auth.tiktok-shops.com';
 const AUTH_PORTAL = process.env.TIKTOK_AUTH_PORTAL_URL || 'https://services.tiktokshop.com/open/authorize';
@@ -45,9 +49,11 @@ function isConfigured() {
 }
 
 // URL pro dono autorizar a loja (consentimento do seller no custom app).
+// Pra custom app o portal usa o SERVICE_ID (não o app_key). O auth_code volta
+// pro TIKTOK_SHOP_REDIRECT_URI configurado no painel do app.
 function buildAuthUrl(state) {
-  if (!APP_KEY) return null;
-  const q = new URLSearchParams({ app_key: APP_KEY, state: state || '' });
+  if (!SERVICE_ID) return null;
+  const q = new URLSearchParams({ service_id: SERVICE_ID, state: state || '' });
   return `${AUTH_PORTAL}?${q.toString()}`;
 }
 
@@ -187,6 +193,7 @@ module.exports = {
   refreshAccessToken,
   tiktokApi,
   getAuthorizedShops,
+  appKey: APP_KEY,
   // expostos pra debug/teste
-  _config: { API_BASE, AUTH_BASE, AUTH_PORTAL },
+  _config: { API_BASE, AUTH_BASE, AUTH_PORTAL, SERVICE_ID: !!SERVICE_ID },
 };

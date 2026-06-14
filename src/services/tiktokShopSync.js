@@ -62,7 +62,7 @@ async function uploadImageToTikTok(connection, imageUrl) {
 
   const path = '/product/202309/images/upload';
   const timestamp = Math.floor(Date.now() / 1000);
-  const query = { app_key: process.env.TIKTOK_APP_KEY, timestamp };
+  const query = { app_key: tt.appKey, timestamp };
   // multipart → body fora da assinatura
   query.sign = tt.signRequest({ path, query, method: 'POST', contentType: 'multipart/form-data', bodyString: '' });
 

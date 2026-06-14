@@ -2,8 +2,8 @@
 // Routes: /api/tiktok — OAuth + status + push de produtos pro TikTok Shop
 // =====================================================================
 // Espelha src/routes/nuvemshop.js. Tudo guardado por tt.isConfigured():
-// sem as env vars (TIKTOK_APP_KEY/SECRET/REDIRECT), as rotas respondem
-// "não configurado" e NADA roda — não quebra o boot nem o resto do app.
+// sem as env vars (TIKTOK_SHOP_APP_KEY/SECRET/REDIRECT_URI), as rotas
+// respondem "não configurado" e NADA roda — não quebra o boot nem o app.
 // =====================================================================
 
 const express = require('express');
