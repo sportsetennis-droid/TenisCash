@@ -138,15 +138,17 @@ app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor d
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
+  const keys = { falKey: !!process.env.FAL_KEY, openaiKey: !!process.env.OPENAI_API_KEY };
   try {
     const { prisma } = require('./middleware');
-    const composite = require('./services/compositeImage');
+    const eng = String(req.query.engine || 'composite');
+    const svc = eng === 'openai' ? require('./services/openaiImage') : eng === 'fal' ? require('./services/falAi') : require('./services/compositeImage');
     const product = await prisma.product.findUnique({ where: { id: String(req.query.pid || '') } });
-    if (!product) return res.status(404).json({ error: 'produto nao encontrado', falKey: !!process.env.FAL_KEY });
-    const r = await composite.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5' });
-    return res.json({ ok: true, outputUrl: r.outputUrl, falKey: !!process.env.FAL_KEY });
+    if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
+    const r = await svc.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5', quality: 'medium' });
+    return res.json({ ok: true, engine: eng, outputUrl: r.outputUrl, ...keys });
   } catch (e) {
-    return res.json({ ok: false, error: String(e.message).slice(0, 200), falKey: !!process.env.FAL_KEY });
+    return res.json({ ok: false, error: String(e.message).slice(0, 200), ...keys });
   }
 });
 app.use('/api/auth', authRoutes);
