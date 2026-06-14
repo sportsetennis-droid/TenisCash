@@ -334,8 +334,8 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   // gastar tempo nos produtos antigos sem 4 classificações/custo (que o push pularia).
   const where = {
     active: true,
-    category: { not: null },
-    subcategory: { not: null },
+    category: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
+    subcategory: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
     costPrice: { gt: 0 },
     price: { gt: 0 },
   };
@@ -410,8 +410,8 @@ async function recommendCategoriesForProducts({ limit = 200, force = false } = {
     where: {
       active: true,
       imageUrl: { not: null },
-      category: { not: null },
-      subcategory: { not: null },
+      category: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
+      subcategory: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
       costPrice: { gt: 0 },
       price: { gt: 0 },
     },
