@@ -369,9 +369,12 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
 
-  // Mira só nos VENDÁVEIS (curados): categoria/sub no banco + custo + preço. Evita
-  // gastar tempo nos produtos antigos sem 4 classificações/custo (que o push pularia).
+  // Mira nos produtos que JÁ estão no NUVEMSHOP — os comprovadamente bons (4 classificações
+  // + estoque físico + preço com markup + foto). Mesma régua das duas lojas.
+  const nsMapped = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+  const nsIds = nsMapped.map((m) => m.localProductId);
   const where = {
+    id: { in: nsIds },
     active: true,
     category: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
     subcategory: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
@@ -382,7 +385,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   if (onlyMissing) {
     const mapped = await prisma.tiktokShopProductMapping.findMany({ select: { localProductId: true } });
     const ids = mapped.map((m) => m.localProductId);
-    if (ids.length) where.id = { notIn: ids };
+    if (ids.length) where.id = { in: nsIds, notIn: ids };
   }
 
   const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
@@ -442,11 +445,14 @@ async function recommendCategoriesForProducts({ limit = 200, force = false } = {
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
 
-  // Mira só nos produtos VENDÁVEIS (curados): com categoria/sub no banco, custo e preço.
-  // Os mais antigos (lixo de NFe: nome só código, sem 4 classificações, sem custo) ficam de fora
-  // — TikTok rejeita nome incompleto e o push nunca passaria os portões mesmo.
+  // Mira nos produtos que JÁ estão no NUVEMSHOP — os comprovadamente bons (passaram
+  // nas 4 classificações + estoque físico + preço com markup + foto). Mesma régua das
+  // duas lojas: o que está bom o bastante pro Nuvemshop sobe igual pro TikTok.
+  const nsMapped = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
+  const nsIds = nsMapped.map((m) => m.localProductId);
   const products = await prisma.product.findMany({
     where: {
+      id: { in: nsIds },
       active: true,
       imageUrl: { not: null },
       category: { notIn: ['A CLASSIFICAR', 'A DEFINIR', ''] },
