@@ -81,8 +81,10 @@ router.post('/evolution', async (req, res) => {
   try {
     const body = req.body || {};
     const event = body.event || body.type || '';
-    // Evolution manda varios eventos; so queremos mensagens novas
-    if (event && !/messages\.upsert/i.test(event)) return;
+    const _d0 = Array.isArray(body.data) ? body.data[0] : (body.data || {});
+    console.log(`[whatsapp/evolution] HIT event="${event}" jid="${(_d0 && _d0.key && _d0.key.remoteJid) || '?'}"`);
+    // Evolution manda varios eventos; so queremos mensagens novas (aceita messages.upsert E MESSAGES_UPSERT)
+    if (event && !/messages[._]upsert/i.test(event)) return;
 
     const data = Array.isArray(body.data) ? body.data[0] : (body.data || {});
     const key = data.key || {};
