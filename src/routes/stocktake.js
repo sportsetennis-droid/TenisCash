@@ -615,9 +615,49 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref) {
   } catch (e) { console.warn('[etiqueta] bipe-tardio falhou:', e.message); }
 }
 
+// Extrai o PRIMEIRO objeto {...} balanceado de um texto (conserta a raiz das "510 não-lidas":
+// o match guloso /\{[\s\S]*\}/ pegava lixo depois do JSON e estourava "Unexpected non-whitespace after").
+function parseJsonSeguro(t) {
+  if (!t) return null;
+  const start = t.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < t.length; i++) {
+    if (t[i] === '{') depth++;
+    else if (t[i] === '}') { depth--; if (depth === 0) { try { return JSON.parse(t.slice(start, i + 1)); } catch (_) { return null; } } }
+  }
+  return null;
+}
+
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
   let lido = null;
-  try {
+  let ean = eanLocal || null;
+
+  // ZXING-FIRST (grátis): se a câmera não trouxe o código, decodifica da própria foto (sem API paga).
+  if (!ean) {
+    try {
+      const { decodeBarcodesFromDataUri } = require('../services/barcodeDecoder');
+      const codes = await decodeBarcodesFromDataUri(photo);
+      if (codes && codes.length) {
+        let conhecido = null;
+        for (const c of codes) {
+          const v = [c, c.replace(/^0+/, ''), '0' + c];
+          if ((await prisma.productSize.count({ where: { barcode: { in: v } } })) || (await prisma.xmlFiscalItem.count({ where: { ean: { in: v } } }))) { conhecido = c; break; }
+        }
+        ean = conhecido || codes[0];
+      }
+    } catch (e) { console.warn('[etiqueta] zxing falhou:', e.message); }
+  }
+
+  // O código já casa um PRODUTO? Então NÃO gasta a visão paga (economia + sem o erro de parse).
+  let temProdutoPorCodigo = false;
+  if (ean) {
+    const v = [ean, ean.replace(/^0+/, ''), '0' + ean];
+    temProdutoPorCodigo = (await prisma.productSize.count({ where: { barcode: { in: v } } })) > 0;
+  }
+
+  // VISÃO PAGA (fallback) só quando o código não resolve (Nike sem GTIN na nota, foto sem código legível).
+  if (!temProdutoPorCodigo) try {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const b64 = photo.split(',')[1];
@@ -626,11 +666,9 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
       { type: 'text', text: 'Etiqueta/caixa de produto esportivo. REGRA: se houver MAIS DE UMA etiqueta/produto na foto, considere SOMENTE a mais CENTRALIZADA/em destaque — ignore as de canto/fundo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"o tamanho BRASILEIRO. ATENÇÃO caixa de tênis: o número GRANDE no centro é US — IGNORE. Em volta vêm UK / cm / BR / EUR pequenos; pegue SÓ o número logo depois de \\"BR\\" e devolva prefixado (ex \\"BR 40\\", \\"BR 39.5\\"). Roupa = letra PP/P/M/G/GG. Sem BR visível = null."}. Copie LITERAL, não invente.' },
     ] }] });
     const t = (r.content.find((c) => c.type === 'text') || {}).text || '';
-    const m = t.match(/\{[\s\S]*\}/);
-    if (m) lido = JSON.parse(m[0]);
+    lido = parseJsonSeguro(t);
   } catch (e) { console.warn('[etiqueta] visão falhou:', e.message); }
 
-  let ean = eanLocal || null;
   let eanVisaoRejeitado = false;
   if (!ean && lido && lido.ean) {
     const cand = String(lido.ean).replace(/\D/g, '');
