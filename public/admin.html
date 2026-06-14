@@ -1435,6 +1435,17 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <p style="font-size:11px;color:var(--text2);margin-top:6px">Já vem configurado pra <strong>publicar à venda</strong>. É só clicar <strong>"Subir produtos"</strong> — inclusive republica os que estavam como rascunho.</p>
   </div>
 
+  <!-- ACOMPANHAR VENDAS -->
+  <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">📊 ACOMPANHAR VENDAS</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Faturamento, nº de pedidos, ticket médio e pedidos recentes no TikTok.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-primary" onclick="ttSales(7)">Vendas 7 dias</button>
+      <button type="button" class="btn btn-primary" onclick="ttSales(30)">Vendas 30 dias</button>
+    </div>
+    <p style="font-size:11px;color:var(--text2);margin-top:6px">Se der erro de permissão, o app precisa do acesso <strong>"Order/Pedidos"</strong> no Partner Center (e reconectar a loja).</p>
+  </div>
+
   <div style="font-size:12px;letter-spacing:1px;color:var(--text2);margin-bottom:6px">RESULTADO</div>
   <pre id="tt-out" style="background:#0b0b0c;color:#d6e3ff;border-radius:10px;padding:12px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;margin:0">Clique num botão acima…</pre>
 </div>
@@ -13132,6 +13143,7 @@ function ttRecommend() {
   return ttCall('POST', '/api/admin/tiktok-shop/recommend-categories', { limit });
 }
 function ttLogs() { return ttCall('GET', '/api/admin/tiktok-shop/sync-logs'); }
+function ttSales(days) { return ttCall('GET', '/api/admin/tiktok-shop/sales?days=' + (days || 30)); }
 let _ttPoll = null;
 async function ttPush() {
   const limit = parseInt(document.getElementById('tt-push-limit').value, 10) || 10;

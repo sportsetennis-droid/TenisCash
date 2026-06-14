@@ -236,6 +236,23 @@ async function deactivateProducts(connection, productIds) {
   });
 }
 
+// ===== PEDIDOS (acompanhamento de vendas) =====
+// POST /order/202309/orders/search — lista pedidos por janela de tempo.
+// body aceita create_time_ge/lt (epoch s), order_status, etc. Precisa do
+// escopo "Order" autorizado no app (senão TikTok devolve erro de permissão).
+async function searchOrders(connection, { pageSize = 50, pageToken = '', body = {} } = {}) {
+  const query = { page_size: String(pageSize), sort_field: 'create_time', sort_order: 'DESC' };
+  if (pageToken) query.page_token = pageToken;
+  return tiktokApi(connection, 'POST', `/order/${API_VERSION}/orders/search`, { query, body });
+}
+
+// GET /order/202309/orders?ids=a,b — detalhe (valores, itens) de pedidos.
+async function getOrderDetail(connection, ids = []) {
+  return tiktokApi(connection, 'GET', `/order/${API_VERSION}/orders`, {
+    query: { ids: ids.map(String).join(',') },
+  });
+}
+
 module.exports = {
   isConfigured,
   sign,
@@ -256,5 +273,7 @@ module.exports = {
   updatePrices,
   updateInventory,
   deactivateProducts,
+  searchOrders,
+  getOrderDetail,
   API_VERSION,
 };

@@ -560,8 +560,58 @@ function startBackgroundPush(opts = {}) {
   return { started: true, job: _pushJob };
 }
 
+// =====================================================================
+// ACOMPANHAMENTO DE VENDAS — resumo de pedidos do TikTok (GMV, qtd, recentes)
+// =====================================================================
+async function getSalesSummary({ days = 30 } = {}) {
+  const connection = await getConnection();
+  if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
+  const sinceSec = Math.floor((Date.now() - days * 86400 * 1000) / 1000);
+
+  const orders = [];
+  let pageToken = '';
+  let guard = 0;
+  do {
+    const data = await tk.searchOrders(connection, { pageSize: 50, pageToken, body: { create_time_ge: sinceSec } });
+    const batch = Array.isArray(data?.orders) ? data.orders : [];
+    orders.push(...batch);
+    pageToken = data?.next_page_token || '';
+    guard++;
+  } while (pageToken && guard < 20);
+
+  const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  let gmv = 0;
+  const byStatus = {};
+  let currency = 'BRL';
+  for (const o of orders) {
+    const amt = num(o.payment?.total_amount ?? o.total_amount);
+    gmv += amt;
+    if (o.payment?.currency) currency = o.payment.currency;
+    const st = o.status || o.order_status || '?';
+    byStatus[st] = (byStatus[st] || 0) + 1;
+  }
+  const recent = orders.slice(0, 25).map((o) => ({
+    id: o.id || o.order_id,
+    status: o.status || o.order_status,
+    total: o.payment?.total_amount ?? o.total_amount ?? null,
+    createTime: o.create_time || null,
+    items: Array.isArray(o.line_items) ? o.line_items.length : (o.item_list ? o.item_list.length : null),
+  }));
+
+  return {
+    days,
+    count: orders.length,
+    gmv: gmv.toFixed(2),
+    currency,
+    ticketMedio: orders.length ? (gmv / orders.length).toFixed(2) : '0.00',
+    byStatus,
+    recent,
+  };
+}
+
 module.exports = {
   getConnection,
+  getSalesSummary,
   ensureFreshToken,
   buildTiktokProductPayload,
   pushProductToTiktok,
