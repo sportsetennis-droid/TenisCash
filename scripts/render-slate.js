@@ -26,7 +26,7 @@ function slug(s) { return String(s || '').replace(/[^a-z0-9]+/gi, '').slice(0, 1
   const slate = JSON.parse(row.value);
   let prods = slate.produtos || [];
   const targets = limit > 0 ? prods.slice(0, limit) : prods;
-  const SKIN_ORDER = ['centro', 'lateral', 'manchete', 'ficha']; // NUNCA repetir dentro da loja
+  const SKIN_ORDER = ['classico', 'editorial', 'emoldurado', 'ficha']; // NUNCA repetir dentro da loja
   const contaCount = {};
   let okN = 0;
   for (let i = 0; i < prods.length; i++) {
@@ -48,6 +48,8 @@ function slug(s) { return String(s || '').replace(/[^a-z0-9]+/gi, '').slice(0, 1
       p.localMp4 = out; p.videoUrl = url.startsWith('http') ? url : '';
       okN++;
       console.log(`[${i + 1}/${targets.length}] ${p.conta} ${String(p.produto).slice(0, 26)} -> ${p.videoUrl || out}`);
+      // salva INCREMENTAL: o reel aparece na Agência assim que fica pronto
+      try { await prisma.config.update({ where: { key: 'daily_slate' }, data: { value: JSON.stringify(slate) } }); } catch (e2) {}
     } catch (e) {
       p.renderError = String(e.message || e).slice(0, 160);
       console.log(`[${i + 1}] ERRO ${p.conta}: ${p.renderError}`);

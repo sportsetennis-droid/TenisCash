@@ -134,16 +134,25 @@ async function boot(){
   }catch(e){ $('#stores').innerHTML='<div class="empty">erro ao carregar lojas</div>'; }
 
   loadSlate();
+  setInterval(pollSlate, 20000);
 }
 
 function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
 
+let _slateSig='';
 async function loadSlate(){
   $('#slateWrap').innerHTML='<div class="load">lendo a pauta…</div>';
   try{
     const r=await (await fetch(API+'/slate',{headers:H})).json();
-    renderSlate(r.slate);
+    _slateSig=JSON.stringify(r.slate||{}); renderSlate(r.slate);
   }catch(e){ $('#slateWrap').innerHTML='<div class="empty">erro ao ler a pauta</div>'; }
+}
+async function pollSlate(){
+  try{
+    const r=await (await fetch(API+'/slate',{headers:H})).json();
+    const sig=JSON.stringify(r.slate||{});
+    if(sig!==_slateSig){ _slateSig=sig; renderSlate(r.slate); }
+  }catch(e){}
 }
 
 async function runSlate(){
