@@ -85,11 +85,12 @@ adminRouter.post('/recommend-categories', async (req, res) => {
   }
 });
 
-// PUSH em massa: TenisCash → TikTok Shop
+// PUSH em massa: TenisCash → TikTok Shop. Roda em SEGUNDO PLANO (volta na hora,
+// sem timeout 524 do Cloudflare). Acompanhe em GET /push/status.
 adminRouter.post('/push/products', async (req, res) => {
   try {
     const { onlyMissing, limit, withImageOnly, saveMode } = req.body || {};
-    const result = await handlers.pushAllProducts({
+    const result = handlers.startBackgroundPush({
       onlyMissing: onlyMissing !== false,
       limit: limit ? parseInt(limit, 10) : 1000,
       withImageOnly: withImageOnly !== false,
@@ -99,6 +100,11 @@ adminRouter.post('/push/products', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Progresso do push em segundo plano
+adminRouter.get('/push/status', (_req, res) => {
+  res.json(handlers.getPushJob());
 });
 
 adminRouter.post('/push/products/:id', async (req, res) => {

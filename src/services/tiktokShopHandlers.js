@@ -365,7 +365,7 @@ async function pushProductToTiktok(localProductId, connection, opts = {}) {
 // =====================================================================
 // PUSH em massa
 // =====================================================================
-async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly = true, saveMode } = {}) {
+async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly = true, saveMode, onProgress } = {}) {
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
 
@@ -392,6 +392,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   let created = 0; let updated = 0; let skipped = 0; let failed = 0;
   const skipReasons = {};
   const errors = [];
+  if (typeof onProgress === 'function') onProgress({ total: products.length, done: 0, created, updated, skipped, failed, skipReasons });
 
   for (const p of products) {
     try {
@@ -405,6 +406,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
       errors.push({ sku: p.sku, error: err.message });
       await logSync('product', 'error', `Push ${p.sku}: ${err.message}`);
     }
+    if (typeof onProgress === 'function') onProgress({ total: products.length, done: created + updated + skipped + failed, created, updated, skipped, failed, skipReasons });
   }
 
   await logSync('product', 'ok', `Push TenisCash → TikTok: ${products.length} total, ${created} criados, ${updated} atualizados, ${skipped} pulados, ${failed} falhas`);
@@ -517,12 +519,37 @@ async function recommendCategoriesForProducts({ limit = 200, force = false } = {
   return { total: products.length, resolved, skipped, failed, mapped: applied };
 }
 
+// =====================================================================
+// PUSH em SEGUNDO PLANO — evita o timeout 524 do Cloudflare (100s).
+// O endpoint dispara e volta na hora; o painel acompanha via getPushJob().
+// =====================================================================
+let _pushJob = { running: false, total: 0, done: 0, created: 0, updated: 0, skipped: 0, failed: 0, skipReasons: {} };
+
+function getPushJob() { return _pushJob; }
+
+function startBackgroundPush(opts = {}) {
+  if (_pushJob.running) return { alreadyRunning: true, job: _pushJob };
+  _pushJob = { running: true, startedAt: new Date(), total: 0, done: 0, created: 0, updated: 0, skipped: 0, failed: 0, skipReasons: {} };
+  // Roda SEM await — segue no event loop depois da resposta HTTP voltar.
+  (async () => {
+    try {
+      const r = await pushAllProducts({ ...opts, onProgress: (j) => { _pushJob = { ..._pushJob, ...j }; } });
+      _pushJob = { ..._pushJob, ...r, running: false, finishedAt: new Date() };
+    } catch (e) {
+      _pushJob = { ..._pushJob, running: false, finishedAt: new Date(), error: e.message };
+    }
+  })();
+  return { started: true, job: _pushJob };
+}
+
 module.exports = {
   getConnection,
   ensureFreshToken,
   buildTiktokProductPayload,
   pushProductToTiktok,
   pushAllProducts,
+  startBackgroundPush,
+  getPushJob,
   pushStockAndPrice,
   recommendCategoriesForProducts,
   resolveImageUris,

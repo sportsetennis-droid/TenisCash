@@ -1416,10 +1416,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <!-- PASSO 4 -->
   <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
     <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🚀 PASSO 4: SUBIR PRODUTOS</div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Sobe respeitando as regras: 4 classificações + estoque real + preço com markup. Comece com poucos pra testar.</p>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Sobe respeitando as regras: 4 classificações + estoque real + preço com markup. Roda em segundo plano — o progresso aparece sozinho abaixo.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button type="button" class="btn btn-primary" onclick="ttPush()">Subir produtos</button>
-      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-push-limit" value="5" min="1" max="1000" style="width:80px;padding:4px"></label>
+      <button type="button" class="btn" onclick="ttPollStatus()">Ver progresso</button>
+      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-push-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
       <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="tt-push-onlymissing" checked> Só os ainda não enviados</label>
     </div>
   </div>
@@ -13058,11 +13059,34 @@ function ttRecommend() {
   return ttCall('POST', '/api/admin/tiktok-shop/recommend-categories', { limit });
 }
 function ttLogs() { return ttCall('GET', '/api/admin/tiktok-shop/sync-logs'); }
-function ttPush() {
+let _ttPoll = null;
+async function ttPush() {
   const limit = parseInt(document.getElementById('tt-push-limit').value, 10) || 10;
   const onlyMissing = document.getElementById('tt-push-onlymissing').checked;
   if (!confirm('Subir até ' + limit + ' produto(s) pro TikTok Shop agora?')) return;
-  return ttCall('POST', '/api/admin/tiktok-shop/push/products', { onlyMissing, limit });
+  const out = document.getElementById('tt-out');
+  out.textContent = '⏳ Iniciando...';
+  try {
+    const r = await fetch('/api/admin/tiktok-shop/push/products', { method: 'POST', headers: ttHeaders(), body: JSON.stringify({ onlyMissing, limit }) });
+    const j = await r.json();
+    if (j.alreadyRunning) out.textContent = '⏳ Já tem um envio rodando. Acompanhando...';
+  } catch (e) { out.textContent = '❌ Falha ao iniciar: ' + e.message; return; }
+  ttPollStatus();
+}
+function ttPollStatus() {
+  if (_ttPoll) clearInterval(_ttPoll);
+  const out = document.getElementById('tt-out');
+  const tick = async () => {
+    try {
+      const r = await fetch('/api/admin/tiktok-shop/push/status', { headers: ttHeaders() });
+      const j = await r.json();
+      const linha = `subindo... ${j.done || 0}/${j.total || 0}  ✅criados ${j.created || 0}  🔁atualizados ${j.updated || 0}  ⏭️pulados ${j.skipped || 0}  ❌falhas ${j.failed || 0}`;
+      out.textContent = (j.running ? '⏳ ' : '✅ FIM — ') + linha + '\n\n' + JSON.stringify(j, null, 2);
+      if (!j.running) { clearInterval(_ttPoll); _ttPoll = null; }
+    } catch (e) { out.textContent = '❌ erro lendo progresso: ' + e.message; }
+  };
+  tick();
+  _ttPoll = setInterval(tick, 3000);
 }
 
 </script>
