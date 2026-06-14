@@ -13,7 +13,13 @@ const baseProductSelect = {
   imageUrl: true,
   featured: true,
   active: true,
-  sizes: { select: { size: true, stock: true } },
+  sizes: {
+    select: {
+      size: true,
+      stock: true,
+      storeStocks: { select: { stock: true, store: { select: { name: true, code: true, neighborhood: true } } } },
+    },
+  },
 };
 
 function formatProductCard(p) {

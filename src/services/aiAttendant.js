@@ -61,14 +61,20 @@ const TOOLS = [
   {
     name: 'buscar_produtos',
     description:
-      'Busca produtos no catalogo REAL da Sports & Tennis por nome, marca, categoria ou modelo. ' +
-      'Retorna nome, marca, preco, preco promocional e os tamanhos COM estoque. ' +
-      'Use SEMPRE que o cliente perguntar sobre um produto, modelo, marca ou tamanho. ' +
-      'NUNCA invente produto/preco/tamanho — so existe o que esta tool retornar.',
+      'Busca produtos no catalogo REAL da Sports & Tennis por nome, marca ou modelo. ' +
+      'Retorna nome, marca, preco, e os tamanhos com a(s) LOJA(s) onde cada tamanho esta. ' +
+      'Use SEMPRE que perguntarem sobre um produto, modelo, marca, tamanho ou loja. ' +
+      'IMPORTANTE: se a tool retornar o produto, ele EXISTE — confira o tamanho pedido no campo "tamanhos" (cada um traz "lojas"). ' +
+      'NUNCA diga que nao tem sem ter buscado. NUNCA invente produto/preco/tamanho/loja.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'O que buscar. Ex: "tenis nike", "chuteira", "camisa do brasil", "mizuno wave"' },
+        query: {
+          type: 'string',
+          description:
+            'SO o modelo/marca, SEM o numero do tamanho. Ex: "bondi 9", "tenis nike", "chuteira", "mizuno wave". ' +
+            'Busque "bondi 9" e NUNCA "bondi 9 42" — o tamanho voce confere no resultado, nao na busca.',
+        },
       },
       required: ['query'],
     },
@@ -87,6 +93,16 @@ const TOOLS = [
   },
 ];
 
+function lojasDoTamanho(s) {
+  return (s.storeStocks || [])
+    .filter((ss) => (ss.stock || 0) > 0)
+    .map((ss) => {
+      const st = ss.store || {};
+      const nome = st.neighborhood || st.name || st.code || 'loja';
+      return { loja: nome, qtd: ss.stock };
+    });
+}
+
 function resumoProdutos(result) {
   const prods = (result && result.products) || [];
   if (!prods.length) {
@@ -97,7 +113,13 @@ function resumoProdutos(result) {
     marca: p.brand,
     preco: p.price,
     preco_promocional: p.promoPrice || null,
-    tamanhos_disponiveis: (p.availableSizes || []).map((s) => s.size),
+    tamanhos: (p.availableSizes || []).map((s) => {
+      const lojas = lojasDoTamanho(s);
+      return {
+        tamanho: s.size,
+        lojas: lojas.length ? lojas : null, // null = comprado existe mas ainda nao localizado em loja
+      };
+    }),
     tem_estoque: p.inStock,
   }));
   return { encontrados: prods.length, produtos: lista, nota: result?.note || null };
@@ -147,6 +169,7 @@ REGRA DE SILENCIO (CRITICA): se a mensagem for conversa entre os vendedores que 
 QUANDO VOCE RESPONDE (modo vendedor, NAO cliente):
 - Seja DIRETO e operacional. Eles sao a equipe, nao clientes. SEM papo de venda, SEM "quer que eu separe?", SEM oferecer cashback pra eles.
 - De a info pedida: estoque por tamanho, preco, modelos disponiveis — usando SEMPRE a ferramenta buscar_produtos. NUNCA invente preco, tamanho ou estoque.
+- SEMPRE diga em QUAL LOJA esta cada tamanho (campo "lojas" de cada tamanho: Bessa, Tambau, Rainha da Borborema, Tambia + a quantidade). Se "lojas" vier null, diga que tem no comprado mas ainda nao foi localizado/bipado em loja nenhuma.
 - Resposta curta e objetiva, como um colega que sabe o sistema de cor.
 - Voce SO tem o catalogo da SPORTS & TENNIS. Se perguntarem de produto do BARATAO, diga que ainda nao tem o catalogo do Baratao no sistema.
 - Quem falou no grupo se chama "${senderName || 'colega'}".`;
@@ -164,6 +187,7 @@ REGRAS INQUEBRAVEIS:
 3. Para FECHAR a compra: oriente o cliente a finalizar pela loja online (https://www.sportsetennis.com.br) OU a passar numa loja fisica. Se for algo que precisa de uma pessoa (negociar, problema com pedido, troca/devolucao, reclamacao), diga que vai chamar um atendente da equipe.
 4. So fale de tamanho que aparece como DISPONIVEL na ferramenta. Se o tamanho que o cliente quer nao esta disponivel, diga isso e ofereca alternativas reais.
 5. Mencione o cashback TenisCash quando fizer sentido (o cliente ganha cashback comprando).
+6. LOJA — cada tamanho vem com o campo "lojas" (em qual loja tem e quanto). Quando o cliente perguntar onde encontra / em qual loja, ou ao confirmar que tem, DIGA a loja (ex: "tem no Bessa e no Tambau"). Se "lojas" vier null, diga que tem no estoque mas peca pra confirmar a loja com a equipe — NUNCA invente a loja.
 
 ESTILO:
 - Respostas CURTAS, de WhatsApp (2 a 5 linhas no maximo). Nada de textao.
