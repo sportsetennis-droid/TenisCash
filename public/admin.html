@@ -273,6 +273,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('xml',this)">XML NF-e</button>
     <button class="tab" onclick="switchTab('recs',this)">Recomendações</button>
     <button class="tab" onclick="switchTab('ns',this)">Nuvemshop</button>
+    <button class="tab" onclick="switchTab('tiktok',this)">🛍️ TikTok Shop</button>
     <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
     <button class="tab" onclick="switchTab('productImages',this)">Imagens</button>
@@ -1371,6 +1372,53 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">LOGS DE SYNC</h4>
   <div id="ns-logs-wrap"></div>
+</div>
+
+<!-- TIKTOK SHOP -->
+<div class="section" id="tab-tiktok" style="display:none">
+  <div class="section-head">
+    <span class="section-title">🛍️ TikTok Shop</span>
+    <button type="button" class="refresh-btn" onclick="ttStatus()">↻</button>
+  </div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Sobe os produtos do TenisCash pro TikTok Shop. Segue a ordem dos passos: <strong>1 → 2 → 3 → 4</strong>.</p>
+
+  <!-- PASSO 1 -->
+  <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🔌 PASSO 1: CONEXÃO</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Confere se a loja está conectada (precisa aparecer <strong>connected: true</strong>).</p>
+    <button type="button" class="btn btn-primary" onclick="ttStatus()">Ver status da conexão</button>
+  </div>
+
+  <!-- PASSO 2 -->
+  <div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">📦 PASSO 2: DEPÓSITO (WAREHOUSE)</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Mostra o <strong>warehouse_id</strong> da sua loja. Copie o id e cadastre no Railway como <code>TIKTOK_SHOP_WAREHOUSE_ID</code> (necessário pro estoque).</p>
+    <button type="button" class="btn btn-primary" onclick="ttWarehouses()">Ver depósitos</button>
+  </div>
+
+  <!-- PASSO 3 -->
+  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🤖 PASSO 3: MAPEAR CATEGORIAS</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">A IA resolve a categoria do TikTok pra cada produto (rodar ANTES de subir).</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-primary" onclick="ttRecommend()">Mapear categorias</button>
+      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-rec-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
+    </div>
+  </div>
+
+  <!-- PASSO 4 -->
+  <div style="background:rgba(255,109,0,0.06);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">
+    <div style="font-size:12px;letter-spacing:1px;color:var(--orange);margin-bottom:8px">🚀 PASSO 4: SUBIR PRODUTOS</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Sobe respeitando as regras: 4 classificações + estoque real + preço com markup. Comece com poucos pra testar.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="btn btn-primary" onclick="ttPush()">Subir produtos</button>
+      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-push-limit" value="10" min="1" max="1000" style="width:80px;padding:4px"></label>
+      <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="tt-push-onlymissing" checked> Só os ainda não enviados</label>
+    </div>
+  </div>
+
+  <div style="font-size:12px;letter-spacing:1px;color:var(--text2);margin-bottom:6px">RESULTADO</div>
+  <pre id="tt-out" style="background:#0b0b0c;color:#d6e3ff;border-radius:10px;padding:12px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;margin:0">Clique num botão acima…</pre>
 </div>
 
 <!-- FINANCEIRO -->
@@ -6631,7 +6679,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -12971,6 +13019,41 @@ async function loadCompetitiveMonitor() {
     if (name === 'competitivo') loadCompetitiveMonitor();
   };
 })();
+
+// ===== TikTok Shop — painel admin =====
+function ttHeaders() {
+  return {
+    'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+    'Content-Type': 'application/json',
+  };
+}
+async function ttCall(method, path, body) {
+  const out = document.getElementById('tt-out');
+  out.textContent = '⏳ Carregando...';
+  try {
+    const opts = { method, headers: ttHeaders() };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(path, opts);
+    let d;
+    try { d = await r.json(); } catch (_) { d = { raw: await r.text() }; }
+    out.textContent = (r.ok ? '✅ OK\n\n' : ('❌ Erro ' + r.status + '\n\n')) + JSON.stringify(d, null, 2);
+    return d;
+  } catch (e) {
+    out.textContent = '❌ Falha de rede: ' + e.message;
+  }
+}
+function ttStatus() { return ttCall('GET', '/api/admin/tiktok-shop/status'); }
+function ttWarehouses() { return ttCall('GET', '/api/admin/tiktok-shop/warehouses'); }
+function ttRecommend() {
+  const limit = parseInt(document.getElementById('tt-rec-limit').value, 10) || 50;
+  return ttCall('POST', '/api/admin/tiktok-shop/recommend-categories', { limit });
+}
+function ttPush() {
+  const limit = parseInt(document.getElementById('tt-push-limit').value, 10) || 10;
+  const onlyMissing = document.getElementById('tt-push-onlymissing').checked;
+  if (!confirm('Subir até ' + limit + ' produto(s) pro TikTok Shop agora?')) return;
+  return ttCall('POST', '/api/admin/tiktok-shop/push/products', { onlyMissing, limit });
+}
 
 </script>
 </body>
