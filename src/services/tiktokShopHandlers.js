@@ -183,12 +183,19 @@ async function resolveImageUris(connection, product) {
   }
   const uris = [];
   for (let i = 0; i < srcs.length; i++) {
+    let buffer; let filename;
     try {
-      const { buffer, filename } = await fetchImageBuffer(srcs[i], i + 1);
+      ({ buffer, filename } = await fetchImageBuffer(srcs[i], i + 1));
+    } catch (e) {
+      await logSync('image', 'error', `BAIXAR imagem falhou (${product.sku}): ${e.message} | src=${String(srcs[i]).slice(0, 80)}`);
+      continue;
+    }
+    try {
       const up = await tk.uploadImage(connection, buffer, { useCase: 'MAIN_IMAGE', filename });
       if (up && up.uri) uris.push(up.uri);
+      else await logSync('image', 'error', `ENVIAR imagem ao TikTok sem uri (${product.sku})`);
     } catch (e) {
-      console.warn('[tiktok img] falha na imagem', i + 1, e.message);
+      await logSync('image', 'error', `ENVIAR imagem ao TikTok falhou (${product.sku}): ${e.message}`);
     }
   }
   if (uris.length) {
