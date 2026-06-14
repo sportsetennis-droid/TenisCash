@@ -164,7 +164,18 @@ async function fetchImageBuffer(src, idx) {
     const ext = (m[1].split('/')[1] || 'jpg').replace('jpeg', 'jpg');
     return { buffer: Buffer.from(m[2], 'base64'), filename: `img-${idx}.${ext}` };
   }
-  const res = await fetch(src, { signal: AbortSignal.timeout(15000) });
+  // User-Agent de navegador + Referer da própria origem: alguns CDNs (mitiendanube/
+  // Nuvemshop) devolvem 403 a download server-side sem isso (anti-hotlink).
+  let referer;
+  try { const u = new URL(src); referer = `${u.protocol}//${u.host}/`; } catch (_) { /* ignora */ }
+  const res = await fetch(src, {
+    signal: AbortSignal.timeout(15000),
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+      ...(referer ? { Referer: referer } : {}),
+    },
+  });
   if (!res.ok) throw new Error(`download imagem ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const ext = (res.headers.get('content-type') || 'image/jpeg').split('/')[1] || 'jpg';

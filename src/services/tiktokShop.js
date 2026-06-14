@@ -201,7 +201,7 @@ async function uploadImage(connection, buffer, { useCase = 'MAIN_IMAGE', filenam
   const form = new FormData();
   form.append('data', new Blob([buffer]), filename);
   form.append('use_case', useCase);
-  return tiktokApi(connection, 'POST', `/product/${API_VERSION}/images/upload`, { multipart: form });
+  return tiktokApi(connection, 'POST', `/product/${API_VERSION}/images/upload`, { multipart: form, useShopCipher: false });
 }
 
 async function createProduct(connection, payload) {
