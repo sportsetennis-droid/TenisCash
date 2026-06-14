@@ -1408,6 +1408,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <p style="font-size:12px;color:var(--text2);margin-bottom:8px">A IA resolve a categoria do TikTok pra cada produto (rodar ANTES de subir).</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button type="button" class="btn btn-primary" onclick="ttRecommend()">Mapear categorias</button>
+      <button type="button" class="btn" onclick="ttLogs()">Ver erros (logs)</button>
       <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-rec-limit" value="50" min="1" max="1000" style="width:80px;padding:4px"></label>
     </div>
   </div>
@@ -13054,6 +13055,7 @@ function ttRecommend() {
   const limit = parseInt(document.getElementById('tt-rec-limit').value, 10) || 50;
   return ttCall('POST', '/api/admin/tiktok-shop/recommend-categories', { limit });
 }
+function ttLogs() { return ttCall('GET', '/api/admin/tiktok-shop/sync-logs'); }
 function ttPush() {
   const limit = parseInt(document.getElementById('tt-push-limit').value, 10) || 10;
   const onlyMissing = document.getElementById('tt-push-onlymissing').checked;
