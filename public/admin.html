@@ -1419,7 +1419,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Sobe respeitando as regras: 4 classificações + estoque real + preço com markup. Comece com poucos pra testar.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button type="button" class="btn btn-primary" onclick="ttPush()">Subir produtos</button>
-      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-push-limit" value="10" min="1" max="1000" style="width:80px;padding:4px"></label>
+      <label style="font-size:12px;color:var(--text2)">Limite: <input type="number" id="tt-push-limit" value="5" min="1" max="1000" style="width:80px;padding:4px"></label>
       <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="tt-push-onlymissing" checked> Só os ainda não enviados</label>
     </div>
   </div>
@@ -13041,8 +13041,10 @@ async function ttCall(method, path, body) {
     const opts = { method, headers: ttHeaders() };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(path, opts);
+    // Lê o corpo UMA vez como texto e só então tenta JSON (evita "body stream already read").
+    const txt = await r.text();
     let d;
-    try { d = await r.json(); } catch (_) { d = { raw: await r.text() }; }
+    try { d = JSON.parse(txt); } catch (_) { d = { raw: txt }; }
     out.textContent = (r.ok ? '✅ OK\n\n' : ('❌ Erro ' + r.status + '\n\n')) + JSON.stringify(d, null, 2);
     return d;
   } catch (e) {
