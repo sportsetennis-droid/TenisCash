@@ -135,6 +135,20 @@ app.use('/api/auth/', authLimiter);
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
 app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
+// TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
+app.post('/api/_falgen', async (req, res) => {
+  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const composite = require('./services/compositeImage');
+    const product = await prisma.product.findUnique({ where: { id: String(req.query.pid || '') } });
+    if (!product) return res.status(404).json({ error: 'produto nao encontrado', falKey: !!process.env.FAL_KEY });
+    const r = await composite.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5' });
+    return res.json({ ok: true, outputUrl: r.outputUrl, falKey: !!process.env.FAL_KEY });
+  } catch (e) {
+    return res.json({ ok: false, error: String(e.message).slice(0, 200), falKey: !!process.env.FAL_KEY });
+  }
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/webauthn', webauthnRoutes);
 app.use('/api/face', faceRoutes);

@@ -45,10 +45,10 @@ async function api(path, opts = {}) {
 }
 
 function getCredentials() {
-  const userId = process.env.META_IG_USER_ID;
-  const token = process.env.META_IG_ACCESS_TOKEN;
+  const userId = process.env.META_IG_USER_ID || process.env.META_INSTAGRAM_ID;
+  const token = process.env.META_IG_ACCESS_TOKEN || process.env.META_PAGE_TOKEN;
   if (!userId || !token) {
-    throw new Error('META_IG_USER_ID e META_IG_ACCESS_TOKEN obrigatórios no .env');
+    throw new Error('META_IG_USER_ID/META_INSTAGRAM_ID e META_IG_ACCESS_TOKEN/META_PAGE_TOKEN obrigatórios no .env');
   }
   return { userId, token };
 }
@@ -70,13 +70,18 @@ async function waitForContainerReady(containerId, token, maxWaitSec = 120) {
  * Publica foto no Feed do IG.
  * @returns {Promise<{ mediaId, permalink }>}
  */
-async function publishPhoto({ imageUrl, caption }) {
+async function publishPhoto({ imageUrl, caption, collaborators }) {
   const { userId, token } = getCredentials();
 
   // 1. Cria container
   const container = await api(`/${userId}/media`, {
     method: 'POST',
-    body: { image_url: imageUrl, caption: caption || '', access_token: token },
+    body: {
+      image_url: imageUrl,
+      caption: caption || '',
+      access_token: token,
+      ...(collaborators && collaborators.length ? { collaborators: JSON.stringify(collaborators.slice(0, 3)) } : {}),
+    },
   });
 
   // 2. Aguarda processar (foto é rápido, mas garante)
@@ -99,9 +104,35 @@ async function publishPhoto({ imageUrl, caption }) {
 }
 
 /**
+ * Publica STORY (imagem 9:16) no IG. Story não tem caption visível nem collaborators via API.
+ * @returns {Promise<{ mediaId }>}
+ */
+async function publishStory({ imageUrl }) {
+  const { userId, token } = getCredentials();
+
+  const container = await api(`/${userId}/media`, {
+    method: 'POST',
+    body: {
+      media_type: 'STORIES',
+      image_url: imageUrl,
+      access_token: token,
+    },
+  });
+
+  await waitForContainerReady(container.id, token, 90);
+
+  const published = await api(`/${userId}/media_publish`, {
+    method: 'POST',
+    body: { creation_id: container.id, access_token: token },
+  });
+
+  return { mediaId: published.id };
+}
+
+/**
  * Publica Reel (vídeo vertical 9:16) no IG.
  */
-async function publishReel({ videoUrl, caption, shareToFeed = true }) {
+async function publishReel({ videoUrl, caption, shareToFeed = true, collaborators, coverUrl, thumbOffset }) {
   const { userId, token } = getCredentials();
 
   const container = await api(`/${userId}/media`, {
@@ -112,6 +143,11 @@ async function publishReel({ videoUrl, caption, shareToFeed = true }) {
       caption: caption || '',
       share_to_feed: shareToFeed,
       access_token: token,
+      // cover = imagem principal do reel (grade do perfil). Preferir cover_url (frame do produto);
+      // thumb_offset (ms) é fallback. Sem isso o IG escolhe um frame qualquer (às vezes texto).
+      ...(coverUrl ? { cover_url: coverUrl } : {}),
+      ...(!coverUrl && thumbOffset != null ? { thumb_offset: thumbOffset } : {}),
+      ...(collaborators && collaborators.length ? { collaborators: JSON.stringify(collaborators.slice(0, 3)) } : {}),
     },
   });
 
@@ -133,6 +169,55 @@ async function publishReel({ videoUrl, caption, shareToFeed = true }) {
 }
 
 /**
+ * Publica CARROSSEL (2-10 imagens) no feed do IG, com collab opcional.
+ * @param {string[]} imageUrls  URLs públicas das imagens (na ordem)
+ * @param {string}   caption
+ * @param {string[]} collaborators  usernames a convidar (máx 3, contas públicas)
+ */
+async function publishCarousel({ imageUrls = [], caption, collaborators }) {
+  const { userId, token } = getCredentials();
+  if (imageUrls.length < 2) throw new Error('Carrossel precisa de pelo menos 2 imagens');
+
+  // 1. Cria um container-filho por imagem
+  const childIds = [];
+  for (const url of imageUrls.slice(0, 10)) {
+    const child = await api(`/${userId}/media`, {
+      method: 'POST',
+      body: { image_url: url, is_carousel_item: true, access_token: token },
+    });
+    await waitForContainerReady(child.id, token, 60);
+    childIds.push(child.id);
+  }
+
+  // 2. Container do carrossel (collab vai aqui, no container-pai)
+  const container = await api(`/${userId}/media`, {
+    method: 'POST',
+    body: {
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      caption: caption || '',
+      access_token: token,
+      ...(collaborators && collaborators.length ? { collaborators: JSON.stringify(collaborators.slice(0, 3)) } : {}),
+    },
+  });
+  await waitForContainerReady(container.id, token, 120);
+
+  // 3. Publica
+  const published = await api(`/${userId}/media_publish`, {
+    method: 'POST',
+    body: { creation_id: container.id, access_token: token },
+  });
+
+  let permalink = null;
+  try {
+    const info = await api(`/${published.id}?fields=permalink&access_token=${token}`);
+    permalink = info.permalink;
+  } catch {}
+
+  return { mediaId: published.id, permalink, collaborators: collaborators || [] };
+}
+
+/**
  * Busca métricas (views, likes, comments) de uma publicação Meta.
  * Roda depois (cron diário) pra atualizar MarketingPublication.metric*
  */
@@ -147,4 +232,4 @@ async function getInsights(mediaId) {
   return out;
 }
 
-module.exports = { publishPhoto, publishReel, getInsights };
+module.exports = { publishPhoto, publishStory, publishReel, publishCarousel, getInsights };
