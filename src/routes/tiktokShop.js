@@ -107,6 +107,17 @@ adminRouter.get('/push/status', (_req, res) => {
   res.json(handlers.getPushJob());
 });
 
+// Acompanhamento de vendas — resumo de pedidos (GMV, qtd, recentes)
+adminRouter.get('/sales', async (req, res) => {
+  try {
+    const days = req.query.days ? parseInt(req.query.days, 10) : 30;
+    const summary = await handlers.getSalesSummary({ days });
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.post('/push/products/:id', async (req, res) => {
   try {
     const connection = await handlers.getConnection();
