@@ -330,7 +330,15 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
 
-  const where = { active: true };
+  // Mira só nos VENDÁVEIS (curados): categoria/sub no banco + custo + preço. Evita
+  // gastar tempo nos produtos antigos sem 4 classificações/custo (que o push pularia).
+  const where = {
+    active: true,
+    category: { not: null },
+    subcategory: { not: null },
+    costPrice: { gt: 0 },
+    price: { gt: 0 },
+  };
   if (withImageOnly) where.imageUrl = { not: null };
   if (onlyMissing) {
     const mapped = await prisma.tiktokShopProductMapping.findMany({ select: { localProductId: true } });
@@ -340,6 +348,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
 
   const products = await prisma.product.findMany({ where, take: limit, orderBy: { createdAt: 'asc' } });
   let created = 0; let updated = 0; let skipped = 0; let failed = 0;
+  const skipReasons = {};
   const errors = [];
 
   for (const p of products) {
@@ -347,7 +356,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
       const r = await pushProductToTiktok(p.id, connection, { saveMode });
       if (r.action === 'created') created++;
       else if (r.action === 'updated') updated++;
-      else skipped++;
+      else { skipped++; if (r.reason) skipReasons[r.reason] = (skipReasons[r.reason] || 0) + 1; }
       await new Promise((res) => setTimeout(res, 250)); // anti rate-limit
     } catch (err) {
       failed++;
@@ -357,7 +366,7 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
   }
 
   await logSync('product', 'ok', `Push TenisCash → TikTok: ${products.length} total, ${created} criados, ${updated} atualizados, ${skipped} pulados, ${failed} falhas`);
-  return { total: products.length, created, updated, skipped, failed, errors: errors.slice(0, 20) };
+  return { total: products.length, created, updated, skipped, failed, skipReasons, errors: errors.slice(0, 20) };
 }
 
 // Atualiza só preço + estoque de um produto já mapeado.
@@ -394,14 +403,26 @@ async function recommendCategoriesForProducts({ limit = 200, force = false } = {
   const connection = await getConnection();
   if (!connection) throw new Error('Sem conexão TikTok Shop ativa');
 
+  // Mira só nos produtos VENDÁVEIS (curados): com categoria/sub no banco, custo e preço.
+  // Os mais antigos (lixo de NFe: nome só código, sem 4 classificações, sem custo) ficam de fora
+  // — TikTok rejeita nome incompleto e o push nunca passaria os portões mesmo.
   const products = await prisma.product.findMany({
-    where: { active: true, imageUrl: { not: null } },
+    where: {
+      active: true,
+      imageUrl: { not: null },
+      category: { not: null },
+      subcategory: { not: null },
+      costPrice: { gt: 0 },
+      price: { gt: 0 },
+    },
     take: limit,
     orderBy: { createdAt: 'asc' },
   });
 
   let resolved = 0; let skipped = 0; let failed = 0;
   for (const p of products) {
+    // Não gasta chamada de API em produto que não passaria nos portões do push.
+    if (classificationGate(p) || priceGate(p)) { skipped++; continue; }
     const ctx = ctxOf(p);
     if (!force && ctx.tiktokMapping?.categoryId) { skipped++; continue; }
     try {
