@@ -145,6 +145,11 @@ app.post('/api/_falgen', async (req, res) => {
     const svc = eng === 'openai' ? require('./services/openaiImage') : eng === 'fal' ? require('./services/falAi') : require('./services/compositeImage');
     const product = await prisma.product.findUnique({ where: { id: String(req.query.pid || '') } });
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
+    if (req.query.op === 'removebg') {
+      const fal = require('./services/falAi');
+      const rb = await fal.removeBackground({ imageUrl: product.imageUrl });
+      return res.json({ ok: true, op: 'removebg', outputUrl: rb.outputUrl, ...keys });
+    }
     const r = await svc.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5', sceneHint: req.query.scene || '', quality: 'medium' });
     return res.json({ ok: true, engine: eng, outputUrl: r.outputUrl, ...keys });
   } catch (e) {
