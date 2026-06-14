@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { sendCustomMessage, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
+const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
 const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
 
@@ -87,21 +87,27 @@ router.post('/evolution', async (req, res) => {
     const data = Array.isArray(body.data) ? body.data[0] : (body.data || {});
     const key = data.key || {};
 
-    // Ignora: mensagens que NOS enviamos, grupos e status
-    if (key.fromMe) return;
+    if (key.fromMe) return; // nao responde as proprias mensagens
     const jid = key.remoteJid || '';
-    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return;
+    if (!jid || jid === 'status@broadcast') return;
 
-    const phone = jid.replace(/[^0-9]/g, '');
+    const VENDEDORES_GROUP = process.env.EVOLUTION_GRUPO_VENDEDORES || '120363418791122078@g.us';
+    const isGroup = jid.endsWith('@g.us');
+    // Atende SO o grupo de vendedores; qualquer outro grupo e ignorado
+    if (isGroup && jid !== VENDEDORES_GROUP) return;
+
+    // Em grupo quem mandou vem em key.participant; no privado e o proprio remoteJid
+    const senderJid = isGroup ? (key.participant || '') : jid;
+    const phone = (senderJid || jid).replace(/[^0-9]/g, '');
     if (!phone) return;
-    const pushName = data.pushName || 'cliente';
+    const pushName = data.pushName || (isGroup ? 'colega' : 'cliente');
 
     const m = data.message || {};
     const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
 
-    // Mensagem nao-texto (audio/foto/figurinha): pede texto
     if (!text) {
-      if (attendantEnabled()) {
+      // Em grupo, ignora midia em silencio (nao poluir). No privado, pede texto.
+      if (!isGroup && attendantEnabled()) {
         await sendCustomMessage(phone, 'Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;
@@ -112,11 +118,30 @@ router.post('/evolution', async (req, res) => {
       return;
     }
 
-    console.log(`[whatsapp/evolution] msg de ${phone} (${pushName}): "${text.slice(0, 120)}"`);
-    const result = await getAttendantReply({ phone, text, pushName });
+    // Pre-filtro barato no grupo: nao gasta IA em mensagem trivial (risada, ok, emoji solto)
+    if (isGroup) {
+      const limpo = text.toLowerCase().replace(/[^a-z0-9]/gi, '');
+      const trivial = limpo.length < 4 || /^(ok|sim|nao|blz|vlw|valeu|obg|kk+|rs+|haha+|aff|opa|eai|salve|bomdia|boatarde|boanoite)$/.test(limpo);
+      if (trivial && !text.includes('?')) return;
+    }
+
+    console.log(`[whatsapp/evolution] ${isGroup ? 'GRUPO' : 'priv'} ${phone} (${pushName}): "${text.slice(0, 120)}"`);
+    const result = await getAttendantReply({
+      phone,
+      text,
+      pushName,
+      isGroup,
+      senderName: pushName,
+      sessionKey: isGroup ? jid + ':' + phone : phone,
+    });
+
+    if (result.silent) {
+      console.log('[whatsapp/evolution] IA em silencio (grupo, nao direcionado a ela)');
+      return;
+    }
     if (result.ok && result.reply) {
-      const r = await sendCustomMessage(phone, result.reply);
-      console.log(`[whatsapp/evolution] resposta IA -> ${phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
+      const r = isGroup ? await sendEvolutionRaw(jid, result.reply) : await sendCustomMessage(phone, result.reply);
+      console.log(`[whatsapp/evolution] resposta IA -> ${isGroup ? jid : phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
     } else if (!result.skip) {
       console.warn(`[whatsapp/evolution] sem resposta p/ ${phone}:`, result.error || 'desconhecido');
     }

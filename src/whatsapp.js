@@ -65,6 +65,28 @@ async function sendEvolutionText(phone, message) {
   }
 }
 
+// Envia direto pra um numero OU JID de grupo (xxxxx@g.us), sem passar por formatPhoneBR.
+async function sendEvolutionRaw(numberOrJid, message) {
+  if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+      method: 'POST',
+      headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: String(numberOrJid), text: String(message || '') }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, error: (data && data.message) || `Evolution ${response.status}` };
+    return { ok: true, messageId: data && data.key && data.key.id };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Erro Evolution' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sendMetaWhatsAppPayload(payload) {
   if (!isMetaWhatsAppConfigured()) return { ok: false, error: 'Meta WhatsApp nao configurado' };
 
@@ -300,4 +322,5 @@ module.exports = {
   isWhatsAppConfigured,
   sendMetaText,
   sendEvolutionText,
+  sendEvolutionRaw,
 };

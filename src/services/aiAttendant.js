@@ -136,7 +136,24 @@ async function runTool(name, input, ctx) {
 // ---------------------------------------------------------------------
 // SYSTEM PROMPT — persona + regras duras (anti-erro)
 // ---------------------------------------------------------------------
-function buildSystem(pushName) {
+// Prompt para o GRUPO de vendedores (modo vendedor + regra de silencio)
+function buildGroupSystem(senderName) {
+  return `Voce e a inteligencia artificial da SPORTS & TENNIS, presente num GRUPO DE WHATSAPP de vendedores e gerencia (lojas Sports & Tennis e Baratao dos Esportes).
+
+Voce LE todas as mensagens do grupo, mas SO RESPONDE quando a mensagem for DIRECIONADA A VOCE: uma pergunta sobre produto, estoque, preco ou tamanho da Sports & Tennis, OU quando te chamarem/mencionarem diretamente.
+
+REGRA DE SILENCIO (CRITICA): se a mensagem for conversa entre os vendedores que NAO precisa de voce (bate-papo, "bom dia", combinacao de horario, piada, recado interno, conversa entre eles), responda EXATAMENTE com [SILENCIO] e mais NADA. Na duvida, fique em [SILENCIO]. E MUITO melhor ficar quieto do que responder o que nao era pra voce e poluir o grupo.
+
+QUANDO VOCE RESPONDE (modo vendedor, NAO cliente):
+- Seja DIRETO e operacional. Eles sao a equipe, nao clientes. SEM papo de venda, SEM "quer que eu separe?", SEM oferecer cashback pra eles.
+- De a info pedida: estoque por tamanho, preco, modelos disponiveis — usando SEMPRE a ferramenta buscar_produtos. NUNCA invente preco, tamanho ou estoque.
+- Resposta curta e objetiva, como um colega que sabe o sistema de cor.
+- Voce SO tem o catalogo da SPORTS & TENNIS. Se perguntarem de produto do BARATAO, diga que ainda nao tem o catalogo do Baratao no sistema.
+- Quem falou no grupo se chama "${senderName || 'colega'}".`;
+}
+
+function buildSystem(pushName, isGroup) {
+  if (isGroup) return buildGroupSystem(pushName);
   return `Voce e o atendente virtual da SPORTS & TENNIS, uma rede de lojas de tenis e artigos esportivos em Joao Pessoa - PB (lojas no Bessa, Tambau, Rainha da Borborema e Tambia) com loja online e o programa de cashback TenisCash.
 
 Voce atende clientes no WhatsApp. Seja simpatico, direto e prestativo, como um bom vendedor de loja — sem ser chato nem prolixo.
@@ -161,12 +178,13 @@ Hoje voce so consegue responder texto. Se o cliente mandar audio/foto, peca gent
 // ---------------------------------------------------------------------
 // PRINCIPAL — gera a resposta do atendente para uma mensagem recebida
 // ---------------------------------------------------------------------
-async function getAttendantReply({ phone, text, pushName }) {
+async function getAttendantReply({ phone, text, pushName, isGroup = false, senderName, sessionKey }) {
   if (!isEnabled()) return { ok: false, skip: 'disabled' };
   const client = getClient();
   if (!client) return { ok: false, error: 'ANTHROPIC_API_KEY ausente' };
 
-  const history = getHistory(phone);
+  const histKey = sessionKey || phone;
+  const history = getHistory(histKey);
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: text }];
   const ctx = { phone, pushName };
 
@@ -177,7 +195,7 @@ async function getAttendantReply({ phone, text, pushName }) {
       const resp = await client.messages.create({
         model: MODEL,
         max_tokens: 700,
-        system: buildSystem(pushName),
+        system: buildSystem(isGroup ? senderName : pushName, isGroup),
         tools: TOOLS,
         messages: working,
       });
@@ -203,12 +221,18 @@ async function getAttendantReply({ phone, text, pushName }) {
       break;
     }
 
+    // Modo grupo: a IA pode decidir ficar calada (mensagem nao era pra ela)
+    if (isGroup && /\[?\s*SIL[EÊ]NCIO\s*\]?/i.test(finalText)) {
+      return { ok: true, silent: true };
+    }
+
     if (!finalText) {
+      if (isGroup) return { ok: true, silent: true };
       finalText = 'Recebi sua mensagem! Em instantes um atendente da Sports & Tennis te responde. 🙂';
     }
 
-    pushHistory(phone, 'user', text);
-    pushHistory(phone, 'assistant', finalText);
+    pushHistory(histKey, 'user', text);
+    pushHistory(histKey, 'assistant', finalText);
     return { ok: true, reply: finalText };
   } catch (err) {
     console.error('[aiAttendant] erro ao gerar resposta:', err.message);
