@@ -846,6 +846,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <select class="search-box" id="cat-filter-modality" style="width:170px"><option value="">Modalidade</option></select>
         <select class="search-box" id="cat-filter-tier" style="width:150px"><option value="">Especialidade</option></select>
         <select class="search-box" id="cat-filter-nuvemshop" style="width:185px"><option value="">Nuvemshop (todos)</option><option value="yes">🛒 Foi pra Nuvemshop</option><option value="no">Não foi pra Nuvemshop</option></select>
+        <select class="search-box" id="cat-filter-tiktok" style="width:185px"><option value="">TikTok (todos)</option><option value="yes">🛍️ Foi pro TikTok</option><option value="no">Não foi pro TikTok</option></select>
         <select class="search-box" id="cat-filter-release" style="width:175px"><option value="">Liberação (todos)</option><option value="yes">⬆ Liberados p/ Nuvemshop</option><option value="no">Não liberados</option></select>
         <button type="button" class="btn btn-primary" id="cat-btn-filter">Filtrar</button>
         <button type="button" class="btn" id="cat-btn-clear-filter" title="Limpar filtros">✕</button>
@@ -3435,7 +3436,7 @@ function initAdminCatalogTab() {
     if (relFilterSel) relFilterSel.addEventListener('change', loadCatalogProductsAdmin);
     const clearFilterBtn = document.getElementById('cat-btn-clear-filter');
     if (clearFilterBtn) clearFilterBtn.addEventListener('click', function () {
-      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier','cat-filter-nuvemshop','cat-filter-release'].forEach(id => {
+      ['cat-filter-search','cat-filter-brand','cat-filter-category','cat-filter-supplier','cat-filter-gender','cat-filter-modality','cat-filter-tier','cat-filter-nuvemshop','cat-filter-tiktok','cat-filter-release'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
       loadCatalogProductsAdmin();
@@ -3785,6 +3786,32 @@ function nsButtons(p, reloadName) {
   return '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#0a55c4;border-color:#0a55c4" onclick="nsRelease(\'' + p.id + '\',true,' + reloadName + ')">⬆ Liberar p/ conferência</button>';
 }
 
+// ===== TikTok Shop — selo + botão por produto no card do catálogo =====
+function ttBadge(p) {
+  if (p.naTiktok) return '<span title="Está na TikTok Shop" style="background:#111;color:#fff;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700;">🛍️ TIKTOK</span> ';
+  return '';
+}
+function ttButton(p, reloadName) {
+  if (p.naTiktok) {
+    return '<button class="btn" style="font-size:11px;padding:4px 8px;color:#0a843d;border-color:#0a843d" onclick="ttPushOne(\'' + p.id + '\',' + reloadName + ')" title="Reenviar/atualizar à venda no TikTok">🛍️ Atualizar TikTok</button>';
+  }
+  return '<button class="btn btn-primary" style="font-size:11px;padding:4px 8px;background:#111;border-color:#111" onclick="ttPushOne(\'' + p.id + '\',' + reloadName + ')">🛍️ Subir pro TikTok</button>';
+}
+async function ttPushOne(id, reload) {
+  if (!confirm('Subir este produto pro TikTok Shop À VENDA agora?')) return;
+  try {
+    const r = await fetch('/api/admin/tiktok-shop/push/products/' + id, {
+      method: 'POST', headers: ttHeaders(), body: JSON.stringify({ saveMode: 'LISTING' }),
+    });
+    const txt = await r.text();
+    let j; try { j = JSON.parse(txt); } catch (_) { j = { raw: txt }; }
+    if (j && j.skipped) alert('Não subiu: ' + (j.reason || 'motivo desconhecido'));
+    else if (j && (j.action === 'created' || j.action === 'updated')) alert('✅ ' + (j.action === 'created' ? 'Criado' : 'Atualizado') + ' no TikTok à venda!');
+    else alert('Resultado: ' + JSON.stringify(j).slice(0, 300));
+    if (typeof reload === 'function') reload();
+  } catch (e) { alert('❌ Falha: ' + e.message); }
+}
+
 async function loadCatalogProductsAdmin() {
   const wrap = document.getElementById('cat-products-wrap');
   if (!wrap) return;
@@ -3800,6 +3827,7 @@ async function loadCatalogProductsAdmin() {
   const mod = document.getElementById('cat-filter-modality')?.value.trim() || '';
   const tier = document.getElementById('cat-filter-tier')?.value.trim() || '';
   const ns = document.getElementById('cat-filter-nuvemshop')?.value.trim() || '';
+  const tt = document.getElementById('cat-filter-tiktok')?.value.trim() || '';
   const rel = document.getElementById('cat-filter-release')?.value.trim() || '';
   if (s) q.set('search', s);
   if (b) q.set('brand', b);
@@ -3809,6 +3837,7 @@ async function loadCatalogProductsAdmin() {
   if (tier) q.set('tier', tier);
   if (sup) q.set('supplier', sup);
   if (ns) q.set('nuvemshop', ns);
+  if (tt) q.set('tiktok', tt);
   if (rel) q.set('release', rel);
   const data = await api('/admin/catalog/products?' + q.toString());
   if (data.error) { wrap.innerHTML = '<div class="empty-state">' + data.error + '</div>'; return; }
@@ -3941,7 +3970,7 @@ async function loadCatalogProductsAdmin() {
     }
 
     // Status + Ativo
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + statusBadge + nsBadge + '</span>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + statusBadge + nsBadge + ttBadge(p) + '</span>';
     html += '<span style="font-size:10px;color:' + (p.active ? '#0a843d' : '#d70015') + ';font-weight:700;">' + (p.active ? '● Ativo' : '○ Inativo') + '</span></div>';
     // Ações
     html += '<div style="display:flex;gap:6px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);">'
@@ -3950,7 +3979,7 @@ async function loadCatalogProductsAdmin() {
       + '<button type="button" class="js-cat-enrich-one" data-id="' + p.id + '" data-sku="' + escapeHtml(p.sku) + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);font-size:12px;cursor:pointer;" title="Enriquecer com IA">🤖</button>'
       + '<button type="button" class="js-cat-del" data-id="' + p.id + '" style="padding:8px 10px;border-radius:8px;background:white;border:1px solid var(--border);color:#d70015;font-size:12px;cursor:pointer;" title="Excluir">🗑</button>'
       + '</div>';
-    html += '<div style="margin-top:6px;display:flex;">' + nsButtons(p, 'loadCatalogProductsAdmin') + '</div>';
+    html += '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + nsButtons(p, 'loadCatalogProductsAdmin') + ttButton(p, 'loadCatalogProductsAdmin') + '</div>';
     html += '</div></div>';
   });
   html += '</div>';

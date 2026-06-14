@@ -454,6 +454,7 @@ router.get('/products', adminOnly, async (req, res) => {
     const tier = String(req.query.tier || req.query.especialidade || '').trim();
     const supplier = String(req.query.supplier || '').trim(); // CNPJ ou supplierId
     const nuvemshop = String(req.query.nuvemshop || '').trim(); // 'yes' = só os que foram pra Nuvemshop | 'no' = só os que não foram
+    const tiktok = String(req.query.tiktok || '').trim(); // 'yes' = só os que foram pro TikTok Shop | 'no' = só os que não foram
     const release = String(req.query.release || '').trim(); // 'yes' = marcados p/ liberar | 'no' = não marcados
     const active = req.query.active;
     const featured = req.query.featured;
@@ -478,6 +479,13 @@ router.get('/products', adminOnly, async (req, res) => {
     const nsSet = new Set(nsMaps.map((m) => m.localProductId));
     const nsIds = [...nsSet];
 
+    // Idem TikTok Shop. O filtro entra no AND (compõe com o do Nuvemshop sem colidir no `id`).
+    const ttMaps = await prisma.tiktokShopProductMapping.findMany({ select: { localProductId: true } });
+    const ttSet = new Set(ttMaps.map((m) => m.localProductId));
+    const ttIds = [...ttSet];
+    if (tiktok === 'yes') jsonFilters.push({ id: { in: ttIds } });
+    else if (tiktok === 'no') jsonFilters.push({ id: { notIn: ttIds } });
+
     const where = {
       ...(nuvemshop === 'yes' ? { id: { in: nsIds } } : nuvemshop === 'no' ? { id: { notIn: nsIds } } : {}),
       ...(release === 'yes' ? { aiContext: { path: ['releaseToNuvemshop'], equals: true } }
@@ -486,7 +494,7 @@ router.get('/products', adminOnly, async (req, res) => {
       ...(category ? { category: { equals: category, mode: 'insensitive' } } : {}),
       // Default: só ativos. Pra ver inativos use ?active=false. Pra todos use ?active=all
       // Exceção: filtro "Foi pra Nuvemshop" mostra TODOS (inclusive inativos) — o dono quer ver tudo que subiu pra loja
-      ...(active === 'all' || (nuvemshop === 'yes' && !active) ? {} : active === 'false' ? { active: false } : { active: true }),
+      ...(active === 'all' || ((nuvemshop === 'yes' || tiktok === 'yes') && !active) ? {} : active === 'false' ? { active: false } : { active: true }),
       ...(featured === 'true' ? { featured: true } : {}),
       ...(search
         ? {
@@ -520,7 +528,7 @@ router.get('/products', adminOnly, async (req, res) => {
     res.json({
       products: products.map((p) => {
         const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
-        return { ...p, naNuvemshop: nsSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, confirmedForNuvemshop: ctx.confirmedForNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
+        return { ...p, naNuvemshop: nsSet.has(p.id), naTiktok: ttSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, confirmedForNuvemshop: ctx.confirmedForNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
       }),
     });
   } catch (err) {
