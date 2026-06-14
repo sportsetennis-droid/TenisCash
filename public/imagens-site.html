@@ -120,6 +120,7 @@ const AGENTS = [
 ];
 let gender = 'ambos';
 let t0 = 0, timer = null;
+let es = null;
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -131,6 +132,8 @@ if (!TOKEN) {
   buildLanes();
   connect();
   loadState();
+  // auto-roda ao abrir, pra você já ver os agentes trabalhando sem precisar clicar
+  setTimeout(() => { const b = document.getElementById('runBtn'); if (b && !b.disabled) b.click(); }, 1000);
 }
 
 function buildLanes(){
@@ -180,7 +183,6 @@ function setState(txt, cls){ const p=document.getElementById('oState'); p.textCo
 function startTimer(){ t0=Date.now(); clearInterval(timer); timer=setInterval(()=>{ document.getElementById('oTimer').textContent=((Date.now()-t0)/1000).toFixed(0)+'s'; },200); }
 function stopTimer(){ clearInterval(timer); if(t0) document.getElementById('oTimer').textContent=((Date.now()-t0)/1000).toFixed(1)+'s'; }
 
-let es = null;
 function connect(){
   if (es) es.close();
   es = new EventSource(API + '/stream?token=' + encodeURIComponent(TOKEN));
