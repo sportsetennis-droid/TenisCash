@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { sendCustomMessage, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
+const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
 
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
@@ -66,6 +67,61 @@ router.post('/webhook', async (req, res) => {
     }
   } catch (err) {
     console.error('[whatsapp/webhook] erro processando entry:', err);
+  }
+});
+
+// =====================================================================
+// WEBHOOK DA EVOLUTION API — mensagens recebidas no numero da loja (9671)
+// caem aqui e sao respondidas pelo atendente de IA (automatico).
+// Interruptor: env AI_ATTENDANT_ENABLED='false' desliga a IA.
+// =====================================================================
+router.post('/evolution', async (req, res) => {
+  res.json({ received: true }); // responde rapido (Evolution nao espera)
+
+  try {
+    const body = req.body || {};
+    const event = body.event || body.type || '';
+    // Evolution manda varios eventos; so queremos mensagens novas
+    if (event && !/messages\.upsert/i.test(event)) return;
+
+    const data = Array.isArray(body.data) ? body.data[0] : (body.data || {});
+    const key = data.key || {};
+
+    // Ignora: mensagens que NOS enviamos, grupos e status
+    if (key.fromMe) return;
+    const jid = key.remoteJid || '';
+    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return;
+
+    const phone = jid.replace(/[^0-9]/g, '');
+    if (!phone) return;
+    const pushName = data.pushName || 'cliente';
+
+    const m = data.message || {};
+    const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
+
+    // Mensagem nao-texto (audio/foto/figurinha): pede texto
+    if (!text) {
+      if (attendantEnabled()) {
+        await sendCustomMessage(phone, 'Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
+      }
+      return;
+    }
+
+    if (!attendantEnabled()) {
+      console.log(`[whatsapp/evolution] IA desligada — ignorando msg de ${phone}`);
+      return;
+    }
+
+    console.log(`[whatsapp/evolution] msg de ${phone} (${pushName}): "${text.slice(0, 120)}"`);
+    const result = await getAttendantReply({ phone, text, pushName });
+    if (result.ok && result.reply) {
+      const r = await sendCustomMessage(phone, result.reply);
+      console.log(`[whatsapp/evolution] resposta IA -> ${phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
+    } else if (!result.skip) {
+      console.warn(`[whatsapp/evolution] sem resposta p/ ${phone}:`, result.error || 'desconhecido');
+    }
+  } catch (err) {
+    console.error('[whatsapp/evolution] erro:', err.message);
   }
 });
 
