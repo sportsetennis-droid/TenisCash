@@ -198,7 +198,7 @@ async function generateWornScene(opts) {
 
   const result = await withRetry(
     () => fal.subscribe(model, {
-      input: { prompt, image_urls: refs.slice(0, 3), num_images: 1, output_format: 'jpeg' },
+      input: { prompt, image_urls: refs.slice(0, 3), num_images: 1, output_format: 'jpeg', aspect_ratio: ar },
       logs: false,
     }),
     `wornScene ${(product.name || '').slice(0, 40)}`
