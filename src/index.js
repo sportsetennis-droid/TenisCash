@@ -67,6 +67,7 @@ const professionalsRoutes = require('./routes/professionals');
 const liveCommerceRoutes = require('./routes/liveCommerce');
 const infoproductsRoutes = require('./routes/infoproducts');
 const desapegaRoutes = require('./routes/desapega');
+const mfRoutes = require('./routes/mf'); // Meta Fardamentos — sistema proprio (ERP/CRM/estoque/ponto)
 const pagbankRoutes = require('./routes/pagbank');
 const catalogEngineRoutes = require('./routes/catalogEngine');
 const servicesRoutes = require('./routes/services');
@@ -234,6 +235,7 @@ app.use('/api/professionals', professionalsRoutes);
 app.use('/api/live', liveCommerceRoutes);
 app.use('/api/infoproducts', infoproductsRoutes);
 app.use('/api/desapega', desapegaRoutes);
+app.use('/api/mf', mfRoutes); // Meta Fardamentos — API isolada (so tabelas Mf*)
 app.use('/api/pagbank', pagbankRoutes); // webhook PIX PagBank + status (fora de /api/admin)
 app.use('/api/services', servicesRoutes); // agendamento + marketplace + T$ no serviço
 app.use('/api/services', servicesPackagesRouter);
@@ -1160,6 +1162,9 @@ app.get(['/desapega', '/desapega/item/:id'], _infoPage('desapega.html'));
 app.get(['/desapega/vender', '/desapega/acompanhar/:token'], _infoPage('desapega-vender.html'));
 // Painel de moderação (login admin + fila aprovar/reprovar)
 app.get('/desapega/admin', _infoPage('desapega-admin.html'));
+
+// META FARDAMENTOS — sistema proprio (ERP/CRM/estoque/categoria/ponto)
+app.get('/metafardamentos', _infoPage('metafardamentos.html'));
 
 // Link de afiliado rastreado: conta clique, grava cookie tc_ref, redireciona pra página de vendas
 app.get('/r/:code', async (req, res) => {

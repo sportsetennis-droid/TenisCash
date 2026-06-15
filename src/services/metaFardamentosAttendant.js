@@ -17,6 +17,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const KB = require('./metaFardamentosKB');
 const { sendEvolutionRaw, formatPhoneBR } = require('../whatsapp');
+const { prisma } = require('../middleware'); // grava o lead no CRM (tabela MfLead)
 
 const MODEL = process.env.METAFARD_ATTENDANT_MODEL || 'claude-sonnet-4-6';
 const INSTANCE = process.env.METAFARD_EVOLUTION_INSTANCE || 'metafardamentos';
@@ -309,6 +310,28 @@ async function handleMetaWebhook(body) {
     console.log(`[metaFardAttendant] resposta -> ${phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
     if (result.handoff) {
       await notifyLead(phone, result.handoff);
+      // Grava o lead no CRM da Meta Fardamentos (MfLead). try/catch: NUNCA pode
+      // quebrar a resposta do WhatsApp (ex: tabela ainda nao criada num deploy).
+      try {
+        const L = result.handoff;
+        const clean = (s) => (s && s !== 'nao informado' ? s : null);
+        await prisma.mfLead.create({
+          data: {
+            name: L.nome || pushName || null,
+            phone: formatPhoneBR(phone) || phone,
+            segment: clean(L.segmento),
+            tipoFardamento: clean(L.tipo_fardamento),
+            quantidade: clean(L.quantidade),
+            personalizacao: clean(L.personalizacao),
+            resumo: L.resumo || null,
+            source: 'whatsapp',
+            status: 'novo',
+          },
+        });
+        console.log(`[metaFardAttendant] lead salvo no CRM (MfLead) — ${phone}`);
+      } catch (err) {
+        console.error('[metaFardAttendant] falha ao salvar lead no CRM:', err.message);
+      }
       pauseThread(phone, HANDOFF_PAUSE_MS); // lead passado: IA sai, humano fecha
     }
   } else if (!result.skip) {

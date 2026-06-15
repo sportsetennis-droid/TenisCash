@@ -4174,3 +4174,180 @@ model AgentEvent {
   @@index([runId, createdAt])
   @@index([createdAt])
 }
+
+// ============================================================
+// META FARDAMENTOS — sistema proprio (ERP / CRM / Estoque / Categoria / Ponto)
+// EMPRESA SEPARADA da Sports & Tennis. Tabelas ISOLADAS (prefixo Mf), zero
+// mistura com o catalogo/User da S&T. CNPJ 18.034.978/0001-30 · IE 162135491
+// App em /metafardamentos · API em /api/mf
+// ============================================================
+
+model MfCompany {
+  id        String   @id @default(uuid())
+  name      String   @default("META FARDAMENTOS LTDA")
+  tradeName String   @default("Meta Fardamentos")
+  cnpj      String   @default("18034978000130")
+  ie        String?  @default("162135491")
+  phone     String?
+  email     String?
+  address   String?
+  city      String?  @default("Joao Pessoa")
+  state     String?  @default("PB")
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MfEmployee {
+  id         String    @id @default(uuid())
+  name       String
+  username   String    @unique // login (sem espaco)
+  pinHash    String // bcrypt do PIN/senha
+  role       String    @default("funcionario") // admin | gerente | funcionario
+  cpf        String?
+  phone      String?
+  email      String?
+  baseSalary Float?
+  hireDate   DateTime?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  timeEntries MfTimeEntry[]
+  movements   MfStockMovement[]
+  orders      MfOrder[]
+}
+
+model MfCategory {
+  id        String       @id @default(uuid())
+  name      String
+  parentId  String?
+  parent    MfCategory?  @relation("MfCatTree", fields: [parentId], references: [id])
+  children  MfCategory[] @relation("MfCatTree")
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  products MfProduct[]
+}
+
+model MfProduct {
+  id          String      @id @default(uuid())
+  name        String
+  ref         String? // referencia interna / codigo
+  categoryId  String?
+  category    MfCategory? @relation(fields: [categoryId], references: [id])
+  unit        String      @default("un") // un, pc, kit
+  size        String? // P/M/G/GG ou numerico (uniforme)
+  color       String?
+  costPrice   Float       @default(0)
+  salePrice   Float       @default(0)
+  stock       Int         @default(0) // saldo atual (ledger = MfStockMovement)
+  minStock    Int         @default(0) // alerta de estoque baixo
+  description String?     @db.Text
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  movements  MfStockMovement[]
+  orderItems MfOrderItem[]
+
+  @@index([categoryId])
+}
+
+model MfStockMovement {
+  id           String      @id @default(uuid())
+  productId    String
+  product      MfProduct   @relation(fields: [productId], references: [id])
+  type         String // entrada | saida | ajuste
+  qty          Int // sempre positivo; type define o sinal
+  balanceAfter Int? // saldo do produto apos o movimento
+  reason       String? // compra, venda, perda, inventario...
+  employeeId   String?
+  employee     MfEmployee? @relation(fields: [employeeId], references: [id])
+  orderId      String?
+  createdAt    DateTime    @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model MfCustomer {
+  id        String   @id @default(uuid())
+  name      String
+  type      String   @default("pj") // pf | pj
+  doc       String? // CNPJ ou CPF
+  segment   String? // empresa | escola | time | profissional | EPI | outro
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?  @db.Text
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads  MfLead[]
+  orders MfOrder[]
+}
+
+model MfLead {
+  id             String      @id @default(uuid())
+  name           String?
+  phone          String?
+  segment        String?
+  tipoFardamento String?
+  quantidade     String?
+  personalizacao String?
+  resumo         String?     @db.Text
+  source         String      @default("whatsapp") // whatsapp | manual | instagram
+  status         String      @default("novo") // novo | contatado | orcamento | fechado | perdido
+  customerId     String?
+  customer       MfCustomer? @relation(fields: [customerId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model MfOrder {
+  id         String      @id @default(uuid())
+  number     Int         @default(0) // nº amigavel do pedido/orcamento (setado no app)
+  customerId String?
+  customer   MfCustomer? @relation(fields: [customerId], references: [id])
+  status     String      @default("orcamento") // orcamento | confirmado | producao | entregue | cancelado
+  total      Float       @default(0)
+  notes      String?     @db.Text
+  employeeId String?
+  employee   MfEmployee? @relation(fields: [employeeId], references: [id])
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  items MfOrderItem[]
+
+  @@index([status, createdAt])
+}
+
+model MfOrderItem {
+  id          String     @id @default(uuid())
+  orderId     String
+  order       MfOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     MfProduct? @relation(fields: [productId], references: [id])
+  description String // texto livre (item sob medida) ou nome do produto
+  qty         Int        @default(1)
+  unitPrice   Float      @default(0)
+  total       Float      @default(0)
+}
+
+model MfTimeEntry {
+  id         String     @id @default(uuid())
+  employeeId String
+  employee   MfEmployee @relation(fields: [employeeId], references: [id])
+  kind       String // in | out | break_in | break_out
+  at         DateTime   @default(now())
+  day        String // YYYY-MM-DD (America/Fortaleza) p/ agrupar o dia
+  lat        Float?
+  lng        Float?
+  note       String?
+
+  @@index([employeeId, day])
+}

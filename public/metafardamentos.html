@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#2E3192" />
+<title>Meta Fardamentos — Sistema</title>
+<style>
+  :root{
+    --azul:#2E3192; --azul-d:#23266f; --laranja:#F26F21; --laranja-d:#d35a14;
+    --bg:#eef0f7; --card:#fff; --ink:#1b1d3a; --muted:#6b6f8c; --line:#e2e4f0;
+    --ok:#1d9e75; --warn:#c97a0f; --danger:#d8443a; --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);
+    padding-top:env(safe-area-inset-top);}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:16px}
+  .hide{display:none!important}
+  .wrap{max-width:480px;margin:0 auto;min-height:100vh;position:relative}
+  @media(min-width:900px){.wrap{box-shadow:0 0 40px rgba(0,0,0,.12);min-height:100vh}}
+
+  /* AUTH */
+  #auth{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:28px 22px;
+    background:linear-gradient(160deg,var(--azul),var(--azul-d))}
+  #auth .logo{text-align:center;color:#fff;margin-bottom:26px}
+  #auth .logo b{font-size:26px;letter-spacing:.5px;display:block}
+  #auth .logo span{font-size:13px;color:#c9cbef}
+  #auth .bar{height:4px;width:56px;background:var(--laranja);margin:10px auto 0;border-radius:3px}
+  .authcard{background:#fff;border-radius:18px;padding:22px}
+  .authcard h2{margin:0 0 4px;font-size:18px}
+  .authcard p.sub{margin:0 0 16px;color:var(--muted);font-size:13px}
+  label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px;font-weight:600}
+  .fld{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:11px;outline:none;background:#fafbff}
+  .fld:focus{border-color:var(--azul)}
+  .btn{width:100%;padding:14px;border:none;border-radius:11px;background:var(--azul);color:#fff;font-size:15px;font-weight:600;min-height:48px}
+  .btn:active{transform:scale(.99)}
+  .btn.lar{background:var(--laranja)}
+  .btn.ghost{background:#eef0fb;color:var(--azul)}
+  .btn.sm{width:auto;padding:9px 14px;font-size:13px;min-height:40px;border-radius:9px}
+  .err{color:var(--danger);font-size:13px;margin-top:10px;min-height:16px}
+
+  /* APP */
+  #app{padding-bottom:78px}
+  .top{position:sticky;top:0;z-index:20;background:var(--azul);color:#fff;display:flex;align-items:center;
+    justify-content:space-between;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top))}
+  .top .ttl{font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px}
+  .top .ttl i{width:9px;height:9px;background:var(--laranja);border-radius:2px;display:inline-block}
+  .top .av{width:34px;height:34px;border-radius:50%;background:var(--laranja);color:#fff;border:none;font-weight:700;font-size:14px}
+  .view{padding:16px 14px}
+  h3.sec{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:6px 2px 10px;font-weight:700}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kpi{background:var(--card);border-radius:var(--radius);padding:14px;border:1px solid var(--line)}
+  .kpi .n{font-size:26px;font-weight:700}
+  .kpi .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .kpi.alert .n{color:var(--laranja-d)}
+
+  .card{background:var(--card);border-radius:var(--radius);padding:13px 14px;border:1px solid var(--line);margin-bottom:9px}
+  .card .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .card .nm{font-weight:600;font-size:15px}
+  .card .mt{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:#eef0fb;color:var(--azul)}
+  .pill.ok{background:#e1f5ee;color:var(--ok)} .pill.warn{background:#fbeee0;color:var(--warn)}
+  .pill.dng{background:#fbe8e6;color:var(--danger)} .pill.gray{background:#eef0f4;color:var(--muted)}
+  .tag{font-size:11px;color:var(--laranja-d);font-weight:700}
+  .muted{color:var(--muted)}
+  .right{text-align:right}
+  .empty{text-align:center;color:var(--muted);padding:40px 16px;font-size:14px}
+
+  .search{display:flex;gap:8px;margin-bottom:12px}
+  .search input{flex:1;padding:11px 13px;border:1.5px solid var(--line);border-radius:11px;background:#fff;outline:none}
+  .chips{display:flex;gap:7px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px}
+  .chip{white-space:nowrap;padding:7px 13px;border-radius:20px;border:1.5px solid var(--line);background:#fff;font-size:13px;color:var(--muted)}
+  .chip.on{background:var(--azul);color:#fff;border-color:var(--azul)}
+
+  .fab{position:fixed;right:calc(50% - 240px + 16px);bottom:90px;width:56px;height:56px;border-radius:50%;background:var(--laranja);
+    color:#fff;border:none;font-size:30px;box-shadow:0 6px 18px rgba(242,111,33,.45);z-index:30}
+  @media(max-width:512px){.fab{right:16px}}
+
+  .nav{position:fixed;bottom:0;left:0;right:0;z-index:25;background:#fff;border-top:1px solid var(--line);
+    display:flex;max-width:480px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom)}
+  .nav button{flex:1;background:none;border:none;padding:9px 2px 8px;color:var(--muted);font-size:10.5px;font-weight:600;
+    display:flex;flex-direction:column;align-items:center;gap:3px}
+  .nav button .ic{font-size:19px;line-height:1}
+  .nav button.on{color:var(--azul)}
+
+  /* SHEET */
+  .ov{position:fixed;inset:0;background:rgba(20,22,50,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:18px 18px calc(22px + env(safe-area-inset-bottom));
+    max-height:92vh;overflow-y:auto;animation:up .22s ease}
+  @keyframes up{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
+  .sheet h2{margin:2px 0 14px;font-size:18px}
+  .sheet .x{position:absolute;top:14px;right:16px;font-size:24px;color:var(--muted);background:none;border:none}
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;
+    border-radius:10px;font-size:14px;z-index:60;max-width:90%;text-align:center}
+  .ponto-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:8px 0 16px}
+  .pbtn{padding:20px 10px;border-radius:14px;border:none;color:#fff;font-size:15px;font-weight:700;min-height:74px}
+  .pbtn small{display:block;font-size:11px;font-weight:500;opacity:.85;margin-top:3px}
+  .seg{display:flex;gap:6px;margin-bottom:12px;background:#e7e9f4;border-radius:11px;padding:4px}
+  .seg button{flex:1;border:none;background:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted)}
+  .seg button.on{background:#fff;color:var(--azul);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ AUTH ============ -->
+  <div id="auth">
+    <div class="logo"><b>META FARDAMENTOS</b><span>Transpire o seu propósito.</span><div class="bar"></div></div>
+    <div class="authcard">
+      <div id="auth-login">
+        <h2>Entrar</h2><p class="sub">Acesse o sistema com seu usuário e PIN.</p>
+        <label>Usuário</label><input id="lg-user" class="fld" autocomplete="username" placeholder="seu.usuario" />
+        <label>PIN / senha</label><input id="lg-pin" class="fld" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••" />
+        <div class="err" id="lg-err"></div>
+        <button class="btn" style="margin-top:14px" onclick="doLogin()">Entrar</button>
+      </div>
+      <div id="auth-setup" class="hide">
+        <h2>Primeiro acesso</h2><p class="sub">Crie o administrador do sistema da Meta Fardamentos.</p>
+        <label>Seu nome</label><input id="su-name" class="fld" placeholder="Nome completo" />
+        <label>Usuário (login)</label><input id="su-user" class="fld" placeholder="ex: maria" />
+        <label>PIN / senha (mín. 4)</label><input id="su-pin" class="fld" type="password" inputmode="numeric" placeholder="••••" />
+        <div class="err" id="su-err"></div>
+        <button class="btn lar" style="margin-top:14px" onclick="doSetup()">Criar e entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="hide">
+    <div class="top">
+      <div class="ttl"><i></i> <span id="top-title">Início</span></div>
+      <button class="av" id="av" onclick="openMenu()">M</button>
+    </div>
+    <div class="view" id="view"></div>
+    <button class="fab hide" id="fab" onclick="fabAction()">+</button>
+    <nav class="nav">
+      <button data-tab="home" class="on" onclick="tab('home')"><span class="ic">▦</span>Início</button>
+      <button data-tab="estoque" onclick="tab('estoque')"><span class="ic">📦</span>Estoque</button>
+      <button data-tab="crm" onclick="tab('crm')"><span class="ic">👥</span>CRM</button>
+      <button data-tab="pedidos" onclick="tab('pedidos')"><span class="ic">🧾</span>Pedidos</button>
+      <button data-tab="ponto" onclick="tab('ponto')"><span class="ic">🕐</span>Ponto</button>
+    </nav>
+  </div>
+</div>
+
+<script>
+const API='/api/mf';
+let token=localStorage.getItem('mf_token')||null;
+let me=null, current='home', estoqueCat='', crmTab='leads', pedStatus='', estProducts=[], cats=[];
+
+function H(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function money(v){return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function hhmm(d){return new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'})}
+function dt(d){return new Date(d).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'})}
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
+
+async function api(path,opts={}){
+  const h=Object.assign({'Content-Type':'application/json'},opts.headers||{});
+  if(token)h.Authorization='Bearer '+token;
+  const r=await fetch(API+path,{...opts,headers:h});
+  if(r.status===401){logout();throw new Error('Sessão expirada');}
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(data.error||'Erro');
+  return data;
+}
+
+/* ---------- AUTH ---------- */
+async function boot(){
+  if(token){ try{ me=await api('/me'); enterApp(); return; }catch(e){ token=null; } }
+  try{ const s=await api('/auth/status'); document.getElementById('auth-setup').classList.toggle('hide',!s.setup); document.getElementById('auth-login').classList.toggle('hide',s.setup);}catch(e){}
+}
+async function doLogin(){
+  const u=val('lg-user'),p=val('lg-pin'); const e=document.getElementById('lg-err'); e.textContent='';
+  if(!u||!p){e.textContent='Preencha usuário e PIN';return;}
+  try{ const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:u,pin:p})}); setToken(r.token);}catch(err){e.textContent=err.message;}
+}
+async function doSetup(){
+  const e=document.getElementById('su-err'); e.textContent='';
+  const body={name:val('su-name'),username:val('su-user'),pin:val('su-pin')};
+  if(!body.name||!body.username||!body.pin){e.textContent='Preencha tudo';return;}
+  try{ const r=await api('/auth/setup',{method:'POST',body:JSON.stringify(body)}); setToken(r.token);}catch(err){e.textContent=err.message;}
+}
+async function setToken(t){token=t;localStorage.setItem('mf_token',t);me=await api('/me');enterApp();}
+function logout(){token=null;me=null;localStorage.removeItem('mf_token');location.reload();}
+function enterApp(){document.getElementById('auth').classList.add('hide');document.getElementById('app').classList.remove('hide');
+  document.getElementById('av').textContent=(me.name||'M').trim()[0].toUpperCase();tab('home');}
+function val(id){return document.getElementById(id).value.trim()}
+
+/* ---------- NAV ---------- */
+const TITLES={home:'Início',estoque:'Estoque',crm:'CRM',pedidos:'Pedidos',ponto:'Ponto'};
+const FAB={estoque:1,crm:1,pedidos:1};
+function tab(t){current=t;document.getElementById('top-title').textContent=TITLES[t]||'';
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  document.getElementById('fab').classList.toggle('hide',!FAB[t]);
+  ({home:renderHome,estoque:renderEstoque,crm:renderCRM,pedidos:renderPedidos,ponto:renderPonto}[t])();}
+function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); }
+
+/* ---------- SHEET ---------- */
+function sheet(html){closeSheet();const ov=document.createElement('div');ov.className='ov';ov.id='ov';
+  ov.onclick=e=>{if(e.target===ov)closeSheet()};ov.innerHTML='<div class="sheet"><button class="x" onclick="closeSheet()">×</button>'+html+'</div>';
+  document.body.appendChild(ov);}
+function closeSheet(){const o=document.getElementById('ov');if(o)o.remove();}
+
+/* ---------- HOME ---------- */
+async function renderHome(){
+  const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
+  try{
+    const d=await api('/dashboard');
+    v.innerHTML=`<h3 class="sec">Visão geral</h3>
+    <div class="grid">
+      ${kpi(d.products,'Produtos ativos')}
+      ${kpi(d.lowStock,'Sem estoque',d.lowStock>0)}
+      ${kpi(d.customers,'Clientes')}
+      ${kpi(d.leadsNovos,'Leads novos',d.leadsNovos>0)}
+      ${kpi(d.orcamentos,'Orçamentos')}
+      ${kpi(d.pedidosAbertos,'Pedidos em aberto')}
+    </div>
+    <h3 class="sec" style="margin-top:20px">Atalhos</h3>
+    <div class="card"><div class="row"><div class="nm">Bater ponto</div><button class="btn sm lar" onclick="tab('ponto')">Abrir</button></div></div>
+    <div class="card"><div class="row"><div class="nm">Novo orçamento</div><button class="btn sm" onclick="tab('pedidos');setTimeout(formOrder,50)">Criar</button></div></div>
+    <div class="card"><div class="row"><div class="nm">Leads do WhatsApp</div><button class="btn sm" onclick="tab('crm')">Ver CRM</button></div></div>`;
+  }catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+function kpi(n,l,alert){return `<div class="kpi ${alert?'alert':''}"><div class="n">${n||0}</div><div class="l">${l}</div></div>`}
+
+/* ---------- ESTOQUE ---------- */
+async function renderEstoque(){
+  const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
+  try{
+    cats=await api('/categories');
+    const chips='<div class="chips"><span class="chip '+(estoqueCat===''?'on':'')+'" onclick="estoqueCat=\'\';renderEstoque()">Todos</span>'+
+      cats.map(c=>`<span class="chip ${estoqueCat===c.id?'on':''}" onclick="estoqueCat='${c.id}';renderEstoque()">${H(c.name)} (${c.products})</span>`).join('')+
+      '<span class="chip" onclick="formCategory()">+ categoria</span></div>';
+    const qs=estoqueCat?('?categoryId='+estoqueCat):'';
+    estProducts=await api('/products'+qs);
+    const list=estProducts.length?estProducts.map(p=>{
+      const low=p.stock<=p.minStock;
+      return `<div class="card" onclick='openProduct("${p.id}")'><div class="row">
+        <div><div class="nm">${H(p.name)}</div><div class="mt">${H(p.category?.name||'sem categoria')}${p.size?' · '+H(p.size):''}${p.ref?' · '+H(p.ref):''}</div></div>
+        <div class="right"><span class="pill ${low?'dng':'ok'}">${p.stock} ${H(p.unit)}</span><div class="mt">${money(p.salePrice)}</div></div>
+      </div></div>`;}).join(''):'<div class="empty">Nenhum produto. Toque no + para cadastrar.</div>';
+    v.innerHTML='<div class="search"><input placeholder="Buscar produto…" oninput="filterProd(this.value)" id="est-q"></div>'+chips+'<div id="est-list">'+list+'</div>';
+  }catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+function filterProd(q){q=q.toLowerCase();const f=estProducts.filter(p=>p.name.toLowerCase().includes(q)||(p.ref||'').toLowerCase().includes(q));
+  document.getElementById('est-list').innerHTML=f.length?f.map(p=>{const low=p.stock<=p.minStock;
+  return `<div class="card" onclick='openProduct("${p.id}")'><div class="row"><div><div class="nm">${H(p.name)}</div><div class="mt">${H(p.category?.name||'')}</div></div><div class="right"><span class="pill ${low?'dng':'ok'}">${p.stock} ${H(p.unit)}</span></div></div></div>`}).join(''):'<div class="empty">Nada encontrado.</div>';}
+function catOptions(sel){return '<option value="">— categoria —</option>'+cats.map(c=>`<option value="${c.id}" ${sel===c.id?'selected':''}>${H(c.name)}</option>`).join('')}
+function formProduct(p){p=p||{};const ed=!!p.id;
+  sheet(`<h2>${ed?'Editar':'Novo'} produto</h2>
+  <label>Nome</label><input id="p-name" class="fld" value="${H(p.name||'')}">
+  <label>Categoria</label><select id="p-cat" class="fld">${catOptions(p.categoryId)}</select>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Referência</label><input id="p-ref" class="fld" value="${H(p.ref||'')}"></div>
+  <div style="flex:1"><label>Tamanho</label><input id="p-size" class="fld" value="${H(p.size||'')}" placeholder="P/M/G…"></div></div>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Custo</label><input id="p-cost" class="fld" type="number" step="0.01" value="${p.costPrice||''}"></div>
+  <div style="flex:1"><label>Venda</label><input id="p-sale" class="fld" type="number" step="0.01" value="${p.salePrice||''}"></div></div>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Estoque mín.</label><input id="p-min" class="fld" type="number" value="${p.minStock||0}"></div>
+  ${ed?'':'<div style="flex:1"><label>Estoque inicial</label><input id="p-stock" class="fld" type="number" value="0"></div>'}</div>
+  <button class="btn" style="margin-top:16px" onclick="saveProduct('${p.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);
+}
+async function saveProduct(id){
+  const b={name:val('p-name'),categoryId:document.getElementById('p-cat').value,ref:val('p-ref'),size:val('p-size'),
+    costPrice:val('p-cost'),salePrice:val('p-sale'),minStock:document.getElementById('p-min').value};
+  if(!b.name){toast('Informe o nome');return;}
+  try{ if(id){await api('/products/'+id,{method:'PUT',body:JSON.stringify(b)});}
+    else{b.stock=document.getElementById('p-stock').value;await api('/products',{method:'POST',body:JSON.stringify(b)});}
+    closeSheet();toast('Salvo');renderEstoque();}catch(e){toast(e.message);}
+}
+async function openProduct(id){
+  const p=estProducts.find(x=>x.id===id);if(!p)return;
+  const low=p.stock<=p.minStock;
+  sheet(`<h2>${H(p.name)}</h2>
+  <div class="card"><div class="row"><div class="mt">Saldo atual</div><span class="pill ${low?'dng':'ok'}" style="font-size:14px">${p.stock} ${H(p.unit)}</span></div>
+  <div class="row" style="margin-top:6px"><div class="mt">Venda</div><b>${money(p.salePrice)}</b></div>
+  <div class="row"><div class="mt">Custo</div><span>${money(p.costPrice)}</span></div></div>
+  <h3 class="sec">Movimentar estoque</h3>
+  <div style="display:flex;gap:8px;margin-bottom:10px"><input id="mv-qty" class="fld" type="number" placeholder="Qtd" style="flex:1">
+  <input id="mv-reason" class="fld" placeholder="Motivo (opcional)" style="flex:2"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn sm" style="flex:1;background:var(--ok)" onclick="mov('${id}','entrada')">+ Entrada</button>
+    <button class="btn sm" style="flex:1;background:var(--danger)" onclick="mov('${id}','saida')">− Saída</button>
+    <button class="btn sm ghost" style="flex:1" onclick="mov('${id}','ajuste')">= Ajuste</button>
+  </div>
+  <button class="btn ghost" style="margin-top:16px" onclick='formProduct(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Editar dados</button>`);
+}
+async function mov(id,type){
+  const qty=document.getElementById('mv-qty').value, reason=val('mv-reason');
+  if(!qty||Number(qty)<=0){toast('Informe a quantidade');return;}
+  try{const r=await api('/stock/movements',{method:'POST',body:JSON.stringify({productId:id,type,qty,reason})});
+    closeSheet();toast('Estoque: '+r.stock);renderEstoque();}catch(e){toast(e.message);}
+}
+function formCategory(){sheet(`<h2>Nova categoria</h2><label>Nome</label><input id="c-name" class="fld" placeholder="Ex: Camisa polo">
+  <button class="btn" style="margin-top:14px" onclick="saveCategory()">Criar</button>`);}
+async function saveCategory(){const name=val('c-name');if(!name){toast('Informe o nome');return;}
+  try{await api('/categories',{method:'POST',body:JSON.stringify({name})});closeSheet();toast('Categoria criada');renderEstoque();}catch(e){toast(e.message);}}
+
+/* ---------- CRM ---------- */
+async function renderCRM(){
+  const v=document.getElementById('view');
+  v.innerHTML=`<div class="seg"><button class="${crmTab==='leads'?'on':''}" onclick="crmTab='leads';renderCRM()">Leads</button>
+    <button class="${crmTab==='clientes'?'on':''}" onclick="crmTab='clientes';renderCRM()">Clientes</button></div><div id="crm-body"><div class="empty">Carregando…</div></div>`;
+  const body=document.getElementById('crm-body');
+  try{
+    if(crmTab==='leads'){
+      const leads=await api('/leads');
+      body.innerHTML=leads.length?leads.map(l=>{
+        const st={novo:'warn',contatado:'',orcamento:'',fechado:'ok',perdido:'dng'}[l.status]||'gray';
+        return `<div class="card"><div class="row"><div><div class="nm">${H(l.name||l.phone||'Lead')}</div>
+          <div class="mt">${H(l.tipoFardamento||l.resumo||'—')}${l.quantidade?' · '+H(l.quantidade):''}</div>
+          <div class="mt"><span class="tag">${H((l.source||'').toUpperCase())}</span> · ${dt(l.createdAt)}</div></div>
+          <span class="pill ${st}">${H(l.status)}</span></div>
+          <div class="row" style="margin-top:9px;gap:6px">
+            ${l.phone?`<a class="btn sm ghost" style="flex:1;text-align:center;text-decoration:none" href="https://wa.me/${H(l.phone)}" target="_blank">WhatsApp</a>`:''}
+            <button class="btn sm" style="flex:1" onclick="leadStatus('${l.id}')">Status</button>
+            ${l.customerId?'':`<button class="btn sm lar" style="flex:1" onclick="convertLead('${l.id}')">→ Cliente</button>`}
+          </div></div>`;}).join(''):'<div class="empty">Sem leads ainda. Os do WhatsApp aparecem aqui.</div>';
+    }else{
+      const cs=await api('/customers');
+      body.innerHTML=cs.length?cs.map(c=>`<div class="card" onclick='formCustomer(${JSON.stringify(c).replace(/'/g,"&#39;")})'><div class="row">
+        <div><div class="nm">${H(c.name)}</div><div class="mt">${H(c.segment||c.type.toUpperCase())}${c.phone?' · '+H(c.phone):''}</div></div>
+        <span class="pill gray">${c._count?.orders||0} ped.</span></div></div>`).join(''):'<div class="empty">Nenhum cliente. Toque no + para adicionar.</div>';
+    }
+  }catch(e){body.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+function leadStatus(id){const opts=['novo','contatado','orcamento','fechado','perdido'];
+  sheet('<h2>Status do lead</h2>'+opts.map(s=>`<button class="btn ghost" style="margin-bottom:8px" onclick="setLeadStatus('${id}','${s}')">${s}</button>`).join(''));}
+async function setLeadStatus(id,status){try{await api('/leads/'+id,{method:'PUT',body:JSON.stringify({status})});closeSheet();toast('Atualizado');renderCRM();}catch(e){toast(e.message);}}
+async function convertLead(id){try{await api('/leads/'+id+'/convert',{method:'POST'});toast('Virou cliente');renderCRM();}catch(e){toast(e.message);}}
+function formLead(){sheet(`<h2>Novo lead</h2><label>Nome</label><input id="l-name" class="fld">
+  <label>WhatsApp/telefone</label><input id="l-phone" class="fld" inputmode="tel">
+  <label>O que precisa</label><input id="l-tipo" class="fld" placeholder="Ex: camisa polo bordada">
+  <label>Quantidade</label><input id="l-qtd" class="fld"><button class="btn" style="margin-top:14px" onclick="saveLead()">Salvar</button>`);}
+async function saveLead(){try{await api('/leads',{method:'POST',body:JSON.stringify({name:val('l-name'),phone:val('l-phone'),tipoFardamento:val('l-tipo'),quantidade:val('l-qtd'),source:'manual'})});closeSheet();toast('Lead criado');renderCRM();}catch(e){toast(e.message);}}
+function formCustomer(c){c=c||{};const ed=!!c.id;
+  sheet(`<h2>${ed?'Editar':'Novo'} cliente</h2>
+  <label>Nome / empresa</label><input id="cu-name" class="fld" value="${H(c.name||'')}">
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Tipo</label><select id="cu-type" class="fld"><option value="pj" ${c.type==='pj'?'selected':''}>PJ (empresa)</option><option value="pf" ${c.type==='pf'?'selected':''}>PF (pessoa)</option></select></div>
+  <div style="flex:1"><label>CNPJ/CPF</label><input id="cu-doc" class="fld" value="${H(c.doc||'')}"></div></div>
+  <label>Segmento</label><input id="cu-seg" class="fld" value="${H(c.segment||'')}" placeholder="empresa / escola / time / EPI">
+  <label>Telefone</label><input id="cu-phone" class="fld" value="${H(c.phone||'')}" inputmode="tel">
+  <label>Observações</label><textarea id="cu-notes" class="fld" rows="2">${H(c.notes||'')}</textarea>
+  <button class="btn" style="margin-top:14px" onclick="saveCustomer('${c.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);}
+async function saveCustomer(id){const b={name:val('cu-name'),type:document.getElementById('cu-type').value,doc:val('cu-doc'),segment:val('cu-seg'),phone:val('cu-phone'),notes:val('cu-notes')};
+  if(!b.name){toast('Informe o nome');return;}
+  try{ if(id)await api('/customers/'+id,{method:'PUT',body:JSON.stringify(b)});else await api('/customers',{method:'POST',body:JSON.stringify(b)});
+    closeSheet();toast('Salvo');renderCRM();}catch(e){toast(e.message);}}
+
+/* ---------- PEDIDOS ---------- */
+async function renderPedidos(){
+  const v=document.getElementById('view');
+  const stk=[['','Todos'],['orcamento','Orçamento'],['confirmado','Confirmado'],['producao','Produção'],['entregue','Entregue']];
+  v.innerHTML='<div class="chips">'+stk.map(s=>`<span class="chip ${pedStatus===s[0]?'on':''}" onclick="pedStatus='${s[0]}';renderPedidos()">${s[1]}</span>`).join('')+'</div><div id="ped-body"><div class="empty">Carregando…</div></div>';
+  try{const list=await api('/orders'+(pedStatus?('?status='+pedStatus):''));
+    document.getElementById('ped-body').innerHTML=list.length?list.map(o=>{
+      const st={orcamento:'warn',confirmado:'',producao:'',entregue:'ok',cancelado:'dng'}[o.status]||'gray';
+      return `<div class="card" onclick="openOrder('${o.id}')"><div class="row"><div><div class="nm">#${o.number} · ${H(o.customer?.name||'Sem cliente')}</div>
+        <div class="mt">${o._count.items} item(ns) · ${dt(o.createdAt)}</div></div>
+        <div class="right"><span class="pill ${st}">${H(o.status)}</span><div class="mt">${money(o.total)}</div></div></div></div>`;}).join(''):'<div class="empty">Nenhum pedido. Toque no + para criar.</div>';
+  }catch(e){document.getElementById('ped-body').innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+let orderItems=[];
+async function formOrder(){
+  orderItems=[];
+  let custs=[],prods=[];
+  try{custs=await api('/customers');prods=await api('/products');}catch(e){}
+  sheet(`<h2>Novo orçamento</h2>
+  <label>Cliente</label><select id="o-cust" class="fld"><option value="">— sem cliente —</option>${custs.map(c=>`<option value="${c.id}">${H(c.name)}</option>`).join('')}</select>
+  <h3 class="sec" style="margin-top:14px">Itens</h3>
+  <div id="o-items"></div>
+  <div style="display:flex;gap:8px;margin:8px 0">
+    <select id="o-prod" class="fld" style="flex:2"><option value="">Produto / item livre</option>${prods.map(p=>`<option value="${p.id}" data-price="${p.salePrice}" data-name="${H(p.name)}">${H(p.name)} — ${money(p.salePrice)}</option>`).join('')}</select>
+  </div>
+  <div style="display:flex;gap:8px"><input id="o-desc" class="fld" placeholder="Descrição (item sob medida)" style="flex:2">
+    <input id="o-qty" class="fld" type="number" placeholder="Qtd" value="1" style="flex:1"><input id="o-price" class="fld" type="number" step="0.01" placeholder="Unit" style="flex:1"></div>
+  <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="addItem()">+ adicionar item</button>
+  <label style="margin-top:14px">Observações</label><textarea id="o-notes" class="fld" rows="2"></textarea>
+  <div class="row" style="margin:14px 2px 0"><b>Total</b><b id="o-total">R$ 0,00</b></div>
+  <button class="btn" style="margin-top:14px" onclick="saveOrder()">Criar orçamento</button>`);
+  document.getElementById('o-prod').onchange=function(){const o=this.selectedOptions[0];if(o&&o.dataset.price){document.getElementById('o-price').value=o.dataset.price;document.getElementById('o-desc').value=o.dataset.name||'';}};
+}
+function addItem(){const sel=document.getElementById('o-prod');const o=sel.selectedOptions[0];
+  const it={productId:sel.value||null,description:val('o-desc')||(o&&o.dataset.name)||'Item',qty:parseInt(document.getElementById('o-qty').value)||1,unitPrice:Number(document.getElementById('o-price').value)||0};
+  if(!it.description){toast('Descreva o item');return;}
+  orderItems.push(it);document.getElementById('o-desc').value='';document.getElementById('o-price').value='';document.getElementById('o-qty').value='1';sel.value='';renderItems();}
+function renderItems(){let tot=0;document.getElementById('o-items').innerHTML=orderItems.map((it,i)=>{tot+=it.qty*it.unitPrice;
+  return `<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(it.description)}</div><div class="mt">${it.qty} × ${money(it.unitPrice)}</div></div><button class="btn sm ghost" onclick="orderItems.splice(${i},1);renderItems()">×</button></div></div>`;}).join('');
+  document.getElementById('o-total').textContent=money(tot);}
+async function saveOrder(){
+  if(!orderItems.length){toast('Adicione ao menos 1 item');return;}
+  try{const r=await api('/orders',{method:'POST',body:JSON.stringify({customerId:document.getElementById('o-cust').value,notes:val('o-notes'),items:orderItems})});
+    closeSheet();toast('Orçamento #'+r.number+' criado');renderPedidos();}catch(e){toast(e.message);}
+}
+async function openOrder(id){try{const o=await api('/orders/'+id);
+  const sts=['orcamento','confirmado','producao','entregue','cancelado'];
+  sheet(`<h2>Pedido #${o.number}</h2>
+  <div class="card"><div class="nm">${H(o.customer?.name||'Sem cliente')}</div><div class="mt">${dt(o.createdAt)} · ${H(o.employee?.name||'')}</div></div>
+  ${o.items.map(it=>`<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(it.description)}</div><div class="mt">${it.qty} × ${money(it.unitPrice)}</div></div><b>${money(it.total)}</b></div></div>`).join('')}
+  <div class="row" style="margin:10px 2px"><b>Total</b><b>${money(o.total)}</b></div>
+  ${o.notes?`<div class="mt" style="margin:0 2px 10px">${H(o.notes)}</div>`:''}
+  <h3 class="sec">Mudar status</h3>
+  <div class="chips">${sts.map(s=>`<span class="chip ${o.status===s?'on':''}" onclick="orderStatus('${o.id}','${s}')">${s}</span>`).join('')}</div>`);
+  }catch(e){toast(e.message);}}
+async function orderStatus(id,status){try{await api('/orders/'+id+'/status',{method:'PUT',body:JSON.stringify({status})});closeSheet();toast('Status: '+status);renderPedidos();}catch(e){toast(e.message);}}
+
+/* ---------- PONTO ---------- */
+async function renderPonto(){
+  const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
+  try{
+    const t=await api('/ponto/today');
+    const kinds={in:'Entrada',break_in:'Saída almoço',break_out:'Volta almoço',out:'Saída'};
+    const done=t.entries.map(e=>e.kind);
+    const reg=t.entries.length?t.entries.map(e=>`<div class="card" style="padding:10px 13px"><div class="row"><div class="nm" style="font-size:14px">${kinds[e.kind]}</div><b>${hhmm(e.at)}</b></div></div>`).join(''):'<div class="empty">Nenhuma batida hoje.</div>';
+    let mgr='';
+    if(me.role==='admin'||me.role==='gerente'){mgr=`<button class="btn ghost" style="margin-top:12px" onclick="pontoBoard()">Ver quem bateu hoje (equipe)</button>`;}
+    v.innerHTML=`<h3 class="sec">Olá, ${H(me.name)} · ${dt(new Date())}</h3>
+    <div class="ponto-grid">
+      <button class="pbtn" style="background:var(--ok)" onclick="punch('in')">Entrada<small>chegada</small></button>
+      <button class="pbtn" style="background:var(--warn)" onclick="punch('break_in')">Saída<small>almoço</small></button>
+      <button class="pbtn" style="background:var(--azul)" onclick="punch('break_out')">Volta<small>almoço</small></button>
+      <button class="pbtn" style="background:var(--danger)" onclick="punch('out')">Saída<small>fim do dia</small></button>
+    </div>
+    <h3 class="sec">Hoje</h3>${reg}${mgr}
+    <button class="btn ghost" style="margin-top:10px" onclick="pontoHist()">Meu histórico</button>`;
+  }catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+async function punch(kind){
+  const send=(lat,lng)=>api('/ponto',{method:'POST',body:JSON.stringify({kind,lat,lng})}).then(r=>{toast('Registrado '+hhmm(r.at));renderPonto();}).catch(e=>toast(e.message));
+  if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>send(p.coords.latitude,p.coords.longitude),()=>send(),{timeout:4000});}
+  else send();
+}
+async function pontoHist(){try{const h=await api('/ponto/history');const kinds={in:'Entrada',break_in:'Saída almoço',break_out:'Volta',out:'Saída'};
+  sheet('<h2>Meu histórico</h2>'+(h.length?h.map(e=>`<div class="card" style="padding:9px 12px"><div class="row"><div class="mt">${dt(e.at)} · ${kinds[e.kind]||e.kind}</div><b>${hhmm(e.at)}</b></div></div>`).join(''):'<div class="empty">Sem registros.</div>'));}catch(e){toast(e.message);}}
+async function pontoBoard(){try{const b=await api('/ponto/board');const kinds={in:'E',break_in:'SA',break_out:'VA',out:'S'};
+  sheet('<h2>Equipe hoje</h2>'+(b.employees.length?b.employees.map(e=>`<div class="card"><div class="nm">${H(e.name)}</div><div class="mt">${e.punches.map(p=>kinds[p.kind]+' '+hhmm(p.at)).join(' · ')}</div></div>`).join(''):'<div class="empty">Ninguém bateu ainda.</div>'));}catch(e){toast(e.message);}}
+
+/* ---------- MENU ---------- */
+function openMenu(){
+  const adm=(me.role==='admin'||me.role==='gerente');
+  sheet(`<h2>${H(me.name)}</h2><p class="sub muted" style="margin-top:-8px">${H(me.role)}</p>
+  ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageEmployees()">Funcionários</button>':''}
+  ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageCompany()">Dados da empresa</button>':''}
+  <button class="btn" style="background:var(--danger);margin-top:6px" onclick="logout()">Sair</button>`);
+}
+async function manageEmployees(){try{const list=await api('/employees');
+  sheet(`<h2>Funcionários</h2><button class="btn lar sm" style="margin-bottom:12px" onclick="formEmployee()">+ Novo funcionário</button>`+
+    list.map(e=>`<div class="card" onclick='formEmployee(${JSON.stringify(e).replace(/'/g,"&#39;")})'><div class="row"><div><div class="nm">${H(e.name)}</div><div class="mt">@${H(e.username)} · ${H(e.role)}</div></div><span class="pill ${e.active?'ok':'gray'}">${e.active?'ativo':'inativo'}</span></div></div>`).join(''));
+  }catch(e){toast(e.message);}}
+function formEmployee(e){e=e||{};const ed=!!e.id;
+  sheet(`<h2>${ed?'Editar':'Novo'} funcionário</h2>
+  <label>Nome</label><input id="e-name" class="fld" value="${H(e.name||'')}">
+  ${ed?'':'<label>Usuário</label><input id="e-user" class="fld" placeholder="ex: joao">'}
+  <label>${ed?'Novo PIN (deixe vazio p/ manter)':'PIN'}</label><input id="e-pin" class="fld" type="password" inputmode="numeric">
+  <label>Função</label><select id="e-role" class="fld"><option value="funcionario" ${e.role==='funcionario'?'selected':''}>Funcionário</option><option value="gerente" ${e.role==='gerente'?'selected':''}>Gerente</option><option value="admin" ${e.role==='admin'?'selected':''}>Admin</option></select>
+  <label>Telefone</label><input id="e-phone" class="fld" value="${H(e.phone||'')}">
+  ${ed?`<label>Ativo</label><select id="e-active" class="fld"><option value="1" ${e.active?'selected':''}>Sim</option><option value="0" ${!e.active?'selected':''}>Não</option></select>`:''}
+  <button class="btn" style="margin-top:14px" onclick="saveEmployee('${e.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);}
+async function saveEmployee(id){const b={name:val('e-name'),role:document.getElementById('e-role').value,phone:val('e-phone')};
+  const pin=val('e-pin'); if(pin)b.pin=pin;
+  try{ if(id){b.active=document.getElementById('e-active').value==='1';await api('/employees/'+id,{method:'PUT',body:JSON.stringify(b)});}
+    else{b.username=val('e-user');if(!b.username||!pin){toast('Usuário e PIN obrigatórios');return;}await api('/employees',{method:'POST',body:JSON.stringify(b)});}
+    closeSheet();toast('Salvo');}catch(e){toast(e.message);}}
+async function manageCompany(){try{const c=await api('/company');
+  sheet(`<h2>Dados da empresa</h2>
+  <label>Nome fantasia</label><input id="co-trade" class="fld" value="${H(c.tradeName||'')}">
+  <label>Razão social</label><input id="co-name" class="fld" value="${H(c.name||'')}">
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>CNPJ</label><input id="co-cnpj" class="fld" value="${H(c.cnpj||'')}"></div>
+  <div style="flex:1"><label>Inscr. Estadual</label><input id="co-ie" class="fld" value="${H(c.ie||'')}"></div></div>
+  <label>Telefone</label><input id="co-phone" class="fld" value="${H(c.phone||'')}">
+  <label>Endereço</label><input id="co-addr" class="fld" value="${H(c.address||'')}">
+  <button class="btn" style="margin-top:14px" onclick="saveCompany()">Salvar</button>`);
+  }catch(e){toast(e.message);}}
+async function saveCompany(){try{await api('/company',{method:'PUT',body:JSON.stringify({tradeName:val('co-trade'),name:val('co-name'),cnpj:val('co-cnpj'),ie:val('co-ie'),phone:val('co-phone'),address:val('co-addr')})});closeSheet();toast('Empresa atualizada');}catch(e){toast(e.message);}}
+
+boot();
+</script>
+</body>
+</html>
