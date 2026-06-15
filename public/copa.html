@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Copa do Mundo 2026 | TenisCash</title>
+  <meta name="theme-color" content="#073f2a">
+  <link rel="stylesheet" href="/copa.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand-link" href="/" aria-label="Voltar para o TenisCash">
+        <img class="brand-logo" src="/st-profile-logo.jpeg?v=yellow-green-1" alt="" aria-hidden="true">
+        <span class="brand-text">
+          <strong>Copa do Mundo 2026</strong>
+          <small>Sports & Tennis</small>
+        </span>
+      </a>
+
+      <div class="user-pill" id="user-pill">
+        <span class="account-copy">
+          <strong>Entrar no bolão</strong>
+          <small>Visitante</small>
+        </span>
+      </div>
+    </header>
+
+    <main class="copa-app" id="main-content">
+      <section class="hero-board" id="hero-board" aria-label="Central da rodada">
+        <div class="skeleton hero-skeleton"></div>
+      </section>
+
+      <nav class="app-tabs" aria-label="Navegação da Copa">
+        <button class="tab-button is-active" type="button" data-tab="today">Hoje</button>
+        <button class="tab-button" type="button" data-tab="matches">Jogos</button>
+        <button class="tab-button" type="button" data-tab="tables">Tabelas</button>
+        <button class="tab-button" type="button" data-tab="stats">Stats</button>
+        <button class="tab-button" type="button" data-tab="teams">Seleções</button>
+        <button class="tab-button" type="button" data-tab="album">Album</button>
+        <button class="tab-button" type="button" data-tab="brazil">Brasil</button>
+        <button class="tab-button" type="button" data-tab="ranking">Ranking</button>
+        <button class="tab-button" type="button" data-tab="pool">Premios</button>
+      </nav>
+
+      <div class="content-layout">
+        <section class="panel-stack" aria-live="polite">
+          <section class="panel is-active" id="panel-today" data-panel="today" aria-labelledby="today-title">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Central da rodada</p>
+                <h1 id="today-title">O que importa agora</h1>
+              </div>
+              <span class="soft-badge" id="today-count">Copa 2026</span>
+            </div>
+            <div class="today-grid" id="today-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-matches" data-panel="matches" aria-labelledby="matches-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Calendário completo</p>
+                <h2 id="matches-title">Todos os jogos</h2>
+              </div>
+              <span class="soft-badge" id="matches-count">0 jogos</span>
+            </div>
+            <div class="filter-row" id="match-filters" aria-label="Filtros de jogos"></div>
+            <div class="match-table-wrap" id="match-table-wrap" aria-label="Tabela de todos os jogos">
+              <div class="skeleton block"></div>
+            </div>
+            <div class="match-list" id="match-list">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-tables" data-panel="tables" aria-labelledby="tables-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Classificação</p>
+                <h2 id="tables-title">Grupos da Copa</h2>
+              </div>
+              <span class="soft-badge">12 grupos</span>
+            </div>
+            <div class="tables-grid" id="tables-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-stats" data-panel="stats" aria-labelledby="stats-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Estatísticas da Copa</p>
+                <h2 id="stats-title">Artilharia e cartões</h2>
+              </div>
+              <span class="soft-badge" id="stats-status">Ao vivo</span>
+            </div>
+            <div class="stats-grid" id="stats-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-teams" data-panel="teams" aria-labelledby="teams-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Seleções e elencos</p>
+                <h2 id="teams-title">Todas as seleções</h2>
+              </div>
+              <label class="search-box">
+                <span class="sr-only">Buscar seleção</span>
+                <input id="team-search" type="search" placeholder="Buscar seleção">
+              </label>
+            </div>
+            <div class="team-grid" id="team-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-album" data-panel="album" aria-labelledby="album-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Coleção da Copa</p>
+                <h2 id="album-title">Figurinhas dos jogadores</h2>
+              </div>
+              <span class="soft-badge" id="album-count">Carregar álbum</span>
+            </div>
+            <div class="album-toolbar">
+              <label class="search-box album-search">
+                <span class="sr-only">Buscar jogador</span>
+                <input id="album-search" type="search" placeholder="Buscar jogador ou seleção">
+              </label>
+              <label>
+                <span>Seleção</span>
+                <select id="album-team-filter">
+                  <option value="all">Todas</option>
+                </select>
+              </label>
+              <label>
+                <span>Posição</span>
+                <select id="album-position-filter">
+                  <option value="all">Todas</option>
+                  <option value="Goleiro">Goleiros</option>
+                  <option value="Defensor">Defensores</option>
+                  <option value="Meio-campista">Meias</option>
+                  <option value="Atacante">Atacantes</option>
+                </select>
+              </label>
+              <button class="hero-action compact-action" type="button" id="album-load-button">Carregar jogadores</button>
+            </div>
+            <div class="album-status-grid" id="album-status-grid"></div>
+            <div class="sticker-grid" id="sticker-grid"></div>
+            <div class="album-more" id="album-more"></div>
+          </section>
+
+          <section class="panel" id="panel-brazil" data-panel="brazil" aria-labelledby="brazil-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Seleção brasileira</p>
+                <h2 id="brazil-title">Brasil: agenda e escalação</h2>
+              </div>
+              <span class="soft-badge" id="brazil-status">Próximo jogo</span>
+            </div>
+            <div class="brazil-grid" id="brazil-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-ranking" data-panel="ranking" aria-labelledby="ranking-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Bolão Sports & Tennis</p>
+                <h2 id="ranking-title">Ranking dos usuários</h2>
+              </div>
+              <span class="soft-badge" id="ranking-count">0 participantes</span>
+            </div>
+            <div class="ranking-grid" id="ranking-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+
+          <section class="panel" id="panel-pool" data-panel="pool" aria-labelledby="pool-title" hidden>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Sports & Tennis</p>
+                <h2 id="pool-title">Prêmios e regras</h2>
+              </div>
+              <span class="soft-badge" id="pool-status">Aberto</span>
+            </div>
+            <div class="pool-grid" id="pool-grid">
+              <div class="skeleton block"></div>
+              <div class="skeleton block"></div>
+            </div>
+          </section>
+        </section>
+
+        <aside class="side-rail" aria-label="Resumo da Copa">
+          <section class="rail-card" id="flow-card">
+            <div class="card-head">
+              <p class="eyebrow">Fluxo</p>
+              <span>Mapa</span>
+            </div>
+            <div class="flow-list" id="flow-list">
+              <div class="skeleton line"></div>
+              <div class="skeleton line"></div>
+            </div>
+          </section>
+
+          <section class="rail-card" id="leaderboard-card">
+            <div class="card-head">
+              <p class="eyebrow">Ranking</p>
+              <span id="my-rank">Visitante</span>
+            </div>
+            <div class="leaderboard-list" id="leaderboard-list">
+              <div class="skeleton line"></div>
+              <div class="skeleton line"></div>
+              <div class="skeleton line"></div>
+            </div>
+          </section>
+
+          <section class="rail-card" id="news-card">
+            <div class="card-head">
+              <p class="eyebrow">Notícias</p>
+              <span id="news-mode">Ao vivo</span>
+            </div>
+            <div class="news-list" id="news-list">
+              <div class="skeleton line"></div>
+              <div class="skeleton line"></div>
+            </div>
+          </section>
+
+          <section class="rail-card">
+            <div class="card-head">
+              <p class="eyebrow">Regras</p>
+              <span>T$</span>
+            </div>
+            <div class="rule-list" id="rule-list">
+              <div class="skeleton line"></div>
+              <div class="skeleton line"></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <aside class="squad-drawer" id="squad-drawer" aria-hidden="true" aria-label="Elenco da seleção">
+    <div class="drawer-head">
+      <div id="drawer-title">
+        <p class="eyebrow">Elenco</p>
+        <h2>Seleção</h2>
+      </div>
+      <button class="icon-button" type="button" id="drawer-close" aria-label="Fechar elenco">×</button>
+    </div>
+    <div class="drawer-body" id="squad-content"></div>
+  </aside>
+
+  <nav class="mobile-tabs" aria-label="Navegação rápida">
+    <button class="is-active" type="button" data-tab="today">Hoje</button>
+    <button type="button" data-tab="matches">Jogos</button>
+    <button type="button" data-tab="tables">Tabelas</button>
+    <button type="button" data-tab="stats">Stats</button>
+    <button type="button" data-tab="teams">Seleções</button>
+    <button type="button" data-tab="album">Album</button>
+    <button type="button" data-tab="brazil">Brasil</button>
+    <button type="button" data-tab="ranking">Ranking</button>
+    <button type="button" data-tab="pool">Premios</button>
+  </nav>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="goal-celebration" id="goal-celebration" role="status" aria-live="assertive" aria-hidden="true"></div>
+
+  <script src="/copa.js"></script>
+</body>
+</html>

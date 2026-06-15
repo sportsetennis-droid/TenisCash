@@ -50,6 +50,7 @@ const orchestratorRoutes = require('./routes/orchestrator');
 const activitiesRoutes = require('./routes/activities');
 const coachRoutes = require('./routes/coach');
 const tournamentsRoutes = require('./routes/tournaments');
+const copaRoutes = require('./routes/copa');
 const adminClassificationRoutes = require('./routes/adminClassification');
 const adminVitrineRoutes = require('./routes/adminVitrine');
 const imagensSiteRoutes = require('./routes/imagensSite');
@@ -214,6 +215,7 @@ app.use('/api/admin/reels-agency', reelsAgencyRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/tournaments', tournamentsRoutes);
+app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/classification', classificationRoutes);
@@ -943,6 +945,7 @@ const _infoPage = (file) => (req, res) => {
   res.sendFile(path.join(__dirname, '../public/' + file), { cacheControl: false });
 };
 // Página de vendas do produto digital + checkout inline (/pd/:slug e /pay/:slug autocompra)
+app.get('/copa', _infoPage('copa.html'));
 app.get(['/pd/:slug', '/pay/:slug'], _infoPage('produto.html'));
 // Área de membros: player do curso (login-free via accessToken)
 app.get('/curso/:token', _infoPage('curso.html'));
