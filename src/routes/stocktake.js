@@ -892,11 +892,24 @@ router.get('/unrecognized', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/stocktake/captures?status=pendente — fila de fotos de conferência
+// GET /api/stocktake/captures?status=pendente[&light=1] — fila de fotos de conferência
+// ?light=1 → omite o campo photo (base64 pesado) — use para listar metadados antes de carregar foto por demand
 router.get('/captures', async (req, res) => {
   try {
     const status = req.query.status || 'pendente';
-    const caps = await prisma.productCapture.findMany({ where: status === 'all' ? {} : { status }, orderBy: { createdAt: 'desc' }, take: 300 });
+    const light = req.query.light === '1';
+    const select = light ? {
+      id: true, barcode: true, storeId: true, sellerId: true, sellerName: true,
+      note: true, status: true, matchedProductId: true, createdProductId: true,
+      nfeItemId: true, bipeId: true, createdAt: true, resolvedAt: true,
+      // photo e photos omitidos no modo light
+    } : undefined;
+    const caps = await prisma.productCapture.findMany({
+      where: status === 'all' ? {} : { status },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      ...(select ? { select } : {}),
+    });
     const storeIds = [...new Set(caps.map((c) => c.storeId).filter(Boolean))];
     const stores = storeIds.length ? await prisma.store.findMany({ where: { id: { in: storeIds } }, select: { id: true, name: true } }) : [];
     const sm = Object.fromEntries(stores.map((s) => [s.id, s.name]));
@@ -911,11 +924,26 @@ router.get('/captures', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/stocktake/capture/:id/photo — serve a foto de uma captura como image/webp
+// Evita carregamento de 490 base64 num só JSON; cada <img> carrega sob demanda com lazy.
+router.get('/capture/:id/photo', async (req, res) => {
+  try {
+    const cap = await prisma.productCapture.findUnique({ where: { id: req.params.id }, select: { photo: true } });
+    if (!cap || !cap.photo) return res.status(404).send('sem foto');
+    // photo é data:image/webp;base64,...
+    const b64 = cap.photo.replace(/^data:image\/\w+;base64,/, '');
+    const buf = Buffer.from(b64, 'base64');
+    res.set('Content-Type', 'image/webp');
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(buf);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/stocktake/captures/:id/resolve { status, matchedProductId?, createdProductId?, note? }
 router.post('/captures/:id/resolve', async (req, res) => {
   try {
     const { status, matchedProductId, createdProductId, note } = req.body || {};
-    const ok = ['pendente', 'em_nfe', 'vinculado', 'criado', 'descartado'];
+    const ok = ['pendente', 'em_nfe', 'vinculado', 'criado', 'descartado', 'identificado'];
     if (status && !ok.includes(status)) return res.status(400).json({ error: 'status inválido' });
     const data = {};
     if (status) { data.status = status; if (status !== 'pendente') data.resolvedAt = new Date(); }

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<!--
+  REGRA PERMANENTE: NUNCA usar onclick="..." em strings atribuídas a innerHTML.
+  SEMPRE usar data-* + addEventListener após inserir no DOM.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#E5571E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Identificar Fotos — TenisCash</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+:root {
+  --or:#E5571E; --or2:#C04816;
+  --gr:#0a843d; --rd:#d70015;
+  --bg:#f5f5f7; --card:#fff;
+  --line:#e5e5ea; --text:#0a0a0a;
+  --muted:#6e6e73; --faint:#a8a8ad;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+body { font-family:var(--font); background:var(--bg); color:var(--text); min-height:100vh; padding-bottom:calc(80px + env(safe-area-inset-bottom)); -webkit-font-smoothing:antialiased; }
+
+/* HEADER */
+.header { position:sticky; top:0; z-index:20; background:#fff; border-bottom:1px solid var(--line); padding:12px 16px; padding-top:calc(12px + env(safe-area-inset-top)); }
+.header-row { display:flex; align-items:center; gap:12px; max-width:640px; margin:0 auto; }
+.logo-mark { width:36px; height:36px; border-radius:10px; background:var(--or); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.logo-mark svg { width:20px; height:20px; fill:#fff; }
+.header-text { flex:1; min-width:0; }
+.header-title { font-size:17px; font-weight:800; letter-spacing:-0.02em; color:var(--text); }
+.header-sub { font-size:12px; color:var(--muted); }
+.btn-reload { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; color:var(--muted); cursor:pointer; font-family:var(--font); white-space:nowrap; }
+.btn-reload:hover { border-color:var(--or); color:var(--or); }
+
+/* STATS BAR */
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:12px 16px; max-width:640px; margin:0 auto; }
+.stat { background:var(--card); border-radius:10px; padding:10px 12px; border:1px solid var(--line); }
+.stat-label { font-size:10px; letter-spacing:.8px; color:var(--faint); font-weight:700; text-transform:uppercase; }
+.stat-val { font-size:22px; font-weight:900; letter-spacing:-0.02em; margin-top:2px; color:var(--text); }
+.stat-val.or { color:var(--or); }
+.stat-val.gr { color:var(--gr); }
+
+/* FILTERS */
+.filters-wrap { padding:0 16px 12px; max-width:640px; margin:0 auto; }
+.filters { display:flex; flex-direction:column; gap:8px; background:var(--card); border-radius:12px; padding:12px; border:1px solid var(--line); }
+.filter-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.search-box { flex:1; min-width:0; padding:9px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:var(--font); color:var(--text); background:var(--bg); outline:none; }
+.search-box:focus { border-color:var(--or); box-shadow:0 0 0 3px rgba(229,87,30,0.12); }
+.chip { padding:7px 13px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--line); background:var(--bg); color:var(--muted); white-space:nowrap; transition:all .15s; }
+.chip.active { background:var(--or); color:#fff; border-color:var(--or); }
+.chip:hover:not(.active) { border-color:var(--or); color:var(--or); }
+.store-select { padding:7px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:var(--font); background:var(--bg); color:var(--text); cursor:pointer; max-width:180px; }
+.store-select:focus { outline:none; border-color:var(--or); }
+
+/* CAPTURE GRID */
+.grid-wrap { padding:0 16px; max-width:640px; margin:0 auto; }
+.count-line { font-size:12px; color:var(--muted); margin-bottom:10px; font-weight:600; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width: 360px) { .grid { grid-template-columns:1fr; } }
+@media (min-width:700px) { .grid { grid-template-columns:repeat(3,1fr); } }
+@media (min-width:1000px) { .stats { max-width:960px; } .filters-wrap { max-width:960px; } .grid-wrap { max-width:960px; } .header-row { max-width:960px; } .grid { grid-template-columns:repeat(4,1fr); } }
+
+/* CARD */
+.cap-card { background:var(--card); border-radius:14px; border:1px solid var(--line); overflow:hidden; display:flex; flex-direction:column; }
+.cap-card.identified { border-color:#0a843d; border-width:2px; }
+.cap-card.discarded { opacity:0.45; }
+.photo-wrap { position:relative; aspect-ratio:3/4; background:#f0f0f5; overflow:hidden; cursor:zoom-in; }
+.photo-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+.photo-wrap .loading-ph { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--faint); font-size:12px; }
+.photo-wrap .nfe-badge { position:absolute; top:6px; right:6px; background:#0a843d; color:#fff; font-size:10px; font-weight:800; padding:3px 7px; border-radius:6px; letter-spacing:.3px; }
+.cap-body { padding:10px 10px 0; flex:1; }
+.cap-code { font-family:'SF Mono',Menlo,monospace; font-size:11px; color:var(--muted); margin-bottom:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cap-read { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:3px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:30px; }
+.cap-read.empty { color:var(--faint); font-weight:400; font-style:italic; }
+.cap-meta { font-size:11px; color:var(--faint); }
+.cap-actions { padding:8px 10px 10px; display:flex; flex-direction:column; gap:6px; }
+.id-input { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; font-family:var(--font); color:var(--text); background:var(--bg); outline:none; }
+.id-input:focus { border-color:var(--or); box-shadow:0 0 0 3px rgba(229,87,30,.1); }
+.id-input::placeholder { color:var(--faint); }
+.action-row { display:flex; gap:6px; }
+.btn-save { flex:1; min-height:36px; background:var(--or); border:none; border-radius:8px; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); transition:background .15s; }
+.btn-save:hover { background:var(--or2); }
+.btn-save:disabled { opacity:.5; cursor:not-allowed; }
+.btn-discard { min-height:36px; padding:0 10px; background:#fff; border:1px solid var(--line); border-radius:8px; color:var(--muted); font-size:13px; cursor:pointer; font-family:var(--font); transition:all .15s; }
+.btn-discard:hover { border-color:var(--rd); color:var(--rd); }
+.status-badge { display:inline-block; padding:2px 8px; border-radius:5px; font-size:10px; font-weight:800; letter-spacing:.3px; }
+.badge-identificado { background:rgba(10,132,61,.12); color:var(--gr); }
+.badge-descartado { background:rgba(215,0,21,.1); color:var(--rd); }
+.badge-pendente { background:rgba(229,87,30,.1); color:var(--or); }
+.badge-em_nfe { background:rgba(10,132,61,.08); color:var(--gr); }
+
+/* EMPTY / LOADING / ERROR */
+.state-msg { text-align:center; padding:48px 16px; color:var(--muted); }
+.state-msg .icon { font-size:40px; margin-bottom:12px; }
+.state-msg p { font-size:15px; font-weight:600; margin-bottom:4px; color:var(--text); }
+.state-msg small { font-size:13px; }
+
+/* ZOOM MODAL */
+.zoom-overlay { position:fixed; inset:0; z-index:999; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; padding:16px; }
+.zoom-overlay img { max-width:100%; max-height:100%; object-fit:contain; border-radius:8px; }
+.zoom-close { position:fixed; top:20px; right:20px; background:rgba(255,255,255,0.15); border:none; color:#fff; width:40px; height:40px; border-radius:50%; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+/* SAVE TOAST */
+.toast { position:fixed; bottom:calc(90px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:#1d1d1f; color:#fff; padding:10px 18px; border-radius:999px; font-size:13px; font-weight:600; z-index:200; opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap; }
+.toast.show { opacity:1; }
+
+/* LOADING OVERLAY */
+.loading-overlay { position:fixed; inset:0; background:rgba(255,255,255,.75); z-index:100; display:flex; align-items:center; justify-content:center; }
+.spinner { width:36px; height:36px; border:3px solid var(--line); border-top-color:var(--or); border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-row">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </div>
+    <div class="header-text">
+      <div class="header-title">Fotos Pendentes</div>
+      <div class="header-sub" id="headerSub">Carregando…</div>
+    </div>
+    <button class="btn-reload" id="btnReload">Atualizar</button>
+  </div>
+</header>
+
+<div class="stats" id="statsBar">
+  <div class="stat"><div class="stat-label">Total</div><div class="stat-val or" id="stTotal">—</div></div>
+  <div class="stat"><div class="stat-label">Com codigo</div><div class="stat-val" id="stComCod">—</div></div>
+  <div class="stat"><div class="stat-label">Na NFe</div><div class="stat-val gr" id="stNFe">—</div></div>
+  <div class="stat"><div class="stat-label">Identificados</div><div class="stat-val gr" id="stId">—</div></div>
+</div>
+
+<div class="filters-wrap">
+  <div class="filters">
+    <div class="filter-row">
+      <input class="search-box" type="search" id="search" placeholder="Buscar modelo, codigo, vendedor…" autocomplete="off">
+    </div>
+    <div class="filter-row">
+      <button class="chip active" data-filter="all">Todos</button>
+      <button class="chip" data-filter="com_codigo">Com codigo</button>
+      <button class="chip" data-filter="sem_codigo">Sem codigo</button>
+      <button class="chip" data-filter="em_nfe">Na NFe</button>
+    </div>
+    <div class="filter-row">
+      <select class="store-select" id="storeFilter">
+        <option value="">Todas as lojas</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="grid-wrap">
+  <div class="count-line" id="countLine"></div>
+  <div class="grid" id="grid">
+    <div class="state-msg" style="grid-column:1/-1">
+      <div class="loading-overlay" id="initialLoader"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── auth ────────────────────────────────────────────────────────────────────
+const TOKEN = localStorage.getItem('tc_admin_token') || localStorage.getItem('tc_token');
+if (!TOKEN) {
+  document.body.innerHTML = '<div style="padding:48px 16px;text-align:center;font-family:-apple-system,sans-serif"><p style="font-size:16px;margin-bottom:12px">Faça login primeiro</p><a href="/admin.html" style="color:#E5571E;font-weight:700">&rarr; Ir para o Admin</a></div>';
+  throw new Error('not authenticated');
+}
+const H = { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
+
+// ── state ────────────────────────────────────────────────────────────────────
+let allCaptures = [];       // metadados completos (sem photo)
+let identified = {};        // { id: true } — identificados nesta sessão
+let activeFilter = 'all';
+let activeStore = '';
+let searchTerm = '';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function toast(msg, ms = 2200) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function showLoader(on) {
+  document.getElementById('initialLoader') && (document.getElementById('initialLoader').style.display = on ? 'flex' : 'none');
+}
+
+// Extrai o que foi LIDO da etiqueta a partir do campo note.
+// note tem formato: "etiqueta <msg> {\"nome\":\"X\",\"sku\":\"Y\",\"ean\":\"Z\",\"tamanho\":\"W\"}"
+function parseNote(note) {
+  if (!note) return { display: '', sku: '', ean: '', nome: '', tamanho: '' };
+  // tenta extrair JSON do final
+  const m = note.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[0]);
+      const parts = [];
+      if (j.nome) parts.push(j.nome);
+      if (j.tamanho) parts.push('T' + j.tamanho);
+      if (j.sku) parts.push('REF:' + j.sku);
+      return { display: parts.join(' · '), sku: j.sku || '', ean: j.ean || '', nome: j.nome || '', tamanho: j.tamanho || '' };
+    } catch (_) {}
+  }
+  // fallback: mostra a note inteira sem o JSON
+  const clean = note.replace(/\{[\s\S]*\}/, '').replace(/^etiqueta\s*/i, '').trim();
+  return { display: clean, sku: '', ean: '', nome: clean, tamanho: '' };
+}
+
+// Formata data curta
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) + ' ' +
+         dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ── load data ─────────────────────────────────────────────────────────────────
+async function loadCaptures() {
+  showLoader(true);
+  try {
+    // light=1: sem o campo photo (base64) — fotos carregam via /api/stocktake/capture/:id/photo
+    const r = await fetch('/api/stocktake/captures?status=pendente&light=1', { headers: H });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    allCaptures = data.captures || [];
+    updateStats();
+    populateStoreFilter();
+    renderGrid();
+    document.getElementById('headerSub').textContent = allCaptures.length + ' capturas pendentes';
+  } catch (e) {
+    document.getElementById('grid').innerHTML = '<div class="state-msg" style="grid-column:1/-1"><div class="icon">X</div><p>Erro ao carregar</p><small>' + esc(e.message) + '</small></div>';
+  } finally {
+    showLoader(false);
+  }
+}
+
+function updateStats() {
+  const total = allCaptures.length;
+  const comCod = allCaptures.filter(c => c.barcode).length;
+  const emNfe = allCaptures.filter(c => c.emNfe).length;
+  const idCount = Object.keys(identified).length;
+  document.getElementById('stTotal').textContent = total;
+  document.getElementById('stComCod').textContent = comCod;
+  document.getElementById('stNFe').textContent = emNfe;
+  document.getElementById('stId').textContent = idCount;
+}
+
+function populateStoreFilter() {
+  const stores = {};
+  allCaptures.forEach(c => { if (c.storeName) stores[c.storeName] = true; });
+  const sel = document.getElementById('storeFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Todas as lojas</option>';
+  Object.keys(stores).sort().forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    if (s === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ── filter ────────────────────────────────────────────────────────────────────
+function filtered() {
+  const q = searchTerm.toLowerCase();
+  return allCaptures.filter(c => {
+    // chip filter
+    if (activeFilter === 'com_codigo' && !c.barcode) return false;
+    if (activeFilter === 'sem_codigo' && c.barcode) return false;
+    if (activeFilter === 'em_nfe' && !c.emNfe) return false;
+
+    // store filter
+    if (activeStore && c.storeName !== activeStore) return false;
+
+    // text search
+    if (q) {
+      const note = parseNote(c.note);
+      const haystack = [c.barcode, c.sellerName, note.nome, note.sku, note.ean, c.storeName].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
+  });
+}
+
+// ── render grid ───────────────────────────────────────────────────────────────
+function renderGrid() {
+  const list = filtered();
+  const grid = document.getElementById('grid');
+  document.getElementById('countLine').textContent = list.length + ' foto' + (list.length !== 1 ? 's' : '') + ' exibida' + (list.length !== 1 ? 's' : '');
+
+  if (!list.length) {
+    grid.innerHTML = '<div class="state-msg" style="grid-column:1/-1"><div class="icon">OK</div><p>Nenhuma captura neste filtro</p><small>Tente outro filtro ou busca</small></div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(c => {
+    const note = parseNote(c.note);
+    const hasCode = !!c.barcode;
+    const isId = !!identified[c.id] || c.status === 'identificado';
+    const isDiscard = c.status === 'descartado';
+    const cardCls = isId ? 'identified' : isDiscard ? 'discarded' : '';
+
+    return `<div class="cap-card ${cardCls}" data-id="${esc(c.id)}">
+  <div class="photo-wrap">
+    <div class="loading-ph" id="ph-${esc(c.id)}">carregando…</div>
+    <img loading="lazy" data-src="/api/stocktake/capture/${esc(c.id)}/photo" alt="etiqueta ${esc(c.id)}" style="opacity:0;transition:opacity .3s">
+    ${c.emNfe ? '<span class="nfe-badge">NA NFe</span>' : ''}
+  </div>
+  <div class="cap-body">
+    <div class="cap-code">${hasCode ? esc(c.barcode) : '<em style="color:var(--faint)">sem codigo</em>'}</div>
+    <div class="cap-read ${note.display ? '' : 'empty'}">${note.display ? esc(note.display) : 'nada lido'}</div>
+    <div class="cap-meta">${esc(c.sellerName || '')}${c.storeName ? ' · ' + esc(c.storeName) : ''} · ${fmtDate(c.createdAt)}</div>
+    ${isId ? '<span class="status-badge badge-identificado">identificado</span>' : ''}
+    ${isDiscard ? '<span class="status-badge badge-descartado">descartado</span>' : ''}
+  </div>
+  <div class="cap-actions">
+    <input class="id-input" type="text" placeholder="O que voce ve nessa etiqueta?" maxlength="280" data-id="${esc(c.id)}">
+    <div class="action-row">
+      <button class="btn-save" data-id="${esc(c.id)}" data-action="save">Salvar</button>
+      <button class="btn-discard" data-id="${esc(c.id)}" data-action="discard">X</button>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+
+  // lazy load images with IntersectionObserver
+  attachImageLoaders();
+  attachCardListeners();
+}
+
+// ── lazy image loading ────────────────────────────────────────────────────────
+// Images are behind JWT auth — fetch with Authorization header, create blob URL.
+function loadImageWithAuth(img) {
+  const src = img.dataset.src;
+  if (!src) return;
+  delete img.dataset.src;
+  const cardId = img.closest('.cap-card').dataset.id;
+  const ph = document.getElementById('ph-' + cardId);
+  fetch(src, { headers: { 'Authorization': 'Bearer ' + TOKEN } })
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.blob();
+    })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      img.src = url;
+      img.onload = () => {
+        img.style.opacity = '1';
+        if (ph) ph.style.display = 'none';
+      };
+    })
+    .catch(() => {
+      img.style.display = 'none';
+      if (ph) ph.textContent = 'sem foto';
+    });
+}
+
+function attachImageLoaders() {
+  const imgs = Array.from(document.querySelectorAll('[data-src]'));
+  if (!imgs.length) return;
+  // Immediately load any image already in/near viewport
+  imgs.forEach(img => {
+    const rect = img.getBoundingClientRect();
+    if (rect.top < window.innerHeight + 400) loadImageWithAuth(img);
+  });
+  // Observer handles the rest as user scrolls
+  const remaining = imgs.filter(img => img.dataset.src);
+  if (!remaining.length) return;
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      obs.unobserve(e.target);
+      loadImageWithAuth(e.target);
+    });
+  }, { rootMargin: '400px' });
+  remaining.forEach(img => obs.observe(img));
+}
+
+// ── card event listeners ──────────────────────────────────────────────────────
+function attachCardListeners() {
+  // zoom on photo click
+  document.querySelectorAll('.photo-wrap').forEach(wrap => {
+    wrap.addEventListener('click', () => {
+      const img = wrap.querySelector('img');
+      if (!img || !img.src || img.style.display === 'none') return;
+      showZoom(img.src);
+    });
+  });
+
+  // save button
+  document.querySelectorAll('[data-action="save"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const input = document.querySelector(`.id-input[data-id="${id}"]`);
+      const text = (input && input.value.trim()) || '';
+      await saveCapture(id, text, 'identificado', btn);
+    });
+  });
+
+  // discard button
+  document.querySelectorAll('[data-action="discard"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      if (!confirm('Descartar esta captura?')) return;
+      await saveCapture(id, '', 'descartado', btn);
+    });
+  });
+
+  // enter key in input → save
+  document.querySelectorAll('.id-input').forEach(input => {
+    input.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const id = input.dataset.id;
+      const text = input.value.trim();
+      const btn = document.querySelector(`.btn-save[data-id="${id}"]`);
+      await saveCapture(id, text, 'identificado', btn);
+    });
+  });
+}
+
+// ── save action ───────────────────────────────────────────────────────────────
+async function saveCapture(id, text, status, btn) {
+  if (btn) btn.disabled = true;
+
+  // Build note: prepend "DONO: <text>" para distinguir da note da máquina
+  let newNote = '';
+  if (status === 'identificado') {
+    if (!text) { toast('Digite o que voce ve primeiro'); if (btn) btn.disabled = false; return; }
+    newNote = 'DONO: ' + text;
+  }
+
+  try {
+    const body = { status };
+    if (newNote) body.note = newNote;
+    const r = await fetch('/api/stocktake/captures/' + id + '/resolve', {
+      method: 'POST', headers: H, body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'erro');
+
+    if (status === 'identificado') {
+      identified[id] = true;
+      toast('Identificado! Aguarda processamento.');
+    } else {
+      toast('Descartado.');
+    }
+    updateStats();
+
+    // update card visually without full re-render
+    const card = document.querySelector(`.cap-card[data-id="${id}"]`);
+    if (card) {
+      card.classList.toggle('identified', status === 'identificado');
+      card.classList.toggle('discarded', status === 'descartado');
+      const body2 = card.querySelector('.cap-body');
+      // remove existing badge
+      body2.querySelectorAll('.status-badge').forEach(b => b.remove());
+      const badge = document.createElement('span');
+      badge.className = 'status-badge ' + (status === 'identificado' ? 'badge-identificado' : 'badge-descartado');
+      badge.textContent = status === 'identificado' ? 'identificado' : 'descartado';
+      body2.appendChild(badge);
+    }
+  } catch (e) {
+    toast('Erro: ' + e.message, 3500);
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── zoom modal ────────────────────────────────────────────────────────────────
+function showZoom(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'zoom-overlay';
+  overlay.innerHTML = '<img src="' + esc(src) + '" alt="foto ampliada"><button class="zoom-close" aria-label="Fechar">&times;</button>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('.zoom-close').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+// ── filter wiring ─────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-filter]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('[data-filter]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeFilter = chip.dataset.filter;
+    renderGrid();
+  });
+});
+
+let searchDebounce;
+document.getElementById('search').addEventListener('input', (e) => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    searchTerm = e.target.value;
+    renderGrid();
+  }, 200);
+});
+
+document.getElementById('storeFilter').addEventListener('change', (e) => {
+  activeStore = e.target.value;
+  renderGrid();
+});
+
+document.getElementById('btnReload').addEventListener('click', () => loadCaptures());
+
+// ── init ──────────────────────────────────────────────────────────────────────
+loadCaptures();
+</script>
+</body>
+</html>
