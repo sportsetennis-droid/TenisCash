@@ -9,8 +9,8 @@ const { prisma } = require('../middleware');
 const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '');
 const STORE_BASE = (process.env.STORE_PUBLIC_URL || 'https://www.sportsetennis.com.br').replace(/\/+$/, '');
 
-function resolveProductLink(localProductId, name) {
-  if (localProductId) return `${PUBLIC_BASE}/p/${localProductId}`;
+function resolveProductLink(localProductId, name, prefix = '/p/') {
+  if (localProductId) return `${PUBLIC_BASE}${prefix}${localProductId}`;
   // fallback raro (produto sem id): leva pra busca da loja online
   return `${STORE_BASE}/?q=${encodeURIComponent(String(name || '').trim())}`;
 }

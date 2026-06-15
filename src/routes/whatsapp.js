@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const { sendCustomMessage, sendEvolutionRaw, isMetaWhatsAppConfigured, isEvolutionConfigured, formatPhoneBR } = require('../whatsapp');
 const { authMiddleware, adminMiddleware } = require('../middleware');
 const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
+const { handleMetaWebhook, INSTANCE: METAFARD_INSTANCE } = require('../services/metaFardamentosAttendant');
+const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../services/barataoAttendant');
 
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
@@ -81,10 +83,24 @@ router.post('/evolution', async (req, res) => {
   try {
     const body = req.body || {};
     const event = body.event || body.type || '';
+    const instance = (body.instance || body.instanceName || '').toString();
     const _d0 = Array.isArray(body.data) ? body.data[0] : (body.data || {});
-    console.log(`[whatsapp/evolution] HIT event="${event}" jid="${(_d0 && _d0.key && _d0.key.remoteJid) || '?'}"`);
+    console.log(`[whatsapp/evolution] HIT instance="${instance}" event="${event}" jid="${(_d0 && _d0.key && _d0.key.remoteJid) || '?'}"`);
     // Evolution manda varios eventos; so queremos mensagens novas (aceita messages.upsert E MESSAGES_UPSERT)
     if (event && !/messages[._]upsert/i.test(event)) return;
+
+    // META FARDAMENTOS: instancia propria -> atendente proprio, isolado da S&T.
+    if (instance && instance === METAFARD_INSTANCE) {
+      await handleMetaWebhook(body);
+      return;
+    }
+
+    // BARATAO DOS ESPORTES: instancia propria -> atendente proprio (perfil baratao,
+    // mesmo catalogo da S&T filtrado pra loja Baratao / LOJA01).
+    if (instance && instance === BARATAO_INSTANCE) {
+      await handleBarataoWebhook(body);
+      return;
+    }
 
     const data = Array.isArray(body.data) ? body.data[0] : (body.data || {});
     const key = data.key || {};

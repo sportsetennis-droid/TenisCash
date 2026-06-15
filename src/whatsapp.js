@@ -36,7 +36,7 @@ function whatsappProviderOrder() {
   return order;
 }
 
-async function sendEvolutionText(phone, message) {
+async function sendEvolutionText(phone, message, instance = EVOLUTION_INSTANCE) {
   if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
   const formattedPhone = formatPhoneBR(phone);
   if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
@@ -45,7 +45,7 @@ async function sendEvolutionText(phone, message) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
   try {
-    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(instance)}`, {
       method: 'POST',
       headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ number: formattedPhone, text: String(message || '') }),
@@ -66,12 +66,13 @@ async function sendEvolutionText(phone, message) {
 }
 
 // Envia direto pra um numero OU JID de grupo (xxxxx@g.us), sem passar por formatPhoneBR.
-async function sendEvolutionRaw(numberOrJid, message) {
+// `instance` opcional: permite enviar por outra instancia Evolution (ex: Meta Fardamentos).
+async function sendEvolutionRaw(numberOrJid, message, instance = EVOLUTION_INSTANCE) {
   if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(instance)}`, {
       method: 'POST',
       headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ number: String(numberOrJid), text: String(message || '') }),

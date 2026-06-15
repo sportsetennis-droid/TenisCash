@@ -522,6 +522,195 @@ app.get('/p/:id', async (req, res) => {
   }
 });
 
+// =====================================================================
+// Página pública de produto do BARATAO DOS ESPORTES (link do robô do Baratao).
+// Mesmo card do catalogo, mas mostra SO o estoque da loja Baratao (LOJA01)
+// e com identidade do Baratao. Preco = preco do catalogo (se o Baratao
+// praticar preco diferente, isso vira preco-por-loja na Fase 2).
+// =====================================================================
+app.get('/b/:id', async (req, res) => {
+  try {
+    const { prisma: prismaB } = require('./middleware');
+    const id = req.params.id;
+    console.log('[/b/:id] lookup id=' + id);
+
+    const includeOpts = {
+      sizes: {
+        orderBy: { size: 'asc' },
+        include: { storeStocks: { include: { store: { select: { code: true, name: true } } } } },
+      },
+    };
+
+    let p = await prismaB.product.findUnique({ where: { id }, include: includeOpts });
+    if (!p) p = await prismaB.product.findFirst({ where: { sku: id, active: true }, include: includeOpts });
+
+    if (p && p.active === false) {
+      let ctxObj = {};
+      try { ctxObj = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch {}
+      if (ctxObj.unifiedInto) return res.redirect(302, '/b/' + ctxObj.unifiedInto);
+    }
+    if (!p) {
+      console.warn('[/b/:id] não encontrado: ' + id);
+      return res.status(404).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h1>Produto não encontrado</h1></body></html>');
+    }
+    if (p.active === false) {
+      return res.status(410).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h1>Produto fora de linha</h1></body></html>');
+    }
+
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
+    const cls = ctx.classification || {};
+    const ref = ctx.supplierRef || '';
+    const photos = [];
+    if (p.imageUrl) photos.push(p.imageUrl);
+    try {
+      const extras = typeof p.imageUrls === 'string' ? JSON.parse(p.imageUrls) : (p.imageUrls || []);
+      if (Array.isArray(extras)) extras.forEach(u => { if (u && !photos.includes(u)) photos.push(u); });
+    } catch {}
+
+    // SO o estoque da loja Baratao (LOJA01). Conta unidades por tamanho.
+    const ehBaratao = (st) => !!st && (st.code === 'LOJA01' || /barat/i.test(st.name || ''));
+    const counts = {};
+    let unitsBaratao = 0;
+    (p.sizes || []).forEach(sz => {
+      (sz.storeStocks || []).forEach(ss => {
+        if (!ehBaratao(ss.store)) return;
+        const q = ss.stock || 0;
+        if (q <= 0) return;
+        counts[sz.size] = (counts[sz.size] || 0) + q;
+        unitsBaratao += q;
+      });
+    });
+    const sortedSizes = Object.keys(counts).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
+    const RED = '#d11a1a', AMBER = '#f5a623';
+    const sizesHtml = sortedSizes.length
+      ? sortedSizes.map(sz => {
+          const q = counts[sz];
+          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:8px 14px;background:white;border:2px solid ${RED};border-radius:12px;font-size:16px;font-weight:800;color:#1d1d1f;margin:4px;">${esc(sz)}${q > 1 ? `<span style="background:${RED};color:white;padding:2px 8px;border-radius:8px;font-size:12px;">×${q}</span>` : ''}</span>`;
+        }).join('')
+      : `<p style="color:#8e8e93;font-size:14px;">Disponibilidade sob consulta — chama a gente no WhatsApp que a equipe confirma. 🙂</p>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(p.name || 'Produto')} — Baratão dos Esportes</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;line-height:1.5}
+  .container{max-width:680px;margin:0 auto;padding:16px;}
+  .header{background:linear-gradient(135deg,${RED},${AMBER});color:white;padding:16px 20px;border-radius:14px;margin-bottom:14px;text-align:center;box-shadow:0 8px 24px rgba(209,26,26,0.25);}
+  .header h1{font-size:18px;font-weight:800;}
+  .header p{font-size:12px;opacity:0.95;margin-top:2px;}
+  .card{background:white;border-radius:14px;overflow:hidden;margin-bottom:14px;box-shadow:0 4px 12px rgba(0,0,0,0.04);}
+  .crsl{position:relative;width:100%;aspect-ratio:1;background:#f5f5f7;}
+  .crsl img.crsl-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:12px;display:none}
+  .crsl img.crsl-img.active{display:block}
+  .crsl-arrow{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.95);border:1px solid #e5e5ea;color:#1d1d1f;font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:2;-webkit-tap-highlight-color:transparent;}
+  .crsl-arrow.prev{left:10px}
+  .crsl-arrow.next{right:10px}
+  .crsl-counter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:white;font-size:12px;font-weight:700;padding:4px 12px;border-radius:14px;z-index:2;}
+  .thumbs{display:flex;gap:6px;padding:8px;overflow-x:auto;scrollbar-width:none;}
+  .thumbs::-webkit-scrollbar{display:none}
+  .thumb{flex-shrink:0;width:64px;height:64px;border:2px solid #e5e5ea;border-radius:8px;cursor:pointer;padding:3px;background:#f5f5f7;transition:all 0.15s;}
+  .thumb.active{border-color:${RED};box-shadow:0 0 0 2px rgba(209,26,26,0.2);}
+  .thumb img{width:100%;height:100%;object-fit:contain;}
+  .info{padding:18px;}
+  .brand{display:inline-block;padding:4px 12px;background:linear-gradient(135deg,#1d1d1f,#3a3a3c);color:white;font-size:12px;font-weight:800;border-radius:8px;letter-spacing:0.5px;}
+  .price{font-size:28px;font-weight:800;color:${RED};margin-top:8px;}
+  .name{font-size:20px;font-weight:700;color:#1d1d1f;line-height:1.3;margin-top:8px;}
+  .sku{font-size:12px;color:#8e8e93;font-family:monospace;margin-top:6px;}
+  .ref{display:inline-block;background:#ffe9c7;color:#a85d00;padding:3px 10px;border-radius:6px;font-weight:700;font-size:11px;font-family:monospace;margin-top:6px;}
+  .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
+  .pill{padding:5px 10px;border-radius:8px;font-size:11px;font-weight:700;}
+  .pill-type{background:#ffe9c7;color:#a85d00;}
+  .pill-gender{background:#e3f2fd;color:#0066cc;}
+  .pill-modality{background:#f0f0f3;color:#1d1d1f;}
+  .section{padding:16px 18px;border-top:1px solid #f0f0f3;}
+  .section h3{font-size:11px;color:#8e8e93;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px;}
+  .desc{font-size:14px;color:#1d1d1f;line-height:1.6;}
+  .specs{background:#fafafa;border-radius:10px;padding:14px;font-family:monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;word-wrap:break-word;color:#1d1d1f;}
+  .footer{text-align:center;padding:20px;color:#8e8e93;font-size:11px;}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>🏷️ Baratão dos Esportes</h1><p>Preço bom é aqui</p></div>
+
+    <div class="card">
+      ${photos.length ? `
+        <div class="crsl" id="crsl">
+          ${photos.map((u, i) => `<img class="crsl-img${i === 0 ? ' active' : ''}" data-idx="${i}" src="${esc(u)}" onerror="this.style.opacity='0.3'">`).join('')}
+          ${photos.length > 1 ? `
+            <button class="crsl-arrow prev" onclick="crslNav(-1)">‹</button>
+            <button class="crsl-arrow next" onclick="crslNav(1)">›</button>
+            <div class="crsl-counter"><span id="crsl-idx">1</span> / ${photos.length}</div>
+          ` : ''}
+        </div>
+        ${photos.length > 1 ? `
+          <div class="thumbs">
+            ${photos.map((u, i) => `<button class="thumb${i === 0 ? ' active' : ''}" data-idx="${i}" onclick="crslGo(${i})"><img src="${esc(u)}" onerror="this.style.opacity='0.3'"></button>`).join('')}
+          </div>
+        ` : ''}
+      ` : ''}
+
+      <div class="info">
+        ${!ctx.deactivatedReason ? `<span class="brand">${esc(p.brand || 'A DEFINIR')}</span>` : ''}
+        <div class="name">${esc(p.name || '?')}</div>
+        <div class="price">R$ ${Number(p.price || 0).toFixed(2)}</div>
+        <div class="sku">📋 ${esc(p.sku || '')}</div>
+        ${ref ? `<div><span class="ref">REF: ${esc(ref)}</span></div>` : ''}
+        ${(cls.type || cls.gender || cls.modality) ? `
+          <div class="pills">
+            ${cls.type ? `<span class="pill pill-type">${esc(cls.type)}</span>` : ''}
+            ${cls.gender ? `<span class="pill pill-gender">${esc(cls.gender)}</span>` : ''}
+            ${cls.modality ? `<span class="pill pill-modality">${esc(cls.modality)}</span>` : ''}
+          </div>
+        ` : ''}
+      </div>
+
+      ${p.shortDescription ? `<div class="section"><h3>📝 Descrição</h3><p class="desc">${esc(p.shortDescription)}</p></div>` : ''}
+      ${p.longDescription ? `<div class="section"><h3>📋 Especificações</h3><div class="specs">${esc(p.longDescription)}</div></div>` : ''}
+      <div class="section"><h3>📦 Tamanhos na loja Baratão${unitsBaratao ? ` · ${unitsBaratao} un.` : ''}</h3><div>${sizesHtml}</div></div>
+    </div>
+
+    <div class="footer">Baratão dos Esportes · João Pessoa - PB</div>
+  </div>
+  <script>
+  (function(){
+    const total = ${photos.length};
+    if (total <= 1) return;
+    let cur = 0;
+    function update() {
+      document.querySelectorAll('.crsl-img').forEach((el, i) => el.classList.toggle('active', i === cur));
+      document.querySelectorAll('.thumb').forEach((el, i) => el.classList.toggle('active', i === cur));
+      const c = document.getElementById('crsl-idx'); if (c) c.textContent = (cur + 1);
+    }
+    window.crslNav = function(dir) { cur = (cur + dir + total) % total; update(); };
+    window.crslGo = function(idx) { cur = idx; update(); };
+    let startX = 0, dx = 0;
+    const crsl = document.getElementById('crsl');
+    if (crsl) {
+      crsl.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; dx = 0; }, { passive: true });
+      crsl.addEventListener('touchmove', (e) => { dx = e.touches[0].clientX - startX; }, { passive: true });
+      crsl.addEventListener('touchend', () => { if (Math.abs(dx) > 50) crslNav(dx < 0 ? 1 : -1); });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') crslNav(-1);
+      if (e.key === 'ArrowRight') crslNav(1);
+    });
+  })();
+  </script>
+</body>
+</html>`;
+    res.send(html);
+  } catch (err) {
+    console.error('[/b/:id] erro:', err);
+    res.status(500).send('Erro ao carregar produto');
+  }
+});
+
 // Painel logado do profissional (cria ofertas, alunos, cobranças)
 app.get('/painel', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

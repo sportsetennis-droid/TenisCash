@@ -1,11 +1,17 @@
 // =====================================================================
-// AI Attendant — atendente de WhatsApp da Sports & Tennis (Claude)
+// AI Attendant — atendente de WhatsApp (Claude), MULTI-PERFIL
 // =====================================================================
 // Responde AUTOMATICAMENTE no WhatsApp da loja (instancia Evolution).
 // Usa ferramentas que leem DADOS REAIS (catalogo, estoque, cashback).
 // REGRA DE OURO: nunca inventa preco/estoque/tamanho — so o que a tool traz.
 //
-// Liga/desliga: env AI_ATTENDANT_ENABLED ('false' desliga). Default = ligado.
+// PERFIS (cada numero/instancia tem o seu):
+//   'st'      -> Sports & Tennis (cliente NAO ve o estoque do Baratao; grupo de vendedores ve tudo)
+//   'baratao' -> Baratao dos Esportes (ve SO o estoque da loja Baratao / LOJA01)
+// O perfil chega em getAttendantReply({ profile }) — default 'st' (comportamento legado).
+//
+// Liga/desliga geral: env AI_ATTENDANT_ENABLED ('false' desliga). Default = ligado.
+// Liga/desliga so o Baratao: env AI_ATTENDANT_BARATAO_ENABLED ('false' desliga so ele).
 // Modelo: env AI_ATTENDANT_MODEL (default claude-sonnet-4-6 — rigor no cruzamento de estoque;
 //   haiku afirmava tamanho fantasma que so existia no comprado/NFe).
 // =====================================================================
@@ -21,6 +27,15 @@ const MAX_HISTORY = 12; // ultimas N mensagens (user+assistant) guardadas
 
 function isEnabled() {
   return String(process.env.AI_ATTENDANT_ENABLED || 'true').toLowerCase() !== 'false';
+}
+
+// Kill switch so do Baratao (sobre o geral). Se o geral estiver off, tudo off.
+function isProfileEnabled(profileKey) {
+  if (!isEnabled()) return false;
+  if (profileKey === 'baratao') {
+    return String(process.env.AI_ATTENDANT_BARATAO_ENABLED || 'true').toLowerCase() !== 'false';
+  }
+  return true;
 }
 
 function getClient() {
@@ -56,55 +71,111 @@ function clearSession(phone) {
 }
 
 // ---------------------------------------------------------------------
-// FERRAMENTAS (Claude tool use) — todas leem dados REAIS do banco
+// LOJA — quem e o Baratao (LOJA01 / CNPJ 0001-26)
+// O catalogo (Product) e COMPARTILHADO pelo grupo todo; a separacao entre
+// Baratao e Sports & Tennis e por LOJA no StoreStock, nao por catalogo.
+// ehBaratao casa pelo code canonico (LOJA01) e, por seguranca, pelo nome.
 // ---------------------------------------------------------------------
-const TOOLS = [
-  {
-    name: 'buscar_produtos',
-    description:
-      'Busca produtos no catalogo REAL da Sports & Tennis por nome, marca ou modelo. ' +
-      'Retorna nome, marca, preco, e os tamanhos com a(s) LOJA(s) onde cada tamanho esta. ' +
-      'Use SEMPRE que perguntarem sobre um produto, modelo, marca, tamanho ou loja. ' +
-      'IMPORTANTE: se a tool retornar o produto, ele EXISTE — confira o tamanho pedido no campo "tamanhos" (cada um traz "lojas"). ' +
-      'NUNCA diga que nao tem sem ter buscado. NUNCA invente produto/preco/tamanho/loja.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description:
-            'SO o modelo/marca, SEM o numero do tamanho. Ex: "bondi 9", "tenis nike", "chuteira", "mizuno wave". ' +
-            'Busque "bondi 9" e NUNCA "bondi 9 42" — o tamanho voce confere no resultado, nao na busca.',
+function ehBaratao(st) {
+  if (!st) return false;
+  if (st.code === 'LOJA01') return true;
+  return /barat/i.test(st.name || '') || /barat/i.test(st.neighborhood || '');
+}
+
+// ---------------------------------------------------------------------
+// PERFIS — tudo que difere entre os robos (loja, persona, link, filtro)
+// ---------------------------------------------------------------------
+const PROFILES = {
+  st: {
+    key: 'st',
+    brand: 'Sports & Tennis',
+    linkPrefix: '/p/',
+    hasGroup: true,
+    hasCashback: true,
+    // Cliente da S&T NAO ve o Baratao; no grupo de vendedores ve tudo.
+    storeAllowed: (store, { isGroup } = {}) => isGroup || !ehBaratao(store),
+    infoLoja: () => ({
+      lojas_fisicas: ['Bessa', 'Tambau', 'Rainha da Borborema', 'Tambia'],
+      cidade: 'Joao Pessoa - PB',
+      site: 'https://www.sportsetennis.com.br',
+      observacao: 'Para horario exato de cada loja, confirme com a equipe.',
+    }),
+  },
+  baratao: {
+    key: 'baratao',
+    brand: 'Baratao dos Esportes',
+    linkPrefix: '/b/',
+    hasGroup: false,
+    hasCashback: true,
+    // Robo do Baratao ve SO o estoque da loja Baratao (LOJA01).
+    storeAllowed: (store) => ehBaratao(store),
+    infoLoja: () => ({
+      loja: 'Baratao dos Esportes',
+      cidade: 'Joao Pessoa - PB',
+      // Endereco/horario NAO se inventa — vem de env quando o dono passar.
+      endereco: process.env.BARATAO_ENDERECO || null,
+      site: process.env.BARATAO_SITE || null,
+      observacao: 'Para endereco exato e horario, confirme com a equipe.',
+    }),
+  },
+};
+
+function getProfile(profileKey) {
+  return PROFILES[profileKey] || PROFILES.st;
+}
+
+// ---------------------------------------------------------------------
+// FERRAMENTAS (Claude tool use) — todas leem dados REAIS do banco
+// As tools sao montadas por perfil (texto da marca + cashback on/off).
+// ---------------------------------------------------------------------
+function buildTools(profile) {
+  const tools = [
+    {
+      name: 'buscar_produtos',
+      description:
+        `Busca produtos no catalogo REAL da ${profile.brand} por nome, marca ou modelo. ` +
+        'Retorna nome, marca, preco, e os tamanhos com a(s) LOJA(s) onde cada tamanho esta. ' +
+        'Use SEMPRE que perguntarem sobre um produto, modelo, marca, tamanho ou loja. ' +
+        'IMPORTANTE: se a tool retornar o produto, ele EXISTE — confira o tamanho pedido no campo "tamanhos" (cada um traz "lojas"). ' +
+        'NUNCA diga que nao tem sem ter buscado. NUNCA invente produto/preco/tamanho/loja.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'SO o modelo/marca, SEM o numero do tamanho. Ex: "bondi 9", "tenis nike", "chuteira", "mizuno wave". ' +
+              'Busque "bondi 9" e NUNCA "bondi 9 42" — o tamanho voce confere no resultado, nao na busca.',
+          },
         },
+        required: ['query'],
       },
-      required: ['query'],
     },
-  },
-  {
-    name: 'consultar_cashback',
-    description:
-      'Consulta o saldo de TenisCash (cashback) do cliente que esta conversando, pelo telefone dele. ' +
-      'Use quando o cliente perguntar do saldo/cashback/pontos, ou pra mencionar quanto ele tem ao falar de uma compra.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
+  ];
+
+  if (profile.hasCashback) {
+    tools.push({
+      name: 'consultar_cashback',
+      description:
+        'Consulta o saldo de cashback do cliente que esta conversando, pelo telefone dele. ' +
+        'Use quando o cliente perguntar do saldo/cashback/pontos, ou pra mencionar quanto ele tem ao falar de uma compra.',
+      input_schema: { type: 'object', properties: {}, required: [] },
+    });
+  }
+
+  tools.push({
     name: 'info_loja',
     description: 'Retorna informacoes fixas da loja (lojas fisicas, site, canais). Use pra duvidas de onde fica / como comprar.',
     input_schema: { type: 'object', properties: {}, required: [] },
-  },
-];
+  });
 
-// Baratao dos Esportes (LOJA01) e OUTRA empresa, com OUTRO WhatsApp de atendimento ao
-// cliente. Por isso o estoque do Baratao SO aparece no GRUPO de vendedores; no
-// atendimento ao CLIENTE da S&T ele e invisivel (filtrado). Regra do dono 2026-06-14.
-function ehBaratao(st) {
-  return /barat/i.test((st && st.name) || '') || /barat/i.test((st && st.neighborhood) || '');
+  return tools;
 }
 
-function lojasDoTamanho(s, { isGroup } = {}) {
+function lojasDoTamanho(s, { isGroup, profile } = {}) {
   return (s.storeStocks || [])
     .filter((ss) => (ss.stock || 0) > 0)
-    .filter((ss) => isGroup || !ehBaratao(ss.store)) // cliente NAO ve o Baratao
+    .filter((ss) => profile.storeAllowed(ss.store, { isGroup })) // filtro por perfil de loja
     .map((ss) => {
       const st = ss.store || {};
       const nome = st.neighborhood || st.name || st.code || 'loja';
@@ -121,6 +192,7 @@ function tamanhosEmLoja(p, opts) {
 }
 
 function resumoProdutos(result, opts = {}) {
+  const { profile } = opts;
   const prods = (result && result.products) || [];
   if (!prods.length) {
     return { encontrados: 0, mensagem: result?.message || 'Nenhum produto encontrado.' };
@@ -132,7 +204,7 @@ function resumoProdutos(result, opts = {}) {
       marca: p.brand,
       preco: p.price,
       preco_promocional: p.promoPrice || null,
-      link: resolveProductLink(p.id, p.name), // pagina do produto (card) p/ mandar pro cliente
+      link: resolveProductLink(p.id, p.name, profile.linkPrefix), // pagina do produto (card) p/ mandar pro cliente
       tamanhos_em_loja: tamanhos.map((t) => t.tamanho), // lista simples p/ cruzar o tamanho pedido
       tamanhos_disponiveis: tamanhos, // detalhe: cada tamanho com loja(s) + qtd (SO o que tem NA LOJA)
       tem_em_loja: tamanhos.length > 0,
@@ -142,10 +214,11 @@ function resumoProdutos(result, opts = {}) {
 }
 
 async function runTool(name, input, ctx) {
+  const { profile } = ctx;
   try {
     if (name === 'buscar_produtos') {
       const r = await searchProductsForAI(input?.query || '');
-      return resumoProdutos(r, { isGroup: ctx.isGroup });
+      return resumoProdutos(r, { isGroup: ctx.isGroup, profile });
     }
     if (name === 'consultar_cashback') {
       const phoneFmt = formatPhoneBR(ctx.phone);
@@ -153,16 +226,11 @@ async function runTool(name, input, ctx) {
       if (phoneFmt) {
         user = await prisma.user.findUnique({ where: { phone: phoneFmt }, select: { name: true, balance: true } });
       }
-      if (!user) return { cadastrado: false, mensagem: 'Cliente ainda nao tem cadastro no TenisCash por este numero.' };
-      return { cadastrado: true, nome: user.name, saldo_teniscash: user.balance || 0 };
+      if (!user) return { cadastrado: false, mensagem: 'Cliente ainda nao tem cadastro por este numero.' };
+      return { cadastrado: true, nome: user.name, saldo_cashback: user.balance || 0 };
     }
     if (name === 'info_loja') {
-      return {
-        lojas_fisicas: ['Bessa', 'Tambau', 'Rainha da Borborema', 'Tambia'],
-        cidade: 'Joao Pessoa - PB',
-        site: 'https://www.sportsetennis.com.br',
-        observacao: 'Para horario exato de cada loja, confirme com a equipe.',
-      };
+      return profile.infoLoja();
     }
     return { erro: 'ferramenta desconhecida' };
   } catch (err) {
@@ -174,7 +242,7 @@ async function runTool(name, input, ctx) {
 // ---------------------------------------------------------------------
 // SYSTEM PROMPT — persona + regras duras (anti-erro)
 // ---------------------------------------------------------------------
-// Prompt para o GRUPO de vendedores (modo vendedor + regra de silencio)
+// Prompt para o GRUPO de vendedores (modo vendedor + regra de silencio) — SO Sports & Tennis
 function buildGroupSystem(senderName) {
   return `Voce e a inteligencia artificial da SPORTS & TENNIS, presente num GRUPO DE WHATSAPP de vendedores e gerencia (lojas Sports & Tennis e Baratao dos Esportes).
 
@@ -193,8 +261,8 @@ QUANDO VOCE RESPONDE (modo vendedor, NAO cliente):
 - Quem falou no grupo se chama "${senderName || 'colega'}".`;
 }
 
-function buildSystem(pushName, isGroup) {
-  if (isGroup) return buildGroupSystem(pushName);
+// Prompt do CLIENTE — Sports & Tennis (texto legado, mantido)
+function buildClientSystemST(pushName) {
   return `Voce e o atendente virtual da SPORTS & TENNIS, uma rede de lojas de tenis e artigos esportivos em Joao Pessoa - PB (lojas no Bessa, Tambau, Rainha da Borborema e Tambia) com loja online e o programa de cashback TenisCash.
 
 Voce atende clientes no WhatsApp. Seja simpatico, direto e prestativo, como um bom vendedor de loja — sem ser chato nem prolixo.
@@ -222,28 +290,64 @@ ESTILO:
 Hoje voce so consegue responder texto. Se o cliente mandar audio/foto, peca gentilmente para escrever.`;
 }
 
+// Prompt do CLIENTE — Baratao dos Esportes (loja popular, foco em preco)
+function buildClientSystemBaratao(pushName) {
+  return `Voce e o atendente virtual do BARATAO DOS ESPORTES, uma loja de artigos esportivos em Joao Pessoa - PB, conhecida pelo PRECO BAIXO e bom custo-beneficio. Tem programa de cashback (o cliente ganha cashback comprando).
+
+Voce atende clientes no WhatsApp. Seja simpatico, animado e direto, como um bom vendedor de loja popular — sem ser chato nem prolixo. O foco do Baratao e PRECO BOM.
+
+REGRAS INQUEBRAVEIS:
+1. NUNCA invente preco, estoque, tamanho, prazo, cor ou qualquer dado. Use SEMPRE a ferramenta buscar_produtos para falar de produto/preco/tamanho. Se a ferramenta nao retornar o que o cliente quer, diga com honestidade que vai confirmar com a equipe — NUNCA chute.
+2. NUNCA prometa desconto, frete gratis, brinde ou condicao especial por conta propria. Se o cliente pedir desconto, fale do cashback e diga que condicoes especiais voce confirma com a equipe.
+3. Para FECHAR a compra: oriente o cliente a ver os detalhes no LINK do produto e a passar na loja Baratao dos Esportes. Se for algo que precisa de uma pessoa (negociar, problema com pedido, troca/devolucao, reclamacao), diga que vai chamar um atendente da equipe.
+4. ESTOQUE = LOJA (A REGRA MAIS IMPORTANTE). O UNICO estoque que vale e o campo "tamanhos_em_loja" (a lista dos tamanhos que TEM FISICAMENTE NA LOJA BARATAO, por bipe). O "comprado"/NFe NAO conta — ignore. Quando o cliente pedir um tamanho especifico, siga este processo SEM EXCECAO:
+   a) Olhe a lista "tamanhos_em_loja" do produto.
+   b) O numero que o cliente pediu esta nessa lista? Se SIM: confirme ("temos sim, o 42"). Se NAO (mesmo que o produto exista no catalogo): diga claramente "no momento nao temos o [tamanho]" e ofereca os tamanhos que ESTAO em tamanhos_em_loja.
+   NUNCA diga "temos o [tamanho]" se esse numero NAO esta em "tamanhos_em_loja". Na duvida, diga que confirma com a equipe — nunca afirme por otimismo.
+5. Mencione o cashback quando fizer sentido (o cliente ganha cashback comprando no Baratao).
+6. LINK — cada produto traz o campo "link" (a pagina do produto: foto, preco e disponibilidade no Baratao). Quando recomendar ou confirmar um produto, MANDE esse link pro cliente ver os detalhes. Mande o link EXATAMENTE como veio (nao encurte, nao troque, nao invente).
+7. Voce atende SO o BARATAO DOS ESPORTES. NUNCA cite "Sports & Tennis" pro cliente — e OUTRA empresa. Os dados ja chegam so com o estoque do Baratao.
+
+ESTILO:
+- Respostas CURTAS, de WhatsApp (2 a 5 linhas no maximo). Nada de textao.
+- PT-BR informal e animado. Pode usar *negrito* do WhatsApp e no maximo 1-2 emojis por mensagem.
+- Nunca use tabelas nem markdown de titulo. E uma conversa de WhatsApp.
+- Trate o cliente pelo nome quando souber (o nome no WhatsApp e "${pushName || 'cliente'}").
+- Se a pergunta nao tiver nada a ver com a loja, responda educadamente que voce e o atendimento do Baratao dos Esportes.
+
+Hoje voce so consegue responder texto. Se o cliente mandar audio/foto, peca gentilmente para escrever.`;
+}
+
+function buildSystem(profile, name, isGroup) {
+  if (isGroup && profile.hasGroup) return buildGroupSystem(name);
+  if (profile.key === 'baratao') return buildClientSystemBaratao(name);
+  return buildClientSystemST(name);
+}
+
 // ---------------------------------------------------------------------
 // PRINCIPAL — gera a resposta do atendente para uma mensagem recebida
 // ---------------------------------------------------------------------
-async function getAttendantReply({ phone, text, pushName, isGroup = false, senderName, sessionKey }) {
-  if (!isEnabled()) return { ok: false, skip: 'disabled' };
+async function getAttendantReply({ phone, text, pushName, isGroup = false, senderName, sessionKey, profile: profileKey = 'st' }) {
+  if (!isProfileEnabled(profileKey)) return { ok: false, skip: 'disabled' };
   const client = getClient();
   if (!client) return { ok: false, error: 'ANTHROPIC_API_KEY ausente' };
 
+  const profile = getProfile(profileKey);
   const histKey = sessionKey || phone;
   const history = getHistory(histKey);
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: text }];
-  const ctx = { phone, pushName, isGroup };
+  const ctx = { phone, pushName, isGroup, profile };
 
   try {
+    const tools = buildTools(profile);
     let working = messages;
     let finalText = '';
     for (let hop = 0; hop < 5; hop++) {
       const resp = await client.messages.create({
         model: MODEL,
         max_tokens: 700,
-        system: buildSystem(isGroup ? senderName : pushName, isGroup),
-        tools: TOOLS,
+        system: buildSystem(profile, isGroup ? senderName : pushName, isGroup),
+        tools,
         messages: working,
       });
 
@@ -275,7 +379,7 @@ async function getAttendantReply({ phone, text, pushName, isGroup = false, sende
 
     if (!finalText) {
       if (isGroup) return { ok: true, silent: true };
-      finalText = 'Recebi sua mensagem! Em instantes um atendente da Sports & Tennis te responde. 🙂';
+      finalText = `Recebi sua mensagem! Em instantes um atendente do ${profile.brand} te responde. 🙂`;
     }
 
     pushHistory(histKey, 'user', text);
@@ -287,4 +391,4 @@ async function getAttendantReply({ phone, text, pushName, isGroup = false, sende
   }
 }
 
-module.exports = { getAttendantReply, isEnabled, clearSession };
+module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES };
