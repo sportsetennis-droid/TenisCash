@@ -186,7 +186,7 @@ async function generateWornScene(opts) {
 
   const ar = opts.aspectRatio || '9:16';
   const scene = (opts.scene && opts.scene.trim()) || 'a young Brazilian athlete wearing the sneakers in a real lifestyle moment, cinematic light';
-  const prompt = [
+  const prompt = (opts.fullPrompt && opts.fullPrompt.trim()) ? opts.fullPrompt : [
     `Photorealistic vertical ${ar} editorial photograph for a premium sportswear brand.`,
     `SCENE: ${scene}.`,
     'The person is WEARING the exact sneakers shown in the reference image (on the feet, being used).',
