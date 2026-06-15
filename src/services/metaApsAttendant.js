@@ -19,12 +19,19 @@
 // =====================================================================
 
 const Anthropic = require('@anthropic-ai/sdk');
+const crypto = require('crypto');
 const KB = require('./metaApsKB');
 const { sendEvolutionRaw, formatPhoneBR } = require('../whatsapp');
+const { prisma } = require('../middleware'); // captura das mensagens (modo observacao)
 
 const MODEL = process.env.METAAPS_ATTENDANT_MODEL || 'claude-sonnet-4-6';
 const INSTANCE = process.env.METAAPS_EVOLUTION_INSTANCE || 'metaaps';
 const NOTIFY = process.env.METAAPS_NOTIFY || ''; // telefone OU jid de grupo p/ receber o encaminhamento
+
+// MODO OBSERVACAO: o robo so LE e GUARDA as mensagens (grupo e privado), NAO
+// responde NADA. Default LIGADO (fase de coletar conteudo). Quando a gente for
+// programar as respostas, setar METAAPS_OBSERVE_ONLY=false no Railway.
+const OBSERVE_ONLY = String(process.env.METAAPS_OBSERVE_ONLY || 'true').toLowerCase() !== 'false';
 
 const HISTORY_TTL_MS = 30 * 60 * 1000; // 30 min de janela de conversa
 const MAX_HISTORY = 12;
@@ -264,55 +271,92 @@ async function notifyEquipe(customerPhone, handoff) {
 // WEBHOOK — processa um payload da Evolution (instancia do Meta APS)
 // Chamado pela rota /api/whatsapp/evolution quando body.instance == INSTANCE.
 // ---------------------------------------------------------------------
+// Tabela de captura criada via SQL direto (NAO no schema.prisma, p/ nao mexer
+// no schema compartilhado). db push nao mexe em tabela fora do schema.
+let _captureTableReady = false;
+async function ensureCaptureTable() {
+  if (_captureTableReady) return;
+  await prisma.$executeRawUnsafe(
+    'CREATE TABLE IF NOT EXISTS "ApsGroupCapture" (' +
+      '"id" TEXT PRIMARY KEY, "instance" TEXT NOT NULL, "groupId" TEXT, ' +
+      '"isGroup" BOOLEAN NOT NULL DEFAULT false, "senderHash" TEXT, "senderName" TEXT, ' +
+      '"text" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT now())'
+  );
+  await prisma.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "ApsGroupCapture_inst_grp_idx" ON "ApsGroupCapture" ("instance","groupId","createdAt")'
+  );
+  _captureTableReady = true;
+}
+
+async function captureMessage({ isGroup, jid, senderPhone, pushName, text }) {
+  if (!text) return;
+  try {
+    await ensureCaptureTable();
+    const id = crypto.randomUUID();
+    const senderHash = senderPhone ? crypto.createHash('sha256').update(senderPhone).digest('hex') : null;
+    await prisma.$executeRaw`
+      INSERT INTO "ApsGroupCapture" ("id","instance","groupId","isGroup","senderHash","senderName","text")
+      VALUES (${id}, ${INSTANCE}, ${isGroup ? jid : null}, ${isGroup}, ${senderHash}, ${pushName || null}, ${text})
+    `;
+  } catch (err) {
+    console.error('[metaApsAttendant] captura falhou:', err.message);
+  }
+}
+
 async function handleMetaApsWebhook(body) {
   const data = Array.isArray(body.data) ? body.data[0] : (body.data || {});
   const key = data.key || {};
   const jid = key.remoteJid || '';
   if (!jid || jid === 'status@broadcast') return;
 
-  // MVP: so atendimento privado (1:1). Grupo e ignorado.
-  if (jid.endsWith('@g.us')) return;
-
-  const phone = jid.replace(/[^0-9]/g, '');
-  if (!phone) return;
-
-  // Equipe respondeu pelo proprio numero do Meta APS -> humano assumiu, IA sai de cena.
+  // Mensagem enviada pelo proprio numero (equipe/robo): nao captura nem responde.
   if (key.fromMe) {
-    pauseThread(phone, TAKEOVER_PAUSE_MS);
-    console.log(`[metaApsAttendant] humano assumiu ${phone} — IA pausada ${TAKEOVER_PAUSE_MS / 3600000}h`);
+    if (!OBSERVE_ONLY) pauseThread(jid.replace(/[^0-9]/g, ''), TAKEOVER_PAUSE_MS);
     return;
   }
 
-  if (!isEnabled()) {
-    console.log(`[metaApsAttendant] IA desligada — ignorando msg de ${phone}`);
-    return;
-  }
-  if (isPaused(phone)) {
-    console.log(`[metaApsAttendant] thread ${phone} pausada (humano/encaminhado) — IA em silencio`);
-    return;
-  }
-
-  const pushName = data.pushName || 'visitante';
+  const isGroup = jid.endsWith('@g.us');
+  const senderJid = isGroup ? (key.participant || '') : jid;
+  const senderPhone = (senderJid || jid).replace(/[^0-9]/g, '');
+  const pushName = data.pushName || (isGroup ? 'membro' : 'visitante');
   const m = data.message || {};
   const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
 
-  if (!text) {
-    await sendEvolutionRaw(phone, 'Oi! No momento consigo te atender por *texto*. Pode escrever sua dúvida? 🙂', INSTANCE).catch(() => {});
+  // ===== CAPTURA (observacao): grava TUDO que tem texto, grupo E privado =====
+  await captureMessage({ isGroup, jid, senderPhone, pushName, text });
+
+  // ===== MODO OBSERVACAO: le/grava e NAO responde nada (nem grupo, nem privado) =====
+  if (OBSERVE_ONLY) {
+    console.log(`[metaApsAttendant][OBSERVA] ${isGroup ? 'grupo ' + jid : 'priv ' + senderPhone} (${pushName}): "${text.slice(0, 80)}"`);
     return;
   }
 
-  console.log(`[metaApsAttendant] ${phone} (${pushName}): "${text.slice(0, 120)}"`);
-  const result = await getApsReply({ phone, text, pushName });
+  // ===== daqui pra baixo: modo ATIVO (so quando METAAPS_OBSERVE_ONLY=false) =====
+  // Grupo ainda NAO e respondido automaticamente (sera programado depois, com o
+  // conteudo coletado). Em modo ativo, por ora responde so o privado.
+  if (isGroup) return;
+  if (!isEnabled()) return;
+  if (isPaused(senderPhone)) {
+    console.log(`[metaApsAttendant] thread ${senderPhone} pausada — IA em silencio`);
+    return;
+  }
+  if (!text) {
+    await sendEvolutionRaw(senderPhone, 'Oi! No momento consigo te atender por *texto*. Pode escrever sua dúvida? 🙂', INSTANCE).catch(() => {});
+    return;
+  }
+
+  console.log(`[metaApsAttendant] ${senderPhone} (${pushName}): "${text.slice(0, 120)}"`);
+  const result = await getApsReply({ phone: senderPhone, text, pushName });
 
   if (result.ok && result.reply) {
-    const r = await sendEvolutionRaw(phone, result.reply, INSTANCE);
-    console.log(`[metaApsAttendant] resposta -> ${phone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
+    const r = await sendEvolutionRaw(senderPhone, result.reply, INSTANCE);
+    console.log(`[metaApsAttendant] resposta -> ${senderPhone}: ${r.ok ? 'OK' : 'FAIL ' + r.error}`);
     if (result.handoff) {
-      await notifyEquipe(phone, result.handoff);
-      pauseThread(phone, HANDOFF_PAUSE_MS); // encaminhado: IA sai, equipe assume
+      await notifyEquipe(senderPhone, result.handoff);
+      pauseThread(senderPhone, HANDOFF_PAUSE_MS); // encaminhado: IA sai, equipe assume
     }
   } else if (!result.skip) {
-    console.warn(`[metaApsAttendant] sem resposta p/ ${phone}:`, result.error || 'desconhecido');
+    console.warn(`[metaApsAttendant] sem resposta p/ ${senderPhone}:`, result.error || 'desconhecido');
   }
 }
 
