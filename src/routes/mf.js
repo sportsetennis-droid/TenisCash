@@ -221,12 +221,13 @@ router.get('/products', mfAuth, async (req, res) => {
 });
 
 router.post('/products', mfAuth, async (req, res) => {
-  const { name, ref, categoryId, unit, size, color, costPrice, salePrice, minStock, stock, description } = req.body || {};
+  const { name, ref, ncm, categoryId, unit, size, color, costPrice, salePrice, minStock, stock, description } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' });
   const p = await prisma.mfProduct.create({
     data: {
       name,
       ref: ref || null,
+      ncm: (ncm ? String(ncm).replace(/\D/g, '') : null) || null,
       categoryId: categoryId || null,
       unit: unit || 'un',
       size: size || null,
@@ -250,9 +251,10 @@ router.post('/products', mfAuth, async (req, res) => {
 });
 
 router.put('/products/:id', mfAuth, async (req, res) => {
-  const { name, ref, categoryId, unit, size, color, costPrice, salePrice, minStock, description, active } = req.body || {};
+  const { name, ref, ncm, categoryId, unit, size, color, costPrice, salePrice, minStock, description, active } = req.body || {};
   const data = {};
   for (const [k, v] of Object.entries({ name, ref, unit, size, color, description })) if (v !== undefined) data[k] = v || null;
+  if (ncm !== undefined) data.ncm = ncm ? String(ncm).replace(/\D/g, '') : null;
   if (name !== undefined) data.name = name; // nome nao pode ser null
   if (categoryId !== undefined) data.categoryId = categoryId || null;
   if (costPrice !== undefined) data.costPrice = Number(costPrice) || 0;
@@ -493,6 +495,209 @@ router.get('/dashboard', mfAuth, async (_req, res) => {
     prisma.mfOrder.count({ where: { status: { in: ['confirmado', 'producao'] } } }),
   ]);
   res.json({ products, lowStock, customers, leadsNovos, orcamentos, pedidosAbertos });
+});
+
+// =====================================================================
+// FISCAL — NF-e modelo 55 pelo CNPJ da Meta Fardamentos.
+// Motor: src/services/fiscalSefazDirect.mjs (ESM → import dinâmico).
+// Certificado A1 (.pfx) guardado no banco (MfFiscalConfig.certB64 + senha) — o banco e o cofre.
+// =====================================================================
+const _fs = require('fs');
+const _os = require('os');
+const _path = require('path');
+const { execSync } = require('child_process');
+
+async function getFiscalConfig() {
+  let c = await prisma.mfFiscalConfig.findFirst();
+  if (!c) c = await prisma.mfFiscalConfig.create({ data: {} });
+  return c;
+}
+
+function writeCertTemp(config) {
+  if (!config.certB64 || !config.certPassword) return null;
+  const dir = _path.join(_os.tmpdir(), 'mf-cert');
+  _fs.mkdirSync(dir, { recursive: true });
+  const p = _path.join(dir, 'metafardamentos.pfx');
+  _fs.writeFileSync(p, Buffer.from(config.certB64, 'base64'));
+  return { pfxPath: p, pfxSenha: config.certPassword };
+}
+
+router.get('/fiscal/config', mfAuth, async (_req, res) => {
+  const c = await getFiscalConfig();
+  res.json({
+    ambiente: c.ambiente, crt: c.crt, csosn: c.csosn,
+    cfopDentro: c.cfopDentro, cfopFora: c.cfopFora, defaultNcm: c.defaultNcm,
+    nfeSerie: c.nfeSerie, nfeNextNumber: c.nfeNextNumber, enabled: c.enabled,
+    certConfigured: !!(c.certB64 && c.certPassword),
+    certSubject: c.certSubject, certValidUntil: c.certValidUntil,
+  });
+});
+
+router.put('/fiscal/config', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  const c = await getFiscalConfig();
+  const { ambiente, csosn, defaultNcm, nfeSerie, nfeNextNumber, enabled } = req.body || {};
+  const data = {};
+  if (ambiente && ['homologacao', 'producao'].includes(ambiente)) data.ambiente = ambiente;
+  if (csosn) data.csosn = String(csosn);
+  if (defaultNcm) data.defaultNcm = String(defaultNcm).replace(/\D/g, '');
+  if (nfeSerie !== undefined) data.nfeSerie = parseInt(nfeSerie) || 1;
+  if (nfeNextNumber !== undefined) data.nfeNextNumber = parseInt(nfeNextNumber) || 1;
+  if (enabled !== undefined) data.enabled = !!enabled;
+  await prisma.mfFiscalConfig.update({ where: { id: c.id }, data });
+  res.json({ ok: true });
+});
+
+// Upload do certificado A1 (.pfx em base64 + senha). Valida (best-effort) e guarda.
+router.post('/fiscal/cert', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  try {
+    let { certB64, password } = req.body || {};
+    if (!certB64 || !password) return res.status(400).json({ error: 'Certificado e senha obrigatorios' });
+    certB64 = String(certB64).replace(/^data:[^,]*,/, '');
+    const buf = Buffer.from(certB64, 'base64');
+    if (buf.length < 500) return res.status(400).json({ error: 'Arquivo de certificado invalido' });
+
+    // Valida abrindo o pfx (best-effort: confirma a senha + extrai subject/validade)
+    let subject = null, validUntil = null, validated = false;
+    try {
+      const dir = _path.join(_os.tmpdir(), 'mf-cert');
+      _fs.mkdirSync(dir, { recursive: true });
+      const up = _path.join(dir, 'upload.pfx');
+      const cpem = _path.join(dir, 'upload.cert.pem');
+      _fs.writeFileSync(up, buf);
+      execSync(`openssl pkcs12 -in "${up}" -clcerts -nokeys -passin pass:${password} -legacy -out "${cpem}"`, { stdio: 'ignore' });
+      const info = execSync(`openssl x509 -in "${cpem}" -noout -subject -enddate`, { encoding: 'utf8' });
+      const sm = info.match(/CN\s*=\s*([^,\n/]+)/i); if (sm) subject = sm[1].trim();
+      const dm = info.match(/notAfter=(.+)/); if (dm) { const d = new Date(dm[1].trim()); if (!isNaN(d)) validUntil = d; }
+      validated = true;
+      try { _fs.unlinkSync(up); _fs.unlinkSync(cpem); } catch {}
+    } catch (e) {
+      // openssl pode falhar por senha errada OU por ambiente — diferencia pela mensagem
+      if (/mac verify|invalid password|password/i.test(String(e.message))) {
+        return res.status(400).json({ error: 'Senha do certificado incorreta' });
+      }
+      // openssl indisponivel/erro de ambiente: guarda mesmo assim (a emissao valida de verdade)
+    }
+    const c = await getFiscalConfig();
+    await prisma.mfFiscalConfig.update({ where: { id: c.id }, data: { certB64, certPassword: String(password), certSubject: subject, certValidUntil: validUntil } });
+    res.json({ ok: true, validated, subject, validUntil });
+  } catch (err) {
+    console.error('[mf/fiscal/cert]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar certificado' });
+  }
+});
+
+// Emite NF-e 55 pra um pedido.
+router.post('/fiscal/emit/:orderId', mfAuth, async (req, res) => {
+  try {
+    const config = await getFiscalConfig();
+    if (!config.enabled) return res.status(400).json({ error: 'Emissao fiscal desligada. Ligue em Config Fiscal.' });
+    const cert = writeCertTemp(config);
+    if (!cert) return res.status(400).json({ error: 'Certificado nao configurado.' });
+
+    const order = await prisma.mfOrder.findUnique({
+      where: { id: req.params.orderId },
+      include: { items: { include: { product: true } }, customer: true },
+    });
+    if (!order) return res.status(404).json({ error: 'Pedido nao encontrado' });
+    if (order.nfeStatus === 'emitida') return res.status(400).json({ error: 'Pedido ja tem NF-e (chave ' + order.nfeChave + ')' });
+    if (!order.items.length) return res.status(400).json({ error: 'Pedido sem itens' });
+    const cust = order.customer;
+    if (!cust || !cust.doc) return res.status(400).json({ error: 'NF-e exige cliente com CPF/CNPJ. Edite o cliente e informe o documento.' });
+
+    const company = await getCompany();
+    const clean = (s) => String(s || '').replace(/\D/g, '');
+    const issuer = {
+      cnpj: clean(company.cnpj), companyName: company.name, fantasyName: company.tradeName,
+      ie: clean(company.ie), environment: config.ambiente === 'producao' ? 'production' : 'homologation',
+      crt: config.crt, csosn: config.csosn,
+      street: company.street, number: company.number, neighborhood: company.neighborhood,
+      city: company.city, state: company.state, zip: clean(company.zip), cityCode: company.cityCode,
+      phone: clean(company.phone), nfeSerie: config.nfeSerie, nfeNextNumber: config.nfeNextNumber,
+    };
+    const items = order.items.map((it) => ({
+      name: it.description, sku: it.product?.ref || it.productId || undefined,
+      ncm: clean(it.product?.ncm) || config.defaultNcm, cfop: config.cfopDentro,
+      unidade: it.product?.unit || 'UN', qty: it.qty, unitPrice: it.unitPrice,
+    }));
+    const customer = {
+      cpfCnpj: clean(cust.doc), name: cust.name, indIEDest: '9',
+      addr: {
+        xLgr: cust.address || 'NAO INFORMADO', nro: 'S/N', xBairro: 'CENTRO',
+        cMun: cust.cityCode || '2507507', xMun: cust.city || 'JOAO PESSOA',
+        UF: cust.state || 'PB', CEP: clean(cust.cep) || '58013430',
+      },
+    };
+    const payment = { tPag: '01', valor: order.total, modFrete: 9 };
+
+    const { emitNFe55 } = await import('../services/fiscalSefazDirect.mjs');
+    const r = await emitNFe55({ issuer, pfxPath: cert.pfxPath, pfxSenha: cert.pfxSenha, items, payment, customer, nNF: config.nfeNextNumber });
+
+    if (r.ok) {
+      const protocol = r.protocol || (String(r.rawResponse || '').match(/<nProt>(\d+)<\/nProt>/) || [])[1] || null;
+      await prisma.$transaction([
+        prisma.mfOrder.update({ where: { id: order.id }, data: { nfeStatus: 'emitida', nfeModelo: 55, nfeChave: r.accessKey, nfeNumero: config.nfeNextNumber, nfeProtocolo: protocol, nfeMotivo: r.motivo, nfeXml: r.xmlSigned, nfeAt: new Date() } }),
+        prisma.mfFiscalConfig.update({ where: { id: config.id }, data: { nfeNextNumber: config.nfeNextNumber + 1 } }),
+      ]);
+      return res.json({ ok: true, chave: r.accessKey, protocolo: protocol, status: r.status, ambiente: config.ambiente });
+    }
+    await prisma.mfOrder.update({ where: { id: order.id }, data: { nfeStatus: 'erro', nfeMotivo: (r.status || '') + ' ' + (r.motivo || '') } });
+    return res.status(400).json({ error: 'SEFAZ recusou: ' + (r.status || '') + ' — ' + (r.motivo || '') });
+  } catch (err) {
+    console.error('[mf/fiscal/emit]', err.message);
+    res.status(500).json({ error: 'Erro ao emitir: ' + err.message });
+  }
+});
+
+// DANFE (PDF) da NF-e autorizada do pedido.
+router.get('/fiscal/danfe/:orderId', mfAuth, async (req, res) => {
+  try {
+    const order = await prisma.mfOrder.findUnique({ where: { id: req.params.orderId } });
+    if (!order || !order.nfeXml || order.nfeStatus !== 'emitida') return res.status(400).json({ error: 'Pedido sem NF-e autorizada' });
+    let xml = order.nfeXml;
+    if (!xml.includes('<protNFe') && !xml.includes('<nfeProc') && order.nfeProtocolo && order.nfeChave) {
+      const nfe = xml.replace(/^﻿?\s*<\?xml[^>]*\?>\s*/i, '');
+      const dig = (nfe.match(/<DigestValue>([^<]*)<\/DigestValue>/) || [])[1] || '';
+      const dt = order.nfeAt ? new Date(order.nfeAt) : new Date();
+      const dh = new Date(dt.getTime() - 3 * 3600 * 1000).toISOString().replace(/\.\d{3}Z$/, '-03:00');
+      const cfg = await getFiscalConfig();
+      const tpAmb = cfg.ambiente === 'producao' ? '1' : '2';
+      const protNFe = '<protNFe versao="4.00"><infProt><tpAmb>' + tpAmb + '</tpAmb><verAplic>SVRS</verAplic><chNFe>' + order.nfeChave + '</chNFe><dhRecbto>' + dh + '</dhRecbto><nProt>' + order.nfeProtocolo + '</nProt><digVal>' + dig + '</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>';
+      xml = '<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">' + nfe + protNFe + '</nfeProc>';
+    }
+    const sped = await import('node-sped-pdf');
+    const DANFe = sped.DANFe || (sped.default && sped.default.DANFe);
+    const pdf = await DANFe({ xml });
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="danfe-mf-' + (order.number || order.id) + '.pdf"' });
+    res.send(Buffer.from(pdf));
+  } catch (err) {
+    console.error('[mf/fiscal/danfe]', err.message);
+    res.status(500).json({ error: 'Erro ao gerar DANFE: ' + err.message });
+  }
+});
+
+// Cancela a NF-e do pedido (admin/gerente).
+router.post('/fiscal/cancel/:orderId', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  try {
+    const reason = (req.body && req.body.reason) || '';
+    if (reason.length < 15) return res.status(400).json({ error: 'Motivo precisa ter ao menos 15 caracteres' });
+    const order = await prisma.mfOrder.findUnique({ where: { id: req.params.orderId } });
+    if (!order || order.nfeStatus !== 'emitida' || !order.nfeChave) return res.status(400).json({ error: 'Pedido sem NF-e pra cancelar' });
+    const config = await getFiscalConfig();
+    const cert = writeCertTemp(config);
+    if (!cert) return res.status(400).json({ error: 'Certificado nao configurado' });
+    const company = await getCompany();
+    const issuer = { cnpj: String(company.cnpj || '').replace(/\D/g, ''), environment: config.ambiente === 'producao' ? 'production' : 'homologation' };
+    const { cancelDocument } = await import('../services/fiscalSefazDirect.mjs');
+    const r = await cancelDocument({ issuer, pfxPath: cert.pfxPath, pfxSenha: cert.pfxSenha, accessKey: order.nfeChave, protocol: order.nfeProtocolo, reason });
+    if (r.ok) {
+      await prisma.mfOrder.update({ where: { id: order.id }, data: { nfeStatus: 'cancelada', nfeMotivo: 'Cancelada: ' + reason } });
+      return res.json({ ok: true });
+    }
+    return res.status(400).json({ error: 'SEFAZ: ' + (r.status || '') + ' — ' + (r.motivo || '') });
+  } catch (err) {
+    console.error('[mf/fiscal/cancel]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

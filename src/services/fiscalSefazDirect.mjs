@@ -21,10 +21,11 @@ const SVRS_URLS = {
   production:   'https://nfce.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
 };
 
-// NFe modelo 55 — SEFAZ-PB autoriza diretamente (não via SVRS)
+// NFe modelo 55 — PB NÃO tem autorizador próprio: usa a SVRS (igual NFCe).
+// (nfe.sefaz.pb.gov.br NÃO existe em DNS — regra do projeto.)
 const NFE_PB_URLS = {
-  homologation: 'https://nfehom.sefaz.pb.gov.br/nfews/v2/services/NFeAutorizacao4',
-  production:   'https://nfe.sefaz.pb.gov.br/nfews/v2/services/NFeAutorizacao4',
+  homologation: 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
+  production:   'https://nfe.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
 };
 
 // URLs de Recepção de Evento (cancelamento, carta de correção)
@@ -519,6 +520,7 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
     tpEmis: 1, cDV: null, tpAmb,
     finNFe: 1, indFinal: 1,
     indPres: customer.indPres || 2, // 2=operação não-presencial pela internet (Nuvemshop)
+    indIntermed: 0, // 0 = operação sem intermediador/marketplace (obrigatório NFe 4.00)
     procEmi: 0, verProc: 'TenisCash/1.0',
   });
   nfe.tagEmit({
@@ -594,21 +596,32 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
   });
   await nfe.tagProd(prodArr);
 
-  // Tributação por item (CRT=3 Regime Normal — Meta Esportes)
+  // Tributação por item — CIENTE DO REGIME (issuer.crt).
+  // Simples Nacional (CRT=1): usa CSOSN, NÃO destaca ICMS; PIS/COFINS CST 49 zerados
+  //   (recolhidos no DAS). Default CSOSN 102 (sem permissão de crédito) — sobrescreve
+  //   por item (it.csosn) ou por emitente (issuer.csosn) quando a contabilidade definir.
+  // Regime Normal (CRT=3, Sports & Tennis): CST 00 + ICMS/PIS/COFINS destacados.
+  const isSimples = String(issuer.crt) === '1';
   items.forEach((it, idx) => {
     const qty = Number(it.qty) || 1;
     const vTot = +(qty * (Number(it.unitPrice) || 0)).toFixed(2);
-    const vICMS = +(vTot * 0.20).toFixed(2);
-    const vPIS = +(vTot * 0.0165).toFixed(2);
-    const vCOFINS = +(vTot * 0.076).toFixed(2);
-    totalICMS += vICMS; totalPIS += vPIS; totalCOFINS += vCOFINS;
-    nfe.tagProdICMS(idx, { orig: 0, CST: '00', modBC: 3, vBC: vTot.toFixed(2), pICMS: '20.0000', vICMS: vICMS.toFixed(2) });
-    nfe.tagProdPIS(idx, { CST: '01', vBC: vTot.toFixed(2), pPIS: '1.6500', vPIS: vPIS.toFixed(2) });
-    nfe.tagProdCOFINS(idx, { CST: '01', vBC: vTot.toFixed(2), pCOFINS: '7.6000', vCOFINS: vCOFINS.toFixed(2) });
+    if (isSimples) {
+      nfe.tagProdICMSSN(idx, { orig: it.origem != null ? it.origem : 0, CSOSN: it.csosn || issuer.csosn || '102' });
+      nfe.tagProdPIS(idx, { CST: '49', vBC: '0.00', pPIS: '0.0000', vPIS: '0.00' });
+      nfe.tagProdCOFINS(idx, { CST: '49', vBC: '0.00', pCOFINS: '0.0000', vCOFINS: '0.00' });
+    } else {
+      const vICMS = +(vTot * 0.20).toFixed(2);
+      const vPIS = +(vTot * 0.0165).toFixed(2);
+      const vCOFINS = +(vTot * 0.076).toFixed(2);
+      totalICMS += vICMS; totalPIS += vPIS; totalCOFINS += vCOFINS;
+      nfe.tagProdICMS(idx, { orig: 0, CST: '00', modBC: 3, vBC: vTot.toFixed(2), pICMS: '20.0000', vICMS: vICMS.toFixed(2) });
+      nfe.tagProdPIS(idx, { CST: '01', vBC: vTot.toFixed(2), pPIS: '1.6500', vPIS: vPIS.toFixed(2) });
+      nfe.tagProdCOFINS(idx, { CST: '01', vBC: vTot.toFixed(2), pCOFINS: '7.6000', vCOFINS: vCOFINS.toFixed(2) });
+    }
   });
 
   nfe.tagTotal({ ICMSTot: {
-    vBC: totalProd.toFixed(2), vICMS: totalICMS.toFixed(2),
+    vBC: isSimples ? '0.00' : totalProd.toFixed(2), vICMS: totalICMS.toFixed(2),
     vICMSDeson: '0.00', vFCPUFDest: '0.00', vICMSUFDest: '0.00', vICMSUFRemet: '0.00',
     vFCP: '0.00', vBCST: '0.00', vST: '0.00', vFCPST: '0.00', vFCPSTRet: '0.00',
     vProd: totalProd.toFixed(2),

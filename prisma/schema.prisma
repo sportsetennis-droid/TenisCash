@@ -4191,8 +4191,13 @@ model MfCompany {
   phone     String?
   email     String?
   address   String?
+  street       String? @default("AVENIDA COREMAS")
+  number       String? @default("372")
+  neighborhood String? @default("CENTRO")
+  zip          String? @default("58013430")
   city      String?  @default("Joao Pessoa")
   state     String?  @default("PB")
+  cityCode  String?  @default("2507507")
   logoUrl   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4235,6 +4240,7 @@ model MfProduct {
   id          String      @id @default(uuid())
   name        String
   ref         String? // referencia interna / codigo
+  ncm         String? // NCM fiscal (ex 61091000 camiseta de algodao)
   categoryId  String?
   category    MfCategory? @relation(fields: [categoryId], references: [id])
   unit        String      @default("un") // un, pc, kit
@@ -4280,6 +4286,10 @@ model MfCustomer {
   phone     String?
   email     String?
   address   String?
+  cep       String?
+  city      String?  @default("Joao Pessoa")
+  state     String?  @default("PB")
+  cityCode  String?  @default("2507507")
   notes     String?  @db.Text
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -4321,6 +4331,15 @@ model MfOrder {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
+  nfeStatus    String?
+  nfeModelo    Int?
+  nfeChave     String?
+  nfeNumero    Int?
+  nfeProtocolo String?
+  nfeMotivo    String?
+  nfeXml       String?   @db.Text
+  nfeAt        DateTime?
+
   items MfOrderItem[]
 
   @@index([status, createdAt])
@@ -4350,4 +4369,23 @@ model MfTimeEntry {
   note       String?
 
   @@index([employeeId, day])
+}
+
+model MfFiscalConfig {
+  id             String    @id @default(uuid())
+  ambiente       String    @default("homologacao")
+  crt            Int       @default(1)
+  csosn          String    @default("102")
+  cfopDentro     String    @default("5102")
+  cfopFora       String    @default("6102")
+  defaultNcm     String    @default("61091000")
+  nfeSerie       Int       @default(1)
+  nfeNextNumber  Int       @default(1)
+  certB64        String?   @db.Text
+  certPassword   String?
+  certSubject    String?
+  certValidUntil DateTime?
+  enabled        Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

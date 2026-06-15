@@ -255,6 +255,7 @@ function formProduct(p){p=p||{};const ed=!!p.id;
   <label>Categoria</label><select id="p-cat" class="fld">${catOptions(p.categoryId)}</select>
   <div style="display:flex;gap:10px"><div style="flex:1"><label>Referência</label><input id="p-ref" class="fld" value="${H(p.ref||'')}"></div>
   <div style="flex:1"><label>Tamanho</label><input id="p-size" class="fld" value="${H(p.size||'')}" placeholder="P/M/G…"></div></div>
+  <label>NCM (fiscal — pra emitir nota)</label><input id="p-ncm" class="fld" value="${H(p.ncm||'')}" placeholder="61091000 (camiseta algodão)">
   <div style="display:flex;gap:10px"><div style="flex:1"><label>Custo</label><input id="p-cost" class="fld" type="number" step="0.01" value="${p.costPrice||''}"></div>
   <div style="flex:1"><label>Venda</label><input id="p-sale" class="fld" type="number" step="0.01" value="${p.salePrice||''}"></div></div>
   <div style="display:flex;gap:10px"><div style="flex:1"><label>Estoque mín.</label><input id="p-min" class="fld" type="number" value="${p.minStock||0}"></div>
@@ -262,7 +263,7 @@ function formProduct(p){p=p||{};const ed=!!p.id;
   <button class="btn" style="margin-top:16px" onclick="saveProduct('${p.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);
 }
 async function saveProduct(id){
-  const b={name:val('p-name'),categoryId:document.getElementById('p-cat').value,ref:val('p-ref'),size:val('p-size'),
+  const b={name:val('p-name'),categoryId:document.getElementById('p-cat').value,ref:val('p-ref'),size:val('p-size'),ncm:val('p-ncm'),
     costPrice:val('p-cost'),salePrice:val('p-sale'),minStock:document.getElementById('p-min').value};
   if(!b.name){toast('Informe o nome');return;}
   try{ if(id){await api('/products/'+id,{method:'PUT',body:JSON.stringify(b)});}
@@ -400,10 +401,28 @@ async function openOrder(id){try{const o=await api('/orders/'+id);
   ${o.items.map(it=>`<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(it.description)}</div><div class="mt">${it.qty} × ${money(it.unitPrice)}</div></div><b>${money(it.total)}</b></div></div>`).join('')}
   <div class="row" style="margin:10px 2px"><b>Total</b><b>${money(o.total)}</b></div>
   ${o.notes?`<div class="mt" style="margin:0 2px 10px">${H(o.notes)}</div>`:''}
+  ${fiscalBlock(o)}
   <h3 class="sec">Mudar status</h3>
   <div class="chips">${sts.map(s=>`<span class="chip ${o.status===s?'on':''}" onclick="orderStatus('${o.id}','${s}')">${s}</span>`).join('')}</div>`);
   }catch(e){toast(e.message);}}
 async function orderStatus(id,status){try{await api('/orders/'+id+'/status',{method:'PUT',body:JSON.stringify({status})});closeSheet();toast('Status: '+status);renderPedidos();}catch(e){toast(e.message);}}
+
+/* ---------- FISCAL (NF-e no pedido) ---------- */
+function fiscalBlock(o){
+  const adm=(me.role==='admin'||me.role==='gerente');
+  if(o.nfeStatus==='emitida'){
+    return `<h3 class="sec">Nota Fiscal</h3>
+    <div class="card"><div class="nm" style="font-size:14px">NF-e autorizada ✅</div>
+    <div class="mt">nº ${o.nfeNumero||''} · chave final ...${H(String(o.nfeChave||'').slice(-8))}</div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="btn sm lar" style="flex:1" onclick="downloadDanfe('${o.id}')">Baixar DANFE</button>
+    ${adm?`<button class="btn sm ghost" style="flex:1" onclick="cancelNfe('${o.id}')">Cancelar</button>`:''}</div></div>`;
+  }
+  if(o.nfeStatus==='cancelada') return `<h3 class="sec">Nota Fiscal</h3><div class="card"><span class="pill dng">NF-e cancelada</span></div>`;
+  return `<h3 class="sec">Nota Fiscal</h3><button class="btn lar" onclick="emitNfe('${o.id}')">Emitir NF-e</button>${o.nfeStatus==='erro'?`<div class="mt" style="margin-top:6px;color:var(--danger)">Falhou: ${H(o.nfeMotivo||'erro')}</div>`:''}`;
+}
+async function emitNfe(id){ if(!confirm('Emitir NF-e deste pedido?'))return; toast('Emitindo na SEFAZ…'); try{const r=await api('/fiscal/emit/'+id,{method:'POST'}); toast(r.ambiente==='producao'?'NF-e EMITIDA ✓':'NF-e de teste autorizada ✓'); closeSheet(); openOrder(id);}catch(e){toast(e.message);} }
+async function downloadDanfe(id){ try{ const h={}; if(token)h.Authorization='Bearer '+token; const r=await fetch(API+'/fiscal/danfe/'+id,{headers:h}); if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.error||'Erro ao gerar DANFE');return;} const b=await r.blob(); window.open(URL.createObjectURL(b),'_blank'); }catch(e){toast(e.message);} }
+async function cancelNfe(id){ const reason=prompt('Motivo do cancelamento (mín. 15 letras):'); if(!reason)return; if(reason.length<15){toast('Motivo muito curto');return;} try{await api('/fiscal/cancel/'+id,{method:'POST',body:JSON.stringify({reason})}); toast('NF-e cancelada'); closeSheet(); openOrder(id);}catch(e){toast(e.message);} }
 
 /* ---------- PONTO ---------- */
 async function renderPonto(){
@@ -442,6 +461,7 @@ function openMenu(){
   sheet(`<h2>${H(me.name)}</h2><p class="sub muted" style="margin-top:-8px">${H(me.role)}</p>
   ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageEmployees()">Funcionários</button>':''}
   ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageCompany()">Dados da empresa</button>':''}
+  ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageFiscal()">Fiscal / NF-e</button>':''}
   <button class="btn" style="background:var(--danger);margin-top:6px" onclick="logout()">Sair</button>`);
 }
 async function manageEmployees(){try{const list=await api('/employees');
@@ -473,6 +493,33 @@ async function manageCompany(){try{const c=await api('/company');
   <button class="btn" style="margin-top:14px" onclick="saveCompany()">Salvar</button>`);
   }catch(e){toast(e.message);}}
 async function saveCompany(){try{await api('/company',{method:'PUT',body:JSON.stringify({tradeName:val('co-trade'),name:val('co-name'),cnpj:val('co-cnpj'),ie:val('co-ie'),phone:val('co-phone'),address:val('co-addr')})});closeSheet();toast('Empresa atualizada');}catch(e){toast(e.message);}}
+
+async function manageFiscal(){try{const c=await api('/fiscal/config');
+  const val2=c.certValidUntil?new Date(c.certValidUntil).toLocaleDateString('pt-BR'):'';
+  sheet(`<h2>Fiscal / NF-e</h2>
+  <div class="card"><div class="nm" style="font-size:14px">Certificado A1 ${c.certConfigured?'✅':'❌'}</div>
+  <div class="mt">${c.certConfigured?(H(c.certSubject||'configurado')+(val2?(' · vence '+val2):'')):'nenhum certificado enviado'}</div>
+  <label style="margin-top:8px">Arquivo .pfx</label><input id="fc-file" class="fld" type="file" accept=".pfx,.p12">
+  <label>Senha do certificado</label><input id="fc-pass" class="fld" type="password" placeholder="senha do .pfx">
+  <button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="uploadCert()">Enviar certificado</button></div>
+  <h3 class="sec">Configuração</h3>
+  <label>Ambiente</label><select id="fc-amb" class="fld"><option value="homologacao" ${c.ambiente==='homologacao'?'selected':''}>Teste (homologação) — nota NÃO vale</option><option value="producao" ${c.ambiente==='producao'?'selected':''}>Produção — nota VALE</option></select>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>CSOSN</label><input id="fc-csosn" class="fld" value="${H(c.csosn||'102')}"></div>
+  <div style="flex:1"><label>NCM padrão</label><input id="fc-ncm" class="fld" value="${H(c.defaultNcm||'')}"></div></div>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Série</label><input id="fc-serie" class="fld" type="number" value="${c.nfeSerie||1}"></div>
+  <div style="flex:1"><label>Próximo nº</label><input id="fc-num" class="fld" type="number" value="${c.nfeNextNumber||1}"></div></div>
+  <label>Emissão</label><select id="fc-en" class="fld"><option value="0" ${!c.enabled?'selected':''}>Desligada</option><option value="1" ${c.enabled?'selected':''}>Ligada</option></select>
+  <button class="btn" style="margin-top:14px" onclick="saveFiscalConfig()">Salvar config</button>`);
+  }catch(e){toast(e.message);}}
+async function saveFiscalConfig(){try{await api('/fiscal/config',{method:'PUT',body:JSON.stringify({ambiente:document.getElementById('fc-amb').value,csosn:val('fc-csosn'),defaultNcm:val('fc-ncm'),nfeSerie:document.getElementById('fc-serie').value,nfeNextNumber:document.getElementById('fc-num').value,enabled:document.getElementById('fc-en').value==='1'})});closeSheet();toast('Config fiscal salva');}catch(e){toast(e.message);}}
+async function uploadCert(){
+  const f=document.getElementById('fc-file').files[0]; const pass=val('fc-pass');
+  if(!f){toast('Escolha o arquivo .pfx');return;} if(!pass){toast('Informe a senha');return;}
+  toast('Enviando certificado…');
+  const reader=new FileReader();
+  reader.onload=async()=>{ try{ const b64=String(reader.result).split(',')[1]; const r=await api('/fiscal/cert',{method:'POST',body:JSON.stringify({certB64:b64,password:pass})}); toast(r.validated?('Certificado OK'+(r.validUntil?(' · vence '+new Date(r.validUntil).toLocaleDateString('pt-BR')):'')):'Certificado salvo'); manageFiscal(); }catch(e){toast(e.message);} };
+  reader.readAsDataURL(f);
+}
 
 boot();
 </script>
