@@ -113,7 +113,7 @@ async function notifyClockEvent(p = {}) {
     const loja = await resolveStoreName(p.storeId, p.storeName);
     const hora = fmtTime(p.at || new Date());
 
-    const msg = `${meta.emoji} *PONTO — ${meta.label}*\n${name} · ${loja}\n🕒 ${hora}`;
+    const msg = `${meta.emoji} *${name} ${meta.verb}*\n🏬 ${loja} · 🕒 ${hora}`;
     await sendEvolutionRaw(jid, msg);
   } catch (e) {
     console.error('[equipeReports] notifyClockEvent falhou:', e.message);
@@ -265,6 +265,143 @@ async function sendSalesReport(checkpointHour, now = new Date()) {
 }
 
 // ---------------------------------------------------------------------
+// 3) PRESENÇA — lê o ponto do dia e diz QUEM ESTÁ na loja e quem não está
+// ---------------------------------------------------------------------
+const PRESENCE_META = {
+  working: { emoji: '🟢', label: 'na loja' },
+  onbreak: { emoji: '🍴', label: 'em almoço' },
+  left: { emoji: '🔴', label: 'saiu' },
+  absent: { emoji: '⚪', label: 'não bateu ponto' },
+};
+
+// Deriva o estado atual de uma pessoa a partir das batidas do dia.
+function presenceStatus(list) {
+  if (!list || !list.length) return { key: 'absent' };
+  const sorted = list.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const entry = sorted.find((x) => x.type === 'entry');
+  const last = sorted[sorted.length - 1];
+  if (last.type === 'exit') return { key: 'left', at: last.timestamp, entryAt: entry && entry.timestamp };
+  if (last.type === 'break_start') return { key: 'onbreak', at: last.timestamp, entryAt: entry && entry.timestamp };
+  return { key: 'working', entryAt: (entry && entry.timestamp) || last.timestamp };
+}
+
+async function buildPresenceReport(now = new Date()) {
+  const dayStart = localDayStartUtc(now);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
+
+  const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const stores = await prisma.store.findMany({
+    where: { active: true, ...(codeFilter.length ? { code: { in: codeFilter } } : {}) },
+    select: { id: true, name: true, code: true },
+    orderBy: { code: 'asc' },
+  });
+
+  const sellers = await prisma.user.findMany({
+    where: { active: true, role: { in: SELLER_ROLES } },
+    select: { id: true, name: true, storeId: true },
+  });
+  const nameById = new Map(sellers.map((s) => [s.id, s.name]));
+
+  const clocks = await prisma.clockIn.findMany({
+    where: { timestamp: { gte: dayStart, lt: dayEnd } },
+    select: { userId: true, storeId: true, type: true, timestamp: true },
+    orderBy: { timestamp: 'asc' },
+  });
+  const byUser = new Map();
+  for (const c of clocks) {
+    if (!byUser.has(c.userId)) byUser.set(c.userId, []);
+    byUser.get(c.userId).push(c);
+  }
+  const extraIds = [...byUser.keys()].filter((id) => !nameById.has(id));
+  if (extraIds.length) {
+    const ex = await prisma.user.findMany({ where: { id: { in: extraIds } }, select: { id: true, name: true } });
+    ex.forEach((u) => nameById.set(u.id, u.name));
+  }
+
+  const perStore = new Map();
+  for (const s of stores) perStore.set(s.id, []);
+  const counts = { working: 0, onbreak: 0, left: 0, absent: 0 };
+  const handled = new Set();
+
+  // quem bateu ponto → fica na LOJA da batida de entrada (onde está fisicamente)
+  for (const [userId, list] of byUser.entries()) {
+    const st = presenceStatus(list);
+    const entry = list.find((x) => x.type === 'entry') || list[0];
+    const storeId = entry && entry.storeId;
+    handled.add(userId);
+    counts[st.key] = (counts[st.key] || 0) + 1;
+    const row = { name: nameById.get(userId) || 'Vendedor', st };
+    if (storeId && perStore.has(storeId)) perStore.get(storeId).push(row);
+    else {
+      if (!perStore.has('__outras__')) perStore.set('__outras__', []);
+      perStore.get('__outras__').push(row);
+    }
+  }
+  // vendedores ativos que NÃO bateram ponto → loja-base, como ausentes
+  for (const sv of sellers) {
+    if (handled.has(sv.id)) continue;
+    counts.absent += 1;
+    const row = { name: sv.name, st: { key: 'absent' } };
+    if (sv.storeId && perStore.has(sv.storeId)) perStore.get(sv.storeId).push(row);
+    else {
+      if (!perStore.has('__semloja__')) perStore.set('__semloja__', []);
+      perStore.get('__semloja__').push(row);
+    }
+  }
+
+  const order = { working: 0, onbreak: 1, left: 2, absent: 3 };
+  const renderRow = (r) => {
+    const m = PRESENCE_META[r.st.key];
+    if (r.st.key === 'working') return `  ${m.emoji} ${r.name} — na loja desde ${fmtTime(r.st.entryAt)}`;
+    if (r.st.key === 'onbreak') return `  ${m.emoji} ${r.name} — em almoço desde ${fmtTime(r.st.at)}`;
+    if (r.st.key === 'left') return `  ${m.emoji} ${r.name} — saiu ${fmtTime(r.st.at)}${r.st.entryAt ? ` (entrou ${fmtTime(r.st.entryAt)})` : ''}`;
+    return `  ${m.emoji} ${r.name} — não bateu ponto`;
+  };
+
+  const L = [];
+  L.push('👥 *PONTO — quem está na loja*');
+  L.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
+  L.push('━━━━━━━━━━━━━━');
+
+  for (const s of stores) {
+    const rows = (perStore.get(s.id) || []).slice()
+      .sort((a, b) => (order[a.st.key] - order[b.st.key]) || a.name.localeCompare(b.name));
+    if (!rows.length) continue;
+    L.push(`🏬 *${s.name}*`);
+    rows.forEach((r) => L.push(renderRow(r)));
+    L.push('');
+  }
+  for (const key of ['__outras__', '__semloja__']) {
+    const rows = perStore.get(key);
+    if (rows && rows.length) {
+      rows.sort((a, b) => (order[a.st.key] - order[b.st.key]) || a.name.localeCompare(b.name));
+      L.push(`🏷️ *${key === '__outras__' ? 'Bateu em outra loja' : 'Sem loja vinculada'}*`);
+      rows.forEach((r) => L.push(renderRow(r)));
+      L.push('');
+    }
+  }
+
+  L.push('━━━━━━━━━━━━━━');
+  L.push(`🟢 Na loja: ${counts.working} · 🍴 Almoço: ${counts.onbreak} · 🔴 Saíram: ${counts.left} · ⚪ Não vieram: ${counts.absent}`);
+  return L.join('\n');
+}
+
+async function sendPresenceReport(now = new Date()) {
+  let text;
+  try { text = await buildPresenceReport(now); }
+  catch (e) { console.error('[equipeReports] buildPresenceReport falhou:', e.message); return { sent: false, error: e.message }; }
+  const jid = pontoGroupJid();
+  if (!jid || !isEvolutionConfigured()) {
+    console.log('[equipeReports] presença NÃO enviada (grupo não configurado).');
+    return { sent: false, text, reason: 'no_group' };
+  }
+  const r = await sendEvolutionRaw(jid, text);
+  console.log(`[equipeReports] presença → ${r.ok ? 'ENVIADA' : 'FALHOU: ' + r.error}`);
+  return { sent: !!r.ok, text, error: r.ok ? undefined : r.error };
+}
+
+// ---------------------------------------------------------------------
 // CRON — 13h, 18h, 21h (America/Fortaleza)
 // ---------------------------------------------------------------------
 function startEquipeReportsCron() {
@@ -272,12 +409,17 @@ function startEquipeReportsCron() {
     console.log('[equipeReports] desativado (DISABLE_EQUIPE_REPORTS=1)');
     return;
   }
-  cron.schedule('0 13 * * *', () => sendSalesReport(13), { timezone: 'America/Fortaleza' });
-  cron.schedule('0 18 * * *', () => sendSalesReport(18), { timezone: 'America/Fortaleza' });
-  cron.schedule('0 21 * * *', () => sendSalesReport(21), { timezone: 'America/Fortaleza' });
+  // cada checkpoint: relatório de vendas + foto da presença (quem está na loja)
+  const checkpoint = (h) => async () => {
+    try { await sendSalesReport(h); } catch (e) { console.error('[equipeReports] sendSalesReport', h, e.message); }
+    try { await sendPresenceReport(); } catch (e) { console.error('[equipeReports] sendPresenceReport', e.message); }
+  };
+  cron.schedule('0 13 * * *', checkpoint(13), { timezone: 'America/Fortaleza' });
+  cron.schedule('0 18 * * *', checkpoint(18), { timezone: 'America/Fortaleza' });
+  cron.schedule('0 21 * * *', checkpoint(21), { timezone: 'America/Fortaleza' });
   const jid = vendasGroupJid();
   console.log(
-    `[equipeReports] cron iniciado (vendas 13h/18h/21h America/Fortaleza)` +
+    `[equipeReports] cron iniciado (vendas+presença 13h/18h/21h America/Fortaleza)` +
     (jid ? '' : ' — ⚠️ WHATSAPP_GROUP_JID vazio: nada será enviado até configurar o grupo')
   );
 }
@@ -287,6 +429,8 @@ module.exports = {
   sendSalesReport,
   buildSalesReport,
   notifyClockEvent,
+  buildPresenceReport,
+  sendPresenceReport,
   pontoGroupJid,
   vendasGroupJid,
 };

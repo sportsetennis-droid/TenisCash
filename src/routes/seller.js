@@ -230,6 +230,24 @@ router.post('/reports/sales/send', adminOnly, async (req, res) => {
   }
 });
 
+// PRESENÇA — quem está na loja agora (lê o ponto). Preview (não envia) e envio manual.
+router.get('/reports/presence/preview', adminOnly, async (req, res) => {
+  try {
+    const text = await equipeReports.buildPresenceReport();
+    res.type('text/plain; charset=utf-8').send(text);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post('/reports/presence/send', adminOnly, async (req, res) => {
+  try {
+    const out = await equipeReports.sendPresenceReport();
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =====================================================================
 // PONTO DO DIA — opcionalmente de um vendedor específico (PDV usa)
 // =====================================================================
