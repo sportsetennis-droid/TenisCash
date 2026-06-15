@@ -143,7 +143,20 @@ app.post('/api/_falgen', async (req, res) => {
     const { prisma } = require('./middleware');
     const eng = String(req.query.engine || 'composite');
     const svc = eng === 'openai' ? require('./services/openaiImage') : eng === 'fal' ? require('./services/falAi') : require('./services/compositeImage');
-    const product = await prisma.product.findUnique({ where: { id: String(req.query.pid || '') } });
+    const product = req.query.pid ? await prisma.product.findUnique({ where: { id: String(req.query.pid) } }) : null;
+    if (req.query.concept === '1') {
+      // MODO CONCEITO/ESTADO: cena com PESSOA usando o produto (Flux text-to-image puro, sem compositar)
+      const people = { mode: 'specific', gender: req.query.gender || 'any', age: req.query.age || 'young', ethnicity: req.query.eth || 'mixed' };
+      const ci = require('./services/compositeImage');
+      const r = await ci.generateEditorialPhoto({
+        productName: (product && product.name) || req.query.pn || 'lifestyle sneakers',
+        brand: (product && product.brand) || '',
+        aspectRatio: req.query.ar || '9:16',
+        sceneHint: req.query.scene || '',
+        people,
+      });
+      return res.json({ ok: true, mode: 'concept', outputUrl: r.outputUrl, ...keys });
+    }
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
     if (req.query.op === 'removebg') {
       const fal = require('./services/falAi');
