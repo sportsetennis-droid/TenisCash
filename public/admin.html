@@ -2058,7 +2058,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     </div>
 
     <!-- MODAL DE EDIÇÃO -->
-    <div class="cls-modal-bg" id="cls-edit-modal" onclick="if(event.target===this)closeClsModal()">
+    <div class="cls-modal-bg" id="cls-edit-modal" onclick="if(event.target===this)closeClsEditModal()">
       <div class="cls-modal">
         <h3>✎ Editar produto</h3>
         <div class="cls-modal-head" id="cls-edit-head"></div>
@@ -2093,9 +2093,16 @@ tr:hover td{background:rgba(0,0,0,0.02)}
             <option value="">—</option>
           </select>
         </div>
+        <div style="margin-top:14px;padding:12px;background:#f5f5f7;border-radius:10px;border:1px solid #e5e5ea;">
+          <label style="font-size:11px;letter-spacing:1px;color:#6e6e73;font-weight:700;display:block;margin-bottom:6px;">PREÇO DE VENDA (R$)</label>
+          <input type="number" id="cls-edit-price" step="0.01" min="0" placeholder="0,00"
+            style="width:100%;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:14px;font-weight:700;background:white;color:#1d1d1f;font-family:'Chakra Petch',sans-serif;outline:none;"
+            onfocus="this.style.borderColor='#E5571E'" onblur="this.style.borderColor='#e5e5ea'">
+          <div id="cls-edit-cost-display" style="font-size:11px;color:#6e6e73;margin-top:5px;"></div>
+        </div>
         <div style="display:flex;gap:8px;margin-top:18px;">
           <button class="btn btn-primary" onclick="saveClsEditModal()" style="flex:1;">💾 Salvar</button>
-          <button class="btn" onclick="closeClsModal()">Cancelar</button>
+          <button class="btn" onclick="closeClsEditModal()">Cancelar</button>
         </div>
       </div>
     </div>
@@ -3197,9 +3204,16 @@ function escapeHtmlMk(s) {
     <!-- CARD 4: Preços -->
     <div style="margin-top:12px;padding:14px;background:#f5f5f7;border-radius:12px;border:1px solid #e5e5ea;">
       <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;color:#1d1d1f;margin-bottom:10px">💰 PREÇOS</div>
+      <div id="cat-p-cost-ref" style="font-size:11px;color:#6e6e73;margin-bottom:8px;display:none;padding:6px 8px;background:white;border-radius:6px;border:1px solid #e5e5ea;"></div>
       <div style="display:flex;gap:8px">
-        <input class="form-input" id="cat-p-price" type="number" step="0.01" placeholder="Preço normal" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
-        <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Promo (opcional)" style="background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        <div style="flex:1">
+          <label style="font-size:10px;letter-spacing:1px;color:#8e8e93;font-weight:600">PREÇO DE VENDA (R$)</label>
+          <input class="form-input" id="cat-p-price" type="number" step="0.01" placeholder="0,00" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:10px;letter-spacing:1px;color:#8e8e93;font-weight:600">PREÇO PROMO (R$)</label>
+          <input class="form-input" id="cat-p-promo" type="number" step="0.01" placeholder="Opcional" style="margin-top:4px;background:white;color:#1d1d1f;border:1.5px solid #e5e5ea">
+        </div>
       </div>
     </div>
 
@@ -4511,8 +4525,20 @@ async function openCatProductModal(id) {
     }
     sel.value = val;
   });
-  document.getElementById('cat-p-price').value = p.price;
+  document.getElementById('cat-p-price').value = p.price != null ? p.price : '';
   document.getElementById('cat-p-promo').value = p.promoPrice != null ? p.promoPrice : '';
+  // Mostra custo pra referência (read-only)
+  const costRefEl = document.getElementById('cat-p-cost-ref');
+  if (costRefEl) {
+    if (p.costPrice != null && p.costPrice > 0) {
+      costRefEl.style.display = 'block';
+      costRefEl.innerHTML = '📊 Custo: <strong>R$ ' + Number(p.costPrice).toFixed(2) + '</strong>' +
+        (p.price > 0 ? ' &nbsp;·&nbsp; Margem: <strong>' + Math.round((1 - p.costPrice / p.price) * 100) + '%</strong>' : '');
+    } else {
+      costRefEl.style.display = 'none';
+      costRefEl.innerHTML = '';
+    }
+  }
   document.getElementById('cat-p-ncm').value = p.ncm || '';
   document.getElementById('cat-p-cfop').value = p.cfop || '5102';
   document.getElementById('cat-p-unidade').value = p.unidade || 'UN';
@@ -4527,10 +4553,38 @@ async function openCatProductModal(id) {
     const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {});
     window._catLastLoadedAiContext = ctx; // pra preservar no save
     const cls = ctx.classification || {};
-    if (cls.gender) document.getElementById('cat-p-gender').value = cls.gender;
-    if (cls.type) { document.getElementById('cat-p-type').value = cls.type; catFormOnTypeChange(); }
-    if (cls.modality) { document.getElementById('cat-p-modality').value = cls.modality; catFormOnModalityChange(); }
-    if (cls.tier) document.getElementById('cat-p-tier').value = cls.tier;
+    // Helper: seta valor num select; se o valor não existe como <option value>, tenta por label; senão adiciona a opção on-the-fly
+    function _setSelectVal(selId, val) {
+      if (!val) return;
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      // Normaliza plural→singular (brandBrain salva "Chuteiras" mas o select tem "Chuteira")
+      const normalized = val.endsWith('s') ? val.slice(0, -1) : null;
+      // Tenta setar pelo value
+      sel.value = val;
+      if (sel.value === val) return;
+      if (normalized) { sel.value = normalized; if (sel.value === normalized) return; }
+      // Fallback: procura opção com texto igual ao valor ou normalizado
+      const byLabel = [...sel.options].find(o => {
+        const t = o.textContent.trim();
+        return t === val || t === normalized;
+      });
+      if (byLabel) { sel.value = byLabel.value; return; }
+      // Adiciona a opção on-the-fly (valor ausente na árvore atual, ex: classificação antiga)
+      const o = document.createElement('option'); o.value = val; o.textContent = val; sel.appendChild(o); sel.value = val;
+    }
+    // Suporta dois schemas: brandBrain (category/subcategory) e novo (type/gender)
+    _setSelectVal('cat-p-gender', cls.gender || cls.subcategory);
+    const typeVal = cls.type || cls.category;
+    if (typeVal) {
+      _setSelectVal('cat-p-type', typeVal);
+      catFormOnTypeChange();
+    }
+    if (cls.modality) {
+      _setSelectVal('cat-p-modality', cls.modality);
+      catFormOnModalityChange();
+    }
+    _setSelectVal('cat-p-tier', cls.tier || cls.especialidade);
     // Fornecedor: tenta supplierId primeiro, depois CNPJ
     const supSel = document.getElementById('cat-p-supplier');
     if (ctx.supplierId) supSel.value = ctx.supplierId;
@@ -12757,6 +12811,26 @@ function renderClsCard(p) {
 
 // Modal de edição (substitui edição inline)
 let _clsModalId = null;
+// Helper: seta valor num select de classificação; se o valor não existe como <option value>,
+// adiciona a opção on-the-fly (valor de classificação antiga pode não estar na árvore VALID atual)
+function _clsSetSelectVal(selId, val) {
+  if (!val) return;
+  const sel = document.querySelector('#cls-edit-modal #' + selId) || document.getElementById(selId);
+  if (!sel) return;
+  // Normaliza plural→singular (brandBrain salva "Chuteiras" mas o select tem "Chuteira")
+  const normalized = val.endsWith('s') ? val.slice(0, -1) : null;
+  sel.value = val;
+  if (sel.value === val) return;
+  if (normalized) { sel.value = normalized; if (sel.value === normalized) return; }
+  // Fallback: procura por label ou label normalizado
+  const byLabel = [...sel.options].find(o => {
+    const t = o.textContent.trim();
+    return t === val || t === normalized;
+  });
+  if (byLabel) { sel.value = byLabel.value; return; }
+  // Adiciona on-the-fly (valor legado ausente da árvore atual)
+  const o = document.createElement('option'); o.value = val; o.textContent = val; sel.appendChild(o); sel.value = val;
+}
 function openClsModal(pid) {
   const p = _clsRowCache[pid];
   if (!p) return;
@@ -12771,23 +12845,30 @@ function openClsModal(pid) {
     </div>
   `;
   document.getElementById('cls-edit-brand').value = p.brand && p.brand !== 'A DEFINIR' ? p.brand : '';
-  document.getElementById('cls-edit-type').value = c.type || '';
+  // Pré-preenche preço de venda e mostra custo pra referência
+  const clsPriceEl = document.getElementById('cls-edit-price');
+  if (clsPriceEl) clsPriceEl.value = p.price != null ? Number(p.price).toFixed(2) : '';
+  const clsCostEl = document.getElementById('cls-edit-cost-display');
+  if (clsCostEl) clsCostEl.textContent = p.costPrice != null && p.costPrice > 0 ? 'Custo: R$ ' + Number(p.costPrice).toFixed(2) : '';
+  // Suporta dois schemas: brandBrain (category/subcategory) e novo (type/gender)
+  // Tipo → popula modalidades → seta modalidade → popula tiers → seta tier
+  _clsSetSelectVal('cls-edit-type', c.type || c.category);
   onClsEditTypeChange();
-  document.getElementById('cls-edit-gender').value = c.gender || '';
-  document.getElementById('cls-edit-modality').value = c.modality || '';
+  _clsSetSelectVal('cls-edit-gender', c.gender || c.subcategory);
+  _clsSetSelectVal('cls-edit-modality', c.modality);
   onClsEditModalityChange();
-  document.getElementById('cls-edit-tier').value = c.tier || '';
+  _clsSetSelectVal('cls-edit-tier', c.tier || c.especialidade);
   document.getElementById('cls-edit-modal').classList.add('show');
 }
 
-function closeClsModal() {
+function closeClsEditModal() {
   document.getElementById('cls-edit-modal').classList.remove('show');
   _clsModalId = null;
 }
 
 async function saveClsEditModal() {
   if (!_clsModalId) return;
-  const payload = {
+  const clsPayload = {
     brand: document.getElementById('cls-edit-brand').value.trim() || null,
     type: document.getElementById('cls-edit-type').value || null,
     gender: document.getElementById('cls-edit-gender').value || null,
@@ -12795,11 +12876,20 @@ async function saveClsEditModal() {
     tier: document.getElementById('cls-edit-tier').value || null,
   };
   try {
-    await api('/admin/classification/' + _clsModalId, 'PATCH', payload);
-    closeClsModal();
+    // Salva classificação via PATCH /classification/:id
+    await api('/admin/classification/' + _clsModalId, 'PATCH', clsPayload);
+    // Salva preço de venda via PUT /catalog/products/:id (se campo existir e tiver valor)
+    const clsPriceEl = document.getElementById('cls-edit-price');
+    if (clsPriceEl && clsPriceEl.value !== '') {
+      const newPrice = parseFloat(clsPriceEl.value);
+      if (!isNaN(newPrice) && newPrice > 0) {
+        await api('/admin/catalog/products/' + _clsModalId, 'PUT', { price: newPrice });
+      }
+    }
+    closeClsEditModal();
     loadClsProducts();
     loadClsStats();
-  } catch (e) { alert('Erro: ' + (e.message || e)); }
+  } catch (e) { alert('Erro ao salvar: ' + (e.message || e)); }
 }
 
 // (renderClsRow obsoleta — substituida por renderClsCard. Mantido vazio pra compat.)
@@ -12976,8 +13066,9 @@ function closeClsModal() {
 function onClsEditTypeChange() {
   const t = document.getElementById('cls-edit-type').value;
   const mSel = document.getElementById('cls-edit-modality');
-  if (t && clsTree.modalities[t]) {
-    mSel.innerHTML = '<option value="">—</option>' + clsTree.modalities[t].map(m => `<option value="${m}">${m}</option>`).join('');
+  const tree = clsTree || { modalities: {}, tiers: {} };
+  if (t && tree.modalities[t]) {
+    mSel.innerHTML = '<option value="">—</option>' + tree.modalities[t].map(m => `<option value="${m}">${m}</option>`).join('');
     document.getElementById('cls-edit-modalityGroup').style.display = 'block';
   } else {
     mSel.innerHTML = '<option value="">—</option>';
@@ -12990,8 +13081,9 @@ function onClsEditTypeChange() {
 function onClsEditModalityChange() {
   const m = document.getElementById('cls-edit-modality').value;
   const tSel = document.getElementById('cls-edit-tier');
-  if (m && clsTree.tiers[m]) {
-    tSel.innerHTML = '<option value="">—</option>' + clsTree.tiers[m].map(t => `<option value="${t}">${t}</option>`).join('');
+  const tree = clsTree || { modalities: {}, tiers: {} };
+  if (m && tree.tiers[m]) {
+    tSel.innerHTML = '<option value="">—</option>' + tree.tiers[m].map(t => `<option value="${t}">${t}</option>`).join('');
     document.getElementById('cls-edit-tierGroup').style.display = 'block';
   } else {
     tSel.innerHTML = '<option value="">—</option>';

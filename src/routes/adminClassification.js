@@ -108,7 +108,7 @@ router.get('/products', async (req, res) => {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, sku: true, name: true, brand: true, category: true, subcategory: true,
-        shortDescription: true, imageUrl: true, price: true, promoPrice: true, aiContext: true,
+        shortDescription: true, imageUrl: true, price: true, promoPrice: true, costPrice: true, aiContext: true,
         sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } },
       },
     });
@@ -119,7 +119,7 @@ router.get('/products', async (req, res) => {
       try { ctx = (typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext) || {}; } catch {}
       return {
         id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category,
-        imageUrl: p.imageUrl, price: p.price, promoPrice: p.promoPrice,
+        imageUrl: p.imageUrl, price: p.price, promoPrice: p.promoPrice, costPrice: p.costPrice,
         sizes: p.sizes || [],
         classification: ctx.classification || null,
         supplierRef: ctx.supplierRef || null,
