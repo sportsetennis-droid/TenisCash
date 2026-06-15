@@ -4389,3 +4389,16 @@ model MfFiscalConfig {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
+
+model ApsGroupCapture {
+  id         String   @id
+  instance   String
+  groupId    String?
+  isGroup    Boolean  @default(false)
+  senderHash String?
+  senderName String?
+  text       String
+  createdAt  DateTime @default(now())
+
+  @@index([instance, groupId, createdAt], map: "ApsGroupCapture_inst_grp_idx")
+}
