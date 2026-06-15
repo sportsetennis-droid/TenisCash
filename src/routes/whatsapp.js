@@ -5,6 +5,7 @@ const { authMiddleware, adminMiddleware } = require('../middleware');
 const { getAttendantReply, isEnabled: attendantEnabled } = require('../services/aiAttendant');
 const { handleMetaWebhook, INSTANCE: METAFARD_INSTANCE } = require('../services/metaFardamentosAttendant');
 const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../services/barataoAttendant');
+const { handleMetaApsWebhook, INSTANCE: METAAPS_INSTANCE } = require('../services/metaApsAttendant');
 
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
@@ -99,6 +100,13 @@ router.post('/evolution', async (req, res) => {
     // mesmo catalogo da S&T filtrado pra loja Baratao / LOJA01).
     if (instance && instance === BARATAO_INSTANCE) {
       await handleBarataoWebhook(body);
+      return;
+    }
+
+    // META APS (saude publica / APS): instancia propria -> atendente proprio,
+    // assistente de saude que acolhe o cidadao e encaminha pra equipe da UBS.
+    if (instance && instance === METAAPS_INSTANCE) {
+      await handleMetaApsWebhook(body);
       return;
     }
 
