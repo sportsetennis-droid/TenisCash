@@ -23,6 +23,7 @@ const crypto = require('crypto');
 const KB = require('./metaApsKB');
 const { sendEvolutionRaw, formatPhoneBR } = require('../whatsapp');
 const { prisma } = require('../middleware'); // captura das mensagens (modo observacao)
+const { readMedia } = require('./waMediaReader'); // le audio (transcricao) / imagem (vision) / outros tipos
 
 const MODEL = process.env.METAAPS_ATTENDANT_MODEL || 'claude-sonnet-4-6';
 const INSTANCE = process.env.METAAPS_EVOLUTION_INSTANCE || 'metaaps';
@@ -320,9 +321,14 @@ async function handleMetaApsWebhook(body) {
   const senderPhone = (senderJid || jid).replace(/[^0-9]/g, '');
   const pushName = data.pushName || (isGroup ? 'membro' : 'visitante');
   const m = data.message || {};
-  const text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
+  let text = (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || '').trim();
+  if (!text) {
+    // Mensagem nao-texto (audio/imagem/etc): le o conteudo (transcreve/descreve).
+    const media = await readMedia({ instance: INSTANCE, data });
+    text = media.text;
+  }
 
-  // ===== CAPTURA (observacao): grava TUDO que tem texto, grupo E privado =====
+  // ===== CAPTURA (observacao): grava TUDO (texto, audio transcrito, imagem lida), grupo E privado =====
   await captureMessage({ isGroup, jid, senderPhone, pushName, text });
 
   // ===== MODO OBSERVACAO: le/grava e NAO responde nada (nem grupo, nem privado) =====
