@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
+const equipeReports = require('../services/equipeReports');
 
 const router = express.Router();
 
@@ -173,6 +174,15 @@ router.post('/clockin-as', sellerOnly, async (req, res) => {
       },
     });
 
+    // Avisa o grupo da empresa em tempo real (fire-and-forget, nunca derruba a rota)
+    equipeReports.notifyClockEvent({
+      userId: vendor.id,
+      userName: vendor.name,
+      storeId: finalStoreId,
+      type,
+      at: created.timestamp,
+    }).catch(() => {});
+
     res.json({
       ok: true,
       clockInId: created.id,
@@ -182,6 +192,40 @@ router.post('/clockin-as', sellerOnly, async (req, res) => {
     });
   } catch (err) {
     console.error('Erro clockin-as:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// RELATÓRIO DE VENDAS PRO GRUPO — preview (não envia) e envio manual
+// =====================================================================
+function adminOnly(req, res, next) {
+  if (!['admin', 'superadmin'].includes(req.userRole)) {
+    return res.status(403).json({ error: 'Restrito a admin' });
+  }
+  next();
+}
+
+// Conferir o texto do relatório sem enviar nada. ?checkpoint=13|18|21
+router.get('/reports/sales/preview', adminOnly, async (req, res) => {
+  try {
+    const cp = parseInt(req.query.checkpoint, 10);
+    const hour = [13, 18, 21].includes(cp) ? cp : 13;
+    const text = await equipeReports.buildSalesReport(hour);
+    res.type('text/plain; charset=utf-8').send(text);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Enviar AGORA pro grupo (precisa WHATSAPP_GROUP_JID configurado). body: { checkpoint }
+router.post('/reports/sales/send', adminOnly, async (req, res) => {
+  try {
+    const cp = parseInt((req.body || {}).checkpoint, 10);
+    const hour = [13, 18, 21].includes(cp) ? cp : 13;
+    const out = await equipeReports.sendSalesReport(hour);
+    res.json(out);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -274,6 +318,15 @@ router.post('/clockin', authMiddleware, sellerOnly, async (req, res) => {
         note: note ? String(note).slice(0, 280) : null,
       },
     });
+
+    // Avisa o grupo da empresa em tempo real (fire-and-forget, nunca derruba a rota)
+    equipeReports.notifyClockEvent({
+      userId: u.id,
+      storeId: resolvedStoreId,
+      storeName: store?.name,
+      type,
+      at: clockIn.timestamp,
+    }).catch(() => {});
 
     res.json({ success: true, clockIn });
   } catch (err) {

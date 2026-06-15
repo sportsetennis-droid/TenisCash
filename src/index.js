@@ -82,6 +82,7 @@ const { startMarketingCron } = require('./services/marketingCron');
 const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
 const { startCatalogEngineCron } = require('./services/catalogEngineCron');
 const { startServicesCron } = require('./services/servicesCron');
+const { startEquipeReportsCron } = require('./services/equipeReports');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1236,6 +1237,9 @@ app.listen(PORT, '0.0.0.0', () => {
   if (process.env.DISABLE_SERVICES_CRON !== '1') {
     try { startServicesCron(); } catch (e) { console.error('[servicesCron] falha ao iniciar:', e.message); }
   }
+
+  // Robô do grupo da empresa: relatório de vendas 13h/18h/21h (ponto é em tempo real, via rota)
+  try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
 
   // Cron jobs em background
   if (process.env.DISABLE_FISCAL_DRAFT_JOB !== '1') {
