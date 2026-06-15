@@ -159,6 +159,12 @@ app.post('/api/_falgen', async (req, res) => {
       return res.json({ ok: true, mode: 'concept', outputUrl: r.outputUrl, ...keys });
     }
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
+    if (req.query.op === 'worn') {
+      // EDITOR FIEL (nano-banana/Gemini): PESSOA usando o produto REAL — fiel + tamanho certo
+      const fal = require('./services/falAi');
+      const r = await fal.generateWornScene({ product, scene: req.query.scene || '', aspectRatio: req.query.ar || '9:16' });
+      return res.json({ ok: true, op: 'worn', model: r.model, outputUrl: r.outputUrl, ...keys });
+    }
     if (req.query.op === 'removebg') {
       const fal = require('./services/falAi');
       const rb = await fal.removeBackground({ imageUrl: product.imageUrl });

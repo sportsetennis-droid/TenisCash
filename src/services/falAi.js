@@ -164,6 +164,52 @@ async function removeBackground({ imageUrl }) {
 }
 
 /**
+ * EDITOR FIEL — Nano-Banana (Gemini 2.5 Flash Image) edit.
+ * Pega a FOTO REAL do produto (referência) e compõe numa cena com PESSOA
+ * usando o produto, mantendo o produto IDÊNTICO e no TAMANHO CERTO.
+ * Resolve o problema do Flux/concept que inventa/deforma/aumenta o produto.
+ *
+ * @param {object} opts
+ *   - product (preferido) OU productName/imageUrl/imageUrls
+ *   - scene: descrição da cena/estado (ex "ESTADO DE FOCO: vestiário...")
+ *   - aspectRatio (default 9:16)
+ * @returns {Promise<{outputUrl, model, prompt, costUsd}>}
+ */
+async function generateWornScene(opts) {
+  const fal = await getFal();
+  const model = 'fal-ai/nano-banana/edit';
+
+  let product = opts.product;
+  if (!product) product = { name: opts.productName, imageUrl: opts.imageUrl, imageUrls: opts.imageUrls };
+  const refs = getReferenceImages(product, 3);
+  if (!refs.length) throw new Error('produto sem imagem de referência');
+
+  const ar = opts.aspectRatio || '9:16';
+  const scene = (opts.scene && opts.scene.trim()) || 'a young Brazilian athlete wearing the sneakers in a real lifestyle moment, cinematic light';
+  const prompt = [
+    `Photorealistic vertical ${ar} editorial photograph for a premium sportswear brand.`,
+    `SCENE: ${scene}.`,
+    'The person is WEARING the exact sneakers shown in the reference image (on the feet, being used).',
+    'CRITICAL: keep the sneakers ABSOLUTELY IDENTICAL to the reference — same model, same colors, same materials, same logos and details.',
+    'The sneakers must be at REALISTIC, CORRECT human foot scale — natural proportion to the foot and body. DO NOT enlarge or oversize the shoes.',
+    'Natural realistic Brazilian person, authentic pose for the scene, dramatic professional lighting, shallow depth of field, magazine quality.',
+    'No text, no captions, no extra fake logos.',
+  ].join(' ');
+
+  const result = await withRetry(
+    () => fal.subscribe(model, {
+      input: { prompt, image_urls: refs.slice(0, 3), num_images: 1, output_format: 'jpeg' },
+      logs: false,
+    }),
+    `wornScene ${(product.name || '').slice(0, 40)}`
+  );
+
+  const outputUrl = result?.data?.images?.[0]?.url;
+  if (!outputUrl) throw new Error('nano-banana edit retornou sem image url');
+  return { outputUrl, model, prompt, costUsd: 0.039 };
+}
+
+/**
  * Heurística pra escolher cenário editorial baseado em categoria/marca.
  * Pode evoluir pra usar AI ou regras manuais.
  */
@@ -181,6 +227,7 @@ function pickEditorialScene(name, brand) {
 
 module.exports = {
   generateEditorialPhoto,
+  generateWornScene,
   generateReelVideo,
   removeBackground,
   COSTS,
