@@ -4212,7 +4212,9 @@ model MfEmployee {
   cpf        String?
   phone      String?
   email      String?
-  baseSalary Float?
+  baseSalary Float? // salario mensal (quando mensal/misto)
+  payType    String    @default("mensal") // mensal | peca | misto
+  pieceRate  Float? // R$ por peca que a pessoa RECEBE (quando peca/misto)
   hireDate   DateTime?
   active     Boolean   @default(true)
   createdAt  DateTime  @default(now())
@@ -4486,4 +4488,48 @@ model MfFinanceEntry {
 
   @@index([kind, status])
   @@index([status, dueDate])
+}
+
+
+// ============================================================
+// PRODUCAO (facao) — OS + etapas + remuneracao/resultado por pessoa (2026-06-16)
+// ============================================================
+
+model MfProductionOrder {
+  id           String              @id @default(uuid())
+  number       Int                 @default(0) // nº amigavel da OS
+  title        String // o que vai produzir
+  productId    String? // produto do catalogo (opcional)
+  orderId      String? // pedido vinculado (opcional)
+  customerId   String?
+  qty          Int                 @default(0) // peças totais
+  status       String              @default("aberta") // aberta | producao | concluida | cancelada
+  dueDate      DateTime?
+  materialCost Float               @default(0) // despesa de material/insumo da OS
+  notes        String?             @db.Text
+  employeeId   String? // quem abriu
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  stages MfProductionStage[]
+
+  @@index([status, createdAt])
+}
+
+model MfProductionStage {
+  id                String            @id @default(uuid())
+  productionOrderId String
+  productionOrder   MfProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  stage             String // modelagem | corte | costura | estamparia | embalagem
+  seq               Int               @default(0)
+  assigneeId        String? // quem faz (MfEmployee.id)
+  status            String            @default("pendente") // pendente | fazendo | feito
+  qty               Int               @default(0) // peças desta etapa
+  unitValue         Float             @default(0) // R$/peça = valor da mao de obra desta etapa
+  startedAt         DateTime? // bateu ponto: comecou
+  doneAt            DateTime? // bateu ponto: terminou
+  createdAt         DateTime          @default(now())
+
+  @@index([productionOrderId])
+  @@index([assigneeId, doneAt])
 }

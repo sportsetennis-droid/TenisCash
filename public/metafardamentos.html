@@ -141,6 +141,7 @@
       <button data-tab="estoque" onclick="tab('estoque')"><span class="ic">📦</span>Estoque</button>
       <button data-tab="crm" onclick="tab('crm')"><span class="ic">👥</span>CRM</button>
       <button data-tab="pedidos" onclick="tab('pedidos')"><span class="ic">🧾</span>Pedidos</button>
+      <button data-tab="producao" onclick="tab('producao')"><span class="ic">✂️</span>Produção</button>
       <button data-tab="ponto" onclick="tab('ponto')"><span class="ic">🕐</span>Ponto</button>
     </nav>
   </div>
@@ -190,13 +191,13 @@ function enterApp(){document.getElementById('auth').classList.add('hide');docume
 function val(id){return document.getElementById(id).value.trim()}
 
 /* ---------- NAV ---------- */
-const TITLES={home:'Início',estoque:'Estoque',crm:'CRM',pedidos:'Pedidos',ponto:'Ponto'};
-const FAB={estoque:1,crm:1,pedidos:1};
+const TITLES={home:'Início',estoque:'Estoque',crm:'CRM',pedidos:'Pedidos',producao:'Produção',ponto:'Ponto'};
+const FAB={estoque:1,crm:1,pedidos:1,producao:1};
 function tab(t){current=t;document.getElementById('top-title').textContent=TITLES[t]||'';
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   document.getElementById('fab').classList.toggle('hide',!FAB[t]);
-  ({home:renderHome,estoque:renderEstoque,crm:renderCRM,pedidos:renderPedidos,ponto:renderPonto}[t])();}
-function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); }
+  ({home:renderHome,estoque:renderEstoque,crm:renderCRM,pedidos:renderPedidos,producao:renderProducao,ponto:renderPonto}[t])();}
+function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); else if(current==='producao')formProduction(); }
 
 /* ---------- SHEET ---------- */
 function sheet(html){closeSheet();const ov=document.createElement('div');ov.className='ov';ov.id='ov';
@@ -518,12 +519,15 @@ async function renderPonto(){
   const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
   try{
     const t=await api('/ponto/today');
+    const earn=await api('/me/earnings').catch(()=>null);
     const kinds={in:'Entrada',break_in:'Saída almoço',break_out:'Volta almoço',out:'Saída'};
     const done=t.entries.map(e=>e.kind);
     const reg=t.entries.length?t.entries.map(e=>`<div class="card" style="padding:10px 13px"><div class="row"><div class="nm" style="font-size:14px">${kinds[e.kind]}</div><b>${hhmm(e.at)}</b></div></div>`).join(''):'<div class="empty">Nenhuma batida hoje.</div>';
     let mgr='';
     if(me.role==='admin'||me.role==='gerente'){mgr=`<button class="btn ghost" style="margin-top:12px" onclick="pontoBoard()">Ver quem bateu hoje (equipe)</button>`;}
+    const earnHtml=earn?`<div class="card" style="background:linear-gradient(135deg,var(--azul),var(--azul-d));color:#fff;border:none"><div class="row"><div><div class="mt" style="color:#c9cbef">Você ganha</div><b style="font-size:18px">${money(earn.mes.ganhoEstimado)}${earn.payType==='mensal'?' /mês':(earn.payType==='peca'?' (por peça)':' /mês + peça')}</b></div><div class="right"><div class="mt" style="color:#c9cbef">Produção no mês</div><b>${earn.mes.pecas} peças</b></div></div>${earn.payType!=='mensal'?`<div class="mt" style="color:#c9cbef;margin-top:6px">R$ ${(earn.pieceRate||0).toFixed(2)}/peça · ${earn.mes.etapas} etapa(s) feitas no mês</div>`:''}</div>`:'';
     v.innerHTML=`<h3 class="sec">Olá, ${H(me.name)} · ${dt(new Date())}</h3>
+    ${earnHtml}
     <div class="ponto-grid">
       <button class="pbtn" style="background:var(--ok)" onclick="punch('in')">Entrada<small>chegada</small></button>
       <button class="pbtn" style="background:var(--warn)" onclick="punch('break_in')">Saída<small>almoço</small></button>
@@ -566,9 +570,14 @@ function formEmployee(e){e=e||{};const ed=!!e.id;
   <label>${ed?'Novo PIN (deixe vazio p/ manter)':'PIN'}</label><input id="e-pin" class="fld" type="password" inputmode="numeric">
   <label>Função</label><select id="e-role" class="fld"><option value="funcionario" ${e.role==='funcionario'?'selected':''}>Funcionário</option><option value="gerente" ${e.role==='gerente'?'selected':''}>Gerente</option><option value="admin" ${e.role==='admin'?'selected':''}>Admin</option></select>
   <label>Telefone</label><input id="e-phone" class="fld" value="${H(e.phone||'')}">
+  <label>Como recebe (pra calcular custo × resultado)</label>
+  <select id="e-paytype" class="fld"><option value="mensal" ${(e.payType||'mensal')==='mensal'?'selected':''}>Salário fixo no mês</option><option value="peca" ${e.payType==='peca'?'selected':''}>Por peça (facção)</option><option value="misto" ${e.payType==='misto'?'selected':''}>Fixo + por peça</option></select>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Salário/mês (R$)</label><input id="e-salary" class="fld" type="number" step="0.01" value="${e.baseSalary||''}"></div>
+  <div style="flex:1"><label>R$ por peça</label><input id="e-rate" class="fld" type="number" step="0.01" value="${e.pieceRate||''}"></div></div>
   ${ed?`<label>Ativo</label><select id="e-active" class="fld"><option value="1" ${e.active?'selected':''}>Sim</option><option value="0" ${!e.active?'selected':''}>Não</option></select>`:''}
   <button class="btn" style="margin-top:14px" onclick="saveEmployee('${e.id||''}')">${ed?'Salvar':'Cadastrar'}</button>`);}
-async function saveEmployee(id){const b={name:val('e-name'),role:document.getElementById('e-role').value,phone:val('e-phone')};
+async function saveEmployee(id){const b={name:val('e-name'),role:document.getElementById('e-role').value,phone:val('e-phone'),
+    payType:document.getElementById('e-paytype').value,baseSalary:document.getElementById('e-salary').value,pieceRate:document.getElementById('e-rate').value};
   const pin=val('e-pin'); if(pin)b.pin=pin;
   try{ if(id){b.active=document.getElementById('e-active').value==='1';await api('/employees/'+id,{method:'PUT',body:JSON.stringify(b)});}
     else{b.username=val('e-user');if(!b.username||!pin){toast('Usuário e PIN obrigatórios');return;}await api('/employees',{method:'POST',body:JSON.stringify(b)});}
@@ -611,6 +620,68 @@ async function uploadCert(){
   reader.onload=async()=>{ try{ const b64=String(reader.result).split(',')[1]; const r=await api('/fiscal/cert',{method:'POST',body:JSON.stringify({certB64:b64,password:pass})}); toast(r.validated?('Certificado OK'+(r.validUntil?(' · vence '+new Date(r.validUntil).toLocaleDateString('pt-BR')):'')):'Certificado salvo'); manageFiscal(); }catch(e){toast(e.message);} };
   reader.readAsDataURL(f);
 }
+
+/* ---------- PRODUÇÃO (facção) ---------- */
+const STAGE_LABEL={modelagem:'Modelagem',corte:'Corte',costura:'Costura',estamparia:'Estamparia',embalagem:'Embalagem'};
+let prodStatus='', prodEmps=[];
+async function renderProducao(){
+  const v=document.getElementById('view');
+  const stk=[['','Todas'],['aberta','Aberta'],['producao','Produção'],['concluida','Concluída']];
+  v.innerHTML='<div class="chips">'+stk.map(s=>`<span class="chip ${prodStatus===s[0]?'on':''}" onclick="prodStatus='${s[0]}';renderProducao()">${s[1]}</span>`).join('')+'</div><div id="prod-body"><div class="empty">Carregando…</div></div>';
+  try{const list=await api('/production'+(prodStatus?('?status='+prodStatus):''));
+    document.getElementById('prod-body').innerHTML=list.length?list.map(o=>{
+      const st={aberta:'warn',producao:'',concluida:'ok',cancelada:'dng'}[o.status]||'gray';
+      const feitas=o.stages.filter(s=>s.status==='feito').length;
+      return `<div class="card" onclick="openProduction('${o.id}')"><div class="row"><div><div class="nm">#${o.number} · ${H(o.title)}</div>
+        <div class="mt">${o.qty} peças · ${feitas}/${o.stages.length} etapas · ${dt(o.createdAt)}</div></div>
+        <span class="pill ${st}">${H(o.status)}</span></div></div>`;}).join(''):'<div class="empty">Nenhuma OS. Toque no + para abrir uma produção.</div>';
+  }catch(e){document.getElementById('prod-body').innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
+async function formProduction(){
+  let custs=[];try{custs=await api('/customers');}catch(e){}
+  sheet(`<h2>Nova produção (OS)</h2>
+  <label>O que vai produzir</label><input id="pr-title" class="fld" placeholder="Ex: 50 camisas polo Empresa X">
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Qtd peças</label><input id="pr-qty" class="fld" type="number" value="0"></div>
+  <div style="flex:1"><label>Entrega</label><input id="pr-due" class="fld" type="date"></div></div>
+  <label>Cliente (opcional)</label><select id="pr-cust" class="fld"><option value="">—</option>${custs.map(c=>`<option value="${c.id}">${H(c.name)}</option>`).join('')}</select>
+  <label>Etapas da produção</label>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">${Object.keys(STAGE_LABEL).map(k=>`<label class="chip" style="cursor:pointer"><input type="checkbox" value="${k}" class="pr-st" ${['corte','costura','embalagem'].includes(k)?'checked':''} style="margin-right:6px;vertical-align:middle">${STAGE_LABEL[k]}</label>`).join('')}</div>
+  <label style="margin-top:12px">Custo de material/insumo (R$)</label><input id="pr-mat" class="fld" type="number" step="0.01" value="0">
+  <label>Observações</label><textarea id="pr-notes" class="fld" rows="2"></textarea>
+  <button class="btn" style="margin-top:14px" onclick="saveProduction()">Abrir OS</button>`);
+}
+async function saveProduction(){
+  const stages=[...document.querySelectorAll('.pr-st:checked')].map(c=>c.value);
+  const b={title:val('pr-title'),qty:document.getElementById('pr-qty').value,dueDate:document.getElementById('pr-due').value||null,customerId:document.getElementById('pr-cust').value||null,materialCost:document.getElementById('pr-mat').value,notes:val('pr-notes'),stages};
+  if(!b.title){toast('Diga o que vai produzir');return;}
+  try{const r=await api('/production',{method:'POST',body:JSON.stringify(b)});closeSheet();toast('OS #'+r.number+' aberta');renderProducao();}catch(e){toast(e.message);}
+}
+async function openProduction(id){
+  let o;try{o=await api('/production/'+id);}catch(e){toast(e.message);return;}
+  try{if(!prodEmps.length)prodEmps=await api('/employees');}catch(e){}
+  const empOpts=(sel)=>'<option value="">— quem faz —</option>'+prodEmps.filter(e=>e.active).map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${H(e.name)}</option>`).join('');
+  const stages=o.stages.map(s=>{
+    const stc={pendente:'gray',fazendo:'warn',feito:'ok'}[s.status]||'gray';
+    return `<div class="card"><div class="row"><div class="nm" style="font-size:14px">${STAGE_LABEL[s.stage]||s.stage}</div><span class="pill ${stc}">${s.status}</span></div>
+      <select class="fld" style="margin-top:8px" onchange="stageSet('${s.id}','${id}','assigneeId',this.value)">${empOpts(s.assigneeId)}</select>
+      <div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1"><label style="margin:0 0 3px">Peças</label><input class="fld" type="number" value="${s.qty||0}" onchange="stageSet('${s.id}','${id}','qty',this.value)" style="padding:8px"></div>
+      <div style="flex:1"><label style="margin:0 0 3px">R$/peça</label><input class="fld" type="number" step="0.01" value="${s.unitValue||0}" onchange="stageSet('${s.id}','${id}','unitValue',this.value)" style="padding:8px"></div></div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        ${s.status!=='feito'?`<button class="btn sm" style="flex:1;background:var(--warn)" onclick="stageAction('${s.id}','${id}','start')">${s.status==='fazendo'?'⏱ em andamento':'▶ Iniciar'}</button>
+        <button class="btn sm" style="flex:1;background:var(--ok)" onclick="stageAction('${s.id}','${id}','done')">✓ Concluir</button>`:`<div class="mt" style="flex:1">✅ Feito ${s.doneAt?dt(s.doneAt):''}${s.assigneeName?' · '+H(s.assigneeName):''}</div>`}
+      </div></div>`;}).join('');
+  sheet(`<h2>OS #${o.number}</h2>
+  <div class="card"><div class="nm">${H(o.title)}</div><div class="mt">${o.qty} peças · aberta ${dt(o.createdAt)}</div>
+  <div class="row" style="margin-top:6px"><div class="mt">Mão de obra (etapas)</div><b>${money(o.maoDeObra)}</b></div>
+  <div class="row"><div class="mt">Material</div><span>${money(o.materialCost)}</span></div>
+  <div class="row"><div class="mt">Custo total</div><b style="color:var(--laranja-d)">${money((o.maoDeObra||0)+(o.materialCost||0))}</b></div></div>
+  <h3 class="sec">Etapas — responsável · ponto · valor</h3>${stages||'<div class="empty">Sem etapas.</div>'}
+  <h3 class="sec">Status da OS</h3>
+  <div class="chips">${['aberta','producao','concluida','cancelada'].map(s=>`<span class="chip ${o.status===s?'on':''}" onclick="prodStatusSet('${o.id}','${s}')">${s}</span>`).join('')}</div>`);
+}
+async function stageSet(stageId,osId,field,value){try{await api('/production/stages/'+stageId,{method:'PUT',body:JSON.stringify({[field]:value})});toast('Salvo');}catch(e){toast(e.message);}}
+async function stageAction(stageId,osId,action){try{await api('/production/stages/'+stageId,{method:'PUT',body:JSON.stringify({action})});toast(action==='start'?'Etapa iniciada':'Etapa concluída');openProduction(osId);}catch(e){toast(e.message);}}
+async function prodStatusSet(id,status){try{await api('/production/'+id,{method:'PUT',body:JSON.stringify({status})});closeSheet();toast('Status: '+status);renderProducao();}catch(e){toast(e.message);}}
 
 /* ---------- FINANCEIRO ---------- */
 async function manageFinance(){
@@ -663,13 +734,15 @@ async function loadReports(){
   const qs='?from='+document.getElementById('r-from').value+'&to='+document.getElementById('r-to').value;
   const body=document.getElementById('rep-body');body.innerHTML='<div class="empty">Carregando…</div>';
   try{
-    const [s,tp,tc]=await Promise.all([api('/reports/summary'+qs),api('/reports/top-products'+qs),api('/reports/top-customers'+qs)]);
+    const [s,tp,tc,pe]=await Promise.all([api('/reports/summary'+qs),api('/reports/top-products'+qs),api('/reports/top-customers'+qs),api('/reports/people'+qs).catch(()=>({pessoas:[]}))]);
     body.innerHTML=`<h3 class="sec" style="margin-top:14px">Resumo do período</h3>
     <div class="grid">${kpiMoney(s.faturamento,'Faturamento')}${kpi(s.nPedidos,'Pedidos')}${kpiMoney(s.ticket,'Ticket médio')}${kpiMoney(s.caixa.saldo,'Caixa (saldo)')}</div>
     <h3 class="sec" style="margin-top:16px">Mais vendidos</h3>
     ${tp.length?tp.map(p=>`<div class="card" style="padding:9px 11px"><div class="row"><div class="nm" style="font-size:14px">${H(p.name)}</div><div class="right"><b>${money(p.total)}</b><div class="mt">${p.qty} un</div></div></div></div>`).join(''):'<div class="empty">Sem vendas no período.</div>'}
     <h3 class="sec" style="margin-top:16px">Maiores clientes</h3>
-    ${tc.length?tc.map(c=>`<div class="card" style="padding:9px 11px"><div class="row"><div class="nm" style="font-size:14px">${H(c.name)}</div><div class="right"><b>${money(c.total)}</b><div class="mt">${c.orders} ped.</div></div></div></div>`).join(''):'<div class="empty">Sem clientes no período.</div>'}`;
+    ${tc.length?tc.map(c=>`<div class="card" style="padding:9px 11px"><div class="row"><div class="nm" style="font-size:14px">${H(c.name)}</div><div class="right"><b>${money(c.total)}</b><div class="mt">${c.orders} ped.</div></div></div></div>`).join(''):'<div class="empty">Sem clientes no período.</div>'}
+    <h3 class="sec" style="margin-top:16px">Resultado por pessoa (produção)</h3>
+    ${(pe.pessoas||[]).length?pe.pessoas.map(p=>`<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(p.name)}</div><div class="mt">${p.pecas} peças · ${p.etapas} etapas · ${p.payType}</div></div><div class="right"><b style="color:${p.resultado>=0?'var(--ok)':'var(--danger)'}">${money(p.resultado)}</b><div class="mt">produziu ${money(p.producao)} − custa ${money(p.custo)}</div></div></div></div>`).join(''):'<div class="empty">Sem produção no período. (preencha salário/R$ por peça de cada pessoa + valor das etapas)</div>'}`;
   }catch(e){body.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
 }
 

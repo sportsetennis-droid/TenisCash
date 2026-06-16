@@ -126,14 +126,14 @@ router.put('/company', mfAuth, requireRole('admin', 'gerente'), async (req, res)
 router.get('/employees', mfAuth, async (_req, res) => {
   const list = await prisma.mfEmployee.findMany({
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, username: true, role: true, phone: true, cpf: true, active: true, hireDate: true, baseSalary: true },
+    select: { id: true, name: true, username: true, role: true, phone: true, cpf: true, active: true, hireDate: true, baseSalary: true, payType: true, pieceRate: true },
   });
   res.json(list);
 });
 
 router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
   try {
-    const { name, username, pin, role, phone, cpf, baseSalary, hireDate } = req.body || {};
+    const { name, username, pin, role, phone, cpf, baseSalary, hireDate, payType, pieceRate } = req.body || {};
     if (!name || !username || !pin) return res.status(400).json({ error: 'Nome, usuario e PIN obrigatorios' });
     const emp = await prisma.mfEmployee.create({
       data: {
@@ -144,6 +144,8 @@ router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, r
         phone: phone || null,
         cpf: cpf || null,
         baseSalary: baseSalary ? Number(baseSalary) : null,
+        payType: ['mensal', 'peca', 'misto'].includes(payType) ? payType : 'mensal',
+        pieceRate: pieceRate ? Number(pieceRate) : null,
         hireDate: hireDate ? new Date(hireDate) : null,
       },
     });
@@ -156,13 +158,15 @@ router.post('/employees', mfAuth, requireRole('admin', 'gerente'), async (req, r
 
 router.put('/employees/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
   try {
-    const { name, role, phone, cpf, baseSalary, hireDate, active, pin } = req.body || {};
+    const { name, role, phone, cpf, baseSalary, hireDate, active, pin, payType, pieceRate } = req.body || {};
     const data = {};
     if (name !== undefined) data.name = name;
     if (role && ['admin', 'gerente', 'funcionario'].includes(role)) data.role = role;
     if (phone !== undefined) data.phone = phone || null;
     if (cpf !== undefined) data.cpf = cpf || null;
     if (baseSalary !== undefined) data.baseSalary = baseSalary ? Number(baseSalary) : null;
+    if (payType !== undefined && ['mensal', 'peca', 'misto'].includes(payType)) data.payType = payType;
+    if (pieceRate !== undefined) data.pieceRate = pieceRate ? Number(pieceRate) : null;
     if (hireDate !== undefined) data.hireDate = hireDate ? new Date(hireDate) : null;
     if (active !== undefined) data.active = !!active;
     if (pin) data.pinHash = bcrypt.hashSync(String(pin), 8);
@@ -983,6 +987,142 @@ router.post('/fiscal/cancel/:orderId', mfAuth, requireRole('admin', 'gerente'), 
     console.error('[mf/fiscal/cancel]', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// =====================================================================
+// PRODUCAO (facao) — OS + etapas modelagem/corte/costura/estamparia/embalagem.
+// Cada etapa: responsavel + ponto (start/done) + valor de mao de obra (R$/peca).
+// =====================================================================
+const PROD_STAGES = ['modelagem', 'corte', 'costura', 'estamparia', 'embalagem'];
+
+router.get('/production', mfAuth, async (req, res) => {
+  const where = {};
+  if (req.query.status) where.status = String(req.query.status);
+  const list = await prisma.mfProductionOrder.findMany({
+    where, orderBy: { createdAt: 'desc' }, take: 200,
+    include: { stages: { select: { stage: true, status: true, assigneeId: true } } },
+  });
+  res.json(list);
+});
+
+router.get('/production/:id', mfAuth, async (req, res) => {
+  const o = await prisma.mfProductionOrder.findUnique({ where: { id: req.params.id }, include: { stages: { orderBy: { seq: 'asc' } } } });
+  if (!o) return res.status(404).json({ error: 'OS nao encontrada' });
+  const ids = [...new Set(o.stages.map((s) => s.assigneeId).filter(Boolean))];
+  const emps = ids.length ? await prisma.mfEmployee.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+  const nameById = Object.fromEntries(emps.map((e) => [e.id, e.name]));
+  const stages = o.stages.map((s) => ({ ...s, assigneeName: s.assigneeId ? (nameById[s.assigneeId] || '?') : null }));
+  const maoDeObra = o.stages.reduce((acc, s) => acc + (s.qty || 0) * (s.unitValue || 0), 0);
+  res.json({ ...o, stages, maoDeObra });
+});
+
+router.post('/production', mfAuth, async (req, res) => {
+  try {
+    const { title, productId, orderId, customerId, qty, dueDate, materialCost, notes, stages } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'Informe o que vai produzir' });
+    const last = await prisma.mfProductionOrder.findFirst({ orderBy: { number: 'desc' }, select: { number: true } });
+    const number = (last?.number || 0) + 1;
+    const chosen = Array.isArray(stages) ? stages.filter((x) => PROD_STAGES.includes(x)) : [];
+    const q = parseInt(qty) || 0;
+    const o = await prisma.mfProductionOrder.create({
+      data: {
+        number, title, productId: productId || null, orderId: orderId || null, customerId: customerId || null,
+        qty: q, dueDate: dueDate ? new Date(dueDate) : null, materialCost: Number(materialCost) || 0,
+        notes: notes || null, employeeId: req.emp.id,
+        stages: { create: chosen.map((st, i) => ({ stage: st, seq: i, qty: q })) },
+      },
+    });
+    res.json({ id: o.id, number: o.number });
+  } catch (err) {
+    console.error('[mf/production]', err.message);
+    res.status(500).json({ error: 'Erro ao criar OS' });
+  }
+});
+
+router.put('/production/:id', mfAuth, async (req, res) => {
+  const { title, status, qty, dueDate, materialCost, notes } = req.body || {};
+  const data = {};
+  if (title !== undefined) data.title = title;
+  if (status && ['aberta', 'producao', 'concluida', 'cancelada'].includes(status)) data.status = status;
+  if (qty !== undefined) data.qty = parseInt(qty) || 0;
+  if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
+  if (materialCost !== undefined) data.materialCost = Number(materialCost) || 0;
+  if (notes !== undefined) data.notes = notes || null;
+  await prisma.mfProductionOrder.update({ where: { id: req.params.id }, data });
+  res.json({ ok: true });
+});
+
+router.post('/production/:id/stages', mfAuth, async (req, res) => {
+  const { stage, qty } = req.body || {};
+  if (!PROD_STAGES.includes(stage)) return res.status(400).json({ error: 'Etapa invalida' });
+  const n = await prisma.mfProductionStage.count({ where: { productionOrderId: req.params.id } });
+  await prisma.mfProductionStage.create({ data: { productionOrderId: req.params.id, stage, seq: n, qty: parseInt(qty) || 0 } });
+  res.json({ ok: true });
+});
+
+// Edita etapa: responsavel, qty, valor; e o PONTO da etapa (action start/done)
+router.put('/production/stages/:id', mfAuth, async (req, res) => {
+  try {
+    const { assigneeId, qty, unitValue, status, action } = req.body || {};
+    const data = {};
+    if (assigneeId !== undefined) data.assigneeId = assigneeId || null;
+    if (qty !== undefined) data.qty = parseInt(qty) || 0;
+    if (unitValue !== undefined) data.unitValue = Number(unitValue) || 0;
+    if (action === 'start') { data.status = 'fazendo'; data.startedAt = new Date(); if (assigneeId === undefined) data.assigneeId = req.emp.id; }
+    else if (action === 'done') { data.status = 'feito'; data.doneAt = new Date(); }
+    else if (status && ['pendente', 'fazendo', 'feito'].includes(status)) data.status = status;
+    const st = await prisma.mfProductionStage.update({ where: { id: req.params.id }, data });
+    const all = await prisma.mfProductionStage.findMany({ where: { productionOrderId: st.productionOrderId }, select: { status: true } });
+    if (all.length && all.every((x) => x.status === 'feito')) await prisma.mfProductionOrder.update({ where: { id: st.productionOrderId }, data: { status: 'concluida' } });
+    else if (all.some((x) => x.status !== 'pendente')) await prisma.mfProductionOrder.update({ where: { id: st.productionOrderId }, data: { status: 'producao' } }).catch(() => {});
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[mf/stage]', err.message);
+    res.status(500).json({ error: 'Erro ao atualizar etapa' });
+  }
+});
+
+router.delete('/production/stages/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  await prisma.mfProductionStage.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// O que a PESSOA LOGADA ganha + producao dela no mes (cada um ve o seu)
+router.get('/me/earnings', mfAuth, async (req, res) => {
+  const now = new Date();
+  const mStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const emp = req.emp;
+  const stages = await prisma.mfProductionStage.findMany({ where: { assigneeId: emp.id, status: 'feito', doneAt: { gte: mStart } }, select: { qty: true, unitValue: true } });
+  const pecas = stages.reduce((s, x) => s + (x.qty || 0), 0);
+  const valorProducao = stages.reduce((s, x) => s + (x.qty || 0) * (x.unitValue || 0), 0);
+  const porPeca = (emp.pieceRate || 0) * pecas;
+  let ganho = emp.baseSalary || 0;
+  if (emp.payType === 'peca') ganho = porPeca;
+  else if (emp.payType === 'misto') ganho = (emp.baseSalary || 0) + porPeca;
+  res.json({ payType: emp.payType || 'mensal', baseSalary: emp.baseSalary || 0, pieceRate: emp.pieceRate || 0, mes: { pecas, etapas: stages.length, valorProducao, porPeca, ganhoEstimado: ganho } });
+});
+
+// RESULTADO POR PESSOA (admin/gerente): custo x producao x resultado no periodo
+router.get('/reports/people', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  const { from, to } = periodRange(req.query || {});
+  const days = Math.max(1, Math.round((to - from) / 86400000) + 1);
+  const emps = await prisma.mfEmployee.findMany({ where: { active: true }, select: { id: true, name: true, payType: true, baseSalary: true, pieceRate: true } });
+  const stages = await prisma.mfProductionStage.findMany({ where: { status: 'feito', doneAt: { gte: from, lte: to }, assigneeId: { not: null } }, select: { assigneeId: true, qty: true, unitValue: true } });
+  const byEmp = {};
+  for (const s of stages) {
+    const k = s.assigneeId;
+    if (!byEmp[k]) byEmp[k] = { pecas: 0, etapas: 0, valor: 0 };
+    byEmp[k].pecas += s.qty || 0; byEmp[k].etapas += 1; byEmp[k].valor += (s.qty || 0) * (s.unitValue || 0);
+  }
+  const round = (n) => Math.round(n * 100) / 100;
+  const rows = emps.map((e) => {
+    const p = byEmp[e.id] || { pecas: 0, etapas: 0, valor: 0 };
+    const salarioPeriodo = (e.payType === 'peca') ? 0 : round((e.baseSalary || 0) * days / 30);
+    const custoPeca = (e.payType === 'mensal') ? 0 : (e.pieceRate || 0) * p.pecas;
+    const custo = salarioPeriodo + custoPeca;
+    return { id: e.id, name: e.name, payType: e.payType || 'mensal', pecas: p.pecas, etapas: p.etapas, producao: round(p.valor), custo: round(custo), resultado: round(p.valor - custo) };
+  }).sort((a, b) => b.resultado - a.resultado);
+  res.json({ from, to, dias: days, pessoas: rows });
 });
 
 module.exports = router;
