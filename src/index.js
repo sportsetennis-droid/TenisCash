@@ -278,6 +278,44 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'TenisCash API', version: '1.0.0' });
 });
 
+async function proxyContabilidade(req, res) {
+  const baseUrl = (process.env.CONTABILIDADE_URL || '').replace(/\/$/, '');
+
+  if (!baseUrl) {
+    return res.status(503).send('Modulo contabil ainda nao configurado.');
+  }
+
+  try {
+    const targetUrl = new URL(req.originalUrl, baseUrl);
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers['content-length'];
+
+    const hasBody = !['GET', 'HEAD'].includes(req.method);
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      redirect: 'manual',
+      body: hasBody ? JSON.stringify(req.body ?? {}) : undefined,
+    });
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+        res.setHeader(key, value);
+      }
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return res.send(buffer);
+  } catch (e) {
+    console.error('[contabilidade] proxy falhou:', e.message);
+    return res.status(502).send('Modulo contabil indisponivel.');
+  }
+}
+
+app.use('/contabilidade', proxyContabilidade);
+
 // Servir frontend (produção)
 const path = require('path');
 app.use(express.static(path.join(__dirname, '../public'), {
