@@ -225,10 +225,27 @@ function pickEditorialScene(name, brand) {
   return 'modern sports lifestyle scene, urban environment, warm sunset lighting';
 }
 
+/**
+ * Gera MÚSICA instrumental via fal (stable-audio) a partir de um prompt de mood.
+ * @param {object} opts { prompt, seconds }
+ */
+async function generateMusic({ prompt, seconds = 12 }) {
+  const fal = await getFal();
+  const model = 'fal-ai/stable-audio';
+  const result = await withRetry(
+    () => fal.subscribe(model, { input: { prompt, seconds_total: Math.max(8, Math.min(40, seconds)), steps: 100 }, logs: false }),
+    `music ${String(prompt).slice(0, 40)}`
+  );
+  const url = result?.data?.audio_file?.url || result?.data?.audio?.url || result?.data?.url;
+  if (!url) throw new Error('stable-audio sem url');
+  return { outputUrl: url, model };
+}
+
 module.exports = {
   generateEditorialPhoto,
   generateWornScene,
   generateReelVideo,
   removeBackground,
+  generateMusic,
   COSTS,
 };

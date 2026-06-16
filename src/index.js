@@ -160,6 +160,12 @@ app.post('/api/_falgen', async (req, res) => {
       });
       return res.json({ ok: true, mode: 'concept', outputUrl: r.outputUrl, ...keys });
     }
+    if (req.query.op === 'music') {
+      // TRILHA: gera musica instrumental (fal stable-audio) por mood. Nao precisa de produto.
+      const fal = require('./services/falAi');
+      const r = await fal.generateMusic({ prompt: req.query.prompt || 'cinematic instrumental', seconds: parseInt(req.query.sec || '12', 10) });
+      return res.json({ ok: true, op: 'music', outputUrl: r.outputUrl, ...keys });
+    }
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
     if (req.query.op === 'worn') {
       // EDITOR FIEL (nano-banana/Gemini): PESSOA usando o produto REAL — fiel + tamanho certo
