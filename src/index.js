@@ -1308,4 +1308,14 @@ app.listen(PORT, '0.0.0.0', () => {
       console.error('[boot] falha ao iniciar fiscalDraftJob:', e.message);
     }
   }
+
+  // Robô do NCM: 1x/dia preenche o NCM faltante/inválido pela NFe de entrada
+  if (process.env.DISABLE_NCM_ROBOT !== '1') {
+    try {
+      const { startNcmRobot } = require('./services/ncmRobot');
+      startNcmRobot();
+    } catch (e) {
+      console.error('[boot] falha ao iniciar ncmRobot:', e.message);
+    }
+  }
 });

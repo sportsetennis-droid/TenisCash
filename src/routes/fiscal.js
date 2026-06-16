@@ -1376,5 +1376,27 @@ router.post('/documents/:id/correction', async (req, res) => {
 // DANFE legado (Brasil NFe) — removido. A rota /documents/:id/danfe está
 // disponível antes do adminMiddleware acima usando node-sped-pdf local.
 
+// ============================================================
+// ROBÔ DO NCM (admin) — verifica o catálogo e preenche o NCM
+// faltante/inválido pela NFe de entrada. Roda sozinho 1x/dia;
+// aqui dá pra rodar na hora e ver o último resultado.
+// ============================================================
+const ncmRobot = require('../services/ncmRobot');
+
+router.get('/ncm-robot/status', (_req, res) => {
+  res.json({ ok: true, ultimoRelatorio: ncmRobot.lastReport() });
+});
+
+router.post('/ncm-robot/run', async (req, res) => {
+  try {
+    const apply = req.body?.apply !== false; // default aplica
+    const rep = await ncmRobot.runNcmRobot({ apply });
+    res.json({ ok: true, ...rep });
+  } catch (err) {
+    console.error('[ncm-robot/run]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 module.exports.emitNfceFromSaleHandler = emitNfceFromSaleHandler;
