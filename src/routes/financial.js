@@ -214,4 +214,144 @@ router.get('/dashboard', async (_req, res) => {
   }
 });
 
+// =====================================================================
+// DESPESAS OPERACIONAIS (folha + fixas) + RAIO-X DO DIA (lucro/prejuízo)
+// Valores são SEMPRE cadastrados pelo dono — nunca inventados.
+// =====================================================================
+
+// Lista despesas (ativas; ?all=1 inclui inativas) + lojas pra o select
+router.get('/expenses', async (req, res) => {
+  try {
+    const where = req.query.all === '1' ? {} : { active: true };
+    const [expenses, stores] = await Promise.all([
+      prisma.operatingExpense.findMany({ where, orderBy: [{ category: 'asc' }, { description: 'asc' }] }),
+      prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+    ]);
+    const sm = Object.fromEntries(stores.map((s) => [s.id, s]));
+    res.json({
+      expenses: expenses.map((e) => ({ ...e, storeName: e.storeId ? (sm[e.storeId] && sm[e.storeId].name) || null : null })),
+      stores,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/expenses', async (req, res) => {
+  try {
+    const { category, description, amount, storeId, collaborator } = req.body || {};
+    if (!category || !description || amount == null) return res.status(400).json({ error: 'Informe categoria, descrição e valor mensal' });
+    const amt = Number(amount);
+    if (!(amt >= 0)) return res.status(400).json({ error: 'Valor mensal inválido' });
+    const expense = await prisma.operatingExpense.create({
+      data: {
+        category: String(category), description: String(description).trim(), amount: amt,
+        storeId: storeId || null, collaborator: collaborator ? String(collaborator).trim() : null,
+      },
+    });
+    res.json({ ok: true, expense });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/expenses/:id', async (req, res) => {
+  try {
+    const { category, description, amount, storeId, collaborator, active } = req.body || {};
+    const data = {};
+    if (category != null) data.category = String(category);
+    if (description != null) data.description = String(description).trim();
+    if (amount != null) data.amount = Number(amount);
+    if (storeId !== undefined) data.storeId = storeId || null;
+    if (collaborator !== undefined) data.collaborator = collaborator ? String(collaborator).trim() : null;
+    if (active != null) data.active = !!active;
+    const expense = await prisma.operatingExpense.update({ where: { id: req.params.id }, data });
+    res.json({ ok: true, expense });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/expenses/:id', async (req, res) => {
+  try {
+    await prisma.operatingExpense.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// RAIO-X DO DIA: receita − CMV − folha/dia − despesas fixas/dia = lucro/prejuízo (por loja + total)
+router.get('/daily-xray', async (req, res) => {
+  try {
+    const q = String(req.query.date || '').trim();
+    const base = /^\d{4}-\d{2}-\d{2}$/.test(q) ? new Date(q + 'T12:00:00Z') : new Date();
+    const fort = new Date(base.getTime() - 3 * 3600 * 1000); // João Pessoa = UTC-3
+    const y = fort.getUTCFullYear(), m = fort.getUTCMonth(), d = fort.getUTCDate();
+    const dayStart = new Date(Date.UTC(y, m, d, 3, 0, 0));       // 00:00 Fortaleza em UTC
+    const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
+    const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+
+    const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } });
+
+    const sales = await prisma.sale.findMany({
+      where: { createdAt: { gte: dayStart, lt: dayEnd }, status: { not: 'canceled' } },
+      select: { id: true, storeId: true, totalAmount: true },
+    });
+    const saleStore = {}; sales.forEach((s) => { saleStore[s.id] = s.storeId || '__none__'; });
+
+    let items = [];
+    if (sales.length) {
+      items = await prisma.saleItem.findMany({
+        where: { saleId: { in: sales.map((s) => s.id) } },
+        select: { saleId: true, quantity: true, totalPrice: true, product: { select: { costPrice: true } } },
+      });
+    }
+
+    const per = {};
+    const bucket = (sid) => (per[sid] = per[sid] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0 });
+    sales.forEach((s) => { bucket(s.storeId || '__none__').revenue += s.totalAmount || 0; });
+    items.forEach((it) => {
+      const b = bucket(saleStore[it.saleId] || '__none__');
+      b.itemsValue += it.totalPrice || 0;
+      const cost = it.product && it.product.costPrice;
+      if (cost && cost > 0) { b.cogs += cost * (it.quantity || 1); b.cogsKnownValue += it.totalPrice || 0; }
+    });
+
+    const expenses = await prisma.operatingExpense.findMany({ where: { active: true } });
+    const expStore = {}; let cwFolha = 0, cwFixas = 0;
+    const perDay = (a) => (a || 0) / daysInMonth;
+    expenses.forEach((e) => {
+      const dc = perDay(e.amount); const folha = e.category === 'folha';
+      if (e.storeId) { const b = (expStore[e.storeId] = expStore[e.storeId] || { folha: 0, fixas: 0 }); if (folha) b.folha += dc; else b.fixas += dc; }
+      else { if (folha) cwFolha += dc; else cwFixas += dc; }
+    });
+
+    const storesOut = stores.map((s) => {
+      const b = per[s.id] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0 };
+      const ex = expStore[s.id] || { folha: 0, fixas: 0 };
+      return {
+        storeId: s.id, code: s.code, name: s.name,
+        revenue: b.revenue, cogs: b.cogs,
+        cogsCoverage: b.itemsValue > 0 ? b.cogsKnownValue / b.itemsValue : null,
+        laborDay: ex.folha, fixedDay: ex.fixas,
+        result: b.revenue - b.cogs - ex.folha - ex.fixas,
+      };
+    });
+    const none = per['__none__'];
+    if (none && none.revenue > 0) {
+      storesOut.push({ storeId: null, code: '—', name: 'Sem loja definida', revenue: none.revenue, cogs: none.cogs, cogsCoverage: none.itemsValue > 0 ? none.cogsKnownValue / none.itemsValue : null, laborDay: 0, fixedDay: 0, result: none.revenue - none.cogs });
+    }
+
+    const sum = (f) => Object.values(per).reduce((a, b) => a + f(b), 0);
+    const tRevenue = sum((b) => b.revenue), tCogs = sum((b) => b.cogs), tItems = sum((b) => b.itemsValue), tKnown = sum((b) => b.cogsKnownValue);
+    const tLabor = Object.values(expStore).reduce((a, b) => a + b.folha, 0) + cwFolha;
+    const tFixed = Object.values(expStore).reduce((a, b) => a + b.fixas, 0) + cwFixas;
+
+    res.json({
+      date: `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      daysInMonth, salesCount: sales.length,
+      company: {
+        revenue: tRevenue, cogs: tCogs, cogsCoverage: tItems > 0 ? tKnown / tItems : null,
+        laborDay: tLabor, fixedDay: tFixed, companyWideLaborDay: cwFolha, companyWideFixedDay: cwFixas,
+        result: tRevenue - tCogs - tLabor - tFixed,
+      },
+      stores: storesOut,
+      hasExpenses: expenses.length > 0,
+    });
+  } catch (err) { console.error('[financial/daily-xray]', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

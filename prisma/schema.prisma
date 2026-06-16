@@ -4433,6 +4433,26 @@ model WhatsappMessage {
   @@index([instance, chatJid, ts], map: "WhatsappMessage_inst_chat_ts_idx")
 }
 
+// Financeiro / Raio-X do dia — despesas operacionais RECORRENTES (mensais):
+// folha (1 entrada por colaborador) + fixas (aluguel/energia/água/internet/...).
+// O Raio-X divide o amount MENSAL pelos dias do mês pra achar o custo do DIA.
+// storeId null = empresa toda (entra só no total da empresa). Os valores são
+// SEMPRE cadastrados pelo dono — nunca inventados.
+model OperatingExpense {
+  id           String   @id @default(cuid())
+  category     String // folha | aluguel | energia | agua | internet | software | imposto | marketing | manutencao | outros
+  description  String // ex: "Salário João Silva" ou "Aluguel loja Bessa"
+  amount       Float // valor MENSAL (R$)
+  storeId      String? // FK lógica → Store.id; null = empresa toda
+  collaborator String? // nome do colaborador (quando category = folha)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([active], map: "OperatingExpense_active_idx")
+  @@index([storeId], map: "OperatingExpense_store_idx")
+}
+
 
 // ============================================================
 // PACOTE MF — grade (variantes), pagamento e financeiro (2026-06-16)

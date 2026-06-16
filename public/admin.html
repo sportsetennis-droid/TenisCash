@@ -266,6 +266,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('competitivo',this)">📊 Competitivo</button>
     <button class="tab" onclick="switchTab('whatsapp',this)">📱 WhatsApp</button>
+    <button class="tab" onclick="switchTab('financeiro',this)">💰 Financeiro</button>
     <button class="tab" onclick="switchTab('partners',this)">Creation</button>
     <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
     <button class="tab" onclick="switchTab('labels',this)">Etiquetas</button>
@@ -285,7 +286,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('inventory',this)">Estoque</button>
     <button class="tab" onclick="switchTab('images',this)">Imagens</button>
     <button class="tab" onclick="switchTab('markup',this)">Markup &amp; Preços</button>
-    <button class="tab" onclick="switchTab('whatsapp',this)">WhatsApp</button>
+    <button class="tab" onclick="switchTab('wacoex',this)">WhatsApp Cloud</button>
     <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
     <button class="tab" onclick="switchTab('marketing',this)">🎨 Marketing IA</button>
     <button class="tab" onclick="switchTab('infoproducts',this)">🎓 Infoprodutos</button>
@@ -2202,6 +2203,31 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   </div>
 </div>
 
+<div class="section" id="tab-financeiro" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;">
+    <div>
+      <h2 style="margin:0;">💰 Financeiro — Raio-X do dia</h2>
+      <p style="color:#666;margin:2px 0 0;font-size:12px;">A empresa lucrou ou levou fumo hoje? Vendas − custo dos produtos − folha − despesas fixas.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="date" id="fin-date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;">
+      <button onclick="loadFinanceiro()" style="background:#E5571E;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
+    </div>
+  </div>
+  <div id="fin-xray"><div style="color:#999;padding:10px;">Carregando…</div></div>
+
+  <h3 style="margin:22px 0 6px;">Custos cadastrados (folha + despesas fixas)</h3>
+  <p style="color:#666;font-size:12px;margin:0 0 10px;">Cadastre UMA vez o custo <b>mensal</b> de cada item. O sistema divide pelos dias do mês pra achar o custo do dia.</p>
+  <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <label style="font-size:11px;font-weight:700;color:#555;">Tipo<br><select id="fin-cat" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:170px;"></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:180px;">Descrição<br><input id="fin-desc" placeholder="ex: Salário João / Aluguel Bessa" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Valor mensal (R$)<br><input id="fin-amt" type="number" step="0.01" min="0" placeholder="0,00" style="width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="fin-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Empresa toda</option></select></label>
+    <button onclick="finAddExpense()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Adicionar</button>
+  </div>
+  <div id="fin-expenses"></div>
+</div>
+
 <div class="section" id="tab-competitivo" style="display:none">
   <h2 style="margin:0 0 4px;">📊 Monitoramento Competitivo</h2>
   <p style="color:#8e8e93;font-size:13px;margin:0 0 14px;line-height:1.5;max-width:760px;">Nossos tênis com mais estoque <strong>bipado</strong> × preço e disponibilidade nos concorrentes (Centauro, Netshoes, Amazon, Nike, FutFanatics, Converse, Adidas, Puma) + <strong>nosso giro real</strong>. Pra atacar: somos mais baratos → anuncia forte; estamos caros/encalhados → revisa preço.</p>
@@ -2238,7 +2264,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <!-- WHATSAPP COEXISTENCE — Embedded Signup para vincular numero do app movel ao Cloud API -->
-<div class="section" id="tab-whatsapp" style="display:none">
+<div class="section" id="tab-wacoex" style="display:none">
   <div class="section-head">
     <span class="section-title">WhatsApp Cloud API + Coexistence</span>
     <button type="button" class="refresh-btn" id="wa-coex-refresh" onclick="waCoexLoadStatus()">↻</button>
@@ -13311,6 +13337,104 @@ function waToggleGroups(cb){ waState.showGroups = cb.checked; loadWaChats(); }
     if (el) el.style.display = name === 'whatsapp' ? 'block' : 'none';
     if (waTimer) { clearInterval(waTimer); waTimer = null; }
     if (name === 'whatsapp') { loadWhatsappMonitor(); waTimer = setInterval(function(){ loadWhatsappMonitor(); if(waState.jid) loadWaThread(); }, 20000); }
+  };
+})();
+
+// wrapper da aba WhatsApp Cloud (Coexistence) — renomeada de 'whatsapp' p/ 'wacoex' (id colidia com o monitor)
+(function(){
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-wacoex');
+    if (el) el.style.display = name === 'wacoex' ? 'block' : 'none';
+    if (name === 'wacoex' && typeof waCoexLoadStatus === 'function') { try { waCoexLoadStatus(); } catch(e){} }
+  };
+})();
+
+// ===== Financeiro — Raio-X do dia (lucro/prejuízo) =====
+function finHeaders(){ return { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token')||''), 'Content-Type':'application/json' }; }
+function finBRL(v){ return 'R$ ' + (Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function finEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+const FIN_CATS = [['folha','👥 Folha (colaborador)'],['aluguel','🏠 Aluguel'],['energia','⚡ Energia'],['agua','💧 Água'],['internet','🌐 Internet/telefone'],['software','💻 Software/sistema'],['imposto','🧾 Impostos/taxas'],['marketing','📣 Marketing/anúncios'],['manutencao','🔧 Manutenção'],['outros','📦 Outros']];
+
+async function loadFinanceiro(){
+  const dateEl = document.getElementById('fin-date');
+  if(dateEl && !dateEl.value){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); dateEl.value = f.toISOString().slice(0,10); }
+  const catSel = document.getElementById('fin-cat');
+  if(catSel && !catSel.options.length) catSel.innerHTML = FIN_CATS.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
+  await Promise.all([finLoadXray(), finLoadExpenses()]);
+}
+
+async function finLoadXray(){
+  const box = document.getElementById('fin-xray'); if(!box) return;
+  box.innerHTML = '<div style="color:#999;padding:10px;">Carregando…</div>';
+  try {
+    const r = await fetch('/api/admin/financial/daily-xray?date='+encodeURIComponent((document.getElementById('fin-date')||{}).value||''), { headers: finHeaders() });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error||'falha');
+    const c = j.company, lucro = c.result >= 0, cov = c.cogsCoverage;
+    let html = '<div style="background:'+(lucro?'#e7f8ee':'#fdeaea')+';border:1px solid '+(lucro?'#86e0a8':'#f3a9a9')+';border-radius:14px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'
+      + '<div><div style="font-size:13px;font-weight:700;color:#555;">Resultado do dia ('+finEsc(j.date.split("-").reverse().join("/"))+')</div>'
+      + '<div style="font-size:30px;font-weight:900;color:'+(lucro?'#0a7d3b':'#c0271f')+';">'+(lucro?'🟢 Lucro ':'🔴 Prejuízo ')+finBRL(Math.abs(c.result))+'</div></div>'
+      + '<div style="font-size:12px;color:#666;text-align:right;">'+j.salesCount+' vendas hoje</div></div>';
+    const rows = [['Vendas (receita)', c.revenue, '#0a7d3b'], ['− Custo dos produtos (CMV)', -c.cogs, '#c0271f'], ['− Folha do dia', -c.laborDay, '#c0271f'], ['− Despesas fixas do dia', -c.fixedDay, '#c0271f']];
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px;">';
+    rows.forEach(rw=>{ html += '<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:10px 12px;"><div style="font-size:12px;color:#666;">'+rw[0]+'</div><div style="font-size:18px;font-weight:800;color:'+rw[2]+';">'+finBRL(rw[1])+'</div></div>'; });
+    html += '</div>';
+    if(cov != null && cov < 0.999) html += '<div style="margin-top:10px;background:#fff7e6;border:1px solid #ffd591;border-radius:10px;padding:8px 12px;font-size:12px;color:#8a5a00;">⚠️ O custo dos produtos está cadastrado em <b>'+Math.round(cov*100)+'%</b> das vendas de hoje — o resto entra como custo 0, então o lucro real pode ser menor.</div>';
+    if(cov == null && j.salesCount>0) html += '<div style="margin-top:10px;background:#fff7e6;border:1px solid #ffd591;border-radius:10px;padding:8px 12px;font-size:12px;color:#8a5a00;">⚠️ Nenhum custo de produto cadastrado nas vendas de hoje — o CMV está como 0.</div>';
+    if(!j.hasExpenses) html += '<div style="margin-top:10px;background:#eef4ff;border:1px solid #b6d2ff;border-radius:10px;padding:8px 12px;font-size:12px;color:#1f4e9c;">👇 Cadastre seus custos (folha + aluguel + energia…) lá embaixo pra o lucro do dia ficar real.</div>';
+    html += '<h3 style="margin:18px 0 8px;">Por loja</h3><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px;"><thead><tr style="text-align:left;color:#666;border-bottom:2px solid #eee;"><th style="padding:7px 6px;">Loja</th><th style="padding:7px 6px;text-align:right;">Vendas</th><th style="padding:7px 6px;text-align:right;">CMV</th><th style="padding:7px 6px;text-align:right;">Folha/dia</th><th style="padding:7px 6px;text-align:right;">Fixas/dia</th><th style="padding:7px 6px;text-align:right;">Resultado</th></tr></thead><tbody>';
+    (j.stores||[]).forEach(s=>{ const ok=s.result>=0; html += '<tr style="border-bottom:1px solid #f2f2f2;"><td style="padding:7px 6px;font-weight:700;">'+finEsc(s.name)+'</td><td style="padding:7px 6px;text-align:right;">'+finBRL(s.revenue)+'</td><td style="padding:7px 6px;text-align:right;color:#999;">'+finBRL(s.cogs)+'</td><td style="padding:7px 6px;text-align:right;color:#999;">'+finBRL(s.laborDay)+'</td><td style="padding:7px 6px;text-align:right;color:#999;">'+finBRL(s.fixedDay)+'</td><td style="padding:7px 6px;text-align:right;font-weight:800;color:'+(ok?'#0a7d3b':'#c0271f')+';">'+(ok?'🟢 ':'🔴 ')+finBRL(s.result)+'</td></tr>'; });
+    html += '</tbody></table></div>';
+    box.innerHTML = html;
+  } catch(e){ box.innerHTML = '<div style="color:#d70015;padding:10px;">Erro: '+finEsc(e.message)+'</div>'; }
+}
+
+async function finLoadExpenses(){
+  const box = document.getElementById('fin-expenses'); if(!box) return;
+  try {
+    const r = await fetch('/api/admin/financial/expenses', { headers: finHeaders() });
+    const j = await r.json();
+    const storeSel = document.getElementById('fin-store');
+    if(storeSel && storeSel.options.length<=1) storeSel.innerHTML = '<option value="">Empresa toda</option>' + (j.stores||[]).map(s=>'<option value="'+s.id+'">'+finEsc(s.name)+'</option>').join('');
+    const exps = j.expenses||[];
+    if(!exps.length){ box.innerHTML = '<div style="color:#999;padding:14px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhum custo cadastrado ainda. Adicione acima (salários, aluguel, energia…) pra o raio-x ficar real.</div>'; return; }
+    const totalMes = exps.reduce((a,e)=>a+(e.amount||0),0);
+    const catLabel = Object.fromEntries(FIN_CATS);
+    let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px;"><thead><tr style="text-align:left;color:#666;border-bottom:2px solid #eee;"><th style="padding:7px 6px;">Tipo</th><th style="padding:7px 6px;">Descrição</th><th style="padding:7px 6px;">Loja</th><th style="padding:7px 6px;text-align:right;">Mensal</th><th></th></tr></thead><tbody>';
+    exps.forEach(e=>{ html += '<tr style="border-bottom:1px solid #f2f2f2;"><td style="padding:7px 6px;">'+finEsc(catLabel[e.category]||e.category)+'</td><td style="padding:7px 6px;">'+finEsc(e.description)+'</td><td style="padding:7px 6px;color:#777;">'+finEsc(e.storeName||'Empresa toda')+'</td><td style="padding:7px 6px;text-align:right;font-weight:700;">'+finBRL(e.amount)+'</td><td style="padding:7px 6px;text-align:right;"><button onclick="finDelExpense(\''+e.id+'\')" style="border:0;background:transparent;color:#c0271f;cursor:pointer;font-size:15px;" title="Remover">✕</button></td></tr>'; });
+    html += '</tbody><tfoot><tr style="border-top:2px solid #eee;font-weight:800;"><td colspan="3" style="padding:8px 6px;">Total mensal de custos</td><td style="padding:8px 6px;text-align:right;">'+finBRL(totalMes)+'</td><td></td></tr></tfoot></table></div>';
+    box.innerHTML = html;
+  } catch(e){ box.innerHTML = '<div style="color:#d70015;padding:10px;">Erro: '+finEsc(e.message)+'</div>'; }
+}
+
+async function finAddExpense(){
+  const cat=(document.getElementById('fin-cat')||{}).value, desc=((document.getElementById('fin-desc')||{}).value||'').trim(), amt=(document.getElementById('fin-amt')||{}).value, store=(document.getElementById('fin-store')||{}).value;
+  if(!desc || !amt){ alert('Preencha descrição e valor mensal.'); return; }
+  try {
+    const body = { category: cat, description: desc, amount: Number(amt), storeId: store||null };
+    if(cat==='folha') body.collaborator = desc;
+    const r = await fetch('/api/admin/financial/expenses', { method:'POST', headers: finHeaders(), body: JSON.stringify(body) });
+    const j = await r.json();
+    if(!r.ok){ alert('Erro: '+(j.error||'')); return; }
+    document.getElementById('fin-desc').value=''; document.getElementById('fin-amt').value='';
+    await loadFinanceiro();
+  } catch(e){ alert('Erro: '+e.message); }
+}
+async function finDelExpense(id){
+  if(!confirm('Remover este custo?')) return;
+  try { await fetch('/api/admin/financial/expenses/'+id, { method:'DELETE', headers: finHeaders() }); await loadFinanceiro(); }
+  catch(e){ alert('Erro: '+e.message); }
+}
+
+(function(){
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-financeiro');
+    if (el) el.style.display = name === 'financeiro' ? 'block' : 'none';
+    if (name === 'financeiro') loadFinanceiro();
   };
 })();
 
