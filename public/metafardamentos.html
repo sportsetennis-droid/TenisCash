@@ -209,6 +209,7 @@ async function renderHome(){
   const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando…</div>';
   try{
     const d=await api('/dashboard');
+    const adm=(me.role==='admin'||me.role==='gerente');
     v.innerHTML=`<h3 class="sec">Visão geral</h3>
     <div class="grid">
       ${kpi(d.products,'Produtos ativos')}
@@ -218,6 +219,15 @@ async function renderHome(){
       ${kpi(d.orcamentos,'Orçamentos')}
       ${kpi(d.pedidosAbertos,'Pedidos em aberto')}
     </div>
+    ${adm?`<h3 class="sec" style="margin-top:20px">Financeiro do mês</h3>
+    <div class="grid">
+      ${kpiMoney(d.vendasMes,'Vendas no mês')}
+      ${kpiMoney(d.caixaMes,'Caixa do mês')}
+      ${kpiMoney(d.aReceber,'A receber',d.aReceber>0)}
+      ${kpiMoney(d.aPagar,'A pagar',d.aPagar>0)}
+    </div>
+    <button class="btn ghost" style="margin-top:10px" onclick="manageFinance()">Abrir financeiro</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="manageReports()">Relatórios</button>`:''}
     <h3 class="sec" style="margin-top:20px">Atalhos</h3>
     <div class="card"><div class="row"><div class="nm">Bater ponto</div><button class="btn sm lar" onclick="tab('ponto')">Abrir</button></div></div>
     <div class="card"><div class="row"><div class="nm">Novo orçamento</div><button class="btn sm" onclick="tab('pedidos');setTimeout(formOrder,50)">Criar</button></div></div>
@@ -225,6 +235,7 @@ async function renderHome(){
   }catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
 }
 function kpi(n,l,alert){return `<div class="kpi ${alert?'alert':''}"><div class="n">${n||0}</div><div class="l">${l}</div></div>`}
+function kpiMoney(n,l,alert){return `<div class="kpi ${alert?'alert':''}"><div class="n" style="font-size:17px">${money(n)}</div><div class="l">${l}</div></div>`}
 
 /* ---------- ESTOQUE ---------- */
 async function renderEstoque(){
@@ -271,13 +282,29 @@ async function saveProduct(id){
     closeSheet();toast('Salvo');renderEstoque();}catch(e){toast(e.message);}
 }
 async function openProduct(id){
-  const p=estProducts.find(x=>x.id===id);if(!p)return;
+  let p; try{ p=await api('/products/'+id); }catch(e){ toast(e.message); return; }
+  const hasGrade=p.variants&&p.variants.length;
   const low=p.stock<=p.minStock;
+  let gradeHtml='';
+  if(hasGrade){
+    gradeHtml='<h3 class="sec">Grade (tamanho / cor)</h3>'+p.variants.map(vr=>{const vl=vr.stock<=vr.minStock;
+      return `<div class="card" style="padding:9px 11px"><div class="row">
+        <div><div class="nm" style="font-size:14px">${H([vr.size,vr.color].filter(Boolean).join(' · ')||'variante')}</div>${vr.sku?`<div class="mt">SKU ${H(vr.sku)}</div>`:''}</div>
+        <span class="pill ${vl?'dng':'ok'}">${vr.stock}</span></div>
+        <div class="row" style="margin-top:8px;gap:6px">
+          <input id="vq-${vr.id}" class="fld" type="number" placeholder="qtd" style="flex:1;padding:8px">
+          <button class="btn sm" style="background:var(--ok)" onclick="movV('${id}','${vr.id}','entrada')">+</button>
+          <button class="btn sm" style="background:var(--danger)" onclick="movV('${id}','${vr.id}','saida')">−</button>
+          <button class="btn sm ghost" onclick="movV('${id}','${vr.id}','ajuste')">=</button>
+        </div></div>`;}).join('')+
+      `<button class="btn ghost sm" style="width:100%;margin-top:6px" onclick="formVariant('${id}')">+ tamanho/cor</button>`;
+  }
   sheet(`<h2>${H(p.name)}</h2>
-  <div class="card"><div class="row"><div class="mt">Saldo atual</div><span class="pill ${low?'dng':'ok'}" style="font-size:14px">${p.stock} ${H(p.unit)}</span></div>
+  <div class="card"><div class="row"><div class="mt">Saldo total</div><span class="pill ${low?'dng':'ok'}" style="font-size:14px">${p.stock} ${H(p.unit)}</span></div>
   <div class="row" style="margin-top:6px"><div class="mt">Venda</div><b>${money(p.salePrice)}</b></div>
   <div class="row"><div class="mt">Custo</div><span>${money(p.costPrice)}</span></div></div>
-  <h3 class="sec">Movimentar estoque</h3>
+  ${gradeHtml}
+  ${hasGrade?'':`<h3 class="sec">Movimentar estoque</h3>
   <div style="display:flex;gap:8px;margin-bottom:10px"><input id="mv-qty" class="fld" type="number" placeholder="Qtd" style="flex:1">
   <input id="mv-reason" class="fld" placeholder="Motivo (opcional)" style="flex:2"></div>
   <div style="display:flex;gap:8px">
@@ -285,13 +312,40 @@ async function openProduct(id){
     <button class="btn sm" style="flex:1;background:var(--danger)" onclick="mov('${id}','saida')">− Saída</button>
     <button class="btn sm ghost" style="flex:1" onclick="mov('${id}','ajuste')">= Ajuste</button>
   </div>
-  <button class="btn ghost" style="margin-top:16px" onclick='formProduct(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Editar dados</button>`);
+  <button class="btn ghost sm" style="width:100%;margin-top:10px" onclick="formVariant('${id}')">Usar grade (tamanhos/cores)</button>`}
+  <button class="btn ghost" style="margin-top:16px" onclick='formProduct(${JSON.stringify({id:p.id,name:p.name,categoryId:p.categoryId,ref:p.ref,size:p.size,ncm:p.ncm,costPrice:p.costPrice,salePrice:p.salePrice,minStock:p.minStock}).replace(/'/g,"&#39;")})'>Editar dados</button>`);
 }
 async function mov(id,type){
   const qty=document.getElementById('mv-qty').value, reason=val('mv-reason');
   if(!qty||Number(qty)<=0){toast('Informe a quantidade');return;}
   try{const r=await api('/stock/movements',{method:'POST',body:JSON.stringify({productId:id,type,qty,reason})});
     closeSheet();toast('Estoque: '+r.stock);renderEstoque();}catch(e){toast(e.message);}
+}
+async function movV(id,variantId,type){
+  const qty=document.getElementById('vq-'+variantId).value;
+  if(!qty||Number(qty)<=0){toast('Informe a quantidade');return;}
+  try{await api('/stock/movements',{method:'POST',body:JSON.stringify({productId:id,variantId,type,qty})});
+    toast('Grade atualizada');openProduct(id);renderEstoque();}catch(e){toast(e.message);}
+}
+function formVariant(id){
+  sheet(`<h2>Adicionar à grade</h2><p class="sub muted" style="margin-top:-8px">Tamanho e/ou cor, cada um com seu estoque.</p>
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Tamanho</label><input id="v-size" class="fld" placeholder="P / M / G / 38…"></div>
+  <div style="flex:1"><label>Cor</label><input id="v-color" class="fld" placeholder="Azul"></div></div>
+  <label>SKU / cód. barras (opcional)</label><input id="v-sku" class="fld">
+  <label>Estoque inicial</label><input id="v-stock" class="fld" type="number" value="0">
+  <button class="btn lar" style="margin-top:12px" onclick="saveVariant('${id}')">Adicionar variante</button>
+  <button class="btn ghost" style="margin-top:8px" onclick="addGradeBulk('${id}')">Criar grade PP–EXG (cor acima)</button>`);
+}
+async function saveVariant(id){
+  const size=val('v-size'),color=val('v-color');
+  if(!size&&!color){toast('Informe tamanho ou cor');return;}
+  try{await api('/products/'+id+'/variants',{method:'POST',body:JSON.stringify({size,color,sku:val('v-sku'),stock:document.getElementById('v-stock').value})});
+    toast('Variante adicionada');openProduct(id);renderEstoque();}catch(e){toast(e.message);}
+}
+async function addGradeBulk(id){
+  const color=val('v-color');
+  try{await api('/products/'+id+'/variants',{method:'POST',body:JSON.stringify({variants:['PP','P','M','G','GG','EXG'].map(s=>({size:s,color,stock:0}))})});
+    toast('Grade criada');openProduct(id);renderEstoque();}catch(e){toast(e.message);}
 }
 function formCategory(){sheet(`<h2>Nova categoria</h2><label>Nome</label><input id="c-name" class="fld" placeholder="Ex: Camisa polo">
   <button class="btn" style="margin-top:14px" onclick="saveCategory()">Criar</button>`);}
@@ -374,18 +428,29 @@ async function formOrder(){
   <div style="display:flex;gap:8px;margin:8px 0">
     <select id="o-prod" class="fld" style="flex:2"><option value="">Produto / item livre</option>${prods.map(p=>`<option value="${p.id}" data-price="${p.salePrice}" data-name="${H(p.name)}">${H(p.name)} — ${money(p.salePrice)}</option>`).join('')}</select>
   </div>
+  <select id="o-variant" class="fld hide" style="margin-bottom:8px"></select>
   <div style="display:flex;gap:8px"><input id="o-desc" class="fld" placeholder="Descrição (item sob medida)" style="flex:2">
     <input id="o-qty" class="fld" type="number" placeholder="Qtd" value="1" style="flex:1"><input id="o-price" class="fld" type="number" step="0.01" placeholder="Unit" style="flex:1"></div>
   <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="addItem()">+ adicionar item</button>
   <label style="margin-top:14px">Observações</label><textarea id="o-notes" class="fld" rows="2"></textarea>
   <div class="row" style="margin:14px 2px 0"><b>Total</b><b id="o-total">R$ 0,00</b></div>
   <button class="btn" style="margin-top:14px" onclick="saveOrder()">Criar orçamento</button>`);
-  document.getElementById('o-prod').onchange=function(){const o=this.selectedOptions[0];if(o&&o.dataset.price){document.getElementById('o-price').value=o.dataset.price;document.getElementById('o-desc').value=o.dataset.name||'';}};
+  document.getElementById('o-prod').onchange=async function(){const o=this.selectedOptions[0];
+    const vsel=document.getElementById('o-variant');vsel.classList.add('hide');vsel.innerHTML='';
+    if(o&&o.dataset.price){document.getElementById('o-price').value=o.dataset.price;document.getElementById('o-desc').value=o.dataset.name||'';}
+    if(this.value){try{const p=await api('/products/'+this.value);
+      if(p.variants&&p.variants.length){vsel.innerHTML='<option value="">— escolha tamanho/cor —</option>'+p.variants.map(vr=>`<option value="${vr.id}" data-label="${H([vr.size,vr.color].filter(Boolean).join(' '))}">${H([vr.size,vr.color].filter(Boolean).join(' · '))} (estoque ${vr.stock})</option>`).join('');vsel.classList.remove('hide');}
+    }catch(e){}}};
 }
 function addItem(){const sel=document.getElementById('o-prod');const o=sel.selectedOptions[0];
-  const it={productId:sel.value||null,description:val('o-desc')||(o&&o.dataset.name)||'Item',qty:parseInt(document.getElementById('o-qty').value)||1,unitPrice:Number(document.getElementById('o-price').value)||0};
+  const vsel=document.getElementById('o-variant');const hasV=vsel&&!vsel.classList.contains('hide');
+  const vo=hasV?vsel.selectedOptions[0]:null;const variantId=hasV&&vsel.value?vsel.value:null;
+  if(hasV&&!variantId){toast('Escolha o tamanho/cor');return;}
+  let desc=val('o-desc')||(o&&o.dataset.name)||'Item';
+  if(variantId&&vo&&vo.dataset.label)desc=desc+' ('+vo.dataset.label+')';
+  const it={productId:sel.value||null,variantId,description:desc,qty:parseInt(document.getElementById('o-qty').value)||1,unitPrice:Number(document.getElementById('o-price').value)||0};
   if(!it.description){toast('Descreva o item');return;}
-  orderItems.push(it);document.getElementById('o-desc').value='';document.getElementById('o-price').value='';document.getElementById('o-qty').value='1';sel.value='';renderItems();}
+  orderItems.push(it);document.getElementById('o-desc').value='';document.getElementById('o-price').value='';document.getElementById('o-qty').value='1';sel.value='';if(vsel){vsel.classList.add('hide');vsel.innerHTML='';}renderItems();}
 function renderItems(){let tot=0;document.getElementById('o-items').innerHTML=orderItems.map((it,i)=>{tot+=it.qty*it.unitPrice;
   return `<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(it.description)}</div><div class="mt">${it.qty} × ${money(it.unitPrice)}</div></div><button class="btn sm ghost" onclick="orderItems.splice(${i},1);renderItems()">×</button></div></div>`;}).join('');
   document.getElementById('o-total').textContent=money(tot);}
@@ -401,11 +466,35 @@ async function openOrder(id){try{const o=await api('/orders/'+id);
   ${o.items.map(it=>`<div class="card" style="padding:9px 11px"><div class="row"><div><div class="nm" style="font-size:14px">${H(it.description)}</div><div class="mt">${it.qty} × ${money(it.unitPrice)}</div></div><b>${money(it.total)}</b></div></div>`).join('')}
   <div class="row" style="margin:10px 2px"><b>Total</b><b>${money(o.total)}</b></div>
   ${o.notes?`<div class="mt" style="margin:0 2px 10px">${H(o.notes)}</div>`:''}
+  ${paymentBlock(o)}
   ${fiscalBlock(o)}
   <h3 class="sec">Mudar status</h3>
-  <div class="chips">${sts.map(s=>`<span class="chip ${o.status===s?'on':''}" onclick="orderStatus('${o.id}','${s}')">${s}</span>`).join('')}</div>`);
+  <div class="chips">${sts.map(s=>`<span class="chip ${o.status===s?'on':''}" onclick="orderStatus('${o.id}','${s}')">${s}</span>`).join('')}</div>
+  <div class="mt" style="margin:8px 2px 0">${o.stockApplied?'✅ Estoque baixado (pedido entregue).':'Ao marcar <b>Entregue</b>, o estoque dos itens baixa automaticamente.'}</div>`);
   }catch(e){toast(e.message);}}
 async function orderStatus(id,status){try{await api('/orders/'+id+'/status',{method:'PUT',body:JSON.stringify({status})});closeSheet();toast('Status: '+status);renderPedidos();}catch(e){toast(e.message);}}
+
+/* ---------- PAGAMENTO (no pedido) ---------- */
+const PAY_LABEL={dinheiro:'Dinheiro',pix:'Pix',credito:'Crédito',debito:'Débito',boleto:'Boleto',transferencia:'Transferência',prazo:'A prazo'};
+function paymentBlock(o){
+  const adm=(me.role==='admin'||me.role==='gerente');
+  const paid=o.paidTotal||0, saldo=o.saldo!=null?o.saldo:Math.max(0,(o.total||0)-paid);
+  const pays=(o.payments||[]).map(p=>`<div class="card" style="padding:8px 11px"><div class="row"><div class="mt">${dt(p.paidAt)} · ${PAY_LABEL[p.method]||p.method}${p.note?' · '+H(p.note):''}</div><div class="row" style="gap:8px"><b>${money(p.amount)}</b>${adm?`<button class="btn sm ghost" onclick="delPayment('${p.id}','${o.id}')">×</button>`:''}</div></div></div>`).join('');
+  return `<h3 class="sec">Pagamento</h3>
+  <div class="card"><div class="row"><div class="mt">Pago</div><b style="color:var(--ok)">${money(paid)}</b></div>
+  <div class="row" style="margin-top:4px"><div class="mt">Saldo</div><b style="color:${saldo>0?'var(--laranja-d)':'var(--ok)'}">${money(saldo)}</b></div></div>
+  ${pays}
+  ${o.status!=='cancelado'?`<div style="display:flex;gap:8px;margin-top:8px">
+    <input id="pay-amt" class="fld" type="number" step="0.01" placeholder="Valor" style="flex:1" value="${saldo>0?saldo.toFixed(2):''}">
+    <select id="pay-meth" class="fld" style="flex:1">${Object.keys(PAY_LABEL).map(k=>`<option value="${k}">${PAY_LABEL[k]}</option>`).join('')}</select></div>
+  <button class="btn lar sm" style="width:100%;margin-top:8px" onclick="addPayment('${o.id}')">Registrar pagamento</button>`:''}`;
+}
+async function addPayment(id){
+  const amount=document.getElementById('pay-amt').value, method=document.getElementById('pay-meth').value;
+  if(!amount||Number(amount)<=0){toast('Informe o valor');return;}
+  try{await api('/orders/'+id+'/payments',{method:'POST',body:JSON.stringify({amount,method})});toast('Pagamento registrado');openOrder(id);renderPedidos();}catch(e){toast(e.message);}
+}
+async function delPayment(id,orderId){if(!confirm('Remover este pagamento?'))return;try{await api('/payments/'+id,{method:'DELETE'});toast('Removido');openOrder(orderId);}catch(e){toast(e.message);}}
 
 /* ---------- FISCAL (NF-e no pedido) ---------- */
 function fiscalBlock(o){
@@ -459,6 +548,8 @@ async function pontoBoard(){try{const b=await api('/ponto/board');const kinds={i
 function openMenu(){
   const adm=(me.role==='admin'||me.role==='gerente');
   sheet(`<h2>${H(me.name)}</h2><p class="sub muted" style="margin-top:-8px">${H(me.role)}</p>
+  ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageFinance()">💰 Financeiro</button>':''}
+  ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageReports()">📊 Relatórios</button>':''}
   ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageEmployees()">Funcionários</button>':''}
   ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageCompany()">Dados da empresa</button>':''}
   ${adm?'<button class="btn ghost" style="margin-bottom:8px" onclick="manageFiscal()">Fiscal / NF-e</button>':''}
@@ -519,6 +610,67 @@ async function uploadCert(){
   const reader=new FileReader();
   reader.onload=async()=>{ try{ const b64=String(reader.result).split(',')[1]; const r=await api('/fiscal/cert',{method:'POST',body:JSON.stringify({certB64:b64,password:pass})}); toast(r.validated?('Certificado OK'+(r.validUntil?(' · vence '+new Date(r.validUntil).toLocaleDateString('pt-BR')):'')):'Certificado salvo'); manageFiscal(); }catch(e){toast(e.message);} };
   reader.readAsDataURL(f);
+}
+
+/* ---------- FINANCEIRO ---------- */
+async function manageFinance(){
+  try{
+    const [sum,entries]=await Promise.all([api('/reports/summary'),api('/finance')]);
+    const c=sum.caixa||{entradas:0,saidas:0,saldo:0};
+    const list=entries.length?entries.map(e=>{
+      const isPagar=e.kind==='pagar';const st=e.status==='pago'?'ok':(e.status==='cancelado'?'gray':'warn');
+      return `<div class="card"><div class="row"><div><div class="nm" style="font-size:14px">${H(e.description)}</div>
+        <div class="mt">${isPagar?'A pagar':'A receber'}${e.category?' · '+H(e.category):''}${e.dueDate?' · vence '+dt(e.dueDate):''}</div></div>
+        <div class="right"><b style="color:${isPagar?'var(--danger)':'var(--ok)'}">${money(e.amount)}</b><div><span class="pill ${st}">${H(e.status)}</span></div></div></div>
+        <div class="row" style="margin-top:8px;gap:6px">${e.status==='aberto'?`<button class="btn sm lar" style="flex:1" onclick="financePay('${e.id}')">Marcar paga</button>`:''}<button class="btn sm ghost" onclick="delFinance('${e.id}')">Excluir</button></div></div>`;
+    }).join(''):'<div class="empty">Sem contas lançadas. As vendas a receber vêm dos pedidos.</div>';
+    sheet(`<h2>Financeiro</h2>
+    <div class="grid">${kpiMoney(c.entradas,'Entrou (mês)')}${kpiMoney(c.saidas,'Saiu (mês)')}${kpiMoney(sum.aReceber,'A receber (pedidos)',sum.aReceber>0)}${kpiMoney(sum.aPagar,'A pagar',sum.aPagar>0)}</div>
+    <button class="btn lar sm" style="width:100%;margin:12px 0" onclick="formFinance()">+ Lançar conta</button>
+    <h3 class="sec">Contas a pagar / receber</h3>${list}`);
+  }catch(e){toast(e.message);}
+}
+function formFinance(){
+  sheet(`<h2>Lançar conta</h2>
+  <label>Tipo</label><select id="f-kind" class="fld"><option value="pagar">A pagar (despesa)</option><option value="receber">A receber (avulso)</option></select>
+  <label>Descrição</label><input id="f-desc" class="fld" placeholder="Aluguel, fornecedor de tecido, salário…">
+  <div style="display:flex;gap:10px"><div style="flex:1"><label>Valor</label><input id="f-amt" class="fld" type="number" step="0.01"></div>
+  <div style="flex:1"><label>Vencimento</label><input id="f-due" class="fld" type="date"></div></div>
+  <label>Categoria</label><input id="f-cat" class="fld" placeholder="aluguel / fornecedor / salário / imposto">
+  <label>Já está paga?</label><select id="f-status" class="fld"><option value="aberto">Não — em aberto</option><option value="pago">Sim — já paga</option></select>
+  <button class="btn" style="margin-top:14px" onclick="saveFinance()">Lançar</button>`);
+}
+async function saveFinance(){
+  const b={kind:document.getElementById('f-kind').value,description:val('f-desc'),amount:document.getElementById('f-amt').value,dueDate:document.getElementById('f-due').value||null,category:val('f-cat'),status:document.getElementById('f-status').value};
+  if(!b.description){toast('Informe a descrição');return;}
+  try{await api('/finance',{method:'POST',body:JSON.stringify(b)});closeSheet();toast('Conta lançada');manageFinance();}catch(e){toast(e.message);}
+}
+async function financePay(id){try{await api('/finance/'+id,{method:'PUT',body:JSON.stringify({status:'pago'})});toast('Marcada como paga');manageFinance();}catch(e){toast(e.message);}}
+async function delFinance(id){if(!confirm('Excluir esta conta?'))return;try{await api('/finance/'+id,{method:'DELETE'});toast('Excluída');manageFinance();}catch(e){toast(e.message);}}
+
+/* ---------- RELATÓRIOS ---------- */
+async function manageReports(){
+  const now=new Date();const first=new Date(now.getFullYear(),now.getMonth(),1);
+  const fmt=d=>d.toISOString().slice(0,10);
+  sheet(`<h2>Relatórios</h2>
+  <div style="display:flex;gap:8px"><div style="flex:1"><label>De</label><input id="r-from" class="fld" type="date" value="${fmt(first)}"></div>
+  <div style="flex:1"><label>Até</label><input id="r-to" class="fld" type="date" value="${fmt(now)}"></div></div>
+  <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="loadReports()">Atualizar período</button>
+  <div id="rep-body"><div class="empty">Carregando…</div></div>`);
+  loadReports();
+}
+async function loadReports(){
+  const qs='?from='+document.getElementById('r-from').value+'&to='+document.getElementById('r-to').value;
+  const body=document.getElementById('rep-body');body.innerHTML='<div class="empty">Carregando…</div>';
+  try{
+    const [s,tp,tc]=await Promise.all([api('/reports/summary'+qs),api('/reports/top-products'+qs),api('/reports/top-customers'+qs)]);
+    body.innerHTML=`<h3 class="sec" style="margin-top:14px">Resumo do período</h3>
+    <div class="grid">${kpiMoney(s.faturamento,'Faturamento')}${kpi(s.nPedidos,'Pedidos')}${kpiMoney(s.ticket,'Ticket médio')}${kpiMoney(s.caixa.saldo,'Caixa (saldo)')}</div>
+    <h3 class="sec" style="margin-top:16px">Mais vendidos</h3>
+    ${tp.length?tp.map(p=>`<div class="card" style="padding:9px 11px"><div class="row"><div class="nm" style="font-size:14px">${H(p.name)}</div><div class="right"><b>${money(p.total)}</b><div class="mt">${p.qty} un</div></div></div></div>`).join(''):'<div class="empty">Sem vendas no período.</div>'}
+    <h3 class="sec" style="margin-top:16px">Maiores clientes</h3>
+    ${tc.length?tc.map(c=>`<div class="card" style="padding:9px 11px"><div class="row"><div class="nm" style="font-size:14px">${H(c.name)}</div><div class="right"><b>${money(c.total)}</b><div class="mt">${c.orders} ped.</div></div></div></div>`).join(''):'<div class="empty">Sem clientes no período.</div>'}`;
+  }catch(e){body.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
 }
 
 boot();

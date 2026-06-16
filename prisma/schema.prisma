@@ -4257,6 +4257,7 @@ model MfProduct {
 
   movements  MfStockMovement[]
   orderItems MfOrderItem[]
+  variants   MfProductVariant[]
 
   @@index([categoryId])
 }
@@ -4265,6 +4266,7 @@ model MfStockMovement {
   id           String      @id @default(uuid())
   productId    String
   product      MfProduct   @relation(fields: [productId], references: [id])
+  variantId    String? // se mexeu numa variante (grade)
   type         String // entrada | saida | ajuste
   qty          Int // sempre positivo; type define o sinal
   balanceAfter Int? // saldo do produto apos o movimento
@@ -4339,8 +4341,10 @@ model MfOrder {
   nfeMotivo    String?
   nfeXml       String?   @db.Text
   nfeAt        DateTime?
+  stockApplied Boolean   @default(false) // baixa de estoque ja aplicada (entregue)
 
-  items MfOrderItem[]
+  items    MfOrderItem[]
+  payments MfPayment[]
 
   @@index([status, createdAt])
 }
@@ -4351,6 +4355,7 @@ model MfOrderItem {
   order       MfOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId   String?
   product     MfProduct? @relation(fields: [productId], references: [id])
+  variantId   String? // variante (grade tam/cor) escolhida
   description String // texto livre (item sob medida) ou nome do produto
   qty         Int        @default(1)
   unitPrice   Float      @default(0)
@@ -4424,4 +4429,61 @@ model WhatsappMessage {
   @@unique([instance, messageId], map: "WhatsappMessage_inst_msgid_uq")
   @@index([instance, ts], map: "WhatsappMessage_inst_ts_idx")
   @@index([instance, chatJid, ts], map: "WhatsappMessage_inst_chat_ts_idx")
+}
+
+
+// ============================================================
+// PACOTE MF — grade (variantes), pagamento e financeiro (2026-06-16)
+// Aditivo: produto sem variante segue usando MfProduct.stock (compativel).
+// ============================================================
+
+model MfProductVariant {
+  id        String    @id @default(uuid())
+  productId String
+  product   MfProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size      String? // PP P M G GG EXG ... ou numerico
+  color     String?
+  sku       String? // codigo de barras / SKU da variante
+  stock     Int       @default(0)
+  minStock  Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([productId])
+}
+
+model MfPayment {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      MfOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount     Float
+  method     String   @default("dinheiro") // dinheiro|pix|credito|debito|boleto|transferencia|prazo
+  paidAt     DateTime @default(now())
+  note       String?
+  employeeId String?
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@index([paidAt])
+}
+
+model MfFinanceEntry {
+  id          String    @id @default(uuid())
+  kind        String // receber | pagar
+  description String
+  category    String? // aluguel|fornecedor|salario|imposto|venda|servico|outro
+  amount      Float     @default(0)
+  dueDate     DateTime?
+  status      String    @default("aberto") // aberto | pago | cancelado
+  paidAt      DateTime?
+  method      String?
+  orderId     String?
+  customerId  String?
+  employeeId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([kind, status])
+  @@index([status, dueDate])
 }

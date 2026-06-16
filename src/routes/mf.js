@@ -265,6 +265,104 @@ router.put('/products/:id', mfAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Detalhe do produto + grade (variantes)
+router.get('/products/:id', mfAuth, async (req, res) => {
+  const p = await prisma.mfProduct.findUnique({
+    where: { id: req.params.id },
+    include: { category: { select: { name: true } }, variants: { where: { active: true }, orderBy: [{ color: 'asc' }, { size: 'asc' }] } },
+  });
+  if (!p) return res.status(404).json({ error: 'Produto nao encontrado' });
+  res.json(p);
+});
+
+// =====================================================================
+// GRADE / VARIANTES (tamanho x cor). Produto com grade: stock = soma das variantes.
+// Produto sem variante segue usando MfProduct.stock (compativel com o que ja existe).
+// =====================================================================
+
+// Recalcula o saldo do produto = soma das variantes ativas (so se TEM grade)
+async function recomputeProductStock(productId) {
+  const vs = await prisma.mfProductVariant.findMany({ where: { productId, active: true }, select: { stock: true } });
+  if (!vs.length) return; // sem grade: nao mexe no stock flat
+  const total = vs.reduce((s, v) => s + (v.stock || 0), 0);
+  await prisma.mfProduct.update({ where: { id: productId }, data: { stock: total } });
+}
+
+// Cria variante(s). Aceita {size,color,sku,stock,minStock} OU {variants:[...]}
+router.post('/products/:id/variants', mfAuth, async (req, res) => {
+  try {
+    const prod = await prisma.mfProduct.findUnique({ where: { id: req.params.id } });
+    if (!prod) return res.status(404).json({ error: 'Produto nao encontrado' });
+    const rows = Array.isArray(req.body && req.body.variants) ? req.body.variants : [req.body || {}];
+    let created = 0;
+    for (const r of rows) {
+      const size = (r.size || '').toString().trim() || null;
+      const color = (r.color || '').toString().trim() || null;
+      if (!size && !color) continue; // precisa de tamanho OU cor
+      const initial = parseInt(r.stock) || 0;
+      const v = await prisma.mfProductVariant.create({
+        data: { productId: prod.id, size, color, sku: (r.sku || '').toString().trim() || null, stock: initial, minStock: parseInt(r.minStock) || 0 },
+      });
+      if (initial > 0) {
+        await prisma.mfStockMovement.create({ data: { productId: prod.id, variantId: v.id, type: 'entrada', qty: initial, balanceAfter: initial, reason: 'estoque inicial (grade)', employeeId: req.emp.id } });
+      }
+      created++;
+    }
+    await recomputeProductStock(prod.id);
+    res.json({ ok: true, created });
+  } catch (err) {
+    console.error('[mf/variants]', err.message);
+    res.status(500).json({ error: 'Erro ao criar grade' });
+  }
+});
+
+// Edita dados da variante (estoque so via movimento)
+router.put('/variants/:id', mfAuth, async (req, res) => {
+  const { size, color, sku, minStock, active } = req.body || {};
+  const data = {};
+  if (size !== undefined) data.size = (size || '').toString().trim() || null;
+  if (color !== undefined) data.color = (color || '').toString().trim() || null;
+  if (sku !== undefined) data.sku = (sku || '').toString().trim() || null;
+  if (minStock !== undefined) data.minStock = parseInt(minStock) || 0;
+  if (active !== undefined) data.active = !!active;
+  const v = await prisma.mfProductVariant.update({ where: { id: req.params.id }, data });
+  await recomputeProductStock(v.productId);
+  res.json({ ok: true });
+});
+
+router.delete('/variants/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  const v = await prisma.mfProductVariant.update({ where: { id: req.params.id }, data: { active: false, stock: 0 } });
+  await recomputeProductStock(v.productId);
+  res.json({ ok: true });
+});
+
+// Baixa/estorno de estoque a partir de um pedido (saida ao entregar; entrada ao estornar)
+async function applyOrderStock(order, employeeId, restore) {
+  for (const it of order.items) {
+    if (!it.productId) continue;
+    const qty = parseInt(it.qty) || 0;
+    if (qty <= 0) continue;
+    const type = restore ? 'entrada' : 'saida';
+    const reason = (restore ? 'estorno pedido #' : 'baixa pedido #') + (order.number || '');
+    if (it.variantId) {
+      const v = await prisma.mfProductVariant.findUnique({ where: { id: it.variantId } });
+      if (!v) continue;
+      const ns = (v.stock || 0) + (restore ? qty : -qty);
+      await prisma.mfStockMovement.create({ data: { productId: it.productId, variantId: it.variantId, type, qty, balanceAfter: ns, reason, employeeId, orderId: order.id } });
+      await prisma.mfProductVariant.update({ where: { id: it.variantId }, data: { stock: ns } });
+      await recomputeProductStock(it.productId);
+    } else {
+      const p = await prisma.mfProduct.findUnique({ where: { id: it.productId } });
+      if (!p) continue;
+      const cnt = await prisma.mfProductVariant.count({ where: { productId: it.productId, active: true } });
+      if (cnt > 0) continue; // tem grade mas o item nao escolheu variante: nao mexe (evita baixa errada)
+      const ns = (p.stock || 0) + (restore ? qty : -qty);
+      await prisma.mfStockMovement.create({ data: { productId: it.productId, type, qty, balanceAfter: ns, reason, employeeId, orderId: order.id } });
+      await prisma.mfProduct.update({ where: { id: it.productId }, data: { stock: ns } });
+    }
+  }
+}
+
 // =====================================================================
 // ESTOQUE — movimentacoes (entrada/saida/ajuste). Mexe no saldo do produto.
 // =====================================================================
@@ -282,13 +380,32 @@ router.get('/stock/movements', mfAuth, async (req, res) => {
 
 router.post('/stock/movements', mfAuth, async (req, res) => {
   try {
-    const { productId, type, qty, reason } = req.body || {};
+    const { productId, variantId, type, qty, reason } = req.body || {};
     const n = parseInt(qty);
     if (!productId || !['entrada', 'saida', 'ajuste'].includes(type) || !n || n <= 0) {
       return res.status(400).json({ error: 'Produto, tipo e quantidade (>0) obrigatorios' });
     }
     const prod = await prisma.mfProduct.findUnique({ where: { id: productId } });
     if (!prod) return res.status(404).json({ error: 'Produto nao encontrado' });
+
+    // Movimento numa VARIANTE da grade
+    if (variantId) {
+      const v = await prisma.mfProductVariant.findUnique({ where: { id: variantId } });
+      if (!v || v.productId !== productId) return res.status(400).json({ error: 'Variante invalida' });
+      let ns = v.stock;
+      if (type === 'entrada') ns += n; else if (type === 'saida') ns -= n; else ns = n;
+      if (ns < 0) return res.status(400).json({ error: `Estoque insuficiente (atual: ${v.stock})` });
+      await prisma.$transaction([
+        prisma.mfStockMovement.create({ data: { productId, variantId, type, qty: n, balanceAfter: ns, reason: reason || null, employeeId: req.emp.id } }),
+        prisma.mfProductVariant.update({ where: { id: variantId }, data: { stock: ns } }),
+      ]);
+      await recomputeProductStock(productId);
+      return res.json({ ok: true, variantStock: ns });
+    }
+
+    // Produto sem grade — saldo flat. Se TEM grade, exige variante.
+    const cnt = await prisma.mfProductVariant.count({ where: { productId, active: true } });
+    if (cnt > 0) return res.status(400).json({ error: 'Produto tem grade. Escolha o tamanho/cor.' });
     let newStock = prod.stock;
     if (type === 'entrada') newStock += n;
     else if (type === 'saida') newStock -= n;
@@ -393,9 +510,13 @@ router.get('/orders', mfAuth, async (req, res) => {
 });
 
 router.get('/orders/:id', mfAuth, async (req, res) => {
-  const o = await prisma.mfOrder.findUnique({ where: { id: req.params.id }, include: { customer: true, items: true, employee: { select: { name: true } } } });
+  const o = await prisma.mfOrder.findUnique({
+    where: { id: req.params.id },
+    include: { customer: true, items: true, employee: { select: { name: true } }, payments: { orderBy: { paidAt: 'desc' } } },
+  });
   if (!o) return res.status(404).json({ error: 'Pedido nao encontrado' });
-  res.json(o);
+  const paidTotal = (o.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+  res.json({ ...o, paidTotal, saldo: Math.max(0, (o.total || 0) - paidTotal) });
 });
 
 router.post('/orders', mfAuth, async (req, res) => {
@@ -416,6 +537,7 @@ router.post('/orders', mfAuth, async (req, res) => {
         items: {
           create: lines.map((it) => ({
             productId: it.productId || null,
+            variantId: it.variantId || null,
             description: it.description || 'Item',
             qty: parseInt(it.qty) || 1,
             unitPrice: Number(it.unitPrice) || 0,
@@ -432,9 +554,54 @@ router.post('/orders', mfAuth, async (req, res) => {
 });
 
 router.put('/orders/:id/status', mfAuth, async (req, res) => {
-  const { status } = req.body || {};
-  if (!['orcamento', 'confirmado', 'producao', 'entregue', 'cancelado'].includes(status)) return res.status(400).json({ error: 'Status invalido' });
-  await prisma.mfOrder.update({ where: { id: req.params.id }, data: { status } });
+  try {
+    const { status } = req.body || {};
+    if (!['orcamento', 'confirmado', 'producao', 'entregue', 'cancelado'].includes(status)) return res.status(400).json({ error: 'Status invalido' });
+    const order = await prisma.mfOrder.findUnique({ where: { id: req.params.id }, include: { items: true } });
+    if (!order) return res.status(404).json({ error: 'Pedido nao encontrado' });
+    // baixa de estoque ao ENTREGAR; estorno ao SAIR de entregue
+    if (status === 'entregue' && !order.stockApplied) {
+      await applyOrderStock(order, req.emp.id, false);
+      await prisma.mfOrder.update({ where: { id: order.id }, data: { status, stockApplied: true } });
+    } else if (order.stockApplied && status !== 'entregue') {
+      await applyOrderStock(order, req.emp.id, true); // estorna o que baixou
+      await prisma.mfOrder.update({ where: { id: order.id }, data: { status, stockApplied: false } });
+    } else {
+      await prisma.mfOrder.update({ where: { id: order.id }, data: { status } });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[mf/orders/status]', err.message);
+    res.status(500).json({ error: 'Erro ao mudar status: ' + err.message });
+  }
+});
+
+// =====================================================================
+// PAGAMENTOS do pedido (recebimentos). saldo = total - soma(pagamentos)
+// =====================================================================
+const PAY_METHODS = ['dinheiro', 'pix', 'credito', 'debito', 'boleto', 'transferencia', 'prazo'];
+
+router.post('/orders/:id/payments', mfAuth, async (req, res) => {
+  try {
+    const { amount, method, note, paidAt } = req.body || {};
+    const val = Number(amount);
+    if (!val || val <= 0) return res.status(400).json({ error: 'Valor do pagamento invalido' });
+    const order = await prisma.mfOrder.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: 'Pedido nao encontrado' });
+    await prisma.mfPayment.create({
+      data: { orderId: order.id, amount: val, method: PAY_METHODS.includes(method) ? method : 'dinheiro', note: note || null, employeeId: req.emp.id, paidAt: paidAt ? new Date(paidAt) : new Date() },
+    });
+    const pays = await prisma.mfPayment.findMany({ where: { orderId: order.id } });
+    const paidTotal = pays.reduce((s, p) => s + p.amount, 0);
+    res.json({ ok: true, paidTotal, saldo: Math.max(0, (order.total || 0) - paidTotal) });
+  } catch (err) {
+    console.error('[mf/payments]', err.message);
+    res.status(500).json({ error: 'Erro ao registrar pagamento' });
+  }
+});
+
+router.delete('/payments/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  await prisma.mfPayment.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
 
@@ -486,15 +653,133 @@ router.get('/ponto/board', mfAuth, requireRole('admin', 'gerente'), async (_req,
 // DASHBOARD
 // =====================================================================
 router.get('/dashboard', mfAuth, async (_req, res) => {
-  const [products, lowStock, customers, leadsNovos, orcamentos, pedidosAbertos] = await Promise.all([
+  const now = new Date();
+  const mStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const SOLD = ['confirmado', 'producao', 'entregue'];
+  const [products, lowStock, customers, leadsNovos, orcamentos, pedidosAbertos, ordersMes, paysMes, finPagasMes, abertos, aPagarRows] = await Promise.all([
     prisma.mfProduct.count({ where: { active: true } }),
     prisma.mfProduct.count({ where: { active: true, stock: { lte: 0 } } }),
     prisma.mfCustomer.count({ where: { active: true } }),
     prisma.mfLead.count({ where: { status: 'novo' } }),
     prisma.mfOrder.count({ where: { status: 'orcamento' } }),
     prisma.mfOrder.count({ where: { status: { in: ['confirmado', 'producao'] } } }),
+    prisma.mfOrder.findMany({ where: { status: { in: SOLD }, createdAt: { gte: mStart } }, select: { total: true } }),
+    prisma.mfPayment.findMany({ where: { paidAt: { gte: mStart } }, select: { amount: true } }),
+    prisma.mfFinanceEntry.findMany({ where: { status: 'pago', paidAt: { gte: mStart } }, select: { kind: true, amount: true } }),
+    prisma.mfOrder.findMany({ where: { status: { in: SOLD } }, select: { total: true, payments: { select: { amount: true } } } }),
+    prisma.mfFinanceEntry.findMany({ where: { kind: 'pagar', status: 'aberto' }, select: { amount: true } }),
   ]);
-  res.json({ products, lowStock, customers, leadsNovos, orcamentos, pedidosAbertos });
+  const vendasMes = ordersMes.reduce((s, o) => s + (o.total || 0), 0);
+  const entradas = paysMes.reduce((s, p) => s + p.amount, 0) + finPagasMes.filter((e) => e.kind === 'receber').reduce((s, e) => s + e.amount, 0);
+  const saidas = finPagasMes.filter((e) => e.kind === 'pagar').reduce((s, e) => s + e.amount, 0);
+  const aReceber = abertos.reduce((s, o) => s + Math.max(0, (o.total || 0) - o.payments.reduce((a, p) => a + p.amount, 0)), 0);
+  const aPagar = aPagarRows.reduce((s, e) => s + e.amount, 0);
+  res.json({ products, lowStock, customers, leadsNovos, orcamentos, pedidosAbertos, vendasMes, caixaMes: entradas - saidas, aReceber, aPagar });
+});
+
+// =====================================================================
+// FINANCEIRO — contas a pagar/receber AVULSAS (aluguel, fornecedor, salario, imposto...).
+// As vendas a receber vem dos PEDIDOS (total - pagamentos). Caixa = junta os dois.
+// =====================================================================
+router.get('/finance', mfAuth, async (req, res) => {
+  const where = {};
+  if (req.query.kind) where.kind = String(req.query.kind);
+  if (req.query.status) where.status = String(req.query.status);
+  const list = await prisma.mfFinanceEntry.findMany({ where, orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }], take: 400 });
+  res.json(list);
+});
+
+router.post('/finance', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  const { kind, description, category, amount, dueDate, status, method } = req.body || {};
+  if (!['receber', 'pagar'].includes(kind)) return res.status(400).json({ error: 'Tipo invalido (receber/pagar)' });
+  if (!description) return res.status(400).json({ error: 'Descricao obrigatoria' });
+  const st = ['aberto', 'pago', 'cancelado'].includes(status) ? status : 'aberto';
+  const e = await prisma.mfFinanceEntry.create({
+    data: {
+      kind, description, category: category || null, amount: Number(amount) || 0,
+      dueDate: dueDate ? new Date(dueDate) : null, status,
+      paidAt: st === 'pago' ? new Date() : null, method: method || null, employeeId: req.emp.id,
+    },
+  });
+  res.json({ id: e.id });
+});
+
+router.put('/finance/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  const { description, category, amount, dueDate, status, method } = req.body || {};
+  const data = {};
+  if (description !== undefined) data.description = description;
+  if (category !== undefined) data.category = category || null;
+  if (amount !== undefined) data.amount = Number(amount) || 0;
+  if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
+  if (method !== undefined) data.method = method || null;
+  if (status && ['aberto', 'pago', 'cancelado'].includes(status)) {
+    data.status = status;
+    data.paidAt = status === 'pago' ? new Date() : null;
+  }
+  await prisma.mfFinanceEntry.update({ where: { id: req.params.id }, data });
+  res.json({ ok: true });
+});
+
+router.delete('/finance/:id', mfAuth, requireRole('admin', 'gerente'), async (req, res) => {
+  await prisma.mfFinanceEntry.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
+// =====================================================================
+// RELATORIOS — faturamento, ticket, caixa, em aberto, top produtos/clientes.
+// =====================================================================
+function periodRange(q) {
+  const to = q.to ? new Date(q.to + 'T23:59:59.999') : new Date();
+  const from = q.from ? new Date(q.from + 'T00:00:00') : new Date(to.getFullYear(), to.getMonth(), 1);
+  return { from, to };
+}
+const SOLD_STATUS = ['confirmado', 'producao', 'entregue'];
+
+router.get('/reports/summary', mfAuth, async (req, res) => {
+  const { from, to } = periodRange(req.query || {});
+  const orders = await prisma.mfOrder.findMany({ where: { status: { in: SOLD_STATUS }, createdAt: { gte: from, lte: to } }, select: { total: true } });
+  const faturamento = orders.reduce((s, o) => s + (o.total || 0), 0);
+  const nPedidos = orders.length;
+  const ticket = nPedidos ? faturamento / nPedidos : 0;
+  const pays = await prisma.mfPayment.findMany({ where: { paidAt: { gte: from, lte: to } }, select: { amount: true } });
+  const finPagas = await prisma.mfFinanceEntry.findMany({ where: { status: 'pago', paidAt: { gte: from, lte: to } }, select: { kind: true, amount: true } });
+  const entradas = pays.reduce((s, p) => s + p.amount, 0) + finPagas.filter((e) => e.kind === 'receber').reduce((s, e) => s + e.amount, 0);
+  const saidas = finPagas.filter((e) => e.kind === 'pagar').reduce((s, e) => s + e.amount, 0);
+  const abertos = await prisma.mfOrder.findMany({ where: { status: { in: SOLD_STATUS } }, select: { total: true, payments: { select: { amount: true } } } });
+  const aReceber = abertos.reduce((s, o) => s + Math.max(0, (o.total || 0) - o.payments.reduce((a, p) => a + p.amount, 0)), 0);
+  const aPagarRows = await prisma.mfFinanceEntry.findMany({ where: { kind: 'pagar', status: 'aberto' }, select: { amount: true } });
+  const aPagar = aPagarRows.reduce((s, e) => s + e.amount, 0);
+  res.json({ from, to, faturamento, nPedidos, ticket, caixa: { entradas, saidas, saldo: entradas - saidas }, aReceber, aPagar });
+});
+
+router.get('/reports/top-products', mfAuth, async (req, res) => {
+  const { from, to } = periodRange(req.query || {});
+  const items = await prisma.mfOrderItem.findMany({
+    where: { order: { status: { in: SOLD_STATUS }, createdAt: { gte: from, lte: to } } },
+    select: { description: true, productId: true, qty: true, total: true },
+  });
+  const map = {};
+  for (const it of items) {
+    const k = it.productId || ('d:' + it.description);
+    if (!map[k]) map[k] = { name: it.description, qty: 0, total: 0 };
+    map[k].qty += it.qty || 0; map[k].total += it.total || 0;
+  }
+  res.json(Object.values(map).sort((a, b) => b.total - a.total).slice(0, 20));
+});
+
+router.get('/reports/top-customers', mfAuth, async (req, res) => {
+  const { from, to } = periodRange(req.query || {});
+  const orders = await prisma.mfOrder.findMany({
+    where: { status: { in: SOLD_STATUS }, createdAt: { gte: from, lte: to }, customerId: { not: null } },
+    include: { customer: { select: { name: true } } },
+  });
+  const map = {};
+  for (const o of orders) {
+    const k = o.customerId;
+    if (!map[k]) map[k] = { name: (o.customer && o.customer.name) || '?', orders: 0, total: 0 };
+    map[k].orders++; map[k].total += o.total || 0;
+  }
+  res.json(Object.values(map).sort((a, b) => b.total - a.total).slice(0, 20));
 });
 
 // =====================================================================
