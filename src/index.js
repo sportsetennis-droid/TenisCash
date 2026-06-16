@@ -359,6 +359,26 @@ VITRINE_SLUGS.forEach((slug) => {
   });
 });
 
+// Página pública da NOTA FISCAL (cliente abre pelo link que recebe no WhatsApp; sem login).
+// A chave de acesso já é impressa no cupom (semi-pública) — a SEFAZ deixa qualquer um
+// consultar por ela, então renderizar o cupom por chave aqui é seguro.
+app.get('/nota/:accessKey', async (req, res) => {
+  try {
+    const { prisma } = require('./middleware');
+    const { buildCupomThermalHtml } = require('./services/cupomThermal');
+    const key = String(req.params.accessKey || '').replace(/\D/g, '');
+    const wrap = (msg) => '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div style="font-family:system-ui,sans-serif;padding:40px 24px;text-align:center;color:#1d1d1f">' + msg + '</div>';
+    if (key.length !== 44) return res.status(400).type('text/html').send(wrap('Link de nota inválido.'));
+    const doc = await prisma.fiscalDocument.findFirst({ where: { accessKey: key }, include: { issuer: true } });
+    if (!doc || !doc.xmlContent) return res.status(404).type('text/html').send(wrap('Nota não encontrada.'));
+    if (doc.status !== 'authorized' && doc.status !== 'cancelled') return res.status(400).type('text/html').send(wrap('Nota ainda não disponível.'));
+    res.type('text/html').send(await buildCupomThermalHtml(doc));
+  } catch (err) {
+    console.error('[/nota]', err.message);
+    res.status(500).send('Erro ao abrir a nota');
+  }
+});
+
 // Página pública de produto (QR Code aponta pra cá)
 app.get('/p/:id', async (req, res) => {
   try {

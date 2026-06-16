@@ -25,6 +25,7 @@ const CAIXA_FISCAL_OK = [
   ['GET', /^\/troca\/cupons\/?$/],
   ['POST', /^\/troca\/?$/],
   ['POST', /^\/documents\/[^/]+\/cancel\/?$/],
+  ['POST', /^\/documents\/[^/]+\/whatsapp\/?$/],
 ];
 router.use((req, res, next) => {
   if (['admin', 'superadmin', 'manager'].includes(req.userRole)) return next();
@@ -1005,6 +1006,41 @@ router.get('/documents/:id/print', async (req, res) => {
   } catch (err) {
     console.error('[fiscal/print]', err);
     res.status(500).send('Erro ao gerar cupom: ' + err.message);
+  }
+});
+
+// Enviar o cupom pro WhatsApp do cliente (o caixa toca o botão = aprovação humana).
+// Manda a nota como LINK público /nota/<chave> (sem token; o cliente abre e salva/imprime).
+router.post('/documents/:id/whatsapp', async (req, res) => {
+  try {
+    if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    const phone = String((req.body && req.body.phone) || '').replace(/\D/g, '');
+    if (phone.length < 10 || phone.length > 13) return res.status(400).json({ error: 'WhatsApp do cliente inválido — informe com DDD' });
+
+    const doc = await prisma.fiscalDocument.findUnique({ where: { id: req.params.id }, include: { issuer: true } });
+    if (!doc) return res.status(404).json({ error: 'Cupom não encontrado' });
+    if (doc.status !== 'authorized' || !doc.accessKey) return res.status(400).json({ error: 'Só cupom autorizado pode ser enviado' });
+
+    const { sendCustomMessage } = require('../whatsapp');
+    const loja = (doc.issuer && (doc.issuer.fantasyName || doc.issuer.companyName)) || 'Sports & Tennis';
+    const data = new Date(doc.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
+    const total = Number(doc.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const base = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '');
+    const link = base + '/nota/' + doc.accessKey;
+    const msg = '🧾 *' + loja + '* — seu cupom fiscal\n\n' +
+      'Cupom nº ' + doc.number + ' · ' + data + '\n' +
+      'Total: R$ ' + total + '\n\n' +
+      'Ver / baixar a nota:\n' + link + '\n\n' +
+      'Obrigado pela compra! 💚';
+
+    const out = await sendCustomMessage(phone, msg);
+    if (!out.ok) return res.status(502).json({ ok: false, error: out.error || 'Falha ao enviar no WhatsApp' });
+    res.json({ ok: true, provider: out.provider, phone, link });
+  } catch (err) {
+    console.error('[fiscal/whatsapp]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1646,7 +1646,7 @@ function showSaleDetail(saleId) {
   if (s.status === 'canceled') {
     fiscalBlock = `<div style="background:#fff1f0;border:2px solid #d70015;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#d70015;font-weight:800;font-size:15px;">🚫 Venda cancelada</div>${s.note ? `<div style="font-size:12px;color:#6e6e73;margin-top:6px;">${s.note}</div>` : ''}<div style="font-size:12px;color:#6e6e73;margin-top:6px;">Estoque devolvido, cashback estornado e comissões removidas.</div></div>`;
   } else if (f && f.status === 'authorized') {
-    fiscalBlock = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#0a843d;font-weight:800;font-size:15px;">✅ Cupom #${f.number} emitido</div><div style="font-family:monospace;font-size:10px;word-break:break-all;color:#6e6e73;margin:6px 0;">${f.accessKey || ''}</div><button onclick="reprintSale('${f.id}')" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🖨️ Imprimir 2ª via</button></div>`;
+    fiscalBlock = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#0a843d;font-weight:800;font-size:15px;">✅ Cupom #${f.number} emitido</div><div style="font-family:monospace;font-size:10px;word-break:break-all;color:#6e6e73;margin:6px 0;">${f.accessKey || ''}</div><button onclick="reprintSale('${f.id}')" style="width:100%;padding:13px;background:#E5571E;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">🖨️ Imprimir 2ª via</button><div style="display:flex;gap:6px;margin-top:8px;"><input id="waCupomPhone" inputmode="numeric" placeholder="WhatsApp do cliente (com DDD)" value="${s.clientPhone || ''}" style="flex:1;padding:12px;border:1px solid #bbb;border-radius:8px;font-size:14px;"><button id="waCupomBtn" onclick="sendCupomWhats('${f.id}')" style="padding:0 16px;background:#25D366;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;">📲 Enviar</button></div></div>`;
   } else {
     fiscalBlock = `<div style="background:#fff8e6;border:2px solid #b06b00;border-radius:10px;padding:12px;margin-top:12px;"><div style="color:#b06b00;font-weight:800;font-size:15px;">⚠️ Cupom ${f ? 'nao autorizado (' + f.status + ')' : 'nao emitido'}</div><div style="font-size:12px;color:#6e6e73;margin:4px 0 10px;">Pagamento: ${pay}. ${isCardPix ? 'Digite o codigo do comprovante da maquininha pra emitir.' : 'Clique pra emitir o cupom agora.'}</div>${isCardPix ? '<input id="saleAuthCode" placeholder="Codigo do comprovante (Auth / NSU)" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:8px;margin-bottom:8px;font-size:14px;">' : ''}<input id="saleCpfNota" inputmode="numeric" maxlength="18" placeholder="CPF/CNPJ na nota${s.totalAmount >= 500 ? ' — OBRIGATÓRIO (venda R$ 500+)' : ' (opcional)'}" style="width:100%;padding:11px;border:1px solid ${s.totalAmount >= 500 ? '#b06b00' : '#ddd'};border-radius:8px;margin-bottom:8px;font-size:14px;font-family:monospace;font-weight:700;"><button id="saleEmitBtn" onclick="emitSaleNfce('${s.id}','${s.paymentMethod}')" style="width:100%;padding:13px;background:linear-gradient(135deg,#0a843d,#2bb678);color:#fff;border:none;border-radius:8px;font-weight:800;font-size:15px;cursor:pointer;">📄 Emitir cupom agora</button></div>`;
   }
@@ -1666,6 +1666,21 @@ function showSaleDetail(saleId) {
 function reprintSale(documentId) {
   if (!documentId) { alert('Sem documento fiscal pra imprimir.'); return; }
   window.open('/api/admin/fiscal/documents/' + documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700');
+}
+
+async function sendCupomWhats(documentId) {
+  const inp = document.getElementById('waCupomPhone');
+  const btn = document.getElementById('waCupomBtn');
+  const phone = (inp?.value || '').replace(/\D/g, '');
+  if (phone.length < 10) { alert('Digite o WhatsApp do cliente com DDD.'); inp?.focus(); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const r = await api('/api/admin/fiscal/documents/' + documentId + '/whatsapp', { method: 'POST', body: JSON.stringify({ phone }) });
+    if (r.ok) { if (btn) { btn.textContent = '✅ Enviado'; btn.style.background = '#0a843d'; } }
+    else { alert('Não enviou: ' + (r.error || 'erro')); if (btn) { btn.disabled = false; btn.textContent = '📲 Enviar'; } }
+  } catch (e) {
+    alert('Não enviou: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '📲 Enviar'; }
+  }
 }
 
 // Cancela uma venda registrada que AINDA NÃO emitiu cupom: devolve estoque, estorna cashback, remove comissões.

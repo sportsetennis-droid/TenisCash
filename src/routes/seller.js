@@ -1030,6 +1030,14 @@ router.get('/sales', sellerOnly, async (req, res) => {
     for (const d of _fiscalDocs) if (!_docBySale.has(d.saleId)) _docBySale.set(d.saleId, d);
     for (const s of enriched) s.fiscal = _docBySale.get(s.id) || null;
 
+    // Telefone do cliente (pra pré-preencher o envio do cupom no WhatsApp)
+    const _clientIds = [...new Set(enriched.map(s => s.clientId).filter(Boolean))];
+    if (_clientIds.length) {
+      const _clients = await prisma.sellerClient.findMany({ where: { id: { in: _clientIds } }, select: { id: true, phone: true, name: true } });
+      const _cMap = new Map(_clients.map(c => [c.id, c]));
+      for (const s of enriched) { const c = s.clientId ? _cMap.get(s.clientId) : null; s.clientPhone = c?.phone || null; s.clientName = c?.name || null; }
+    }
+
     // Totais — vendas CANCELADAS não contam (ficam na lista, mas fora dos KPIs)
     const _ativas = enriched.filter((s) => s.status !== 'canceled');
     const totals = {
