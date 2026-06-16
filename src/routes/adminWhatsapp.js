@@ -48,11 +48,16 @@ async function fetchEvolutionStatus() {
 router.get('/numbers', async (_req, res) => {
   try {
     const live = await fetchEvolutionStatus();
+    // início do dia em João Pessoa (America/Fortaleza, UTC-3) → em UTC
+    const now = new Date();
+    const fort = new Date(now.getTime() - 3 * 3600 * 1000);
+    const startUTC = new Date(Date.UTC(fort.getUTCFullYear(), fort.getUTCMonth(), fort.getUTCDate(), 3, 0, 0));
     const numbers = [];
     for (const inst of INSTANCES) {
-      const [total, recebidas, last] = await Promise.all([
+      const [total, recebidas, hoje, last] = await Promise.all([
         prisma.whatsappMessage.count({ where: { instance: inst.key } }),
         prisma.whatsappMessage.count({ where: { instance: inst.key, fromMe: false } }),
+        prisma.whatsappMessage.count({ where: { instance: inst.key, fromMe: false, ts: { gte: startUTC } } }),
         prisma.whatsappMessage.findFirst({ where: { instance: inst.key }, orderBy: { ts: 'desc' }, select: { ts: true } }),
       ]);
       const l = live[inst.key] || {};
@@ -63,6 +68,7 @@ router.get('/numbers', async (_req, res) => {
         number: l.number || null,
         total,
         recebidas,
+        hoje,
         lastAt: last ? last.ts : null,
       });
     }
