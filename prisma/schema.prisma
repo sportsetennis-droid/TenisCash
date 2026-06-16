@@ -141,6 +141,10 @@ model User {
   // ===== LOGIN BIOMÉTRICO (WebAuthn — Face ID / digital / Windows Hello) =====
   webauthnCredentials WebauthnCredential[]
   faceDescriptors     FaceDescriptor[]
+
+  // ===== AGENDA / ESCALA DA EQUIPE (gerente monta dias × loja do vendedor) =====
+  schedules        SellerSchedule[] @relation("sellerSchedules")
+  agendaActivities AgendaActivity[] @relation("sellerActivities")
 }
 
 // Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
@@ -289,6 +293,10 @@ model Store {
 
   // Mensagens V2: conversas entre loja e cliente
   conversationsAsStore Conversation[] @relation("conversationsForStore")
+
+  // Agenda / escala da equipe
+  schedules        SellerSchedule[] @relation("storeSchedules")
+  agendaActivities AgendaActivity[] @relation("storeActivities")
 }
 
 // ============================================================
@@ -4552,4 +4560,54 @@ model MfProductionStage {
 
   @@index([productionOrderId])
   @@index([assigneeId, doneAt])
+}
+
+// ============================================================
+// AGENDA DA EQUIPE (gerente) — escala recorrente + atividades (2026-06-16)
+// Amarrada no cadastro REAL do vendedor (User role=seller) e na Store.
+// Interliga com ponto (ClockIn) e vendas (Sale) no endpoint /week.
+// ============================================================
+
+// Escala recorrente: "vendedor X trabalha na loja Y, tal dia da semana, das HH às HH".
+model SellerSchedule {
+  id        String   @id @default(cuid())
+  sellerId  String
+  seller    User     @relation("sellerSchedules", fields: [sellerId], references: [id])
+  storeId   String
+  store     Store    @relation("storeSchedules", fields: [storeId], references: [id])
+  weekday   Int // 0=domingo, 1=segunda, ... 6=sábado
+  startTime String   @default("09:00") // "HH:MM"
+  endTime   String   @default("18:00") // "HH:MM"
+  active    Boolean  @default(true)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([storeId, weekday])
+}
+
+// Qualquer atividade/marcação na agenda (folga, férias, treinamento, reunião,
+// feriado, meta, evento…). Pode ser de um vendedor, de uma loja, ou geral.
+model AgendaActivity {
+  id        String    @id @default(cuid())
+  title     String
+  type      String    @default("evento") // folga|ferias|treinamento|reuniao|feriado|meta|evento|outro
+  date      DateTime // dia (ou início) da atividade
+  endDate   DateTime? // fim, quando é período (ex: férias)
+  allDay    Boolean   @default(true)
+  startTime String? // "HH:MM" quando não é allDay
+  endTime   String?
+  sellerId  String?
+  seller    User?     @relation("sellerActivities", fields: [sellerId], references: [id])
+  storeId   String?
+  store     Store?    @relation("storeActivities", fields: [storeId], references: [id])
+  note      String?
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([date])
+  @@index([sellerId])
+  @@index([storeId])
 }

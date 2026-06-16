@@ -262,6 +262,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
+    <button class="tab" onclick="switchTab('agenda',this)">📅 Agenda</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('competitivo',this)">📊 Competitivo</button>
@@ -2201,6 +2202,52 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div style="padding:16px;color:#999;">Selecione uma conversa.</div>
     </div>
   </div>
+</div>
+
+<div class="section" id="tab-agenda" style="display:none">
+  <h2 style="margin:0 0 2px;">📅 Agenda da equipe</h2>
+  <p style="color:#666;margin:0 0 14px;font-size:12px;">O gerente monta os dias de cada vendedor e em qual loja. A agenda cruza sozinha com o <b>ponto</b> (quem bateu entrada) e as <b>vendas</b> do dia. Marque também folgas, treinamentos, reuniões, metas — qualquer atividade — e filtre por loja ou vendedor.</p>
+
+  <!-- filtros -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:16px;">
+    <label style="font-size:11px;font-weight:700;color:#555;">Semana de<br><input type="date" id="ag-date" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="ag-store" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:140px;"><option value="">Todas as lojas</option></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Vendedor<br><select id="ag-seller" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:160px;"><option value="">Todos</option></select></label>
+    <button onclick="loadAgenda()" style="height:36px;background:#E5571E;color:#fff;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
+    <div style="margin-left:auto;display:flex;gap:6px;">
+      <button onclick="agShiftWeek(-1)" style="height:36px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-weight:700;cursor:pointer;">◀ semana</button>
+      <button onclick="agShiftWeek(1)" style="height:36px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-weight:700;cursor:pointer;">semana ▶</button>
+    </div>
+  </div>
+
+  <!-- grade da semana (escala × ponto × vendas) -->
+  <div id="ag-week"><div style="color:#999;padding:10px;">Carregando…</div></div>
+
+  <!-- escala fixa -->
+  <h3 style="margin:24px 0 4px;">🗓️ Escala fixa do vendedor</h3>
+  <p style="color:#666;font-size:12px;margin:0 0 10px;">Defina em que <b>dia da semana</b> cada vendedor trabalha e em <b>qual loja</b>. Vale toda semana automaticamente.</p>
+  <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <label style="font-size:11px;font-weight:700;color:#555;">Vendedor<br><select id="ag-sh-seller" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:170px;"></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="ag-sh-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Dia da semana<br><select id="ag-sh-weekday" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;"></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Entrada<br><input id="ag-sh-start" type="time" value="09:00" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Saída<br><input id="ag-sh-end" type="time" value="18:00" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;"></label>
+    <button onclick="agAddShift()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Adicionar à escala</button>
+  </div>
+  <div id="ag-shifts"></div>
+
+  <!-- atividades -->
+  <h3 style="margin:24px 0 4px;">📌 Atividades / marcações</h3>
+  <p style="color:#666;font-size:12px;margin:0 0 10px;">Registre qualquer coisa na agenda: folga, férias, treinamento, reunião, feriado, meta, evento. Pode ser de um vendedor, de uma loja, ou geral. Aparece na grade da semana.</p>
+  <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <label style="font-size:11px;font-weight:700;color:#555;">Tipo<br><select id="ag-ac-type" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:180px;">O que é<br><input id="ag-ac-title" placeholder="ex: Treinamento de vitrine" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Data<br><input id="ag-ac-date" type="date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Vendedor<br><select id="ag-ac-seller" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">— opcional —</option></select></label>
+    <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="ag-ac-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:140px;"><option value="">— opcional —</option></select></label>
+    <button onclick="agAddActivity()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Registrar</button>
+  </div>
+  <div id="ag-activities"></div>
 </div>
 
 <div class="section" id="tab-financeiro" style="display:none">
@@ -13439,6 +13486,137 @@ async function finDelExpense(id){
     const el = document.getElementById('tab-financeiro');
     if (el) el.style.display = name === 'financeiro' ? 'block' : 'none';
     if (name === 'financeiro') loadFinanceiro();
+  };
+})();
+
+// ===== Agenda da equipe (escala × ponto × vendas + atividades) =====
+const AG_WD = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const AG_WD_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const AG_ACT = { folga:'🌴 Folga', ferias:'🏖️ Férias', treinamento:'📚 Treinamento', reuniao:'👥 Reunião', feriado:'🎉 Feriado', meta:'🎯 Meta', evento:'📅 Evento', outro:'📌 Outro' };
+let agMeta = { sellers: [], stores: [] };
+let agMetaLoaded = false;
+function agH(){ return { 'Authorization':'Bearer '+(localStorage.getItem('tc_admin_token')||''), 'Content-Type':'application/json' }; }
+function agBRL(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function agEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function agTodayYmd(){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); return f.toISOString().slice(0,10); }
+
+async function agLoadMeta(){
+  if(agMetaLoaded) return;
+  const r = await fetch('/api/admin/schedule/meta',{headers:agH()});
+  const j = await r.json(); agMeta = { sellers:j.sellers||[], stores:j.stores||[] }; agMetaLoaded = true;
+  const sellerOpts = agMeta.sellers.map(s=>'<option value="'+s.id+'">'+agEsc(s.name)+(s.employeeCode?' ('+agEsc(s.employeeCode)+')':'')+'</option>').join('');
+  const storeOpts = agMeta.stores.map(s=>'<option value="'+s.id+'">'+agEsc(s.code)+' — '+agEsc(s.name)+'</option>').join('');
+  const wdOpts = AG_WD.map((w,i)=>'<option value="'+i+'">'+w+'</option>').join('');
+  const actOpts = Object.entries(AG_ACT).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
+  const set=(id,html)=>{ const e=document.getElementById(id); if(e) e.innerHTML=html; };
+  set('ag-store','<option value="">Todas as lojas</option>'+storeOpts);
+  set('ag-seller','<option value="">Todos</option>'+sellerOpts);
+  set('ag-sh-seller',sellerOpts); set('ag-sh-store',storeOpts); set('ag-sh-weekday',wdOpts);
+  const wd=document.getElementById('ag-sh-weekday'); if(wd) wd.value='1';
+  set('ag-ac-type',actOpts);
+  set('ag-ac-seller','<option value="">— opcional —</option>'+sellerOpts);
+  set('ag-ac-store','<option value="">— opcional —</option>'+storeOpts);
+}
+
+async function loadAgenda(){
+  try { await agLoadMeta(); } catch(e){ const w=document.getElementById('ag-week'); if(w) w.innerHTML='<div style="color:#d70015;padding:10px;">Erro ao carregar: '+agEsc(e.message)+'</div>'; return; }
+  const dEl=document.getElementById('ag-date'); if(dEl && !dEl.value) dEl.value=agTodayYmd();
+  const aEl=document.getElementById('ag-ac-date'); if(aEl && !aEl.value) aEl.value=agTodayYmd();
+  await Promise.all([agLoadWeek(), agLoadShifts(), agLoadActivities()]);
+}
+
+function agShiftWeek(delta){
+  const el=document.getElementById('ag-date'); const cur=el && el.value ? new Date(el.value+'T12:00:00Z') : new Date();
+  const nd=new Date(cur.getTime()+delta*7*86400000); if(el) el.value=nd.toISOString().slice(0,10); loadAgenda();
+}
+
+async function agLoadWeek(){
+  const box=document.getElementById('ag-week'); if(!box) return;
+  box.innerHTML='<div style="color:#999;padding:10px;">Carregando…</div>';
+  try{
+    const p=new URLSearchParams({ date:(document.getElementById('ag-date')||{}).value||'' });
+    const st=(document.getElementById('ag-store')||{}).value; if(st) p.set('storeId',st);
+    const se=(document.getElementById('ag-seller')||{}).value; if(se) p.set('sellerId',se);
+    const r=await fetch('/api/admin/schedule/week?'+p.toString(),{headers:agH()});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error||'falha');
+    const fmt=(ymd)=>ymd.split('-').reverse().slice(0,2).join('/');
+    let html='<div style="font-size:12px;color:#666;margin-bottom:6px;">Semana <b>'+fmt(j.weekStart)+'</b> a <b>'+fmt(j.weekEnd)+'</b> · ✓ bateu ponto · ✗ sem ponto</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;overflow-x:auto;">';
+    j.days.forEach(d=>{
+      const isToday=d.date===agTodayYmd();
+      html+='<div style="background:'+(isToday?'#fff7ed':'#fff')+';border:1px solid '+(isToday?'#fdba74':'#eee')+';border-radius:10px;padding:8px;min-width:150px;">';
+      html+='<div style="font-weight:800;font-size:12px;color:#333;">'+AG_WD_SHORT[d.weekday]+' <span style="color:#999;font-weight:600;">'+fmt(d.date)+'</span></div>';
+      if(!d.scheduled.length && !d.activities.length) html+='<div style="color:#bbb;font-size:11px;margin-top:8px;">—</div>';
+      d.scheduled.forEach(s=>{
+        const pres=s.present?'<span title="bateu ponto" style="color:#0a7d3b;">✓</span>':'<span title="sem ponto" style="color:#c0271f;">✗</span>';
+        html+='<div style="margin-top:6px;padding:6px;border-radius:8px;background:#f6f8fa;border:1px solid #eef;">'
+          +'<div style="font-size:12px;font-weight:700;">'+pres+' '+agEsc(s.sellerName)+'</div>'
+          +'<div style="font-size:11px;color:#777;">'+agEsc(s.storeCode)+' · '+agEsc(s.startTime)+'–'+agEsc(s.endTime)+'</div>'
+          +(s.salesCount?'<div style="font-size:11px;color:#0a7d3b;font-weight:700;">'+s.salesCount+' venda(s) · '+agBRL(s.revenue)+'</div>':'')
+          +'</div>';
+      });
+      d.activities.forEach(a=>{
+        html+='<div style="margin-top:6px;font-size:11px;padding:4px 6px;border-radius:6px;background:#eef4ff;border:1px solid #d4e2fb;color:#1f4e9c;'+(a.done?'text-decoration:line-through;opacity:.6;':'')+'">'+(AG_ACT[a.type]||a.type).split(' ')[0]+' '+agEsc(a.title)+(a.sellerName?' · '+agEsc(a.sellerName):'')+(a.storeCode?' · '+agEsc(a.storeCode):'')+'</div>';
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+
+async function agLoadShifts(){
+  const box=document.getElementById('ag-shifts'); if(!box) return;
+  try{
+    const p=new URLSearchParams();
+    const st=(document.getElementById('ag-store')||{}).value; if(st) p.set('storeId',st);
+    const se=(document.getElementById('ag-seller')||{}).value; if(se) p.set('sellerId',se);
+    const r=await fetch('/api/admin/schedule/shifts?'+p.toString(),{headers:agH()});
+    const j=await r.json(); const shifts=j.shifts||[];
+    if(!shifts.length){ box.innerHTML='<div style="color:#999;padding:12px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhuma escala cadastrada'+((st||se)?' pro filtro atual':'')+'. Adicione acima.</div>'; return; }
+    let html='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px;"><thead><tr style="text-align:left;color:#666;border-bottom:2px solid #eee;"><th style="padding:6px;">Vendedor</th><th style="padding:6px;">Loja</th><th style="padding:6px;">Dia</th><th style="padding:6px;">Horário</th><th></th></tr></thead><tbody>';
+    shifts.forEach(s=>{ html+='<tr style="border-bottom:1px solid #f2f2f2;"><td style="padding:6px;font-weight:700;">'+agEsc(s.seller?s.seller.name:'?')+'</td><td style="padding:6px;">'+agEsc(s.store?s.store.code:'?')+'</td><td style="padding:6px;">'+AG_WD[s.weekday]+'</td><td style="padding:6px;">'+agEsc(s.startTime)+'–'+agEsc(s.endTime)+'</td><td style="padding:6px;text-align:right;"><button onclick="agDelShift(\''+s.id+'\')" style="border:0;background:transparent;color:#c0271f;cursor:pointer;font-size:15px;" title="Remover">✕</button></td></tr>'; });
+    html+='</tbody></table></div>';
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+async function agAddShift(){
+  const sellerId=(document.getElementById('ag-sh-seller')||{}).value, storeId=(document.getElementById('ag-sh-store')||{}).value, weekday=(document.getElementById('ag-sh-weekday')||{}).value, startTime=(document.getElementById('ag-sh-start')||{}).value, endTime=(document.getElementById('ag-sh-end')||{}).value;
+  if(!sellerId||!storeId){ alert('Escolha o vendedor e a loja.'); return; }
+  try{ const r=await fetch('/api/admin/schedule/shifts',{method:'POST',headers:agH(),body:JSON.stringify({sellerId,storeId,weekday,startTime,endTime})}); const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; } await Promise.all([agLoadShifts(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agDelShift(id){ if(!confirm('Remover esta escala?'))return; try{ await fetch('/api/admin/schedule/shifts/'+id,{method:'DELETE',headers:agH()}); await Promise.all([agLoadShifts(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); } }
+
+async function agLoadActivities(){
+  const box=document.getElementById('ag-activities'); if(!box) return;
+  try{
+    const p=new URLSearchParams();
+    const se=(document.getElementById('ag-seller')||{}).value; if(se) p.set('sellerId',se);
+    const st=(document.getElementById('ag-store')||{}).value; if(st) p.set('storeId',st);
+    const r=await fetch('/api/admin/schedule/activities?'+p.toString(),{headers:agH()});
+    const j=await r.json(); const acts=j.activities||[];
+    if(!acts.length){ box.innerHTML='<div style="color:#999;padding:12px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhuma atividade registrada'+((st||se)?' pro filtro atual':'')+'.</div>'; return; }
+    let html='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:620px;"><thead><tr style="text-align:left;color:#666;border-bottom:2px solid #eee;"><th style="padding:6px;">Data</th><th style="padding:6px;">Tipo</th><th style="padding:6px;">O que</th><th style="padding:6px;">Vendedor</th><th style="padding:6px;">Loja</th><th></th><th></th></tr></thead><tbody>';
+    acts.forEach(a=>{ const dt=a.date?String(a.date).slice(0,10).split('-').reverse().join('/'):''; html+='<tr style="border-bottom:1px solid #f2f2f2;'+(a.done?'opacity:.55;':'')+'"><td style="padding:6px;">'+dt+'</td><td style="padding:6px;">'+(AG_ACT[a.type]||agEsc(a.type))+'</td><td style="padding:6px;'+(a.done?'text-decoration:line-through;':'')+'">'+agEsc(a.title)+'</td><td style="padding:6px;color:#777;">'+agEsc(a.seller?a.seller.name:'—')+'</td><td style="padding:6px;color:#777;">'+agEsc(a.store?a.store.code:'—')+'</td><td style="padding:6px;text-align:right;"><button onclick="agToggleAct(\''+a.id+'\')" style="border:0;background:transparent;cursor:pointer;font-size:14px;" title="Concluir/reabrir">'+(a.done?'↩':'✔')+'</button></td><td style="padding:6px;text-align:right;"><button onclick="agDelAct(\''+a.id+'\')" style="border:0;background:transparent;color:#c0271f;cursor:pointer;font-size:15px;" title="Remover">✕</button></td></tr>'; });
+    html+='</tbody></table></div>';
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+agEsc(e.message)+'</div>'; }
+}
+async function agAddActivity(){
+  const type=(document.getElementById('ag-ac-type')||{}).value, title=((document.getElementById('ag-ac-title')||{}).value||'').trim(), date=(document.getElementById('ag-ac-date')||{}).value, sellerId=(document.getElementById('ag-ac-seller')||{}).value, storeId=(document.getElementById('ag-ac-store')||{}).value;
+  if(!title||!date){ alert('Preencha o que é e a data.'); return; }
+  try{ const r=await fetch('/api/admin/schedule/activities',{method:'POST',headers:agH(),body:JSON.stringify({type,title,date,sellerId:sellerId||null,storeId:storeId||null})}); const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; } document.getElementById('ag-ac-title').value=''; await Promise.all([agLoadActivities(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agToggleAct(id){ try{ await fetch('/api/admin/schedule/activities/'+id+'/toggle',{method:'PATCH',headers:agH()}); await Promise.all([agLoadActivities(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); } }
+async function agDelAct(id){ if(!confirm('Remover esta atividade?'))return; try{ await fetch('/api/admin/schedule/activities/'+id,{method:'DELETE',headers:agH()}); await Promise.all([agLoadActivities(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); } }
+
+(function(){
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-agenda');
+    if (el) el.style.display = name === 'agenda' ? 'block' : 'none';
+    if (name === 'agenda') loadAgenda();
   };
 })();
 
