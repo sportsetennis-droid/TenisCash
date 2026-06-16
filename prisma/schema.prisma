@@ -4402,3 +4402,26 @@ model ApsGroupCapture {
 
   @@index([instance, groupId, createdAt], map: "ApsGroupCapture_inst_grp_idx")
 }
+
+// Monitor de WhatsApp: toda mensagem que CHEGA (e nossas respostas via eco fromMe)
+// nas instâncias Evolution (teniscash/baratao/metafardamentos/metaaps) é gravada aqui
+// pro dono acompanhar tudo num só lugar (admin → aba WhatsApp). Captura daqui pra frente
+// (a Evolution não guarda histórico). NÃO bloqueia o atendente: gravação é try/catch.
+model WhatsappMessage {
+  id          String   @id @default(cuid())
+  instance    String // teniscash | baratao | metafardamentos | metaaps
+  chatJid     String // remoteJid (contato ou grupo)
+  isGroup     Boolean  @default(false)
+  contactName String? // pushName
+  phone       String? // telefone do remetente (só dígitos)
+  fromMe      Boolean  @default(false) // true = enviada por nós/IA; false = recebida
+  text        String? // texto/legenda da mensagem
+  msgType     String?  @default("text") // text/image/audio/video/document/...
+  messageId   String? // id da Evolution (dedup)
+  ts          DateTime @default(now()) // horário da mensagem
+  createdAt   DateTime @default(now())
+
+  @@unique([instance, messageId], map: "WhatsappMessage_inst_msgid_uq")
+  @@index([instance, ts], map: "WhatsappMessage_inst_ts_idx")
+  @@index([instance, chatJid, ts], map: "WhatsappMessage_inst_chat_ts_idx")
+}

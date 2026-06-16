@@ -265,6 +265,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('competitivo',this)">📊 Competitivo</button>
+    <button class="tab" onclick="switchTab('whatsapp',this)">📱 WhatsApp</button>
     <button class="tab" onclick="switchTab('partners',this)">Creation</button>
     <button class="tab" onclick="switchTab('aiCenter',this)">Central IA</button>
     <button class="tab" onclick="switchTab('labels',this)">Etiquetas</button>
@@ -2178,6 +2179,28 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <!-- MONITORAMENTO COMPETITIVO — top tênis por bipado vs concorrentes -->
+<div class="section" id="tab-whatsapp" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+    <div>
+      <h2 style="margin:0;">📱 Monitor de WhatsApp</h2>
+      <p style="color:#666;margin:2px 0 0;font-size:12px;">Tudo que chega em cada número, num só lugar. Captura a partir de agora (a Evolution não guarda histórico antigo).</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <label style="font-size:12px;color:#555;"><input type="checkbox" onchange="waToggleGroups(this)"> mostrar grupos</label>
+      <button onclick="loadWhatsappMonitor()" style="background:#E5571E;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">↻ Atualizar</button>
+    </div>
+  </div>
+  <div id="wa-numbers" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">Carregando…</div>
+  <div style="display:flex;gap:12px;align-items:stretch;">
+    <div style="flex:0 0 320px;height:64vh;overflow:auto;border:1px solid #eee;border-radius:12px;background:#fff;">
+      <div id="wa-chats"><div style="padding:14px;color:#999;">Selecione um número acima.</div></div>
+    </div>
+    <div id="wa-thread" style="flex:1;height:64vh;overflow:auto;border:1px solid #eee;border-radius:12px;background:#efeae2;">
+      <div style="padding:16px;color:#999;">Selecione uma conversa.</div>
+    </div>
+  </div>
+</div>
+
 <div class="section" id="tab-competitivo" style="display:none">
   <h2 style="margin:0 0 4px;">📊 Monitoramento Competitivo</h2>
   <p style="color:#8e8e93;font-size:13px;margin:0 0 14px;line-height:1.5;max-width:760px;">Nossos tênis com mais estoque <strong>bipado</strong> × preço e disponibilidade nos concorrentes (Centauro, Netshoes, Amazon, Nike, FutFanatics, Converse, Adidas, Puma) + <strong>nosso giro real</strong>. Pra atacar: somos mais baratos → anuncia forte; estamos caros/encalhados → revisa preço.</p>
@@ -13201,6 +13224,92 @@ async function loadCompetitiveMonitor() {
     const el = document.getElementById('tab-competitivo');
     if (el) el.style.display = name === 'competitivo' ? 'block' : 'none';
     if (name === 'competitivo') loadCompetitiveMonitor();
+  };
+})();
+
+// ===== Monitor de WhatsApp (aba) =====
+let waNumbers = [], waState = { instance: null, jid: null, showGroups: false }, waTimer = null;
+function waHeaders(){ return { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') }; }
+function waEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function waFmt(d){ if(!d) return ''; const t=new Date(d); if(isNaN(t)) return ''; const now=new Date(); const sameDay=t.toDateString()===now.toDateString(); return sameDay ? t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : t.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+
+async function loadWhatsappMonitor(){
+  const box = document.getElementById('wa-numbers'); if(!box) return;
+  try {
+    const r = await fetch('/api/admin/whatsapp/numbers', { headers: waHeaders() });
+    const j = await r.json(); waNumbers = j.numbers || [];
+    renderWaNumbers();
+    if(!waState.instance && waNumbers[0]) waSelectNumber(waNumbers[0].instance);
+    else if(waState.instance) loadWaChats();
+  } catch(e){ box.innerHTML = '<span style="color:#d70015">Erro: '+waEsc(e.message)+'</span>'; }
+}
+function renderWaNumbers(){
+  const box = document.getElementById('wa-numbers'); if(!box) return;
+  box.innerHTML = waNumbers.map(function(n){
+    const dot = n.status==='open' ? '🟢' : (n.status==='connecting'?'🟡':'🔴');
+    const on = waState.instance===n.instance;
+    return '<div onclick="waSelectNumber(\''+n.instance+'\')" style="cursor:pointer;border:2px solid '+(on?'#E5571E':'#e2e2e6')+';border-radius:12px;padding:10px 14px;min-width:160px;background:'+(on?'#fff7f3':'#fff')+'">'
+      + '<div style="font-weight:800;font-size:13px;">'+dot+' '+waEsc(n.label)+'</div>'
+      + '<div style="font-size:11px;color:#888;">'+(n.number?('+'+n.number):waEsc(n.instance))+'</div>'
+      + '<div style="font-size:12px;margin-top:4px;color:#333;">'+n.total+' msgs · '+n.recebidas+' recebidas</div>'
+      + '<div style="font-size:11px;color:#aaa;">'+(n.lastAt?('última: '+waFmt(n.lastAt)):'sem mensagens ainda')+'</div>'
+      + '</div>';
+  }).join('') || '<span style="color:#999">Nenhum número configurado.</span>';
+}
+function waSelectNumber(instance){
+  waState.instance = instance; waState.jid = null;
+  renderWaNumbers();
+  const th = document.getElementById('wa-thread'); if(th) th.innerHTML = '<div style="padding:16px;color:#999;">Selecione uma conversa à esquerda.</div>';
+  loadWaChats();
+}
+async function loadWaChats(){
+  const box = document.getElementById('wa-chats'); if(!box || !waState.instance) return;
+  box.innerHTML = '<div style="padding:14px;color:#999;">Carregando…</div>';
+  try {
+    const g = waState.showGroups ? '' : '&groups=0';
+    const r = await fetch('/api/admin/whatsapp/chats?instance='+encodeURIComponent(waState.instance)+g, { headers: waHeaders() });
+    const j = await r.json(); const list = j.chats || [];
+    if(!list.length){ box.innerHTML = '<div style="padding:16px;color:#999;font-size:13px;">Nenhuma conversa ainda neste número.<br><small>A captura começa agora — quando chegar mensagem, ela aparece aqui.</small></div>'; return; }
+    box.innerHTML = list.map(function(c){
+      const nm = c.contactName || (c.isGroup?'Grupo':(c.phone||c.chatJid));
+      const on = waState.jid===c.chatJid;
+      const pre = (c.lastFromMe?'Você: ':'') + (c.lastText||'');
+      return '<div onclick="waOpenChat(this)" data-jid="'+waEsc(c.chatJid)+'" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid #f0f0f0;background:'+(on?'#fff1ea':'#fff')+'">'
+        + '<div style="display:flex;justify-content:space-between;gap:6px;"><span style="font-weight:700;font-size:13px;">'+(c.isGroup?'👥 ':'')+waEsc(nm)+'</span><span style="font-size:10px;color:#aaa;white-space:nowrap;">'+waFmt(c.lastAt)+'</span></div>'
+        + '<div style="font-size:12px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+waEsc(pre).slice(0,70)+'</div>'
+        + '</div>';
+    }).join('');
+  } catch(e){ box.innerHTML = '<span style="color:#d70015">Erro: '+waEsc(e.message)+'</span>'; }
+}
+function waOpenChat(el){ waState.jid = el.getAttribute('data-jid'); loadWaChats(); loadWaThread(); }
+async function loadWaThread(){
+  const box = document.getElementById('wa-thread'); if(!box || !waState.jid) return;
+  box.innerHTML = '<div style="padding:16px;color:#999;">Carregando conversa…</div>';
+  try {
+    const r = await fetch('/api/admin/whatsapp/messages?instance='+encodeURIComponent(waState.instance)+'&jid='+encodeURIComponent(waState.jid), { headers: waHeaders() });
+    const j = await r.json(); const msgs = j.messages || [];
+    box.innerHTML = '<div style="padding:12px;display:flex;flex-direction:column;gap:6px;">' + msgs.map(function(m){
+      const mine = m.fromMe;
+      const who = mine ? 'Loja/IA' : (m.contactName || m.phone || '');
+      return '<div style="align-self:'+(mine?'flex-end':'flex-start')+';max-width:78%;background:'+(mine?'#d9fdd3':'#fff')+';border:1px solid #e6e6e6;border-radius:10px;padding:7px 10px;">'
+        + (who?('<div style="font-size:10px;color:#999;margin-bottom:2px;">'+waEsc(who)+'</div>'):'')
+        + '<div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">'+waEsc(m.text||'')+'</div>'
+        + '<div style="font-size:9px;color:#aaa;text-align:right;margin-top:2px;">'+waFmt(m.ts)+'</div>'
+        + '</div>';
+    }).join('') + '</div>';
+    box.scrollTop = box.scrollHeight;
+  } catch(e){ box.innerHTML = '<span style="color:#d70015">Erro: '+waEsc(e.message)+'</span>'; }
+}
+function waToggleGroups(cb){ waState.showGroups = cb.checked; loadWaChats(); }
+
+(function(){
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-whatsapp');
+    if (el) el.style.display = name === 'whatsapp' ? 'block' : 'none';
+    if (waTimer) { clearInterval(waTimer); waTimer = null; }
+    if (name === 'whatsapp') { loadWhatsappMonitor(); waTimer = setInterval(function(){ loadWhatsappMonitor(); if(waState.jid) loadWaThread(); }, 20000); }
   };
 })();
 
