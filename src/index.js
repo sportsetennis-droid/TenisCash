@@ -170,7 +170,7 @@ app.post('/api/_falgen', async (req, res) => {
     if (req.query.op === 'worn') {
       // EDITOR FIEL (nano-banana/Gemini): PESSOA usando o produto REAL — fiel + tamanho certo
       const fal = require('./services/falAi');
-      const r = await fal.generateWornScene({ product, scene: req.query.scene || '', aspectRatio: req.query.ar || '9:16' });
+      const r = await fal.generateWornScene({ product, fullPrompt: req.query.fp || '', scene: req.query.scene || '', aspectRatio: req.query.ar || '9:16' });
       return res.json({ ok: true, op: 'worn', model: r.model, outputUrl: r.outputUrl, ...keys });
     }
     if (req.query.op === 'studio') {
@@ -178,9 +178,10 @@ app.post('/api/_falgen', async (req, res) => {
       const fal = require('./services/falAi');
       const setup = req.query.scene ? String(req.query.scene)
         : 'an elegant refined three-quarter angle on a SEAMLESS studio backdrop with a soft warm grey-to-bone gradient (no horizon line), soft directional studio light from upper left, a gentle realistic contact shadow and a subtle soft reflection on a smooth matte surface';
-      const prompt = 'Luxury fashion house product photography of THESE EXACT sneakers shown in the reference image, in the style of a Gucci or Louis Vuitton e-commerce campaign. SETUP: '
+      const prompt = req.query.fp ? String(req.query.fp)
+        : ('Luxury fashion house product photography of THESE EXACT sneakers shown in the reference image, in the style of a Gucci or Louis Vuitton e-commerce campaign. SETUP: '
         + setup + '. Minimal high-end still life, lots of empty negative space, soft premium lighting. '
-        + 'CRITICAL: keep the sneakers ABSOLUTELY IDENTICAL to the reference — same model, colors, materials, logo, stitching and proportions — at correct realistic scale. Photorealistic, premium, no text, no extra objects, no people.';
+        + 'CRITICAL: keep the sneakers ABSOLUTELY IDENTICAL to the reference — same model, colors, materials, logo, stitching and proportions — at correct realistic scale. Photorealistic, premium, no text, no extra objects, no people.');
       const r = await fal.generateWornScene({ product, fullPrompt: prompt, aspectRatio: req.query.ar || '4:5' });
       return res.json({ ok: true, op: 'studio', model: r.model, outputUrl: r.outputUrl, ...keys });
     }
