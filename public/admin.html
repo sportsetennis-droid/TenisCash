@@ -2204,28 +2204,32 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <div class="section" id="tab-financeiro" style="display:none">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;">
-    <div>
-      <h2 style="margin:0;">💰 Financeiro — Raio-X do dia</h2>
-      <p style="color:#666;margin:2px 0 0;font-size:12px;">A empresa lucrou ou levou fumo hoje? Vendas − custo dos produtos − folha − despesas fixas.</p>
+  <h2 style="margin:0 0 2px;">💰 Financeiro — Raio-X do dia</h2>
+  <p style="color:#666;margin:0 0 16px;font-size:12px;">A empresa lucrou ou levou fumo hoje? Vendas − custo dos produtos − folha − despesas fixas.</p>
+
+  <!-- PASSO 1: cadastrar custos (vem primeiro) -->
+  <div style="background:#eef4ff;border:1px solid #b6d2ff;border-radius:14px;padding:16px 16px 14px;margin-bottom:18px;">
+    <h3 style="margin:0 0 2px;color:#1f4e9c;">1️⃣ Cadastre seus custos</h3>
+    <p style="color:#3a5e9c;font-size:12px;margin:0 0 12px;">Cadastre UMA vez o valor <b>mensal</b> de cada item (salário de cada colaborador, aluguel, energia…). O sistema divide pelos dias do mês sozinho pra achar o custo do dia. Sem isso, o lucro aparece maior do que é.</p>
+    <div style="background:#fff;border:1px solid #d4e2fb;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Tipo<br><select id="fin-cat" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:170px;"></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:180px;">Descrição<br><input id="fin-desc" placeholder="ex: Salário João / Aluguel Bessa" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Valor mensal (R$)<br><input id="fin-amt" type="number" step="0.01" min="0" placeholder="0,00" style="width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="fin-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Empresa toda</option></select></label>
+      <button onclick="finAddExpense()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Adicionar</button>
     </div>
+    <div id="fin-expenses"></div>
+  </div>
+
+  <!-- PASSO 2: o raio-x -->
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
+    <h3 style="margin:0;">2️⃣ Raio-X do dia</h3>
     <div style="display:flex;align-items:center;gap:8px;">
       <input type="date" id="fin-date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;">
       <button onclick="loadFinanceiro()" style="background:#E5571E;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
     </div>
   </div>
   <div id="fin-xray"><div style="color:#999;padding:10px;">Carregando…</div></div>
-
-  <h3 style="margin:22px 0 6px;">Custos cadastrados (folha + despesas fixas)</h3>
-  <p style="color:#666;font-size:12px;margin:0 0 10px;">Cadastre UMA vez o custo <b>mensal</b> de cada item. O sistema divide pelos dias do mês pra achar o custo do dia.</p>
-  <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-    <label style="font-size:11px;font-weight:700;color:#555;">Tipo<br><select id="fin-cat" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:170px;"></select></label>
-    <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:180px;">Descrição<br><input id="fin-desc" placeholder="ex: Salário João / Aluguel Bessa" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
-    <label style="font-size:11px;font-weight:700;color:#555;">Valor mensal (R$)<br><input id="fin-amt" type="number" step="0.01" min="0" placeholder="0,00" style="width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
-    <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="fin-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Empresa toda</option></select></label>
-    <button onclick="finAddExpense()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Adicionar</button>
-  </div>
-  <div id="fin-expenses"></div>
 </div>
 
 <div class="section" id="tab-competitivo" style="display:none">
