@@ -379,6 +379,24 @@ app.get('/nota/:accessKey', async (req, res) => {
   }
 });
 
+// PDF público da nota (o WhatsApp baixa esta URL e manda como documento; cliente abre/salva).
+app.get('/nota/:accessKey/pdf', async (req, res) => {
+  try {
+    const { prisma } = require('./middleware');
+    const { buildDanfePdf } = require('./services/danfePdf');
+    const key = String(req.params.accessKey || '').replace(/\D/g, '');
+    if (key.length !== 44) return res.status(400).send('Link inválido');
+    const doc = await prisma.fiscalDocument.findFirst({ where: { accessKey: key }, include: { issuer: true } });
+    if (!doc || !doc.xmlContent || (doc.status !== 'authorized' && doc.status !== 'cancelled')) return res.status(404).send('Nota não encontrada');
+    const pdf = await buildDanfePdf(doc);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="cupom-' + doc.number + '.pdf"', 'Cache-Control': 'public, max-age=600' });
+    res.send(pdf);
+  } catch (err) {
+    console.error('[/nota/pdf]', err.message);
+    res.status(500).send('Erro ao gerar o PDF da nota');
+  }
+});
+
 // Página pública de produto (QR Code aponta pra cá)
 app.get('/p/:id', async (req, res) => {
   try {

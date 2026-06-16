@@ -88,6 +88,34 @@ async function sendEvolutionRaw(numberOrJid, message, instance = EVOLUTION_INSTA
   }
 }
 
+// Envia um DOCUMENTO (PDF) por uma URL pública. O Evolution baixa a URL e manda como
+// arquivo. Timeout maior (gera/baixa o PDF). Usado pra mandar o cupom em PDF pro cliente.
+async function sendEvolutionMedia(phone, mediaUrl, fileName, caption, instance = EVOLUTION_INSTANCE) {
+  if (!isEvolutionConfigured()) return { ok: false, error: 'Evolution nao configurado' };
+  const formattedPhone = formatPhoneBR(phone);
+  if (!formattedPhone) return { ok: false, error: 'Telefone invalido' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${encodeURIComponent(instance)}`, {
+      method: 'POST',
+      headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: formattedPhone, mediatype: 'document', mimetype: 'application/pdf', media: String(mediaUrl), fileName: fileName || 'cupom.pdf', caption: caption || '' }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = Array.isArray(data?.response?.message) ? data.response.message.join('; ') : (data?.message || `Evolution ${response.status}`);
+      return { ok: false, error: msg, data };
+    }
+    return { ok: true, messageId: data?.key?.id };
+  } catch (err) {
+    return { ok: false, error: err.name === 'AbortError' ? 'Evolution timeout (PDF)' : (err.message || 'Erro Evolution') };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sendMetaWhatsAppPayload(payload) {
   if (!isMetaWhatsAppConfigured()) return { ok: false, error: 'Meta WhatsApp nao configurado' };
 
@@ -324,4 +352,5 @@ module.exports = {
   sendMetaText,
   sendEvolutionText,
   sendEvolutionRaw,
+  sendEvolutionMedia,
 };

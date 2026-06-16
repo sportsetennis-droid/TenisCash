@@ -227,6 +227,19 @@ async function emitNfceFromSaleHandler(req, res) {
         where: { id: issuer.id },
         data: { nfceNextNumber: nNF + 1 },
       });
+      // DISPARO AUTOMÁTICO do cupom no WhatsApp: se veio um telefone (caixa digitou)
+      // ou o cliente da venda é cadastrado, manda o PDF sozinho (não bloqueia a resposta).
+      try {
+        let waPhone = String(req.body.whatsapp || req.body.customerPhone || '').replace(/\D/g, '');
+        if (!waPhone && sale.clientId) {
+          const c = await prisma.sellerClient.findUnique({ where: { id: sale.clientId }, select: { phone: true } });
+          waPhone = String(c?.phone || '').replace(/\D/g, '');
+        }
+        if (waPhone) {
+          const { deliverCupom } = require('../services/cupomDelivery');
+          deliverCupom({ ...updated, issuer }, waPhone, { prisma }).catch(e => console.error('[cupom-wa auto/from-sale]', e.message));
+        }
+      } catch (e) { console.error('[cupom-wa auto/from-sale]', e.message); }
     } else if (result.accessKey) {
       // Rejeitada PELA SEFAZ (tem chave) — mantem como rejected pra auditoria
       updated = await prisma.fiscalDocument.update({
@@ -1023,21 +1036,10 @@ router.post('/documents/:id/whatsapp', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Cupom não encontrado' });
     if (doc.status !== 'authorized' || !doc.accessKey) return res.status(400).json({ error: 'Só cupom autorizado pode ser enviado' });
 
-    const { sendCustomMessage } = require('../whatsapp');
-    const loja = (doc.issuer && (doc.issuer.fantasyName || doc.issuer.companyName)) || 'Sports & Tennis';
-    const data = new Date(doc.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
-    const total = Number(doc.totalValue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const base = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '');
-    const link = base + '/nota/' + doc.accessKey;
-    const msg = '🧾 *' + loja + '* — seu cupom fiscal\n\n' +
-      'Cupom nº ' + doc.number + ' · ' + data + '\n' +
-      'Total: R$ ' + total + '\n\n' +
-      'Ver / baixar a nota:\n' + link + '\n\n' +
-      'Obrigado pela compra! 💚';
-
-    const out = await sendCustomMessage(phone, msg);
+    const { deliverCupom } = require('../services/cupomDelivery');
+    const out = await deliverCupom(doc, phone, { prisma, force: true }); // botão = sempre manda
     if (!out.ok) return res.status(502).json({ ok: false, error: out.error || 'Falha ao enviar no WhatsApp' });
-    res.json({ ok: true, provider: out.provider, phone, link });
+    res.json({ ok: true, via: out.via, provider: out.provider, phone: out.phone });
   } catch (err) {
     console.error('[fiscal/whatsapp]', err);
     res.status(500).json({ error: err.message });
