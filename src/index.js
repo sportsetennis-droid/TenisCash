@@ -192,6 +192,13 @@ app.post('/api/_falgen', async (req, res) => {
       const rb = await fal.removeBackground({ imageUrl: product.imageUrl });
       return res.json({ ok: true, op: 'removebg', outputUrl: rb.outputUrl, ...keys });
     }
+    if (req.query.op === 'video') {
+      // VIDEO REAL (image-to-video Hailuo): produto em movimento, 6s/9:16 pra Reels
+      const fal = require('./services/falAi');
+      const imageUrl = req.query.imgUrl || product.imageUrl;
+      const r = await fal.generateReelVideo({ imageUrl, productName: String(product.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
+      return res.json({ ok: true, op: 'video', outputUrl: r.outputUrl, model: r.model, costUsd: r.costUsd, ...keys });
+    }
     const r = await svc.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5', sceneHint: req.query.scene || '', quality: 'medium' });
     return res.json({ ok: true, engine: eng, outputUrl: r.outputUrl, ...keys });
   } catch (e) {
