@@ -167,6 +167,33 @@ async function generateVeoVideo({ imageUrl, prompt, duration = '8s', aspectRatio
   return { outputUrl, model, prompt, costUsd: +(COSTS[model] * sec).toFixed(2) };
 }
 
+// Veo demora 2-4min @1080p -> NAO cabe num request sincrono atras do Cloudflare (524 em 100s).
+// Modo FILA: submit devolve requestId na hora; poll busca o resultado quando pronto.
+const VEO_MODEL = 'fal-ai/veo3.1/image-to-video';
+async function submitVeoVideo({ imageUrl, prompt, duration = '8s', aspectRatio = '9:16', resolution = '1080p' }) {
+  const fal = await getFal();
+  const dur = ['4s', '6s', '8s'].includes(String(duration)) ? String(duration) : '8s';
+  const submitted = await withRetry(
+    () => fal.queue.submit(VEO_MODEL, {
+      input: { prompt, image_url: imageUrl, aspect_ratio: aspectRatio, duration: dur, generate_audio: true, resolution },
+    }),
+    'veoSubmit', 2,
+  );
+  const requestId = submitted?.request_id || submitted?.requestId;
+  if (!requestId) throw new Error('veo submit sem request_id');
+  const sec = parseInt(dur, 10) || 8;
+  return { requestId, model: VEO_MODEL, costUsd: +(COSTS[VEO_MODEL] * sec).toFixed(2) };
+}
+async function pollVeoVideo({ requestId }) {
+  const fal = await getFal();
+  const st = await fal.queue.status(VEO_MODEL, { requestId, logs: false });
+  const status = st?.status || 'UNKNOWN';
+  if (status !== 'COMPLETED') return { status };
+  const result = await fal.queue.result(VEO_MODEL, { requestId });
+  const outputUrl = result?.data?.video?.url || null;
+  return { status, outputUrl };
+}
+
 /**
  * Remove fundo de uma foto de produto (Bria RMBG 2.0).
  * @param {object} opts { imageUrl }
@@ -269,6 +296,8 @@ module.exports = {
   generateWornScene,
   generateReelVideo,
   generateVeoVideo,
+  submitVeoVideo,
+  pollVeoVideo,
   removeBackground,
   generateMusic,
   COSTS,

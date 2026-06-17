@@ -175,14 +175,19 @@ app.post('/api/_falgen', async (req, res) => {
       const imageUrl = req.query.imgUrl || (product && product.imageUrl);
       if (!imageUrl) return res.status(400).json({ error: 'falta imgUrl', ...keys });
       if (req.query.model === 'veo') {
-        const r = await fal.generateVeoVideo({
+        // FILA (evita 524 do Cloudflare): sem rid = submit; com rid = poll.
+        if (req.query.rid) {
+          const p = await fal.pollVeoVideo({ requestId: req.query.rid });
+          return res.json({ ok: true, op: 'video', model: 'veo', status: p.status, outputUrl: p.outputUrl || null, ...keys });
+        }
+        const r = await fal.submitVeoVideo({
           imageUrl,
           prompt: req.query.fp || 'cinematic vertical shot, natural realistic motion, premium sports brand commercial, native ambient audio',
           duration: (req.query.sec || '8') + 's',
           aspectRatio: req.query.ar || '9:16',
           resolution: req.query.res || '1080p',
         });
-        return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
+        return res.json({ ok: true, op: 'video', model: r.model, requestId: r.requestId, costUsd: r.costUsd, ...keys });
       }
       const r = await fal.generateReelVideo({ imageUrl, productName: String((product && product.name) || req.query.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
       return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
