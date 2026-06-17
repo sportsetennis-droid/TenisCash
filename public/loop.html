@@ -41,7 +41,6 @@
   <div class="sub" id="sub">Carregando…</div>
   <div class="row">
     <button class="btn" id="btnRefresh" onclick="load()">↻ Atualizar</button>
-    <button class="btn ghost" id="btnBrain" onclick="runBrain()">⚡ Rodar cérebro</button>
   </div>
   <div class="learn" id="learn">…</div>
   <div id="out"><div class="info">carregando a pauta do cérebro…</div></div>
@@ -49,7 +48,6 @@
 
 <script>
 const VIEW='/api/_loopview?g=stloop2026';
-const RUN='/api/_loopbrain?g=reinado2026';
 const $=(s)=>document.querySelector(s);
 function esc(s){ return String(s==null?'':s).replace(/</g,'&lt;'); }
 
@@ -89,15 +87,6 @@ function render(r){
       </div>`).join('');
   });
   $('#out').innerHTML=html;
-}
-
-async function runBrain(){
-  const b=$('#btnBrain'); const old=b.textContent; b.disabled=true; b.textContent='⏳ decidindo (~1min)…';
-  $('#out').innerHTML='<div class="info">o cérebro (Opus) está lendo o estoque real e montando a pauta… isso leva cerca de 1 minuto. Pode esperar nesta tela.</div>';
-  try{ await fetch(RUN,{method:'POST'}); }catch(e){}
-  // o cérebro salva no servidor mesmo se a conexão cair (Cloudflare corta em 100s) — recarrega a leitura
-  setTimeout(load, 3000);
-  b.disabled=false; b.textContent=old;
 }
 
 load();
