@@ -172,14 +172,15 @@ app.post('/api/_falgen', async (req, res) => {
       // VIDEO image-to-video. Nao precisa de produto: aceita imgUrl direto.
       // model=veo -> Google Veo 3.1 com AUDIO NATIVO (fp = prompt). senao Hailuo (produto em movimento).
       const fal = require('./services/falAi');
+      // POLL por rid NAO precisa de imagem (so consulta a fila). Fica no topo.
+      if (req.query.model === 'veo' && req.query.rid) {
+        const p = await fal.pollVeoVideo({ requestId: req.query.rid });
+        return res.json({ ok: true, op: 'video', model: 'veo', status: p.status, outputUrl: p.outputUrl || null, ...keys });
+      }
       const imageUrl = req.query.imgUrl || (product && product.imageUrl);
       if (!imageUrl) return res.status(400).json({ error: 'falta imgUrl', ...keys });
       if (req.query.model === 'veo') {
-        // FILA (evita 524 do Cloudflare): sem rid = submit; com rid = poll.
-        if (req.query.rid) {
-          const p = await fal.pollVeoVideo({ requestId: req.query.rid });
-          return res.json({ ok: true, op: 'video', model: 'veo', status: p.status, outputUrl: p.outputUrl || null, ...keys });
-        }
+        // FILA (evita 524 do Cloudflare): submit devolve requestId; depois poll com &rid=.
         const r = await fal.submitVeoVideo({
           imageUrl,
           prompt: req.query.fp || 'cinematic vertical shot, natural realistic motion, premium sports brand commercial, native ambient audio',
