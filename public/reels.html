@@ -68,6 +68,17 @@
   .pcard .rv{ width:100%; border-radius:10px; margin-top:9px; background:#000; aspect-ratio:9/16; max-height:440px; display:block; }
   .pcard .dl{ display:inline-block; margin-top:7px; font-size:12px; color:var(--orange); text-decoration:none; font-weight:700; }
   .pcard .rv-wait{ margin-top:9px; font-size:12px; color:var(--mut); background:#14271a; border:1px dashed var(--line); border-radius:8px; padding:8px 10px; }
+  /* loop de marketing */
+  .learnbox{ background:#10241a; border:1px solid var(--line); border-left:3px solid var(--yellow); border-radius:12px; padding:13px 15px; color:var(--ink); font-size:13px; line-height:1.5; white-space:pre-wrap; margin-bottom:14px; }
+  .pcard .pv{ font-size:11px; color:#cfeede; margin-top:6px; line-height:1.35; }
+  .pcard .pw{ font-size:11px; color:#9fd0ff; margin-top:6px; border-top:1px dashed var(--line); padding-top:6px; line-height:1.35; }
+  .pmeta{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chip{ font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; background:#14271a; border:1px solid var(--line); color:var(--mut); }
+  .chip.voz{ color:#ffd9a8; } .chip.fmt{ color:#9fd0ff; } .chip.hr{ color:#bdf5c8; }
+  .feed{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .finp{ background:var(--card); border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:10px 12px; font-size:13px; min-height:44px; }
+  .finp[type=number]{ width:108px; }
+  #feedPost{ flex:1 1 260px; }
 </style>
 </head>
 <body>
@@ -76,6 +87,24 @@
   <div id="app" style="display:none">
     <h1>Agência de <span class="tag">Reels</span></h1>
     <div class="sub">Os agentes puxam estoque e foto REAIS de cada loja. Você escolhe o produto — eles montam o reel de origem.</div>
+
+    <div class="section-t">🔁 Loop de Marketing<span id="loopMeta" style="color:var(--mut);font-weight:600;letter-spacing:0;text-transform:none"></span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="btnBrain" class="act" onclick="runBrain()">⚡ Rodar cérebro (decide a pauta)</button>
+      <button id="btnLearn" class="act ghost" onclick="runLearn()">🧠 Aprender com a performance</button>
+    </div>
+    <div id="loopLearn" class="learnbox">O loop ainda não aprendeu nada — alimente com a performance dos posts pra ele evoluir.</div>
+    <div id="loopWrap"><div class="hint">O cérebro (Opus) decide o que postar lendo o estoque real + o que já performou. Cada item vem com voz, skin, formato, horário e o porquê. Toque em "Rodar cérebro".</div></div>
+    <div class="section-t" style="margin-top:18px">📊 Alimentar o loop (performance real)</div>
+    <div class="feed">
+      <select id="feedPost" class="finp"><option value="">— rode o cérebro primeiro —</option></select>
+      <input id="fPlays" class="finp" type="number" placeholder="plays">
+      <input id="fReach" class="finp" type="number" placeholder="alcance">
+      <input id="fSaves" class="finp" type="number" placeholder="saves">
+      <input id="fShares" class="finp" type="number" placeholder="envios">
+      <button class="act" onclick="feedLoop()">Salvar</button>
+    </div>
+    <div class="hint" style="margin-top:6px">A API de insights do IG ainda está travada — por enquanto você joga aqui os números do painel do Instagram e o loop aprende. Quando a permissão liberar, entra sozinho.</div>
 
     <div class="section-t">📋 Pauta do dia<span id="slateDate" style="color:var(--mut);font-weight:600;letter-spacing:0;text-transform:none"></span></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -133,6 +162,7 @@ async function boot(){
         <div class="sh">${s.mall||s.city||''}</div></button>`).join('');
   }catch(e){ $('#stores').innerHTML='<div class="empty">erro ao carregar lojas</div>'; }
 
+  loadLoop();
   loadSlate();
   setInterval(pollSlate, 20000);
 }
@@ -199,6 +229,79 @@ function renderSlate(s){
   }
   if(s.errors&&s.errors.length) html+='<div class="pf" style="margin-top:12px">erros: '+esc(s.errors.join('; '))+'</div>';
   $('#slateWrap').innerHTML=html;
+}
+
+// ===== LOOP DE MARKETING =====
+let _loopItens=[];
+async function loadLoop(){
+  try{
+    const r=await (await fetch(API+'/loop/state',{headers:H})).json();
+    renderLoop(r);
+  }catch(e){ $('#loopWrap').innerHTML='<div class="empty">erro ao ler o loop</div>'; }
+}
+function renderLoop(r){
+  const st=r.state||{}; const s=r.slate;
+  $('#loopMeta').textContent=' · cérebro '+(r.brain||'')+(st.lastBrainAt?(' · pauta '+String(st.lastBrainAt).slice(0,16).replace('T',' ')):'')+' · '+(st.measured||0)+'/'+(st.totalPosts||0)+' medidos';
+  $('#loopLearn').textContent = st.learnings ? st.learnings : 'O loop ainda não aprendeu nada — alimente com a performance dos posts pra ele evoluir.';
+  _loopItens=(s&&s.itens)||[];
+  if(!_loopItens.length){ $('#loopWrap').innerHTML='<div class="hint">Sem pauta do cérebro ainda. Toque em "Rodar cérebro".</div>'; }
+  else{
+    const byAcct={}; _loopItens.forEach((it,i)=>{ it.__i=i; (byAcct[it.conta]=byAcct[it.conta]||[]).push(it); });
+    let html='';
+    Object.keys(byAcct).forEach(acct=>{
+      html+='<div class="slate-acct">'+esc(acct)+'</div><div class="pauta">';
+      html+=byAcct[acct].map(it=>`
+        <div class="pcard ${it.tipo==='tema'?'tema':''}">
+          <div class="pk">${it.tipo==='tema'?'🎯 tema':'👟 '+esc(it.produto||'')}${it.preco?(' · '+esc(it.preco)):''}</div>
+          <div class="pg">"${esc(it.gancho)}"</div>
+          ${it.pra_quem?`<div class="ps"><b style="color:var(--ink)">Pra quem:</b> ${esc(it.pra_quem)}</div>`:''}
+          ${it.resolve?`<div class="ps"><b style="color:var(--ink)">Resolve:</b> ${esc(it.resolve)}</div>`:''}
+          <div class="pmeta">
+            ${it.voz?`<span class="chip voz">🎙️ ${esc(it.voz)}</span>`:''}
+            ${it.formato?`<span class="chip fmt">📐 ${esc(it.formato)}</span>`:''}
+            ${it.horario?`<span class="chip hr">⏰ ${esc(it.horario)}</span>`:''}
+          </div>
+          ${it.skin?`<div class="pv">🎨 ${esc(it.skin)}</div>`:''}
+          ${it.porque?`<div class="pw">💡 ${esc(it.porque)}</div>`:''}
+          ${(it.fato_a_verificar||[]).length?'<div class="pf">⚠ checar: '+esc((it.fato_a_verificar||[]).join('; '))+'</div>':''}
+        </div>`).join('');
+      html+='</div>';
+    });
+    $('#loopWrap').innerHTML=html;
+  }
+  $('#feedPost').innerHTML='<option value="">— escolha o post publicado —</option>'+_loopItens.map(it=>`<option value="${it.__i}">${esc((it.conta||'')+' · '+(it.produto||it.tipo)+' · '+String(it.gancho||'').slice(0,28))}</option>`).join('');
+}
+async function runBrain(){
+  const b=$('#btnBrain'); const old=b.textContent; b.disabled=true; b.textContent='⏳ o cérebro está decidindo (~60s)…';
+  $('#loopWrap').innerHTML='<div class="load">o cérebro (Opus) está lendo o estoque real + o aprendizado e decidindo a pauta…</div>';
+  try{
+    const r=await (await fetch(API+'/loop/run',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.ok){ await loadLoop(); toast('✅ Cérebro decidiu '+((r.slate&&r.slate.total)||0)+' posts'); }
+    else $('#loopWrap').innerHTML='<div class="empty">erro: '+esc(r.detail||r.error||'falhou')+'</div>';
+  }catch(e){ $('#loopWrap').innerHTML='<div class="empty">erro ao rodar o cérebro</div>'; }
+  b.disabled=false; b.textContent=old;
+}
+async function runLearn(){
+  const b=$('#btnLearn'); const old=b.textContent; b.disabled=true; b.textContent='⏳ aprendendo…';
+  try{
+    const r=await (await fetch(API+'/loop/learn',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.ok){ $('#loopLearn').textContent=r.learnings||'(sem aprendizado)'; toast('🧠 Loop aprendeu com '+(r.measuredCount||0)+' posts'); loadLoop(); }
+    else toast('⚠ '+(r.reason||'precisa de mais posts medidos'));
+  }catch(e){ toast('erro ao aprender'); }
+  b.disabled=false; b.textContent=old;
+}
+async function feedLoop(){
+  const idx=$('#feedPost').value; if(idx===''){ toast('escolha um post'); return; }
+  const it=_loopItens[Number(idx)]; if(!it) return;
+  try{
+    const pr=await (await fetch(API+'/loop/post',{method:'POST',headers:{...H,'Content-Type':'application/json'},
+      body:JSON.stringify({conta:it.conta,loja:it.loja,tipo:it.tipo,tema:it.tipo==='tema'?it.gancho:null,produtoId:it.produtoId,produto:it.produto,voz:it.voz,skin:it.skin,formato:it.formato,horario:it.horario})})).json();
+    if(!pr.ok){ toast('erro ao registrar post'); return; }
+    const mr=await (await fetch(API+'/loop/metrics',{method:'POST',headers:{...H,'Content-Type':'application/json'},
+      body:JSON.stringify({postId:pr.post.id,plays:$('#fPlays').value,reach:$('#fReach').value,saves:$('#fSaves').value,shares:$('#fShares').value})})).json();
+    if(mr.ok){ toast('✅ Métrica salva — o loop vai aprender com isso'); $('#fPlays').value=$('#fReach').value=$('#fSaves').value=$('#fShares').value=''; loadLoop(); }
+    else toast('erro ao salvar métrica');
+  }catch(e){ toast('erro ao alimentar o loop'); }
 }
 
 async function pickStore(el,id,name){
