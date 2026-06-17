@@ -140,6 +140,26 @@ app.use('/api/auth/', authLimiter);
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
 app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
+// Leitura PÚBLICA (read-only, sem login) da pauta do loop — pro dono ver no /loop.html.
+// Token próprio 'stloop2026' (≠ reinado2026) — NÃO destrava nada que gera custo.
+app.get('/api/_loopview', async (req, res) => {
+  if (req.query.g !== 'stloop2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const loop = require('./services/marketingLoop');
+    const state = await loop.getLoopState();
+    const slate = await loop.getLoopSlate();
+    res.json({
+      ok: true,
+      learnings: state.learnings || '',
+      learningsUpdatedAt: state.learningsUpdatedAt || null,
+      lastBrainAt: state.lastBrainAt || null,
+      brain: loop.BRAIN_MODEL,
+      slate,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 // TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
 app.post('/api/_loopbrain', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
