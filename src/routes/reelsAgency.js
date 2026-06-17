@@ -6,6 +6,7 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { generateDailySlate, getSavedSlate } = require('../services/dailySlate');
+const loop = require('../services/marketingLoop');
 
 const router = express.Router();
 router.use(authMiddleware, adminMiddleware);
@@ -117,6 +118,74 @@ router.post('/slate/run', async (req, res) => {
   } catch (err) {
     console.error('[reels-agency/slate/run]', err);
     res.status(500).json({ error: 'Erro ao gerar o molde', detail: err.message });
+  }
+});
+
+// =====================================================================
+// LOOP DE MARKETING (ciclo fechado, cérebro = agente Claude)
+// =====================================================================
+
+// Estado do loop + pauta enriquecida do cérebro + aprendizado acumulado.
+router.get('/loop/state', async (_req, res) => {
+  try {
+    const state = await loop.getLoopState();
+    const slate = await loop.getLoopSlate();
+    const measured = (state.posts || []).filter((p) => p.metrics).length;
+    res.json({
+      state: { learnings: state.learnings, learningsDetail: state.learningsDetail, learningsUpdatedAt: state.learningsUpdatedAt, lastBrainAt: state.lastBrainAt, totalPosts: (state.posts || []).length, measured },
+      posts: (state.posts || []).slice(0, 50),
+      slate,
+      brain: loop.BRAIN_MODEL,
+      voices: loop.VOICES,
+    });
+  } catch (err) {
+    console.error('[loop/state]', err);
+    res.status(500).json({ error: 'Erro ao ler o loop', detail: err.message });
+  }
+});
+
+// ESTAÇÃO 1 — roda o cérebro (decide a pauta lendo o aprendizado). ~30-60s.
+router.post('/loop/run', async (req, res) => {
+  try {
+    const ctx = req.body && typeof req.body.ctx === 'string' ? req.body.ctx : undefined;
+    const slate = await loop.runBrain({ ctx });
+    res.json({ ok: true, slate });
+  } catch (err) {
+    console.error('[loop/run]', err);
+    res.status(500).json({ error: 'Erro ao rodar o cérebro', detail: err.message });
+  }
+});
+
+// ESTAÇÃO 6->1 — aprende com a performance medida.
+router.post('/loop/learn', async (_req, res) => {
+  try {
+    const r = await loop.runLearn();
+    res.json(r);
+  } catch (err) {
+    console.error('[loop/learn]', err);
+    res.status(500).json({ error: 'Erro ao aprender', detail: err.message });
+  }
+});
+
+// ESTAÇÃO 4/5 — registra um post publicado (pra medir depois).
+router.post('/loop/post', async (req, res) => {
+  try {
+    const r = await loop.recordPublishedPost(req.body || {});
+    res.json({ ok: true, post: r });
+  } catch (err) {
+    console.error('[loop/post]', err);
+    res.status(500).json({ error: 'Erro ao registrar post', detail: err.message });
+  }
+});
+
+// ESTAÇÃO 6 — intake de métricas (manual hoje; IG API quando liberar a permissão).
+router.post('/loop/metrics', async (req, res) => {
+  try {
+    const r = await loop.recordMetrics(req.body || {});
+    res.json({ ok: true, post: r });
+  } catch (err) {
+    console.error('[loop/metrics]', err);
+    res.status(400).json({ error: 'Erro ao gravar métrica', detail: err.message });
   }
 });
 

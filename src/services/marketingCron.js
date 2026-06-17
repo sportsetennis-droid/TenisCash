@@ -11,6 +11,7 @@
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const { generateDailySlate } = require('./dailySlate');
+const { runBrain, runLearn } = require('./marketingLoop');
 
 const prisma = new PrismaClient();
 const TZ = 'America/Fortaleza';
@@ -31,6 +32,28 @@ async function runDailySlate() {
     console.log(`[marketingCron] daily-slate ok: ${slate.produtos.length} produtos + ${slate.temas.length} temas${slate.errors.length ? ' | erros: ' + slate.errors.join('; ') : ''}`);
   } catch (err) {
     console.error('[marketingCron] daily-slate erro:', err.message);
+  }
+}
+
+// ====================================================
+// 05:45 → LOOP brain (estação 1: cérebro decide a pauta lendo o aprendizado)
+// 21:30 → LOOP learn (estação 6->1: aprende com a performance medida)
+// O anel fechado: o que performou ontem decide a pauta de hoje.
+// ====================================================
+async function runMarketingBrain() {
+  try {
+    const s = await runBrain({});
+    console.log(`[marketingCron] loop-brain ok: ${s.total} itens${s.errors.length ? ' | erros: ' + s.errors.join('; ') : ''}`);
+  } catch (err) {
+    console.error('[marketingCron] loop-brain erro:', err.message);
+  }
+}
+async function runMarketingLearn() {
+  try {
+    const r = await runLearn();
+    console.log(`[marketingCron] loop-learn: ${r.ok ? ('aprendeu (' + r.measuredCount + ' medidos)') : r.reason}`);
+  } catch (err) {
+    console.error('[marketingCron] loop-learn erro:', err.message);
   }
 }
 
@@ -241,8 +264,10 @@ function startMarketingCron() {
   }
   cron.schedule('0 5 * * *', runTrendWatcher, { timezone: TZ });
   cron.schedule('30 5 * * *', runDailySlate, { timezone: TZ });
+  cron.schedule('45 5 * * *', runMarketingBrain, { timezone: TZ });
   cron.schedule('0 6 * * *', runContentCreative, { timezone: TZ });
-  console.log(`[marketingCron] agendado: trend 05:00 + slate 05:30 + content 06:00 (timezone ${TZ})`);
+  cron.schedule('30 21 * * *', runMarketingLearn, { timezone: TZ });
+  console.log(`[marketingCron] agendado: trend 05:00 + slate 05:30 + loop-brain 05:45 + content 06:00 + loop-learn 21:30 (timezone ${TZ})`);
 }
 
-module.exports = { startMarketingCron, runTrendWatcher, runContentCreative, runDailySlate };
+module.exports = { startMarketingCron, runTrendWatcher, runContentCreative, runDailySlate, runMarketingBrain, runMarketingLearn };
