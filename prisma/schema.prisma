@@ -4611,3 +4611,17 @@ model AgendaActivity {
   @@index([sellerId])
   @@index([storeId])
 }
+
+// ============================================================
+// Tabela do app central-contabil (MESMO banco, schema separado).
+// Espelhada aqui SÓ para o `prisma db push` do TenisCash NUNCA tentar
+// dropá-la (banco compartilhado). O TenisCash não usa esta tabela.
+// ============================================================
+model CentralContabilJsonStore {
+  id        String   @id
+  key       String   @unique
+  payload   Json
+  checksum  String
+  updatedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+}
