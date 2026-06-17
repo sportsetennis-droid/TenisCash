@@ -140,6 +140,17 @@ app.use('/api/auth/', authLimiter);
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.
 app.post('/api/_px2026col', aiCurationRoutes.pull2026ColHandler);
 app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor de catálogo (teste/cron guardado)
+// TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
+app.post('/api/_loopbrain', async (req, res) => {
+  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const loop = require('./services/marketingLoop');
+    const slate = await loop.runBrain({ ctx: req.query.ctx || undefined });
+    res.json({ ok: true, total: slate.total, brain: slate.brain, errors: slate.errors, sample: (slate.itens || []).slice(0, 2).map((i) => ({ conta: i.conta, produto: i.produto || i.tipo, gancho: i.gancho, voz: i.voz, horario: i.horario })) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });

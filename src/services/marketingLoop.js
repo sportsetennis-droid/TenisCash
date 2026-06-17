@@ -21,6 +21,7 @@ const { callAI } = require('../ai/ai-client');
 const { LOJAS } = require('./dailySlate');
 
 const BRAIN_MODEL = process.env.MARKETING_BRAIN_MODEL || 'claude-opus-4-8';
+const FALLBACK_MODEL = 'claude-sonnet-4-6'; // se o opus não estiver liberado na conta de prod
 const STATE_KEY = 'marketing_loop_state';
 const SLATE_KEY = 'marketing_loop_slate';
 // Grid de vozes da marca (ElevenLabs). A OFICIAL o dono escolhe; até lá o brain rotaciona.
@@ -37,6 +38,17 @@ function cleanName(brand, name) {
 function realSpecs(p) {
   const ai = p.aiContext && typeof p.aiContext === 'object' ? p.aiContext : {};
   return String(p.shortDescription || ai.description || ai.specs || ai.tech || '').slice(0, 160).trim();
+}
+
+// Chama a IA do cérebro SEMPRE no Anthropic (prod tem OPENAI_API_KEY → o
+// defaultProvider seria 'openai' e mandaria o modelo claude pro endpoint errado
+// = 0 itens silenciosos). Fallback de modelo se o opus não estiver na conta.
+async function callBrain(sys, up, maxTokens) {
+  let r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens, model: BRAIN_MODEL, provider: 'anthropic' });
+  if (!r.ok || !r.json) {
+    r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens, model: FALLBACK_MODEL, provider: 'anthropic' });
+  }
+  return r;
 }
 
 // ---------------------------------------------------------------------
@@ -106,12 +118,13 @@ Monte de 3 a 4 posts pra hoje pra crescer alcance. Para CADA post decida:
 - porque (1 linha: por que essa decisão, citando o aprendizado quando houver)
 - fato_a_verificar (lista do que precisa conferir antes de publicar)
 JSON: {"posts":[{"idx":N,"gancho":"","pra_quem":"","resolve":"","voz":"","skin":"","formato":"reel","horario":"18:00","porque":"","fato_a_verificar":[]}]}`;
-  let r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 2400, model: BRAIN_MODEL });
+  let r = await callBrain(sys, up, 2400);
   let posts = r.ok && r.json ? (r.json.posts || []) : [];
-  if (!posts.length) { // retry 1x (IA às vezes devolve vazio)
-    r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 2400, model: BRAIN_MODEL });
+  if (!posts.length && r.ok && r.json) { // veio ok mas vazio — retry 1x
+    r = await callBrain(sys, up, 2400);
     posts = r.ok && r.json ? (r.json.posts || []) : [];
   }
+  if (!r.ok) throw new Error('IA falhou: ' + (r.error || 'sem resposta') + ' (provider=' + (r.provider || '?') + ' model=' + (r.model || '?') + ')');
   const seen = new Set();
   return posts.slice(0, 4).map((p) => {
     let s = Number(p.idx) > 0 ? stock[Number(p.idx) - 1] : null;
@@ -206,7 +219,7 @@ async function runLearn() {
   const rows = measured.slice(0, 80).map((p) => `- ${p.conta || '?'} | ${p.tipo}${p.tema ? (' ' + p.tema) : (p.produto ? (' ' + p.produto) : '')} | voz:${p.voz || '-'} | skin:${p.skin || '-'} | fmt:${p.formato} | hora:${p.horario || '-'} => plays:${p.metrics.plays} alcance:${p.metrics.reach} saves:${p.metrics.saves} shares:${p.metrics.shares} likes:${p.metrics.likes}`).join('\n');
   const sys = 'Você é o cérebro de performance de conteúdo da Sports & Tennis. Aprende com DADOS REAIS o que cresce ALCANCE orgânico no IG/TikTok. SÓ conclua o que os dados sustentam — nunca invente. Saves e shares (envios no DM) são o sinal nº1 de alcance; taxa de conclusão também conta muito. Anúncio de produto seco morre no orgânico.';
   const up = `APRENDIZADO ATUAL:\n${state.learnings || '(vazio)'}\n\nPOSTS MEDIDOS (reais):\n${rows}\n\nAtualize o APRENDIZADO: o que está crescendo alcance e o que está morrendo — por conta/tema/voz/skin/formato/horário. Específico e acionável (ex: "voz Daniel + corrida + 18h rende 3x saves"; "anúncio de preço no master morre"). JSON: {"learnings":"texto curto e acionável em bullets","top_padroes":["..."],"evitar":["..."]}`;
-  const r = await callAI({ systemPrompt: sys, userPrompt: up, jsonMode: true, maxTokens: 1600, model: BRAIN_MODEL });
+  const r = await callBrain(sys, up, 1600);
   if (r.ok && r.json && r.json.learnings) {
     state.learnings = r.json.learnings;
     state.learningsDetail = { top: r.json.top_padroes || [], evitar: r.json.evitar || [] };
