@@ -204,8 +204,108 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="login-btn" onclick="doAdminLogin()">ENTRAR</button>
     <button class="login-btn" id="admin-bio-btn" onclick="doAdminLoginBio()" style="display:none;margin-top:10px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;">👤 Entrar com o rosto</button>
     <div class="login-error" id="login-error"></div>
+    <p onclick="afOpen()" style="text-align:center;margin-top:14px;font-size:13px;color:#E5571E;cursor:pointer;text-decoration:underline;">Esqueci minha senha</p>
   </div>
 </div>
+
+<!-- ESQUECI SENHA (admin) — mesmo fluxo da loja: WhatsApp + e-mail -->
+<style>
+#af-modal .af-input{width:100%;box-sizing:border-box;height:46px;border:1px solid #ddd;border-radius:10px;padding:0 12px;font-size:15px;margin-bottom:10px;}
+#af-modal .af-btn{width:100%;height:46px;border:0;border-radius:10px;background:#E5571E;color:#fff;font-weight:800;font-size:15px;cursor:pointer;margin-top:4px;}
+#af-modal .af-btn-alt{background:#fff;color:#E5571E;border:1.5px solid #E5571E;margin-top:10px;}
+#af-modal .af-err{color:#c0271f;font-size:13px;margin-top:10px;line-height:1.4;}
+</style>
+<div id="af-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <h3 style="margin:0;color:#E5571E;font-size:18px;">Recuperar senha</h3>
+      <button onclick="afClose()" style="border:0;background:transparent;font-size:24px;cursor:pointer;color:#999;line-height:1;">×</button>
+    </div>
+    <div class="af-step" id="af-methods">
+      <p style="color:#666;font-size:13px;margin:6px 0 16px;">Como quer receber o código?</p>
+      <button class="af-btn" onclick="afPick('whatsapp')">📱 Pelo WhatsApp</button>
+      <button class="af-btn af-btn-alt" onclick="afPick('email')">✉️ Pelo e-mail</button>
+    </div>
+    <div class="af-step" id="af-whatsapp" style="display:none;">
+      <p style="color:#666;font-size:13px;margin:6px 0 10px;">Telefone cadastrado (com DDD):</p>
+      <input id="af-phone" class="af-input" inputmode="numeric" placeholder="83 9....">
+      <button class="af-btn" onclick="afSendWhatsapp()">Enviar código</button>
+      <div class="af-err" id="af-wa-err"></div>
+    </div>
+    <div class="af-step" id="af-email" style="display:none;">
+      <p style="color:#666;font-size:13px;margin:6px 0 10px;">E-mail cadastrado:</p>
+      <input id="af-email-input" class="af-input" type="email" placeholder="voce@email.com">
+      <button class="af-btn" onclick="afSendEmail()">Enviar código</button>
+      <div class="af-err" id="af-email-err"></div>
+    </div>
+    <div class="af-step" id="af-code" style="display:none;">
+      <p style="color:#0a7d3b;font-size:13px;margin:6px 0 10px;" id="af-code-msg">Código enviado!</p>
+      <input id="af-code-input" class="af-input" inputmode="numeric" maxlength="6" placeholder="6 dígitos" style="letter-spacing:6px;text-align:center;font-size:20px;">
+      <button class="af-btn" onclick="afVerify()">Verificar</button>
+      <p style="text-align:center;margin-top:10px;font-size:12px;color:#888;cursor:pointer;text-decoration:underline;" onclick="afResend()">Reenviar código</p>
+      <div class="af-err" id="af-code-err"></div>
+    </div>
+    <div class="af-step" id="af-newpass" style="display:none;">
+      <p style="color:#666;font-size:13px;margin:6px 0 10px;">Crie a nova senha:</p>
+      <input id="af-pass1" class="af-input" type="password" placeholder="Nova senha">
+      <input id="af-pass2" class="af-input" type="password" placeholder="Repita a senha">
+      <button class="af-btn" onclick="afReset()">Salvar nova senha</button>
+      <div class="af-err" id="af-pass-err"></div>
+    </div>
+    <div class="af-step" id="af-success" style="display:none;text-align:center;">
+      <div style="font-size:40px;">✅</div>
+      <p style="color:#0a7d3b;font-weight:700;margin:8px 0 16px;">Senha alterada! Já pode entrar com ela.</p>
+      <button class="af-btn" onclick="afClose()">Voltar ao login</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var afMethod='whatsapp', afId='';
+  function el(id){return document.getElementById(id);}
+  function afStep(step){ ['methods','whatsapp','email','code','newpass','success'].forEach(function(s){ var e=el('af-'+s); if(e) e.style.display='none'; }); var t=el('af-'+step); if(t) t.style.display='block'; }
+  function afErr(id,msg){ var e=el(id); if(e){ e.textContent=msg||''; } }
+  async function afPost(url,body){ try{ var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); var j=await r.json().catch(function(){return {};}); return {ok:r.ok,j:j}; }catch(e){ return {ok:false,j:{error:'Falha de conexão'}}; } }
+  window.afOpen=function(){ afStep('methods'); ['af-wa-err','af-email-err','af-code-err','af-pass-err'].forEach(function(i){afErr(i,'');}); var m=el('af-modal'); if(m) m.style.display='flex'; };
+  window.afClose=function(){ var m=el('af-modal'); if(m) m.style.display='none'; };
+  window.afPick=function(m){ afMethod=m; afStep(m); };
+  window.afSendWhatsapp=async function(){
+    var phone=((el('af-phone')||{}).value||'').replace(/\D/g,'');
+    if(phone.length<10){ afErr('af-wa-err','Telefone inválido (com DDD)'); return; }
+    afMethod='whatsapp'; afId=phone; afErr('af-wa-err','Enviando...');
+    var res=await afPost('/api/auth/forgot-send-code',{method:'whatsapp',phone:phone});
+    if(!res.ok||res.j.error){ var e=String(res.j.error||''); if(/cadastrad/i.test(e)){ afErr('af-wa-err','Esse telefone não está cadastrado.'); } else { el('af-wa-err').innerHTML='WhatsApp indisponível agora. <span onclick="afPick(\'email\')" style="text-decoration:underline;cursor:pointer;font-weight:700;color:#E5571E">Tentar por e-mail</span>'; } return; }
+    if(res.j.via==='email'){ afMethod='email'; el('af-code-msg').textContent=res.j.message||'Código enviado pro seu e-mail!'; } else { el('af-code-msg').textContent='Código enviado pro seu WhatsApp!'; }
+    afErr('af-wa-err',''); afStep('code');
+  };
+  window.afSendEmail=async function(){
+    var email=((el('af-email-input')||{}).value||'').trim();
+    if(!email||email.indexOf('@')<1){ afErr('af-email-err','Informe um e-mail válido'); return; }
+    afMethod='email'; afId=email; afErr('af-email-err','Enviando...');
+    var res=await afPost('/api/auth/forgot-send-code',{method:'email',email:email});
+    if(!res.ok||res.j.error){ afErr('af-email-err',res.j.error||'Não foi possível enviar'); return; }
+    el('af-code-msg').textContent='Código enviado pro seu e-mail!'; afErr('af-email-err',''); afStep('code');
+  };
+  window.afVerify=async function(){
+    var code=((el('af-code-input')||{}).value||'').replace(/\D/g,'');
+    if(code.length!==6){ afErr('af-code-err','Digite os 6 dígitos'); return; }
+    var body=afMethod==='whatsapp'?{phone:afId,code:code}:{email:afId,code:code};
+    var res=await afPost('/api/auth/forgot-verify',body);
+    if(!res.ok||res.j.error){ afErr('af-code-err',res.j.error||'Código inválido'); return; }
+    afErr('af-code-err',''); afStep('newpass');
+  };
+  window.afResend=function(){ if(afMethod==='whatsapp') afSendWhatsapp(); else afSendEmail(); };
+  window.afReset=async function(){
+    var p1=((el('af-pass1')||{}).value||''), p2=((el('af-pass2')||{}).value||'');
+    if(p1.length<4){ afErr('af-pass-err','Senha de no mínimo 4 caracteres'); return; }
+    if(p1!==p2){ afErr('af-pass-err','As senhas não conferem'); return; }
+    var body=afMethod==='whatsapp'?{phone:afId,password:p1}:{email:afId,password:p1};
+    var res=await afPost('/api/auth/forgot-reset',body);
+    if(!res.ok||res.j.error){ afErr('af-pass-err',res.j.error||'Erro ao salvar'); return; }
+    afStep('success');
+  };
+})();
+</script>
 
 <!-- DASHBOARD -->
 <div class="dashboard" id="dashboard">
