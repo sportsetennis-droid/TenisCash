@@ -30,6 +30,7 @@ const COSTS = {
   'fal-ai/flux-pro/v1.1': 0.04,
   'fal-ai/kling-video/v2.1/standard/image-to-video': 0.10,
   'fal-ai/minimax/hailuo-02/pro/image-to-video': 0.50,
+  'fal-ai/veo3.1/image-to-video': 0.40,
   'fal-ai/bria/background/remove': 0.01,
 };
 
@@ -145,6 +146,28 @@ async function generateReelVideo({ imageUrl, productName, duration = 6 }) {
 }
 
 /**
+ * Vídeo TOP (Google Veo 3.1 image-to-video) com ÁUDIO NATIVO — cena realista pra Reels.
+ * $0.40/seg @720p/1080p com áudio. @param {object} opts { imageUrl, prompt, duration, aspectRatio, resolution }
+ */
+async function generateVeoVideo({ imageUrl, prompt, duration = '8s', aspectRatio = '9:16', resolution = '1080p' }) {
+  const fal = await getFal();
+  const model = 'fal-ai/veo3.1/image-to-video';
+  const dur = ['4s', '6s', '8s'].includes(String(duration)) ? String(duration) : '8s';
+  const result = await withRetry(
+    () => fal.subscribe(model, {
+      input: { prompt, image_url: imageUrl, aspect_ratio: aspectRatio, duration: dur, generate_audio: true, resolution },
+      logs: false,
+    }),
+    `veoVideo`,
+    2,
+  );
+  const outputUrl = result?.data?.video?.url;
+  if (!outputUrl) throw new Error('veo retornou sem video url');
+  const sec = parseInt(dur, 10) || 8;
+  return { outputUrl, model, prompt, costUsd: +(COSTS[model] * sec).toFixed(2) };
+}
+
+/**
  * Remove fundo de uma foto de produto (Bria RMBG 2.0).
  * @param {object} opts { imageUrl }
  */
@@ -245,6 +268,7 @@ module.exports = {
   generateEditorialPhoto,
   generateWornScene,
   generateReelVideo,
+  generateVeoVideo,
   removeBackground,
   generateMusic,
   COSTS,

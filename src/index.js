@@ -168,6 +168,25 @@ app.post('/api/_falgen', async (req, res) => {
       const r = await fal.generateMusic({ prompt: req.query.prompt || 'cinematic instrumental', seconds: parseInt(req.query.sec || '12', 10) });
       return res.json({ ok: true, op: 'music', outputUrl: r.outputUrl, ...keys });
     }
+    if (req.query.op === 'video') {
+      // VIDEO image-to-video. Nao precisa de produto: aceita imgUrl direto.
+      // model=veo -> Google Veo 3.1 com AUDIO NATIVO (fp = prompt). senao Hailuo (produto em movimento).
+      const fal = require('./services/falAi');
+      const imageUrl = req.query.imgUrl || (product && product.imageUrl);
+      if (!imageUrl) return res.status(400).json({ error: 'falta imgUrl', ...keys });
+      if (req.query.model === 'veo') {
+        const r = await fal.generateVeoVideo({
+          imageUrl,
+          prompt: req.query.fp || 'cinematic vertical shot, natural realistic motion, premium sports brand commercial, native ambient audio',
+          duration: (req.query.sec || '8') + 's',
+          aspectRatio: req.query.ar || '9:16',
+          resolution: req.query.res || '1080p',
+        });
+        return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
+      }
+      const r = await fal.generateReelVideo({ imageUrl, productName: String((product && product.name) || req.query.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
+      return res.json({ ok: true, op: 'video', model: r.model, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
+    }
     if (!product) return res.status(404).json({ error: 'produto nao encontrado', ...keys });
     if (req.query.op === 'worn') {
       // EDITOR FIEL (nano-banana/Gemini): PESSOA usando o produto REAL — fiel + tamanho certo
@@ -191,13 +210,6 @@ app.post('/api/_falgen', async (req, res) => {
       const fal = require('./services/falAi');
       const rb = await fal.removeBackground({ imageUrl: product.imageUrl });
       return res.json({ ok: true, op: 'removebg', outputUrl: rb.outputUrl, ...keys });
-    }
-    if (req.query.op === 'video') {
-      // VIDEO REAL (image-to-video Hailuo): produto em movimento, 6s/9:16 pra Reels
-      const fal = require('./services/falAi');
-      const imageUrl = req.query.imgUrl || product.imageUrl;
-      const r = await fal.generateReelVideo({ imageUrl, productName: String(product.name || 'produto').slice(0, 60), duration: parseInt(req.query.sec || '6', 10) });
-      return res.json({ ok: true, op: 'video', outputUrl: r.outputUrl, model: r.model, costUsd: r.costUsd, ...keys });
     }
     const r = await svc.generateEditorialPhoto({ product, aspectRatio: req.query.ar || '4:5', sceneHint: req.query.scene || '', quality: 'medium' });
     return res.json({ ok: true, engine: eng, outputUrl: r.outputUrl, ...keys });
