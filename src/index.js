@@ -168,6 +168,21 @@ app.post('/api/_falgen', async (req, res) => {
       const r = await fal.generateMusic({ prompt: req.query.prompt || 'cinematic instrumental', seconds: parseInt(req.query.sec || '12', 10) });
       return res.json({ ok: true, op: 'music', outputUrl: r.outputUrl, ...keys });
     }
+    if (req.query.op === 'tts') {
+      // VOZ DA MARCA (ElevenLabs via fal). Le o roteiro REAL. Nao precisa de produto.
+      const fal = require('./services/falAi');
+      const text = req.query.text || (req.body && req.body.text);
+      if (!text) return res.status(400).json({ error: 'falta text', ...keys });
+      const r = await fal.generateVoice({
+        text,
+        voice: req.query.voice || 'Rachel',
+        languageCode: req.query.lang || 'pt',
+        speed: parseFloat(req.query.speed || '0.95'),
+        stability: req.query.stab ? parseFloat(req.query.stab) : 0.45,
+        style: req.query.style ? parseFloat(req.query.style) : 0.3,
+      });
+      return res.json({ ok: true, op: 'tts', voice: r.voice, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
+    }
     if (req.query.op === 'video') {
       // VIDEO image-to-video. Nao precisa de produto: aceita imgUrl direto.
       // model=veo -> Google Veo 3.1 com AUDIO NATIVO (fp = prompt). senao Hailuo (produto em movimento).

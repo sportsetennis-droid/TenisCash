@@ -31,6 +31,7 @@ const COSTS = {
   'fal-ai/kling-video/v2.1/standard/image-to-video': 0.10,
   'fal-ai/minimax/hailuo-02/pro/image-to-video': 0.50,
   'fal-ai/veo3.1/image-to-video': 0.40,
+  'fal-ai/elevenlabs/tts/multilingual-v2': 0.10,
   'fal-ai/bria/background/remove': 0.01,
 };
 
@@ -291,6 +292,36 @@ async function generateMusic({ prompt, seconds = 12 }) {
   return { outputUrl: url, model };
 }
 
+/**
+ * VOZ DA MARCA (locucao) — ElevenLabs Multilingual v2 via fal. A melhor TTS p/ pt-BR.
+ * Le o roteiro que a gente escreve. NUNCA inventa: o texto vem pronto de fonte real.
+ * @param {object} opts { text, voice, languageCode, stability, similarityBoost, style, speed }
+ */
+async function generateVoice({ text, voice = 'Rachel', languageCode = 'pt', stability = 0.45, similarityBoost = 0.8, style = 0.3, speed = 0.95 }) {
+  const fal = await getFal();
+  const model = 'fal-ai/elevenlabs/tts/multilingual-v2';
+  if (!text || !String(text).trim()) throw new Error('tts sem texto');
+  const result = await withRetry(
+    () => fal.subscribe(model, {
+      input: {
+        text: String(text),
+        voice,
+        language_code: languageCode,
+        stability,
+        similarity_boost: similarityBoost,
+        style,
+        speed: Math.max(0.7, Math.min(1.2, speed)),
+      },
+      logs: false,
+    }),
+    `voice ${voice}`,
+    2,
+  );
+  const outputUrl = result?.data?.audio?.url;
+  if (!outputUrl) throw new Error('elevenlabs tts retornou sem audio url');
+  return { outputUrl, model, voice, costUsd: COSTS[model] };
+}
+
 module.exports = {
   generateEditorialPhoto,
   generateWornScene,
@@ -300,5 +331,6 @@ module.exports = {
   pollVeoVideo,
   removeBackground,
   generateMusic,
+  generateVoice,
   COSTS,
 };
