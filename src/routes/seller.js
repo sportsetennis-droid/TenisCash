@@ -642,6 +642,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     // Desconto em R$ na venda (sem limite). Reduz os itens proporcionalmente pro cupom bater
     // (vProd = soma dos itens, vDesc=0 no agente). Só roda se desconto>0 — venda sem desconto = idêntica a hoje.
     const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const originalSubtotal = round2(totalAmount); // subtotal ANTES do desconto — base do teto de 10% do TenisCash
     let discountApplied = 0;
     const rawDiscount = round2(req.body.discount);
     if (rawDiscount > 0 && totalAmount > 0) {
@@ -663,11 +664,13 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       customer = await prisma.user.findUnique({ where: { phone: String(customerPhone) } });
     }
 
-    // TenisCash usado (consome saldo do cliente)
-    const tcConsumed = customer && tcUsed > 0 ? Math.min(parseFloat(tcUsed), customer.balance || 0) : 0;
+    // TenisCash usado como desconto (consome saldo do cliente).
+    // TETO: 10% do valor ORIGINAL da compra. Desconto na venda NÃO aumenta esse teto (regra do dono 2026-06-19).
+    const maxTcUse = round2(originalSubtotal * 0.10);
+    const tcConsumed = customer && tcUsed > 0 ? Math.min(parseFloat(tcUsed) || 0, customer.balance || 0, maxTcUse, totalAmount) : 0;
 
-    // Cashback ganho (4% do total — pode virar config no futuro)
-    const tcEarned = customer ? Math.round((totalAmount - tcConsumed) * 0.04 * 100) / 100 : 0;
+    // Cashback ganho: 100% do valor pago vira TenisCash (regra do dono 2026-06-19: "comprou 100, ganha 100").
+    const tcEarned = customer ? round2(totalAmount - tcConsumed) : 0;
 
     // Transação atômica: cria venda + items + atualiza saldo do cliente
     const result = await prisma.$transaction(async (tx) => {

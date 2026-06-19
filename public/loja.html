@@ -556,11 +556,12 @@
           <div id="sellCustomerResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
           <div id="sellCustomerInfo" style="margin-top:10px;font-size:14px;"></div>
           <div id="sellTcUsedGroup" style="display:none;margin-top:12px;">
-            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">💳 Usar TenisCash do cliente (R$)</label>
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">💳 Usar TenisCash do cliente (R$) <span style="font-weight:500;color:var(--text-muted);">— máx 10% da compra</span></label>
             <div style="display:flex;gap:6px;">
               <input type="number" id="sellTcUsed" step="0.01" value="0" min="0" oninput="updateSummary()" style="font-size:16px;flex:1;">
-              <button type="button" onclick="usarTodoTc()" style="padding:0 14px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">Usar tudo</button>
+              <button type="button" onclick="usarTodoTc()" style="padding:0 14px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">Usar máx</button>
             </div>
+            <div id="sellTcMax" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
           </div>
 
           <!-- CPF/CNPJ na nota — fica AQUI, junto do cliente; vai vinculado na emissao da NFC-e (SEFAZ-PB exige >= R$ 500) -->
@@ -2176,8 +2177,12 @@ function updateSummary() {
   const helper = document.getElementById('discHelper');
   if (helper) helper.textContent = discount > 0 ? ('Desconto: ' + fmt(discount) + (subtotal > 0 ? ' (' + (Math.round(discount / subtotal * 1000) / 10) + '%)' : '')) : '';
   const base = Math.round((subtotal - discount) * 100) / 100;
-  const tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
-  const tcEarned = customer ? Math.round((base - tcUsed) * 0.04 * 100) / 100 : 0;
+  const maxTc = customer ? Math.round(Math.min(customer.balance || 0, subtotal * 0.10) * 100) / 100 : 0;
+  let tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
+  if (tcUsed > maxTc) { tcUsed = maxTc; const _tc = document.getElementById('sellTcUsed'); if (_tc) _tc.value = maxTc.toFixed(2); }
+  const maxHint = document.getElementById('sellTcMax');
+  if (maxHint) maxHint.textContent = customer ? ('Máx ' + fmt(maxTc) + ' nesta compra (10% do valor; saldo ' + fmt(customer.balance || 0) + ')') : '';
+  const tcEarned = customer ? Math.round((base - tcUsed) * 100) / 100 : 0; // 100% do valor pago vira TenisCash
   const liquido = Math.round((base - tcUsed) * 100) / 100;
 
   // CPF na nota: a SEFAZ-PB exige a partir de R$ 500 — destaca o campo quando a venda passa do teto.
@@ -2231,7 +2236,7 @@ function getDiscountRS() {
 function usarTodoTc() {
   if (!customer) return;
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const usar = Math.min(customer.balance || 0, Math.max(0, subtotal - getDiscountRS()));
+  const usar = Math.min(customer.balance || 0, Math.round(subtotal * 0.10 * 100) / 100); // teto 10% do valor original
   document.getElementById('sellTcUsed').value = (Math.round(usar * 100) / 100).toFixed(2);
   updateSummary();
 }
