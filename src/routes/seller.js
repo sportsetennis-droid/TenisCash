@@ -929,14 +929,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
               data: { status: 'authorized', accessKey: r.accessKey, protocol: r.protocol, xmlContent: r.xmlSigned, response: { status: r.status, motivo: r.motivo } },
             });
             await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfceNextNumber: nNF + 1 } });
-            // DISPARO AUTOMÁTICO do cupom no WhatsApp: telefone digitado OU cliente cadastrado.
-            try {
-              const waPhone = String(customerPhone || customer?.phone || '').replace(/\D/g, '');
-              if (waPhone) {
-                const { deliverCupom } = require('../services/cupomDelivery');
-                deliverCupom({ ...fiscalDoc, status: 'authorized', accessKey: r.accessKey, protocol: r.protocol, response: { status: r.status, motivo: r.motivo }, issuer }, waPhone, { prisma }).catch(e => console.error('[cupom-wa auto/sale]', e.message));
-              }
-            } catch (e) { console.error('[cupom-wa auto/sale]', e.message); }
+            // Cupom NÃO vai mais sozinho pro WhatsApp — o vendedor envia pelo botão "📲 Enviar" (decisão do dono 2026-06-19).
           } else if (r.accessKey) {
             // Rejeitada PELA SEFAZ (tem chave) — mantém pra auditoria
             await prisma.fiscalDocument.update({

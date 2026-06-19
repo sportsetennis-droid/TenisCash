@@ -227,19 +227,7 @@ async function emitNfceFromSaleHandler(req, res) {
         where: { id: issuer.id },
         data: { nfceNextNumber: nNF + 1 },
       });
-      // DISPARO AUTOMÁTICO do cupom no WhatsApp: se veio um telefone (caixa digitou)
-      // ou o cliente da venda é cadastrado, manda o PDF sozinho (não bloqueia a resposta).
-      try {
-        let waPhone = String(req.body.whatsapp || req.body.customerPhone || '').replace(/\D/g, '');
-        if (!waPhone && sale.clientId) {
-          const c = await prisma.sellerClient.findUnique({ where: { id: sale.clientId }, select: { phone: true } });
-          waPhone = String(c?.phone || '').replace(/\D/g, '');
-        }
-        if (waPhone) {
-          const { deliverCupom } = require('../services/cupomDelivery');
-          deliverCupom({ ...updated, issuer }, waPhone, { prisma }).catch(e => console.error('[cupom-wa auto/from-sale]', e.message));
-        }
-      } catch (e) { console.error('[cupom-wa auto/from-sale]', e.message); }
+      // Cupom NÃO vai mais sozinho pro WhatsApp — o vendedor envia pelo botão "📲 Enviar" (decisão do dono 2026-06-19).
     } else if (result.accessKey) {
       // Rejeitada PELA SEFAZ (tem chave) — mantem como rejected pra auditoria
       updated = await prisma.fiscalDocument.update({

@@ -2425,11 +2425,16 @@ async function finalizeSale() {
       // 🎉 EMITIDA AUTOMATICAMENTE — esconde o botão manual (redundante; só confundia o caixa)
       const _emitBtn = document.getElementById('sellEmitNfce'); if (_emitBtn) _emitBtn.style.display = 'none';
       status.innerHTML = '<strong style="color:#0a843d">✅ NFCe AUTORIZADA automaticamente</strong>';
+      const _waCup = (customer && customer.phone ? String(customer.phone) : (document.getElementById('sellCustomerPhone')?.value || '')).replace(/\D/g, '');
       result.innerHTML = `<div style="background:white;padding:10px;border-radius:8px;border:2px solid #0a843d;">
         <div style="color:#0a843d;font-weight:800;margin-bottom:4px;">✅ ${fiscal.accessKey ? fiscal.accessKey.slice(-12) : ''}</div>
         <div style="font-family:monospace;font-size:11px;word-break:break-all;">${fiscal.accessKey || ''}</div>
         <div style="font-size:11px;color:#6e6e73;margin-top:4px;">Protocolo: ${fiscal.protocol || '-'}</div>
         <button onclick="window.open('/api/admin/fiscal/documents/${fiscal.documentId}/print?token='+encodeURIComponent(token),'_blank','width=420,height=700')" style="margin-top:8px;width:100%;padding:10px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:800;cursor:pointer;font-size:14px;">🖨️ IMPRIMIR DANFE AGORA</button>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input id="waCupomPhone" inputmode="numeric" placeholder="WhatsApp do cliente (com DDD)" value="${_waCup}" style="flex:1;padding:11px;border:1px solid #bbb;border-radius:8px;font-size:14px;">
+          <button id="waCupomBtn" onclick="sendCupomWhats('${fiscal.documentId}')" style="padding:0 16px;background:#25D366;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap;">📲 Enviar</button>
+        </div>
       </div>`;
       // Auto-abre janela de impressão (operador só confirma)
       setTimeout(() => window.open('/api/admin/fiscal/documents/' + fiscal.documentId + '/print?token=' + encodeURIComponent(token), '_blank', 'width=420,height=700'), 500);
