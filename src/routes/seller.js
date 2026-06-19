@@ -673,7 +673,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     const tcEarned = customer ? round2(totalAmount - tcConsumed) : 0;
 
     // Transação atômica: cria venda + items + atualiza saldo do cliente
-    const result = await prisma.$transaction(async (tx) => {
+    let result;
+    try {
+    result = await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
         data: {
           sellerId,
@@ -685,6 +687,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           paymentMethod: paymentMethod || 'unknown',
           status: 'completed',
           note: note || null,
+          idemKey: idemKey || null,
           items: { create: saleItemsData },
         },
         include: { items: true },
@@ -756,6 +759,20 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
       return { sale, commissionsCount: commissionsData.length };
     });
+    } catch (e) {
+      // TRAVA DURÁVEL anti-duplicação: se 2 requisições com o MESMO idemKey correrem juntas, ou
+      // re-clique após restart (que limpa o Map em memória), o índice único do banco barra a 2ª
+      // (P2002) → a transação inteira faz rollback (sem estoque/cashback/comissão dobrados) e a
+      // gente devolve a venda JÁ criada em vez de duplicar.
+      if (e && e.code === 'P2002' && idemKey) {
+        const existing = await prisma.sale.findUnique({ where: { idemKey } }).catch(() => null);
+        if (existing) {
+          console.log('[sale] DUPLICATA BLOQUEADA (DB idemKey)', idemKey, '->', existing.id);
+          return res.json({ ok: true, saleId: existing.id, id: existing.id, totalAmount: existing.totalAmount, tcEarned: existing.tcEarned, commissionsCreated: 0, duplicate: true });
+        }
+      }
+      throw e;
+    }
 
     // Registra a chave de idempotência (bloqueia duplicação no re-clique do mesmo carrinho)
     if (idemKey) {

@@ -522,6 +522,7 @@ model Sale {
   erpReference   String?
   pagbankOrderId String? // PagBank order id (ORDE_...) do PIX-QR; webhook mapeia por aqui
   note           String?
+  idemKey        String?       @unique // anti-duplicação: 1 venda por chave do carrinho (trava durável no banco)
   createdAt      DateTime      @default(now())
 
   items       SaleItem[]
