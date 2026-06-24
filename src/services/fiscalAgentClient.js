@@ -132,6 +132,16 @@ function isTransportFail(json) {
   return false;
 }
 
+// Lojas PROIBIDAS de usar o agente EXTRA (matriz) como cobertura — TÊM de emitir
+// pela PRÓPRIA máquina. Enquanto o agente da loja não estiver em v2.2+, cupom com
+// CPF dela falha DE PROPÓSITO (em vez de a matriz fingir). Regra do dono: matriz fora
+// da rota fiscal / agente de um lugar não cobre o outro.
+// Env FISCAL_BLOCK_EXTRA="LOJA05" (vírgula/; pra mais de uma).
+function blockedExtra(code) {
+  const set = String(process.env.FISCAL_BLOCK_EXTRA || '').split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  return set.includes(String(code || '').toUpperCase());
+}
+
 async function callAgent(store, path, body) {
   if (!store?.fiscalAgentEnabled) {
     throw new Error('Store ' + store?.code + ' sem agent enabled');
@@ -140,11 +150,13 @@ async function callAgent(store, path, body) {
     throw new Error('Store ' + store.code + ' fiscalAgentUrl/Token não configurado');
   }
   const primaryUrl = store.fiscalAgentUrl.replace(/\/$/, '');
+  // Loja bloqueada não enxerga a matriz (EXTRA) — só o próprio agente + failover entre lojas.
+  const dropExtra = (arr) => blockedExtra(store.code) ? arr.filter(a => a.code !== 'EXTRA') : arr;
 
   // Payload que exige versão mínima: roteia SÓ pra agente atualizado.
   const minVer = minVersionFor(path, body);
   if (minVer) {
-    const all = [{ code: store.code, url: primaryUrl, token: store.fiscalAgentToken }, ...(await listAgents()).filter(a => a.url !== primaryUrl)];
+    const all = [{ code: store.code, url: primaryUrl, token: store.fiscalAgentToken }, ...dropExtra((await listAgents()).filter(a => a.url !== primaryUrl))];
     console.log('[fiscalAgent] ' + store.code + ' ' + path + ' exige v' + minVer + ' — candidatos: ' + all.map(a => a.code).join(','));
     let result = null;
     for (const a of all) {
@@ -162,7 +174,7 @@ async function callAgent(store, path, body) {
   if (!isTransportFail(result)) return result;
 
   // 2) failover: outros agentes vivos (stateless — o issuer vai no body)
-  const others = (await listAgents()).filter(a => a.url !== primaryUrl);
+  const others = dropExtra((await listAgents()).filter(a => a.url !== primaryUrl));
   for (const a of others) {
     console.warn('[fiscalAgent] ' + store.code + ': agente primário indisponível (' + (result.error || '?') + ') — failover via ' + a.code + ' (' + path + ')');
     result = await postAgent(a.url, a.token, path, body);
