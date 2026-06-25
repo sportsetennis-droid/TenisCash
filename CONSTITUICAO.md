@@ -38,6 +38,15 @@
 
 15. Direto e técnico, sem textão. Ao pedir decisão: **✅ pronto / ⏳ falta / 👉 preciso de você** + escolha binária.
 
+## VII. Rede própria + segurança das máquinas (RATIFICADO — LIVE 2026-06-25)
+
+16. Cada máquina de loja roda 3 peças (em `C:\TenisCashAgent`): **Agente fiscal** (emite a nota), **Supervisor** (vigia e **religa o agente sozinho** se cair + obedece comandos do dono por *pull*) e **Monitor** (**grava a tela do caixa**, buffer rolante de **36h** que se renova).
+17. **Sem AnyDesk:** gerenciar, atualizar e revisar a gravação de qualquer máquina é **100% remoto** pela rede própria. AnyDesk (ou alguém na loja) só é necessário na **PRIMEIRA instalação** de uma máquina nova — **1 vez**, depois disso nunca mais. Isso é limite físico (não se instala software de fora numa máquina vazia), não falha do sistema.
+18. **Gravação é de SEGURANÇA, ambiente AVISADO** (placa "áudio e vídeo"), empresa privada, foco no caixa (dinheiro). **Só o dono vê** a gravação (`CAPTURE_VIEW_TOKEN`). Retenção 36h, depois se apaga sozinha.
+19. **Fica na própria máquina:** o buffer de 36h é local; só o que o dono **puxa** sobe pro central (e some em 48h). Câmera + áudio do **salão** = câmera dedicada (a definir os modelos).
+
+> **Status:** LOJA01 **LIVE e provado ponta a ponta em 2026-06-25** — agente v2.3 vivo, supervisor reportando, tela gravando, pull+view de imagem real, **tudo sem AnyDesk**. Rollout das outras 5 = 1 comando por máquina. Detalhes técnicos: memória `project_teniscash_canal_proprio` + `agents/fiscal-agent/`.
+
 ---
 
 *Regra 3 está em **modo A (independência total)**. Se quiser a rede de emergência (modo B: loja pode cobrir loja, mas a matriz nunca), é só trocar aqui.*
