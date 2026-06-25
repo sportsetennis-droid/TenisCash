@@ -671,6 +671,7 @@ router.get('/agent-update/manifest', async (req, res) => {
       const buf = _agFs.readFileSync(_agPath.join(agentDir(), f));
       return { name: f, sha256: _agCrypto.createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
     });
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({ version, files });
   } catch (err) {
     console.error('[agent-update/manifest]', err);
@@ -686,6 +687,7 @@ router.get('/agent-update/file/:name', async (req, res) => {
     const full = _agPath.join(agentDir(), name);
     if (!_agFs.existsSync(full)) return res.status(404).json({ error: 'arquivo ausente no build' });
     res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.send(_agFs.readFileSync(full));
   } catch (err) {
     console.error('[agent-update/file]', err);

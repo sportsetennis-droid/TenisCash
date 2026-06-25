@@ -9,6 +9,7 @@
 $ErrorActionPreference = 'Stop'
 $dir = if ($env:AGENT_DIR) { $env:AGENT_DIR } else { 'C:\TenisCashAgent' }
 $base = 'https://teniscash.com.br/api/auth/agent-update'
+$cb = [guid]::NewGuid().ToString('N')  # cache-bust: Cloudflare cacheia .js, o manifesto e os arquivos tem que vir frescos juntos
 
 if (-not (Test-Path (Join-Path $dir '.env'))) { Write-Host "ERRO: $dir\.env nao existe - este PC nao tem o agente instalado."; return }
 $tok = if ($env:AGENT_TOKEN_OVERRIDE) { $env:AGENT_TOKEN_OVERRIDE } else {
@@ -18,14 +19,14 @@ if (-not $tok) { Write-Host 'ERRO: AGENT_TOKEN nao encontrado no .env do agente.
 $h = @{ 'X-Agent-Token' = $tok.Trim() }
 
 Write-Host 'Consultando versao no servidor...'
-$man = Invoke-RestMethod -Uri "$base/manifest" -Headers $h -TimeoutSec 30
+$man = Invoke-RestMethod -Uri "$base/manifest?nc=$cb" -Headers $h -TimeoutSec 30
 Write-Host ("Versao no servidor: " + $man.version)
 
 foreach ($f in $man.files) {
   if ($f.name -eq 'package.json') { continue } # dependencia nova = reinstalacao manual, nao update
   $dest = Join-Path $dir $f.name
   if (Test-Path $dest) { Copy-Item $dest "$dest.bak" -Force }
-  Invoke-WebRequest -Uri "$base/file/$($f.name)" -Headers $h -OutFile $dest -TimeoutSec 60 -UseBasicParsing
+  Invoke-WebRequest -Uri "$base/file/$($f.name)?nc=$cb" -Headers $h -OutFile $dest -TimeoutSec 60 -UseBasicParsing
   $sha = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
   if ($sha -ne $f.sha256) {
     Write-Host ("ERRO: hash diferente em " + $f.name + " - restaurando backup e abortando.")
