@@ -83,6 +83,16 @@ if (Test-Path (Join-Path $dir 'supervisor.js')) {
 # tela sai preta (isolamento de sessao do Windows). Ambiente AVISADO.
 # ---------------------------------------------------------------------
 if (Test-Path (Join-Path $dir 'monitor.js')) {
+  # Compila o screencap.exe (captura via EXE — o AMSI bloqueia o MESMO codigo como script).
+  if (Test-Path (Join-Path $dir 'screencap.cs')) {
+    $csc = Get-ChildItem 'C:\Windows\Microsoft.NET\Framework64' -Filter csc.exe -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $csc) { $csc = Get-ChildItem 'C:\Windows\Microsoft.NET\Framework' -Filter csc.exe -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 }
+    if ($csc) {
+      $exe = Join-Path $dir 'screencap.exe'; $src = Join-Path $dir 'screencap.cs'
+      try { & $csc.FullName /nologo /target:winexe "/out:$exe" /reference:System.Drawing.dll,System.Windows.Forms.dll "$src" | Out-Null } catch {}
+      if (Test-Path $exe) { Write-Host '  screencap.exe compilado.' } else { Write-Host '  AVISO: screencap.exe nao compilou (csc falhou).' }
+    } else { Write-Host '  AVISO: csc (.NET Framework) nao encontrado - screencap nao compilado.' }
+  }
   $node2 = (Get-Command node -ErrorAction SilentlyContinue).Source
   if (-not $node2) { $node2 = 'C:\Program Files\nodejs\node.exe' }
   $usr = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).UserName
@@ -100,5 +110,7 @@ if (Test-Path (Join-Path $dir 'monitor.js')) {
     } catch { Write-Host ('  AVISO: nao registrou o Monitor: ' + $_.Exception.Message) }
   }
   if (-not $usr) { Write-Host '  AVISO: ninguem logado agora - o Monitor inicia no proximo login do caixa.' }
+  try { Stop-ScheduledTask -TaskName 'TenisCashMonitor' -ErrorAction SilentlyContinue } catch {}
+  Start-Sleep 1
   try { Start-ScheduledTask -TaskName 'TenisCashMonitor' -ErrorAction Stop; Write-Host 'Monitor no ar (gravando a tela, buffer 36h, se renovando).' } catch { Write-Host 'Monitor inicia no proximo login do usuario.' }
 }

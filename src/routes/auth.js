@@ -651,7 +651,7 @@ router.delete('/me', authMiddleware, async (req, res) => {
 const _agPath = require('node:path');
 const _agFs = require('node:fs');
 const _agCrypto = require('node:crypto');
-const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'package.json'];
+const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'screencap.cs', 'package.json'];
 const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
 
 async function agentTokenOk(req) {

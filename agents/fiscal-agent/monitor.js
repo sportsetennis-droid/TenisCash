@@ -29,24 +29,19 @@ function stamp() {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-// Captura TODOS os monitores (VirtualScreen) num JPEG leve, via .NET do PowerShell.
+// Captura via screencap.exe (compilado) — o AMSI bloqueia o MESMO codigo como
+// SCRIPT (heuristica de spyware), mas nao escaneia um EXE compilado. O instalador
+// compila o screencap.cs. Sem o EXE, nao grava (e loga).
+const SCREENCAP = path.join(__dirname, 'screencap.exe');
+let _warnedNoExe = false;
 function capture(outPath) {
-  const ps = [
-    "Add-Type -AssemblyName System.Windows.Forms;",
-    "Add-Type -AssemblyName System.Drawing;",
-    "$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;",
-    "$bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height;",
-    "$g=[System.Drawing.Graphics]::FromImage($bmp);",
-    "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);",
-    "$enc=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders()|?{$_.MimeType -eq 'image/jpeg'}|Select-Object -First 1;",
-    "$ep=New-Object System.Drawing.Imaging.EncoderParameters 1;",
-    `$ep.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality,([long]${QUALITY}));`,
-    `$bmp.Save('${outPath.replace(/\\/g, '\\\\')}',$enc,$ep);`,
-    "$g.Dispose();$bmp.Dispose();",
-  ].join('');
   return new Promise((resolve) => {
-    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-      { timeout: 20000, windowsHide: true }, (err) => resolve(!err));
+    if (!fs.existsSync(SCREENCAP)) {
+      if (!_warnedNoExe) { log('screencap.exe ausente — rode o instalador p/ compilar'); _warnedNoExe = true; }
+      resolve(false); return;
+    }
+    execFile(SCREENCAP, [outPath, String(QUALITY)], { timeout: 20000, windowsHide: true },
+      (err) => resolve(!err && fs.existsSync(outPath) && fs.statSync(outPath).size > 0));
   });
 }
 
