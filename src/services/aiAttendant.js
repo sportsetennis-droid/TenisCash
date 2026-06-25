@@ -21,7 +21,20 @@ const { prisma } = require('../middleware');
 const { formatPhoneBR } = require('../whatsapp');
 const { searchProductsForAI, resolveProductLink } = require('./catalogSearch');
 
-const MODEL = process.env.AI_ATTENDANT_MODEL || 'claude-sonnet-4-6';
+// ---------------------------------------------------------------------
+// MODELO — provider-AGNOSTICO. O atendente NAO depende mais de API paga.
+//   1) Se AI_ATTENDANT_BASE_URL estiver setado (nosso modelo proprio,
+//      ex Ollama/vLLM numa maquina nossa com GPU, OpenAI-compativel) -> usa ele.
+//   2) Senao, se houver ANTHROPIC_API_KEY com credito -> usa Anthropic.
+//   3) Se nada responder (sem chave / sem credito / erro) -> cai no MOTOR
+//      PROPRIO deterministico (localReply) que responde direto do BANCO,
+//      sem nenhuma API. So formata o que a ferramenta traz (nunca inventa).
+// ---------------------------------------------------------------------
+const LLM_BASE_URL = (process.env.AI_ATTENDANT_BASE_URL || '').replace(/\/$/, ''); // ex http://nossa-gpu:11434/v1
+const LLM_API_KEY = process.env.AI_ATTENDANT_API_KEY || process.env.OPENAI_API_KEY || 'sk-local';
+const LLM_PROVIDER = process.env.AI_ATTENDANT_PROVIDER
+  || (LLM_BASE_URL ? 'openai' : (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'none'));
+const MODEL = process.env.AI_ATTENDANT_MODEL || (LLM_PROVIDER === 'openai' ? 'qwen2.5:7b-instruct' : 'claude-sonnet-4-6');
 const HISTORY_TTL_MS = 30 * 60 * 1000; // 30 min de janela de conversa
 const MAX_HISTORY = 12; // ultimas N mensagens (user+assistant) guardadas
 
@@ -38,10 +51,14 @@ function isProfileEnabled(profileKey) {
   return true;
 }
 
-function getClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
+function llmConfigured() {
+  return LLM_PROVIDER === 'anthropic' || LLM_PROVIDER === 'openai';
+}
+let _anthropic = null;
+function anthropicClient() {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
 }
 
 // Historico curto em memoria por telefone (sessao de conversa).
@@ -325,70 +342,212 @@ function buildSystem(profile, name, isGroup) {
 }
 
 // ---------------------------------------------------------------------
+// DRIVER ANTHROPIC — loop de tool-use (so roda se houver chave+credito)
+// ---------------------------------------------------------------------
+async function runAnthropic(system, messages, tools, ctx) {
+  const client = anthropicClient();
+  if (!client) throw new Error('sem ANTHROPIC_API_KEY');
+  let working = messages;
+  for (let hop = 0; hop < 5; hop++) {
+    const resp = await client.messages.create({ model: MODEL, max_tokens: 700, system, tools, messages: working });
+    if (resp.stop_reason === 'tool_use') {
+      working = working.concat([{ role: 'assistant', content: resp.content }]);
+      const toolResults = [];
+      for (const block of resp.content) {
+        if (block.type === 'tool_use') {
+          const out = await runTool(block.name, block.input, ctx);
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
+        }
+      }
+      working = working.concat([{ role: 'user', content: toolResults }]);
+      continue;
+    }
+    return (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------
+// DRIVER OPENAI-COMPATIVEL — NOSSO modelo proprio (Ollama/vLLM/etc).
+// So liga quando AI_ATTENDANT_BASE_URL aponta pra uma maquina nossa.
+// ---------------------------------------------------------------------
+async function runOpenAI(system, messages, tools, ctx) {
+  const oaTools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+  const msgs = [{ role: 'system', content: system },
+    ...messages.map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }))];
+  for (let hop = 0; hop < 5; hop++) {
+    const r = await fetch(LLM_BASE_URL + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + LLM_API_KEY },
+      body: JSON.stringify({ model: MODEL, max_tokens: 700, temperature: 0.3, messages: msgs, tools: oaTools, tool_choice: 'auto' }),
+    });
+    if (!r.ok) throw new Error('LLM ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 160));
+    const j = await r.json();
+    const m = j.choices && j.choices[0] && j.choices[0].message;
+    if (!m) throw new Error('LLM sem choices');
+    if (m.tool_calls && m.tool_calls.length) {
+      msgs.push(m);
+      for (const tc of m.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch { /* ignore */ }
+        const out = await runTool(tc.function.name, args, ctx);
+        msgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out) });
+      }
+      continue;
+    }
+    return (m.content || '').trim();
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------
+// MOTOR PROPRIO (sem API) — responde direto do BANCO usando as mesmas
+// ferramentas. So formata o que a tool traz; NUNCA inventa preco/tamanho.
+// Cobre o grosso do atendimento de WhatsApp de loja: "tem o bondi 9 no 42?",
+// "preco do mizuno X", "meu cashback", "onde fica". Fora disso -> handoff.
+// ---------------------------------------------------------------------
+function _norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+function _money(v) { return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); }
+function _sizeKey(s) { return _norm(s).replace(',', '.').replace(/\s/g, ''); }
+function _extractSize(norm) {
+  const m = norm.match(/\b(3[3-9]|4[0-8])([.,]5)?\b/); // numeracao de calcado 33-48 (+ meia)
+  return m ? m[1] + (m[2] ? '.5' : '') : null;
+}
+const _STOP = new Set('tem teem oi ola opa eai salve quero queria gostaria de do da dos das no na nas nos um uma uns o a os as pra para por favor vc voce voces ai aih me ver tamanho tam numero num preco valor quanto custa ta tao disponivel tem loja lojas comprar par pares meu minha esse essa esta este isso aqui sobre qual quais ter teria voce gostaria oii bom dia tarde noite'.split(/\s+/));
+function _cleanQuery(norm) {
+  return norm
+    .replace(/\b(3[3-9]|4[0-8])([.,]5)?\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/).filter((w) => w && w.length > 1 && !_STOP.has(w))
+    .join(' ').trim();
+}
+function _greeting(profile, name) {
+  const oi = name ? `Oi, ${name}!` : 'Oi!';
+  if (profile.key === 'baratao') {
+    return `${oi} 👋 Aqui é o atendimento do *Baratão dos Esportes*. Me diz o que você procura (marca, modelo ou tipo) que eu vejo preço e disponibilidade na hora. 🛒`;
+  }
+  return `${oi} 👋 Aqui é o atendimento da *Sports & Tennis*. Me diz o que você procura (marca, modelo, tamanho) que eu confiro o preço e em qual loja tem. 👟`;
+}
+function _formatProdutos(profile, produtos, size) {
+  const top = produtos.slice(0, 3);
+  const blocos = top.map((p) => {
+    const preco = p.preco_promocional
+      ? `~${_money(p.preco)}~ *${_money(p.preco_promocional)}*`
+      : `*${_money(p.preco)}*`;
+    let l = `👟 *${p.nome}*${p.marca ? ` (${p.marca})` : ''} — ${preco}`;
+    if (size) {
+      const achou = (p.tamanhos_disponiveis || []).find((t) => _sizeKey(t.tamanho) === _sizeKey(size));
+      if (achou) {
+        const lojas = (achou.lojas || []).map((x) => x.loja).join(', ');
+        l += `\n✅ Tem o *${size}*${lojas ? ` — ${lojas}` : ''}`;
+      } else {
+        const disp = (p.tamanhos_em_loja || []).join(', ');
+        l += `\n❌ O *${size}* tá indisponível agora.${disp ? ` Tenho nesses: ${disp}` : ''}`;
+      }
+    } else {
+      const disp = (p.tamanhos_em_loja || []).join(', ');
+      l += disp ? `\nTamanhos na loja: ${disp}` : '\nSem tamanho em loja no momento.';
+    }
+    if (p.link) l += `\n${p.link}`;
+    return l;
+  });
+  let txt = blocos.join('\n\n');
+  if (profile.hasCashback) txt += '\n\n💰 E você ainda ganha cashback comprando.';
+  return txt;
+}
+async function localReply(profile, { text, pushName, isGroup }, ctx) {
+  const norm = _norm(text).trim();
+  const words = norm.split(/\s+/).filter(Boolean);
+
+  // saudacao curta (so privado)
+  if (!isGroup && words.length <= 3 && /\b(oi|ola|opa|eai|salve|menu|bom dia|boa tarde|boa noite|tudo bem|bora)\b/.test(norm) && !_extractSize(norm)) {
+    return { ok: true, reply: _greeting(profile, pushName) };
+  }
+  // cashback
+  if (profile.hasCashback && /\b(cashback|saldo|pontos|tenis ?cash|meus pontos)\b/.test(norm)) {
+    const cb = await runTool('consultar_cashback', {}, ctx);
+    if (cb && cb.cadastrado) return { ok: true, reply: `${cb.nome ? cb.nome + ', você' : 'Você'} tem *${_money(cb.saldo_cashback)}* de cashback TenisCash pra usar nas compras. 💰` };
+    return { ok: true, reply: 'Não achei cadastro nesse número ainda. Quando você compra identificado, o cashback fica salvo aqui. 🙂' };
+  }
+  // onde fica / horario / canais
+  const ehInfo = /\b(onde|endereco|fica|localiza|horario|abre|fecha|funciona|telefone|site|qual loja|quais lojas)\b/.test(norm);
+  if (ehInfo && !_extractSize(norm)) {
+    const info = await runTool('info_loja', {}, ctx);
+    if (profile.key === 'baratao') {
+      const e = info.endereco ? `Estamos em ${info.endereco}. ` : '';
+      return { ok: true, reply: `${e}Qualquer dúvida de produto é só mandar a marca/modelo que eu confiro pra você. 🛒` };
+    }
+    return { ok: true, reply: `Temos loja em *Bessa, Tambaú, Rainha da Borborema e Tambiá* (João Pessoa-PB) e a loja online: ${info.site || 'https://www.sportsetennis.com.br'} 🙂\nQuer que eu veja um produto pra você?` };
+  }
+
+  // PRODUTO (default) — busca no catalogo real
+  const size = _extractSize(norm);
+  const query = _cleanQuery(norm);
+  if (!query) {
+    if (isGroup) return { ok: true, silent: true };
+    return { ok: true, reply: _greeting(profile, pushName) };
+  }
+  const res = await runTool('buscar_produtos', { query }, ctx);
+  if (!res || res.erro || !res.produtos || !res.produtos.length) {
+    if (isGroup) return { ok: true, silent: true };
+    return { ok: true, reply: `Não achei *${query}* no nosso catálogo agora 😕 Me diz a marca/modelo certinho que eu procuro de novo, ou já chamo um atendente da equipe.` };
+  }
+  return { ok: true, reply: _formatProdutos(profile, res.produtos, size) };
+}
+
+// ---------------------------------------------------------------------
 // PRINCIPAL — gera a resposta do atendente para uma mensagem recebida
+// Tenta o modelo (proprio -> Anthropic); se nao houver/der erro, cai no
+// motor proprio (banco). Nunca fica "fora do ar" por falta de API.
 // ---------------------------------------------------------------------
 async function getAttendantReply({ phone, text, pushName, isGroup = false, senderName, sessionKey, profile: profileKey = 'st' }) {
   if (!isProfileEnabled(profileKey)) return { ok: false, skip: 'disabled' };
-  const client = getClient();
-  if (!client) return { ok: false, error: 'ANTHROPIC_API_KEY ausente' };
 
   const profile = getProfile(profileKey);
   const histKey = sessionKey || phone;
   const history = getHistory(histKey);
   const messages = [...history.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: text }];
   const ctx = { phone, pushName, isGroup, profile };
+  const tools = buildTools(profile);
+  const system = buildSystem(profile, isGroup ? senderName : pushName, isGroup);
 
-  try {
-    const tools = buildTools(profile);
-    let working = messages;
-    let finalText = '';
-    for (let hop = 0; hop < 5; hop++) {
-      const resp = await client.messages.create({
-        model: MODEL,
-        max_tokens: 700,
-        system: buildSystem(profile, isGroup ? senderName : pushName, isGroup),
-        tools,
-        messages: working,
-      });
-
-      if (resp.stop_reason === 'tool_use') {
-        working = working.concat([{ role: 'assistant', content: resp.content }]);
-        const toolResults = [];
-        for (const block of resp.content) {
-          if (block.type === 'tool_use') {
-            const out = await runTool(block.name, block.input, ctx);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
-          }
-        }
-        working = working.concat([{ role: 'user', content: toolResults }]);
-        continue;
-      }
-
-      finalText = (resp.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim();
-      break;
+  let finalText = '';
+  let usedLLM = false;
+  if (llmConfigured()) {
+    try {
+      finalText = LLM_PROVIDER === 'openai'
+        ? await runOpenAI(system, messages, tools, ctx)
+        : await runAnthropic(system, messages, tools, ctx);
+      usedLLM = !!finalText;
+    } catch (err) {
+      console.warn(`[aiAttendant] modelo (${LLM_PROVIDER}) indisponivel, usando motor proprio:`, err.message);
     }
-
-    // Modo grupo: a IA pode decidir ficar calada (mensagem nao era pra ela)
-    if (isGroup && /\[?\s*SIL[EÊ]NCIO\s*\]?/i.test(finalText)) {
-      return { ok: true, silent: true };
-    }
-
-    if (!finalText) {
-      if (isGroup) return { ok: true, silent: true };
-      finalText = `Recebi sua mensagem! Em instantes um atendente do ${profile.brand} te responde. 🙂`;
-    }
-
-    pushHistory(histKey, 'user', text);
-    pushHistory(histKey, 'assistant', finalText);
-    return { ok: true, reply: finalText };
-  } catch (err) {
-    console.error('[aiAttendant] erro ao gerar resposta:', err.message);
-    return { ok: false, error: err.message };
   }
+
+  // Grupo: a IA pode decidir ficar calada (mensagem nao era pra ela)
+  if (usedLLM && isGroup && /\[?\s*SIL[EÊ]NCIO\s*\]?/i.test(finalText)) {
+    return { ok: true, silent: true };
+  }
+
+  // Sem resposta do modelo (sem chave / sem credito / erro) -> MOTOR PROPRIO
+  if (!finalText) {
+    try {
+      const local = await localReply(profile, { text, phone, pushName, isGroup }, ctx);
+      if (local.silent) return { ok: true, silent: true };
+      finalText = local.reply || '';
+    } catch (err) {
+      console.error('[aiAttendant] motor proprio falhou:', err.message);
+    }
+  }
+
+  if (!finalText) {
+    if (isGroup) return { ok: true, silent: true };
+    finalText = `Recebi sua mensagem! Em instantes um atendente do ${profile.brand} te responde. 🙂`;
+  }
+
+  pushHistory(histKey, 'user', text);
+  pushHistory(histKey, 'assistant', finalText);
+  return { ok: true, reply: finalText };
 }
 
 module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES };
