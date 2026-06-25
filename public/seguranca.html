@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>🔒 Segurança — Sports & Tennis</title>
+<style>
+  :root { --bg:#0b0f14; --card:#141b24; --line:#243140; --txt:#e8eef5; --mut:#8aa0b4; --ok:#2ecc71; --off:#e74c3c; --acc:#3aa0ff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding-bottom:env(safe-area-inset-bottom); }
+  header { position:sticky; top:0; background:#0b0f14ee; backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:14px 16px; display:flex; align-items:center; gap:10px; z-index:5; }
+  header h1 { font-size:18px; margin:0; flex:1; } header .sub { font-size:12px; color:var(--mut); }
+  .wrap { max-width:1100px; margin:0 auto; padding:16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+  .m { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .m .top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:none; }
+  .dot.on { background:var(--ok); box-shadow:0 0 8px var(--ok); } .dot.off { background:var(--off); }
+  .m .name { font-weight:700; font-size:16px; flex:1; } .m .v { font-size:11px; color:var(--mut); }
+  .m .line { font-size:13px; color:var(--mut); margin:3px 0; } .m .line b { color:var(--txt); font-weight:600; }
+  .m .acts { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  button { background:#1d2935; color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13px; font-weight:600; cursor:pointer; min-height:40px; }
+  button:active { transform:scale(.97); } button.pri { background:var(--acc); border-color:var(--acc); color:#04121f; flex:1; }
+  button.danger { color:#ff8a8a; }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#1d2935; border:1px solid var(--line); color:var(--txt); padding:11px 16px; border-radius:10px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:50; max-width:90vw; }
+  #toast.show { opacity:1; }
+  /* viewer */
+  #viewer { position:fixed; inset:0; background:#06090d; z-index:40; display:none; flex-direction:column; }
+  #viewer.show { display:flex; }
+  #viewer .vh { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  #viewer .vh .name { font-weight:700; flex:1; } #viewer .vh .when { font-size:12px; color:var(--mut); }
+  #stage { flex:1; display:flex; align-items:center; justify-content:center; background:#000; overflow:hidden; position:relative; }
+  #frame { max-width:100%; max-height:100%; object-fit:contain; }
+  #stageMsg { position:absolute; color:var(--mut); font-size:14px; }
+  .vc { padding:12px 16px; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  #timeline { flex:1; min-width:160px; } input[type=range] { width:100%; accent-color:var(--acc); }
+  .live { display:flex; align-items:center; gap:6px; font-size:13px; }
+  .badge { font-size:11px; padding:2px 7px; border-radius:20px; background:#1d2935; color:var(--mut); }
+  a.plain { color:var(--acc); text-decoration:none; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <span style="font-size:22px">🔒</span>
+  <div style="flex:1"><h1>Segurança</h1><div class="sub">Monitoramento das máquinas das lojas · só você vê</div></div>
+  <button onclick="loadMachines()">↻ Atualizar</button>
+</header>
+<div class="wrap">
+  <div id="grid" class="grid"><div style="color:var(--mut)">Carregando máquinas…</div></div>
+</div>
+
+<!-- VISUALIZADOR DE GRAVACAO -->
+<div id="viewer">
+  <div class="vh">
+    <span class="name" id="vName">—</span>
+    <span class="when" id="vWhen"></span>
+    <button onclick="closeViewer()">✕ Fechar</button>
+  </div>
+  <div id="stage"><img id="frame" alt=""><div id="stageMsg">Buscando gravação…</div></div>
+  <div class="vc">
+    <button id="prevBtn" onclick="step(-1)">‹</button>
+    <input type="range" id="timeline" min="0" max="0" value="0" oninput="seek(this.value)">
+    <button id="nextBtn" onclick="step(1)">›</button>
+    <label class="live"><input type="checkbox" id="liveChk" onchange="toggleLive()"> ao vivo</label>
+    <span class="badge" id="vCount">0 quadros</span>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const token = localStorage.getItem('tc_admin_token');
+if (!token) { location.href = '/admin.html'; }
+const BASE = '/api/admin/security';
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2600); }
+async function api(method, url, body){
+  const r = await fetch(BASE+url, { method, headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' }, body: body?JSON.stringify(body):undefined });
+  if (r.status===401){ location.href='/admin.html'; return null; }
+  return r;
+}
+// enfileira um comando e espera o resultado (polling)
+async function runCmd(store, type, name){
+  const r = await api('POST','/cmd',{store,type,name}); if(!r) return null;
+  const { id } = await r.json();
+  for(let i=0;i<22;i++){ await new Promise(s=>setTimeout(s,3000)); const c=await (await api('GET','/cmd/'+id)).json(); if(c.status==='done'||c.status==='failed') return c; }
+  return { status:'timeout', result:'' };
+}
+
+// ---------- MAQUINAS ----------
+async function loadMachines(){
+  const r = await api('GET','/machines'); if(!r) return;
+  const { machines } = await r.json();
+  const g = document.getElementById('grid');
+  if(!machines.length){ g.innerHTML='<div style="color:var(--mut)">Nenhuma máquina reportou ainda.</div>'; return; }
+  g.innerHTML = machines.map(m=>`
+    <div class="m">
+      <div class="top"><span class="dot ${m.online?'on':'off'}"></span><span class="name">${m.store}</span><span class="v">sup v${m.supervisorVersion||'?'}</span></div>
+      <div class="line">Agente: <b style="color:${m.agentHealthy?'var(--ok)':'var(--off)'}">${m.agentHealthy?'OK v'+(m.agentVersion||'?'):'CAÍDO'}</b></div>
+      <div class="line">Máquina: <b>${m.online?'online':'visto há '+Math.round(m.ageSec/60)+'min'}</b> · ${m.hostname||''}</div>
+      <div class="acts">
+        <button class="pri" onclick="openViewer('${m.store}')">▶ Ver gravação</button>
+        <button onclick="cmdBtn('${m.store}','restart-agent','Reiniciar agente')">↻</button>
+        <button onclick="cmdBtn('${m.store}','update-agent','Atualizar')">⬆</button>
+      </div>
+    </div>`).join('');
+}
+async function cmdBtn(store,type,label){
+  if(!confirm(label+' — '+store+'?')) return;
+  toast(label+' enviado a '+store+'…');
+  const c = await runCmd(store,type);
+  toast(store+' · '+label+': '+(c&&c.status==='done'?'OK':'falhou/timeout'));
+  loadMachines();
+}
+
+// ---------- VISUALIZADOR ----------
+let curStore=null, frames=[], idx=0, liveTimer=null;
+async function openViewer(store){
+  curStore=store; frames=[]; idx=0;
+  document.getElementById('vName').textContent='🔒 '+store;
+  document.getElementById('vWhen').textContent='';
+  document.getElementById('frame').removeAttribute('src');
+  document.getElementById('stageMsg').textContent='Buscando lista de gravação… (até ~1 min)';
+  document.getElementById('viewer').classList.add('show');
+  const c = await runCmd(store,'capture-list');
+  if(!c || c.status!=='done'){ document.getElementById('stageMsg').textContent='Não consegui listar (máquina offline?).'; return; }
+  frames = (c.result.match(/\d{8}-\d{6}\.jpg/g)||[]);
+  document.getElementById('vCount').textContent = frames.length+' quadros (36h)';
+  const tl=document.getElementById('timeline'); tl.max=Math.max(0,frames.length-1); tl.value=frames.length-1;
+  if(!frames.length){ document.getElementById('stageMsg').textContent='Buffer vazio ainda.'; return; }
+  idx=frames.length-1; await showFrame();
+}
+function fmtName(n){ const m=n.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/); return m?`${m[3]}/${m[2]} ${m[4]}:${m[5]}:${m[6]}`:n; }
+async function showFrame(){
+  if(!frames.length) return;
+  const name=frames[idx];
+  document.getElementById('stageMsg').textContent='Puxando o quadro…';
+  document.getElementById('vWhen').textContent=fmtName(name);
+  document.getElementById('timeline').value=idx;
+  const pull = await runCmd(curStore,'capture-pull',name);
+  if(!pull || pull.status!=='done'){ document.getElementById('stageMsg').textContent='Falha ao puxar o quadro.'; return; }
+  const r = await api('GET','/capture/'+curStore+'/'+encodeURIComponent(name));
+  if(!r || !r.ok){ document.getElementById('stageMsg').textContent='Imagem indisponível.'; return; }
+  const blob = await r.blob(); const url=URL.createObjectURL(blob);
+  const img=document.getElementById('frame'); const old=img.src; img.src=url; if(old&&old.startsWith('blob:'))URL.revokeObjectURL(old);
+  document.getElementById('stageMsg').textContent='';
+}
+function seek(v){ idx=parseInt(v,10); showFrame(); }
+function step(d){ idx=Math.max(0,Math.min(frames.length-1,idx+d)); showFrame(); }
+function toggleLive(){
+  if(document.getElementById('liveChk').checked){
+    toast('Ao vivo: atualiza o quadro mais recente a cada ~30s');
+    liveTimer=setInterval(async()=>{ const c=await runCmd(curStore,'capture-list'); if(c&&c.status==='done'){ const f=(c.result.match(/\d{8}-\d{6}\.jpg/g)||[]); if(f.length){ frames=f; document.getElementById('timeline').max=f.length-1; idx=f.length-1; showFrame(); document.getElementById('vCount').textContent=f.length+' quadros (36h)'; } } },30000);
+  } else { clearInterval(liveTimer); liveTimer=null; }
+}
+function closeViewer(){ document.getElementById('viewer').classList.remove('show'); clearInterval(liveTimer); liveTimer=null; document.getElementById('liveChk').checked=false; }
+
+loadMachines();
+setInterval(()=>{ if(!document.getElementById('viewer').classList.contains('show')) loadMachines(); }, 30000);
+</script>
+</body>
+</html>
