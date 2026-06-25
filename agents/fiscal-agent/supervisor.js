@@ -74,7 +74,7 @@ async function checkAgent() {
 
 async function restartAgent() {
   log('WATCHDOG/CMD: reiniciando agente fiscal...');
-  const r = await ps(`try { Stop-ScheduledTask -TaskName '${AGENT_TASK}' -ErrorAction SilentlyContinue } catch {}; Start-Sleep 2; Start-ScheduledTask -TaskName '${AGENT_TASK}'`);
+  const r = await ps(`try { Stop-ScheduledTask -TaskName '${AGENT_TASK}' -ErrorAction SilentlyContinue } catch {}; try { Get-NetTCPConnection -LocalPort ${AGENT_PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } } catch {}; Start-Sleep 2; Start-ScheduledTask -TaskName '${AGENT_TASK}'`);
   await new Promise(s => setTimeout(s, 6000));
   const h = await checkAgent();
   return { ok: h.healthy, out: `restart taskOk=${r.ok} agentHealthy=${h.healthy} v=${h.version || '?'}` };

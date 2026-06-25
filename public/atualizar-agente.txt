@@ -42,6 +42,8 @@ try { & tailscale funnel --bg 8765 2>$null | Out-Null; Write-Host '  tunel ok' }
 
 Write-Host 'Reiniciando o agente...'
 try { Stop-ScheduledTask -TaskName TenisCashFiscalAgent -ErrorAction Stop } catch {}
+# Mata qualquer agente VELHO segurando a porta 8765 (senao a versao nova nao assume - caso LOJA02).
+try { Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } } catch {}
 Start-Sleep 2
 $taskOk = $true
 try { Start-ScheduledTask -TaskName TenisCashFiscalAgent -ErrorAction Stop } catch { $taskOk = $false; Write-Host 'AVISO: tarefa TenisCashFiscalAgent nao encontrada - inicie o agente manualmente (node index.js na pasta do agente).' }
