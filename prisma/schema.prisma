@@ -4626,3 +4626,30 @@ model CentralContabilJsonStore {
   updatedAt DateTime @default(now())
   createdAt DateTime @default(now())
 }
+
+// ============================================================
+// CANAL DE GESTÃO REMOTA das máquinas das lojas (sem AnyDesk).
+// O Supervisor de cada máquina faz PULL: bate heartbeat e busca comandos.
+// ============================================================
+model AgentCommand {
+  id        String   @id @default(cuid())
+  storeCode String
+  type      String // restart-agent | update-agent | update-supervisor | tailscale-up | funnel-up | get-health | get-log | ping
+  args      Json?
+  status    String   @default("pending") // pending | sent | done | failed
+  result    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeCode, status])
+}
+
+model MachineHeartbeat {
+  storeCode         String   @id
+  hostname          String?
+  agentHealthy      Boolean  @default(false)
+  agentVersion      String?
+  supervisorVersion String?
+  lastSeen          DateTime @default(now())
+}

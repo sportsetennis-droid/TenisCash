@@ -51,3 +51,54 @@ if ($taskOk) {
     Write-Host ("PRONTO! Agente no ar - versao " + $hl.version)
   } catch { Write-Host 'Agente reiniciando... confira em alguns segundos: http://localhost:8765/health' }
 }
+
+# ---------------------------------------------------------------------
+# SUPERVISOR (vigia que religa o agente + canal remoto, SEM AnyDesk).
+# supervisor.js ja foi baixado acima (entrou no manifesto). Aqui so
+# garantimos a tarefa TenisCashSupervisor e a iniciamos.
+# ---------------------------------------------------------------------
+if (Test-Path (Join-Path $dir 'supervisor.js')) {
+  $supExists = $false
+  try { Get-ScheduledTask -TaskName 'TenisCashSupervisor' -ErrorAction Stop | Out-Null; $supExists = $true } catch {}
+  if (-not $supExists) {
+    Write-Host 'Registrando o Supervisor (TenisCashSupervisor)...'
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if (-not $node) { $node = 'C:\Program Files\nodejs\node.exe' }
+    try {
+      $act = New-ScheduledTaskAction -Execute $node -Argument 'supervisor.js' -WorkingDirectory $dir
+      $trg = New-ScheduledTaskTrigger -AtStartup
+      $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+      Register-ScheduledTask -TaskName 'TenisCashSupervisor' -Action $act -Trigger $trg -Settings $set -RunLevel Highest -User 'SYSTEM' -Force | Out-Null
+      Write-Host '  Supervisor registrado (SYSTEM, no boot, auto-restart).'
+    } catch { Write-Host ('  AVISO: nao registrou o Supervisor: ' + $_.Exception.Message) }
+  }
+  try { Stop-ScheduledTask -TaskName 'TenisCashSupervisor' -ErrorAction SilentlyContinue } catch {}
+  Start-Sleep 1
+  try { Start-ScheduledTask -TaskName 'TenisCashSupervisor' -ErrorAction Stop; Write-Host 'Supervisor no ar (vigia o agente + obedece comandos do central).' } catch { Write-Host 'AVISO: Supervisor nao iniciou - confira a tarefa TenisCashSupervisor.' }
+}
+
+# ---------------------------------------------------------------------
+# MONITOR (gravacao de seguranca do caixa, buffer rolante 36h).
+# Roda na SESSAO DO USUARIO (tarefa no logon) - senao a captura de
+# tela sai preta (isolamento de sessao do Windows). Ambiente AVISADO.
+# ---------------------------------------------------------------------
+if (Test-Path (Join-Path $dir 'monitor.js')) {
+  $node2 = (Get-Command node -ErrorAction SilentlyContinue).Source
+  if (-not $node2) { $node2 = 'C:\Program Files\nodejs\node.exe' }
+  $usr = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).UserName
+  $monExists = $false
+  try { Get-ScheduledTask -TaskName 'TenisCashMonitor' -ErrorAction Stop | Out-Null; $monExists = $true } catch {}
+  if ((-not $monExists) -and $usr) {
+    Write-Host ('Registrando o Monitor na sessao de ' + $usr + '...')
+    try {
+      $act2 = New-ScheduledTaskAction -Execute $node2 -Argument 'monitor.js' -WorkingDirectory $dir
+      $trg2 = New-ScheduledTaskTrigger -AtLogOn -User $usr
+      $prin2 = New-ScheduledTaskPrincipal -UserId $usr -LogonType Interactive -RunLevel Limited
+      $set2 = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+      Register-ScheduledTask -TaskName 'TenisCashMonitor' -Action $act2 -Trigger $trg2 -Principal $prin2 -Settings $set2 -Force | Out-Null
+      Write-Host '  Monitor registrado (sessao do usuario, no logon).'
+    } catch { Write-Host ('  AVISO: nao registrou o Monitor: ' + $_.Exception.Message) }
+  }
+  if (-not $usr) { Write-Host '  AVISO: ninguem logado agora - o Monitor inicia no proximo login do caixa.' }
+  try { Start-ScheduledTask -TaskName 'TenisCashMonitor' -ErrorAction Stop; Write-Host 'Monitor no ar (gravando a tela, buffer 36h, se renovando).' } catch { Write-Host 'Monitor inicia no proximo login do usuario.' }
+}

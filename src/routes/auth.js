@@ -651,7 +651,7 @@ router.delete('/me', authMiddleware, async (req, res) => {
 const _agPath = require('node:path');
 const _agFs = require('node:fs');
 const _agCrypto = require('node:crypto');
-const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'package.json'];
+const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'package.json'];
 const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
 
 async function agentTokenOk(req) {
@@ -691,6 +691,89 @@ router.get('/agent-update/file/:name', async (req, res) => {
     console.error('[agent-update/file]', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// =====================================================================
+// CANAL DE GESTÃO REMOTA das máquinas das lojas (sem AnyDesk) — mount público.
+// O Supervisor de cada máquina faz PULL: bate heartbeat e busca comandos.
+// Credencial = o próprio AGENT_TOKEN (validado contra Store.fiscalAgentToken).
+// =====================================================================
+async function agentTokenStore(req) {
+  const tok = String(req.headers['x-agent-token'] || req.query.token || '').trim();
+  if (tok.length < 16) return null;
+  return prisma.store.findFirst({ where: { fiscalAgentToken: tok }, select: { id: true, code: true } });
+}
+
+router.post('/agent-control/poll', async (req, res) => {
+  try {
+    const store = await agentTokenStore(req);
+    if (!store) return res.status(401).json({ error: 'token de agente inválido' });
+    const b = req.body || {};
+    await prisma.machineHeartbeat.upsert({
+      where: { storeCode: store.code },
+      update: { hostname: b.hostname || null, agentHealthy: !!b.agentHealthy, agentVersion: b.agentVersion || null, supervisorVersion: b.supervisorVersion || null, lastSeen: new Date() },
+      create: { storeCode: store.code, hostname: b.hostname || null, agentHealthy: !!b.agentHealthy, agentVersion: b.agentVersion || null, supervisorVersion: b.supervisorVersion || null },
+    });
+    const pending = await prisma.agentCommand.findMany({ where: { storeCode: store.code, status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 5 });
+    if (pending.length) await prisma.agentCommand.updateMany({ where: { id: { in: pending.map(c => c.id) } }, data: { status: 'sent' } });
+    res.json({ commands: pending.map(c => ({ id: c.id, type: c.type, args: c.args })) });
+  } catch (err) {
+    console.error('[agent-control/poll]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/agent-control/result', async (req, res) => {
+  try {
+    const store = await agentTokenStore(req);
+    if (!store) return res.status(401).json({ error: 'token de agente inválido' });
+    const { commandId, ok, output } = req.body || {};
+    if (!commandId) return res.status(400).json({ error: 'commandId obrigatório' });
+    await prisma.agentCommand.updateMany({
+      where: { id: String(commandId), storeCode: store.code },
+      data: { status: ok ? 'done' : 'failed', result: String(output || '').slice(0, 6000) },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[agent-control/result]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// GRAVAÇÃO DE SEGURANÇA — recebe o print puxado da máquina (só o que o dono
+// pede; o buffer de 36h fica NA loja). UPLOAD = token do agente. VER = token
+// do dono (CAPTURE_VIEW_TOKEN). Capturas centrais rolam em 48h (são temporárias).
+// =====================================================================
+const _capDir = _agPath.join(process.cwd(), 'captures');
+function _viewOk(req) { const k = String(req.query.key || req.headers['x-view-token'] || ''); const exp = process.env.CAPTURE_VIEW_TOKEN || ''; return !!exp && k === exp; }
+
+router.post('/agent-capture', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
+  try {
+    const store = await agentTokenStore(req);
+    if (!store) return res.status(401).json({ error: 'token de agente inválido' });
+    const name = _agPath.basename(String(req.headers['x-capture-name'] || '')).replace(/[^A-Za-z0-9._-]/g, '');
+    if (!name || !req.body || !req.body.length) return res.status(400).json({ error: 'name/body obrigatório' });
+    const dir = _agPath.join(_capDir, store.code);
+    _agFs.mkdirSync(dir, { recursive: true });
+    _agFs.writeFileSync(_agPath.join(dir, name), req.body);
+    try { const lim = Date.now() - 48 * 3600 * 1000; for (const f of _agFs.readdirSync(dir)) { const fp = _agPath.join(dir, f); if (_agFs.statSync(fp).mtimeMs < lim) _agFs.unlinkSync(fp); } } catch {}
+    res.json({ ok: true, stored: store.code + '/' + name, bytes: req.body.length });
+  } catch (err) { console.error('[agent-capture]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.get('/agent-capture/list/:store', (req, res) => {
+  if (!_viewOk(req)) return res.status(401).json({ error: 'view token inválido' });
+  const dir = _agPath.join(_capDir, _agPath.basename(String(req.params.store)));
+  res.json({ files: _agFs.existsSync(dir) ? _agFs.readdirSync(dir).sort() : [] });
+});
+
+router.get('/agent-capture/file/:store/:name', (req, res) => {
+  if (!_viewOk(req)) return res.status(401).json({ error: 'view token inválido' });
+  const full = _agPath.join(_capDir, _agPath.basename(String(req.params.store)), _agPath.basename(String(req.params.name)));
+  if (!_agFs.existsSync(full)) return res.status(404).json({ error: 'não achado' });
+  res.setHeader('Content-Type', 'image/jpeg');
+  res.send(_agFs.readFileSync(full));
 });
 
 module.exports = router;
