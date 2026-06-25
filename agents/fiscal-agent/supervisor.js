@@ -82,9 +82,14 @@ async function restartAgent() {
 
 // ---- comandos remotos (whitelist — sem exec arbitrário) ----
 async function runUpdater() {
-  // baixa o instalador público e executa (atualiza o agente p/ a versão do central + religa)
-  const r = await ps(`$env:AGENT_DIR='${__dirname.replace(/\\/g, '\\\\')}'; irm ${CENTRAL}/atualizar-agente.txt | iex`, 240000);
-  return { ok: r.ok, out: r.out };
+  // DETACHED: roda o instalador numa tarefa propria temporaria, pra ele
+  // SOBREVIVER caso o update reinicie o proprio supervisor no meio.
+  const d = __dirname.replace(/'/g, "''");
+  const inner = `$env:AGENT_DIR='${d}'; try { Invoke-RestMethod ${CENTRAL}/atualizar-agente.txt | Invoke-Expression } catch { $_ | Out-File -FilePath '${d}\\update.err' -Encoding utf8 }`;
+  const b64 = Buffer.from(inner, 'utf16le').toString('base64');
+  const reg = `$a=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -EncodedCommand ${b64}'; Register-ScheduledTask -TaskName 'TenisCashUpdateOnce' -Action $a -RunLevel Highest -User 'SYSTEM' -Force | Out-Null; Start-ScheduledTask -TaskName 'TenisCashUpdateOnce'`;
+  const r = await ps(reg, 30000);
+  return { ok: r.ok, out: 'update disparado em tarefa detached — conclui em ~1min (confira depois com capture-list/get-health)' };
 }
 
 async function updateSupervisor() {
