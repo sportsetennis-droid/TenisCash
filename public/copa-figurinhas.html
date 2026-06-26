@@ -241,15 +241,21 @@ let GROUPS = {};
 // ─── INIT ───────────────────────────────────────────────────
 async function init() {
   if (!TOKEN) { showReg(); return; }
+  document.getElementById('loading').textContent = 'Carregando sua coleção...';
   try {
     const [colRes, stkRes] = await Promise.all([
-      fetch(`${API}/perfil/${TOKEN}`).then(r=>r.json()),
-      fetch(`${API}/stickers`).then(r=>r.json()),
+      fetch(`${API}/perfil/${TOKEN}`).then(r => ({ ok: r.ok, status: r.status, data: r.json() })),
+      fetch(`${API}/stickers`).then(r => r.json()),
     ]);
-    if (colRes.error) { localStorage.removeItem('copa_fig_token'); showReg(); return; }
-    COLL = colRes;
-    SMAP = colRes.stickerMap || {};
-    STICKERS = stkRes.stickers || [];
+    const col = await colRes.data;
+    // Só limpa token se o perfil realmente não existe (404) — nunca por erro de servidor
+    if (!colRes.ok) {
+      if (colRes.status === 404) { localStorage.removeItem('copa_fig_token'); TOKEN = null; showReg(); return; }
+      throw new Error(col.error || 'Erro ao carregar perfil');
+    }
+    COLL = col;
+    SMAP = col.stickerMap || {};
+    STICKERS = (stkRes.stickers || []);
     buildGroups();
     document.getElementById('hdr-name').textContent = COLL.name;
     document.getElementById('app').style.display = 'flex';
@@ -258,7 +264,18 @@ async function init() {
     document.getElementById('reg-screen').style.display = 'none';
     updateStats();
     renderAlbum();
-  } catch(e) { showReg(); }
+  } catch(e) {
+    console.error('init error', e);
+    document.getElementById('loading').innerHTML =
+      `<div style="padding:20px;text-align:center">
+        <div style="color:#e74c3c;margin-bottom:12px">⚠️ ${e.message || 'Erro ao carregar'}</div>
+        <button onclick="init()" style="background:var(--g);border:none;border-radius:8px;color:#fff;padding:10px 20px;font-size:14px;cursor:pointer">Tentar novamente</button>
+      </div>`;
+    document.getElementById('reg-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    document.getElementById('app').style.height = '100%';
+  }
 }
 
 function showReg() {
