@@ -81,6 +81,40 @@ router.get('/ar-config', (_req, res) => {
   res.json({ licenseKey: process.env.DEEPAR_LICENSE_KEY || '' });
 });
 
+// POST /api/tryon/locate — detecta objeto numa imagem e devolve bounding box.
+// Body: { imageUrl?: string, imageBase64?: string, query: string }
+// Usado pelo provador virtual pra localizar o pé do cliente na foto.
+router.post('/locate', async (req, res) => {
+  try {
+    let la;
+    try { la = require('../services/locateAnything'); } catch { return res.status(503).json({ error: 'locateAnything indisponível' }); }
+    const { imageUrl, imageBase64, query } = req.body || {};
+    if (!query) return res.status(400).json({ error: 'query obrigatório' });
+    const src = imageBase64 || imageUrl;
+    if (!src) return res.status(400).json({ error: 'imageUrl ou imageBase64 obrigatório' });
+    const bbox = await la.locate(src, query);
+    res.json({ bbox, found: !!bbox });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/tryon/locate-foot — especialização: localiza o pé numa foto do cliente.
+// Body: { imageBase64: string } (dataURI ou base64 puro)
+router.post('/locate-foot', async (req, res) => {
+  try {
+    let la;
+    try { la = require('../services/locateAnything'); } catch { return res.status(503).json({ error: 'locateAnything indisponível' }); }
+    const { imageBase64, imageUrl } = req.body || {};
+    const src = imageBase64 || imageUrl;
+    if (!src) return res.status(400).json({ error: 'imageBase64 ou imageUrl obrigatório' });
+    const [foot, leftFoot, rightFoot] = await Promise.all([
+      la.locate(src, 'foot or feet'),
+      la.locate(src, 'left foot'),
+      la.locate(src, 'right foot'),
+    ]);
+    res.json({ bbox: foot, leftFoot, rightFoot, found: !!foot });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/tryon/img?u=<url> — PROXY de imagem (CORS-safe). Sem isso o canvas vira
 // "tainted" e o screenshot falha. Só https; bloqueia host interno/privado (anti-SSRF).
 router.get('/img', async (req, res) => {

@@ -9,6 +9,9 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const MODEL = process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
 
+let la = null;
+try { la = require('./locateAnything'); } catch (_) {}
+
 function isConfigured() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
@@ -48,6 +51,26 @@ Escala de score:
 - 5-7: mesmo modelo mas variação de cor errada
 - 1-4: produto similar mas errado, ou foto ruim
 - 0: não é o produto / banner / logo / genérico`;
+
+/**
+ * Verifica se um produto existe na imagem (pré-filtro barato antes do score completo).
+ * Retorna false se a imagem não contiver o produto (ex: banner, logo, produto errado).
+ */
+async function productExistsInImage(imageUrl, product) {
+  if (!la || !imageUrl) return true; // sem LocateAnything, deixa passar pro score completo
+  const query = `${product.brand || ''} ${product.category || 'shoe'} product`.trim();
+  return la.exists(imageUrl, query);
+}
+
+/**
+ * Encontra o bounding box do produto na imagem.
+ * Útil pra recortar antes de análises mais pesadas.
+ */
+async function locateProductInImage(imageUrl, product) {
+  if (!la || !imageUrl) return null;
+  const query = `${product.brand || ''} ${product.category || 'shoe'}`.trim();
+  return la.locate(imageUrl, query);
+}
 
 async function scoreImageMatch(imageUrl, product) {
   if (!isConfigured()) {
@@ -141,4 +164,4 @@ async function pickBestImage(candidates, product, opts = {}) {
   return { ranked, totalCostBRL };
 }
 
-module.exports = { isConfigured, scoreImageMatch, pickBestImage };
+module.exports = { isConfigured, scoreImageMatch, pickBestImage, productExistsInImage, locateProductInImage };

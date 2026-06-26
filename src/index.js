@@ -287,6 +287,25 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/sellers', sellersRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/tryon', tryonRoutes);
+
+// POST /api/locate — LocateAnything: detecta qualquer objeto em imagem por texto.
+// Body: { imageUrl?, imageBase64?, query, many?: string[] }
+// Retorna: { bbox, found } ou { results: {[query]: bbox} } se many
+app.post('/api/locate', async (req, res) => {
+  try {
+    const la = require('./services/locateAnything');
+    const { imageUrl, imageBase64, query, many } = req.body || {};
+    const src = imageBase64 || imageUrl;
+    if (!src) return res.status(400).json({ error: 'imageUrl ou imageBase64 obrigatório' });
+    if (Array.isArray(many) && many.length) {
+      const results = await la.locateMany(src, many);
+      return res.json({ results });
+    }
+    if (!query) return res.status(400).json({ error: 'query obrigatório' });
+    const bbox = await la.locate(src, query);
+    res.json({ bbox, found: !!bbox });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin/catalog', adminCatalogRoutes);
 app.use('/api/admin/whatsapp', adminWhatsappRoutes);

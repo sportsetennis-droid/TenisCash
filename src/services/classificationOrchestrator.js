@@ -12,6 +12,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 let curador = null;
 try { curador = require('./curationAgent'); } catch (_) {}
+let la = null;
+try { la = require('./locateAnything'); } catch (_) {}
 let nsHandlers = null;
 try { nsHandlers = require('./nuvemshopHandlers'); } catch (_) {}
 let brandBrain = null;
@@ -154,6 +156,19 @@ async function agenteAuditor(runId, product) {
   if (!full) problemas.push('classificação incompleta');
   if (!foto) problemas.push('sem foto');
   if (problemas.length) { await log(runId, 'auditor', 'erro', 'reprovado: ' + problemas.join(' + '), product); return false; }
+
+  // LocateAnything: verifica se a foto realmente contém o produto (não é banner/logo)
+  if (la && product.imageUrl) {
+    try {
+      const query = `${product.brand || ''} ${product.category || 'shoe'}`.trim();
+      const found = await la.exists(product.imageUrl, query);
+      if (!found) {
+        await log(runId, 'auditor', 'aviso', 'foto pode não mostrar o produto (LocateAnything)', product);
+        // não bloqueia — só avisa; o visionValidator já pontuou a foto antes
+      }
+    } catch (_) {}
+  }
+
   await log(runId, 'auditor', 'ok', '4 níveis + foto OK', product); await bump(runId, 'audited'); return true;
 }
 
