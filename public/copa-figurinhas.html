@@ -429,13 +429,14 @@ function renderAlbum() {
   c.innerHTML = '';
   document.getElementById('loading').style.display = 'none';
 
-  // How-to banner (show once)
-  if (!localStorage.getItem('copa_howto_seen')) {
+  // How-to banner — always show when album is empty (new user), or until dismissed
+  const hasAnySticker = Object.values(SMAP).some(q => q >= 1);
+  if (!hasAnySticker || !localStorage.getItem('copa_howto_seen')) {
     const ht = document.createElement('div');
     ht.className = 'howto';
     ht.innerHTML = `
       <div class="howto-txt">
-        <strong>Como marcar suas figurinhas:</strong><br>
+        <strong>👆 Toque nas figurinhas para marcar as que você tem!</strong><br>
         🟢 <strong>1 toque</strong> = tenho &nbsp;|&nbsp; 🟠 <strong>2 toques</strong> = tenho repetida &nbsp;|&nbsp; ⬜ <strong>Segure</strong> = remover
       </div>
       <button class="howto-close" onclick="localStorage.setItem('copa_howto_seen','1');this.parentElement.remove()">✕</button>`;
