@@ -20,6 +20,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { prisma } = require('../middleware');
 const { formatPhoneBR } = require('../whatsapp');
 const { searchProductsForAI, resolveProductLink } = require('./catalogSearch');
+const { rateIntent } = require('./intentRater');
 
 // ---------------------------------------------------------------------
 // MODELO — provider-AGNOSTICO. O atendente NAO depende mais de API paga.
@@ -547,7 +548,49 @@ async function getAttendantReply({ phone, text, pushName, isGroup = false, sende
 
   pushHistory(histKey, 'user', text);
   pushHistory(histKey, 'assistant', finalText);
+
+  // Classifica intenção de compra async (não bloqueia a resposta)
+  if (!isGroup) {
+    const s = sessions.get(histKey);
+    if (s) {
+      rateIntent(s.messages).then((rating) => {
+        if (rating && s === sessions.get(histKey)) {
+          s.intentScore = rating.score;
+          s.intentSignal = rating.signal;
+          s.intentProduto = rating.produto;
+          s.intentAt = Date.now();
+          s.phone = phone;
+          s.pushName = pushName;
+          s.profileKey = profileKey;
+        }
+      }).catch(() => {});
+    }
+  }
+
   return { ok: true, reply: finalText };
 }
 
-module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES };
+// Retorna leads ativos com intenção >= minScore, ordenados por score desc
+function getHotLeads(minScore = 3) {
+  const now = Date.now();
+  const leads = [];
+  for (const [key, s] of sessions.entries()) {
+    if (s.expiresAt < now) continue;
+    if (!s.intentScore || s.intentScore < minScore) continue;
+    leads.push({
+      sessionKey: key,
+      phone: s.phone || key,
+      pushName: s.pushName || null,
+      profileKey: s.profileKey || 'st',
+      score: s.intentScore,
+      signal: s.intentSignal || '',
+      produto: s.intentProduto || null,
+      ratedAt: s.intentAt || null,
+      expiresAt: s.expiresAt,
+      turns: Math.floor(s.messages.length / 2),
+    });
+  }
+  return leads.sort((a, b) => b.score - a.score || b.ratedAt - a.ratedAt);
+}
+
+module.exports = { getAttendantReply, isEnabled, isProfileEnabled, clearSession, ehBaratao, PROFILES, getHotLeads };

@@ -375,6 +375,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('agenda',this)">📅 Agenda</button>
+    <button class="tab" onclick="switchTab('leads',this)">🔥 Leads</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
     <button class="tab" onclick="switchTab('competitivo',this)">📊 Competitivo</button>
@@ -878,6 +879,26 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div id="clockin-summary-wrap">
       <div class="loading-spinner">Carregando...</div>
     </div>
+  </div>
+
+  <!-- LEADS QUENTES — SSR intent scoring -->
+  <div class="section" id="tab-leads" style="display:none">
+    <div class="section-head">
+      <h2>🔥 Leads Quentes</h2>
+      <p style="color:#888;font-size:13px;margin:4px 0 0">Clientes ativos no WhatsApp com alta intenção de compra (janela 30min). Atualiza ao abrir.</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:13px;color:#888">Score mínimo:</label>
+      <select id="leads-min-score" onchange="loadLeads()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+        <option value="5">⭐⭐⭐⭐⭐ 5 — Pronto pra comprar</option>
+        <option value="4">⭐⭐⭐⭐ 4+ — Quente</option>
+        <option value="3" selected>⭐⭐⭐ 3+ — Interessado</option>
+        <option value="2">⭐⭐ 2+ — Leve interesse</option>
+      </select>
+      <button onclick="loadLeads()" style="padding:6px 14px;background:#E5571E;color:#fff;border:0;border-radius:6px;font-size:13px;cursor:pointer;font-weight:700">↻ Atualizar</button>
+      <span id="leads-ts" style="font-size:12px;color:#aaa"></span>
+    </div>
+    <div id="leads-list" style="display:grid;gap:12px"></div>
   </div>
 
   <!-- MESSAGES SECTION -->
@@ -7072,6 +7093,10 @@ function switchTab(tab, btn) {
   if (tab === 'nfegeral') { try { nfeGeralLoad(); } catch (e) { console.warn('nfeGeralLoad falhou:', e); } }
   if (tab === 'whatsapp') { try { if (typeof waCoexLoadStatus === 'function') waCoexLoadStatus(); } catch (e) {} }
   if (tab === 'infoproducts') { try { initInfoproductsTab(); } catch (e) { console.warn('initInfoproductsTab falhou:', e); } }
+  // Leads quentes
+  const tabLeads = document.getElementById('tab-leads');
+  if (tabLeads) tabLeads.style.display = tab === 'leads' ? 'block' : 'none';
+  if (tab === 'leads') { try { loadLeads(); } catch (e) { console.warn('loadLeads falhou:', e); } }
 }
 
 // ==================== INFOPRODUTOS (ADMIN) ====================
@@ -13518,6 +13543,50 @@ function waToggleGroups(cb){ waState.showGroups = cb.checked; loadWaChats(); }
 function finHeaders(){ return { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token')||''), 'Content-Type':'application/json' }; }
 function finBRL(v){ return 'R$ ' + (Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function finEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+// ===== LEADS QUENTES =====
+const LEAD_SCORE_LABEL = ['','🥶 Só olhando','🌤 Leve interesse','😊 Interessado','🔥 Quente','🚀 Pronto pra comprar'];
+const LEAD_SCORE_COLOR = ['','#aaa','#f0b429','#2997ff','#ff6b35','#e53e3e'];
+
+async function loadLeads(){
+  const minScore = parseInt(document.getElementById('leads-min-score')?.value)||3;
+  const list = document.getElementById('leads-list');
+  list.innerHTML = '<p style="color:#aaa;font-size:13px">Carregando...</p>';
+  try {
+    const r = await fetch('/api/admin/leads/hot?minScore='+minScore,{headers:{Authorization:'Bearer '+localStorage.getItem('adminToken')}});
+    const d = await r.json();
+    const ts = document.getElementById('leads-ts');
+    if(ts) ts.textContent = 'Atualizado '+new Date().toLocaleTimeString('pt-BR');
+    if(!d.leads||!d.leads.length){
+      list.innerHTML = '<p style="color:#aaa;font-size:14px;text-align:center;padding:32px 0">Nenhum lead com score ≥ '+minScore+' na janela de 30min.</p>';
+      return;
+    }
+    list.innerHTML = d.leads.map(l=>{
+      const score = l.score||0;
+      const color = LEAD_SCORE_COLOR[score]||'#888';
+      const label = LEAD_SCORE_LABEL[score]||'';
+      const mins = l.expiresAt ? Math.max(0,Math.round((l.expiresAt-Date.now())/60000)) : '?';
+      const whatsLink = l.phone ? `https://wa.me/${l.phone.replace(/\D/g,'')}` : null;
+      return `<div style="background:#fff;border-radius:12px;border:1.5px solid ${color}33;padding:16px 20px;display:flex;gap:16px;align-items:flex-start;box-shadow:0 1px 4px #0001">
+        <div style="font-size:28px;line-height:1;min-width:36px;text-align:center">${score>=5?'🚀':score>=4?'🔥':score>=3?'😊':'🌤'}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:800;font-size:15px">${finEsc(l.pushName||'Cliente')}</span>
+            <span style="font-size:12px;color:#888">${finEsc(l.phone||'')}</span>
+            <span style="background:${color};color:#fff;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700">${label}</span>
+          </div>
+          ${l.produto?`<div style="margin-top:4px;font-size:13px;color:#555">🛍 <b>${finEsc(l.produto)}</b></div>`:''}
+          ${l.signal?`<div style="margin-top:4px;font-size:13px;color:#888">💬 ${finEsc(l.signal)}</div>`:''}
+          <div style="margin-top:6px;font-size:12px;color:#aaa">${l.turns} turno${l.turns!==1?'s':''} · expira em ${mins} min</div>
+        </div>
+        ${whatsLink?`<a href="${whatsLink}" target="_blank" style="background:#25D366;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;align-self:center">WhatsApp ↗</a>`:''}
+      </div>`;
+    }).join('');
+  } catch(e){
+    list.innerHTML = '<p style="color:#e53;font-size:13px">Erro ao carregar leads: '+e.message+'</p>';
+  }
+}
+
 const FIN_CATS = [['folha','👥 Folha (colaborador)'],['aluguel','🏠 Aluguel'],['energia','⚡ Energia'],['agua','💧 Água'],['internet','🌐 Internet/telefone'],['software','💻 Software/sistema'],['imposto','🧾 Impostos/taxas'],['marketing','📣 Marketing/anúncios'],['manutencao','🔧 Manutenção'],['outros','📦 Outros']];
 
 async function loadFinanceiro(){
