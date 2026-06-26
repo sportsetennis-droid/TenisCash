@@ -127,6 +127,14 @@ router.post('/evolution', async (req, res) => {
     // Atende SO o grupo de vendedores; qualquer outro grupo e ignorado
     if (isGroup && jid !== VENDEDORES_GROUP) return;
 
+    // O robô NÃO responde no grupo (só escuta/captura). A heurística de [SILÊNCIO] furava e ele
+    // entrava na conversa interna da equipe (ex: "Pode", "Pensar em", qualquer msg com "teniscash").
+    // Religar a resposta no grupo só com env AI_GROUP_REPLY_ENABLED=true. (decisão do dono 2026-06-19)
+    if (isGroup && String(process.env.AI_GROUP_REPLY_ENABLED || '').toLowerCase() !== 'true') {
+      console.log('[whatsapp/evolution] grupo: IA em modo SO-ESCUTA (nao responde)');
+      return;
+    }
+
     // Em grupo quem mandou vem em key.participant; no privado e o proprio remoteJid
     const senderJid = isGroup ? (key.participant || '') : jid;
     const phone = (senderJid || jid).replace(/[^0-9]/g, '');
