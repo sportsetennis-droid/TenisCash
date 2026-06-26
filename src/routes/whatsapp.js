@@ -127,14 +127,6 @@ router.post('/evolution', async (req, res) => {
     // Atende SO o grupo de vendedores; qualquer outro grupo e ignorado
     if (isGroup && jid !== VENDEDORES_GROUP) return;
 
-    // O robô NÃO responde no grupo (só escuta/captura). A heurística de [SILÊNCIO] furava e ele
-    // entrava na conversa interna da equipe (ex: "Pode", "Pensar em", qualquer msg com "teniscash").
-    // Religar a resposta no grupo só com env AI_GROUP_REPLY_ENABLED=true. (decisão do dono 2026-06-19)
-    if (isGroup && String(process.env.AI_GROUP_REPLY_ENABLED || '').toLowerCase() !== 'true') {
-      console.log('[whatsapp/evolution] grupo: IA em modo SO-ESCUTA (nao responde)');
-      return;
-    }
-
     // Em grupo quem mandou vem em key.participant; no privado e o proprio remoteJid
     const senderJid = isGroup ? (key.participant || '') : jid;
     const phone = (senderJid || jid).replace(/[^0-9]/g, '');
@@ -150,6 +142,19 @@ router.post('/evolution', async (req, res) => {
         await sendCustomMessage(phone, 'Oi! No momento consigo te atender por *texto*. Pode escrever o que voce procura? 🙂').catch(() => {});
       }
       return;
+    }
+
+    // No grupo, o robô SÓ responde quando for MARCADO (@). Senão fica em silêncio (só escuta).
+    // (dono 2026-06-19: a IA respondia conversa interna; agora só fala se chamarem ela com @)
+    if (isGroup) {
+      const ctx = (m.extendedTextMessage && m.extendedTextMessage.contextInfo) || {};
+      const mentioned = Array.isArray(ctx.mentionedJid) ? ctx.mentionedJid : [];
+      const BOT_NUM = String(process.env.EVOLUTION_BOT_NUMBER || '558396713153').replace(/\D/g, '');
+      const marcado = mentioned.some((j) => String(j).replace(/\D/g, '').includes(BOT_NUM)) || text.includes('@' + BOT_NUM);
+      if (!marcado) {
+        console.log('[whatsapp/evolution] grupo: nao fui marcado -> so escuta');
+        return;
+      }
     }
 
     if (!attendantEnabled()) {
