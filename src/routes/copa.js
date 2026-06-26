@@ -1562,6 +1562,82 @@ router.get('/figurinhas/parceiros', async (req, res) => {
   }
 });
 
+// POST /api/copa/figurinhas/scan — identifica figurinhas por foto (Claude Vision)
+// body: { token, image: base64, mimeType }
+router.post('/figurinhas/scan', async (req, res) => {
+  try {
+    const { token, image, mimeType = 'image/jpeg' } = req.body || {};
+    if (!token || !image) return res.status(400).json({ error: 'Token e imagem obrigatórios' });
+
+    const col = await prisma.stickerCollection.findUnique({ where: { token } });
+    if (!col) return res.status(404).json({ error: 'Perfil não encontrado' });
+
+    const Anthropic = require('@anthropic-ai/sdk');
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const prompt = `Você está analisando uma foto de figurinhas do álbum Panini Copa do Mundo FIFA 2026.
+
+Identifique TODAS as figurinhas visíveis na imagem.
+
+Para cada figurinha, determine:
+- section: código de 2-3 letras da seleção/seção
+- number: número de 1 a 20 (ou até 11 para Museu, até 8 para FWC)
+
+Seções válidas:
+CONCACAF: CAN, USA, MEX, PAN, CUR, HAI
+CONMEBOL: ARG, BRA, COL, ECU, PAR, URU
+UEFA: ALE, AUT, BEL, DIN, ESC, ESP, FRA, ING, ITA, NOR, HOL, POL, POR, RTC, SUE, SUI
+CAF: EGI, ALG, ASA, CPV, GAN, MAR, SEN, TUN, CMA, RDC
+AFC: AUS, CDS, IRA, IRQ, JPN, JOR, TAI, UZB, VIE
+OFC: NZL
+Especiais: INT (só nº 1), FWC (nºs 1-8), MUS (nºs 1-11)
+
+Estrutura de cada seleção (20 figurinhas):
+- Nº 1: Escudo/Badge (geralmente dourado ou metalizado)
+- Nºs 2-19: Jogadores individuais
+- Nº 20: Foto da seleção completa
+
+Procure números impressos nas figurinhas, flags/bandeiras das seleções, nomes de jogadores, e posição no layout.
+
+Retorne APENAS JSON válido sem texto adicional:
+[{"section":"BRA","number":1},{"section":"ARG","number":7}]
+
+Se não identificar nenhuma com confiança razoável, retorne: []`;
+
+    const response = await ai.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mimeType, data: image } },
+        { type: 'text', text: prompt }
+      ]}]
+    });
+
+    const text = (response.content[0]?.text || '').trim();
+    let found = [];
+    try { const m = text.match(/\[[\s\S]*\]/); if (m) found = JSON.parse(m[0]); } catch (_) {}
+
+    const VALID = new Set(['INT','FWC','MUS','CAN','USA','MEX','PAN','CUR','HAI','ARG','BRA','COL','ECU','PAR','URU',
+      'ALE','AUT','BEL','DIN','ESC','ESP','FRA','ING','ITA','NOR','HOL','POL','POR','RTC','SUE','SUI',
+      'EGI','ALG','ASA','CPV','GAN','MAR','SEN','TUN','CMA','RDC','AUS','CDS','IRA','IRQ','JPN','JOR','TAI','UZB','VIE','NZL']);
+
+    const valid = found.filter(f =>
+      f && typeof f.section === 'string' && VALID.has(f.section) &&
+      Number.isInteger(f.number) && f.number >= 1 && f.number <= 20
+    );
+
+    const stickers = valid.length ? await prisma.sticker.findMany({
+      where: { OR: valid.map(f => ({ section: f.section, number: f.number })) },
+      select: { id: true, section: true, number: true, displayCode: true, sectionName: true, label: true }
+    }) : [];
+
+    return res.json({ stickers, count: stickers.length });
+  } catch (e) {
+    console.error('[copa/figurinhas] scan', e);
+    return res.status(500).json({ error: 'Erro ao analisar imagem: ' + e.message });
+  }
+});
+
 // GET /api/copa/figurinhas/cruzar/:myToken/:theirToken
 router.get('/figurinhas/cruzar/:myToken/:theirToken', async (req, res) => {
   try {

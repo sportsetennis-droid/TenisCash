@@ -119,6 +119,30 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .parceiro-dups{font-size:10px;color:var(--dup);margin-top:1px}
 .empty{text-align:center;padding:40px 20px;color:var(--txt2);font-size:13px}
 
+/* ─── SCAN MODAL ─── */
+.scan-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:calc(20px + var(--safe-b))}
+.scan-modal.hidden{display:none}
+.scan-card{background:var(--card);border-radius:20px 20px 0 0;padding:20px 16px;width:100%;max-width:480px}
+.scan-card h2{font-size:16px;font-weight:800;margin-bottom:4px;color:var(--gold)}
+.scan-card p{font-size:12px;color:var(--txt2);margin-bottom:14px;line-height:1.5}
+.scan-preview{width:100%;border-radius:12px;max-height:240px;object-fit:cover;display:none;margin-bottom:12px;border:2px solid var(--g)}
+.scan-btn-row{display:flex;gap:8px}
+.btn-cam{flex:1;background:var(--g);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;padding:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-cam:active{background:var(--g2)}
+.btn-cancel{background:var(--card2);border:none;border-radius:12px;color:var(--txt2);font-size:14px;font-weight:700;padding:13px 18px;cursor:pointer}
+.scan-results{margin-top:14px;max-height:200px;overflow-y:auto}
+.scan-stk-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.scan-stk-row:last-child{border-bottom:none}
+.scan-stk-code{background:var(--g);color:#fff;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:800;flex-shrink:0}
+.scan-stk-name{flex:1;font-size:12px;color:var(--txt)}
+.scan-stk-chk{width:20px;height:20px;accent-color:var(--g);cursor:pointer;flex-shrink:0}
+.btn-apply{width:100%;background:var(--gold);border:none;border-radius:12px;color:#000;font-size:14px;font-weight:800;padding:13px;cursor:pointer;margin-top:12px}
+.scan-empty{text-align:center;padding:20px;color:var(--txt2);font-size:12px}
+
+/* ─── SCAN FLOAT BTN ─── */
+.fab-scan{position:fixed;bottom:calc(80px + var(--safe-b));right:16px;background:linear-gradient(135deg,var(--g),var(--gold2));border:none;border-radius:50px;color:#fff;font-size:13px;font-weight:800;padding:12px 18px;cursor:pointer;box-shadow:0 4px 16px rgba(0,112,60,.5);z-index:200;display:flex;align-items:center;gap:6px}
+.fab-scan.hidden{display:none}
+
 /* ─── REGISTRO ─── */
 .reg-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;min-height:100vh;background:var(--bg)}
 .reg-logo{font-size:56px;margin-bottom:8px}
@@ -231,6 +255,26 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 <div class="toast" id="toast"></div>
 <div class="save-badge" id="save-badge">Salvando...</div>
 
+<!-- Botão flutuante scan -->
+<button class="fab-scan hidden" id="fab-scan" onclick="openScan()">📷 Identificar foto</button>
+
+<!-- Modal scan -->
+<div class="scan-modal hidden" id="scan-modal">
+  <div class="scan-card">
+    <h2>📷 Identificar figurinhas</h2>
+    <p>Tire foto das suas figurinhas (frente ou verso). A IA identifica automaticamente quais são e marca no seu álbum.</p>
+    <img class="scan-preview" id="scan-preview" alt="preview">
+    <div id="scan-result-area"></div>
+    <div class="scan-btn-row" id="scan-btn-row">
+      <button class="btn-cancel" onclick="closeScan()">Cancelar</button>
+      <label class="btn-cam" style="cursor:pointer">
+        📷 Tirar foto
+        <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="onScanFile(this)">
+      </label>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = '/api/copa/figurinhas';
 let TOKEN = localStorage.getItem('copa_fig_token');
@@ -272,6 +316,7 @@ async function init() {
     document.getElementById('reg-screen').style.display = 'none';
     updateStats();
     renderAlbum();
+    document.getElementById('fab-scan').classList.remove('hidden');
   } catch(e) {
     console.error('init error', e);
     document.getElementById('loading').innerHTML =
@@ -710,6 +755,175 @@ function esc(s) {
   const t = p.get('t');
   if (t && !TOKEN) { localStorage.setItem('copa_fig_token', t); TOKEN = t; }
 })();
+
+// ─── SCAN ──────────────────────────────────────────────────
+let SCAN_STICKERS = []; // detected stickers from last scan
+
+function openScan() {
+  document.getElementById('scan-modal').classList.remove('hidden');
+  document.getElementById('scan-preview').style.display = 'none';
+  document.getElementById('scan-result-area').innerHTML = '';
+  document.getElementById('scan-btn-row').innerHTML = `
+    <button class="btn-cancel" onclick="closeScan()">Cancelar</button>
+    <label class="btn-cam" style="cursor:pointer">
+      📷 Tirar foto
+      <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="onScanFile(this)">
+    </label>`;
+}
+
+function closeScan() {
+  document.getElementById('scan-modal').classList.add('hidden');
+  SCAN_STICKERS = [];
+}
+
+function onScanFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('scan-preview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  // Compress and send
+  compressImage(file, 1024, 0.75, (b64, mime) => doScan(b64, mime));
+}
+
+function compressImage(file, maxPx, quality, cb) {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    let w = img.width, h = img.height;
+    if (w > maxPx || h > maxPx) {
+      const r = Math.min(maxPx / w, maxPx / h);
+      w = Math.round(w * r); h = Math.round(h * r);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    const base64 = dataUrl.split(',')[1];
+    cb(base64, 'image/jpeg');
+  };
+  img.src = url;
+}
+
+async function doScan(base64, mime) {
+  document.getElementById('scan-result-area').innerHTML =
+    '<div class="scan-empty">🔍 Analisando figurinhas com IA... aguarde</div>';
+  document.getElementById('scan-btn-row').innerHTML =
+    '<div class="scan-empty" style="width:100%;padding:10px 0">Processando...</div>';
+
+  try {
+    const r = await fetch(`${API}/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN, image: base64, mimeType: mime })
+    }).then(r => r.json());
+
+    if (r.error) { showScanError(r.error); return; }
+
+    SCAN_STICKERS = r.stickers || [];
+    renderScanResults();
+  } catch (e) {
+    showScanError('Erro de conexão. Tente novamente.');
+  }
+}
+
+function showScanError(msg) {
+  document.getElementById('scan-result-area').innerHTML =
+    `<div class="scan-empty" style="color:#e74c3c">⚠️ ${msg}</div>`;
+  document.getElementById('scan-btn-row').innerHTML = `
+    <button class="btn-cancel" onclick="closeScan()">Fechar</button>
+    <label class="btn-cam" style="cursor:pointer">
+      📷 Tentar novamente
+      <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="onScanFile(this)">
+    </label>`;
+}
+
+function renderScanResults() {
+  const area = document.getElementById('scan-result-area');
+  if (!SCAN_STICKERS.length) {
+    area.innerHTML = '<div class="scan-empty">Nenhuma figurinha identificada.<br>Tente com melhor iluminação ou aproxime mais a câmera.</div>';
+    document.getElementById('scan-btn-row').innerHTML = `
+      <button class="btn-cancel" onclick="closeScan()">Fechar</button>
+      <label class="btn-cam" style="cursor:pointer">
+        📷 Tentar novamente
+        <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="onScanFile(this)">
+      </label>`;
+    return;
+  }
+
+  const rows = SCAN_STICKERS.map((s, i) => {
+    const already = (SMAP[s.id] || 0) >= 1;
+    return `<div class="scan-stk-row">
+      <span class="scan-stk-code">${s.displayCode}</span>
+      <span class="scan-stk-name">${s.sectionName} · ${s.label}</span>
+      <input type="checkbox" class="scan-stk-chk" id="schk_${i}" ${already ? '' : 'checked'}>
+    </div>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div style="font-size:12px;color:var(--txt2);margin-bottom:8px">
+      ✅ <strong style="color:var(--have)">${SCAN_STICKERS.length} figurinhas identificadas</strong>
+      — confirme quais marcar:
+    </div>
+    <div class="scan-results">${rows}</div>`;
+
+  document.getElementById('scan-btn-row').innerHTML = `
+    <button class="btn-cancel" onclick="closeScan()">Cancelar</button>
+    <button class="btn-cam" onclick="applyScanned()">✅ Marcar selecionadas</button>`;
+}
+
+function applyScanned() {
+  const toMark = SCAN_STICKERS.filter((_, i) => {
+    const chk = document.getElementById('schk_' + i);
+    return chk && chk.checked;
+  });
+
+  if (!toMark.length) { showToast('Nenhuma selecionada'); return; }
+
+  for (const s of toMark) {
+    if ((SMAP[s.id] || 0) === 0) {
+      SMAP[s.id] = 1;
+      PENDING[s.id] = 1;
+    }
+  }
+  updateStats();
+  scheduleSave();
+
+  // Refresh current section grid if any of the marked stickers are in it
+  if (CUR_TAB === 'album' && CUR_SEC) {
+    const inCurrent = toMark.some(s => s.section === CUR_SEC);
+    if (inCurrent) {
+      const c = document.getElementById('content');
+      const oldHdr  = c.querySelector('.team-header');
+      const oldGrid = c.querySelector('.stk-grid');
+      if (oldHdr && oldGrid) {
+        const f = renderSectionFrag();
+        oldHdr.replaceWith(f.hdr);
+        oldGrid.replaceWith(f.grid);
+      }
+    }
+    // Update unmarked cells from other sections in background
+    for (const s of toMark) updateCell(s.id, SMAP[s.id] || 0);
+  }
+
+  closeScan();
+  showToast(`${toMark.length} figurinha${toMark.length > 1 ? 's' : ''} marcada${toMark.length > 1 ? 's' : ''}!`);
+}
+
+// Show/hide FAB on tab switch — override original switchTab
+const _origSwitchTab = switchTab;
+function switchTab(tab) {
+  _origSwitchTab(tab);
+  document.getElementById('fab-scan').classList.toggle('hidden', tab !== 'album');
+}
 
 window.addEventListener('load', init);
 window.addEventListener('beforeunload', () => { if (Object.keys(PENDING).length) flushSave(); });
