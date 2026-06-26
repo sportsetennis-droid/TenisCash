@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Figurinhas Copa 2026</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --g:#00703C;--g2:#005a30;--gold:#C8A84B;--gold2:#a88a3a;
+  --bg:#08120A;--card:#0f1e10;--card2:#162818;
+  --have:#27ae60;--dup:#e67e22;--miss:#2a3a2b;
+  --txt:#e8f0e9;--txt2:#8aab8c;--orange:#e67e22;
+  --radius:10px;--safe-b:env(safe-area-inset-bottom,0px);
+}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:relative}
+
+/* ─── HEADER ─── */
+.hdr{background:var(--g2);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100;border-bottom:1px solid rgba(255,255,255,.08)}
+.hdr-logo{font-size:22px}
+.hdr-title{flex:1}
+.hdr-title h1{font-size:15px;font-weight:700;color:#fff;line-height:1.2}
+.hdr-title p{font-size:11px;color:var(--gold);margin-top:1px}
+.hdr-share{background:var(--gold);border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000}
+
+/* ─── STATS ─── */
+.stats{display:flex;gap:8px;padding:10px 14px;background:var(--card);border-bottom:1px solid rgba(255,255,255,.05)}
+.stat{flex:1;text-align:center}
+.stat-val{font-size:18px;font-weight:800;line-height:1}
+.stat-lbl{font-size:10px;color:var(--txt2);margin-top:2px}
+.s-have .stat-val{color:var(--have)}
+.s-dup .stat-val{color:var(--dup)}
+.s-miss .stat-val{color:var(--txt2)}
+.s-pct .stat-val{color:var(--gold)}
+.progress-bar{height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin:0 14px 2px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--g),var(--gold));border-radius:2px;transition:width .4s}
+
+/* ─── TABS ─── */
+.tabs{display:flex;background:var(--card);border-bottom:2px solid var(--g);position:sticky;top:60px;z-index:99}
+.tab{flex:1;padding:10px 0;text-align:center;font-size:12px;font-weight:600;color:var(--txt2);cursor:pointer;border:none;background:none;transition:.2s}
+.tab.active{color:var(--gold);border-bottom:2px solid var(--gold);margin-bottom:-2px}
+
+/* ─── ALBUM TAB ─── */
+.section-nav{display:flex;gap:6px;padding:10px 14px;overflow-x:auto;background:var(--card2);scrollbar-width:none}
+.section-nav::-webkit-scrollbar{display:none}
+.section-pill{flex-shrink:0;padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.15);background:transparent;font-size:11px;font-weight:600;color:var(--txt2);cursor:pointer;transition:.2s;white-space:nowrap}
+.section-pill.active{background:var(--g);color:#fff;border-color:var(--g)}
+.conf-label{padding:6px 14px 2px;font-size:10px;font-weight:700;color:var(--txt2);letter-spacing:.05em;text-transform:uppercase}
+
+.filter-row{display:flex;gap:6px;padding:8px 14px;background:var(--bg)}
+.filter-btn{flex:1;padding:6px 0;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;font-size:11px;font-weight:600;color:var(--txt2);cursor:pointer;transition:.2s}
+.filter-btn.active{background:var(--card2);color:var(--txt);border-color:var(--g)}
+
+.team-header{padding:10px 14px 6px;font-size:13px;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
+.team-flag{font-size:20px}
+.team-sub{font-size:10px;color:var(--txt2);font-weight:400;margin-left:2px}
+
+/* ─── STICKER GRID ─── */
+.stk-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:0 14px 14px}
+.stk{
+  aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:var(--miss);cursor:pointer;position:relative;user-select:none;
+  transition:transform .12s,background .15s;border:1px solid transparent;
+}
+.stk:active{transform:scale(.92)}
+.stk.have{background:var(--have)}
+.stk.dup{background:var(--dup)}
+.stk-code{font-size:8.5px;font-weight:700;color:rgba(255,255,255,.75);letter-spacing:.02em}
+.stk-label{font-size:7px;color:rgba(255,255,255,.5);text-align:center;padding:0 2px;line-height:1.2;margin-top:1px}
+.stk-qty{position:absolute;top:2px;right:3px;font-size:8px;font-weight:800;color:#fff;background:rgba(0,0,0,.4);border-radius:4px;padding:0 3px;line-height:15px}
+.stk.shield{border:1px solid var(--gold);box-shadow:0 0 6px rgba(200,168,75,.3)}
+.stk.have.shield{background:linear-gradient(135deg,var(--have),#1a8050)}
+.stk.photo{border:1px solid #4a9eff}
+
+/* ─── CRUZAR TAB ─── */
+.cruzar-box{padding:16px 14px}
+.cruzar-box h2{font-size:15px;font-weight:700;margin-bottom:8px;color:var(--gold)}
+.cruzar-box p{font-size:12px;color:var(--txt2);margin-bottom:12px;line-height:1.5}
+.input-group{margin-bottom:10px}
+.input-group label{font-size:11px;color:var(--txt2);display:block;margin-bottom:4px;font-weight:600}
+.inp{width:100%;background:var(--card);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:var(--txt);font-size:13px;padding:10px 12px;outline:none;transition:.2s}
+.inp:focus{border-color:var(--g)}
+.btn-green{width:100%;background:var(--g);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;padding:13px;cursor:pointer;margin-top:4px;transition:.15s}
+.btn-green:active{background:var(--g2)}
+.btn-wpp{width:100%;background:#25D366;border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;padding:11px;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px}
+
+.result-box{background:var(--card);border-radius:12px;padding:14px;margin-top:14px}
+.result-box h3{font-size:13px;font-weight:700;margin-bottom:10px;color:#fff}
+.result-match{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.result-side{background:var(--card2);border-radius:8px;padding:10px}
+.result-side h4{font-size:11px;color:var(--txt2);margin-bottom:6px;font-weight:600}
+.result-count{font-size:22px;font-weight:800;color:var(--have);line-height:1}
+.result-unit{font-size:10px;color:var(--txt2)}
+.stk-chip{display:inline-block;background:var(--card2);border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600;margin:2px;color:var(--txt)}
+.stk-list{max-height:140px;overflow-y:auto;margin-top:6px}
+
+/* ─── PARCEIROS TAB ─── */
+.parceiros-box{padding:14px}
+.search-row{display:flex;gap:8px;margin-bottom:12px}
+.search-row .inp{flex:1}
+.btn-sm{background:var(--g);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;padding:0 14px;cursor:pointer}
+.parceiro-card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:.15s}
+.parceiro-card:active{background:var(--card2)}
+.parceiro-avatar{width:42px;height:42px;border-radius:50%;background:var(--g2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.parceiro-info{flex:1;min-width:0}
+.parceiro-name{font-size:13px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.parceiro-loc{font-size:10px;color:var(--txt2)}
+.parceiro-stats{text-align:right;flex-shrink:0}
+.parceiro-pct{font-size:16px;font-weight:800;color:var(--gold)}
+.parceiro-dups{font-size:10px;color:var(--dup);margin-top:1px}
+.empty{text-align:center;padding:40px 20px;color:var(--txt2);font-size:13px}
+
+/* ─── REGISTRO ─── */
+.reg-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;min-height:100vh;background:var(--bg)}
+.reg-logo{font-size:56px;margin-bottom:8px}
+.reg-title{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;text-align:center}
+.reg-sub{font-size:13px;color:var(--txt2);text-align:center;margin-bottom:28px;line-height:1.5}
+.reg-form{width:100%;max-width:380px;background:var(--card);border-radius:16px;padding:20px}
+.reg-form h2{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--gold)}
+.form-row{margin-bottom:12px}
+.form-row label{font-size:11px;color:var(--txt2);display:block;margin-bottom:4px;font-weight:600}
+.reg-btn{width:100%;background:linear-gradient(135deg,var(--g),var(--gold2));border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:800;padding:15px;cursor:pointer;margin-top:8px;transition:.15s}
+.reg-btn:active{opacity:.85}
+
+/* ─── TOASTER ─── */
+.toast{position:fixed;bottom:calc(70px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(20px);background:#1a3a1a;border:1px solid var(--g);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:600;color:#fff;pointer-events:none;opacity:0;transition:.25s;z-index:999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ─── BOTTOM NAV ─── */
+.bot-nav{display:flex;background:var(--card);border-top:1px solid rgba(255,255,255,.08);padding-bottom:calc(8px + var(--safe-b));position:sticky;bottom:0;z-index:100}
+.bot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border:none;background:transparent;color:var(--txt2);font-size:10px;font-weight:600;cursor:pointer;transition:.2s}
+.bot-btn.active{color:var(--gold)}
+.bot-btn svg{width:22px;height:22px;fill:currentColor}
+
+/* ─── UTILS ─── */
+.content{flex:1;overflow-y:auto;padding-bottom:calc(60px + var(--safe-b))}
+.loading{text-align:center;padding:40px;color:var(--txt2);font-size:13px}
+.save-badge{position:fixed;top:68px;right:14px;background:var(--dup);color:#fff;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;z-index:200;opacity:0;transition:.3s;pointer-events:none}
+.save-badge.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="reg-screen" class="reg-screen" style="display:none">
+  <div class="reg-logo">⚽</div>
+  <h1 class="reg-title">Figurinhas Copa 2026</h1>
+  <p class="reg-sub">Cadastre suas figurinhas e encontre pessoas para trocar perto de você</p>
+  <div class="reg-form">
+    <h2>Criar minha coleção</h2>
+    <div class="form-row">
+      <label>Nome *</label>
+      <input class="inp" id="r-name" placeholder="Seu nome" autocomplete="name">
+    </div>
+    <div class="form-row">
+      <label>WhatsApp *</label>
+      <input class="inp" id="r-wpp" placeholder="83 99999-9999" type="tel" autocomplete="tel">
+    </div>
+    <div class="form-row">
+      <label>Cidade</label>
+      <input class="inp" id="r-city" placeholder="João Pessoa" autocomplete="address-level2">
+    </div>
+    <div class="form-row">
+      <label>Bairro</label>
+      <input class="inp" id="r-nbhd" placeholder="Manaíra">
+    </div>
+    <button class="reg-btn" onclick="doRegister()">Criar minha coleção</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;flex-direction:column;height:100%">
+
+  <header class="hdr">
+    <span class="hdr-logo">⚽</span>
+    <div class="hdr-title">
+      <h1>Figurinhas Copa 2026</h1>
+      <p id="hdr-name">Carregando...</p>
+    </div>
+    <button class="hdr-share" onclick="shareLink()">Compartilhar</button>
+  </header>
+
+  <div class="progress-bar"><div class="progress-fill" id="prog-bar" style="width:0%"></div></div>
+
+  <div class="stats">
+    <div class="stat s-have">
+      <div class="stat-val" id="st-have">0</div>
+      <div class="stat-lbl">Tenho</div>
+    </div>
+    <div class="stat s-miss">
+      <div class="stat-val" id="st-miss">980</div>
+      <div class="stat-lbl">Faltando</div>
+    </div>
+    <div class="stat s-dup">
+      <div class="stat-val" id="st-dup">0</div>
+      <div class="stat-lbl">Repetidas</div>
+    </div>
+    <div class="stat s-pct">
+      <div class="stat-val" id="st-pct">0%</div>
+      <div class="stat-lbl">Completo</div>
+    </div>
+  </div>
+
+  <div class="content" id="content">
+    <div class="loading" id="loading">Carregando figurinhas...</div>
+  </div>
+
+  <nav class="bot-nav">
+    <button class="bot-btn active" onclick="switchTab('album')" id="tab-album">
+      <svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 3l4 4H8l4-4zm0 10l-4-4h8l-4 4z"/></svg>
+      Álbum
+    </button>
+    <button class="bot-btn" onclick="switchTab('cruzar')" id="tab-cruzar">
+      <svg viewBox="0 0 24 24"><path d="M7 7h3v3H7zm7 0h3v3h-3zm-7 7h3v3H7zm7 0h3v3h-3zM3 3v18h18V3H3zm16 16H5V5h14v14z"/></svg>
+      Cruzar
+    </button>
+    <button class="bot-btn" onclick="switchTab('parceiros')" id="tab-parceiros">
+      <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      Parceiros
+    </button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="save-badge" id="save-badge">Salvando...</div>
+
+<script>
+const API = '/api/copa/figurinhas';
+let TOKEN = localStorage.getItem('copa_fig_token');
+let COLL  = null;    // { id, name, whatsapp, ... }
+let STICKERS = [];   // all 980
+let SMAP  = {};      // { stickerId: quantity } — live state
+let PENDING = {};    // changes not yet saved
+let SAVE_TM = null;
+let LP_TM   = null;  // long-press timer
+let CUR_SEC = null;  // current section code
+let CUR_FILTER = 'all';
+let CUR_TAB = 'album';
+// grouped: { sectionCode: { name, confederation, stickers:[] } }
+let GROUPS = {};
+
+// ─── INIT ───────────────────────────────────────────────────
+async function init() {
+  if (!TOKEN) { showReg(); return; }
+  try {
+    const [colRes, stkRes] = await Promise.all([
+      fetch(`${API}/perfil/${TOKEN}`).then(r=>r.json()),
+      fetch(`${API}/stickers`).then(r=>r.json()),
+    ]);
+    if (colRes.error) { localStorage.removeItem('copa_fig_token'); showReg(); return; }
+    COLL = colRes;
+    SMAP = colRes.stickerMap || {};
+    STICKERS = stkRes.stickers || [];
+    buildGroups();
+    document.getElementById('hdr-name').textContent = COLL.name;
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    document.getElementById('app').style.height = '100%';
+    document.getElementById('reg-screen').style.display = 'none';
+    updateStats();
+    renderAlbum();
+  } catch(e) { showReg(); }
+}
+
+function showReg() {
+  document.getElementById('reg-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function buildGroups() {
+  GROUPS = {};
+  const CONF_ORDER = ['','CONCACAF','CONMEBOL','UEFA','CAF','AFC','OFC'];
+  for (const s of STICKERS) {
+    if (!GROUPS[s.section]) {
+      GROUPS[s.section] = { name: s.sectionName, confederation: s.confederation, stickers: [] };
+    }
+    GROUPS[s.section].stickers.push(s);
+  }
+  for (const g of Object.values(GROUPS)) {
+    g.stickers.sort((a,b) => a.number - b.number);
+  }
+}
+
+// ─── REGISTRATION ───────────────────────────────────────────
+async function doRegister() {
+  const name = document.getElementById('r-name').value.trim();
+  const wpp  = document.getElementById('r-wpp').value.trim();
+  const city = document.getElementById('r-city').value.trim();
+  const nbhd = document.getElementById('r-nbhd').value.trim();
+  if (!name) { showToast('Informe seu nome'); return; }
+  if (!wpp)  { showToast('Informe seu WhatsApp'); return; }
+  try {
+    const r = await fetch(`${API}/perfil`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, whatsapp: wpp, city, neighborhood: nbhd })
+    }).then(r=>r.json());
+    if (r.error) { showToast(r.error); return; }
+    localStorage.setItem('copa_fig_token', r.token);
+    TOKEN = r.token;
+    location.reload();
+  } catch(e) { showToast('Erro ao criar perfil'); }
+}
+
+// ─── STATS ─────────────────────────────────────────────────
+function updateStats() {
+  const vals = Object.values(SMAP);
+  const have = vals.filter(q => q >= 1).length;
+  const dups = vals.filter(q => q >= 2).reduce((a,q) => a + (q-1), 0);
+  const miss = 980 - have;
+  const pct  = Math.round(have / 9.8);
+  document.getElementById('st-have').textContent = have;
+  document.getElementById('st-miss').textContent = miss;
+  document.getElementById('st-dup').textContent  = dups;
+  document.getElementById('st-pct').textContent  = pct + '%';
+  document.getElementById('prog-bar').style.width = pct + '%';
+}
+
+// ─── TAB SWITCHING ──────────────────────────────────────────
+function switchTab(tab) {
+  CUR_TAB = tab;
+  ['album','cruzar','parceiros'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t === tab);
+  });
+  if (tab === 'album')     renderAlbum();
+  if (tab === 'cruzar')    renderCruzar();
+  if (tab === 'parceiros') renderParceiros();
+}
+
+// ─── ALBUM TAB ─────────────────────────────────────────────
+function renderAlbum() {
+  const c = document.getElementById('content');
+  c.innerHTML = '';
+  document.getElementById('loading').style.display = 'none';
+
+  // Section nav
+  const nav = document.createElement('div');
+  nav.className = 'section-nav';
+
+  const confOrder = { '':0, CONCACAF:1, CONMEBOL:2, UEFA:3, CAF:4, AFC:5, OFC:6 };
+  const sections = Object.entries(GROUPS).sort(([,a],[,b]) => {
+    const co = (confOrder[a.confederation]||99) - (confOrder[b.confederation]||99);
+    if (co !== 0) return co;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Specials first
+  const specials = sections.filter(([,g]) => g.confederation === '');
+  const teams    = sections.filter(([,g]) => g.confederation !== '');
+
+  // Build pills: specials
+  if (specials.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'conf-label';
+    lbl.textContent = 'Especiais';
+    nav.appendChild(lbl);
+    for (const [code, g] of specials) {
+      nav.appendChild(makePill(code, g.name));
+    }
+  }
+
+  // Group teams by confederation
+  const confMap = {};
+  for (const [code, g] of teams) {
+    (confMap[g.confederation] = confMap[g.confederation] || []).push([code, g]);
+  }
+  for (const conf of ['CONCACAF','CONMEBOL','UEFA','CAF','AFC','OFC']) {
+    const list = confMap[conf];
+    if (!list) continue;
+    const lbl = document.createElement('div');
+    lbl.className = 'conf-label';
+    lbl.textContent = conf;
+    nav.appendChild(lbl);
+    for (const [code, g] of list) {
+      nav.appendChild(makePill(code, g.name));
+    }
+  }
+
+  c.appendChild(nav);
+
+  // Filter row
+  const fr = document.createElement('div');
+  fr.className = 'filter-row';
+  for (const [k,lbl] of [['all','Todas'],['have','Tenho'],['miss','Faltando'],['dup','Repetidas']]) {
+    const b = document.createElement('button');
+    b.className = 'filter-btn' + (CUR_FILTER===k?' active':'');
+    b.textContent = lbl;
+    b.onclick = () => { CUR_FILTER = k; renderAlbum(); };
+    fr.appendChild(b);
+  }
+  c.appendChild(fr);
+
+  // Default section
+  if (!CUR_SEC || !GROUPS[CUR_SEC]) {
+    // default to Brasil (BRA) or first special
+    CUR_SEC = GROUPS['BRA'] ? 'BRA' : (specials[0]?.[0] || sections[0]?.[0]);
+  }
+  renderSection(c);
+  // Scroll active pill into view
+  setTimeout(() => {
+    const active = nav.querySelector('.section-pill.active');
+    if (active) active.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  }, 50);
+}
+
+function makePill(code, name) {
+  const p = document.createElement('button');
+  p.className = 'section-pill' + (CUR_SEC===code?' active':'');
+  p.textContent = name;
+  p.onclick = () => {
+    CUR_SEC = code;
+    // highlight pill
+    document.querySelectorAll('.section-pill').forEach(el => el.classList.toggle('active', el.textContent===name));
+    // re-render section only
+    const c = document.getElementById('content');
+    const old = c.querySelector('.team-header');
+    const oldGrid = c.querySelector('.stk-grid');
+    if (old) { const next = renderSectionFrag(); old.replaceWith(next.hdr); oldGrid.replaceWith(next.grid); }
+    else renderSection(c);
+    p.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  };
+  return p;
+}
+
+function renderSection(container) {
+  const f = renderSectionFrag();
+  container.appendChild(f.hdr);
+  container.appendChild(f.grid);
+}
+
+function renderSectionFrag() {
+  const g = GROUPS[CUR_SEC];
+  const hdr = document.createElement('div');
+  hdr.className = 'team-header';
+  const countHave  = g.stickers.filter(s => (SMAP[s.id]||0) >= 1).length;
+  const countTotal = g.stickers.length;
+  hdr.innerHTML = `<span>${g.name}</span><span class="team-sub">${countHave}/${countTotal}</span>`;
+
+  const grid = document.createElement('div');
+  grid.className = 'stk-grid';
+
+  for (const s of g.stickers) {
+    const qty = SMAP[s.id] || 0;
+    if (CUR_FILTER === 'have' && qty < 1) continue;
+    if (CUR_FILTER === 'miss' && qty >= 1) continue;
+    if (CUR_FILTER === 'dup'  && qty < 2) continue;
+
+    const cell = document.createElement('div');
+    cell.className = 'stk' + (qty>=2?' dup':qty===1?' have':'') + (s.isShield?' shield':'') + (s.isTeamPhoto?' photo':'');
+    cell.id = 'stk_' + s.id;
+    cell.dataset.id = s.id;
+    cell.innerHTML =
+      `<span class="stk-code">${s.displayCode}</span>` +
+      `<span class="stk-label">${s.isShield?'⭐':s.isTeamPhoto?'📷':''}</span>` +
+      (qty>=2 ? `<span class="stk-qty">×${qty}</span>` : '');
+    addStickerEvents(cell, s.id);
+    grid.appendChild(cell);
+  }
+
+  return { hdr, grid };
+}
+
+function addStickerEvents(el, sid) {
+  // tap = increment; long press (600ms) = reset to 0
+  el.addEventListener('pointerdown', () => {
+    LP_TM = setTimeout(() => {
+      LP_TM = null;
+      setQty(sid, 0);
+      showToast('Figurinha removida');
+    }, 600);
+  });
+  el.addEventListener('pointerup',    () => { if (LP_TM) { clearTimeout(LP_TM); LP_TM = null; tapSticker(sid); } });
+  el.addEventListener('pointercancel',() => { clearTimeout(LP_TM); LP_TM = null; });
+}
+
+function tapSticker(sid) {
+  const cur = SMAP[sid] || 0;
+  const next = cur >= 9 ? 0 : cur + 1;
+  setQty(sid, next);
+}
+
+function setQty(sid, qty) {
+  SMAP[sid] = qty;
+  PENDING[sid] = qty;
+  updateStats();
+  updateCell(sid, qty);
+  scheduleSave();
+}
+
+function updateCell(sid, qty) {
+  const el = document.getElementById('stk_' + sid);
+  if (!el) return;
+  el.className = el.className.replace(/\s*(have|dup)\b/g, '');
+  if (qty >= 2) el.className += ' dup';
+  else if (qty === 1) el.className += ' have';
+  let qel = el.querySelector('.stk-qty');
+  if (qty >= 2) {
+    if (!qel) { qel = document.createElement('span'); qel.className = 'stk-qty'; el.appendChild(qel); }
+    qel.textContent = '×' + qty;
+  } else if (qel) {
+    qel.remove();
+  }
+}
+
+function scheduleSave() {
+  const badge = document.getElementById('save-badge');
+  badge.classList.add('show');
+  clearTimeout(SAVE_TM);
+  SAVE_TM = setTimeout(flushSave, 1200);
+}
+
+async function flushSave() {
+  if (!Object.keys(PENDING).length) { document.getElementById('save-badge').classList.remove('show'); return; }
+  const updates = Object.entries(PENDING).map(([stickerId, quantity]) => ({ stickerId, quantity }));
+  PENDING = {};
+  try {
+    await fetch(`${API}/perfil/${TOKEN}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ updates })
+    });
+  } catch(e) { console.warn('save failed', e); }
+  document.getElementById('save-badge').classList.remove('show');
+}
+
+// ─── CRUZAR TAB ────────────────────────────────────────────
+function renderCruzar() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="cruzar-box">
+      <h2>Cruzar coleções</h2>
+      <p>Cole o link de outra pessoa para ver quais figurinhas vocês podem trocar entre si.</p>
+      <div class="input-group">
+        <label>Link ou token do parceiro</label>
+        <input class="inp" id="czr-inp" placeholder="https://teniscash.com.br/copa-figurinhas?t=..." oninput="extractToken(this)">
+      </div>
+      <button class="btn-green" onclick="doCruzar()">Ver figurinhas para trocar</button>
+      <div id="czr-result"></div>
+    </div>`;
+}
+
+function extractToken(el) {
+  const v = el.value.trim();
+  const m = v.match(/[?&]t=([^&]+)/);
+  if (m) el.value = m[1];
+}
+
+async function doCruzar() {
+  const inp = document.getElementById('czr-inp').value.trim();
+  const theirToken = inp.match(/[?&]t=([^&]+)/)?.[1] || inp;
+  if (!theirToken) { showToast('Informe o link ou token do parceiro'); return; }
+  if (theirToken === TOKEN) { showToast('Esse é o seu próprio link!'); return; }
+
+  // flush pending first
+  await flushSave();
+
+  document.getElementById('czr-result').innerHTML = '<div class="loading">Cruzando coleções...</div>';
+  try {
+    const r = await fetch(`${API}/cruzar/${TOKEN}/${theirToken}`).then(r=>r.json());
+    if (r.error) { document.getElementById('czr-result').innerHTML = `<div class="loading">${r.error}</div>`; return; }
+    renderCruzarResult(r);
+  } catch(e) { document.getElementById('czr-result').innerHTML = '<div class="loading">Erro ao cruzar</div>'; }
+}
+
+function renderCruzarResult(r) {
+  const wppMsg = encodeURIComponent(
+    `Oi ${r.them.name}! Vi no site que podemos trocar figurinhas da Copa 2026. Você pode me dar ${r.theyCanGiveCount} e eu posso te dar ${r.iCanGiveCount}. Vamos combinar? 🤝`
+  );
+  const wppLink = `https://wa.me/55${r.them.whatsapp}?text=${wppMsg}`;
+
+  const chips = list => list.slice(0,30).map(s => `<span class="stk-chip">${s.displayCode}</span>`).join('') + (list.length>30?` +${list.length-30}`:'');
+
+  document.getElementById('czr-result').innerHTML = `
+    <div class="result-box">
+      <h3>Resultado do cruzamento</h3>
+      <div class="result-match">
+        <div class="result-side">
+          <h4>Você dá para ${r.them.name}</h4>
+          <div class="result-count">${r.iCanGiveCount}</div>
+          <div class="result-unit">figurinhas</div>
+          <div class="stk-list" style="margin-top:6px">${chips(r.iCanGive)}</div>
+        </div>
+        <div class="result-side">
+          <h4>${r.them.name} dá para você</h4>
+          <div class="result-count" style="color:var(--dup)">${r.theyCanGiveCount}</div>
+          <div class="result-unit">figurinhas</div>
+          <div class="stk-list" style="margin-top:6px">${chips(r.theyCanGive)}</div>
+        </div>
+      </div>
+      ${r.them.whatsapp ? `<a href="${wppLink}" target="_blank" class="btn-wpp">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.09.537 4.1 1.561 5.879L.029 23.763a.5.5 0 00.608.608l5.884-1.532A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.9a9.889 9.889 0 01-5.042-1.378l-.362-.214-3.742.974.996-3.641-.236-.374A9.89 9.89 0 012.1 12C2.1 6.527 6.527 2.1 12 2.1S21.9 6.527 21.9 12 17.473 21.9 12 21.9z"/></svg>
+        Chamar ${r.them.name} no WhatsApp
+      </a>` : ''}
+    </div>`;
+}
+
+// ─── PARCEIROS TAB ──────────────────────────────────────────
+async function renderParceiros(city) {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="parceiros-box">
+      <div class="search-row">
+        <input class="inp" id="city-inp" placeholder="Filtrar por cidade" value="${city||''}">
+        <button class="btn-sm" onclick="renderParceiros(document.getElementById('city-inp').value.trim())">Buscar</button>
+      </div>
+      <div id="parceiros-list"><div class="loading">Carregando...</div></div>
+    </div>`;
+
+  try {
+    const url = city ? `${API}/parceiros?city=${encodeURIComponent(city)}` : `${API}/parceiros`;
+    const r = await fetch(url).then(r=>r.json());
+    const list = (r.parceiros || []).filter(p => p.token !== TOKEN);
+    const el = document.getElementById('parceiros-list');
+    if (!list.length) { el.innerHTML = '<div class="empty">Nenhum parceiro encontrado ainda.<br>Compartilhe seu link para aparecer aqui!</div>'; return; }
+    el.innerHTML = list.map(p => `
+      <div class="parceiro-card" onclick="goToCruzar('${p.token}')">
+        <div class="parceiro-avatar">👤</div>
+        <div class="parceiro-info">
+          <div class="parceiro-name">${esc(p.name)}</div>
+          <div class="parceiro-loc">${[p.neighborhood, p.city].filter(Boolean).join(', ') || 'Sem localização'}</div>
+        </div>
+        <div class="parceiro-stats">
+          <div class="parceiro-pct">${p.pct}%</div>
+          <div class="parceiro-dups">${p.duplicates} rep.</div>
+        </div>
+      </div>`).join('');
+  } catch(e) { document.getElementById('parceiros-list').innerHTML = '<div class="loading">Erro ao carregar</div>'; }
+}
+
+function goToCruzar(token) {
+  switchTab('cruzar');
+  setTimeout(() => {
+    const inp = document.getElementById('czr-inp');
+    if (inp) { inp.value = token; doCruzar(); }
+  }, 50);
+}
+
+// ─── SHARE ─────────────────────────────────────────────────
+function shareLink() {
+  const url = `${location.origin}/copa-figurinhas?t=${TOKEN}`;
+  if (navigator.share) {
+    navigator.share({ title:'Figurinhas Copa 2026', text:'Veja minhas figurinhas e vamos trocar!', url });
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url);
+    showToast('Link copiado!');
+  } else {
+    prompt('Copie seu link:', url);
+  }
+}
+
+// ─── UTILS ─────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── URL TOKEN ─────────────────────────────────────────────
+(function() {
+  const p = new URLSearchParams(location.search);
+  const t = p.get('t');
+  if (t && !TOKEN) { localStorage.setItem('copa_fig_token', t); TOKEN = t; }
+})();
+
+window.addEventListener('load', init);
+window.addEventListener('beforeunload', () => { if (Object.keys(PENDING).length) flushSave(); });
+</script>
+</body>
+</html>

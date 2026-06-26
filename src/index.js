@@ -1339,6 +1339,7 @@ const _infoPage = (file) => (req, res) => {
 };
 // Página de vendas do produto digital + checkout inline (/pd/:slug e /pay/:slug autocompra)
 app.get('/copa', _infoPage('copa.html'));
+app.get('/copa-figurinhas', _infoPage('copa-figurinhas.html'));
 app.get(['/pd/:slug', '/pay/:slug'], _infoPage('produto.html'));
 // Área de membros: player do curso (login-free via accessToken)
 app.get('/curso/:token', _infoPage('curso.html'));

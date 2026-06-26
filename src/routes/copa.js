@@ -1448,4 +1448,158 @@ router.put('/brazil-lineup', authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================================
+// FIGURINHAS PANINI — Copa do Mundo FIFA 2026
+// (/api/copa/figurinhas/*)
+// ============================================================
+
+// GET /api/copa/figurinhas/stickers
+router.get('/figurinhas/stickers', async (_req, res) => {
+  try {
+    const stickers = await prisma.sticker.findMany({
+      orderBy: [{ section: 'asc' }, { number: 'asc' }],
+    });
+    res.json({ stickers });
+  } catch (e) {
+    console.error('[copa/figurinhas] stickers', e);
+    res.status(500).json({ error: 'Erro ao buscar figurinhas' });
+  }
+});
+
+// POST /api/copa/figurinhas/perfil — criar coleção
+router.post('/figurinhas/perfil', async (req, res) => {
+  try {
+    const { name, whatsapp, city, neighborhood } = req.body || {};
+    if (!name || !whatsapp) return res.status(400).json({ error: 'Nome e WhatsApp obrigatórios' });
+    const col = await prisma.stickerCollection.create({
+      data: {
+        name: name.trim(),
+        whatsapp: String(whatsapp).replace(/\D/g, ''),
+        city: (city || '').trim(),
+        neighborhood: (neighborhood || '').trim(),
+      },
+    });
+    return res.json({ token: col.token, id: col.id, name: col.name });
+  } catch (e) {
+    console.error('[copa/figurinhas] POST /perfil', e);
+    return res.status(500).json({ error: 'Erro ao criar perfil' });
+  }
+});
+
+// GET /api/copa/figurinhas/perfil/:token
+router.get('/figurinhas/perfil/:token', async (req, res) => {
+  try {
+    const col = await prisma.stickerCollection.findUnique({
+      where: { token: req.params.token },
+      include: { stickers: { select: { stickerId: true, quantity: true } } },
+    });
+    if (!col) return res.status(404).json({ error: 'Perfil não encontrado' });
+    const stickerMap = {};
+    for (const us of col.stickers) stickerMap[us.stickerId] = us.quantity;
+    return res.json({
+      id: col.id, token: col.token, name: col.name,
+      whatsapp: col.whatsapp, city: col.city,
+      neighborhood: col.neighborhood, createdAt: col.createdAt, stickerMap,
+    });
+  } catch (e) {
+    console.error('[copa/figurinhas] GET /perfil/:token', e);
+    return res.status(500).json({ error: 'Erro ao buscar perfil' });
+  }
+});
+
+// PUT /api/copa/figurinhas/perfil/:token — salvar lote de figurinhas
+// body: { updates: [{ stickerId, quantity }] }
+router.put('/figurinhas/perfil/:token', async (req, res) => {
+  try {
+    const col = await prisma.stickerCollection.findUnique({ where: { token: req.params.token } });
+    if (!col) return res.status(404).json({ error: 'Perfil não encontrado' });
+    const { updates } = req.body || {};
+    if (!Array.isArray(updates) || !updates.length) return res.json({ ok: true, saved: 0 });
+    const ops = updates.map(u =>
+      prisma.userSticker.upsert({
+        where: { collectionId_stickerId: { collectionId: col.id, stickerId: u.stickerId } },
+        create: { collectionId: col.id, stickerId: u.stickerId, quantity: Math.max(0, u.quantity | 0) },
+        update: { quantity: Math.max(0, u.quantity | 0) },
+      })
+    );
+    await prisma.$transaction(ops);
+    await prisma.stickerCollection.update({ where: { id: col.id }, data: { updatedAt: new Date() } });
+    return res.json({ ok: true, saved: ops.length });
+  } catch (e) {
+    console.error('[copa/figurinhas] PUT /perfil/:token', e);
+    return res.status(500).json({ error: 'Erro ao salvar figurinhas' });
+  }
+});
+
+// GET /api/copa/figurinhas/parceiros?city=X
+router.get('/figurinhas/parceiros', async (req, res) => {
+  try {
+    const { city } = req.query;
+    const where = city ? { city: { contains: city, mode: 'insensitive' } } : {};
+    const list = await prisma.stickerCollection.findMany({
+      where,
+      select: {
+        id: true, token: true, name: true, city: true,
+        neighborhood: true, updatedAt: true,
+        stickers: { select: { quantity: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 60,
+    });
+    const result = list.map(p => {
+      const have = p.stickers.filter(s => s.quantity >= 1).length;
+      const dups = p.stickers.filter(s => s.quantity >= 2).reduce((a, s) => a + (s.quantity - 1), 0);
+      return {
+        id: p.id, token: p.token, name: p.name,
+        city: p.city, neighborhood: p.neighborhood, updatedAt: p.updatedAt,
+        have, duplicates: dups, missing: 980 - have, pct: Math.round(have / 9.8),
+      };
+    });
+    return res.json({ parceiros: result });
+  } catch (e) {
+    console.error('[copa/figurinhas] GET /parceiros', e);
+    return res.status(500).json({ error: 'Erro ao buscar parceiros' });
+  }
+});
+
+// GET /api/copa/figurinhas/cruzar/:myToken/:theirToken
+router.get('/figurinhas/cruzar/:myToken/:theirToken', async (req, res) => {
+  try {
+    const [me, them] = await Promise.all([
+      prisma.stickerCollection.findUnique({
+        where: { token: req.params.myToken },
+        include: { stickers: { select: { stickerId: true, quantity: true } } },
+      }),
+      prisma.stickerCollection.findUnique({
+        where: { token: req.params.theirToken },
+        include: { stickers: { select: { stickerId: true, quantity: true } } },
+      }),
+    ]);
+    if (!me) return res.status(404).json({ error: 'Seu perfil não encontrado' });
+    if (!them) return res.status(404).json({ error: 'Perfil do parceiro não encontrado' });
+
+    const myMap = Object.fromEntries(me.stickers.map(s => [s.stickerId, s.quantity]));
+    const theirMap = Object.fromEntries(them.stickers.map(s => [s.stickerId, s.quantity]));
+    const all = await prisma.sticker.findMany({ orderBy: [{ section: 'asc' }, { number: 'asc' }] });
+
+    const iCanGive = all
+      .filter(s => (myMap[s.id] || 0) >= 2 && (theirMap[s.id] || 0) === 0)
+      .map(s => ({ id: s.id, displayCode: s.displayCode, sectionName: s.sectionName, label: s.label, myQty: myMap[s.id] }));
+
+    const theyCanGive = all
+      .filter(s => (theirMap[s.id] || 0) >= 2 && (myMap[s.id] || 0) === 0)
+      .map(s => ({ id: s.id, displayCode: s.displayCode, sectionName: s.sectionName, label: s.label, theirQty: theirMap[s.id] }));
+
+    return res.json({
+      me: { name: me.name, whatsapp: me.whatsapp, token: me.token },
+      them: { name: them.name, whatsapp: them.whatsapp, token: them.token },
+      iCanGive, theyCanGive,
+      iCanGiveCount: iCanGive.length, theyCanGiveCount: theyCanGive.length,
+    });
+  } catch (e) {
+    console.error('[copa/figurinhas] GET /cruzar', e);
+    return res.status(500).json({ error: 'Erro ao cruzar coleções' });
+  }
+});
+
 module.exports = router;

@@ -4653,3 +4653,50 @@ model MachineHeartbeat {
   supervisorVersion String?
   lastSeen          DateTime @default(now())
 }
+
+// ============================================================
+// FIGURINHAS PANINI — Copa do Mundo FIFA 2026
+// ============================================================
+
+model Sticker {
+  id            String        @id @default(cuid())
+  section       String        // "BRA", "FWC", "MUS", "INT"
+  sectionName   String        // "Brasil", "Especiais FIFA WC"
+  confederation String        @default("")
+  number        Int           // 1-20 por seleção; 1-11 museu; etc.
+  label         String        // "Escudo", "Jogador 5", "Foto do Time"
+  displayCode   String        // "BRA-01"
+  isShield      Boolean       @default(false)
+  isTeamPhoto   Boolean       @default(false)
+  isSpecial     Boolean       @default(false)
+
+  userStickers  UserSticker[]
+
+  @@unique([section, number])
+}
+
+model StickerCollection {
+  id           String        @id @default(cuid())
+  token        String        @unique @default(cuid())
+  name         String
+  whatsapp     String
+  city         String        @default("")
+  neighborhood String        @default("")
+  stickers     UserSticker[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model UserSticker {
+  id           String            @id @default(cuid())
+  collectionId String
+  collection   StickerCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  stickerId    String
+  sticker      Sticker           @relation(fields: [stickerId], references: [id])
+  quantity     Int               @default(0)
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([collectionId, stickerId])
+  @@index([collectionId])
+  @@index([stickerId])
+}
