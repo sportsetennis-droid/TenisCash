@@ -7,6 +7,7 @@
 
 const cron = require('node-cron');
 const { runDailyMarketEngine } = require('../ai/daily/daily-market-engine.service');
+const { runForAll: copaMatchBotRunAll } = require('./copaMatchBot');
 
 const TZ = 'America/Fortaleza';
 const DEFAULT_SCHEDULE = '10 7 * * *';
@@ -51,6 +52,12 @@ function startDailyAgentsCron() {
   if (process.env.RUN_DAILY_AGENTS_ON_BOOT === '1') {
     runDailyAgentsCronTick().catch((e) => console.error('[dailyAgentsCron] boot failed', e.message));
   }
+
+  // Robô de figurinhas Copa 2026 — roda às 9h todos os dias
+  cron.schedule('0 9 * * *', () => {
+    copaMatchBotRunAll().catch(e => console.error('[copaMatchBot] cron error:', e.message));
+  }, { timezone: TZ });
+  console.log('[copaMatchBot] cron agendado: 0 9 * * * (09:00 Fortaleza)');
 }
 
 module.exports = {

@@ -1678,4 +1678,19 @@ router.get('/figurinhas/cruzar/:myToken/:theirToken', async (req, res) => {
   }
 });
 
+// POST /api/copa/figurinhas/buscar-parceiros/:token — dispara robô manualmente
+router.post('/figurinhas/buscar-parceiros/:token', async (req, res) => {
+  try {
+    const col = await prisma.stickerCollection.findUnique({ where: { token: req.params.token } });
+    if (!col) return res.status(404).json({ error: 'Perfil não encontrado' });
+
+    const { runForCollection } = require('../services/copaMatchBot');
+    const result = await runForCollection(col.id);
+    return res.json(result);
+  } catch (e) {
+    console.error('[copa/figurinhas] buscar-parceiros', e);
+    return res.status(500).json({ error: 'Erro ao buscar parceiros: ' + e.message });
+  }
+});
+
 module.exports = router;
