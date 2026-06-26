@@ -12257,30 +12257,22 @@ async function loadMarkupProducts(cnpj) {
   const products = data.products || [];
   const supMarkup = data.supplier?.averageMarkup;
   let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Markup do fornecedor: <strong style="color:var(--orange)">${supMarkup != null ? supMarkup + '%' : '— (não definido)'}</strong> • ${products.length} produtos</div>`;
-  html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda (c/ markup)</th><th>Ação</th></tr></thead><tbody>';
+  html += '<table><thead><tr><th>Nome</th><th>Marca</th><th>Custo</th><th style="color:var(--orange);min-width:100px">Markup %</th><th>Markup efetivo</th><th>Preço de venda</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
     const effMarkup = p.effectiveMarkup != null ? `${p.effectiveMarkup}%` : '—';
     const sellPrice = p.computedPrice != null
       ? `<strong style="color:var(--orange)">R$ ${Number(p.computedPrice).toFixed(2)}</strong>`
-      : '<span style="color:#e35">sem custo (não calcula)</span>';
+      : '<span style="color:#e35">sem custo</span>';
     const computedDiff = (p.computedPrice != null && Math.abs((p.computedPrice || 0) - (p.price || 0)) > 0.01)
-      ? `<div style="font-size:10px;color:#e35">⚠ salvo: R$ ${Number(p.price || 0).toFixed(2)} (desatualizado)</div>`
+      ? `<div style="font-size:10px;color:#e35">⚠ salvo: R$ ${Number(p.price || 0).toFixed(2)}</div>`
       : '';
     const mkVal = p.markupPercent != null ? String(p.markupPercent) : '';
     html += `<tr>
-      <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
-      ${genderCell(p)}
-      <td>${escapeHtml(p.name)}</td>
-      ${sizesCell(p)}
-      <td>${escapeHtml(p.brand||'')}</td>
-      ${refCell(p)}
-      ${sportCell(p)}
-      <td>${escapeHtml(p.category||'')}</td>
-      ${descCell(p)}
-      ${locationCell(p)}
-      <td>${cost}</td>
-      <td><input type="number" id="mki-${p.id}" value="${mkVal}" placeholder="herda forn." step="0.1" min="0" onkeydown="if(event.key==='Enter')this.blur()" onblur="mkQuickMarkup('${p.id}',this)" onclick="event.stopPropagation();this.select()" style="width:72px;font-size:13px;font-weight:700;color:var(--orange);border:1.5px solid #444;border-radius:6px;padding:2px 6px;text-align:right;background:transparent;"></td>
+      <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</td>
+      <td style="white-space:nowrap">${escapeHtml(p.brand||'')}</td>
+      <td style="white-space:nowrap">${cost}</td>
+      <td><input type="number" id="mki-${p.id}" value="${mkVal}" placeholder="herda forn." step="0.1" min="0" onkeydown="if(event.key==='Enter')this.blur()" onblur="mkQuickMarkup('${p.id}',this)" onclick="event.stopPropagation();this.select()" style="width:90px;font-size:14px;font-weight:700;color:var(--orange);border:2px solid var(--orange);border-radius:6px;padding:3px 8px;text-align:right;background:transparent;"></td>
       <td><strong id="mkm-${p.id}">${effMarkup}</strong></td>
       <td id="mkp-${p.id}">${sellPrice}${computedDiff}</td>
       <td style="white-space:nowrap">
