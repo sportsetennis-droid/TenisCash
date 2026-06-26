@@ -1466,23 +1466,41 @@ router.get('/figurinhas/stickers', async (_req, res) => {
   }
 });
 
-// POST /api/copa/figurinhas/perfil — criar coleção
+// POST /api/copa/figurinhas/perfil — criar coleção (username + senha)
 router.post('/figurinhas/perfil', async (req, res) => {
   try {
-    const { name, whatsapp, city, neighborhood } = req.body || {};
-    if (!name || !whatsapp) return res.status(400).json({ error: 'Nome e WhatsApp obrigatórios' });
+    const bcrypt = require('bcryptjs');
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'Usuário e senha obrigatórios' });
+    const slug = username.trim().toLowerCase();
+    if (slug.length < 3) return res.status(400).json({ error: 'Usuário precisa ter pelo menos 3 letras' });
+    const exists = await prisma.stickerCollection.findUnique({ where: { username: slug } });
+    if (exists) return res.status(409).json({ error: 'Esse usuário já existe. Tente outro nome ou faça login.' });
+    const passwordHash = await bcrypt.hash(password, 10);
     const col = await prisma.stickerCollection.create({
-      data: {
-        name: name.trim(),
-        whatsapp: String(whatsapp).replace(/\D/g, ''),
-        city: (city || '').trim(),
-        neighborhood: (neighborhood || '').trim(),
-      },
+      data: { username: slug, passwordHash, name: slug },
     });
     return res.json({ token: col.token, id: col.id, name: col.name });
   } catch (e) {
     console.error('[copa/figurinhas] POST /perfil', e);
     return res.status(500).json({ error: 'Erro ao criar perfil' });
+  }
+});
+
+// POST /api/copa/figurinhas/login
+router.post('/figurinhas/login', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'Usuário e senha obrigatórios' });
+    const col = await prisma.stickerCollection.findUnique({ where: { username: username.trim().toLowerCase() } });
+    if (!col || !col.passwordHash) return res.status(401).json({ error: 'Usuário ou senha incorretos' });
+    const ok = await bcrypt.compare(password, col.passwordHash);
+    if (!ok) return res.status(401).json({ error: 'Usuário ou senha incorretos' });
+    return res.json({ token: col.token, id: col.id, name: col.name });
+  } catch (e) {
+    console.error('[copa/figurinhas] POST /login', e);
+    return res.status(500).json({ error: 'Erro ao fazer login' });
   }
 });
 

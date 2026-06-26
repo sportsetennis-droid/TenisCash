@@ -4678,8 +4678,10 @@ model Sticker {
 model StickerCollection {
   id           String        @id @default(cuid())
   token        String        @unique @default(cuid())
+  username     String?       @unique
+  passwordHash String?
   name         String
-  whatsapp     String
+  whatsapp     String        @default("")
   city         String        @default("")
   neighborhood String        @default("")
   stickers     UserSticker[]

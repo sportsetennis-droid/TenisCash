@@ -152,8 +152,12 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .reg-form h2{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--gold)}
 .form-row{margin-bottom:12px}
 .form-row label{font-size:11px;color:var(--txt2);display:block;margin-bottom:4px;font-weight:600}
+.reg-toggle{display:flex;background:var(--card2);border-radius:10px;padding:3px;margin-bottom:18px;gap:3px}
+.reg-tab{flex:1;padding:8px;border:none;border-radius:8px;background:transparent;color:var(--txt2);font-size:13px;font-weight:700;cursor:pointer;transition:.2s}
+.reg-tab.active{background:var(--g);color:#fff}
 .reg-btn{width:100%;background:linear-gradient(135deg,var(--g),var(--gold2));border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:800;padding:15px;cursor:pointer;margin-top:8px;transition:.15s}
 .reg-btn:active{opacity:.85}
+.btn-sair{background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;color:var(--txt2)}
 
 /* ─── TOASTER ─── */
 .toast{position:fixed;bottom:calc(70px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(20px);background:#1a3a1a;border:1px solid var(--g);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:600;color:#fff;pointer-events:none;opacity:0;transition:.25s;z-index:999;white-space:nowrap}
@@ -177,26 +181,22 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 <div id="reg-screen" class="reg-screen" style="display:none">
   <div class="reg-logo">⚽</div>
   <h1 class="reg-title">Figurinhas Copa 2026</h1>
-  <p class="reg-sub">Cadastre suas figurinhas e encontre pessoas para trocar perto de você</p>
+  <p class="reg-sub">Cadastre suas figurinhas e encontre pessoas para trocar</p>
   <div class="reg-form">
-    <h2>Criar minha coleção</h2>
-    <div class="form-row">
-      <label>Nome *</label>
-      <input class="inp" id="r-name" placeholder="Seu nome" autocomplete="name">
+    <div class="reg-toggle">
+      <button class="reg-tab active" id="tab-login" onclick="showAuthTab('login')">Entrar</button>
+      <button class="reg-tab" id="tab-reg" onclick="showAuthTab('reg')">Criar conta</button>
     </div>
     <div class="form-row">
-      <label>WhatsApp *</label>
-      <input class="inp" id="r-wpp" placeholder="83 99999-9999" type="tel" autocomplete="tel">
+      <label>Usuário</label>
+      <input class="inp" id="r-user" placeholder="seu_usuario" autocomplete="username" autocapitalize="none">
     </div>
     <div class="form-row">
-      <label>Cidade</label>
-      <input class="inp" id="r-city" placeholder="João Pessoa" autocomplete="address-level2">
+      <label>Senha</label>
+      <input class="inp" id="r-pass" placeholder="••••••••" type="password" autocomplete="current-password">
     </div>
-    <div class="form-row">
-      <label>Bairro</label>
-      <input class="inp" id="r-nbhd" placeholder="Manaíra">
-    </div>
-    <button class="reg-btn" onclick="doRegister()">Criar minha coleção</button>
+    <button class="reg-btn" id="reg-btn-main" onclick="doAuth()">Entrar</button>
+    <div id="reg-err" style="color:#e74c3c;font-size:12px;margin-top:8px;text-align:center;display:none"></div>
   </div>
 </div>
 
@@ -209,6 +209,7 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
       <p id="hdr-name">Carregando...</p>
     </div>
     <button class="hdr-share" onclick="shareLink()">Compartilhar</button>
+    <button class="btn-sair" onclick="doLogout()">Sair</button>
   </header>
 
   <div class="progress-bar"><div class="progress-fill" id="prog-bar" style="width:0%"></div></div>
@@ -331,9 +332,55 @@ async function init() {
   }
 }
 
+let AUTH_MODE = 'login';
+
 function showReg() {
   document.getElementById('reg-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+  showAuthTab('login');
+}
+
+function showAuthTab(mode) {
+  AUTH_MODE = mode;
+  document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+  document.getElementById('tab-reg').classList.toggle('active', mode === 'reg');
+  document.getElementById('reg-btn-main').textContent = mode === 'login' ? 'Entrar' : 'Criar conta';
+  document.getElementById('r-pass').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+  document.getElementById('reg-err').style.display = 'none';
+}
+
+async function doAuth() {
+  const username = document.getElementById('r-user').value.trim();
+  const password = document.getElementById('r-pass').value;
+  const errEl = document.getElementById('reg-err');
+  errEl.style.display = 'none';
+  if (!username) { errEl.textContent = 'Informe o usuário'; errEl.style.display = 'block'; return; }
+  if (!password) { errEl.textContent = 'Informe a senha';  errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('reg-btn-main');
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const endpoint = AUTH_MODE === 'login' ? `${API}/login` : `${API}/perfil`;
+    const r = await fetch(endpoint, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    }).then(r => r.json());
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    localStorage.setItem('copa_fig_token', r.token);
+    TOKEN = r.token;
+    location.reload();
+  } catch(e) {
+    errEl.textContent = 'Erro de conexão. Tente novamente.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = AUTH_MODE === 'login' ? 'Entrar' : 'Criar conta';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('copa_fig_token');
+  TOKEN = null;
+  location.reload();
 }
 
 function buildGroups() {
@@ -350,25 +397,6 @@ function buildGroups() {
   }
 }
 
-// ─── REGISTRATION ───────────────────────────────────────────
-async function doRegister() {
-  const name = document.getElementById('r-name').value.trim();
-  const wpp  = document.getElementById('r-wpp').value.trim();
-  const city = document.getElementById('r-city').value.trim();
-  const nbhd = document.getElementById('r-nbhd').value.trim();
-  if (!name) { showToast('Informe seu nome'); return; }
-  if (!wpp)  { showToast('Informe seu WhatsApp'); return; }
-  try {
-    const r = await fetch(`${API}/perfil`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, whatsapp: wpp, city, neighborhood: nbhd })
-    }).then(r=>r.json());
-    if (r.error) { showToast(r.error); return; }
-    localStorage.setItem('copa_fig_token', r.token);
-    TOKEN = r.token;
-    location.reload();
-  } catch(e) { showToast('Erro ao criar perfil'); }
-}
 
 // ─── STATS ─────────────────────────────────────────────────
 function updateStats() {
@@ -788,6 +816,10 @@ function esc(s) {
   const p = new URLSearchParams(location.search);
   const t = p.get('t');
   if (t && !TOKEN) { localStorage.setItem('copa_fig_token', t); TOKEN = t; }
+  // Enter key on auth form
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('reg-screen').style.display !== 'none') doAuth();
+  });
 })();
 
 // ─── SCAN ──────────────────────────────────────────────────
