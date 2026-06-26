@@ -4205,7 +4205,7 @@ async function loadCatalogProductsAdmin() {
     // Marca + Preço
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">'
       + '<span style="padding:3px 10px;background:' + (hasBrand ? 'linear-gradient(135deg,#1d1d1f,#3a3a3c)' : '#f5f5f7') + ';color:' + (hasBrand ? 'white' : '#d70015') + ';font-size:11px;font-weight:800;border-radius:6px;letter-spacing:0.5px;' + (hasBrand ? '' : 'border:1px dashed #d70015;') + '">' + (hasBrand ? escapeHtml(brandText) : '⚠ SEM MARCA') + '</span>'
-      + '<span style="font-size:14px;font-weight:800;color:#E5571E;">R$ ' + Number(p.price || 0).toFixed(2) + '</span>'
+      + (function(){ const _c=Number(p.costPrice||0),_p=Number(p.price||0),_m=(_c>0&&_p>0)?Math.round((1-_c/_p)*100):null,_mc=_m!=null?(_m>=40?'#0a843d':_m>=25?'#b06b00':'#d70015'):''; return '<div style="display:flex;align-items:center;gap:4px;"><span style="font-size:13px;font-weight:700;color:#E5571E;">R$</span><input type="number" id="qp-'+p.id+'" value="'+_p.toFixed(2)+'" step="0.01" min="0.01" data-cost="'+_c+'" onkeydown="if(event.key===\'Enter\')this.blur()" onblur="catQuickPrice(\''+p.id+'\',this)" onclick="event.stopPropagation();this.select()" style="width:76px;font-size:14px;font-weight:800;color:#E5571E;border:1.5px solid #FCDAC4;border-radius:6px;padding:2px 6px;text-align:right;background:white;">'+(_m!=null?'<span id="qpm-'+p.id+'" style="font-size:10px;font-weight:700;padding:2px 5px;border-radius:5px;background:'+_mc+'22;color:'+_mc+';">'+_m+'%</span>':'<span id="qpm-'+p.id+'"></span>')+'</div>'; })()
       + '</div>';
     // Nome
     html += '<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">' + escapeHtml(p.name || '?') + '</div>';
@@ -4299,6 +4299,34 @@ async function loadCatalogProductsAdmin() {
   wrap.querySelectorAll('.js-cat-enrich-one').forEach(function (btn) {
     btn.addEventListener('click', function () { enrichOneProduct(btn); });
   });
+}
+
+// ===== EDIÇÃO RÁPIDA DE PREÇO NO CARD =====
+async function catQuickPrice(id, input) {
+  const val = parseFloat(input.value);
+  if (!val || val <= 0) { input.value = input.defaultValue; return; }
+  if (val === parseFloat(input.defaultValue)) return; // sem mudança
+  input.disabled = true;
+  try {
+    const r = await api('/admin/catalog/products/' + encodeURIComponent(id), 'PUT', { price: val });
+    if (r.error) { alert(r.error); input.value = input.defaultValue; return; }
+    input.defaultValue = val.toFixed(2);
+    input.style.borderColor = '#0a843d';
+    setTimeout(function(){ input.style.borderColor = '#FCDAC4'; }, 1400);
+    const cost = Number(input.dataset.cost || 0);
+    const badge = document.getElementById('qpm-' + id);
+    if (badge && cost > 0 && val > 0) {
+      const m = Math.round((1 - cost / val) * 100);
+      const c = m >= 40 ? '#0a843d' : m >= 25 ? '#b06b00' : '#d70015';
+      badge.style.background = c + '22'; badge.style.color = c;
+      badge.textContent = m + '%';
+    }
+  } catch(e) {
+    alert('Erro ao salvar preço');
+    input.value = input.defaultValue;
+  } finally {
+    input.disabled = false;
+  }
 }
 
 // ===== MODAL DE ESPECIFICAÇÕES TÉCNICAS (visualização) =====
