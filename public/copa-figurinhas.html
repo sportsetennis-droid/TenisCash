@@ -48,6 +48,10 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .section-pill.active{background:var(--g);color:#fff;border-color:var(--g)}
 .conf-label{padding:6px 14px 2px;font-size:10px;font-weight:700;color:var(--txt2);letter-spacing:.05em;text-transform:uppercase}
 
+.howto{background:#0d2210;border-bottom:1px solid rgba(0,112,60,.3);padding:8px 14px;display:flex;align-items:center;gap:10px}
+.howto-txt{font-size:11px;color:var(--txt2);line-height:1.5;flex:1}
+.howto-txt strong{color:var(--txt)}
+.howto-close{background:none;border:none;color:var(--txt2);font-size:16px;cursor:pointer;padding:0 4px}
 .filter-row{display:flex;gap:6px;padding:8px 14px;background:var(--bg)}
 .filter-btn{flex:1;padding:6px 0;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;font-size:11px;font-weight:600;color:var(--txt2);cursor:pointer;transition:.2s}
 .filter-btn.active{background:var(--card2);color:var(--txt);border-color:var(--g)}
@@ -57,21 +61,25 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .team-sub{font-size:10px;color:var(--txt2);font-weight:400;margin-left:2px}
 
 /* ─── STICKER GRID ─── */
-.stk-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:0 14px 14px}
+.stk-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 14px 14px}
 .stk{
-  aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:var(--miss);cursor:pointer;position:relative;user-select:none;
-  transition:transform .12s,background .15s;border:1px solid transparent;
+  transition:transform .12s,background .15s;border:1px solid rgba(255,255,255,.08);
+  min-height:72px;
 }
-.stk:active{transform:scale(.92)}
-.stk.have{background:var(--have)}
-.stk.dup{background:var(--dup)}
-.stk-code{font-size:8.5px;font-weight:700;color:rgba(255,255,255,.75);letter-spacing:.02em}
-.stk-label{font-size:7px;color:rgba(255,255,255,.5);text-align:center;padding:0 2px;line-height:1.2;margin-top:1px}
-.stk-qty{position:absolute;top:2px;right:3px;font-size:8px;font-weight:800;color:#fff;background:rgba(0,0,0,.4);border-radius:4px;padding:0 3px;line-height:15px}
-.stk.shield{border:1px solid var(--gold);box-shadow:0 0 6px rgba(200,168,75,.3)}
-.stk.have.shield{background:linear-gradient(135deg,var(--have),#1a8050)}
-.stk.photo{border:1px solid #4a9eff}
+.stk:active{transform:scale(.88)}
+.stk.have{background:var(--have);border-color:transparent}
+.stk.dup{background:var(--dup);border-color:transparent}
+.stk-num{font-size:18px;font-weight:900;color:rgba(255,255,255,.9);line-height:1}
+.stk-code{font-size:9px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:.02em;margin-top:2px}
+.stk-icon{font-size:10px;margin-top:2px}
+.stk-plus{font-size:20px;color:rgba(255,255,255,.2);line-height:1;margin-bottom:2px}
+.stk.have .stk-plus,.stk.dup .stk-plus{display:none}
+.stk-qty{position:absolute;top:3px;right:4px;font-size:9px;font-weight:800;color:#fff;background:rgba(0,0,0,.5);border-radius:4px;padding:1px 4px;line-height:14px}
+.stk.shield{border:1px solid var(--gold)}
+.stk.have.shield{background:linear-gradient(135deg,#2ecc71,#1a8050)}
+.stk.photo{border:1px solid rgba(74,158,255,.5)}
 
 /* ─── CRUZAR TAB ─── */
 .cruzar-box{padding:16px 14px}
@@ -348,6 +356,19 @@ function renderAlbum() {
   c.innerHTML = '';
   document.getElementById('loading').style.display = 'none';
 
+  // How-to banner (show once)
+  if (!localStorage.getItem('copa_howto_seen')) {
+    const ht = document.createElement('div');
+    ht.className = 'howto';
+    ht.innerHTML = `
+      <div class="howto-txt">
+        <strong>Como marcar suas figurinhas:</strong><br>
+        🟢 <strong>1 toque</strong> = tenho &nbsp;|&nbsp; 🟠 <strong>2 toques</strong> = tenho repetida &nbsp;|&nbsp; ⬜ <strong>Segure</strong> = remover
+      </div>
+      <button class="howto-close" onclick="localStorage.setItem('copa_howto_seen','1');this.parentElement.remove()">✕</button>`;
+    c.appendChild(ht);
+  }
+
   // Section nav
   const nav = document.createElement('div');
   nav.className = 'section-nav';
@@ -464,9 +485,12 @@ function renderSectionFrag() {
     cell.className = 'stk' + (qty>=2?' dup':qty===1?' have':'') + (s.isShield?' shield':'') + (s.isTeamPhoto?' photo':'');
     cell.id = 'stk_' + s.id;
     cell.dataset.id = s.id;
+    const icon = s.isShield ? '⭐' : s.isTeamPhoto ? '📷' : '';
     cell.innerHTML =
-      `<span class="stk-code">${s.displayCode}</span>` +
-      `<span class="stk-label">${s.isShield?'⭐':s.isTeamPhoto?'📷':''}</span>` +
+      (qty===0 ? `<span class="stk-plus">+</span>` : '') +
+      `<span class="stk-num">${s.number}</span>` +
+      `<span class="stk-code">${s.section}</span>` +
+      (icon ? `<span class="stk-icon">${icon}</span>` : '') +
       (qty>=2 ? `<span class="stk-qty">×${qty}</span>` : '');
     addStickerEvents(cell, s.id);
     grid.appendChild(cell);
@@ -508,6 +532,12 @@ function updateCell(sid, qty) {
   el.className = el.className.replace(/\s*(have|dup)\b/g, '');
   if (qty >= 2) el.className += ' dup';
   else if (qty === 1) el.className += ' have';
+  // toggle "+" indicator
+  let plus = el.querySelector('.stk-plus');
+  if (qty === 0) {
+    if (!plus) { plus = document.createElement('span'); plus.className = 'stk-plus'; plus.textContent = '+'; el.insertBefore(plus, el.firstChild); }
+  } else if (plus) { plus.remove(); }
+  // qty badge
   let qel = el.querySelector('.stk-qty');
   if (qty >= 2) {
     if (!qel) { qel = document.createElement('span'); qel.className = 'stk-qty'; el.appendChild(qel); }
