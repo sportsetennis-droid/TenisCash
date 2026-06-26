@@ -12260,15 +12260,14 @@ async function loadMarkupProducts(cnpj) {
   html += '<table><thead><tr><th>SKU</th><th>Gênero</th><th>Nome</th><th>Tamanho</th><th>Marca</th><th>Referência</th><th>Esporte</th><th>Categoria</th><th>Descrição</th><th>Localização</th><th>Custo</th><th>Markup (override)</th><th>Markup efetivo</th><th>Preço de venda (c/ markup)</th><th>Ação</th></tr></thead><tbody>';
   products.forEach(p => {
     const cost = p.costPrice != null ? `R$ ${Number(p.costPrice).toFixed(2)}` : '<span style="color:#e35">sem custo</span>';
-    const overrideMarkup = p.markupPercent != null ? `${p.markupPercent}%` : '—';
     const effMarkup = p.effectiveMarkup != null ? `${p.effectiveMarkup}%` : '—';
-    // REGRA: o card de fornecedor mostra o PREÇO DE VENDA COM MARKUP (custo × (1+markup)), não o custo.
     const sellPrice = p.computedPrice != null
       ? `<strong style="color:var(--orange)">R$ ${Number(p.computedPrice).toFixed(2)}</strong>`
       : '<span style="color:#e35">sem custo (não calcula)</span>';
     const computedDiff = (p.computedPrice != null && Math.abs((p.computedPrice || 0) - (p.price || 0)) > 0.01)
-      ? `<div style="font-size:10px;color:#e35">⚠ salvo: R$ ${Number(p.price || 0).toFixed(2)} (desatualizado — clique Editar p/ aplicar)</div>`
+      ? `<div style="font-size:10px;color:#e35">⚠ salvo: R$ ${Number(p.price || 0).toFixed(2)} (desatualizado)</div>`
       : '';
+    const mkVal = p.markupPercent != null ? String(p.markupPercent) : '';
     html += `<tr>
       <td><code style="font-size:11px">${escapeHtml(p.sku)}</code></td>
       ${genderCell(p)}
@@ -12281,11 +12280,11 @@ async function loadMarkupProducts(cnpj) {
       ${descCell(p)}
       ${locationCell(p)}
       <td>${cost}</td>
-      <td>${overrideMarkup}</td>
-      <td><strong>${effMarkup}</strong></td>
-      <td>${sellPrice}${computedDiff}</td>
+      <td><input type="number" id="mki-${p.id}" value="${mkVal}" placeholder="herda forn." step="0.1" min="0" onkeydown="if(event.key==='Enter')this.blur()" onblur="mkQuickMarkup('${p.id}',this)" onclick="event.stopPropagation();this.select()" style="width:72px;font-size:13px;font-weight:700;color:var(--orange);border:1.5px solid #444;border-radius:6px;padding:2px 6px;text-align:right;background:transparent;"></td>
+      <td><strong id="mkm-${p.id}">${effMarkup}</strong></td>
+      <td id="mkp-${p.id}">${sellPrice}${computedDiff}</td>
       <td style="white-space:nowrap">
-        <button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 8px" onclick="editProductMarkup('${p.id}','${escapeHtml(p.name).replace(/'/g,"\\'")}',${p.costPrice ?? 'null'},${p.markupPercent ?? 'null'})">Editar</button>
+        <button type="button" class="btn" style="font-size:11px;padding:4px 8px" onclick="editProductCost('${p.id}','${escapeHtml(p.name).replace(/'/g,"\\'")}',${p.costPrice ?? 'null'})">Custo</button>
       </td>
     </tr>`;
   });
@@ -12293,28 +12292,37 @@ async function loadMarkupProducts(cnpj) {
   wrap.innerHTML = html;
 }
 
-async function editProductMarkup(id, name, currentCost, currentMarkup) {
-  const newCost = prompt(`Custo do produto "${name}":\n(Atual: ${currentCost != null ? 'R$ ' + Number(currentCost).toFixed(2) : 'sem custo'})\n\nDeixe vazio pra não mudar.`, currentCost != null ? Number(currentCost).toFixed(2) : '');
-  if (newCost === null) return;
-  const newMarkup = prompt(`Markup individual (override) pra "${name}":\n(Atual: ${currentMarkup != null ? currentMarkup + '%' : '— (usa o do fornecedor)'})\n\nDigite "X" pra remover o override (volta a usar o do fornecedor). Vazio = não mudar.`, currentMarkup != null ? String(currentMarkup) : '');
-  if (newMarkup === null) return;
+async function mkQuickMarkup(id, input) {
+  const val = input.value.trim();
+  const newMarkup = val === '' ? null : parseFloat(val.replace(',', '.'));
+  if (val !== '' && (isNaN(newMarkup) || newMarkup < 0)) { input.value = input.defaultValue; return; }
+  const prevMarkup = input.defaultValue.trim() === '' ? null : parseFloat(input.defaultValue);
+  if (newMarkup === prevMarkup) return;
+  input.disabled = true;
+  try {
+    const r = await api('/admin/markup/product/' + id, 'POST', { markup: newMarkup });
+    if (r.error) { alert(r.error); input.value = input.defaultValue; return; }
+    input.defaultValue = val;
+    input.style.borderColor = '#0a843d';
+    setTimeout(function(){ input.style.borderColor = '#444'; }, 1400);
+    const effCell = document.getElementById('mkm-' + id);
+    const priceCell = document.getElementById('mkp-' + id);
+    if (effCell) effCell.textContent = r.effectiveMarkup != null ? r.effectiveMarkup + '%' : '—';
+    if (priceCell) priceCell.innerHTML = r.computedPrice != null
+      ? `<strong style="color:var(--orange)">R$ ${Number(r.computedPrice).toFixed(2)}</strong>`
+      : '<span style="color:#e35">sem custo</span>';
+  } catch(e) {
+    alert('Erro ao salvar markup');
+    input.value = input.defaultValue;
+  } finally { input.disabled = false; }
+}
 
-  const body = {};
-  if (newCost.trim() !== '') {
-    const c = parseFloat(newCost.replace(',', '.'));
-    if (isNaN(c) || c < 0) { alert('Custo inválido'); return; }
-    body.costPrice = c;
-  }
-  if (newMarkup.trim() === 'X' || newMarkup.trim() === 'x') {
-    body.markup = null;
-  } else if (newMarkup.trim() !== '') {
-    const m = parseFloat(newMarkup.replace(',', '.'));
-    if (isNaN(m) || m < 0) { alert('Markup inválido'); return; }
-    body.markup = m;
-  }
-  if (Object.keys(body).length === 0) return;
-
-  const data = await api('/admin/markup/product/' + id, 'POST', body);
+async function editProductCost(id, name, currentCost) {
+  const newCost = prompt(`Custo de "${name}":\n(Atual: ${currentCost != null ? 'R$ ' + Number(currentCost).toFixed(2) : 'sem custo'})\n\nDeixe vazio pra cancelar.`, currentCost != null ? Number(currentCost).toFixed(2) : '');
+  if (newCost === null || newCost.trim() === '') return;
+  const c = parseFloat(newCost.replace(',', '.'));
+  if (isNaN(c) || c < 0) { alert('Custo inválido'); return; }
+  const data = await api('/admin/markup/product/' + id, 'POST', { costPrice: c });
   if (data.error) { alert('Erro: ' + data.error); return; }
   if (_markupSelectedCnpj) loadMarkupProducts(_markupSelectedCnpj);
   loadMarkupSuppliers();
