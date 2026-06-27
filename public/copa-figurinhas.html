@@ -74,8 +74,10 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .stk-num{font-size:18px;font-weight:900;color:rgba(255,255,255,.9);line-height:1}
 .stk-code{font-size:9px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:.02em;margin-top:2px}
 .stk-icon{font-size:10px;margin-top:2px}
-.stk-plus{font-size:20px;color:rgba(255,255,255,.2);line-height:1;margin-bottom:2px}
+.stk-plus{font-size:22px;color:rgba(255,255,255,.55);line-height:1;margin-bottom:2px;font-weight:300}
 .stk.have .stk-plus,.stk.dup .stk-plus{display:none}
+@keyframes stk-invite{0%,100%{box-shadow:0 0 0 0 rgba(0,112,60,0);border-color:rgba(255,255,255,.08)}50%{box-shadow:0 0 0 3px rgba(0,112,60,.5);border-color:rgba(0,160,80,.6)}}
+.album-empty .stk:not(.have):not(.dup){animation:stk-invite 2.2s ease-in-out infinite}
 .stk-qty{position:absolute;top:3px;right:4px;font-size:9px;font-weight:800;color:#fff;background:rgba(0,0,0,.5);border-radius:4px;padding:1px 4px;line-height:14px}
 .stk.shield{border:1px solid var(--gold)}
 .stk.have.shield{background:linear-gradient(135deg,#2ecc71,#1a8050)}
@@ -506,6 +508,7 @@ function renderAlbum() {
     CUR_SEC = GROUPS['BRA'] ? 'BRA' : (specials[0]?.[0] || sections[0]?.[0]);
   }
   renderSection(c);
+  c.classList.toggle('album-empty', !hasAnySticker);
   // Scroll active pill into view
   setTimeout(() => {
     const active = nav.querySelector('.section-pill.active');
@@ -598,6 +601,7 @@ function setQty(sid, qty) {
   updateStats();
   updateCell(sid, qty);
   scheduleSave();
+  if (qty >= 1) document.getElementById('content').classList.remove('album-empty');
 }
 
 function updateCell(sid, qty) {
