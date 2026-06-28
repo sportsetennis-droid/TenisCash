@@ -443,8 +443,9 @@ function switchTab(tab) {
 // ─── ALBUM TAB ─────────────────────────────────────────────
 function renderAlbum() {
   const c = document.getElementById('content');
+  const loadEl = document.getElementById('loading');
+  if (loadEl) loadEl.style.display = 'none';
   c.innerHTML = '';
-  document.getElementById('loading').style.display = 'none';
 
   // How-to banner — always show when album is empty (new user), or until dismissed
   const hasAnySticker = Object.values(SMAP).some(q => q >= 1);
@@ -468,7 +469,7 @@ function renderAlbum() {
   const sections = Object.entries(GROUPS).sort(([,a],[,b]) => {
     const co = (confOrder[a.confederation]||99) - (confOrder[b.confederation]||99);
     if (co !== 0) return co;
-    return a.name.localeCompare(b.name);
+    return (a.name || '').localeCompare(b.name || '');
   });
 
   // Specials first
