@@ -10726,6 +10726,7 @@ async function productImageEdit(id) {
   const p = data.product;
   const current = p.imageUrl || '';
   const currentExtras = Array.isArray(p.imageUrls) ? p.imageUrls : [];
+  const currentVideo = p.videoUrl || '';
 
   document.getElementById('pi-edit-modal')?.remove();
   const modal = document.createElement('div');
@@ -10765,6 +10766,15 @@ async function productImageEdit(id) {
         <div style="background:#f5f5f7;padding:14px;border-radius:10px;">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">🔗 Ou cole uma URL (única imagem)</div>
           <input type="text" id="pi-edit-url" placeholder="https://exemplo.com/imagem.jpg" style="width:100%;padding:10px 12px;border:1.5px solid #e5e5ea;border-radius:8px;font-size:13px;">
+        </div>
+
+        <div style="background:#f5f5f7;padding:14px;border-radius:10px;margin-top:14px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1d1d1f;font-weight:700;margin-bottom:8px;">🎬 Vídeo do produto <span style="text-transform:none;letter-spacing:0;font-weight:600;color:#8e8e93;">(só na loja TenisCash — não vai pro Nuvemshop)</span></div>
+          ${currentVideo ? `<video src="${escapeHtml(currentVideo)}" controls preload="metadata" playsinline style="width:100%;max-height:240px;background:#000;border-radius:8px;margin-bottom:8px;"></video>` : ''}
+          <input type="file" id="pi-edit-video" accept="video/mp4,video/webm,video/quicktime" style="width:100%;font-size:13px;">
+          <div style="font-size:11px;color:#8e8e93;margin-top:6px;">1 vídeo MP4 (ou WebM/MOV) até 80MB · ideal 15–30s · aparece depois das fotos na página do produto. Salva ao escolher o arquivo.</div>
+          ${currentVideo ? '<button id="pi-edit-video-remove" type="button" style="margin-top:8px;padding:8px 14px;background:white;border:1.5px solid #d70015;color:#d70015;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">🗑️ Remover vídeo</button>' : ''}
+          <div id="pi-edit-video-status" style="margin-top:8px;font-size:12px;color:#8e8e93;display:none;"></div>
         </div>
 
         <div id="pi-edit-status" style="margin-top:12px;font-size:12px;color:#8e8e93;display:none;"></div>
@@ -10838,6 +10848,36 @@ async function productImageEdit(id) {
     if (r.error) { alert('Erro: ' + r.error); return; }
     modal.remove();
     loadProductImages();
+  });
+
+  // VÍDEO — sobe na hora ao escolher o arquivo (POST /admin/product-images/video/:id)
+  const $video = modal.querySelector('#pi-edit-video');
+  const $videoStatus = modal.querySelector('#pi-edit-video-status');
+  const setVStatus = (m, c) => { $videoStatus.style.display = 'block'; $videoStatus.style.color = c || '#8e8e93'; $videoStatus.textContent = m; };
+  $video?.addEventListener('change', async () => {
+    const f = $video.files[0];
+    if (!f) return;
+    if (f.size > 80 * 1024 * 1024) { setVStatus('Vídeo acima de 80MB — encurte/comprima.', '#d70015'); $video.value = ''; return; }
+    setVStatus('Enviando vídeo (' + (Math.round(f.size / 1048576 * 10) / 10) + 'MB)… não feche a janela.', '#E5571E');
+    const fd = new FormData(); fd.append('video', f);
+    try {
+      const headers = {}; if (token) headers['Authorization'] = 'Bearer ' + token;
+      const resp = await fetch(API + '/admin/product-images/video/' + id, { method: 'POST', body: fd, headers });
+      const r = await resp.json();
+      if (!resp.ok || r.error) { setVStatus('Erro: ' + (r.error || resp.statusText), '#d70015'); return; }
+      setVStatus('✓ Vídeo salvo (' + r.mb + 'MB).', '#0a843d');
+      setTimeout(() => { modal.remove(); productImageEdit(id); }, 700);
+    } catch (e) { setVStatus('Erro: ' + e.message, '#d70015'); }
+  });
+  modal.querySelector('#pi-edit-video-remove')?.addEventListener('click', async () => {
+    if (!confirm('Remover o vídeo deste produto?')) return;
+    try {
+      const headers = {}; if (token) headers['Authorization'] = 'Bearer ' + token;
+      const resp = await fetch(API + '/admin/product-images/video/' + id, { method: 'DELETE', headers });
+      const r = await resp.json();
+      if (!resp.ok || r.error) { setVStatus('Erro: ' + (r.error || resp.statusText), '#d70015'); return; }
+      modal.remove(); productImageEdit(id);
+    } catch (e) { setVStatus('Erro: ' + e.message, '#d70015'); }
   });
 
   $save.onclick = async () => {

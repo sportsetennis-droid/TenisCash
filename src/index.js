@@ -415,6 +415,44 @@ async function proxyContabilidade(req, res) {
 
 app.use('/contabilidade', proxyContabilidade);
 
+// =====================================================================
+// Streaming do VÍDEO do produto — PÚBLICO (a PDP do cliente precisa carregar
+// sem login). Lê do volume e suporta HTTP Range (player dá seek/play sem baixar
+// o arquivo todo). resolvePublic trava path-traversal.
+// =====================================================================
+const productVideoStore = require('./services/productVideoStore');
+app.get('/media/product-video/:file', (req, res) => {
+  try {
+    const fpath = productVideoStore.resolvePublic(req.params.file);
+    if (!fpath) return res.status(404).send('vídeo não encontrado');
+    const fsx = require('fs');
+    const total = fsx.statSync(fpath).size;
+    const ext = String(req.params.file).split('.').pop().toLowerCase();
+    const mime = ext === 'webm' ? 'video/webm' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const range = req.headers.range;
+    if (range) {
+      const m = /bytes=(\d*)-(\d*)/.exec(range) || [];
+      let start = m[1] ? parseInt(m[1], 10) : 0;
+      let end = m[2] ? parseInt(m[2], 10) : total - 1;
+      if (isNaN(start) || start < 0) start = 0;
+      if (isNaN(end) || end >= total) end = total - 1;
+      if (start > end) { start = 0; end = total - 1; }
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', end - start + 1);
+      return fsx.createReadStream(fpath, { start, end }).pipe(res);
+    }
+    res.setHeader('Content-Length', total);
+    fsx.createReadStream(fpath).pipe(res);
+  } catch (err) {
+    console.error('[media/product-video] erro:', err.message);
+    if (!res.headersSent) res.status(500).send('erro ao servir vídeo');
+  }
+});
+
 // Servir frontend (produção)
 const path = require('path');
 app.use(express.static(path.join(__dirname, '../public'), {
@@ -657,6 +695,7 @@ app.get('/p/:id', async (req, res) => {
           </div>
         ` : ''}
       ` : ''}
+      ${p.videoUrl ? `<video controls preload="metadata" playsinline poster="${esc(p.imageUrl || '')}" src="${esc(p.videoUrl)}" style="display:block;width:100%;max-height:60vh;background:#000;border-top:1px solid #f0f0f3;"></video>` : ''}
 
       <div class="info">
         ${!ctx.deactivatedReason ? `<span class="brand">${esc(p.brand || 'A DEFINIR')}</span>` : ''}
@@ -852,6 +891,7 @@ app.get('/b/:id', async (req, res) => {
           </div>
         ` : ''}
       ` : ''}
+      ${p.videoUrl ? `<video controls preload="metadata" playsinline poster="${esc(p.imageUrl || '')}" src="${esc(p.videoUrl)}" style="display:block;width:100%;max-height:60vh;background:#000;border-top:1px solid #f0f0f3;"></video>` : ''}
 
       <div class="info">
         ${!ctx.deactivatedReason ? `<span class="brand">${esc(p.brand || 'A DEFINIR')}</span>` : ''}

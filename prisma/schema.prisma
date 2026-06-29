@@ -373,6 +373,7 @@ model Product {
 
   imageUrl  String?
   imageUrls Json?
+  videoUrl  String? // vídeo do produto (MP4 no volume, servido por /media/product-video). Só loja TenisCash, NÃO vai pro Nuvemshop.
 
   price         Float
   promoPrice    Float?

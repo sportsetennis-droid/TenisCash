@@ -23,6 +23,17 @@ const serperWeb = require('../services/serperWebSearch');
 const { scrapeProductPage } = require('../services/productPageScraper');
 const nsHandlers = require('../services/nuvemshopHandlers');
 const imageStd = require('../services/imageStandardizer');
+const productVideoStore = require('../services/productVideoStore');
+
+// Upload de VÍDEO — memory storage, até 80MB, só MP4/WebM/MOV
+const uploadVideo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 80 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^video\/(mp4|webm|quicktime)$/i.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Formato não suportado. Envie MP4 (ou WebM/MOV).'));
+  },
+});
 const { getSupplierMeta, siteForSupplier, brandForSupplier } = require('../services/supplierOfficialSites');
 
 // Helper: re-empurra produto pra Nuvemshop se já tem mapping
@@ -800,6 +811,47 @@ router.post('/standardize/:productId', async (req, res) => {
     });
   } catch (err) {
     console.error('[product-images/standardize] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// VÍDEO do produto — POST /video/:productId (campo "video", 1 MP4 até 80MB)
+// Salva no volume (productVideoStore) e grava Product.videoUrl. NÃO toca Nuvemshop
+// (a Nuvemshop só aceita link YouTube/Vimeo, então vídeo é exclusivo da loja TenisCash).
+// =====================================================================
+router.post('/video/:productId',
+  (req, res, next) => uploadVideo.single('video')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Vídeo acima de 80MB' });
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  }),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado (campo "video")' });
+      const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+      if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+      const saved = productVideoStore.save(product.id, req.file.buffer, req.file.mimetype);
+      await prisma.product.update({ where: { id: product.id }, data: { videoUrl: saved.url } });
+      res.json({ ok: true, productId: product.id, videoUrl: saved.url, mb: Math.round((saved.bytes / 1048576) * 10) / 10 });
+    } catch (err) {
+      console.error('[product-images/video] erro:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// Remove o vídeo do produto
+router.delete('/video/:productId', async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+    productVideoStore.remove(product.id);
+    await prisma.product.update({ where: { id: product.id }, data: { videoUrl: null } });
+    res.json({ ok: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
