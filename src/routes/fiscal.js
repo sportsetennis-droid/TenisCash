@@ -66,15 +66,14 @@ async function emitNfceFromSaleHandler(req, res) {
 
     // Cartão (crédito 03 / débito 04): regras de conformidade SEFAZ-PB.
     const isCardPay = paymentMethod === '03' || paymentMethod === '04';
-    if (isCardPay) {
-      // EXIGE o código de autorização do comprovante — sem ele a NFCe sairia com
-      // placeholder '000000'. Bloqueia aqui em vez de emitir nota inválida.
-      if (!cardAuthCode || String(cardAuthCode).trim() === '' || String(cardAuthCode).trim() === '000000') {
-        return res.status(400).json({ error: 'Cartão exige código de autorização do comprovante (digite o Auth/NSU do recibo da maquininha)' });
-      }
-      // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas).
-      // Sem isso cai em CNPJ zerado no detPag. CNPJ PAGSEGURO 08561701000101.
-      if (!acquirerKey) acquirerKey = 'PAGSEGURO';
+    // Auth/NSU do comprovante é OPCIONAL. Em maquininha NÃO integrada (tpIntegra=2) o
+    // cAut é opcional no padrão NFC-e — se o vendedor digitar, entra na nota; se não,
+    // o cupom emite sem cAut (buildDetPag OMITE o campo, nunca manda o placeholder
+    // '000000' inválido). Assim a venda NUNCA trava por falta do código digitado.
+    const _auth = (cardAuthCode && String(cardAuthCode).trim() !== '000000') ? String(cardAuthCode).trim() : null;
+    if (isCardPay && !acquirerKey) {
+      // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas). CNPJ 08561701000101.
+      acquirerKey = 'PAGSEGURO';
     }
 
     const sale = await prisma.sale.findUnique({
@@ -125,8 +124,8 @@ async function emitNfceFromSaleHandler(req, res) {
     }
 
     // NSU ÚNICO: um código de comprovante (cartão/PIX) só pode gerar UM cupom (1 transação = 1 nota).
-    if (cardAuthCode && String(cardAuthCode).trim() && String(cardAuthCode).trim() !== '000000') {
-      const _nsu = String(cardAuthCode).trim();
+    if (_auth) {
+      const _nsu = _auth;
       const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, saleId: { not: sale.id } } });
       if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number + '. Cada transação de cartão/PIX gera UM cupom — passe de novo na maquininha pra um código novo.' });
     }
@@ -158,7 +157,7 @@ async function emitNfceFromSaleHandler(req, res) {
       valor: sale.totalAmount,
       acquirerKey,
       tBand: cardBrand,
-      cAut: cardAuthCode,
+      cAut: _auth || undefined,
       tpIntegra: tpIntegra || 2,
     };
 
@@ -181,7 +180,7 @@ async function emitNfceFromSaleHandler(req, res) {
         paymentMethod: tPagMap,
         paymentBrand: cardBrand || null,
         paymentAcquirer: acquirerKey || null,
-        paymentAuthCode: cardAuthCode || null,
+        paymentAuthCode: _auth,
         paymentTpIntegra: tpIntegra || null,
         recipientCnpjCpf: _docCliOk ? _docCli : null,
         recipientName: _docCliOk && customerName ? String(customerName).slice(0, 60) : null,
@@ -364,15 +363,13 @@ router.post('/troca', async (req, res) => {
       const dp = diffPayment || {};
       if (!dp.tPag) return res.status(400).json({ error: 'Diferença de ' + diff.toFixed(2) + ' — informe a forma de pagamento' });
       const isCard = ['03', '04', '17'].includes(dp.tPag);
-      if (['03', '04'].includes(dp.tPag) && (!dp.cardAuthCode || String(dp.cardAuthCode).trim() === '' || String(dp.cardAuthCode).trim() === '000000')) {
-        return res.status(400).json({ error: 'Cartão exige o código de autorização (Auth/NSU) do comprovante' });
+      // Auth/NSU opcional (igual ao cupom normal): se vier entra na nota, senão emite sem cAut.
+      const _dpAuth = (dp.cardAuthCode && String(dp.cardAuthCode).trim() !== '000000') ? String(dp.cardAuthCode).trim() : null;
+      if (_dpAuth) {
+        const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _dpAuth, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
+        if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _dpAuth + ' já foi usado no cupom #' + _nsuDup.number });
       }
-      if (dp.cardAuthCode && String(dp.cardAuthCode).trim() && String(dp.cardAuthCode).trim() !== '000000') {
-        const _nsu = String(dp.cardAuthCode).trim();
-        const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _nsu, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
-        if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _nsu + ' já foi usado no cupom #' + _nsuDup.number });
-      }
-      payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: dp.cardAuthCode, acquirerKey: isCard ? (dp.acquirerKey || 'PAGSEGURO') : dp.acquirerKey, tpIntegra: 2 });
+      payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: _dpAuth || undefined, acquirerKey: isCard ? (dp.acquirerKey || 'PAGSEGURO') : dp.acquirerKey, tpIntegra: 2 });
     }
 
     const agentClient = require('../services/fiscalAgentClient');

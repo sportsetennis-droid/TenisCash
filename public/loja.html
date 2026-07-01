@@ -1267,14 +1267,9 @@ async function emitNfceFromSale() {
     };
     if (method === 'credit_card' || method === 'debit_card') {
       const auth = document.getElementById('sellCardAuthCode').value.trim();
-      if (!auth || auth === '000000') {
-        alert('Cartão exige o código de autorização do comprovante. Digite o Auth/NSU que veio no recibo da maquininha antes de emitir.');
-        document.getElementById('sellCardAuthCode').focus();
-        btn.disabled = false; btn.textContent = '📄 EMITIR CUPOM NA SEFAZ'; return;
-      }
-      payload.acquirerKey = document.getElementById('sellCardAcquirer').value;
+      payload.acquirerKey = document.getElementById('sellCardAcquirer').value || 'PAGSEGURO';
       payload.cardBrand = document.getElementById('sellCardBrand').value;
-      payload.cardAuthCode = auth;
+      if (auth && auth !== '000000') payload.cardAuthCode = auth; // opcional: sem o código emite sem cAut
     }
     const r = await api('/api/admin/fiscal/emit-nfce-from-sale', { method: 'POST', body: JSON.stringify(payload) });
     if (r.ok && r.accessKey) {
@@ -1705,8 +1700,8 @@ async function emitSaleNfce(saleId, paymentMethod) {
   const payload = { saleId, paymentMethod: TPAG[paymentMethod] || '99' };
   if (['credit_card', 'debit_card', 'pix'].includes(paymentMethod)) {
     const auth = (document.getElementById('saleAuthCode')?.value || '').trim();
-    if (!auth || auth === '000000') { alert('Digite o codigo do comprovante (Auth/NSU) da maquininha.'); return; }
-    payload.cardAuthCode = auth; payload.acquirerKey = 'PAGSEGURO'; payload.tpIntegra = 2;
+    payload.acquirerKey = 'PAGSEGURO'; payload.tpIntegra = 2;
+    if (auth && auth !== '000000') payload.cardAuthCode = auth; // Auth/NSU opcional
   }
   // SEFAZ-PB: venda >= R$500 exige CPF/CNPJ do cliente na nota
   const _cpf = (document.getElementById('saleCpfNota')?.value || '').replace(/\D/g, '');
@@ -1914,8 +1909,7 @@ async function emitTroca() {
   const t = _trocaTotais();
   if (t.diff > 0) {
     const auth = (document.getElementById('trocaAuthCode')?.value || _troca.pay.cardAuthCode || '').trim();
-    _troca.pay.cardAuthCode = auth;
-    if (['03', '04'].includes(_troca.pay.tPag) && (!auth || auth === '000000')) { alert('Cartão exige o código (Auth/NSU) do comprovante da maquininha.'); return; }
+    _troca.pay.cardAuthCode = (auth && auth !== '000000') ? auth : ''; // Auth/NSU opcional: emite sem cAut se não tiver
   }
   // SEFAZ-PB: cupom novo >= R$500 exige CPF/CNPJ do cliente
   const _cpfTroca = ((document.getElementById('trocaCpfNota')?.value || _troca.cpf || '')).replace(/\D/g, '');
@@ -2359,15 +2353,13 @@ async function finalizeSale() {
   const needsFiscal = isCard || isPix; // cartão E PIX: exige o código do comprovante da maquininha pra emitir o cupom
   let cardData = {};
   if (needsFiscal) {
-    const acquirer = document.getElementById('sellCardAcquirer').value;
+    // Auth/NSU do comprovante é OPCIONAL: se o vendedor tiver, vai na nota (cAut); se não
+    // tiver, o cupom emite sem ele (maquininha não integrada, tpIntegra=2 — padrão SEFAZ).
+    // A venda NUNCA trava por falta do código digitado.
+    const acquirer = document.getElementById('sellCardAcquirer').value || 'PAGSEGURO';
     const auth = document.getElementById('sellCardAuthCode').value.trim();
-    if (!acquirer) { alert('Selecione a adquirente (a maquininha usada).'); document.getElementById('sellCardAcquirer').focus(); return; }
-    if (!auth || auth === '000000') {
-      alert((isPix ? 'PIX' : 'Cartão') + ': passe na maquininha, pegue o código do comprovante (Auth / NSU / ID) e digite aqui. Sem o código a venda não finaliza — o cupom fiscal precisa dele.');
-      document.getElementById('sellCardAuthCode').focus();
-      return;
-    }
-    cardData = { acquirerKey: acquirer, cardAuthCode: auth, tpIntegra: 2 };
+    cardData = { acquirerKey: acquirer, tpIntegra: 2 };
+    if (auth && auth !== '000000') cardData.cardAuthCode = auth;
     if (isCard) cardData.cardBrand = document.getElementById('sellCardBrand').value;
   }
   // SEFAZ-PB: venda >= R$500 exige CPF/CNPJ do cliente na nota (senão a SEFAZ rejeita o cupom)
