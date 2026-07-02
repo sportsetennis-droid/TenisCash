@@ -72,7 +72,7 @@ async function nuvemshopApi(connection, method, path, body = null) {
   }
   const data = res.status === 204 ? null : await res.json();
   if (!res.ok) {
-    throw new Error('[Nuvemshop ' + res.status + '] ' + (data?.message || JSON.stringify(data)));
+    throw new Error('[Nuvemshop ' + res.status + '] ' + JSON.stringify(data));
   }
   return data;
 }

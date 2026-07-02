@@ -971,7 +971,7 @@ let _nsBrandCache = null;
 
 async function loadNsCategories(connection) {
   if (_nsCategoryCache) return _nsCategoryCache;
-  const cats = await ns.fetchAllPages(connection, '/categories', { perPage: 100, max: 500 });
+  const cats = await ns.fetchAllPages(connection, '/categories', { perPage: 100, max: 3000 });
   _nsCategoryCache = cats.map((c) => ({
     id: c.id,
     name: (typeof c.name === 'object' ? c.name.pt : c.name) || '',
@@ -1086,7 +1086,7 @@ async function resolveChainAgainstTree(connection, names) {
     const next = wanted[i + 1];
     if (next && findCategoryInLevel(cats, next, parentId)) continue; // pula nível ausente (gênero)
     const createdId = await findOrCreateCategoryWithParent(connection, wanted[i], parentId);
-    if (!createdId) break; // falha de API — não deixa o resto da cadeia casar na raiz errada
+    if (!createdId) return []; // falha de API — retorna vazio em vez de IDs parciais que NS rejeita com 422
     ids.push(createdId); parentId = createdId;
   }
   return ids;
@@ -1129,17 +1129,39 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
     return v;
   });
 
-  // Coleta TODAS as imagens disponíveis
+  // Coleta TODAS as imagens disponíveis. data:URL (base64) → { attachment } (Nuvemshop
+  // rejeita base64 no campo src com 422); URL http(s) → { src }.
   const allImages = [];
-  if (localProduct.imageUrl) allImages.push({ src: localProduct.imageUrl });
+  const seenImg = new Set();
+  const toImgBody = (u) => {
+    const m = /^data:([^;]+);base64,(.*)$/s.exec(u);
+    if (m) {
+      const ext = (m[1].split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+      return { attachment: m[2], filename: `img-${seenImg.size}.${ext}` };
+    }
+    return { src: u };
+  };
+  // Nuvemshop rejeita ("src not a valid url") URLs de crawler/placeholder (ex:
+  // lookaside.instagram.com/...crawler/?media_id=). Só aceita data:URI (→attachment)
+  // ou URL http(s) limpa de imagem. URL-lixo é PULADA (produto sobe com as válidas).
+  const isHttpImg = (u) => /^https?:\/\//i.test(u) && !/lookaside\.instagram\.com|\/crawler\/|google_widget|\/seo\//i.test(u);
+  // Espaços não-codificados causam "not a valid url" no NS — % encode antes de enviar.
+  const sanitizeUrl = (u) => (u.includes(' ') ? u.replace(/ /g, '%20') : u);
+  const addImg = (u) => {
+    if (!u || typeof u !== 'string') return;
+    const norm = sanitizeUrl(u);
+    if (seenImg.has(norm)) return;
+    const isData = /^data:[^;]+;base64,/.test(norm);
+    if (!isData && !isHttpImg(norm)) return;
+    seenImg.add(norm); allImages.push(toImgBody(norm));
+  };
+  if (localProduct.imageUrl) addImg(localProduct.imageUrl);
   if (localProduct.imageUrls) {
     try {
       const arr = typeof localProduct.imageUrls === 'string'
         ? JSON.parse(localProduct.imageUrls)
         : localProduct.imageUrls;
-      if (Array.isArray(arr)) {
-        arr.forEach((u) => { if (u && !allImages.find((i) => i.src === u)) allImages.push({ src: u }); });
-      }
+      if (Array.isArray(arr)) arr.forEach(addImg);
     } catch (_) {}
   }
 
@@ -1421,7 +1443,9 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
       return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext;
     } catch (_) { return null; }
   })();
-  const aiMapping = aiCtx?.nuvemshopMapping;
+  // Só usa nuvemshopMapping se o produto JÁ tem mapping nesta loja.
+  // IDs de loja anterior (ex: 6578901) não existem na nova loja e causam 422.
+  const aiMapping = existingMapping ? aiCtx?.nuvemshopMapping : null;
   if (aiMapping && Array.isArray(aiMapping.categoryIds) && aiMapping.categoryIds.length) {
     categoryIds.push(...aiMapping.categoryIds);
     if (Array.isArray(aiMapping.tags)) aiTags = aiMapping.tags;
@@ -1518,7 +1542,19 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
       modality: aiCtx?.classification?.modality, tier: aiCtx?.classification?.tier,
       mode: 'create',
     });
-    nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
+    try {
+      nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
+    } catch (e) {
+      // Se o 422 é exclusivamente sobre imagens (URL inválida / CDN inacessível do NS),
+      // retentar SEM imagens — o produto entra na loja e recebe foto depois.
+      if (/images\[\d+\]|Remote image not found|Remote image exceeds max/i.test(e.message)) {
+        console.log('[ns push] retry sem imagens (erro de imagem):', localProductId, e.message.slice(0, 80));
+        const payloadNoImg = { ...payload, images: [] };
+        nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payloadNoImg);
+      } else {
+        throw e;
+      }
+    }
     // Grava o mapping com COMPENSAÇÃO: se outro processo ganhou a corrida entre o
     // re-check e o POST (gravou mapping com OUTRO NS#), o produto que ESTE push criou
     // é duplicata → deleta na loja e usa o do vencedor. (O upsert era idempotente pro
