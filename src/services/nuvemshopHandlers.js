@@ -1546,8 +1546,11 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
       nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payload);
     } catch (e) {
       // Se o 422 é exclusivamente sobre imagens (URL inválida / CDN inacessível do NS),
+      // OU se o NS retornou 500 com imagens no payload (URL truncada/inacessível causa 500),
       // retentar SEM imagens — o produto entra na loja e recebe foto depois.
-      if (/images\[\d+\]|Remote image not found|Remote image exceeds max/i.test(e.message)) {
+      const isImageErr = /images\[\d+\]|Remote image not found|Remote image exceeds max/i.test(e.message);
+      const is500WithImages = /Nuvemshop 500/i.test(e.message) && payload.images && payload.images.length > 0;
+      if (isImageErr || is500WithImages) {
         console.log('[ns push] retry sem imagens (erro de imagem):', localProductId, e.message.slice(0, 80));
         const payloadNoImg = { ...payload, images: [] };
         nsProduct = await ns.nuvemshopApi(connection, 'POST', '/products', payloadNoImg);
