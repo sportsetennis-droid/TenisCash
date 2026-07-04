@@ -4703,3 +4703,69 @@ model UserSticker {
   @@index([collectionId])
   @@index([stickerId])
 }
+
+// ============================================================
+// SISTEMA PVM — Padrão, Validação e Monitoramento
+// Ciclo: definir padrão → testar pequeno → medir → corrigir →
+// padronizar → repetir, por área da loja (atendimento, ambiente,
+// produto, preço, vitrine, comunicação, pós-venda, experiência).
+// storeId/createdBy soltos DE PROPÓSITO (sem FK em Store/User) —
+// prisma db push 100% aditivo, zero risco nas tabelas existentes.
+// ============================================================
+
+model PvmFicha {
+  id            String    @id @default(cuid())
+  area          String // atendimento|ambiente|produto|preco|vitrine|comunicacao|posvenda|experiencia|outro
+  problema      String
+  hipotese      String
+  padraoNovo    String
+  storeId       String? // FK lógica → Store.id (vazio = empresa toda)
+  storeCode     String?
+  testeInicio   DateTime?
+  testeFim      DateTime?
+  indicadores   Json? // [{nome, meta, resultado}]
+  metaMinima    String?
+  resultado     String?
+  decisao       String? // manter|melhorar|cortar
+  status        String    @default("planejada") // planejada|testando|concluida
+  createdBy     String? // FK lógica → User.id
+  createdByName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([area])
+  @@index([status])
+  @@index([storeId])
+}
+
+model PvmDiario {
+  id                   String   @id @default(cuid())
+  date                 DateTime
+  storeId              String?
+  storeCode            String?
+  vendas               Float?
+  clientesAprox        Int?
+  produtoMaisProcurado String?
+  principalReclamacao  String?
+  motivoNaoCompra      String?
+  algoQueFuncionou     String?
+  createdBy            String?
+  createdByName        String?
+  createdAt            DateTime @default(now())
+
+  @@index([date])
+  @@index([storeId])
+}
+
+model PvmPadrao {
+  id        String   @id @default(cuid())
+  categoria String // atendimento|visual|exposicao|som_ambiente|whatsapp|posvenda|outro
+  titulo    String
+  descricao String
+  fichaId   String? // FK lógica → PvmFicha.id (a ficha que originou o padrão)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoria])
+}

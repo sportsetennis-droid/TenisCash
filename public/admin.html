@@ -375,6 +375,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('sellers',this)">Vendedores</button>
     <button class="tab" onclick="switchTab('clockin',this)">Ponto Digital</button>
     <button class="tab" onclick="switchTab('agenda',this)">📅 Agenda</button>
+    <button class="tab" onclick="switchTab('pvm',this)">🎯 PVM</button>
     <button class="tab" onclick="switchTab('leads',this)">🔥 Leads</button>
     <button class="tab" onclick="switchTab('messages',this)">Mensagens</button>
     <button class="tab" onclick="switchTab('catalog',this)">Catálogo</button>
@@ -466,6 +467,18 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-title">Ponto Digital</div>
         <div class="hub-card-desc">Horas trabalhadas + GPS por vendedor</div>
         <span class="hub-card-badge">HR</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('agenda')">
+        <div class="hub-card-icon">📅</div>
+        <div class="hub-card-title">Agenda</div>
+        <div class="hub-card-desc">Escala vendedor × loja × dia, cruzada com ponto e vendas</div>
+        <span class="hub-card-badge">EQUIPE</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('pvm')">
+        <div class="hub-card-icon">🎯</div>
+        <div class="hub-card-title">Sistema PVM</div>
+        <div class="hub-card-desc">Padrão, Validação e Monitoramento — testa pequeno, mede, padroniza</div>
+        <span class="hub-card-badge">NOVO</span>
       </button>
     </div>
 
@@ -631,6 +644,18 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-title">Financeiro</div>
         <div class="hub-card-desc">Contas a pagar e a receber</div>
         <span class="hub-card-badge">CAIXA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('financeiro')">
+        <div class="hub-card-icon">💰</div>
+        <div class="hub-card-title">Raio-X do dia</div>
+        <div class="hub-card-desc">Lucro ou prejuízo do dia: vendas − custo − folha − fixas</div>
+        <span class="hub-card-badge">CAIXA</span>
+      </button>
+      <button class="hub-card" onclick="switchTabByName('competitivo')">
+        <div class="hub-card-icon">📊</div>
+        <div class="hub-card-title">Monitor Competitivo</div>
+        <div class="hub-card-desc">Nossos tênis mais bipados × preço da concorrência</div>
+        <span class="hub-card-badge">MERCADO</span>
       </button>
       <button class="hub-card" onclick="window.open('/app.html','_blank')">
         <div class="hub-card-icon">💬</div>
@@ -2381,6 +2406,82 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button onclick="agAddActivity()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Registrar</button>
   </div>
   <div id="ag-activities"></div>
+</div>
+
+<div class="section" id="tab-pvm" style="display:none">
+  <h2 style="margin:0 0 2px;">🎯 Sistema PVM — Padrão, Validação e Monitoramento</h2>
+  <p style="color:#666;margin:0 0 14px;font-size:12px;max-width:820px;">Ciclo: definir padrão → testar pequeno → medir → corrigir → padronizar → repetir. Não mexa em tudo ao mesmo tempo — teste UMA área por vez (atendimento, ambiente, produto, preço, vitrine, comunicação, pós-venda, experiência). O que não é acompanhado vira opinião; o que é medido vira gestão.</p>
+
+  <div id="pvm-resumo" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
+
+  <!-- sub-abas internas -->
+  <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #eee;">
+    <button class="pvm-subtab active" data-sub="fichas" onclick="pvmSwitchSub('fichas',this)" style="background:none;border:0;border-bottom:3px solid #E5571E;color:#E5571E;font-weight:800;padding:8px 14px;cursor:pointer;">Fichas PVM</button>
+    <button class="pvm-subtab" data-sub="diario" onclick="pvmSwitchSub('diario',this)" style="background:none;border:0;border-bottom:3px solid transparent;color:#666;font-weight:800;padding:8px 14px;cursor:pointer;">Rotina diária</button>
+    <button class="pvm-subtab" data-sub="manual" onclick="pvmSwitchSub('manual',this)" style="background:none;border:0;border-bottom:3px solid transparent;color:#666;font-weight:800;padding:8px 14px;cursor:pointer;">Manual de Padrões</button>
+  </div>
+
+  <!-- ===== FICHAS ===== -->
+  <div id="pvm-sub-fichas">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:16px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Área<br><select id="pvm-f-area-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Todas</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="pvm-f-store-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Todas</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Status<br><select id="pvm-f-status-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:140px;"><option value="">Todos</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Decisão<br><select id="pvm-f-decisao-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:140px;"><option value="">Todas</option></select></label>
+      <button onclick="pvmLoadFichas()" style="height:36px;background:#E5571E;color:#fff;border:0;border-radius:8px;padding:0 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
+    </div>
+
+    <h3 style="margin:0 0 4px;">📋 Nova ficha PVM</h3>
+    <p style="color:#666;font-size:12px;margin:0 0 10px;">Área, problema observado, hipótese, o padrão novo a testar, indicadores e meta mínima. Sem isso é achismo.</p>
+    <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Área<br><select id="pvm-f-area" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="pvm-f-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Empresa toda</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Teste início<br><input type="date" id="pvm-f-inicio" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Teste fim<br><input type="date" id="pvm-f-fim" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 260px;">Problema observado<br><input id="pvm-f-problema" placeholder="ex: cada vendedor atende de um jeito" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 260px;">Hipótese<br><input id="pvm-f-hipotese" placeholder="ex: roteiro de 5 passos melhora conversão" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 260px;">Padrão novo (a regra a testar)<br><input id="pvm-f-padrao" placeholder="ex: todo atendimento segue 5 passos" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 260px;">Meta mínima<br><input id="pvm-f-meta" placeholder="ex: +10% conversão" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+
+      <div style="width:100%;">
+        <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:4px;">Indicadores (nome + meta + resultado)</div>
+        <div id="pvm-f-indicadores"></div>
+        <button type="button" onclick="pvmAddIndicadorRow()" style="margin-top:6px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ indicador</button>
+      </div>
+
+      <div style="width:100%;text-align:right;">
+        <button onclick="pvmAddFicha()" style="height:40px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 18px;font-weight:800;cursor:pointer;">+ Criar ficha PVM</button>
+      </div>
+    </div>
+
+    <div id="pvm-fichas-list"></div>
+  </div>
+
+  <!-- ===== DIÁRIO ===== -->
+  <div id="pvm-sub-diario" style="display:none">
+    <p style="color:#666;font-size:12px;margin:0 0 10px;">Rotina de 10 minutos, todo fim de dia: vendas, clientes aproximados, produto mais procurado, principal reclamação, motivo de não-compra, algo que funcionou.</p>
+    <div style="background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Data<br><input type="date" id="pvm-d-date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="pvm-d-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Empresa toda</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Vendas (R$)<br><input type="number" step="0.01" id="pvm-d-vendas" style="width:130px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Clientes (aprox.)<br><input type="number" id="pvm-d-clientes" style="width:110px;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 200px;">Produto mais procurado<br><input id="pvm-d-produto" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 200px;">Principal reclamação<br><input id="pvm-d-reclamacao" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 200px;">Motivo de não-compra<br><input id="pvm-d-naocompra" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1 1 200px;">Algo que funcionou<br><input id="pvm-d-funcionou" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <div style="width:100%;text-align:right;"><button onclick="pvmAddDiario()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">+ Registrar dia</button></div>
+    </div>
+    <div id="pvm-diario-list"></div>
+  </div>
+
+  <!-- ===== MANUAL DE PADRÕES ===== -->
+  <div id="pvm-sub-manual" style="display:none">
+    <p style="color:#666;font-size:12px;margin:0 0 10px;">Tudo que foi testado e validado (decisão = manter) vira aqui regra oficial. A loja deixa de depender só da cabeça do dono.</p>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Categoria<br><select id="pvm-p-cat-filter" onchange="pvmLoadPadroes()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:180px;"><option value="">Todas</option></select></label>
+    </div>
+    <div id="pvm-padroes-list"></div>
+  </div>
 </div>
 
 <div class="section" id="tab-financeiro" style="display:none">
@@ -13866,6 +13967,255 @@ async function agDelAct(id){ if(!confirm('Remover esta atividade?'))return; try{
     const el = document.getElementById('tab-agenda');
     if (el) el.style.display = name === 'agenda' ? 'block' : 'none';
     if (name === 'agenda') loadAgenda();
+  };
+})();
+
+// ===== Sistema PVM — Padrão, Validação e Monitoramento =====
+const PVM_AREA_LABEL = { atendimento:'🗣️ Atendimento', ambiente:'🏬 Ambiente', produto:'👟 Produto', preco:'💲 Preço', vitrine:'🖼️ Vitrine', comunicacao:'📣 Comunicação', posvenda:'🤝 Pós-venda', experiencia:'✨ Experiência', outro:'📌 Outro' };
+const PVM_STATUS_LABEL = { planejada:'Planejada', testando:'Testando', concluida:'Concluída' };
+const PVM_DECISAO_LABEL = { manter:'✅ Manter', melhorar:'🔧 Melhorar', cortar:'✂️ Cortar' };
+const PVM_CAT_LABEL = { atendimento:'Atendimento', visual:'Visual', exposicao:'Exposição', som_ambiente:'Som e ambiente', whatsapp:'WhatsApp', posvenda:'Pós-venda', outro:'Outro' };
+let PVM_META = null;
+let PVM_INDICADOR_ROWS = 0;
+
+function pvmH(){ return { 'Authorization':'Bearer '+(localStorage.getItem('tc_admin_token')||''), 'Content-Type':'application/json' }; }
+function pvmEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function pvmBRL(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function pvmTodayYmd(){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); return f.toISOString().slice(0,10); }
+
+function pvmSwitchSub(name, btn){
+  ['fichas','diario','manual'].forEach(n=>{
+    const el=document.getElementById('pvm-sub-'+n); if(el) el.style.display = n===name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.pvm-subtab').forEach(b=>{ b.style.borderBottomColor = 'transparent'; b.style.color='#666'; });
+  if(btn){ btn.style.borderBottomColor='#E5571E'; btn.style.color='#E5571E'; }
+  if(name==='diario') pvmLoadDiario();
+  if(name==='manual') pvmLoadPadroes();
+}
+
+async function initPvmTab(){
+  await pvmLoadMeta();
+  const dEl=document.getElementById('pvm-d-date'); if(dEl && !dEl.value) dEl.value=pvmTodayYmd();
+  await Promise.all([pvmLoadResumo(), pvmLoadFichas()]);
+}
+
+async function pvmLoadMeta(){
+  const r=await fetch('/api/admin/pvm/meta',{headers:pvmH()});
+  const j=await r.json(); if(!r.ok) throw new Error(j.error||'falha ao carregar meta');
+  PVM_META=j;
+  const storeOpts = (j.stores||[]).map(s=>'<option value="'+s.id+'">'+pvmEsc(s.code)+' — '+pvmEsc(s.name)+'</option>').join('');
+  const areaOpts = (j.areas||[]).map(a=>'<option value="'+a+'">'+pvmEsc(PVM_AREA_LABEL[a]||a)+'</option>').join('');
+  const statusOpts = (j.statuses||[]).map(s=>'<option value="'+s+'">'+pvmEsc(PVM_STATUS_LABEL[s]||s)+'</option>').join('');
+  const decisaoOpts = (j.decisoes||[]).map(d=>'<option value="'+d+'">'+pvmEsc(PVM_DECISAO_LABEL[d]||d)+'</option>').join('');
+  const catOpts = (j.categoriasPadrao||[]).map(c=>'<option value="'+c+'">'+pvmEsc(PVM_CAT_LABEL[c]||c)+'</option>').join('');
+  const set=(id,html,prefix)=>{ const e=document.getElementById(id); if(e) e.innerHTML=(prefix||'')+html; };
+  set('pvm-f-area-filter', areaOpts, '<option value="">Todas</option>');
+  set('pvm-f-store-filter', storeOpts, '<option value="">Todas</option>');
+  set('pvm-f-status-filter', statusOpts, '<option value="">Todos</option>');
+  set('pvm-f-decisao-filter', decisaoOpts, '<option value="">Todas</option>');
+  set('pvm-f-area', areaOpts);
+  set('pvm-f-store', storeOpts, '<option value="">Empresa toda</option>');
+  set('pvm-d-store', storeOpts, '<option value="">Empresa toda</option>');
+  set('pvm-p-cat-filter', catOpts, '<option value="">Todas</option>');
+}
+
+async function pvmLoadResumo(){
+  const box=document.getElementById('pvm-resumo'); if(!box) return;
+  try{
+    const r=await fetch('/api/admin/pvm/resumo',{headers:pvmH()});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error||'falha');
+    const card=(label,val,color)=>'<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:10px 16px;min-width:120px;"><div style="font-size:11px;color:#999;font-weight:700;">'+label+'</div><div style="font-size:20px;font-weight:800;color:'+(color||'#333')+';">'+val+'</div></div>';
+    const byStatus={}; (j.porStatus||[]).forEach(x=>byStatus[x.status]=x._count._all);
+    const byDecisao={}; (j.porDecisao||[]).forEach(x=>byDecisao[x.decisao]=x._count._all);
+    let html='';
+    html+=card('PLANEJADAS', byStatus.planejada||0, '#666');
+    html+=card('TESTANDO', byStatus.testando||0, '#E5571E');
+    html+=card('CONCLUÍDAS', byStatus.concluida||0, '#0a7d3b');
+    html+=card('✅ MANTIDAS', byDecisao.manter||0, '#0a7d3b');
+    html+=card('🔧 A MELHORAR', byDecisao.melhorar||0, '#b8860b');
+    html+=card('✂️ CORTADAS', byDecisao.cortar||0, '#c0271f');
+    html+=card('DIÁRIO (7 dias)', j.diarioSemana||0, '#333');
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;">Erro: '+pvmEsc(e.message)+'</div>'; }
+}
+
+function pvmAddIndicadorRow(nome,meta,resultado){
+  const wrap=document.getElementById('pvm-f-indicadores'); if(!wrap) return;
+  const idx=PVM_INDICADOR_ROWS++;
+  const row=document.createElement('div');
+  row.id='pvm-ind-row-'+idx;
+  row.style.cssText='display:flex;gap:6px;margin-bottom:6px;';
+  row.innerHTML='<input placeholder="indicador (ex: conversão)" value="'+pvmEsc(nome||'')+'" style="flex:2;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 8px;font-size:13px;" data-f="nome">'
+    +'<input placeholder="meta (ex: +10%)" value="'+pvmEsc(meta||'')+'" style="flex:1;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 8px;font-size:13px;" data-f="meta">'
+    +'<input placeholder="resultado" value="'+pvmEsc(resultado||'')+'" style="flex:1;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 8px;font-size:13px;" data-f="resultado">'
+    +'<button type="button" onclick="document.getElementById(\'pvm-ind-row-'+idx+'\').remove()" style="background:none;border:0;color:#c0271f;cursor:pointer;font-weight:700;">✕</button>';
+  wrap.appendChild(row);
+}
+
+function pvmReadIndicadores(){
+  const wrap=document.getElementById('pvm-f-indicadores'); if(!wrap) return [];
+  return Array.from(wrap.children).map(row=>{
+    const get=(f)=>{ const el=row.querySelector('[data-f="'+f+'"]'); return el?el.value.trim():''; };
+    return { nome:get('nome'), meta:get('meta'), resultado:get('resultado') };
+  }).filter(x=>x.nome);
+}
+
+async function pvmLoadFichas(){
+  const box=document.getElementById('pvm-fichas-list'); if(!box) return;
+  box.innerHTML='<div style="color:#999;padding:10px;">Carregando…</div>';
+  try{
+    const p=new URLSearchParams();
+    const area=(document.getElementById('pvm-f-area-filter')||{}).value; if(area) p.set('area',area);
+    const storeId=(document.getElementById('pvm-f-store-filter')||{}).value; if(storeId) p.set('storeId',storeId);
+    const status=(document.getElementById('pvm-f-status-filter')||{}).value; if(status) p.set('status',status);
+    const decisao=(document.getElementById('pvm-f-decisao-filter')||{}).value; if(decisao) p.set('decisao',decisao);
+    const r=await fetch('/api/admin/pvm/fichas?'+p.toString(),{headers:pvmH()});
+    const j=await r.json(); const fichas=j.fichas||[];
+    if(!fichas.length){ box.innerHTML='<div style="color:#999;padding:12px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhuma ficha PVM ainda. Crie a primeira acima — teste UMA área por vez.</div>'; return; }
+    let html='';
+    fichas.forEach(f=>{
+      const inds=Array.isArray(f.indicadores)?f.indicadores:[];
+      const indHtml=inds.length ? '<div style="font-size:12px;color:#555;margin-top:6px;">'+inds.map(i=>'<span style="display:inline-block;background:#f2f2f2;border-radius:6px;padding:2px 8px;margin:2px 4px 0 0;">'+pvmEsc(i.nome)+(i.meta?' · meta '+pvmEsc(i.meta):'')+(i.resultado?' · <b>'+pvmEsc(i.resultado)+'</b>':'')+'</span>').join('')+'</div>' : '';
+      const statusColor = f.status==='concluida' ? '#0a7d3b' : (f.status==='testando' ? '#E5571E' : '#999');
+      const decisaoBadge = f.decisao ? '<span style="margin-left:8px;font-weight:800;">'+pvmEsc(PVM_DECISAO_LABEL[f.decisao]||f.decisao)+'</span>' : '';
+      html+='<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:10px;">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">'
+        +'<div><span style="font-weight:800;">'+pvmEsc(PVM_AREA_LABEL[f.area]||f.area)+'</span>'+(f.storeCode?' · <span style="color:#777;">'+pvmEsc(f.storeCode)+'</span>':' · <span style="color:#777;">empresa toda</span>')
+        +' · <span style="color:'+statusColor+';font-weight:700;">'+pvmEsc(PVM_STATUS_LABEL[f.status]||f.status)+'</span>'+decisaoBadge+'</div>'
+        +'<button onclick="pvmDelFicha(\''+f.id+'\')" style="background:none;border:0;color:#c0271f;cursor:pointer;font-weight:700;">✕ remover</button>'
+        +'</div>'
+        +'<div style="font-size:13px;margin-top:8px;"><b>Problema:</b> '+pvmEsc(f.problema)+'</div>'
+        +'<div style="font-size:13px;"><b>Hipótese:</b> '+pvmEsc(f.hipotese)+'</div>'
+        +'<div style="font-size:13px;"><b>Padrão testado:</b> '+pvmEsc(f.padraoNovo)+'</div>'
+        +(f.metaMinima?'<div style="font-size:13px;"><b>Meta mínima:</b> '+pvmEsc(f.metaMinima)+'</div>':'')
+        +indHtml
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;background:#f7f7f9;border-radius:8px;padding:10px;">'
+        +'<select onchange="pvmSetStatus(\''+f.id+'\',this.value)" style="height:32px;border:1px solid #ddd;border-radius:6px;font-size:12px;">'
+          +['planejada','testando','concluida'].map(s=>'<option value="'+s+'" '+(f.status===s?'selected':'')+'>'+PVM_STATUS_LABEL[s]+'</option>').join('')
+        +'</select>'
+        +'<input placeholder="resultado (o que aconteceu)" value="'+pvmEsc(f.resultado||'')+'" onchange="pvmSetField(\''+f.id+'\',\'resultado\',this.value)" style="flex:1;min-width:180px;height:32px;border:1px solid #ddd;border-radius:6px;padding:0 8px;font-size:12px;">'
+        +'<select onchange="pvmSetField(\''+f.id+'\',\'decisao\',this.value)" style="height:32px;border:1px solid #ddd;border-radius:6px;font-size:12px;">'
+          +'<option value="">decisão…</option>'+['manter','melhorar','cortar'].map(d=>'<option value="'+d+'" '+(f.decisao===d?'selected':'')+'>'+PVM_DECISAO_LABEL[d]+'</option>').join('')
+        +'</select>'
+        +(f.decisao==='manter' ? '<button onclick="pvmPromover(\''+f.id+'\')" style="height:32px;background:#0a7d3b;color:#fff;border:0;border-radius:6px;padding:0 12px;font-weight:700;font-size:12px;cursor:pointer;">📘 Promover a padrão oficial</button>' : '')
+        +'</div>'
+        +'</div>';
+    });
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+pvmEsc(e.message)+'</div>'; }
+}
+
+async function pvmAddFicha(){
+  const area=(document.getElementById('pvm-f-area')||{}).value;
+  const storeId=(document.getElementById('pvm-f-store')||{}).value;
+  const testeInicio=(document.getElementById('pvm-f-inicio')||{}).value;
+  const testeFim=(document.getElementById('pvm-f-fim')||{}).value;
+  const problema=((document.getElementById('pvm-f-problema')||{}).value||'').trim();
+  const hipotese=((document.getElementById('pvm-f-hipotese')||{}).value||'').trim();
+  const padraoNovo=((document.getElementById('pvm-f-padrao')||{}).value||'').trim();
+  const metaMinima=((document.getElementById('pvm-f-meta')||{}).value||'').trim();
+  if(!problema||!hipotese||!padraoNovo){ alert('Preencha problema, hipótese e padrão novo.'); return; }
+  const indicadores=pvmReadIndicadores();
+  try{
+    const r=await fetch('/api/admin/pvm/fichas',{method:'POST',headers:pvmH(),body:JSON.stringify({area,storeId:storeId||null,testeInicio:testeInicio||null,testeFim:testeFim||null,problema,hipotese,padraoNovo,metaMinima,indicadores,status:testeInicio?'testando':'planejada'})});
+    const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; }
+    ['pvm-f-problema','pvm-f-hipotese','pvm-f-padrao','pvm-f-meta','pvm-f-inicio','pvm-f-fim'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    document.getElementById('pvm-f-indicadores').innerHTML=''; PVM_INDICADOR_ROWS=0;
+    await Promise.all([pvmLoadFichas(),pvmLoadResumo()]);
+  }catch(e){ alert('Erro: '+e.message); }
+}
+
+async function pvmSetStatus(id,status){
+  try{ await fetch('/api/admin/pvm/fichas/'+id,{method:'PUT',headers:pvmH(),body:JSON.stringify({status})}); await Promise.all([pvmLoadFichas(),pvmLoadResumo()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function pvmSetField(id,field,value){
+  try{ await fetch('/api/admin/pvm/fichas/'+id,{method:'PUT',headers:pvmH(),body:JSON.stringify({[field]:value})}); await Promise.all([pvmLoadFichas(),pvmLoadResumo()]); }catch(e){ alert('Erro: '+e.message); }
+}
+async function pvmDelFicha(id){ if(!confirm('Remover esta ficha PVM?'))return; try{ await fetch('/api/admin/pvm/fichas/'+id,{method:'DELETE',headers:pvmH()}); await Promise.all([pvmLoadFichas(),pvmLoadResumo()]); }catch(e){ alert('Erro: '+e.message); } }
+async function pvmPromover(id){
+  if(!confirm('Promover esta ficha a padrão oficial no Manual de Padrões?')) return;
+  try{
+    const r=await fetch('/api/admin/pvm/fichas/'+id+'/promover',{method:'POST',headers:pvmH(),body:JSON.stringify({})});
+    const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; }
+    alert('Promovido! Veja em Manual de Padrões.');
+  }catch(e){ alert('Erro: '+e.message); }
+}
+
+async function pvmLoadDiario(){
+  const box=document.getElementById('pvm-diario-list'); if(!box) return;
+  box.innerHTML='<div style="color:#999;padding:10px;">Carregando…</div>';
+  try{
+    const r=await fetch('/api/admin/pvm/diario',{headers:pvmH()});
+    const j=await r.json(); const regs=j.registros||[];
+    if(!regs.length){ box.innerHTML='<div style="color:#999;padding:12px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhum registro diário ainda.</div>'; return; }
+    let html='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px;"><thead><tr style="text-align:left;color:#666;border-bottom:2px solid #eee;"><th style="padding:6px;">Data</th><th style="padding:6px;">Loja</th><th style="padding:6px;">Vendas</th><th style="padding:6px;">Clientes</th><th style="padding:6px;">Mais procurado</th><th style="padding:6px;">Reclamação</th><th style="padding:6px;">Não-compra</th><th style="padding:6px;">Funcionou</th><th></th></tr></thead><tbody>';
+    regs.forEach(r=>{
+      const dt=r.date?String(r.date).slice(0,10).split('-').reverse().join('/'):'';
+      html+='<tr style="border-bottom:1px solid #f2f2f2;"><td style="padding:6px;">'+dt+'</td><td style="padding:6px;">'+pvmEsc(r.storeCode||'—')+'</td><td style="padding:6px;">'+(r.vendas!=null?pvmBRL(r.vendas):'—')+'</td><td style="padding:6px;">'+(r.clientesAprox!=null?r.clientesAprox:'—')+'</td><td style="padding:6px;">'+pvmEsc(r.produtoMaisProcurado||'—')+'</td><td style="padding:6px;">'+pvmEsc(r.principalReclamacao||'—')+'</td><td style="padding:6px;">'+pvmEsc(r.motivoNaoCompra||'—')+'</td><td style="padding:6px;">'+pvmEsc(r.algoQueFuncionou||'—')+'</td><td style="padding:6px;text-align:right;"><button onclick="pvmDelDiario(\''+r.id+'\')" style="background:none;border:0;color:#c0271f;cursor:pointer;">✕</button></td></tr>';
+    });
+    html+='</tbody></table></div>';
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+pvmEsc(e.message)+'</div>'; }
+}
+
+async function pvmAddDiario(){
+  const date=(document.getElementById('pvm-d-date')||{}).value;
+  const storeId=(document.getElementById('pvm-d-store')||{}).value;
+  const vendas=(document.getElementById('pvm-d-vendas')||{}).value;
+  const clientesAprox=(document.getElementById('pvm-d-clientes')||{}).value;
+  const produtoMaisProcurado=(document.getElementById('pvm-d-produto')||{}).value;
+  const principalReclamacao=(document.getElementById('pvm-d-reclamacao')||{}).value;
+  const motivoNaoCompra=(document.getElementById('pvm-d-naocompra')||{}).value;
+  const algoQueFuncionou=(document.getElementById('pvm-d-funcionou')||{}).value;
+  if(!date){ alert('Escolha a data.'); return; }
+  try{
+    const r=await fetch('/api/admin/pvm/diario',{method:'POST',headers:pvmH(),body:JSON.stringify({date,storeId:storeId||null,vendas,clientesAprox,produtoMaisProcurado,principalReclamacao,motivoNaoCompra,algoQueFuncionou})});
+    const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; }
+    ['pvm-d-vendas','pvm-d-clientes','pvm-d-produto','pvm-d-reclamacao','pvm-d-naocompra','pvm-d-funcionou'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    await Promise.all([pvmLoadDiario(),pvmLoadResumo()]);
+  }catch(e){ alert('Erro: '+e.message); }
+}
+async function pvmDelDiario(id){ if(!confirm('Remover este registro?'))return; try{ await fetch('/api/admin/pvm/diario/'+id,{method:'DELETE',headers:pvmH()}); await pvmLoadDiario(); }catch(e){ alert('Erro: '+e.message); } }
+
+async function pvmLoadPadroes(){
+  const box=document.getElementById('pvm-padroes-list'); if(!box) return;
+  box.innerHTML='<div style="color:#999;padding:10px;">Carregando…</div>';
+  try{
+    const p=new URLSearchParams();
+    const cat=(document.getElementById('pvm-p-cat-filter')||{}).value; if(cat) p.set('categoria',cat);
+    const r=await fetch('/api/admin/pvm/padroes?'+p.toString(),{headers:pvmH()});
+    const j=await r.json(); const padroes=j.padroes||[];
+    if(!padroes.length){ box.innerHTML='<div style="color:#999;padding:12px;background:#fafafa;border:1px dashed #ddd;border-radius:10px;">Nenhum padrão oficial ainda. Promova uma ficha PVM com decisão "manter" pra começar o manual.</div>'; return; }
+    let html='';
+    const byCat={};
+    padroes.forEach(p=>{ (byCat[p.categoria]=byCat[p.categoria]||[]).push(p); });
+    Object.keys(byCat).forEach(cat=>{
+      html+='<h4 style="margin:16px 0 6px;">'+pvmEsc(PVM_CAT_LABEL[cat]||cat)+'</h4>';
+      byCat[cat].forEach(p=>{
+        html+='<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:12px;margin-bottom:8px;'+(p.active?'':'opacity:.5;')+'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
+          +'<div style="font-weight:800;">'+pvmEsc(p.titulo)+'</div>'
+          +'<div style="display:flex;gap:6px;">'
+          +'<button onclick="pvmTogglePadrao(\''+p.id+'\','+(!p.active)+')" style="background:none;border:1px solid #ddd;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;">'+(p.active?'desativar':'reativar')+'</button>'
+          +'<button onclick="pvmDelPadrao(\''+p.id+'\')" style="background:none;border:0;color:#c0271f;cursor:pointer;font-weight:700;">✕</button>'
+          +'</div></div>'
+          +'<div style="font-size:13px;color:#555;white-space:pre-wrap;margin-top:4px;">'+pvmEsc(p.descricao)+'</div>'
+          +'</div>';
+      });
+    });
+    box.innerHTML=html;
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+pvmEsc(e.message)+'</div>'; }
+}
+async function pvmTogglePadrao(id,active){ try{ await fetch('/api/admin/pvm/padroes/'+id,{method:'PUT',headers:pvmH(),body:JSON.stringify({active})}); await pvmLoadPadroes(); }catch(e){ alert('Erro: '+e.message); } }
+async function pvmDelPadrao(id){ if(!confirm('Remover este padrão do manual?'))return; try{ await fetch('/api/admin/pvm/padroes/'+id,{method:'DELETE',headers:pvmH()}); await pvmLoadPadroes(); }catch(e){ alert('Erro: '+e.message); } }
+
+(function(){
+  const orig = window.switchTab;
+  window.switchTab = function(name, btn){
+    if (typeof orig === 'function') orig.call(this, name, btn);
+    const el = document.getElementById('tab-pvm');
+    if (el) el.style.display = name === 'pvm' ? 'block' : 'none';
+    if (name === 'pvm') initPvmTab();
   };
 })();
 
