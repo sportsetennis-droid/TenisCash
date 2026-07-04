@@ -1427,6 +1427,30 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
     }
   }
 
+  // ===== REGRA INQUEBRÁVEL — FOTO + DESCRIÇÃO (dono 2026-07-04) =====
+  // A vitrine NÃO recebe produto sem FOTO nem sem DESCRIÇÃO. Faltando qualquer
+  // um dos dois, NÃO sincroniza (nem cria, nem atualiza) — mesma disciplina da
+  // regra das 4 classificações. Produto incompleto é card interno, não vai pra loja.
+  {
+    const _hasImg = (() => {
+      if (product.imageUrl && String(product.imageUrl).trim()) return true;
+      if (product.imageUrls) {
+        try {
+          const arr = typeof product.imageUrls === 'string' ? JSON.parse(product.imageUrls) : product.imageUrls;
+          if (Array.isArray(arr) && arr.some((u) => u && String(u).trim())) return true;
+        } catch (_) { /* imageUrls malformado = sem foto */ }
+      }
+      return false;
+    })();
+    const _desc = product.longDescription || product.shortDescription || '';
+    const _hasDesc = String(_desc).trim().length > 0;
+    if (!_hasImg || !_hasDesc) {
+      const _falta = [!_hasImg && 'foto', !_hasDesc && 'descrição'].filter(Boolean).join(' + ');
+      console.log(`[ns push] PULADO — sem ${_falta}:`, localProductId);
+      return { skipped: true, action: 'skipped', reason: `sem ${_falta}` };
+    }
+  }
+
   const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId: product.id },
   });
@@ -1636,9 +1660,15 @@ async function pushAllProducts({ onlyMissing = true, limit = 1000, withImageOnly
     const mappedIds = mapped.map((m) => m.localProductId);
     if (mappedIds.length) where.id = { notIn: mappedIds };
   }
-  if (withImageOnly) {
-    where.imageUrl = { not: null };
-  }
+  // Regra do dono 2026-07-04: a loja SÓ recebe produto com FOTO e DESCRIÇÃO.
+  // (a trava real por produto — que ainda pega imageUrl vazio e imageUrls[] — está
+  // em _pushProductToNuvemshopInner; aqui é só filtro de volume da query. withImageOnly
+  // fica redundante: foto agora é sempre obrigatória.)
+  where.imageUrl = { not: null };
+  where.OR = [
+    { longDescription: { not: null } },
+    { shortDescription: { not: null } },
+  ];
   if (supplierCnpj) {
     where.aiContext = { path: ['supplierCnpj'], equals: String(supplierCnpj) };
   }
