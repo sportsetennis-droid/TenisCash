@@ -2415,14 +2415,37 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div id="pvm-resumo" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
 
   <!-- sub-abas internas -->
-  <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #eee;">
-    <button class="pvm-subtab active" data-sub="fichas" onclick="pvmSwitchSub('fichas',this)" style="background:none;border:0;border-bottom:3px solid #E5571E;color:#E5571E;font-weight:800;padding:8px 14px;cursor:pointer;">Fichas PVM</button>
+  <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #eee;flex-wrap:wrap;">
+    <button class="pvm-subtab active" data-sub="executar" onclick="pvmSwitchSub('executar',this)" style="background:none;border:0;border-bottom:3px solid #E5571E;color:#E5571E;font-weight:800;padding:8px 14px;cursor:pointer;">🚀 Executar</button>
+    <button class="pvm-subtab" data-sub="fichas" onclick="pvmSwitchSub('fichas',this)" style="background:none;border:0;border-bottom:3px solid transparent;color:#666;font-weight:800;padding:8px 14px;cursor:pointer;">Fichas PVM</button>
     <button class="pvm-subtab" data-sub="diario" onclick="pvmSwitchSub('diario',this)" style="background:none;border:0;border-bottom:3px solid transparent;color:#666;font-weight:800;padding:8px 14px;cursor:pointer;">Rotina diária</button>
     <button class="pvm-subtab" data-sub="manual" onclick="pvmSwitchSub('manual',this)" style="background:none;border:0;border-bottom:3px solid transparent;color:#666;font-weight:800;padding:8px 14px;cursor:pointer;">Manual de Padrões</button>
   </div>
 
+  <!-- ===== EXECUTAR (modo guiado — fases 1-7 com testes prontos) ===== -->
+  <div id="pvm-sub-executar">
+    <p style="color:#666;font-size:12px;margin:0 0 12px;max-width:820px;">Testes prontos da <b>Doutrina da Preferência</b> (Clareza + Confiança + Repetição + Recompensa + Identidade), na ordem certa de implantação. Escolha a loja, clique <b>▶ Iniciar teste</b> e a ficha já nasce preenchida e rodando. Regra: <b>uma fase por vez</b>.</p>
+    <div id="pvm-executar-fases"><div style="color:#999;padding:10px;">Carregando…</div></div>
+
+    <h3 style="margin:22px 0 6px;">⏱️ Rotinas fixas de monitoramento</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1 1 240px;background:#fff;border:1px solid #eee;border-radius:12px;padding:12px;">
+        <div style="font-weight:800;margin-bottom:6px;">📅 Diária — 10 min (fim do dia)</div>
+        <div style="font-size:12px;color:#555;line-height:1.7;">Vendas do dia · nº aprox. de clientes · produto mais procurado · principal reclamação · motivo de não-compra · algo que funcionou.<br><b>→ registre na sub-aba "Rotina diária".</b></div>
+      </div>
+      <div style="flex:1 1 240px;background:#fff;border:1px solid #eee;border-radius:12px;padding:12px;">
+        <div style="font-weight:800;margin-bottom:6px;">🗓️ Semanal — 40 min</div>
+        <div style="font-size:12px;color:#555;line-height:1.7;">Qual padrão está em teste? · meta atingida? · o que vendedores perceberam · o que clientes falaram · ajuste da próxima semana.<br><b>→ atualize resultado/decisão nas Fichas.</b></div>
+      </div>
+      <div style="flex:1 1 240px;background:#fff;border:1px solid #eee;border-radius:12px;padding:12px;">
+        <div style="font-weight:800;margin-bottom:6px;">📆 Mensal — 2 h</div>
+        <div style="font-size:12px;color:#555;line-height:1.7;">Quais padrões viram regra oficial (promover ao Manual) · quais cortar · produtos com mais/menos espaço · campanha a repetir · área prioritária do próximo mês.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== FICHAS ===== -->
-  <div id="pvm-sub-fichas">
+  <div id="pvm-sub-fichas" style="display:none">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:16px;">
       <label style="font-size:11px;font-weight:700;color:#555;">Área<br><select id="pvm-f-area-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Todas</option></select></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="pvm-f-store-filter" onchange="pvmLoadFichas()" style="height:36px;border:1px solid #ddd;border-radius:8px;padding:0 8px;font-size:14px;min-width:150px;"><option value="">Todas</option></select></label>
@@ -13984,19 +14007,159 @@ function pvmBRL(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumF
 function pvmTodayYmd(){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); return f.toISOString().slice(0,10); }
 
 function pvmSwitchSub(name, btn){
-  ['fichas','diario','manual'].forEach(n=>{
+  ['executar','fichas','diario','manual'].forEach(n=>{
     const el=document.getElementById('pvm-sub-'+n); if(el) el.style.display = n===name ? 'block' : 'none';
   });
   document.querySelectorAll('.pvm-subtab').forEach(b=>{ b.style.borderBottomColor = 'transparent'; b.style.color='#666'; });
   if(btn){ btn.style.borderBottomColor='#E5571E'; btn.style.color='#E5571E'; }
+  if(name==='executar') pvmRenderExecutar();
+  if(name==='fichas') pvmLoadFichas();
   if(name==='diario') pvmLoadDiario();
   if(name==='manual') pvmLoadPadroes();
 }
 
 async function initPvmTab(){
-  await pvmLoadMeta();
+  try { await pvmLoadMeta(); }
+  catch(e){ const w=document.getElementById('pvm-executar-fases'); if(w) w.innerHTML='<div style="color:#d70015;padding:10px;">Erro ao carregar: '+pvmEsc(e.message)+'</div>'; return; }
   const dEl=document.getElementById('pvm-d-date'); if(dEl && !dEl.value) dEl.value=pvmTodayYmd();
-  await Promise.all([pvmLoadResumo(), pvmLoadFichas()]);
+  await Promise.all([pvmLoadResumo(), pvmLoadFichas(), pvmRenderExecutar()]);
+}
+
+// ===== EXECUTAR — fases 1-7 com testes prontos (doutrina → ficha em 1 clique) =====
+const PVM_FASES = [
+  { fase:1, titulo:'Clareza da loja', objetivo:'O cliente entender rápido o que você vende, quanto custa e por que comprar.', art:'Art. 21', templates:[
+    { key:'etiqueta-preco', titulo:'Etiqueta de preço visível em tudo', area:'preco', dias:7,
+      problema:'Clientes perguntam preço o tempo todo — produto sem preço atrapalha e gasta energia do cliente.',
+      hipotese:'Se todos os produtos principais tiverem etiqueta visível, o cliente decide mais rápido e pergunta menos.',
+      padrao:'Todos os produtos principais com etiqueta de preço visível.',
+      indicadores:[{nome:'Perguntas sobre preço',meta:'diminuir'},{nome:'Vendas',meta:'manter ou subir'},{nome:'Tempo de decisão',meta:'diminuir'}],
+      metaMinima:'Menos perguntas de preço OU decisão mais rápida' },
+    { key:'palavra-central', titulo:'Definir a palavra central da loja', area:'comunicacao', dias:7,
+      problema:'A loja não tem UMA palavra que a define (barata, confiável, especialista, premium, rápida) — sem isso vira "mais uma".',
+      hipotese:'Se tudo girar em torno de uma palavra central, o cliente reconhece e lembra da loja.',
+      padrao:'Escolher 1 palavra central e aplicar em fachada, atendimento e comunicação.',
+      indicadores:[{nome:'Clientes descrevendo a loja com a palavra',meta:'aparecer'},{nome:'Lembrança da marca',meta:'subir'}],
+      metaMinima:'A equipe inteira sabe dizer a palavra; clientes começam a repetir' },
+  ]},
+  { fase:2, titulo:'Confiança', objetivo:'Reduzir o medo do cliente: comprar errado, pagar caro, ser enganado, se arrepender.', art:'Art. 24', templates:[
+    { key:'garantia-troca', titulo:'Garantia e troca claras', area:'atendimento', dias:14,
+      problema:'O cliente tem medos silenciosos ("será que presta? e se der problema?") que ninguém responde antes de crescerem.',
+      hipotese:'Se preço, garantia e política de troca ficarem claros e visíveis, o cliente relaxa e compra com mais segurança.',
+      padrao:'Placa/fala padrão de garantia e troca simples, dita em todo atendimento; comparação honesta entre opções.',
+      indicadores:[{nome:'Objeções de medo no atendimento',meta:'diminuir'},{nome:'Conversão',meta:'subir'},{nome:'Reclamações',meta:'diminuir'}],
+      metaMinima:'Menos objeções de medo OU mais conversão' },
+  ]},
+  { fase:3, titulo:'Experiência sensorial', objetivo:'Controlar som, iluminação, cheiro, limpeza, organização e conforto — coerência > intensidade.', art:'Art. 23', templates:[
+    { key:'ambiente-controlado', titulo:'Ambiente controlado (som, luz, limpeza, corredores)', area:'ambiente', dias:10,
+      problema:'A loja pode estar barulhenta, poluída visualmente ou cansativa — estímulo demais expulsa o cliente.',
+      hipotese:'Ambiente mais limpo, organizado e com estímulos controlados faz o cliente ficar mais tempo e comprar melhor.',
+      padrao:'Regra fixa pra: volume da música, limpeza, cheiro, iluminação, corredores livres, vitrine, balcão, placas, posição dos produtos principais.',
+      indicadores:[{nome:'Tempo médio na loja',meta:'+10%'},{nome:'Reclamações',meta:'diminuir'},{nome:'Vendas por período',meta:'subir'}],
+      metaMinima:'Mais permanência, mais perguntas úteis ou mais venda' },
+  ]},
+  { fase:4, titulo:'Atendimento', objetivo:'Ritual de atendimento previsível e profissional — conduzir, não empurrar.', art:'Art. 25–26', templates:[
+    { key:'roteiro-5-passos', titulo:'Roteiro de atendimento em 5 passos', area:'atendimento', dias:7,
+      problema:'Cada vendedor atende de um jeito: um aborda rápido demais, outro demora, outro não explica direito.',
+      hipotese:'Se todos seguirem um roteiro simples, o cliente se sente mais seguro e a conversão melhora.',
+      padrao:'Todo atendimento em 5 passos: 1) Cumprimentar; 2) Perguntar se procura algo específico; 3) Entender necessidade e orçamento; 4) Mostrar até 3 opções; 5) Explicar a diferença entre elas.',
+      indicadores:[{nome:'Conversão (entraram × compraram)',meta:'+10%'},{nome:'Ticket médio',meta:'subir'},{nome:'Reclamações de atendimento',meta:'diminuir'},{nome:'Motivos de não-compra',meta:'registrar'}],
+      metaMinima:'Aumentar conversão OU reduzir reclamações de atendimento' },
+  ]},
+  { fase:5, titulo:'Produto e exposição', objetivo:'Organizar por categoria, faixa de preço, função e valor percebido — o mapa simples.', art:'Art. 26–27', templates:[
+    { key:'tres-niveis', titulo:'3 níveis por categoria (econômica / mais vendida / premium)', area:'produto', dias:14,
+      problema:'O cliente vê muitos produtos e fica perdido — muita opção trava a decisão.',
+      hipotese:'Se os produtos forem organizados em 3 níveis, a escolha fica mais fácil e a venda da categoria sobe.',
+      padrao:'Escolher UMA categoria e expor em 3 níveis: opção econômica, opção mais vendida, opção premium.',
+      indicadores:[{nome:'Venda da categoria',meta:'+15%'},{nome:'Tempo pra decidir',meta:'diminuir'},{nome:'Clientes indecisos',meta:'diminuir'},{nome:'Margem',meta:'manter ou subir'},{nome:'Encalhados',meta:'diminuir'}],
+      metaMinima:'Aumentar venda da categoria OU reduzir indecisão' },
+  ]},
+  { fase:6, titulo:'Comunicação e repetição', objetivo:'O cliente reconhecer a loja no Instagram, WhatsApp, fachada, sacola, cartaz e atendimento.', art:'Art. 22', templates:[
+    { key:'padrao-visual-30d', titulo:'Padrão visual e verbal por 30 dias', area:'comunicacao', dias:30,
+      problema:'Cada post, cartaz ou mensagem parece de uma loja diferente — sem identidade, o cliente não reconhece.',
+      hipotese:'Se a comunicação repetir o mesmo padrão visual e verbal, o cliente reconhece mais rápido (mera exposição).',
+      padrao:'Definir e repetir: cores, tipo de foto, jeito de escrever, modelo de promoção, frase principal, padrão de cartaz, de mensagem WhatsApp e de postagem. Repetição sempre COM VALOR (dica, prova social, bastidor) — nunca só "compre".',
+      indicadores:[{nome:'Respostas no WhatsApp',meta:'+20%'},{nome:'Directs/cliques',meta:'subir'},{nome:'Clientes dizendo "vi no Instagram"',meta:'aparecer'},{nome:'Vendas de campanha',meta:'subir'}],
+      metaMinima:'Aumentar procura, lembrança ou resposta' },
+    { key:'msg-padrao-whatsapp', titulo:'Mensagem padrão no WhatsApp', area:'comunicacao', dias:14,
+      problema:'Cada resposta no WhatsApp sai de um jeito; cliente sem resposta padrão esfria.',
+      hipotese:'Mensagem padrão (saudação, prazo de resposta, fotos, fechamento) aumenta a taxa de resposta e fechamento.',
+      padrao:'Modelo fixo de: primeira resposta, envio de fotos, proposta de fechamento e despedida.',
+      indicadores:[{nome:'Taxa de resposta',meta:'+20%'},{nome:'Fechamentos via WhatsApp',meta:'subir'}],
+      metaMinima:'+20% resposta' },
+  ]},
+  { fase:7, titulo:'Pós-venda e fidelização', objetivo:'Fazer o cliente voltar, indicar e lembrar da loja — recompensa na experiência.', art:'Art. 28', templates:[
+    { key:'posvenda-whatsapp', titulo:'Pós-venda pelo WhatsApp', area:'posvenda', dias:30,
+      problema:'Cliente compra e nunca mais ouve da loja — sem retorno, sem indicação.',
+      hipotese:'Se a loja perguntar se deu certo e convidar pra voltar, o cliente recompra e indica.',
+      padrao:'Mensagem pós-compra padrão: perguntar se deu certo + pedir avaliação + convite/incentivo pra voltar.',
+      indicadores:[{nome:'Recompra',meta:'subir'},{nome:'Indicações',meta:'aparecer'},{nome:'Avaliações',meta:'subir'}],
+      metaMinima:'Mais retorno ou mais indicação' },
+  ]},
+];
+
+function pvmFindTpl(key){ for(const f of PVM_FASES){ const t=f.templates.find(t=>t.key===key); if(t) return t; } return null; }
+
+async function pvmRenderExecutar(){
+  const box=document.getElementById('pvm-executar-fases'); if(!box) return;
+  let fichas=[];
+  try{
+    const r=await fetch('/api/admin/pvm/fichas',{headers:pvmH()});
+    const j=await r.json(); fichas=j.fichas||[];
+  }catch(e){ /* segue sem status */ }
+  const storeOpts='<option value="">Empresa toda</option>'+((PVM_META&&PVM_META.stores)||[]).map(s=>'<option value="'+s.id+'">'+pvmEsc(s.code)+' — '+pvmEsc(s.name)+'</option>').join('');
+  let html='';
+  PVM_FASES.forEach(f=>{
+    html+='<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:10px;">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      +'<span style="background:#E5571E;color:#fff;border-radius:8px;padding:2px 10px;font-weight:800;font-size:12px;">FASE '+f.fase+'</span>'
+      +'<span style="font-weight:800;">'+pvmEsc(f.titulo)+'</span>'
+      +'<span style="font-size:11px;color:#999;border:1px solid #eee;border-radius:6px;padding:1px 6px;">'+pvmEsc(f.art)+'</span>'
+      +'</div>'
+      +'<div style="font-size:12px;color:#666;margin:4px 0 10px;">'+pvmEsc(f.objetivo)+'</div>';
+    f.templates.forEach(t=>{
+      const existing=fichas.find(x=>x.padraoNovo===t.padrao);
+      let statusHtml='';
+      if(existing){
+        const st=PVM_STATUS_LABEL[existing.status]||existing.status;
+        const dc=existing.decisao?(' · '+(PVM_DECISAO_LABEL[existing.decisao]||existing.decisao)):'';
+        statusHtml='<span style="font-size:11px;font-weight:800;color:'+(existing.status==='concluida'?'#0a7d3b':'#E5571E')+';">'+pvmEsc(st)+dc+(existing.storeCode?' · '+pvmEsc(existing.storeCode):'')+'</span>';
+      }
+      html+='<div style="border:1px dashed #ddd;border-radius:10px;padding:10px;margin-bottom:8px;">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
+        +'<div><b style="font-size:13px;">'+pvmEsc(t.titulo)+'</b> <span style="font-size:11px;color:#999;">· '+pvmEsc(PVM_AREA_LABEL[t.area]||t.area)+' · '+t.dias+' dias</span></div>'
+        +(statusHtml || '<button onclick="pvmToggleIniciar(\''+t.key+'\')" style="height:32px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 14px;font-weight:800;font-size:12px;cursor:pointer;">▶ Iniciar teste</button>')
+        +'</div>'
+        +'<div style="font-size:12px;color:#555;margin-top:4px;"><b>Padrão:</b> '+pvmEsc(t.padrao)+'</div>'
+        +'<div style="font-size:11px;color:#888;margin-top:2px;">Meta mínima: '+pvmEsc(t.metaMinima)+' · Indicadores: '+t.indicadores.map(i=>pvmEsc(i.nome)).join(', ')+'</div>'
+        +'<div id="pvm-iniciar-'+t.key+'" style="display:none;margin-top:8px;background:#f7f7f9;border-radius:8px;padding:8px;">'
+        +'<label style="font-size:11px;font-weight:700;color:#555;">Onde testar? <select id="pvm-iniciar-store-'+t.key+'" style="height:32px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin:0 8px;">'+storeOpts+'</select></label>'
+        +'<button onclick="pvmIniciarTemplate(\''+t.key+'\')" style="height:32px;background:#E5571E;color:#fff;border:0;border-radius:6px;padding:0 12px;font-weight:800;font-size:12px;cursor:pointer;">Confirmar — começa hoje, '+t.dias+' dias</button>'
+        +'</div>'
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  box.innerHTML=html;
+}
+
+function pvmToggleIniciar(key){
+  const el=document.getElementById('pvm-iniciar-'+key);
+  if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+async function pvmIniciarTemplate(key){
+  const t=pvmFindTpl(key); if(!t) return;
+  const storeId=(document.getElementById('pvm-iniciar-store-'+key)||{}).value||null;
+  const hoje=pvmTodayYmd();
+  const fim=new Date(new Date(hoje+'T12:00:00Z').getTime()+t.dias*86400000).toISOString().slice(0,10);
+  try{
+    const r=await fetch('/api/admin/pvm/fichas',{method:'POST',headers:pvmH(),body:JSON.stringify({
+      area:t.area, storeId, problema:t.problema, hipotese:t.hipotese, padraoNovo:t.padrao,
+      metaMinima:t.metaMinima, indicadores:t.indicadores, testeInicio:hoje, testeFim:fim, status:'testando',
+    })});
+    const j=await r.json(); if(!r.ok){ alert('Erro: '+(j.error||'')); return; }
+    await Promise.all([pvmRenderExecutar(), pvmLoadResumo(), pvmLoadFichas()]);
+  }catch(e){ alert('Erro: '+e.message); }
 }
 
 async function pvmLoadMeta(){
