@@ -220,6 +220,20 @@ app.post('/api/_falgen', async (req, res) => {
       });
       return res.json({ ok: true, op: 'tts', voice: r.voice, outputUrl: r.outputUrl, costUsd: r.costUsd, ...keys });
     }
+    if (req.query.op === 'cena') {
+      // CENA LIVRE text-to-image (gpt-image-1). Nao precisa de produto. Devolve b64 direto
+      // (sem fal storage no caminho — fal retornou 403 em 2026-07-05).
+      const fp = String(req.query.fp || '');
+      if (!fp) return res.status(400).json({ error: 'falta fp', ...keys });
+      const rr = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-image-1', prompt: fp, size: '1024x1536', quality: String(req.query.q || 'medium') }),
+      });
+      const jj = await rr.json();
+      if (!rr.ok) return res.json({ ok: false, error: String((jj.error && jj.error.message) || 'openai error').slice(0, 200), ...keys });
+      return res.json({ ok: true, op: 'cena', b64: (jj.data && jj.data[0] && jj.data[0].b64_json) || null, ...keys });
+    }
     if (req.query.op === 'video') {
       // VIDEO image-to-video. Nao precisa de produto: aceita imgUrl direto.
       // model=veo -> Google Veo 3.1 com AUDIO NATIVO (fp = prompt). senao Hailuo (produto em movimento).
