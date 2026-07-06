@@ -92,6 +92,7 @@ const { startEquipeReportsCron } = require('./services/equipeReports');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
+const DISABLE_STARTUP_JOBS = process.env.NODE_ENV === 'test' || process.env.DISABLE_STARTUP_JOBS === '1';
 
 // Compressão gzip — reduz payload da listagem de produtos em ~70%
 // Threshold 1KB pra não desperdiçar CPU em respostas pequenas
@@ -380,7 +381,9 @@ app.use('/api/services', servicesStockRouter);
 app.use('/api/services', servicesMarketingRoutes);
 app.use('/api/services', servicesClubRouter);
 // Seed inicial das 9 marcas (idempotente)
-brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
+if (!DISABLE_STARTUP_JOBS) {
+  brandProfiles.seedDefaults().catch(e => console.warn('[brandProfiles] seed falhou:', e.message));
+}
 app.use('/api', nuvemshopRoutes);
 app.use('/api', tiktokShopRoutes);
 app.use('/api/shipping', shippingRoutes);
@@ -1464,6 +1467,11 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
+
+  if (DISABLE_STARTUP_JOBS) {
+    console.log('[startupJobs] desativados');
+    return;
+  }
 
   // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
   if (process.env.DISABLE_MESSAGES_CRON !== '1') {

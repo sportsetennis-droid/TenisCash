@@ -47,6 +47,7 @@ function startServer() {
     ...process.env,
     NODE_ENV: 'test',
     PORT,
+    DISABLE_STARTUP_JOBS: '1',
     RESEND_API_KEY: process.env.RESEND_API_KEY || 'dummy-for-stock-logic-test',
   };
   const child = spawn(process.execPath, ['src/index.js'], {
@@ -214,6 +215,9 @@ async function cleanupConversations(prisma, ids) {
 
 async function main() {
   loadEnv();
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL nao configurada. Configure .env ou STOCK_LOGIC_BASE_URL para rodar o teste de estoque.');
+  }
   const prisma = new PrismaClient();
   const child = startServer();
   const createdConversationIds = [];

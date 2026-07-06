@@ -1,6 +1,12 @@
 const { Resend } = require('resend');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend = null;
+
+function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!resend) resend = new Resend(process.env.RESEND_API_KEY);
+  return resend;
+}
 
 const emailCodes = new Map();
 
@@ -9,6 +15,12 @@ function generateCode() {
 }
 
 async function sendEmailCode(email) {
+  const client = getResend();
+  if (!client) {
+    console.warn('[email] RESEND_API_KEY nao configurada; envio de codigo desativado.');
+    return { success: false, message: 'Envio de e-mail nao configurado.' };
+  }
+
   const code = generateCode();
 
   emailCodes.set(email, {
@@ -18,7 +30,7 @@ async function sendEmailCode(email) {
   });
 
   try {
-    await resend.emails.send({
+    await client.emails.send({
       from: 'TenisCash <noreply@teniscash.com.br>',
       to: email,
       subject: `Seu codigo TenisCash: ${code}`,
@@ -37,6 +49,7 @@ async function sendEmailCode(email) {
 
     return { success: true, message: 'Código enviado para seu e-mail' };
   } catch (err) {
+    emailCodes.delete(email);
     console.error('Erro ao enviar e-mail:', err);
     return { success: false, message: 'Erro ao enviar e-mail. Tente novamente.' };
   }
