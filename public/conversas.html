@@ -96,6 +96,9 @@
   .composer .send{width:44px;height:44px;border-radius:50%;border:0;background:var(--brand);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .1s}
   .composer .send:hover{transform:scale(1.06)}
   .composer .send:disabled{opacity:.45;transform:none;cursor:not-allowed}
+  .composer .attach{width:40px;height:44px;border:0;background:transparent;color:var(--muted);font-size:20px;flex:none;border-radius:10px}
+  .composer .attach:hover{color:var(--brand);background:var(--cloud)}
+  .chip.new{margin-left:auto;background:var(--brand);color:#fff;border-color:var(--brand)}
   .composer .warn{position:absolute;bottom:64px;left:0;right:0;text-align:center;font-size:12px;color:#b45309;background:#fef3c7;padding:5px;font-weight:700}
 
   /* ---------- CONTACT PANEL ---------- */
@@ -159,6 +162,7 @@
       <div class="chips">
         <button class="chip on" id="chipAll" onclick="setGroups(false,this)">Conversas</button>
         <button class="chip" id="chipGrp" onclick="setGroups(true,this)">Incluir grupos</button>
+        <button class="chip new" onclick="newChat()" title="Iniciar conversa com um número">✏️ Nova</button>
       </div>
     </div>
     <div class="rows" id="rows"></div>
@@ -177,6 +181,8 @@
       </div>
       <div class="msgs" id="msgs"></div>
       <div class="composer" id="composer" style="position:relative">
+        <input type="file" id="fileIn" accept="image/*" style="display:none" onchange="onPickImage(event)">
+        <button class="attach" title="Enviar imagem" onclick="document.getElementById('fileIn').click()">📎</button>
         <textarea id="ci" rows="1" placeholder="Escreva uma mensagem…" autocomplete="off"></textarea>
         <button class="send" id="sendBtn" title="Enviar (Enter)" onclick="sendMsg()">➤</button>
       </div>
@@ -353,6 +359,66 @@ async function sendMsg(){
   ci.addEventListener('input', ()=>{ ci.style.height='44px'; ci.style.height=Math.min(ci.scrollHeight,130)+'px'; });
   ci.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); } });
 })();
+
+function newChat(){
+  let inst = state.box;
+  if(inst==='ALL'){
+    if(!numbers.length){ alert('Nenhum número disponível.'); return; }
+    const menu = numbers.map((n,i)=>i+') '+n.label+(n.status==='open'?'':' (offline)')).join('\n');
+    const pick = prompt('Enviar por qual número?\n'+menu, '0');
+    if(pick===null) return;
+    const idx = parseInt(pick,10);
+    if(isNaN(idx) || !numbers[idx]){ alert('Opção inválida.'); return; }
+    inst = numbers[idx].instance;
+  }
+  let ph = prompt('Telefone do contato (com DDD):\nex: 83 99999-8888');
+  if(!ph) return;
+  ph = ph.replace(/[^0-9]/g,'');
+  if(ph.length<10){ alert('Telefone inválido.'); return; }
+  if(!ph.startsWith('55')) ph = '55'+ph;
+  const jid = ph+'@s.whatsapp.net';
+  state.instance=inst; state.jid=jid;
+  $('threadPh').style.display='none'; $('threadView').style.display='flex'; $('thread').classList.add('open');
+  const col=colorFor(inst);
+  $('tAva').textContent=initials(ph); $('tAva').style.background=col;
+  $('tName').textContent='+'+ph;
+  $('tSub').innerHTML='<span style="color:'+col+'">●</span> '+esc(labelOf(inst))+' · conversa nova';
+  curMsgs=[]; renderMsgs(); renderInfo({phone:ph}); $('ci').focus();
+}
+
+async function onPickImage(ev){
+  const file = ev.target.files && ev.target.files[0]; ev.target.value='';
+  if(!file || !state.instance || !state.jid) return;
+  if(!/^image\//.test(file.type)){ alert('Selecione uma imagem.'); return; }
+  const caption = $('ci').value.trim();
+  const tempId='tmp'+Date.now();
+  curMsgs.push({ id:tempId, fromMe:true, text:(caption||'📷 imagem'), ts:new Date().toISOString(), _pending:true });
+  renderMsgs(); $('ci').value=''; $('ci').style.height='44px';
+  try{
+    const b64 = await compressImage(file, 1280, 0.8);
+    const r = await fetch('/api/admin/whatsapp/send-media',{ method:'POST', headers:{...H,'Content-Type':'application/json'}, body:JSON.stringify({ instance:state.instance, jid:state.jid, media:b64, mimetype:'image/jpeg', fileName:'imagem.jpg', caption }) });
+    const j = await r.json().catch(()=>({}));
+    const m = curMsgs.find(x=>x.id===tempId);
+    if(!r.ok || !j.ok){ if(m){ m._pending=false; m._error=(j.error||'não enviou'); } }
+    else { if(m){ m._pending=false; m.id=j.id||tempId; } loadChats(false); }
+    renderMsgs();
+  }catch(e){ const m=curMsgs.find(x=>x.id===tempId); if(m){ m._pending=false; m._error='erro na imagem'; } renderMsgs(); }
+}
+
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let w=img.width, h=img.height;
+      if(w>maxDim||h>maxDim){ if(w>=h){ h=Math.round(h*maxDim/w); w=maxDim; } else { w=Math.round(w*maxDim/h); h=maxDim; } }
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg',quality).split(',')[1]);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('img')); };
+    img.src=url;
+  });
+}
 
 $('q').addEventListener('input', e=>{ state.q=e.target.value; renderRows(); });
 

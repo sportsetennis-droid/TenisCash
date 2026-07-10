@@ -150,4 +150,48 @@ router.post('/send', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /send-media { instance, jid, media(base64), mimetype, fileName, caption } — envia IMAGEM/mídia
+router.post('/send-media', async (req, res) => {
+  try {
+    const instance = String(req.body.instance || '').trim();
+    const jid = String(req.body.jid || '').trim();
+    const media = String(req.body.media || ''); // base64 puro (sem prefixo data:)
+    const mimetype = String(req.body.mimetype || 'image/jpeg');
+    const caption = String(req.body.caption || '').trim();
+    const fileName = String(req.body.fileName || 'imagem.jpg').slice(0, 120);
+    if (!instance || !jid || !media) return res.status(400).json({ error: 'instance, jid e media são obrigatórios' });
+    if (!INSTANCES.some((i) => i.key === instance)) return res.status(400).json({ error: 'instância desconhecida' });
+    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) return res.status(500).json({ error: 'Evolution não configurado' });
+
+    const isGroup = jid.endsWith('@g.us');
+    const target = isGroup ? jid : jid.replace(/@.*/, '');
+    const mediatype = mimetype.startsWith('image') ? 'image' : (mimetype.startsWith('video') ? 'video' : (mimetype.startsWith('audio') ? 'audio' : 'document'));
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+    let data = {};
+    try {
+      const r = await fetch(EVOLUTION_API_URL + '/message/sendMedia/' + encodeURIComponent(instance), {
+        method: 'POST',
+        headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: String(target), mediatype, mimetype, media, fileName, caption }),
+        signal: controller.signal,
+      });
+      data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(502).json({ error: (data && data.message) || ('Evolution ' + r.status) });
+    } catch (e) {
+      return res.status(502).json({ error: e.name === 'AbortError' ? 'Timeout Evolution (mídia)' : (e.message || 'Erro Evolution') });
+    } finally { clearTimeout(timer); }
+
+    const phone = isGroup ? null : target.replace(/[^0-9]/g, '');
+    const messageId = (data && data.key && data.key.id) || null;
+    try {
+      await prisma.whatsappMessage.create({
+        data: { instance, chatJid: jid, isGroup, fromMe: true, text: caption || '📷 imagem', msgType: mediatype, phone, messageId, ts: new Date() },
+      });
+    } catch (e) { /* dedup */ }
+    res.json({ ok: true, id: messageId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
