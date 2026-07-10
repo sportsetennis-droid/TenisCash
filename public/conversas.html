@@ -86,6 +86,17 @@
   .b .mt{font-size:10px;color:var(--muted2);float:right;margin:6px 0 -2px 10px;font-weight:600}
   .thread .ph{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#7c7367;text-align:center;padding:24px}
   .thread .ph .big{font-size:44px;opacity:.5}
+  .b.out.pending{opacity:.65}
+  .b .mt.err{color:#ef4444;font-weight:700}
+
+  /* ---------- COMPOSER (responder) ---------- */
+  .composer{display:flex;align-items:flex-end;gap:9px;padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);flex:none}
+  .composer textarea{flex:1;resize:none;border:1px solid var(--line);background:var(--cloud);border-radius:22px;padding:11px 16px;font-family:inherit;font-size:14px;line-height:1.4;height:44px;max-height:130px;outline:none;color:var(--txt)}
+  .composer textarea:focus{border-color:var(--brand);background:#fff}
+  .composer .send{width:44px;height:44px;border-radius:50%;border:0;background:var(--brand);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .1s}
+  .composer .send:hover{transform:scale(1.06)}
+  .composer .send:disabled{opacity:.45;transform:none;cursor:not-allowed}
+  .composer .warn{position:absolute;bottom:64px;left:0;right:0;text-align:center;font-size:12px;color:#b45309;background:#fef3c7;padding:5px;font-weight:700}
 
   /* ---------- CONTACT PANEL ---------- */
   .info{width:0;background:var(--paper);border-left:1px solid var(--line);overflow:hidden;transition:width .18s;flex:none}
@@ -165,6 +176,10 @@
         <button class="iconbtn" title="Abrir no WhatsApp" id="waBtn" onclick="openInWa()">↗</button>
       </div>
       <div class="msgs" id="msgs"></div>
+      <div class="composer" id="composer" style="position:relative">
+        <textarea id="ci" rows="1" placeholder="Escreva uma mensagem…" autocomplete="off"></textarea>
+        <button class="send" id="sendBtn" title="Enviar (Enter)" onclick="sendMsg()">➤</button>
+      </div>
     </div>
   </section>
 
@@ -289,7 +304,12 @@ function renderMsgs(){
     const d=dayLabel(m.ts); if(d!==lastDay){ html+='<div class="daysep">'+esc(d)+'</div>'; lastDay=d; }
     const who = (!m.fromMe && state.box==='ALL') ? '' : '';
     const senderName = (!m.fromMe && (allChats.find(c=>c.chatJid===state.jid)||{}).isGroup) ? '<div class="who">'+esc(m.contactName||m.phone||'')+'</div>' : '';
-    html += '<div class="b '+(m.fromMe?'out':'in')+'">'+senderName+esc(m.text||'')+'<span class="mt">'+new Date(m.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</span></div>';
+    const tm = new Date(m.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    let stat;
+    if(m._error) stat = '<span class="mt err">⚠ '+esc(m._error)+'</span>';
+    else if(m._pending) stat = '<span class="mt">'+tm+' 🕓</span>';
+    else stat = '<span class="mt">'+tm+(m.fromMe?' ✓':'')+'</span>';
+    html += '<div class="b '+(m.fromMe?'out':'in')+(m._pending?' pending':'')+'">'+senderName+esc(m.text||'')+stat+'</div>';
   });
   box.innerHTML = html || '<div style="margin:auto;color:#7c7367">Sem mensagens nesta conversa.</div>';
   box.scrollTop = box.scrollHeight;
@@ -302,7 +322,7 @@ function renderInfo(chat){
     + '<dl><dt>Número de entrada</dt><dd><span style="color:'+col+'">●</span> '+esc(labelOf(inst))+'</dd>'
     + '<dt>Tipo</dt><dd>'+(chat.isGroup?'Grupo':'Conversa direta')+'</dd>'
     + '<dt>Última mensagem</dt><dd>'+esc(new Date(chat.lastAt).toLocaleString('pt-BR'))+'</dd></dl>'
-    + '<p style="margin-top:18px;font-size:12px;color:var(--muted2);line-height:1.5">Monitoramento — somente leitura. As respostas automáticas da IA aparecem como enviadas (✓).</p>';
+    + '<p style="margin-top:18px;font-size:12px;color:var(--muted2);line-height:1.5">Você pode responder direto por aqui — a mensagem sai pelo número '+esc(labelOf(inst))+'. As respostas da IA também aparecem como enviadas (✓).</p>';
 }
 
 function toggleInfo(){ $('info').classList.toggle('show'); }
@@ -310,6 +330,29 @@ function openInWa(){ const chat=allChats.find(c=>c.instance===state.instance&&c.
 function closeThread(){ $('thread').classList.remove('open'); }
 function closeRail(){ $('rail').classList.remove('open'); $('scrim').classList.remove('on'); }
 function setGroups(g, btn){ state.groups=g; document.querySelectorAll('.chips .chip').forEach(c=>c.classList.remove('on')); btn.classList.add('on'); loadChats(true); }
+
+async function sendMsg(){
+  const ci=$('ci'); const text=ci.value.trim();
+  if(!text || !state.instance || !state.jid) return;
+  const btn=$('sendBtn'); btn.disabled=true;
+  const tempId='tmp'+Date.now();
+  curMsgs.push({ id:tempId, fromMe:true, text, ts:new Date().toISOString(), _pending:true });
+  renderMsgs(); ci.value=''; ci.style.height='44px';
+  try{
+    const r=await fetch('/api/admin/whatsapp/send',{ method:'POST', headers:{...H,'Content-Type':'application/json'}, body:JSON.stringify({ instance:state.instance, jid:state.jid, text }) });
+    const j=await r.json().catch(()=>({}));
+    const m=curMsgs.find(x=>x.id===tempId);
+    if(!r.ok || !j.ok){ if(m){ m._pending=false; m._error=(j.error||'não enviou'); } }
+    else { if(m){ m._pending=false; m.id=j.id||tempId; if(j.ts) m.ts=j.ts; } loadChats(false); }
+    renderMsgs();
+  }catch(e){ const m=curMsgs.find(x=>x.id===tempId); if(m){ m._pending=false; m._error='erro de conexão'; } renderMsgs(); }
+  finally{ btn.disabled=false; ci.focus(); }
+}
+(function initComposer(){
+  const ci=$('ci'); if(!ci) return;
+  ci.addEventListener('input', ()=>{ ci.style.height='44px'; ci.style.height=Math.min(ci.scrollHeight,130)+'px'; });
+  ci.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); } });
+})();
 
 $('q').addEventListener('input', e=>{ state.q=e.target.value; renderRows(); });
 

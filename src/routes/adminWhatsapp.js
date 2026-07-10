@@ -6,6 +6,7 @@
 // =====================================================================
 const express = require('express');
 const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
+const { sendEvolutionRaw } = require('../whatsapp');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -115,6 +116,37 @@ router.get('/messages', async (req, res) => {
       select: { id: true, fromMe: true, text: true, msgType: true, contactName: true, phone: true, ts: true },
     });
     res.json({ messages });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /send { instance, jid, text } — ENVIA mensagem pelo número (Evolution) e grava no inbox.
+// Torna a Central de WhatsApp de mão dupla: o dono responde os clientes por aqui.
+router.post('/send', async (req, res) => {
+  try {
+    const instance = String(req.body.instance || '').trim();
+    const jid = String(req.body.jid || '').trim();
+    const text = String(req.body.text || '').trim();
+    if (!instance || !jid || !text) return res.status(400).json({ error: 'instance, jid e text são obrigatórios' });
+    if (text.length > 4096) return res.status(400).json({ error: 'Mensagem muito longa' });
+    if (!INSTANCES.some((i) => i.key === instance)) return res.status(400).json({ error: 'instância desconhecida' });
+
+    const isGroup = jid.endsWith('@g.us');
+    const target = isGroup ? jid : jid.replace(/@.*/, ''); // número puro p/ diretos, JID p/ grupos
+    const result = await sendEvolutionRaw(target, text, instance);
+    if (!result || !result.ok) {
+      return res.status(502).json({ error: (result && result.error) || 'Falha ao enviar pela Evolution' });
+    }
+
+    // grava a mensagem enviada pra aparecer na hora (o webhook-eco tem o mesmo messageId → dedup pela unique [instance,messageId])
+    const phone = isGroup ? null : target.replace(/[^0-9]/g, '');
+    const messageId = result.messageId || null;
+    let saved = null;
+    try {
+      saved = await prisma.whatsappMessage.create({
+        data: { instance, chatJid: jid, isGroup, fromMe: true, text, msgType: 'text', phone, messageId, ts: new Date() },
+      });
+    } catch (e) { /* já capturado pelo eco do webhook — ok */ }
+    res.json({ ok: true, id: messageId, ts: saved ? saved.ts : new Date() });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
