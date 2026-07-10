@@ -26,7 +26,7 @@ try {
   });
 } catch {}
 
-const VERSION = '1.0';
+const VERSION = '1.1';
 const CENTRAL = (process.env.CENTRAL_URL || 'https://teniscash.com.br').replace(/\/$/, '');
 const TOKEN = (process.env.AGENT_TOKEN || '').trim();
 const AGENT_PORT = parseInt(process.env.PORT || '8765', 10);
@@ -168,6 +168,11 @@ async function executeCommand(cmd) {
 // ---- loop principal ----
 let consecutiveFails = 0;
 let lastRestart = 0;
+// Auto-cura do TÚNEL público (Tailscale Funnel). A internet instável das lojas derruba o
+// funnel; sem isso ele só voltava com comando manual/AnyDesk. Re-afirmar periodicamente
+// (idempotente) faz o túnel subir SOZINHO quando a internet volta — 100% remoto.
+let funnelTicks = 0;
+const FUNNEL_EVERY = parseInt(process.env.SUPERVISOR_FUNNEL_EVERY || '7', 10); // ~7*45s ≈ 5min
 
 async function tick() {
   // 1) watchdog
@@ -183,6 +188,15 @@ async function tick() {
       log('WATCHDOG religou:', r.out);
       consecutiveFails = 0;
     }
+  }
+
+  // 1b) auto-cura do TÚNEL: re-afirma o Tailscale + Funnel periodicamente (idempotente).
+  // Se a internet da loja caiu e voltou, o túnel público volta SOZINHO — sem AnyDesk.
+  funnelTicks++;
+  if (funnelTicks >= FUNNEL_EVERY) {
+    funnelTicks = 0;
+    try { await ps('tailscale up --timeout=15s'); } catch { /* ignore */ }
+    try { const r = await ps(`tailscale funnel --bg ${AGENT_PORT}`); log('funnel re-afirmado', (r.out || '').replace(/\s+/g, ' ').slice(0, 80)); } catch (e) { log('funnel re-afirmar falhou:', e.message); }
   }
 
   // 2) heartbeat + buscar comandos no central
