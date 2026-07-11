@@ -46,6 +46,7 @@ async function parseNfeXml(xmlBuffer) {
   const emit = infNFe.emit || {};
   const dest = infNFe.dest || {};
   const total = infNFe.total?.ICMSTot || {};
+  const ibsCbsTotal = infNFe.total?.IBSCBSTot || {};
 
   const detItems = Array.isArray(infNFe.det) ? infNFe.det : (infNFe.det ? [infNFe.det] : []);
   const items = detItems.map((d) => {
@@ -55,6 +56,7 @@ async function parseNfeXml(xmlBuffer) {
     const ipi = imposto.IPI?.IPITrib || {};
     const pis = imposto.PIS ? Object.values(imposto.PIS)[0] || {} : {};
     const cofins = imposto.COFINS ? Object.values(imposto.COFINS)[0] || {} : {};
+    const ibsCbs = imposto.IBSCBS?.gIBSCBS || imposto.IBSCBS || {};
     return {
       supplierCode: prod.cProd || null,
       description: prod.xProd || '',
@@ -66,10 +68,21 @@ async function parseNfeXml(xmlBuffer) {
       quantity: num(prod.qCom),
       unitValue: num(prod.vUnCom),
       totalValue: num(prod.vProd),
+      icmsBase: num(icms.vBC),
       icmsValue: num(icms.vICMS),
+      icmsStValue: num(icms.vICMSST || icms.vICMSSTRet),
+      fcpValue: num(icms.vFCP),
+      fcpStValue: num(icms.vFCPST || icms.vFCPSTRet),
+      difalDestValue: num(icms.vICMSUFDest),
       ipiValue: num(ipi.vIPI),
+      pisCst: pis.CST || null,
+      pisBase: num(pis.vBC),
       pisValue: num(pis.vPIS),
+      cofinsCst: cofins.CST || null,
+      cofinsBase: num(cofins.vBC),
       cofinsValue: num(cofins.vCOFINS),
+      cbsValue: num(ibsCbs.vCBS),
+      ibsValue: num(ibsCbs.vIBS),
     };
   });
 
@@ -83,9 +96,15 @@ async function parseNfeXml(xmlBuffer) {
     recipientCnpj: dest.CNPJ || dest.CPF || null,
     totalValue: num(total.vNF),
     icmsValue: num(total.vICMS),
+    icmsStValue: num(total.vST),
+    fcpValue: num(total.vFCP),
+    fcpStValue: num(total.vFCPST || total.vFCPSTRet),
+    difalDestValue: num(total.vICMSUFDest),
     ipiValue: num(total.vIPI),
     pisValue: num(total.vPIS),
     cofinsValue: num(total.vCOFINS),
+    cbsValue: num(ibsCbsTotal.vCBS),
+    ibsValue: num(ibsCbsTotal.vIBS),
     items,
   };
 }

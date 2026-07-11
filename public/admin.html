@@ -2508,8 +2508,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <div class="section" id="tab-financeiro" style="display:none">
-  <h2 style="margin:0 0 2px;color:#1d1d1f;">💰 Financeiro — Raio-X do dia</h2>
-  <p style="color:#666;margin:0 0 16px;font-size:12px;">A empresa lucrou ou levou fumo hoje? Vendas − custo dos produtos − folha − despesas fixas.</p>
+  <h2 style="margin:0 0 2px;color:#1d1d1f;">💰 Financeiro — Lucro Real trimestral</h2>
+  <p style="color:#666;margin:0 0 16px;font-size:12px;">Margem por produto e apuração tributária por CNPJ. O resultado diário abaixo é operacional; o lucro líquido fiscal está no fechamento trimestral.</p>
 
   <!-- PASSO 1: cadastrar custos (vem primeiro) -->
   <div style="background:#eef4ff;border:1px solid #b6d2ff;border-radius:14px;padding:16px 16px 14px;margin-bottom:18px;">
@@ -2525,22 +2525,57 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div id="fin-expenses"></div>
   </div>
 
-  <!-- PASSO 2: custos variaveis -->
+  <!-- PASSO 2: custos variaveis + Lucro Real -->
   <div style="background:#fff7e6;border:1px solid #ffd591;border-radius:14px;padding:16px;margin-bottom:18px;">
-    <h3 style="margin:0 0 2px;color:#8a5a00;">2️⃣ Configure os custos variáveis</h3>
-    <p style="color:#8a5a00;font-size:12px;margin:0 0 12px;">Informe as taxas reais. Campo vazio ou zero não entra no cálculo. Comissão, desconto e TenisCash usado são lidos automaticamente das vendas.</p>
+    <h3 style="margin:0 0 2px;color:#8a5a00;">2️⃣ Custos variáveis e Lucro Real trimestral</h3>
+    <p style="color:#8a5a00;font-size:12px;margin:0 0 12px;">Taxas de pagamento continuam configuráveis. Os tributos são apurados por CNPJ: débitos das vendas − créditos das entradas, seguidos de IRPJ e CSLL sobre o lucro ajustado.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;align-items:end;">
       <label style="font-size:11px;font-weight:700;color:#555;">Cartão crédito (%)<br><input id="fin-cost-credit" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Cartão débito (%)<br><input id="fin-cost-debit" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">PIX (%)<br><input id="fin-cost-pix" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Outro pagamento (%)<br><input id="fin-cost-pay-other" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
-      <label style="font-size:11px;font-weight:700;color:#555;">Impostos sobre venda (%)<br><input id="fin-cost-tax" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Outros variáveis (%)<br><input id="fin-cost-other" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Embalagem por venda (R$)<br><input id="fin-cost-pack" type="number" min="0" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <label style="font-size:11px;font-weight:700;color:#555;">Provisão T$ gerado (%)<br><input id="fin-cost-tc" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
       <button onclick="finSaveProfitSettings()" style="height:38px;background:#8a5a00;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Salvar taxas</button>
     </div>
+    <div style="margin-top:14px;background:#fff;border:1px solid #efd49a;border-radius:12px;padding:13px;">
+      <div style="font-weight:900;color:#6f4b00;margin-bottom:8px;">Regras tributárias oficiais</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px;align-items:end;">
+        <label style="font-size:11px;font-weight:700;color:#555;">ICMS padrão (%)<br><input id="fin-tax-icms" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#555;">PIS (%)<br><input id="fin-tax-pis" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#555;">Cofins (%)<br><input id="fin-tax-cofins" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#555;">IRPJ (%)<br><input id="fin-tax-irpj" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#555;">Adicional IRPJ (%)<br><input id="fin-tax-irpj-add" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+        <label style="font-size:11px;font-weight:700;color:#555;">CSLL (%)<br><input id="fin-tax-csll" type="number" min="0" max="100" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:12px;color:#555;"><input id="fin-tax-cbs-compliance" type="checkbox" style="margin-top:2px;"> <span><b>Contabilidade confirmou a dispensa de recolhimento CBS/IBS em 2026</b><br>Marque somente após confirmar o cumprimento das obrigações acessórias. Sem confirmação, o sistema provisiona CBS 0,9% e IBS 0,1%.</span></label>
+    </div>
     <div id="fin-cost-status" style="font-size:12px;color:#777;margin-top:8px;"></div>
+  </div>
+
+  <div style="background:#f6f0ff;border:1px solid #ccb7ef;border-radius:14px;padding:16px;margin-bottom:18px;">
+    <h3 style="margin:0 0 3px;color:#5b2d91;">Fechamento do trimestre por CNPJ</h3>
+    <p style="color:#6f4a9b;font-size:12px;margin:0 0 12px;">Use os valores entregues pela contabilidade no LALUR/LACS. Enquanto não estiver fechado, o painel mostra uma provisão.</p>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:end;margin-bottom:10px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Trimestre<br><input id="fin-tax-quarter" value="" readonly style="height:36px;width:105px;border:1px solid #ddd;border-radius:8px;padding:0 9px;background:#fafafa;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:230px;">CNPJ<br><select id="fin-tax-issuer" onchange="finLoadTaxQuarter()" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"><option value="">Selecione</option></select></label>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Crédito ICMS adicional (R$)<br><input id="fin-tq-icms-credit" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Crédito PIS adicional (R$)<br><input id="fin-tq-pis-credit" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Crédito Cofins adicional (R$)<br><input id="fin-tq-cofins-credit" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Adições ao lucro (R$)<br><input id="fin-tq-additions" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Exclusões do lucro (R$)<br><input id="fin-tq-exclusions" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Prejuízo fiscal disponível (R$)<br><input id="fin-tq-loss" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Base negativa CSLL (R$)<br><input id="fin-tq-csll-loss" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">IRPJ já pago/retido (R$)<br><input id="fin-tq-irpj-paid" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">CSLL já paga/retida (R$)<br><input id="fin-tq-csll-paid" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Outros tributos do trimestre (R$)<br><input id="fin-tq-other-tax" type="number" min="0" step="0.01" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;font-weight:800;color:#5b2d91;"><input id="fin-tq-closed" type="checkbox"> Contabilidade conferiu e fechou este trimestre</label>
+    <div style="display:flex;gap:9px;align-items:end;margin-top:10px;flex-wrap:wrap;"><label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:240px;">Observações<br><input id="fin-tq-notes" style="width:100%;height:36px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label><button onclick="finSaveTaxQuarter()" style="height:36px;background:#5b2d91;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Salvar fechamento</button></div>
+    <div id="fin-tq-status" style="font-size:12px;color:#6f4a9b;margin-top:8px;"></div>
   </div>
 
   <!-- PASSO 3: lucro por produto -->
@@ -2560,7 +2595,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
   <!-- PASSO 4: o raio-x -->
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
-    <h3 style="margin:0;color:#1d1d1f;">4️⃣ Raio-X do dia</h3>
+    <h3 style="margin:0;color:#1d1d1f;">4️⃣ Raio-X operacional do dia</h3>
     <div style="display:flex;align-items:center;gap:8px;">
       <input type="date" id="fin-date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;">
       <button onclick="loadFinanceiro()" style="background:#E5571E;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
@@ -13812,13 +13847,13 @@ async function loadLeads(){
   }
 }
 
-const FIN_CATS = [['folha','👥 Folha (colaborador)'],['aluguel','🏠 Aluguel'],['energia','⚡ Energia'],['agua','💧 Água'],['internet','🌐 Internet/telefone'],['software','💻 Software/sistema'],['imposto','🧾 Impostos/taxas'],['marketing','📣 Marketing/anúncios'],['manutencao','🔧 Manutenção'],['outros','📦 Outros']];
+const FIN_CATS = [['folha','👥 Salários e benefícios'],['encargos_folha','🧾 Encargos da folha (INSS/FGTS/RAT/terceiros)'],['aluguel','🏠 Aluguel'],['energia','⚡ Energia'],['agua','💧 Água'],['internet','🌐 Internet/telefone'],['software','💻 Software/sistema'],['imposto','🧾 Tributo manual (fora do cálculo automático)'],['marketing','📣 Marketing/anúncios'],['manutencao','🔧 Manutenção'],['outros','📦 Outros']];
 
 async function loadFinanceiro(){
   const dateEl = document.getElementById('fin-date');
   if(dateEl && !dateEl.value){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); dateEl.value = f.toISOString().slice(0,10); }
   const pf=document.getElementById('fin-profit-from'), pt=document.getElementById('fin-profit-to');
-  if(pt && !pt.value){ const t=new Date(Date.now()-3*3600*1000).toISOString().slice(0,10); pt.value=t; if(pf) pf.value=t.slice(0,7)+'-01'; }
+  if(pt && !pt.value){ const t=new Date(Date.now()-3*3600*1000).toISOString().slice(0,10); pt.value=t; if(pf){const y=Number(t.slice(0,4)),m=Number(t.slice(5,7)),qm=Math.floor((m-1)/3)*3+1;pf.value=y+'-'+String(qm).padStart(2,'0')+'-01';} }
   const catSel = document.getElementById('fin-cat');
   if(catSel && !catSel.options.length) catSel.innerHTML = FIN_CATS.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
   await Promise.all([finLoadXray(), finLoadExpenses(), finLoadProfitSettings(), finLoadProductProfit()]);
@@ -13828,18 +13863,45 @@ function finNum(id){ return Number((document.getElementById(id)||{}).value)||0; 
 async function finLoadProfitSettings(){
   try{
     const r=await fetch('/api/admin/financial/profit-settings',{headers:finHeaders()}), j=await r.json();
-    if(!r.ok) throw new Error(j.error||'falha'); const s=j.settings||{}, p=s.paymentFeesPct||{};
-    const vals={'fin-cost-credit':p.credit_card,'fin-cost-debit':p.debit_card,'fin-cost-pix':p.pix,'fin-cost-pay-other':p.other,'fin-cost-tax':s.taxPct,'fin-cost-other':s.otherVariablePct,'fin-cost-pack':s.packagingPerSale,'fin-cost-tc':s.tcEarnedProvisionPct};
+    if(!r.ok) throw new Error(j.error||'falha'); const s=j.settings||{}, p=s.paymentFeesPct||{}, t=s.realProfit||{};
+    const vals={'fin-cost-credit':p.credit_card,'fin-cost-debit':p.debit_card,'fin-cost-pix':p.pix,'fin-cost-pay-other':p.other,'fin-cost-other':s.otherVariablePct,'fin-cost-pack':s.packagingPerSale,'fin-cost-tc':s.tcEarnedProvisionPct,'fin-tax-icms':t.icmsRatePct,'fin-tax-pis':t.pisRatePct,'fin-tax-cofins':t.cofinsRatePct,'fin-tax-irpj':t.irpjRatePct,'fin-tax-irpj-add':t.irpjAdditionalRatePct,'fin-tax-csll':t.csllRatePct};
     Object.entries(vals).forEach(([id,v])=>{ const e=document.getElementById(id); if(e) e.value=Number(v)||0; });
+    const cb=document.getElementById('fin-tax-cbs-compliance'); if(cb) cb.checked=t.cbsIbs2026ComplianceConfirmed===true;
   }catch(e){ const s=document.getElementById('fin-cost-status'); if(s) s.textContent='Erro ao carregar taxas: '+e.message; }
 }
 async function finSaveProfitSettings(){
   const status=document.getElementById('fin-cost-status'); if(status) status.textContent='Salvando…';
-  const body={paymentFeesPct:{credit_card:finNum('fin-cost-credit'),debit_card:finNum('fin-cost-debit'),pix:finNum('fin-cost-pix'),cash:0,other:finNum('fin-cost-pay-other')},taxPct:finNum('fin-cost-tax'),otherVariablePct:finNum('fin-cost-other'),packagingPerSale:finNum('fin-cost-pack'),tcEarnedProvisionPct:finNum('fin-cost-tc')};
+  const body={paymentFeesPct:{credit_card:finNum('fin-cost-credit'),debit_card:finNum('fin-cost-debit'),pix:finNum('fin-cost-pix'),cash:0,other:finNum('fin-cost-pay-other')},taxPct:0,otherVariablePct:finNum('fin-cost-other'),packagingPerSale:finNum('fin-cost-pack'),tcEarnedProvisionPct:finNum('fin-cost-tc'),realProfit:{regime:'lucro_real_trimestral',icmsRatePct:finNum('fin-tax-icms'),pisRatePct:finNum('fin-tax-pis'),cofinsRatePct:finNum('fin-tax-cofins'),excludeIcmsFromPisCofinsBase:true,irpjRatePct:finNum('fin-tax-irpj'),irpjAdditionalRatePct:finNum('fin-tax-irpj-add'),irpjAdditionalThresholdPerMonth:20000,csllRatePct:finNum('fin-tax-csll'),lossCompensationLimitPct:30,cbs2026RatePct:.9,ibs2026RatePct:.1,cbsIbs2026ComplianceConfirmed:!!document.getElementById('fin-tax-cbs-compliance')?.checked}};
   try{
     const r=await fetch('/api/admin/financial/profit-settings',{method:'PUT',headers:finHeaders(),body:JSON.stringify(body)}),j=await r.json();
     if(!r.ok) throw new Error(j.error||'falha'); if(status) status.textContent='✓ Taxas salvas. O lucro foi recalculado.'; await finLoadProductProfit();
   }catch(e){ if(status) status.textContent='Erro: '+e.message; }
+}
+const FIN_TQ_FIELDS={
+  'fin-tq-icms-credit':'icmsCredit','fin-tq-pis-credit':'pisCredit','fin-tq-cofins-credit':'cofinsCredit',
+  'fin-tq-additions':'taxableAdditions','fin-tq-exclusions':'taxableExclusions','fin-tq-loss':'taxLossCarryforward',
+  'fin-tq-csll-loss':'csllNegativeBaseCarryforward','fin-tq-irpj-paid':'irpjPrepaidOrWithheld',
+  'fin-tq-csll-paid':'csllPrepaidOrWithheld','fin-tq-other-tax':'otherConsumptionTaxes'
+};
+async function finLoadTaxQuarter(showStatus=true){
+  const issuerId=(document.getElementById('fin-tax-issuer')||{}).value, quarter=(document.getElementById('fin-tax-quarter')||{}).value, status=document.getElementById('fin-tq-status');
+  if(!issuerId||!quarter) return;
+  if(showStatus&&status) status.textContent='Carregando fechamento…';
+  try{
+    const r=await fetch('/api/admin/financial/tax-quarter?issuerId='+encodeURIComponent(issuerId)+'&quarter='+encodeURIComponent(quarter),{headers:finHeaders()}),j=await r.json(); if(!r.ok) throw new Error(j.error||'falha');
+    const a=j.adjustment||{}; Object.entries(FIN_TQ_FIELDS).forEach(([id,key])=>{const e=document.getElementById(id);if(e)e.value=Number(a[key])||0;});
+    const cl=document.getElementById('fin-tq-closed'),nt=document.getElementById('fin-tq-notes');if(cl)cl.checked=a.closed===true;if(nt)nt.value=a.notes||'';
+    if(status) status.textContent=a.closed?'✓ Trimestre fechado pela contabilidade.':'Provisório — ainda não fechado pela contabilidade.';
+  }catch(e){if(status)status.textContent='Erro: '+e.message;}
+}
+async function finSaveTaxQuarter(){
+  const issuerId=(document.getElementById('fin-tax-issuer')||{}).value, quarter=(document.getElementById('fin-tax-quarter')||{}).value, status=document.getElementById('fin-tq-status');
+  if(!issuerId||!quarter){alert('Selecione o CNPJ.');return;}
+  const adjustment={};Object.entries(FIN_TQ_FIELDS).forEach(([id,key])=>adjustment[key]=finNum(id));
+  adjustment.closed=!!document.getElementById('fin-tq-closed')?.checked;adjustment.notes=(document.getElementById('fin-tq-notes')?.value||'').trim();
+  if(status)status.textContent='Salvando…';
+  try{const r=await fetch('/api/admin/financial/tax-quarter',{method:'PUT',headers:finHeaders(),body:JSON.stringify({issuerId,quarter,adjustment})}),j=await r.json();if(!r.ok)throw new Error(j.error||'falha');if(status)status.textContent='✓ Fechamento salvo.';await finLoadProductProfit();}
+  catch(e){if(status)status.textContent='Erro: '+e.message;}
 }
 async function finLoadProductProfit(){
   const box=document.getElementById('fin-profit'); if(!box) return; box.innerHTML='<div style="color:#999;padding:10px;">Calculando custos e lucro…</div>';
@@ -13847,16 +13909,27 @@ async function finLoadProductProfit(){
     const p=new URLSearchParams({from:(document.getElementById('fin-profit-from')||{}).value||'',to:(document.getElementById('fin-profit-to')||{}).value||'',storeId:(document.getElementById('fin-profit-store')||{}).value||'',q:(document.getElementById('fin-profit-q')||{}).value||'',sort:(document.getElementById('fin-profit-sort')||{}).value||'profit_asc'});
     const r=await fetch('/api/admin/financial/product-profit?'+p.toString(),{headers:finHeaders()}),j=await r.json(); if(!r.ok) throw new Error(j.error||'falha');
     const ss=document.getElementById('fin-profit-store'); if(ss && ss.options.length<=1) ss.innerHTML='<option value="">Todas</option>'+(j.stores||[]).map(s=>'<option value="'+s.id+'">'+finEsc(s.code)+' — '+finEsc(s.name)+'</option>').join('');
-    const s=j.summary||{}, ok=(s.profit||0)>=0, cards=[['Receita líquida',s.revenue,'#0a7d3b'],['CMV',s.cogs,'#c0271f'],['Custos variáveis',s.variableCosts,'#c0271f'],['Fixos rateados',s.fixedAllocated,'#c0271f'],['Lucro líquido',s.profit,ok?'#0a7d3b':'#c0271f'],['Margem',((s.marginPct||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'),ok?'#0a7d3b':'#c0271f']];
-    let h='<div style="background:'+(ok?'#e7f8ee':'#fdeaea')+';border:1px solid '+(ok?'#86e0a8':'#f3a9a9')+';border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><b>'+(ok?'🟢 Lucro ':'🔴 Prejuízo ')+finBRL(Math.abs(s.profit||0))+'</b><div style="font-size:12px;color:#666;">'+(s.sales||0)+' vendas concluídas · '+(s.products||0)+' produtos · '+(s.units||0)+' unidades</div></div><div style="font-weight:800;color:'+(ok?'#0a7d3b':'#c0271f')+';">Margem '+(s.marginPct==null?'—':Number(s.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</div></div>';
+    const tq=document.getElementById('fin-tax-quarter');if(tq)tq.value=j.tax?.quarter||'';
+    const tis=document.getElementById('fin-tax-issuer');
+    if(tis){const old=tis.value;tis.innerHTML='<option value="">Selecione</option>'+(j.issuers||[]).map(i=>'<option value="'+i.id+'">'+finEsc(i.fantasyName||i.companyName)+' — '+finEsc(i.cnpj)+'</option>').join('');tis.value=(j.issuers||[]).some(i=>i.id===old)?old:((j.issuers||[])[0]?.id||'');if(tis.value)finLoadTaxQuarter(false);}
+    const s=j.summary||{}, ok=(s.profit||0)>=0, cards=[
+      ['Receita líquida',s.revenue,'#0a7d3b'],['CMV',s.cogs,'#c0271f'],['Lucro antes dos tributos',s.profitBeforeTaxes,'#6f4a9b'],
+      ['ICMS/PIS/Cofins/CBS/IBS',s.consumptionTaxes,'#c0271f'],['IRPJ + CSLL',s.incomeTaxes,'#c0271f'],['Fixos rateados',s.fixedAllocated,'#c0271f'],
+      ['Lucro líquido',s.profit,ok?'#0a7d3b':'#c0271f'],['Margem',((s.marginPct||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'),ok?'#0a7d3b':'#c0271f']
+    ];
+    const provisional=j.tax?.status!=='closed';
+    let h='<div style="background:'+(ok?'#e7f8ee':'#fdeaea')+';border:1px solid '+(ok?'#86e0a8':'#f3a9a9')+';border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><b style="font-size:17px;color:'+(ok?'#0a7d3b':'#c0271f')+';">'+(ok?'🟢 Lucro ':'🔴 Prejuízo ')+finBRL(Math.abs(s.profit||0))+(provisional?' (provisório)':'')+'</b><div style="font-size:12px;color:#666;">'+(s.sales||0)+' vendas concluídas · '+(s.products||0)+' produtos · '+(s.units||0)+' unidades · '+finEsc(j.tax?.quarter||'')+'</div></div><div style="font-weight:800;color:'+(ok?'#0a7d3b':'#c0271f')+';">Margem '+(s.marginPct==null?'—':Number(s.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</div></div>';
     h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;margin-top:9px;">'+cards.map(c=>'<div style="background:#fff;border:1px solid #eee;border-radius:9px;padding:9px;"><div style="font-size:11px;color:#666;">'+c[0]+'</div><div style="font-weight:900;color:'+c[2]+';">'+(typeof c[1]==='string'?c[1]:finBRL(c[1]))+'</div></div>').join('')+'</div>';
+    const entities=j.tax?.entities||[];
+    if(entities.length){h+='<div style="overflow-x:auto;margin-top:9px;"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:820px;background:#fff;"><thead><tr style="border-bottom:1px solid #ddd;color:#666;"><th style="padding:6px;text-align:left;">CNPJ</th><th>ICMS líquido</th><th>PIS líquido</th><th>Cofins líquida</th><th>IRPJ</th><th>Adicional</th><th>CSLL</th><th>Status</th></tr></thead><tbody>'+entities.map(e=>'<tr style="border-bottom:1px solid #eee;"><td style="padding:6px;"><b>'+finEsc(e.issuer?.name||'')+'</b><br>'+finEsc(e.issuer?.cnpj||'sem CNPJ')+'</td><td style="text-align:right;">'+finBRL(e.consumption?.icms?.expense)+'</td><td style="text-align:right;">'+finBRL(e.consumption?.pis?.expense)+'</td><td style="text-align:right;">'+finBRL(e.consumption?.cofins?.expense)+'</td><td style="text-align:right;">'+finBRL(e.income?.irpj)+'</td><td style="text-align:right;">'+finBRL(e.income?.irpjAdditional)+'</td><td style="text-align:right;">'+finBRL(e.income?.csll)+'</td><td style="text-align:center;font-weight:800;color:'+(e.status==='closed'?'#0a7d3b':'#b06b00')+';">'+(e.status==='closed'?'Fechado':'Provisório')+'</td></tr>').join('')+'</tbody></table></div>';}
+    (j.tax?.warnings||[]).forEach(w=>{h+='<div style="margin-top:7px;background:#fff7e6;border:1px solid #ffd591;border-radius:9px;padding:7px 9px;font-size:11px;color:#8a5a00;">⚠️ '+finEsc(w)+'</div>';});
     if((s.cogsCoverage||0)<100) h+='<div style="margin-top:9px;background:#fff7e6;border:1px solid #ffd591;border-radius:9px;padding:8px 10px;font-size:12px;color:#8a5a00;">⚠️ Cobertura de custo: <b>'+Number(s.cogsCoverage||0).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</b>. '+(s.missingCostUnits||0)+' unidade(s) vendida(s) ainda não têm custo; o lucro delas aparece maior que o real.</div>';
     if(s.salesWithoutItems>0 || s.revenueNotRepresentedByItems>0) h+='<div style="margin-top:9px;background:#fdeaea;border:1px solid #f3a9a9;border-radius:9px;padding:8px 10px;font-size:12px;color:#8a1c17;">⚠️ '+s.salesWithoutItems+' venda(s) não têm itens detalhados; '+finBRL((s.revenueWithoutItems||0)+(s.revenueNotRepresentedByItems||0))+' não pôde ser atribuído a produtos.</div>';
     const products=j.products||[];
     if(!products.length){box.innerHTML=h+'<div style="color:#999;text-align:center;padding:24px;">Nenhum produto vendido nesse período.</div>';return;}
-    h+='<div style="overflow-x:auto;margin-top:12px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1050px;color:#222;"><thead><tr style="text-align:left;color:#555;border-bottom:2px solid #ddd;"><th style="padding:7px;">Produto</th><th style="padding:7px;text-align:right;">Qtd</th><th style="padding:7px;text-align:right;">Receita</th><th style="padding:7px;text-align:right;">CMV</th><th style="padding:7px;text-align:right;">Comissão</th><th style="padding:7px;text-align:right;">Taxas/imp.</th><th style="padding:7px;text-align:right;">TenisCash</th><th style="padding:7px;text-align:right;">Fixos</th><th style="padding:7px;text-align:right;">Lucro</th><th style="padding:7px;text-align:right;">Margem</th></tr></thead><tbody>';
-    products.forEach(x=>{const good=x.profit>=0, extra=(x.paymentFees||0)+(x.taxes||0)+(x.otherVariableCosts||0)+(x.packaging||0),tc=(x.tcUsed||0)+(x.tcProvision||0),miss=(x.missingCostUnits||0)>0;h+='<tr style="border-bottom:1px solid #eee;background:'+(good?'#fff':'#fff5f5')+';"><td style="padding:7px;"><b>'+finEsc(x.name)+'</b><div style="color:#888;font-size:11px;">'+finEsc(x.brand)+(x.sku?' · '+finEsc(x.sku):'')+(miss?' · ⚠️ custo incompleto':'')+'</div></td><td style="padding:7px;text-align:right;">'+x.units+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.revenue)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.cogs)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.commissions)+'</td><td style="padding:7px;text-align:right;" title="Taxa pagamento + impostos + outros + embalagem">'+finBRL(extra)+'</td><td style="padding:7px;text-align:right;" title="T$ usado + provisão do T$ gerado">'+finBRL(tc)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.fixedAllocated)+'</td><td style="padding:7px;text-align:right;font-weight:900;color:'+(good?'#0a7d3b':'#c0271f')+';">'+finBRL(x.profit)+'</td><td style="padding:7px;text-align:right;font-weight:800;color:'+(good?'#0a7d3b':'#c0271f')+';">'+(x.marginPct==null?'—':Number(x.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</td></tr>';});
-    h+='</tbody></table></div><div style="font-size:11px;color:#777;margin-top:8px;">Desconto já está embutido na receita líquida. Vendas antigas usam o custo atual do produto; novas vendas guardarão o custo da data da venda.</div>'; box.innerHTML=h;
+    h+='<div style="overflow-x:auto;margin-top:12px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1180px;color:#222;"><thead><tr style="text-align:left;color:#555;border-bottom:2px solid #ddd;"><th style="padding:7px;">Produto</th><th style="padding:7px;text-align:right;">Qtd</th><th style="padding:7px;text-align:right;">Receita</th><th style="padding:7px;text-align:right;">CMV</th><th style="padding:7px;text-align:right;">Comissão/taxas</th><th style="padding:7px;text-align:right;">Tributos consumo</th><th style="padding:7px;text-align:right;">IRPJ/CSLL</th><th style="padding:7px;text-align:right;">Fixos</th><th style="padding:7px;text-align:right;">Lucro líquido</th><th style="padding:7px;text-align:right;">Margem</th></tr></thead><tbody>';
+    products.forEach(x=>{const good=x.profit>=0,oper=(x.paymentFees||0)+(x.commissions||0)+(x.otherVariableCosts||0)+(x.packaging||0)+(x.tcUsed||0)+(x.tcProvision||0),miss=(x.missingCostUnits||0)>0;h+='<tr style="border-bottom:1px solid #eee;background:'+(good?'#fff':'#fff5f5')+';"><td style="padding:7px;"><b>'+finEsc(x.name)+'</b><div style="color:#888;font-size:11px;">'+finEsc(x.brand)+(x.sku?' · '+finEsc(x.sku):'')+(miss?' · ⚠️ custo incompleto':'')+'</div></td><td style="padding:7px;text-align:right;">'+x.units+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.revenue)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.cogs)+'</td><td style="padding:7px;text-align:right;">'+finBRL(oper)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.consumptionTaxes)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.incomeTaxes)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.fixedAllocated)+'</td><td style="padding:7px;text-align:right;font-weight:900;color:'+(good?'#0a7d3b':'#c0271f')+';">'+finBRL(x.profit)+'</td><td style="padding:7px;text-align:right;font-weight:800;color:'+(good?'#0a7d3b':'#c0271f')+';">'+(x.marginPct==null?'—':Number(x.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</td></tr>';});
+    h+='</tbody></table></div><div style="font-size:11px;color:#777;margin-top:8px;">Apuração por CNPJ e trimestre. Créditos automáticos vêm das NF-e de entrada; IRPJ e CSLL são rateados aos produtos somente para análise gerencial. O fechamento fiscal definitivo depende da conferência do contador.</div>'; box.innerHTML=h;
   }catch(e){box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+finEsc(e.message)+'</div>';}
 }
 
@@ -13869,7 +13942,7 @@ async function finLoadXray(){
     if(!r.ok) throw new Error(j.error||'falha');
     const c = j.company, lucro = c.result >= 0, cov = c.cogsCoverage;
     let html = '<div style="background:'+(lucro?'#e7f8ee':'#fdeaea')+';border:1px solid '+(lucro?'#86e0a8':'#f3a9a9')+';border-radius:14px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'
-      + '<div><div style="font-size:13px;font-weight:700;color:#555;">Resultado do dia ('+finEsc(j.date.split("-").reverse().join("/"))+')</div>'
+      + '<div><div style="font-size:13px;font-weight:700;color:#555;">Resultado operacional do dia, antes do fechamento tributário ('+finEsc(j.date.split("-").reverse().join("/"))+')</div>'
       + '<div style="font-size:30px;font-weight:900;color:'+(lucro?'#0a7d3b':'#c0271f')+';">'+(lucro?'🟢 Lucro ':'🔴 Prejuízo ')+finBRL(Math.abs(c.result))+'</div></div>'
       + '<div style="font-size:12px;color:#666;text-align:right;">'+j.salesCount+' vendas hoje</div></div>';
     const rows = [['Vendas (receita)', c.revenue, '#0a7d3b'], ['− Custo dos produtos (CMV)', -c.cogs, '#c0271f'], ['− Folha do dia', -c.laborDay, '#c0271f'], ['− Despesas fixas do dia', -c.fixedDay, '#c0271f']];

@@ -11,7 +11,8 @@
     "db:generate": "npx prisma generate",
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",
-    "test:seller-stock": "node scripts/test-seller-stock-logic.js"
+    "test:seller-stock": "node scripts/test-seller-stock-logic.js",
+    "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",

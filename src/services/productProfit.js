@@ -2,6 +2,8 @@
 // Regra: desconto ja esta embutido em SaleItem.totalPrice e nao e subtraido duas vezes.
 // Custos antigos usam Product.costPrice atual como fallback; vendas novas guardam SaleItem.unitCost.
 
+const { DEFAULT_REAL_PROFIT_SETTINGS, sanitizeRealProfitSettings } = require('./realProfitTax');
+
 const DEFAULT_SETTINGS = Object.freeze({
   paymentFeesPct: {
     credit_card: 0,
@@ -14,6 +16,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   otherVariablePct: 0,
   packagingPerSale: 0,
   tcEarnedProvisionPct: 0,
+  realProfit: DEFAULT_REAL_PROFIT_SETTINGS,
 });
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -34,6 +37,7 @@ function sanitizeSettings(input = {}) {
     otherVariablePct: clampPct(input.otherVariablePct),
     packagingPerSale: Math.max(0, Number(input.packagingPerSale) || 0),
     tcEarnedProvisionPct: clampPct(input.tcEarnedProvisionPct),
+    realProfit: sanitizeRealProfitSettings(input.realProfit || {}),
   };
 }
 
@@ -88,6 +92,7 @@ function makeRow(item) {
     tcProvision: 0,
     fixedAllocated: 0,
     storeRevenue: new Map(),
+    issuerRevenue: new Map(),
     saleIds: new Set(),
     costSources: new Set(),
   };
@@ -184,6 +189,8 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       row.saleIds.add(sale.id);
       const sid = sale.storeId || '__none__';
       row.storeRevenue.set(sid, (row.storeRevenue.get(sid) || 0) + revenue);
+      const issuerId = sale.issuerId || '__unassigned__';
+      row.issuerRevenue.set(issuerId, (row.issuerRevenue.get(issuerId) || 0) + revenue);
 
       if (unitCost != null) {
         row.cogs += unitCost * qty;
@@ -233,6 +240,7 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       cogsCoverage: row.revenue > 0 ? round2(row.cogsKnownRevenue / row.revenue * 100) : null,
       missingCostUnits: round2(row.missingCostUnits),
       costSources: [...row.costSources],
+      issuerRevenue: Object.fromEntries([...row.issuerRevenue.entries()].map(([k, v]) => [k, round2(v)])),
     });
   }
 

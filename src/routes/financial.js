@@ -9,12 +9,75 @@ const {
   sanitizeSettings,
   calculateProductProfit,
 } = require('../services/productProfit');
+const {
+  sanitizeQuarterAdjustment,
+  quarterIdForYmd,
+  quarterBounds,
+  estimateSalesTaxes,
+  calculateQuarterlyRealProfit,
+} = require('../services/realProfitTax');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
 const PROFIT_SETTINGS_KEY = 'financial_profit_settings';
+const TAX_QUARTER_PREFIX = 'financial_tax_quarter:';
+
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const digits = (s) => String(s || '').replace(/\D/g, '');
+
+function taxQuarterKey(issuerId, quarter) {
+  return TAX_QUARTER_PREFIX + issuerId + ':' + quarter;
+}
+
+async function loadQuarterAdjustments(issuerIds, quarter) {
+  const ids = [...new Set((issuerIds || []).filter(Boolean))];
+  if (!ids.length) return {};
+  const keys = ids.map((id) => taxQuarterKey(id, quarter));
+  const rows = await prisma.config.findMany({ where: { key: { in: keys } } });
+  const byKey = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+  return Object.fromEntries(ids.map((id) => {
+    try { return [id, sanitizeQuarterAdjustment(JSON.parse(byKey[taxQuarterKey(id, quarter)] || '{}'))]; }
+    catch (_) { return [id, sanitizeQuarterAdjustment({})]; }
+  }));
+}
+
+function xmlBlock(xml, name) {
+  const re = new RegExp('<(?:\\w+:)?' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:\\w+:)?' + name + '>', 'i');
+  return String(xml || '').match(re)?.[1] || '';
+}
+
+function xmlNumber(block, name) {
+  const re = new RegExp('<(?:\\w+:)?' + name + '(?:\\s[^>]*)?>([^<]+)<\\/(?:\\w+:)?' + name + '>', 'i');
+  const n = Number(String(block || '').match(re)?.[1]);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function extractFiscalTaxTotals(xml) {
+  const icms = xmlBlock(xml, 'ICMSTot');
+  const ibsCbs = xmlBlock(xml, 'IBSCBSTot');
+  if (!icms && !ibsCbs) return null;
+  return {
+    icms: xmlNumber(icms, 'vICMS'),
+    pis: xmlNumber(icms, 'vPIS'),
+    cofins: xmlNumber(icms, 'vCOFINS'),
+    cbs: xmlNumber(ibsCbs, 'vCBS'),
+    ibs: xmlNumber(ibsCbs, 'vIBS'),
+    icmsSt: xmlNumber(icms, 'vST'),
+    fcp: xmlNumber(icms, 'vFCP') + xmlNumber(icms, 'vFCPST'),
+    difal: xmlNumber(icms, 'vICMSUFDest'),
+  };
+}
+
+function scaleAdjustment(adjustment, factor) {
+  const clean = sanitizeQuarterAdjustment(adjustment);
+  if (factor >= 0.999999) return clean;
+  const out = { ...clean };
+  for (const key of Object.keys(out)) if (typeof out[key] === 'number') out[key] = out[key] * Math.max(0, factor);
+  out.closed = false;
+  return out;
+}
 
 function fortalezaYmd(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -273,14 +336,50 @@ router.put('/profit-settings', async (req, res) => {
   }
 });
 
+// Ajustes trimestrais de LALUR/LACS e creditos confirmados pela contabilidade.
+// Sao separados por CNPJ emissor para nunca consolidar empresas diferentes.
+router.get('/tax-quarter', async (req, res) => {
+  try {
+    const issuerId = String(req.query.issuerId || '').trim();
+    const quarter = String(req.query.quarter || '').trim();
+    quarterBounds(quarter);
+    if (!issuerId) return res.status(400).json({ error: 'issuerId obrigatorio' });
+    const issuer = await prisma.fiscalIssuer.findUnique({ where: { id: issuerId }, select: { id: true, companyName: true, fantasyName: true, cnpj: true, crt: true } });
+    if (!issuer) return res.status(404).json({ error: 'CNPJ emissor nao encontrado' });
+    const map = await loadQuarterAdjustments([issuerId], quarter);
+    res.json({ issuer, quarter, adjustment: map[issuerId] });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/tax-quarter', async (req, res) => {
+  try {
+    const issuerId = String(req.body?.issuerId || '').trim();
+    const quarter = String(req.body?.quarter || '').trim();
+    quarterBounds(quarter);
+    if (!issuerId) return res.status(400).json({ error: 'issuerId obrigatorio' });
+    const issuer = await prisma.fiscalIssuer.findUnique({ where: { id: issuerId }, select: { id: true } });
+    if (!issuer) return res.status(404).json({ error: 'CNPJ emissor nao encontrado' });
+    const adjustment = sanitizeQuarterAdjustment(req.body?.adjustment || {});
+    const key = taxQuarterKey(issuerId, quarter);
+    await prisma.config.upsert({ where: { key }, update: { value: JSON.stringify(adjustment) }, create: { id: key, key, value: JSON.stringify(adjustment) } });
+    res.json({ ok: true, issuerId, quarter, adjustment });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/product-profit', async (req, res) => {
   try {
     const period = parseProfitPeriod(req.query);
+    const quarter = quarterIdForYmd(period.from);
+    if (quarter !== quarterIdForYmd(period.to)) throw new Error('Lucro Real trimestral exige datas dentro do mesmo trimestre');
     const storeId = String(req.query.storeId || '').trim() || null;
     const query = String(req.query.q || '').trim().toLowerCase();
     const sort = String(req.query.sort || 'profit_asc');
 
-    const [sales, expenses, settings, stores] = await Promise.all([
+    const [sales, expenses, settings, stores, issuers] = await Promise.all([
       prisma.sale.findMany({
         where: { createdAt: { gte: period.start, lt: period.end }, status: 'completed' },
         select: {
@@ -295,12 +394,204 @@ router.get('/product-profit', async (req, res) => {
           },
         },
       }),
-      prisma.operatingExpense.findMany({ where: { active: true }, select: { amount: true, storeId: true } }),
+      prisma.operatingExpense.findMany({ where: { active: true, category: { not: 'imposto' } }, select: { amount: true, storeId: true } }),
       loadProfitSettings(),
-      prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+      prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true, fiscalIssuerId: true }, orderBy: { code: 'asc' } }),
+      prisma.fiscalIssuer.findMany({ where: { active: true }, select: { id: true, companyName: true, fantasyName: true, cnpj: true, crt: true }, orderBy: { companyName: 'asc' } }),
     ]);
 
-    const result = calculateProductProfit({ sales, expenses, settings, from: period.from, to: period.to, storeId });
+    const storeById = Object.fromEntries(stores.map((s) => [s.id, s]));
+    const issuerById = Object.fromEntries(issuers.map((i) => [i.id, i]));
+    const issuerByCnpj = Object.fromEntries(issuers.map((i) => [digits(i.cnpj), i]));
+    for (const sale of sales) sale.issuerId = storeById[sale.storeId]?.fiscalIssuerId || '__unassigned__';
+
+    // A taxa manual antiga e ignorada no Lucro Real para evitar imposto em duplicidade.
+    const baseSettings = { ...settings, taxPct: 0 };
+    const result = calculateProductProfit({ sales, expenses, settings: baseSettings, from: period.from, to: period.to, storeId });
+    const selectedSales = storeId ? sales.filter((s) => s.storeId === storeId) : sales;
+    const selectedSaleIds = selectedSales.map((s) => s.id);
+
+    const fiscalDocs = selectedSaleIds.length ? await prisma.fiscalDocument.findMany({
+      where: { saleId: { in: selectedSaleIds }, status: 'authorized', docType: { in: ['NFCE', 'NFE'] } },
+      select: { saleId: true, issuerId: true, totalValue: true, xmlContent: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }) : [];
+    const fiscalBySale = {};
+    for (const doc of fiscalDocs) {
+      if (!doc.saleId || fiscalBySale[doc.saleId]) continue;
+      const totals = extractFiscalTaxTotals(doc.xmlContent);
+      if (totals) fiscalBySale[doc.saleId] = { ...totals, issuerId: doc.issuerId, totalValue: Number(doc.totalValue) || 0 };
+    }
+
+    const entities = {};
+    const ensureEntity = (issuerId) => (entities[issuerId] ||= {
+      issuerId, revenue: 0, actualSalesRevenue: 0, uncoveredRevenue: 0, profitBeforeTaxes: 0,
+      debits: { icms: 0, pis: 0, cofins: 0, cbs: 0, ibs: 0 },
+      credits: { icms: 0, pis: 0, cofins: 0, cbs: 0, ibs: 0 },
+      purchaseDocuments: 0, embeddedInputTaxes: { icmsSt: 0, fcp: 0, difal: 0, ipi: 0 },
+      calculationWarnings: [],
+    });
+    const itemRevenue = (sale) => (sale.items || []).reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
+    for (const sale of selectedSales) {
+      const revenue = itemRevenue(sale);
+      if (revenue <= 0) continue;
+      const issuerId = sale.issuerId || '__unassigned__';
+      const entity = ensureEntity(issuerId);
+      entity.revenue += revenue;
+      const actual = fiscalBySale[sale.id];
+      // XML emitido com CRT diferente de 3 nao controla a provisao do Lucro Real.
+      // Nesse caso usa as regras normais configuradas e exibe alerta de cadastro fiscal.
+      if (actual && issuerById[issuerId]?.crt === 3) {
+        entity.actualSalesRevenue += revenue;
+        entity.debits.icms += actual.icms;
+        const rp = settings.realProfit;
+        const federalBase = Math.max(0, revenue - (rp.excludeIcmsFromPisCofinsBase ? actual.icms : 0));
+        const legalPis = federalBase * rp.pisRatePct / 100;
+        const legalCofins = federalBase * rp.cofinsRatePct / 100;
+        // O emissor legado calculava PIS/Cofins sobre o valor cheio. Quando o XML
+        // diverge da base legal configurada, a provisao usa a base sem ICMS e avisa.
+        if (Math.abs(actual.pis - legalPis) > 0.02 || Math.abs(actual.cofins - legalCofins) > 0.02) {
+          entity.debits.pis += legalPis;
+          entity.debits.cofins += legalCofins;
+          entity.calculationWarnings.push('PIS/Cofins do XML divergem da base sem ICMS; a provisao gerencial aplicou a regra configurada');
+        } else {
+          entity.debits.pis += actual.pis;
+          entity.debits.cofins += actual.cofins;
+        }
+      } else {
+        entity.uncoveredRevenue += revenue;
+      }
+    }
+
+    for (const entity of Object.values(entities)) {
+      const missing = estimateSalesTaxes(entity.uncoveredRevenue, settings.realProfit);
+      const reform = estimateSalesTaxes(entity.revenue, settings.realProfit);
+      entity.debits.icms += missing.icms;
+      entity.debits.pis += missing.pis;
+      entity.debits.cofins += missing.cofins;
+      // Em 2026 os XMLs legados podem nao conter os novos grupos; provisiona sobre toda a receita.
+      entity.debits.cbs = reform.cbs;
+      entity.debits.ibs = reform.ibs;
+    }
+
+    const activeCnpjs = issuers.map((i) => digits(i.cnpj)).filter(Boolean);
+    const purchaseDocs = activeCnpjs.length ? await prisma.xmlFiscalDocument.findMany({
+      where: { docType: 'entrada', issueDate: { gte: period.start, lt: period.end }, recipientCnpj: { in: activeCnpjs } },
+      select: {
+        recipientCnpj: true, icmsValue: true, pisValue: true, cofinsValue: true, cbsValue: true, ibsValue: true,
+        icmsStValue: true, fcpValue: true, fcpStValue: true, difalDestValue: true, ipiValue: true,
+      },
+    }) : [];
+    for (const doc of purchaseDocs) {
+      const issuer = issuerByCnpj[digits(doc.recipientCnpj)];
+      if (!issuer || !entities[issuer.id]) continue;
+      const entity = entities[issuer.id];
+      entity.purchaseDocuments += 1;
+      entity.credits.icms += Number(doc.icmsValue) || 0;
+      entity.credits.pis += Number(doc.pisValue) || 0;
+      entity.credits.cofins += Number(doc.cofinsValue) || 0;
+      entity.credits.cbs += Number(doc.cbsValue) || 0;
+      entity.credits.ibs += Number(doc.ibsValue) || 0;
+      entity.embeddedInputTaxes.icmsSt += Number(doc.icmsStValue) || 0;
+      entity.embeddedInputTaxes.fcp += (Number(doc.fcpValue) || 0) + (Number(doc.fcpStValue) || 0);
+      entity.embeddedInputTaxes.difal += Number(doc.difalDestValue) || 0;
+      entity.embeddedInputTaxes.ipi += Number(doc.ipiValue) || 0;
+    }
+
+    // Resultado antes dos tributos separado por CNPJ, proporcional a receita do produto em cada emissor.
+    for (const product of result.products) {
+      for (const [issuerId, revenue] of Object.entries(product.issuerRevenue || {})) {
+        if (!entities[issuerId] || product.revenue <= 0) continue;
+        entities[issuerId].profitBeforeTaxes += product.profit * revenue / product.revenue;
+      }
+    }
+
+    const adjustments = await loadQuarterAdjustments(Object.keys(entities).filter((id) => id !== '__unassigned__'), quarter);
+    const allRevenueByIssuer = {};
+    for (const sale of sales) {
+      const issuerId = sale.issuerId || '__unassigned__';
+      allRevenueByIssuer[issuerId] = (allRevenueByIssuer[issuerId] || 0) + itemRevenue(sale);
+    }
+    const taxEntities = {};
+    const taxWarnings = ['Creditos automaticos de PIS/Cofins usam os valores destacados nas NF-e de entrada; diferencas da EFD-Contribuicoes devem ser lancadas no fechamento do contador'];
+    for (const entity of Object.values(entities)) {
+      const issuer = issuerById[entity.issuerId] || null;
+      const scopeFactor = storeId && allRevenueByIssuer[entity.issuerId] > 0 ? entity.revenue / allRevenueByIssuer[entity.issuerId] : 1;
+      const adjustment = scaleAdjustment(adjustments[entity.issuerId] || {}, scopeFactor);
+      const scopedCredits = Object.fromEntries(Object.entries(entity.credits).map(([key, value]) => [key, value * scopeFactor]));
+      const tax = calculateQuarterlyRealProfit({
+        revenue: entity.revenue,
+        profitBeforeTaxes: entity.profitBeforeTaxes,
+        salesTaxDebits: entity.debits,
+        automaticCredits: scopedCredits,
+        adjustment,
+        settings: settings.realProfit,
+        from: period.from,
+        to: period.to,
+        actualSalesRevenue: entity.actualSalesRevenue,
+        purchaseDocuments: entity.purchaseDocuments,
+      });
+      tax.issuer = issuer ? { id: issuer.id, name: issuer.fantasyName || issuer.companyName, cnpj: issuer.cnpj, crt: issuer.crt } : { id: entity.issuerId, name: 'Sem CNPJ vinculado', cnpj: null, crt: null };
+      tax.embeddedInputTaxes = Object.fromEntries(Object.entries(entity.embeddedInputTaxes).map(([k, v]) => [k, r2(v * scopeFactor)]));
+      tax.scopeFactor = r2(scopeFactor);
+      if (issuer && issuer.crt !== 3) taxWarnings.push(`${tax.issuer.name}: CRT cadastrado = ${issuer.crt}; Lucro Real exige regime normal (CRT 3) na emissao fiscal`);
+      if (!issuer) taxWarnings.push('Existem vendas sem CNPJ emissor vinculado a loja');
+      taxWarnings.push(...entity.calculationWarnings.map((w) => `${tax.issuer.name}: ${w}`));
+      taxWarnings.push(...tax.warnings.map((w) => `${tax.issuer.name}: ${w}`));
+      taxEntities[entity.issuerId] = tax;
+    }
+
+    // Rateia o imposto de cada CNPJ aos produtos apenas para analise gerencial de margem.
+    for (const product of result.products) {
+      let consumption = 0, income = 0, irpj = 0, irpjAdditional = 0, csll = 0;
+      for (const [issuerId, revenue] of Object.entries(product.issuerRevenue || {})) {
+        const entity = entities[issuerId], tax = taxEntities[issuerId];
+        if (!entity || !tax || entity.revenue <= 0) continue;
+        const share = revenue / entity.revenue;
+        consumption += tax.consumption.expense * share;
+        income += tax.income.expense * share;
+        irpj += tax.income.irpj * share;
+        irpjAdditional += tax.income.irpjAdditional * share;
+        csll += tax.income.csll * share;
+      }
+      const before = product.profit;
+      product.profitBeforeTaxes = r2(before);
+      product.consumptionTaxes = r2(consumption);
+      product.profitBeforeIncomeTax = r2(before - consumption);
+      product.irpj = r2(irpj);
+      product.irpjAdditional = r2(irpjAdditional);
+      product.csll = r2(csll);
+      product.incomeTaxes = r2(income);
+      product.taxes = r2(consumption + income);
+      product.variableCosts = r2(product.variableCosts + consumption);
+      product.contribution = r2(product.contribution - consumption);
+      product.profit = r2(before - consumption - income);
+      product.marginPct = product.revenue > 0 ? r2(product.profit / product.revenue * 100) : null;
+    }
+
+    const taxTotals = Object.values(taxEntities).reduce((a, tax) => {
+      a.consumption += tax.consumption.expense;
+      a.irpj += tax.income.irpj;
+      a.irpjAdditional += tax.income.irpjAdditional;
+      a.csll += tax.income.csll;
+      a.income += tax.income.expense;
+      a.total += tax.totalTaxExpense;
+      return a;
+    }, { consumption: 0, irpj: 0, irpjAdditional: 0, csll: 0, income: 0, total: 0 });
+    for (const key of Object.keys(taxTotals)) taxTotals[key] = r2(taxTotals[key]);
+    const beforeTax = result.summary.profit;
+    result.summary.profitBeforeTaxes = r2(beforeTax);
+    result.summary.consumptionTaxes = taxTotals.consumption;
+    result.summary.irpj = taxTotals.irpj;
+    result.summary.irpjAdditional = taxTotals.irpjAdditional;
+    result.summary.csll = taxTotals.csll;
+    result.summary.incomeTaxes = taxTotals.income;
+    result.summary.taxes = taxTotals.total;
+    result.summary.variableCosts = r2(result.summary.variableCosts + taxTotals.consumption);
+    result.summary.contribution = r2(result.summary.contribution - taxTotals.consumption);
+    result.summary.profit = r2(beforeTax - taxTotals.total);
+    result.summary.marginPct = result.summary.revenue > 0 ? r2(result.summary.profit / result.summary.revenue * 100) : null;
+
     let products = result.products;
     if (query) products = products.filter((p) => `${p.name} ${p.brand} ${p.sku || ''}`.toLowerCase().includes(query));
 
@@ -321,18 +612,30 @@ router.get('/product-profit', async (req, res) => {
       settings: result.settings,
       summary: result.summary,
       products,
-      stores,
+      stores: stores.map(({ fiscalIssuerId, ...store }) => store),
+      issuers,
+      tax: {
+        regime: 'lucro_real_trimestral', quarter,
+        status: Object.values(taxEntities).every((t) => t.status === 'closed') && Object.keys(taxEntities).length ? 'closed' : 'provisional',
+        scope: storeId ? 'rateio_gerencial_da_loja' : 'apuracao_por_cnpj',
+        totals: taxTotals,
+        entities: Object.values(taxEntities),
+        warnings: [...new Set(taxWarnings)],
+      },
       methodology: {
         revenue: 'SaleItem.totalPrice (ja liquido do desconto)',
         cogs: 'SaleItem.unitCost da data da venda; fallback Product.costPrice atual em vendas antigas',
         fixedCosts: 'Despesas mensais ativas rateadas por dia e pela participacao do produto na receita',
+        taxExpenseCategory: 'Despesas cadastradas na categoria imposto ficam fora do rateio para evitar duplicidade com a apuracao tributaria',
+        taxes: 'Lucro Real trimestral por CNPJ: ICMS/PIS/Cofins/CBS/IBS liquidos de creditos, depois IRPJ, adicional de IRPJ e CSLL',
+        incomeTaxAllocation: 'IRPJ e CSLL sao apurados por CNPJ e rateados aos produtos apenas para analise gerencial',
         excludedStatuses: ['cancelled', 'canceled', 'pending', 'pending_payment', 'exchange_coupon'],
         exchangeCoupons: 'Cupons simbolicos de troca (status=exchange_coupon) nao sao venda economica e ficam fora do lucro',
       },
     });
   } catch (err) {
     console.error('[financial/product-profit]', err);
-    const badRequest = /Periodo|periodo|Data invalida/.test(err.message);
+    const badRequest = /Periodo|periodo|Data invalida|Lucro Real trimestral/.test(err.message);
     res.status(badRequest ? 400 : 500).json({ error: err.message || 'Erro ao calcular lucro por produto' });
   }
 });
@@ -437,7 +740,7 @@ router.get('/daily-xray', async (req, res) => {
     const expStore = {}; let cwFolha = 0, cwFixas = 0;
     const perDay = (a) => (a || 0) / daysInMonth;
     expenses.forEach((e) => {
-      const dc = perDay(e.amount); const folha = e.category === 'folha';
+      const dc = perDay(e.amount); const folha = ['folha', 'encargos_folha'].includes(e.category);
       if (e.storeId) { const b = (expStore[e.storeId] = expStore[e.storeId] || { folha: 0, fixas: 0 }); if (folha) b.folha += dc; else b.fixas += dc; }
       else { if (folha) cwFolha += dc; else cwFixas += dc; }
     });
