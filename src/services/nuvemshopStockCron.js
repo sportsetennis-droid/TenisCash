@@ -1,113 +1,225 @@
 // =====================================================================
-// Cron de SINCRONIZAÇÃO de estoque com a Nuvemshop (estoque interligado).
-// Regra do dono 2026-06-08: o sistema é a fonte da verdade; a loja espelha o
-// ESTOQUE FÍSICO real (Σ StoreStock de todas as lojas) e só os tamanhos com estoque.
-//   1) AUTO-UPLOAD: produtos marcados (aiContext.releaseToNuvemshop) que ainda não
-//      estão na loja → sobe (respeita as regras de pushProductToNuvemshop).
-//   2) ESPELHO: pra cada produto ATIVO já na loja, se QUALQUER campo do card mudou
-//      (assinatura ampla: estoque, nome, descrição, preço, classificação, hide),
-//      re-sincroniza — cobre venda, bipe, ajuste, NFe, edição, classificação, ocultar.
-// Timezone explícito (Railway roda em UTC). Otimizado por assinatura: só bate na API
-// quando o estoque físico realmente mudou.
+// Nuvemshop stock/catalog reconciliation cron.
+// TenisCash is the source of truth. The storefront receives only cards
+// that pass the full quality gate and only real physical stock.
 // =====================================================================
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
 const TZ = 'America/Fortaleza';
 
-// Assinatura do estoque físico por tamanho (ordenada, estável).
 function physicalSig(product) {
   return (product.sizes || [])
-    .map((s) => `${s.size}:${(s.storeStocks || []).reduce((a, x) => a + (x.stock || 0), 0)}`)
+    .map((size) => `${size.size}:${(size.storeStocks || []).reduce((sum, row) => sum + (row.stock || 0), 0)}`)
     .sort()
     .join('|');
 }
 
-// Hash leve (djb2) pra detectar mudança de texto sem carregar/guardar o texto inteiro.
-function strHash(s) { let h = 5381; for (let i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) | 0; } return h >>> 0; }
+function strHash(value) {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index++) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) | 0;
+  }
+  return hash >>> 0;
+}
 
-// Assinatura AMPLA do card: estoque + TODOS os campos que a loja mostra (nome, descrição,
-// preço, classificação, hide). Muda quando QUALQUER alteração relevante ocorre → o cron
-// re-sincroniza, não importa qual endpoint editou (rede de segurança). Imagem fica de fora
-// (coberta no push via nsImagesSig + pelos endpoints de foto) pra não carregar base64 a cada
-// ciclo. NÃO inclui os campos ns*Sig (gravados pelo próprio push) pra evitar loop infinito.
 function cardSig(product) {
   let ctx = {};
-  try { ctx = (typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext) || {}; } catch {}
-  const cls = ctx.classification || {};
+  try {
+    ctx = (typeof product.aiContext === 'string'
+      ? JSON.parse(product.aiContext)
+      : product.aiContext) || {};
+  } catch (_) {}
+  const classification = ctx.classification || {};
   return [
     physicalSig(product),
-    'name=' + (product.name || ''),
-    'desc=' + strHash((product.longDescription || '') + '\x1f' + (product.shortDescription || '')),
-    'price=' + (product.price || 0),
-    'promo=' + (product.promoPrice ?? ''),
-    'cat=' + (product.category || ''),
-    'sub=' + (product.subcategory || ''),
-    'mod=' + (cls.modality || ''),
-    'tier=' + (cls.tier || ''),
-    'gen=' + (cls.gender || ''),
-    'hide=' + (ctx.hideFromNuvemshop === true ? 1 : 0),
+    `name=${product.name || ''}`,
+    `brand=${product.brand || ''}`,
+    `desc=${strHash((product.longDescription || '') + '\x1f' + (product.shortDescription || ''))}`,
+    `img=${product.imageUrl || (product.imageUrls ? 'gallery' : '')}`,
+    `price=${product.price || 0}`,
+    `cost=${product.costPrice || 0}`,
+    `promo=${product.promoPrice ?? ''}`,
+    `cat=${product.category || ''}`,
+    `sub=${product.subcategory || ''}`,
+    `mod=${classification.modality || ''}`,
+    `tier=${classification.tier || ''}`,
+    `gen=${classification.gender || ''}`,
+    `hide=${ctx.hideFromNuvemshop === true ? 1 : 0}`,
+    `confirmed=${ctx.confirmedForNuvemshop === true ? 1 : 0}`,
   ].join('|');
 }
 
 let busy = false;
+
 async function runNuvemshopStockSync() {
-  if (busy) return; // não empilha
+  if (busy) return;
   busy = true;
   try {
-    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
-    if (!conn) return;
+    const connection = await nsHandlers.getConnection();
+    if (!connection) return;
 
-    const maps = await prisma.nuvemshopProductMapping.findMany({ select: { localProductId: true } });
-    const mappedIds = new Set(maps.map((m) => m.localProductId));
+    const mappings = await prisma.nuvemshopProductMapping.findMany({
+      select: {
+        id: true,
+        localProductId: true,
+        nuvemshopProductId: true,
+        syncStatus: true,
+      },
+    });
+    const mappedLocalIds = new Set(mappings.map((mapping) => mapping.localProductId));
+    const mappedRemoteIds = new Set(mappings.map((mapping) => String(mapping.nuvemshopProductId)));
+    const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
+    let cleanupActions = 0;
 
-    // 1) AUTO-UPLOAD dos CONFIRMADOS que ainda não estão na loja.
-    // GATE de 2 passos (dono 2026-06-10): LIBERAR (releaseToNuvemshop) só marca candidato e NÃO
-    // sobe; o dono RECONFERE e CONFIRMA (confirmedForNuvemshop) — só aí sobe. O cron sobe somente
-    // os CONFIRMADOS; os apenas-liberados ficam parados na fila de conferência.
+    // 1) Upload only cards that completed the explicit two-step confirmation.
     let uploaded = 0;
     const confirmed = await prisma.product.findMany({
-      where: { active: true, aiContext: { path: ['confirmedForNuvemshop'], equals: true } },
+      where: {
+        active: true,
+        aiContext: { path: ['confirmedForNuvemshop'], equals: true },
+      },
       select: { id: true },
     });
-    for (const p of confirmed) {
-      if (mappedIds.has(p.id)) continue;
-      try { const r = await nsHandlers.pushProductToNuvemshop(p.id, conn); if (!r?.skipped) uploaded++; }
-      catch (e) { console.error('[nsStockCron] upload', p.id, e.message); }
+    for (const product of confirmed) {
+      if (mappedLocalIds.has(product.id)) continue;
+      try {
+        const result = await nsHandlers.pushProductToNuvemshop(product.id, connection);
+        if (!result?.skipped) uploaded++;
+      } catch (error) {
+        console.error('[nsStockCron] upload', product.id, error.message);
+      }
     }
 
-    // 2) ESPELHO do físico pros já mapeados e ATIVOS (só re-sincroniza se a assinatura mudou)
+    // 2) Reconcile mapped cards. Invalid cards are unpublished, not deleted.
     let synced = 0;
-    for (const m of maps) {
+    let unpublishedInvalid = 0;
+    for (const mapping of mappings) {
       try {
         const product = await prisma.product.findUnique({
-          where: { id: m.localProductId },
+          where: { id: mapping.localProductId },
           select: {
-            id: true, active: true, name: true, longDescription: true, shortDescription: true,
-            price: true, promoPrice: true, category: true, subcategory: true, aiContext: true,
+            id: true,
+            active: true,
+            name: true,
+            brand: true,
+            longDescription: true,
+            shortDescription: true,
+            imageUrl: true,
+            imageUrls: true,
+            price: true,
+            costPrice: true,
+            promoPrice: true,
+            category: true,
+            subcategory: true,
+            aiContext: true,
             sizes: { include: { storeStocks: { select: { stock: true } } } },
           },
         });
-        if (!product || product.active === false) continue; // inativo: não mexe (remoção é ação explícita)
-        const sig = cardSig(product);
+
+        if (!product || product.active === false) {
+          if (mapping.syncStatus !== 'hidden-invalid' && cleanupActions < cleanupLimit) {
+            await nsHandlers.unpublishMappedProduct(
+              mapping.localProductId,
+              connection,
+              product ? 'produto inativo' : 'produto local inexistente',
+              mapping,
+            );
+            cleanupActions++;
+            unpublishedInvalid++;
+          }
+          continue;
+        }
+
+        const eligibility = nsHandlers.assessProductForNuvemshop(product);
+        if (!eligibility.eligible) {
+          if (mapping.syncStatus !== 'hidden-invalid' && cleanupActions < cleanupLimit) {
+            await nsHandlers.unpublishMappedProduct(
+              mapping.localProductId,
+              connection,
+              eligibility.reasons.join('; '),
+              mapping,
+            );
+            cleanupActions++;
+            unpublishedInvalid++;
+          }
+          continue;
+        }
+
+        const signature = cardSig(product);
         let ctx = {};
-        try { ctx = (typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : product.aiContext) || {}; } catch {}
-        if (ctx.nsCardSig === sig) continue; // nada relevante mudou no card → pula (sem bater na API)
-        await nsHandlers.pushProductToNuvemshop(m.localProductId, conn);
-        synced++;
-        // grava a assinatura SEM clobberar o que o push escreveu (ex: nsImagesSig)
-        const fresh = await prisma.product.findUnique({ where: { id: m.localProductId }, select: { aiContext: true } });
-        let fctx = {};
-        try { fctx = (typeof fresh.aiContext === 'string' ? JSON.parse(fresh.aiContext) : fresh.aiContext) || {}; } catch {}
-        fctx.nsCardSig = sig;
-        await prisma.product.update({ where: { id: m.localProductId }, data: { aiContext: fctx } });
-      } catch (e) { console.error('[nsStockCron] sync', m.localProductId, e.message); }
+        try {
+          ctx = (typeof product.aiContext === 'string'
+            ? JSON.parse(product.aiContext)
+            : product.aiContext) || {};
+        } catch (_) {}
+
+        // A card that was hidden-invalid and is now valid must be republished.
+        if (mapping.syncStatus !== 'hidden-invalid' && ctx.nsCardSig === signature) continue;
+
+        const result = await nsHandlers.pushProductToNuvemshop(mapping.localProductId, connection);
+        if (!result?.skipped) synced++;
+
+        const fresh = await prisma.product.findUnique({
+          where: { id: mapping.localProductId },
+          select: { aiContext: true },
+        });
+        let freshCtx = {};
+        try {
+          freshCtx = (typeof fresh?.aiContext === 'string'
+            ? JSON.parse(fresh.aiContext)
+            : fresh?.aiContext) || {};
+        } catch (_) {}
+        freshCtx.nsCardSig = signature;
+        await prisma.product.update({
+          where: { id: mapping.localProductId },
+          data: { aiContext: freshCtx },
+        });
+      } catch (error) {
+        console.error('[nsStockCron] sync', mapping.localProductId, error.message);
+      }
     }
 
-    if (uploaded || synced) console.log(`[nsStockCron] auto-upload=${uploaded} · espelho-estoque=${synced}`);
-  } catch (e) {
-    console.error('[nsStockCron] erro geral:', e.message);
+    // 3) A remote product without a local mapping is outside stock/price
+    // governance. Hide it reversibly. The next run continues the batch.
+    let unpublishedOrphans = 0;
+    if (cleanupActions < cleanupLimit) {
+      try {
+        const remoteProducts = await ns.fetchAllPages(connection, '/products', {
+          perPage: 100,
+          max: 10000,
+        });
+        const orphans = remoteProducts.filter((remote) =>
+          remote && remote.published !== false && !mappedRemoteIds.has(String(remote.id)),
+        );
+        for (const remote of orphans) {
+          if (cleanupActions >= cleanupLimit) break;
+          try {
+            await ns.nuvemshopApi(connection, 'PUT', `/products/${remote.id}`, {
+              published: false,
+            });
+            cleanupActions++;
+            unpublishedOrphans++;
+          } catch (error) {
+            console.error('[nsStockCron] orphan', remote.id, error.message);
+          }
+        }
+      } catch (error) {
+        console.error('[nsStockCron] auditoria de orfaos:', error.message);
+      }
+    }
+
+    if (uploaded || synced || unpublishedInvalid || unpublishedOrphans) {
+      console.log(
+        `[nsStockCron] auto-upload=${uploaded} · espelho=${synced}`
+        + ` · invalidos-ocultos=${unpublishedInvalid}`
+        + ` · orfaos-ocultos=${unpublishedOrphans}`,
+      );
+    }
+  } catch (error) {
+    console.error('[nsStockCron] erro geral:', error.message);
   } finally {
     busy = false;
   }
@@ -118,9 +230,19 @@ function startNuvemshopStockCron() {
     console.log('[nsStockCron] DESLIGADO (DISABLE_NS_STOCK_CRON=1)');
     return;
   }
-  // A cada 5 min: espelha físico → Nuvemshop + sobe marcados pendentes.
-  cron.schedule('*/5 * * * *', () => { runNuvemshopStockSync().catch((e) => console.error('[nsStockCron]', e.message)); }, { timezone: TZ });
-  console.log('[nsStockCron] agendado: */5 min (' + TZ + ') — espelho estoque físico → Nuvemshop + auto-upload marcados');
+  cron.schedule(
+    '*/5 * * * *',
+    () => runNuvemshopStockSync().catch((error) => console.error('[nsStockCron]', error.message)),
+    { timezone: TZ },
+  );
+  setTimeout(() => {
+    runNuvemshopStockSync().catch((error) => console.error('[nsStockCron] startup', error.message));
+  }, 5000);
+  console.log('[nsStockCron] agendado: */5 min - estoque + gate + limpeza reversivel');
 }
 
-module.exports = { startNuvemshopStockCron, runNuvemshopStockSync };
+module.exports = {
+  cardSig,
+  runNuvemshopStockSync,
+  startNuvemshopStockCron,
+};

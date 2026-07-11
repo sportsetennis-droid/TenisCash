@@ -12,6 +12,12 @@
 const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
+const { assessProductForNuvemshop } = require('./nuvemshopEligibility');
+
+// Storefront currently bound to www.sportsetennis.com.br (LS.store.id).
+// An env override keeps migrations possible without ever falling back to an
+// arbitrary old active connection.
+const DEFAULT_NUVEMSHOP_TARGET_USER_ID = '7890890';
 
 function pickStr(v) {
   if (v == null) return null;
@@ -33,7 +39,58 @@ async function logSync(entity, status, message, payload = null) {
 }
 
 async function getConnection() {
-  return prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+  const targetId = String(
+    process.env.NUVEMSHOP_TARGET_USER_ID || DEFAULT_NUVEMSHOP_TARGET_USER_ID,
+  );
+  const exact = await prisma.nuvemshopConnection.findFirst({
+    where: { status: 'active', nuvemshopUserId: targetId },
+  });
+  if (exact) return exact;
+
+  const active = await prisma.nuvemshopConnection.findMany({
+    where: { status: 'active' },
+    orderBy: { updatedAt: 'desc' },
+    select: { nuvemshopUserId: true },
+  });
+  if (active.length === 0) return null;
+  throw new Error(
+    `Conexao Nuvemshop alvo ${targetId} nao encontrada; conexoes ativas: ${active.map((row) => row.nuvemshopUserId).join(',')}`,
+  );
+}
+
+async function unpublishMappedProduct(localProductId, connection, reason, mappingOverride = null) {
+  const mapping = mappingOverride || await prisma.nuvemshopProductMapping.findUnique({
+    where: { localProductId },
+  });
+  if (!mapping) return { unpublished: false, reason: 'produto sem mapping' };
+
+  const conn = connection || await getConnection();
+  if (!conn) throw new Error('Sem conexao Nuvemshop ativa');
+
+  try {
+    await ns.nuvemshopApi(conn, 'PUT', `/products/${mapping.nuvemshopProductId}`, {
+      published: false,
+    });
+  } catch (error) {
+    if (!/404|not found/i.test(String(error.message))) throw error;
+  }
+
+  await prisma.nuvemshopProductMapping.update({
+    where: { id: mapping.id },
+    data: { syncStatus: 'hidden-invalid', lastSyncedAt: new Date() },
+  }).catch(() => {});
+  await logSync(
+    'product',
+    'ok',
+    `Despublicado por gate de qualidade: ${localProductId} (${reason || 'invalido'})`,
+    { localProductId, nuvemshopProductId: mapping.nuvemshopProductId, reason },
+  );
+  return {
+    unpublished: true,
+    localProductId,
+    nuvemshopProductId: String(mapping.nuvemshopProductId),
+    reason,
+  };
 }
 
 // =====================================================================
@@ -1409,51 +1466,28 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   });
   if (!product) throw new Error(`Produto ${localProductId} não encontrado`);
 
-  // ===== REGRA INQUEBRÁVEL =====
-  // Só sobe pro Nuvemshop produto classificado nas 4: Categoria + Sub +
-  // Modalidade + Especialidade. Sem as 4, NÃO sincroniza (nem cria, nem atualiza).
-  {
-    const _ctx = (() => { try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); } catch { return {}; } })();
-    const _cls = _ctx.classification || {};
-    const _badCat = ['', 'A CLASSIFICAR', 'A DEFINIR'];
-    const _has = (v) => v != null && String(v).trim() !== '';
-    const full = _has(product.category) && !_badCat.includes(String(product.category).trim())
-      && _has(product.subcategory)
-      && _has(_cls.modality)
-      && _has(_cls.tier);
-    if (!full) {
-      console.log('[ns push] PULADO — regra das 4 classificações nao atendida:', localProductId);
-      return { skipped: true, action: 'skipped', reason: 'classificacao incompleta (precisa Categoria + Sub + Modalidade + Especialidade)' };
-    }
-  }
-
-  // ===== REGRA INQUEBRÁVEL — FOTO + DESCRIÇÃO (dono 2026-07-04) =====
-  // A vitrine NÃO recebe produto sem FOTO nem sem DESCRIÇÃO. Faltando qualquer
-  // um dos dois, NÃO sincroniza (nem cria, nem atualiza) — mesma disciplina da
-  // regra das 4 classificações. Produto incompleto é card interno, não vai pra loja.
-  {
-    const _hasImg = (() => {
-      if (product.imageUrl && String(product.imageUrl).trim()) return true;
-      if (product.imageUrls) {
-        try {
-          const arr = typeof product.imageUrls === 'string' ? JSON.parse(product.imageUrls) : product.imageUrls;
-          if (Array.isArray(arr) && arr.some((u) => u && String(u).trim())) return true;
-        } catch (_) { /* imageUrls malformado = sem foto */ }
-      }
-      return false;
-    })();
-    const _desc = product.longDescription || product.shortDescription || '';
-    const _hasDesc = String(_desc).trim().length > 0;
-    if (!_hasImg || !_hasDesc) {
-      const _falta = [!_hasImg && 'foto', !_hasDesc && 'descrição'].filter(Boolean).join(' + ');
-      console.log(`[ns push] PULADO — sem ${_falta}:`, localProductId);
-      return { skipped: true, action: 'skipped', reason: `sem ${_falta}` };
-    }
-  }
-
   const existingMapping = await prisma.nuvemshopProductMapping.findUnique({
     where: { localProductId: product.id },
   });
+
+  // A single gate controls CREATE and UPDATE. If a previously mapped card
+  // becomes invalid, it is actively unpublished instead of remaining frozen
+  // and visible in the storefront.
+  const eligibility = assessProductForNuvemshop(product);
+  if (!eligibility.eligible) {
+    const reason = eligibility.reasons.join('; ');
+    console.log('[ns push] DESPUBLICADO/PULADO - gate de qualidade:', localProductId, reason);
+    if (existingMapping) {
+      const hidden = await unpublishMappedProduct(
+        localProductId,
+        connection,
+        reason,
+        existingMapping,
+      );
+      return { skipped: true, action: 'unpublished-invalid', reason, ...hidden };
+    }
+    return { skipped: true, action: 'skipped', reason };
+  }
 
   // 1ª opção: aiContext.nuvemshopMapping (preenchido por IA via enrich-mappings)
   // 2ª opção: fallback por nome (cria categoria se não existir)
@@ -1507,11 +1541,9 @@ async function _pushProductToNuvemshopInner(localProductId, connection) {
   // que não tem. Tamanho que zerou vira esgotado (stock 0) na loja; produto sem nenhum tamanho
   // disponível não é publicado.
   const hasSizes = (product.sizes || []).length > 0;
-  const sizesLocated = (product.sizes || []).map((s) => ({
-    ...s,
-    stock: (s.storeStocks || []).reduce((a, x) => a + (x.stock || 0), 0),
-  }));
-  const saleableSizes = sizesLocated.filter((s) => s.stock > 0);
+  const sizesLocated = eligibility.locatedSizes;
+  // Internal placeholders such as T-6100 never become storefront variants.
+  const saleableSizes = eligibility.publicSizes;
   // CREATE só com tamanhos disponíveis; UPDATE manda todos (os zerados viram esgotado).
   // Acessório (sem tamanhos) mantém o comportamento antigo.
   const createSizes = hasSizes ? saleableSizes : (product.sizes || []);
@@ -1755,6 +1787,9 @@ async function removeProductFromNuvemshop(localProductId, connection) {
 }
 
 module.exports = {
+  getConnection,
+  unpublishMappedProduct,
+  assessProductForNuvemshop,
   removeProductFromNuvemshop,
   processWebhookEvent,
   importAllProducts,
