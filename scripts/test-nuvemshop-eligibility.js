@@ -1,8 +1,22 @@
 const assert = require('assert');
 const {
   assessProductForNuvemshop,
+  assessRemoteProductForNuvemshop,
   isPublicSizeLabel,
 } = require('../src/services/nuvemshopEligibility');
+
+function validRemote(overrides = {}) {
+  return {
+    id: 10,
+    published: true,
+    name: { pt: 'Tenis Teste' },
+    brand: 'ADIDAS',
+    description: { pt: 'Descricao tecnica real.' },
+    images: [{ src: 'https://cdn.example.com/produto.jpg' }],
+    variants: [{ price: '360.00', values: [{ pt: '40' }] }],
+    ...overrides,
+  };
+}
 
 function validProduct(overrides = {}) {
   return {
@@ -31,6 +45,9 @@ function validProduct(overrides = {}) {
 }
 
 assert.equal(assessProductForNuvemshop(validProduct()).eligible, true);
+assert.equal(assessRemoteProductForNuvemshop(validRemote()).eligible, true);
+assert.equal(assessRemoteProductForNuvemshop(validRemote({ brand: 'A DEFINIR' })).eligible, false);
+assert.equal(assessRemoteProductForNuvemshop(validRemote({ variants: [{ price: '0', values: [{ pt: 'T-6100' }] }] })).eligible, false);
 
 const badBrand = assessProductForNuvemshop(validProduct({ brand: 'A DEFINIR' }));
 assert.equal(badBrand.eligible, false);

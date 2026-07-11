@@ -18,6 +18,15 @@ function upper(value) {
   return clean(value).toLocaleUpperCase('pt-BR');
 }
 
+function localized(value) {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number') return clean(value);
+  if (typeof value === 'object') {
+    return clean(value.pt || value['pt-BR'] || value.es || value.en || Object.values(value)[0]);
+  }
+  return '';
+}
+
 function contextOf(product) {
   try {
     return typeof product?.aiContext === 'string'
@@ -112,8 +121,41 @@ function assessProductForNuvemshop(product, options = {}) {
   };
 }
 
+function assessRemoteProductForNuvemshop(product) {
+  const reasons = [];
+  const invalid = (value) => INVALID_LABELS.has(upper(localized(value)));
+
+  if (!product) return { eligible: false, reasons: ['produto remoto inexistente'] };
+  if (invalid(product.name)) reasons.push('nome remoto ausente ou indefinido');
+  if (invalid(product.brand)) reasons.push('marca remota ausente ou indefinida');
+  if (!localized(product.description)) reasons.push('descricao remota ausente');
+
+  const images = Array.isArray(product.images) ? product.images : [];
+  if (!images.some((image) => /^https?:\/\//i.test(clean(image?.src)))) {
+    reasons.push('foto remota ausente');
+  }
+
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const priced = variants.filter((variant) => Number(variant?.price || 0) > 0);
+  if (priced.length === 0) reasons.push('preco remoto zerado');
+
+  const sizeLabels = variants.flatMap((variant) => {
+    const values = Array.isArray(variant?.values) ? variant.values : [];
+    return values.map(localized).filter(Boolean);
+  });
+  if (sizeLabels.length === 0 || !sizeLabels.some(isPublicSizeLabel)) {
+    reasons.push('tamanho remoto ausente ou invalido');
+  }
+  if (sizeLabels.some((label) => !isPublicSizeLabel(label))) {
+    reasons.push('tamanho remoto placeholder');
+  }
+
+  return { eligible: reasons.length === 0, reasons };
+}
+
 module.exports = {
   assessProductForNuvemshop,
+  assessRemoteProductForNuvemshop,
   contextOf,
   hasUsableImage,
   isPublicSizeLabel,

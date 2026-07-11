@@ -8,6 +8,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
+const { assessRemoteProductForNuvemshop } = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
 
 function physicalSig(product) {
@@ -193,10 +194,29 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
           continue;
         }
 
+        // O local pode estar correto enquanto a copia remota ainda carrega
+        // marca/preco/tamanho placeholder antigos. No modo de limpeza, a
+        // vitrine real tambem precisa passar pelo gate antes de permanecer.
+        if (cleanupOnly) {
+          const remote = remoteById.get(String(mapping.nuvemshopProductId));
+          const remoteEligibility = assessRemoteProductForNuvemshop(remote);
+          if (remote && remote.published !== false && !remoteEligibility.eligible
+            && cleanupActions < cleanupLimit) {
+            await nsHandlers.unpublishMappedProduct(
+              mapping.localProductId,
+              connection,
+              `copia remota invalida: ${remoteEligibility.reasons.join('; ')}`,
+              mapping,
+            );
+            remote.published = false;
+            cleanupActions++;
+            unpublishedInvalid++;
+          }
+          continue;
+        }
+
         // No modo de limpeza autorizado, produto valido nao sofre update de
         // estoque/preco/card. A operacao fica restrita a ocultar invalidos.
-        if (cleanupOnly) continue;
-
         const signature = cardSig(product);
         let ctx = {};
         try {
