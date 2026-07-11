@@ -6,10 +6,6 @@ const cron = require('node-cron');
 const TZ = 'America/Fortaleza';
 
 function startCatalogEngineCron() {
-  // Pendura junto o cron de SINCRONIZAÇÃO DE ESTOQUE Nuvemshop (sempre ligado, independente
-  // do gate abaixo) — espelha físico → loja + sobe marcados. Hook aqui pra não tocar no index.js.
-  try { require('./nuvemshopStockCron').startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
-
   // Catálogo da Meta (FB/IG/WhatsApp) — reflete sozinho. Gated por META_CATALOG_ID+TOKEN.
   try { require('./metaCatalogCron').startMetaCatalogCron(); } catch (e) { console.error('[metaCatalogCron] falha ao iniciar:', e.message); }
 

@@ -86,6 +86,7 @@ const { startMessagesCron } = require('./services/messagesCron');
 const { startMarketingCron } = require('./services/marketingCron');
 const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
 const { startCatalogEngineCron } = require('./services/catalogEngineCron');
+const { startNuvemshopStockCron } = require('./services/nuvemshopStockCron');
 const { startServicesCron } = require('./services/servicesCron');
 const { startEquipeReportsCron } = require('./services/equipeReports');
 
@@ -1473,6 +1474,9 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
+
+  // Estoque, gate e limpeza reversivel da Nuvemshop nao dependem dos crons de IA.
+  try { startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
 
   // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
   if (process.env.DISABLE_MESSAGES_CRON !== '1') {
