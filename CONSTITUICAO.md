@@ -24,6 +24,8 @@
 
 10. **Nunca inventar** preço, estoque, gênero, NCM — nada. Sem fonte válida → **reporto, não chuto**.
 
+10-A. **É PROIBIDO ESTIMAR QUALQUER DADO OU VALOR.** Se uma informação necessária não estiver disponível, confirmada e rastreável, o sistema não pode preencher, projetar, presumir, aproximar nem usar valor padrão. O resultado deve ficar marcado como **INCOMPLETO / NÃO APURADO**, informar claramente **qual dado está faltando** e avisar o dono. Esta regra vale especialmente para impostos, créditos fiscais, lucro, custos, despesas, estoque, preços, NCM, CEST, CST/CSOSN e documentos fiscais. **Estimativa nunca pode ser apresentada como cálculo real, provisório ou definitivo.**
+
 ## IV. Mudança segura
 
 11. **Diagnosticar a causa raiz antes de consertar** — e dizer a verdade, mesmo quando for "fui eu".
