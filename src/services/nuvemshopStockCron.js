@@ -86,6 +86,20 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
     });
     const mappedLocalIds = new Set(mappings.map((mapping) => mapping.localProductId));
     const mappedRemoteIds = new Set(mappings.map((mapping) => String(mapping.nuvemshopProductId)));
+    let remoteProducts = [];
+    try {
+      remoteProducts = await ns.fetchAllPages(connection, '/products', {
+        perPage: 100,
+        max: 10000,
+      });
+    } catch (error) {
+      console.error('[nsStockCron] leitura do catalogo remoto:', error.message);
+    }
+    const remoteById = new Map(
+      remoteProducts
+        .filter((remote) => remote && remote.id != null)
+        .map((remote) => [String(remote.id), remote]),
+    );
     const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
     let cleanupActions = 0;
     cronState.progress = {
@@ -145,7 +159,9 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
         });
 
         if (!product || product.active === false) {
-          if (mapping.syncStatus !== 'hidden-invalid' && cleanupActions < cleanupLimit) {
+          const remote = remoteById.get(String(mapping.nuvemshopProductId));
+          const stillPublished = remote && remote.published !== false;
+          if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
             await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
@@ -154,13 +170,16 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
             );
             cleanupActions++;
             unpublishedInvalid++;
+            if (remote) remote.published = false;
           }
           continue;
         }
 
         const eligibility = nsHandlers.assessProductForNuvemshop(product);
         if (!eligibility.eligible) {
-          if (mapping.syncStatus !== 'hidden-invalid' && cleanupActions < cleanupLimit) {
+          const remote = remoteById.get(String(mapping.nuvemshopProductId));
+          const stillPublished = remote && remote.published !== false;
+          if ((mapping.syncStatus !== 'hidden-invalid' || stillPublished) && cleanupActions < cleanupLimit) {
             await nsHandlers.unpublishMappedProduct(
               mapping.localProductId,
               connection,
@@ -169,6 +188,7 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
             );
             cleanupActions++;
             unpublishedInvalid++;
+            if (remote) remote.published = false;
           }
           continue;
         }
@@ -220,10 +240,6 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
     if (cleanupActions < cleanupLimit) {
       cronState.phase = 'hiding-orphans';
       try {
-        const remoteProducts = await ns.fetchAllPages(connection, '/products', {
-          perPage: 100,
-          max: 10000,
-        });
         const orphans = remoteProducts.filter((remote) =>
           remote && remote.published !== false && !mappedRemoteIds.has(String(remote.id)),
         );
