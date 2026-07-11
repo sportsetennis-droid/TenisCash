@@ -65,7 +65,11 @@ const cronState = {
   lastResult: null,
 };
 
-async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = false } = {}) {
+async function runNuvemshopStockSync({
+  uploadConfirmed = true,
+  cleanupOnly = false,
+  reconcileStock = false,
+} = {}) {
   if (busy) return;
   busy = true;
   cronState.running = true;
@@ -102,12 +106,24 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
         .map((remote) => [String(remote.id), remote]),
     );
     const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
+    const stockLimit = Math.max(1, Number(process.env.NS_STOCK_RECONCILE_BATCH || 500));
     let cleanupActions = 0;
+    let stockProductsProcessed = 0;
+    let stockProductsChanged = 0;
+    let stockVariantsUpdated = 0;
+    let stockVariantsCreated = 0;
+    let stockVariantsDeleted = 0;
+    let stockErrors = 0;
+    let stockPending = false;
     cronState.progress = {
       mappedProducts: mappings.length,
       mappedProcessed: 0,
       cleanupActions: 0,
       cleanupLimit,
+      stockProductsProcessed: 0,
+      stockProductsChanged: 0,
+      stockLimit,
+      stockPending: false,
     };
 
     // 1) Upload only cards that completed the explicit two-step confirmation.
@@ -200,17 +216,61 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
         if (cleanupOnly) {
           const remote = remoteById.get(String(mapping.nuvemshopProductId));
           const remoteEligibility = assessRemoteProductForNuvemshop(remote);
-          if (remote && remote.published !== false && !remoteEligibility.eligible
-            && cleanupActions < cleanupLimit) {
-            await nsHandlers.unpublishMappedProduct(
-              mapping.localProductId,
-              connection,
-              `copia remota invalida: ${remoteEligibility.reasons.join('; ')}`,
-              mapping,
-            );
-            remote.published = false;
-            cleanupActions++;
-            unpublishedInvalid++;
+          if (remote && remote.published !== false && !remoteEligibility.eligible) {
+            if (cleanupActions < cleanupLimit) {
+              await nsHandlers.unpublishMappedProduct(
+                mapping.localProductId,
+                connection,
+                `copia remota invalida: ${remoteEligibility.reasons.join('; ')}`,
+                mapping,
+              );
+              remote.published = false;
+              cleanupActions++;
+              unpublishedInvalid++;
+            }
+            continue;
+          }
+
+          if (reconcileStock && remote && remote.published !== false) {
+            let ctx = {};
+            try {
+              ctx = (typeof product.aiContext === 'string'
+                ? JSON.parse(product.aiContext)
+                : product.aiContext) || {};
+            } catch (_) {}
+            const stockSignature = `physical-v1|${physicalSig(product)}`;
+            if (ctx.nsPhysicalStockVerifiedSig !== stockSignature) {
+              if (stockProductsProcessed >= stockLimit) {
+                stockPending = true;
+              } else {
+                cronState.phase = 'reconciling-stock';
+                const variantResult = await nsHandlers.updateNuvemshopVariants(
+                  connection,
+                  mapping.nuvemshopProductId,
+                  product,
+                  eligibility.locatedSizes,
+                  { stockOnly: true },
+                );
+                stockProductsProcessed++;
+                stockVariantsUpdated += variantResult.updated || 0;
+                stockVariantsCreated += variantResult.created || 0;
+                stockVariantsDeleted += variantResult.deleted || 0;
+                stockErrors += (variantResult.errors || []).length;
+                if ((variantResult.updated || 0) + (variantResult.created || 0)
+                  + (variantResult.deleted || 0) > 0) {
+                  stockProductsChanged++;
+                }
+                if (!(variantResult.errors || []).length) {
+                  ctx.nsPhysicalStockVerifiedSig = stockSignature;
+                  await prisma.product.update({
+                    where: { id: product.id },
+                    data: { aiContext: ctx },
+                  });
+                }
+                cronState.progress.stockProductsProcessed = stockProductsProcessed;
+                cronState.progress.stockProductsChanged = stockProductsChanged;
+              }
+            }
           }
           continue;
         }
@@ -297,6 +357,14 @@ async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = fal
       unpublishedOrphans,
       cleanupActions,
       cleanupLimit,
+      stockProductsProcessed,
+      stockProductsChanged,
+      stockVariantsUpdated,
+      stockVariantsCreated,
+      stockVariantsDeleted,
+      stockErrors,
+      stockPending,
+      stockLimit,
     };
     cronState.phase = 'complete';
   } catch (error) {
@@ -325,10 +393,12 @@ function startNuvemshopStockCron() {
     await runNuvemshopStockSync({
       uploadConfirmed: scheduleEnabled,
       cleanupOnly: !scheduleEnabled,
+      reconcileStock: !scheduleEnabled,
     })
       .catch((error) => console.error('[nsStockCron] startup', error.message));
     const result = cronState.lastResult;
-    if (!scheduleEnabled && result && result.cleanupActions >= result.cleanupLimit) {
+    if (!scheduleEnabled && result
+      && (result.cleanupActions >= result.cleanupLimit || result.stockPending)) {
       setTimeout(runStartupCleanup, 60 * 1000);
     }
   };
