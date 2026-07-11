@@ -56,16 +56,20 @@ let busy = false;
 const cronState = {
   running: false,
   scheduleEnabled: null,
+  phase: 'idle',
+  progress: null,
   lastStartedAt: null,
   lastFinishedAt: null,
   lastError: null,
   lastResult: null,
 };
 
-async function runNuvemshopStockSync() {
+async function runNuvemshopStockSync({ uploadConfirmed = true } = {}) {
   if (busy) return;
   busy = true;
   cronState.running = true;
+  cronState.phase = 'connecting';
+  cronState.progress = null;
   cronState.lastStartedAt = new Date().toISOString();
   cronState.lastError = null;
   try {
@@ -84,27 +88,37 @@ async function runNuvemshopStockSync() {
     const mappedRemoteIds = new Set(mappings.map((mapping) => String(mapping.nuvemshopProductId)));
     const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
     let cleanupActions = 0;
+    cronState.progress = {
+      mappedProducts: mappings.length,
+      mappedProcessed: 0,
+      cleanupActions: 0,
+      cleanupLimit,
+    };
 
     // 1) Upload only cards that completed the explicit two-step confirmation.
     let uploaded = 0;
-    const confirmed = await prisma.product.findMany({
-      where: {
-        active: true,
-        aiContext: { path: ['confirmedForNuvemshop'], equals: true },
-      },
-      select: { id: true },
-    });
-    for (const product of confirmed) {
-      if (mappedLocalIds.has(product.id)) continue;
-      try {
-        const result = await nsHandlers.pushProductToNuvemshop(product.id, connection);
-        if (!result?.skipped) uploaded++;
-      } catch (error) {
-        console.error('[nsStockCron] upload', product.id, error.message);
+    if (uploadConfirmed) {
+      cronState.phase = 'uploading-confirmed';
+      const confirmed = await prisma.product.findMany({
+        where: {
+          active: true,
+          aiContext: { path: ['confirmedForNuvemshop'], equals: true },
+        },
+        select: { id: true },
+      });
+      for (const product of confirmed) {
+        if (mappedLocalIds.has(product.id)) continue;
+        try {
+          const result = await nsHandlers.pushProductToNuvemshop(product.id, connection);
+          if (!result?.skipped) uploaded++;
+        } catch (error) {
+          console.error('[nsStockCron] upload', product.id, error.message);
+        }
       }
     }
 
     // 2) Reconcile mapped cards. Invalid cards are unpublished, not deleted.
+    cronState.phase = 'reconciling-mapped';
     let synced = 0;
     let unpublishedInvalid = 0;
     for (const mapping of mappings) {
@@ -190,6 +204,9 @@ async function runNuvemshopStockSync() {
         });
       } catch (error) {
         console.error('[nsStockCron] sync', mapping.localProductId, error.message);
+      } finally {
+        cronState.progress.mappedProcessed++;
+        cronState.progress.cleanupActions = cleanupActions;
       }
     }
 
@@ -197,6 +214,7 @@ async function runNuvemshopStockSync() {
     // governance. Hide it reversibly. The next run continues the batch.
     let unpublishedOrphans = 0;
     if (cleanupActions < cleanupLimit) {
+      cronState.phase = 'hiding-orphans';
       try {
         const remoteProducts = await ns.fetchAllPages(connection, '/products', {
           perPage: 100,
@@ -213,6 +231,7 @@ async function runNuvemshopStockSync() {
             });
             cleanupActions++;
             unpublishedOrphans++;
+            cronState.progress.cleanupActions = cleanupActions;
           } catch (error) {
             console.error('[nsStockCron] orphan', remote.id, error.message);
           }
@@ -239,9 +258,11 @@ async function runNuvemshopStockSync() {
       cleanupActions,
       cleanupLimit,
     };
+    cronState.phase = 'complete';
   } catch (error) {
     console.error('[nsStockCron] erro geral:', error.message);
     cronState.lastError = error.message;
+    cronState.phase = 'error';
   } finally {
     busy = false;
     cronState.running = false;
@@ -261,7 +282,8 @@ function startNuvemshopStockCron() {
   // autorizada do catalogo. Executa ao menos uma reconciliacao no boot; se o
   // lote encher, continua em lotes ate nao haver mais uma pagina cheia.
   const runStartupCleanup = async () => {
-    await runNuvemshopStockSync().catch((error) => console.error('[nsStockCron] startup', error.message));
+    await runNuvemshopStockSync({ uploadConfirmed: scheduleEnabled })
+      .catch((error) => console.error('[nsStockCron] startup', error.message));
     const result = cronState.lastResult;
     if (!scheduleEnabled && result && result.cleanupActions >= result.cleanupLimit) {
       setTimeout(runStartupCleanup, 60 * 1000);
