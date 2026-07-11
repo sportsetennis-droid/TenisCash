@@ -99,6 +99,7 @@
   .composer .attach{width:40px;height:44px;border:0;background:transparent;color:var(--muted);font-size:20px;flex:none;border-radius:10px}
   .composer .attach:hover{color:var(--brand);background:var(--cloud)}
   .chip.new{margin-left:auto;background:var(--brand);color:#fff;border-color:var(--brand)}
+  .crmdot{color:#16a34a;font-size:11px;margin-left:5px;flex:none}
   .composer .warn{position:absolute;bottom:64px;left:0;right:0;text-align:center;font-size:12px;color:#b45309;background:#fef3c7;padding:5px;font-weight:700}
 
   /* ---------- CONTACT PANEL ---------- */
@@ -266,20 +267,21 @@ async function loadChats(reset){
 function renderRows(){
   const q = state.q.trim().toLowerCase();
   let list = allChats;
-  if(q) list = list.filter(c => ((c.contactName||'')+' '+(c.phone||'')+' '+(c.lastText||'')).toLowerCase().includes(q));
+  if(q) list = list.filter(c => ((c.crmName||'')+' '+(c.contactName||'')+' '+(c.phone||'')+' '+(c.lastText||'')).toLowerCase().includes(q));
   if(!list.length){
     $('rows').innerHTML = '<div class="empty"><div class="big">📭</div><b>'+(q?'Nada encontrado':'Sem conversas ainda')+'</b>'
       + (q?'Tente outro termo.':'Quando chegar mensagem nesse número, ela aparece aqui na hora.')+'</div>';
     return;
   }
   $('rows').innerHTML = list.map(c=>{
-    const inst=c.instance, col=colorFor(inst), nm=c.contactName||(c.isGroup?'Grupo':(c.phone||'Contato'));
+    const inst=c.instance, col=colorFor(inst), nm=c.crmName||c.contactName||(c.isGroup?'Grupo':(c.phone||'Contato'));
     const on = state.instance===inst && state.jid===c.chatJid;
+    const crmTag = c.crmName ? '<span class="crmdot" title="Cliente no CRM">●</span>' : '';
     const pre = (c.lastFromMe?'✓ ':'') + (c.lastText||'');
     const tag = state.box==='ALL' ? '<span class="tag" style="background:'+col+'">'+esc(shortLabel(inst))+'</span>' : '';
     return '<button class="row '+(on?'on':'')+'" onclick="openChat(\''+inst+'\',\''+encodeURIComponent(c.chatJid)+'\')">'
       + '<span class="ava" style="background:'+col+'">'+(c.isGroup?'👥':esc(initials(nm)))+'</span>'
-      + '<span class="mid"><span class="l1"><span class="nm">'+esc(nm)+'</span><span class="tm">'+fmt(c.lastAt)+'</span></span>'
+      + '<span class="mid"><span class="l1"><span class="nm">'+esc(nm)+'</span>'+crmTag+'<span class="tm">'+fmt(c.lastAt)+'</span></span>'
       + '<span class="l2"><span class="pre">'+esc(pre)+'</span>'+tag+'</span></span></button>';
   }).join('');
 }
@@ -291,7 +293,7 @@ async function openChat(inst, jidEnc){
   $('threadPh').style.display='none'; $('threadView').style.display='flex';
   $('thread').classList.add('open');
   const chat = allChats.find(c=>c.instance===inst && c.chatJid===jid) || {};
-  const nm = chat.contactName||(chat.isGroup?'Grupo':(chat.phone||'Contato'));
+  const nm = chat.crmName||chat.contactName||(chat.isGroup?'Grupo':(chat.phone||'Contato'));
   const col = colorFor(inst);
   $('tAva').textContent = chat.isGroup?'👥':initials(nm); $('tAva').style.background=col;
   $('tName').textContent = nm;
@@ -322,10 +324,11 @@ function renderMsgs(){
 }
 
 function renderInfo(chat){
-  const inst=state.instance, col=colorFor(inst), nm=chat.contactName||(chat.isGroup?'Grupo':(chat.phone||'Contato'));
+  const inst=state.instance, col=colorFor(inst), nm=chat.crmName||chat.contactName||(chat.isGroup?'Grupo':(chat.phone||'Contato'));
   $('infoBody').innerHTML = '<div class="hero"><div class="ava" style="background:'+col+'">'+(chat.isGroup?'👥':esc(initials(nm)))+'</div>'
     + '<b>'+esc(nm)+'</b><div style="color:var(--muted);font-size:13px">'+(chat.phone?('+'+esc(chat.phone)):(chat.isGroup?'Grupo':''))+'</div></div>'
     + '<dl><dt>Número de entrada</dt><dd><span style="color:'+col+'">●</span> '+esc(labelOf(inst))+'</dd>'
+    + (chat.crmName ? '<dt>Cliente no CRM</dt><dd><span class="crmdot">●</span> '+esc(chat.crmName)+'</dd>' : (chat.phone&&!chat.isGroup?'<dt>CRM</dt><dd style="color:var(--muted2)">não cadastrado</dd>':''))
     + '<dt>Tipo</dt><dd>'+(chat.isGroup?'Grupo':'Conversa direta')+'</dd>'
     + '<dt>Última mensagem</dt><dd>'+esc(new Date(chat.lastAt).toLocaleString('pt-BR'))+'</dd></dl>'
     + '<p style="margin-top:18px;font-size:12px;color:var(--muted2);line-height:1.5">Você pode responder direto por aqui — a mensagem sai pelo número '+esc(labelOf(inst))+'. As respostas da IA também aparecem como enviadas (✓).</p>';

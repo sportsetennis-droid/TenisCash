@@ -97,6 +97,16 @@ router.get('/chats', async (req, res) => {
       lastAt: r.ts,
     }));
     if (String(req.query.groups) === '0') chats = chats.filter((c) => !c.isGroup);
+    // enriquece com nome do cliente no CRM da Meta (MfCustomer) via telefone
+    try {
+      const phones = Array.from(new Set(chats.filter((c) => !c.isGroup && c.phone).map((c) => c.phone)));
+      if (phones.length) {
+        const custs = await prisma.mfCustomer.findMany({ where: { phone: { in: phones } }, select: { id: true, phone: true, name: true } });
+        const byPhone = {};
+        custs.forEach((c) => { if (c.phone) byPhone[c.phone] = { id: c.id, name: c.name }; });
+        chats.forEach((c) => { const m = c.phone && byPhone[c.phone]; if (m) { c.crmName = m.name; c.crmId = m.id; } });
+      }
+    } catch (e) { /* CRM opcional */ }
     chats.sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
     res.json({ chats });
   } catch (err) { res.status(500).json({ error: err.message }); }
