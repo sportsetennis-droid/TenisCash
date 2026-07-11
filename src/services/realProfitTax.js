@@ -96,23 +96,6 @@ function monthsTouched(fromYmd, toYmd) {
   return set.size;
 }
 
-function estimateSalesTaxes(revenue, settings) {
-  const cfg = sanitizeRealProfitSettings(settings);
-  const gross = nonNegative(revenue);
-  const icms = gross * cfg.icmsRatePct / 100;
-  const pisCofinsBase = Math.max(0, gross - (cfg.excludeIcmsFromPisCofinsBase ? icms : 0));
-  const pis = pisCofinsBase * cfg.pisRatePct / 100;
-  const cofins = pisCofinsBase * cfg.cofinsRatePct / 100;
-  const cbsIbsBase = Math.max(0, gross - icms - pis - cofins);
-  return {
-    icms: round2(icms),
-    pis: round2(pis),
-    cofins: round2(cofins),
-    cbs: round2(cbsIbsBase * cfg.cbs2026RatePct / 100),
-    ibs: round2(cbsIbsBase * cfg.ibs2026RatePct / 100),
-  };
-}
-
 function taxAccount(debit, automaticCredit, manualCredit) {
   const d = nonNegative(debit);
   const c = nonNegative(automaticCredit) + nonNegative(manualCredit);
@@ -138,6 +121,7 @@ function calculateQuarterlyRealProfit({
   to,
   actualSalesRevenue = 0,
   purchaseDocuments = 0,
+  blockingIssues = [],
 }) {
   const cfg = sanitizeRealProfitSettings(settings);
   const adj = sanitizeQuarterAdjustment(adjustment);
@@ -146,13 +130,12 @@ function calculateQuarterlyRealProfit({
   if (quarterFrom !== quarterTo) throw new Error('Lucro Real trimestral exige datas dentro do mesmo trimestre');
   const quarter = quarterBounds(quarterFrom);
   const months = monthsTouched(from, to);
-  const estimated = estimateSalesTaxes(revenue, cfg);
   const debit = {
-    icms: nonNegative(salesTaxDebits.icms ?? estimated.icms),
-    pis: nonNegative(salesTaxDebits.pis ?? estimated.pis),
-    cofins: nonNegative(salesTaxDebits.cofins ?? estimated.cofins),
-    cbs: nonNegative(salesTaxDebits.cbs ?? estimated.cbs),
-    ibs: nonNegative(salesTaxDebits.ibs ?? estimated.ibs),
+    icms: nonNegative(salesTaxDebits.icms),
+    pis: nonNegative(salesTaxDebits.pis),
+    cofins: nonNegative(salesTaxDebits.cofins),
+    cbs: nonNegative(salesTaxDebits.cbs),
+    ibs: nonNegative(salesTaxDebits.ibs),
   };
 
   const icms = taxAccount(debit.icms, automaticCredits.icms, adj.icmsCredit);
@@ -187,19 +170,38 @@ function calculateQuarterlyRealProfit({
 
   const actualCoveragePct = revenue > 0 ? Math.min(100, nonNegative(actualSalesRevenue) / revenue * 100) : 100;
   const fullQuarter = from === quarter.from && to === quarter.to;
-  const closed = fullQuarter && adj.closed;
+  const issues = [...new Set((blockingIssues || []).map((x) => String(x || '').trim()).filter(Boolean))];
+  if (profitBeforeTaxes == null || !Number.isFinite(Number(profitBeforeTaxes))) issues.push('O resultado contabil antes dos tributos nao foi confirmado');
+  for (const taxName of ['icms', 'pis', 'cofins']) {
+    if (!Object.prototype.hasOwnProperty.call(salesTaxDebits || {}, taxName)) issues.push(`O debito de ${taxName.toUpperCase()} nao foi informado por fonte fiscal`);
+  }
+  if (is2026 && !cfg.cbsIbs2026ComplianceConfirmed) {
+    for (const taxName of ['cbs', 'ibs']) {
+      if (!Object.prototype.hasOwnProperty.call(salesTaxDebits || {}, taxName)) issues.push(`O debito de ${taxName.toUpperCase()} nao foi informado por fonte fiscal`);
+    }
+  }
+  if (actualCoveragePct < 99.999) issues.push('Faltam XMLs fiscais autorizados vinculados a vendas do periodo');
+  if (!fullQuarter) issues.push('O Lucro Real somente pode ser apurado com o trimestre completo');
+  if (!adj.closed) issues.push('O fechamento do contador ainda nao foi confirmado para este trimestre');
+  const uniqueIssues = [...new Set(issues)];
+  const closed = uniqueIssues.length === 0;
   const warnings = [];
-  if (actualCoveragePct < 99.999) warnings.push('Parte dos tributos sobre vendas foi estimada porque faltam XMLs fiscais autorizados vinculados');
-  if (!purchaseDocuments) warnings.push('Nenhuma NF-e de entrada encontrada no periodo; creditos automaticos podem estar incompletos');
-  if (!fullQuarter) warnings.push('Periodo parcial do trimestre: IRPJ e CSLL sao provisoes gerenciais');
-  if (!adj.closed) warnings.push('Ajustes do contador ainda nao foram fechados para este trimestre');
-  if (is2026 && !cfg.cbsIbs2026ComplianceConfirmed) warnings.push('CBS/IBS 2026 provisionados: confirme com a contabilidade o cumprimento das obrigacoes para aplicar a dispensa');
+  if (!purchaseDocuments) warnings.push('Nenhuma NF-e de entrada foi localizada no periodo; o contador deve confirmar se realmente nao houve compras');
+  if (is2026 && !cfg.cbsIbs2026ComplianceConfirmed) warnings.push('A dispensa de CBS/IBS 2026 ainda nao foi confirmada pela contabilidade');
+
+  if (!closed) {
+    for (const account of [icms, pis, cofins, cbs, ibs]) {
+      account.knownBalance = account.expense;
+      account.expense = null;
+      account.payable = null;
+    }
+  }
 
   return {
     regime: cfg.regime,
     quarter: quarter.id,
     period: { from, to, fullQuarter, months },
-    status: closed ? 'closed' : 'provisional',
+    status: closed ? 'closed' : 'not_assessed',
     settings: cfg,
     revenue: round2(revenue),
     profitBeforeTaxes: round2(profitBeforeTaxes),
@@ -207,37 +209,38 @@ function calculateQuarterlyRealProfit({
       icms, pis, cofins, cbs, ibs,
       cbsIbsDispensed,
       other: round2(adj.otherConsumptionTaxes),
-      expense: consumptionTaxExpense,
+      expense: closed ? consumptionTaxExpense : null,
     },
-    accountingProfitAfterConsumptionTaxes,
+    accountingProfitAfterConsumptionTaxes: closed ? accountingProfitAfterConsumptionTaxes : null,
     taxableProfit: {
       additions: round2(adj.taxableAdditions),
       exclusions: round2(adj.taxableExclusions),
-      adjustedBeforeLosses: round2(adjustedBeforeLosses),
-      irpjLossUsed: round2(irpjLossUsed),
-      csllLossUsed: round2(csllLossUsed),
-      irpjBase: round2(irpjBase),
-      csllBase: round2(csllBase),
+      adjustedBeforeLosses: closed ? round2(adjustedBeforeLosses) : null,
+      irpjLossUsed: closed ? round2(irpjLossUsed) : null,
+      csllLossUsed: closed ? round2(csllLossUsed) : null,
+      irpjBase: closed ? round2(irpjBase) : null,
+      csllBase: closed ? round2(csllBase) : null,
     },
     income: {
-      irpj: round2(irpj),
-      irpjAdditional: round2(irpjAdditional),
-      irpjExpense,
-      irpjPayable: round2(Math.max(0, irpjExpense - adj.irpjPrepaidOrWithheld)),
-      csll: csllExpense,
-      csllExpense,
-      csllPayable: round2(Math.max(0, csllExpense - adj.csllPrepaidOrWithheld)),
-      expense: incomeTaxExpense,
+      irpj: closed ? round2(irpj) : null,
+      irpjAdditional: closed ? round2(irpjAdditional) : null,
+      irpjExpense: closed ? irpjExpense : null,
+      irpjPayable: closed ? round2(Math.max(0, irpjExpense - adj.irpjPrepaidOrWithheld)) : null,
+      csll: closed ? csllExpense : null,
+      csllExpense: closed ? csllExpense : null,
+      csllPayable: closed ? round2(Math.max(0, csllExpense - adj.csllPrepaidOrWithheld)) : null,
+      expense: closed ? incomeTaxExpense : null,
     },
-    totalTaxExpense: round2(consumptionTaxExpense + incomeTaxExpense),
-    netProfit,
+    totalTaxExpense: closed ? round2(consumptionTaxExpense + incomeTaxExpense) : null,
+    netProfit: closed ? netProfit : null,
     sourceCoverage: {
       actualSalesRevenue: round2(actualSalesRevenue),
-      estimatedSalesRevenue: round2(Math.max(0, revenue - actualSalesRevenue)),
+      missingFiscalRevenue: round2(Math.max(0, revenue - actualSalesRevenue)),
       actualSalesPct: round2(actualCoveragePct),
       purchaseDocuments: Number(purchaseDocuments) || 0,
     },
     adjustment: adj,
+    blockingIssues: uniqueIssues,
     warnings,
   };
 }
@@ -249,6 +252,5 @@ module.exports = {
   sanitizeQuarterAdjustment,
   quarterIdForYmd,
   quarterBounds,
-  estimateSalesTaxes,
   calculateQuarterlyRealProfit,
 };

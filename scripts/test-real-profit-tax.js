@@ -2,16 +2,12 @@ const assert = require('assert');
 const {
   quarterIdForYmd,
   quarterBounds,
-  estimateSalesTaxes,
   calculateQuarterlyRealProfit,
 } = require('../src/services/realProfitTax');
 
 assert.strictEqual(quarterIdForYmd('2026-07-11'), '2026-Q3');
 assert.deepStrictEqual(quarterBounds('2026-Q3').from, '2026-07-01');
 assert.deepStrictEqual(quarterBounds('2026-Q3').to, '2026-09-30');
-
-const estimated = estimateSalesTaxes(1000, {});
-assert.deepStrictEqual(estimated, { icms: 200, pis: 13.2, cofins: 60.8, cbs: 6.53, ibs: 0.73 });
 
 const result = calculateQuarterlyRealProfit({
   revenue: 100000,
@@ -48,10 +44,25 @@ const additional = calculateQuarterlyRealProfit({
   salesTaxDebits: { icms: 0, pis: 0, cofins: 0, cbs: 0, ibs: 0 },
   settings: { cbsIbs2026ComplianceConfirmed: true },
   from: '2026-07-01', to: '2026-09-30', actualSalesRevenue: 100000, purchaseDocuments: 1,
+  adjustment: { closed: true },
 });
+assert.strictEqual(additional.status, 'closed');
 assert.strictEqual(additional.income.irpj, 15000);
 assert.strictEqual(additional.income.irpjAdditional, 4000);
 assert.strictEqual(additional.income.csll, 9000);
+
+const incomplete = calculateQuarterlyRealProfit({
+  revenue: 1000,
+  profitBeforeTaxes: 400,
+  salesTaxDebits: { icms: 100, pis: 10, cofins: 40, cbs: 0, ibs: 0 },
+  settings: { cbsIbs2026ComplianceConfirmed: true },
+  from: '2026-07-01', to: '2026-07-11', actualSalesRevenue: 500,
+});
+assert.strictEqual(incomplete.status, 'not_assessed');
+assert.strictEqual(incomplete.totalTaxExpense, null);
+assert.strictEqual(incomplete.netProfit, null);
+assert.strictEqual(incomplete.consumption.icms.expense, null);
+assert.ok(incomplete.blockingIssues.some((x) => x.includes('XMLs fiscais')));
 
 assert.throws(() => calculateQuarterlyRealProfit({ from: '2026-06-30', to: '2026-07-01' }), /mesmo trimestre/);
 

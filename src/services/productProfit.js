@@ -1,6 +1,7 @@
 // Lucro por produto a partir das vendas concluidas.
 // Regra: desconto ja esta embutido em SaleItem.totalPrice e nao e subtraido duas vezes.
-// Custos antigos usam Product.costPrice atual como fallback; vendas novas guardam SaleItem.unitCost.
+// O custo precisa estar gravado na venda. A Constituição proíbe usar o custo atual
+// do produto como substituto para uma informação histórica ausente.
 
 const { DEFAULT_REAL_PROFIT_SETTINGS, sanitizeRealProfitSettings } = require('./realProfitTax');
 
@@ -172,9 +173,8 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       const saleShare = itemRevenue > 0 ? revenue / itemRevenue : 0;
       const b = normalize(item.brand || item.product?.brand);
       const brandShare = (brandRevenue.get(b) || 0) > 0 ? revenue / brandRevenue.get(b) : 0;
-      const snapshotCost = Number(item.unitCost);
-      const currentCost = Number(item.product?.costPrice);
-      const unitCost = snapshotCost > 0 ? snapshotCost : (currentCost > 0 ? currentCost : null);
+      const snapshotCost = item.unitCost == null ? null : Number(item.unitCost);
+      const unitCost = Number.isFinite(snapshotCost) && snapshotCost >= 0 ? snapshotCost : null;
 
       row.units += qty;
       row.revenue += revenue;
@@ -195,7 +195,7 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       if (unitCost != null) {
         row.cogs += unitCost * qty;
         row.cogsKnownRevenue += revenue;
-        row.costSources.add(snapshotCost > 0 ? 'snapshot' : 'current_product_cost');
+        row.costSources.add('snapshot');
       } else {
         row.missingCostUnits += qty;
         row.costSources.add('missing');
@@ -212,8 +212,9 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       if (denom > 0) row.fixedAllocated += storePool * revenue / denom;
     }
     const variableCosts = row.commissions + row.paymentFees + row.taxes + row.otherVariableCosts + row.packaging + row.tcUsed + row.tcProvision;
-    const contribution = row.revenue - row.cogs - variableCosts;
-    const profit = contribution - row.fixedAllocated;
+    const costComplete = row.missingCostUnits === 0;
+    const contribution = costComplete ? row.revenue - row.cogs - variableCosts : null;
+    const profit = contribution == null ? null : contribution - row.fixedAllocated;
     out.push({
       productId: row.productId,
       sku: row.sku,
@@ -224,7 +225,7 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       revenue: round2(row.revenue),
       discount: round2(row.discount),
       cogs: round2(row.cogs),
-      grossProfit: round2(row.revenue - row.cogs),
+      grossProfit: costComplete ? round2(row.revenue - row.cogs) : null,
       commissions: round2(row.commissions),
       paymentFees: round2(row.paymentFees),
       taxes: round2(row.taxes),
@@ -233,10 +234,11 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
       tcUsed: round2(row.tcUsed),
       tcProvision: round2(row.tcProvision),
       variableCosts: round2(variableCosts),
-      contribution: round2(contribution),
+      contribution: contribution == null ? null : round2(contribution),
       fixedAllocated: round2(row.fixedAllocated),
-      profit: round2(profit),
-      marginPct: row.revenue > 0 ? round2(profit / row.revenue * 100) : null,
+      profit: profit == null ? null : round2(profit),
+      marginPct: profit != null && row.revenue > 0 ? round2(profit / row.revenue * 100) : null,
+      calculationStatus: costComplete ? 'calculated_before_taxes' : 'not_assessed',
       cogsCoverage: row.revenue > 0 ? round2(row.cogsKnownRevenue / row.revenue * 100) : null,
       missingCostUnits: round2(row.missingCostUnits),
       costSources: [...row.costSources],
@@ -249,7 +251,8 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
     a.revenue += r.revenue;
     a.discount += r.discount;
     a.cogs += r.cogs;
-    a.grossProfit += r.grossProfit;
+    if (r.grossProfit == null) a.incompleteCostProducts += 1;
+    else a.grossProfit += r.grossProfit;
     a.commissions += r.commissions;
     a.paymentFees += r.paymentFees;
     a.taxes += r.taxes;
@@ -258,16 +261,26 @@ function calculateProductProfit({ sales = [], expenses = [], settings = {}, from
     a.tcUsed += r.tcUsed;
     a.tcProvision += r.tcProvision;
     a.variableCosts += r.variableCosts;
-    a.contribution += r.contribution;
+    if (r.contribution != null) a.contribution += r.contribution;
     a.fixedAllocated += r.fixedAllocated;
-    a.profit += r.profit;
+    if (r.profit != null) a.profit += r.profit;
     a.missingCostUnits += r.missingCostUnits;
     a.knownCostRevenue += r.revenue * (r.cogsCoverage || 0) / 100;
     return a;
-  }, { units: 0, revenue: 0, discount: 0, cogs: 0, grossProfit: 0, commissions: 0, paymentFees: 0, taxes: 0, otherVariableCosts: 0, packaging: 0, tcUsed: 0, tcProvision: 0, variableCosts: 0, contribution: 0, fixedAllocated: 0, profit: 0, missingCostUnits: 0, knownCostRevenue: 0 });
+  }, { units: 0, revenue: 0, discount: 0, cogs: 0, grossProfit: 0, commissions: 0, paymentFees: 0, taxes: 0, otherVariableCosts: 0, packaging: 0, tcUsed: 0, tcProvision: 0, variableCosts: 0, contribution: 0, fixedAllocated: 0, profit: 0, missingCostUnits: 0, knownCostRevenue: 0, incompleteCostProducts: 0 });
 
   for (const key of Object.keys(summary)) summary[key] = round2(summary[key]);
-  summary.marginPct = summary.revenue > 0 ? round2(summary.profit / summary.revenue * 100) : null;
+  const incomplete = summary.incompleteCostProducts > 0 || salesWithoutItems > 0 || revenueNotRepresentedByItems > 0.01;
+  if (incomplete) {
+    summary.grossProfit = null;
+    summary.contribution = null;
+    summary.profit = null;
+    summary.marginPct = null;
+    summary.calculationStatus = 'not_assessed';
+  } else {
+    summary.marginPct = summary.revenue > 0 ? round2(summary.profit / summary.revenue * 100) : null;
+    summary.calculationStatus = 'calculated_before_taxes';
+  }
   summary.cogsCoverage = summary.revenue > 0 ? round2(summary.knownCostRevenue / summary.revenue * 100) : null;
   delete summary.knownCostRevenue;
   summary.products = out.length;

@@ -23,7 +23,7 @@ const sales = [
     paymentMethod: 'cash', commissions: [],
     items: [{
       productId: 'p2', productName: 'Produto B', brand: 'MARCA B', quantity: 1, totalPrice: 100,
-      unitCost: null, product: { sku: 'B1', name: 'Produto B', brand: 'MARCA B', costPrice: 50 },
+      unitCost: 50, product: { sku: 'B1', name: 'Produto B', brand: 'MARCA B', costPrice: 99 },
     }],
   },
 ];
@@ -46,7 +46,7 @@ const b = result.products.find((p) => p.productId === 'p2');
 assert.deepStrictEqual({ revenue: a.revenue, cogs: a.cogs, commissions: a.commissions }, { revenue: 100, cogs: 40, commissions: 5 });
 assert.deepStrictEqual({ fees: a.paymentFees, taxes: a.taxes, other: a.otherVariableCosts, pack: a.packaging }, { fees: 2, taxes: 10, other: 1, pack: 1 });
 assert.deepStrictEqual({ tcUsed: a.tcUsed, tcProvision: a.tcProvision, fixed: a.fixedAllocated, profit: a.profit }, { tcUsed: 10, tcProvision: 10, fixed: 46.5, profit: -25.5 });
-assert.deepStrictEqual({ cogs: b.cogs, source: b.costSources[0], fixed: b.fixedAllocated, profit: b.profit }, { cogs: 50, source: 'current_product_cost', fixed: 15.5, profit: 22.5 });
+assert.deepStrictEqual({ cogs: b.cogs, source: b.costSources[0], fixed: b.fixedAllocated, profit: b.profit }, { cogs: 50, source: 'snapshot', fixed: 15.5, profit: 22.5 });
 assert.strictEqual(result.summary.profit, -3);
 assert.strictEqual(result.summary.cogsCoverage, 100);
 
@@ -60,5 +60,8 @@ const missing = calculateProductProfit({
 });
 assert.strictEqual(missing.summary.cogsCoverage, 0);
 assert.strictEqual(missing.summary.missingCostUnits, 2);
+assert.strictEqual(missing.summary.profit, null);
+assert.strictEqual(missing.products[0].profit, null);
+assert.strictEqual(missing.products[0].calculationStatus, 'not_assessed');
 
 console.log('productProfit: OK');

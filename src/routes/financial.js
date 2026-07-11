@@ -13,7 +13,6 @@ const {
   sanitizeQuarterAdjustment,
   quarterIdForYmd,
   quarterBounds,
-  estimateSalesTaxes,
   calculateQuarterlyRealProfit,
 } = require('../services/realProfitTax');
 
@@ -67,6 +66,7 @@ function extractFiscalTaxTotals(xml) {
     icmsSt: xmlNumber(icms, 'vST'),
     fcp: xmlNumber(icms, 'vFCP') + xmlNumber(icms, 'vFCPST'),
     difal: xmlNumber(icms, 'vICMSUFDest'),
+    hasIbsCbs: Boolean(ibsCbs),
   };
 }
 
@@ -425,10 +425,11 @@ router.get('/product-profit', async (req, res) => {
 
     const entities = {};
     const ensureEntity = (issuerId) => (entities[issuerId] ||= {
-      issuerId, revenue: 0, actualSalesRevenue: 0, uncoveredRevenue: 0, profitBeforeTaxes: 0,
+      issuerId, revenue: 0, actualSalesRevenue: 0, profitBeforeTaxes: 0,
       debits: { icms: 0, pis: 0, cofins: 0, cbs: 0, ibs: 0 },
       credits: { icms: 0, pis: 0, cofins: 0, cbs: 0, ibs: 0 },
       purchaseDocuments: 0, embeddedInputTaxes: { icmsSt: 0, fcp: 0, difal: 0, ipi: 0 },
+      missingFiscalRevenue: 0, missingCbsIbsRevenue: 0, fiscalCrtMismatchRevenue: 0,
       calculationWarnings: [],
     });
     const itemRevenue = (sale) => (sale.items || []).reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0);
@@ -439,39 +440,23 @@ router.get('/product-profit', async (req, res) => {
       const entity = ensureEntity(issuerId);
       entity.revenue += revenue;
       const actual = fiscalBySale[sale.id];
-      // XML emitido com CRT diferente de 3 nao controla a provisao do Lucro Real.
-      // Nesse caso usa as regras normais configuradas e exibe alerta de cadastro fiscal.
+      // Sem XML autorizado ou com CRT incompatível, a apuração fica bloqueada.
+      // A Constituição proíbe preencher a lacuna com alíquota presumida.
       if (actual && issuerById[issuerId]?.crt === 3) {
         entity.actualSalesRevenue += revenue;
         entity.debits.icms += actual.icms;
-        const rp = settings.realProfit;
-        const federalBase = Math.max(0, revenue - (rp.excludeIcmsFromPisCofinsBase ? actual.icms : 0));
-        const legalPis = federalBase * rp.pisRatePct / 100;
-        const legalCofins = federalBase * rp.cofinsRatePct / 100;
-        // O emissor legado calculava PIS/Cofins sobre o valor cheio. Quando o XML
-        // diverge da base legal configurada, a provisao usa a base sem ICMS e avisa.
-        if (Math.abs(actual.pis - legalPis) > 0.02 || Math.abs(actual.cofins - legalCofins) > 0.02) {
-          entity.debits.pis += legalPis;
-          entity.debits.cofins += legalCofins;
-          entity.calculationWarnings.push('PIS/Cofins do XML divergem da base sem ICMS; a provisao gerencial aplicou a regra configurada');
-        } else {
-          entity.debits.pis += actual.pis;
-          entity.debits.cofins += actual.cofins;
+        entity.debits.pis += actual.pis;
+        entity.debits.cofins += actual.cofins;
+        if (actual.hasIbsCbs) {
+          entity.debits.cbs += actual.cbs;
+          entity.debits.ibs += actual.ibs;
+        } else if (Number(quarter.slice(0, 4)) >= 2026 && !settings.realProfit.cbsIbs2026ComplianceConfirmed) {
+          entity.missingCbsIbsRevenue += revenue;
         }
       } else {
-        entity.uncoveredRevenue += revenue;
+        entity.missingFiscalRevenue += revenue;
+        if (actual && issuerById[issuerId]?.crt !== 3) entity.fiscalCrtMismatchRevenue += revenue;
       }
-    }
-
-    for (const entity of Object.values(entities)) {
-      const missing = estimateSalesTaxes(entity.uncoveredRevenue, settings.realProfit);
-      const reform = estimateSalesTaxes(entity.revenue, settings.realProfit);
-      entity.debits.icms += missing.icms;
-      entity.debits.pis += missing.pis;
-      entity.debits.cofins += missing.cofins;
-      // Em 2026 os XMLs legados podem nao conter os novos grupos; provisiona sobre toda a receita.
-      entity.debits.cbs = reform.cbs;
-      entity.debits.ibs = reform.ibs;
     }
 
     const activeCnpjs = issuers.map((i) => digits(i.cnpj)).filter(Boolean);
@@ -498,10 +483,11 @@ router.get('/product-profit', async (req, res) => {
       entity.embeddedInputTaxes.ipi += Number(doc.ipiValue) || 0;
     }
 
-    // Resultado antes dos tributos separado por CNPJ, proporcional a receita do produto em cada emissor.
+    // Resultado antes dos tributos separado por CNPJ. O rateio somente pode virar
+    // apuração quando o contador confirmar o fechamento integral do trimestre.
     for (const product of result.products) {
       for (const [issuerId, revenue] of Object.entries(product.issuerRevenue || {})) {
-        if (!entities[issuerId] || product.revenue <= 0) continue;
+        if (!entities[issuerId] || product.revenue <= 0 || product.profit == null) continue;
         entities[issuerId].profitBeforeTaxes += product.profit * revenue / product.revenue;
       }
     }
@@ -513,12 +499,21 @@ router.get('/product-profit', async (req, res) => {
       allRevenueByIssuer[issuerId] = (allRevenueByIssuer[issuerId] || 0) + itemRevenue(sale);
     }
     const taxEntities = {};
-    const taxWarnings = ['Creditos automaticos de PIS/Cofins usam os valores destacados nas NF-e de entrada; diferencas da EFD-Contribuicoes devem ser lancadas no fechamento do contador'];
+    const taxWarnings = ['Creditos de PIS/Cofins exibidos vem dos valores destacados nas NF-e de entrada e somente ficam definitivos apos o fechamento do contador'];
     for (const entity of Object.values(entities)) {
       const issuer = issuerById[entity.issuerId] || null;
       const scopeFactor = storeId && allRevenueByIssuer[entity.issuerId] > 0 ? entity.revenue / allRevenueByIssuer[entity.issuerId] : 1;
       const adjustment = scaleAdjustment(adjustments[entity.issuerId] || {}, scopeFactor);
       const scopedCredits = Object.fromEntries(Object.entries(entity.credits).map(([key, value]) => [key, value * scopeFactor]));
+      const blockingIssues = [];
+      if (!issuer) blockingIssues.push('A loja da venda nao possui CNPJ emissor vinculado');
+      if (issuer && issuer.crt !== 3) blockingIssues.push(`CRT cadastrado = ${issuer.crt}; o Lucro Real exige CRT 3 na emissao fiscal`);
+      if (entity.missingFiscalRevenue > 0) blockingIssues.push(`Faltam XMLs autorizados para R$ ${r2(entity.missingFiscalRevenue).toFixed(2)} em vendas`);
+      if (entity.fiscalCrtMismatchRevenue > 0) blockingIssues.push(`Ha R$ ${r2(entity.fiscalCrtMismatchRevenue).toFixed(2)} em vendas com documento emitido por CRT incompatível`);
+      if (entity.missingCbsIbsRevenue > 0) blockingIssues.push(`CBS/IBS nao constam nos XMLs de R$ ${r2(entity.missingCbsIbsRevenue).toFixed(2)} em vendas e a dispensa de 2026 nao foi confirmada`);
+      if (result.summary.profit == null) blockingIssues.push('O resultado antes dos tributos esta incompleto por falta de custo ou detalhamento de venda');
+      if (!expenses.length && !adjustment.closed) blockingIssues.push('As despesas operacionais e a folha ainda nao foram confirmadas no cadastro');
+      if (storeId) blockingIssues.push('O filtro por loja nao constitui apuracao fiscal completa do CNPJ');
       const tax = calculateQuarterlyRealProfit({
         revenue: entity.revenue,
         profitBeforeTaxes: entity.profitBeforeTaxes,
@@ -530,23 +525,23 @@ router.get('/product-profit', async (req, res) => {
         to: period.to,
         actualSalesRevenue: entity.actualSalesRevenue,
         purchaseDocuments: entity.purchaseDocuments,
+        blockingIssues,
       });
       tax.issuer = issuer ? { id: issuer.id, name: issuer.fantasyName || issuer.companyName, cnpj: issuer.cnpj, crt: issuer.crt } : { id: entity.issuerId, name: 'Sem CNPJ vinculado', cnpj: null, crt: null };
       tax.embeddedInputTaxes = Object.fromEntries(Object.entries(entity.embeddedInputTaxes).map(([k, v]) => [k, r2(v * scopeFactor)]));
       tax.scopeFactor = r2(scopeFactor);
-      if (issuer && issuer.crt !== 3) taxWarnings.push(`${tax.issuer.name}: CRT cadastrado = ${issuer.crt}; Lucro Real exige regime normal (CRT 3) na emissao fiscal`);
-      if (!issuer) taxWarnings.push('Existem vendas sem CNPJ emissor vinculado a loja');
       taxWarnings.push(...entity.calculationWarnings.map((w) => `${tax.issuer.name}: ${w}`));
       taxWarnings.push(...tax.warnings.map((w) => `${tax.issuer.name}: ${w}`));
       taxEntities[entity.issuerId] = tax;
     }
 
-    // Rateia o imposto de cada CNPJ aos produtos apenas para analise gerencial de margem.
+    // O rateio por produto só é exibido depois que a apuração do CNPJ estiver fechada.
     for (const product of result.products) {
       let consumption = 0, income = 0, irpj = 0, irpjAdditional = 0, csll = 0;
+      let complete = product.profit != null;
       for (const [issuerId, revenue] of Object.entries(product.issuerRevenue || {})) {
         const entity = entities[issuerId], tax = taxEntities[issuerId];
-        if (!entity || !tax || entity.revenue <= 0) continue;
+        if (!entity || !tax || entity.revenue <= 0 || tax.status !== 'closed') { complete = false; continue; }
         const share = revenue / entity.revenue;
         consumption += tax.consumption.expense * share;
         income += tax.income.expense * share;
@@ -555,21 +550,35 @@ router.get('/product-profit', async (req, res) => {
         csll += tax.income.csll * share;
       }
       const before = product.profit;
-      product.profitBeforeTaxes = r2(before);
-      product.consumptionTaxes = r2(consumption);
-      product.profitBeforeIncomeTax = r2(before - consumption);
-      product.irpj = r2(irpj);
-      product.irpjAdditional = r2(irpjAdditional);
-      product.csll = r2(csll);
-      product.incomeTaxes = r2(income);
-      product.taxes = r2(consumption + income);
-      product.variableCosts = r2(product.variableCosts + consumption);
-      product.contribution = r2(product.contribution - consumption);
-      product.profit = r2(before - consumption - income);
-      product.marginPct = product.revenue > 0 ? r2(product.profit / product.revenue * 100) : null;
+      product.profitBeforeTaxes = complete && before != null ? r2(before) : null;
+      product.calculationStatus = complete ? 'closed' : 'not_assessed';
+      if (complete) {
+        product.consumptionTaxes = r2(consumption);
+        product.profitBeforeIncomeTax = r2(before - consumption);
+        product.irpj = r2(irpj);
+        product.irpjAdditional = r2(irpjAdditional);
+        product.csll = r2(csll);
+        product.incomeTaxes = r2(income);
+        product.taxes = r2(consumption + income);
+        product.variableCosts = r2(product.variableCosts + consumption);
+        product.contribution = r2(product.contribution - consumption);
+        product.profit = r2(before - consumption - income);
+        product.marginPct = product.revenue > 0 ? r2(product.profit / product.revenue * 100) : null;
+      } else {
+        product.consumptionTaxes = null;
+        product.profitBeforeIncomeTax = null;
+        product.irpj = null;
+        product.irpjAdditional = null;
+        product.csll = null;
+        product.incomeTaxes = null;
+        product.taxes = null;
+        product.profit = null;
+        product.marginPct = null;
+      }
     }
 
-    const taxTotals = Object.values(taxEntities).reduce((a, tax) => {
+    const taxComplete = Object.values(taxEntities).every((tax) => tax.status === 'closed') && Object.keys(taxEntities).length > 0;
+    const taxTotals = taxComplete ? Object.values(taxEntities).reduce((a, tax) => {
       a.consumption += tax.consumption.expense;
       a.irpj += tax.income.irpj;
       a.irpjAdditional += tax.income.irpjAdditional;
@@ -577,27 +586,35 @@ router.get('/product-profit', async (req, res) => {
       a.income += tax.income.expense;
       a.total += tax.totalTaxExpense;
       return a;
-    }, { consumption: 0, irpj: 0, irpjAdditional: 0, csll: 0, income: 0, total: 0 });
-    for (const key of Object.keys(taxTotals)) taxTotals[key] = r2(taxTotals[key]);
+    }, { consumption: 0, irpj: 0, irpjAdditional: 0, csll: 0, income: 0, total: 0 }) : { consumption: null, irpj: null, irpjAdditional: null, csll: null, income: null, total: null };
+    if (taxComplete) for (const key of Object.keys(taxTotals)) taxTotals[key] = r2(taxTotals[key]);
     const beforeTax = result.summary.profit;
-    result.summary.profitBeforeTaxes = r2(beforeTax);
+    result.summary.profitBeforeTaxes = taxComplete && beforeTax != null ? r2(beforeTax) : null;
     result.summary.consumptionTaxes = taxTotals.consumption;
     result.summary.irpj = taxTotals.irpj;
     result.summary.irpjAdditional = taxTotals.irpjAdditional;
     result.summary.csll = taxTotals.csll;
     result.summary.incomeTaxes = taxTotals.income;
     result.summary.taxes = taxTotals.total;
-    result.summary.variableCosts = r2(result.summary.variableCosts + taxTotals.consumption);
-    result.summary.contribution = r2(result.summary.contribution - taxTotals.consumption);
-    result.summary.profit = r2(beforeTax - taxTotals.total);
-    result.summary.marginPct = result.summary.revenue > 0 ? r2(result.summary.profit / result.summary.revenue * 100) : null;
+    result.summary.calculationStatus = taxComplete && beforeTax != null ? 'closed' : 'not_assessed';
+    if (taxComplete && beforeTax != null) {
+      result.summary.variableCosts = r2(result.summary.variableCosts + taxTotals.consumption);
+      result.summary.contribution = r2(result.summary.contribution - taxTotals.consumption);
+      result.summary.profit = r2(beforeTax - taxTotals.total);
+      result.summary.marginPct = result.summary.revenue > 0 ? r2(result.summary.profit / result.summary.revenue * 100) : null;
+    } else {
+      if (!expenses.length) result.summary.fixedAllocated = null;
+      result.summary.profit = null;
+      result.summary.marginPct = null;
+      if (!expenses.length) for (const product of result.products) product.fixedAllocated = null;
+    }
 
     let products = result.products;
     if (query) products = products.filter((p) => `${p.name} ${p.brand} ${p.sku || ''}`.toLowerCase().includes(query));
 
     const sorters = {
-      profit_asc: (a, b) => a.profit - b.profit,
-      profit_desc: (a, b) => b.profit - a.profit,
+      profit_asc: (a, b) => (a.profit == null) - (b.profit == null) || (a.profit ?? 0) - (b.profit ?? 0),
+      profit_desc: (a, b) => (a.profit == null) - (b.profit == null) || (b.profit ?? 0) - (a.profit ?? 0),
       margin_asc: (a, b) => (a.marginPct ?? 999999) - (b.marginPct ?? 999999),
       margin_desc: (a, b) => (b.marginPct ?? -999999) - (a.marginPct ?? -999999),
       revenue_desc: (a, b) => b.revenue - a.revenue,
@@ -616,18 +633,19 @@ router.get('/product-profit', async (req, res) => {
       issuers,
       tax: {
         regime: 'lucro_real_trimestral', quarter,
-        status: Object.values(taxEntities).every((t) => t.status === 'closed') && Object.keys(taxEntities).length ? 'closed' : 'provisional',
+        status: taxComplete ? 'closed' : 'not_assessed',
         scope: storeId ? 'rateio_gerencial_da_loja' : 'apuracao_por_cnpj',
         totals: taxTotals,
         entities: Object.values(taxEntities),
         warnings: [...new Set(taxWarnings)],
+        blockingIssues: [...new Set(Object.values(taxEntities).flatMap((t) => (t.blockingIssues || []).map((issue) => `${t.issuer?.name || 'CNPJ'}: ${issue}`)))],
       },
       methodology: {
         revenue: 'SaleItem.totalPrice (ja liquido do desconto)',
-        cogs: 'SaleItem.unitCost da data da venda; fallback Product.costPrice atual em vendas antigas',
+        cogs: 'SaleItem.unitCost gravado na data da venda; sem snapshot o resultado fica NAO APURADO',
         fixedCosts: 'Despesas mensais ativas rateadas por dia e pela participacao do produto na receita',
         taxExpenseCategory: 'Despesas cadastradas na categoria imposto ficam fora do rateio para evitar duplicidade com a apuracao tributaria',
-        taxes: 'Lucro Real trimestral por CNPJ: ICMS/PIS/Cofins/CBS/IBS liquidos de creditos, depois IRPJ, adicional de IRPJ e CSLL',
+        taxes: 'Lucro Real trimestral por CNPJ somente com XMLs autorizados, creditos e fechamento contabil confirmados; sem fonte o resultado fica NAO APURADO',
         incomeTaxAllocation: 'IRPJ e CSLL sao apurados por CNPJ e rateados aos produtos apenas para analise gerencial',
         excludedStatuses: ['cancelled', 'canceled', 'pending', 'pending_payment', 'exchange_coupon'],
         exchangeCoupons: 'Cupons simbolicos de troca (status=exchange_coupon) nao sao venda economica e ficam fora do lucro',
@@ -722,21 +740,22 @@ router.get('/daily-xray', async (req, res) => {
     if (sales.length) {
       items = await prisma.saleItem.findMany({
         where: { saleId: { in: sales.map((s) => s.id) } },
-        select: { saleId: true, quantity: true, totalPrice: true, unitCost: true, product: { select: { costPrice: true } } },
+        select: { saleId: true, quantity: true, totalPrice: true, unitCost: true },
       });
     }
 
     const per = {};
-    const bucket = (sid) => (per[sid] = per[sid] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0 });
+    const bucket = (sid) => (per[sid] = per[sid] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0, missingCostUnits: 0 });
     sales.forEach((s) => { bucket(s.storeId || '__none__').revenue += s.totalAmount || 0; });
     items.forEach((it) => {
       const b = bucket(saleStore[it.saleId] || '__none__');
       b.itemsValue += it.totalPrice || 0;
-      const cost = (it.unitCost && it.unitCost > 0) ? it.unitCost : (it.product && it.product.costPrice);
-      if (cost && cost > 0) { b.cogs += cost * (it.quantity || 1); b.cogsKnownValue += it.totalPrice || 0; }
+      const cost = it.unitCost == null ? null : Number(it.unitCost);
+      if (Number.isFinite(cost) && cost >= 0) { b.cogs += cost * (it.quantity || 1); b.cogsKnownValue += it.totalPrice || 0; }
+      else b.missingCostUnits += it.quantity || 1;
     });
 
-    const expenses = await prisma.operatingExpense.findMany({ where: { active: true } });
+    const expenses = await prisma.operatingExpense.findMany({ where: { active: true, category: { not: 'imposto' } } });
     const expStore = {}; let cwFolha = 0, cwFixas = 0;
     const perDay = (a) => (a || 0) / daysInMonth;
     expenses.forEach((e) => {
@@ -746,36 +765,47 @@ router.get('/daily-xray', async (req, res) => {
     });
 
     const storesOut = stores.map((s) => {
-      const b = per[s.id] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0 };
+      const b = per[s.id] || { revenue: 0, cogs: 0, cogsKnownValue: 0, itemsValue: 0, missingCostUnits: 0 };
       const ex = expStore[s.id] || { folha: 0, fixas: 0 };
+      const cogsCoverage = b.itemsValue > 0 ? b.cogsKnownValue / b.itemsValue : null;
+      const complete = (b.revenue === 0 || cogsCoverage === 1) && expenses.length > 0 && cwFolha === 0 && cwFixas === 0;
       return {
         storeId: s.id, code: s.code, name: s.name,
         revenue: b.revenue, cogs: b.cogs,
-        cogsCoverage: b.itemsValue > 0 ? b.cogsKnownValue / b.itemsValue : null,
+        cogsCoverage, missingCostUnits: b.missingCostUnits,
         laborDay: ex.folha, fixedDay: ex.fixas,
-        result: b.revenue - b.cogs - ex.folha - ex.fixas,
+        result: complete ? b.revenue - b.cogs - ex.folha - ex.fixas : null,
+        calculationStatus: complete ? 'calculated_before_taxes' : 'not_assessed',
       };
     });
     const none = per['__none__'];
     if (none && none.revenue > 0) {
-      storesOut.push({ storeId: null, code: '—', name: 'Sem loja definida', revenue: none.revenue, cogs: none.cogs, cogsCoverage: none.itemsValue > 0 ? none.cogsKnownValue / none.itemsValue : null, laborDay: 0, fixedDay: 0, result: none.revenue - none.cogs });
+      storesOut.push({ storeId: null, code: '—', name: 'Sem loja definida', revenue: none.revenue, cogs: none.cogs, cogsCoverage: none.itemsValue > 0 ? none.cogsKnownValue / none.itemsValue : null, missingCostUnits: none.missingCostUnits, laborDay: 0, fixedDay: 0, result: null, calculationStatus: 'not_assessed' });
     }
 
     const sum = (f) => Object.values(per).reduce((a, b) => a + f(b), 0);
     const tRevenue = sum((b) => b.revenue), tCogs = sum((b) => b.cogs), tItems = sum((b) => b.itemsValue), tKnown = sum((b) => b.cogsKnownValue);
     const tLabor = Object.values(expStore).reduce((a, b) => a + b.folha, 0) + cwFolha;
     const tFixed = Object.values(expStore).reduce((a, b) => a + b.fixas, 0) + cwFixas;
+    const cogsCoverage = tItems > 0 ? tKnown / tItems : null;
+    const missingData = [];
+    if (sales.length && cogsCoverage !== 1) missingData.push('Existem vendas sem custo historico gravado no item');
+    if (!expenses.length) missingData.push('As despesas operacionais e a folha ainda nao foram confirmadas no cadastro');
+    const complete = missingData.length === 0;
 
     res.json({
       date: `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
       daysInMonth, salesCount: sales.length,
       company: {
-        revenue: tRevenue, cogs: tCogs, cogsCoverage: tItems > 0 ? tKnown / tItems : null,
+        revenue: tRevenue, cogs: tCogs, cogsCoverage,
         laborDay: tLabor, fixedDay: tFixed, companyWideLaborDay: cwFolha, companyWideFixedDay: cwFixas,
-        result: tRevenue - tCogs - tLabor - tFixed,
+        result: complete ? tRevenue - tCogs - tLabor - tFixed : null,
+        calculationStatus: complete ? 'calculated_before_taxes' : 'not_assessed',
       },
       stores: storesOut,
       hasExpenses: expenses.length > 0,
+      missingData,
+      methodology: { status: 'Resultado operacional antes dos tributos', expenses: 'Despesas mensais confirmadas divididas pelos dias do mes' },
     });
   } catch (err) { console.error('[financial/daily-xray]', err); res.status(500).json({ error: err.message }); }
 });
