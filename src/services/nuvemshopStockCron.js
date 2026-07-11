@@ -57,6 +57,7 @@ let busy = false;
 const cronState = {
   running: false,
   scheduleEnabled: null,
+  stockScheduleEnabled: true,
   phase: 'idle',
   progress: null,
   lastStartedAt: null,
@@ -405,7 +406,16 @@ function startNuvemshopStockCron() {
   setTimeout(runStartupCleanup, 5000);
 
   if (!scheduleEnabled) {
-    console.log('[nsStockCron] espelho continuo desligado; limpeza de startup autorizada');
+    cron.schedule(
+      '*/5 * * * *',
+      () => runNuvemshopStockSync({
+        uploadConfirmed: false,
+        cleanupOnly: true,
+        reconcileStock: true,
+      }).catch((error) => console.error('[nsStockCron] estoque fisico', error.message)),
+      { timezone: TZ },
+    );
+    console.log('[nsStockCron] catalogo completo pausado; estoque fisico ativo a cada 5 min');
     return;
   }
   cron.schedule(
