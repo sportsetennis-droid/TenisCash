@@ -390,7 +390,16 @@ app.use('/api', cashbackRedeemRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'TenisCash API', version: '1.0.0' });
+  let nuvemshopCatalog = null;
+  try {
+    nuvemshopCatalog = require('./services/nuvemshopStockCron').getNuvemshopCronState();
+  } catch (_) {}
+  res.json({
+    status: 'ok',
+    service: 'TenisCash API',
+    version: '1.0.0',
+    nuvemshopCatalog,
+  });
 });
 
 async function proxyContabilidade(req, res) {

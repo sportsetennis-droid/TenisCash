@@ -53,10 +53,20 @@ function cardSig(product) {
 }
 
 let busy = false;
+const cronState = {
+  running: false,
+  lastStartedAt: null,
+  lastFinishedAt: null,
+  lastError: null,
+  lastResult: null,
+};
 
 async function runNuvemshopStockSync() {
   if (busy) return;
   busy = true;
+  cronState.running = true;
+  cronState.lastStartedAt = new Date().toISOString();
+  cronState.lastError = null;
   try {
     const connection = await nsHandlers.getConnection();
     if (!connection) return;
@@ -218,11 +228,28 @@ async function runNuvemshopStockSync() {
         + ` · orfaos-ocultos=${unpublishedOrphans}`,
       );
     }
+    cronState.lastResult = {
+      targetUserId: String(connection.nuvemshopUserId),
+      mappedProducts: mappings.length,
+      autoUploaded: uploaded,
+      synced,
+      unpublishedInvalid,
+      unpublishedOrphans,
+      cleanupActions,
+      cleanupLimit,
+    };
   } catch (error) {
     console.error('[nsStockCron] erro geral:', error.message);
+    cronState.lastError = error.message;
   } finally {
     busy = false;
+    cronState.running = false;
+    cronState.lastFinishedAt = new Date().toISOString();
   }
+}
+
+function getNuvemshopCronState() {
+  return JSON.parse(JSON.stringify(cronState));
 }
 
 function startNuvemshopStockCron() {
@@ -243,6 +270,7 @@ function startNuvemshopStockCron() {
 
 module.exports = {
   cardSig,
+  getNuvemshopCronState,
   runNuvemshopStockSync,
   startNuvemshopStockCron,
 };
