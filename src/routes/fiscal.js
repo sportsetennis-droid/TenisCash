@@ -453,7 +453,7 @@ router.post('/troca', async (req, res) => {
           paymentMethod: diff > 0 ? (TPAG_TO_SALEPAY[diffPayment.tPag] || 'other') : 'troca',
           status: 'completed', tcUsed: 0, tcEarned: 0,
           note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : ''),
-          items: { create: newResolved.map(n => ({ productId: n.product.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price) })) },
+          items: { create: newResolved.map(n => ({ productId: n.product.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price), unitCost: n.product.costPrice > 0 ? n.product.costPrice : null })) },
         },
         include: { items: true },
       });

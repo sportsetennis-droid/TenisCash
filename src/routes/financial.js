@@ -4,10 +4,41 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const {
+  DEFAULT_SETTINGS,
+  sanitizeSettings,
+  calculateProductProfit,
+} = require('../services/productProfit');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
+
+const PROFIT_SETTINGS_KEY = 'financial_profit_settings';
+
+function fortalezaYmd(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Fortaleza', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+}
+
+function parseProfitPeriod(query = {}) {
+  const today = fortalezaYmd();
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(query.from || '')) ? String(query.from) : today.slice(0, 7) + '-01';
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(String(query.to || '')) ? String(query.to) : today;
+  const start = new Date(from + 'T03:00:00.000Z');
+  const last = new Date(to + 'T03:00:00.000Z');
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(last.getTime()) || last < start) throw new Error('Periodo invalido');
+  if ((last - start) / 86400000 > 366) throw new Error('O periodo maximo e de 367 dias');
+  return { from, to, start, end: new Date(last.getTime() + 86400000) };
+}
+
+async function loadProfitSettings() {
+  const row = await prisma.config.findUnique({ where: { key: PROFIT_SETTINGS_KEY } }).catch(() => null);
+  if (!row?.value) return sanitizeSettings(DEFAULT_SETTINGS);
+  try { return sanitizeSettings(JSON.parse(row.value)); }
+  catch (_) { return sanitizeSettings(DEFAULT_SETTINGS); }
+}
 
 // =====================================================================
 // CONTAS A PAGAR
@@ -215,6 +246,97 @@ router.get('/dashboard', async (_req, res) => {
 });
 
 // =====================================================================
+// LUCRO POR PRODUTO
+// Receita liquida - CMV - comissao - taxas - impostos - TenisCash
+// - despesas operacionais rateadas. Somente Sale.status=completed.
+// =====================================================================
+
+router.get('/profit-settings', async (_req, res) => {
+  try {
+    res.json({ settings: await loadProfitSettings() });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao carregar configuracoes de lucro', detail: err.message });
+  }
+});
+
+router.put('/profit-settings', async (req, res) => {
+  try {
+    const settings = sanitizeSettings(req.body || {});
+    await prisma.config.upsert({
+      where: { key: PROFIT_SETTINGS_KEY },
+      update: { value: JSON.stringify(settings) },
+      create: { id: PROFIT_SETTINGS_KEY, key: PROFIT_SETTINGS_KEY, value: JSON.stringify(settings) },
+    });
+    res.json({ ok: true, settings });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao salvar configuracoes de lucro', detail: err.message });
+  }
+});
+
+router.get('/product-profit', async (req, res) => {
+  try {
+    const period = parseProfitPeriod(req.query);
+    const storeId = String(req.query.storeId || '').trim() || null;
+    const query = String(req.query.q || '').trim().toLowerCase();
+    const sort = String(req.query.sort || 'profit_asc');
+
+    const [sales, expenses, settings, stores] = await Promise.all([
+      prisma.sale.findMany({
+        where: { createdAt: { gte: period.start, lt: period.end }, status: 'completed' },
+        select: {
+          id: true, storeId: true, totalAmount: true, discount: true, tcUsed: true, tcEarned: true,
+          paymentMethod: true,
+          commissions: { select: { brand: true, amount: true } },
+          items: {
+            select: {
+              productId: true, productName: true, brand: true, quantity: true, totalPrice: true, unitCost: true,
+              product: { select: { id: true, sku: true, name: true, brand: true, costPrice: true } },
+            },
+          },
+        },
+      }),
+      prisma.operatingExpense.findMany({ where: { active: true }, select: { amount: true, storeId: true } }),
+      loadProfitSettings(),
+      prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
+    ]);
+
+    const result = calculateProductProfit({ sales, expenses, settings, from: period.from, to: period.to, storeId });
+    let products = result.products;
+    if (query) products = products.filter((p) => `${p.name} ${p.brand} ${p.sku || ''}`.toLowerCase().includes(query));
+
+    const sorters = {
+      profit_asc: (a, b) => a.profit - b.profit,
+      profit_desc: (a, b) => b.profit - a.profit,
+      margin_asc: (a, b) => (a.marginPct ?? 999999) - (b.marginPct ?? 999999),
+      margin_desc: (a, b) => (b.marginPct ?? -999999) - (a.marginPct ?? -999999),
+      revenue_desc: (a, b) => b.revenue - a.revenue,
+      units_desc: (a, b) => b.units - a.units,
+    };
+    products.sort(sorters[sort] || sorters.profit_asc);
+
+    res.json({
+      from: period.from,
+      to: period.to,
+      storeId,
+      settings: result.settings,
+      summary: result.summary,
+      products,
+      stores,
+      methodology: {
+        revenue: 'SaleItem.totalPrice (ja liquido do desconto)',
+        cogs: 'SaleItem.unitCost da data da venda; fallback Product.costPrice atual em vendas antigas',
+        fixedCosts: 'Despesas mensais ativas rateadas por dia e pela participacao do produto na receita',
+        excludedStatuses: ['cancelled', 'canceled', 'pending', 'pending_payment'],
+      },
+    });
+  } catch (err) {
+    console.error('[financial/product-profit]', err);
+    const badRequest = /Periodo|periodo|Data invalida/.test(err.message);
+    res.status(badRequest ? 400 : 500).json({ error: err.message || 'Erro ao calcular lucro por produto' });
+  }
+});
+
+// =====================================================================
 // DESPESAS OPERACIONAIS (folha + fixas) + RAIO-X DO DIA (lucro/prejuízo)
 // Valores são SEMPRE cadastrados pelo dono — nunca inventados.
 // =====================================================================
@@ -287,7 +409,7 @@ router.get('/daily-xray', async (req, res) => {
     const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } });
 
     const sales = await prisma.sale.findMany({
-      where: { createdAt: { gte: dayStart, lt: dayEnd }, status: { not: 'canceled' } },
+      where: { createdAt: { gte: dayStart, lt: dayEnd }, status: 'completed' },
       select: { id: true, storeId: true, totalAmount: true },
     });
     const saleStore = {}; sales.forEach((s) => { saleStore[s.id] = s.storeId || '__none__'; });
@@ -296,7 +418,7 @@ router.get('/daily-xray', async (req, res) => {
     if (sales.length) {
       items = await prisma.saleItem.findMany({
         where: { saleId: { in: sales.map((s) => s.id) } },
-        select: { saleId: true, quantity: true, totalPrice: true, product: { select: { costPrice: true } } },
+        select: { saleId: true, quantity: true, totalPrice: true, unitCost: true, product: { select: { costPrice: true } } },
       });
     }
 
@@ -306,7 +428,7 @@ router.get('/daily-xray', async (req, res) => {
     items.forEach((it) => {
       const b = bucket(saleStore[it.saleId] || '__none__');
       b.itemsValue += it.totalPrice || 0;
-      const cost = it.product && it.product.costPrice;
+      const cost = (it.unitCost && it.unitCost > 0) ? it.unitCost : (it.product && it.product.costPrice);
       if (cost && cost > 0) { b.cogs += cost * (it.quantity || 1); b.cogsKnownValue += it.totalPrice || 0; }
     });
 

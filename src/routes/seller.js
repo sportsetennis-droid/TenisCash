@@ -630,6 +630,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         quantity: qty,
         unitPrice: unit,
         totalPrice: total,
+        unitCost: p.costPrice > 0 ? p.costPrice : null,
       };
     });
 

@@ -2508,7 +2508,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 </div>
 
 <div class="section" id="tab-financeiro" style="display:none">
-  <h2 style="margin:0 0 2px;">💰 Financeiro — Raio-X do dia</h2>
+  <h2 style="margin:0 0 2px;color:#1d1d1f;">💰 Financeiro — Raio-X do dia</h2>
   <p style="color:#666;margin:0 0 16px;font-size:12px;">A empresa lucrou ou levou fumo hoje? Vendas − custo dos produtos − folha − despesas fixas.</p>
 
   <!-- PASSO 1: cadastrar custos (vem primeiro) -->
@@ -2525,9 +2525,42 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <div id="fin-expenses"></div>
   </div>
 
-  <!-- PASSO 2: o raio-x -->
+  <!-- PASSO 2: custos variaveis -->
+  <div style="background:#fff7e6;border:1px solid #ffd591;border-radius:14px;padding:16px;margin-bottom:18px;">
+    <h3 style="margin:0 0 2px;color:#8a5a00;">2️⃣ Configure os custos variáveis</h3>
+    <p style="color:#8a5a00;font-size:12px;margin:0 0 12px;">Informe as taxas reais. Campo vazio ou zero não entra no cálculo. Comissão, desconto e TenisCash usado são lidos automaticamente das vendas.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;align-items:end;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Cartão crédito (%)<br><input id="fin-cost-credit" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Cartão débito (%)<br><input id="fin-cost-debit" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">PIX (%)<br><input id="fin-cost-pix" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Outro pagamento (%)<br><input id="fin-cost-pay-other" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Impostos sobre venda (%)<br><input id="fin-cost-tax" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Outros variáveis (%)<br><input id="fin-cost-other" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Embalagem por venda (R$)<br><input id="fin-cost-pack" type="number" min="0" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Provisão T$ gerado (%)<br><input id="fin-cost-tc" type="number" min="0" max="100" step="0.01" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <button onclick="finSaveProfitSettings()" style="height:38px;background:#8a5a00;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Salvar taxas</button>
+    </div>
+    <div id="fin-cost-status" style="font-size:12px;color:#777;margin-top:8px;"></div>
+  </div>
+
+  <!-- PASSO 3: lucro por produto -->
+  <div style="margin-bottom:22px;">
+    <h3 style="margin:0 0 4px;color:#1d1d1f;">3️⃣ Lucro por produto</h3>
+    <p style="color:#666;font-size:12px;margin:0 0 10px;">Mostra cada produto vendido: receita líquida − custo do produto − comissão − taxas − impostos − TenisCash − despesas fixas rateadas.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;background:#fafafa;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px;">
+      <label style="font-size:11px;font-weight:700;color:#555;">De<br><input id="fin-profit-from" type="date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Até<br><input id="fin-profit-to" type="date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="fin-profit-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;min-width:150px;"><option value="">Todas</option></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:180px;">Produto / marca / SKU<br><input id="fin-profit-q" placeholder="Pesquisar" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Ordenar<br><select id="fin-profit-sort" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"><option value="profit_asc">Menor lucro</option><option value="profit_desc">Maior lucro</option><option value="margin_asc">Menor margem</option><option value="margin_desc">Maior margem</option><option value="revenue_desc">Maior receita</option><option value="units_desc">Mais vendidos</option></select></label>
+      <button onclick="finLoadProductProfit()" style="height:38px;background:#E5571E;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Calcular</button>
+    </div>
+    <div id="fin-profit"><div style="color:#999;padding:10px;">Carregando…</div></div>
+  </div>
+
+  <!-- PASSO 4: o raio-x -->
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;">
-    <h3 style="margin:0;">2️⃣ Raio-X do dia</h3>
+    <h3 style="margin:0;color:#1d1d1f;">4️⃣ Raio-X do dia</h3>
     <div style="display:flex;align-items:center;gap:8px;">
       <input type="date" id="fin-date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;">
       <button onclick="loadFinanceiro()" style="background:#E5571E;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:800;cursor:pointer;">↻ Atualizar</button>
@@ -13784,9 +13817,47 @@ const FIN_CATS = [['folha','👥 Folha (colaborador)'],['aluguel','🏠 Aluguel'
 async function loadFinanceiro(){
   const dateEl = document.getElementById('fin-date');
   if(dateEl && !dateEl.value){ const t=new Date(); const f=new Date(t.getTime()-3*3600*1000); dateEl.value = f.toISOString().slice(0,10); }
+  const pf=document.getElementById('fin-profit-from'), pt=document.getElementById('fin-profit-to');
+  if(pt && !pt.value){ const t=new Date(Date.now()-3*3600*1000).toISOString().slice(0,10); pt.value=t; if(pf) pf.value=t.slice(0,7)+'-01'; }
   const catSel = document.getElementById('fin-cat');
   if(catSel && !catSel.options.length) catSel.innerHTML = FIN_CATS.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
-  await Promise.all([finLoadXray(), finLoadExpenses()]);
+  await Promise.all([finLoadXray(), finLoadExpenses(), finLoadProfitSettings(), finLoadProductProfit()]);
+}
+
+function finNum(id){ return Number((document.getElementById(id)||{}).value)||0; }
+async function finLoadProfitSettings(){
+  try{
+    const r=await fetch('/api/admin/financial/profit-settings',{headers:finHeaders()}), j=await r.json();
+    if(!r.ok) throw new Error(j.error||'falha'); const s=j.settings||{}, p=s.paymentFeesPct||{};
+    const vals={'fin-cost-credit':p.credit_card,'fin-cost-debit':p.debit_card,'fin-cost-pix':p.pix,'fin-cost-pay-other':p.other,'fin-cost-tax':s.taxPct,'fin-cost-other':s.otherVariablePct,'fin-cost-pack':s.packagingPerSale,'fin-cost-tc':s.tcEarnedProvisionPct};
+    Object.entries(vals).forEach(([id,v])=>{ const e=document.getElementById(id); if(e) e.value=Number(v)||0; });
+  }catch(e){ const s=document.getElementById('fin-cost-status'); if(s) s.textContent='Erro ao carregar taxas: '+e.message; }
+}
+async function finSaveProfitSettings(){
+  const status=document.getElementById('fin-cost-status'); if(status) status.textContent='Salvando…';
+  const body={paymentFeesPct:{credit_card:finNum('fin-cost-credit'),debit_card:finNum('fin-cost-debit'),pix:finNum('fin-cost-pix'),cash:0,other:finNum('fin-cost-pay-other')},taxPct:finNum('fin-cost-tax'),otherVariablePct:finNum('fin-cost-other'),packagingPerSale:finNum('fin-cost-pack'),tcEarnedProvisionPct:finNum('fin-cost-tc')};
+  try{
+    const r=await fetch('/api/admin/financial/profit-settings',{method:'PUT',headers:finHeaders(),body:JSON.stringify(body)}),j=await r.json();
+    if(!r.ok) throw new Error(j.error||'falha'); if(status) status.textContent='✓ Taxas salvas. O lucro foi recalculado.'; await finLoadProductProfit();
+  }catch(e){ if(status) status.textContent='Erro: '+e.message; }
+}
+async function finLoadProductProfit(){
+  const box=document.getElementById('fin-profit'); if(!box) return; box.innerHTML='<div style="color:#999;padding:10px;">Calculando custos e lucro…</div>';
+  try{
+    const p=new URLSearchParams({from:(document.getElementById('fin-profit-from')||{}).value||'',to:(document.getElementById('fin-profit-to')||{}).value||'',storeId:(document.getElementById('fin-profit-store')||{}).value||'',q:(document.getElementById('fin-profit-q')||{}).value||'',sort:(document.getElementById('fin-profit-sort')||{}).value||'profit_asc'});
+    const r=await fetch('/api/admin/financial/product-profit?'+p.toString(),{headers:finHeaders()}),j=await r.json(); if(!r.ok) throw new Error(j.error||'falha');
+    const ss=document.getElementById('fin-profit-store'); if(ss && ss.options.length<=1) ss.innerHTML='<option value="">Todas</option>'+(j.stores||[]).map(s=>'<option value="'+s.id+'">'+finEsc(s.code)+' — '+finEsc(s.name)+'</option>').join('');
+    const s=j.summary||{}, ok=(s.profit||0)>=0, cards=[['Receita líquida',s.revenue,'#0a7d3b'],['CMV',s.cogs,'#c0271f'],['Custos variáveis',s.variableCosts,'#c0271f'],['Fixos rateados',s.fixedAllocated,'#c0271f'],['Lucro líquido',s.profit,ok?'#0a7d3b':'#c0271f'],['Margem',((s.marginPct||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'),ok?'#0a7d3b':'#c0271f']];
+    let h='<div style="background:'+(ok?'#e7f8ee':'#fdeaea')+';border:1px solid '+(ok?'#86e0a8':'#f3a9a9')+';border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><b>'+(ok?'🟢 Lucro ':'🔴 Prejuízo ')+finBRL(Math.abs(s.profit||0))+'</b><div style="font-size:12px;color:#666;">'+(s.sales||0)+' vendas concluídas · '+(s.products||0)+' produtos · '+(s.units||0)+' unidades</div></div><div style="font-weight:800;color:'+(ok?'#0a7d3b':'#c0271f')+';">Margem '+(s.marginPct==null?'—':Number(s.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</div></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;margin-top:9px;">'+cards.map(c=>'<div style="background:#fff;border:1px solid #eee;border-radius:9px;padding:9px;"><div style="font-size:11px;color:#666;">'+c[0]+'</div><div style="font-weight:900;color:'+c[2]+';">'+(typeof c[1]==='string'?c[1]:finBRL(c[1]))+'</div></div>').join('')+'</div>';
+    if((s.cogsCoverage||0)<100) h+='<div style="margin-top:9px;background:#fff7e6;border:1px solid #ffd591;border-radius:9px;padding:8px 10px;font-size:12px;color:#8a5a00;">⚠️ Cobertura de custo: <b>'+Number(s.cogsCoverage||0).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</b>. '+(s.missingCostUnits||0)+' unidade(s) vendida(s) ainda não têm custo; o lucro delas aparece maior que o real.</div>';
+    if(s.salesWithoutItems>0 || s.revenueNotRepresentedByItems>0) h+='<div style="margin-top:9px;background:#fdeaea;border:1px solid #f3a9a9;border-radius:9px;padding:8px 10px;font-size:12px;color:#8a1c17;">⚠️ '+s.salesWithoutItems+' venda(s) não têm itens detalhados; '+finBRL((s.revenueWithoutItems||0)+(s.revenueNotRepresentedByItems||0))+' não pôde ser atribuído a produtos.</div>';
+    const products=j.products||[];
+    if(!products.length){box.innerHTML=h+'<div style="color:#999;text-align:center;padding:24px;">Nenhum produto vendido nesse período.</div>';return;}
+    h+='<div style="overflow-x:auto;margin-top:12px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1050px;color:#222;"><thead><tr style="text-align:left;color:#555;border-bottom:2px solid #ddd;"><th style="padding:7px;">Produto</th><th style="padding:7px;text-align:right;">Qtd</th><th style="padding:7px;text-align:right;">Receita</th><th style="padding:7px;text-align:right;">CMV</th><th style="padding:7px;text-align:right;">Comissão</th><th style="padding:7px;text-align:right;">Taxas/imp.</th><th style="padding:7px;text-align:right;">TenisCash</th><th style="padding:7px;text-align:right;">Fixos</th><th style="padding:7px;text-align:right;">Lucro</th><th style="padding:7px;text-align:right;">Margem</th></tr></thead><tbody>';
+    products.forEach(x=>{const good=x.profit>=0, extra=(x.paymentFees||0)+(x.taxes||0)+(x.otherVariableCosts||0)+(x.packaging||0),tc=(x.tcUsed||0)+(x.tcProvision||0),miss=(x.missingCostUnits||0)>0;h+='<tr style="border-bottom:1px solid #eee;background:'+(good?'#fff':'#fff5f5')+';"><td style="padding:7px;"><b>'+finEsc(x.name)+'</b><div style="color:#888;font-size:11px;">'+finEsc(x.brand)+(x.sku?' · '+finEsc(x.sku):'')+(miss?' · ⚠️ custo incompleto':'')+'</div></td><td style="padding:7px;text-align:right;">'+x.units+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.revenue)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.cogs)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.commissions)+'</td><td style="padding:7px;text-align:right;" title="Taxa pagamento + impostos + outros + embalagem">'+finBRL(extra)+'</td><td style="padding:7px;text-align:right;" title="T$ usado + provisão do T$ gerado">'+finBRL(tc)+'</td><td style="padding:7px;text-align:right;">'+finBRL(x.fixedAllocated)+'</td><td style="padding:7px;text-align:right;font-weight:900;color:'+(good?'#0a7d3b':'#c0271f')+';">'+finBRL(x.profit)+'</td><td style="padding:7px;text-align:right;font-weight:800;color:'+(good?'#0a7d3b':'#c0271f')+';">'+(x.marginPct==null?'—':Number(x.marginPct).toLocaleString('pt-BR',{minimumFractionDigits:2})+'%')+'</td></tr>';});
+    h+='</tbody></table></div><div style="font-size:11px;color:#777;margin-top:8px;">Desconto já está embutido na receita líquida. Vendas antigas usam o custo atual do produto; novas vendas guardarão o custo da data da venda.</div>'; box.innerHTML=h;
+  }catch(e){box.innerHTML='<div style="color:#d70015;padding:10px;">Erro: '+finEsc(e.message)+'</div>';}
 }
 
 async function finLoadXray(){

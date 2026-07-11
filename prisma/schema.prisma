@@ -546,6 +546,7 @@ model SaleItem {
   quantity    Int      @default(1)
   unitPrice   Float
   totalPrice  Float
+  unitCost    Float? // snapshot do custo unitario no momento da venda; null em vendas antigas
 }
 
 // ============================================================
