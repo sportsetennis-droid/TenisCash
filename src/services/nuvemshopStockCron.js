@@ -8,7 +8,10 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
-const { assessRemoteProductForNuvemshop } = require('./nuvemshopEligibility');
+const {
+  assessRemoteProductForNuvemshop,
+  hasRemoteUsableImage,
+} = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
 
 function physicalSig(product) {
@@ -107,6 +110,7 @@ async function runNuvemshopStockSync({
         .map((remote) => [String(remote.id), remote]),
     );
     const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
+    const imagelessDeleteLimit = Math.max(1, Number(process.env.NS_IMAGELESS_DELETE_BATCH || 200));
     const stockLimit = Math.max(1, Number(process.env.NS_STOCK_RECONCILE_BATCH || 500));
     let cleanupActions = 0;
     let stockProductsProcessed = 0;
@@ -116,6 +120,12 @@ async function runNuvemshopStockSync({
     let stockVariantsDeleted = 0;
     let stockErrors = 0;
     let stockPending = false;
+    let deletedImageless = 0;
+    let imagelessDeleteErrors = 0;
+    const imagelessCandidates = remoteProducts.filter((remote) =>
+      remote && remote.id != null && !hasRemoteUsableImage(remote),
+    );
+    let imagelessPending = imagelessCandidates.length > imagelessDeleteLimit;
     cronState.progress = {
       mappedProducts: mappings.length,
       mappedProcessed: 0,
@@ -125,7 +135,37 @@ async function runNuvemshopStockSync({
       stockProductsChanged: 0,
       stockLimit,
       stockPending: false,
+      imagelessCandidates: imagelessCandidates.length,
+      deletedImageless: 0,
+      imagelessDeleteLimit,
+      imagelessPending,
     };
+
+    // Regra explicita do dono: produto sem foto nao pode permanecer nem no
+    // painel da Nuvemshop. Exclui apenas o registro remoto e seus mappings;
+    // o Product local, o comprado e o StoreStock ficam intactos.
+    cronState.phase = 'deleting-imageless';
+    for (const remote of imagelessCandidates.slice(0, imagelessDeleteLimit)) {
+      try {
+        await ns.deleteProduct(connection, remote.id);
+        const remoteId = String(remote.id);
+        await prisma.$transaction([
+          prisma.nuvemshopVariantMapping.deleteMany({
+            where: { nuvemshopProductId: remoteId },
+          }),
+          prisma.nuvemshopProductMapping.deleteMany({
+            where: { nuvemshopProductId: remoteId },
+          }),
+        ]);
+        remote.published = false;
+        remote._deletedByImagelessRule = true;
+        deletedImageless++;
+        cronState.progress.deletedImageless = deletedImageless;
+      } catch (error) {
+        imagelessDeleteErrors++;
+        console.error('[nsStockCron] delete sem foto', remote.id, error.message);
+      }
+    }
 
     // 1) Upload only cards that completed the explicit two-step confirmation.
     let uploaded = 0;
@@ -366,6 +406,11 @@ async function runNuvemshopStockSync({
       stockErrors,
       stockPending,
       stockLimit,
+      imagelessCandidates: imagelessCandidates.length,
+      deletedImageless,
+      imagelessDeleteErrors,
+      imagelessDeleteLimit,
+      imagelessPending,
     };
     cronState.phase = 'complete';
   } catch (error) {
@@ -399,7 +444,9 @@ function startNuvemshopStockCron() {
       .catch((error) => console.error('[nsStockCron] startup', error.message));
     const result = cronState.lastResult;
     if (!scheduleEnabled && result
-      && (result.cleanupActions >= result.cleanupLimit || result.stockPending)) {
+      && (result.cleanupActions >= result.cleanupLimit
+        || result.stockPending
+        || result.imagelessPending)) {
       setTimeout(runStartupCleanup, 60 * 1000);
     }
   };

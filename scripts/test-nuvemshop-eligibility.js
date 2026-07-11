@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   assessProductForNuvemshop,
   assessRemoteProductForNuvemshop,
+  hasRemoteUsableImage,
   isPublicSizeLabel,
 } = require('../src/services/nuvemshopEligibility');
 
@@ -46,6 +47,8 @@ function validProduct(overrides = {}) {
 
 assert.equal(assessProductForNuvemshop(validProduct()).eligible, true);
 assert.equal(assessRemoteProductForNuvemshop(validRemote()).eligible, true);
+assert.equal(hasRemoteUsableImage(validRemote()), true);
+assert.equal(hasRemoteUsableImage(validRemote({ images: [] })), false);
 assert.equal(assessRemoteProductForNuvemshop(validRemote({ brand: 'A DEFINIR' })).eligible, false);
 assert.equal(assessRemoteProductForNuvemshop(validRemote({ variants: [{ price: '0', values: [{ pt: 'T-6100' }] }] })).eligible, false);
 

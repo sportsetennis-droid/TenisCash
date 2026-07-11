@@ -130,8 +130,7 @@ function assessRemoteProductForNuvemshop(product) {
   if (invalid(product.brand)) reasons.push('marca remota ausente ou indefinida');
   if (!localized(product.description)) reasons.push('descricao remota ausente');
 
-  const images = Array.isArray(product.images) ? product.images : [];
-  if (!images.some((image) => /^https?:\/\//i.test(clean(image?.src)))) {
+  if (!hasRemoteUsableImage(product)) {
     reasons.push('foto remota ausente');
   }
 
@@ -153,11 +152,17 @@ function assessRemoteProductForNuvemshop(product) {
   return { eligible: reasons.length === 0, reasons };
 }
 
+function hasRemoteUsableImage(product) {
+  const images = Array.isArray(product?.images) ? product.images : [];
+  return images.some((image) => /^https?:\/\//i.test(clean(image?.src)));
+}
+
 module.exports = {
   assessProductForNuvemshop,
   assessRemoteProductForNuvemshop,
   contextOf,
   hasUsableImage,
+  hasRemoteUsableImage,
   isPublicSizeLabel,
   physicalStock,
 };
