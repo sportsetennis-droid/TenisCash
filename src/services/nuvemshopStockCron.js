@@ -55,6 +55,7 @@ function cardSig(product) {
 let busy = false;
 const cronState = {
   running: false,
+  scheduleEnabled: null,
   lastStartedAt: null,
   lastFinishedAt: null,
   lastError: null,
@@ -253,8 +254,23 @@ function getNuvemshopCronState() {
 }
 
 function startNuvemshopStockCron() {
-  if (process.env.DISABLE_NS_STOCK_CRON === '1') {
-    console.log('[nsStockCron] DESLIGADO (DISABLE_NS_STOCK_CRON=1)');
+  const scheduleEnabled = process.env.DISABLE_NS_STOCK_CRON !== '1';
+  cronState.scheduleEnabled = scheduleEnabled;
+
+  // A chave desliga o espelho continuo, mas nao pode impedir a governanca
+  // autorizada do catalogo. Executa ao menos uma reconciliacao no boot; se o
+  // lote encher, continua em lotes ate nao haver mais uma pagina cheia.
+  const runStartupCleanup = async () => {
+    await runNuvemshopStockSync().catch((error) => console.error('[nsStockCron] startup', error.message));
+    const result = cronState.lastResult;
+    if (!scheduleEnabled && result && result.cleanupActions >= result.cleanupLimit) {
+      setTimeout(runStartupCleanup, 60 * 1000);
+    }
+  };
+  setTimeout(runStartupCleanup, 5000);
+
+  if (!scheduleEnabled) {
+    console.log('[nsStockCron] espelho continuo desligado; limpeza de startup autorizada');
     return;
   }
   cron.schedule(
@@ -262,9 +278,6 @@ function startNuvemshopStockCron() {
     () => runNuvemshopStockSync().catch((error) => console.error('[nsStockCron]', error.message)),
     { timezone: TZ },
   );
-  setTimeout(() => {
-    runNuvemshopStockSync().catch((error) => console.error('[nsStockCron] startup', error.message));
-  }, 5000);
   console.log('[nsStockCron] agendado: */5 min - estoque + gate + limpeza reversivel');
 }
 
