@@ -64,7 +64,7 @@ const cronState = {
   lastResult: null,
 };
 
-async function runNuvemshopStockSync({ uploadConfirmed = true } = {}) {
+async function runNuvemshopStockSync({ uploadConfirmed = true, cleanupOnly = false } = {}) {
   if (busy) return;
   busy = true;
   cronState.running = true;
@@ -172,6 +172,10 @@ async function runNuvemshopStockSync({ uploadConfirmed = true } = {}) {
           }
           continue;
         }
+
+        // No modo de limpeza autorizado, produto valido nao sofre update de
+        // estoque/preco/card. A operacao fica restrita a ocultar invalidos.
+        if (cleanupOnly) continue;
 
         const signature = cardSig(product);
         let ctx = {};
@@ -282,7 +286,10 @@ function startNuvemshopStockCron() {
   // autorizada do catalogo. Executa ao menos uma reconciliacao no boot; se o
   // lote encher, continua em lotes ate nao haver mais uma pagina cheia.
   const runStartupCleanup = async () => {
-    await runNuvemshopStockSync({ uploadConfirmed: scheduleEnabled })
+    await runNuvemshopStockSync({
+      uploadConfirmed: scheduleEnabled,
+      cleanupOnly: !scheduleEnabled,
+    })
       .catch((error) => console.error('[nsStockCron] startup', error.message));
     const result = cronState.lastResult;
     if (!scheduleEnabled && result && result.cleanupActions >= result.cleanupLimit) {
