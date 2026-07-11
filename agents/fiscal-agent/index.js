@@ -28,7 +28,7 @@ const TOKEN = process.env.AGENT_TOKEN;
 const PFX_PATH = process.env.PFX_PATH;
 const PFX_SENHA = process.env.PFX_SENHA;
 const STORE_LABEL = process.env.STORE_LABEL || 'unknown';
-const VERSION = '2.3-auto';
+const VERSION = '2.3.1-auto';
 
 function fatal(msg) { console.error('FATAL:', msg); process.exit(1); }
 if (!TOKEN || TOKEN.length < 16) fatal('AGENT_TOKEN ausente ou curto (>=16 chars)');

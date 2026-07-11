@@ -89,7 +89,7 @@ const PAY_METHODS = {
  * @param {string} [opts.cAut] — código autorização do recibo
  * @param {number} [opts.tpIntegra] — 1=integrado / 2=não integrado (default 2)
  */
-function buildDetPag({ valor, tPag, acquirerKey, tBand, cAut, tpIntegra = 2 }) {
+function buildDetPag({ valor, tPag, acquirerKey, tBand, cAut, tpIntegra = 2, xPag }) {
   const det = {
     tPag: String(tPag).padStart(2, '0'),
     vPag: Number(valor).toFixed(2),
@@ -110,6 +110,8 @@ function buildDetPag({ valor, tPag, acquirerKey, tBand, cAut, tpIntegra = 2 }) {
     det.card = { tpIntegra: tpIntegra };
     if (acq?.cnpj) det.card.CNPJ = acq.cnpj;
   }
+  // NT 2020.006: tPag=99 exige xPag. Sem ele a SEFAZ rejeita com cStat 441.
+  if (det.tPag === '99') det.xPag = String(xPag || 'Outros').trim().slice(0, 60) || 'Outros';
   return det;
 }
 

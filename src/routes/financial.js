@@ -326,7 +326,8 @@ router.get('/product-profit', async (req, res) => {
         revenue: 'SaleItem.totalPrice (ja liquido do desconto)',
         cogs: 'SaleItem.unitCost da data da venda; fallback Product.costPrice atual em vendas antigas',
         fixedCosts: 'Despesas mensais ativas rateadas por dia e pela participacao do produto na receita',
-        excludedStatuses: ['cancelled', 'canceled', 'pending', 'pending_payment'],
+        excludedStatuses: ['cancelled', 'canceled', 'pending', 'pending_payment', 'exchange_coupon'],
+        exchangeCoupons: 'Cupons simbolicos de troca (status=exchange_coupon) nao sao venda economica e ficam fora do lucro',
       },
     });
   } catch (err) {
