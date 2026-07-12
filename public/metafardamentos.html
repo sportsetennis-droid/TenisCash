@@ -101,6 +101,11 @@
   .seg{display:flex;gap:6px;margin-bottom:12px;background:#e7e9f4;border-radius:11px;padding:4px}
   .seg button{flex:1;border:none;background:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted)}
   .seg button.on{background:#fff;color:var(--azul);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .thread{max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px}
+  .bub{max-width:82%;padding:7px 11px;border-radius:12px;font-size:14px;line-height:1.35;word-wrap:break-word;white-space:pre-wrap}
+  .bub.in{align-self:flex-start;background:#f0f0f3;color:#111;border-bottom-left-radius:4px}
+  .bub.out{align-self:flex-end;background:#d9fdd3;color:#0b1f10;border-bottom-right-radius:4px}
+  .bub .bt{display:block;font-size:10px;color:#7a7a7a;text-align:right;margin-top:3px}
 </style>
 </head>
 <body>
@@ -140,6 +145,7 @@
       <button data-tab="home" class="on" onclick="tab('home')"><span class="ic">▦</span>Início</button>
       <button data-tab="estoque" onclick="tab('estoque')"><span class="ic">📦</span>Estoque</button>
       <button data-tab="crm" onclick="tab('crm')"><span class="ic">👥</span>CRM</button>
+      <button data-tab="conversas" onclick="tab('conversas')"><span class="ic">💬</span>Conversas</button>
       <button data-tab="pedidos" onclick="tab('pedidos')"><span class="ic">🧾</span>Pedidos</button>
       <button data-tab="producao" onclick="tab('producao')"><span class="ic">✂️</span>Produção</button>
       <button data-tab="ponto" onclick="tab('ponto')"><span class="ic">🕐</span>Ponto</button>
@@ -156,6 +162,33 @@ function H(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','
 function money(v){return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function hhmm(d){return new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'})}
 function dt(d){return new Date(d).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'})}
+
+/* ---------- CONVERSAS (WhatsApp da Meta) ---------- */
+async function renderConversas(){
+  const v=document.getElementById('view');v.innerHTML='<div class="empty">Carregando conversas…</div>';
+  let list=[];try{list=await api('/conversations');}catch(e){v.innerHTML='<div class="empty">'+H(e.message)+'</div>';return;}
+  window.__convAll=list;
+  if(!list.length){v.innerHTML='<div class="empty">Nenhuma conversa ainda. As mensagens do WhatsApp aparecem aqui.</div>';return;}
+  v.innerHTML='<input id="conv-q" placeholder="🔎 Buscar por nome ou telefone…" oninput="filterConv(this.value)" style="width:100%;padding:11px 12px;border:1px solid #e2e2e6;border-radius:12px;margin-bottom:10px;font-size:14px;outline:none">'
+    +'<div class="mt" style="margin:0 2px 8px">'+list.length+' conversas</div><div id="conv-list">'+list.map(convRow).join('')+'</div>';
+}
+function convRow(c){
+  const prev=(c.lastType&&c.lastType!=='text')?('['+c.lastType+']'):(c.lastText||'');
+  const nm=String(c.name||c.phone||'?');
+  return `<div class="card" onclick="openConv('${c.phone}',&quot;${H(nm).replace(/"/g,'')}&quot;)"><div class="row">
+    <div style="min-width:0"><div class="nm">${H(nm)}</div><div class="mt" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px">${c.lastFromMe?'✓ ':''}${H(String(prev).slice(0,60))}</div></div>
+    <div style="text-align:right;flex:none"><div class="mt">${c.ts?dt(c.ts):''}</div><span class="pill gray">${c.msgCount} msg</span></div>
+  </div></div>`;
+}
+function filterConv(q){q=String(q||'').toLowerCase();const l=(window.__convAll||[]).filter(c=>String(c.name||'').toLowerCase().includes(q)||String(c.phone||'').includes(q));
+  document.getElementById('conv-list').innerHTML=l.length?l.map(convRow).join(''):'<div class="empty">Nada encontrado.</div>';}
+async function openConv(phone,name){
+  sheet('<h2 style="margin:0 0 2px">'+H(name)+'</h2><div class="mt" style="margin-bottom:10px">📱 '+H(phone)+'</div><div id="thread" class="thread"><div class="empty">Carregando…</div></div>');
+  try{const msgs=await api('/conversations/'+encodeURIComponent(phone)+'/messages');const el=document.getElementById('thread');
+    el.innerHTML=msgs.length?msgs.map(m=>`<div class="bub ${m.fromMe?'out':'in'}">${H(m.text||'['+(m.msgType||'mídia')+']')}<span class="bt">${dt(m.ts)} ${hhmm(m.ts)}</span></div>`).join(''):'<div class="empty">Sem mensagens.</div>';
+    el.scrollTop=el.scrollHeight;
+  }catch(e){const el=document.getElementById('thread');if(el)el.innerHTML='<div class="empty">'+H(e.message)+'</div>';}
+}
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
 
 async function api(path,opts={}){
@@ -191,12 +224,12 @@ function enterApp(){document.getElementById('auth').classList.add('hide');docume
 function val(id){return document.getElementById(id).value.trim()}
 
 /* ---------- NAV ---------- */
-const TITLES={home:'Início',estoque:'Estoque',crm:'CRM',pedidos:'Pedidos',producao:'Produção',ponto:'Ponto'};
+const TITLES={home:'Início',estoque:'Estoque',crm:'CRM',conversas:'Conversas',pedidos:'Pedidos',producao:'Produção',ponto:'Ponto'};
 const FAB={estoque:1,crm:1,pedidos:1,producao:1};
 function tab(t){current=t;document.getElementById('top-title').textContent=TITLES[t]||'';
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   document.getElementById('fab').classList.toggle('hide',!FAB[t]);
-  ({home:renderHome,estoque:renderEstoque,crm:renderCRM,pedidos:renderPedidos,producao:renderProducao,ponto:renderPonto}[t])();}
+  ({home:renderHome,estoque:renderEstoque,crm:renderCRM,conversas:renderConversas,pedidos:renderPedidos,producao:renderProducao,ponto:renderPonto}[t])();}
 function fabAction(){ if(current==='estoque')formProduct(); else if(current==='crm'){crmTab==='leads'?formLead():formCustomer();} else if(current==='pedidos')formOrder(); else if(current==='producao')formProduction(); }
 
 /* ---------- SHEET ---------- */

@@ -1125,4 +1125,55 @@ router.get('/reports/people', mfAuth, requireRole('admin', 'gerente'), async (re
   res.json({ from, to, dias: days, pessoas: rows });
 });
 
+// ---------------------------------------------------------------------
+// CONVERSAS — WhatsApp da Meta (instance 'metafardamentos'), só leitura
+// ---------------------------------------------------------------------
+router.get('/conversations', mfAuth, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT lm.phone,
+             COALESCE(c.name, lm."contactName", lm.phone) AS name,
+             lm.text AS "lastText", lm."msgType" AS "lastType", lm."fromMe" AS "lastFromMe", lm.ts,
+             cnt.n AS "msgCount"
+      FROM (
+        SELECT DISTINCT ON (phone) phone, text, "msgType", "fromMe", ts, "contactName"
+        FROM "WhatsappMessage"
+        WHERE instance = 'metafardamentos' AND "isGroup" = false AND phone IS NOT NULL
+        ORDER BY phone, ts DESC
+      ) lm
+      LEFT JOIN (
+        SELECT phone, count(*)::int AS n FROM "WhatsappMessage"
+        WHERE instance = 'metafardamentos' AND "isGroup" = false AND phone IS NOT NULL
+        GROUP BY phone
+      ) cnt ON cnt.phone = lm.phone
+      LEFT JOIN "MfCustomer" c ON c.phone = lm.phone
+      ORDER BY lm.ts DESC
+      LIMIT 600
+    `);
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const out = q ? rows.filter((r) => String(r.name || '').toLowerCase().includes(q) || String(r.phone || '').includes(q)) : rows;
+    res.json(out);
+  } catch (err) {
+    console.error('[mf/conversations]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar conversas' });
+  }
+});
+
+router.get('/conversations/:phone/messages', mfAuth, async (req, res) => {
+  try {
+    const phone = String(req.params.phone).replace(/[^0-9]/g, '');
+    if (!phone) return res.json([]);
+    const msgs = await prisma.whatsappMessage.findMany({
+      where: { instance: 'metafardamentos', phone },
+      orderBy: { ts: 'asc' },
+      take: 1000,
+      select: { fromMe: true, text: true, msgType: true, ts: true, contactName: true },
+    });
+    res.json(msgs);
+  } catch (err) {
+    console.error('[mf/conversations/messages]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar mensagens' });
+  }
+});
+
 module.exports = router;
