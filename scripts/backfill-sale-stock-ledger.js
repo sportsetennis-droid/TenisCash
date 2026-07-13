@@ -31,7 +31,6 @@ async function buildPlan() {
       id: true,
       storeId: true,
       createdAt: true,
-      store: { select: { code: true, name: true } },
       items: {
         where: { size: null, productId: { not: null } },
         select: { id: true, productId: true, productSizeId: true, productName: true, quantity: true },
@@ -42,6 +41,11 @@ async function buildPlan() {
 
   const productIds = [...new Set(sales.flatMap((sale) => sale.items.map((item) => item.productId)).filter(Boolean))];
   const storeIds = [...new Set(sales.map((sale) => sale.storeId).filter(Boolean))];
+  const stores = await prisma.store.findMany({
+    where: { id: { in: storeIds } },
+    select: { id: true, code: true, name: true },
+  });
+  const storeById = new Map(stores.map((store) => [store.id, store]));
   const sizes = await prisma.productSize.findMany({
     where: { productId: { in: productIds } },
     select: {
@@ -63,18 +67,19 @@ async function buildPlan() {
   const plan = [];
   const unresolved = [];
   for (const sale of sales) {
+    const store = storeById.get(sale.storeId);
     const lastCountAt = countByStore.get(sale.storeId);
     for (const item of sale.items) {
       if (item.productSizeId) continue;
       if (!lastCountAt || sale.createdAt <= lastCountAt) {
-        unresolved.push({ reason: 'sale_before_last_physical_count', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: sale.store?.code || null });
+        unresolved.push({ reason: 'sale_before_last_physical_count', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: store?.code || null });
         continue;
       }
       const local = (sizesByProduct.get(item.productId) || [])
         .map((size) => ({ size, stock: size.storeStocks.find((row) => row.storeId === sale.storeId) }))
         .filter((entry) => entry.stock);
       if (local.length !== 1) {
-        unresolved.push({ reason: local.length ? 'ambiguous_local_sizes' : 'no_local_size', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: sale.store?.code || null, candidateCount: local.length });
+        unresolved.push({ reason: local.length ? 'ambiguous_local_sizes' : 'no_local_size', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: store?.code || null, candidateCount: local.length });
         continue;
       }
       const chosen = local[0];
@@ -83,8 +88,8 @@ async function buildPlan() {
         saleItemId: item.id,
         saleCreatedAt: sale.createdAt,
         storeId: sale.storeId,
-        storeCode: sale.store?.code || null,
-        storeName: sale.store?.name || null,
+        storeCode: store?.code || null,
+        storeName: store?.name || null,
         productId: item.productId,
         productName: item.productName,
         productSizeId: chosen.size.id,
@@ -128,7 +133,7 @@ async function applyPlan(plan) {
     throw new Error('Para aplicar, defina CONFIRM_SALE_STOCK_BACKFILL=APPLY. Sem isso o script é somente leitura.');
   }
 
-  const outputDir = path.resolve(__dirname, '..', 'outputs');
+  const outputDir = path.resolve(__dirname, '..', 'backups');
   fs.mkdirSync(outputDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = path.join(outputDir, `sale-stock-backfill-${stamp}.json`);
