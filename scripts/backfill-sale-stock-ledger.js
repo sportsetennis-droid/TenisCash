@@ -75,14 +75,24 @@ async function buildPlan() {
         unresolved.push({ reason: 'sale_before_last_physical_count', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: store?.code || null });
         continue;
       }
-      const local = (sizesByProduct.get(item.productId) || [])
+      const allSizes = sizesByProduct.get(item.productId) || [];
+      const local = allSizes
         .map((size) => ({ size, stock: size.storeStocks.find((row) => row.storeId === sale.storeId) }))
         .filter((entry) => entry.stock);
-      if (local.length !== 1) {
-        unresolved.push({ reason: local.length ? 'ambiguous_local_sizes' : 'no_local_size', saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: store?.code || null, candidateCount: local.length });
+      let chosen = null;
+      let resolutionRule = null;
+      if (local.length === 1) {
+        [chosen] = local;
+        resolutionRule = 'single_size_localized_in_store';
+      } else if (allSizes.length === 1) {
+        chosen = { size: allSizes[0], stock: null };
+        resolutionRule = 'single_size_in_catalog_create_store_deficit';
+      }
+      if (!chosen) {
+        const reason = allSizes.length === 0 ? 'product_without_sizes' : (local.length ? 'ambiguous_local_sizes' : 'no_local_size');
+        unresolved.push({ reason, saleId: sale.id, saleItemId: item.id, quantity: item.quantity, storeCode: store?.code || null, candidateCount: local.length, totalSizeCount: allSizes.length });
         continue;
       }
-      const chosen = local[0];
       plan.push({
         saleId: sale.id,
         saleItemId: item.id,
@@ -94,8 +104,9 @@ async function buildPlan() {
         productName: item.productName,
         productSizeId: chosen.size.id,
         size: chosen.size.size,
+        resolutionRule,
         quantity: item.quantity,
-        stockBefore: chosen.stock.stock,
+        stockBefore: chosen.stock?.stock || 0,
         lastPhysicalCountAt: lastCountAt,
       });
     }
@@ -156,8 +167,8 @@ async function applyPlan(plan) {
         quantity: -item.quantity,
         type: 'historical_backfill',
         source: 'safe_backfill_2026_07',
-        reason: 'Venda sem tamanho, posterior à última contagem física e com uma única variante localizada na loja.',
-        metadata: { lastPhysicalCountAt: iso(row.lastPhysicalCountAt), originalSize: null },
+        reason: 'Venda sem tamanho, posterior à última contagem física e com uma única variante determinística.',
+        metadata: { lastPhysicalCountAt: iso(row.lastPhysicalCountAt), originalSize: null, resolutionRule: row.resolutionRule },
       });
       applied += 1;
       units += item.quantity;
