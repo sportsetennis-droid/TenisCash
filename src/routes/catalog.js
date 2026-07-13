@@ -1,8 +1,42 @@
 const express = require('express');
 const { prisma, authMiddleware } = require('../middleware');
-const { formatProductCard } = require('../services/catalogSearch');
+const { formatProductCard, searchProductsForAI } = require('../services/catalogSearch');
 
 const router = express.Router();
+
+// Cache de handle da Nuvemshop (nuvemshopProductId -> handle) pra montar link direto ao produto.
+// Atualiza no máximo 1x/hora; se falhar, cai no fallback de busca por nome.
+let _nsHandleCache = { at: 0, map: new Map() };
+async function nsHandleMap() {
+  if (Date.now() - _nsHandleCache.at < 3600 * 1000 && _nsHandleCache.map.size) return _nsHandleCache.map;
+  try {
+    const conn = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+    if (!conn) return _nsHandleCache.map;
+    const store = conn.storeId || conn.nuvemshopUserId;
+    const HDR = { Authentication: 'bearer ' + conn.accessToken, 'User-Agent': 'Sports&Tennis (bernardo_douglas@icloud.com)' };
+    const map = new Map();
+    for (let page = 1; page <= 12; page++) {
+      const r = await fetch(`https://api.tiendanube.com/v1/${store}/products?per_page=200&page=${page}&fields=id,handle`, { headers: HDR });
+      if (!r.ok) break;
+      const lote = await r.json();
+      if (!Array.isArray(lote) || !lote.length) break;
+      for (const p of lote) { const h = typeof p.handle === 'object' ? (p.handle.pt || Object.values(p.handle)[0]) : p.handle; if (h) map.set(String(p.id), h); }
+      if (lote.length < 200) break;
+    }
+    if (map.size) _nsHandleCache = { at: Date.now(), map };
+  } catch (e) { console.warn('nsHandleMap', e.message); }
+  return _nsHandleCache.map;
+}
+
+// Mapeia a intenção da busca -> categoria da vitrine (pra botão "ver tudo" e fallback).
+function categoriaDaBusca(q) {
+  const s = (q || '').toLowerCase();
+  if (/chuteir|society|futsal|campo/.test(s)) return '/chuteiras/';
+  if (/tenis|tênis|corr|caminhad|running|academia|treino/.test(s)) return '/tenis/';
+  if (/legging|top|short|calc|camis|regata|bermuda|roupa|vestu|moda|blusa|conjunto/.test(s)) return '/roupas/';
+  if (/mochil|meia|bolsa|bone|boné|garrafa|acess|joelheir|munhequeir/.test(s)) return '/acessorios/';
+  return null;
+}
 
 function optionalCatalogAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -379,6 +413,49 @@ router.get('/categories', optionalCatalogAuth, async (req, res) => {
   } catch (err) {
     console.error('catalog/categories', err);
     res.status(500).json({ error: 'Erro ao listar categorias' });
+  }
+});
+
+/**
+ * BUSCA IA PÚBLICA — a barra de busca da loja (sportsetennis.com.br) chama isto.
+ * Entende linguagem natural ("quero um tênis confortável") e devolve produtos +
+ * um destino que a loja abre. store_url usa a busca nativa da Nuvemshop pelo NOME
+ * exato (sempre acha o produto certo, sem depender de handle).
+ * GET /api/catalog/search-ai?q=...&limit=8
+ */
+router.get('/search-ai', optionalCatalogAuth, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 24);
+    if (q.length < 2) return res.json({ query: q, products: [], redirect: null });
+    const result = await searchProductsForAI(q);
+    const raw = Array.isArray(result) ? result : (result.products || []);
+    // resolve handle real da loja; SÓ mostra produto que está PUBLICADO (tem handle = comprável)
+    const hmap = await nsHandleMap();
+    const ids = raw.map((p) => p.id).filter(Boolean);
+    const mappings = ids.length ? await prisma.nuvemshopProductMapping.findMany({ where: { localProductId: { in: ids } }, select: { localProductId: true, nuvemshopProductId: true } }) : [];
+    const localToNs = new Map(mappings.map((m) => [m.localProductId, String(m.nuvemshopProductId)]));
+    const products = [];
+    for (const p of raw) {
+      const nsId = localToNs.get(p.id);
+      const handle = nsId ? hmap.get(nsId) : null;
+      if (!handle) continue; // não está na loja → não mostra (evita produto sem como comprar)
+      products.push({
+        name: p.name,
+        brand: p.brand || null,
+        price: p.price != null ? p.price : null,
+        promoPrice: p.promoPrice != null ? p.promoPrice : null,
+        image: p.image || p.imageUrl || null,
+        inStock: p.inStock !== false,
+        store_url: '/produtos/' + handle + '/',
+      });
+      if (products.length >= limit) break;
+    }
+    const redirect = categoriaDaBusca(q) || (products.length ? null : '/search/?q=' + encodeURIComponent(q));
+    res.json({ query: q, count: products.length, products, redirect, message: result.message || null });
+  } catch (err) {
+    console.error('catalog/search-ai', err);
+    res.status(500).json({ error: 'Erro na busca', products: [], redirect: '/search/?q=' + encodeURIComponent(String(req.query.q || '')) });
   }
 });
 

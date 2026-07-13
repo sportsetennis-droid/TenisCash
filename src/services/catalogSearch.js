@@ -77,8 +77,20 @@ function tokenize(q) {
     .filter((w) => w.length >= 2);
 }
 
+// Palavras genéricas de linguagem natural que NÃO são termo de produto/marca.
+// (evita "quero"/"um" virar filtro; "um" batia em pUMa/UMbro/rhUMell por substring)
+const STOP_WORDS = new Set([
+  'quero', 'queria', 'preciso', 'busco', 'procuro', 'gostaria', 'me', 'um', 'uma', 'uns', 'umas',
+  'de', 'do', 'da', 'dos', 'das', 'para', 'pra', 'pro', 'por', 'com', 'sem', 'que', 'os', 'as',
+  'meu', 'minha', 'mais', 'muito', 'bem', 'tipo', 'algum', 'alguma', 'qualquer', 'ao', 'no', 'na',
+]);
+// tokens úteis: ≥3 letras e fora da lista de stopwords (mantém "tenis", "confortavel", modelos, etc.)
+function significantTokens(q) {
+  return tokenize(q).filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+}
+
 async function detectBrandsInQuery(rawQuery) {
-  const tokens = tokenize(rawQuery);
+  const tokens = significantTokens(rawQuery);
   if (!tokens.length) return [];
   const brandsRows = await prisma.product.findMany({
     where: { active: true },
@@ -86,7 +98,13 @@ async function detectBrandsInQuery(rawQuery) {
     select: { brand: true },
   });
   const brands = brandsRows.map((b) => b.brand).filter(Boolean);
-  return brands.filter((br) => tokens.some((t) => br.toLowerCase().includes(t) || t.includes(br.toLowerCase())));
+  // casa por PALAVRA da marca (não por substring solto): token == palavra da marca,
+  // ou token grande (≥4) contido na marca. Assim "nike"/"puma" batem, "um" não.
+  return brands.filter((br) => {
+    const bl = br.toLowerCase();
+    const bwords = bl.split(/\s+/);
+    return tokens.some((t) => bwords.includes(t) || (t.length >= 4 && bl.includes(t)));
+  });
 }
 
 async function searchProductsForAI(query) {
@@ -104,13 +122,29 @@ async function searchProductsForAI(query) {
   const orderBy = [{ featured: 'desc' }, { name: 'asc' }];
   const fields = ['name', 'sku', 'category', 'subcategory', 'shortDescription', 'longDescription'];
   const anyFieldContains = (term) => ({ OR: fields.map((f) => ({ [f]: { contains: term, mode: 'insensitive' } })) });
-  const run = (where) => prisma.product.findMany({ where, take: 25, orderBy, select: baseProductSelect });
+  // busca um pool maior (take 80) e RE-RANQUEIA por relevância abaixo (nome/categoria > descrição).
+  const run = (where) => prisma.product.findMany({ where, take: 80, orderBy, select: baseProductSelect });
+  // pontua o produto: match no NOME/categoria pesa muito mais que na descrição; + estoque.
+  const queryToks = significantTokens(q);
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const rankScore = (p) => {
+    const nome = norm(p.name) + ' ' + norm(p.category) + ' ' + norm(p.subcategory) + ' ' + norm(p.brand);
+    const desc = norm(p.shortDescription) + ' ' + norm(p.longDescription);
+    let s = 0;
+    for (const t of queryToks) {
+      if (nome.includes(t)) s += 10; else if (desc.includes(t)) s += 1;
+    }
+    if (p.featured) s += 2;
+    if ((p.sizes || []).some((z) => (z.storeStocks || []).some((ss) => (ss.stock || 0) > 0))) s += 3;
+    return s;
+  };
+  const rerank = (arr) => arr.slice().sort((a, b) => rankScore(b) - rankScore(a) || String(a.name).localeCompare(String(b.name))).slice(0, 25);
 
   let rows = [];
   if (matchedBrands.length) {
     const brandOR = matchedBrands.map((br) => ({ brand: { equals: br, mode: 'insensitive' } }));
     // termos da query que NAO sao o nome da marca (ex.: "sparta" em "kappa sparta")
-    const restTokens = tokenize(q).filter(
+    const restTokens = significantTokens(q).filter(
       (t) => !matchedBrands.some((br) => br.toLowerCase().includes(t) || t.includes(br.toLowerCase())),
     );
     if (restTokens.length) {
@@ -120,10 +154,23 @@ async function searchProductsForAI(query) {
     // sem termos extras, ou refino vazio -> todos da marca (nunca nega produto que existe)
     if (!rows.length) rows = await run({ active: true, OR: brandOR });
   } else {
-    rows = await run({ active: true, OR: [{ brand: { contains: q, mode: 'insensitive' } }, anyFieldContains(q)] });
+    // SEM marca: procura por TOKENS úteis (ex.: "tenis", "confortavel"), não a frase inteira.
+    const toks = significantTokens(q);
+    const terms = toks.length ? toks : [q];
+    // 1º PASSO — só campos FORTES (nome/categoria/subcategoria/marca): tira ruído de descrição
+    // (ex.: "tenis" não traz joelheira que só tem "tênis" no texto de marketing).
+    const strong = ['name', 'category', 'subcategory', 'brand'];
+    const strongContains = (t) => ({ OR: strong.map((f) => ({ [f]: { contains: t, mode: 'insensitive' } })) });
+    rows = await run({ active: true, OR: terms.map(strongContains) });
+    // 2º PASSO — se veio pouco, completa com match em descrição também.
+    if (rows.length < 8) {
+      const more = await run({ active: true, OR: terms.map(anyFieldContains) });
+      const seen = new Set(rows.map((r) => r.id));
+      rows = rows.concat(more.filter((m) => !seen.has(m.id)));
+    }
   }
 
-  const products = rows.map(formatProductCard);
+  const products = rerank(rows).map(formatProductCard);
 
   console.log('[ai] tool search_products returning:', products.length, 'products');
 
