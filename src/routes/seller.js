@@ -2,6 +2,7 @@ const express = require('express');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const equipeReports = require('../services/equipeReports');
+const { SaleStockError, resolveProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
 
 const router = express.Router();
 
@@ -596,6 +597,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     // Lock: conta institucional sempre vende NA PRÓPRIA loja
     let activeStoreId = storeId || operator.storeId;
     if (req.scope?.isStoreLocked) activeStoreId = req.scope.storeId;
+    if (!activeStoreId) return res.status(400).json({ error: 'Selecione a loja antes de finalizar a venda.' });
     if (activeStoreId) {
       const exists = await prisma.store.findUnique({ where: { id: activeStoreId } });
       if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });
@@ -616,21 +618,41 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     let totalAmount = 0;
     const saleItemsData = items.map(item => {
       const p = productMap.get(item.productId);
-      if (!p) throw new Error(`Produto ${item.productId} não encontrado`);
+      if (!p) throw new SaleStockError(`Produto ${item.productId} não encontrado`);
       const qty = parseInt(item.quantity || 1, 10);
       const unit = parseFloat(item.unitPrice || p.promoPrice || p.price);
+      if (!Number.isInteger(qty) || qty < 1) throw new SaleStockError(`Quantidade inválida para ${p.name}.`);
+      if (!Number.isFinite(unit) || unit < 0) throw new SaleStockError(`Preço inválido para ${p.name}.`);
+      let productSize = null;
+      let needsNewProductSize = false;
+      try {
+        productSize = resolveProductSize(p, item);
+      } catch (err) {
+        // Código novo pode ensinar ao sistema uma numeração ainda inexistente. A variante
+        // nasce dentro da mesma transação da venda e já recebe a baixa da loja.
+        const requestedSize = String(item.size || '').trim();
+        if (item.isNewBarcode && item.barcode && requestedSize && !item.productSizeId
+          && !p.sizes.some((s) => String(s.size).trim() === requestedSize)) {
+          needsNewProductSize = true;
+        } else {
+          throw err;
+        }
+      }
       const total = unit * qty;
       totalAmount += total;
       return {
         productId: p.id,
+        productSizeId: productSize?.id || null,
         productName: p.name,
         brand: p.brand || 'SEM MARCA',
         category: p.category || null,
-        size: item.size || null,
+        size: productSize?.size || String(item.size || '').trim() || null,
         quantity: qty,
         unitPrice: unit,
         totalPrice: total,
         unitCost: p.costPrice > 0 ? p.costPrice : null,
+        _needsNewProductSize: needsNewProductSize,
+        _orphanBarcode: item.isNewBarcode && item.barcode ? String(item.barcode).trim() : null,
       };
     });
 
@@ -677,6 +699,31 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     let result;
     try {
     result = await prisma.$transaction(async (tx) => {
+      // Resolve também o caso de um código novo apontando para uma numeração nova.
+      for (const it of saleItemsData) {
+        if (it._needsNewProductSize) {
+          const ps = await tx.productSize.upsert({
+            where: { productId_size: { productId: it.productId, size: it.size } },
+            update: {},
+            create: { productId: it.productId, size: it.size, stock: 0 },
+          });
+          it.productSizeId = ps.id;
+          it.size = ps.size;
+        }
+        if (!it.productSizeId) throw new SaleStockError(`Tamanho não identificado para ${it.productName}.`);
+
+        if (it._orphanBarcode) {
+          const owner = await tx.productSize.findFirst({ where: { barcode: it._orphanBarcode }, select: { id: true } });
+          if (!owner) {
+            const target = await tx.productSize.findUnique({ where: { id: it.productSizeId }, select: { barcode: true } });
+            if (target && !target.barcode) {
+              await tx.productSize.update({ where: { id: it.productSizeId }, data: { barcode: it._orphanBarcode } });
+            }
+          }
+        }
+      }
+
+      const persistedItems = saleItemsData.map(({ _needsNewProductSize, _orphanBarcode, ...item }) => item);
       const sale = await tx.sale.create({
         data: {
           sellerId,
@@ -689,30 +736,26 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           status: 'completed',
           note: note || null,
           idemKey: idemKey || null,
-          items: { create: saleItemsData },
+          items: { create: persistedItems },
         },
         include: { items: true },
       });
 
-      // BAIXA DE ESTOQUE: deduz StoreStock da loja ativa por tamanho vendido.
-      // Sem isso o estoque só sobe (bipe) e nunca desce → nunca bate com a prateleira.
-      if (activeStoreId) {
-        for (const it of saleItemsData) {
-          if (!it.size) continue; // sem tamanho não dá pra localizar a linha de estoque
-          const prod = productMap.get(it.productId);
-          const ps = prod?.sizes.find((s) => s.size === it.size);
-          if (!ps) continue;
-          const current = await tx.storeStock.findUnique({
-            where: { storeId_productSizeId: { storeId: activeStoreId, productSizeId: ps.id } },
-          });
-          if (!current) continue; // não havia estoque dessa loja → nada a baixar
-          const newStock = Math.max(0, current.stock - it.quantity);
-          await tx.storeStock.update({ where: { id: current.id }, data: { stock: newStock } });
-          // NÃO mexe em ProductSize.stock (= COMPRADO, total FIXO da NFe de entrada).
-          // Regra inquebrável do dono (2026-06-02): o comprado NUNCA é recalculado a partir
-          // do StoreStock. A venda baixa SÓ o estoque físico da loja (localização).
-        }
+      // Venda + baixa + razão são atômicos. Se o item ainda não foi bipado nesta loja,
+      // a localização nasce negativa para deixar a divergência visível e conciliável.
+      for (const it of sale.items) {
+        await applyStoreStockDelta(tx, {
+          storeId: activeStoreId,
+          productSizeId: it.productSizeId,
+          saleId: sale.id,
+          saleItemId: it.id,
+          quantity: -it.quantity,
+          type: 'sale',
+          source: 'seller_api',
+          metadata: { idemKey: idemKey || null },
+        });
       }
+      // NÃO mexe em ProductSize.stock (= COMPRADO, total fixo da NFe de entrada).
 
       // Atualiza saldo do cliente (deduz tcUsed, soma tcEarned)
       if (customer) {
@@ -781,22 +824,11 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       if (_recentSaleKeys.size > 2000) { const cut = Date.now() - 15 * 60 * 1000; for (const [k, v] of _recentSaleKeys) if (v.at < cut) _recentSaleKeys.delete(k); }
     }
 
-    // ===== Vincula códigos de barras ÓRFÃOS bipados (fora da transação — não derruba a venda) =====
-    // NÃO mexe no comprado (stock=0 no tamanho novo); só ensina o sistema a reconhecer o código.
+    // A variante/código já foi resolvida dentro da venda. Aqui apenas reconhece capturas antigas.
     for (const lk of barcodeLinks) {
       try {
-        const existente = await prisma.productSize.findFirst({ where: { barcode: lk.barcode } });
-        if (existente) continue; // código já reconhecido por algum tamanho
-        const ps = await prisma.productSize.findFirst({ where: { productId: lk.productId, size: lk.size } });
-        if (ps && !ps.barcode) {
-          await prisma.productSize.update({ where: { id: ps.id }, data: { barcode: lk.barcode } });
-        } else if (!ps) {
-          await prisma.productSize.create({ data: { productId: lk.productId, size: lk.size, barcode: lk.barcode, stock: 0 } });
-        }
-        // reconhece bipes órfãos antigos do mesmo código (sem mexer StoreStock nem comprado)
         await prisma.stocktakeBipe.updateMany({ where: { barcode: lk.barcode, found: false }, data: { found: true } });
-        console.log('[sale] barcode orfao vinculado', JSON.stringify({ barcode: lk.barcode, productId: lk.productId, size: lk.size }));
-      } catch (e) { console.error('[sale] vincular barcode orfao', lk.barcode, e.message); }
+      } catch (e) { console.error('[sale] reconhecer barcode órfão', lk.barcode, e.message); }
     }
 
     // ===== Bot "TenisCash" avisa cliente do cashback =====
@@ -980,7 +1012,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     });
   } catch (err) {
     console.error('Erro registrar venda:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -1477,12 +1509,30 @@ router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => 
       let stockBack = 0;
       if (sale.storeId) {
         for (const it of sale.items) {
-          if (!it.size || !it.productId || !(it.quantity > 0)) continue;
-          const ps = await tx.productSize.findFirst({ where: { productId: it.productId, size: it.size }, select: { id: true } });
-          if (!ps) continue;
-          const ss = await tx.storeStock.findUnique({ where: { storeId_productSizeId: { storeId: sale.storeId, productSizeId: ps.id } } });
-          if (!ss) continue; // não havia linha de estoque dessa loja → a venda também não baixou
-          await tx.storeStock.update({ where: { id: ss.id }, data: { stock: ss.stock + it.quantity } });
+          if (!(it.quantity > 0)) continue;
+          let productSizeId = it.productSizeId;
+          if (!productSizeId && it.size && it.productId) {
+            const legacySize = await tx.productSize.findFirst({ where: { productId: it.productId, size: it.size }, select: { id: true } });
+            productSizeId = legacySize?.id || null;
+          }
+          if (!productSizeId) continue;
+          const recordedDebit = await tx.storeStockMovement.findFirst({ where: { saleItemId: it.id, type: 'sale' }, select: { id: true } });
+          if (!recordedDebit) {
+            // Venda antiga: conserva a regra anterior e só estorna quando a localização existe.
+            const legacyRow = await tx.storeStock.findUnique({ where: { storeId_productSizeId: { storeId: sale.storeId, productSizeId } }, select: { id: true } });
+            if (!legacyRow) continue;
+          }
+          await applyStoreStockDelta(tx, {
+            storeId: sale.storeId,
+            productSizeId,
+            saleId,
+            saleItemId: it.id,
+            quantity: it.quantity,
+            type: 'sale_cancel',
+            source: 'seller_cancel_api',
+            reason,
+            metadata: { canceledBy: operatorId },
+          });
           stockBack += it.quantity;
         }
       }
@@ -1525,7 +1575,7 @@ router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => 
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('Erro cancelar venda:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

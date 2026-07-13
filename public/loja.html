@@ -2072,7 +2072,7 @@ async function onSellBipe() {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
     if (d.recognized && d.product) {
       const price = d.product.promoPrice || d.product.price || 0;
-      addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { size: d.product.size, barcode: code });
+      addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { productSizeId: d.product.productSizeId, size: d.product.size, barcode: code });
       msg.style.color = '#0a843d';
       msg.textContent = '✅ ' + (d.product.name || '') + ' — tam ' + (d.product.size || '?') + ' adicionado';
     } else {
@@ -2086,10 +2086,38 @@ async function onSellBipe() {
 }
 
 function _askSizeForBipe(p) {
-  const known = (p.sizes || []).map(s => s.size).filter(Boolean);
-  const hint = known.length ? '\nTamanhos já cadastrados: ' + known.join(', ') : '';
-  const sz = prompt('TAMANHO deste produto (o código bipado é desse número):' + hint, '');
-  return sz ? String(sz).trim() : null;
+  const sizes = (p.sizes || []).filter(s => s && s.size);
+  const hint = sizes.length ? '\nTamanhos já cadastrados: ' + sizes.map(s => s.size).join(', ') : '';
+  const value = prompt('TAMANHO deste produto (o código bipado é desse número):' + hint, '');
+  const typed = value ? String(value).trim() : '';
+  if (!typed) return null;
+  const known = sizes.find(s => String(s.size).trim().toLowerCase() === typed.toLowerCase());
+  return known || { id: null, size: typed };
+}
+
+// Toda venda sai com a variante exata. Se houver vários tamanhos, o caixa escolhe
+// antes de o produto entrar no carrinho.
+function _chooseSaleSize(p) {
+  const sizes = (p.sizes || []).filter(s => s && s.id && s.size);
+  if (!sizes.length) {
+    alert((p.name || 'Produto') + ' está sem tamanho cadastrado. Corrija o cadastro antes de vender.');
+    return null;
+  }
+  if (sizes.length === 1) return sizes[0];
+  const lines = sizes.map((s, i) => {
+    const row = (s.storeStocks || []).find(ss => !activeStore?.id || ss.store?.id === activeStore.id);
+    const saldo = row ? Number(row.stock || 0) : 0;
+    return (i + 1) + ' - ' + s.size + ' (saldo nesta loja: ' + saldo + ')';
+  });
+  const value = prompt('Escolha o TAMANHO de ' + (p.name || 'produto') + ':\n\n' + lines.join('\n') + '\n\nDigite o número ou o tamanho:', '');
+  const typed = value ? String(value).trim() : '';
+  if (!typed) return null;
+  const position = Number(typed);
+  const selected = Number.isInteger(position) && position >= 1 && position <= sizes.length
+    ? sizes[position - 1]
+    : sizes.find(s => String(s.size).trim().toLowerCase() === typed.toLowerCase());
+  if (!selected) alert('Tamanho inválido. O produto não foi adicionado.');
+  return selected || null;
 }
 
 function addToCartById(productId) {
@@ -2098,23 +2126,28 @@ function addToCartById(productId) {
   const price = (p.promoPrice || p.price);
   if (_pendingBarcode) {
     // vincular o código órfão bipado a este produto + tamanho
-    const sz = _askSizeForBipe(p);
-    if (!sz) return; // cancelou — mantém o código pendente
-    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { size: sz, barcode: _pendingBarcode, isNewBarcode: true });
+    const variant = _askSizeForBipe(p);
+    if (!variant) return; // cancelou — mantém o código pendente
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id || null, size: variant.size, barcode: _pendingBarcode, isNewBarcode: true });
     const msg = document.getElementById('sellBipeMsg');
-    if (msg) { msg.style.color = '#0a843d'; msg.innerHTML = '✅ Código <b>' + _pendingBarcode + '</b> amarrado a ' + (p.name || '') + ' tam ' + sz + ' (grava ao finalizar a venda).'; }
+    if (msg) { msg.style.color = '#0a843d'; msg.innerHTML = '✅ Código <b>' + _pendingBarcode + '</b> amarrado a ' + (p.name || '') + ' tam ' + variant.size + ' (grava ao finalizar a venda).'; }
     _pendingBarcode = null;
   } else {
-    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '');
+    const variant = _chooseSaleSize(p);
+    if (!variant) return;
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id, size: variant.size });
   }
 }
 
 function addToCart(productId, name, brand, price, imageUrl, opts) {
   opts = opts || {};
-  // Item de bipe (tem código/tamanho) é uma LINHA própria — não agrupa com o item genérico.
-  const existing = !opts.barcode ? cart.find(i => i.productId === productId && !i.barcode) : null;
+  const existing = cart.find(i => i.productId === productId
+    && (i.productSizeId || null) === (opts.productSizeId || null)
+    && (i.size || null) === (opts.size || null)
+    && (i.barcode || null) === (opts.barcode || null)
+    && !!i.isNewBarcode === !!opts.isNewBarcode);
   if (existing) existing.quantity++;
-  else cart.push({ productId, name, brand, unitPrice: price, quantity: 1, imageUrl, size: opts.size || null, barcode: opts.barcode || null, isNewBarcode: !!opts.isNewBarcode });
+  else cart.push({ productId, productSizeId: opts.productSizeId || null, name, brand, unitPrice: price, quantity: 1, imageUrl, size: opts.size || null, barcode: opts.barcode || null, isNewBarcode: !!opts.isNewBarcode });
   renderCart();
 }
 
@@ -2378,7 +2411,7 @@ async function finalizeSale() {
       method: 'POST',
       body: JSON.stringify({
         customerPhone: customer?.phone || null,
-        items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode })),
+        items: cart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId || null, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode })),
         paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
         discount: getDiscountRS(),

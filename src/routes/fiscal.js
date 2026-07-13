@@ -9,6 +9,7 @@ const express = require('express');
 const path = require('node:path');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const fiscal = require('../services/fiscalApi');
+const { applyStoreStockDelta } = require('../services/storeStockLedger');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -434,34 +435,55 @@ router.post('/troca', async (req, res) => {
       await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfeNextNumber: nNF55 + 1 } });
 
       // Estoque: devolvido volta pra LOCALIZAÇÃO da loja (StoreStock). Comprado intocado (regra do dono).
-      for (const r of retItems) {
-        if (!r.saleItem.productId || !r.saleItem.size) continue;
-        const ps = await prisma.productSize.findFirst({ where: { productId: r.saleItem.productId, size: r.saleItem.size } });
-        if (!ps) continue;
-        const cur = await prisma.storeStock.findFirst({ where: { storeId: store.id, productSizeId: ps.id } });
-        if (cur) await prisma.storeStock.update({ where: { id: cur.id }, data: { stock: cur.stock + r.qty } });
-        else await prisma.storeStock.create({ data: { storeId: store.id, productSizeId: ps.id, stock: r.qty } });
-      }
+      await prisma.$transaction(async (tx) => {
+        for (const r of retItems) {
+          let productSizeId = r.saleItem.productSizeId;
+          if (!productSizeId && r.saleItem.productId && r.saleItem.size) {
+            const ps = await tx.productSize.findFirst({ where: { productId: r.saleItem.productId, size: r.saleItem.size }, select: { id: true } });
+            productSizeId = ps?.id || null;
+          }
+          if (!productSizeId) continue;
+          await applyStoreStockDelta(tx, {
+            storeId: store.id,
+            productSizeId,
+            saleId: origSale.id,
+            quantity: r.qty,
+            type: 'exchange_return',
+            source: 'fiscal_exchange_api',
+            metadata: { originalDocId, devolucaoDocId: devDoc.id, saleItemId: r.saleItem.id },
+          });
+        }
+      });
     }
 
     // ============ PASSO 2 — venda nova + cupom novo (valor cheio, Crédito Loja + diferença) ============
     let newSale = saleId ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } }) : null;
     if (!newSale) {
-      newSale = await prisma.sale.create({
-        data: {
-          sellerId: req.userId, storeId: store.id, totalAmount: newTotal,
-          paymentMethod: diff > 0 ? (TPAG_TO_SALEPAY[diffPayment.tPag] || 'other') : 'troca',
-          status: 'completed', tcUsed: 0, tcEarned: 0,
-          note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : ''),
-          items: { create: newResolved.map(n => ({ productId: n.product.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price), unitCost: n.product.costPrice > 0 ? n.product.costPrice : null })) },
-        },
-        include: { items: true },
+      newSale = await prisma.$transaction(async (tx) => {
+        const created = await tx.sale.create({
+          data: {
+            sellerId: req.userId, storeId: store.id, totalAmount: newTotal,
+            paymentMethod: diff > 0 ? (TPAG_TO_SALEPAY[diffPayment.tPag] || 'other') : 'troca',
+            status: 'completed', tcUsed: 0, tcEarned: 0,
+            note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : ''),
+            items: { create: newResolved.map(n => ({ productId: n.product.id, productSizeId: n.ps.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price), unitCost: n.product.costPrice > 0 ? n.product.costPrice : null })) },
+          },
+          include: { items: true },
+        });
+        for (const item of created.items) {
+          await applyStoreStockDelta(tx, {
+            storeId: store.id,
+            productSizeId: item.productSizeId,
+            saleId: created.id,
+            saleItemId: item.id,
+            quantity: -item.quantity,
+            type: 'exchange_sale',
+            source: 'fiscal_exchange_api',
+            metadata: { originalSaleId: origSale.id, originalDocId },
+          });
+        }
+        return created;
       });
-      // Estoque: novos saem da LOCALIZAÇÃO da loja (igual venda normal — só StoreStock)
-      for (const n of newResolved) {
-        const cur = await prisma.storeStock.findFirst({ where: { storeId: store.id, productSizeId: n.ps.id } });
-        if (cur) await prisma.storeStock.update({ where: { id: cur.id }, data: { stock: Math.max(0, cur.stock - n.qty) } });
-      }
     }
 
     const maxNfce = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });

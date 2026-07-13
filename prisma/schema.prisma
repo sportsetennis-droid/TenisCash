@@ -286,10 +286,11 @@ model Store {
   pagbankSandbox Boolean @default(true) // sandbox vs produção
   pagbankEnabled Boolean @default(false) // liga o fluxo PIX-QR automático nessa loja
 
-  sellers  User[]
-  clockIns ClockIn[]
-  messages Message[]    @relation("storeMessages")
-  stocks   StoreStock[]
+  sellers        User[]
+  clockIns       ClockIn[]
+  messages       Message[]            @relation("storeMessages")
+  stocks         StoreStock[]
+  stockMovements StoreStockMovement[]
 
   // Mensagens V2: conversas entre loja e cliente
   conversationsAsStore Conversation[] @relation("conversationsForStore")
@@ -446,7 +447,9 @@ model ProductSize {
   // Caixa VENCE chute: tamanho confirmado nunca é remanejado por conflito.
   sizeConfirmedAt DateTime?
 
-  storeStocks StoreStock[]
+  storeStocks    StoreStock[]
+  saleItems      SaleItem[]
+  stockMovements StoreStockMovement[]
 
   @@unique([productId, size])
 }
@@ -526,27 +529,61 @@ model Sale {
   idemKey        String?       @unique // anti-duplicação: 1 venda por chave do carrinho (trava durável no banco)
   createdAt      DateTime      @default(now())
 
-  items       SaleItem[]
-  commissions SaleCommission[]
+  items          SaleItem[]
+  commissions    SaleCommission[]
+  stockMovements StoreStockMovement[]
 
   @@index([sellerId, createdAt])
   @@index([clientId])
 }
 
 model SaleItem {
-  id          String   @id @default(uuid())
-  saleId      String
-  sale        Sale     @relation(fields: [saleId], references: [id])
-  productId   String?
-  product     Product? @relation(fields: [productId], references: [id])
-  productName String
-  brand       String
-  category    String?
-  size        String?
-  quantity    Int      @default(1)
-  unitPrice   Float
-  totalPrice  Float
-  unitCost    Float? // snapshot do custo unitario no momento da venda; null em vendas antigas
+  id            String       @id @default(uuid())
+  saleId        String
+  sale          Sale         @relation(fields: [saleId], references: [id])
+  productId     String?
+  product       Product?     @relation(fields: [productId], references: [id])
+  productSizeId String?
+  productSize   ProductSize? @relation(fields: [productSizeId], references: [id], onDelete: SetNull)
+  productName   String
+  brand         String
+  category      String?
+  size          String?
+  quantity      Int          @default(1)
+  unitPrice     Float
+  totalPrice    Float
+  unitCost      Float? // snapshot do custo unitario no momento da venda; null em vendas antigas
+
+  stockMovements StoreStockMovement[]
+
+  @@index([productSizeId])
+}
+
+// Livro razao do estoque fisico por loja. Cada venda/estorno deixa uma prova
+// imutavel do delta e do saldo antes/depois. ProductSize.stock (COMPRADO) nao entra aqui.
+model StoreStockMovement {
+  id            String       @id @default(uuid())
+  storeId       String?
+  store         Store?       @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  productSizeId String?
+  productSize   ProductSize? @relation(fields: [productSizeId], references: [id], onDelete: SetNull)
+  saleId        String?
+  sale          Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  saleItemId    String?
+  saleItem      SaleItem?    @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+  type          String // sale | sale_cancel | exchange_sale | exchange_return | historical_backfill
+  quantity      Int // delta assinado: venda=-1, estorno=+1
+  stockBefore   Int
+  stockAfter    Int
+  source        String       @default("system")
+  reason        String?
+  metadata      Json?
+  createdAt     DateTime     @default(now())
+
+  @@unique([saleItemId, type])
+  @@index([storeId, createdAt])
+  @@index([productSizeId, createdAt])
+  @@index([saleId])
 }
 
 // ============================================================

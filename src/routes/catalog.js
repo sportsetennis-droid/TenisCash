@@ -266,8 +266,10 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
           sizes: {
             orderBy: { size: 'asc' },
             select: {
+              id: true,
               size: true,
               stock: true,
+              barcode: true,
               storeStocks: {
                 ...(storeId ? { where: { storeId } } : {}),
                 include: { store: { select: { id: true, code: true, name: true } } },
@@ -333,6 +335,7 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
         sizes: {
           orderBy: { size: 'asc' },
           select: {
+            id: true,
             size: true,
             stock: true,
             barcode: true,

@@ -551,7 +551,7 @@ router.get('/lookup/:barcode', async (req, res) => {
     const active = sizes.filter((s) => s.product && s.product.active);
     if (active.length) {
       const s = active[0];
-      return res.json({ recognized: true, ambiguous: active.length > 1, product: { id: s.product.id, name: s.product.name, brand: s.product.brand, size: s.size, price: s.product.price, promoPrice: s.product.promoPrice } });
+      return res.json({ recognized: true, ambiguous: active.length > 1, product: { id: s.product.id, productSizeId: s.id, name: s.product.name, brand: s.product.brand, size: s.size, price: s.product.price, promoPrice: s.product.promoPrice } });
     }
     const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: code }, select: { id: true, description: true } });
     res.json({ recognized: false, inNfe: !!x, nfeDescription: x ? x.description : null });

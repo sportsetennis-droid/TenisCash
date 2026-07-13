@@ -30,8 +30,10 @@ const baseProductSelect = {
   active: true,
   sizes: {
     select: {
+      id: true,
       size: true,
       stock: true,
+      barcode: true,
       storeStocks: { select: { stock: true, store: { select: { name: true, code: true, neighborhood: true } } } },
     },
   },
@@ -40,8 +42,10 @@ const baseProductSelect = {
 function formatProductCard(p) {
   // Mantém storeStocks se vierem incluídos (PCard usa)
   const sizes = (p.sizes || []).map((s) => ({
+    id: s.id,
     size: s.size,
     stock: s.stock,
+    barcode: s.barcode || null,
     ...(s.storeStocks ? { storeStocks: s.storeStocks } : {}),
   }));
   const availableSizes = sizes.filter((s) => (s.stock || 0) > 0);
