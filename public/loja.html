@@ -2100,12 +2100,30 @@ function _askSizeForBipe(p) {
 function _chooseSaleSize(p) {
   const sizes = (p.sizes || []).filter(s => s && s.id && s.size);
   if (!sizes.length) {
-    alert((p.name || 'Produto') + ' está sem tamanho cadastrado. Corrija o cadastro antes de vender.');
-    return null;
+    const value = prompt(
+      (p.name || 'Produto') + ' ainda está sem tamanho cadastrado.\n\n' +
+      'Digite o TAMANHO REAL desta unidade (ex.: 38, P, M, G ou UNICO):',
+      '',
+    );
+    const typed = value ? String(value).trim() : '';
+    if (!typed) {
+      alert('Informe o tamanho real. O produto não foi adicionado.');
+      return null;
+    }
+    return { id: null, size: typed, isNewSize: true };
   }
-  if (sizes.length === 1) return sizes[0];
-  const lines = sizes.map((s, i) => {
-    const row = (s.storeStocks || []).find(ss => !activeStore?.id || ss.store?.id === activeStore.id);
+
+  // Se a loja já tem saldo bipado, oferece somente as numerações fisicamente
+  // disponíveis nela. Sem saldo local, mantém a grade cadastrada para permitir
+  // vender a unidade ainda não bipada; a baixa negativa fica auditável.
+  const availableHere = sizes.filter((s) => (s.storeStocks || []).some((ss) => {
+    const sameStore = !activeStore?.id || ss.storeId === activeStore.id || ss.store?.id === activeStore.id;
+    return sameStore && Number(ss.stock || 0) > 0;
+  }));
+  const choices = availableHere.length ? availableHere : sizes;
+  if (choices.length === 1) return choices[0];
+  const lines = choices.map((s, i) => {
+    const row = (s.storeStocks || []).find(ss => !activeStore?.id || ss.storeId === activeStore.id || ss.store?.id === activeStore.id);
     const saldo = row ? Number(row.stock || 0) : 0;
     return (i + 1) + ' - ' + s.size + ' (saldo nesta loja: ' + saldo + ')';
   });
@@ -2113,9 +2131,9 @@ function _chooseSaleSize(p) {
   const typed = value ? String(value).trim() : '';
   if (!typed) return null;
   const position = Number(typed);
-  const selected = Number.isInteger(position) && position >= 1 && position <= sizes.length
-    ? sizes[position - 1]
-    : sizes.find(s => String(s.size).trim().toLowerCase() === typed.toLowerCase());
+  const selected = Number.isInteger(position) && position >= 1 && position <= choices.length
+    ? choices[position - 1]
+    : choices.find(s => String(s.size).trim().toLowerCase() === typed.toLowerCase());
   if (!selected) alert('Tamanho inválido. O produto não foi adicionado.');
   return selected || null;
 }
@@ -2135,7 +2153,7 @@ function addToCartById(productId) {
   } else {
     const variant = _chooseSaleSize(p);
     if (!variant) return;
-    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id, size: variant.size });
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id, size: variant.size, isNewSize: !!variant.isNewSize });
   }
 }
 
@@ -2145,9 +2163,10 @@ function addToCart(productId, name, brand, price, imageUrl, opts) {
     && (i.productSizeId || null) === (opts.productSizeId || null)
     && (i.size || null) === (opts.size || null)
     && (i.barcode || null) === (opts.barcode || null)
-    && !!i.isNewBarcode === !!opts.isNewBarcode);
+    && !!i.isNewBarcode === !!opts.isNewBarcode
+    && !!i.isNewSize === !!opts.isNewSize);
   if (existing) existing.quantity++;
-  else cart.push({ productId, productSizeId: opts.productSizeId || null, name, brand, unitPrice: price, quantity: 1, imageUrl, size: opts.size || null, barcode: opts.barcode || null, isNewBarcode: !!opts.isNewBarcode });
+  else cart.push({ productId, productSizeId: opts.productSizeId || null, name, brand, unitPrice: price, quantity: 1, imageUrl, size: opts.size || null, barcode: opts.barcode || null, isNewBarcode: !!opts.isNewBarcode, isNewSize: !!opts.isNewSize });
   renderCart();
 }
 
@@ -2171,7 +2190,7 @@ function renderCart() {
     <div class="cart-item">
       <img class="cart-item-img" src="${it.imageUrl || ''}" onerror="this.style.opacity='0.3'">
       <div class="cart-item-info">
-        <div class="cart-item-name">${it.name}${it.size ? ' · <b>tam ' + it.size + '</b>' : ''}${it.isNewBarcode ? ' <span style="background:#fff3d6;color:#8a6100;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;">🔗 código novo</span>' : ''}</div>
+        <div class="cart-item-name">${it.name}${it.size ? ' · <b>tam ' + it.size + '</b>' : ''}${it.isNewBarcode ? ' <span style="background:#fff3d6;color:#8a6100;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;">🔗 código novo</span>' : ''}${it.isNewSize ? ' <span style="background:#eef6ff;color:#0066cc;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;">tamanho confirmado agora</span>' : ''}</div>
         <div class="cart-item-sub">${it.brand} · ${fmt(it.unitPrice)} × ${it.quantity} = <strong>${fmt(it.unitPrice * it.quantity)}</strong></div>
       </div>
       <div class="qty-controls">
@@ -2411,7 +2430,7 @@ async function finalizeSale() {
       method: 'POST',
       body: JSON.stringify({
         customerPhone: customer?.phone || null,
-        items: cart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId || null, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode })),
+        items: cart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId || null, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode, isNewSize: !!i.isNewSize })),
         paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
         discount: getDiscountRS(),

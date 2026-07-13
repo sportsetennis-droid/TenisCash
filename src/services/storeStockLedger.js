@@ -38,6 +38,45 @@ function resolveProductSize(product, item = {}) {
   throw new SaleStockError(`Escolha o tamanho de ${product?.name || 'cada produto'} antes de finalizar a venda.`);
 }
 
+function planSaleProductSize(product, item = {}) {
+  try {
+    return {
+      productSize: resolveProductSize(product, item),
+      needsNewProductSize: false,
+    };
+  } catch (err) {
+    const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
+    const requestedId = clean(item.productSizeId);
+    const requestedSize = clean(item.size);
+    const barcode = clean(item.barcode);
+    const sizeAlreadyExists = requestedSize
+      ? sizes.some((size) => clean(size.size).toLowerCase() === requestedSize.toLowerCase())
+      : false;
+
+    // Cadastro legado sem nenhuma variante: o PDV exige que o operador digite
+    // o tamanho real e cria a variante atomicamente junto com a venda.
+    const canCreateLegacySize = Boolean(
+      item.isNewSize && requestedSize && !requestedId && sizes.length === 0,
+    );
+
+    // Código ainda desconhecido pode ensinar uma numeração nova ao produto.
+    // Mantém o fluxo de bipe existente, mas nunca duplica um tamanho cadastrado.
+    const canCreateBarcodeSize = Boolean(
+      item.isNewBarcode && barcode && requestedSize && !requestedId && !sizeAlreadyExists,
+    );
+
+    if (canCreateLegacySize || canCreateBarcodeSize) {
+      return {
+        productSize: null,
+        needsNewProductSize: true,
+        requestedSize,
+      };
+    }
+
+    throw err;
+  }
+}
+
 async function applyStoreStockDelta(tx, {
   storeId,
   productSizeId,
@@ -88,5 +127,6 @@ async function applyStoreStockDelta(tx, {
 module.exports = {
   SaleStockError,
   resolveProductSize,
+  planSaleProductSize,
   applyStoreStockDelta,
 };

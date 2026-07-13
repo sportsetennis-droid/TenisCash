@@ -2,7 +2,7 @@ const express = require('express');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const equipeReports = require('../services/equipeReports');
-const { SaleStockError, resolveProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
+const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
 
 const router = express.Router();
 
@@ -623,21 +623,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const unit = parseFloat(item.unitPrice || p.promoPrice || p.price);
       if (!Number.isInteger(qty) || qty < 1) throw new SaleStockError(`Quantidade inválida para ${p.name}.`);
       if (!Number.isFinite(unit) || unit < 0) throw new SaleStockError(`Preço inválido para ${p.name}.`);
-      let productSize = null;
-      let needsNewProductSize = false;
-      try {
-        productSize = resolveProductSize(p, item);
-      } catch (err) {
-        // Código novo pode ensinar ao sistema uma numeração ainda inexistente. A variante
-        // nasce dentro da mesma transação da venda e já recebe a baixa da loja.
-        const requestedSize = String(item.size || '').trim();
-        if (item.isNewBarcode && item.barcode && requestedSize && !item.productSizeId
-          && !p.sizes.some((s) => String(s.size).trim() === requestedSize)) {
-          needsNewProductSize = true;
-        } else {
-          throw err;
-        }
-      }
+      const sizePlan = planSaleProductSize(p, item);
+      const productSize = sizePlan.productSize;
+      const needsNewProductSize = sizePlan.needsNewProductSize;
       const total = unit * qty;
       totalAmount += total;
       return {
@@ -646,7 +634,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         productName: p.name,
         brand: p.brand || 'SEM MARCA',
         category: p.category || null,
-        size: productSize?.size || String(item.size || '').trim() || null,
+        size: productSize?.size || sizePlan.requestedSize || String(item.size || '').trim() || null,
         quantity: qty,
         unitPrice: unit,
         totalPrice: total,
@@ -704,8 +692,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         if (it._needsNewProductSize) {
           const ps = await tx.productSize.upsert({
             where: { productId_size: { productId: it.productId, size: it.size } },
-            update: {},
-            create: { productId: it.productId, size: it.size, stock: 0 },
+            update: { sizeConfirmedAt: new Date() },
+            create: { productId: it.productId, size: it.size, stock: 0, sizeConfirmedAt: new Date() },
           });
           it.productSizeId = ps.id;
           it.size = ps.size;

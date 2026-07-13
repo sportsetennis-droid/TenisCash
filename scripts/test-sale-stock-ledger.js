@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const {
   SaleStockError,
   resolveProductSize,
+  planSaleProductSize,
   applyStoreStockDelta,
 } = require('../src/services/storeStockLedger');
 
@@ -52,6 +53,27 @@ async function main() {
   expectSaleError(() => resolveProductSize(product, {}), 'Escolha o tamanho');
   expectSaleError(() => resolveProductSize(product, { productSizeId: 'outra' }), 'Tamanho invalido');
   expectSaleError(() => resolveProductSize({ ...product, sizes: [] }, {}), 'sem tamanho cadastrado');
+
+  const legacyPlan = planSaleProductSize(
+    { ...product, sizes: [] },
+    { size: 'M', isNewSize: true },
+  );
+  assert.equal(legacyPlan.productSize, null);
+  assert.equal(legacyPlan.needsNewProductSize, true);
+  assert.equal(legacyPlan.requestedSize, 'M');
+  expectSaleError(
+    () => planSaleProductSize({ ...product, sizes: [] }, { size: 'M' }),
+    'nao cadastrado',
+  );
+  expectSaleError(
+    () => planSaleProductSize(product, { size: '42', isNewSize: true }),
+    'nao cadastrado',
+  );
+  const barcodePlan = planSaleProductSize(product, {
+    size: '42', barcode: '78942', isNewBarcode: true,
+  });
+  assert.equal(barcodePlan.needsNewProductSize, true);
+  assert.equal(barcodePlan.requestedSize, '42');
 
   const existing = fakeTransaction(5);
   const debit = await applyStoreStockDelta(existing, {
