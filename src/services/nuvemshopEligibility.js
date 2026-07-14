@@ -108,10 +108,11 @@ function assessProductForNuvemshop(product, options = {}) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   const locatedSizes = sizes.map((size) => ({ ...size, stock: physicalStock(size) }));
   const strictSizeConfirmation = requiresPhysicalSizeConfirmation(product);
+  const adidasUnlocked = upper(product?.brand).includes('ADIDAS');
   const publicSizes = locatedSizes.filter((size) => (
     size.stock > 0
-    && isPublicSizeLabel(size.size)
-    && (!strictSizeConfirmation || Boolean(size.sizeConfirmedAt))
+    && (adidasUnlocked || isPublicSizeLabel(size.size))
+    && (adidasUnlocked || !strictSizeConfirmation || Boolean(size.sizeConfirmedAt))
   ));
   const placeholderStock = locatedSizes.reduce(
     (sum, size) => sum + (size.stock > 0 && !isPublicSizeLabel(size.size) ? size.stock : 0),
@@ -123,8 +124,12 @@ function assessProductForNuvemshop(product, options = {}) {
   ) : 0;
 
   if (publicSizes.length === 0) reasons.push('sem tamanho valido com estoque fisico');
-  if (placeholderStock > 0) reasons.push('estoque em tamanho placeholder');
-  if (unconfirmedStock > 0) reasons.push('estoque Adidas/Nike sem tamanho confirmado pela caixa');
+  if (placeholderStock > 0 && !adidasUnlocked) reasons.push('estoque em tamanho placeholder');
+  if (unconfirmedStock > 0 && !adidasUnlocked) reasons.push('estoque Nike sem tamanho confirmado pela caixa');
+
+  const warnings = [];
+  if (adidasUnlocked && placeholderStock > 0) warnings.push('Adidas com tamanho técnico liberado pelo dono');
+  if (adidasUnlocked && unconfirmedStock > 0) warnings.push('Adidas sem tamanho confirmado pela caixa');
 
   return {
     eligible: reasons.length === 0,
@@ -134,6 +139,7 @@ function assessProductForNuvemshop(product, options = {}) {
     locatedSizes,
     placeholderStock,
     unconfirmedStock,
+    warnings,
   };
 }
 
@@ -158,10 +164,11 @@ function assessRemoteProductForNuvemshop(product) {
     const values = Array.isArray(variant?.values) ? variant.values : [];
     return values.map(localized).filter(Boolean);
   });
-  if (sizeLabels.length === 0 || !sizeLabels.some(isPublicSizeLabel)) {
+  const adidasUnlocked = upper(localized(product.brand)).includes('ADIDAS');
+  if (sizeLabels.length === 0 || (!adidasUnlocked && !sizeLabels.some(isPublicSizeLabel))) {
     reasons.push('tamanho remoto ausente ou invalido');
   }
-  if (sizeLabels.some((label) => !isPublicSizeLabel(label))) {
+  if (!adidasUnlocked && sizeLabels.some((label) => !isPublicSizeLabel(label))) {
     reasons.push('tamanho remoto placeholder');
   }
 

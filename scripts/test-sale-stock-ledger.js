@@ -55,8 +55,10 @@ async function main() {
   expectSaleError(() => resolveProductSize({ ...product, sizes: [] }, {}), 'sem tamanho cadastrado');
   const adidasConfirmed = { ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], sizeConfirmedAt: new Date() }] };
   assert.equal(resolveProductSize(adidasConfirmed, {}).id, 'ps40');
+  const adidasUnconfirmed = { ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], size: 'T-78940', sizeConfirmedAt: null }] };
+  assert.equal(resolveProductSize(adidasUnconfirmed, {}).id, 'ps40');
   expectSaleError(
-    () => resolveProductSize({ ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], sizeConfirmedAt: null }] }, {}),
+    () => resolveProductSize({ ...product, brand: 'NIKE', sizes: [{ ...product.sizes[0], sizeConfirmedAt: null }] }, {}),
     'não confirmado pela caixa',
   );
   expectSaleError(

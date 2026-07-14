@@ -549,7 +549,7 @@
   let etiqFila = []; try { etiqFila = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
   // A fila visual do modal vive em memória. Depois de recarregar a página,
   // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
-  etiqFila.forEach((item) => { if (item.needsSize) item.sizeQueued = false; });
+  etiqFila.forEach((item) => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
   let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
   function etiqSave() { try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {} }
   function etiqBeep() {
@@ -669,11 +669,17 @@
     etiqWatch = setInterval(() => {
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
-        if (it.needsSize) {
+        if (it.needsSize && !it.bipou) {
           st.textContent = '📏 SALVO — CONFIRME O TAMANHO';
           st.style.color = '#FFB14A';
           det.textContent = 'O estoque ainda NÃO foi somado. Informe o tamanho BR da caixa.';
           btn.disabled = true; btn.textContent = 'CONFIRME O TAMANHO'; btn.style.background = '#555';
+        } else if (it.needsSize && it.bipou) {
+          st.textContent = '⚠ BIPADO — TAMANHO PENDENTE';
+          st.style.color = '#FFB14A';
+          det.textContent = 'O estoque foi somado. Confirme o tamanho quando puder.';
+          btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
+          clearInterval(etiqWatch);
         } else if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
         if (it.alerta) { // checagem inteligente: passou do comprado
           st.textContent = '⚠ BIPADO — CONFERIR!';
@@ -744,7 +750,7 @@
           item.needsSize = !!d.needsSize;
           item.alerta = d.alerta || null;
           item.b64 = '';
-          if (d.needsSize && d.bipeId && !item.sizeQueued) {
+          if (d.needsSize && d.bipeId && !item.sizeQueued && !item.sizeDismissed) {
             item.sizeQueued = true;
             const localBipe = { code: item.ean, bipeId: d.bipeId, found: d.found, product: d.product, sizeOptions: d.sizeOptions, needsSize: true, _scannerItem: item };
             bipes.push(localBipe);
@@ -770,7 +776,7 @@
           it.msg = row.mensagem;
           it.bipou = !!row.appliedToStock;
           it.needsSize = !!row.needsSize;
-          if (row.needsSize && row.bipeId && !it.sizeQueued) {
+          if (row.needsSize && row.bipeId && !it.sizeQueued && !it.sizeDismissed) {
             it.sizeQueued = true;
             const localBipe = { code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
             bipes.push(localBipe);
@@ -1070,9 +1076,10 @@
       return;
     }
     const mainInput = document.getElementById('codigo');
-    if (mainInput) mainInput.disabled = true;
+    if (mainInput) mainInput.disabled = false;
     const b = sizeModalBipe;
     const nome = b.product?.name || 'Produto Adidas';
+    const adidasOptional = /ADIDAS/i.test(String(b.product?.brand || ''));
     const img = b.product?.imageUrl ? `<img src="${b.product.imageUrl}" onerror="this.style.display='none'">` : '';
     // Tamanho atual no sistema (chute de importação, nunca confirmado) → mostrar pra confirmar/corrigir
     const sizeAtual = b.product?.size || '';
@@ -1101,7 +1108,8 @@
           <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
         </div>
         ${btnUnico}
-        <div class="size-warn">⚠️ O tamanho é obrigatório. O estoque só será somado depois da confirmação.</div>
+        <div class="size-warn">${adidasOptional ? '⚠️ Aviso: o estoque Adidas já foi somado. Você pode confirmar agora ou deixar para depois.' : '⚠️ O tamanho é obrigatório. O estoque só será somado depois da confirmação.'}</div>
+        ${adidasOptional ? '<button type="button" id="size-skip" onclick="pularTamanho()">Deixar o tamanho para depois</button>' : ''}
       </div>`;
     document.body.appendChild(overlay);
     const other = document.getElementById('size-other');
@@ -1116,11 +1124,17 @@
   window.confirmarTamanhoOutro = function () {
     const v = (document.getElementById('size-other')?.value || '').trim();
     if (!v) { sizeModalError('Digite o tamanho ou toque num número.'); return; }
-    // Enquanto há tamanho pendente, outro código não pode entrar. Isso impede que
-    // o operador misture duas caixas e também elimina a dupla contagem bipe+scanner.
+    // Adidas agora é aviso, não trava: se o leitor mandar o próximo código aqui,
+    // ele é contabilizado normalmente e o tamanho anterior continua pendente.
     if (/^\d{8,14}$/.test(v)) {
       document.getElementById('size-other').value = '';
-      sizeModalError('Primeiro confirme o tamanho desta caixa. O código ' + v + ' NÃO foi contabilizado.');
+      const adidasOptional = /ADIDAS/i.test(String(sizeModalBipe?.product?.brand || ''));
+      if (adidasOptional) {
+        enviarBipe(v);
+        sizeModalError('Código ' + v + ' contabilizado. O tamanho anterior continua pendente.');
+      } else {
+        sizeModalError('Primeiro confirme o tamanho desta caixa. O código ' + v + ' NÃO foi contabilizado.');
+      }
       return;
     }
     confirmarTamanho(v);
@@ -1165,6 +1179,21 @@
     } catch (e) {
       sizeModalError('Sem rede — tente de novo em segundos.');
     }
+  };
+
+  window.pularTamanho = function () {
+    const b = sizeModalBipe;
+    if (b) {
+      b.needsSize = true;
+      b.sizeDismissed = true;
+      if (b._scannerItem) {
+        b._scannerItem.needsSize = true;
+        b._scannerItem.sizeDismissed = true;
+        etiqSave();
+      }
+    }
+    renderLista();
+    showNextSizeModal();
   };
 
   // Reabrir o modal a partir do badge na lista

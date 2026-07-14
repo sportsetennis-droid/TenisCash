@@ -119,6 +119,13 @@ function needsManualSize(brand, productSizeRow) {
   return !productSizeRow.sizeConfirmedAt;
 }
 
+// Decisão do dono (2026-07-14): Adidas sem tamanho confirmado gera AVISO,
+// mas não bloqueia contagem. A trava dura continua para Nike, cujo OCR mistura
+// US/UK/EUR/BR. Conflitos de GTIN e produto inativo continuam bloqueando.
+function sizeConfirmationBlocksStock(brand, productSizeRow) {
+  return needsManualSize(brand, productSizeRow) && !isAdidas(brand);
+}
+
 // Um código só pode movimentar estoque quando existe exatamente UMA variante ativa.
 // `findFirst` é proibido aqui: em caso de GTIN compartilhado, escolher a primeira linha
 // torna o destino dependente da ordem interna do banco.
@@ -134,8 +141,9 @@ function chooseUniqueBarcodeCandidate(matched) {
 }
 
 // Único ponto que transforma um bipe em saldo. Mantém a gravação do bipe separada,
-// mas só aplica quando produto/loja/variante estão inequívocos e o tamanho Adidas/Nike
-// já foi confirmado pela caixa. A transação também deixa prova no livro-razão.
+// mas só aplica quando produto/loja/variante estão inequívocos. Nike ainda exige
+// tamanho confirmado; Adidas segue com aviso sem bloquear. A transação também
+// deixa prova no livro-razão.
 async function applyBipeIfReady(tx, bipeId) {
   const bipe = await tx.stocktakeBipe.findUnique({ where: { id: bipeId } });
 
@@ -154,7 +162,7 @@ async function applyBipeIfReady(tx, bipeId) {
     if (barcodeOwners !== 1) return { applied: false, reason: 'ambiguous_barcode' };
   }
   if (!bipe.storeId) return { applied: false, reason: 'missing_store' };
-  if (needsManualSize(productSize.product.brand, productSize)) {
+  if (sizeConfirmationBlocksStock(productSize.product.brand, productSize)) {
     return { applied: false, reason: 'size_confirmation_required' };
   }
 
@@ -1040,7 +1048,7 @@ router.get('/etiqueta-status', async (req, res) => {
     const payload = await Promise.all(rows.map(async (row) => {
       const bipe = row.bipeId ? bipeMap[row.bipeId] : null;
       const ps = bipe?.productSizeId ? sizeMap[bipe.productSizeId] : null;
-      const needsSize = Boolean(bipe && !bipe.applied && ps && needsManualSize(ps.product.brand, ps));
+      const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
       return {
         id: row.id,
         status: row.status,
@@ -1408,7 +1416,7 @@ router.post('/apply-to-stock', async (req, res) => {
       let blockedReason = null;
       if (bipe.duplicate) blockedReason = 'ambiguous_barcode';
       else if (!size) blockedReason = 'unmatched';
-      else if (needsManualSize(size.product?.brand, size)) blockedReason = 'size_confirmation_required';
+      else if (sizeConfirmationBlocksStock(size.product?.brand, size)) blockedReason = 'size_confirmation_required';
       return {
         bipeId: bipe.id,
         storeId: bipe.storeId, storeName: store?.name, storeCode: store?.code,

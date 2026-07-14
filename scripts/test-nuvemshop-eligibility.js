@@ -57,17 +57,30 @@ assert.equal(badBrand.eligible, false);
 assert(badBrand.reasons.some((reason) => reason.includes('marca')));
 
 const placeholder = assessProductForNuvemshop(validProduct({
+  brand: 'MIZUNO',
   sizes: [{ size: 'T-6100', storeStocks: [{ stock: 3 }] }],
 }));
 assert.equal(placeholder.eligible, false);
 assert(placeholder.reasons.includes('estoque em tamanho placeholder'));
 
-const adidasUnconfirmed = assessProductForNuvemshop(validProduct({
+const adidasUnlocked = assessProductForNuvemshop(validProduct({
+  sizes: [{ size: 'T-6100', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
+}));
+assert.equal(adidasUnlocked.eligible, true);
+assert.equal(adidasUnlocked.unconfirmedStock, 2);
+assert.equal(adidasUnlocked.publicSizes.length, 1);
+assert(adidasUnlocked.warnings.some((warning) => warning.includes('liberado pelo dono')));
+
+const nikeUnconfirmed = assessProductForNuvemshop(validProduct({
+  brand: 'NIKE',
   sizes: [{ size: '40', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
 }));
-assert.equal(adidasUnconfirmed.eligible, false);
-assert.equal(adidasUnconfirmed.unconfirmedStock, 2);
-assert(adidasUnconfirmed.reasons.some((reason) => reason.includes('sem tamanho confirmado')));
+assert.equal(nikeUnconfirmed.eligible, false);
+assert(nikeUnconfirmed.reasons.some((reason) => reason.includes('Nike')));
+
+assert.equal(assessRemoteProductForNuvemshop(validRemote({
+  variants: [{ price: '360', values: [{ pt: 'T-6100' }] }],
+})).eligible, true);
 
 const noConfirmation = validProduct();
 noConfirmation.aiContext = {

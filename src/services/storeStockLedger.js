@@ -12,16 +12,20 @@ function clean(value) {
 
 function requiresPhysicalSizeConfirmation(product) {
   const brand = clean(product?.brand).toUpperCase();
-  return brand.includes('ADIDAS') || brand.includes('NIKE');
+  return brand.includes('NIKE');
 }
 
 function assertSellableSize(product, size) {
+  // Decisão do dono (2026-07-14): Adidas não pode ficar indisponível por
+  // tamanho técnico/não confirmado. A venda segue e o rótulo pendente fica
+  // registrado no SaleItem para conferência posterior.
+  if (clean(product?.brand).toUpperCase().includes('ADIDAS')) return size;
   const label = clean(size?.size);
   if (!label || label === '?' || /^T-/i.test(label)) {
     throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho não confirmado. Confira a caixa antes de vender.`);
   }
   if (requiresPhysicalSizeConfirmation(product) && !size?.sizeConfirmedAt) {
-    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho Adidas/Nike não confirmado pela caixa.`);
+    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho Nike não confirmado pela caixa.`);
   }
   return size;
 }
