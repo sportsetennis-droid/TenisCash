@@ -1260,7 +1260,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
-    <span style="font-size:12px;color:var(--text2)">Padrão S&amp;T: 15 × 3 cm · imprimir em tamanho real (100%)</span>
+    <span style="font-size:12px;color:var(--text2)">Padrão S&amp;T: 14,5 × 2,5 cm · imprimir em tamanho real (100%)</span>
   </div>
   <!-- Compat: hidden -->
   <input type="hidden" id="labels-search">
@@ -9154,11 +9154,12 @@ async function initLabelsTab() {
     }
   }
   await loadLabelTemplates();
-  // Auto-seleciona o template S&T 15 × 3 cm; mantém fallback para instalações antigas.
+  // Auto-seleciona o template S&T 14,5 × 2,5 cm; mantém fallback para instalações antigas.
   const sel = document.getElementById('labels-template');
   if (sel) {
     const opts = [...sel.options];
-    const stOpt = opts.find(o => /S&T.*15x3|15x3/i.test(o.textContent))
+    const stOpt = opts.find(o => /S&T.*14,5x2,5|14,5x2,5/i.test(o.textContent))
+              || opts.find(o => /S&T.*15x3|15x3/i.test(o.textContent))
               || opts.find(o => /S&T.*2cm|13x2/i.test(o.textContent))
               || opts.find(o => /S&T|13x1,5|13x15/i.test(o.textContent));
     if (stOpt) sel.value = stOpt.value;
@@ -9684,7 +9685,7 @@ async function labelsCreateBatch() {
     });
   }
   if (!selections.length) { alert('Selecione pelo menos 1 etiqueta. Use os campos de quantidade por tamanho em cada card.'); return; }
-  if (!templateId) { alert('Escolha um template (recomendado: "S&T Etiqueta 15x3cm")'); return; }
+  if (!templateId) { alert('Escolha um template (recomendado: "S&T Etiqueta 14,5x2,5cm")'); return; }
   const data = await api('/admin/labels/batches/quick', 'POST', {
     templateId, selections, usePromo,
   });

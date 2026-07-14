@@ -17,27 +17,29 @@ const MM_TO_PT = 2.83464567; // 1mm = 2.83464567pt
 function mm(x) { return x * MM_TO_PT; }
 
 function isSTHorizontalTemplate(template) {
-  const widthMm = Math.round(Number(template?.widthMm));
+  const widthMm = Number(template?.widthMm);
   const heightMm = Number(template?.heightMm);
-  return (widthMm === 150 && heightMm === 30)
+  return (widthMm === 145 && heightMm === 25)
+    || (widthMm === 150 && heightMm === 30)
     || (widthMm === 130 && heightMm >= 14 && heightMm <= 27);
 }
 
 function defaultTemplates() {
   return {
-    st_15x30: {
+    st_145x25: {
       type: 'PRODUCT',
-      name: 'S&T Etiqueta 15x3cm (9 por A4)',
+      name: 'S&T Etiqueta 14,5x2,5cm (11 por A4)',
       paperSize: 'A4',
-      widthMm: 150,
-      heightMm: 30,
+      widthMm: 145,
+      heightMm: 25,
       columns: 1,
-      rows: 9,
-      marginTopMm: 13.5,
-      marginLeftMm: 30,
+      rows: 11,
+      marginTopMm: 11,
+      marginLeftMm: 32.5,
       gapHorizontalMm: 0,
       gapVerticalMm: 0,
       legacyNames: [
+        'S&T Etiqueta 15x3cm (9 por A4)',
         'S&T Etiqueta 13x2cm (13 por A4)',
         'S&T Etiqueta 13x1,5cm (18 por A4)',
       ],
@@ -418,7 +420,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
     const y = marginY + row * (labelH + gapY);
 
     doc.save();
-    // Layout S&T: fundo laranja sólido (150mm × 30mm; legado 130mm suportado)
+    // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
     const isST = isSTHorizontalTemplate(t);
     if (isST) {
       doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
