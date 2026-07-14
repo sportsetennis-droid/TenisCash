@@ -14,7 +14,8 @@
     "test:seller-stock": "node scripts/test-seller-stock-logic.js",
     "test:sale-stock-ledger": "node scripts/test-sale-stock-ledger.js && node scripts/test-loja-sale-selection.js",
     "backfill:sale-stock-ledger": "node scripts/backfill-sale-stock-ledger.js",
-    "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js"
+    "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js",
+    "test:labels": "node scripts/test-label-15x30.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",

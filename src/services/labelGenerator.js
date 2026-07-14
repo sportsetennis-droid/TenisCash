@@ -16,20 +16,31 @@ const MM_TO_PT = 2.83464567; // 1mm = 2.83464567pt
 
 function mm(x) { return x * MM_TO_PT; }
 
+function isSTHorizontalTemplate(template) {
+  const widthMm = Math.round(Number(template?.widthMm));
+  const heightMm = Number(template?.heightMm);
+  return (widthMm === 150 && heightMm === 30)
+    || (widthMm === 130 && heightMm >= 14 && heightMm <= 27);
+}
+
 function defaultTemplates() {
   return {
-    st_13x20: {
+    st_15x30: {
       type: 'PRODUCT',
-      name: 'S&T Etiqueta 13x2cm (13 por A4)',
+      name: 'S&T Etiqueta 15x3cm (9 por A4)',
       paperSize: 'A4',
-      widthMm: 130,
-      heightMm: 20,
+      widthMm: 150,
+      heightMm: 30,
       columns: 1,
-      rows: 13,
-      marginTopMm: 13,
-      marginLeftMm: 40,
+      rows: 9,
+      marginTopMm: 13.5,
+      marginLeftMm: 30,
       gapHorizontalMm: 0,
       gapVerticalMm: 0,
+      legacyNames: [
+        'S&T Etiqueta 13x2cm (13 por A4)',
+        'S&T Etiqueta 13x1,5cm (18 por A4)',
+      ],
     },
     a4_65: {
       type: 'PRODUCT',
@@ -142,7 +153,7 @@ async function drawQR(doc, value, x, y, size) {
   }
 }
 
-// ===== Layout HORIZONTAL S&T (130mm × 15-27mm) — FUNDO LARANJA =====
+// ===== Layout HORIZONTAL S&T (150mm × 30mm; mantém legado 130mm) — FUNDO LARANJA =====
 // Fundo: laranja (#E5571E) pintado em generateLabelsPDF antes desta função
 // Texto: branco. Preço: branco bem grande. QR: card branco atrás pra contraste.
 function drawLabelHorizontal(doc, item, template, x, y, w, h) {
@@ -240,6 +251,8 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
     if (usePromo && item.price) {
       const origStr = fmtBRL(item.price);
       const origFs = fitFontSize(origStr, priceW - mm(2), 7, 5);
+      const promoBlockH = (origFs * 1.3) + mm(4.5) + (priceFs * 1.3);
+      const yOffset = Math.max(mm(1), (h - promoBlockH) / 2);
       doc.fontSize(origFs).fillColor(WHITE).font('Helvetica')
         .text(origStr, priceX, y + yOffset, { width: priceW, align: 'center', strike: true, lineBreak: false, height: origFs * 1.3 });
       doc.fontSize(priceFs).fillColor(WHITE).font('Helvetica-Bold')
@@ -263,8 +276,8 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
 
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
-  // Detecta layout S&T (largura 130mm + altura 15-27mm) → usa horizontal com QR
-  if (Math.round(t.widthMm) === 130 && t.heightMm >= 14 && t.heightMm <= 27) {
+  // Detecta o layout horizontal S&T atual e os formatos legados para PDFs antigos.
+  if (isSTHorizontalTemplate(t)) {
     return drawLabelHorizontal(doc, item, template, x, y, w, h);
   }
   let cursor = y + mm(2);
@@ -354,6 +367,12 @@ async function generateLabelsPDF({ template, items, storeName }) {
     margins: { top: 0, left: 0, right: 0, bottom: 0 },
     bufferPages: true, // permite switchToPage no segundo pass dos QRs
   });
+  // Solicita aos leitores de PDF que imprimam em tamanho real. A preferência é
+  // gravada no próprio arquivo e evita que leitores compatíveis ativem "Ajustar".
+  const viewerPreferences = doc._root.data.ViewerPreferences || doc.ref({});
+  viewerPreferences.data.PrintScaling = 'None';
+  viewerPreferences.data.PickTrayByPDFSize = true;
+  doc._root.data.ViewerPreferences = viewerPreferences;
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
   const done = new Promise((res, rej) => {
@@ -399,8 +418,8 @@ async function generateLabelsPDF({ template, items, storeName }) {
     const y = marginY + row * (labelH + gapY);
 
     doc.save();
-    // Layout S&T: fundo laranja sólido (130mm × 14-27mm)
-    const isST = Math.round(t.widthMm) === 130 && t.heightMm >= 14 && t.heightMm <= 27;
+    // Layout S&T: fundo laranja sólido (150mm × 30mm; legado 130mm suportado)
+    const isST = isSTHorizontalTemplate(t);
     if (isST) {
       doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
     } else {
@@ -430,4 +449,5 @@ async function generateLabelsPDF({ template, items, storeName }) {
 module.exports = {
   generateLabelsPDF,
   defaultTemplates,
+  isSTHorizontalTemplate,
 };

@@ -4,7 +4,11 @@
 
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
-const { generateLabelsPDF, defaultTemplates } = require('../services/labelGenerator');
+const {
+  generateLabelsPDF,
+  defaultTemplates,
+  isSTHorizontalTemplate,
+} = require('../services/labelGenerator');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -15,9 +19,15 @@ async function ensureDefaultTemplates() {
   const defaults = defaultTemplates();
   for (const key of Object.keys(defaults)) {
     const def = defaults[key];
-    const existing = await prisma.labelTemplate.findFirst({ where: { name: def.name } });
-    // Template S&T 130mm de largura (qualquer altura 14-27mm) tem layout horizontal especial: QR ON, barcode OFF
-    const isST = Math.round(def.widthMm) === 130 && def.heightMm >= 14 && def.heightMm <= 27;
+    let existing = await prisma.labelTemplate.findFirst({ where: { name: def.name } });
+    if (!existing) {
+      for (const legacyName of def.legacyNames || []) {
+        existing = await prisma.labelTemplate.findFirst({ where: { name: legacyName } });
+        if (existing) break;
+      }
+    }
+    // O template S&T horizontal usa QR e não usa código de barras.
+    const isST = isSTHorizontalTemplate(def);
     const wantedData = {
       name: def.name,
       type: def.type,
@@ -45,9 +55,12 @@ async function ensureDefaultTemplates() {
     };
     if (!existing) {
       await prisma.labelTemplate.create({ data: wantedData });
-    } else if (isST && (existing.showQRCode === false || existing.showBarcode === true)) {
-      // Atualiza template S&T pré-existente pra usar o layout correto
-      await prisma.labelTemplate.update({ where: { id: existing.id }, data: { showQRCode: true, showBarcode: false } });
+    } else if (isST) {
+      const needsSync = Object.entries(wantedData).some(([field, value]) => existing[field] !== value);
+      if (needsSync) {
+        // Migra o modelo S&T legado sem sobrescrever ajustes dos outros templates.
+        await prisma.labelTemplate.update({ where: { id: existing.id }, data: wantedData });
+      }
     }
   }
 }
@@ -55,7 +68,12 @@ async function ensureDefaultTemplates() {
 router.get('/templates', async (_req, res) => {
   try {
     await ensureDefaultTemplates();
-    const templates = await prisma.labelTemplate.findMany({ orderBy: { name: 'asc' } });
+    const deprecatedNames = Object.values(defaultTemplates())
+      .flatMap((template) => template.legacyNames || []);
+    const templates = await prisma.labelTemplate.findMany({
+      where: deprecatedNames.length ? { name: { notIn: deprecatedNames } } : undefined,
+      orderBy: { name: 'asc' },
+    });
     res.json({ templates });
   } catch (err) {
     console.error('[labels/templates] erro:', err);
