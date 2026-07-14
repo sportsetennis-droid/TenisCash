@@ -29,6 +29,21 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+function normalizeStocktakeSize(raw) {
+  const size = String(raw || '').trim().toUpperCase().replace(',', '.').replace(/\s+/g, '');
+  if (/^\d{2}(?:\.5)?$/.test(size)) {
+    const value = Number(size);
+    return value >= 15 && value <= 50 ? size : null;
+  }
+  if (/^(PP|P|M|G|GG|XG|XGG|EG|EGG)$/.test(size)) return size;
+  if (/^\d{1,2}A$/.test(size)) {
+    const value = Number.parseInt(size, 10);
+    return value >= 2 && value <= 16 ? size : null;
+  }
+  if (/^(U|UNICO|ÚNICO)$/.test(size)) return 'Único';
+  return null;
+}
+
 function multerErrorHandler(err, _req, res, _next) {
   if (err && err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'Arquivo muito grande. Limite: 50MB.' });
@@ -422,19 +437,33 @@ router.post('/products/:id/bipe-tamanhos', adminOnly, async (req, res) => {
     let saved = 0;
     for (const it of sizes) {
       if (!it || !it.bipeId) continue;
-      const tam = String(it.size || '').trim().slice(0, 20);
-      await prisma.stocktakeBipe.update({ where: { id: String(it.bipeId) }, data: { productSize: tam || null } }).then(() => { saved++; }).catch(() => {});
+      const tam = normalizeStocktakeSize(it.size);
+      if (!tam) continue;
+      const bipe = await prisma.stocktakeBipe.findUnique({ where: { id: String(it.bipeId) }, select: { id: true, productId: true } });
+      if (!bipe || bipe.productId !== req.params.id) continue;
+      await prisma.stocktakeBipe.update({ where: { id: bipe.id }, data: { productSize: tam } }).then(() => { saved++; }).catch(() => {});
     }
     const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true, sizes: { select: { id: true, barcode: true, size: true } } } });
     const resolvidos = [];
     for (const s of (p && p.sizes) || []) {
       if (!s.barcode || !/^T-/.test(String(s.size))) continue;
-      const bps = await prisma.stocktakeBipe.findMany({ where: { productId: p.id, barcode: s.barcode }, select: { productSize: true } });
+      const bps = await prisma.stocktakeBipe.findMany({ where: { productId: p.id, productSizeId: s.id }, select: { id: true, productSize: true } });
       if (!bps.length) continue;
-      const tams = [...new Set(bps.map((b) => (b.productSize || '').trim()).filter(Boolean))];
-      const allFilled = bps.every((b) => (b.productSize || '').trim());
+      const normalized = bps.map((b) => normalizeStocktakeSize(b.productSize));
+      const tams = [...new Set(normalized.filter(Boolean))];
+      const allFilled = normalized.every(Boolean);
       if (allFilled && tams.length === 1) {
-        try { await prisma.productSize.update({ where: { id: s.id }, data: { size: tams[0] } }); resolvidos.push({ barcode: s.barcode, size: tams[0] }); } catch (e) { /* conflito de tamanho unico no card — mantem placeholder */ }
+        const barcodeOwners = await prisma.productSize.count({ where: { barcode: s.barcode } });
+        if (barcodeOwners !== 1) continue;
+        const clash = await prisma.productSize.findFirst({ where: { productId: p.id, size: tams[0], id: { not: s.id } }, select: { id: true } });
+        if (clash) continue;
+        try {
+          await prisma.$transaction(async (tx) => {
+            await tx.productSize.update({ where: { id: s.id }, data: { size: tams[0], sizeConfirmedAt: new Date() } });
+            await tx.stocktakeBipe.updateMany({ where: { productSizeId: s.id }, data: { productSize: tams[0] } });
+          });
+          resolvidos.push({ barcode: s.barcode, size: tams[0] });
+        } catch (e) { /* conflito: mantém placeholder e exige revisão */ }
       }
     }
     res.json({ ok: true, saved, resolvidos });

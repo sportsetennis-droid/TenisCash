@@ -10,6 +10,22 @@ function clean(value) {
   return value == null ? '' : String(value).trim();
 }
 
+function requiresPhysicalSizeConfirmation(product) {
+  const brand = clean(product?.brand).toUpperCase();
+  return brand.includes('ADIDAS') || brand.includes('NIKE');
+}
+
+function assertSellableSize(product, size) {
+  const label = clean(size?.size);
+  if (!label || label === '?' || /^T-/i.test(label)) {
+    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho não confirmado. Confira a caixa antes de vender.`);
+  }
+  if (requiresPhysicalSizeConfirmation(product) && !size?.sizeConfirmedAt) {
+    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho Adidas/Nike não confirmado pela caixa.`);
+  }
+  return size;
+}
+
 function resolveProductSize(product, item = {}) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   const requestedId = clean(item.productSizeId);
@@ -19,21 +35,21 @@ function resolveProductSize(product, item = {}) {
   if (requestedId) {
     const byId = sizes.find((size) => size.id === requestedId);
     if (!byId) throw new SaleStockError(`Tamanho invalido para ${product?.name || 'o produto'}. Selecione novamente.`);
-    return byId;
+    return assertSellableSize(product, byId);
   }
 
   if (barcode) {
     const byBarcode = sizes.find((size) => clean(size.barcode) === barcode);
-    if (byBarcode) return byBarcode;
+    if (byBarcode) return assertSellableSize(product, byBarcode);
   }
 
   if (requestedSize) {
     const bySize = sizes.find((size) => clean(size.size) === requestedSize);
     if (!bySize) throw new SaleStockError(`Tamanho ${requestedSize} nao cadastrado para ${product?.name || 'o produto'}.`);
-    return bySize;
+    return assertSellableSize(product, bySize);
   }
 
-  if (sizes.length === 1) return sizes[0];
+  if (sizes.length === 1) return assertSellableSize(product, sizes[0]);
   if (!sizes.length) throw new SaleStockError(`${product?.name || 'Produto'} esta sem tamanho cadastrado. Corrija o cadastro antes de vender.`);
   throw new SaleStockError(`Escolha o tamanho de ${product?.name || 'cada produto'} antes de finalizar a venda.`);
 }
@@ -129,4 +145,5 @@ module.exports = {
   resolveProductSize,
   planSaleProductSize,
   applyStoreStockDelta,
+  requiresPhysicalSizeConfirmation,
 };

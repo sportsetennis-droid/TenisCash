@@ -61,6 +61,11 @@ function physicalStock(size) {
   return (size?.storeStocks || []).reduce((sum, row) => sum + Number(row?.stock || 0), 0);
 }
 
+function requiresPhysicalSizeConfirmation(product) {
+  const brand = upper(product?.brand);
+  return brand.includes('ADIDAS') || brand.includes('NIKE');
+}
+
 function isPublicSizeLabel(value) {
   const label = upper(value).replace(/\s+/g, ' ');
   if (!label || /^T[-_]/.test(label)) return false;
@@ -102,14 +107,24 @@ function assessProductForNuvemshop(product, options = {}) {
 
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   const locatedSizes = sizes.map((size) => ({ ...size, stock: physicalStock(size) }));
-  const publicSizes = locatedSizes.filter((size) => size.stock > 0 && isPublicSizeLabel(size.size));
+  const strictSizeConfirmation = requiresPhysicalSizeConfirmation(product);
+  const publicSizes = locatedSizes.filter((size) => (
+    size.stock > 0
+    && isPublicSizeLabel(size.size)
+    && (!strictSizeConfirmation || Boolean(size.sizeConfirmedAt))
+  ));
   const placeholderStock = locatedSizes.reduce(
     (sum, size) => sum + (size.stock > 0 && !isPublicSizeLabel(size.size) ? size.stock : 0),
     0,
   );
+  const unconfirmedStock = strictSizeConfirmation ? locatedSizes.reduce(
+    (sum, size) => sum + (size.stock > 0 && !size.sizeConfirmedAt ? size.stock : 0),
+    0,
+  ) : 0;
 
   if (publicSizes.length === 0) reasons.push('sem tamanho valido com estoque fisico');
   if (placeholderStock > 0) reasons.push('estoque em tamanho placeholder');
+  if (unconfirmedStock > 0) reasons.push('estoque Adidas/Nike sem tamanho confirmado pela caixa');
 
   return {
     eligible: reasons.length === 0,
@@ -118,6 +133,7 @@ function assessProductForNuvemshop(product, options = {}) {
     publicSizes,
     locatedSizes,
     placeholderStock,
+    unconfirmedStock,
   };
 }
 
@@ -165,4 +181,5 @@ module.exports = {
   hasRemoteUsableImage,
   isPublicSizeLabel,
   physicalStock,
+  requiresPhysicalSizeConfirmation,
 };

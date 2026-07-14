@@ -38,8 +38,8 @@ function validProduct(overrides = {}) {
       classification: { modality: 'Corrida', tier: 'Treino' },
     },
     sizes: [
-      { size: '40', storeStocks: [{ stock: 2 }] },
-      { size: '41', storeStocks: [{ stock: 0 }] },
+      { size: '40', sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 2 }] },
+      { size: '41', sizeConfirmedAt: new Date('2026-06-10T12:00:00Z'), storeStocks: [{ stock: 0 }] },
     ],
     ...overrides,
   };
@@ -61,6 +61,13 @@ const placeholder = assessProductForNuvemshop(validProduct({
 }));
 assert.equal(placeholder.eligible, false);
 assert(placeholder.reasons.includes('estoque em tamanho placeholder'));
+
+const adidasUnconfirmed = assessProductForNuvemshop(validProduct({
+  sizes: [{ size: '40', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
+}));
+assert.equal(adidasUnconfirmed.eligible, false);
+assert.equal(adidasUnconfirmed.unconfirmedStock, 2);
+assert(adidasUnconfirmed.reasons.some((reason) => reason.includes('sem tamanho confirmado')));
 
 const noConfirmation = validProduct();
 noConfirmation.aiContext = {

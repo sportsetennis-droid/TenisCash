@@ -53,6 +53,16 @@ async function main() {
   expectSaleError(() => resolveProductSize(product, {}), 'Escolha o tamanho');
   expectSaleError(() => resolveProductSize(product, { productSizeId: 'outra' }), 'Tamanho invalido');
   expectSaleError(() => resolveProductSize({ ...product, sizes: [] }, {}), 'sem tamanho cadastrado');
+  const adidasConfirmed = { ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], sizeConfirmedAt: new Date() }] };
+  assert.equal(resolveProductSize(adidasConfirmed, {}).id, 'ps40');
+  expectSaleError(
+    () => resolveProductSize({ ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], sizeConfirmedAt: null }] }, {}),
+    'não confirmado pela caixa',
+  );
+  expectSaleError(
+    () => resolveProductSize({ ...product, sizes: [{ ...product.sizes[0], size: 'T-78940' }] }, {}),
+    'tamanho não confirmado',
+  );
 
   const legacyPlan = planSaleProductSize(
     { ...product, sizes: [] },

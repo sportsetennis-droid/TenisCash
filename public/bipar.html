@@ -547,6 +547,9 @@
   // SALVA em fila com confirmação (✅) e segue pro próximo — o reconhecimento (visão no servidor)
   // roda em background e o resultado aparece na listinha (poll). Nada trava o fluxo.
   let etiqFila = []; try { etiqFila = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
+  // A fila visual do modal vive em memória. Depois de recarregar a página,
+  // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
+  etiqFila.forEach((item) => { if (item.needsSize) item.sizeQueued = false; });
   let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
   function etiqSave() { try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {} }
   function etiqBeep() {
@@ -666,7 +669,12 @@
     etiqWatch = setInterval(() => {
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
-      if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
+        if (it.needsSize) {
+          st.textContent = '📏 SALVO — CONFIRME O TAMANHO';
+          st.style.color = '#FFB14A';
+          det.textContent = 'O estoque ainda NÃO foi somado. Informe o tamanho BR da caixa.';
+          btn.disabled = true; btn.textContent = 'CONFIRME O TAMANHO'; btn.style.background = '#555';
+        } else if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
         if (it.alerta) { // checagem inteligente: passou do comprado
           st.textContent = '⚠ BIPADO — CONFERIR!';
           st.style.color = '#FFB14A';
@@ -698,7 +706,7 @@
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
     const lid = 'e' + Date.now();
-    const item = { lid, b64: null, ean, st: 'fila' };
+    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId() };
     etiqFila.push(item); renderEtiqLista();
     const k = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
     const c = document.createElement('canvas');
@@ -726,23 +734,49 @@
         const vsel = document.getElementById('vendedor').value;
         fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
+        fd.append('clientScanId', item.clientScanId);
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
         const d = await r.json().catch(() => ({}));
-        if (r.ok && d.capId) { item.st = 'salvo'; item.capId = d.capId; item.bipou = !!d.bipou; item.alerta = d.alerta || null; item.b64 = ''; etiqSave(); renderEtiqLista(); }
+        if (r.ok && d.capId) {
+          item.st = 'salvo';
+          item.capId = d.capId;
+          item.bipou = !!d.appliedToStock;
+          item.needsSize = !!d.needsSize;
+          item.alerta = d.alerta || null;
+          item.b64 = '';
+          if (d.needsSize && d.bipeId && !item.sizeQueued) {
+            item.sizeQueued = true;
+            const localBipe = { code: item.ean, bipeId: d.bipeId, found: d.found, product: d.product, sizeOptions: d.sizeOptions, needsSize: true, _scannerItem: item };
+            bipes.push(localBipe);
+            queueSizeRequest(localBipe);
+          }
+          etiqSave(); renderEtiqLista(); renderLista();
+        }
       }
     } catch (_) { /* mantém na fila, tenta no próximo tick */ }
     etiqBusy = false;
   }
 
   async function consultarStatus() {
-    const pend = etiqFila.filter((x) => x.st === 'salvo' && x.capId).slice(-20);
+    const pend = etiqFila.filter((x) => x.capId && (x.st === 'salvo' || x.needsSize)).slice(-20);
     if (!pend.length) return;
     try {
       const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
       const d = await r.json();
       for (const row of (d.rows || [])) {
         const it = etiqFila.find((x) => x.capId === row.id);
-        if (it && row.status !== 'processando') { it.st = row.status; it.msg = row.mensagem; }
+        if (it && row.status !== 'processando') {
+          it.st = row.status;
+          it.msg = row.mensagem;
+          it.bipou = !!row.appliedToStock;
+          it.needsSize = !!row.needsSize;
+          if (row.needsSize && row.bipeId && !it.sizeQueued) {
+            it.sizeQueued = true;
+            const localBipe = { code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
+            bipes.push(localBipe);
+            queueSizeRequest(localBipe);
+          }
+        }
       }
       etiqSave(); renderEtiqLista();
     } catch (_) {}
@@ -1032,9 +1066,11 @@
     if (!sizeModalBipe) {
       // fila vazia → devolve o foco pro campo de bipe
       const i = document.getElementById('codigo');
-      if (i && !i.disabled) setTimeout(() => i.focus(), 50);
+      if (i) { i.disabled = false; setTimeout(() => i.focus(), 50); }
       return;
     }
+    const mainInput = document.getElementById('codigo');
+    if (mainInput) mainInput.disabled = true;
     const b = sizeModalBipe;
     const nome = b.product?.name || 'Produto Adidas';
     const img = b.product?.imageUrl ? `<img src="${b.product.imageUrl}" onerror="this.style.display='none'">` : '';
@@ -1065,8 +1101,7 @@
           <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
         </div>
         ${btnUnico}
-        <div class="size-warn">⚠️ Informe o tamanho ANTES de bipar o próximo produto.</div>
-        <button type="button" id="size-skip" onclick="pularTamanho()">Pular — deixo o tamanho depois</button>
+        <div class="size-warn">⚠️ O tamanho é obrigatório. O estoque só será somado depois da confirmação.</div>
       </div>`;
     document.body.appendChild(overlay);
     const other = document.getElementById('size-other');
@@ -1081,15 +1116,11 @@
   window.confirmarTamanhoOutro = function () {
     const v = (document.getElementById('size-other')?.value || '').trim();
     if (!v) { sizeModalError('Digite o tamanho ou toque num número.'); return; }
-    // BIPE NUNCA SE PERDE (dono 2026-06-11): se o vendedor BIPAR com o modal
-    // aberto, o scanner digita o código aqui. 8+ dígitos = código de barras,
-    // não tamanho → registra o bipe normal (repetido conta! mesmo código =
-    // vários pares reais) e o modal continua esperando o tamanho do anterior.
+    // Enquanto há tamanho pendente, outro código não pode entrar. Isso impede que
+    // o operador misture duas caixas e também elimina a dupla contagem bipe+scanner.
     if (/^\d{8,14}$/.test(v)) {
       document.getElementById('size-other').value = '';
-      enviarBipe(v);
-      if (typeof window.resetBipeErrorCounter === 'function') window.resetBipeErrorCounter();
-      sizeModalError('📦 Bipe do código ' + v + ' REGISTRADO. Agora informe o tamanho deste produto aqui.');
+      sizeModalError('Primeiro confirme o tamanho desta caixa. O código ' + v + ' NÃO foi contabilizado.');
       return;
     }
     confirmarTamanho(v);
@@ -1112,6 +1143,13 @@
       // sucesso (ou já estava confirmado): atualiza o bipe local
       b.needsSize = false;
       if (b.product) b.product.size = d.size || size;
+      if (b._scannerItem) {
+        b._scannerItem.needsSize = false;
+        b._scannerItem.bipou = !!d.appliedToStock;
+        b._scannerItem.msg = d.appliedToStock ? 'tamanho confirmado e estoque contabilizado' : 'tamanho confirmado; estoque ainda bloqueado';
+        etiqSave();
+        renderEtiqLista();
+      }
       // 1 código = 1 tamanho: os OUTROS bipes do MESMO código (pares repetidos)
       // não precisam confirmar de novo — limpa pendência e tira da fila
       for (const outro of bipes) {
@@ -1127,13 +1165,6 @@
     } catch (e) {
       sizeModalError('Sem rede — tente de novo em segundos.');
     }
-  };
-
-  window.pularTamanho = function () {
-    const b = sizeModalBipe;
-    if (b) b.needsSize = true; // continua pendente: badge na lista + pede de novo no próximo bipe
-    renderLista();
-    showNextSizeModal();
   };
 
   // Reabrir o modal a partir do badge na lista
