@@ -66,10 +66,11 @@ function planSaleProductSize(product, item = {}) {
       ? sizes.some((size) => clean(size.size).toLowerCase() === requestedSize.toLowerCase())
       : false;
 
-    // Cadastro legado sem nenhuma variante: o PDV exige que o operador digite
-    // o tamanho real e cria a variante atomicamente junto com a venda.
-    const canCreateLegacySize = Boolean(
-      item.isNewSize && requestedSize && !requestedId && sizes.length === 0,
+    // Fluxo manual do PDV: se o vendedor informou um tamanho ainda inexistente,
+    // cria a variante atomicamente junto com a venda. A baixa negativa fica
+    // auditável até a conciliação do estoque físico.
+    const canCreateManualSize = Boolean(
+      item.isNewSize && requestedSize && !requestedId && !sizeAlreadyExists,
     );
 
     // Código ainda desconhecido pode ensinar uma numeração nova ao produto.
@@ -78,7 +79,7 @@ function planSaleProductSize(product, item = {}) {
       item.isNewBarcode && barcode && requestedSize && !requestedId && !sizeAlreadyExists,
     );
 
-    if (canCreateLegacySize || canCreateBarcodeSize) {
+    if (canCreateManualSize || canCreateBarcodeSize) {
       return {
         productSize: null,
         needsNewProductSize: true,

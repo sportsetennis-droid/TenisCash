@@ -822,10 +822,13 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const unit = parseFloat(item.unitPrice || p.promoPrice || p.price);
       if (!Number.isInteger(qty) || qty < 1) throw new SaleStockError(`Quantidade inválida para ${p.name}.`);
       if (!Number.isFinite(unit) || unit < 0) throw new SaleStockError(`Preço inválido para ${p.name}.`);
+      const sellerReportedSize = normalizeSellerReportedSize(item.sellerSize);
+      if (!sellerReportedSize) {
+        throw new SaleStockError(`Digite manualmente o tamanho de ${p.name} ao escolher o produto.`);
+      }
       const sizePlan = planSaleProductSize(p, item);
       const productSize = sizePlan.productSize;
       const needsNewProductSize = sizePlan.needsNewProductSize;
-      const sellerReportedSize = normalizeSellerReportedSize(item.sellerSize);
       const total = unit * qty;
       totalAmount += total;
       return {

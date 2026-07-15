@@ -73,10 +73,10 @@ async function main() {
     () => planSaleProductSize({ ...product, sizes: [] }, { size: 'M' }),
     'nao cadastrado',
   );
-  expectSaleError(
-    () => planSaleProductSize(product, { size: '42', isNewSize: true }),
-    'nao cadastrado',
-  );
+  const manualPlan = planSaleProductSize(product, { size: '42', isNewSize: true });
+  assert.equal(manualPlan.productSize, null);
+  assert.equal(manualPlan.needsNewProductSize, true);
+  assert.equal(manualPlan.requestedSize, '42');
   const barcodePlan = planSaleProductSize(product, {
     size: '42', barcode: '78942', isNewBarcode: true,
   });
