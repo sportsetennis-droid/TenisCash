@@ -669,15 +669,10 @@
     etiqWatch = setInterval(() => {
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
-        if (it.needsSize && !it.bipou) {
-          st.textContent = '📏 SALVO — CONFIRME O TAMANHO';
+        if (it.needsSize) {
+          st.textContent = it.bipou ? '⚠ BIPADO — TAMANHO OPCIONAL' : '⚠ SALVO — TAMANHO OPCIONAL';
           st.style.color = '#FFB14A';
-          det.textContent = 'O estoque ainda NÃO foi somado. Informe o tamanho BR da caixa.';
-          btn.disabled = true; btn.textContent = 'CONFIRME O TAMANHO'; btn.style.background = '#555';
-        } else if (it.needsSize && it.bipou) {
-          st.textContent = '⚠ BIPADO — TAMANHO PENDENTE';
-          st.style.color = '#FFB14A';
-          det.textContent = 'O estoque foi somado. Confirme o tamanho quando puder.';
+          det.textContent = it.bipou ? 'O estoque foi somado. Informe o tamanho quando puder.' : 'O registro foi salvo. O tamanho não bloqueia a próxima leitura.';
           btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
           clearInterval(etiqWatch);
         } else if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
@@ -1078,8 +1073,7 @@
     const mainInput = document.getElementById('codigo');
     if (mainInput) mainInput.disabled = false;
     const b = sizeModalBipe;
-    const nome = b.product?.name || 'Produto Adidas';
-    const adidasOptional = /ADIDAS/i.test(String(b.product?.brand || ''));
+    const nome = b.product?.name || 'Produto';
     const img = b.product?.imageUrl ? `<img src="${b.product.imageUrl}" onerror="this.style.display='none'">` : '';
     // Tamanho atual no sistema (chute de importação, nunca confirmado) → mostrar pra confirmar/corrigir
     const sizeAtual = b.product?.size || '';
@@ -1097,7 +1091,7 @@
     overlay.innerHTML = `
       <div class="size-sheet">
         <div class="ss-title">📏 Qual o tamanho?</div>
-        <div class="ss-sub">Produto ADIDAS — o código não traz o tamanho. Olhe o número na CAIXA / etiqueta.</div>
+        <div class="ss-sub">O tamanho ainda não foi confirmado. Se puder, olhe o número na CAIXA / etiqueta.</div>
         <div class="ss-prod">${img}<div><div class="nm">${nome}</div><div class="cd">${b.code || ''}</div></div></div>
         ${avisoChute}
         <div id="size-error"></div>
@@ -1108,8 +1102,8 @@
           <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
         </div>
         ${btnUnico}
-        <div class="size-warn">${adidasOptional ? '⚠️ Aviso: o estoque Adidas já foi somado. Você pode confirmar agora ou deixar para depois.' : '⚠️ O tamanho é obrigatório. O estoque só será somado depois da confirmação.'}</div>
-        ${adidasOptional ? '<button type="button" id="size-skip" onclick="pularTamanho()">Deixar o tamanho para depois</button>' : ''}
+        <div class="size-warn">⚠️ Aviso: o estoque já foi somado. Você pode informar agora ou deixar para depois.</div>
+        <button type="button" id="size-skip" onclick="pularTamanho()">Deixar o tamanho para depois</button>
       </div>`;
     document.body.appendChild(overlay);
     const other = document.getElementById('size-other');
@@ -1124,17 +1118,12 @@
   window.confirmarTamanhoOutro = function () {
     const v = (document.getElementById('size-other')?.value || '').trim();
     if (!v) { sizeModalError('Digite o tamanho ou toque num número.'); return; }
-    // Adidas agora é aviso, não trava: se o leitor mandar o próximo código aqui,
+    // Tamanho pendente é aviso em qualquer marca: se o leitor mandar o próximo código aqui,
     // ele é contabilizado normalmente e o tamanho anterior continua pendente.
     if (/^\d{8,14}$/.test(v)) {
       document.getElementById('size-other').value = '';
-      const adidasOptional = /ADIDAS/i.test(String(sizeModalBipe?.product?.brand || ''));
-      if (adidasOptional) {
-        enviarBipe(v);
-        sizeModalError('Código ' + v + ' contabilizado. O tamanho anterior continua pendente.');
-      } else {
-        sizeModalError('Primeiro confirme o tamanho desta caixa. O código ' + v + ' NÃO foi contabilizado.');
-      }
+      enviarBipe(v);
+      sizeModalError('Código ' + v + ' contabilizado. O tamanho anterior continua pendente.');
       return;
     }
     confirmarTamanho(v);

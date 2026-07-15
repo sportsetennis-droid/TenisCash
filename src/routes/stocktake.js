@@ -119,11 +119,11 @@ function needsManualSize(brand, productSizeRow) {
   return !productSizeRow.sizeConfirmedAt;
 }
 
-// Decisão do dono (2026-07-14): Adidas sem tamanho confirmado gera AVISO,
-// mas não bloqueia contagem. A trava dura continua para Nike, cujo OCR mistura
-// US/UK/EUR/BR. Conflitos de GTIN e produto inativo continuam bloqueando.
-function sizeConfirmationBlocksStock(brand, productSizeRow) {
-  return needsManualSize(brand, productSizeRow) && !isAdidas(brand);
+// Decisão do dono (2026-07-15): tamanho não confirmado gera apenas AVISO em
+// qualquer marca. Nunca bloqueia a contagem. Conflitos de GTIN, produto inativo
+// e loja ausente continuam bloqueando porque impedem identificar o estoque.
+function sizeConfirmationBlocksStock() {
+  return false;
 }
 
 // Um código só pode movimentar estoque quando existe exatamente UMA variante ativa.
@@ -141,8 +141,8 @@ function chooseUniqueBarcodeCandidate(matched) {
 }
 
 // Único ponto que transforma um bipe em saldo. Mantém a gravação do bipe separada,
-// mas só aplica quando produto/loja/variante estão inequívocos. Nike ainda exige
-// tamanho confirmado; Adidas segue com aviso sem bloquear. A transação também
+// mas só aplica quando produto/loja/variante estão inequívocos. Confirmação de
+// tamanho nunca bloqueia nenhuma marca. A transação também
 // deixa prova no livro-razão.
 async function applyBipeIfReady(tx, bipeId) {
   const bipe = await tx.stocktakeBipe.findUnique({ where: { id: bipeId } });

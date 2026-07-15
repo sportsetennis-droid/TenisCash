@@ -2060,9 +2060,8 @@ function renderSellResults() {
 let _pendingBarcode = null; // código bipado mas NÃO reconhecido, aguardando o vendedor achar o produto
 let _saleIdemKey = null;    // chave única do carrinho atual (anti-duplicação de venda no re-clique)
 
-function _isAdidasSizePending(brand, size, sizeConfirmedAt) {
-  return /ADIDAS/i.test(String(brand || ''))
-    && (!sizeConfirmedAt || !String(size || '').trim() || /^T-/i.test(String(size || '')) || String(size || '').trim() === '?');
+function _isSizePending(_brand, size, sizeConfirmedAt) {
+  return !sizeConfirmedAt || !String(size || '').trim() || /^T-/i.test(String(size || '')) || String(size || '').trim() === '?';
 }
 
 function _cleanSellerSize(value) {
@@ -2083,7 +2082,7 @@ async function onSellBipe() {
       const price = d.product.promoPrice || d.product.price || 0;
       addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { productSizeId: d.product.productSizeId, size: d.product.size, sizeConfirmedAt: d.product.sizeConfirmedAt, barcode: code });
       msg.style.color = '#0a843d';
-      msg.textContent = '✅ ' + (d.product.name || '') + (_isAdidasSizePending(d.product.brand, d.product.size, d.product.sizeConfirmedAt) ? ' — registre o tamanho no carrinho (não trava a venda)' : ' — tam ' + (d.product.size || '?') + ' adicionado');
+      msg.textContent = '✅ ' + (d.product.name || '') + (_isSizePending(d.product.brand, d.product.size, d.product.sizeConfirmedAt) ? ' — registre o tamanho no carrinho (não trava a venda)' : ' — tam ' + (d.product.size || '?') + ' adicionado');
     } else {
       _pendingBarcode = code;
       msg.style.color = '#b06b00';
@@ -2168,7 +2167,7 @@ function addToCartById(productId) {
 
 function addToCart(productId, name, brand, price, imageUrl, opts) {
   opts = opts || {};
-  const keepSeparate = _isAdidasSizePending(brand, opts.size, opts.sizeConfirmedAt) && !opts.sellerSize;
+  const keepSeparate = _isSizePending(brand, opts.size, opts.sizeConfirmedAt) && !opts.sellerSize;
   const existing = keepSeparate ? null : cart.find(i => i.productId === productId
     && (i.productSizeId || null) === (opts.productSizeId || null)
     && (i.size || null) === (opts.size || null)
@@ -2203,9 +2202,9 @@ function renderCart() {
   }
   empty.style.display = 'none';
   list.innerHTML = cart.map((it, i) => {
-    const pendingAdidas = _isAdidasSizePending(it.brand, it.size, it.sizeConfirmedAt);
-    const shownSize = it.sellerSize || (pendingAdidas ? null : it.size);
-    const sellerSizeField = pendingAdidas ? `<div style="margin-top:7px;padding:8px;background:#fff8e0;border-radius:8px;">
+    const pendingSize = _isSizePending(it.brand, it.size, it.sizeConfirmedAt);
+    const shownSize = it.sellerSize || (pendingSize ? null : it.size);
+    const sellerSizeField = pendingSize ? `<div style="margin-top:7px;padding:8px;background:#fff8e0;border-radius:8px;">
       <label style="display:block;font-size:11px;font-weight:800;color:#8a6100;margin-bottom:4px;">TAMANHO INFORMADO PELO VENDEDOR — OPCIONAL, NÃO TRAVA</label>
       <input value="${it.sellerSize || ''}" oninput="setCartSellerSize(${i},this.value)" placeholder="Ex.: 38, 39, 40, 41..." inputmode="decimal" style="width:100%;padding:9px;border:1px solid #e2b45f;border-radius:7px;font-size:16px;font-weight:800;box-sizing:border-box;">
     </div>` : '';

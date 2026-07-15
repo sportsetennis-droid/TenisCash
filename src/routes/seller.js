@@ -711,11 +711,11 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         }
         if (!it.productSizeId) throw new SaleStockError(`Tamanho não identificado para ${it.productName}.`);
 
-        // Loja pode registrar o tamanho real do Adidas durante a venda. Isso nunca
+        // Loja pode registrar o tamanho real de qualquer marca durante a venda. Isso nunca
         // bloqueia: a venda sempre guarda o valor informado. A variante técnica só
         // é confirmada quando o tamanho ainda não foi confirmado e não existe outra
         // variante do mesmo card com o mesmo tamanho.
-        if (it._sellerReportedSize && /ADIDAS/i.test(String(it.brand || ''))) {
+        if (it._sellerReportedSize) {
           const current = await tx.productSize.findUnique({
             where: { id: it.productSizeId },
             select: { id: true, productId: true, size: true, sizeConfirmedAt: true },

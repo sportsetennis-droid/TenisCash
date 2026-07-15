@@ -61,6 +61,14 @@ assert.match(html, /isNewSize: !!i\.isNewSize/);
 assert.match(html, /isNewSize: !!opts\.isNewSize/);
 assert.match(html, /sellerSize: i\.sellerSize \|\| null/);
 assert.match(html, /TAMANHO INFORMADO PELO VENDEDOR — OPCIONAL, NÃO TRAVA/);
-assert.match(html, /function _isAdidasSizePending/);
+assert.match(html, /function _isSizePending/);
 
-console.log('ALL_PASS loja sale selection (legacy size, store-only choices, seller size without lock, payload)');
+const biparHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'bipar.html'), 'utf8');
+assert.match(biparHtml, /o estoque já foi somado\. Você pode informar agora ou deixar para depois/);
+assert.match(biparHtml, /id="size-skip" onclick="pularTamanho\(\)"/);
+assert.doesNotMatch(biparHtml, /O tamanho é obrigatório/);
+
+const stocktakeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'stocktake.js'), 'utf8');
+assert.match(stocktakeSource, /function sizeConfirmationBlocksStock\(\) \{\s*return false;/);
+
+console.log('ALL_PASS loja sale selection (legacy size, store-only choices, all brands without size lock, payload)');

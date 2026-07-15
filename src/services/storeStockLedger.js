@@ -10,23 +10,16 @@ function clean(value) {
   return value == null ? '' : String(value).trim();
 }
 
-function requiresPhysicalSizeConfirmation(product) {
-  const brand = clean(product?.brand).toUpperCase();
-  return brand.includes('NIKE');
+function requiresPhysicalSizeConfirmation() {
+  // Decisão do dono (2026-07-15): nenhuma marca pode bloquear a venda
+  // por falta de confirmação prévia do tamanho da caixa.
+  return false;
 }
 
-function assertSellableSize(product, size) {
-  // Decisão do dono (2026-07-14): Adidas não pode ficar indisponível por
-  // tamanho técnico/não confirmado. A venda segue e o rótulo pendente fica
-  // registrado no SaleItem para conferência posterior.
-  if (clean(product?.brand).toUpperCase().includes('ADIDAS')) return size;
-  const label = clean(size?.size);
-  if (!label || label === '?' || /^T-/i.test(label)) {
-    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho não confirmado. Confira a caixa antes de vender.`);
-  }
-  if (requiresPhysicalSizeConfirmation(product) && !size?.sizeConfirmedAt) {
-    throw new SaleStockError(`${product?.name || 'Produto'} está com tamanho Nike não confirmado pela caixa.`);
-  }
+function assertSellableSize(_product, size) {
+  // Tamanho técnico, placeholder ou ainda não confirmado nunca trava a venda.
+  // A variante continua obrigatória para a baixa atingir o estoque correto;
+  // o tamanho real informado pelo vendedor fica registrado no SaleItem.
   return size;
 }
 

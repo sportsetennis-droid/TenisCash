@@ -57,14 +57,10 @@ async function main() {
   assert.equal(resolveProductSize(adidasConfirmed, {}).id, 'ps40');
   const adidasUnconfirmed = { ...product, brand: 'ADIDAS', sizes: [{ ...product.sizes[0], size: 'T-78940', sizeConfirmedAt: null }] };
   assert.equal(resolveProductSize(adidasUnconfirmed, {}).id, 'ps40');
-  expectSaleError(
-    () => resolveProductSize({ ...product, brand: 'NIKE', sizes: [{ ...product.sizes[0], sizeConfirmedAt: null }] }, {}),
-    'não confirmado pela caixa',
-  );
-  expectSaleError(
-    () => resolveProductSize({ ...product, sizes: [{ ...product.sizes[0], size: 'T-78940' }] }, {}),
-    'tamanho não confirmado',
-  );
+  const nikeUnconfirmed = { ...product, brand: 'NIKE', sizes: [{ ...product.sizes[0], sizeConfirmedAt: null }] };
+  assert.equal(resolveProductSize(nikeUnconfirmed, {}).id, 'ps40');
+  const genericPlaceholder = { ...product, brand: 'MIZUNO', sizes: [{ ...product.sizes[0], size: 'T-78940', sizeConfirmedAt: null }] };
+  assert.equal(resolveProductSize(genericPlaceholder, {}).id, 'ps40');
 
   const legacyPlan = planSaleProductSize(
     { ...product, sizes: [] },

@@ -60,8 +60,8 @@ const placeholder = assessProductForNuvemshop(validProduct({
   brand: 'MIZUNO',
   sizes: [{ size: 'T-6100', storeStocks: [{ stock: 3 }] }],
 }));
-assert.equal(placeholder.eligible, false);
-assert(placeholder.reasons.includes('estoque em tamanho placeholder'));
+assert.equal(placeholder.eligible, true);
+assert(placeholder.warnings.some((warning) => warning.includes('técnico liberado')));
 
 const adidasUnlocked = assessProductForNuvemshop(validProduct({
   sizes: [{ size: 'T-6100', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
@@ -75,8 +75,8 @@ const nikeUnconfirmed = assessProductForNuvemshop(validProduct({
   brand: 'NIKE',
   sizes: [{ size: '40', sizeConfirmedAt: null, storeStocks: [{ stock: 2 }] }],
 }));
-assert.equal(nikeUnconfirmed.eligible, false);
-assert(nikeUnconfirmed.reasons.some((reason) => reason.includes('Nike')));
+assert.equal(nikeUnconfirmed.eligible, true);
+assert(nikeUnconfirmed.warnings.some((warning) => warning.includes('sem confirmação')));
 
 assert.equal(assessRemoteProductForNuvemshop(validRemote({
   variants: [{ price: '360', values: [{ pt: 'T-6100' }] }],
