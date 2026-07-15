@@ -34,6 +34,7 @@ const baseProductSelect = {
       size: true,
       stock: true,
       barcode: true,
+      sizeConfirmedAt: true,
       storeStocks: { select: { stock: true, store: { select: { name: true, code: true, neighborhood: true } } } },
     },
   },
@@ -46,6 +47,7 @@ function formatProductCard(p) {
     size: s.size,
     stock: s.stock,
     barcode: s.barcode || null,
+    sizeConfirmedAt: s.sizeConfirmedAt || null,
     ...(s.storeStocks ? { storeStocks: s.storeStocks } : {}),
   }));
   const availableSizes = sizes.filter((s) => (s.stock || 0) > 0);

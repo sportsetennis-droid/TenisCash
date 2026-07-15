@@ -6,6 +6,15 @@ const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('.
 
 const router = express.Router();
 
+function normalizeSellerReportedSize(value) {
+  return String(value == null ? '' : value)
+    .trim()
+    .toUpperCase()
+    .replace(',', '.')
+    .replace(/\s+/g, '')
+    .slice(0, 20) || null;
+}
+
 function sellerOnly(req, res, next) {
   if (!['seller', 'admin', 'superadmin', 'manager', 'store'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso restrito ao vendedor / loja' });
@@ -626,6 +635,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const sizePlan = planSaleProductSize(p, item);
       const productSize = sizePlan.productSize;
       const needsNewProductSize = sizePlan.needsNewProductSize;
+      const sellerReportedSize = normalizeSellerReportedSize(item.sellerSize);
       const total = unit * qty;
       totalAmount += total;
       return {
@@ -634,13 +644,14 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         productName: p.name,
         brand: p.brand || 'SEM MARCA',
         category: p.category || null,
-        size: productSize?.size || sizePlan.requestedSize || String(item.size || '').trim() || null,
+        size: sellerReportedSize || productSize?.size || sizePlan.requestedSize || String(item.size || '').trim() || null,
         quantity: qty,
         unitPrice: unit,
         totalPrice: total,
         unitCost: p.costPrice > 0 ? p.costPrice : null,
         _needsNewProductSize: needsNewProductSize,
         _orphanBarcode: item.isNewBarcode && item.barcode ? String(item.barcode).trim() : null,
+        _sellerReportedSize: sellerReportedSize,
       };
     });
 
@@ -700,6 +711,33 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         }
         if (!it.productSizeId) throw new SaleStockError(`Tamanho não identificado para ${it.productName}.`);
 
+        // Loja pode registrar o tamanho real do Adidas durante a venda. Isso nunca
+        // bloqueia: a venda sempre guarda o valor informado. A variante técnica só
+        // é confirmada quando o tamanho ainda não foi confirmado e não existe outra
+        // variante do mesmo card com o mesmo tamanho.
+        if (it._sellerReportedSize && /ADIDAS/i.test(String(it.brand || ''))) {
+          const current = await tx.productSize.findUnique({
+            where: { id: it.productSizeId },
+            select: { id: true, productId: true, size: true, sizeConfirmedAt: true },
+          });
+          if (current && !current.sizeConfirmedAt) {
+            const clash = await tx.productSize.findFirst({
+              where: { productId: current.productId, size: it._sellerReportedSize, id: { not: current.id } },
+              select: { id: true },
+            });
+            if (!clash) {
+              await tx.productSize.update({
+                where: { id: current.id },
+                data: { size: it._sellerReportedSize, sizeConfirmedAt: new Date() },
+              });
+              await tx.stocktakeBipe.updateMany({
+                where: { productSizeId: current.id },
+                data: { productSize: it._sellerReportedSize },
+              });
+            }
+          }
+        }
+
         if (it._orphanBarcode) {
           const owner = await tx.productSize.findFirst({ where: { barcode: it._orphanBarcode }, select: { id: true } });
           if (!owner) {
@@ -711,7 +749,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         }
       }
 
-      const persistedItems = saleItemsData.map(({ _needsNewProductSize, _orphanBarcode, ...item }) => item);
+      const persistedItems = saleItemsData.map(({ _needsNewProductSize, _orphanBarcode, _sellerReportedSize, ...item }) => item);
       const sale = await tx.sale.create({
         data: {
           sellerId,

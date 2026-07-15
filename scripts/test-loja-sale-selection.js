@@ -59,5 +59,8 @@ assert.match(noLocalStock.prompts[0], /saldo nesta loja: 0/);
 
 assert.match(html, /isNewSize: !!i\.isNewSize/);
 assert.match(html, /isNewSize: !!opts\.isNewSize/);
+assert.match(html, /sellerSize: i\.sellerSize \|\| null/);
+assert.match(html, /TAMANHO INFORMADO PELO VENDEDOR — OPCIONAL, NÃO TRAVA/);
+assert.match(html, /function _isAdidasSizePending/);
 
-console.log('ALL_PASS loja sale selection (legacy size, store-only choices, zero-stock fallback, payload)');
+console.log('ALL_PASS loja sale selection (legacy size, store-only choices, seller size without lock, payload)');

@@ -270,6 +270,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
               size: true,
               stock: true,
               barcode: true,
+              sizeConfirmedAt: true,
               storeStocks: {
                 ...(storeId ? { where: { storeId } } : {}),
                 include: { store: { select: { id: true, code: true, name: true } } },
@@ -339,6 +340,7 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
             size: true,
             stock: true,
             barcode: true,
+            sizeConfirmedAt: true,
             storeStocks: {
               ...(myStore.storeId ? { where: { storeId: myStore.storeId } } : {}),
               include: { store: { select: { id: true, code: true, name: true } } },
