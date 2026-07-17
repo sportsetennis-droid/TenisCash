@@ -404,6 +404,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('wacoex',this)">WhatsApp Cloud</button>
     <button class="tab" onclick="switchTab('nfegeral',this)">NFE Geral</button>
     <button class="tab" onclick="switchTab('marketing',this)">🎨 Marketing IA</button>
+    <button class="tab" onclick="switchTab('cameraAI',this)">📹 Câmeras IA</button>
     <button class="tab" onclick="switchTab('infoproducts',this)">🎓 Infoprodutos</button>
   </div>
 
@@ -737,6 +738,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Catálogo + Flux/GPT-Image · gera foto editorial, Reel, sem-fundo · copy do Claude</div>
         <span class="hub-card-badge">NOVO</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('cameraAI')">
+        <div class="hub-card-icon">📹</div>
+        <div class="hub-card-title">Câmeras IA</div>
+        <div class="hub-card-desc">Monitoramento inteligente das lojas, detecção de pessoas e eventos para revisão</div>
+        <span class="hub-card-badge">SEGURANÇA</span>
+      </button>
     </div>
 
     <script>
@@ -777,6 +784,61 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       })();
       // Carrega no boot
       setTimeout(loadHubStats, 800);
+    </script>
+  </div>
+
+  <!-- CAMERAS IA SECTION -->
+  <div class="section" id="tab-cameraAI" style="display:none">
+    <div class="section-head">
+      <span class="section-title">📹 Central de Câmeras IA</span>
+      <button class="refresh-btn" onclick="cameraAIRefreshStatus()">↻ Atualizar</button>
+    </div>
+
+    <div style="background:linear-gradient(135deg,#111827,#1f2937);color:#fff;border-radius:18px;padding:22px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:#9ca3af;font-weight:700">Piloto de segurança inteligente</div>
+        <div style="font-size:24px;font-weight:800;margin-top:5px">Tapo TC60 · Loja piloto</div>
+        <div style="font-size:13px;color:#d1d5db;margin-top:7px;max-width:640px">A IA detecta presença de pessoas e separa momentos para revisão humana. Nenhuma ocorrência representa acusação automática.</div>
+      </div>
+      <div id="camera-ai-pilot-status" style="display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.1);padding:10px 14px;border-radius:999px;font-size:13px;font-weight:700">
+        <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.18)"></span>
+        Integração local em configuração
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
+      <div class="card" style="padding:18px">
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras cadastradas</div>
+        <div style="font-size:30px;font-weight:800;margin-top:8px">1</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:3px">TC60 localizada na rede da loja</div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Análise</div>
+        <div style="font-size:20px;font-weight:800;margin-top:12px">Detecção de pessoas</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:5px">Processamento local, sem envio à nuvem</div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Último teste</div>
+        <div style="font-size:20px;font-weight:800;margin-top:12px;color:#0a9d6e">✓ Aprovado</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:5px">Pessoa reconhecida com até 85% de confiança</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px">
+      <div style="font-size:16px;font-weight:800;margin-bottom:13px">Próximas etapas</div>
+      <div style="display:grid;gap:10px;font-size:13px;color:var(--text2)">
+        <div>1. Posicionar a câmera cobrindo produtos e circulação, sem áreas privadas.</div>
+        <div>2. Conectar o agente local ao TenisCash por canal protegido.</div>
+        <div>3. Exibir eventos, horários e trechos para revisão neste painel.</div>
+        <div>4. Adicionar câmeras por loja e configurar zonas de caixa, estoque e saída.</div>
+      </div>
+    </div>
+    <script>
+      function cameraAIRefreshStatus() {
+        const status = document.getElementById('camera-ai-pilot-status');
+        if (!status) return;
+        status.lastChild.textContent = ' Piloto validado · aguardando conexão com a API';
+      }
     </script>
   </div>
 
@@ -7280,7 +7342,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','whatsapp','infoproducts'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','cameraAI','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
