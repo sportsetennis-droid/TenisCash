@@ -806,6 +806,24 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </div>
     </div>
 
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px;background:#05070a;border-color:#1f2937">
+      <div style="position:relative;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;background:#000">
+        <video id="camera-ai-video" controls muted autoplay playsinline style="width:100%;height:100%;object-fit:contain;display:none"></video>
+        <div id="camera-ai-video-empty" style="text-align:center;color:#9ca3af;padding:24px">
+          <div style="font-size:42px;margin-bottom:8px">📹</div>
+          <div style="font-size:15px;font-weight:800;color:#e5e7eb">Transmissão ainda não conectada neste navegador</div>
+          <div style="font-size:12px;margin-top:6px">Cole abaixo a URL HLS gerada pelo computador da loja.</div>
+        </div>
+        <div id="camera-ai-live-badge" style="display:none;position:absolute;left:12px;top:12px;background:#d70015;color:#fff;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:900;letter-spacing:.6px">● AO VIVO</div>
+      </div>
+      <div style="display:flex;gap:8px;padding:12px;background:#111827;flex-wrap:wrap">
+        <input id="camera-ai-hls-url" type="url" placeholder="https://...trycloudflare.com/loja01/index.m3u8" style="flex:1;min-width:240px;border:1px solid #374151;border-radius:10px;background:#1f2937;color:#fff;padding:10px 12px;font-size:12px">
+        <button class="refresh-btn" onclick="cameraAIConnectStream()" style="background:#E5571E;color:#fff;border-color:#E5571E">Conectar transmissão</button>
+        <button class="refresh-btn" onclick="cameraAIForgetStream()" style="background:#1f2937;color:#d1d5db;border-color:#374151">Desconectar</button>
+      </div>
+      <div id="camera-ai-player-message" style="display:none;padding:0 12px 12px;background:#111827;color:#fca5a5;font-size:12px"></div>
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
       <div class="card" style="padding:18px">
         <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras cadastradas</div>
@@ -834,11 +852,75 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </div>
     </div>
     <script>
+      let cameraAIHls = null;
+      function cameraAILoadLibrary() {
+        if (window.Hls) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const existing = document.querySelector('script[data-camera-hls]');
+          if (existing) { existing.addEventListener('load', resolve, { once:true }); existing.addEventListener('error', reject, { once:true }); return; }
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+          script.dataset.cameraHls = '1';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      function cameraAISetMessage(message) {
+        const el = document.getElementById('camera-ai-player-message');
+        if (!el) return;
+        el.textContent = message || '';
+        el.style.display = message ? 'block' : 'none';
+      }
+      async function cameraAIConnectStream() {
+        const input = document.getElementById('camera-ai-hls-url');
+        const video = document.getElementById('camera-ai-video');
+        const empty = document.getElementById('camera-ai-video-empty');
+        const badge = document.getElementById('camera-ai-live-badge');
+        const url = (input?.value || '').trim();
+        if (!/^https:\/\/[^\s]+\.m3u8(?:\?[^\s]*)?$/i.test(url)) { cameraAISetMessage('Informe uma URL HLS HTTPS válida, terminada em .m3u8.'); return; }
+        localStorage.setItem('tc_camera_ai_hls_url', url);
+        cameraAISetMessage('Conectando…');
+        try {
+          if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
+          if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+          } else {
+            await cameraAILoadLibrary();
+            cameraAIHls = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
+            cameraAIHls.loadSource(url);
+            cameraAIHls.attachMedia(video);
+            cameraAIHls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) cameraAISetMessage('A transmissão está indisponível. Confirme se o computador da loja continua ligado.'); });
+          }
+          video.style.display = 'block';
+          empty.style.display = 'none';
+          badge.style.display = 'block';
+          video.play().catch(() => {});
+          cameraAISetMessage('');
+        } catch (_) {
+          cameraAISetMessage('Não foi possível iniciar o player HLS.');
+        }
+      }
+      function cameraAIForgetStream() {
+        localStorage.removeItem('tc_camera_ai_hls_url');
+        if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
+        const video = document.getElementById('camera-ai-video');
+        video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none';
+        document.getElementById('camera-ai-video-empty').style.display = 'block';
+        document.getElementById('camera-ai-live-badge').style.display = 'none';
+        document.getElementById('camera-ai-hls-url').value = '';
+        cameraAISetMessage('');
+      }
       function cameraAIRefreshStatus() {
         const status = document.getElementById('camera-ai-pilot-status');
         if (!status) return;
         status.lastChild.textContent = ' Piloto validado · aguardando conexão com a API';
       }
+      setTimeout(() => {
+        const saved = localStorage.getItem('tc_camera_ai_hls_url');
+        const input = document.getElementById('camera-ai-hls-url');
+        if (saved && input) { input.value = saved; cameraAIConnectStream(); }
+      }, 300);
     </script>
   </div>
 
