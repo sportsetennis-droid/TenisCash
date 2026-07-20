@@ -27,9 +27,16 @@ const submissionUpload = upload.fields([
   { name: 'evidence', maxCount: 6 },
   { name: 'whatsappEvidence', maxCount: 2 },
 ]);
+const privateUpload = upload.array('attachments', 6);
 
 const REVIEWER_ROLES = new Set(['store', 'manager', 'admin', 'superadmin']);
 const SELLER_ROLES = new Set(['seller', ...REVIEWER_ROLES]);
+const CONDUCT_REVIEWER_ROLES = new Set(['admin', 'superadmin']);
+const REQUEST_CATEGORIES = new Set(['SUPPLIES', 'MAINTENANCE', 'PRODUCT', 'EQUIPMENT', 'OTHER']);
+const REQUEST_URGENCIES = new Set(['NORMAL', 'HIGH', 'URGENT']);
+const REQUEST_STATUSES = new Set(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'REJECTED']);
+const CONDUCT_CATEGORIES = new Set(['OFFENSE', 'HARASSMENT', 'DISCRIMINATION', 'THREAT', 'MISCONDUCT', 'OTHER']);
+const CONDUCT_STATUSES = new Set(['RECEIVED', 'UNDER_REVIEW', 'CLOSED']);
 const DECISIONS = new Set([
   'NO_ACTION',
   'NOTICE',
@@ -46,6 +53,11 @@ function requireSellerScope(req, res, next) {
 
 function requireReviewer(req, res, next) {
   if (!REVIEWER_ROLES.has(req.userRole)) return res.status(403).json({ error: 'Acesso restrito ao fiscalizador da producao.' });
+  next();
+}
+
+function requireConductReviewer(req, res, next) {
+  if (!CONDUCT_REVIEWER_ROLES.has(req.userRole)) return res.status(403).json({ error: 'Canal confidencial restrito a administradores autorizados.' });
   next();
 }
 
@@ -99,6 +111,47 @@ function canReviewDay(req, day) {
   return REVIEWER_ROLES.has(req.userRole);
 }
 
+function canReviewStore(req, storeId) {
+  if (!REVIEWER_ROLES.has(req.userRole)) return false;
+  if (req.scope?.isStoreLocked) return storeId === req.scope.storeId;
+  return true;
+}
+
+function attachmentSummary(entry) {
+  return {
+    id: entry.id,
+    originalName: entry.originalName,
+    mimeType: entry.mimeType,
+    mediaType: entry.mediaType,
+    bytes: entry.bytes,
+    createdAt: entry.createdAt,
+  };
+}
+
+async function savePrivateAttachments(files, parent) {
+  const saved = [];
+  for (const file of files || []) saved.push(evidenceStore.save(file));
+  if (!saved.length) return [];
+  try {
+    await prisma.sellerPrivateAttachment.createMany({
+      data: saved.map((file) => ({ ...file, ...parent })),
+    });
+    return saved;
+  } catch (err) {
+    for (const file of saved) evidenceStore.remove(file.storedName);
+    throw err;
+  }
+}
+
+async function notifyCompany({ fromId, storeId, title, content, priority = 'normal', conduct = false }) {
+  const roleFilter = conduct ? ['superadmin', 'admin'] : ['superadmin', 'admin', 'manager', 'store'];
+  const where = { active: true, role: { in: roleFilter }, id: { not: fromId } };
+  if (!conduct && storeId) where.OR = [{ role: { in: ['superadmin', 'admin'] } }, { storeId }, { storeIds: { has: storeId } }];
+  const recipient = await prisma.user.findFirst({ where, orderBy: [{ role: 'desc' }, { createdAt: 'asc' }], select: { id: true } });
+  if (!recipient) return null;
+  return prisma.message.create({ data: { fromId, toId: recipient.id, type: 'request', title, content, priority } });
+}
+
 async function resolveSellerAndStore(sellerId, requestedStoreId) {
   const seller = await prisma.user.findUnique({
     where: { id: sellerId },
@@ -121,7 +174,7 @@ async function ensureDay({ sellerId, ymd, storeId }) {
     orderBy: { createdAt: 'asc' },
   });
 
-  return prisma.sellerProductionDay.upsert({
+  const day = await prisma.sellerProductionDay.upsert({
     where: { sellerId_workDate: { sellerId, workDate } },
     update: {},
     create: {
@@ -149,8 +202,40 @@ async function ensureDay({ sellerId, ymd, storeId }) {
       store: { select: { id: true, name: true, code: true } },
       items: { orderBy: { position: 'asc' }, include: { evidence: true } },
       incident: true,
+      reminders: { orderBy: { sentAt: 'asc' } },
     },
   });
+  if (!['APPROVED', 'NONCOMPLIANT', 'EXCUSED'].includes(day.status) && (day.policyVersion !== production.POLICY_VERSION || day.items.length < production.RULES.length)) {
+    await prisma.$transaction([
+      prisma.sellerProductionItem.createMany({
+        data: production.RULES.map((rule) => ({
+          dayId: day.id,
+          ruleKey: rule.key,
+          phase: rule.phase,
+          position: rule.position,
+          title: rule.title,
+          mediaType: rule.mediaType,
+          targetDurationSec: rule.targetDurationSec || null,
+          requiredProducts: rule.requiredProducts || 0,
+        })),
+        skipDuplicates: true,
+      }),
+      ...production.RULES.map((rule) => prisma.sellerProductionItem.updateMany({
+        where: { dayId: day.id, ruleKey: rule.key },
+        data: {
+          phase: rule.phase,
+          position: rule.position,
+          title: rule.title,
+          mediaType: rule.mediaType,
+          targetDurationSec: rule.targetDurationSec || null,
+          requiredProducts: rule.requiredProducts || 0,
+        },
+      })),
+      prisma.sellerProductionDay.update({ where: { id: day.id }, data: { policyVersion: production.POLICY_VERSION } }),
+    ]);
+    return prisma.sellerProductionDay.findUnique({ where: { id: day.id }, include: dayInclude() });
+  }
+  return day;
 }
 
 function serializeDay(day) {
@@ -158,6 +243,9 @@ function serializeDay(day) {
     const rule = production.ruleForKey(item.ruleKey);
     return {
       ...item,
+      internalOnly: !!rule?.internalOnly,
+      socialStory: !!rule?.socialStory,
+      socialReel: !!rule?.socialReel,
       requirements: production.requiredConfirmations(rule),
       confirmations: production.parseConfirmations(item.requirementsConfirmedJson),
       evidence: (item.evidence || []).map((entry) => ({
@@ -171,7 +259,7 @@ function serializeDay(day) {
       })),
     };
   });
-  return { ...day, items, progress: production.dayProgress(items) };
+  return { ...day, items, progress: production.dayProgress(items), reminders: day.reminders || [] };
 }
 
 function dayInclude() {
@@ -180,6 +268,7 @@ function dayInclude() {
     store: { select: { id: true, name: true, code: true } },
     items: { orderBy: { position: 'asc' }, include: { evidence: true } },
     incident: true,
+    reminders: { orderBy: { sentAt: 'asc' } },
   };
 }
 
@@ -195,11 +284,13 @@ router.get('/policy', requireSellerScope, async (req, res) => {
       incentivePct: production.INCENTIVE_PCT,
       totals: {
         activities: production.RULES.length,
-        reels: production.RULES.filter((r) => r.mediaType === 'video').length,
-        stories: production.RULES.filter((r) => r.mediaType === 'photo').length,
+        reels: production.RULES.filter((r) => r.socialReel).length,
+        stories: production.RULES.filter((r) => r.socialStory).length,
+        internalRecords: production.RULES.filter((r) => r.internalOnly).length,
       },
       rules: production.RULES.map((rule) => ({ ...rule, requirements: production.requiredConfirmations(rule) })),
       legalGuardrail: 'O sistema apura fatos e elegibilidade. Medidas disciplinares e folha exigem decisao humana autorizada.',
+      privacyNotice: 'Fotos, prints, solicitacoes e relatos internos nao sao publicados. O acesso fica restrito ao proprio autor e aos perfis autorizados da empresa, com registro de consulta a arquivos privados. A foto externa da bolsa serve somente ao controle de entrada e saida de volumes, sem inspecao do conteudo.',
     });
   } catch (err) {
     console.error('[seller-production/policy]', err);
@@ -232,6 +323,7 @@ router.get('/today', requireSellerScope, async (req, res) => {
     const requestedStoreId = req.scope?.isStoreLocked ? req.scope.storeId : (req.query.storeId || undefined);
     const day = await ensureDay({ sellerId, ymd, storeId: requestedStoreId });
     if (!canViewDay(req, day)) return res.status(403).json({ error: 'Sem acesso a esta producao.' });
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ day: serializeDay(day) });
   } catch (err) {
     console.error('[seller-production/today]', err);
@@ -266,6 +358,7 @@ router.get('/days', requireSellerScope, async (req, res) => {
       take: Math.min(Number(req.query.limit) || 60, 180),
       include: dayInclude(),
     });
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ days: days.map(serializeDay) });
   } catch (err) {
     console.error('[seller-production/days]', err);
@@ -375,7 +468,6 @@ router.get('/review-queue', requireReviewer, async (req, res) => {
     await ensureScheduledProductionDays();
     const where = {
       status: { notIn: ['APPROVED', 'NONCOMPLIANT', 'EXCUSED'] },
-      OR: [{ items: { some: { status: 'SUBMITTED' } } }, { status: 'SUBMITTED' }],
     };
     if (req.scope?.isStoreLocked) where.storeId = req.scope.storeId;
     else if (req.query.storeId) where.storeId = String(req.query.storeId);
@@ -391,6 +483,7 @@ router.get('/review-queue', requireReviewer, async (req, res) => {
       prisma.sellerProductionDay.findMany({ where, orderBy: [{ workDate: 'asc' }, { createdAt: 'asc' }], take: 100, include: dayInclude() }),
       prisma.user.findMany({ where: sellerWhere, orderBy: { name: 'asc' }, select: { id: true, name: true, employeeCode: true } }),
     ]);
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ days: days.filter((day) => day.sellerId !== req.userId).map(serializeDay), unconfiguredSellers });
   } catch (err) {
     console.error('[seller-production/review-queue]', err);
@@ -485,6 +578,7 @@ router.get('/evidence/:evidenceId', requireSellerScope, async (req, res) => {
     if (!evidence || !canViewDay(req, evidence.item.day)) return res.status(404).json({ error: 'Evidencia nao encontrada.' });
     const filePath = evidenceStore.resolve(evidence.storedName);
     if (!filePath) return res.status(404).json({ error: 'Arquivo nao encontrado.' });
+    await prisma.sellerPrivateAccessLog.create({ data: { actorId: req.userId, resourceType: 'PRODUCTION_EVIDENCE', resourceId: evidence.id } });
     res.type(evidence.mimeType);
     res.setHeader('Cache-Control', 'private, no-store');
     res.sendFile(filePath);
@@ -610,6 +704,215 @@ router.post('/incidents/:incidentId/decide', requireReviewer, async (req, res) =
   } catch (err) {
     console.error('[seller-production/incident-decision]', err);
     res.status(500).json({ error: 'Erro ao registrar decisao.' });
+  }
+});
+
+// Solicitações diretas de materiais, manutenção, produtos e equipamentos.
+router.get('/requests', requireSellerScope, async (req, res) => {
+  try {
+    const where = {};
+    if (req.userRole === 'seller') where.sellerId = req.userId;
+    else if (req.scope?.isStoreLocked) where.storeId = req.scope.storeId;
+    if (req.query.status && REQUEST_STATUSES.has(String(req.query.status).toUpperCase())) where.status = String(req.query.status).toUpperCase();
+    const requests = await prisma.sellerInternalRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        seller: { select: { id: true, name: true, employeeCode: true } },
+        store: { select: { id: true, name: true, code: true } },
+        attachments: true,
+      },
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ requests: requests.map((row) => ({ ...row, attachments: row.attachments.map(attachmentSummary) })) });
+  } catch (err) {
+    console.error('[seller-production/requests]', err);
+    res.status(500).json({ error: 'Erro ao carregar solicitações internas.' });
+  }
+});
+
+router.post('/requests', requireSellerScope, privateUpload, async (req, res) => {
+  let created = null;
+  let savedAttachments = [];
+  try {
+    if (req.userRole !== 'seller') return res.status(403).json({ error: 'Somente o vendedor pode abrir uma solicitação por este canal.' });
+    const category = String(req.body.category || '').toUpperCase();
+    const urgency = String(req.body.urgency || 'NORMAL').toUpperCase();
+    const title = String(req.body.title || '').trim().slice(0, 160);
+    const description = String(req.body.description || '').trim().slice(0, 6000);
+    if (!REQUEST_CATEGORIES.has(category)) return res.status(400).json({ error: 'Categoria de solicitação inválida.' });
+    if (!REQUEST_URGENCIES.has(urgency)) return res.status(400).json({ error: 'Urgência inválida.' });
+    if (!title || !description) return res.status(400).json({ error: 'Informe o título e descreva claramente o que precisa.' });
+    const resolved = await resolveSellerAndStore(req.userId, req.body.storeId || undefined);
+    created = await prisma.sellerInternalRequest.create({
+      data: { sellerId: req.userId, storeId: resolved.storeId, category, urgency, title, description },
+    });
+    savedAttachments = await savePrivateAttachments(req.files, { requestId: created.id });
+    await notifyCompany({
+      fromId: req.userId,
+      storeId: resolved.storeId,
+      title: `Solicitação interna — ${title}`,
+      content: `O vendedor ${resolved.seller.name} registrou uma solicitação no canal direto do TenisCash. Categoria: ${category}. Consulte o módulo Produção para responder.`,
+      priority: urgency === 'URGENT' ? 'urgent' : (urgency === 'HIGH' ? 'high' : 'normal'),
+    }).catch((notifyError) => console.error('[seller-production/request-notify]', notifyError.message));
+    const request = await prisma.sellerInternalRequest.findUnique({ where: { id: created.id }, include: { attachments: true, store: { select: { id: true, name: true, code: true } } } });
+    res.status(201).json({ ok: true, request: { ...request, attachments: request.attachments.map(attachmentSummary) } });
+  } catch (err) {
+    if (created) await prisma.sellerInternalRequest.delete({ where: { id: created.id } }).catch(() => {});
+    for (const file of savedAttachments) evidenceStore.remove(file.storedName);
+    console.error('[seller-production/request-create]', err);
+    res.status(500).json({ error: err.message || 'Erro ao registrar solicitação.' });
+  }
+});
+
+router.patch('/requests/:requestId', requireReviewer, async (req, res) => {
+  try {
+    const status = String(req.body.status || '').toUpperCase();
+    const companyResponse = String(req.body.companyResponse || '').trim().slice(0, 6000);
+    if (!REQUEST_STATUSES.has(status)) return res.status(400).json({ error: 'Situação inválida.' });
+    if (!companyResponse) return res.status(400).json({ error: 'Registre a resposta da empresa.' });
+    const request = await prisma.sellerInternalRequest.findUnique({ where: { id: req.params.requestId } });
+    if (!request || !canReviewStore(req, request.storeId)) return res.status(403).json({ error: 'Sem acesso a esta solicitação.' });
+    const updated = await prisma.sellerInternalRequest.update({
+      where: { id: request.id },
+      data: { status, companyResponse, reviewedById: req.userId, reviewedAt: new Date() },
+    });
+    await prisma.message.create({
+      data: {
+        fromId: req.userId,
+        toId: request.sellerId,
+        type: 'request',
+        title: `Resposta à solicitação — ${request.title}`,
+        content: companyResponse,
+        status: status === 'RESOLVED' ? 'approved' : (status === 'REJECTED' ? 'rejected' : 'replied'),
+      },
+    });
+    res.json({ ok: true, request: updated });
+  } catch (err) {
+    console.error('[seller-production/request-review]', err);
+    res.status(500).json({ error: 'Erro ao responder solicitação.' });
+  }
+});
+
+// Canal confidencial para ofensa ou má conduta.
+router.get('/conduct-reports', requireSellerScope, async (req, res) => {
+  try {
+    if (req.userRole !== 'seller' && !CONDUCT_REVIEWER_ROLES.has(req.userRole)) return res.status(403).json({ error: 'Canal confidencial restrito.' });
+    const where = req.userRole === 'seller' ? { reporterId: req.userId } : {};
+    if (req.query.status && CONDUCT_STATUSES.has(String(req.query.status).toUpperCase())) where.status = String(req.query.status).toUpperCase();
+    const reports = await prisma.sellerConductReport.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        reporter: { select: { id: true, name: true, employeeCode: true } },
+        store: { select: { id: true, name: true, code: true } },
+        attachments: true,
+      },
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ reports: reports.map((row) => ({ ...row, attachments: row.attachments.map(attachmentSummary) })) });
+  } catch (err) {
+    console.error('[seller-production/conduct-reports]', err);
+    res.status(500).json({ error: 'Erro ao carregar o canal confidencial.' });
+  }
+});
+
+router.post('/conduct-reports', requireSellerScope, privateUpload, async (req, res) => {
+  let created = null;
+  let savedAttachments = [];
+  try {
+    if (req.userRole !== 'seller') return res.status(403).json({ error: 'Somente o próprio vendedor pode registrar um relato por este canal.' });
+    const category = String(req.body.category || '').toUpperCase();
+    const description = String(req.body.description || '').trim().slice(0, 10000);
+    const involvedPerson = String(req.body.involvedPerson || '').trim().slice(0, 200) || null;
+    if (!CONDUCT_CATEGORIES.has(category)) return res.status(400).json({ error: 'Categoria de relato inválida.' });
+    if (description.length < 10) return res.status(400).json({ error: 'Descreva o ocorrido com informações suficientes para análise.' });
+    let occurredAt = null;
+    if (req.body.occurredAt) {
+      occurredAt = new Date(req.body.occurredAt);
+      if (Number.isNaN(occurredAt.getTime())) return res.status(400).json({ error: 'Data do ocorrido inválida.' });
+    }
+    const resolved = await resolveSellerAndStore(req.userId, req.body.storeId || undefined);
+    created = await prisma.sellerConductReport.create({
+      data: { reporterId: req.userId, storeId: resolved.storeId, category, description, involvedPerson, occurredAt },
+    });
+    savedAttachments = await savePrivateAttachments(req.files, { reportId: created.id });
+    await notifyCompany({
+      fromId: req.userId,
+      storeId: resolved.storeId,
+      title: 'Novo relato confidencial de conduta',
+      content: 'Um novo relato confidencial foi registrado no TenisCash. O conteúdo deve ser consultado exclusivamente por administrador autorizado no módulo Produção.',
+      priority: 'high',
+      conduct: true,
+    }).catch((notifyError) => console.error('[seller-production/conduct-notify]', notifyError.message));
+    const report = await prisma.sellerConductReport.findUnique({ where: { id: created.id }, include: { attachments: true } });
+    res.status(201).json({ ok: true, report: { ...report, attachments: report.attachments.map(attachmentSummary) } });
+  } catch (err) {
+    if (created) await prisma.sellerConductReport.delete({ where: { id: created.id } }).catch(() => {});
+    for (const file of savedAttachments) evidenceStore.remove(file.storedName);
+    console.error('[seller-production/conduct-create]', err);
+    res.status(500).json({ error: err.message || 'Erro ao registrar relato confidencial.' });
+  }
+});
+
+router.patch('/conduct-reports/:reportId', requireConductReviewer, async (req, res) => {
+  try {
+    const status = String(req.body.status || '').toUpperCase();
+    const companyResponse = String(req.body.companyResponse || '').trim().slice(0, 10000);
+    if (!CONDUCT_STATUSES.has(status)) return res.status(400).json({ error: 'Situação inválida.' });
+    if (!companyResponse) return res.status(400).json({ error: 'Registre a providência ou resposta da empresa.' });
+    const report = await prisma.sellerConductReport.findUnique({ where: { id: req.params.reportId } });
+    if (!report) return res.status(404).json({ error: 'Relato não encontrado.' });
+    const updated = await prisma.sellerConductReport.update({
+      where: { id: report.id },
+      data: { status, companyResponse, reviewedById: req.userId, reviewedAt: new Date() },
+    });
+    await prisma.sellerPrivateAccessLog.create({ data: { actorId: req.userId, resourceType: 'CONDUCT_REPORT', resourceId: report.id, action: 'REVIEW' } });
+    await prisma.message.create({
+      data: {
+        fromId: req.userId,
+        toId: report.reporterId,
+        type: 'announcement',
+        title: 'Atualização no seu relato confidencial',
+        content: 'A administração registrou uma atualização no relato confidencial. Consulte o canal privado no módulo Produção diária.',
+        priority: 'high',
+      },
+    }).catch((notifyError) => console.error('[seller-production/conduct-response-notify]', notifyError.message));
+    res.json({ ok: true, report: updated });
+  } catch (err) {
+    console.error('[seller-production/conduct-review]', err);
+    res.status(500).json({ error: 'Erro ao analisar relato confidencial.' });
+  }
+});
+
+router.get('/private-attachments/:attachmentId', requireSellerScope, async (req, res) => {
+  try {
+    const attachment = await prisma.sellerPrivateAttachment.findUnique({
+      where: { id: req.params.attachmentId },
+      include: { request: true, report: true },
+    });
+    if (!attachment) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+    let allowed = false;
+    let resourceType = 'PRIVATE_ATTACHMENT';
+    if (attachment.request) {
+      allowed = attachment.request.sellerId === req.userId || canReviewStore(req, attachment.request.storeId);
+      resourceType = 'REQUEST_ATTACHMENT';
+    } else if (attachment.report) {
+      allowed = attachment.report.reporterId === req.userId || CONDUCT_REVIEWER_ROLES.has(req.userRole);
+      resourceType = 'CONDUCT_ATTACHMENT';
+    }
+    if (!allowed) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+    const filePath = evidenceStore.resolve(attachment.storedName);
+    if (!filePath) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+    await prisma.sellerPrivateAccessLog.create({ data: { actorId: req.userId, resourceType, resourceId: attachment.id } });
+    res.type(attachment.mimeType);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error('[seller-production/private-attachment]', err);
+    res.status(500).json({ error: 'Erro ao abrir arquivo privado.' });
   }
 });
 

@@ -4,7 +4,7 @@
 
 const crypto = require('crypto');
 
-const POLICY_VERSION = 'ST-PRODUCAO-2026-07-V1';
+const POLICY_VERSION = 'ST-PRODUCAO-2026-07-V2';
 const INCENTIVE_PCT = 10;
 
 const REQUIRED = Object.freeze({
@@ -13,31 +13,46 @@ const REQUIRED = Object.freeze({
   PRODUCT_REEL: ['priceInformed', 'maxDiscountInformed', 'technologiesExplained', 'differentialsExplained', 'whatsappReposted'],
   EXIT_STORY: ['customersThanked', 'nextDayAvailabilityInformed'],
   EXIT_REEL: ['customersThanked', 'nextDayAvailabilityInformed', 'whatsappReposted'],
+  BAG_PHOTO: ['closedBagExternalPhoto'],
+  FLOOR_CLEANING: ['floorCleanAndDry'],
+  STORE_ORGANIZATION: ['storeOrganized'],
+  PRODUCT_LOCATION: ['productsInCorrectPlaces'],
+  STORE_PHONE: ['storePhoneChargedWhenIdle', 'problemReportedIfAny'],
+  CARD_MACHINE: ['cardMachineChargedWhenIdle', 'problemReportedIfAny'],
+  PACKAGING: ['packagingChecked', 'shortageReportedIfAny'],
 });
 
 function buildRules() {
   const rules = [];
   const add = (rule) => rules.push(Object.freeze({ position: rules.length, ...rule }));
 
-  add({ key: 'ARRIVAL_STORY_1', phase: 'ARRIVAL', title: 'Chegada — Story com foto da loja aberta', mediaType: 'photo', requirementSet: 'ARRIVAL_STORY' });
-  add({ key: 'ARRIVAL_REEL_1', phase: 'ARRIVAL', title: 'Chegada — Reels da loja (aprox. 20 segundos)', mediaType: 'video', targetDurationSec: 20, requirementSet: 'ARRIVAL_REEL', whatsappRequired: true });
+  add({ key: 'ARRIVAL_STORY_1', phase: 'ARRIVAL', title: 'Chegada — Story com foto da loja aberta', mediaType: 'photo', requirementSet: 'ARRIVAL_STORY', socialStory: true });
+  add({ key: 'ARRIVAL_REEL_1', phase: 'ARRIVAL', title: 'Chegada — Reels da loja (aprox. 20 segundos)', mediaType: 'video', targetDurationSec: 20, requirementSet: 'ARRIVAL_REEL', whatsappRequired: true, socialReel: true });
+  add({ key: 'ARRIVAL_BAG_PHOTO', phase: 'ARRIVAL', title: 'Chegada — foto externa da bolsa fechada', mediaType: 'photo', requirementSet: 'BAG_PHOTO', internalOnly: true, purpose: 'Controle interno de entrada e saída de volumes, sem inspeção do conteúdo.' });
+  add({ key: 'FLOOR_CLEAN_PHOTOS', phase: 'ARRIVAL', title: 'Loja — fotos do piso limpo e seco', mediaType: 'photo', requirementSet: 'FLOOR_CLEANING', internalOnly: true });
+  add({ key: 'STORE_ORGANIZATION_PHOTOS', phase: 'ARRIVAL', title: 'Loja — fotos da arrumação geral', mediaType: 'photo', requirementSet: 'STORE_ORGANIZATION', internalOnly: true });
+  add({ key: 'PRODUCT_LOCATION_PHOTOS', phase: 'ARRIVAL', title: 'Loja — produtos nos locais corretos', mediaType: 'photo', requirementSet: 'PRODUCT_LOCATION', internalOnly: true });
+  add({ key: 'STORE_PHONE_READY', phase: 'ARRIVAL', title: 'Loja — celular carregado ou no carregador quando sem uso', mediaType: 'photo', requirementSet: 'STORE_PHONE', internalOnly: true });
+  add({ key: 'CARD_MACHINE_READY', phase: 'ARRIVAL', title: 'Loja — maquineta carregada ou no carregador quando sem uso', mediaType: 'photo', requirementSet: 'CARD_MACHINE', internalOnly: true });
+  add({ key: 'PACKAGING_CHECK', phase: 'ARRIVAL', title: 'Loja — embalagens conferidas e falta comunicada', mediaType: 'photo', requirementSet: 'PACKAGING', internalOnly: true });
 
   for (let i = 1; i <= 2; i += 1) {
-    add({ key: `FIRST_TURN_REEL_${i}`, phase: 'FIRST_TURN', title: `Primeiro turno — Reels de produtos ${i}/2`, mediaType: 'video', targetDurationSec: 45, exactDuration: true, requiredProducts: 3, requirementSet: 'PRODUCT_REEL', productReel: true, whatsappRequired: true });
+    add({ key: `FIRST_TURN_REEL_${i}`, phase: 'FIRST_TURN', title: `Primeiro turno — Reels de produtos ${i}/2`, mediaType: 'video', targetDurationSec: 45, exactDuration: true, requiredProducts: 3, requirementSet: 'PRODUCT_REEL', productReel: true, whatsappRequired: true, socialReel: true });
   }
   for (let i = 1; i <= 5; i += 1) {
-    add({ key: `FIRST_TURN_STORY_${i}`, phase: 'FIRST_TURN', title: `Primeiro turno — Foto de produto ${i}/5`, mediaType: 'photo', productStory: true });
+    add({ key: `FIRST_TURN_STORY_${i}`, phase: 'FIRST_TURN', title: `Primeiro turno — Foto de produto ${i}/5`, mediaType: 'photo', productStory: true, socialStory: true });
   }
 
   for (let i = 1; i <= 2; i += 1) {
-    add({ key: `SECOND_TURN_REEL_${i}`, phase: 'SECOND_TURN', title: `Segundo turno — Reels de produtos ${i}/2`, mediaType: 'video', targetDurationSec: 45, exactDuration: true, requiredProducts: 3, requirementSet: 'PRODUCT_REEL', productReel: true, whatsappRequired: true });
+    add({ key: `SECOND_TURN_REEL_${i}`, phase: 'SECOND_TURN', title: `Segundo turno — Reels de produtos ${i}/2`, mediaType: 'video', targetDurationSec: 45, exactDuration: true, requiredProducts: 3, requirementSet: 'PRODUCT_REEL', productReel: true, whatsappRequired: true, socialReel: true });
   }
   for (let i = 1; i <= 5; i += 1) {
-    add({ key: `SECOND_TURN_STORY_${i}`, phase: 'SECOND_TURN', title: `Segundo turno — Foto de produto ${i}/5`, mediaType: 'photo', productStory: true });
+    add({ key: `SECOND_TURN_STORY_${i}`, phase: 'SECOND_TURN', title: `Segundo turno — Foto de produto ${i}/5`, mediaType: 'photo', productStory: true, socialStory: true });
   }
 
-  add({ key: 'EXIT_STORY_1', phase: 'EXIT', title: 'Saida — Story com foto da loja', mediaType: 'photo', requirementSet: 'EXIT_STORY' });
-  add({ key: 'EXIT_REEL_1', phase: 'EXIT', title: 'Saida — Reels de agradecimento', mediaType: 'video', requirementSet: 'EXIT_REEL', whatsappRequired: true });
+  add({ key: 'EXIT_STORY_1', phase: 'EXIT', title: 'Saída — Story com foto da loja', mediaType: 'photo', requirementSet: 'EXIT_STORY', socialStory: true });
+  add({ key: 'EXIT_REEL_1', phase: 'EXIT', title: 'Saída — Reels de agradecimento', mediaType: 'video', requirementSet: 'EXIT_REEL', whatsappRequired: true, socialReel: true });
+  add({ key: 'EXIT_BAG_PHOTO', phase: 'EXIT', title: 'Saída — foto externa da bolsa fechada', mediaType: 'photo', requirementSet: 'BAG_PHOTO', internalOnly: true, purpose: 'Controle interno de entrada e saída de volumes, sem inspeção do conteúdo.' });
   return Object.freeze(rules);
 }
 
@@ -95,16 +110,18 @@ function validateSubmission(rule, payload, context = {}) {
   if (rule.mediaType === 'video' && !isHttpUrl(publicationUrl)) {
     errors.push('Informe o link do Reels publicado no feed da loja.');
   } else if (!hasExpectedUpload && !isHttpUrl(publicationUrl)) {
-    errors.push(`Envie ${rule.mediaType === 'photo' ? 'a foto' : 'o video'} ou informe o link da publicacao.`);
+    errors.push(rule.internalOnly
+      ? 'Envie a foto/print ou informe o link da evidencia privada.'
+      : `Envie ${rule.mediaType === 'photo' ? 'a foto' : 'o video'} ou informe o link da publicacao.`);
   }
-  if (publicationUrl && !isHttpUrl(publicationUrl)) errors.push('O link da publicacao e invalido.');
+  if (publicationUrl && !isHttpUrl(publicationUrl)) errors.push(rule.internalOnly ? 'O link da evidencia e invalido.' : 'O link da publicacao e invalido.');
 
   const confirmations = parseConfirmations(payload.requirementsConfirmedJson || payload.confirmations);
   for (const key of requiredConfirmations(rule)) {
     if (confirmations[key] !== true) errors.push(`Confirme o requisito: ${key}.`);
   }
 
-  if (rule.mediaType === 'video' && payload.noInstagramStoryConfirmed !== true && payload.noInstagramStoryConfirmed !== 'true') {
+  if (rule.socialReel && payload.noInstagramStoryConfirmed !== true && payload.noInstagramStoryConfirmed !== 'true') {
     errors.push('Confirme que o Reels nao foi repostado no Story do Instagram.');
   }
 

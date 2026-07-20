@@ -1,11 +1,13 @@
 const assert = require('assert');
 const production = require('../src/services/sellerProduction');
+const productionRobot = require('../src/services/sellerProductionCron');
 
 function run() {
-  assert.strictEqual(production.RULES.length, 18, 'deve haver 18 atividades por dia');
-  assert.strictEqual(production.RULES.filter((r) => r.mediaType === 'video').length, 6, 'deve haver 6 reels');
-  assert.strictEqual(production.RULES.filter((r) => r.mediaType === 'photo').length, 12, 'deve haver 12 stories');
-  assert(production.RULES.filter((r) => r.mediaType === 'video').every((r) => r.whatsappRequired), 'todo reels deve ir para o status do WhatsApp');
+  assert.strictEqual(production.RULES.length, 26, 'deve haver 26 atividades por dia');
+  assert.strictEqual(production.RULES.filter((r) => r.socialReel).length, 6, 'deve haver 6 reels');
+  assert.strictEqual(production.RULES.filter((r) => r.socialStory).length, 12, 'deve haver 12 stories');
+  assert.strictEqual(production.RULES.filter((r) => r.internalOnly).length, 8, 'deve haver 8 registros operacionais privados');
+  assert(production.RULES.filter((r) => r.socialReel).every((r) => r.whatsappRequired), 'todo reels deve ir para o status do WhatsApp');
 
   const productRule = production.ruleForKey('FIRST_TURN_REEL_1');
   const completeProductPayload = {
@@ -40,6 +42,19 @@ function run() {
     noInstagramStoryConfirmed: true,
   });
   assert(missingWhatsapp.some((message) => message.includes('WhatsApp')), 'chegada precisa de prova do WhatsApp');
+
+  const bagRule = production.ruleForKey('ARRIVAL_BAG_PHOTO');
+  assert.strictEqual(bagRule.internalOnly, true, 'foto da bolsa deve ser interna');
+  const missingBagEvidence = production.validateSubmission(bagRule, { confirmations: { closedBagExternalPhoto: true } });
+  assert(missingBagEvidence.some((message) => message.includes('evidencia privada')), 'foto da bolsa precisa de prova privada');
+  const validBag = production.validateSubmission(bagRule, { confirmations: { closedBagExternalPhoto: true } }, { evidenceMediaTypes: ['photo'] });
+  assert.deepStrictEqual(validBag, [], 'foto externa da bolsa com prova deve ser valida');
+
+  const scheduledDay = { scheduleStart: '08:00', scheduleEnd: '18:00' };
+  assert.deepStrictEqual(productionRobot.reminderKinds(scheduledDay, new Date('2026-07-20T10:00:00.000Z')), [], 'nao deve lembrar antes do turno');
+  assert.deepStrictEqual(productionRobot.reminderKinds(scheduledDay, new Date('2026-07-20T11:00:00.000Z')), ['DAY_START'], 'inicio do turno recebe lembrete inicial');
+  assert.deepStrictEqual(productionRobot.reminderKinds(scheduledDay, new Date('2026-07-20T16:00:00.000Z')), ['DAY_START', 'MID_SHIFT'], 'meio do turno recebe acompanhamento');
+  assert.deepStrictEqual(productionRobot.reminderKinds(scheduledDay, new Date('2026-07-20T21:00:00.000Z')), ['DAY_START', 'MID_SHIFT', 'SHIFT_END'], 'fim do turno recebe conferencia');
 
   const eligible = production.monthlyEligibility([{ status: 'APPROVED' }, { status: 'APPROVED' }, { status: 'EXCUSED' }], 2000, { periodClosed: true });
   assert.strictEqual(eligible.status, 'ELIGIBLE');

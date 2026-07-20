@@ -68,32 +68,38 @@ model User {
   adminActions      AdminAction[]
 
   // Relations vendedor
-  clockIns                       ClockIn[]                 @relation("clockIns")
-  clockSummaries                 ClockSummary[]            @relation("clockSummaries")
-  walletEntries                  SellerWallet[]            @relation("walletEntries")
-  sellerClients                  SellerClient[]            @relation("sellerClients")
-  sales                          Sale[]                    @relation("sellerSales")
-  customerSales                  Sale[]                    @relation("customerSales")
-  commissions                    SaleCommission[]          @relation("commissions")
-  relationshipJourneysAsSeller   SellerCommissionJourney[] @relation("relationshipJourneySeller")
-  relationshipJourneysAsCustomer SellerCommissionJourney[] @relation("relationshipJourneyCustomer")
-  productionDaysAsSeller         SellerProductionDay[]      @relation("productionDaySeller")
-  productionDaysFinalized        SellerProductionDay[]      @relation("productionDayFinalizer")
-  productionItemsReviewed        SellerProductionItem[]     @relation("productionItemReviewer")
-  productionMonthsAsSeller       SellerProductionMonth[]    @relation("productionMonthSeller")
-  productionMonthsFinalized      SellerProductionMonth[]    @relation("productionMonthFinalizer")
-  productionIncidentsAsSeller    SellerComplianceIncident[] @relation("productionIncidentSeller")
-  productionIncidentsDecided     SellerComplianceIncident[] @relation("productionIncidentDecider")
+  clockIns                       ClockIn[]                          @relation("clockIns")
+  clockSummaries                 ClockSummary[]                     @relation("clockSummaries")
+  walletEntries                  SellerWallet[]                     @relation("walletEntries")
+  sellerClients                  SellerClient[]                     @relation("sellerClients")
+  sales                          Sale[]                             @relation("sellerSales")
+  customerSales                  Sale[]                             @relation("customerSales")
+  commissions                    SaleCommission[]                   @relation("commissions")
+  relationshipJourneysAsSeller   SellerCommissionJourney[]          @relation("relationshipJourneySeller")
+  relationshipJourneysAsCustomer SellerCommissionJourney[]          @relation("relationshipJourneyCustomer")
+  productionDaysAsSeller         SellerProductionDay[]              @relation("productionDaySeller")
+  productionDaysFinalized        SellerProductionDay[]              @relation("productionDayFinalizer")
+  productionItemsReviewed        SellerProductionItem[]             @relation("productionItemReviewer")
+  productionMonthsAsSeller       SellerProductionMonth[]            @relation("productionMonthSeller")
+  productionMonthsFinalized      SellerProductionMonth[]            @relation("productionMonthFinalizer")
+  productionIncidentsAsSeller    SellerComplianceIncident[]         @relation("productionIncidentSeller")
+  productionIncidentsDecided     SellerComplianceIncident[]         @relation("productionIncidentDecider")
   productionPolicyAcceptances    SellerProductionPolicyAcceptance[]
-  messagesSent                   Message[]                 @relation("messagesSent")
-  messagesReceived               Message[]                 @relation("messagesReceived")
-  tasksCreated                   Task[]                    @relation("tasksCreated")
-  tasksAssigned                  Task[]                    @relation("tasksAssigned")
-  taskExecutions                 TaskExecution[]           @relation("taskExecutions")
-  trainings                      SellerTraining[]          @relation("trainings")
-  quizAttempts                   QuizAttempt[]             @relation("quizAttempts")
-  aiConversations                AIConversation[]          @relation("aiConversations")
-  productsCreated                Product[]                 @relation("productsCreated")
+  productionRemindersReceived    SellerProductionReminder[]         @relation("productionReminderSeller")
+  internalRequestsAsSeller       SellerInternalRequest[]            @relation("internalRequestSeller")
+  internalRequestsReviewed       SellerInternalRequest[]            @relation("internalRequestReviewer")
+  conductReportsSubmitted        SellerConductReport[]              @relation("conductReportReporter")
+  conductReportsReviewed         SellerConductReport[]              @relation("conductReportReviewer")
+  privateRecordAccesses          SellerPrivateAccessLog[]           @relation("privateAccessActor")
+  messagesSent                   Message[]                          @relation("messagesSent")
+  messagesReceived               Message[]                          @relation("messagesReceived")
+  tasksCreated                   Task[]                             @relation("tasksCreated")
+  tasksAssigned                  Task[]                             @relation("tasksAssigned")
+  taskExecutions                 TaskExecution[]                    @relation("taskExecutions")
+  trainings                      SellerTraining[]                   @relation("trainings")
+  quizAttempts                   QuizAttempt[]                      @relation("quizAttempts")
+  aiConversations                AIConversation[]                   @relation("aiConversations")
+  productsCreated                Product[]                          @relation("productsCreated")
 
   // Programa de Parceiros
   partner              Partner?      @relation("partner")
@@ -307,10 +313,13 @@ model Store {
   conversationsAsStore Conversation[] @relation("conversationsForStore")
 
   // Agenda / escala da equipe
-  schedules        SellerSchedule[] @relation("storeSchedules")
-  agendaActivities AgendaActivity[] @relation("storeActivities")
-  productionDays   SellerProductionDay[]
-  productionIncidents SellerComplianceIncident[]
+  schedules              SellerSchedule[]           @relation("storeSchedules")
+  agendaActivities       AgendaActivity[]           @relation("storeActivities")
+  productionDays         SellerProductionDay[]
+  productionIncidents    SellerComplianceIncident[]
+  productionReminders    SellerProductionReminder[]
+  sellerInternalRequests SellerInternalRequest[]
+  sellerConductReports   SellerConductReport[]
 }
 
 // ============================================================
@@ -737,28 +746,29 @@ model SellerCommissionEvidence {
 // ============================================================
 
 model SellerProductionDay {
-  id             String   @id @default(cuid())
-  sellerId       String
-  seller         User     @relation("productionDaySeller", fields: [sellerId], references: [id])
-  storeId        String
-  store          Store    @relation(fields: [storeId], references: [id])
-  workDate       DateTime
-  policyVersion  String   @default("ST-PRODUCAO-2026-07-V1")
-  status         String   @default("OPEN") // OPEN | SUBMITTED | CHANGES_REQUIRED | APPROVED | NONCOMPLIANT | EXCUSED
-  incentivePct   Float    @default(10)
-  scheduleStart  String?
-  scheduleEnd    String?
-  sellerNote     String?  @db.Text
-  submittedAt    DateTime?
-  finalizedById  String?
-  finalizedBy    User?    @relation("productionDayFinalizer", fields: [finalizedById], references: [id])
-  finalizedAt    DateTime?
-  finalNote      String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String    @id @default(cuid())
+  sellerId      String
+  seller        User      @relation("productionDaySeller", fields: [sellerId], references: [id])
+  storeId       String
+  store         Store     @relation(fields: [storeId], references: [id])
+  workDate      DateTime
+  policyVersion String    @default("ST-PRODUCAO-2026-07-V2")
+  status        String    @default("OPEN") // OPEN | SUBMITTED | CHANGES_REQUIRED | APPROVED | NONCOMPLIANT | EXCUSED
+  incentivePct  Float     @default(10)
+  scheduleStart String?
+  scheduleEnd   String?
+  sellerNote    String?   @db.Text
+  submittedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User?     @relation("productionDayFinalizer", fields: [finalizedById], references: [id])
+  finalizedAt   DateTime?
+  finalNote     String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  items    SellerProductionItem[]
-  incident SellerComplianceIncident?
+  items     SellerProductionItem[]
+  incident  SellerComplianceIncident?
+  reminders SellerProductionReminder[]
 
   @@unique([sellerId, workDate])
   @@index([storeId, workDate, status])
@@ -789,8 +799,8 @@ model SellerProductionItem {
   reviewedBy                User?               @relation("productionItemReviewer", fields: [reviewedById], references: [id])
   reviewedAt                DateTime?
   reviewNote                String?             @db.Text
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
 
   evidence SellerProductionEvidence[]
 
@@ -815,38 +825,38 @@ model SellerProductionEvidence {
 }
 
 model SellerProductionPolicyAcceptance {
-  id             String   @id @default(cuid())
-  sellerId       String
-  seller         User     @relation(fields: [sellerId], references: [id])
-  policyVersion  String
-  policyDigest   String
-  acceptedAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  sellerId      String
+  seller        User     @relation(fields: [sellerId], references: [id])
+  policyVersion String
+  policyDigest  String
+  acceptedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@unique([sellerId, policyVersion])
   @@index([policyVersion, acceptedAt])
 }
 
 model SellerProductionMonth {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   sellerId           String
-  seller             User     @relation("productionMonthSeller", fields: [sellerId], references: [id])
+  seller             User      @relation("productionMonthSeller", fields: [sellerId], references: [id])
   month              String // YYYY-MM no fuso America/Fortaleza
-  incentivePct       Float    @default(10)
-  status             String   @default("OPEN") // OPEN | ELIGIBLE | INELIGIBLE | NEEDS_REVIEW
-  expectedDays       Int      @default(0)
-  approvedDays       Int      @default(0)
-  noncompliantDays   Int      @default(0)
-  openDays           Int      @default(0)
+  incentivePct       Float     @default(10)
+  status             String    @default("OPEN") // OPEN | ELIGIBLE | INELIGIBLE | NEEDS_REVIEW
+  expectedDays       Int       @default(0)
+  approvedDays       Int       @default(0)
+  noncompliantDays   Int       @default(0)
+  openDays           Int       @default(0)
   baseSalarySnapshot Float?
   eligibleAmount     Float?
   calculatedAt       DateTime?
   finalizedById      String?
-  finalizedBy        User?    @relation("productionMonthFinalizer", fields: [finalizedById], references: [id])
+  finalizedBy        User?     @relation("productionMonthFinalizer", fields: [finalizedById], references: [id])
   finalizedAt        DateTime?
-  note               String?  @db.Text
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  note               String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([sellerId, month])
   @@index([month, status])
@@ -876,6 +886,103 @@ model SellerComplianceIncident {
 
   @@index([sellerId, status, createdAt])
   @@index([storeId, status, createdAt])
+}
+
+model SellerProductionReminder {
+  id           String              @id @default(cuid())
+  dayId        String
+  day          SellerProductionDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  sellerId     String
+  seller       User                @relation("productionReminderSeller", fields: [sellerId], references: [id])
+  storeId      String
+  store        Store               @relation(fields: [storeId], references: [id])
+  kind         String // DAY_START | MID_SHIFT | SHIFT_END
+  pendingCount Int                 @default(0)
+  messageId    String?
+  sentAt       DateTime            @default(now())
+  createdAt    DateTime            @default(now())
+
+  @@unique([dayId, kind])
+  @@index([sellerId, sentAt])
+  @@index([storeId, sentAt])
+}
+
+model SellerInternalRequest {
+  id              String    @id @default(cuid())
+  sellerId        String
+  seller          User      @relation("internalRequestSeller", fields: [sellerId], references: [id])
+  storeId         String
+  store           Store     @relation(fields: [storeId], references: [id])
+  category        String // SUPPLIES | MAINTENANCE | PRODUCT | EQUIPMENT | OTHER
+  title           String
+  description     String    @db.Text
+  urgency         String    @default("NORMAL") // NORMAL | HIGH | URGENT
+  status          String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | REJECTED
+  companyResponse String?   @db.Text
+  reviewedById    String?
+  reviewedBy      User?     @relation("internalRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  attachments SellerPrivateAttachment[]
+
+  @@index([sellerId, status, createdAt])
+  @@index([storeId, status, createdAt])
+}
+
+model SellerConductReport {
+  id              String    @id @default(cuid())
+  reporterId      String
+  reporter        User      @relation("conductReportReporter", fields: [reporterId], references: [id])
+  storeId         String?
+  store           Store?    @relation(fields: [storeId], references: [id])
+  category        String // OFFENSE | HARASSMENT | DISCRIMINATION | THREAT | MISCONDUCT | OTHER
+  occurredAt      DateTime?
+  involvedPerson  String?
+  description     String    @db.Text
+  status          String    @default("RECEIVED") // RECEIVED | UNDER_REVIEW | CLOSED
+  companyResponse String?   @db.Text
+  reviewedById    String?
+  reviewedBy      User?     @relation("conductReportReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  attachments SellerPrivateAttachment[]
+
+  @@index([reporterId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model SellerPrivateAttachment {
+  id           String                 @id @default(cuid())
+  requestId    String?
+  request      SellerInternalRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  reportId     String?
+  report       SellerConductReport?   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  storedName   String                 @unique
+  originalName String
+  mimeType     String
+  mediaType    String // photo | video
+  bytes        Int
+  createdAt    DateTime               @default(now())
+
+  @@index([requestId])
+  @@index([reportId])
+}
+
+model SellerPrivateAccessLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  actor        User     @relation("privateAccessActor", fields: [actorId], references: [id])
+  resourceType String // PRODUCTION_EVIDENCE | REQUEST_ATTACHMENT | CONDUCT_ATTACHMENT | CONDUCT_REPORT
+  resourceId   String
+  action       String   @default("VIEW")
+  createdAt    DateTime @default(now())
+
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model Message {

@@ -906,9 +906,31 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <p style="font-size:12px;color:rgba(255,255,255,.75);line-height:1.45;margin-top:5px">Todas as atividades do dia precisam ser enviadas e aprovadas. O fechamento mensal indica a elegibilidade ao incentivo de 10%.</p>
   </div>
   <div id="seller-production-policy" style="margin-top:10px"></div>
+  <div id="seller-production-robot" style="margin-top:10px"></div>
   <div id="seller-production-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px"></div>
   <div id="seller-production-month" style="margin-top:10px"></div>
   <div id="seller-production-incidents" style="margin-top:10px"></div>
+  <details style="margin-top:10px;padding:12px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);border-radius:12px">
+    <summary style="font-size:12px;font-weight:900;color:#FFD180;cursor:pointer">SOLICITAR MATERIAL, MANUTENÇÃO OU APOIO</summary>
+    <select id="seller-request-category" class="input-field" style="margin-top:10px"><option value="SUPPLIES">Embalagens ou materiais</option><option value="EQUIPMENT">Equipamento</option><option value="MAINTENANCE">Manutenção</option><option value="PRODUCT">Produto</option><option value="OTHER">Outro</option></select>
+    <select id="seller-request-urgency" class="input-field"><option value="NORMAL">Normal</option><option value="HIGH">Alta</option><option value="URGENT">Urgente</option></select>
+    <input id="seller-request-title" class="input-field" maxlength="160" placeholder="O que precisa ser solicitado?">
+    <textarea id="seller-request-description" class="input-field" rows="4" maxlength="6000" placeholder="Descreva a necessidade, quantidade e motivo"></textarea>
+    <input id="seller-request-files" class="input-field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple style="padding:12px">
+    <button id="seller-request-send" type="button" class="btn-primary" onclick="submitSellerInternalRequest()">REGISTRAR SOLICITAÇÃO</button>
+    <div id="seller-request-list" style="margin-top:10px"></div>
+  </details>
+  <details style="margin-top:10px;padding:12px;background:rgba(255,82,82,.1);border:1px solid rgba(255,138,128,.28);border-radius:12px">
+    <summary style="font-size:12px;font-weight:900;color:#FFAB91;cursor:pointer">CANAL PRIVADO — OFENSA OU MÁ CONDUTA</summary>
+    <p style="font-size:10px;line-height:1.45;color:rgba(255,255,255,.65);margin-top:8px">O relato e seus arquivos são privados. Apenas você e administradores autorizados podem consultá-los.</p>
+    <select id="seller-conduct-category" class="input-field"><option value="OFFENSE">Ofensa</option><option value="HARASSMENT">Assédio</option><option value="DISCRIMINATION">Discriminação</option><option value="THREAT">Ameaça</option><option value="MISCONDUCT">Outra má conduta</option><option value="OTHER">Outro</option></select>
+    <input id="seller-conduct-person" class="input-field" maxlength="200" placeholder="Pessoa envolvida (se souber)">
+    <input id="seller-conduct-date" class="input-field" type="datetime-local">
+    <textarea id="seller-conduct-description" class="input-field" rows="5" maxlength="10000" placeholder="Descreva o que ocorreu, quando, onde e se havia testemunhas"></textarea>
+    <input id="seller-conduct-files" class="input-field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple style="padding:12px">
+    <button id="seller-conduct-send" type="button" class="btn-primary" onclick="submitSellerConductReport()">ENVIAR RELATO PRIVADO</button>
+    <div id="seller-conduct-list" style="margin-top:10px"></div>
+  </details>
   <div id="seller-production-list" style="display:grid;gap:10px;margin:14px 0 90px"></div>
 </div>
 
@@ -5058,15 +5080,33 @@ function sellerProductionRequirementLabel(key) {
     differentialsExplained: 'Expliquei os diferenciais dos produtos',
     customersThanked: 'Agradeci aos clientes',
     nextDayAvailabilityInformed: 'Informei se estarei na loja no dia seguinte',
+    closedBagExternalPhoto: 'A foto mostra somente a parte externa da bolsa fechada',
+    floorCleanAndDry: 'O piso está limpo e seco',
+    storeOrganized: 'A loja está limpa e organizada',
+    productsInCorrectPlaces: 'Os produtos estão nos locais corretos',
+    storePhoneChargedWhenIdle: 'O celular da loja está carregado ou no carregador quando sem uso',
+    cardMachineChargedWhenIdle: 'A maquineta está carregada ou no carregador quando sem uso',
+    problemReportedIfAny: 'Se houver defeito, registrei uma solicitação direta',
+    packagingChecked: 'Conferi a quantidade de embalagens',
+    shortageReportedIfAny: 'Se estiver faltando, registrei uma solicitação direta',
   })[key] || key;
 }
 
 async function initSellerProduction() {
   if (!isSeller()) { showScreen('seller-home'); return; }
-  await Promise.all([loadSellerProductionPolicy(), loadSellerProductionToday(), loadSellerProductionMonth(), loadSellerProductionIncidents()]);
+  await Promise.all([loadSellerProductionPolicyV2(), loadSellerProductionToday(), loadSellerProductionMonth(), loadSellerProductionIncidents(), loadSellerInternalRequests(), loadSellerConductReports()]);
 }
 
-async function loadSellerProductionPolicy() {
+async function loadSellerProductionPolicyV2() {
+  const box = document.getElementById('seller-production-policy');
+  const data = await api('/seller/production/policy');
+  if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const accepted = data.acceptedAt ? `<div style="padding:8px 10px;background:rgba(76,175,80,.14);border-radius:9px;font-size:10px;color:#8BFF8B;margin-bottom:8px">✓ Regras versão ${srcEscape(data.version)} confirmadas em ${srcDate(data.acceptedAt)}.</div>` : '';
+  const confirmation = data.acceptedAt ? '' : `<label style="display:flex;gap:8px;align-items:flex-start;font-size:11px;margin-top:10px"><input id="seller-production-policy-check" type="checkbox" style="margin-top:2px"> Confirmo que li e recebi todas estas regras.</label><button type="button" class="btn-primary" onclick="acknowledgeSellerProductionPolicy()">CONFIRMAR RECEBIMENTO</button>`;
+  box.innerHTML = `<details ${data.acceptedAt ? '' : 'open'} style="padding:13px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px"><summary style="font-size:13px;font-weight:900;color:#FFD180;cursor:pointer">REGRAS DA EMPRESA — SEMPRE DISPONÍVEIS</summary><div style="font-size:11px;line-height:1.5;color:rgba(255,255,255,.78);margin-top:9px">${accepted}<p><strong>Redes sociais:</strong> chegada com Story e Reels; primeiro turno com 2 Reels e 5 Stories; segundo turno com 2 Reels e 5 Stories; saída com Story e Reels. Valem todas as regras de duração, conteúdo, produtos sem repetição, feed e WhatsApp já informadas.</p><p style="margin-top:6px"><strong>Loja:</strong> registrar piso limpo e seco, organização geral, produtos nos locais corretos, celular da loja e maquineta carregados ou no carregador quando sem uso, além da conferência de embalagens.</p><p style="margin-top:6px"><strong>Bolsa:</strong> registrar na chegada e na saída somente uma foto externa da bolsa fechada, para controle interno da entrada e saída de volumes. Não é solicitado abrir a bolsa, mostrar o conteúdo ou expor objetos pessoais.</p><p style="margin-top:6px"><strong>Falta ou defeito:</strong> registrar imediatamente no canal de solicitação direta. Problemas fora do controle do vendedor serão analisados pela empresa.</p><p style="margin-top:6px"><strong>Privacidade:</strong> provas internas e relatos não são publicados. O acesso é restrito ao próprio autor e à empresa autorizada.</p><p style="margin-top:6px"><strong>Incentivo:</strong> todas as atividades obrigatórias precisam ser fiscalizadas e aprovadas. Descumprimento registrado pode tornar o mês inelegível aos 10%, salvo justificativa aceita. Nenhuma punição ou alteração de folha é automática.</p></div>${confirmation}</details>`;
+}
+
+async function loadSellerProductionPolicyLegacy() {
   const box = document.getElementById('seller-production-policy');
   const data = await api('/seller/production/policy');
   if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
@@ -5081,7 +5121,7 @@ async function acknowledgeSellerProductionPolicy() {
   if (!document.getElementById('seller-production-policy-check')?.checked) { alert('Marque a confirmação depois de ler as regras.'); return; }
   const result = await api('/seller/production/policy/acknowledge', 'POST', { confirmed: true });
   if (result.error) { alert(result.error); return; }
-  await loadSellerProductionPolicy();
+  await loadSellerProductionPolicyV2();
 }
 
 async function loadSellerProductionToday() {
@@ -5103,6 +5143,11 @@ function renderSellerProductionDay() {
     ['EM ANÁLISE', progress.submitted || 0],
     ['CORRIGIR', progress.rejected || 0],
   ].map(([label, value]) => `<div style="padding:10px 5px;text-align:center;background:rgba(255,255,255,.1);border-radius:12px"><p style="font-size:9px;letter-spacing:.7px;color:rgba(255,255,255,.55)">${label}</p><p style="font-size:17px;font-weight:900;margin-top:4px">${value}</p></div>`).join('');
+
+  const missing = (day.items || []).filter(item => ['PENDING', 'REJECTED'].includes(item.status));
+  const waiting = (day.items || []).filter(item => item.status === 'SUBMITTED');
+  const reminderCount = (day.reminders || []).length;
+  document.getElementById('seller-production-robot').innerHTML = `<div style="padding:12px;background:${missing.length ? 'rgba(255,193,7,.13)' : 'rgba(76,175,80,.13)'};border:1px solid ${missing.length ? 'rgba(255,209,128,.35)' : 'rgba(139,255,139,.3)'};border-radius:12px"><div style="display:flex;justify-content:space-between;gap:10px"><strong style="font-size:12px">🤖 Robô de acompanhamento</strong><span style="font-size:10px;color:rgba(255,255,255,.6)">${reminderCount} lembrete(s)</span></div><p style="font-size:11px;line-height:1.45;margin-top:6px">${missing.length ? `Ainda faltam <strong>${missing.length}</strong> atividade(s) para registrar ou corrigir.` : 'Todas as atividades já foram registradas.'} ${waiting.length ? `<strong>${waiting.length}</strong> aguardam fiscalização.` : ''}</p>${missing.length ? `<p style="font-size:10px;color:#FFD180;margin-top:6px">Próximas pendências: ${missing.slice(0, 3).map(item => srcEscape(item.title)).join(' · ')}</p>` : ''}<p style="font-size:9px;color:rgba(255,255,255,.5);margin-top:6px">O robô lembra e organiza. Aprovação, justificativa e qualquer medida são decisões humanas.</p></div>`;
 
   const phases = ['ARRIVAL', 'FIRST_TURN', 'SECOND_TURN', 'EXIT'];
   let html = '';
@@ -5158,6 +5203,17 @@ function openSellerProductionItem(itemId) {
   const requirementChecks = (item.requirements || []).map(key => `<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin-top:9px"><input class="seller-production-confirmation" data-key="${srcEscape(key)}" type="checkbox" style="margin-top:2px" ${item.confirmations?.[key] ? 'checked' : ''}> ${srcEscape(sellerProductionRequirementLabel(key))}</label>`).join('');
   const evidence = (item.evidence || []).map(file => `<button type="button" onclick="openSellerProductionEvidence('${file.id}')" style="padding:7px 9px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:8px;font-family:inherit;font-size:10px">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${srcEscape(file.originalName)}</button>`).join('');
   document.getElementById('seller-production-sheet-content').innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">${sellerProductionPhase(item.phase)}</p><h3 style="font-size:18px;line-height:1.3;margin-top:5px;padding-right:28px">${srcEscape(item.title)}</h3><p style="font-size:11px;color:#FFD180;line-height:1.45;margin-top:7px">${item.mediaType === 'video' ? (item.targetDurationSec ? `Duração: ${item.targetDurationSec}${item.requiredProducts ? ' segundos exatos' : ' segundos aproximadamente'}.` : 'Envie o Reels publicado.') : 'Envie a foto publicada no Story.'}${item.requiredProducts ? ` Informe no mínimo ${item.requiredProducts} produtos diferentes e não repita produtos usados nos outros Reels do dia.` : ''}</p>${item.reviewNote ? `<div style="padding:9px;background:rgba(255,82,82,.12);border-radius:9px;margin-top:10px;font-size:11px;color:#FF8A80"><strong>Fiscalização:</strong> ${srcEscape(item.reviewNote)}</div>` : ''}${editable ? `<label class="input-label">RELATO</label><textarea id="seller-production-note" class="input-field" rows="3" maxlength="4000" placeholder="Descreva o que foi produzido">${srcEscape(item.note || '')}</textarea><label class="input-label">LINK DA PUBLICAÇÃO</label><input id="seller-production-publication" class="input-field" type="url" value="${srcEscape(item.publicationUrl || '')}" placeholder="https://instagram.com/..."><label class="input-label">ARQUIVO</label><input id="seller-production-file" class="input-field" type="file" accept="${accept}" multiple style="padding:12px">${item.targetDurationSec ? `<label class="input-label">DURAÇÃO DO VÍDEO EM SEGUNDOS</label><input id="seller-production-duration" class="input-field" type="number" min="1" value="${item.durationSeconds || ''}" placeholder="${item.targetDurationSec}">` : ''}${item.requiredProducts ? `<label class="input-label">PRODUTOS MOSTRADOS — UM POR LINHA</label><textarea id="seller-production-products" class="input-field" rows="4" placeholder="Código ou nome completo de cada produto">${srcEscape((item.productRefs || []).join('\n'))}</textarea>` : ''}${requirementChecks}${item.mediaType === 'video' ? '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin-top:10px"><input id="seller-production-no-story" type="checkbox" style="margin-top:2px"> Confirmo que este Reels não foi repostado no Story do Instagram.</label>' : ''}${(item.requirements || []).includes('whatsappReposted') ? '<label class="input-label">PROVA DO STATUS DO WHATSAPP</label><input id="seller-production-whatsapp-file" class="input-field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" style="padding:12px"><input id="seller-production-whatsapp-url" class="input-field" type="url" placeholder="ou informe o link da prova" style="margin-top:7px">' : ''}<div id="seller-production-error" class="error-msg" style="display:none;margin-top:10px"></div><button id="seller-production-send" type="button" class="btn-primary" onclick="submitSellerProductionItem()">ENVIAR PARA FISCALIZAÇÃO</button>` : `<p style="font-size:12px;color:${sellerProductionStatus(item.status)[1]};margin-top:12px">${sellerProductionStatus(item.status)[0]}</p>${item.note ? `<p style="font-size:12px;white-space:pre-wrap;margin-top:8px">${srcEscape(item.note)}</p>` : ''}${item.publicationUrl ? `<p style="margin-top:8px"><a href="${srcEscape(item.publicationUrl)}" target="_blank" rel="noopener" style="color:#90CAF9">Abrir publicação</a></p>` : ''}${evidence ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${evidence}</div>` : ''}`}`;
+  const contentBox = document.getElementById('seller-production-sheet-content');
+  if (item.internalOnly) {
+    const guidance = contentBox.querySelector('h3')?.nextElementSibling;
+    if (guidance) guidance.textContent = 'Envie uma foto/print ou informe um link como evidência. Este registro é interno e não será publicado.';
+    const publicationInput = document.getElementById('seller-production-publication');
+    if (publicationInput) publicationInput.placeholder = 'https://... (link da evidência, se houver)';
+    const publicationLabel = Array.from(contentBox.querySelectorAll('.input-label')).find(label => label.textContent.includes('LINK DA PUBLICA'));
+    if (publicationLabel) publicationLabel.textContent = 'LINK DA EVIDÊNCIA (OPCIONAL SE ENVIAR FOTO)';
+    const openedLink = Array.from(contentBox.querySelectorAll('a')).find(link => link.textContent.includes('publica'));
+    if (openedLink) openedLink.textContent = 'Abrir evidência';
+  }
   document.getElementById('seller-production-sheet').style.display = 'flex';
 }
 
@@ -5213,6 +5269,89 @@ async function submitSellerProductionDay() {
 async function openSellerProductionEvidence(evidenceId) {
   try {
     const response = await fetch(API + '/seller/production/evidence/' + encodeURIComponent(evidenceId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
+    const url = URL.createObjectURL(await response.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) { alert(err.message); }
+}
+
+function sellerPrivateStatus(status) {
+  return ({ OPEN: 'Aberta', IN_PROGRESS: 'Em atendimento', RESOLVED: 'Resolvida', REJECTED: 'Não atendida', RECEIVED: 'Recebido', UNDER_REVIEW: 'Em análise', CLOSED: 'Encerrado' })[status] || status;
+}
+
+async function loadSellerInternalRequests() {
+  const box = document.getElementById('seller-request-list');
+  if (!box) return;
+  const data = await api('/seller/production/requests');
+  if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const rows = (data.requests || []).slice(0, 8);
+  box.innerHTML = rows.length ? rows.map(row => `<div style="padding:9px;border-top:1px solid rgba(255,255,255,.12);font-size:10px"><div style="display:flex;justify-content:space-between;gap:8px"><strong>${srcEscape(row.title)}</strong><span style="color:#FFD180">${srcEscape(sellerPrivateStatus(row.status))}</span></div><p style="color:rgba(255,255,255,.6);margin-top:4px">${srcDate(row.createdAt)} · ${srcEscape(row.category)}</p>${row.companyResponse ? `<p style="margin-top:5px;color:#8BFF8B"><strong>Resposta:</strong> ${srcEscape(row.companyResponse)}</p>` : ''}</div>`).join('') : '<p style="font-size:10px;color:rgba(255,255,255,.55)">Nenhuma solicitação registrada.</p>';
+}
+
+async function submitSellerInternalRequest() {
+  const title = (document.getElementById('seller-request-title')?.value || '').trim();
+  const description = (document.getElementById('seller-request-description')?.value || '').trim();
+  if (!title || !description) { alert('Informe o título e descreva o que precisa.'); return; }
+  const button = document.getElementById('seller-request-send');
+  const form = new FormData();
+  form.append('category', document.getElementById('seller-request-category').value);
+  form.append('urgency', document.getElementById('seller-request-urgency').value);
+  form.append('title', title);
+  form.append('description', description);
+  Array.from(document.getElementById('seller-request-files')?.files || []).forEach(file => form.append('attachments', file));
+  button.disabled = true;
+  try {
+    const response = await fetch(API + '/seller/production/requests', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: form, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Não foi possível registrar a solicitação.');
+    document.getElementById('seller-request-title').value = '';
+    document.getElementById('seller-request-description').value = '';
+    document.getElementById('seller-request-files').value = '';
+    alert('Solicitação registrada e enviada diretamente à empresa.');
+    await loadSellerInternalRequests();
+  } catch (err) { alert(err.message); }
+  finally { button.disabled = false; }
+}
+
+async function loadSellerConductReports() {
+  const box = document.getElementById('seller-conduct-list');
+  if (!box) return;
+  const data = await api('/seller/production/conduct-reports');
+  if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const rows = (data.reports || []).slice(0, 8);
+  box.innerHTML = rows.length ? rows.map(row => `<div style="padding:9px;border-top:1px solid rgba(255,255,255,.12);font-size:10px"><div style="display:flex;justify-content:space-between;gap:8px"><strong>Relato ${srcEscape(row.category)}</strong><span style="color:#FFAB91">${srcEscape(sellerPrivateStatus(row.status))}</span></div><p style="color:rgba(255,255,255,.6);margin-top:4px">${srcDate(row.createdAt)}</p>${row.companyResponse ? `<p style="margin-top:5px;color:#90CAF9"><strong>Retorno da empresa:</strong> ${srcEscape(row.companyResponse)}</p>` : ''}</div>`).join('') : '<p style="font-size:10px;color:rgba(255,255,255,.55)">Nenhum relato registrado.</p>';
+}
+
+async function submitSellerConductReport() {
+  const description = (document.getElementById('seller-conduct-description')?.value || '').trim();
+  if (description.length < 10) { alert('Descreva o ocorrido com informações suficientes para análise.'); return; }
+  if (!confirm('Enviar este relato pelo canal privado da empresa?')) return;
+  const button = document.getElementById('seller-conduct-send');
+  const form = new FormData();
+  form.append('category', document.getElementById('seller-conduct-category').value);
+  form.append('involvedPerson', (document.getElementById('seller-conduct-person')?.value || '').trim());
+  form.append('occurredAt', document.getElementById('seller-conduct-date')?.value || '');
+  form.append('description', description);
+  Array.from(document.getElementById('seller-conduct-files')?.files || []).forEach(file => form.append('attachments', file));
+  button.disabled = true;
+  try {
+    const response = await fetch(API + '/seller/production/conduct-reports', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: form, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Não foi possível enviar o relato.');
+    document.getElementById('seller-conduct-description').value = '';
+    document.getElementById('seller-conduct-person').value = '';
+    document.getElementById('seller-conduct-date').value = '';
+    document.getElementById('seller-conduct-files').value = '';
+    alert('Relato privado registrado. A administração autorizada foi avisada.');
+    await loadSellerConductReports();
+  } catch (err) { alert(err.message); }
+  finally { button.disabled = false; }
+}
+
+async function openSellerPrivateAttachment(attachmentId) {
+  try {
+    const response = await fetch(API + '/seller/production/private-attachments/' + encodeURIComponent(attachmentId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
     const url = URL.createObjectURL(await response.blob());
     window.open(url, '_blank', 'noopener');
