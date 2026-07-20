@@ -90,9 +90,13 @@ const PAY_METHODS = {
  * @param {number} [opts.tpIntegra] — 1=integrado / 2=não integrado (default 2)
  */
 function buildDetPag({ valor, tPag, acquirerKey, tBand, cAut, tpIntegra = 2, xPag }) {
+  const _tPag = String(tPag).padStart(2, '0');
   const det = {
-    tPag: String(tPag).padStart(2, '0'),
-    vPag: Number(valor).toFixed(2),
+    tPag: _tPag,
+    // tPag 90 = SEM PAGAMENTO (ex.: transferência entre estabelecimentos do mesmo
+    // titular). A SEFAZ rejeita (904 "Informado indevidamente campo valor de
+    // pagamento") se vier valor — tem que ir 0.00.
+    vPag: _tPag === '90' ? '0.00' : Number(valor).toFixed(2),
   };
   const acq = ACQUIRERS[acquirerKey];
   // Cartão de crédito/débito → grupo card COMPLETO (tpIntegra + CNPJ + bandeira + cAut)

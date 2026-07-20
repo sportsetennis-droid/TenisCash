@@ -702,20 +702,41 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, pay
   await nfe.tagProd(prodArr);
 
   // Tributação por item (CRT=3 Regime Normal — Meta Esportes)
+  //
+  // TRANSFERÊNCIA entre estabelecimentos do MESMO TITULAR (LC 204/2023 — não incide ICMS):
+  //   passar por item `cstIcms:'41'` (não tributada) + `cstPisCofins:'49'` (outras saídas).
+  //   Sem esses campos o comportamento é o de VENDA (legado) — retrocompatível.
+  //   NUNCA emitir transferência com CST 00: geraria débito de ICMS indevido.
   items.forEach((it, idx) => {
     const qty = Number(it.qty) || 1;
     const vTot = +(qty * (Number(it.unitPrice) || 0)).toFixed(2);
-    const vICMS = +(vTot * 0.20).toFixed(2);
-    const vPIS = +(vTot * 0.0165).toFixed(2);
-    const vCOFINS = +(vTot * 0.076).toFixed(2);
-    totalICMS += vICMS; totalPIS += vPIS; totalCOFINS += vCOFINS;
-    nfe.tagProdICMS(idx, { orig: 0, CST: '00', modBC: 3, vBC: vTot.toFixed(2), pICMS: '20.0000', vICMS: vICMS.toFixed(2) });
-    nfe.tagProdPIS(idx, { CST: '01', vBC: vTot.toFixed(2), pPIS: '1.6500', vPIS: vPIS.toFixed(2) });
-    nfe.tagProdCOFINS(idx, { CST: '01', vBC: vTot.toFixed(2), pCOFINS: '7.6000', vCOFINS: vCOFINS.toFixed(2) });
+    const cstIcms = String(it.cstIcms || '00');
+    const semIcms = ['40', '41', '50', '51'].includes(cstIcms); // grupo ICMS40: só orig+CST
+    if (semIcms) {
+      nfe.tagProdICMS(idx, { orig: it.origem != null ? it.origem : 0, CST: cstIcms });
+    } else {
+      const vICMS = +(vTot * 0.20).toFixed(2);
+      totalICMS += vICMS;
+      nfe.tagProdICMS(idx, { orig: it.origem != null ? it.origem : 0, CST: cstIcms, modBC: 3, vBC: vTot.toFixed(2), pICMS: '20.0000', vICMS: vICMS.toFixed(2) });
+    }
+    const cstPisCofins = String(it.cstPisCofins || '01');
+    if (cstPisCofins === '01') {
+      const vPIS = +(vTot * 0.0165).toFixed(2);
+      const vCOFINS = +(vTot * 0.076).toFixed(2);
+      totalPIS += vPIS; totalCOFINS += vCOFINS;
+      nfe.tagProdPIS(idx, { CST: '01', vBC: vTot.toFixed(2), pPIS: '1.6500', vPIS: vPIS.toFixed(2) });
+      nfe.tagProdCOFINS(idx, { CST: '01', vBC: vTot.toFixed(2), pCOFINS: '7.6000', vCOFINS: vCOFINS.toFixed(2) });
+    } else {
+      // Transferência não é receita — sem contribuição
+      nfe.tagProdPIS(idx, { CST: cstPisCofins, vBC: '0.00', pPIS: '0.0000', vPIS: '0.00' });
+      nfe.tagProdCOFINS(idx, { CST: cstPisCofins, vBC: '0.00', pCOFINS: '0.0000', vCOFINS: '0.00' });
+    }
   });
+  // Sem débito de ICMS (transferência) → base total tem que ir 0.00, senão a SEFAZ acusa divergência.
+  const semDebitoIcms = totalICMS === 0;
 
   nfe.tagTotal({ ICMSTot: {
-    vBC: totalProd.toFixed(2), vICMS: totalICMS.toFixed(2),
+    vBC: semDebitoIcms ? '0.00' : totalProd.toFixed(2), vICMS: totalICMS.toFixed(2),
     vICMSDeson: '0.00', vFCPUFDest: '0.00', vICMSUFDest: '0.00', vICMSUFRemet: '0.00',
     vFCP: '0.00', vBCST: '0.00', vST: '0.00', vFCPST: '0.00', vFCPSTRet: '0.00',
     vProd: totalProd.toFixed(2),
