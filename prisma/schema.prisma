@@ -68,38 +68,41 @@ model User {
   adminActions      AdminAction[]
 
   // Relations vendedor
-  clockIns                       ClockIn[]                          @relation("clockIns")
-  clockSummaries                 ClockSummary[]                     @relation("clockSummaries")
-  walletEntries                  SellerWallet[]                     @relation("walletEntries")
-  sellerClients                  SellerClient[]                     @relation("sellerClients")
-  sales                          Sale[]                             @relation("sellerSales")
-  customerSales                  Sale[]                             @relation("customerSales")
-  commissions                    SaleCommission[]                   @relation("commissions")
-  relationshipJourneysAsSeller   SellerCommissionJourney[]          @relation("relationshipJourneySeller")
-  relationshipJourneysAsCustomer SellerCommissionJourney[]          @relation("relationshipJourneyCustomer")
-  productionDaysAsSeller         SellerProductionDay[]              @relation("productionDaySeller")
-  productionDaysFinalized        SellerProductionDay[]              @relation("productionDayFinalizer")
-  productionItemsReviewed        SellerProductionItem[]             @relation("productionItemReviewer")
-  productionMonthsAsSeller       SellerProductionMonth[]            @relation("productionMonthSeller")
-  productionMonthsFinalized      SellerProductionMonth[]            @relation("productionMonthFinalizer")
-  productionIncidentsAsSeller    SellerComplianceIncident[]         @relation("productionIncidentSeller")
-  productionIncidentsDecided     SellerComplianceIncident[]         @relation("productionIncidentDecider")
-  productionPolicyAcceptances    SellerProductionPolicyAcceptance[]
-  productionRemindersReceived    SellerProductionReminder[]         @relation("productionReminderSeller")
-  internalRequestsAsSeller       SellerInternalRequest[]            @relation("internalRequestSeller")
-  internalRequestsReviewed       SellerInternalRequest[]            @relation("internalRequestReviewer")
-  conductReportsSubmitted        SellerConductReport[]              @relation("conductReportReporter")
-  conductReportsReviewed         SellerConductReport[]              @relation("conductReportReviewer")
-  privateRecordAccesses          SellerPrivateAccessLog[]           @relation("privateAccessActor")
-  messagesSent                   Message[]                          @relation("messagesSent")
-  messagesReceived               Message[]                          @relation("messagesReceived")
-  tasksCreated                   Task[]                             @relation("tasksCreated")
-  tasksAssigned                  Task[]                             @relation("tasksAssigned")
-  taskExecutions                 TaskExecution[]                    @relation("taskExecutions")
-  trainings                      SellerTraining[]                   @relation("trainings")
-  quizAttempts                   QuizAttempt[]                      @relation("quizAttempts")
-  aiConversations                AIConversation[]                   @relation("aiConversations")
-  productsCreated                Product[]                          @relation("productsCreated")
+  clockIns                        ClockIn[]                          @relation("clockIns")
+  clockSummaries                  ClockSummary[]                     @relation("clockSummaries")
+  walletEntries                   SellerWallet[]                     @relation("walletEntries")
+  sellerClients                   SellerClient[]                     @relation("sellerClients")
+  sales                           Sale[]                             @relation("sellerSales")
+  customerSales                   Sale[]                             @relation("customerSales")
+  commissions                     SaleCommission[]                   @relation("commissions")
+  relationshipJourneysAsSeller    SellerCommissionJourney[]          @relation("relationshipJourneySeller")
+  relationshipJourneysAsCustomer  SellerCommissionJourney[]          @relation("relationshipJourneyCustomer")
+  productionDaysAsSeller          SellerProductionDay[]              @relation("productionDaySeller")
+  productionDaysFinalized         SellerProductionDay[]              @relation("productionDayFinalizer")
+  productionItemsReviewed         SellerProductionItem[]             @relation("productionItemReviewer")
+  productionMonthsAsSeller        SellerProductionMonth[]            @relation("productionMonthSeller")
+  productionMonthsFinalized       SellerProductionMonth[]            @relation("productionMonthFinalizer")
+  productionIncidentsAsSeller     SellerComplianceIncident[]         @relation("productionIncidentSeller")
+  productionIncidentsDecided      SellerComplianceIncident[]         @relation("productionIncidentDecider")
+  productionPolicyAcceptances     SellerProductionPolicyAcceptance[]
+  productionRemindersReceived     SellerProductionReminder[]         @relation("productionReminderSeller")
+  internalRequestsAsSeller        SellerInternalRequest[]            @relation("internalRequestSeller")
+  internalRequestsReviewed        SellerInternalRequest[]            @relation("internalRequestReviewer")
+  conductReportsSubmitted         SellerConductReport[]              @relation("conductReportReporter")
+  conductReportsReviewed          SellerConductReport[]              @relation("conductReportReviewer")
+  privateRecordAccesses           SellerPrivateAccessLog[]           @relation("privateAccessActor")
+  messagesSent                    Message[]                          @relation("messagesSent")
+  messagesReceived                Message[]                          @relation("messagesReceived")
+  tasksCreated                    Task[]                             @relation("tasksCreated")
+  tasksAssigned                   Task[]                             @relation("tasksAssigned")
+  taskExecutions                  TaskExecution[]                    @relation("taskExecutions")
+  trainings                       SellerTraining[]                   @relation("trainings")
+  quizAttempts                    QuizAttempt[]                      @relation("quizAttempts")
+  aiConversations                 AIConversation[]                   @relation("aiConversations")
+  productsCreated                 Product[]                          @relation("productsCreated")
+  sellerAssistantProfile          SellerAssistantProfile?            @relation("sellerAssistantProfile")
+  sellerAssistantAssignments      SellerAssistantProductAssignment[] @relation("sellerAssistantAssignments")
+  sellerAssistantWhatsappMessages SellerAssistantWhatsappMessage[]   @relation("sellerAssistantWhatsappMessages")
 
   // Programa de Parceiros
   partner              Partner?      @relation("partner")
@@ -317,14 +320,15 @@ model Store {
   conversationsAsStore Conversation[] @relation("conversationsForStore")
 
   // Agenda / escala da equipe
-  schedules              SellerSchedule[]           @relation("storeSchedules")
-  agendaActivities       AgendaActivity[]           @relation("storeActivities")
-  monthlyScheduleShifts  SellerMonthlyShift[]       @relation("monthlyScheduleStore")
-  productionDays         SellerProductionDay[]
-  productionIncidents    SellerComplianceIncident[]
-  productionReminders    SellerProductionReminder[]
-  sellerInternalRequests SellerInternalRequest[]
-  sellerConductReports   SellerConductReport[]
+  schedules                  SellerSchedule[]                   @relation("storeSchedules")
+  agendaActivities           AgendaActivity[]                   @relation("storeActivities")
+  monthlyScheduleShifts      SellerMonthlyShift[]               @relation("monthlyScheduleStore")
+  productionDays             SellerProductionDay[]
+  productionIncidents        SellerComplianceIncident[]
+  productionReminders        SellerProductionReminder[]
+  sellerInternalRequests     SellerInternalRequest[]
+  sellerConductReports       SellerConductReport[]
+  sellerAssistantAssignments SellerAssistantProductAssignment[] @relation("sellerAssistantAssignmentStore")
 }
 
 // ============================================================
@@ -434,7 +438,8 @@ model Product {
   timelinePostsAsCard TimelinePost[] @relation("timelinePostProducts")
 
   // Marketing IA: criativos gerados (foto editorial, vídeo Reels, sem-fundo)
-  creatives ProductCreative[] @relation("creativesForProduct")
+  creatives                  ProductCreative[]                  @relation("creativesForProduct")
+  sellerAssistantAssignments SellerAssistantProductAssignment[] @relation("sellerAssistantAssignmentProduct")
 
   @@index([brand, category])
   @@index([active, featured])
@@ -1802,6 +1807,77 @@ model SellerTask {
 
   @@index([sellerId, status])
   @@index([dueDate, status])
+}
+
+// ============================================================
+// ASSISTENTE INDIVIDUAL DO VENDEDOR
+// Uma memoria principal por vendedor, plano de conteudo sem repeticao
+// e historico dos contatos de WhatsApp preparados pelo proprio vendedor.
+// ============================================================
+
+model SellerAssistantProfile {
+  id                 String    @id @default(cuid())
+  sellerId           String    @unique
+  seller             User      @relation("sellerAssistantProfile", fields: [sellerId], references: [id], onDelete: Cascade)
+  displayName        String
+  mainConversationId String?
+  contentCycle       Int       @default(1)
+  memory             Json      @default("{}")
+  lastOpenedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  assignments SellerAssistantProductAssignment[]
+
+  @@index([lastOpenedAt])
+}
+
+model SellerAssistantProductAssignment {
+  id              String                 @id @default(cuid())
+  assistantId     String
+  assistant       SellerAssistantProfile @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+  sellerId        String
+  seller          User                   @relation("sellerAssistantAssignments", fields: [sellerId], references: [id], onDelete: Cascade)
+  storeId         String?
+  store           Store?                 @relation("sellerAssistantAssignmentStore", fields: [storeId], references: [id], onDelete: SetNull)
+  productId       String?
+  product         Product?               @relation("sellerAssistantAssignmentProduct", fields: [productId], references: [id], onDelete: SetNull)
+  workDate        DateTime
+  cycle           Int                    @default(1)
+  contentType     String // REEL | PHOTO
+  slotKey         String
+  position        Int
+  status          String                 @default("ASSIGNED") // ASSIGNED | COMPLETED | SKIPPED
+  productSnapshot Json
+  note            String?                @db.Text
+  completedAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  // O vendedor nao recebe o mesmo produto novamente no ciclo atual.
+  @@unique([sellerId, productId, cycle])
+  @@unique([sellerId, workDate, slotKey, position])
+  @@index([sellerId, workDate, contentType])
+  @@index([storeId, workDate])
+  @@index([productId, createdAt])
+}
+
+model SellerAssistantWhatsappMessage {
+  id               String    @id @default(cuid())
+  sellerId         String
+  seller           User      @relation("sellerAssistantWhatsappMessages", fields: [sellerId], references: [id], onDelete: Cascade)
+  recipientName    String?
+  phone            String
+  message          String    @db.Text
+  status           String    @default("PREPARED") // PREPARED | OPENED | CANCELLED
+  consentConfirmed Boolean   @default(false)
+  waUrl            String    @db.Text
+  openedAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([sellerId, createdAt])
+  @@index([phone, createdAt])
 }
 
 // ============================================================

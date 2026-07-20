@@ -12,6 +12,7 @@ const { authMiddleware, storeScope, prisma } = require('../middleware');
 const { searchProductsForAI, listCatalogSummary } = require('../services/catalogSearch');
 const serperWeb = require('../services/serperWebSearch');
 const { recordEvent, getBrain } = require('../ai/memory/memory.service');
+const sellerAssistant = require('../services/sellerAssistant');
 
 const router = express.Router();
 router.use(authMiddleware, storeScope);
@@ -892,22 +893,14 @@ function formatResearchReply(result) {
 
 async function persistSellerAgentTurn(req, text, reply, metadata = {}) {
   try {
-    let conv = null;
-    const conversationId = String(req.body?.conversationId || '').trim();
-    if (conversationId) {
-      conv = await prisma.aIConversation.findFirst({
-        where: { id: conversationId, userId: req.userId, active: true },
-      });
-    }
-    if (!conv) {
-      conv = await prisma.aIConversation.create({
-        data: {
-          userId: req.userId,
-          userType: 'seller-agent',
-          title: `IA ST Vendedor: ${text.slice(0, 55)}`,
-        },
-      });
-    }
+    const sellerId = resolveSellerId(req);
+    const seller = await prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { id: true, name: true, employeeCode: true, storeId: true },
+    });
+    if (!seller) return null;
+    const profile = await sellerAssistant.getOrCreateAssistantProfile(prisma, seller);
+    const conv = await sellerAssistant.getOrCreateMainConversation(prisma, profile, seller);
     const msgs = parseMessages(conv.messages);
     msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
     msgs.push({ role: 'assistant', content: reply, timestamp: new Date().toISOString(), metadata });
@@ -1826,6 +1819,26 @@ async function loadSellerSnapshot(req) {
     throw err;
   }
 
+  const assistantProfile = await sellerAssistant.getOrCreateAssistantProfile(prisma, seller);
+  const mainConversation = await sellerAssistant.getOrCreateMainConversation(prisma, assistantProfile, seller);
+  const [contentPlan, whatsappHistory] = await Promise.all([
+    sellerAssistant.ensureDailyContentPlan(prisma, assistantProfile, seller, new Date()),
+    prisma.sellerAssistantWhatsappMessage.findMany({
+      where: { sellerId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        recipientName: true,
+        phone: true,
+        message: true,
+        status: true,
+        createdAt: true,
+        openedAt: true,
+      },
+    }),
+  ]);
+
   const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000);
   const since14 = new Date(Date.now() - 14 * 24 * 3600 * 1000);
   const now = new Date();
@@ -1947,6 +1960,22 @@ async function loadSellerSnapshot(req) {
   const snapshot = {
     generatedAt: now.toISOString(),
     seller,
+    assistant: {
+      id: assistantProfile.id,
+      displayName: assistantProfile.displayName,
+      contentCycle: assistantProfile.contentCycle,
+    },
+    conversationId: mainConversation.id,
+    chatHistory: parseMessages(mainConversation.messages)
+      .filter((message) => message?.role === 'user' || message?.role === 'assistant')
+      .slice(-40)
+      .map((message) => ({
+        role: message.role,
+        content: safeText(message.content, 2000),
+        timestamp: message.timestamp || null,
+      })),
+    contentPlan,
+    whatsappHistory,
     stats: {
       totalCustomers: assignmentRows.length,
       customersDue: assignmentRows.filter((a) => a.nextActionDate && new Date(a.nextActionDate) <= now && a.relationshipStatus !== 'LOST').length,
@@ -2039,6 +2068,29 @@ function compactSnapshotForPrompt(snapshot) {
     })),
     entrevista: snapshot.weeklyInterview,
     plano: snapshot.plan,
+    conteudoDoDia: {
+      loja: snapshot.contentPlan?.store?.name || null,
+      ciclo: snapshot.contentPlan?.cycle || null,
+      completo: !!snapshot.contentPlan?.complete,
+      aviso: snapshot.contentPlan?.warning || null,
+      reels: (snapshot.contentPlan?.reels || []).map((reel) => ({
+        bloco: reel.slotKey,
+        produtos: reel.products.map((item) => ({
+          nome: item.product?.name,
+          marca: item.product?.brand,
+          sku: item.product?.sku,
+          descricao: item.product?.shortDescription || item.product?.longDescription || null,
+          caracteristicas: item.product?.features || [],
+          indicadoPara: item.product?.recommendedFor || [],
+        })),
+      })),
+      fotos: (snapshot.contentPlan?.photos || []).map((item) => ({
+        bloco: item.slotKey,
+        nome: item.product?.name,
+        marca: item.product?.brand,
+        sku: item.product?.sku,
+      })),
+    },
   };
 }
 
@@ -2059,6 +2111,21 @@ function offlineCoachReply(message, snapshot) {
   }
   if (isLearningIntent(message)) {
     return 'Posso guardar aprendizados da loja. Escreva algo como: "Guarde: clientes estao pedindo mais tenis preto para caminhada".';
+  }
+  if ((msg.includes('produto') && msg.includes('hoje')) || msg.includes('conteudo') || msg.includes('reels') || msg.includes('foto')) {
+    const contentPlan = snapshot.contentPlan || {};
+    const lines = [`Hoje foram definidos ${contentPlan.assignedCount || 0} de ${contentPlan.requiredCount || 22} produtos sem repeticao.`];
+    (contentPlan.reels || []).forEach((reel, index) => {
+      const names = reel.products.map((item) => [item.product?.brand, item.product?.name].filter(Boolean).join(' ')).filter(Boolean);
+      lines.push(`Reels ${index + 1}: ${names.join(', ') || 'sem produtos disponiveis'}.`);
+    });
+    const photos = (contentPlan.photos || [])
+      .map((item) => [item.product?.brand, item.product?.name].filter(Boolean).join(' '))
+      .filter(Boolean);
+    if (photos.length) lines.push(`Fotos: ${photos.join(', ')}.`);
+    if (contentPlan.warning) lines.push(contentPlan.warning);
+    lines.push('Preco, desconto maximo, tamanhos e caracteristicas aparecem em cada produto do plano. Dados ausentes ficam marcados como nao cadastrados.');
+    return lines.join('\n');
   }
   if (msg.includes('quem') || msg.includes('cliente') || msg.includes('cham')) {
     if (!first) return 'Hoje eu comecaria organizando sua carteira: selecione clientes com recompra, alto interesse ou atendimento recente sem retorno.';
@@ -2186,8 +2253,10 @@ Regras:
 - Se faltar informacao tecnica, comparacao, argumento de venda ou o vendedor pedir internet/web/Google, use research_product_web. Essa tool salva o aprendizado no produto e na memoria da empresa.
 - Quando o vendedor trouxer aprendizado de loja, objecao, pedido de cliente ou insight, use save_seller_learning para guardar.
 - Voce tambem pode enviar mensagem interna pelo TenisCash quando o texto vier em formato claro: "Mande mensagem para Nome dizendo Texto". Esse envio e tratado pelo sistema antes da IA responder.
+- O plano de conteudo diario ja escolhe produtos do estoque real e nao repete produto no ciclo individual do vendedor. Nunca sugira substituir uma lacuna por produto repetido.
+- Para WhatsApp externo, o sistema apenas prepara destinatario e texto. O vendedor deve confirmar autorizacao de contato e tocar em enviar dentro do WhatsApp.
 - O vendedor continua no controle. Para criar tarefas, oriente a usar o botao "Criar tarefas" quando a sugestao ja existir no plano.
-- Nao envie WhatsApp de verdade, nao aprove desconto e nao prometa condicao comercial sem confirmacao da loja.
+- Nao afirme que enviou WhatsApp, nao aprove desconto e nao prometa condicao comercial sem confirmacao da loja.
 - Se o vendedor pedir produto sem falar de estoque, use recommend_products antes de recomendar; use search_products apenas para busca simples/listagem.
 - Diga no maximo 180 palavras. Nada de texto motivacional generico.
 
@@ -2203,6 +2272,11 @@ router.get('/today', requireSeller, async (req, res) => {
     const snapshot = await loadSellerSnapshot(req);
     res.json({
       seller: snapshot.seller,
+      assistant: snapshot.assistant,
+      conversationId: snapshot.conversationId,
+      chatHistory: snapshot.chatHistory,
+      contentPlan: snapshot.contentPlan,
+      whatsappHistory: snapshot.whatsappHistory,
       stats: snapshot.stats,
       priorityCustomers: snapshot.priorityCustomers,
       tasks: snapshot.tasks,
@@ -2215,6 +2289,87 @@ router.get('/today', requireSeller, async (req, res) => {
   } catch (err) {
     console.error('[seller/agent/today] erro:', err);
     res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao carregar IA ST Vendedor' });
+  }
+});
+
+router.get('/content-plan', requireSeller, async (req, res) => {
+  try {
+    const snapshot = await loadSellerSnapshot(req);
+    res.json({ contentPlan: snapshot.contentPlan });
+  } catch (err) {
+    console.error('[seller/agent/content-plan] erro:', err);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao carregar plano de produtos' });
+  }
+});
+
+router.patch('/content-plan/:id', requireSeller, async (req, res) => {
+  try {
+    const snapshot = await loadSellerSnapshot(req);
+    const sellerId = snapshot.seller.id;
+    const status = String(req.body?.status || '').trim().toUpperCase();
+    if (!['ASSIGNED', 'COMPLETED', 'SKIPPED'].includes(status)) {
+      return res.status(400).json({ error: 'Status invalido' });
+    }
+    const current = await prisma.sellerAssistantProductAssignment.findFirst({
+      where: { id: req.params.id, sellerId },
+      select: { id: true },
+    });
+    if (!current) return res.status(404).json({ error: 'Produto do plano nao encontrado' });
+    const assignment = await prisma.sellerAssistantProductAssignment.update({
+      where: { id: current.id },
+      data: {
+        status,
+        note: safeText(req.body?.note, 1000) || null,
+        completedAt: status === 'COMPLETED' ? new Date() : null,
+      },
+    });
+    res.json({ assignment });
+  } catch (err) {
+    console.error('[seller/agent/content-plan/update] erro:', err);
+    res.status(500).json({ error: 'Erro ao atualizar produto do plano' });
+  }
+});
+
+router.post('/whatsapp/prepare', requireSeller, async (req, res) => {
+  try {
+    const snapshot = await loadSellerSnapshot(req);
+    const sellerId = snapshot.seller.id;
+    const prepared = await sellerAssistant.prepareWhatsappMessage(prisma, sellerId, req.body || {});
+    res.json({
+      message: {
+        id: prepared.id,
+        recipientName: prepared.recipientName,
+        phone: prepared.phone,
+        text: prepared.message,
+        status: prepared.status,
+        waUrl: prepared.waUrl,
+        createdAt: prepared.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('[seller/agent/whatsapp/prepare] erro:', err);
+    res.status(400).json({ error: err.message || 'Erro ao preparar WhatsApp' });
+  }
+});
+
+router.post('/whatsapp/:id/opened', requireSeller, async (req, res) => {
+  try {
+    const snapshot = await loadSellerSnapshot(req);
+    const sellerId = snapshot.seller.id;
+    const current = await prisma.sellerAssistantWhatsappMessage.findFirst({
+      where: { id: req.params.id, sellerId },
+      select: { id: true },
+    });
+    if (!current) return res.status(404).json({ error: 'Mensagem preparada nao encontrada' });
+    const message = await prisma.sellerAssistantWhatsappMessage.update({
+      where: { id: current.id },
+      data: { status: 'OPENED', openedAt: new Date() },
+      select: { id: true, status: true, openedAt: true },
+    });
+    res.json({ message });
+  } catch (err) {
+    console.error('[seller/agent/whatsapp/opened] erro:', err);
+    res.status(500).json({ error: 'Erro ao registrar abertura do WhatsApp' });
   }
 });
 
@@ -2288,6 +2443,20 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Mensagem obrigatoria' });
 
     const snapshot = await loadSellerSnapshot(req);
+    const whatsappDraft = sellerAssistant.parseWhatsappDraft(text);
+    if (whatsappDraft) {
+      const reply = 'Preparei o telefone e a mensagem no formulario de WhatsApp. Confira os dados, confirme que a pessoa autorizou o contato ou ja esta em atendimento e toque em Abrir WhatsApp. O envio so acontece quando voce confirmar no WhatsApp.';
+      const conversationId = await persistSellerAgentTurn(req, text, reply, {
+        intent: 'whatsapp_draft',
+        phone: whatsappDraft.phone,
+      });
+      return res.json({
+        conversationId,
+        reply,
+        whatsappDraft,
+        suggestions: ['Quem eu chamo primeiro?', 'Ver produtos de hoje', 'Montar uma abordagem'],
+      });
+    }
     if (isInternalMessageIntent(text)) {
       const messageResult = await handleInternalMessageIntent(req, text);
       const conversationId = await persistSellerAgentTurn(req, text, messageResult.reply, { intent: 'internal_message' });
@@ -2377,22 +2546,15 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
       });
     }
 
-    let conv = null;
-    const conversationId = String(req.body?.conversationId || '').trim();
-    if (conversationId) {
-      conv = await prisma.aIConversation.findFirst({
-        where: { id: conversationId, userId: req.userId, active: true },
-      });
-      if (!conv) return res.status(404).json({ error: 'Conversa nao encontrada' });
-    } else {
-      conv = await prisma.aIConversation.create({
-        data: {
-          userId: req.userId,
-          userType: 'seller-agent',
-          title: `IA ST Vendedor: ${text.slice(0, 55)}`,
-        },
-      });
-    }
+    const conv = await prisma.aIConversation.findFirst({
+      where: {
+        id: snapshot.conversationId,
+        userId: snapshot.seller.id,
+        userType: 'seller-agent',
+        active: true,
+      },
+    });
+    if (!conv) return res.status(404).json({ error: 'Conversa principal do assistente nao encontrada' });
 
     let msgs = parseMessages(conv.messages);
     msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
