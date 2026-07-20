@@ -9,6 +9,7 @@
 const express = require('express');
 const { prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
+const relationshipCommission = require('../services/relationshipCommission');
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ async function confirmAndEmit(sale, store, orderId, tag) {
   if (!pay.paid) { console.log(`[pagbank ${tag}] ainda nao pago`, { sale: sale.id, status: pay.status }); return { paid: false, status: pay.status }; }
   // marca a venda paga
   if (sale.status !== 'completed') await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } }).catch(() => {});
+  await relationshipCommission.activateJourneyAfterPayment(prisma, sale.id).catch(() => {});
   // idempotência: cupom já autorizado → nada a fazer
   const existing = await prisma.fiscalDocument.findFirst({ where: { saleId: sale.id, docType: 'NFCE', status: 'authorized' } });
   if (existing) return { paid: true, alreadyEmitted: true, documentId: existing.id, number: existing.number, e2e: pay.e2e };
