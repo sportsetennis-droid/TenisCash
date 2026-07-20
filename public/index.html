@@ -689,6 +689,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>IA ST Vendedor</span></div>
+    <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
@@ -861,6 +862,39 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button type="button" class="tab-btn js-sp-tab" data-tab="interactions" style="padding:10px 12px">INTERAÇÕES</button>
   </div>
   <div id="sp-content-wrap" style="margin-top:12px"></div>
+</div>
+
+<!-- SELLER RELATIONSHIP COMMISSION -->
+<div id="seller-commission-cycles" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Comissões por Cliente</p></div>
+  <div style="margin-top:12px;padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:14px">
+    <p style="font-size:13px;font-weight:800">Acompanhamento sem código visível</p>
+    <p style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.45;margin-top:5px">Encontre pelo cliente, valor, produto ou link. Envie cada etapa para fiscalização e acompanhe o que foi aprovado ou devolvido.</p>
+  </div>
+  <input id="src-search" class="input-field" type="search" placeholder="Nome, valor, item ou link" oninput="scheduleSellerRelationshipLoad()" style="margin-top:14px">
+  <select id="src-status" class="input-field" onchange="loadSellerRelationshipCommissions()" style="margin-top:8px">
+    <option value="">Todas as situações</option>
+    <option value="ACTIVE">Em andamento</option>
+    <option value="COMPLETED">Ciclo concluído</option>
+    <option value="PENDING_PAYMENT">Aguardando pagamento</option>
+    <option value="CANCELED">Venda cancelada</option>
+  </select>
+  <div id="src-totals" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px"></div>
+  <div id="src-list" style="display:grid;gap:10px;margin:14px 0 90px"></div>
+</div>
+
+<div id="src-detail-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1100;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:430px;max-height:92vh;overflow:auto;background:#151515;border:1px solid rgba(255,255,255,.18);border-radius:20px 20px 0 0;padding:18px 18px 28px">
+    <button type="button" onclick="closeSellerRelationshipDetail()" style="float:right;background:transparent;border:0;color:#fff;font-size:25px;cursor:pointer">×</button>
+    <div id="src-detail-content"></div>
+  </div>
+</div>
+
+<div id="src-stage-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1200;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:430px;max-height:94vh;overflow:auto;background:#151515;border:1px solid rgba(255,255,255,.18);border-radius:20px 20px 0 0;padding:18px 18px 28px">
+    <button type="button" onclick="closeSellerRelationshipStage()" style="float:right;background:transparent;border:0;color:#fff;font-size:25px;cursor:pointer">×</button>
+    <div id="src-stage-content"></div>
+  </div>
 </div>
 
 <!-- SELLER WEEKLY INTERVIEW -->
@@ -1451,7 +1485,7 @@ function showScreen(id) {
   const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
-  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-interview','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-commission-cycles','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-campaigns','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
@@ -1497,6 +1531,7 @@ function showScreen(id) {
   if (id === 'partner-redeem') initPartnerRedeem();
   if (id === 'teniscash-store') loadTenisCashStore();
   if (id === 'seller-portfolio') initSellerPortfolio();
+  if (id === 'seller-commission-cycles') initSellerRelationshipCommissions();
   if (id === 'seller-interview') initSellerInterview();
 }
 
@@ -4734,6 +4769,234 @@ async function confirmPartnerRedeem() {
     wire();
   }
 })();
+
+// ==================== COMISSAO PROGRESSIVA POR CLIENTE ====================
+let _srcLoadTimer = null;
+let _srcCurrentCard = null;
+let _srcCurrentStage = null;
+let _srcReferralTimer = null;
+let _srcReferralCandidates = [];
+let _srcReferralCandidate = null;
+
+function initSellerRelationshipCommissions() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  loadSellerRelationshipCommissions();
+}
+
+function scheduleSellerRelationshipLoad() {
+  clearTimeout(_srcLoadTimer);
+  _srcLoadTimer = setTimeout(loadSellerRelationshipCommissions, 280);
+}
+
+function srcEscape(value) {
+  return escapeHtmlSellerMsg(value).replace(/'/g, '&#39;');
+}
+
+function srcMoney(value) {
+  return 'R$ ' + Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function srcDate(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function srcItems(items) {
+  return (items || []).map(item => `${item.quantity}× ${item.name}${item.size ? ' · tam. ' + item.size : ''}`).join(' | ');
+}
+
+function srcStatus(status) {
+  return ({
+    ACTIVE: ['Em andamento', '#FFD180'],
+    COMPLETED: ['Ciclo concluído', '#8BFF8B'],
+    PENDING_PAYMENT: ['Aguardando pagamento', '#90CAF9'],
+    CANCELED: ['Venda cancelada', '#FF8A80'],
+  })[status] || [status || '—', 'rgba(255,255,255,.65)'];
+}
+
+async function loadSellerRelationshipCommissions() {
+  const list = document.getElementById('src-list');
+  if (!list) return;
+  list.innerHTML = '<div class="loading">Carregando vendas...</div>';
+  const params = new URLSearchParams();
+  const q = (document.getElementById('src-search')?.value || '').trim();
+  const status = document.getElementById('src-status')?.value || '';
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  const data = await api('/seller/relationship-commission?' + params.toString());
+  if (data.error) {
+    list.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`;
+    return;
+  }
+  const totals = data.totals || {};
+  document.getElementById('src-totals').innerHTML = [
+    ['VENDAS', totals.count || 0],
+    ['VALOR PAGO', srcMoney(totals.paidAmount || 0)],
+    ['COMISSÃO', srcMoney(totals.commission || 0)],
+  ].map(([label, value]) => `<div style="min-width:0;padding:10px 5px;text-align:center;background:rgba(255,255,255,.1);border-radius:12px"><p style="font-size:9px;letter-spacing:.7px;color:rgba(255,255,255,.55)">${label}</p><p style="font-size:13px;font-weight:900;margin-top:5px;overflow-wrap:anywhere">${value}</p></div>`).join('');
+  const cards = data.cards || [];
+  if (!cards.length) {
+    list.innerHTML = '<div style="text-align:center;padding:28px 12px;color:rgba(255,255,255,.6);background:rgba(255,255,255,.08);border-radius:14px">Nenhuma venda com cliente identificado neste filtro.</div>';
+    return;
+  }
+  list.innerHTML = cards.map(card => {
+    const state = srcStatus(card.status);
+    const position = card.purchasePosition === 1 ? 'Primeira venda do ciclo' : 'Recompra do ciclo';
+    return `<button type="button" onclick="openSellerRelationshipDetail('${card.journeyId}')" style="width:100%;text-align:left;color:#fff;padding:15px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:15px;cursor:pointer;font-family:inherit">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div style="min-width:0"><p style="font-size:17px;font-weight:900;overflow-wrap:anywhere">${srcEscape(card.customer.name)}</p><p style="font-size:11px;color:rgba(255,255,255,.55);margin-top:3px">${position} · ${srcDate(card.saleDate)}</p></div><span style="font-size:10px;font-weight:800;color:${state[1]};white-space:nowrap">${state[0]}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:end;margin-top:13px"><div><p style="font-size:10px;color:rgba(255,255,255,.5)">VALOR PAGO</p><p style="font-size:21px;font-weight:900">${srcMoney(card.paidAmount)}</p></div><div style="text-align:right"><p style="font-size:10px;color:rgba(255,255,255,.5)">COMISSÃO ATUAL</p><p style="font-size:17px;font-weight:900;color:#FFD180">${Number(card.currentPct).toFixed(2).replace('.', ',')}% · ${srcMoney(Math.max(0, card.payableAmount))}</p></div></div>
+      <p style="font-size:12px;color:rgba(255,255,255,.65);line-height:1.4;margin-top:11px;padding-top:10px;border-top:1px solid rgba(255,255,255,.12)">${srcEscape(srcItems(card.items))}</p>
+      <p style="font-size:11px;margin-top:8px"><strong>${card.progress?.approved || 0}/${card.progress?.total || 0} aprovadas</strong>${card.progress?.awaitingReview ? ` · <span style="color:#90CAF9">${card.progress.awaitingReview} em fiscalização</span>` : ''}${card.progress?.returned ? ` · <span style="color:#FF8A80">${card.progress.returned} devolvida(s)</span>` : ''}</p>
+      ${card.nextStage ? `<p style="font-size:11px;color:${card.nextStage.available ? '#8BFF8B' : '#FFD180'};margin-top:9px"><strong>Próxima etapa:</strong> ${srcEscape(card.nextStage.title)}${card.nextStage.waitingReason ? ' · ' + srcEscape(card.nextStage.waitingReason) : ''}</p>` : ''}
+    </button>`;
+  }).join('');
+}
+
+async function openSellerRelationshipDetail(journeyId) {
+  const sheet = document.getElementById('src-detail-sheet');
+  const content = document.getElementById('src-detail-content');
+  sheet.style.display = 'flex';
+  content.innerHTML = '<div class="loading">Carregando acompanhamento...</div>';
+  const data = await api('/seller/relationship-commission/' + encodeURIComponent(journeyId));
+  if (data.error) { content.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const card = data.card;
+  _srcCurrentCard = card;
+  const state = srcStatus(card.status);
+  const completed = (card.stages || []).filter(stage => stage.status === 'COMPLETED').length;
+  content.innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">${card.purchasePosition === 1 ? 'PRIMEIRA VENDA DO CICLO' : 'RECOMPRA DO CICLO'}</p>
+    <h3 style="font-size:21px;margin-top:4px;padding-right:30px">${srcEscape(card.customer.name)}</h3>
+    <p style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.4;margin-top:4px">${srcDate(card.saleDate)} · ${srcEscape(srcItems(card.items))}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><div style="padding:11px;background:rgba(255,255,255,.09);border-radius:11px"><small style="color:rgba(255,255,255,.55)">Valor pago</small><strong style="display:block;margin-top:4px">${srcMoney(card.paidAmount)}</strong></div><div style="padding:11px;background:rgba(229,87,30,.18);border-radius:11px"><small style="color:rgba(255,255,255,.55)">Comissão</small><strong style="display:block;color:#FFD180;margin-top:4px">${Number(card.currentPct).toFixed(2).replace('.', ',')}% · ${srcMoney(Math.max(0, card.payableAmount))}</strong></div></div>
+    <p style="font-size:11px;color:${state[1]};font-weight:800;margin-top:10px">${state[0]} · ${completed} de ${(card.stages || []).length} etapas aprovadas</p>
+    <div style="display:grid;gap:8px;margin-top:12px">${(card.stages || []).map(renderSellerRelationshipStage).join('')}</div>`;
+}
+
+function renderSellerRelationshipStage(stage) {
+  const done = stage.status === 'COMPLETED';
+  const reversed = stage.status === 'REVERSED';
+  const submitted = stage.status === 'SUBMITTED';
+  const rejected = stage.status === 'REJECTED';
+  const color = done ? '#8BFF8B' : reversed || rejected ? '#FF8A80' : submitted ? '#90CAF9' : stage.available ? '#FFD180' : 'rgba(255,255,255,.6)';
+  const statusLabel = done ? '✓ Aprovada' : reversed ? '↩ Estornada' : submitted ? '⏳ Aguardando fiscalização' : rejected ? '✕ Devolvida para correção' : 'Pendente';
+  const evidence = (stage.evidence || []).map(file => `<button type="button" onclick="openSellerRelationshipEvidence('${file.evidenceId}')" style="padding:7px 9px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:8px;font-family:inherit;font-size:11px;cursor:pointer">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${srcEscape(file.name)}</button>`).join('');
+  return `<div style="padding:13px;background:rgba(255,255,255,.075);border-left:3px solid ${color};border-radius:11px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:9px"><div><p style="font-size:13px;font-weight:800;color:${color}">${srcEscape(stage.title)}</p><p style="font-size:11px;color:${color};margin-top:3px">${statusLabel} · meta ${Number(stage.targetPct).toFixed(2).replace('.', ',')}%${done ? ' · +' + srcMoney(stage.amount) : ''}</p></div>${stage.available ? `<button type="button" onclick="openSellerRelationshipStage('${stage.key}')" style="padding:8px 10px;background:#fff;color:#E5571E;border:0;border-radius:9px;font-family:inherit;font-weight:900;font-size:11px;cursor:pointer">${rejected ? 'CORRIGIR' : 'REGISTRAR'}</button>` : ''}</div>
+    ${stage.waitingReason ? `<p style="font-size:11px;color:#FFD180;margin-top:7px">${srcEscape(stage.waitingReason)}${stage.earliestAt ? ' · ' + srcDate(stage.earliestAt) : ''}</p>` : ''}
+    ${stage.reviewNote ? `<p style="font-size:11px;color:${rejected ? '#FF8A80' : '#8BFF8B'};background:rgba(255,255,255,.08);padding:8px;border-radius:8px;margin-top:8px"><strong>Fiscalização:</strong> ${srcEscape(stage.reviewNote)}</p>` : ''}
+    ${stage.note ? `<p style="font-size:12px;white-space:pre-wrap;line-height:1.4;margin-top:8px">${srcEscape(stage.note)}</p>` : ''}
+    ${stage.publicationUrl ? `<p style="margin-top:7px"><a href="${srcEscape(stage.publicationUrl)}" target="_blank" rel="noopener" style="color:#90CAF9;font-size:12px">Abrir publicação da loja</a></p>` : ''}
+    ${stage.evidenceUrl ? `<p style="margin-top:7px"><a href="${srcEscape(stage.evidenceUrl)}" target="_blank" rel="noopener" style="color:#90CAF9;font-size:12px">Abrir link da evidência</a></p>` : ''}
+    ${evidence ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${evidence}</div>` : ''}
+    ${stage.submittedAt && !done ? `<p style="font-size:10px;color:rgba(255,255,255,.45);margin-top:7px">Enviada em ${srcDate(stage.submittedAt)}</p>` : ''}
+    ${stage.completedAt ? `<p style="font-size:10px;color:rgba(255,255,255,.45);margin-top:7px">Registrado em ${srcDate(stage.completedAt)}</p>` : ''}
+  </div>`;
+}
+
+function closeSellerRelationshipDetail() {
+  document.getElementById('src-detail-sheet').style.display = 'none';
+}
+
+function openSellerRelationshipStage(stageKey) {
+  const stage = (_srcCurrentCard?.stages || []).find(item => item.key === stageKey);
+  if (!stage || !stage.available) return;
+  _srcCurrentStage = stage;
+  _srcReferralCandidate = null;
+  _srcReferralCandidates = [];
+  const requirement = stage.requirements || {};
+  const accept = requirement.media === 'photo' ? 'image/jpeg,image/png,image/webp' : requirement.media === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime';
+  document.getElementById('src-stage-content').innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">REGISTRAR ETAPA · ${Number(stage.targetPct).toFixed(2).replace('.', ',')}%</p>
+    <h3 style="font-size:18px;line-height:1.3;margin-top:5px;padding-right:28px">${srcEscape(stage.title)}</h3>
+    <label class="input-label">RELATO DO QUE FOI REALIZADO</label><textarea id="src-stage-note" class="input-field" rows="4" maxlength="4000" placeholder="Descreva a ação e a resposta do cliente">${srcEscape(stage.note || '')}</textarea>
+    ${requirement.publication ? `<label class="input-label">LINK DA PUBLICAÇÃO NO PERFIL DA LOJA</label><input id="src-stage-publication" class="input-field" type="url" value="${srcEscape(stage.publicationUrl || '')}" placeholder="https://instagram.com/...">` : ''}
+    <label class="input-label">LINK DA EVIDÊNCIA (OPÇÃO AO UPLOAD)</label><input id="src-stage-evidence-url" class="input-field" type="url" value="${srcEscape(stage.evidenceUrl || '')}" placeholder="https://drive.google.com/... ou outro link acessível">
+    <label class="input-label">FOTOS E VÍDEOS ${requirement.media ? '(ENVIE ARQUIVO OU LINK)' : '(OPCIONAL)'}</label><input id="src-stage-files" class="input-field" type="file" accept="${accept}" multiple style="padding:12px">
+    <p style="font-size:10px;color:rgba(255,255,255,.5);line-height:1.4;margin-top:5px">Até 5 fotos de 15 MB cada e 2 vídeos de 80 MB cada. Os arquivos ficam privados no TenisCash.</p>
+    ${requirement.consent ? '<label style="display:flex;gap:9px;align-items:flex-start;font-size:12px;margin-top:13px"><input id="src-stage-consent" type="checkbox" style="margin-top:2px"> O cliente autorizou o uso da imagem e voz.</label>' : ''}
+    ${requirement.interaction ? '<label style="display:flex;gap:9px;align-items:flex-start;font-size:12px;margin-top:13px"><input id="src-stage-interaction" type="checkbox" style="margin-top:2px"> O cliente respondeu e interagiu no pós-venda.</label><label class="input-label">CANAL</label><select id="src-stage-channel" class="input-field"><option value="WHATSAPP">WhatsApp</option><option value="PHONE">Telefone</option><option value="INSTAGRAM">Instagram</option><option value="IN_STORE">Na loja</option><option value="OTHER">Outro</option></select>' : ''}
+    ${requirement.referral ? '<div style="margin-top:14px;padding:12px;background:rgba(255,255,255,.08);border-radius:11px"><label class="input-label" style="margin-top:0">COMPRA DA PESSOA INDICADA</label><input id="src-referral-search" class="input-field" type="search" placeholder="Nome, valor ou item comprado" oninput="scheduleSellerReferralSearch()"><div id="src-referral-selected" style="font-size:11px;color:rgba(255,255,255,.55);margin-top:7px">Nenhuma compra selecionada.</div><div id="src-referral-results" style="display:grid;gap:6px;margin-top:8px"></div></div>' : ''}
+    <div id="src-stage-error" class="error-msg" style="display:none;margin-top:12px"></div>
+    <p style="font-size:11px;color:#FFD180;background:rgba(255,193,7,.1);padding:9px;border-radius:9px;margin-top:12px">O percentual só aumentará depois que a fiscalização aprovar.</p>
+    <button id="src-stage-save" type="button" class="btn-primary" onclick="submitSellerRelationshipStage()">ENVIAR PARA FISCALIZAÇÃO</button>`;
+  document.getElementById('src-stage-sheet').style.display = 'flex';
+  if (requirement.referral) searchSellerReferralCandidates();
+}
+
+function closeSellerRelationshipStage() {
+  document.getElementById('src-stage-sheet').style.display = 'none';
+}
+
+function scheduleSellerReferralSearch() {
+  clearTimeout(_srcReferralTimer);
+  _srcReferralTimer = setTimeout(searchSellerReferralCandidates, 280);
+}
+
+async function searchSellerReferralCandidates() {
+  if (!_srcCurrentCard || !_srcCurrentStage?.requirements?.referral) return;
+  const results = document.getElementById('src-referral-results');
+  if (!results) return;
+  results.innerHTML = '<span style="font-size:11px;color:rgba(255,255,255,.55)">Buscando...</span>';
+  const q = (document.getElementById('src-referral-search')?.value || '').trim();
+  const data = await api('/seller/relationship-commission/referral-candidates?journeyId=' + encodeURIComponent(_srcCurrentCard.journeyId) + '&q=' + encodeURIComponent(q));
+  if (data.error) { results.innerHTML = `<span class="error-msg">${srcEscape(data.error)}</span>`; return; }
+  _srcReferralCandidates = data.candidates || [];
+  results.innerHTML = _srcReferralCandidates.length ? _srcReferralCandidates.map((candidate, index) => `<button type="button" onclick="selectSellerReferralCandidate(${index})" style="text-align:left;padding:9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:9px;color:#fff;font-family:inherit;cursor:pointer"><strong>${srcEscape(candidate.customerName)}</strong> · ${srcMoney(candidate.paidAmount)}<br><span style="font-size:10px;color:rgba(255,255,255,.55)">${srcEscape(srcItems(candidate.items))}</span></button>`).join('') : '<span style="font-size:11px;color:rgba(255,255,255,.55)">Nenhuma compra paga encontrada.</span>';
+}
+
+function selectSellerReferralCandidate(index) {
+  _srcReferralCandidate = _srcReferralCandidates[index] || null;
+  if (!_srcReferralCandidate) return;
+  document.getElementById('src-referral-selected').innerHTML = `<strong style="color:#8BFF8B">✓ ${srcEscape(_srcReferralCandidate.customerName)}</strong> · ${srcMoney(_srcReferralCandidate.paidAmount)} · ${srcEscape(srcItems(_srcReferralCandidate.items))}`;
+}
+
+async function submitSellerRelationshipStage() {
+  if (!_srcCurrentCard || !_srcCurrentStage) return;
+  const error = document.getElementById('src-stage-error');
+  const button = document.getElementById('src-stage-save');
+  const files = Array.from(document.getElementById('src-stage-files')?.files || []);
+  const photos = files.filter(file => file.type.startsWith('image/'));
+  const videos = files.filter(file => file.type.startsWith('video/'));
+  const fail = message => { error.textContent = message; error.style.display = 'block'; };
+  if (photos.length > 5) { fail('Envie no máximo 5 fotos.'); return; }
+  if (videos.length > 2) { fail('Envie no máximo 2 vídeos.'); return; }
+  if (photos.some(file => file.size > 15 * 1024 * 1024)) { fail('Cada foto pode ter no máximo 15 MB.'); return; }
+  if (videos.some(file => file.size > 80 * 1024 * 1024)) { fail('Cada vídeo pode ter no máximo 80 MB.'); return; }
+  if (_srcCurrentStage.requirements?.referral && !_srcReferralCandidate) { fail('Selecione a compra da pessoa indicada.'); return; }
+  const form = new FormData();
+  form.append('note', (document.getElementById('src-stage-note')?.value || '').trim());
+  if (document.getElementById('src-stage-publication')) form.append('publicationUrl', document.getElementById('src-stage-publication').value.trim());
+  form.append('evidenceUrl', (document.getElementById('src-stage-evidence-url')?.value || '').trim());
+  if (document.getElementById('src-stage-consent')) form.append('consentConfirmed', document.getElementById('src-stage-consent').checked ? 'true' : 'false');
+  if (document.getElementById('src-stage-interaction')) form.append('customerInteracted', document.getElementById('src-stage-interaction').checked ? 'true' : 'false');
+  if (document.getElementById('src-stage-channel')) form.append('channel', document.getElementById('src-stage-channel').value);
+  if (_srcReferralCandidate) form.append('referredJourneyId', _srcReferralCandidate.journeyId);
+  files.forEach(file => form.append('files', file));
+  button.disabled = true;
+  button.textContent = 'ENVIANDO...';
+  error.style.display = 'none';
+  try {
+    const response = await fetch(API + '/seller/relationship-commission/' + encodeURIComponent(_srcCurrentCard.journeyId) + '/stages/' + encodeURIComponent(_srcCurrentStage.key), { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: form, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Não foi possível registrar a etapa');
+    closeSellerRelationshipStage();
+    await openSellerRelationshipDetail(_srcCurrentCard.journeyId);
+    await loadSellerRelationshipCommissions();
+  } catch (err) {
+    fail(err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'ENVIAR PARA FISCALIZAÇÃO';
+  }
+}
+
+async function openSellerRelationshipEvidence(evidenceId) {
+  try {
+    const response = await fetch(API + '/seller/relationship-commission/evidence/' + encodeURIComponent(evidenceId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
+    const url = URL.createObjectURL(await response.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) { alert(err.message); }
+}
 
 // ==================== SELLER PORTFOLIO (Carteira) ====================
 let _spInit = false;

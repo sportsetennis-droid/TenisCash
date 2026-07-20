@@ -68,21 +68,24 @@ model User {
   adminActions      AdminAction[]
 
   // Relations vendedor
-  clockIns         ClockIn[]        @relation("clockIns")
-  clockSummaries   ClockSummary[]   @relation("clockSummaries")
-  walletEntries    SellerWallet[]   @relation("walletEntries")
-  sellerClients    SellerClient[]   @relation("sellerClients")
-  sales            Sale[]           @relation("sellerSales")
-  commissions      SaleCommission[] @relation("commissions")
-  messagesSent     Message[]        @relation("messagesSent")
-  messagesReceived Message[]        @relation("messagesReceived")
-  tasksCreated     Task[]           @relation("tasksCreated")
-  tasksAssigned    Task[]           @relation("tasksAssigned")
-  taskExecutions   TaskExecution[]  @relation("taskExecutions")
-  trainings        SellerTraining[] @relation("trainings")
-  quizAttempts     QuizAttempt[]    @relation("quizAttempts")
-  aiConversations  AIConversation[] @relation("aiConversations")
-  productsCreated  Product[]        @relation("productsCreated")
+  clockIns                       ClockIn[]                 @relation("clockIns")
+  clockSummaries                 ClockSummary[]            @relation("clockSummaries")
+  walletEntries                  SellerWallet[]            @relation("walletEntries")
+  sellerClients                  SellerClient[]            @relation("sellerClients")
+  sales                          Sale[]                    @relation("sellerSales")
+  customerSales                  Sale[]                    @relation("customerSales")
+  commissions                    SaleCommission[]          @relation("commissions")
+  relationshipJourneysAsSeller   SellerCommissionJourney[] @relation("relationshipJourneySeller")
+  relationshipJourneysAsCustomer SellerCommissionJourney[] @relation("relationshipJourneyCustomer")
+  messagesSent                   Message[]                 @relation("messagesSent")
+  messagesReceived               Message[]                 @relation("messagesReceived")
+  tasksCreated                   Task[]                    @relation("tasksCreated")
+  tasksAssigned                  Task[]                    @relation("tasksAssigned")
+  taskExecutions                 TaskExecution[]           @relation("taskExecutions")
+  trainings                      SellerTraining[]          @relation("trainings")
+  quizAttempts                   QuizAttempt[]             @relation("quizAttempts")
+  aiConversations                AIConversation[]          @relation("aiConversations")
+  productsCreated                Product[]                 @relation("productsCreated")
 
   // Programa de Parceiros
   partner              Partner?      @relation("partner")
@@ -514,6 +517,8 @@ model Sale {
   id             String        @id @default(uuid())
   sellerId       String
   seller         User          @relation("sellerSales", fields: [sellerId], references: [id])
+  customerUserId String?
+  customerUser   User?         @relation("customerSales", fields: [customerUserId], references: [id], onDelete: SetNull)
   clientId       String?
   client         SellerClient? @relation(fields: [clientId], references: [id])
   storeId        String?
@@ -529,12 +534,15 @@ model Sale {
   idemKey        String?       @unique // anti-duplicação: 1 venda por chave do carrinho (trava durável no banco)
   createdAt      DateTime      @default(now())
 
-  items          SaleItem[]
-  commissions    SaleCommission[]
-  stockMovements StoreStockMovement[]
+  items                   SaleItem[]
+  commissions             SaleCommission[]
+  stockMovements          StoreStockMovement[]
+  relationshipJourney     SellerCommissionJourney? @relation("relationshipJourneySale")
+  referralCommissionStage SellerCommissionStage?   @relation("referralConvertedSale")
 
   @@index([sellerId, createdAt])
   @@index([clientId])
+  @@index([customerUserId, createdAt])
 }
 
 model SaleItem {
@@ -615,6 +623,96 @@ model SaleCommission {
   createdAt  DateTime  @default(now())
 
   @@index([sellerId, status])
+}
+
+// ============================================================
+// COMISSAO POR CICLO DE RELACIONAMENTO
+// A tela nunca apresenta IDs: organiza por cliente + valor pago + itens.
+// IDs permanecem internos para impedir vinculos/estornos na venda errada.
+// ============================================================
+
+model SellerCommissionJourney {
+  id                 String    @id @default(cuid())
+  saleId             String    @unique
+  sale               Sale      @relation("relationshipJourneySale", fields: [saleId], references: [id], onDelete: Cascade)
+  sellerId           String
+  seller             User      @relation("relationshipJourneySeller", fields: [sellerId], references: [id])
+  customerUserId     String
+  customer           User      @relation("relationshipJourneyCustomer", fields: [customerUserId], references: [id])
+  storeId            String?
+  customerName       String
+  customerPhone      String?
+  cycleNumber        Int
+  purchasePosition   Int // 1 = primeira venda do ciclo; 2 = recompra
+  baseAmount         Float // valor efetivamente pago: total liquido - TenisCash usado
+  basePct            Float
+  currentPct         Float
+  earnedAmount       Float
+  reversedAmount     Float     @default(0)
+  status             String    @default("ACTIVE") // ACTIVE | COMPLETED | PENDING_PAYMENT | CANCELED
+  startedAt          DateTime  @default(now())
+  completedAt        DateTime?
+  canceledAt         DateTime?
+  cancellationReason String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  stages SellerCommissionStage[]
+
+  @@index([sellerId, status, createdAt])
+  @@index([customerUserId, sellerId, createdAt])
+  @@index([storeId, createdAt])
+}
+
+model SellerCommissionStage {
+  id                 String                  @id @default(cuid())
+  journeyId          String
+  journey            SellerCommissionJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  key                String
+  position           Int
+  title              String
+  targetPct          Float
+  deltaPct           Float                   @default(0)
+  amount             Float                   @default(0)
+  status             String                  @default("PENDING") // PENDING | SUBMITTED | REJECTED | COMPLETED | REVERSED
+  note               String?
+  publicationUrl     String?
+  evidenceUrl        String?
+  customerInteracted Boolean                 @default(false)
+  interactionChannel String?
+  consentConfirmed   Boolean                 @default(false)
+  completedById      String?
+  completedAt        DateTime?
+  submittedAt        DateTime?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  referredSaleId     String?                 @unique
+  referredSale       Sale?                   @relation("referralConvertedSale", fields: [referredSaleId], references: [id], onDelete: SetNull)
+  reversedAt         DateTime?
+  reversalReason     String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  evidence SellerCommissionEvidence[]
+
+  @@unique([journeyId, key])
+  @@index([journeyId, position])
+  @@index([status, submittedAt])
+}
+
+model SellerCommissionEvidence {
+  id           String                @id @default(cuid())
+  stageId      String
+  stage        SellerCommissionStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  storedName   String                @unique
+  originalName String
+  mimeType     String
+  mediaType    String // photo | video
+  bytes        Int
+  createdAt    DateTime              @default(now())
+
+  @@index([stageId])
 }
 
 // ============================================================
@@ -1603,42 +1701,42 @@ model XmlImportJob {
 }
 
 model XmlFiscalDocument {
-  id            String    @id @default(cuid())
-  importJobId   String?
-  accessKey     String?   @unique
-  number        String?
-  series        String?
-  issuerCnpj    String?
-  issuerName    String?
-  recipientCnpj String?
-  issueDate     DateTime?
-  totalValue    Float?
-  icmsValue     Float?
-  icmsStValue   Float?
-  fcpValue      Float?
-  fcpStValue    Float?
+  id             String    @id @default(cuid())
+  importJobId    String?
+  accessKey      String?   @unique
+  number         String?
+  series         String?
+  issuerCnpj     String?
+  issuerName     String?
+  recipientCnpj  String?
+  issueDate      DateTime?
+  totalValue     Float?
+  icmsValue      Float?
+  icmsStValue    Float?
+  fcpValue       Float?
+  fcpStValue     Float?
   difalDestValue Float?
-  ipiValue      Float?
-  pisValue      Float?
-  cofinsValue   Float?
-  cbsValue      Float?
-  ibsValue      Float?
-  rawXmlUrl     String?
-  supplierId    String?
+  ipiValue       Float?
+  pisValue       Float?
+  cofinsValue    Float?
+  cbsValue       Float?
+  ibsValue       Float?
+  rawXmlUrl      String?
+  supplierId     String?
   // Marca atribuída a esta NF inteira — usado quando o fornecedor vende
   // múltiplas marcas (ex: Drastosa vende ASICS e PUMA). Operador atribui
   // manualmente no admin; novas importações usam essa info pra rotular
   // produtos automaticamente.
-  brand         String?
-  brandSetById  String? // userId que atribuiu
-  brandSetAt    DateTime?
+  brand          String?
+  brandSetById   String? // userId que atribuiu
+  brandSetAt     DateTime?
   // Tipo da NFe: 'entrada' (compra de fornecedor), 'saida' (venda),
   // 'transferencia' (matriz↔filial do mesmo grupo CNPJ raiz)
-  docType       String? // entrada | saida | transferencia
-  recipientName String? // nome do destinatário (pra mostrar na lista)
-  status        String    @default("imported") // imported | matched | partial | rejected
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  docType        String? // entrada | saida | transferencia
+  recipientName  String? // nome do destinatário (pra mostrar na lista)
+  status         String    @default("imported") // imported | matched | partial | rejected
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   importJob XmlImportJob?   @relation(fields: [importJobId], references: [id], onDelete: SetNull)
   items     XmlFiscalItem[]
@@ -4248,24 +4346,24 @@ model AgentEvent {
 // ============================================================
 
 model MfCompany {
-  id        String   @id @default(uuid())
-  name      String   @default("META FARDAMENTOS LTDA")
-  tradeName String   @default("Meta Fardamentos")
-  cnpj      String   @default("18034978000130")
-  ie        String?  @default("162135491")
-  phone     String?
-  email     String?
-  address   String?
-  street       String? @default("AVENIDA COREMAS")
-  number       String? @default("372")
+  id           String   @id @default(uuid())
+  name         String   @default("META FARDAMENTOS LTDA")
+  tradeName    String   @default("Meta Fardamentos")
+  cnpj         String   @default("18034978000130")
+  ie           String?  @default("162135491")
+  phone        String?
+  email        String?
+  address      String?
+  street       String?  @default("AVENIDA COREMAS")
+  number       String?  @default("372")
   neighborhood String?  @default("CENTRO")
-  zip          String? @default("58013430")
-  city      String?  @default("Joao Pessoa")
-  state     String?  @default("PB")
-  cityCode  String?  @default("2507507")
-  logoUrl   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  zip          String?  @default("58013430")
+  city         String?  @default("Joao Pessoa")
+  state        String?  @default("PB")
+  cityCode     String?  @default("2507507")
+  logoUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model MfEmployee {
@@ -4518,7 +4616,6 @@ model OperatingExpense {
   @@index([storeId], map: "OperatingExpense_store_idx")
 }
 
-
 // ============================================================
 // PACOTE MF — grade (variantes), pagamento e financeiro (2026-06-16)
 // Aditivo: produto sem variante segue usando MfProduct.stock (compativel).
@@ -4575,26 +4672,25 @@ model MfFinanceEntry {
   @@index([status, dueDate])
 }
 
-
 // ============================================================
 // PRODUCAO (facao) — OS + etapas + remuneracao/resultado por pessoa (2026-06-16)
 // ============================================================
 
 model MfProductionOrder {
-  id           String              @id @default(uuid())
-  number       Int                 @default(0) // nº amigavel da OS
+  id           String    @id @default(uuid())
+  number       Int       @default(0) // nº amigavel da OS
   title        String // o que vai produzir
   productId    String? // produto do catalogo (opcional)
   orderId      String? // pedido vinculado (opcional)
   customerId   String?
-  qty          Int                 @default(0) // peças totais
-  status       String              @default("aberta") // aberta | producao | concluida | cancelada
+  qty          Int       @default(0) // peças totais
+  status       String    @default("aberta") // aberta | producao | concluida | cancelada
   dueDate      DateTime?
-  materialCost Float               @default(0) // despesa de material/insumo da OS
-  notes        String?             @db.Text
+  materialCost Float     @default(0) // despesa de material/insumo da OS
+  notes        String?   @db.Text
   employeeId   String? // quem abriu
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   stages MfProductionStage[]
 
@@ -4715,18 +4811,18 @@ model MachineHeartbeat {
 // ============================================================
 
 model Sticker {
-  id            String        @id @default(cuid())
-  section       String        // "BRA", "FWC", "MUS", "INT"
-  sectionName   String        // "Brasil", "Especiais FIFA WC"
-  confederation String        @default("")
-  number        Int           // 1-20 por seleção; 1-11 museu; etc.
-  label         String        // "Escudo", "Jogador 5", "Foto do Time"
-  displayCode   String        // "BRA-01"
-  isShield      Boolean       @default(false)
-  isTeamPhoto   Boolean       @default(false)
-  isSpecial     Boolean       @default(false)
+  id            String  @id @default(cuid())
+  section       String // "BRA", "FWC", "MUS", "INT"
+  sectionName   String // "Brasil", "Especiais FIFA WC"
+  confederation String  @default("")
+  number        Int // 1-20 por seleção; 1-11 museu; etc.
+  label         String // "Escudo", "Jogador 5", "Foto do Time"
+  displayCode   String // "BRA-01"
+  isShield      Boolean @default(false)
+  isTeamPhoto   Boolean @default(false)
+  isSpecial     Boolean @default(false)
 
-  userStickers  UserSticker[]
+  userStickers UserSticker[]
 
   @@unique([section, number])
 }

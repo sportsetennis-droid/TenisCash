@@ -1,8 +1,11 @@
 const express = require('express');
+const multer = require('multer');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
+const relationshipCommission = require('../services/relationshipCommission');
+const commissionEvidenceStore = require('../services/commissionEvidenceStore');
 
 const router = express.Router();
 
@@ -15,11 +18,159 @@ function normalizeSellerReportedSize(value) {
     .slice(0, 20) || null;
 }
 
+const commissionEvidenceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 80 * 1024 * 1024, files: 7 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime))$/i.test(file.mimetype);
+    cb(ok ? null : new Error('Envie foto JPG/PNG/WebP ou video MP4/WebM/MOV.'), ok);
+  },
+});
+
 function sellerOnly(req, res, next) {
   if (!['seller', 'admin', 'superadmin', 'manager', 'store'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso restrito ao vendedor / loja' });
   }
   next();
+}
+
+function commissionReviewerOnly(req, res, next) {
+  if (!['admin', 'superadmin', 'manager', 'store'].includes(req.userRole)) {
+    return res.status(403).json({ error: 'Acesso restrito ao fiscalizador de comissoes' });
+  }
+  next();
+}
+
+function canReviewRelationshipJourney(req, journey) {
+  if (!journey || journey.sellerId === req.userId) return false;
+  if (req.scope?.isStoreLocked) return journey.storeId === req.scope.storeId;
+  return ['admin', 'superadmin', 'manager', 'store'].includes(req.userRole);
+}
+
+function relationshipScopeWhere(req, requestedSellerId) {
+  const where = {};
+  if (req.userRole === 'seller') where.sellerId = req.userId;
+  else if (requestedSellerId) where.sellerId = String(requestedSellerId);
+  if (req.scope?.isStoreLocked) where.storeId = req.scope.storeId;
+  return where;
+}
+
+function canViewRelationshipJourney(req, journey) {
+  if (!journey) return false;
+  if (req.userRole === 'seller') return journey.sellerId === req.userId;
+  if (req.scope?.isStoreLocked) return journey.storeId === req.scope.storeId;
+  return ['admin', 'superadmin', 'manager', 'store'].includes(req.userRole);
+}
+
+function normalizeSearch(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function parseRelationshipMoneySearch(value) {
+  const raw = String(value || '').trim().replace(/^r\$\s*/i, '');
+  if (!/^\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^\d+(?:[.,]\d{1,2})?$/.test(raw)) return null;
+  const normalized = raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : raw;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? relationshipCommission.round2(amount) : null;
+}
+
+function addRelationshipSearch(where, rawQuery) {
+  const terms = String(rawQuery || '').replace(/r\$\s*/ig, '').trim().split(/\s+/).filter(Boolean).slice(0, 8);
+  if (!terms.length) return;
+  where.AND = terms.map((term) => {
+    const amount = parseRelationshipMoneySearch(term);
+    const OR = [
+      { customerName: { contains: term, mode: 'insensitive' } },
+      { sale: { items: { some: { OR: [
+        { productName: { contains: term, mode: 'insensitive' } },
+        { brand: { contains: term, mode: 'insensitive' } },
+        { size: { contains: term, mode: 'insensitive' } },
+      ] } } } },
+      { stages: { some: { OR: [
+        { publicationUrl: { contains: term, mode: 'insensitive' } },
+        { evidenceUrl: { contains: term, mode: 'insensitive' } },
+      ] } } },
+    ];
+    if (amount !== null) OR.push({ baseAmount: { gte: amount - 0.004, lte: amount + 0.004 } });
+    return { OR };
+  });
+}
+
+function relationshipJourneyView(journey, { detail = false, canRegister = false } = {}) {
+  const availability = relationshipCommission.stageAvailability(journey, journey.stages || []);
+  const next = availability.find((item) => !item.completed && item.stage?.status !== 'REVERSED') || null;
+  const base = {
+    journeyId: journey.id, // interno para abrir o card; nunca exibido como organizacao da venda
+    customer: { name: journey.customerName, phone: journey.customerPhone || null },
+    seller: journey.seller ? { name: journey.seller.name } : null,
+    saleDate: journey.sale.createdAt,
+    paidAmount: journey.baseAmount,
+    items: journey.sale.items.map((item) => ({
+      name: item.productName,
+      brand: item.brand,
+      size: item.size,
+      quantity: item.quantity,
+      amount: item.totalPrice,
+    })),
+    cycleNumber: journey.cycleNumber,
+    purchasePosition: journey.purchasePosition,
+    currentPct: journey.currentPct,
+    earnedAmount: journey.earnedAmount,
+    reversedAmount: journey.reversedAmount,
+    payableAmount: journey.status === 'CANCELED' ? 0 : relationshipCommission.round2(journey.earnedAmount),
+    status: journey.status,
+    progress: {
+      approved: availability.filter((item) => item.stage?.status === 'COMPLETED').length,
+      awaitingReview: availability.filter((item) => item.stage?.status === 'SUBMITTED').length,
+      returned: availability.filter((item) => item.stage?.status === 'REJECTED').length,
+      total: availability.length,
+    },
+    nextStage: next ? {
+      key: next.key,
+      title: next.title,
+      targetPct: next.targetPct,
+      available: next.available && canRegister,
+      earliestAt: next.earliestAt,
+      waitingReason: next.waitingReason,
+    } : null,
+  };
+  if (detail) {
+    base.stages = availability.map((item) => ({
+      key: item.key,
+      title: item.title,
+      targetPct: item.targetPct,
+      status: item.stage?.status || 'PENDING',
+      available: item.available && canRegister,
+      earliestAt: item.earliestAt,
+      waitingReason: item.waitingReason,
+      note: item.stage?.note || null,
+      publicationUrl: item.stage?.publicationUrl || null,
+      evidenceUrl: item.stage?.evidenceUrl || null,
+      customerInteracted: item.stage?.customerInteracted || false,
+      consentConfirmed: item.stage?.consentConfirmed || false,
+      amount: item.stage?.amount || 0,
+      submittedAt: item.stage?.submittedAt || null,
+      reviewedAt: item.stage?.reviewedAt || null,
+      reviewNote: item.stage?.reviewNote || null,
+      completedAt: item.stage?.completedAt || null,
+      reversedAt: item.stage?.reversedAt || null,
+      requirements: {
+        media: item.media || null,
+        publication: !!item.publication,
+        interaction: !!item.interaction,
+        consent: !!item.consent,
+        referral: !!item.referral,
+      },
+      evidence: (item.stage?.evidence || []).map((evidence) => ({
+        evidenceId: evidence.id,
+        name: evidence.originalName,
+        mediaType: evidence.mediaType,
+        mimeType: evidence.mimeType,
+        bytes: evidence.bytes,
+      })),
+    }));
+  }
+  return base;
 }
 
 // Aplica scope em todas as rotas do seller
@@ -753,6 +904,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const sale = await tx.sale.create({
         data: {
           sellerId,
+          customerUserId: customer?.id || null,
           storeId: activeStoreId,
           totalAmount,
           discount: discountApplied,
@@ -827,7 +979,19 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         await tx.saleCommission.createMany({ data: commissionsData });
       }
 
-      return { sale, commissionsCount: commissionsData.length };
+      // Ciclo de relacionamento: somente com cliente e vendedor identificados.
+      // Fica separado da comissao antiga por marca ate o dono decidir a substituicao.
+      const relationshipSellerSelected = !!vendorId || operator.role === 'seller';
+      const relationshipJourney = relationshipSellerSelected && customer
+        ? await relationshipCommission.createJourneyForSale(tx, {
+          sale,
+          sellerId,
+          customer,
+          storeId: activeStoreId,
+        })
+        : null;
+
+      return { sale, commissionsCount: commissionsData.length, relationshipJourney };
     });
     } catch (e) {
       // TRAVA DURÁVEL anti-duplicação: se 2 requisições com o MESMO idemKey correrem juntas, ou
@@ -1025,6 +1189,11 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       fiscalResult = { ok: false, error: err.message };
     }
 
+    const persistedSale = await prisma.sale.findUnique({ where: { id: result.sale.id }, select: { status: true } });
+    if (persistedSale?.status === 'pending_payment') {
+      await relationshipCommission.markJourneyPaymentPending(prisma, result.sale.id).catch(() => {});
+    }
+
     res.json({
       ok: true,
       saleId: result.sale.id,
@@ -1033,6 +1202,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       tcUsed: tcConsumed,
       tcEarned,
       commissionsCreated: result.commissionsCount,
+      relationshipCommissionCreated: !!result.relationshipJourney,
       customer: customer ? { id: customer.id, name: customer.name, newBalance: (customer.balance || 0) + (tcEarned - tcConsumed) } : null,
       fiscal: fiscalResult,
     });
@@ -1509,6 +1679,401 @@ router.get('/customer/search', authMiddleware, sellerOnly, async (req, res) => {
 });
 
 // =====================================================================
+// CICLOS DE COMISSAO POR RELACIONAMENTO
+// Organizacao visivel: nome do cliente + valor pago + itens. IDs ficam internos.
+// =====================================================================
+
+router.get('/relationship-commission', sellerOnly, async (req, res) => {
+  try {
+    const where = relationshipScopeWhere(req, req.query.sellerId);
+    const status = String(req.query.status || '').trim().toUpperCase();
+    if (['ACTIVE', 'COMPLETED', 'CANCELED', 'PENDING_PAYMENT'].includes(status)) where.status = status;
+    addRelationshipSearch(where, req.query.q);
+    const paidStatuses = ['ACTIVE', 'COMPLETED'].includes(status)
+      ? [status]
+      : status
+        ? []
+        : ['ACTIVE', 'COMPLETED'];
+    const monetaryWhere = { ...where, status: { in: paidStatuses } };
+
+    const [journeys, aggregate, monetaryAggregate, active, completed] = await Promise.all([
+      prisma.sellerCommissionJourney.findMany({
+        where,
+        include: {
+          seller: { select: { name: true } },
+          sale: { select: { createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
+          stages: { orderBy: { position: 'asc' } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      }),
+      prisma.sellerCommissionJourney.aggregate({ where, _count: { _all: true } }),
+      prisma.sellerCommissionJourney.aggregate({ where: monetaryWhere, _sum: { baseAmount: true, earnedAmount: true } }),
+      status && status !== 'ACTIVE' ? Promise.resolve(0) : prisma.sellerCommissionJourney.count({ where: { ...where, status: 'ACTIVE' } }),
+      status && status !== 'COMPLETED' ? Promise.resolve(0) : prisma.sellerCommissionJourney.count({ where: { ...where, status: 'COMPLETED' } }),
+    ]);
+
+    const cards = journeys.map((journey) => relationshipJourneyView(journey, {
+      canRegister: req.userRole === 'seller' && journey.sellerId === req.userId,
+    }));
+    const totals = {
+      count: aggregate._count._all || 0,
+      active,
+      completed,
+      paidAmount: relationshipCommission.round2(monetaryAggregate._sum.baseAmount || 0),
+      commission: relationshipCommission.round2(monetaryAggregate._sum.earnedAmount || 0),
+    };
+
+    res.json({ cards, totals, organization: ['customer.name', 'paidAmount', 'items'] });
+  } catch (err) {
+    console.error('[relationship-commission/list]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/relationship-commission/referral-candidates', sellerOnly, async (req, res) => {
+  try {
+    const journeyId = String(req.query.journeyId || '');
+    const origin = await prisma.sellerCommissionJourney.findUnique({ where: { id: journeyId } });
+    if (!canViewRelationshipJourney(req, origin)) return res.status(404).json({ error: 'Ciclo nao encontrado' });
+    if (origin.sellerId !== req.userId) return res.status(403).json({ error: 'Somente o vendedor responsavel pode registrar a indicacao' });
+    if (origin.purchasePosition !== 2) return res.status(400).json({ error: 'Indicacao pertence a segunda venda do ciclo' });
+
+    const candidates = await prisma.sellerCommissionJourney.findMany({
+      where: {
+        ...(origin.storeId ? { storeId: origin.storeId } : { sellerId: origin.sellerId }),
+        customerUserId: { not: origin.customerUserId },
+        status: { in: ['ACTIVE', 'COMPLETED'] },
+        sale: { status: 'completed', createdAt: { gte: origin.startedAt } },
+      },
+      include: {
+        sale: { select: { id: true, createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const alreadyUsed = new Set((await prisma.sellerCommissionStage.findMany({
+      where: { referredSaleId: { not: null }, status: { in: ['SUBMITTED', 'COMPLETED'] } },
+      select: { referredSaleId: true },
+    })).map((row) => row.referredSaleId));
+    const query = normalizeSearch(req.query.q);
+    const filtered = candidates.filter((candidate) => {
+      if (alreadyUsed.has(candidate.saleId)) return false;
+      if (!query) return true;
+      const items = candidate.sale.items.map((item) => `${item.productName} ${item.brand} ${item.size || ''}`).join(' ');
+      const money = `${candidate.baseAmount} ${Number(candidate.baseAmount).toFixed(2).replace('.', ',')}`;
+      return normalizeSearch(`${candidate.customerName} ${items} ${money}`).includes(query);
+    });
+    res.json({
+      candidates: filtered.map((candidate) => ({
+        journeyId: candidate.id,
+        customerName: candidate.customerName,
+        paidAmount: candidate.baseAmount,
+        saleDate: candidate.sale.createdAt,
+        items: candidate.sale.items.map((item) => ({ name: item.productName, brand: item.brand, size: item.size, quantity: item.quantity })),
+      })),
+    });
+  } catch (err) {
+    console.error('[relationship-commission/referral-candidates]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/relationship-commission/evidence/:evidenceId', sellerOnly, async (req, res) => {
+  try {
+    const evidence = await prisma.sellerCommissionEvidence.findUnique({
+      where: { id: String(req.params.evidenceId) },
+      include: { stage: { include: { journey: true } } },
+    });
+    if (!evidence || !canViewRelationshipJourney(req, evidence.stage.journey)) return res.status(404).json({ error: 'Evidencia nao encontrada' });
+    const filePath = commissionEvidenceStore.resolve(evidence.storedName);
+    if (!filePath) return res.status(404).json({ error: 'Arquivo da evidencia nao encontrado' });
+    res.setHeader('Content-Type', evidence.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(evidence.originalName)}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error('[relationship-commission/evidence]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/relationship-commission/review-queue', commissionReviewerOnly, async (req, res) => {
+  try {
+    const where = { status: 'SUBMITTED' };
+    if (req.scope?.isStoreLocked) where.journey = { storeId: req.scope.storeId };
+    else if (req.query.storeId) where.journey = { storeId: String(req.query.storeId) };
+
+    const stages = await prisma.sellerCommissionStage.findMany({
+      where,
+      include: {
+        evidence: { orderBy: { createdAt: 'asc' } },
+        journey: {
+          include: {
+            seller: { select: { name: true } },
+            sale: { select: { createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
+          },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+      take: 300,
+    });
+
+    const reviewable = stages.filter((stage) => canReviewRelationshipJourney(req, stage.journey));
+    res.json({
+      count: reviewable.length,
+      submissions: reviewable.map((stage) => ({
+        stageId: stage.id,
+        journeyId: stage.journeyId,
+        title: stage.title,
+        targetPct: stage.targetPct,
+        note: stage.note,
+        publicationUrl: stage.publicationUrl,
+        evidenceUrl: stage.evidenceUrl,
+        customerInteracted: stage.customerInteracted,
+        consentConfirmed: stage.consentConfirmed,
+        submittedAt: stage.submittedAt,
+        customerName: stage.journey.customerName,
+        sellerName: stage.journey.seller.name,
+        paidAmount: stage.journey.baseAmount,
+        saleDate: stage.journey.sale.createdAt,
+        items: stage.journey.sale.items.map((item) => ({ name: item.productName, brand: item.brand, size: item.size, quantity: item.quantity })),
+        evidence: stage.evidence.map((item) => ({ evidenceId: item.id, name: item.originalName, mediaType: item.mediaType })),
+      })),
+    });
+  } catch (err) {
+    console.error('[relationship-commission/review-queue]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/relationship-commission/stages/:stageId/review', commissionReviewerOnly, async (req, res) => {
+  try {
+    const stageId = String(req.params.stageId || '');
+    const decision = String(req.body?.decision || '').trim().toUpperCase();
+    const reviewNote = String(req.body?.reviewNote || '').trim().slice(0, 2000);
+    if (!['APPROVE', 'REJECT'].includes(decision)) return res.status(400).json({ error: 'Decisao invalida' });
+    if (decision === 'REJECT' && !reviewNote) return res.status(400).json({ error: 'Informe o que o vendedor precisa corrigir' });
+
+    const initial = await prisma.sellerCommissionStage.findUnique({ where: { id: stageId }, include: { journey: true } });
+    if (!initial || !canReviewRelationshipJourney(req, initial.journey)) return res.status(404).json({ error: 'Etapa enviada nao encontrada' });
+    if (initial.status !== 'SUBMITTED') return res.status(409).json({ error: 'Esta etapa ja foi fiscalizada ou retirada' });
+
+    if (decision === 'REJECT') {
+      const rejected = await prisma.sellerCommissionStage.updateMany({
+        where: { id: stageId, status: 'SUBMITTED' },
+        data: {
+          status: 'REJECTED',
+          reviewedById: req.userId,
+          reviewedAt: new Date(),
+          reviewNote,
+          referredSaleId: null,
+        },
+      });
+      if (rejected.count !== 1) return res.status(409).json({ error: 'Esta etapa ja foi fiscalizada' });
+      return res.json({ ok: true, decision: 'REJECTED' });
+    }
+
+    const approved = await prisma.$transaction(async (tx) => {
+      const stage = await tx.sellerCommissionStage.findUnique({
+        where: { id: stageId },
+        include: {
+          referredSale: { select: { id: true, status: true } },
+          journey: { include: { sale: { select: { createdAt: true, status: true } }, stages: { orderBy: { position: 'asc' } } } },
+        },
+      });
+      if (!stage || stage.status !== 'SUBMITTED') throw new Error('Esta etapa ja foi fiscalizada');
+      if (!canReviewRelationshipJourney(req, stage.journey)) throw new Error('Fiscalizador sem acesso a esta loja');
+      if (stage.journey.status !== 'ACTIVE' || stage.journey.sale.status !== 'completed') throw new Error('A venda nao esta ativa e paga');
+      if (stage.journey.stages.some((item) => item.position < stage.position && item.status !== 'COMPLETED')) {
+        throw new Error('Existe etapa anterior ainda nao aprovada');
+      }
+
+      const rule = relationshipCommission.ruleForStage(stage.journey.purchasePosition, stage.key);
+      if (!rule || rule.automatic) throw new Error('Etapa invalida para fiscalizacao');
+      if (rule.referral && stage.referredSale?.status !== 'completed') throw new Error('A compra indicada nao esta mais paga');
+      const deltaPct = relationshipCommission.round2(rule.targetPct - stage.journey.currentPct);
+      if (!(deltaPct > 0)) throw new Error('Percentual desta etapa ja foi alcancado');
+      const amount = relationshipCommission.amountAtPct(stage.journey.baseAmount, deltaPct);
+      const now = new Date();
+      const finalStage = stage.position === stage.journey.stages.length - 1;
+      const claimed = await tx.sellerCommissionStage.updateMany({
+        where: { id: stage.id, status: 'SUBMITTED' },
+        data: {
+          status: 'COMPLETED',
+          deltaPct,
+          amount,
+          completedAt: now,
+          reviewedById: req.userId,
+          reviewedAt: now,
+          reviewNote: reviewNote || 'Aprovado pela fiscalizacao',
+        },
+      });
+      if (claimed.count !== 1) throw new Error('Esta etapa ja foi fiscalizada');
+      await tx.sellerCommissionJourney.update({
+        where: { id: stage.journeyId },
+        data: {
+          currentPct: rule.targetPct,
+          earnedAmount: { increment: amount },
+          status: finalStage ? 'COMPLETED' : 'ACTIVE',
+          completedAt: finalStage ? now : null,
+        },
+      });
+      if (rule.interaction) {
+        await tx.customerInteraction.create({ data: {
+          customerId: stage.journey.customerUserId,
+          sellerId: stage.journey.sellerId,
+          storeId: stage.journey.storeId,
+          channel: stage.interactionChannel || 'OTHER',
+          interactionType: 'POST_SALE',
+          summary: stage.note,
+          result: 'CUSTOMER_INTERACTED_APPROVED',
+        } });
+      }
+      return { amount, targetPct: rule.targetPct, finalStage };
+    });
+
+    res.json({ ok: true, decision: 'APPROVED', addedAmount: approved.amount, currentPct: approved.targetPct, cycleCompleted: approved.finalStage });
+  } catch (err) {
+    const clientError = /etapa|Etapa|Fiscalizador|venda|compra|Percentual|percentual/i.test(err.message);
+    console.error('[relationship-commission/review]', err);
+    res.status(clientError ? 409 : 500).json({ error: err.message });
+  }
+});
+
+router.get('/relationship-commission/:journeyId', sellerOnly, async (req, res) => {
+  try {
+    const journey = await prisma.sellerCommissionJourney.findUnique({
+      where: { id: String(req.params.journeyId) },
+      include: {
+        seller: { select: { name: true } },
+        sale: { select: { createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
+        stages: { orderBy: { position: 'asc' }, include: { evidence: { orderBy: { createdAt: 'asc' } } } },
+      },
+    });
+    if (!canViewRelationshipJourney(req, journey)) return res.status(404).json({ error: 'Ciclo nao encontrado' });
+    res.json({ card: relationshipJourneyView(journey, {
+      detail: true,
+      canRegister: req.userRole === 'seller' && journey.sellerId === req.userId,
+    }) });
+  } catch (err) {
+    console.error('[relationship-commission/detail]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/relationship-commission/:journeyId/stages/:stageKey', sellerOnly,
+  (req, res, next) => commissionEvidenceUpload.array('files', 7)(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Arquivo acima de 80 MB' });
+    return res.status(400).json({ error: err.message });
+  }),
+  async (req, res) => {
+    const savedFiles = [];
+    try {
+      const journeyId = String(req.params.journeyId || '');
+      const stageKey = String(req.params.stageKey || '').toUpperCase();
+      const journey = await prisma.sellerCommissionJourney.findUnique({
+        where: { id: journeyId },
+        include: { sale: { select: { id: true, createdAt: true, status: true } }, stages: { orderBy: { position: 'asc' } } },
+      });
+      if (!journey || !canViewRelationshipJourney(req, journey)) return res.status(404).json({ error: 'Ciclo nao encontrado' });
+      if (journey.sellerId !== req.userId) return res.status(403).json({ error: 'Outro vendedor nao pode concluir esta etapa' });
+      if (journey.status !== 'ACTIVE') return res.status(409).json({ error: 'Este ciclo nao esta ativo' });
+      if (journey.sale.status !== 'completed') return res.status(409).json({ error: 'A venda ainda nao esta confirmada como paga' });
+
+      const rule = relationshipCommission.ruleForStage(journey.purchasePosition, stageKey);
+      if (!rule || rule.automatic) return res.status(400).json({ error: 'Etapa invalida para esta venda' });
+      const availability = relationshipCommission.stageAvailability(journey, journey.stages);
+      const available = availability.find((item) => item.key === stageKey);
+      if (!available?.available) return res.status(409).json({ error: available?.waitingReason || 'Etapa indisponivel' });
+
+      const note = String(req.body.note || '').trim().slice(0, 4000);
+      const publicationUrl = String(req.body.publicationUrl || '').trim().slice(0, 1000);
+      const evidenceUrl = String(req.body.evidenceUrl || '').trim().slice(0, 1000);
+      const customerInteracted = String(req.body.customerInteracted || '').toLowerCase() === 'true';
+      const consentConfirmed = String(req.body.consentConfirmed || '').toLowerCase() === 'true';
+      if (!note) return res.status(400).json({ error: 'Escreva o que foi realizado nesta etapa' });
+      if (rule.publication && !/^https?:\/\//i.test(publicationUrl)) return res.status(400).json({ error: 'Informe o link da publicacao no perfil da loja' });
+      if (evidenceUrl && !/^https?:\/\//i.test(evidenceUrl)) return res.status(400).json({ error: 'O link da evidencia precisa comecar com http:// ou https://' });
+      if (rule.interaction && !customerInteracted) return res.status(400).json({ error: 'O cliente precisa ter interagido no pos-venda' });
+      if (rule.consent && !consentConfirmed) return res.status(400).json({ error: 'Confirme a autorizacao do cliente para uso de imagem e voz' });
+
+      const files = req.files || [];
+      const photos = files.filter((file) => file.mimetype.startsWith('image/'));
+      const videos = files.filter((file) => file.mimetype.startsWith('video/'));
+      if (photos.length > 5) return res.status(400).json({ error: 'Envie no maximo 5 fotos por etapa' });
+      if (videos.length > 2) return res.status(400).json({ error: 'Envie no maximo 2 videos por etapa' });
+      if (photos.some((file) => file.size > 15 * 1024 * 1024)) return res.status(413).json({ error: 'Foto acima de 15 MB' });
+      const hasEvidenceLink = /^https?:\/\//i.test(evidenceUrl || publicationUrl);
+      if (rule.media === 'photo' && !photos.length && !hasEvidenceLink) return res.status(400).json({ error: 'Envie uma foto ou informe um link como evidencia' });
+      if (rule.media === 'video' && !videos.length && !hasEvidenceLink) return res.status(400).json({ error: 'Envie um video ou informe um link como evidencia' });
+
+      let referredSale = null;
+      if (rule.referral) {
+        const referredJourneyId = String(req.body.referredJourneyId || '');
+        const referredJourney = await prisma.sellerCommissionJourney.findUnique({ where: { id: referredJourneyId }, include: { sale: { select: { id: true, status: true, createdAt: true } } } });
+        const sameSalesScope = journey.storeId
+          ? referredJourney?.storeId === journey.storeId
+          : referredJourney?.sellerId === journey.sellerId;
+        if (!referredJourney || !sameSalesScope || referredJourney.customerUserId === journey.customerUserId) {
+          return res.status(400).json({ error: 'Selecione a compra valida da pessoa indicada' });
+        }
+        if (referredJourney.sale.status !== 'completed' || referredJourney.sale.createdAt < journey.sale.createdAt) {
+          return res.status(400).json({ error: 'A compra indicada precisa estar paga e ser posterior a esta venda' });
+        }
+        const used = await prisma.sellerCommissionStage.findFirst({ where: { referredSaleId: referredJourney.sale.id, status: { in: ['SUBMITTED', 'COMPLETED'] } } });
+        if (used) return res.status(409).json({ error: 'Esta compra indicada ja encerrou outro ciclo' });
+        referredSale = referredJourney.sale;
+      }
+
+      for (const file of files) savedFiles.push(commissionEvidenceStore.save(file));
+
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.sellerCommissionJourney.findUnique({ where: { id: journeyId }, include: { sale: { select: { createdAt: true, status: true } }, stages: { orderBy: { position: 'asc' } } } });
+        const freshAvailability = relationshipCommission.stageAvailability(fresh, fresh.stages);
+        const freshStage = freshAvailability.find((item) => item.key === stageKey);
+        if (!freshStage?.available) throw new Error(freshStage?.waitingReason || 'Etapa ja registrada');
+        const now = new Date();
+
+        const claimed = await tx.sellerCommissionStage.updateMany({
+          where: { id: freshStage.stage.id, status: { in: ['PENDING', 'REJECTED'] } },
+          data: {
+            status: 'SUBMITTED', note,
+            publicationUrl: publicationUrl || null,
+            evidenceUrl: evidenceUrl || null,
+            customerInteracted, consentConfirmed,
+            interactionChannel: String(req.body.channel || 'OTHER').toUpperCase().slice(0, 30),
+            completedById: req.userId,
+            completedAt: null,
+            submittedAt: now,
+            reviewedById: null,
+            reviewedAt: null,
+            reviewNote: null,
+            referredSaleId: referredSale?.id || null,
+            reversedAt: null, reversalReason: null,
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Etapa ja registrada por outra solicitacao');
+        if (savedFiles.length) {
+          await tx.sellerCommissionEvidence.createMany({
+            data: savedFiles.map((file) => ({ ...file, stageId: freshStage.stage.id })),
+          });
+        }
+      });
+
+      res.json({ ok: true, status: 'SUBMITTED', message: 'Etapa enviada para fiscalizacao. A comissao so aumenta depois da aprovacao.' });
+    } catch (err) {
+      for (const file of savedFiles) commissionEvidenceStore.remove(file.storedName);
+      const duplicateReferral = err.code === 'P2002';
+      const clientError = duplicateReferral || /Etapa|etapa|Percentual|percentual|vendedor|venda|cliente|compra|publicacao|interagido|autorizacao/i.test(err.message);
+      console.error('[relationship-commission/stage]', err);
+      res.status(clientError ? 409 : 500).json({ error: duplicateReferral ? 'Esta compra indicada ja encerrou outro ciclo' : err.message });
+    }
+  }
+);
+
+// =====================================================================
 // CANCELAR VENDA (registrada, SEM cupom emitido) — estorna estoque, cashback e comissões.
 // Trava: se a venda já tem cupom autorizado/emitindo, NÃO cancela aqui (aí é cancelar o cupom na SEFAZ).
 // =====================================================================
@@ -1594,7 +2159,10 @@ router.post('/sale/:id/cancel', authMiddleware, sellerOnly, async (req, res) => 
         data: { status: 'canceled', note: 'CANCELADA (' + reason + ')' + (sale.note ? ' | ' + sale.note : '') },
       });
 
-      return { stockBack, balanceReversed, commissionsRemoved: delComm.count };
+      // Mantem o historico do ciclo e registra estorno; nunca apaga evidencias.
+      const relationshipReversal = await relationshipCommission.cancelJourneyForSale(tx, saleId, reason);
+
+      return { stockBack, balanceReversed, commissionsRemoved: delComm.count, ...relationshipReversal };
     });
 
     console.log('[sale cancel]', JSON.stringify({ saleId, by: operatorId, reason, ...result }));
