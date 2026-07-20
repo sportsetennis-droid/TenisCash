@@ -118,12 +118,22 @@ async function ensureScheduledProductionDays(date = new Date()) {
   const ymd = localYmd(date);
   const { start, end } = dayBounds(ymd);
   const weekday = new Date(`${ymd}T12:00:00.000Z`).getUTCDay();
+  const publishedMonth = await prisma.sellerMonthlySchedule.findFirst({
+    where: { month: ymd.slice(0, 7), status: 'PUBLISHED' },
+    select: { id: true, version: true },
+  });
   const [schedules, absences] = await Promise.all([
-    prisma.sellerSchedule.findMany({
-      where: { active: true, weekday, seller: { role: 'seller', active: true }, store: { active: true } },
-      orderBy: [{ startTime: 'asc' }, { createdAt: 'asc' }],
-      select: { sellerId: true, storeId: true, startTime: true, endTime: true },
-    }),
+    publishedMonth
+      ? prisma.sellerMonthlyShift.findMany({
+        where: { scheduleId: publishedMonth.id, workDate: { gte: start, lt: end }, seller: { role: 'seller', active: true }, store: { active: true } },
+        orderBy: [{ startTime: 'asc' }, { createdAt: 'asc' }],
+        select: { sellerId: true, storeId: true, startTime: true, endTime: true },
+      })
+      : prisma.sellerSchedule.findMany({
+        where: { active: true, weekday, seller: { role: 'seller', active: true }, store: { active: true } },
+        orderBy: [{ startTime: 'asc' }, { createdAt: 'asc' }],
+        select: { sellerId: true, storeId: true, startTime: true, endTime: true },
+      }),
     prisma.agendaActivity.findMany({
       where: {
         type: { in: ['folga', 'ferias', 'feriado'] },
@@ -203,8 +213,9 @@ async function ensureScheduledProductionDays(date = new Date()) {
     });
     created += 1;
   }
-  console.log(`[sellerProductionCron] ${ymd}: ${created} checklist(s) criado(s), ${skipped} escala(s) ignorada(s)`);
-  return { ymd, created, skipped };
+  const source = publishedMonth ? `mensal v${publishedMonth.version}` : 'fixa semanal';
+  console.log(`[sellerProductionCron] ${ymd}: ${created} checklist(s) criado(s), ${skipped} escala(s) ignorada(s), fonte ${source}`);
+  return { ymd, created, skipped, source };
 }
 
 async function monitorSellerProduction(date = new Date()) {

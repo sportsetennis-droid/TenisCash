@@ -13,6 +13,9 @@ router.use(authMiddleware);
 router.use(adminMiddleware);
 
 const ACT_TYPES = ['folga', 'ferias', 'treinamento', 'reuniao', 'feriado', 'meta', 'evento', 'outro'];
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // dia (YYYY-MM-DD) -> janela UTC [00:00, +24h) no fuso de João Pessoa (UTC-3)
 function dayWindow(ymd) {
@@ -21,6 +24,44 @@ function dayWindow(ymd) {
   return { start, end: new Date(start.getTime() + 24 * 3600 * 1000) };
 }
 function ymdOf(dt) { return dt.toISOString().slice(0, 10); }
+function monthWindow(month) {
+  if (!MONTH_RE.test(String(month || ''))) return null;
+  const [year, number] = month.split('-').map(Number);
+  return {
+    start: new Date(Date.UTC(year, number - 1, 1, 3)),
+    end: new Date(Date.UTC(year, number, 1, 3)),
+  };
+}
+function workDateFromYmd(ymd) {
+  if (!YMD_RE.test(String(ymd || ''))) return null;
+  const parsed = new Date(`${ymd}T03:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || ymdOf(parsed) !== ymd ? null : parsed;
+}
+function validShiftTime(startTime, endTime) {
+  return TIME_RE.test(String(startTime || '')) && TIME_RE.test(String(endTime || '')) && startTime < endTime;
+}
+function monthlyInclude() {
+  return {
+    shifts: {
+      orderBy: [{ workDate: 'asc' }, { startTime: 'asc' }],
+      include: {
+        seller: { select: { id: true, name: true, employeeCode: true } },
+        store: { select: { id: true, code: true, name: true } },
+      },
+    },
+    receipts: { select: { sellerId: true, version: true, notifiedAt: true, viewedAt: true, acknowledgedAt: true } },
+  };
+}
+
+async function getOrCreateMonthlySchedule(month, userId) {
+  const bounds = monthWindow(month);
+  if (!bounds) throw Object.assign(new Error('Mês inválido. Use YYYY-MM.'), { statusCode: 400 });
+  return prisma.sellerMonthlySchedule.upsert({
+    where: { month },
+    update: {},
+    create: { month, createdById: userId },
+  });
+}
 
 // =====================================================================
 // META — vendedores (cadastro real) + lojas, pros seletores
@@ -91,6 +132,169 @@ router.delete('/shifts/:id', async (req, res) => {
     await prisma.sellerSchedule.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
   } catch (err) { console.error('[schedule/shifts:delete]', err); res.status(500).json({ error: err.message }); }
+});
+
+// =====================================================================
+// ESCALA MENSAL — rascunho por data exata, publicação e recebimento
+// =====================================================================
+router.get('/months/:month', async (req, res) => {
+  try {
+    if (!monthWindow(req.params.month)) return res.status(400).json({ error: 'Mês inválido. Use YYYY-MM.' });
+    const schedule = await prisma.sellerMonthlySchedule.findUnique({ where: { month: req.params.month }, include: monthlyInclude() });
+    res.json({ schedule });
+  } catch (err) { console.error('[schedule/months:get]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/months/:month/entries', async (req, res) => {
+  try {
+    const month = req.params.month;
+    const bounds = monthWindow(month);
+    if (!bounds) return res.status(400).json({ error: 'Mês inválido. Use YYYY-MM.' });
+    const { sellerId, storeId, workDate: workDateRaw, startTime, endTime, note } = req.body || {};
+    const workDate = workDateFromYmd(workDateRaw);
+    if (!sellerId || !storeId || !workDate) return res.status(400).json({ error: 'Vendedor, loja e data válida são obrigatórios.' });
+    if (workDate < bounds.start || workDate >= bounds.end) return res.status(400).json({ error: 'A data precisa pertencer ao mês selecionado.' });
+    if (!validShiftTime(startTime, endTime)) return res.status(400).json({ error: 'Informe entrada e saída válidas. A saída deve ser depois da entrada.' });
+    const [seller, store, schedule] = await Promise.all([
+      prisma.user.findFirst({ where: { id: sellerId, role: 'seller', active: true }, select: { id: true } }),
+      prisma.store.findFirst({ where: { id: storeId, active: true }, select: { id: true } }),
+      getOrCreateMonthlySchedule(month, req.userId),
+    ]);
+    if (!seller) return res.status(400).json({ error: 'Vendedor ativo não encontrado.' });
+    if (!store) return res.status(400).json({ error: 'Loja ativa não encontrada.' });
+    if (schedule.status !== 'DRAFT') return res.status(409).json({ error: 'A escala já foi publicada. Reabra o mês antes de alterar.' });
+    const existing = await prisma.sellerMonthlyShift.findUnique({ where: { sellerId_workDate: { sellerId, workDate } }, include: { store: { select: { code: true } } } });
+    if (existing) return res.status(409).json({ error: `Este vendedor já está escalado nessa data na loja ${existing.store?.code || 'informada'}.` });
+    const shift = await prisma.sellerMonthlyShift.create({
+      data: { scheduleId: schedule.id, sellerId, storeId, workDate, startTime, endTime, note: String(note || '').trim() || null },
+      include: { seller: { select: { id: true, name: true, employeeCode: true } }, store: { select: { id: true, code: true, name: true } } },
+    });
+    res.status(201).json({ shift });
+  } catch (err) {
+    console.error('[schedule/months:entry:create]', err);
+    const status = err.statusCode || (err.code === 'P2002' ? 409 : 500);
+    res.status(status).json({ error: status === 409 ? 'Conflito: o vendedor já possui escala nessa data.' : err.message });
+  }
+});
+
+router.put('/months/:month/entries/:id', async (req, res) => {
+  try {
+    const bounds = monthWindow(req.params.month);
+    if (!bounds) return res.status(400).json({ error: 'Mês inválido. Use YYYY-MM.' });
+    const current = await prisma.sellerMonthlyShift.findUnique({ where: { id: req.params.id }, include: { schedule: true } });
+    if (!current || current.schedule.month !== req.params.month) return res.status(404).json({ error: 'Turno não encontrado neste mês.' });
+    if (current.schedule.status !== 'DRAFT') return res.status(409).json({ error: 'Reabra o mês antes de alterar.' });
+    const body = req.body || {};
+    const workDate = body.workDate === undefined ? current.workDate : workDateFromYmd(body.workDate);
+    const startTime = body.startTime === undefined ? current.startTime : body.startTime;
+    const endTime = body.endTime === undefined ? current.endTime : body.endTime;
+    if (!workDate || workDate < bounds.start || workDate >= bounds.end) return res.status(400).json({ error: 'A data precisa pertencer ao mês selecionado.' });
+    if (!validShiftTime(startTime, endTime)) return res.status(400).json({ error: 'Horário inválido.' });
+    const shift = await prisma.sellerMonthlyShift.update({
+      where: { id: current.id },
+      data: {
+        ...(body.sellerId !== undefined ? { sellerId: body.sellerId } : {}),
+        ...(body.storeId !== undefined ? { storeId: body.storeId } : {}),
+        workDate,
+        startTime,
+        endTime,
+        ...(body.note !== undefined ? { note: String(body.note || '').trim() || null } : {}),
+      },
+    });
+    res.json({ shift });
+  } catch (err) {
+    console.error('[schedule/months:entry:update]', err);
+    res.status(err.code === 'P2002' ? 409 : 500).json({ error: err.code === 'P2002' ? 'O vendedor já possui escala nessa data.' : err.message });
+  }
+});
+
+router.delete('/months/:month/entries/:id', async (req, res) => {
+  try {
+    const shift = await prisma.sellerMonthlyShift.findUnique({ where: { id: req.params.id }, include: { schedule: true } });
+    if (!shift || shift.schedule.month !== req.params.month) return res.status(404).json({ error: 'Turno não encontrado neste mês.' });
+    if (shift.schedule.status !== 'DRAFT') return res.status(409).json({ error: 'Reabra o mês antes de excluir.' });
+    await prisma.sellerMonthlyShift.delete({ where: { id: shift.id } });
+    res.json({ ok: true });
+  } catch (err) { console.error('[schedule/months:entry:delete]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/months/:month/copy-recurring', async (req, res) => {
+  try {
+    const month = req.params.month;
+    const bounds = monthWindow(month);
+    if (!bounds) return res.status(400).json({ error: 'Mês inválido. Use YYYY-MM.' });
+    const schedule = await getOrCreateMonthlySchedule(month, req.userId);
+    if (schedule.status !== 'DRAFT') return res.status(409).json({ error: 'Reabra o mês antes de copiar a escala fixa.' });
+    const recurring = await prisma.sellerSchedule.findMany({
+      where: { active: true, seller: { role: 'seller', active: true }, store: { active: true } },
+      orderBy: [{ sellerId: 'asc' }, { weekday: 'asc' }, { createdAt: 'asc' }],
+      select: { sellerId: true, storeId: true, weekday: true, startTime: true, endTime: true },
+    });
+    const repeated = new Set();
+    const seenRecurring = new Set();
+    for (const row of recurring) {
+      const key = `${row.sellerId}|${row.weekday}`;
+      if (seenRecurring.has(key)) repeated.add(key);
+      seenRecurring.add(key);
+      if (!validShiftTime(row.startTime, row.endTime)) repeated.add(key);
+    }
+    if (repeated.size) return res.status(409).json({ error: 'A escala fixa contém horário inválido ou mais de uma loja para o mesmo vendedor e dia da semana. Corrija antes de copiar.' });
+    const absences = await prisma.agendaActivity.findMany({
+      where: { type: { in: ['folga', 'ferias', 'feriado'] }, date: { lt: bounds.end }, OR: [{ endDate: null, date: { gte: bounds.start } }, { endDate: { gte: bounds.start } }] },
+      select: { date: true, endDate: true, sellerId: true, storeId: true },
+    });
+    const data = [];
+    for (let date = new Date(bounds.start); date < bounds.end; date = new Date(date.getTime() + 86400000)) {
+      const weekday = date.getUTCDay();
+      for (const row of recurring.filter((item) => item.weekday === weekday)) {
+        const dateYmd = ymdOf(date);
+        const absent = absences.some((item) => dateYmd >= ymdOf(item.date) && dateYmd <= ymdOf(item.endDate || item.date) && (!item.sellerId || item.sellerId === row.sellerId) && (!item.storeId || item.storeId === row.storeId));
+        if (!absent) data.push({ scheduleId: schedule.id, sellerId: row.sellerId, storeId: row.storeId, workDate: date, startTime: row.startTime, endTime: row.endTime });
+      }
+    }
+    const result = data.length ? await prisma.sellerMonthlyShift.createMany({ data, skipDuplicates: true }) : { count: 0 };
+    res.json({ created: result.count, skipped: data.length - result.count });
+  } catch (err) { console.error('[schedule/months:copy]', err); res.status(err.statusCode || 500).json({ error: err.message }); }
+});
+
+router.post('/months/:month/publish', async (req, res) => {
+  try {
+    if (!monthWindow(req.params.month)) return res.status(400).json({ error: 'Mês inválido. Use YYYY-MM.' });
+    const schedule = await prisma.sellerMonthlySchedule.findUnique({ where: { month: req.params.month }, include: monthlyInclude() });
+    if (!schedule || !schedule.shifts.length) return res.status(400).json({ error: 'Inclua pelo menos um dia de trabalho antes de publicar.' });
+    if (schedule.status === 'PUBLISHED') return res.json({ schedule, alreadyPublished: true });
+    const grouped = new Map();
+    for (const shift of schedule.shifts) {
+      if (!validShiftTime(shift.startTime, shift.endTime)) return res.status(400).json({ error: 'Há um turno com horário inválido. Corrija antes de publicar.' });
+      const rows = grouped.get(shift.sellerId) || [];
+      rows.push(shift);
+      grouped.set(shift.sellerId, rows);
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.sellerMonthlySchedule.update({ where: { id: schedule.id }, data: { status: 'PUBLISHED', publishedAt: new Date(), publishedById: req.userId } });
+      await tx.sellerMonthlyScheduleReceipt.createMany({
+        data: [...grouped.keys()].map((sellerId) => ({ scheduleId: schedule.id, sellerId, version: schedule.version })),
+        skipDuplicates: true,
+      });
+      for (const [sellerId, rows] of grouped.entries()) {
+        const first = rows[0].workDate.toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
+        const last = rows[rows.length - 1].workDate.toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' });
+        await tx.message.create({ data: { fromId: req.userId, toId: sellerId, type: 'announcement', title: `Sua escala de ${schedule.month} foi publicada`, content: `Você recebeu ${rows.length} dia(s) de trabalho, de ${first} a ${last}. Abra Minha escala no seu cadastro TenisCash para ver todas as datas, lojas e horários.`, priority: 'normal' } });
+      }
+    });
+    const published = await prisma.sellerMonthlySchedule.findUnique({ where: { id: schedule.id }, include: monthlyInclude() });
+    res.json({ schedule: published, notifiedSellers: grouped.size });
+  } catch (err) { console.error('[schedule/months:publish]', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/months/:month/reopen', async (req, res) => {
+  try {
+    const current = await prisma.sellerMonthlySchedule.findUnique({ where: { month: req.params.month } });
+    if (!current) return res.status(404).json({ error: 'Escala mensal não encontrada.' });
+    if (current.status === 'DRAFT') return res.json({ schedule: current });
+    const schedule = await prisma.sellerMonthlySchedule.update({ where: { id: current.id }, data: { status: 'DRAFT', version: { increment: 1 }, publishedAt: null, publishedById: null } });
+    res.json({ schedule });
+  } catch (err) { console.error('[schedule/months:reopen]', err); res.status(500).json({ error: err.message }); }
 });
 
 // =====================================================================
@@ -196,11 +400,17 @@ router.get('/week', async (req, res) => {
     const weekEnd = dayWindow(ymdOf(days[6])).end;
 
     const shiftWhere = { active: true, ...(storeId ? { storeId } : {}), ...(sellerId ? { sellerId } : {}) };
-    const [shifts, clockins, sales, acts] = await Promise.all([
+    const monthKeys = [...new Set(days.map((day) => ymdOf(day).slice(0, 7)))];
+    const [shifts, monthlyShifts, publishedMonths, clockins, sales, acts] = await Promise.all([
       prisma.sellerSchedule.findMany({
         where: shiftWhere,
         include: { seller: { select: { id: true, name: true, employeeCode: true } }, store: { select: { id: true, code: true, name: true } } },
       }),
+      prisma.sellerMonthlyShift.findMany({
+        where: { workDate: { gte: weekStart, lt: weekEnd }, schedule: { status: 'PUBLISHED' }, ...(storeId ? { storeId } : {}), ...(sellerId ? { sellerId } : {}) },
+        include: { seller: { select: { id: true, name: true, employeeCode: true } }, store: { select: { id: true, code: true, name: true } } },
+      }),
+      prisma.sellerMonthlySchedule.findMany({ where: { month: { in: monthKeys }, status: 'PUBLISHED' }, select: { month: true } }),
       prisma.clockIn.findMany({
         where: { type: 'entry', timestamp: { gte: weekStart, lt: weekEnd }, ...(storeId ? { storeId } : {}), ...(sellerId ? { userId: sellerId } : {}) },
         select: { userId: true, storeId: true, timestamp: true },
@@ -236,7 +446,11 @@ router.get('/week', async (req, res) => {
     const out = days.map((d) => {
       const ymd = ymdOf(d);
       const weekday = d.getUTCDay();
-      const scheduled = shifts.filter((sh) => sh.weekday === weekday).map((sh) => {
+      const publishedMonthSet = new Set(publishedMonths.map((row) => row.month));
+      const sourceShifts = publishedMonthSet.has(ymd.slice(0, 7))
+        ? monthlyShifts.filter((shift) => ymdOf(shift.workDate) === ymd)
+        : shifts.filter((shift) => shift.weekday === weekday);
+      const scheduled = sourceShifts.map((sh) => {
         const present = presentSet.has(presentKey(sh.sellerId, sh.storeId, ymd));
         const sa = salesAgg[`${sh.sellerId}|${sh.storeId}|${ymd}`] || { count: 0, revenue: 0 };
         return {

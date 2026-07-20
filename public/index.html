@@ -690,6 +690,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>IA ST Vendedor</span></div>
     <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
+    <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Minha escala</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
@@ -709,6 +710,17 @@ input::placeholder{color:rgba(255,255,255,0.35)}
       <button onclick="showScreen('seller-agent')" style="padding:12px 14px;background:#fff;border:none;border-radius:12px;color:#E5571E;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px">ABRIR</button>
     </div>
   </div>
+</div>
+
+<!-- SELLER MONTHLY SCHEDULE -->
+<div id="seller-schedule" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Minha escala</p></div>
+  <div style="display:flex;gap:10px;align-items:flex-end;margin-top:15px">
+    <label style="font-size:11px;color:rgba(255,255,255,.65);flex:1">MÊS<br><input id="seller-schedule-month" class="input-field" type="month" onchange="loadSellerSchedule()" style="margin-top:6px"></label>
+    <button type="button" class="btn-secondary" onclick="loadSellerSchedule()" style="width:auto;padding:0 14px;min-height:48px">ATUALIZAR</button>
+  </div>
+  <div id="seller-schedule-status" style="margin-top:12px"></div>
+  <div id="seller-schedule-list" style="display:grid;gap:10px;margin:12px 0 90px"><div class="loading">Carregando escala...</div></div>
 </div>
 
 <!-- SELLER AGENT -->
@@ -1533,7 +1545,7 @@ function showScreen(id) {
   const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
-  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-commission-cycles','seller-production','seller-interview','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-commission-cycles','seller-schedule','seller-production','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-campaigns','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
@@ -1580,6 +1592,7 @@ function showScreen(id) {
   if (id === 'teniscash-store') loadTenisCashStore();
   if (id === 'seller-portfolio') initSellerPortfolio();
   if (id === 'seller-commission-cycles') initSellerRelationshipCommissions();
+  if (id === 'seller-schedule') initSellerSchedule();
   if (id === 'seller-production') initSellerProduction();
   if (id === 'seller-interview') initSellerInterview();
 }
@@ -5050,6 +5063,30 @@ async function openSellerRelationshipEvidence(evidenceId) {
 // ==================== PRODUCAO DIARIA DO VENDEDOR ====================
 let _sellerProductionDay = null;
 let _sellerProductionItem = null;
+
+function sellerScheduleCurrentMonth(){ const now=new Date(Date.now()-3*3600000); return now.toISOString().slice(0,7); }
+function initSellerSchedule(){
+  if(!isSeller()){ showScreen('seller-home'); return; }
+  const month=document.getElementById('seller-schedule-month'); if(month&&!month.value)month.value=sellerScheduleCurrentMonth();
+  loadSellerSchedule();
+}
+async function loadSellerSchedule(){
+  const list=document.getElementById('seller-schedule-list'), status=document.getElementById('seller-schedule-status'); if(!list||!status)return;
+  const month=(document.getElementById('seller-schedule-month')||{}).value||sellerScheduleCurrentMonth(); list.innerHTML='<div class="loading">Carregando escala...</div>'; status.innerHTML='';
+  try{
+    const response=await fetch(API+'/seller/schedule/months/'+encodeURIComponent(month),{headers:token?{Authorization:'Bearer '+token}:{},cache:'no-store'}); const data=await response.json(); if(!response.ok)throw new Error(data.error||'Não foi possível carregar.');
+    const schedule=data.schedule;
+    if(!schedule){ status.innerHTML='<div style="padding:12px;background:rgba(255,193,7,.13);border:1px solid rgba(255,209,128,.35);border-radius:12px;color:#FFD180;font-size:12px"><strong>Escala ainda não publicada</strong><p style="font-size:11px;line-height:1.5;margin-top:5px">A empresa ainda não publicou uma escala para você neste mês. O sistema não presume datas nem horários.</p></div>'; list.innerHTML=''; return; }
+    const receipt=schedule.receipt||{}; const acknowledged=!!receipt.acknowledgedAt;
+    status.innerHTML='<div style="padding:12px;background:rgba(76,175,80,.13);border:1px solid rgba(139,255,139,.3);border-radius:12px"><div style="display:flex;justify-content:space-between;gap:10px"><strong style="font-size:12px;color:#8BFF8B">ESCALA PUBLICADA · VERSÃO '+schedule.version+'</strong><span style="font-size:10px;color:rgba(255,255,255,.6)">'+schedule.shifts.length+' dia(s)</span></div><p style="font-size:11px;line-height:1.45;margin-top:6px">Confira todas as datas, lojas e horários abaixo.</p>'+(acknowledged?'<p style="font-size:11px;color:#8BFF8B;margin-top:7px">✓ Recebimento confirmado</p>':'<button type="button" class="btn-primary" onclick="acknowledgeSellerSchedule()" style="margin-top:10px">CONFIRMAR QUE RECEBI</button>')+'</div>';
+    const weekdays=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+    list.innerHTML=schedule.shifts.map(shift=>{ const ymd=String(shift.workDate).slice(0,10), parts=ymd.split('-').map(Number), day=new Date(Date.UTC(parts[0],parts[1]-1,parts[2],12)), date=ymd.split('-').reverse().join('/'), location=shift.store?.mall||shift.store?.address||''; return '<div style="padding:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:14px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">'+srcEscape(weekdays[day.getUTCDay()].toUpperCase())+'</p><p style="font-size:18px;font-weight:800;margin-top:3px">'+date+'</p></div><div style="padding:7px 10px;background:rgba(255,109,0,.2);border-radius:9px;color:#FFD180;font-weight:800;font-size:13px">'+srcEscape(shift.startTime)+'–'+srcEscape(shift.endTime)+'</div></div><p style="font-size:13px;font-weight:700;margin-top:11px">'+srcEscape(shift.store?.code||'')+' · '+srcEscape(shift.store?.name||'Loja')+'</p>'+(location?'<p style="font-size:11px;color:rgba(255,255,255,.62);margin-top:4px">'+srcEscape(location)+'</p>':'')+(shift.note?'<p style="font-size:11px;color:#FFD180;margin-top:8px">Observação: '+srcEscape(shift.note)+'</p>':'')+'</div>'; }).join('');
+  }catch(error){ list.innerHTML='<div class="error-msg">'+srcEscape(error.message)+'</div>'; }
+}
+async function acknowledgeSellerSchedule(){
+  const month=(document.getElementById('seller-schedule-month')||{}).value||sellerScheduleCurrentMonth();
+  try{ const response=await fetch(API+'/seller/schedule/months/'+encodeURIComponent(month)+'/acknowledge',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:'{}'}); const data=await response.json(); if(!response.ok)throw new Error(data.error||'Não foi possível confirmar.'); await loadSellerSchedule(); }catch(error){ alert(error.message); }
+}
 
 function sellerProductionStatus(status) {
   return ({

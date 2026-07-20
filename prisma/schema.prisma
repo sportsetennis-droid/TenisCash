@@ -160,8 +160,12 @@ model User {
   faceDescriptors     FaceDescriptor[]
 
   // ===== AGENDA / ESCALA DA EQUIPE (gerente monta dias × loja do vendedor) =====
-  schedules        SellerSchedule[] @relation("sellerSchedules")
-  agendaActivities AgendaActivity[] @relation("sellerActivities")
+  schedules                 SellerSchedule[]               @relation("sellerSchedules")
+  agendaActivities          AgendaActivity[]               @relation("sellerActivities")
+  monthlyScheduleShifts     SellerMonthlyShift[]           @relation("monthlyScheduleSeller")
+  monthlySchedulesCreated   SellerMonthlySchedule[]        @relation("monthlyScheduleCreator")
+  monthlySchedulesPublished SellerMonthlySchedule[]        @relation("monthlySchedulePublisher")
+  monthlyScheduleReceipts   SellerMonthlyScheduleReceipt[] @relation("monthlyScheduleReceiptSeller")
 }
 
 // Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
@@ -315,6 +319,7 @@ model Store {
   // Agenda / escala da equipe
   schedules              SellerSchedule[]           @relation("storeSchedules")
   agendaActivities       AgendaActivity[]           @relation("storeActivities")
+  monthlyScheduleShifts  SellerMonthlyShift[]       @relation("monthlyScheduleStore")
   productionDays         SellerProductionDay[]
   productionIncidents    SellerComplianceIncident[]
   productionReminders    SellerProductionReminder[]
@@ -5004,6 +5009,63 @@ model SellerSchedule {
 
   @@index([sellerId])
   @@index([storeId, weekday])
+}
+
+// Escala fechada por mês. Enquanto DRAFT, só a gestão enxerga e edita.
+// Ao publicar, os vendedores recebem a versão completa no cadastro pessoal.
+model SellerMonthlySchedule {
+  id            String                         @id @default(cuid())
+  month         String                         @unique // YYYY-MM
+  status        String                         @default("DRAFT") // DRAFT | PUBLISHED
+  version       Int                            @default(1)
+  note          String?
+  createdById   String
+  createdBy     User                           @relation("monthlyScheduleCreator", fields: [createdById], references: [id])
+  publishedById String?
+  publishedBy   User?                          @relation("monthlySchedulePublisher", fields: [publishedById], references: [id])
+  publishedAt   DateTime?
+  createdAt     DateTime                       @default(now())
+  updatedAt     DateTime                       @updatedAt
+  shifts        SellerMonthlyShift[]
+  receipts      SellerMonthlyScheduleReceipt[]
+
+  @@index([status, month])
+}
+
+model SellerMonthlyShift {
+  id         String                @id @default(cuid())
+  scheduleId String
+  schedule   SellerMonthlySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  sellerId   String
+  seller     User                  @relation("monthlyScheduleSeller", fields: [sellerId], references: [id])
+  storeId    String
+  store      Store                 @relation("monthlyScheduleStore", fields: [storeId], references: [id])
+  workDate   DateTime
+  startTime  String
+  endTime    String
+  note       String?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  // Um vendedor fica vinculado a uma única loja por dia. Isso também evita conflito.
+  @@unique([sellerId, workDate])
+  @@index([scheduleId, workDate])
+  @@index([storeId, workDate])
+}
+
+model SellerMonthlyScheduleReceipt {
+  id             String                @id @default(cuid())
+  scheduleId     String
+  schedule       SellerMonthlySchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  sellerId       String
+  seller         User                  @relation("monthlyScheduleReceiptSeller", fields: [sellerId], references: [id])
+  version        Int
+  notifiedAt     DateTime              @default(now())
+  viewedAt       DateTime?
+  acknowledgedAt DateTime?
+
+  @@unique([scheduleId, sellerId, version])
+  @@index([sellerId, notifiedAt])
 }
 
 // Qualquer atividade/marcação na agenda (folga, férias, treinamento, reunião,

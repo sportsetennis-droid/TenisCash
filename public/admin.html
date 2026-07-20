@@ -2509,7 +2509,29 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
 <div class="section" id="tab-agenda" style="display:none">
   <h2 style="margin:0 0 2px;">📅 Agenda da equipe</h2>
-  <p style="color:#666;margin:0 0 14px;font-size:12px;">O gerente monta os dias de cada vendedor e em qual loja. A agenda cruza sozinha com o <b>ponto</b> (quem bateu entrada) e as <b>vendas</b> do dia. Marque também folgas, treinamentos, reuniões, metas — qualquer atividade — e filtre por loja ou vendedor.</p>
+  <p style="color:#666;margin:0 0 14px;font-size:12px;">Monte o mês em rascunho, confira datas, lojas e horários e publique. Cada vendedor recebe a escala completa no cadastro pessoal. O mês publicado também orienta o robô das atividades diárias.</p>
+
+  <!-- escala mensal oficial -->
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:18px;">
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;"><h3 style="margin:0 0 3px;">📆 Escala mensal</h3><p style="font-size:11px;color:#777;margin:0;">Só fica visível para os vendedores depois de publicar.</p></div>
+      <label style="font-size:11px;font-weight:700;color:#555;">Mês<br><input id="ag-month" type="month" onchange="agLoadMonth()" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:14px;"></label>
+      <button id="ag-month-copy" onclick="agCopyRecurring()" style="height:38px;background:#fff;border:1px solid #E5571E;color:#E5571E;border-radius:8px;padding:0 13px;font-weight:800;cursor:pointer;">Copiar escala fixa</button>
+      <button id="ag-month-publish" onclick="agPublishMonth()" style="height:38px;background:#0a7d3b;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;cursor:pointer;">Publicar mês</button>
+      <button id="ag-month-reopen" onclick="agReopenMonth()" style="display:none;height:38px;background:#fff;border:1px solid #b45309;color:#92400e;border-radius:8px;padding:0 13px;font-weight:800;cursor:pointer;">Reabrir para corrigir</button>
+    </div>
+    <div id="ag-month-status" style="margin-top:10px;"></div>
+    <div id="ag-month-form" style="display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid #fed7aa;">
+      <label style="font-size:11px;font-weight:700;color:#555;">Data<br><input id="ag-ms-date" type="date" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Vendedor<br><select id="ag-ms-seller" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;min-width:165px;"></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Loja<br><select id="ag-ms-store" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;min-width:145px;"></select></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Entrada<br><input id="ag-ms-start" type="time" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;">Saída<br><input id="ag-ms-end" type="time" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 8px;"></label>
+      <label style="font-size:11px;font-weight:700;color:#555;flex:1;min-width:150px;">Observação<br><input id="ag-ms-note" maxlength="500" placeholder="opcional" style="width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 9px;"></label>
+      <button onclick="agAddMonthShift()" style="height:38px;background:#E5571E;color:#fff;border:0;border-radius:8px;padding:0 15px;font-weight:800;cursor:pointer;">+ Adicionar dia</button>
+    </div>
+    <div id="ag-month-list" style="margin-top:12px;"><div style="color:#999;padding:10px;">Carregando…</div></div>
+  </div>
 
   <!-- filtros -->
   <div class="ag-filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f7f7f9;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:16px;">
@@ -14163,6 +14185,7 @@ const AG_WD_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const AG_ACT = { folga:'🌴 Folga', ferias:'🏖️ Férias', treinamento:'📚 Treinamento', reuniao:'👥 Reunião', feriado:'🎉 Feriado', meta:'🎯 Meta', evento:'📅 Evento', outro:'📌 Outro' };
 let agMeta = { sellers: [], stores: [] };
 let agMetaLoaded = false;
+let agMonthly = null;
 function agH(){ return { 'Authorization':'Bearer '+(localStorage.getItem('tc_admin_token')||''), 'Content-Type':'application/json' }; }
 function agBRL(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function agEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
@@ -14180,6 +14203,7 @@ async function agLoadMeta(){
   set('ag-store','<option value="">Todas as lojas</option>'+storeOpts);
   set('ag-seller','<option value="">Todos</option>'+sellerOpts);
   set('ag-sh-seller',sellerOpts); set('ag-sh-store',storeOpts); set('ag-sh-weekday',wdOpts);
+  set('ag-ms-seller',sellerOpts); set('ag-ms-store',storeOpts);
   const wd=document.getElementById('ag-sh-weekday'); if(wd) wd.value='1';
   set('ag-ac-type',actOpts);
   set('ag-ac-seller','<option value="">— opcional —</option>'+sellerOpts);
@@ -14190,7 +14214,61 @@ async function loadAgenda(){
   try { await agLoadMeta(); } catch(e){ const w=document.getElementById('ag-week'); if(w) w.innerHTML='<div style="color:#d70015;padding:10px;">Erro ao carregar: '+agEsc(e.message)+'</div>'; return; }
   const dEl=document.getElementById('ag-date'); if(dEl && !dEl.value) dEl.value=agTodayYmd();
   const aEl=document.getElementById('ag-ac-date'); if(aEl && !aEl.value) aEl.value=agTodayYmd();
-  await Promise.all([agLoadWeek(), agLoadShifts(), agLoadActivities()]);
+  const mEl=document.getElementById('ag-month'); if(mEl && !mEl.value) mEl.value=agTodayYmd().slice(0,7);
+  const msDate=document.getElementById('ag-ms-date'); if(msDate && !msDate.value) msDate.value=agTodayYmd();
+  await Promise.all([agLoadMonth(), agLoadWeek(), agLoadShifts(), agLoadActivities()]);
+}
+
+function agMonthValue(){ return (document.getElementById('ag-month')||{}).value||agTodayYmd().slice(0,7); }
+function agReceiptText(receipt){
+  if(!receipt) return '<span style="color:#b45309">não notificado</span>';
+  if(receipt.acknowledgedAt) return '<span style="color:#0a7d3b">✓ confirmou</span>';
+  if(receipt.viewedAt) return '<span style="color:#2563eb">visualizou</span>';
+  return '<span style="color:#777">recebeu</span>';
+}
+async function agLoadMonth(){
+  const box=document.getElementById('ag-month-list'), status=document.getElementById('ag-month-status'); if(!box||!status)return;
+  const month=agMonthValue(); box.innerHTML='<div style="color:#999;padding:10px;">Carregando…</div>';
+  const dateInput=document.getElementById('ag-ms-date'); if(dateInput && !String(dateInput.value||'').startsWith(month)) dateInput.value=month+'-01';
+  try{
+    const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month),{headers:agH()}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha');
+    agMonthly=j.schedule||null; const published=agMonthly&&agMonthly.status==='PUBLISHED'; const shifts=agMonthly?.shifts||[];
+    const version=agMonthly?.version||1;
+    status.innerHTML=published
+      ? '<div style="padding:9px 11px;background:#dcfce7;border:1px solid #86efac;border-radius:9px;font-size:12px;color:#166534"><b>PUBLICADA · versão '+version+'</b> · '+shifts.length+' dia(s) lançado(s). Alterações ficam bloqueadas até reabrir.</div>'
+      : '<div style="padding:9px 11px;background:#fff;border:1px solid #fed7aa;border-radius:9px;font-size:12px;color:#92400e"><b>RASCUNHO · versão '+version+'</b> · revise tudo antes de publicar.</div>';
+    document.getElementById('ag-month-form').style.display=published?'none':'flex';
+    document.getElementById('ag-month-copy').style.display=published?'none':'inline-block';
+    document.getElementById('ag-month-publish').style.display=published?'none':'inline-block';
+    document.getElementById('ag-month-reopen').style.display=published?'inline-block':'none';
+    if(!shifts.length){ box.innerHTML='<div style="color:#777;padding:12px;background:#fff;border:1px dashed #ddd;border-radius:10px;">Nenhum dia lançado neste mês. Adicione manualmente ou copie a escala fixa semanal.</div>'; return; }
+    const receipts=new Map((agMonthly.receipts||[]).filter(x=>x.version===version).map(x=>[x.sellerId,x]));
+    let html='<div style="overflow-x:auto;background:#fff;border-radius:10px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="text-align:left;border-bottom:2px solid #eee;color:#666"><th style="padding:8px">Data</th><th style="padding:8px">Vendedor</th><th style="padding:8px">Loja</th><th style="padding:8px">Horário</th><th style="padding:8px">Observação</th><th style="padding:8px">Recebimento</th><th></th></tr></thead><tbody>';
+    shifts.forEach(s=>{ const ymd=String(s.workDate).slice(0,10), date=ymd.split('-').reverse().join('/'); html+='<tr style="border-bottom:1px solid #f1f1f1"><td style="padding:8px;font-weight:800">'+date+'</td><td style="padding:8px">'+agEsc(s.seller?.name||'?')+'</td><td style="padding:8px">'+agEsc(s.store?.code||'?')+' — '+agEsc(s.store?.name||'')+'</td><td style="padding:8px">'+agEsc(s.startTime)+'–'+agEsc(s.endTime)+'</td><td style="padding:8px;color:#777">'+agEsc(s.note||'—')+'</td><td style="padding:8px">'+(published?agReceiptText(receipts.get(s.sellerId)):'aguarda publicação')+'</td><td style="padding:8px;text-align:right">'+(published?'':'<button class="ag-actbtn" onclick="agDeleteMonthShift(\''+s.id+'\')" style="color:#c0271f" title="Remover">✕</button>')+'</td></tr>'; });
+    box.innerHTML=html+'</tbody></table></div>';
+  }catch(e){ box.innerHTML='<div style="color:#d70015;padding:10px">Erro: '+agEsc(e.message)+'</div>'; }
+}
+async function agAddMonthShift(){
+  const month=agMonthValue(), workDate=(document.getElementById('ag-ms-date')||{}).value, sellerId=(document.getElementById('ag-ms-seller')||{}).value, storeId=(document.getElementById('ag-ms-store')||{}).value, startTime=(document.getElementById('ag-ms-start')||{}).value, endTime=(document.getElementById('ag-ms-end')||{}).value, note=((document.getElementById('ag-ms-note')||{}).value||'').trim();
+  if(!sellerId||!storeId||!workDate||!startTime||!endTime){ alert('Preencha data, vendedor, loja, entrada e saída.'); return; }
+  if(!workDate.startsWith(month+'-')){ alert('A data precisa pertencer ao mês selecionado.'); return; }
+  try{ const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month)+'/entries',{method:'POST',headers:agH(),body:JSON.stringify({workDate,sellerId,storeId,startTime,endTime,note})}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha'); document.getElementById('ag-ms-note').value=''; await agLoadMonth(); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agDeleteMonthShift(id){
+  if(!confirm('Remover este dia da escala?'))return; const month=agMonthValue();
+  try{ const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month)+'/entries/'+encodeURIComponent(id),{method:'DELETE',headers:agH()}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha'); await agLoadMonth(); }catch(e){ alert('Erro: '+e.message); }
+}
+async function agCopyRecurring(){
+  const month=agMonthValue(); if(!confirm('Copiar a escala fixa semanal para todos os dias de '+month+'? Dias já lançados serão mantidos. Folgas, férias e feriados registrados serão respeitados.'))return;
+  try{ const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month)+'/copy-recurring',{method:'POST',headers:agH(),body:'{}'}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha'); alert(j.created+' dia(s) copiado(s); '+j.skipped+' já existiam.'); await agLoadMonth(); }catch(e){ alert('Não foi possível copiar: '+e.message); }
+}
+async function agPublishMonth(){
+  const month=agMonthValue(); if(!confirm('Publicar a escala de '+month+'? Todos os vendedores escalados serão avisados e passarão a enxergar o mês completo.'))return;
+  try{ const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month)+'/publish',{method:'POST',headers:agH(),body:'{}'}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha'); alert('Escala publicada. '+(j.notifiedSellers||0)+' vendedor(es) notificado(s).'); await Promise.all([agLoadMonth(),agLoadWeek()]); }catch(e){ alert('Não foi possível publicar: '+e.message); }
+}
+async function agReopenMonth(){
+  const month=agMonthValue(); if(!confirm('Reabrir '+month+' para correção? A versão publicada deixa de ser oficial até você publicar novamente.'))return;
+  try{ const r=await fetch('/api/admin/schedule/months/'+encodeURIComponent(month)+'/reopen',{method:'POST',headers:agH(),body:'{}'}); const j=await r.json(); if(!r.ok)throw new Error(j.error||'falha'); await Promise.all([agLoadMonth(),agLoadWeek()]); }catch(e){ alert('Erro: '+e.message); }
 }
 
 function agShiftWeek(delta){
