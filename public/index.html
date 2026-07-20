@@ -132,6 +132,21 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .seller-agent-focus{display:flex;gap:10px;align-items:center;margin-top:10px}
 .seller-agent-focus img{width:48px;height:48px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,0.08)}
 .seller-agent-small-btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.24);background:rgba(255,255,255,0.1);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'Chakra Petch'}
+.seller-assistant-content-summary{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-top:8px}
+.seller-assistant-content-grid{display:grid;gap:10px;margin-top:12px}
+.seller-assistant-content-card{background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.12);border-radius:13px;padding:12px}
+.seller-assistant-content-card.done{border-color:rgba(75,220,130,.7);background:rgba(30,120,70,.2)}
+.seller-assistant-content-title{font-size:13px;font-weight:900;line-height:1.35}
+.seller-assistant-content-meta{font-size:11px;color:rgba(255,255,255,.65);line-height:1.45;margin-top:4px}
+.seller-assistant-product{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.seller-assistant-product:last-child{border-bottom:none}
+.seller-assistant-content-actions{display:flex;gap:7px;margin-top:9px}
+.seller-assistant-status-pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.13);font-size:10px;font-weight:800;letter-spacing:.5px}
+.seller-assistant-warning{margin-top:10px;padding:10px;border-radius:10px;background:rgba(255,190,70,.13);border:1px solid rgba(255,190,70,.35);font-size:11px;line-height:1.45}
+.seller-assistant-wa textarea{min-height:92px;resize:vertical}
+.seller-assistant-wa-consent{display:flex;gap:9px;align-items:flex-start;font-size:11px;color:rgba(255,255,255,.75);line-height:1.4;margin:11px 0}
+.seller-assistant-wa-consent input{margin-top:2px;flex:0 0 auto}
+.seller-assistant-wa-history{font-size:11px;color:rgba(255,255,255,.62);margin-top:9px;line-height:1.45}
 .catalog-search-btn{margin-left:auto;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:'Chakra Petch';display:inline-flex;align-items:center;gap:6px}
 .catalog-search-btn:hover{background:#fff;color:#E5571E}
 .seller-store-stock{margin:14px 0 18px;padding:14px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.14);border-radius:14px}
@@ -688,7 +703,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
 
   <div class="actions" style="margin-top:16px" id="seller-actions">
-    <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>IA ST Vendedor</span></div>
+    <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>Meu Assistente</span></div>
     <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
     <div class="action-btn" onclick="showScreen('seller-schedule')"><span>📅</span><span>Minha escala</span></div>
     <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
@@ -725,7 +740,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 
 <!-- SELLER AGENT -->
 <div id="seller-agent" class="screen">
-  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">IA ST Vendedor</p></div>
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p id="seller-agent-title" style="font-size:18px;font-weight:700">Meu Assistente</p></div>
   <div id="seller-agent-today" style="margin-top:8px">
     <div class="loading">Carregando IA ST Vendedor...</div>
   </div>
@@ -736,7 +751,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   </div>
   <div id="seller-agent-status" style="margin-top:10px;font-size:12px;color:rgba(255,255,255,0.72)"></div>
 
-  <p class="ai-consultor-head" style="margin-top:22px">IA ST Vendedor</p>
+  <p class="ai-consultor-head" id="seller-agent-chat-title" style="margin-top:22px">Meu Assistente</p>
   <div id="seller-agent-chat-log" class="ai-chat-log" style="max-height:calc(100vh - 430px);min-height:180px"></div>
   <div id="seller-agent-sugg" class="ai-sugg"></div>
   <div class="ai-input-row">
@@ -744,6 +759,18 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button id="seller-agent-send" type="button" style="width:52px;border:none;border-radius:12px;background:#fff;color:#E5571E;font-weight:900;font-size:18px;font-family:'Chakra Petch';cursor:pointer">OK</button>
   </div>
   <div id="seller-agent-err" class="error-msg" style="display:none"></div>
+
+  <div class="seller-agent-panel seller-assistant-wa" style="margin-bottom:90px">
+    <p class="balance-label">WHATSAPP</p>
+    <p class="seller-agent-task-sub" style="margin-top:7px">Prepare a mensagem para qualquer contato. Confira os dados e confirme o envio no WhatsApp.</p>
+    <input id="seller-assistant-wa-name" class="input-field" maxlength="120" placeholder="Nome da pessoa (opcional)">
+    <input id="seller-assistant-wa-phone" class="input-field" inputmode="tel" placeholder="Telefone com DDD">
+    <textarea id="seller-assistant-wa-message" class="input-field" maxlength="2000" placeholder="Escreva a mensagem"></textarea>
+    <label class="seller-assistant-wa-consent"><input id="seller-assistant-wa-consent" type="checkbox"><span>Confirmo que a pessoa autorizou este contato ou que j&aacute; est&aacute; em atendimento.</span></label>
+    <button id="seller-assistant-wa-open" type="button" class="seller-agent-small-btn" style="width:100%;background:#25D366;border-color:#25D366;color:#082b18">ABRIR WHATSAPP</button>
+    <div id="seller-assistant-wa-status" class="seller-agent-task-sub" style="margin-top:9px"></div>
+    <div id="seller-assistant-wa-history" class="seller-assistant-wa-history"></div>
+  </div>
 </div>
 
 <!-- SELLER CLOCK-IN -->
@@ -1642,7 +1669,7 @@ let sellerCatSearchReady = false;
 let sellerStoreStockReady = false;
 let sellerStoreStockState = { page: 1, totalPages: 1, loading: false, query: '', store: null, scope: 'all', stores: [], selectedStoreId: '' };
 let sellerAgentUiReady = false;
-let sellerAgentState = { recommendations: [], conversationId: null, loading: false };
+let sellerAgentState = { recommendations: [], conversationId: null, loading: false, assistant: null, contentPlan: null, historyLoaded: false };
 
 function initSellerCatalogAi() {
   if (!isSeller()) { showScreen('seller-home'); return; }
@@ -1984,26 +2011,159 @@ function sellerAgentSetSuggestions(items) {
   });
 }
 
+function renderSellerAssistantHistory(messages) {
+  const log = document.getElementById('seller-agent-chat-log');
+  if (!log) return;
+  log.innerHTML = '';
+  const rows = (messages || []).filter(function (item) {
+    return item && (item.role === 'user' || item.role === 'assistant') && item.content;
+  });
+  if (!rows.length) {
+    const welcome = document.createElement('div');
+    welcome.className = 'ai-msg-bot';
+    welcome.textContent = 'Sou seu assistente individual. Guardo esta conversa no seu cadastro, organizo os produtos de conteudo sem repeticao e preparo mensagens para abrir no WhatsApp.';
+    log.appendChild(welcome);
+  } else {
+    rows.forEach(function (item) {
+      const bubble = document.createElement('div');
+      bubble.className = item.role === 'user' ? 'ai-msg-user' : 'ai-msg-bot';
+      bubble.textContent = item.content;
+      log.appendChild(bubble);
+    });
+  }
+  sellerAgentState.historyLoaded = true;
+  aiChatScrollToBottom(log, true);
+}
+
+function sellerAssistantMoney(value) {
+  if (value == null || value === '') return 'nao cadastrado';
+  const number = Number(value);
+  if (!isFinite(number)) return 'nao cadastrado';
+  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function sellerAssistantProductHtml(item) {
+  const product = item.product || {};
+  const name = ((product.brand || '') + ' ' + (product.name || '')).trim() || 'Produto';
+  const sizes = (product.sizes || []).map(function (row) { return row.size; }).filter(Boolean).join(', ');
+  const features = (product.features || []).slice(0, 4).join(' · ');
+  const characteristics = features || product.shortDescription || product.longDescription || '';
+  const recommended = (product.recommendedFor || []).slice(0, 3).join(' · ');
+  const discount = product.maxDiscount == null ? 'nao cadastrado' : Number(product.maxDiscount).toLocaleString('pt-BR') + '%';
+  const isDone = item.status === 'COMPLETED';
+  return '<div class="seller-assistant-product' + (isDone ? ' done' : '') + '">' +
+    '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+      '<div class="seller-assistant-content-title">' + escapeHtmlSellerMsg(name) + '</div>' +
+      '<span class="seller-assistant-status-pill">' + (isDone ? 'CONCLUIDO' : 'PENDENTE') + '</span>' +
+    '</div>' +
+    '<div class="seller-assistant-content-meta">SKU: ' + escapeHtmlSellerMsg(product.sku || '-') +
+      ' · Preco: ' + escapeHtmlSellerMsg(sellerAssistantMoney(product.currentPrice)) +
+      ' · Desconto maximo: ' + escapeHtmlSellerMsg(discount) +
+      (sizes ? '<br>Tamanhos em estoque: ' + escapeHtmlSellerMsg(sizes) : '') +
+      (characteristics ? '<br>Caracteristicas: ' + escapeHtmlSellerMsg(characteristics) : '') +
+      (recommended ? '<br>Indicado para: ' + escapeHtmlSellerMsg(recommended) : '') +
+    '</div>' +
+    (product.warning ? '<div class="seller-assistant-warning">' + escapeHtmlSellerMsg(product.warning) + '</div>' : '') +
+    (!isDone ? '<div class="seller-assistant-content-actions"><button type="button" class="seller-agent-small-btn" onclick="updateSellerAssistantProduct(\'' + escapeHtmlSellerMsg(item.id) + '\',\'COMPLETED\')">MARCAR FEITO</button></div>' : '') +
+  '</div>';
+}
+
+function renderSellerAssistantContentPlan(plan) {
+  if (!plan) return '';
+  const reels = (plan.reels || []).map(function (reel, index) {
+    return '<div class="seller-assistant-content-card">' +
+      '<div class="seller-assistant-content-title">REELS ' + (index + 1) + ' · ' + (reel.products || []).length + ' PRODUTOS</div>' +
+      (reel.products || []).map(sellerAssistantProductHtml).join('') +
+    '</div>';
+  }).join('');
+  const photos = (plan.photos || []).map(function (item, index) {
+    return '<div class="seller-assistant-content-card' + (item.status === 'COMPLETED' ? ' done' : '') + '">' +
+      '<div class="seller-assistant-content-title">FOTO ' + (index + 1) + '</div>' +
+      sellerAssistantProductHtml(item) +
+    '</div>';
+  }).join('');
+  const store = plan.store ? ((plan.store.code ? plan.store.code + ' - ' : '') + (plan.store.name || 'Loja')) : 'Loja nao definida';
+  return '<div class="seller-agent-panel">' +
+    '<p class="balance-label">PRODUTOS PARA CONTEUDO</p>' +
+    '<div class="seller-assistant-content-summary">' +
+      '<div><div class="seller-assistant-content-title">' + escapeHtmlSellerMsg(store) + '</div>' +
+      '<div class="seller-assistant-content-meta">Ciclo ' + (plan.cycle || 1) + ' · ' + (plan.assignedCount || 0) + '/' + (plan.requiredCount || 22) + ' produtos definidos</div></div>' +
+      '<span class="seller-assistant-status-pill">SEM REPETIR</span>' +
+    '</div>' +
+    (plan.warning ? '<div class="seller-assistant-warning">' + escapeHtmlSellerMsg(plan.warning) + '</div>' : '') +
+    '<div class="seller-assistant-content-grid">' + reels + photos + '</div>' +
+  '</div>';
+}
+
+async function updateSellerAssistantProduct(id, status) {
+  const result = await api('/seller/agent/content-plan/' + encodeURIComponent(id), 'PATCH', { status: status });
+  const statusEl = document.getElementById('seller-agent-status');
+  if (result.error) {
+    if (statusEl) statusEl.textContent = result.error;
+    return;
+  }
+  if (statusEl) statusEl.textContent = 'Produto marcado como concluido.';
+  await loadSellerAgentToday(true);
+}
+
+function renderSellerAssistantWhatsappHistory(rows) {
+  const wrap = document.getElementById('seller-assistant-wa-history');
+  if (!wrap) return;
+  const items = (rows || []).slice(0, 3);
+  wrap.innerHTML = items.length
+    ? '<strong>Ultimas mensagens preparadas:</strong><br>' + items.map(function (item) {
+        return escapeHtmlSellerMsg(item.recipientName || item.phone) + ' · ' + escapeHtmlSellerMsg(item.status === 'OPENED' ? 'WhatsApp aberto' : 'preparada');
+      }).join('<br>')
+    : 'Nenhuma mensagem preparada ainda.';
+}
+
+async function prepareSellerAssistantWhatsapp() {
+  const nameEl = document.getElementById('seller-assistant-wa-name');
+  const phoneEl = document.getElementById('seller-assistant-wa-phone');
+  const messageEl = document.getElementById('seller-assistant-wa-message');
+  const consentEl = document.getElementById('seller-assistant-wa-consent');
+  const statusEl = document.getElementById('seller-assistant-wa-status');
+  const phone = (phoneEl.value || '').trim();
+  const message = (messageEl.value || '').trim();
+  if (!phone || !message || !consentEl.checked) {
+    statusEl.textContent = !consentEl.checked ? 'Confirme a autorizacao de contato.' : 'Informe telefone e mensagem.';
+    return;
+  }
+  const popup = window.open('', '_blank');
+  statusEl.textContent = 'Preparando mensagem...';
+  const result = await api('/seller/agent/whatsapp/prepare', 'POST', {
+    recipientName: (nameEl.value || '').trim(),
+    phone: phone,
+    message: message,
+    consentConfirmed: true,
+  });
+  if (result.error || !result.message || !result.message.waUrl) {
+    if (popup) popup.close();
+    statusEl.textContent = result.error || 'Nao foi possivel abrir o WhatsApp.';
+    return;
+  }
+  await api('/seller/agent/whatsapp/' + encodeURIComponent(result.message.id) + '/opened', 'POST', {});
+  statusEl.textContent = 'WhatsApp aberto. Confira e toque em enviar.';
+  if (popup) popup.location.href = result.message.waUrl;
+  else window.location.href = result.message.waUrl;
+  await loadSellerAgentToday(false);
+}
+
 function initSellerAgent() {
   if (!isSeller()) { showScreen('seller-home'); return; }
   const log = document.getElementById('seller-agent-chat-log');
   if (!log) return;
-  if (!log.dataset.seeded) {
-    log.dataset.seeded = '1';
-    const w = document.createElement('div');
-    w.className = 'ai-msg-bot';
-    w.textContent = 'Sou a IA ST Vendedor. Uso catalogo, detalhes do produto, estoque real e pesquisa na internet. O que eu pesquisar ou aprender fica salvo para melhorar as proximas respostas.';
-    log.appendChild(w);
-  }
+  if (!sellerAgentState.historyLoaded) renderSellerAssistantHistory([]);
   if (!sellerAgentUiReady) {
     sellerAgentUiReady = true;
     document.getElementById('seller-agent-refresh').addEventListener('click', function () { loadSellerAgentToday(true); });
     document.getElementById('seller-agent-apply').addEventListener('click', applySellerAgentTasks);
     document.getElementById('seller-agent-send').addEventListener('click', sendSellerAgent);
     document.getElementById('seller-agent-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAgent(); });
+    document.getElementById('seller-assistant-wa-open').addEventListener('click', prepareSellerAssistantWhatsapp);
   }
   sellerAgentState.conversationId = sessionStorage.getItem('tc_seller_agent_conv') || null;
-  sellerAgentSetSuggestions(['Indique produto para corrida', 'Pesquise um produto na internet', 'Tem estoque desse produto?', 'Guarde este aprendizado']);
+  sellerAgentSetSuggestions(['Quais sao meus produtos de hoje?', 'Indique produto para corrida', 'Tem estoque desse produto?', 'Prepare WhatsApp para 83999999999: Ola']);
   loadSellerAgentToday(false);
   aiChatScrollToBottom(log, true);
 }
@@ -2018,6 +2178,19 @@ function renderSellerAgentToday(data) {
   const tasks = plan.recommendedTasks || [];
   const customers = data.priorityCustomers || [];
   const focus = data.focusProducts || [];
+  sellerAgentState.assistant = data.assistant || null;
+  sellerAgentState.contentPlan = data.contentPlan || null;
+  if (data.conversationId) {
+    sellerAgentState.conversationId = data.conversationId;
+    sessionStorage.setItem('tc_seller_agent_conv', data.conversationId);
+  }
+  const assistantName = data.assistant?.displayName || 'Meu Assistente';
+  const headerTitle = document.getElementById('seller-agent-title');
+  const chatTitle = document.getElementById('seller-agent-chat-title');
+  if (headerTitle) headerTitle.textContent = assistantName;
+  if (chatTitle) chatTitle.textContent = assistantName;
+  renderSellerAssistantHistory(data.chatHistory || []);
+  renderSellerAssistantWhatsappHistory(data.whatsappHistory || []);
   sellerAgentState.recommendations = tasks;
   if (applyBtn) {
     applyBtn.disabled = !tasks.length;
@@ -2077,6 +2250,7 @@ function renderSellerAgentToday(data) {
       '<p class="balance-label">CLIENTES PRIORITARIOS</p>' +
       (customersHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Nenhum cliente prioritario encontrado.</div>') +
     '</div>' +
+    renderSellerAssistantContentPlan(data.contentPlan) +
     '<div class="seller-agent-panel">' +
       '<p class="balance-label">FOCO DE VENDA</p>' +
       (focusHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Sem produto foco. Pergunte a IA ST pelo melhor produto para abordar.</div>') +
@@ -2148,6 +2322,18 @@ function sendSellerAgent() {
     b.className = 'ai-msg-bot';
     b.textContent = r.reply || 'Sem resposta agora.';
     log.appendChild(b);
+    if (r.whatsappDraft) {
+      const phoneEl = document.getElementById('seller-assistant-wa-phone');
+      const messageEl = document.getElementById('seller-assistant-wa-message');
+      const consentEl = document.getElementById('seller-assistant-wa-consent');
+      const statusEl = document.getElementById('seller-assistant-wa-status');
+      if (phoneEl) phoneEl.value = r.whatsappDraft.phone || '';
+      if (messageEl) messageEl.value = r.whatsappDraft.message || '';
+      if (consentEl) consentEl.checked = false;
+      if (statusEl) statusEl.textContent = 'Dados preenchidos. Confira e confirme a autorizacao antes de abrir.';
+      const waPanel = document.querySelector('.seller-assistant-wa');
+      if (waPanel) waPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     sellerAgentSetSuggestions(r.suggestions);
     aiChatScrollToBottom(log, true);
   });
