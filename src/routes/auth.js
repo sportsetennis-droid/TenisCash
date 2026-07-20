@@ -415,6 +415,9 @@ router.get('/me', authMiddleware, async (req, res) => {
     console.log('[auth/me] userId=' + user.id + ' role=' + user.role + ' isPartner=' + !!user.partner);
 
     res.json({
+      // Renova o papel no JWT quando um cliente foi promovido a vendedor
+      // enquanto ainda tinha uma sessao antiga aberta.
+      token: jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' }),
       user: {
         id: user.id,
         name: user.name,

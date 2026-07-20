@@ -77,6 +77,14 @@ model User {
   commissions                    SaleCommission[]          @relation("commissions")
   relationshipJourneysAsSeller   SellerCommissionJourney[] @relation("relationshipJourneySeller")
   relationshipJourneysAsCustomer SellerCommissionJourney[] @relation("relationshipJourneyCustomer")
+  productionDaysAsSeller         SellerProductionDay[]      @relation("productionDaySeller")
+  productionDaysFinalized        SellerProductionDay[]      @relation("productionDayFinalizer")
+  productionItemsReviewed        SellerProductionItem[]     @relation("productionItemReviewer")
+  productionMonthsAsSeller       SellerProductionMonth[]    @relation("productionMonthSeller")
+  productionMonthsFinalized      SellerProductionMonth[]    @relation("productionMonthFinalizer")
+  productionIncidentsAsSeller    SellerComplianceIncident[] @relation("productionIncidentSeller")
+  productionIncidentsDecided     SellerComplianceIncident[] @relation("productionIncidentDecider")
+  productionPolicyAcceptances    SellerProductionPolicyAcceptance[]
   messagesSent                   Message[]                 @relation("messagesSent")
   messagesReceived               Message[]                 @relation("messagesReceived")
   tasksCreated                   Task[]                    @relation("tasksCreated")
@@ -301,6 +309,8 @@ model Store {
   // Agenda / escala da equipe
   schedules        SellerSchedule[] @relation("storeSchedules")
   agendaActivities AgendaActivity[] @relation("storeActivities")
+  productionDays   SellerProductionDay[]
+  productionIncidents SellerComplianceIncident[]
 }
 
 // ============================================================
@@ -718,6 +728,155 @@ model SellerCommissionEvidence {
 // ============================================================
 // MÓDULO 7 — COMUNICAÇÃO INTERNA
 // ============================================================
+
+// ============================================================
+// PRODUCAO DIARIA DO VENDEDOR
+// Checklist diario com prova privada, fiscalizacao humana e fechamento mensal.
+// O sistema registra elegibilidade e ocorrencias; nao aplica punicao trabalhista
+// nem altera folha/contrato automaticamente.
+// ============================================================
+
+model SellerProductionDay {
+  id             String   @id @default(cuid())
+  sellerId       String
+  seller         User     @relation("productionDaySeller", fields: [sellerId], references: [id])
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id])
+  workDate       DateTime
+  policyVersion  String   @default("ST-PRODUCAO-2026-07-V1")
+  status         String   @default("OPEN") // OPEN | SUBMITTED | CHANGES_REQUIRED | APPROVED | NONCOMPLIANT | EXCUSED
+  incentivePct   Float    @default(10)
+  scheduleStart  String?
+  scheduleEnd    String?
+  sellerNote     String?  @db.Text
+  submittedAt    DateTime?
+  finalizedById  String?
+  finalizedBy    User?    @relation("productionDayFinalizer", fields: [finalizedById], references: [id])
+  finalizedAt    DateTime?
+  finalNote      String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items    SellerProductionItem[]
+  incident SellerComplianceIncident?
+
+  @@unique([sellerId, workDate])
+  @@index([storeId, workDate, status])
+  @@index([sellerId, status, workDate])
+}
+
+model SellerProductionItem {
+  id                        String              @id @default(cuid())
+  dayId                     String
+  day                       SellerProductionDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  ruleKey                   String
+  phase                     String // ARRIVAL | FIRST_TURN | SECOND_TURN | EXIT
+  position                  Int
+  title                     String
+  mediaType                 String // photo | video
+  targetDurationSec         Int?
+  requiredProducts          Int                 @default(0)
+  status                    String              @default("PENDING") // PENDING | SUBMITTED | REJECTED | APPROVED | EXCUSED
+  note                      String?             @db.Text
+  publicationUrl            String?
+  whatsappProofUrl          String?
+  durationSeconds           Int?
+  productRefs               String[]            @default([])
+  requirementsConfirmedJson String?             @db.Text
+  noInstagramStoryConfirmed Boolean             @default(false)
+  submittedAt               DateTime?
+  reviewedById              String?
+  reviewedBy                User?               @relation("productionItemReviewer", fields: [reviewedById], references: [id])
+  reviewedAt                DateTime?
+  reviewNote                String?             @db.Text
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+
+  evidence SellerProductionEvidence[]
+
+  @@unique([dayId, ruleKey])
+  @@index([dayId, position])
+  @@index([status, submittedAt])
+}
+
+model SellerProductionEvidence {
+  id           String               @id @default(cuid())
+  itemId       String
+  item         SellerProductionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  kind         String               @default("PRIMARY") // PRIMARY | WHATSAPP_PROOF | OTHER
+  storedName   String               @unique
+  originalName String
+  mimeType     String
+  mediaType    String // photo | video
+  bytes        Int
+  createdAt    DateTime             @default(now())
+
+  @@index([itemId])
+}
+
+model SellerProductionPolicyAcceptance {
+  id             String   @id @default(cuid())
+  sellerId       String
+  seller         User     @relation(fields: [sellerId], references: [id])
+  policyVersion  String
+  policyDigest   String
+  acceptedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([sellerId, policyVersion])
+  @@index([policyVersion, acceptedAt])
+}
+
+model SellerProductionMonth {
+  id                 String   @id @default(cuid())
+  sellerId           String
+  seller             User     @relation("productionMonthSeller", fields: [sellerId], references: [id])
+  month              String // YYYY-MM no fuso America/Fortaleza
+  incentivePct       Float    @default(10)
+  status             String   @default("OPEN") // OPEN | ELIGIBLE | INELIGIBLE | NEEDS_REVIEW
+  expectedDays       Int      @default(0)
+  approvedDays       Int      @default(0)
+  noncompliantDays   Int      @default(0)
+  openDays           Int      @default(0)
+  baseSalarySnapshot Float?
+  eligibleAmount     Float?
+  calculatedAt       DateTime?
+  finalizedById      String?
+  finalizedBy        User?    @relation("productionMonthFinalizer", fields: [finalizedById], references: [id])
+  finalizedAt        DateTime?
+  note               String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([sellerId, month])
+  @@index([month, status])
+}
+
+model SellerComplianceIncident {
+  id                String              @id @default(cuid())
+  dayId             String              @unique
+  day               SellerProductionDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  sellerId          String
+  seller            User                @relation("productionIncidentSeller", fields: [sellerId], references: [id])
+  storeId           String
+  store             Store               @relation(fields: [storeId], references: [id])
+  status            String              @default("AWAITING_RESPONSE") // AWAITING_RESPONSE | UNDER_REVIEW | CLOSED_NO_ACTION | DECIDED
+  summary           String              @db.Text
+  sellerResponse    String?             @db.Text
+  respondedAt       DateTime?
+  recommendedAction String              @default("MANUAL_REVIEW")
+  decision          String? // NOTICE | WARNING | SUSPENSION_3_REVIEW | SUSPENSION_5_REVIEW | TERMINATION_REVIEW | NO_ACTION
+  decisionReason    String?             @db.Text
+  decidedById       String?
+  decidedBy         User?               @relation("productionIncidentDecider", fields: [decidedById], references: [id])
+  decidedAt         DateTime?
+  acknowledgedAt    DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([sellerId, status, createdAt])
+  @@index([storeId, status, createdAt])
+}
 
 model Message {
   id     String @id @default(uuid())

@@ -30,6 +30,7 @@ const fiscalRoutes = require('./routes/fiscal');
 const curationRoutes = require('./routes/curation');
 const sellerPortfolioRoutes = require('./routes/sellerPortfolio');
 const sellerAgentRoutes = require('./routes/sellerAgent');
+const sellerProductionRoutes = require('./routes/sellerProduction');
 const weeklyInterviewRoutes = require('./routes/weeklyInterview');
 const xmlImportRoutes = require('./routes/xmlImport');
 const recommendationsRoutes = require('./routes/recommendations');
@@ -89,6 +90,7 @@ const { startCatalogEngineCron } = require('./services/catalogEngineCron');
 const { startNuvemshopStockCron } = require('./services/nuvemshopStockCron');
 const { startServicesCron } = require('./services/servicesCron');
 const { startEquipeReportsCron } = require('./services/equipeReports');
+const { startSellerProductionCron } = require('./services/sellerProductionCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -336,6 +338,7 @@ app.use('/api/admin/fiscal', fiscalRoutes);
 app.use('/api/admin/curation', curationRoutes);
 app.use('/api/seller/portfolio', sellerPortfolioRoutes);
 app.use('/api/seller/agent', sellerAgentRoutes);
+app.use('/api/seller/production', sellerProductionRoutes);
 app.use('/api/seller/interview', weeklyInterviewRoutes);
 app.use('/api/admin/xml', xmlImportRoutes);
 app.use('/api/admin/recommendations', recommendationsRoutes);
@@ -1505,6 +1508,11 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Robô do grupo da empresa: relatório de vendas 13h/18h/21h (ponto é em tempo real, via rota)
   try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
+
+  // Checklist diario dos vendedores escalados. Nao aplica penalidades automaticamente.
+  if (process.env.DISABLE_SELLER_PRODUCTION_CRON !== '1') {
+    try { startSellerProductionCron(); } catch (e) { console.error('[sellerProductionCron] falha ao iniciar:', e.message); }
+  }
 
   // Cron jobs em background
   if (process.env.DISABLE_FISCAL_DRAFT_JOB !== '1') {

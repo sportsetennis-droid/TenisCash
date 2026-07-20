@@ -359,6 +359,7 @@
     <button class="nav-item" data-page="precos" onclick="goPage('precos')">Preços</button>
     <button class="nav-item" data-page="crm" onclick="goPage('crm')">CRM</button>
     <button class="nav-item" data-page="commission-cycles" onclick="goPage('commission-cycles')">Comissões</button>
+    <button class="nav-item" data-page="seller-production" onclick="goPage('seller-production')">Produção</button>
     <button class="nav-item" data-page="clockin" onclick="goPage('clockin')">Ponto</button>
     <button class="nav-item" data-page="ranking" onclick="goPage('ranking')">Ranking</button>
     <button class="nav-item" data-page="messages" onclick="goPage('messages')">Mensagens</button>
@@ -807,6 +808,36 @@
 
     <div class="grid grid-3" id="relTotals" style="margin-bottom:14px;"></div>
     <div id="relList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;"></div>
+  </div>
+
+  <!-- PRODUCAO DIARIA DO VENDEDOR -->
+  <div class="page" id="page-seller-production">
+    <h2 class="page-title">Produção diária dos vendedores</h2>
+    <p class="page-subtitle">Fiscalize cada Story e Reels antes do fechamento do dia. O sistema registra os fatos; medidas trabalhistas não são automáticas.</p>
+
+    <div class="card" style="margin-bottom:14px;border:2px solid var(--primary-light);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div><h3 style="margin:0;">Fila de fiscalização</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">Confira conteúdo, duração, produtos, preço, desconto, tecnologias e publicação.</p></div>
+        <button type="button" class="btn btn-secondary btn-small" onclick="loadSellerProductionReview()">Atualizar</button>
+      </div>
+      <div id="sellerProductionReviewQueue" style="display:grid;gap:12px;margin-top:14px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;">
+        <div><h3 style="margin:0;">Fechamento mensal</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">O incentivo de 10% exige aprovação integral dos dias obrigatórios.</p></div>
+        <div style="display:flex;gap:7px;"><input id="sellerProductionMonthFilter" type="month" style="padding:8px;border:1px solid var(--border);border-radius:8px;"><button type="button" class="btn btn-secondary btn-small" onclick="loadSellerProductionMonthlyOverview()">Consultar</button></div>
+      </div>
+      <div id="sellerProductionMonthlyOverview" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div><h3 style="margin:0;">Comunicados e manifestações</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">Analise a justificativa do vendedor antes de qualquer decisão.</p></div>
+        <button type="button" class="btn btn-secondary btn-small" onclick="loadSellerProductionIncidentsReview()">Atualizar</button>
+      </div>
+      <div id="sellerProductionIncidentsReview" style="display:grid;gap:10px;margin-top:14px;"></div>
+    </div>
   </div>
 
   <!-- CRM -->
@@ -1541,6 +1572,11 @@ function goPage(pageId) {
     const panel = document.getElementById('relReviewerPanel');
     if (panel) panel.style.display = reviewer ? 'block' : 'none';
     if (reviewer) loadRelationshipReviewQueue();
+  }
+  if (pageId === 'seller-production') {
+    loadSellerProductionReview();
+    loadSellerProductionIncidentsReview();
+    loadSellerProductionMonthlyOverview();
   }
   if (pageId === 'clockin') loadClockin();
   if (pageId === 'ranking') initRanking();
@@ -3938,6 +3974,125 @@ async function reviewRelationshipStage(stageId, decision) {
   } catch (e) {
     alert('Fiscalização: ' + e.message);
   }
+}
+
+// ============== PRODUCAO DIARIA — FISCALIZACAO ==============
+function sellerProductionReviewDate(value) {
+  return value ? new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }) : '—';
+}
+
+function sellerProductionReviewConfirmations(item) {
+  const labels = {
+    sellerName: 'Nome', shiftHours: 'Horário do turno', availableForSales: 'Disponível para vendas', date: 'Data',
+    openingHours: 'Funcionamento', storeLocation: 'Localização', whatsappReposted: 'Status do WhatsApp',
+    priceInformed: 'Preço', maxDiscountInformed: 'Desconto máximo', technologiesExplained: 'Tecnologias',
+    differentialsExplained: 'Diferenciais', customersThanked: 'Agradecimento', nextDayAvailabilityInformed: 'Presença no dia seguinte',
+  };
+  return (item.requirements || []).map(key => `<span class="rel-pill" style="color:${item.confirmations?.[key] ? '#0a7d3b' : '#b42318'};background:${item.confirmations?.[key] ? '#edf9f1' : '#fff0ee'};">${item.confirmations?.[key] ? '✓' : '✕'} ${escPreco(labels[key] || key)}</span>`).join('');
+}
+
+async function loadSellerProductionReview() {
+  const box = document.getElementById('sellerProductionReviewQueue');
+  if (!box) return;
+  box.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Carregando produção enviada…</div>';
+  try {
+    const data = await api('/api/seller/production/review-queue');
+    const days = data.days || [];
+    const unconfigured = data.unconfiguredSellers || [];
+    const configWarning = unconfigured.length ? `<div style="padding:12px;background:#fff7e8;color:#8a4b00;border-radius:10px;font-size:12px;margin-bottom:10px;"><strong>Escala não configurada:</strong> ${unconfigured.map(item => escPreco(item.name)).join(', ')}. Sem escala, o sistema não consegue determinar todos os dias obrigatórios do mês.</div>` : '';
+    if (!days.length) {
+      box.innerHTML = configWarning + '<div style="padding:16px;background:#edf9f1;color:#0a7d3b;border-radius:10px;font-size:13px;">✓ Nenhuma atividade aguardando fiscalização.</div>';
+      return;
+    }
+    box.innerHTML = configWarning + days.map(day => {
+      const progress = day.progress || {};
+      const items = (day.items || []).filter(item => ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(item.status));
+      return `<div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:#fafafa;"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><strong style="font-size:17px;">${escPreco(day.seller?.name || 'Vendedor')}</strong><div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${escPreco(day.store?.name || '')} · ${sellerProductionReviewDate(day.workDate)}</div></div><span class="rel-pill" style="color:#1455b8;background:#eef5ff;">${progress.approved || 0}/${progress.total || 0} aprovadas</span></div><div style="display:grid;gap:9px;margin-top:12px;">${items.map(item => renderSellerProductionReviewItem(item)).join('')}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button type="button" class="btn btn-secondary" style="flex:1;color:#b42318;border-color:#b42318;" onclick="finalizeSellerProductionDay('${day.id}','NONCOMPLIANT')">Registrar descumprimento</button>${progress.complete ? `<button type="button" class="btn btn-primary" style="flex:1;" onclick="finalizeSellerProductionDay('${day.id}','APPROVE')">Aprovar o dia</button>` : ''}<button type="button" class="btn btn-secondary" onclick="finalizeSellerProductionDay('${day.id}','EXCUSE')">Justificar dia</button></div></div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div style="color:var(--danger);">${escPreco(e.message)}</div>`;
+  }
+}
+
+function renderSellerProductionReviewItem(item) {
+  const status = item.status === 'APPROVED' ? ['Aprovada', '#0a7d3b', '#edf9f1'] : item.status === 'REJECTED' ? ['Devolvida', '#b42318', '#fff0ee'] : ['Aguardando', '#1455b8', '#eef5ff'];
+  const files = (item.evidence || []).map(file => `<button type="button" class="btn btn-secondary btn-small" onclick="openSellerProductionReviewEvidence('${file.id}')">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${escPreco(file.originalName)}</button>`).join('');
+  return `<div style="padding:12px;border:1px solid var(--border);border-left:3px solid ${status[1]};border-radius:10px;background:#fff;"><div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:13px;">${escPreco(item.title)}</strong><span class="rel-pill" style="color:${status[1]};background:${status[2]};">${status[0]}</span></div>${item.durationSeconds ? `<div style="font-size:11px;margin-top:5px;"><strong>Duração informada:</strong> ${item.durationSeconds}s${item.targetDurationSec ? ` · regra ${item.targetDurationSec}s` : ''}</div>` : ''}${item.productRefs?.length ? `<div style="font-size:11px;margin-top:5px;"><strong>Produtos:</strong> ${escPreco(item.productRefs.join(' · '))}</div>` : ''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${sellerProductionReviewConfirmations(item)}${item.noInstagramStoryConfirmed ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">✓ Não foi para o Story do Instagram</span>' : ''}</div>${item.note ? `<div style="font-size:12px;white-space:pre-wrap;margin-top:7px;">${escPreco(item.note)}</div>` : ''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.publicationUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.publicationUrl)}" target="_blank" rel="noopener">Abrir publicação</a>` : ''}${item.whatsappProofUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.whatsappProofUrl)}" target="_blank" rel="noopener">Prova do WhatsApp</a>` : ''}${files}</div>${item.reviewNote ? `<div style="font-size:11px;color:${status[1]};margin-top:7px;"><strong>Fiscalização:</strong> ${escPreco(item.reviewNote)}</div>` : ''}${item.status === 'SUBMITTED' ? `<div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-secondary btn-small" style="flex:1;color:#b42318;border-color:#b42318;" onclick="reviewSellerProductionItem('${item.id}','REJECT')">Devolver</button><button type="button" class="btn btn-primary btn-small" style="flex:1;" onclick="reviewSellerProductionItem('${item.id}','APPROVE')">Aprovar atividade</button></div>` : ''}</div>`;
+}
+
+async function openSellerProductionReviewEvidence(evidenceId) {
+  try {
+    const response = await fetch('/api/seller/production/evidence/' + encodeURIComponent(evidenceId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
+    const url = URL.createObjectURL(await response.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { alert(e.message); }
+}
+
+async function reviewSellerProductionItem(itemId, action) {
+  let note = '';
+  if (action === 'REJECT') {
+    note = prompt('Explique exatamente o que precisa ser corrigido:') || '';
+    if (!note.trim()) return;
+  } else if (!confirm('Você conferiu a publicação e deseja aprovar esta atividade?')) return;
+  try {
+    await api('/api/seller/production/items/' + encodeURIComponent(itemId) + '/review', { method: 'POST', body: JSON.stringify({ action, note: note.trim() }) });
+    await loadSellerProductionReview();
+  } catch (e) { alert(e.message); }
+}
+
+async function finalizeSellerProductionDay(dayId, action) {
+  let note = '';
+  if (action === 'APPROVE') {
+    if (!confirm('Aprovar o dia somente porque todas as atividades foram conferidas?')) return;
+  } else {
+    note = prompt(action === 'EXCUSE' ? 'Informe a justificativa válida para retirar este dia da exigência:' : 'Descreva objetivamente quais atividades ou normas não foram cumpridas:') || '';
+    if (!note.trim()) return;
+  }
+  try {
+    await api('/api/seller/production/days/' + encodeURIComponent(dayId) + '/finalize', { method: 'POST', body: JSON.stringify({ action, note: note.trim() }) });
+    await Promise.all([loadSellerProductionReview(), loadSellerProductionIncidentsReview()]);
+  } catch (e) { alert(e.message); }
+}
+
+async function loadSellerProductionMonthlyOverview() {
+  const box = document.getElementById('sellerProductionMonthlyOverview');
+  const input = document.getElementById('sellerProductionMonthFilter');
+  if (!box || !input) return;
+  if (!input.value) input.value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Fortaleza' }).slice(0, 7);
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Calculando fechamento…</div>';
+  try {
+    const data = await api('/api/seller/production/monthly-overview?month=' + encodeURIComponent(input.value));
+    const rows = data.rows || [];
+    if (!rows.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Nenhum vendedor encontrado.</div>'; return; }
+    const labels = { OPEN: 'Mês em andamento', ELIGIBLE: 'Elegível', INELIGIBLE: 'Não elegível', NEEDS_REVIEW: 'Precisa de revisão' };
+    box.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:620px;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border);"><th style="padding:7px;">Vendedor</th><th style="padding:7px;text-align:center;">Dias exigidos</th><th style="padding:7px;text-align:center;">Aprovados</th><th style="padding:7px;text-align:center;">Descumpridos</th><th style="padding:7px;text-align:center;">Em aberto</th><th style="padding:7px;">Resultado</th></tr></thead><tbody>${rows.map(row => `<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px;"><strong>${escPreco(row.sellerName)}</strong>${row.employeeCode ? `<br><span style="color:var(--text-muted);">${escPreco(row.employeeCode)}</span>` : ''}</td><td style="padding:8px;text-align:center;">${row.expectedDays}</td><td style="padding:8px;text-align:center;color:#0a7d3b;">${row.approvedDays}</td><td style="padding:8px;text-align:center;color:#b42318;">${row.noncompliantDays}</td><td style="padding:8px;text-align:center;">${row.openDays}</td><td style="padding:8px;font-weight:800;color:${row.status === 'ELIGIBLE' ? '#0a7d3b' : row.status === 'INELIGIBLE' ? '#b42318' : '#8a4b00'};">${escPreco(labels[row.status] || row.status)}</td></tr>`).join('')}</tbody></table></div><p style="font-size:10px;color:var(--text-muted);margin-top:8px;">${escPreco(data.payrollWarning || '')}</p>`;
+  } catch (e) { box.innerHTML = `<div style="color:var(--danger);">${escPreco(e.message)}</div>`; }
+}
+
+async function loadSellerProductionIncidentsReview() {
+  const box = document.getElementById('sellerProductionIncidentsReview');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Carregando comunicados…</div>';
+  try {
+    const data = await api('/api/seller/production/incidents/list');
+    const rows = (data.incidents || []).filter(item => ['AWAITING_RESPONSE', 'UNDER_REVIEW'].includes(item.status) && !item.decision);
+    if (!rows.length) { box.innerHTML = '<div style="padding:14px;background:#edf9f1;color:#0a7d3b;border-radius:10px;font-size:13px;">✓ Nenhum comunicado pendente.</div>'; return; }
+    box.innerHTML = rows.map(item => `<div style="padding:13px;border:1px solid var(--border);border-radius:10px;background:#fafafa;"><div style="display:flex;justify-content:space-between;gap:10px;"><div><strong>${escPreco(item.seller?.name || 'Vendedor')}</strong><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escPreco(item.store?.name || '')} · ${sellerProductionReviewDate(item.day?.workDate)}</div></div><span class="rel-pill" style="color:#b42318;background:#fff0ee;">${escPreco(item.status)}</span></div><p style="font-size:12px;white-space:pre-wrap;line-height:1.4;margin-top:8px;">${escPreco(item.summary)}</p>${item.sellerResponse ? `<div style="padding:9px;background:#eef5ff;border-radius:8px;margin-top:8px;font-size:12px;"><strong>Manifestação do vendedor:</strong><br>${escPreco(item.sellerResponse)}</div>` : '<div style="font-size:11px;color:#b36b00;margin-top:7px;">Aguardando manifestação do vendedor. Medidas disciplinares permanecem bloqueadas.</div>'}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;"><button class="btn btn-secondary btn-small" onclick="decideSellerProductionIncident('${item.id}','NO_ACTION')">Encerrar sem ação</button><button class="btn btn-secondary btn-small" onclick="decideSellerProductionIncident('${item.id}','NOTICE')">Comunicado</button>${item.sellerResponse ? `<button class="btn btn-secondary btn-small" onclick="decideSellerProductionIncident('${item.id}','WARNING')">Advertência</button><button class="btn btn-secondary btn-small" onclick="decideSellerProductionIncident('${item.id}','SUSPENSION_3_REVIEW')">Analisar suspensão 3 dias</button><button class="btn btn-secondary btn-small" onclick="decideSellerProductionIncident('${item.id}','SUSPENSION_5_REVIEW')">Analisar suspensão 5 dias</button><button class="btn btn-secondary btn-small" style="color:#b42318;border-color:#b42318;" onclick="decideSellerProductionIncident('${item.id}','TERMINATION_REVIEW')">Analisar justa causa</button>` : ''}</div></div>`).join('');
+  } catch (e) { box.innerHTML = `<div style="color:var(--danger);">${escPreco(e.message)}</div>`; }
+}
+
+async function decideSellerProductionIncident(incidentId, decision) {
+  const reason = prompt('Registre os fatos, a manifestação analisada e o fundamento desta decisão:') || '';
+  if (!reason.trim()) return;
+  const sensitive = decision.startsWith('SUSPENSION_') || decision === 'TERMINATION_REVIEW';
+  if (sensitive && !confirm('Esta ação apenas encaminhará o caso para análise trabalhista. Nenhuma suspensão ou demissão será aplicada automaticamente. Continuar?')) return;
+  try {
+    const result = await api('/api/seller/production/incidents/' + encodeURIComponent(incidentId) + '/decide', { method: 'POST', body: JSON.stringify({ decision, reason: reason.trim() }) });
+    if (result.warning) alert(result.warning);
+    await loadSellerProductionIncidentsReview();
+  } catch (e) { alert(e.message); }
 }
 
 // ============== MENSAGENS ==============
