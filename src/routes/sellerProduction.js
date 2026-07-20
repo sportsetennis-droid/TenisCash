@@ -167,12 +167,26 @@ async function resolveSellerAndStore(sellerId, requestedStoreId) {
 async function ensureDay({ sellerId, ymd, storeId }) {
   const workDate = dateFromYmd(ymd);
   if (!workDate) throw new Error('Data invalida. Use YYYY-MM-DD.');
-  const resolved = await resolveSellerAndStore(sellerId, storeId);
+  const publishedMonth = await prisma.sellerMonthlySchedule.findFirst({ where: { month: ymd.slice(0, 7), status: 'PUBLISHED' }, select: { id: true } });
+  const monthlyShift = publishedMonth ? await prisma.sellerMonthlyShift.findFirst({
+    where: { scheduleId: publishedMonth.id, sellerId, workDate },
+    select: { storeId: true, startTime: true, endTime: true },
+  }) : null;
+  if (publishedMonth && !monthlyShift) throw new Error('Voce nao esta escalado para trabalhar nesta data. Confira Minha escala.');
+  let resolved;
+  if (monthlyShift) {
+    const seller = await prisma.user.findFirst({ where: { id: sellerId, role: 'seller', active: true }, select: { id: true, name: true, role: true, active: true, storeId: true, storeIds: true, baseSalary: true } });
+    if (!seller) throw new Error('Vendedor ativo nao encontrado.');
+    resolved = { seller, storeId: monthlyShift.storeId };
+  } else {
+    resolved = await resolveSellerAndStore(sellerId, storeId);
+  }
   const weekday = new Date(`${ymd}T12:00:00.000Z`).getUTCDay();
-  const schedule = await prisma.sellerSchedule.findFirst({
+  const recurringSchedule = monthlyShift ? null : await prisma.sellerSchedule.findFirst({
     where: { sellerId, storeId: resolved.storeId, weekday, active: true },
     orderBy: { createdAt: 'asc' },
   });
+  const schedule = monthlyShift || recurringSchedule;
 
   const day = await prisma.sellerProductionDay.upsert({
     where: { sellerId_workDate: { sellerId, workDate } },
