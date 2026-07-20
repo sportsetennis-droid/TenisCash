@@ -2577,42 +2577,49 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
     let totalIn = 0;
     let totalOut = 0;
     let turn = 0;
+    let providerFallback = false;
 
-    while (turn < 6) {
-      turn += 1;
-      const resp = await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        system,
-        tools: TOOLS,
-        messages: currentMessages,
-      });
+    try {
+      while (turn < 6) {
+        turn += 1;
+        const resp = await client.messages.create({
+          model,
+          max_tokens: maxTokens,
+          system,
+          tools: TOOLS,
+          messages: currentMessages,
+        });
 
-      totalIn += resp.usage?.input_tokens || 0;
-      totalOut += resp.usage?.output_tokens || 0;
+        totalIn += resp.usage?.input_tokens || 0;
+        totalOut += resp.usage?.output_tokens || 0;
 
-      if (resp.stop_reason === 'tool_use') {
-        currentMessages.push({ role: 'assistant', content: resp.content });
-        const toolResults = [];
-        for (const block of resp.content || []) {
-          if (block.type !== 'tool_use') continue;
-          const out = await execTool(block.name, block.input, snapshot);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify(out),
-          });
+        if (resp.stop_reason === 'tool_use') {
+          currentMessages.push({ role: 'assistant', content: resp.content });
+          const toolResults = [];
+          for (const block of resp.content || []) {
+            if (block.type !== 'tool_use') continue;
+            const out = await execTool(block.name, block.input, snapshot);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify(out),
+            });
+          }
+          currentMessages.push({ role: 'user', content: toolResults });
+          continue;
         }
-        currentMessages.push({ role: 'user', content: toolResults });
-        continue;
-      }
 
-      finalText = (resp.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim();
-      break;
+        finalText = (resp.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n')
+          .trim();
+        break;
+      }
+    } catch (providerError) {
+      providerFallback = true;
+      console.warn('[seller-agent] provedor IA indisponivel; usando resposta local:', providerError.message);
+      finalText = offlineCoachReply(text, snapshot);
     }
 
     if (!finalText) finalText = offlineCoachReply(text, snapshot);
@@ -2640,6 +2647,8 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
       conversationId: conv.id,
       reply: finalText,
       suggestions: ['Indique produto para cliente', 'Pesquisar produto na internet', 'Ver estoque por loja'],
+      offline: providerFallback || undefined,
+      providerUnavailable: providerFallback || undefined,
     });
   } catch (err) {
     console.error('[seller/agent/chat] erro:', err);
