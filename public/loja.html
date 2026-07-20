@@ -831,6 +831,22 @@
       <div id="sellerProductionMonthlyOverview" style="margin-top:12px;"></div>
     </div>
 
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div><h3 style="margin:0;">Solicitações diretas</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">Materiais, embalagens, equipamentos, produtos, manutenção e apoio solicitados pelos vendedores.</p></div>
+        <button type="button" class="btn btn-secondary btn-small" onclick="loadSellerInternalRequestsReview()">Atualizar</button>
+      </div>
+      <div id="sellerInternalRequestsReview" style="display:grid;gap:10px;margin-top:14px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;border:1px solid #efb2ac;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div><h3 style="margin:0;">Canal confidencial de conduta</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">Acesso exclusivo de administradores autorizados. Não compartilhe o conteúdo fora da apuração.</p></div>
+        <button type="button" class="btn btn-secondary btn-small" onclick="loadSellerConductReportsReview()">Atualizar</button>
+      </div>
+      <div id="sellerConductReportsReview" style="display:grid;gap:10px;margin-top:14px;"></div>
+    </div>
+
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div><h3 style="margin:0;">Comunicados e manifestações</h3><p style="font-size:12px;color:var(--text-muted);margin-top:4px;">Analise a justificativa do vendedor antes de qualquer decisão.</p></div>
@@ -1577,6 +1593,8 @@ function goPage(pageId) {
     loadSellerProductionReview();
     loadSellerProductionIncidentsReview();
     loadSellerProductionMonthlyOverview();
+    loadSellerInternalRequestsReview();
+    loadSellerConductReportsReview();
   }
   if (pageId === 'clockin') loadClockin();
   if (pageId === 'ranking') initRanking();
@@ -3982,13 +4000,20 @@ function sellerProductionReviewDate(value) {
 }
 
 function sellerProductionReviewConfirmations(item) {
+  const operationalLabels = {
+    closedBagExternalPhoto: 'Bolsa fechada, somente parte externa', floorCleanAndDry: 'Piso limpo e seco',
+    storeOrganized: 'Loja organizada', productsInCorrectPlaces: 'Produtos nos locais corretos',
+    storePhoneChargedWhenIdle: 'Celular da loja carregado', cardMachineChargedWhenIdle: 'Maquineta carregada',
+    problemReportedIfAny: 'Defeito solicitado se necessário', packagingChecked: 'Embalagens conferidas',
+    shortageReportedIfAny: 'Falta solicitada se necessário',
+  };
   const labels = {
     sellerName: 'Nome', shiftHours: 'Horário do turno', availableForSales: 'Disponível para vendas', date: 'Data',
     openingHours: 'Funcionamento', storeLocation: 'Localização', whatsappReposted: 'Status do WhatsApp',
     priceInformed: 'Preço', maxDiscountInformed: 'Desconto máximo', technologiesExplained: 'Tecnologias',
     differentialsExplained: 'Diferenciais', customersThanked: 'Agradecimento', nextDayAvailabilityInformed: 'Presença no dia seguinte',
   };
-  return (item.requirements || []).map(key => `<span class="rel-pill" style="color:${item.confirmations?.[key] ? '#0a7d3b' : '#b42318'};background:${item.confirmations?.[key] ? '#edf9f1' : '#fff0ee'};">${item.confirmations?.[key] ? '✓' : '✕'} ${escPreco(labels[key] || key)}</span>`).join('');
+  return (item.requirements || []).map(key => `<span class="rel-pill" style="color:${item.confirmations?.[key] ? '#0a7d3b' : '#b42318'};background:${item.confirmations?.[key] ? '#edf9f1' : '#fff0ee'};">${item.confirmations?.[key] ? '✓' : '✕'} ${escPreco(operationalLabels[key] || labels[key] || key)}</span>`).join('');
 }
 
 async function loadSellerProductionReview() {
@@ -4006,7 +4031,7 @@ async function loadSellerProductionReview() {
     }
     box.innerHTML = configWarning + days.map(day => {
       const progress = day.progress || {};
-      const items = (day.items || []).filter(item => ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(item.status));
+      const items = day.items || [];
       return `<div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:#fafafa;"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><strong style="font-size:17px;">${escPreco(day.seller?.name || 'Vendedor')}</strong><div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${escPreco(day.store?.name || '')} · ${sellerProductionReviewDate(day.workDate)}</div></div><span class="rel-pill" style="color:#1455b8;background:#eef5ff;">${progress.approved || 0}/${progress.total || 0} aprovadas</span></div><div style="display:grid;gap:9px;margin-top:12px;">${items.map(item => renderSellerProductionReviewItem(item)).join('')}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button type="button" class="btn btn-secondary" style="flex:1;color:#b42318;border-color:#b42318;" onclick="finalizeSellerProductionDay('${day.id}','NONCOMPLIANT')">Registrar descumprimento</button>${progress.complete ? `<button type="button" class="btn btn-primary" style="flex:1;" onclick="finalizeSellerProductionDay('${day.id}','APPROVE')">Aprovar o dia</button>` : ''}<button type="button" class="btn btn-secondary" onclick="finalizeSellerProductionDay('${day.id}','EXCUSE')">Justificar dia</button></div></div>`;
     }).join('');
   } catch (e) {
@@ -4015,7 +4040,7 @@ async function loadSellerProductionReview() {
 }
 
 function renderSellerProductionReviewItem(item) {
-  const status = item.status === 'APPROVED' ? ['Aprovada', '#0a7d3b', '#edf9f1'] : item.status === 'REJECTED' ? ['Devolvida', '#b42318', '#fff0ee'] : ['Aguardando', '#1455b8', '#eef5ff'];
+  const status = item.status === 'APPROVED' ? ['Aprovada', '#0a7d3b', '#edf9f1'] : item.status === 'REJECTED' ? ['Devolvida', '#b42318', '#fff0ee'] : item.status === 'PENDING' ? ['Ainda não registrada', '#8a4b00', '#fff7e8'] : ['Aguardando', '#1455b8', '#eef5ff'];
   const files = (item.evidence || []).map(file => `<button type="button" class="btn btn-secondary btn-small" onclick="openSellerProductionReviewEvidence('${file.id}')">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${escPreco(file.originalName)}</button>`).join('');
   return `<div style="padding:12px;border:1px solid var(--border);border-left:3px solid ${status[1]};border-radius:10px;background:#fff;"><div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:13px;">${escPreco(item.title)}</strong><span class="rel-pill" style="color:${status[1]};background:${status[2]};">${status[0]}</span></div>${item.durationSeconds ? `<div style="font-size:11px;margin-top:5px;"><strong>Duração informada:</strong> ${item.durationSeconds}s${item.targetDurationSec ? ` · regra ${item.targetDurationSec}s` : ''}</div>` : ''}${item.productRefs?.length ? `<div style="font-size:11px;margin-top:5px;"><strong>Produtos:</strong> ${escPreco(item.productRefs.join(' · '))}</div>` : ''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${sellerProductionReviewConfirmations(item)}${item.noInstagramStoryConfirmed ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">✓ Não foi para o Story do Instagram</span>' : ''}</div>${item.note ? `<div style="font-size:12px;white-space:pre-wrap;margin-top:7px;">${escPreco(item.note)}</div>` : ''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.publicationUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.publicationUrl)}" target="_blank" rel="noopener">Abrir publicação</a>` : ''}${item.whatsappProofUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.whatsappProofUrl)}" target="_blank" rel="noopener">Prova do WhatsApp</a>` : ''}${files}</div>${item.reviewNote ? `<div style="font-size:11px;color:${status[1]};margin-top:7px;"><strong>Fiscalização:</strong> ${escPreco(item.reviewNote)}</div>` : ''}${item.status === 'SUBMITTED' ? `<div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-secondary btn-small" style="flex:1;color:#b42318;border-color:#b42318;" onclick="reviewSellerProductionItem('${item.id}','REJECT')">Devolver</button><button type="button" class="btn btn-primary btn-small" style="flex:1;" onclick="reviewSellerProductionItem('${item.id}','APPROVE')">Aprovar atividade</button></div>` : ''}</div>`;
 }
@@ -4035,7 +4060,7 @@ async function reviewSellerProductionItem(itemId, action) {
   if (action === 'REJECT') {
     note = prompt('Explique exatamente o que precisa ser corrigido:') || '';
     if (!note.trim()) return;
-  } else if (!confirm('Você conferiu a publicação e deseja aprovar esta atividade?')) return;
+  } else if (!confirm('Você conferiu a atividade e suas evidências e deseja aprovar?')) return;
   try {
     await api('/api/seller/production/items/' + encodeURIComponent(itemId) + '/review', { method: 'POST', body: JSON.stringify({ action, note: note.trim() }) });
     await loadSellerProductionReview();
@@ -4069,6 +4094,72 @@ async function loadSellerProductionMonthlyOverview() {
     const labels = { OPEN: 'Mês em andamento', ELIGIBLE: 'Elegível', INELIGIBLE: 'Não elegível', NEEDS_REVIEW: 'Precisa de revisão' };
     box.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:620px;"><thead><tr style="text-align:left;border-bottom:2px solid var(--border);"><th style="padding:7px;">Vendedor</th><th style="padding:7px;text-align:center;">Dias exigidos</th><th style="padding:7px;text-align:center;">Aprovados</th><th style="padding:7px;text-align:center;">Descumpridos</th><th style="padding:7px;text-align:center;">Em aberto</th><th style="padding:7px;">Resultado</th></tr></thead><tbody>${rows.map(row => `<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px;"><strong>${escPreco(row.sellerName)}</strong>${row.employeeCode ? `<br><span style="color:var(--text-muted);">${escPreco(row.employeeCode)}</span>` : ''}</td><td style="padding:8px;text-align:center;">${row.expectedDays}</td><td style="padding:8px;text-align:center;color:#0a7d3b;">${row.approvedDays}</td><td style="padding:8px;text-align:center;color:#b42318;">${row.noncompliantDays}</td><td style="padding:8px;text-align:center;">${row.openDays}</td><td style="padding:8px;font-weight:800;color:${row.status === 'ELIGIBLE' ? '#0a7d3b' : row.status === 'INELIGIBLE' ? '#b42318' : '#8a4b00'};">${escPreco(labels[row.status] || row.status)}</td></tr>`).join('')}</tbody></table></div><p style="font-size:10px;color:var(--text-muted);margin-top:8px;">${escPreco(data.payrollWarning || '')}</p>`;
   } catch (e) { box.innerHTML = `<div style="color:var(--danger);">${escPreco(e.message)}</div>`; }
+}
+
+function sellerPrivateReviewStatus(status) {
+  return ({ OPEN: 'Aberta', IN_PROGRESS: 'Em atendimento', RESOLVED: 'Resolvida', REJECTED: 'Não atendida', RECEIVED: 'Recebido', UNDER_REVIEW: 'Em análise', CLOSED: 'Encerrado' })[status] || status;
+}
+
+async function openSellerPrivateReviewAttachment(attachmentId) {
+  try {
+    const response = await fetch('/api/seller/production/private-attachments/' + encodeURIComponent(attachmentId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
+    const url = URL.createObjectURL(await response.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { alert(e.message); }
+}
+
+async function loadSellerInternalRequestsReview() {
+  const box = document.getElementById('sellerInternalRequestsReview');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Carregando solicitações…</div>';
+  try {
+    const data = await api('/api/seller/production/requests');
+    const rows = data.requests || [];
+    if (!rows.length) { box.innerHTML = '<div style="padding:14px;background:#edf9f1;color:#0a7d3b;border-radius:10px;font-size:13px;">✓ Nenhuma solicitação registrada.</div>'; return; }
+    box.innerHTML = rows.map(row => {
+      const files = (row.attachments || []).map(file => `<button class="btn btn-secondary btn-small" onclick="openSellerPrivateReviewAttachment('${file.id}')">Abrir ${file.mediaType === 'video' ? 'vídeo' : 'foto'}</button>`).join('');
+      const actions = ['RESOLVED', 'REJECTED'].includes(row.status) ? '' : `<button class="btn btn-secondary btn-small" onclick="reviewSellerInternalRequest('${row.id}','IN_PROGRESS')">Em atendimento</button><button class="btn btn-primary btn-small" onclick="reviewSellerInternalRequest('${row.id}','RESOLVED')">Resolver</button><button class="btn btn-secondary btn-small" onclick="reviewSellerInternalRequest('${row.id}','REJECTED')">Não atender</button>`;
+      return `<div style="padding:13px;border:1px solid var(--border);border-radius:10px;background:#fafafa"><div style="display:flex;justify-content:space-between;gap:10px"><div><strong>${escPreco(row.title)}</strong><div style="font-size:11px;color:var(--text-muted);margin-top:3px">${escPreco(row.seller?.name || '')} · ${escPreco(row.store?.name || '')} · ${escPreco(row.category)} · ${escPreco(row.urgency)}</div></div><span class="rel-pill" style="color:#1455b8;background:#eef5ff">${escPreco(sellerPrivateReviewStatus(row.status))}</span></div><p style="font-size:12px;white-space:pre-wrap;margin-top:8px">${escPreco(row.description)}</p>${row.companyResponse ? `<div style="padding:8px;background:#edf9f1;border-radius:8px;margin-top:8px;font-size:11px"><strong>Resposta:</strong> ${escPreco(row.companyResponse)}</div>` : ''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${files}${actions}</div></div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = `<div style="color:var(--danger)">${escPreco(e.message)}</div>`; }
+}
+
+async function reviewSellerInternalRequest(requestId, status) {
+  const response = prompt('Registre a resposta ou providência da empresa:') || '';
+  if (!response.trim()) return;
+  try {
+    await api('/api/seller/production/requests/' + encodeURIComponent(requestId), { method: 'PATCH', body: JSON.stringify({ status, companyResponse: response.trim() }) });
+    await loadSellerInternalRequestsReview();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadSellerConductReportsReview() {
+  const box = document.getElementById('sellerConductReportsReview');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Carregando canal privado…</div>';
+  try {
+    const data = await api('/api/seller/production/conduct-reports');
+    const rows = data.reports || [];
+    if (!rows.length) { box.innerHTML = '<div style="padding:14px;background:#edf9f1;color:#0a7d3b;border-radius:10px;font-size:13px;">✓ Nenhum relato registrado.</div>'; return; }
+    box.innerHTML = rows.map(row => {
+      const files = (row.attachments || []).map(file => `<button class="btn btn-secondary btn-small" onclick="openSellerPrivateReviewAttachment('${file.id}')">Abrir ${file.mediaType === 'video' ? 'vídeo' : 'foto'}</button>`).join('');
+      const actions = row.status === 'CLOSED' ? '' : `<button class="btn btn-secondary btn-small" onclick="reviewSellerConductReport('${row.id}','UNDER_REVIEW')">Registrar análise</button><button class="btn btn-primary btn-small" onclick="reviewSellerConductReport('${row.id}','CLOSED')">Encerrar com retorno</button>`;
+      return `<div style="padding:13px;border:1px solid #efb2ac;border-radius:10px;background:#fff8f7"><div style="display:flex;justify-content:space-between;gap:10px"><div><strong>${escPreco(row.category)} — ${escPreco(row.reporter?.name || '')}</strong><div style="font-size:11px;color:var(--text-muted);margin-top:3px">${escPreco(row.store?.name || '')} · ${sellerProductionReviewDate(row.occurredAt || row.createdAt)}</div></div><span class="rel-pill" style="color:#b42318;background:#fff0ee">${escPreco(sellerPrivateReviewStatus(row.status))}</span></div>${row.involvedPerson ? `<p style="font-size:11px;margin-top:7px"><strong>Pessoa envolvida:</strong> ${escPreco(row.involvedPerson)}</p>` : ''}<p style="font-size:12px;white-space:pre-wrap;margin-top:8px">${escPreco(row.description)}</p>${row.companyResponse ? `<div style="padding:8px;background:#eef5ff;border-radius:8px;margin-top:8px;font-size:11px"><strong>Providência/retorno:</strong> ${escPreco(row.companyResponse)}</div>` : ''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${files}${actions}</div></div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div style="padding:12px;background:#fff7e8;color:#8a4b00;border-radius:10px;font-size:12px">${escPreco(e.message)}</div>`;
+  }
+}
+
+async function reviewSellerConductReport(reportId, status) {
+  const response = prompt('Registre a providência tomada e o retorno que ficará disponível ao autor:') || '';
+  if (!response.trim()) return;
+  try {
+    await api('/api/seller/production/conduct-reports/' + encodeURIComponent(reportId), { method: 'PATCH', body: JSON.stringify({ status, companyResponse: response.trim() }) });
+    await loadSellerConductReportsReview();
+  } catch (e) { alert(e.message); }
 }
 
 async function loadSellerProductionIncidentsReview() {
