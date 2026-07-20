@@ -690,6 +690,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div class="actions" style="margin-top:16px" id="seller-actions">
     <div class="action-btn" onclick="showScreen('seller-agent')"><span>IA</span><span>IA ST Vendedor</span></div>
     <div class="action-btn" onclick="showScreen('seller-commission-cycles')"><span>%</span><span>Comissões</span></div>
+    <div class="action-btn" onclick="showScreen('seller-production')"><span>✓</span><span>Produção diária</span></div>
     <div class="action-btn" onclick="showScreen('seller-clock')"><span>⏱</span><span>Ponto</span></div>
     <div class="action-btn" onclick="showScreen('seller-portfolio')"><span>👥</span><span>Minha Carteira</span></div>
     <div class="action-btn" onclick="showScreen('seller-interview')"><span>📝</span><span>Entrevista</span></div>
@@ -894,6 +895,27 @@ input::placeholder{color:rgba(255,255,255,0.35)}
   <div style="width:100%;max-width:430px;max-height:94vh;overflow:auto;background:#151515;border:1px solid rgba(255,255,255,.18);border-radius:20px 20px 0 0;padding:18px 18px 28px">
     <button type="button" onclick="closeSellerRelationshipStage()" style="float:right;background:transparent;border:0;color:#fff;font-size:25px;cursor:pointer">×</button>
     <div id="src-stage-content"></div>
+  </div>
+</div>
+
+<!-- SELLER DAILY PRODUCTION -->
+<div id="seller-production" class="screen">
+  <div class="back-header"><span class="back-arrow" onclick="showScreen('seller-home')">←</span><p style="font-size:18px;font-weight:700">Produção diária</p></div>
+  <div style="margin-top:12px;padding:14px;background:rgba(229,87,30,.2);border:1px solid rgba(255,209,128,.35);border-radius:14px">
+    <p style="font-size:15px;font-weight:900">Quanto mais você fizer, mais você fatura.</p>
+    <p style="font-size:12px;color:rgba(255,255,255,.75);line-height:1.45;margin-top:5px">Todas as atividades do dia precisam ser enviadas e aprovadas. O fechamento mensal indica a elegibilidade ao incentivo de 10%.</p>
+  </div>
+  <div id="seller-production-policy" style="margin-top:10px"></div>
+  <div id="seller-production-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px"></div>
+  <div id="seller-production-month" style="margin-top:10px"></div>
+  <div id="seller-production-incidents" style="margin-top:10px"></div>
+  <div id="seller-production-list" style="display:grid;gap:10px;margin:14px 0 90px"></div>
+</div>
+
+<div id="seller-production-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1250;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:430px;max-height:94vh;overflow:auto;background:#151515;border:1px solid rgba(255,255,255,.18);border-radius:20px 20px 0 0;padding:18px 18px 28px">
+    <button type="button" onclick="closeSellerProductionItem()" style="float:right;background:transparent;border:0;color:#fff;font-size:25px;cursor:pointer">×</button>
+    <div id="seller-production-sheet-content"></div>
   </div>
 </div>
 
@@ -1440,6 +1462,10 @@ const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Está
       const fresh = await api('/auth/me');
       if (fresh && fresh.user) {
         const prevRole = user && user.role;
+        if (fresh.token) {
+          token = fresh.token;
+          localStorage.setItem('tc_token', token);
+        }
         user = fresh.user;
         localStorage.setItem('tc_user', JSON.stringify(user));
         console.log('[boot] role do servidor:', user.role, 'isPartner:', !!user.partner);
@@ -1485,7 +1511,7 @@ function showScreen(id) {
   const navPartner = document.getElementById('bottomNavPartner');
 
   const customerScreens = ['home','transfer','qr','client-ai-chat','client-product-detail','promos','profile','pos','complete-profile','security','forgot','mydata','edit-profile','assessor','teniscash-store'];
-  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-commission-cycles','seller-interview','profile','security','mydata','edit-profile'];
+  const sellerScreens = ['seller-home','seller-agent','seller-clock','seller-messages','seller-message-detail','seller-message-new','seller-catalog','seller-catalog-search','seller-product-detail','seller-portfolio','seller-commission-cycles','seller-production','seller-interview','profile','security','mydata','edit-profile'];
   // Parceiro reaproveita as telas de cliente (transfer, qr, promos, consultor) para usar o cashback dele
   const partnerScreens = ['partner-home','partner-sales','partner-campaigns','partner-redeem','transfer','qr','promos','client-ai-chat','client-product-detail','profile','security','mydata','edit-profile','teniscash-store'];
   const shouldShowCustomerNav = customerScreens.includes(id) && !isSeller() && !isPartner();
@@ -1532,6 +1558,7 @@ function showScreen(id) {
   if (id === 'teniscash-store') loadTenisCashStore();
   if (id === 'seller-portfolio') initSellerPortfolio();
   if (id === 'seller-commission-cycles') initSellerRelationshipCommissions();
+  if (id === 'seller-production') initSellerProduction();
   if (id === 'seller-interview') initSellerInterview();
 }
 
@@ -4991,6 +5018,201 @@ async function submitSellerRelationshipStage() {
 async function openSellerRelationshipEvidence(evidenceId) {
   try {
     const response = await fetch(API + '/seller/relationship-commission/evidence/' + encodeURIComponent(evidenceId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
+    const url = URL.createObjectURL(await response.blob());
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) { alert(err.message); }
+}
+
+// ==================== PRODUCAO DIARIA DO VENDEDOR ====================
+let _sellerProductionDay = null;
+let _sellerProductionItem = null;
+
+function sellerProductionStatus(status) {
+  return ({
+    PENDING: ['Pendente', '#FFD180'],
+    SUBMITTED: ['Aguardando fiscalização', '#90CAF9'],
+    REJECTED: ['Devolvida para correção', '#FF8A80'],
+    APPROVED: ['Aprovada', '#8BFF8B'],
+    EXCUSED: ['Justificada', '#D1C4E9'],
+  })[status] || [status || '—', 'rgba(255,255,255,.6)'];
+}
+
+function sellerProductionPhase(phase) {
+  return ({ ARRIVAL: 'CHEGADA NA LOJA', FIRST_TURN: 'PRIMEIRO TURNO', SECOND_TURN: 'SEGUNDO TURNO', EXIT: 'SAÍDA DA LOJA' })[phase] || phase;
+}
+
+function sellerProductionRequirementLabel(key) {
+  return ({
+    sellerName: 'Meu nome aparece na publicação',
+    shiftHours: 'O horário do meu turno aparece',
+    availableForSales: 'Informei que estou disponível para vendas',
+    date: 'A data aparece na foto',
+    openingHours: 'O horário de funcionamento da loja aparece',
+    storeLocation: 'A localização da loja aparece',
+    whatsappReposted: 'Repostei no status do WhatsApp da loja',
+    priceInformed: 'Informei o preço dos produtos',
+    maxDiscountInformed: 'Informei o desconto máximo autorizado',
+    technologiesExplained: 'Expliquei as principais tecnologias',
+    differentialsExplained: 'Expliquei os diferenciais dos produtos',
+    customersThanked: 'Agradeci aos clientes',
+    nextDayAvailabilityInformed: 'Informei se estarei na loja no dia seguinte',
+  })[key] || key;
+}
+
+async function initSellerProduction() {
+  if (!isSeller()) { showScreen('seller-home'); return; }
+  await Promise.all([loadSellerProductionPolicy(), loadSellerProductionToday(), loadSellerProductionMonth(), loadSellerProductionIncidents()]);
+}
+
+async function loadSellerProductionPolicy() {
+  const box = document.getElementById('seller-production-policy');
+  const data = await api('/seller/production/policy');
+  if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  if (data.acceptedAt) {
+    box.innerHTML = `<div style="padding:10px 12px;background:rgba(76,175,80,.14);border:1px solid rgba(139,255,139,.35);border-radius:11px;font-size:11px;color:#8BFF8B">✓ Regras recebidas e confirmadas em ${srcDate(data.acceptedAt)}.</div>`;
+    return;
+  }
+  box.innerHTML = `<div style="padding:13px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px"><strong style="font-size:13px;color:#FFD180">Leia antes de começar</strong><div style="font-size:11px;line-height:1.5;color:rgba(255,255,255,.78);margin-top:7px"><p><strong>Chegada:</strong> 1 Story com foto da loja + 1 Reels de aproximadamente 20 segundos.</p><p style="margin-top:5px"><strong>Primeiro turno:</strong> 2 Reels de 45 segundos e 5 Stories com fotos.</p><p style="margin-top:5px"><strong>Segundo turno:</strong> 2 novos Reels de 45 segundos e 5 novas fotos.</p><p style="margin-top:5px"><strong>Saída:</strong> 1 Story com foto + 1 Reels de agradecimento.</p><p style="margin-top:5px">Cada Reels de produto deve mostrar no mínimo 3 produtos diferentes, com preço, desconto máximo, tecnologias e diferenciais. Nenhum produto pode se repetir nos Reels do dia. Todo Reels vai para o feed e para o status do WhatsApp da loja, nunca para o Story do Instagram. Story é somente foto.</p><p style="margin-top:5px">Todas as atividades precisam ser fiscalizadas e aprovadas. Um dia registrado como descumprido torna o mês inelegível ao incentivo de 10%, salvo justificativa aceita.</p></div><label style="display:flex;gap:8px;align-items:flex-start;font-size:11px;margin-top:10px"><input id="seller-production-policy-check" type="checkbox" style="margin-top:2px"> Confirmo que li e recebi estas regras.</label><button type="button" class="btn-primary" onclick="acknowledgeSellerProductionPolicy()">CONFIRMAR RECEBIMENTO</button></div>`;
+}
+
+async function acknowledgeSellerProductionPolicy() {
+  if (!document.getElementById('seller-production-policy-check')?.checked) { alert('Marque a confirmação depois de ler as regras.'); return; }
+  const result = await api('/seller/production/policy/acknowledge', 'POST', { confirmed: true });
+  if (result.error) { alert(result.error); return; }
+  await loadSellerProductionPolicy();
+}
+
+async function loadSellerProductionToday() {
+  const list = document.getElementById('seller-production-list');
+  if (!list) return;
+  list.innerHTML = '<div class="loading">Carregando atividades...</div>';
+  const data = await api('/seller/production/today');
+  if (data.error) { list.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  _sellerProductionDay = data.day;
+  renderSellerProductionDay();
+}
+
+function renderSellerProductionDay() {
+  const day = _sellerProductionDay;
+  if (!day) return;
+  const progress = day.progress || {};
+  document.getElementById('seller-production-summary').innerHTML = [
+    ['APROVADAS', `${progress.approved || 0}/${progress.total || 0}`],
+    ['EM ANÁLISE', progress.submitted || 0],
+    ['CORRIGIR', progress.rejected || 0],
+  ].map(([label, value]) => `<div style="padding:10px 5px;text-align:center;background:rgba(255,255,255,.1);border-radius:12px"><p style="font-size:9px;letter-spacing:.7px;color:rgba(255,255,255,.55)">${label}</p><p style="font-size:17px;font-weight:900;margin-top:4px">${value}</p></div>`).join('');
+
+  const phases = ['ARRIVAL', 'FIRST_TURN', 'SECOND_TURN', 'EXIT'];
+  let html = '';
+  phases.forEach(phase => {
+    const rows = (day.items || []).filter(item => item.phase === phase);
+    html += `<div style="margin-top:7px"><p style="font-size:11px;font-weight:900;letter-spacing:1px;color:#FFD180;margin-bottom:7px">${sellerProductionPhase(phase)}</p><div style="display:grid;gap:7px">`;
+    html += rows.map(item => {
+      const state = sellerProductionStatus(item.status);
+      const canOpen = ['PENDING', 'REJECTED'].includes(item.status);
+      return `<button type="button" onclick="openSellerProductionItem('${item.id}')" style="width:100%;text-align:left;padding:12px;background:rgba(255,255,255,.085);color:#fff;border:1px solid rgba(255,255,255,.14);border-left:3px solid ${state[1]};border-radius:11px;font-family:inherit;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:12px;line-height:1.35">${srcEscape(item.title)}</strong><span style="font-size:10px;color:${state[1]};white-space:nowrap">${state[0]}</span></div>${item.reviewNote ? `<p style="font-size:10px;color:${item.status === 'REJECTED' ? '#FF8A80' : '#8BFF8B'};margin-top:6px">Fiscalização: ${srcEscape(item.reviewNote)}</p>` : ''}${canOpen ? '<p style="font-size:10px;color:#FFD180;margin-top:6px">Toque para registrar</p>' : ''}</button>`;
+    }).join('');
+    html += '</div></div>';
+  });
+  if (!progress.pending && !progress.rejected && progress.total) {
+    html += `<button type="button" class="btn-primary" onclick="submitSellerProductionDay()" ${day.status === 'SUBMITTED' ? 'disabled' : ''}>${day.status === 'SUBMITTED' ? 'DIA ENVIADO PARA FISCALIZAÇÃO' : 'FINALIZAR E ENVIAR O DIA'}</button>`;
+  }
+  document.getElementById('seller-production-list').innerHTML = html;
+}
+
+async function loadSellerProductionMonth() {
+  const box = document.getElementById('seller-production-month');
+  const month = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Fortaleza' }).slice(0, 7);
+  const data = await api('/seller/production/months/' + month);
+  if (data.error) { box.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const summary = data.month || {};
+  const color = summary.noncompliantDays ? '#FF8A80' : '#8BFF8B';
+  box.innerHTML = `<div style="padding:12px;background:rgba(255,255,255,.09);border-radius:12px;border-left:3px solid ${color}"><div style="display:flex;justify-content:space-between;gap:10px"><strong style="font-size:12px">Incentivo mensal de 10%</strong><span style="font-size:10px;color:${color}">${summary.approvedDays || 0}/${summary.expectedDays || 0} dias aprovados</span></div><p style="font-size:10px;color:rgba(255,255,255,.6);line-height:1.4;margin-top:5px">É necessário cumprir e ter aprovação de todas as atividades em todos os dias exigidos.</p></div>`;
+}
+
+async function loadSellerProductionIncidents() {
+  const box = document.getElementById('seller-production-incidents');
+  const data = await api('/seller/production/incidents/list');
+  if (data.error) { box.innerHTML = ''; return; }
+  const rows = (data.incidents || []).filter(item => !['CLOSED_NO_ACTION'].includes(item.status)).slice(0, 3);
+  if (!rows.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div style="padding:12px;background:rgba(255,82,82,.12);border:1px solid rgba(255,138,128,.35);border-radius:12px"><strong style="font-size:12px;color:#FF8A80">Comunicados de descumprimento</strong>${rows.map(item => `<div style="margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12)"><p style="font-size:11px;line-height:1.4">${srcEscape(item.summary)}</p><p style="font-size:10px;color:rgba(255,255,255,.55);margin-top:4px">${srcDate(item.day?.workDate)} · ${srcEscape(item.status)}</p>${item.decision ? `<p style="font-size:10px;color:#FFD180;margin-top:6px"><strong>Decisão registrada:</strong> ${srcEscape(item.decision)}${item.decisionReason ? ' · ' + srcEscape(item.decisionReason) : ''}</p>` : !item.sellerResponse ? `<button type="button" onclick="respondSellerProductionIncident('${item.id}')" style="margin-top:7px;padding:7px 9px;border:0;border-radius:8px;background:#fff;color:#E5571E;font-weight:800;font-size:10px">APRESENTAR JUSTIFICATIVA</button>` : '<p style="font-size:10px;color:#90CAF9;margin-top:6px">Sua manifestação foi registrada.</p>'}</div>`).join('')}</div>`;
+}
+
+async function respondSellerProductionIncident(id) {
+  const response = prompt('Escreva sua justificativa ou manifestação sobre o comunicado:');
+  if (!response || !response.trim()) return;
+  const result = await api('/seller/production/incidents/' + encodeURIComponent(id) + '/respond', 'POST', { response: response.trim() });
+  if (result.error) { alert(result.error); return; }
+  await loadSellerProductionIncidents();
+}
+
+function openSellerProductionItem(itemId) {
+  const item = (_sellerProductionDay?.items || []).find(row => row.id === itemId);
+  if (!item) return;
+  _sellerProductionItem = item;
+  const editable = ['PENDING', 'REJECTED'].includes(item.status);
+  const accept = item.mediaType === 'photo' ? 'image/jpeg,image/png,image/webp' : 'video/mp4,video/webm,video/quicktime';
+  const requirementChecks = (item.requirements || []).map(key => `<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin-top:9px"><input class="seller-production-confirmation" data-key="${srcEscape(key)}" type="checkbox" style="margin-top:2px" ${item.confirmations?.[key] ? 'checked' : ''}> ${srcEscape(sellerProductionRequirementLabel(key))}</label>`).join('');
+  const evidence = (item.evidence || []).map(file => `<button type="button" onclick="openSellerProductionEvidence('${file.id}')" style="padding:7px 9px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:8px;font-family:inherit;font-size:10px">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${srcEscape(file.originalName)}</button>`).join('');
+  document.getElementById('seller-production-sheet-content').innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">${sellerProductionPhase(item.phase)}</p><h3 style="font-size:18px;line-height:1.3;margin-top:5px;padding-right:28px">${srcEscape(item.title)}</h3><p style="font-size:11px;color:#FFD180;line-height:1.45;margin-top:7px">${item.mediaType === 'video' ? (item.targetDurationSec ? `Duração: ${item.targetDurationSec}${item.requiredProducts ? ' segundos exatos' : ' segundos aproximadamente'}.` : 'Envie o Reels publicado.') : 'Envie a foto publicada no Story.'}${item.requiredProducts ? ` Informe no mínimo ${item.requiredProducts} produtos diferentes e não repita produtos usados nos outros Reels do dia.` : ''}</p>${item.reviewNote ? `<div style="padding:9px;background:rgba(255,82,82,.12);border-radius:9px;margin-top:10px;font-size:11px;color:#FF8A80"><strong>Fiscalização:</strong> ${srcEscape(item.reviewNote)}</div>` : ''}${editable ? `<label class="input-label">RELATO</label><textarea id="seller-production-note" class="input-field" rows="3" maxlength="4000" placeholder="Descreva o que foi produzido">${srcEscape(item.note || '')}</textarea><label class="input-label">LINK DA PUBLICAÇÃO</label><input id="seller-production-publication" class="input-field" type="url" value="${srcEscape(item.publicationUrl || '')}" placeholder="https://instagram.com/..."><label class="input-label">ARQUIVO</label><input id="seller-production-file" class="input-field" type="file" accept="${accept}" multiple style="padding:12px">${item.targetDurationSec ? `<label class="input-label">DURAÇÃO DO VÍDEO EM SEGUNDOS</label><input id="seller-production-duration" class="input-field" type="number" min="1" value="${item.durationSeconds || ''}" placeholder="${item.targetDurationSec}">` : ''}${item.requiredProducts ? `<label class="input-label">PRODUTOS MOSTRADOS — UM POR LINHA</label><textarea id="seller-production-products" class="input-field" rows="4" placeholder="Código ou nome completo de cada produto">${srcEscape((item.productRefs || []).join('\n'))}</textarea>` : ''}${requirementChecks}${item.mediaType === 'video' ? '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin-top:10px"><input id="seller-production-no-story" type="checkbox" style="margin-top:2px"> Confirmo que este Reels não foi repostado no Story do Instagram.</label>' : ''}${(item.requirements || []).includes('whatsappReposted') ? '<label class="input-label">PROVA DO STATUS DO WHATSAPP</label><input id="seller-production-whatsapp-file" class="input-field" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" style="padding:12px"><input id="seller-production-whatsapp-url" class="input-field" type="url" placeholder="ou informe o link da prova" style="margin-top:7px">' : ''}<div id="seller-production-error" class="error-msg" style="display:none;margin-top:10px"></div><button id="seller-production-send" type="button" class="btn-primary" onclick="submitSellerProductionItem()">ENVIAR PARA FISCALIZAÇÃO</button>` : `<p style="font-size:12px;color:${sellerProductionStatus(item.status)[1]};margin-top:12px">${sellerProductionStatus(item.status)[0]}</p>${item.note ? `<p style="font-size:12px;white-space:pre-wrap;margin-top:8px">${srcEscape(item.note)}</p>` : ''}${item.publicationUrl ? `<p style="margin-top:8px"><a href="${srcEscape(item.publicationUrl)}" target="_blank" rel="noopener" style="color:#90CAF9">Abrir publicação</a></p>` : ''}${evidence ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${evidence}</div>` : ''}`}`;
+  document.getElementById('seller-production-sheet').style.display = 'flex';
+}
+
+function closeSellerProductionItem() {
+  document.getElementById('seller-production-sheet').style.display = 'none';
+  _sellerProductionItem = null;
+}
+
+async function submitSellerProductionItem() {
+  const item = _sellerProductionItem;
+  if (!item) return;
+  const error = document.getElementById('seller-production-error');
+  const button = document.getElementById('seller-production-send');
+  const confirmations = {};
+  document.querySelectorAll('.seller-production-confirmation').forEach(input => { confirmations[input.dataset.key] = input.checked; });
+  const form = new FormData();
+  form.append('note', (document.getElementById('seller-production-note')?.value || '').trim());
+  form.append('publicationUrl', (document.getElementById('seller-production-publication')?.value || '').trim());
+  form.append('durationSeconds', document.getElementById('seller-production-duration')?.value || '');
+  form.append('productRefs', document.getElementById('seller-production-products')?.value || '');
+  form.append('requirementsConfirmedJson', JSON.stringify(confirmations));
+  form.append('noInstagramStoryConfirmed', document.getElementById('seller-production-no-story')?.checked ? 'true' : 'false');
+  form.append('whatsappProofUrl', (document.getElementById('seller-production-whatsapp-url')?.value || '').trim());
+  Array.from(document.getElementById('seller-production-file')?.files || []).forEach(file => form.append('evidence', file));
+  Array.from(document.getElementById('seller-production-whatsapp-file')?.files || []).forEach(file => form.append('whatsappEvidence', file));
+  button.disabled = true;
+  button.textContent = 'ENVIANDO...';
+  error.style.display = 'none';
+  try {
+    const response = await fetch(API + '/seller/production/items/' + encodeURIComponent(item.id) + '/submit', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: form, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Não foi possível enviar a atividade.');
+    _sellerProductionDay = data.day;
+    closeSellerProductionItem();
+    renderSellerProductionDay();
+  } catch (err) {
+    error.textContent = err.message;
+    error.style.display = 'block';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'ENVIAR PARA FISCALIZAÇÃO';
+  }
+}
+
+async function submitSellerProductionDay() {
+  if (!_sellerProductionDay) return;
+  const result = await api('/seller/production/days/' + encodeURIComponent(_sellerProductionDay.id) + '/submit', 'POST', {});
+  if (result.error) { alert(result.error); return; }
+  _sellerProductionDay = result.day;
+  renderSellerProductionDay();
+}
+
+async function openSellerProductionEvidence(evidenceId) {
+  try {
+    const response = await fetch(API + '/seller/production/evidence/' + encodeURIComponent(evidenceId), { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Arquivo indisponível'); }
     const url = URL.createObjectURL(await response.blob());
     window.open(url, '_blank', 'noopener');

@@ -16,7 +16,8 @@
     "backfill:sale-stock-ledger": "node scripts/backfill-sale-stock-ledger.js",
     "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js",
     "test:labels": "node scripts/test-label-145x25.js",
-    "test:relationship-commission": "node scripts/test-relationship-commission.js"
+    "test:relationship-commission": "node scripts/test-relationship-commission.js",
+    "test:seller-production": "node scripts/test-seller-production.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",
