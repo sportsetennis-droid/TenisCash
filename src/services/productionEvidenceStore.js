@@ -35,6 +35,7 @@ function save(file) {
     mimeType: file.mimetype,
     mediaType: file.mimetype.startsWith('image/') ? 'photo' : 'video',
     bytes: file.buffer.length,
+    sha256: crypto.createHash('sha256').update(file.buffer).digest('hex'),
   };
 }
 

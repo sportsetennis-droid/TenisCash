@@ -1,5 +1,7 @@
 const express = require('express');
+const crypto = require('crypto');
 const multer = require('multer');
+const QRCode = require('qrcode');
 const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const equipeReports = require('../services/equipeReports');
@@ -64,6 +66,31 @@ function canViewRelationshipJourney(req, journey) {
 
 function normalizeSearch(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+async function addCommissionEvidenceIntegrityChecks(savedFile, { sellerId, expectedMediaType, batchHashes }) {
+  const duplicateInBatch = batchHashes.has(savedFile.sha256);
+  const prior = duplicateInBatch ? null : await prisma.sellerCommissionEvidence.findFirst({
+    where: { sha256: savedFile.sha256, stage: { journey: { sellerId } } },
+    select: { id: true, createdAt: true },
+  });
+  const exactDuplicateDetected = duplicateInBatch || !!prior;
+  batchHashes.add(savedFile.sha256);
+  return {
+    ...savedFile,
+    automatedStatus: exactDuplicateDetected ? 'FLAGGED_DUPLICATE' : 'TECHNICALLY_VALID',
+    automatedChecks: {
+      checkedAt: new Date().toISOString(),
+      hashCaptured: true,
+      exactDuplicateDetected,
+      duplicateEvidenceId: prior?.id || null,
+      expectedMediaType: expectedMediaType || null,
+      mediaTypeMatches: !expectedMediaType || savedFile.mediaType === expectedMediaType,
+      fileNonEmpty: savedFile.bytes > 0,
+      visualContentChecked: false,
+      humanReviewRequired: true,
+    },
+  };
 }
 
 function parseRelationshipMoneySearch(value) {
@@ -133,6 +160,11 @@ function relationshipJourneyView(journey, { detail = false, canRegister = false 
       earliestAt: next.earliestAt,
       waitingReason: next.waitingReason,
     } : null,
+    referral: journey.referralCode ? {
+      code: journey.referralCode.code,
+      status: journey.referralCode.status,
+      convertedAt: journey.referralCode.convertedAt || null,
+    } : null,
   };
   if (detail) {
     base.stages = availability.map((item) => ({
@@ -167,6 +199,8 @@ function relationshipJourneyView(journey, { detail = false, canRegister = false 
         mediaType: evidence.mediaType,
         mimeType: evidence.mimeType,
         bytes: evidence.bytes,
+        automatedStatus: evidence.automatedStatus,
+        automatedChecks: evidence.automatedChecks || null,
       })),
     }));
   }
@@ -719,6 +753,11 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
   try {
     const operatorId = req.userId; // quem operou o PDV (loja ou vendedor)
     const { customerPhone, items, paymentMethod, tcUsed, note, storeId, vendorId } = req.body || {};
+    const rawReferralCode = String(req.body?.referralCode || '').trim();
+    const referralCode = rawReferralCode ? rawReferralCode.toUpperCase() : null;
+    if (rawReferralCode && (!/^[A-Za-z0-9_-]{1,32}$/.test(rawReferralCode) || referralCode.length > 32)) {
+      return res.status(400).json({ error: 'Codigo de indicacao invalido. Confira o codigo exato.' });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos 1 item' });
@@ -837,6 +876,32 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       customer = await prisma.user.findUnique({ where: { phone: String(customerPhone) } });
     }
 
+    let referralContext = null;
+    if (referralCode) {
+      const referral = await prisma.sellerReferralCode.findUnique({
+        where: { code: referralCode },
+        include: {
+          originJourney: {
+            include: {
+              sale: { select: { createdAt: true, status: true } },
+              stages: { orderBy: { position: 'asc' } },
+            },
+          },
+        },
+      });
+      if (!referral || referral.status !== 'ACTIVE' || referral.referredSaleId) {
+        return res.status(400).json({ error: 'Codigo de indicacao invalido ou ja utilizado.' });
+      }
+      if (!customer) return res.status(400).json({ error: 'Selecione o cadastro da pessoa indicada antes de usar o codigo.' });
+      if (customer.id === referral.originCustomerUserId) return res.status(400).json({ error: 'O cliente nao pode usar a propria indicacao.' });
+      if (sellerId !== referral.sellerId) return res.status(400).json({ error: 'A indicacao pertence a outro vendedor.' });
+      if (referral.originStoreId && activeStoreId !== referral.originStoreId) return res.status(400).json({ error: 'A indicacao pertence a outra loja.' });
+      const step = relationshipCommission.stageAvailability(referral.originJourney, referral.originJourney.stages)
+        .find((item) => item.key === 'REFERRAL_CONVERTED');
+      if (!step?.available) return res.status(409).json({ error: step?.waitingReason || 'A etapa de indicacao ainda nao esta disponivel.' });
+      referralContext = { referral, stageId: step.stage.id };
+    }
+
     // TenisCash usado como desconto (consome saldo do cliente).
     // TETO: 10% do valor ORIGINAL da compra. Desconto na venda NÃO aumenta esse teto (regra do dono 2026-06-19).
     const maxTcUse = round2(originalSubtotal * 0.10);
@@ -913,6 +978,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
           paymentMethod: paymentMethod || 'unknown',
           status: 'completed',
           note: note || null,
+          referralCode,
           idemKey: idemKey || null,
           items: { create: persistedItems },
         },
@@ -991,7 +1057,17 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
         })
         : null;
 
-      return { sale, commissionsCount: commissionsData.length, relationshipJourney };
+      let referralAttribution = null;
+      if (referralContext) {
+        const claimedCode = await tx.sellerReferralCode.updateMany({
+          where: { id: referralContext.referral.id, status: 'ACTIVE', referredSaleId: null },
+          data: { status: 'RESERVED', referredSaleId: sale.id, convertedAt: null },
+        });
+        if (claimedCode.count !== 1) throw new SaleStockError('O codigo de indicacao ja foi usado em outra venda.');
+        referralAttribution = { code: referralCode, stageId: referralContext.stageId, reserved: true };
+      }
+
+      return { sale, commissionsCount: commissionsData.length, relationshipJourney, referralAttribution };
     });
     } catch (e) {
       // TRAVA DURÁVEL anti-duplicação: se 2 requisições com o MESMO idemKey correrem juntas, ou
@@ -1193,6 +1269,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     if (persistedSale?.status === 'pending_payment') {
       await relationshipCommission.markJourneyPaymentPending(prisma, result.sale.id).catch(() => {});
     }
+    if (persistedSale?.status === 'completed' && result.referralAttribution?.reserved) {
+      result.referralAttribution = await relationshipCommission.submitReservedReferralAfterPayment(prisma, result.sale.id);
+    }
 
     res.json({
       ok: true,
@@ -1203,6 +1282,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       tcEarned,
       commissionsCreated: result.commissionsCount,
       relationshipCommissionCreated: !!result.relationshipJourney,
+      referralSubmittedForReview: !!result.referralAttribution?.submitted,
+      referralReservedPendingPayment: !!result.referralAttribution?.reserved && persistedSale?.status === 'pending_payment',
       customer: customer ? { id: customer.id, name: customer.name, newBalance: (customer.balance || 0) + (tcEarned - tcConsumed) } : null,
       fiscal: fiscalResult,
     });
@@ -1703,6 +1784,7 @@ router.get('/relationship-commission', sellerOnly, async (req, res) => {
           seller: { select: { name: true } },
           sale: { select: { createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
           stages: { orderBy: { position: 'asc' } },
+          referralCode: true,
         },
         orderBy: { createdAt: 'desc' },
         take: 300,
@@ -1779,6 +1861,57 @@ router.get('/relationship-commission/referral-candidates', sellerOnly, async (re
   }
 });
 
+router.post('/relationship-commission/:journeyId/referral-code', sellerOnly, async (req, res) => {
+  try {
+    const journey = await prisma.sellerCommissionJourney.findUnique({
+      where: { id: String(req.params.journeyId || '') },
+      include: {
+        sale: { select: { createdAt: true, status: true } },
+        stages: { orderBy: { position: 'asc' } },
+        referralCode: true,
+      },
+    });
+    if (!journey || !canViewRelationshipJourney(req, journey)) return res.status(404).json({ error: 'Ciclo nao encontrado' });
+    if (req.userRole !== 'seller' || journey.sellerId !== req.userId) return res.status(403).json({ error: 'Somente o vendedor responsavel pode gerar a indicacao' });
+    if (journey.purchasePosition !== 2 || journey.status !== 'ACTIVE' || journey.sale.status !== 'completed') {
+      return res.status(409).json({ error: 'O codigo pertence a segunda venda ativa do ciclo' });
+    }
+    const referralStep = relationshipCommission.stageAvailability(journey, journey.stages)
+      .find((item) => item.key === 'REFERRAL_CONVERTED');
+    if (!referralStep?.available) return res.status(409).json({ error: referralStep?.waitingReason || 'Conclua as etapas anteriores antes de gerar a indicacao' });
+
+    let referral = journey.referralCode;
+    if (!referral) {
+      for (let attempt = 0; attempt < 8 && !referral; attempt += 1) {
+        const code = `STI${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+        try {
+          referral = await prisma.sellerReferralCode.create({
+            data: {
+              code,
+              originJourneyId: journey.id,
+              sellerId: journey.sellerId,
+              originCustomerUserId: journey.customerUserId,
+              originStoreId: journey.storeId || null,
+            },
+          });
+        } catch (err) {
+          if (err.code !== 'P2002') throw err;
+          referral = await prisma.sellerReferralCode.findUnique({ where: { originJourneyId: journey.id } });
+        }
+      }
+    }
+    if (!referral) throw new Error('Nao foi possivel gerar um codigo unico');
+    if (referral.status !== 'ACTIVE') return res.status(409).json({ error: 'Este codigo ja foi utilizado em uma compra' });
+
+    const shareText = `Indicacao Sports & Tennis: apresente o codigo ${referral.code} no caixa antes de finalizar a compra.`;
+    const qrDataUrl = await QRCode.toDataURL(referral.code, { width: 420, margin: 2, errorCorrectionLevel: 'M' });
+    res.json({ referral: { code: referral.code, status: referral.status, shareText, qrDataUrl } });
+  } catch (err) {
+    console.error('[relationship-commission/referral-code]', err);
+    res.status(/etapa|codigo|ciclo|vendedor|compra/i.test(err.message) ? 409 : 500).json({ error: err.message });
+  }
+});
+
 router.get('/relationship-commission/evidence/:evidenceId', sellerOnly, async (req, res) => {
   try {
     const evidence = await prisma.sellerCommissionEvidence.findUnique({
@@ -1838,7 +1971,13 @@ router.get('/relationship-commission/review-queue', commissionReviewerOnly, asyn
         paidAmount: stage.journey.baseAmount,
         saleDate: stage.journey.sale.createdAt,
         items: stage.journey.sale.items.map((item) => ({ name: item.productName, brand: item.brand, size: item.size, quantity: item.quantity })),
-        evidence: stage.evidence.map((item) => ({ evidenceId: item.id, name: item.originalName, mediaType: item.mediaType })),
+        evidence: stage.evidence.map((item) => ({
+          evidenceId: item.id,
+          name: item.originalName,
+          mediaType: item.mediaType,
+          automatedStatus: item.automatedStatus,
+          automatedChecks: item.automatedChecks || null,
+        })),
       })),
     });
   } catch (err) {
@@ -1871,6 +2010,12 @@ router.post('/relationship-commission/stages/:stageId/review', commissionReviewe
         },
       });
       if (rejected.count !== 1) return res.status(409).json({ error: 'Esta etapa ja foi fiscalizada' });
+      if (initial.referredSaleId) {
+        await prisma.sellerReferralCode.updateMany({
+          where: { referredSaleId: initial.referredSaleId },
+          data: { status: 'ACTIVE', referredSaleId: null, convertedAt: null },
+        });
+      }
       return res.json({ ok: true, decision: 'REJECTED' });
     }
 
@@ -1949,6 +2094,7 @@ router.get('/relationship-commission/:journeyId', sellerOnly, async (req, res) =
         seller: { select: { name: true } },
         sale: { select: { createdAt: true, status: true, items: { select: { productName: true, brand: true, size: true, quantity: true, totalPrice: true } } } },
         stages: { orderBy: { position: 'asc' }, include: { evidence: { orderBy: { createdAt: 'asc' } } } },
+        referralCode: true,
       },
     });
     if (!canViewRelationshipJourney(req, journey)) return res.status(404).json({ error: 'Ciclo nao encontrado' });
@@ -2027,7 +2173,16 @@ router.post('/relationship-commission/:journeyId/stages/:stageKey', sellerOnly,
         referredSale = referredJourney.sale;
       }
 
-      for (const file of files) savedFiles.push(commissionEvidenceStore.save(file));
+      const batchHashes = new Set();
+      for (const file of files) {
+        const saved = commissionEvidenceStore.save(file);
+        savedFiles.push(saved);
+        Object.assign(saved, await addCommissionEvidenceIntegrityChecks(saved, {
+          sellerId: journey.sellerId,
+          expectedMediaType: rule.media || null,
+          batchHashes,
+        }));
+      }
 
       await prisma.$transaction(async (tx) => {
         const fresh = await tx.sellerCommissionJourney.findUnique({ where: { id: journeyId }, include: { sale: { select: { createdAt: true, status: true } }, stages: { orderBy: { position: 'asc' } } } });

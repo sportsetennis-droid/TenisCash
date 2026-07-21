@@ -560,14 +560,16 @@ model Sale {
   erpReference   String?
   pagbankOrderId String? // PagBank order id (ORDE_...) do PIX-QR; webhook mapeia por aqui
   note           String?
+  referralCode   String?
   idemKey        String?       @unique // anti-duplicação: 1 venda por chave do carrinho (trava durável no banco)
   createdAt      DateTime      @default(now())
 
-  items                   SaleItem[]
-  commissions             SaleCommission[]
-  stockMovements          StoreStockMovement[]
-  relationshipJourney     SellerCommissionJourney? @relation("relationshipJourneySale")
-  referralCommissionStage SellerCommissionStage?   @relation("referralConvertedSale")
+  items                     SaleItem[]
+  commissions               SaleCommission[]
+  stockMovements            StoreStockMovement[]
+  relationshipJourney       SellerCommissionJourney? @relation("relationshipJourneySale")
+  referralCommissionStage   SellerCommissionStage?   @relation("referralConvertedSale")
+  sellerReferralAttribution SellerReferralCode?      @relation("sellerReferralConvertedSale")
 
   @@index([sellerId, createdAt])
   @@index([clientId])
@@ -686,11 +688,33 @@ model SellerCommissionJourney {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  stages SellerCommissionStage[]
+  stages       SellerCommissionStage[]
+  referralCode SellerReferralCode?
 
   @@index([sellerId, status, createdAt])
   @@index([customerUserId, sellerId, createdAt])
   @@index([storeId, createdAt])
+}
+
+// Codigo de indicacao do cliente no segundo atendimento do ciclo.
+// Identifica a origem, mas nunca libera 2% sem fiscalizacao humana.
+model SellerReferralCode {
+  id                   String                  @id @default(cuid())
+  code                 String                  @unique
+  originJourneyId      String                  @unique
+  originJourney        SellerCommissionJourney @relation(fields: [originJourneyId], references: [id], onDelete: Cascade)
+  sellerId             String
+  originCustomerUserId String
+  originStoreId        String?
+  status               String                  @default("ACTIVE") // ACTIVE | RESERVED (aguarda pagamento) | CONVERTED (aguarda/aprovado pela fiscalizacao)
+  referredSaleId       String?                 @unique
+  referredSale         Sale?                   @relation("sellerReferralConvertedSale", fields: [referredSaleId], references: [id], onDelete: SetNull)
+  convertedAt          DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([sellerId, status, createdAt])
+  @@index([originStoreId, status])
 }
 
 model SellerCommissionStage {
@@ -731,17 +755,21 @@ model SellerCommissionStage {
 }
 
 model SellerCommissionEvidence {
-  id           String                @id @default(cuid())
-  stageId      String
-  stage        SellerCommissionStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  storedName   String                @unique
-  originalName String
-  mimeType     String
-  mediaType    String // photo | video
-  bytes        Int
-  createdAt    DateTime              @default(now())
+  id              String                @id @default(cuid())
+  stageId         String
+  stage           SellerCommissionStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  storedName      String                @unique
+  originalName    String
+  mimeType        String
+  mediaType       String // photo | video
+  bytes           Int
+  sha256          String?
+  automatedStatus String                @default("PENDING_HUMAN")
+  automatedChecks Json?
+  createdAt       DateTime              @default(now())
 
   @@index([stageId])
+  @@index([sha256])
 }
 
 // ============================================================
@@ -820,18 +848,22 @@ model SellerProductionItem {
 }
 
 model SellerProductionEvidence {
-  id           String               @id @default(cuid())
-  itemId       String
-  item         SellerProductionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  kind         String               @default("PRIMARY") // PRIMARY | WHATSAPP_PROOF | OTHER
-  storedName   String               @unique
-  originalName String
-  mimeType     String
-  mediaType    String // photo | video
-  bytes        Int
-  createdAt    DateTime             @default(now())
+  id              String               @id @default(cuid())
+  itemId          String
+  item            SellerProductionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  kind            String               @default("PRIMARY") // PRIMARY | WHATSAPP_PROOF | OTHER
+  storedName      String               @unique
+  originalName    String
+  mimeType        String
+  mediaType       String // photo | video
+  bytes           Int
+  sha256          String?
+  automatedStatus String               @default("PENDING_HUMAN")
+  automatedChecks Json?
+  createdAt       DateTime             @default(now())
 
   @@index([itemId])
+  @@index([sha256])
 }
 
 model SellerProductionPolicyAcceptance {
@@ -976,6 +1008,7 @@ model SellerPrivateAttachment {
   mimeType     String
   mediaType    String // photo | video
   bytes        Int
+  sha256       String?
   createdAt    DateTime               @default(now())
 
   @@index([requestId])

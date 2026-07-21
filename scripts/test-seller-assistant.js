@@ -1,5 +1,7 @@
 const assert = require('assert');
 const assistant = require('../src/services/sellerAssistant');
+const evidenceStore = require('../src/services/productionEvidenceStore');
+const sellerAgentRoute = require('../src/routes/sellerAgent');
 
 function makeProduct(id, brand) {
   return {
@@ -82,7 +84,32 @@ async function run() {
   assert.strictEqual(assignments.length, 22, 'reabrir o assistente nao pode duplicar atribuicoes');
   assert.strictEqual(new Set(assignments.map((row) => row.productId)).size, 22, 'persistencia deve manter produtos distintos');
 
-  console.log('OK: assistente individual, plano sem repeticao e WhatsApp preparado');
+  const proofA = evidenceStore.save({ mimetype: 'image/png', originalname: 'prova-a.png', buffer: Buffer.from('mesma-prova') });
+  const proofB = evidenceStore.save({ mimetype: 'image/png', originalname: 'prova-b.png', buffer: Buffer.from('mesma-prova') });
+  try {
+    assert.strictEqual(proofA.sha256, proofB.sha256, 'arquivos identicos devem produzir a mesma impressao digital');
+    assert.strictEqual(proofA.sha256.length, 64, 'a impressao digital deve usar SHA-256');
+  } finally {
+    evidenceStore.remove(proofA.storedName);
+    evidenceStore.remove(proofB.storedName);
+  }
+
+  const actions = sellerAgentRoute._test.buildNextBestActions({
+    priorityCustomers: [{ id: 'C1', customerName: 'Cliente', relationshipStatus: 'REBUY_OPPORTUNITY', priority: 'HIGH', nextAction: 'Ligar', nextActionDate: '2026-07-19T12:00:00.000Z' }],
+    tasks: [{ id: 'T1', title: 'Tarefa normal', description: null, type: 'FOLLOW_UP', priority: 'LOW', dueDate: '2026-07-20T12:00:00.000Z' }],
+    commissionJourneys: [{
+      id: 'J1', customerName: 'Cliente', baseAmount: 500, purchasePosition: 1, status: 'ACTIVE',
+      sale: { createdAt: new Date('2026-07-01T12:00:00.000Z'), status: 'completed' },
+      stages: [
+        { id: 'S0', key: 'SALE_COMPLETED', position: 0, title: 'Venda', status: 'COMPLETED', updatedAt: new Date('2026-07-01T12:00:00.000Z') },
+        { id: 'S1', key: 'CUSTOMER_REGISTERED', position: 1, title: 'Cadastro', status: 'REJECTED', updatedAt: new Date('2026-07-20T12:00:00.000Z') },
+      ],
+    }],
+  });
+  assert.strictEqual(actions[0].source, 'COMMISSION', 'correcao devolvida deve aparecer primeiro');
+  assert.strictEqual(actions[0].priority, 'URGENT');
+
+  console.log('OK: assistente individual, plano sem repeticao, evidencias e proximas acoes');
 }
 
 run().catch((error) => {

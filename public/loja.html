@@ -573,6 +573,12 @@
           </div>
 
           <!-- CPF/CNPJ na nota — fica AQUI, junto do cliente; vai vinculado na emissao da NFC-e (SEFAZ-PB exige >= R$ 500) -->
+          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
+            <label for="sellReferralCode" style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Código de indicação (opcional)</label>
+            <input type="text" id="sellReferralCode" autocomplete="off" maxlength="32" placeholder="Ex.: STI-A1B2C3D4" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_-]/g,'')" style="width:100%;min-height:44px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#1d1d1f;font-size:16px;font-family:monospace;font-weight:800;box-sizing:border-box;">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Informe antes de finalizar. O código registra a origem e envia os 2% para fiscalização humana.</div>
+          </div>
+
           <div id="sellCpfBox" style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
             <label for="sellCustomerCpf" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">
               🧾 CPF/CNPJ na nota
@@ -2588,6 +2594,7 @@ async function finalizeSale() {
         customerCpf: (_cpfNota.length === 11 || _cpfNota.length === 14) ? _cpfNota : null,
         // Nome na nota = campo "Nome do cliente na nota" (auto do cadastro ou digitado à mão).
         customerCpfName: (document.getElementById('sellCustomerNome')?.value || '').trim() || null,
+        referralCode: (document.getElementById('sellReferralCode')?.value || '').trim() || null,
         ...cardData,
       }),
     });
@@ -2606,6 +2613,7 @@ async function finalizeSale() {
       document.getElementById('sellCustomerResults').innerHTML = '';
       document.getElementById('sellCustomerCpf').value = '';
       document.getElementById('sellCustomerNome').value = '';
+      document.getElementById('sellReferralCode').value = '';
       document.getElementById('sellTcUsed').value = 0;
       document.getElementById('sellDiscount').value = 0;
       document.getElementById('sellSearchInput').value = '';
@@ -2643,13 +2651,15 @@ async function finalizeSale() {
     document.getElementById('sellCustomerResults').innerHTML = '';
     document.getElementById('sellCustomerCpf').value = '';
     document.getElementById('sellCustomerNome').value = '';
+    document.getElementById('sellReferralCode').value = '';
     document.getElementById('sellTcUsed').value = 0;
     document.getElementById('sellDiscount').value = 0;
     document.getElementById('sellSearchInput').value = '';
     document.getElementById('sellSearchResults').innerHTML = '';
     renderCart();
     const cycleStatus = r.relationshipCommissionCreated ? ' | Ciclo progressivo: aberto' : ' | Ciclo progressivo: não aberto';
-    const summary = `✓ Venda registrada! Total: ${fmt(r.totalAmount)} | Cashback: ${fmt(r.tcEarned)}${cycleStatus}`;
+    const referralStatus = r.referralSubmittedForReview ? ' | Indicação: enviada para fiscalização' : r.referralReservedPendingPayment ? ' | Indicação: reservada até o pagamento' : '';
+    const summary = `✓ Venda registrada! Total: ${fmt(r.totalAmount)} | Cashback: ${fmt(r.tcEarned)}${cycleStatus}${referralStatus}`;
     document.getElementById('sellSummary').insertAdjacentHTML('afterbegin',
       `<div style="background:#e8f7ee;color:#0a843d;padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;font-weight:600;">${summary}</div>`);
     loadDashboard();
@@ -3957,11 +3967,14 @@ async function loadRelationshipReviewQueue() {
     }
     box.innerHTML = submissions.map(item => {
       const files = (item.evidence || []).map(file => `<button type="button" class="btn btn-secondary btn-small" onclick="openRelationshipEvidence('${file.evidenceId}')">${file.mediaType === 'video' ? '▶ Vídeo' : '🖼 Foto'} · ${escPreco(file.name)}</button>`).join(' ');
+      const exactDuplicate = (item.evidence || []).some(file => file.automatedStatus === 'FLAGGED_DUPLICATE');
+      const technicalCheck = item.evidence?.length ? `<div style="padding:8px;margin-top:8px;border-radius:8px;font-size:11px;background:${exactDuplicate ? '#fff0ee' : '#eef5ff'};color:${exactDuplicate ? '#b42318' : '#1455b8'}"><strong>${exactDuplicate ? 'ALERTA: arquivo exatamente igual a uma prova anterior.' : 'Checagem técnica concluída: arquivo, tipo e tamanho recebidos.'}</strong><br>O robô não aprovou o conteúdo visual. A conferência humana continua obrigatória.</div>` : '';
       return `<div style="padding:14px;border:1px solid var(--border);border-radius:11px;background:#fafafa;">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><strong style="font-size:16px;">${escPreco(item.customerName)}</strong><div style="font-size:12px;color:var(--text-muted);margin-top:3px;">Vendedor: ${escPreco(item.sellerName)} · ${fmt(item.paidAmount)} · ${relDate(item.saleDate)}</div></div><span class="rel-pill" style="color:#1455b8;background:#eef5ff;">Aguardando</span></div>
         <div style="font-weight:800;color:var(--primary);margin-top:10px;">${escPreco(item.title)} → ${Number(item.targetPct).toFixed(2).replace('.', ',')}%</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${escPreco(relItemsText(item.items))}</div>
         <div style="font-size:13px;white-space:pre-wrap;margin-top:9px;">${escPreco(item.note || '')}</div>
+        ${technicalCheck}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.consentConfirmed ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">Imagem/voz autorizada</span>' : ''}${item.customerInteracted ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">Cliente interagiu</span>' : ''}</div>
         <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;">${item.publicationUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.publicationUrl)}" target="_blank" rel="noopener">Abrir publicação</a>` : ''}${item.evidenceUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.evidenceUrl)}" target="_blank" rel="noopener">Abrir link da evidência</a>` : ''}${files}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Enviada em ${relDate(item.submittedAt)}</div>
@@ -4042,7 +4055,9 @@ async function loadSellerProductionReview() {
 function renderSellerProductionReviewItem(item) {
   const status = item.status === 'APPROVED' ? ['Aprovada', '#0a7d3b', '#edf9f1'] : item.status === 'REJECTED' ? ['Devolvida', '#b42318', '#fff0ee'] : item.status === 'PENDING' ? ['Ainda não registrada', '#8a4b00', '#fff7e8'] : ['Aguardando', '#1455b8', '#eef5ff'];
   const files = (item.evidence || []).map(file => `<button type="button" class="btn btn-secondary btn-small" onclick="openSellerProductionReviewEvidence('${file.id}')">${file.mediaType === 'video' ? '▶ Vídeo' : '▣ Foto'} · ${escPreco(file.originalName)}</button>`).join('');
-  return `<div style="padding:12px;border:1px solid var(--border);border-left:3px solid ${status[1]};border-radius:10px;background:#fff;"><div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:13px;">${escPreco(item.title)}</strong><span class="rel-pill" style="color:${status[1]};background:${status[2]};">${status[0]}</span></div>${item.durationSeconds ? `<div style="font-size:11px;margin-top:5px;"><strong>Duração informada:</strong> ${item.durationSeconds}s${item.targetDurationSec ? ` · regra ${item.targetDurationSec}s` : ''}</div>` : ''}${item.productRefs?.length ? `<div style="font-size:11px;margin-top:5px;"><strong>Produtos:</strong> ${escPreco(item.productRefs.join(' · '))}</div>` : ''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${sellerProductionReviewConfirmations(item)}${item.noInstagramStoryConfirmed ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">✓ Não foi para o Story do Instagram</span>' : ''}</div>${item.note ? `<div style="font-size:12px;white-space:pre-wrap;margin-top:7px;">${escPreco(item.note)}</div>` : ''}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.publicationUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.publicationUrl)}" target="_blank" rel="noopener">Abrir publicação</a>` : ''}${item.whatsappProofUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.whatsappProofUrl)}" target="_blank" rel="noopener">Prova do WhatsApp</a>` : ''}${files}</div>${item.reviewNote ? `<div style="font-size:11px;color:${status[1]};margin-top:7px;"><strong>Fiscalização:</strong> ${escPreco(item.reviewNote)}</div>` : ''}${item.status === 'SUBMITTED' ? `<div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-secondary btn-small" style="flex:1;color:#b42318;border-color:#b42318;" onclick="reviewSellerProductionItem('${item.id}','REJECT')">Devolver</button><button type="button" class="btn btn-primary btn-small" style="flex:1;" onclick="reviewSellerProductionItem('${item.id}','APPROVE')">Aprovar atividade</button></div>` : ''}</div>`;
+  const exactDuplicate = (item.evidence || []).some(file => file.automatedStatus === 'FLAGGED_DUPLICATE');
+  const technicalCheck = item.evidence?.length ? `<div style="padding:8px;margin-top:8px;border-radius:8px;font-size:11px;background:${exactDuplicate ? '#fff0ee' : '#eef5ff'};color:${exactDuplicate ? '#b42318' : '#1455b8'}"><strong>${exactDuplicate ? 'ALERTA: arquivo exatamente igual a uma prova anterior.' : 'Checagem técnica concluída.'}</strong> O conteúdo visual ainda exige conferência humana.</div>` : '';
+  return `<div style="padding:12px;border:1px solid var(--border);border-left:3px solid ${status[1]};border-radius:10px;background:#fff;"><div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:13px;">${escPreco(item.title)}</strong><span class="rel-pill" style="color:${status[1]};background:${status[2]};">${status[0]}</span></div>${item.durationSeconds ? `<div style="font-size:11px;margin-top:5px;"><strong>Duração informada:</strong> ${item.durationSeconds}s${item.targetDurationSec ? ` · regra ${item.targetDurationSec}s` : ''}</div>` : ''}${item.productRefs?.length ? `<div style="font-size:11px;margin-top:5px;"><strong>Produtos:</strong> ${escPreco(item.productRefs.join(' · '))}</div>` : ''}<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">${sellerProductionReviewConfirmations(item)}${item.noInstagramStoryConfirmed ? '<span class="rel-pill" style="color:#0a7d3b;background:#edf9f1;">✓ Não foi para o Story do Instagram</span>' : ''}</div>${item.note ? `<div style="font-size:12px;white-space:pre-wrap;margin-top:7px;">${escPreco(item.note)}</div>` : ''}${technicalCheck}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.publicationUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.publicationUrl)}" target="_blank" rel="noopener">Abrir publicação</a>` : ''}${item.whatsappProofUrl ? `<a class="btn btn-secondary btn-small" href="${escPreco(item.whatsappProofUrl)}" target="_blank" rel="noopener">Prova do WhatsApp</a>` : ''}${files}</div>${item.reviewNote ? `<div style="font-size:11px;color:${status[1]};margin-top:7px;"><strong>Fiscalização:</strong> ${escPreco(item.reviewNote)}</div>` : ''}${item.status === 'SUBMITTED' ? `<div style="display:flex;gap:8px;margin-top:10px;"><button type="button" class="btn btn-secondary btn-small" style="flex:1;color:#b42318;border-color:#b42318;" onclick="reviewSellerProductionItem('${item.id}','REJECT')">Devolver</button><button type="button" class="btn btn-primary btn-small" style="flex:1;" onclick="reviewSellerProductionItem('${item.id}','APPROVE')">Aprovar atividade</button></div>` : ''}</div>`;
 }
 
 async function openSellerProductionReviewEvidence(evidenceId) {

@@ -49,6 +49,9 @@ async function confirmAndEmit(sale, store, orderId, tag) {
   // marca a venda paga
   if (sale.status !== 'completed') await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } }).catch(() => {});
   await relationshipCommission.activateJourneyAfterPayment(prisma, sale.id).catch(() => {});
+  await relationshipCommission.submitReservedReferralAfterPayment(prisma, sale.id).catch((error) => {
+    console.error(`[pagbank ${tag}] indicacao nao enviada para fiscalizacao:`, error.message);
+  });
   // idempotência: cupom já autorizado → nada a fazer
   const existing = await prisma.fiscalDocument.findFirst({ where: { saleId: sale.id, docType: 'NFCE', status: 'authorized' } });
   if (existing) return { paid: true, alreadyEmitted: true, documentId: existing.id, number: existing.number, e2e: pay.e2e };

@@ -131,6 +131,64 @@ async function activateJourneyAfterPayment(prismaClient, saleId) {
   });
 }
 
+async function submitReservedReferralAfterPayment(prismaClient, saleId) {
+  return prismaClient.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      select: { id: true, status: true, referralCode: true, sellerId: true, storeId: true, customerUserId: true },
+    });
+    if (!sale?.referralCode || sale.status !== 'completed') return { submitted: false, reason: 'PAYMENT_NOT_CONFIRMED' };
+    const referral = await tx.sellerReferralCode.findUnique({
+      where: { code: sale.referralCode },
+      include: {
+        originJourney: {
+          include: {
+            sale: { select: { createdAt: true, status: true } },
+            stages: { orderBy: { position: 'asc' } },
+          },
+        },
+      },
+    });
+    if (!referral || referral.referredSaleId !== sale.id) throw new Error('Reserva da indicacao nao localizada');
+    const referralStage = referral.originJourney.stages.find((stage) => stage.key === 'REFERRAL_CONVERTED');
+    if (referral.status === 'CONVERTED' && referralStage?.status === 'SUBMITTED' && referralStage.referredSaleId === sale.id) {
+      return { submitted: true, alreadySubmitted: true, code: referral.code, stageId: referralStage.id };
+    }
+    if (referral.status !== 'RESERVED') throw new Error('Codigo de indicacao nao esta reservado para esta venda');
+    if (!sale.customerUserId || sale.customerUserId === referral.originCustomerUserId) throw new Error('Cliente indicado invalido');
+    if (sale.sellerId !== referral.sellerId) throw new Error('Vendedor da indicacao nao confere');
+    if (referral.originStoreId && sale.storeId !== referral.originStoreId) throw new Error('Loja da indicacao nao confere');
+    const available = stageAvailability(referral.originJourney, referral.originJourney.stages)
+      .find((item) => item.key === 'REFERRAL_CONVERTED');
+    if (!available?.available || !available.stage) throw new Error(available?.waitingReason || 'Etapa de indicacao indisponivel');
+
+    const now = new Date();
+    const claimedStage = await tx.sellerCommissionStage.updateMany({
+      where: { id: available.stage.id, status: { in: ['PENDING', 'REJECTED'] }, referredSaleId: null },
+      data: {
+        status: 'SUBMITTED',
+        note: `Codigo ${referral.code} apresentado no caixa. Compra paga confirmada e enviada para fiscalizacao.`,
+        referredSaleId: sale.id,
+        submittedAt: now,
+        completedById: referral.sellerId,
+        completedAt: null,
+        reviewedById: null,
+        reviewedAt: null,
+        reviewNote: null,
+        reversedAt: null,
+        reversalReason: null,
+      },
+    });
+    if (claimedStage.count !== 1) throw new Error('Etapa de indicacao mudou antes da confirmacao do pagamento');
+    const claimedCode = await tx.sellerReferralCode.updateMany({
+      where: { id: referral.id, status: 'RESERVED', referredSaleId: sale.id },
+      data: { status: 'CONVERTED', convertedAt: now },
+    });
+    if (claimedCode.count !== 1) throw new Error('Reserva da indicacao mudou antes da confirmacao do pagamento');
+    return { submitted: true, code: referral.code, stageId: available.stage.id };
+  });
+}
+
 async function cancelJourneyForSale(tx, saleId, reason) {
   const journey = await tx.sellerCommissionJourney.findUnique({ where: { saleId } });
   const now = new Date();
@@ -188,6 +246,15 @@ async function cancelJourneyForSale(tx, saleId, reason) {
     }
   }
 
+  // Mantem compatibilidade com transacoes simuladas antigas e reabre o codigo
+  // quando a venda indicada e cancelada. A comissao continua dependendo de revisao humana.
+  if (tx.sellerReferralCode?.updateMany) {
+    await tx.sellerReferralCode.updateMany({
+      where: { referredSaleId: saleId },
+      data: { status: 'ACTIVE', referredSaleId: null, convertedAt: null },
+    });
+  }
+
   return result;
 }
 
@@ -201,5 +268,6 @@ module.exports = {
   createJourneyForSale,
   markJourneyPaymentPending,
   activateJourneyAfterPayment,
+  submitReservedReferralAfterPayment,
   cancelJourneyForSale,
 };
