@@ -745,6 +745,17 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <div class="loading">Carregando IA ST Vendedor...</div>
   </div>
 
+  <div class="seller-agent-panel">
+    <p class="balance-label">CONSULTA EXATA NO BALCÃO</p>
+    <p class="seller-agent-task-sub" style="margin-top:7px">Leia o código de barras ou digite o SKU. O assistente não escolhe produto parecido.</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <input id="seller-product-code" class="input-field" autocomplete="off" inputmode="text" placeholder="Código de barras ou SKU" style="margin:0;flex:1">
+      <button type="button" class="seller-agent-small-btn" onclick="lookupSellerProductCode()">BUSCAR</button>
+    </div>
+    <button type="button" class="seller-agent-small-btn" onclick="openSellerProductScanner()" style="width:100%;margin-top:8px">ABRIR CÂMERA</button>
+    <div id="seller-product-code-result" style="margin-top:10px"></div>
+  </div>
+
   <div style="display:flex;gap:8px;margin-top:12px">
     <button type="button" class="seller-agent-small-btn" id="seller-agent-refresh" style="flex:1">Atualizar</button>
     <button type="button" class="seller-agent-small-btn" id="seller-agent-apply" style="flex:1;background:#fff;color:#E5571E;border-color:#fff">Criar tarefas</button>
@@ -902,6 +913,13 @@ input::placeholder{color:rgba(255,255,255,0.35)}
     <button type="button" class="tab-btn js-sp-tab" data-tab="interactions" style="padding:10px 12px">INTERAÇÕES</button>
   </div>
   <div id="sp-content-wrap" style="margin-top:12px"></div>
+</div>
+
+<div id="sp-360-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1210;align-items:flex-end;justify-content:center">
+  <div style="width:100%;max-width:430px;max-height:94vh;overflow:auto;background:#151515;border:1px solid rgba(255,255,255,.18);border-radius:20px 20px 0 0;padding:18px 18px 28px">
+    <button type="button" onclick="closeSellerCustomer360()" style="float:right;background:transparent;border:0;color:#fff;font-size:25px;cursor:pointer">×</button>
+    <div id="sp-360-content"></div>
+  </div>
 </div>
 
 <!-- SELLER RELATIONSHIP COMMISSION -->
@@ -2117,6 +2135,95 @@ function renderSellerAssistantWhatsappHistory(rows) {
     : 'Nenhuma mensagem preparada ainda.';
 }
 
+let sellerProductScannerStream = null;
+let sellerProductScannerLoop = null;
+
+function renderSellerProductCodeResult(data) {
+  const box = document.getElementById('seller-product-code-result');
+  if (!box) return;
+  if (data.error) {
+    const candidates = (data.candidates || []).map(item => `<div style="margin-top:5px">${escapeHtmlSellerMsg(item.name)} · SKU ${escapeHtmlSellerMsg(item.sku || '-')} ${item.matchedSizes?.length ? '· tam. ' + escapeHtmlSellerMsg(item.matchedSizes.join(', ')) : ''}</div>`).join('');
+    box.innerHTML = `<div class="seller-assistant-warning"><strong>${escapeHtmlSellerMsg(data.error)}</strong>${candidates}</div>`;
+    return;
+  }
+  const product = data.product || {};
+  const name = [product.brand, product.name].filter(Boolean).join(' ') || 'Produto';
+  const sizes = product.stock?.availableSizes || [];
+  const features = Array.isArray(product.features) ? product.features.slice(0, 5) : [];
+  const stockScope = data.store ? `Estoque em ${data.store.code || data.store.name}` : 'Estoque total cadastrado';
+  box.innerHTML = `<div class="seller-assistant-product">
+    <div class="seller-assistant-content-title">${escapeHtmlSellerMsg(name)}</div>
+    <div class="seller-assistant-content-meta">Correspondência exata por ${escapeHtmlSellerMsg(data.matchType)} · SKU ${escapeHtmlSellerMsg(product.sku || '-')}<br>Preço: ${escapeHtmlSellerMsg(sellerAssistantMoney(product.currentPrice))} · Desconto máximo: ${data.maxDiscount == null ? 'não cadastrado' : escapeHtmlSellerMsg(Number(data.maxDiscount).toLocaleString('pt-BR') + '%')}<br>${escapeHtmlSellerMsg(stockScope)}: ${Number(product.stock?.totalStock || 0)} unidade(s)${sizes.length ? '<br>Tamanhos: ' + sizes.map(row => escapeHtmlSellerMsg(row.size) + ' (' + Number(row.stock || 0) + ')').join(', ') : ''}${features.length ? '<br>Características: ' + features.map(escapeHtmlSellerMsg).join(' · ') : ''}</div>
+    ${product.stock?.totalStock ? '' : `<div class="seller-assistant-warning">Nenhum estoque registrado deste produto ${data.store ? 'na loja atual' : 'no cadastro'}.</div>`}
+  </div>`;
+}
+
+async function lookupSellerProductCode(codeValue) {
+  const input = document.getElementById('seller-product-code');
+  const code = String(codeValue || input?.value || '').trim();
+  const box = document.getElementById('seller-product-code-result');
+  if (!code) { if (box) box.innerHTML = '<div class="error-msg">Informe o código ou SKU.</div>'; return; }
+  if (input) input.value = code;
+  if (box) box.innerHTML = '<div class="loading">Consultando correspondência exata...</div>';
+  const data = await api('/seller/agent/product-code/' + encodeURIComponent(code));
+  renderSellerProductCodeResult(data);
+}
+
+function closeSellerProductScanner() {
+  clearInterval(sellerProductScannerLoop);
+  sellerProductScannerLoop = null;
+  try { sellerProductScannerStream?.getTracks().forEach(track => track.stop()); } catch (_) {}
+  sellerProductScannerStream = null;
+  document.getElementById('seller-product-scanner-overlay')?.remove();
+}
+
+async function openSellerProductScanner() {
+  if (!window.ZXing) {
+    await new Promise(resolve => { const script = document.createElement('script'); script.src = '/vendor/zxing.min.js'; script.onload = resolve; script.onerror = resolve; document.head.appendChild(script); });
+  }
+  if (!window.ZXing || !navigator.mediaDevices?.getUserMedia) { alert('Leitor de câmera indisponível neste aparelho. Digite o código.'); return; }
+  closeSellerProductScanner();
+  const overlay = document.createElement('div');
+  overlay.id = 'seller-product-scanner-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99998;display:flex;flex-direction:column';
+  overlay.innerHTML = '<div style="position:relative;flex:1;min-height:0"><video id="seller-product-scanner-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div id="seller-product-scanner-hint" style="position:absolute;top:18px;left:12px;right:12px;color:#fff;text-align:center;font-weight:900;text-shadow:0 2px 5px #000">Centralize um único código</div></div><div style="padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:#111"><button type="button" onclick="closeSellerProductScanner()" style="width:100%;min-height:52px;border:0;border-radius:12px;background:#d70015;color:#fff;font-weight:900">FECHAR</button></div>';
+  document.body.appendChild(overlay);
+  try {
+    const video = document.getElementById('seller-product-scanner-video');
+    sellerProductScannerStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    video.srcObject = sellerProductScannerStream;
+    await video.play();
+    const reader = new ZXing.MultiFormatReader();
+    const canvas = document.createElement('canvas');
+    let busy = false;
+    sellerProductScannerLoop = setInterval(async () => {
+      if (busy || !video.videoWidth) return;
+      try {
+        const width = Math.round(video.videoWidth * .82), height = Math.round(video.videoHeight * .36);
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(video, (video.videoWidth - width) / 2, (video.videoHeight - height) / 2, width, height, 0, 0, width, height);
+        const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas)));
+        const result = reader.decode(bitmap);
+        const code = String(result.getText() || '').trim();
+        if (!code) return;
+        busy = true;
+        try { navigator.vibrate?.(90); } catch (_) {}
+        closeSellerProductScanner();
+        await lookupSellerProductCode(code);
+      } catch (_) {}
+    }, 280);
+  } catch (error) {
+    closeSellerProductScanner();
+    alert('Não foi possível abrir a câmera: ' + error.message);
+  }
+}
+
+function openSellerNextAction(screen, journeyId, assignmentId) {
+  showScreen(screen || 'seller-agent');
+  if (journeyId) setTimeout(() => openSellerRelationshipDetail(journeyId), 180);
+  if (assignmentId && screen === 'seller-portfolio') setTimeout(() => openSellerCustomer360(assignmentId), 250);
+}
+
 async function prepareSellerAssistantWhatsapp() {
   const nameEl = document.getElementById('seller-assistant-wa-name');
   const phoneEl = document.getElementById('seller-assistant-wa-phone');
@@ -2161,6 +2268,7 @@ function initSellerAgent() {
     document.getElementById('seller-agent-send').addEventListener('click', sendSellerAgent);
     document.getElementById('seller-agent-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendSellerAgent(); });
     document.getElementById('seller-assistant-wa-open').addEventListener('click', prepareSellerAssistantWhatsapp);
+    document.getElementById('seller-product-code').addEventListener('keydown', function (e) { if (e.key === 'Enter') lookupSellerProductCode(); });
   }
   sellerAgentState.conversationId = sessionStorage.getItem('tc_seller_agent_conv') || null;
   sellerAgentSetSuggestions(['Quais sao meus produtos de hoje?', 'Indique produto para corrida', 'Tem estoque desse produto?', 'Prepare WhatsApp para 83999999999: Ola']);
@@ -2178,6 +2286,7 @@ function renderSellerAgentToday(data) {
   const tasks = plan.recommendedTasks || [];
   const customers = data.priorityCustomers || [];
   const focus = data.focusProducts || [];
+  const nextActions = data.nextBestActions || [];
   sellerAgentState.assistant = data.assistant || null;
   sellerAgentState.contentPlan = data.contentPlan || null;
   if (data.conversationId) {
@@ -2229,6 +2338,10 @@ function renderSellerAgentToday(data) {
       '</div>' +
     '</div>';
   }).join('');
+  const nextActionsHtml = nextActions.slice(0, 5).map(function (action) {
+    return '<button type="button" class="seller-agent-task" onclick="openSellerNextAction(\'' + escapeHtmlSellerMsg(action.screen || 'seller-agent') + '\',\'' + escapeHtmlSellerMsg(action.journeyId || '') + '\',\'' + escapeHtmlSellerMsg(action.assignmentId || '') + '\')" style="width:100%;text-align:left;color:#fff;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.08);font-family:inherit;cursor:pointer">' +
+      '<div class="seller-agent-priority">' + escapeHtmlSellerMsg(sellerAgentPriorityLabel(action.priority)) + '</div><div style="flex:1"><div class="seller-agent-task-title">' + escapeHtmlSellerMsg(action.title) + '</div><div class="seller-agent-task-sub">' + escapeHtmlSellerMsg(action.detail || action.source) + '</div></div></button>';
+  }).join('');
 
   wrap.innerHTML =
     '<div class="seller-agent-panel">' +
@@ -2241,6 +2354,10 @@ function renderSellerAgentToday(data) {
         '<div class="seller-agent-kpi"><strong>' + (stats.rebuyOpportunities || 0) + '</strong><span>recompras</span></div>' +
       '</div>' +
       (prioritiesHtml ? '<ul style="padding-left:18px;margin-top:12px">' + prioritiesHtml + '</ul>' : '') +
+    '</div>' +
+    '<div class="seller-agent-panel">' +
+      '<p class="balance-label">PRÓXIMA MELHOR AÇÃO</p>' +
+      (nextActionsHtml || '<div class="seller-agent-task-sub" style="margin-top:8px">Nenhuma pendência objetiva encontrada agora.</div>') +
     '</div>' +
     '<div class="seller-agent-panel">' +
       '<p class="balance-label">TAREFAS SUGERIDAS</p>' +
@@ -5111,12 +5228,52 @@ async function openSellerRelationshipDetail(journeyId) {
   _srcCurrentCard = card;
   const state = srcStatus(card.status);
   const completed = (card.stages || []).filter(stage => stage.status === 'COMPLETED').length;
+  const referralStage = (card.stages || []).find(stage => stage.key === 'REFERRAL_CONVERTED');
+  const referralPanel = card.purchasePosition === 2 && (card.referral || referralStage?.available)
+    ? `<div id="src-referral-code-panel" style="padding:12px;background:rgba(37,211,102,.11);border:1px solid rgba(37,211,102,.3);border-radius:11px;margin-top:12px">${card.referral ? renderSellerReferralCode(card.referral) : '<p style="font-size:12px;font-weight:800;color:#8BFF8B">Indicação para chegar a 2%</p><p style="font-size:11px;color:rgba(255,255,255,.68);line-height:1.4;margin-top:5px">Gere o código para o cliente indicar outra pessoa. A compra com o código vai para fiscalização.</p><button type="button" class="seller-agent-small-btn" onclick="generateSellerReferralCode()" style="width:100%;margin-top:9px;background:#25D366;color:#082b18;border-color:#25D366">GERAR CÓDIGO E QR</button>'}</div>`
+    : '';
   content.innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">${card.purchasePosition === 1 ? 'PRIMEIRA VENDA DO CICLO' : 'RECOMPRA DO CICLO'}</p>
     <h3 style="font-size:21px;margin-top:4px;padding-right:30px">${srcEscape(card.customer.name)}</h3>
     <p style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.4;margin-top:4px">${srcDate(card.saleDate)} · ${srcEscape(srcItems(card.items))}</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><div style="padding:11px;background:rgba(255,255,255,.09);border-radius:11px"><small style="color:rgba(255,255,255,.55)">Valor pago</small><strong style="display:block;margin-top:4px">${srcMoney(card.paidAmount)}</strong></div><div style="padding:11px;background:rgba(229,87,30,.18);border-radius:11px"><small style="color:rgba(255,255,255,.55)">Comissão</small><strong style="display:block;color:#FFD180;margin-top:4px">${Number(card.currentPct).toFixed(2).replace('.', ',')}% · ${srcMoney(Math.max(0, card.payableAmount))}</strong></div></div>
     <p style="font-size:11px;color:${state[1]};font-weight:800;margin-top:10px">${state[0]} · ${completed} de ${(card.stages || []).length} etapas aprovadas</p>
+    ${referralPanel}
     <div style="display:grid;gap:8px;margin-top:12px">${(card.stages || []).map(renderSellerRelationshipStage).join('')}</div>`;
+}
+
+function renderSellerReferralCode(referral, qrDataUrl, shareText) {
+  const text = shareText || `Indicação Sports & Tennis: apresente o código ${referral.code} no caixa antes de finalizar a compra.`;
+  const active = referral.status === 'ACTIVE';
+  const statusText = referral.status === 'RESERVED' ? 'Código reservado em uma venda que aguarda pagamento.' : referral.status === 'CONVERTED' ? 'Compra indicada confirmada e enviada para fiscalização.' : '';
+  return `<p style="font-size:10px;color:rgba(255,255,255,.55)">CÓDIGO DE INDICAÇÃO</p><p style="font-size:24px;font-family:'Orbitron';font-weight:900;letter-spacing:2px;color:#8BFF8B;margin-top:5px">${srcEscape(referral.code)}</p>${active && qrDataUrl ? `<img src="${srcEscape(qrDataUrl)}" alt="QR do código" style="display:block;width:190px;max-width:100%;background:#fff;padding:8px;border-radius:10px;margin:10px auto">` : ''}${active ? `<p style="font-size:11px;line-height:1.45;color:rgba(255,255,255,.72);margin-top:7px">${srcEscape(text)}</p><div style="display:flex;gap:7px;margin-top:9px"><button type="button" class="seller-agent-small-btn" onclick="copySellerReferralText('${srcEscape(text)}')" style="flex:1">COPIAR</button><button type="button" class="seller-agent-small-btn" onclick="prepareSellerReferralWhatsapp('${srcEscape(text)}')" style="flex:1;background:#25D366;color:#082b18;border-color:#25D366">WHATSAPP</button></div>${qrDataUrl ? '' : '<button type="button" class="seller-agent-small-btn" onclick="generateSellerReferralCode()" style="width:100%;margin-top:7px">MOSTRAR QR</button>'}` : `<p style="font-size:11px;color:#90CAF9;line-height:1.4;margin-top:8px">${srcEscape(statusText)}</p>`}<p style="font-size:10px;color:#FFD180;line-height:1.4;margin-top:8px">O código apenas identifica a indicação. Os 2% só são liberados após a compra paga e a aprovação da fiscalização.</p>`;
+}
+
+async function generateSellerReferralCode() {
+  if (!_srcCurrentCard) return;
+  const panel = document.getElementById('src-referral-code-panel');
+  if (panel) panel.innerHTML = '<div class="loading">Gerando codigo unico...</div>';
+  const data = await api('/seller/relationship-commission/' + encodeURIComponent(_srcCurrentCard.journeyId) + '/referral-code', 'POST', {});
+  if (data.error) { if (panel) panel.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  _srcCurrentCard.referral = data.referral;
+  if (panel) panel.innerHTML = renderSellerReferralCode(data.referral, data.referral.qrDataUrl, data.referral.shareText);
+}
+
+async function copySellerReferralText(value) {
+  try { await navigator.clipboard.writeText(value); alert('Texto copiado.'); }
+  catch (_) { alert('Nao foi possivel copiar automaticamente. Selecione o texto exibido.'); }
+}
+
+function prepareSellerReferralWhatsapp(value) {
+  const customer = _srcCurrentCard?.customer || {};
+  closeSellerRelationshipDetail();
+  showScreen('seller-agent');
+  setTimeout(() => {
+    document.getElementById('seller-assistant-wa-name').value = customer.name || '';
+    document.getElementById('seller-assistant-wa-phone').value = customer.phone || '';
+    document.getElementById('seller-assistant-wa-message').value = value;
+    document.getElementById('seller-assistant-wa-consent').checked = false;
+    document.getElementById('seller-assistant-wa-status').textContent = 'Mensagem preparada. Confirme a autorizacao de contato; o sistema nao envia sozinho.';
+  }, 180);
 }
 
 function renderSellerRelationshipStage(stage) {
@@ -5585,6 +5742,40 @@ async function openSellerPrivateAttachment(attachmentId) {
 // ==================== SELLER PORTFOLIO (Carteira) ====================
 let _spInit = false;
 let _spTab = 'customers';
+
+function closeSellerCustomer360() {
+  const sheet = document.getElementById('sp-360-sheet');
+  if (sheet) sheet.style.display = 'none';
+}
+
+async function openSellerCustomer360(assignmentId) {
+  const sheet = document.getElementById('sp-360-sheet');
+  const content = document.getElementById('sp-360-content');
+  if (!sheet || !content) return;
+  sheet.style.display = 'flex';
+  content.innerHTML = '<div class="loading">Montando histórico confirmado...</div>';
+  const data = await api('/seller/portfolio/customers/' + encodeURIComponent(assignmentId) + '/360');
+  if (data.error) { content.innerHTML = `<div class="error-msg">${srcEscape(data.error)}</div>`; return; }
+  const customer = data.customer || {};
+  const summary = data.summary || {};
+  const facts = [
+    customer.phone ? `Telefone: ${srcEscape(customer.phone)}` : '',
+    customer.email ? `E-mail: ${srcEscape(customer.email)}` : '',
+    customer.shoeSize ? `Calçado: ${srcEscape(customer.shoeSize)}` : '',
+    customer.shirtSize ? `Roupa: ${srcEscape(customer.shirtSize)}` : '',
+    customer.city ? `Cidade: ${srcEscape(customer.city)}${customer.state ? '/' + srcEscape(customer.state) : ''}` : '',
+  ].filter(Boolean).join('<br>');
+  const timeline = (data.timeline || []).map(item => `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.1)"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:12px">${srcEscape(item.title)}</strong><span style="font-size:9px;color:rgba(255,255,255,.5);white-space:nowrap">${srcDate(item.at)}</span></div>${item.detail ? `<p style="font-size:11px;color:rgba(255,255,255,.68);line-height:1.4;margin-top:4px">${srcEscape(item.detail)}</p>` : ''}</div>`).join('');
+  content.innerHTML = `<p style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.55)">CLIENTE 360° · DADOS REGISTRADOS</p>
+    <h3 style="font-size:21px;margin-top:4px;padding-right:30px">${srcEscape(customer.name || 'Cliente')}</h3>
+    ${facts ? `<p style="font-size:11px;color:rgba(255,255,255,.65);line-height:1.55;margin-top:7px">${facts}</p>` : '<p style="font-size:11px;color:#FFD180;margin-top:7px">Contato e preferências ainda não cadastrados.</p>'}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:13px"><div style="padding:9px;background:rgba(255,255,255,.09);border-radius:10px;text-align:center"><strong>${summary.salesCount || 0}</strong><small style="display:block;color:rgba(255,255,255,.55)">vendas</small></div><div style="padding:9px;background:rgba(255,255,255,.09);border-radius:10px;text-align:center"><strong>${summary.interactionsCount || 0}</strong><small style="display:block;color:rgba(255,255,255,.55)">interações</small></div><div style="padding:9px;background:rgba(255,255,255,.09);border-radius:10px;text-align:center"><strong>${summary.openTasks || 0}</strong><small style="display:block;color:rgba(255,255,255,.55)">tarefas</small></div></div>
+    ${customer.notes ? `<div style="padding:10px;background:rgba(255,255,255,.08);border-radius:10px;margin-top:10px;font-size:11px"><strong>Observações:</strong> ${srcEscape(customer.notes)}</div>` : ''}
+    <p style="font-size:10px;color:#FFD180;line-height:1.4;margin-top:11px">${srcEscape(data.notice || '')}</p>
+    <p class="balance-label" style="margin-top:17px">LINHA DO TEMPO</p>
+    <div>${timeline || '<p style="font-size:11px;color:rgba(255,255,255,.55);margin-top:8px">Nenhum evento registrado.</p>'}</div>`;
+}
+
 async function initSellerPortfolio() {
   if (!isSeller()) { showScreen('seller-home'); return; }
   if (!_spInit) {
@@ -5649,13 +5840,15 @@ async function loadSpContent() {
       const priorityColor = c.priority === 'URGENT' ? '#FF5252' : c.priority === 'HIGH' ? '#FFD54F' : 'rgba(255,255,255,0.6)';
       div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:start">
         <div>
-          <p style="font-weight:700;font-size:13px">${c.customerId}</p>
+          <p style="font-weight:700;font-size:13px">${srcEscape(c.customerName || 'Cliente sem nome cadastrado')}</p>
+          ${c.customerPhone ? `<p style="font-size:10px;opacity:.65;margin-top:2px">${srcEscape(c.customerPhone)}</p>` : ''}
           <p style="font-size:11px;opacity:.7;margin-top:2px">Status: <strong>${c.relationshipStatus}</strong></p>
         </div>
         <span style="color:${priorityColor};font-size:10px;letter-spacing:1px;font-weight:700">${c.priority}</span>
       </div>
       ${c.nextAction ? `<p style="font-size:12px;margin-top:8px"><strong>Próxima:</strong> ${c.nextAction}</p>` : ''}
-      ${c.notes ? `<p style="font-size:11px;opacity:.7;margin-top:4px">${c.notes}</p>` : ''}`;
+      ${c.notes ? `<p style="font-size:11px;opacity:.7;margin-top:4px">${srcEscape(c.notes)}</p>` : ''}
+      <button type="button" class="seller-agent-small-btn" onclick="openSellerCustomer360('${srcEscape(c.id)}')" style="width:100%;margin-top:9px">VER CLIENTE 360°</button>`;
       wrap.appendChild(div);
     });
   } else if (_spTab === 'tasks') {

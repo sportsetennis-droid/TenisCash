@@ -99,6 +99,32 @@ function parseBoolean(value) {
   return value === true || value === 'true' || value === '1' || value === 1;
 }
 
+async function addEvidenceIntegrityChecks(savedFile, { sellerId, rule, kind, batchHashes }) {
+  const duplicateInBatch = batchHashes.has(savedFile.sha256);
+  const prior = duplicateInBatch ? null : await prisma.sellerProductionEvidence.findFirst({
+    where: { sha256: savedFile.sha256, item: { day: { sellerId } } },
+    select: { id: true, createdAt: true },
+  });
+  const exactDuplicateDetected = duplicateInBatch || !!prior;
+  batchHashes.add(savedFile.sha256);
+  const expectedMediaType = kind === 'PRIMARY' ? rule.mediaType : null;
+  return {
+    ...savedFile,
+    automatedStatus: exactDuplicateDetected ? 'FLAGGED_DUPLICATE' : 'TECHNICALLY_VALID',
+    automatedChecks: {
+      checkedAt: new Date().toISOString(),
+      hashCaptured: true,
+      exactDuplicateDetected,
+      duplicateEvidenceId: prior?.id || null,
+      expectedMediaType,
+      mediaTypeMatches: !expectedMediaType || savedFile.mediaType === expectedMediaType,
+      fileNonEmpty: savedFile.bytes > 0,
+      visualContentChecked: false,
+      humanReviewRequired: true,
+    },
+  };
+}
+
 function canViewDay(req, day) {
   if (!day) return false;
   if (req.userRole === 'seller') return day.sellerId === req.userId;
@@ -124,6 +150,7 @@ function attachmentSummary(entry) {
     mimeType: entry.mimeType,
     mediaType: entry.mediaType,
     bytes: entry.bytes,
+    sha256: entry.sha256 || null,
     createdAt: entry.createdAt,
   };
 }
@@ -269,6 +296,8 @@ function serializeDay(day) {
         mimeType: entry.mimeType,
         mediaType: entry.mediaType,
         bytes: entry.bytes,
+        automatedStatus: entry.automatedStatus,
+        automatedChecks: entry.automatedChecks || null,
         createdAt: entry.createdAt,
       })),
     };
@@ -420,8 +449,17 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
     });
     if (errors.length) return res.status(400).json({ error: errors.join(' '), errors });
 
-    for (const file of primaryFiles) savedFiles.push({ kind: 'PRIMARY', ...evidenceStore.save(file) });
-    for (const file of whatsappFiles) savedFiles.push({ kind: 'WHATSAPP_PROOF', ...evidenceStore.save(file) });
+    const batchHashes = new Set();
+    for (const file of primaryFiles) {
+      const saved = { kind: 'PRIMARY', ...evidenceStore.save(file) };
+      savedFiles.push(saved);
+      Object.assign(saved, await addEvidenceIntegrityChecks(saved, { sellerId: req.userId, rule, kind: 'PRIMARY', batchHashes }));
+    }
+    for (const file of whatsappFiles) {
+      const saved = { kind: 'WHATSAPP_PROOF', ...evidenceStore.save(file) };
+      savedFiles.push(saved);
+      Object.assign(saved, await addEvidenceIntegrityChecks(saved, { sellerId: req.userId, rule, kind: 'WHATSAPP_PROOF', batchHashes }));
+    }
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.sellerProductionItem.updateMany({

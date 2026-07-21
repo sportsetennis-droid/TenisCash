@@ -5,6 +5,7 @@ const {
   ruleForStage,
   stageAvailability,
   createJourneyForSale,
+  submitReservedReferralAfterPayment,
   cancelJourneyForSale,
 } = require('../src/services/relationshipCommission');
 
@@ -91,9 +92,39 @@ async function testReferralCancellation() {
   assert.deepStrictEqual(calls.journey[0].data.reversedAmount, { increment: 1 });
 }
 
+async function testReservedReferralAfterPayment() {
+  const stages = rulesForPosition(2).map((rule, index) => ({
+    id: `stage-${index}`,
+    key: rule.key,
+    position: index,
+    title: rule.title,
+    status: index === 5 ? 'PENDING' : 'COMPLETED',
+    referredSaleId: null,
+  }));
+  const calls = { stage: [], code: [] };
+  const tx = {
+    sale: { findUnique: async () => ({ id: 'sale-paid', status: 'completed', referralCode: 'STIABC', sellerId: 'seller-1', storeId: 'store-1', customerUserId: 'customer-new' }) },
+    sellerReferralCode: {
+      findUnique: async () => ({
+        id: 'ref-1', code: 'STIABC', status: 'RESERVED', referredSaleId: 'sale-paid', sellerId: 'seller-1',
+        originCustomerUserId: 'customer-origin', originStoreId: 'store-1',
+        originJourney: { id: 'journey-origin', purchasePosition: 2, status: 'ACTIVE', sale: { createdAt: new Date('2026-07-01T12:00:00.000Z'), status: 'completed' }, stages },
+      }),
+      updateMany: async (args) => { calls.code.push(args); return { count: 1 }; },
+    },
+    sellerCommissionStage: { updateMany: async (args) => { calls.stage.push(args); return { count: 1 }; } },
+  };
+  const prisma = { $transaction: async (callback) => callback(tx) };
+  const result = await submitReservedReferralAfterPayment(prisma, 'sale-paid');
+  assert.strictEqual(result.submitted, true);
+  assert.strictEqual(calls.stage[0].data.status, 'SUBMITTED', 'pagamento confirmado deve enviar a etapa para fiscalizacao');
+  assert.strictEqual(calls.code[0].data.status, 'CONVERTED', 'codigo reservado deve ser convertido somente apos pagamento');
+}
+
 (async () => {
   await testJourneyCreation();
   await testReferralCancellation();
+  await testReservedReferralAfterPayment();
   console.log('relationshipCommission: OK');
 })().catch((err) => {
   console.error(err);

@@ -13,6 +13,7 @@ const { searchProductsForAI, listCatalogSummary } = require('../services/catalog
 const serperWeb = require('../services/serperWebSearch');
 const { recordEvent, getBrain } = require('../ai/memory/memory.service');
 const sellerAssistant = require('../services/sellerAssistant');
+const relationshipCommission = require('../services/relationshipCommission');
 
 const router = express.Router();
 router.use(authMiddleware, storeScope);
@@ -441,6 +442,81 @@ function formatSellerProduct(product, filters = {}) {
     stock,
     updatedAt: formatDateTime(product.updatedAt),
   };
+}
+
+function buildNextBestActions({ priorityCustomers = [], tasks = [], commissionJourneys = [], productionDays = [] } = {}) {
+  const actions = [];
+  const push = (action) => actions.push({
+    priority: 'MEDIUM',
+    dueAt: null,
+    ...action,
+  });
+
+  for (const customer of priorityCustomers) {
+    if (!customer.nextActionDate || new Date(customer.nextActionDate) > new Date()) continue;
+    push({
+      id: `customer:${customer.id}`,
+      source: 'CUSTOMER',
+      priority: customer.priority || 'MEDIUM',
+      title: customer.nextAction || `Atender ${customer.customerName}`,
+      detail: `${customer.customerName} - ${customer.relationshipStatus || 'carteira'}`,
+      dueAt: customer.nextActionDate,
+      assignmentId: customer.id,
+      screen: 'seller-portfolio',
+    });
+  }
+
+  for (const task of tasks) {
+    push({
+      id: `task:${task.id}`,
+      source: 'TASK',
+      priority: task.priority || 'MEDIUM',
+      title: task.title,
+      detail: task.description || task.type,
+      dueAt: formatDateTime(task.dueDate),
+      screen: 'seller-portfolio',
+    });
+  }
+
+  for (const journey of commissionJourneys) {
+    const availableStages = relationshipCommission.stageAvailability(journey, journey.stages);
+    const available = availableStages.find((item) => item.available && item.stage?.status === 'REJECTED')
+      || availableStages.find((item) => item.available);
+    if (!available?.stage) continue;
+    const stage = available.stage;
+    const returned = stage.status === 'REJECTED';
+    push({
+      id: `commission:${stage.id}`,
+      source: 'COMMISSION',
+      priority: returned ? 'URGENT' : 'HIGH',
+      title: returned ? `Corrigir: ${stage.title}` : `Comissao: ${stage.title}`,
+      detail: `${journey.customerName} - venda de ${moneyBRL(journey.baseAmount)}`,
+      dueAt: formatDateTime(stage.updatedAt),
+      journeyId: journey.id,
+      screen: 'seller-commission-cycles',
+    });
+  }
+
+  for (const day of productionDays) {
+    const returned = (day.items || []).find((item) => item.status === 'REJECTED');
+    const pending = (day.items || []).find((item) => item.status === 'PENDING');
+    const item = returned || pending;
+    if (!item) continue;
+    push({
+      id: `production:${item.id}`,
+      source: 'PRODUCTION',
+      priority: returned ? 'URGENT' : 'HIGH',
+      title: returned ? `Corrigir atividade: ${item.title}` : `Fazer atividade: ${item.title}`,
+      detail: 'Producao diaria obrigatoria ainda nao aprovada',
+      dueAt: formatDateTime(day.workDate),
+      screen: 'seller-production',
+    });
+  }
+
+  return actions
+    .sort((a, b) => (PRIORITY_WEIGHT[b.priority] || 0) - (PRIORITY_WEIGHT[a.priority] || 0)
+      || String(a.dueAt || '9999').localeCompare(String(b.dueAt || '9999')))
+    .slice(0, 12);
 }
 
 function buildProductWhereFromTerms(terms) {
@@ -1859,6 +1935,8 @@ async function loadSellerSnapshot(req) {
     catalogSummary,
     featuredProducts,
     companyBrain,
+    commissionJourneys,
+    productionDays,
   ] = await Promise.all([
     prisma.sellerCustomerAssignment.findMany({
       where: assignmentWhere,
@@ -1925,6 +2003,36 @@ async function loadSellerSnapshot(req) {
       },
     }),
     getBrain({ maxEvents: 20, eventDays: 30 }).catch(() => null),
+    prisma.sellerCommissionJourney.findMany({
+      where: { sellerId, status: { in: ['ACTIVE', 'PENDING_PAYMENT'] } },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        customerName: true,
+        baseAmount: true,
+        purchasePosition: true,
+        status: true,
+        sale: { select: { createdAt: true, status: true } },
+        stages: {
+          orderBy: { position: 'asc' },
+          select: { id: true, key: true, position: true, title: true, status: true, updatedAt: true },
+        },
+      },
+    }),
+    prisma.sellerProductionDay.findMany({
+      where: { sellerId, status: { in: ['OPEN', 'SUBMITTED', 'CHANGES_REQUIRED'] } },
+      orderBy: { workDate: 'desc' },
+      take: 7,
+      select: {
+        id: true,
+        workDate: true,
+        items: {
+          orderBy: { position: 'asc' },
+          select: { id: true, title: true, status: true },
+        },
+      },
+    }),
   ]);
 
   const enrichedAssignments = await enrichAssignments(assignmentRows);
@@ -2032,6 +2140,12 @@ async function loadSellerSnapshot(req) {
   };
 
   snapshot.plan = buildPlan(snapshot);
+  snapshot.nextBestActions = buildNextBestActions({
+    priorityCustomers,
+    tasks,
+    commissionJourneys,
+    productionDays,
+  });
   return snapshot;
 }
 
@@ -2068,6 +2182,7 @@ function compactSnapshotForPrompt(snapshot) {
     })),
     entrevista: snapshot.weeklyInterview,
     plano: snapshot.plan,
+    proximasMelhoresAcoes: (snapshot.nextBestActions || []).slice(0, 8),
     conteudoDoDia: {
       loja: snapshot.contentPlan?.store?.name || null,
       ciclo: snapshot.contentPlan?.cycle || null,
@@ -2285,10 +2400,63 @@ router.get('/today', requireSeller, async (req, res) => {
       weeklyInterview: snapshot.weeklyInterview,
       focusProducts: snapshot.focusProducts,
       plan: snapshot.plan,
+      nextBestActions: snapshot.nextBestActions,
     });
   } catch (err) {
     console.error('[seller/agent/today] erro:', err);
     res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao carregar IA ST Vendedor' });
+  }
+});
+
+// Leitura exata para uso no balcao. Nunca converte uma busca aproximada em produto.
+router.get('/product-code/:code', requireSeller, async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim();
+    if (!code || code.length > 120) return res.status(400).json({ error: 'Informe um codigo valido' });
+    const snapshot = await loadSellerSnapshot(req);
+    const products = await prisma.product.findMany({
+      where: {
+        active: true,
+        OR: [
+          { sku: { equals: code, mode: 'insensitive' } },
+          { sizes: { some: { barcode: code } } },
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 10,
+      select: SELLER_PRODUCT_SELECT,
+    });
+    if (!products.length) return res.status(404).json({ error: 'Codigo nao localizado no catalogo' });
+    if (products.length > 1) {
+      return res.status(409).json({
+        error: 'Codigo ligado a mais de um produto. A selecao automatica foi bloqueada.',
+        ambiguous: true,
+        candidates: products.map((product) => ({
+          name: [product.brand, product.name].filter(Boolean).join(' '),
+          sku: product.sku,
+          matchedSizes: product.sizes.filter((size) => size.barcode === code).map((size) => size.size),
+        })),
+      });
+    }
+    const product = products[0];
+    const rule = await prisma.brandRule.findFirst({
+      where: { brand: { equals: product.brand, mode: 'insensitive' }, active: true },
+      select: { maxDiscount: true },
+    });
+    res.json({
+      exact: true,
+      code,
+      store: snapshot.seller.store ? { id: snapshot.seller.store.id, code: snapshot.seller.store.code, name: snapshot.seller.store.name } : null,
+      matchType: String(product.sku || '').toLowerCase() === code.toLowerCase() ? 'SKU' : 'BARCODE',
+      matchedSizes: product.sizes
+        .filter((size) => size.barcode === code)
+        .map((size) => ({ size: size.size, barcode: size.barcode })),
+      maxDiscount: rule?.maxDiscount ?? null,
+      product: formatSellerProduct(product, { store: snapshot.seller.store?.code || undefined }),
+    });
+  } catch (err) {
+    console.error('[seller/agent/product-code] erro:', err);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Erro ao consultar codigo' });
   }
 });
 
@@ -2656,4 +2824,5 @@ router.post('/chat', requireSeller, chatLimiter, async (req, res) => {
   }
 });
 
+router._test = Object.freeze({ buildNextBestActions });
 module.exports = router;
