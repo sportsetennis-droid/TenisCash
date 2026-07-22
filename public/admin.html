@@ -794,16 +794,32 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <button class="refresh-btn" onclick="cameraAIRefreshStatus()">↻ Atualizar</button>
     </div>
 
+    <div class="card" style="padding:18px;margin-bottom:18px">
+      <div style="font-size:12px;color:var(--text2);font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Escolha a loja</div>
+      <div id="camera-ai-store-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px"></div>
+    </div>
+
     <div style="background:linear-gradient(135deg,#111827,#1f2937);color:#fff;border-radius:18px;padding:22px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
       <div>
-        <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:#9ca3af;font-weight:700">Piloto de segurança inteligente</div>
-        <div style="font-size:24px;font-weight:800;margin-top:5px">Tapo TC60 · Loja piloto</div>
-        <div style="font-size:13px;color:#d1d5db;margin-top:7px;max-width:640px">A IA detecta presença de pessoas e separa momentos para revisão humana. Nenhuma ocorrência representa acusação automática.</div>
+        <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:#9ca3af;font-weight:700">Monitoramento por loja</div>
+        <div id="camera-ai-store-title" style="font-size:24px;font-weight:800;margin-top:5px">Loja 05</div>
+        <div id="camera-ai-store-description" style="font-size:13px;color:#d1d5db;margin-top:7px;max-width:640px">Selecione uma câmera para visualizar a transmissão desta loja.</div>
       </div>
       <div id="camera-ai-pilot-status" style="display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.1);padding:10px 14px;border-radius:999px;font-size:13px;font-weight:700">
-        <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.18)"></span>
-        Integração local em configuração
+        <span id="camera-ai-status-dot" style="width:10px;height:10px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.18)"></span>
+        <span id="camera-ai-status-text">Aguardando transmissão</span>
       </div>
+    </div>
+
+    <div class="card" style="padding:16px;margin-bottom:18px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+      <label style="display:grid;gap:6px;min-width:180px;flex:1">
+        <span style="font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase">Loja</span>
+        <select id="camera-ai-store-select" onchange="cameraAISelectStore(this.value)" style="border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);padding:11px 12px;font-size:14px"></select>
+      </label>
+      <label style="display:grid;gap:6px;min-width:220px;flex:2">
+        <span style="font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase">Câmera</span>
+        <select id="camera-ai-camera-select" onchange="cameraAISelectCamera(this.value)" style="border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);padding:11px 12px;font-size:14px"></select>
+      </label>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px;background:#05070a;border-color:#1f2937">
@@ -811,48 +827,132 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <video id="camera-ai-video" controls muted autoplay playsinline style="width:100%;height:100%;object-fit:contain;display:none"></video>
         <div id="camera-ai-video-empty" style="text-align:center;color:#9ca3af;padding:24px">
           <div style="font-size:42px;margin-bottom:8px">📹</div>
-          <div style="font-size:15px;font-weight:800;color:#e5e7eb">Transmissão ainda não conectada neste navegador</div>
-          <div style="font-size:12px;margin-top:6px">Cole abaixo a URL HLS gerada pelo computador da loja.</div>
+          <div id="camera-ai-empty-title" style="font-size:15px;font-weight:800;color:#e5e7eb">Transmissão ainda não conectada</div>
+          <div id="camera-ai-empty-detail" style="font-size:12px;margin-top:6px">Escolha uma loja e uma câmera.</div>
         </div>
         <div id="camera-ai-live-badge" style="display:none;position:absolute;left:12px;top:12px;background:#d70015;color:#fff;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:900;letter-spacing:.6px">● AO VIVO</div>
       </div>
       <div style="display:flex;gap:8px;padding:12px;background:#111827;flex-wrap:wrap">
-        <input id="camera-ai-hls-url" type="url" placeholder="https://...trycloudflare.com/loja01/index.m3u8" style="flex:1;min-width:240px;border:1px solid #374151;border-radius:10px;background:#1f2937;color:#fff;padding:10px 12px;font-size:12px">
-        <button class="refresh-btn" onclick="cameraAIConnectStream()" style="background:#E5571E;color:#fff;border-color:#E5571E">Conectar transmissão</button>
-        <button class="refresh-btn" onclick="cameraAIForgetStream()" style="background:#1f2937;color:#d1d5db;border-color:#374151">Desconectar</button>
+        <input id="camera-ai-hls-url" type="url" placeholder="https://.../index.m3u8" style="flex:1;min-width:240px;border:1px solid #374151;border-radius:10px;background:#1f2937;color:#fff;padding:10px 12px;font-size:12px">
+        <button id="camera-ai-connect-button" class="refresh-btn" onclick="cameraAIConnectStream()" style="background:#E5571E;color:#fff;border-color:#E5571E">Conectar transmissão</button>
+        <button id="camera-ai-disconnect-button" class="refresh-btn" onclick="cameraAIForgetStream()" style="background:#1f2937;color:#d1d5db;border-color:#374151">Desconectar</button>
       </div>
       <div id="camera-ai-player-message" style="display:none;padding:0 12px 12px;background:#111827;color:#fca5a5;font-size:12px"></div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
       <div class="card" style="padding:18px">
-        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras cadastradas</div>
-        <div style="font-size:30px;font-weight:800;margin-top:8px">1</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:3px">TC60 localizada na rede da loja</div>
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras nesta loja</div>
+        <div id="camera-ai-camera-count" style="font-size:30px;font-weight:800;margin-top:8px">0</div>
+        <div id="camera-ai-camera-count-detail" style="font-size:12px;color:var(--text2);margin-top:3px">Nenhuma câmera cadastrada</div>
       </div>
       <div class="card" style="padding:18px">
-        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Análise</div>
-        <div style="font-size:20px;font-weight:800;margin-top:12px">Detecção de pessoas</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:5px">Processamento local, sem envio à nuvem</div>
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Rede de lojas</div>
+        <div style="font-size:20px;font-weight:800;margin-top:12px">5 lojas</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:5px">Lojas 01, 02, 03, 05 e 06</div>
       </div>
       <div class="card" style="padding:18px">
-        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Último teste</div>
-        <div style="font-size:20px;font-weight:800;margin-top:12px;color:#0a9d6e">✓ Aprovado</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:5px">Pessoa reconhecida com até 85% de confiança</div>
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmera selecionada</div>
+        <div id="camera-ai-selected-camera" style="font-size:20px;font-weight:800;margin-top:12px">—</div>
+        <div id="camera-ai-selected-camera-detail" style="font-size:12px;color:var(--text2);margin-top:5px">Escolha uma loja</div>
       </div>
     </div>
 
     <div class="card" style="padding:20px">
-      <div style="font-size:16px;font-weight:800;margin-bottom:13px">Próximas etapas</div>
+      <div style="font-size:16px;font-weight:800;margin-bottom:13px">Status da implantação</div>
       <div style="display:grid;gap:10px;font-size:13px;color:var(--text2)">
-        <div>1. Posicionar a câmera cobrindo produtos e circulação, sem áreas privadas.</div>
-        <div>2. Conectar o agente local ao TenisCash por canal protegido.</div>
-        <div>3. Exibir eventos, horários e trechos para revisão neste painel.</div>
-        <div>4. Adicionar câmeras por loja e configurar zonas de caixa, estoque e saída.</div>
+        <div>✓ Lojas 01, 02, 03, 05 e 06 separadas no painel.</div>
+        <div>✓ Loja 05 preparada com 6 câmeras Tapo TC60.</div>
+        <div>✓ Loja 06 preparada com 1 câmera Tapo TC60.</div>
+        <div>• A transmissão fica disponível quando a ponte segura da loja enviar a URL HLS.</div>
       </div>
     </div>
     <script>
       let cameraAIHls = null;
+      let cameraAISelectedStore = '05';
+      let cameraAISelectedCamera = 'cam01';
+      const CAMERA_AI_STORES = {
+        '01': { name:'Loja 01', cameras:[] },
+        '02': { name:'Loja 02', cameras:[] },
+        '03': { name:'Loja 03', cameras:[] },
+        '05': { name:'Loja 05', cameras:[
+          { id:'cam01', name:'Câmera 01' }, { id:'cam02', name:'Câmera 02' },
+          { id:'cam03', name:'Câmera 03' }, { id:'cam04', name:'Câmera 04' },
+          { id:'cam05', name:'Câmera 05' }, { id:'cam06', name:'Câmera 06' }
+        ]},
+        '06': { name:'Loja 06', cameras:[{ id:'cam01', name:'Câmera 01' }] }
+      };
+      function cameraAIReadJSON(key, fallback) {
+        try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (_) { return fallback; }
+      }
+      function cameraAIStreams() { return cameraAIReadJSON('tc_camera_ai_streams_v2', {}); }
+      function cameraAIStreamKey() { return cameraAISelectedStore + ':' + cameraAISelectedCamera; }
+      function cameraAIResetPlayer() {
+        if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
+        const video = document.getElementById('camera-ai-video');
+        if (video) { video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none'; }
+        const empty = document.getElementById('camera-ai-video-empty');
+        const badge = document.getElementById('camera-ai-live-badge');
+        if (empty) empty.style.display = 'block';
+        if (badge) badge.style.display = 'none';
+      }
+      function cameraAIRenderStoreGrid() {
+        const grid = document.getElementById('camera-ai-store-grid');
+        if (!grid) return;
+        grid.innerHTML = Object.entries(CAMERA_AI_STORES).map(([id, store]) => {
+          const active = id === cameraAISelectedStore;
+          const count = store.cameras.length;
+          return `<button type="button" data-camera-store="${id}" onclick="cameraAISelectStore('${id}')" style="text-align:left;border:2px solid ${active ? '#E5571E' : 'var(--border)'};background:${active ? 'rgba(229,87,30,.08)' : 'var(--card)'};color:var(--text);border-radius:12px;padding:13px;cursor:pointer"><span style="display:block;font-size:15px;font-weight:900">${store.name}</span><span style="display:block;font-size:11px;color:var(--text2);margin-top:4px">${count ? count + (count === 1 ? ' câmera' : ' câmeras') : 'Aguardando câmeras'}</span></button>`;
+        }).join('');
+      }
+      function cameraAIUpdateStatus(hasStream) {
+        const store = CAMERA_AI_STORES[cameraAISelectedStore];
+        const statusText = document.getElementById('camera-ai-status-text');
+        const dot = document.getElementById('camera-ai-status-dot');
+        if (!statusText || !dot) return;
+        if (!store.cameras.length) {
+          statusText.textContent = 'Nenhuma câmera cadastrada';
+          dot.style.background = '#9ca3af';
+        } else if (hasStream) {
+          statusText.textContent = 'Transmissão configurada';
+          dot.style.background = '#10b981';
+        } else {
+          statusText.textContent = 'Aguardando transmissão';
+          dot.style.background = '#f59e0b';
+        }
+      }
+      function cameraAISelectStore(storeId) {
+        if (!CAMERA_AI_STORES[storeId]) return;
+        cameraAISelectedStore = storeId;
+        localStorage.setItem('tc_camera_ai_selected_store', storeId);
+        const store = CAMERA_AI_STORES[storeId];
+        const storeSelect = document.getElementById('camera-ai-store-select');
+        const cameraSelect = document.getElementById('camera-ai-camera-select');
+        if (storeSelect) storeSelect.value = storeId;
+        document.getElementById('camera-ai-store-title').textContent = store.name;
+        document.getElementById('camera-ai-store-description').textContent = store.cameras.length ? 'Escolha uma câmera para visualizar a transmissão desta loja.' : 'Esta loja ainda não possui câmeras cadastradas.';
+        document.getElementById('camera-ai-camera-count').textContent = store.cameras.length;
+        document.getElementById('camera-ai-camera-count-detail').textContent = store.cameras.length ? 'Tapo TC60 separadas por câmera' : 'Nenhuma câmera cadastrada';
+        if (cameraSelect) {
+          cameraSelect.innerHTML = store.cameras.length ? store.cameras.map(camera => `<option value="${camera.id}">${camera.name}</option>`).join('') : '<option value="">Nenhuma câmera cadastrada</option>';
+          cameraSelect.disabled = !store.cameras.length;
+        }
+        const savedCameras = cameraAIReadJSON('tc_camera_ai_selected_cameras', {});
+        const preferred = savedCameras[storeId];
+        cameraAISelectedCamera = store.cameras.some(camera => camera.id === preferred) ? preferred : (store.cameras[0]?.id || '');
+        if (cameraSelect) cameraSelect.value = cameraAISelectedCamera;
+        cameraAIRenderStoreGrid();
+        cameraAIShowSelectedStream();
+      }
+      function cameraAISelectCamera(cameraId) {
+        const store = CAMERA_AI_STORES[cameraAISelectedStore];
+        if (!store?.cameras.some(camera => camera.id === cameraId)) return;
+        cameraAISelectedCamera = cameraId;
+        const savedCameras = cameraAIReadJSON('tc_camera_ai_selected_cameras', {});
+        savedCameras[cameraAISelectedStore] = cameraId;
+        localStorage.setItem('tc_camera_ai_selected_cameras', JSON.stringify(savedCameras));
+        cameraAIShowSelectedStream();
+      }
       function cameraAILoadLibrary() {
         if (window.Hls) return Promise.resolve();
         return new Promise((resolve, reject) => {
@@ -878,8 +978,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         const empty = document.getElementById('camera-ai-video-empty');
         const badge = document.getElementById('camera-ai-live-badge');
         const url = (input?.value || '').trim();
+        if (!cameraAISelectedCamera) { cameraAISetMessage('Esta loja ainda não possui câmera cadastrada.'); return; }
         if (!/^https:\/\/[^\s]+\.m3u8(?:\?[^\s]*)?$/i.test(url)) { cameraAISetMessage('Informe uma URL HLS HTTPS válida, terminada em .m3u8.'); return; }
-        localStorage.setItem('tc_camera_ai_hls_url', url);
+        const streams = cameraAIStreams();
+        streams[cameraAIStreamKey()] = url;
+        localStorage.setItem('tc_camera_ai_streams_v2', JSON.stringify(streams));
         cameraAISetMessage('Conectando…');
         try {
           if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
@@ -897,30 +1000,69 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           badge.style.display = 'block';
           video.play().catch(() => {});
           cameraAISetMessage('');
+          cameraAIUpdateStatus(true);
         } catch (_) {
           cameraAISetMessage('Não foi possível iniciar o player HLS.');
         }
       }
       function cameraAIForgetStream() {
-        localStorage.removeItem('tc_camera_ai_hls_url');
-        if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
-        const video = document.getElementById('camera-ai-video');
-        video.pause(); video.removeAttribute('src'); video.load(); video.style.display = 'none';
-        document.getElementById('camera-ai-video-empty').style.display = 'block';
-        document.getElementById('camera-ai-live-badge').style.display = 'none';
+        const streams = cameraAIStreams();
+        delete streams[cameraAIStreamKey()];
+        localStorage.setItem('tc_camera_ai_streams_v2', JSON.stringify(streams));
+        cameraAIResetPlayer();
         document.getElementById('camera-ai-hls-url').value = '';
         cameraAISetMessage('');
+        cameraAIUpdateStatus(false);
+      }
+      function cameraAIShowSelectedStream() {
+        cameraAIResetPlayer();
+        cameraAISetMessage('');
+        const store = CAMERA_AI_STORES[cameraAISelectedStore];
+        const camera = store.cameras.find(item => item.id === cameraAISelectedCamera);
+        const input = document.getElementById('camera-ai-hls-url');
+        const connectButton = document.getElementById('camera-ai-connect-button');
+        const disconnectButton = document.getElementById('camera-ai-disconnect-button');
+        const emptyTitle = document.getElementById('camera-ai-empty-title');
+        const emptyDetail = document.getElementById('camera-ai-empty-detail');
+        const selectedName = document.getElementById('camera-ai-selected-camera');
+        const selectedDetail = document.getElementById('camera-ai-selected-camera-detail');
+        const disabled = !camera;
+        input.disabled = disabled;
+        connectButton.disabled = disabled;
+        disconnectButton.disabled = disabled;
+        selectedName.textContent = camera?.name || '—';
+        selectedDetail.textContent = camera ? store.name + ' · Tapo TC60' : 'Nenhuma câmera nesta loja';
+        if (!camera) {
+          input.value = '';
+          emptyTitle.textContent = 'Nenhuma câmera cadastrada';
+          emptyDetail.textContent = store.name + ' está pronta para receber câmeras.';
+          cameraAIUpdateStatus(false);
+          return;
+        }
+        emptyTitle.textContent = store.name + ' · ' + camera.name;
+        emptyDetail.textContent = 'Aguardando a ponte segura do notebook da loja.';
+        const savedUrl = cameraAIStreams()[cameraAIStreamKey()] || '';
+        input.value = savedUrl;
+        cameraAIUpdateStatus(Boolean(savedUrl));
+        if (savedUrl) cameraAIConnectStream();
       }
       function cameraAIRefreshStatus() {
-        const status = document.getElementById('camera-ai-pilot-status');
-        if (!status) return;
-        status.lastChild.textContent = ' Piloto validado · aguardando conexão com a API';
+        cameraAISelectStore(cameraAISelectedStore);
       }
-      setTimeout(() => {
-        const saved = localStorage.getItem('tc_camera_ai_hls_url');
-        const input = document.getElementById('camera-ai-hls-url');
-        if (saved && input) { input.value = saved; cameraAIConnectStream(); }
-      }, 300);
+      function cameraAIInit() {
+        const storeSelect = document.getElementById('camera-ai-store-select');
+        if (!storeSelect) return;
+        storeSelect.innerHTML = Object.entries(CAMERA_AI_STORES).map(([id, store]) => `<option value="${id}">${store.name}</option>`).join('');
+        const streams = cameraAIStreams();
+        const legacyUrl = localStorage.getItem('tc_camera_ai_hls_url');
+        if (legacyUrl && !streams['05:cam01']) {
+          streams['05:cam01'] = legacyUrl;
+          localStorage.setItem('tc_camera_ai_streams_v2', JSON.stringify(streams));
+        }
+        const savedStore = localStorage.getItem('tc_camera_ai_selected_store');
+        cameraAISelectStore(CAMERA_AI_STORES[savedStore] ? savedStore : '05');
+      }
+      setTimeout(cameraAIInit, 300);
     </script>
   </div>
 
