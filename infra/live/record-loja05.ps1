@@ -11,6 +11,7 @@ $logFile = Join-Path $root 'recorder.log'
 $uploadLog = Join-Path $root 'upload.log'
 $cloudUrl = 'https://www.teniscash.com.br/api/auth/agent-camera-segment'
 $retentionHours = 72
+$localMaxBytes = 320GB
 $segmentSeconds = 120
 
 function Write-RecorderLog([string]$message) {
@@ -103,6 +104,17 @@ function Remove-ExpiredSegments {
     Get-ChildItem -LiteralPath $recordRoot -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $_.LastWriteTime -lt $cutoff } |
         Remove-Item -Force -ErrorAction SilentlyContinue
+
+    $segments = Get-ChildItem -LiteralPath $recordRoot -Recurse -File -Filter '*.mp4' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime
+    $total = ($segments | Measure-Object Length -Sum).Sum
+    foreach ($segment in $segments) {
+        if ($total -le $localMaxBytes) { break }
+        $bytes = $segment.Length
+        Remove-Item -LiteralPath $segment.FullName -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath ($segment.FullName + '.uploaded') -Force -ErrorAction SilentlyContinue
+        $total -= $bytes
+    }
 }
 
 try {

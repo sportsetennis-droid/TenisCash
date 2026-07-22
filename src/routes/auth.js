@@ -785,7 +785,7 @@ router.get('/agent-capture/file/:store/:name', (req, res) => {
 
 // =====================================================================
 // ARQUIVO PROPRIO DAS CAMERAS — os notebooks das lojas enviam segmentos
-// finalizados pelo MediaMTX. No Railway, os arquivos ficam no volume /data.
+// finalizados pelo gravador local. No Railway, os arquivos ficam no volume /data.
 // O upload usa o mesmo AGENT_TOKEN individual de cada loja.
 // =====================================================================
 const _cameraArchiveDir = process.env.CAMERA_ARCHIVE_DIR || (process.platform === 'win32'
