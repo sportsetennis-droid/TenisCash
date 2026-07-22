@@ -1,0 +1,48 @@
+logLevel: info
+logDestinations: [file]
+logFile: C:/TenisCash/CameraAgent/mediamtx.log
+
+api: true
+apiAddress: 127.0.0.1:9997
+
+playback: true
+playbackAddress: :9996
+playbackAllowOrigins:
+  - https://teniscash.com.br
+  - https://www.teniscash.com.br
+
+hls: true
+hlsAddress: :8888
+hlsAllowOrigins:
+  - https://teniscash.com.br
+  - https://www.teniscash.com.br
+hlsAlwaysRemux: true
+hlsVariant: fmp4
+hlsSegmentCount: 8
+hlsSegmentDuration: 1s
+hlsSegmentMaxSize: 50M
+
+rtmp: false
+webrtc: false
+srt: false
+
+pathDefaults:
+  sourceOnDemand: false
+  rtspTransport: tcp
+  # TC60 audio and video timestamps drift apart. Recording is handled by
+  # FFmpeg video-copy so the original Full HD image is kept without cuts.
+  record: false
+
+paths:
+  loja05_camera1:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.77:554/stream1
+  loja05_camera2:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.84:554/stream1
+  loja05_camera3:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.85:554/stream1
+  loja05_camera4:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.86:554/stream1
+  loja05_camera5:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.87:554/stream1
+  loja05_camera6:
+    source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.89:554/stream1

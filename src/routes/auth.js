@@ -654,6 +654,8 @@ router.delete('/me', authMiddleware, async (req, res) => {
 const _agPath = require('node:path');
 const _agFs = require('node:fs');
 const _agCrypto = require('node:crypto');
+const { Transform: _CameraUploadTransform } = require('node:stream');
+const { pipeline: _cameraUploadPipeline } = require('node:stream/promises');
 const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'screencap.cs', 'package.json'];
 const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
 
@@ -779,6 +781,96 @@ router.get('/agent-capture/file/:store/:name', (req, res) => {
   if (!_agFs.existsSync(full)) return res.status(404).json({ error: 'não achado' });
   res.setHeader('Content-Type', 'image/jpeg');
   res.send(_agFs.readFileSync(full));
+});
+
+// =====================================================================
+// ARQUIVO PROPRIO DAS CAMERAS — os notebooks das lojas enviam segmentos
+// finalizados pelo MediaMTX. No Railway, os arquivos ficam no volume /data.
+// O upload usa o mesmo AGENT_TOKEN individual de cada loja.
+// =====================================================================
+const _cameraArchiveDir = process.env.CAMERA_ARCHIVE_DIR || (process.platform === 'win32'
+  ? _agPath.join(process.cwd(), 'data', 'camera-recordings')
+  : '/data/camera-recordings');
+const _cameraUploadLimit = 90 * 1024 * 1024;
+const _cameraArchiveMaxBytes = Math.max(1024 * 1024 * 1024, Number(process.env.CAMERA_ARCHIVE_MAX_BYTES || 45 * 1024 * 1024 * 1024));
+const _cameraRetentionMs = Math.max(3600000, Number(process.env.CAMERA_CLOUD_RETENTION_HOURS || 24) * 3600000);
+let _cameraCleanupRunning = false;
+
+async function _cameraArchiveFiles(dir) {
+  const out = [];
+  let entries = [];
+  try { entries = await _agFs.promises.readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    const full = _agPath.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...await _cameraArchiveFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('.mp4')) {
+      try { const stat = await _agFs.promises.stat(full); out.push({ full, size: stat.size, mtimeMs: stat.mtimeMs }); } catch {}
+    }
+  }
+  return out;
+}
+
+async function _cleanupCameraArchive() {
+  if (_cameraCleanupRunning) return;
+  _cameraCleanupRunning = true;
+  try {
+    const files = await _cameraArchiveFiles(_cameraArchiveDir);
+    const cutoff = Date.now() - _cameraRetentionMs;
+    for (const file of files.filter(item => item.mtimeMs < cutoff)) {
+      try { await _agFs.promises.unlink(file.full); file.deleted = true; } catch {}
+    }
+    const active = files.filter(item => !item.deleted).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let total = active.reduce((sum, item) => sum + item.size, 0);
+    for (const file of active) {
+      if (total <= _cameraArchiveMaxBytes) break;
+      try { await _agFs.promises.unlink(file.full); total -= file.size; } catch {}
+    }
+  } finally { _cameraCleanupRunning = false; }
+}
+
+router.post('/agent-camera-segment', async (req, res) => {
+  let tempFile = null;
+  try {
+    const store = await agentTokenStore(req);
+    if (!store) return res.status(401).json({ error: 'token de agente inválido' });
+
+    const camera = String(req.headers['x-camera-name'] || '').trim().toLowerCase();
+    const segmentName = _agPath.basename(String(req.headers['x-segment-name'] || '')).replace(/[^A-Za-z0-9._-]/g, '');
+    const expectedCameraPrefix = String(store.code || '').toLowerCase() + '_camera';
+    if (!camera.startsWith(expectedCameraPrefix) || !/^loja\d{2}_camera\d+$/.test(camera)) return res.status(400).json({ error: 'câmera inválida' });
+    if (!segmentName || !segmentName.endsWith('.mp4')) return res.status(400).json({ error: 'segmento inválido' });
+
+    const announcedLength = Number(req.headers['content-length'] || 0);
+    if (announcedLength > _cameraUploadLimit) return res.status(413).json({ error: 'segmento acima de 90 MB' });
+
+    const dir = _agPath.join(_cameraArchiveDir, String(store.code).toUpperCase(), camera);
+    await _agFs.promises.mkdir(dir, { recursive: true });
+    const finalFile = _agPath.join(dir, segmentName);
+    if (_agFs.existsSync(finalFile)) {
+      const stat = await _agFs.promises.stat(finalFile);
+      return res.json({ ok: true, duplicate: true, stored: `${store.code}/${camera}/${segmentName}`, bytes: stat.size });
+    }
+
+    tempFile = finalFile + '.' + _agCrypto.randomBytes(6).toString('hex') + '.part';
+    let received = 0;
+    const limiter = new _CameraUploadTransform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        if (received > _cameraUploadLimit) callback(new Error('UPLOAD_LIMIT'));
+        else callback(null, chunk);
+      },
+    });
+    await _cameraUploadPipeline(req, limiter, _agFs.createWriteStream(tempFile, { flags: 'wx' }));
+    await _agFs.promises.rename(tempFile, finalFile);
+    tempFile = null;
+    setImmediate(() => _cleanupCameraArchive().catch(err => console.error('[camera-cleanup]', err.message)));
+    res.json({ ok: true, stored: `${store.code}/${camera}/${segmentName}`, bytes: received });
+  } catch (err) {
+    if (tempFile) { try { await _agFs.promises.unlink(tempFile); } catch {} }
+    if (err && err.message === 'UPLOAD_LIMIT') return res.status(413).json({ error: 'segmento acima de 90 MB' });
+    console.error('[agent-camera-segment]', err);
+    res.status(500).json({ error: 'falha ao armazenar segmento' });
+  }
 });
 
 module.exports = router;

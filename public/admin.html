@@ -840,6 +840,18 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div id="camera-ai-player-message" style="display:none;padding:0 12px 12px;background:#111827;color:#fca5a5;font-size:12px"></div>
     </div>
 
+    <div class="card" style="padding:18px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <div>
+          <div style="font-size:16px;font-weight:900">Gravações próprias do TenisCash</div>
+          <div id="camera-ai-recording-summary" style="font-size:12px;color:var(--text2);margin-top:4px">Carregando gravações da câmera selecionada...</div>
+        </div>
+        <button class="refresh-btn" onclick="cameraAILoadRecordings()">Atualizar gravações</button>
+      </div>
+      <video id="camera-ai-recording-video" controls playsinline style="display:none;width:100%;max-height:460px;background:#000;border-radius:12px;margin-bottom:12px"></video>
+      <div id="camera-ai-recording-list" style="display:grid;gap:8px"></div>
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
       <div class="card" style="padding:18px">
         <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras nesta loja</div>
@@ -855,6 +867,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmera selecionada</div>
         <div id="camera-ai-selected-camera" style="font-size:20px;font-weight:800;margin-top:12px">—</div>
         <div id="camera-ai-selected-camera-detail" style="font-size:12px;color:var(--text2);margin-top:5px">Escolha uma loja</div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Qualidade e gravação</div>
+        <div id="camera-ai-quality" style="font-size:20px;font-weight:800;margin-top:12px">Full HD</div>
+        <div id="camera-ai-quality-detail" style="font-size:12px;color:var(--text2);margin-top:5px">1920×1080 · 25 FPS · sem recompressão</div>
       </div>
     </div>
 
@@ -887,6 +904,10 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       }
       function cameraAIStreams() { return cameraAIReadJSON('tc_camera_ai_streams_v2', {}); }
       function cameraAIStreamKey() { return cameraAISelectedStore + ':' + cameraAISelectedCamera; }
+      function cameraAIDefaultLiveUrl() {
+        if (cameraAISelectedStore !== '05' || !/^cam0[1-6]$/.test(cameraAISelectedCamera)) return '';
+        return 'https://loja05.tailcdc08b.ts.net/loja05_camera' + Number(cameraAISelectedCamera.slice(3)) + '/index.m3u8';
+      }
       function cameraAIResetPlayer() {
         if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
         const video = document.getElementById('camera-ai-video');
@@ -1041,10 +1062,61 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         }
         emptyTitle.textContent = store.name + ' · ' + camera.name;
         emptyDetail.textContent = 'Aguardando a ponte segura do notebook da loja.';
-        const savedUrl = cameraAIStreams()[cameraAIStreamKey()] || '';
+        const savedUrl = cameraAIStreams()[cameraAIStreamKey()] || cameraAIDefaultLiveUrl();
         input.value = savedUrl;
         cameraAIUpdateStatus(Boolean(savedUrl));
         if (savedUrl) cameraAIConnectStream();
+        cameraAILoadRecordings();
+      }
+      let cameraAIRecordingObjectUrl = '';
+      function cameraAIFormatBytes(bytes) {
+        const value = Number(bytes || 0);
+        if (value < 1024 * 1024) return Math.max(1, Math.round(value / 1024)) + ' KB';
+        return (value / 1024 / 1024).toFixed(1) + ' MB';
+      }
+      async function cameraAILoadRecordings() {
+        const list = document.getElementById('camera-ai-recording-list');
+        const summary = document.getElementById('camera-ai-recording-summary');
+        if (!list || !summary) return;
+        if (!cameraAISelectedCamera) { list.innerHTML = ''; summary.textContent = 'Selecione uma câmera.'; return; }
+        const cameraNumber = Number(cameraAISelectedCamera.replace('cam', ''));
+        const cameraName = 'loja' + cameraAISelectedStore + '_camera' + cameraNumber;
+        summary.textContent = 'Consultando o armazenamento seguro...';
+        list.innerHTML = '';
+        try {
+          const headers = { 'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const response = await fetch('/api/admin/security/camera-recordings/LOJA' + cameraAISelectedStore + '/' + cameraName, { headers });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const data = await response.json();
+          const files = Array.isArray(data.files) ? data.files.slice(0, 30) : [];
+          summary.textContent = files.length ? files.length + ' gravações recentes · ' + cameraAIFormatBytes(data.totalBytes) + ' nesta câmera' : 'Aguardando o primeiro arquivo de gravação na nuvem.';
+          list.innerHTML = files.map(file => {
+            const when = new Date(file.createdAt).toLocaleString('pt-BR');
+            return `<button type="button" onclick="cameraAIPlayRecording('${cameraName}','${encodeURIComponent(file.name)}')" style="display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:11px 13px;cursor:pointer"><span><strong>Assistir - ${when}</strong><small style="display:block;color:var(--text2);margin-top:3px">${file.name}</small></span><span style="font-size:12px;color:var(--text2)">${cameraAIFormatBytes(file.size)}</span></button>`;
+          }).join('');
+        } catch (_) {
+          summary.textContent = 'As gravações serão exibidas assim que a sincronização concluir.';
+        }
+      }
+      async function cameraAIPlayRecording(cameraName, encodedName) {
+        const video = document.getElementById('camera-ai-recording-video');
+        const summary = document.getElementById('camera-ai-recording-summary');
+        try {
+          summary.textContent = 'Abrindo gravação...';
+          const headers = { 'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const url = '/api/admin/security/camera-recording/LOJA' + cameraAISelectedStore + '/' + cameraName + '/' + encodedName;
+          const response = await fetch(url, { headers });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const blob = await response.blob();
+          if (cameraAIRecordingObjectUrl) URL.revokeObjectURL(cameraAIRecordingObjectUrl);
+          cameraAIRecordingObjectUrl = URL.createObjectURL(blob);
+          video.src = cameraAIRecordingObjectUrl;
+          video.style.display = 'block';
+          video.play().catch(() => {});
+          summary.textContent = 'Reproduzindo gravação selecionada.';
+        } catch (_) {
+          summary.textContent = 'Não foi possível abrir esta gravação.';
+        }
       }
       function cameraAIRefreshStatus() {
         cameraAISelectStore(cameraAISelectedStore);
