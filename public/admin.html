@@ -871,7 +871,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div class="card" style="padding:18px">
         <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Qualidade e gravação</div>
         <div id="camera-ai-quality" style="font-size:20px;font-weight:800;margin-top:12px">Full HD</div>
-        <div id="camera-ai-quality-detail" style="font-size:12px;color:var(--text2);margin-top:5px">1920×1080 · 25 FPS · sem recompressão</div>
+        <div id="camera-ai-quality-detail" style="font-size:12px;color:var(--text2);margin-top:5px">1920×1080 · H.264 · sem recompressão</div>
       </div>
     </div>
 
@@ -1062,7 +1062,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         }
         emptyTitle.textContent = store.name + ' · ' + camera.name;
         emptyDetail.textContent = 'Aguardando a ponte segura do notebook da loja.';
-        const savedUrl = cameraAIStreams()[cameraAIStreamKey()] || cameraAIDefaultLiveUrl();
+        const savedUrl = cameraAIDefaultLiveUrl() || cameraAIStreams()[cameraAIStreamKey()] || '';
         input.value = savedUrl;
         cameraAIUpdateStatus(Boolean(savedUrl));
         if (savedUrl) cameraAIConnectStream();
