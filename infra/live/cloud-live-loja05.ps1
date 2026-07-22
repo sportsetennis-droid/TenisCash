@@ -41,7 +41,7 @@ function Start-CameraLive($camera) {
     New-Item -ItemType Directory -Path $cameraDir -Force | Out-Null
     Get-ChildItem -LiteralPath $cameraDir -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     $playlist = Join-Path $cameraDir 'index.m3u8'
-    $segmentPattern = Join-Path $cameraDir '%Y%m%dT%H%M%S.ts'
+    $segmentPattern = Join-Path $cameraDir '%Y%m%dT%H%M%S_%%04d.ts'
     $stderr = Join-Path $root ($camera.name + '-cloud-live-ffmpeg.log')
     $arguments = @(
         '-hide_banner', '-nostdin', '-loglevel', 'warning',
@@ -50,7 +50,7 @@ function Start-CameraLive($camera) {
         '-map', '0:v:0', '-an', '-c:v', 'copy',
         '-f', 'hls', '-hls_time', '4', '-hls_list_size', '8',
         '-hls_segment_type', 'mpegts',
-        '-hls_flags', 'delete_segments+independent_segments+omit_endlist+temp_file',
+        '-hls_flags', 'delete_segments+independent_segments+omit_endlist+temp_file+second_level_segment_index',
         '-strftime', '1', '-hls_segment_filename', $segmentPattern,
         $playlist
     )

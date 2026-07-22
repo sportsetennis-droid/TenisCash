@@ -1010,7 +1010,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
           await cameraAILoadLibrary();
           if (window.Hls && Hls.isSupported()) {
-            cameraAIHls = new Hls({
+            const hls = new Hls({
               lowLatencyMode:true,
               liveSyncDuration:3,
               xhrSetup: (xhr) => {
@@ -1018,9 +1018,15 @@ tr:hover td{background:rgba(0,0,0,0.02)}
                 if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
               },
             });
-            cameraAIHls.loadSource(url);
-            cameraAIHls.attachMedia(video);
-            cameraAIHls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) cameraAISetMessage('A transmissão está indisponível. Confirme se o computador da loja continua ligado.'); });
+            cameraAIHls = hls;
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+              if (cameraAIHls !== hls || !data.fatal) return;
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+              else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+              if (video.readyState < 2) cameraAISetMessage('Reconectando à transmissão…');
+            });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
           } else {
@@ -1029,6 +1035,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           video.style.display = 'block';
           empty.style.display = 'none';
           badge.style.display = 'block';
+          video.onplaying = () => cameraAISetMessage('');
           video.play().catch(() => {});
           cameraAISetMessage('');
           cameraAIUpdateStatus(true);
