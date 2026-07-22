@@ -980,7 +980,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           const existing = document.querySelector('script[data-camera-hls]');
           if (existing) { existing.addEventListener('load', resolve, { once:true }); existing.addEventListener('error', reject, { once:true }); return; }
           const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
           script.dataset.cameraHls = '1';
           script.onload = resolve;
           script.onerror = reject;
@@ -1007,14 +1007,16 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         cameraAISetMessage('Conectando…');
         try {
           if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
-          if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
-          } else {
-            await cameraAILoadLibrary();
+          await cameraAILoadLibrary();
+          if (window.Hls && Hls.isSupported()) {
             cameraAIHls = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
             cameraAIHls.loadSource(url);
             cameraAIHls.attachMedia(video);
             cameraAIHls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) cameraAISetMessage('A transmissão está indisponível. Confirme se o computador da loja continua ligado.'); });
+          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+          } else {
+            throw new Error('HLS unavailable');
           }
           video.style.display = 'block';
           empty.style.display = 'none';
