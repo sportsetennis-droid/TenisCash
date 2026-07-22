@@ -889,7 +889,7 @@ router.post('/agent-camera-live', async (req, res) => {
     const fileName = _agPath.basename(String(req.headers['x-live-file-name'] || '')).replace(/[^A-Za-z0-9._-]/g, '');
     const expectedCameraPrefix = String(store.code || '').toLowerCase() + '_camera';
     if (!camera.startsWith(expectedCameraPrefix) || !/^loja\d{2}_camera\d+$/.test(camera)) return res.status(400).json({ error: 'câmera inválida' });
-    if (!/^(?:index\.m3u8|\d{8}T\d{6}(?:_\d+)?\.ts)$/.test(fileName)) return res.status(400).json({ error: 'arquivo HLS inválido' });
+    if (!/^(?:index\.m3u8|[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4)$/.test(fileName)) return res.status(400).json({ error: 'arquivo HLS inválido' });
 
     const announcedLength = Number(req.headers['content-length'] || 0);
     if (announcedLength > _cameraLiveUploadLimit) return res.status(413).json({ error: 'arquivo HLS acima de 20 MB' });
