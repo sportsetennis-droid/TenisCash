@@ -35,10 +35,14 @@ function Start-CameraRecorder($camera) {
     New-Item -ItemType Directory -Path $cameraDir -Force | Out-Null
     $pattern = Join-Path $cameraDir '%Y-%m-%d_%H-%M-%S.mp4'
     $stderr = Join-Path $root ($camera.name + '-ffmpeg.log')
+    $inputArguments = if ($camera.source -like 'http*') {
+        @('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-live_start_index', '-1')
+    } else {
+        @('-rtsp_transport', 'tcp', '-fflags', '+genpts+discardcorrupt', '-use_wallclock_as_timestamps', '1')
+    }
     $arguments = @(
-        '-hide_banner', '-nostdin', '-loglevel', 'warning',
-        '-rtsp_transport', 'tcp',
-        '-fflags', '+genpts+discardcorrupt', '-use_wallclock_as_timestamps', '1',
+        '-hide_banner', '-nostdin', '-loglevel', 'warning'
+    ) + $inputArguments + @(
         '-i', $camera.source,
         '-map', '0:v:0', '-an', '-c:v', 'copy',
         '-avoid_negative_ts', 'make_zero',

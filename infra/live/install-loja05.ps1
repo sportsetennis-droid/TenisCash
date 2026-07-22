@@ -54,12 +54,12 @@ Copy-Item -LiteralPath $ffmpegSource -Destination (Join-Path $root 'ffmpeg.exe')
 
 $cameraConfig = @{
     cameras = @(
-        @{ name = 'loja05_camera1'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.77:554/stream1" },
-        @{ name = 'loja05_camera2'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.84:554/stream1" },
-        @{ name = 'loja05_camera3'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.85:554/stream1" },
-        @{ name = 'loja05_camera4'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.86:554/stream1" },
-        @{ name = 'loja05_camera5'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.87:554/stream1" },
-        @{ name = 'loja05_camera6'; source = "rtsp://${encodedUser}:${encodedPassword}@192.168.0.89:554/stream1" }
+        @{ name = 'loja05_camera1'; source = 'http://127.0.0.1:8888/loja05_camera1/index.m3u8' },
+        @{ name = 'loja05_camera2'; source = 'http://127.0.0.1:8888/loja05_camera2/index.m3u8' },
+        @{ name = 'loja05_camera3'; source = 'http://127.0.0.1:8888/loja05_camera3/index.m3u8' },
+        @{ name = 'loja05_camera4'; source = 'http://127.0.0.1:8888/loja05_camera4/index.m3u8' },
+        @{ name = 'loja05_camera5'; source = 'http://127.0.0.1:8888/loja05_camera5/index.m3u8' },
+        @{ name = 'loja05_camera6'; source = 'http://127.0.0.1:8888/loja05_camera6/index.m3u8' }
     )
 } | ConvertTo-Json -Depth 4
 $cameraConfigPath = Join-Path $root 'camera-config.json'
