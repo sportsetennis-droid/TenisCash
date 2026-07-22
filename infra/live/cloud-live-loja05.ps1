@@ -33,6 +33,11 @@ New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
 
 $playlistHashes = @{}
 
+function Get-ResponseText($response) {
+    if ($response.Content -is [byte[]]) { return [Text.Encoding]::UTF8.GetString($response.Content) }
+    return [string]$response.Content
+}
+
 function Send-LiveFile([string]$camera, [IO.FileInfo]$file) {
     $headers = @{
         'X-Agent-Token' = $token
@@ -47,27 +52,28 @@ function Publish-CameraLive($camera) {
     New-Item -ItemType Directory -Path $cameraDir -Force | Out-Null
     $masterUrl = [string]$camera.source
     $master = Invoke-WebRequest -UseBasicParsing -Uri $masterUrl -SessionVariable cameraSession -TimeoutSec 15
-    $variant = @($master.Content -split "`r?`n" | Where-Object { $_ -and -not $_.StartsWith('#') })[0].Trim()
+    $masterText = Get-ResponseText $master
+    $variant = @($masterText -split "`r?`n" | Where-Object { $_ -and -not $_.StartsWith('#') })[0].Trim()
     if (-not $variant) { throw 'Playlist da câmera sem variante de vídeo.' }
     $variantUrl = [Uri]::new([Uri]$masterUrl, $variant).AbsoluteUri
     $media = Invoke-WebRequest -UseBasicParsing -Uri $variantUrl -WebSession $cameraSession -TimeoutSec 15
-    $playlistText = [string]$media.Content
+    $playlistText = Get-ResponseText $media
 
     $resourceNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($line in ($playlistText -split "`r?`n")) {
         $value = $line.Trim()
         if ($value -match '^#EXT-X-MAP:.*URI="([^"]+)"') { [void]$resourceNames.Add($Matches[1]) }
-        elseif ($value -and -not $value.StartsWith('#')) { [void]$resourceNames.Add(($value -split '\?')[0]) }
+        elseif ($value -and -not $value.StartsWith('#')) { [void]$resourceNames.Add($value) }
     }
     if (-not $resourceNames.Count) { throw 'Playlist da câmera sem fragmentos.' }
 
     foreach ($resourceName in $resourceNames) {
-        $safeName = [IO.Path]::GetFileName([string]$resourceName)
+        $safeName = [IO.Path]::GetFileName(([string]$resourceName -split '\?')[0])
         if ($safeName -notmatch '^[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4$') { throw 'Nome de fragmento inválido.' }
         $filePath = Join-Path $cameraDir $safeName
         $sentPath = $filePath + '.sent'
         if (-not (Test-Path -LiteralPath $sentPath)) {
-            $resourceUrl = [Uri]::new([Uri]$variantUrl, $safeName).AbsoluteUri
+            $resourceUrl = [Uri]::new([Uri]$variantUrl, [string]$resourceName).AbsoluteUri
             $tempPath = $filePath + '.tmp'
             Invoke-WebRequest -UseBasicParsing -Uri $resourceUrl -WebSession $cameraSession -OutFile $tempPath -TimeoutSec 30
             Move-Item -LiteralPath $tempPath -Destination $filePath -Force
