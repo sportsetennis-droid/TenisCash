@@ -34,6 +34,7 @@ $template = Join-Path $PSScriptRoot 'mediamtx-loja05.yml.template'
 $uploader = Join-Path $PSScriptRoot 'upload-segment.ps1'
 $recorder = Join-Path $PSScriptRoot 'record-loja05.ps1'
 $recordingUploader = Join-Path $PSScriptRoot 'upload-recordings.ps1'
+$cloudLive = Join-Path $PSScriptRoot 'cloud-live-loja05.ps1'
 if (-not (Test-Path -LiteralPath $template)) { throw 'Template do gravador não encontrado.' }
 if (-not (Test-Path -LiteralPath $uploader)) { throw 'Uploader do gravador não encontrado.' }
 
@@ -47,6 +48,7 @@ $configPath = Join-Path $root 'mediamtx.yml'
 Copy-Item -LiteralPath $uploader -Destination (Join-Path $root 'upload-segment.ps1') -Force
 Copy-Item -LiteralPath $recorder -Destination (Join-Path $root 'record-loja05.ps1') -Force
 Copy-Item -LiteralPath $recordingUploader -Destination (Join-Path $root 'upload-recordings.ps1') -Force
+Copy-Item -LiteralPath $cloudLive -Destination (Join-Path $root 'cloud-live-loja05.ps1') -Force
 
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     winget install --id Gyan.FFmpeg --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
@@ -86,6 +88,14 @@ $recorderSettings = New-ScheduledTaskSettingsSet -RestartCount 20 -RestartInterv
 Register-ScheduledTask -TaskName $recorderTaskName -Action $recorderAction -Trigger $trigger -Principal $principal -Settings $recorderSettings -Force | Out-Null
 Start-ScheduledTask -TaskName $recorderTaskName
 
+$cloudLiveTaskName = 'TenisCashCameraCloudLive'
+try { Stop-ScheduledTask -TaskName $cloudLiveTaskName -ErrorAction SilentlyContinue } catch {}
+try { Unregister-ScheduledTask -TaskName $cloudLiveTaskName -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+$cloudLiveAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $root 'cloud-live-loja05.ps1')) -WorkingDirectory $root
+$cloudLiveSettings = New-ScheduledTaskSettingsSet -RestartCount 20 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName $cloudLiveTaskName -Action $cloudLiveAction -Trigger $trigger -Principal $principal -Settings $cloudLiveSettings -Force | Out-Null
+Start-ScheduledTask -TaskName $cloudLiveTaskName
+
 Get-NetFirewallRule -DisplayName 'TenisCash Câmeras HLS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Get-NetFirewallRule -DisplayName 'TenisCash Câmeras Playback' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName 'TenisCash Câmeras HLS' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8888 -RemoteAddress 100.64.0.0/10 -Profile Any | Out-Null
@@ -103,5 +113,6 @@ $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | 
     HLS = [bool]($listeners | Where-Object LocalPort -eq 8888)
     Playback = [bool]($listeners | Where-Object LocalPort -eq 9996)
     RecorderState = (Get-ScheduledTask -TaskName $recorderTaskName).State.ToString()
+    CloudLiveState = (Get-ScheduledTask -TaskName $cloudLiveTaskName).State.ToString()
     Version = $version
 } | ConvertTo-Json -Compress

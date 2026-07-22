@@ -791,7 +791,11 @@ router.get('/agent-capture/file/:store/:name', (req, res) => {
 const _cameraArchiveDir = process.env.CAMERA_ARCHIVE_DIR || (process.platform === 'win32'
   ? _agPath.join(process.cwd(), 'data', 'camera-recordings')
   : '/data/camera-recordings');
+const _cameraLiveDir = process.env.CAMERA_LIVE_DIR || (process.platform === 'win32'
+  ? _agPath.join(process.cwd(), 'data', 'camera-live')
+  : '/data/camera-live');
 const _cameraUploadLimit = 90 * 1024 * 1024;
+const _cameraLiveUploadLimit = 20 * 1024 * 1024;
 const _cameraArchiveMaxBytes = Math.max(1024 * 1024 * 1024, Number(process.env.CAMERA_ARCHIVE_MAX_BYTES || 45 * 1024 * 1024 * 1024));
 const _cameraRetentionMs = Math.max(3600000, Number(process.env.CAMERA_CLOUD_RETENTION_HOURS || 24) * 3600000);
 let _cameraCleanupRunning = false;
@@ -870,6 +874,64 @@ router.post('/agent-camera-segment', async (req, res) => {
     if (err && err.message === 'UPLOAD_LIMIT') return res.status(413).json({ error: 'segmento acima de 90 MB' });
     console.error('[agent-camera-segment]', err);
     res.status(500).json({ error: 'falha ao armazenar segmento' });
+  }
+});
+
+// HLS ao vivo na nuvem. O notebook envia pequenos segmentos MPEG-TS e a
+// playlist corrente; o painel serve tudo pelo mesmo dominio do TenisCash.
+router.post('/agent-camera-live', async (req, res) => {
+  let tempFile = null;
+  try {
+    const store = await agentTokenStore(req);
+    if (!store) return res.status(401).json({ error: 'token de agente inválido' });
+
+    const camera = String(req.headers['x-camera-name'] || '').trim().toLowerCase();
+    const fileName = _agPath.basename(String(req.headers['x-live-file-name'] || '')).replace(/[^A-Za-z0-9._-]/g, '');
+    const expectedCameraPrefix = String(store.code || '').toLowerCase() + '_camera';
+    if (!camera.startsWith(expectedCameraPrefix) || !/^loja\d{2}_camera\d+$/.test(camera)) return res.status(400).json({ error: 'câmera inválida' });
+    if (!/^(?:index\.m3u8|\d{8}T\d{6}(?:_\d+)?\.ts)$/.test(fileName)) return res.status(400).json({ error: 'arquivo HLS inválido' });
+
+    const announcedLength = Number(req.headers['content-length'] || 0);
+    if (announcedLength > _cameraLiveUploadLimit) return res.status(413).json({ error: 'arquivo HLS acima de 20 MB' });
+
+    const dir = _agPath.join(_cameraLiveDir, String(store.code).toUpperCase(), camera);
+    await _agFs.promises.mkdir(dir, { recursive: true });
+    const finalFile = _agPath.join(dir, fileName);
+    if (fileName !== 'index.m3u8' && _agFs.existsSync(finalFile)) {
+      const stat = await _agFs.promises.stat(finalFile);
+      return res.json({ ok: true, duplicate: true, stored: `${store.code}/${camera}/${fileName}`, bytes: stat.size });
+    }
+
+    tempFile = finalFile + '.' + _agCrypto.randomBytes(6).toString('hex') + '.part';
+    let received = 0;
+    const limiter = new _CameraUploadTransform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        if (received > _cameraLiveUploadLimit) callback(new Error('LIVE_UPLOAD_LIMIT'));
+        else callback(null, chunk);
+      },
+    });
+    await _cameraUploadPipeline(req, limiter, _agFs.createWriteStream(tempFile, { flags: 'wx' }));
+    await _agFs.promises.rename(tempFile, finalFile);
+    tempFile = null;
+
+    const cutoff = Date.now() - 15 * 60 * 1000;
+    setImmediate(async () => {
+      try {
+        for (const entry of await _agFs.promises.readdir(dir, { withFileTypes: true })) {
+          if (!entry.isFile() || entry.name === 'index.m3u8' || entry.name.endsWith('.part')) continue;
+          const full = _agPath.join(dir, entry.name);
+          const stat = await _agFs.promises.stat(full);
+          if (stat.mtimeMs < cutoff) await _agFs.promises.unlink(full);
+        }
+      } catch (err) { console.error('[camera-live-cleanup]', err.message); }
+    });
+    res.json({ ok: true, stored: `${store.code}/${camera}/${fileName}`, bytes: received });
+  } catch (err) {
+    if (tempFile) { try { await _agFs.promises.unlink(tempFile); } catch {} }
+    if (err && err.message === 'LIVE_UPLOAD_LIMIT') return res.status(413).json({ error: 'arquivo HLS acima de 20 MB' });
+    console.error('[agent-camera-live]', err);
+    res.status(500).json({ error: 'falha ao armazenar transmissão' });
   }
 });
 

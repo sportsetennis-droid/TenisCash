@@ -15,6 +15,9 @@ const CAP_DIR = path.join(process.cwd(), 'captures');
 const CAMERA_ARCHIVE_DIR = process.env.CAMERA_ARCHIVE_DIR || (process.platform === 'win32'
   ? path.join(process.cwd(), 'data', 'camera-recordings')
   : '/data/camera-recordings');
+const CAMERA_LIVE_DIR = process.env.CAMERA_LIVE_DIR || (process.platform === 'win32'
+  ? path.join(process.cwd(), 'data', 'camera-live')
+  : '/data/camera-live');
 const CMD_TYPES = ['restart-agent', 'update-agent', 'update-supervisor', 'tailscale-up', 'funnel-up', 'get-health', 'get-log', 'capture-list', 'capture-pull', 'ping'];
 
 // Estado de TODAS as maquinas (heartbeat dos Supervisores).
@@ -128,6 +131,21 @@ router.get('/camera-recording/:store/:camera/:name', (req, res) => {
   res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
   res.setHeader('Content-Length', end - start + 1);
   fs.createReadStream(full, { start, end }).pipe(res);
+});
+
+router.get('/camera-live/:store/:camera/:name', (req, res) => {
+  const store = String(req.params.store || '').toUpperCase();
+  const camera = String(req.params.camera || '').toLowerCase();
+  const name = path.basename(String(req.params.name || '')).replace(/[^A-Za-z0-9._-]/g, '');
+  if (!/^LOJA\d{2}$/.test(store) || !/^loja\d{2}_camera\d+$/.test(camera) || !camera.startsWith(store.toLowerCase() + '_camera')) {
+    return res.status(400).json({ error: 'loja/câmera inválida' });
+  }
+  if (!/^(?:index\.m3u8|\d{8}T\d{6}(?:_\d+)?\.ts)$/.test(name)) return res.status(400).json({ error: 'arquivo HLS inválido' });
+  const full = path.join(CAMERA_LIVE_DIR, store, camera, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'transmissão ainda não disponível' });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t');
+  fs.createReadStream(full).pipe(res);
 });
 
 module.exports = router;

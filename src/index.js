@@ -128,7 +128,7 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Pula rotas administrativas internas com auth (já protegidas via authMiddleware+adminMiddleware)
-  skip: (req) => /^\/api\/admin\//.test(req.path),
+  skip: (req) => /^\/api\/admin\//.test(req.path) || /^\/api\/auth\/agent-camera-live(?:\/|$)/.test(req.path),
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' }
 });
 app.use('/api/', limiter);
@@ -141,7 +141,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   // Isenta os endpoints de AGENTE (token-auth, NAO login) — senao os heartbeats dos
   // Supervisores (a cada 45s, varias maquinas) + o instalador estouram 20/15min e travam o rollout.
-  skip: (req) => /\/agent-(update|control|capture|camera-segment)(\/|$|\?)/.test(req.originalUrl || req.url || ''),
+  skip: (req) => /\/agent-(update|control|capture|camera-segment|camera-live)(\/|$|\?)/.test(req.originalUrl || req.url || ''),
   message: { error: 'Muitas tentativas de login. Aguarde 15 minutos.' }
 });
 app.use('/api/auth/', authLimiter);

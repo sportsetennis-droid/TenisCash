@@ -906,7 +906,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       function cameraAIStreamKey() { return cameraAISelectedStore + ':' + cameraAISelectedCamera; }
       function cameraAIDefaultLiveUrl() {
         if (cameraAISelectedStore !== '05' || !/^cam0[1-6]$/.test(cameraAISelectedCamera)) return '';
-        return 'https://loja05.tailcdc08b.ts.net/loja05_camera' + Number(cameraAISelectedCamera.slice(3)) + '/index.m3u8';
+        return '/api/admin/security/camera-live/LOJA05/loja05_camera' + Number(cameraAISelectedCamera.slice(3)) + '/index.m3u8';
       }
       function cameraAIResetPlayer() {
         if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
@@ -1000,7 +1000,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         const badge = document.getElementById('camera-ai-live-badge');
         const url = (input?.value || '').trim();
         if (!cameraAISelectedCamera) { cameraAISetMessage('Esta loja ainda não possui câmera cadastrada.'); return; }
-        if (!/^https:\/\/[^\s]+\.m3u8(?:\?[^\s]*)?$/i.test(url)) { cameraAISetMessage('Informe uma URL HLS HTTPS válida, terminada em .m3u8.'); return; }
+        const cloudLiveUrl = /^\/api\/admin\/security\/camera-live\/LOJA\d{2}\/loja\d{2}_camera\d+\/index\.m3u8$/i.test(url);
+        if (!cloudLiveUrl && !/^https:\/\/[^\s]+\.m3u8(?:\?[^\s]*)?$/i.test(url)) { cameraAISetMessage('Informe uma URL HLS HTTPS válida, terminada em .m3u8.'); return; }
         const streams = cameraAIStreams();
         streams[cameraAIStreamKey()] = url;
         localStorage.setItem('tc_camera_ai_streams_v2', JSON.stringify(streams));
@@ -1009,7 +1010,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
           if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
           await cameraAILoadLibrary();
           if (window.Hls && Hls.isSupported()) {
-            cameraAIHls = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
+            cameraAIHls = new Hls({
+              lowLatencyMode:true,
+              liveSyncDuration:3,
+              xhrSetup: (xhr) => {
+                const token = localStorage.getItem('tc_admin_token') || '';
+                if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+              },
+            });
             cameraAIHls.loadSource(url);
             cameraAIHls.attachMedia(video);
             cameraAIHls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) cameraAISetMessage('A transmissão está indisponível. Confirme se o computador da loja continua ligado.'); });
