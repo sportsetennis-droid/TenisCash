@@ -33,6 +33,7 @@ Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
 $template = Join-Path $PSScriptRoot 'mediamtx-loja05.yml.template'
 $uploader = Join-Path $PSScriptRoot 'upload-segment.ps1'
 $recorder = Join-Path $PSScriptRoot 'record-loja05.ps1'
+$recordingUploader = Join-Path $PSScriptRoot 'upload-recordings.ps1'
 if (-not (Test-Path -LiteralPath $template)) { throw 'Template do gravador não encontrado.' }
 if (-not (Test-Path -LiteralPath $uploader)) { throw 'Uploader do gravador não encontrado.' }
 
@@ -45,6 +46,7 @@ $configPath = Join-Path $root 'mediamtx.yml'
 [IO.File]::WriteAllText($configPath, $config, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath $uploader -Destination (Join-Path $root 'upload-segment.ps1') -Force
 Copy-Item -LiteralPath $recorder -Destination (Join-Path $root 'record-loja05.ps1') -Force
+Copy-Item -LiteralPath $recordingUploader -Destination (Join-Path $root 'upload-recordings.ps1') -Force
 
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     winget install --id Gyan.FFmpeg --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity

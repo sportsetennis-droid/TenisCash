@@ -9,6 +9,7 @@ $ffmpeg = Join-Path $root 'ffmpeg.exe'
 $agentEnv = 'C:\TenisCashAgent\.env'
 $logFile = Join-Path $root 'recorder.log'
 $uploadLog = Join-Path $root 'upload.log'
+$uploaderScript = Join-Path $root 'upload-recordings.ps1'
 $cloudUrl = 'https://www.teniscash.com.br/api/auth/agent-camera-segment'
 $retentionHours = 72
 $localMaxBytes = 320GB
@@ -30,6 +31,7 @@ $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom
 New-Item -ItemType Directory -Path $recordRoot -Force | Out-Null
 
 $processes = @{}
+$uploaderProcess = $null
 
 function Start-CameraRecorder($camera) {
     $cameraDir = Join-Path $recordRoot $camera.name
@@ -131,7 +133,10 @@ try {
             }
         }
         if ((Get-Date) -gt $lastMaintenance.AddMinutes(1)) {
-            Send-CompletedSegments
+            if ((Test-Path -LiteralPath $uploaderScript) -and (-not $uploaderProcess -or $uploaderProcess.HasExited)) {
+                $uploaderProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $uploaderScript) -WindowStyle Hidden -PassThru
+                Write-RecorderLog "UPLOAD_WORKER pid=$($uploaderProcess.Id)"
+            }
             Remove-ExpiredSegments
             $lastMaintenance = Get-Date
         }
