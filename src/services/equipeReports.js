@@ -443,7 +443,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
     .split(',').map((value) => value.trim()).filter(Boolean);
 
-  const [productionDays, clockIns, activeSellers] = await Promise.all([
+  const [productionDays, clockIns] = await Promise.all([
     prisma.sellerProductionDay.findMany({
       where: {
         workDate: { gte: dayStart, lt: dayEnd },
@@ -485,36 +485,10 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       },
       orderBy: { timestamp: 'asc' },
     }),
-    prisma.user.findMany({
-      where: { role: 'seller', active: true },
-      select: { id: true, name: true, active: true },
-      orderBy: { name: 'asc' },
-    }),
   ]);
-  const days = mergeTaskReportRows(productionDays, clockIns, production.RULES);
-  const listedSellerIds = new Set(days.map((day) => day.seller?.id || day.sellerId));
-  for (const seller of activeSellers) {
-    if (listedSellerIds.has(seller.id)) continue;
-    days.push({
-      id: `seller-no-point:${seller.id}`,
-      sellerId: seller.id,
-      seller,
-      store: null,
-      reportStore: null,
-      reportClockIns: [],
-      reportSynthetic: true,
-      status: 'OPEN',
-      scheduleStart: null,
-      scheduleEnd: null,
-      items: production.RULES.map((rule) => ({
-        ruleKey: rule.key,
-        phase: rule.phase,
-        position: rule.position,
-        title: rule.title,
-        status: 'PENDING',
-      })),
-    });
-  }
+  // Regra do grupo: só aparece quem tem ponto registrado hoje.
+  const days = mergeTaskReportRows(productionDays, clockIns, production.RULES)
+    .filter((day) => Array.isArray(day.reportClockIns) && day.reportClockIns.length > 0);
 
   days.sort((a, b) => {
     const storeOrder = String(a.reportStore?.name || a.store?.name || '').localeCompare(
@@ -529,8 +503,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   lines.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
 
   if (!days.length) {
-    lines.push('⚪ Nenhum checklist de vendedor foi gerado para hoje.');
-    lines.push('Isso não é classificado automaticamente como descumprimento: confira a escala publicada.');
+    lines.push('⚪ Nenhum vendedor com ponto registrado hoje.');
     return lines.join('\n');
   }
 
@@ -646,13 +619,11 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     }
   }
 
-  const pointMissing = Math.max(0, days.length - pointRegistered);
   lines.splice(summaryInsertIndex, 0,
     '',
     `📍 *PERCENTUAL DE TAREFAS — ${pointRegistered}/${days.length} com ponto registrado*`,
     'Cálculo: tarefas aprovadas pela fiscalização ÷ tarefas previstas do dia.',
     ...summaryRows,
-    ...(pointMissing ? [`🔴 ${pointMissing} vendedor(es) sem ponto; percentual não classifica descumprimento sem registro.`] : []),
     '',
   );
 
