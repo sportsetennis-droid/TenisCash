@@ -38,6 +38,11 @@ function run() {
     ['09:00', '12:00', '15:00', '18:00', '21:00'],
     'sem fechamento cadastrado, os ciclos devem permanecer dentro do mesmo dia',
   );
+  assert.deepStrictEqual(
+    buildTaskReportSchedule([], { openingMinutes: 8 * 60, closingMinutes: 18 * 60 }).slots.map(formatMinutes),
+    ['09:00', '12:00', '15:00', '18:00'],
+    'entrada e saída batidas devem formar a escala diária completa',
+  );
   assert.strictEqual(checkpointToMinutes('09:30'), 570);
   assert.strictEqual(checkpointToMinutes(13), 780, 'número pequeno mantém compatibilidade como hora');
   assert.strictEqual(checkpointToMinutes(570), 570, 'número grande representa minuto do dia');
