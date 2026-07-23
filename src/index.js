@@ -128,7 +128,18 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Pula rotas administrativas internas com auth (já protegidas via authMiddleware+adminMiddleware)
-  skip: (req) => /^\/api\/admin\//.test(req.path) || /^\/api\/auth\/agent-camera-live(?:\/|$)/.test(req.path),
+  // HLS de cameras gera muitas requisicoes curtas por minuto. Ele possui
+  // controles proprios e nao pode consumir o limite das rotas de cadastro,
+  // login e WhatsApp do mesmo endereco IP.
+  skip: (req) => {
+    const path = req.path || '';
+    return (
+      /^\/(?:api\/)?admin\//.test(path)
+      || /^\/(?:api\/)?auth\/agent-camera-live(?:\/|$)/.test(path)
+      || /^\/(?:api\/)?live\/camera\//.test(path)
+      || /^\/(?:api\/)?admin\/security\/camera-live\//.test(path)
+    );
+  },
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' }
 });
 app.use('/api/', limiter);

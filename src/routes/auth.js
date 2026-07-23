@@ -7,6 +7,11 @@ const { sendEmailCode, verifyEmailCode } = require('../email');
 
 const router = express.Router();
 
+function maskPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length >= 4 ? `***${digits.slice(-4)}` : '***';
+}
+
 // VALIDAÇÃO DE CPF
 function validarCPF(cpf) {
   cpf = cpf.replace(/\D/g, '');
@@ -35,6 +40,7 @@ router.post('/send-code-profile', authMiddleware, async (req, res) => {
     if (!phone) return res.status(400).json({ error: 'Telefone é obrigatório' });
     const cleanPhone = phone.replace(/\D/g, '');
     const result = await sendVerificationCode(cleanPhone);
+    console.log(`[auth/send-code] phone=${maskPhone(cleanPhone)} success=${!!result.success} provider=${result.provider || 'none'} error=${result.success ? 'none' : (result.message || 'unknown')}`);
     if (result.success) {
       res.json({ success: true, message: 'Código enviado para seu WhatsApp' });
     } else {
