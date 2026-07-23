@@ -120,6 +120,23 @@ app.use(express.json({
   },
 }));
 
+function isCameraAssetPath(pathname) {
+  return /^\/(?:api\/)?live\/camera\//.test(pathname || '')
+    || /^\/(?:api\/)?admin\/security\/camera-live\//.test(pathname || '');
+}
+
+// HLS precisa de um limite separado: uma pagina com varias cameras faz muitas
+// requisicoes curtas e nao pode consumir o limite das rotas de cadastro.
+const cameraLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isCameraAssetPath(req.path),
+  message: { error: 'Muitas requisicoes de video. Aguarde alguns minutos.' },
+});
+app.use('/api/', cameraLimiter);
+
 // Rate limiting global — generoso pra não travar admin trabalhando em massa,
 // mas o suficiente pra bloquear scripts maliciosos.
 const limiter = rateLimit({
@@ -136,8 +153,7 @@ const limiter = rateLimit({
     return (
       /^\/(?:api\/)?admin\//.test(path)
       || /^\/(?:api\/)?auth\/agent-camera-live(?:\/|$)/.test(path)
-      || /^\/(?:api\/)?live\/camera\//.test(path)
-      || /^\/(?:api\/)?admin\/security\/camera-live\//.test(path)
+      || isCameraAssetPath(path)
     );
   },
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' }
