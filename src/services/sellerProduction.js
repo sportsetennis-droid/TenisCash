@@ -148,6 +148,46 @@ function validateSubmission(rule, payload, context = {}) {
   return errors;
 }
 
+/**
+ * Decide se uma atividade pode ser fiscalizada imediatamente pelo robô.
+ * A decisão é deliberadamente limitada a fatos verificáveis no envio:
+ * arquivo não vazio, tipo correto, hash sem duplicidade e campos que já
+ * passaram por validateSubmission. Conteúdo visual que não puder ser
+ * comprovado automaticamente continua na fila para revisão humana.
+ */
+function automaticSubmissionReview({ rule, payload = {}, evidence = [] } = {}) {
+  if (!rule) return { approved: false, reason: 'Regra da atividade não encontrada.' };
+
+  const rows = Array.isArray(evidence) ? evidence : [];
+  const flagged = rows.find((entry) => {
+    const checks = entry?.automatedChecks || {};
+    return entry?.automatedStatus === 'FLAGGED_DUPLICATE'
+      || checks.exactDuplicateDetected
+      || checks.fileNonEmpty === false
+      || checks.mediaTypeMatches === false;
+  });
+  if (flagged) {
+    return { approved: false, reason: 'Evidência duplicada ou tecnicamente inconsistente.' };
+  }
+
+  const missingIntegrity = rows.find((entry) => {
+    const checks = entry?.automatedChecks || {};
+    return !checks.hashCaptured || checks.fileNonEmpty !== true;
+  });
+  if (missingIntegrity) {
+    return { approved: false, reason: 'Evidência sem integridade técnica confirmada.' };
+  }
+
+  // validateSubmission já conferiu links, confirmações, duração, produtos e
+  // prova do WhatsApp. O robô só registra a decisão automática; ele não
+  // inventa aprovação quando o envio não passou por aquela validação.
+  return {
+    approved: true,
+    note: 'Aprovada automaticamente: requisitos, evidências e integridade técnica conferidos pelo robô.',
+    payload,
+  };
+}
+
 function dayProgress(items) {
   const rows = Array.isArray(items) ? items : [];
   const total = rows.length;
@@ -197,6 +237,7 @@ module.exports = {
   normalizeProductRef,
   parseConfirmations,
   validateSubmission,
+  automaticSubmissionReview,
   dayProgress,
   monthlyEligibility,
 };

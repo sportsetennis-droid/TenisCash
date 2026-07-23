@@ -1,5 +1,6 @@
 // Cria o checklist dos vendedores escalados e acompanha pendencias durante o dia.
-// O robo apenas lembra e organiza a fiscalizacao. Nao reprova, pune ou fecha dias.
+// A fiscalizacao automatica acontece no envio da atividade; este robo lembra o
+// que falta e deixa para revisao humana somente as excecoes tecnicas.
 
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');

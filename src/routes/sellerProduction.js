@@ -461,11 +461,29 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
       Object.assign(saved, await addEvidenceIntegrityChecks(saved, { sellerId: req.userId, rule, kind: 'WHATSAPP_PROOF', batchHashes }));
     }
 
+    const automaticReviewEnabled = process.env.AUTO_APPROVE_SELLER_TASKS !== '0';
+    const automaticReview = automaticReviewEnabled
+      ? production.automaticSubmissionReview({ rule, payload, evidence: savedFiles })
+      : { approved: false, reason: 'Fiscalização automática desativada por configuração.' };
+    const autoApprovedAt = automaticReview.approved ? new Date() : null;
+    if (automaticReview.approved) {
+      for (const file of savedFiles) {
+        file.automatedStatus = 'AUTO_APPROVED';
+        file.automatedChecks = {
+          ...(file.automatedChecks || {}),
+          humanReviewRequired: false,
+          reviewMode: 'AUTOMATIC',
+          approvedAt: autoApprovedAt.toISOString(),
+        };
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
+      const submittedAt = new Date();
       const claimed = await tx.sellerProductionItem.updateMany({
         where: { id: item.id, status: { in: ['PENDING', 'REJECTED'] } },
         data: {
-          status: 'SUBMITTED',
+          status: automaticReview.approved ? 'APPROVED' : 'SUBMITTED',
           note: String(req.body.note || '').trim().slice(0, 4000) || null,
           publicationUrl: String(req.body.publicationUrl || '').trim().slice(0, 1000) || null,
           whatsappProofUrl: String(req.body.whatsappProofUrl || '').trim().slice(0, 1000) || null,
@@ -473,17 +491,33 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
           productRefs,
           requirementsConfirmedJson: JSON.stringify(production.parseConfirmations(req.body.requirementsConfirmedJson)),
           noInstagramStoryConfirmed: parseBoolean(req.body.noInstagramStoryConfirmed),
-          submittedAt: new Date(),
+          submittedAt,
           reviewedById: null,
-          reviewedAt: null,
-          reviewNote: null,
+          reviewedAt: autoApprovedAt,
+          reviewNote: automaticReview.approved
+            ? automaticReview.note
+            : null,
         },
       });
       if (claimed.count !== 1) throw new Error('Atividade alterada por outra operacao. Atualize a tela.');
       if (savedFiles.length) {
         await tx.sellerProductionEvidence.createMany({ data: savedFiles.map((file) => ({ itemId: item.id, ...file })) });
       }
-      await tx.sellerProductionDay.update({ where: { id: item.dayId }, data: { status: 'OPEN', submittedAt: null } });
+      const rows = await tx.sellerProductionItem.findMany({ where: { dayId: item.dayId }, select: { status: true } });
+      const progress = production.dayProgress(rows);
+      const dayAutomaticallyApproved = automaticReview.approved && progress.complete;
+      await tx.sellerProductionDay.update({
+        where: { id: item.dayId },
+        data: {
+          status: dayAutomaticallyApproved ? 'APPROVED' : 'OPEN',
+          submittedAt: null,
+          finalizedById: null,
+          finalizedAt: dayAutomaticallyApproved ? autoApprovedAt : null,
+          finalNote: dayAutomaticallyApproved
+            ? 'Dia aprovado automaticamente: todas as atividades passaram pela validação técnica do robô.'
+            : null,
+        },
+      });
     });
 
     const updated = await prisma.sellerProductionDay.findUnique({ where: { id: item.dayId }, include: dayInclude() });

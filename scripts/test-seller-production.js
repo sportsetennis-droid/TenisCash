@@ -24,6 +24,24 @@ function run() {
     noInstagramStoryConfirmed: true,
   };
   assert.deepStrictEqual(production.validateSubmission(productRule, completeProductPayload, { evidenceKinds: ['WHATSAPP_PROOF'] }), [], 'reels completo deve ser valido');
+  const automaticReview = production.automaticSubmissionReview({
+    rule: productRule,
+    payload: completeProductPayload,
+    evidence: [{
+      automatedStatus: 'TECHNICALLY_VALID',
+      automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true },
+    }],
+  });
+  assert.strictEqual(automaticReview.approved, true, 'envio tecnicamente valido deve ser aprovado automaticamente');
+  const duplicateReview = production.automaticSubmissionReview({
+    rule: productRule,
+    payload: completeProductPayload,
+    evidence: [{
+      automatedStatus: 'FLAGGED_DUPLICATE',
+      automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true, exactDuplicateDetected: true },
+    }],
+  });
+  assert.strictEqual(duplicateReview.approved, false, 'evidencia duplicada deve ficar para revisao');
 
   const wrongDuration = production.validateSubmission(productRule, { ...completeProductPayload, durationSeconds: 44 }, { evidenceKinds: ['WHATSAPP_PROOF'] });
   assert(wrongDuration.some((message) => message.includes('45 segundos')), 'duracao deve ser exata');
