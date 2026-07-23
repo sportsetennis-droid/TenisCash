@@ -20,14 +20,12 @@
 const cron = require('node-cron');
 const { prisma } = require('../middleware');
 const { sendEvolutionRaw, isEvolutionConfigured } = require('../whatsapp');
-const production = require('./sellerProduction');
 const {
   classifyProductionDay,
   checkpointToMinutes,
   formatMinutes,
   buildTaskReportSchedule,
   splitWhatsAppText,
-  mergeTaskReportRows,
 } = require('./taskComplianceReport');
 
 const TZ_OFFSET_MIN = -180; // America/Fortaleza (UTC-3)
@@ -437,7 +435,7 @@ function taskCheckpoint(checkpointValue, now = new Date()) {
   return { minutes, label: formatMinutes(minutes) };
 }
 
-async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
+/* async function buildLegacyTaskComplianceReport(checkpointValue, now = new Date()) {
   const checkpoint = taskCheckpoint(checkpointValue, now);
   const dayStart = localDayStartUtc(now);
   const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
@@ -633,6 +631,96 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   );
 
   lines.push('Somente APPROVED entra no percentual; SUBMITTED permanece aguardando fiscalização.');
+  return lines.join('\n');
+}
+*/
+
+/**
+ * Monta o relatório direto de produção das tarefas.
+ *
+ * O relatório de ponto é separado: nenhum registro de ponto é consultado,
+ * usado para filtrar vendedores ou exibido aqui. A produção é medida apenas
+ * pelas tarefas do checklist e somente APPROVED entra no percentual.
+ */
+async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
+  const checkpoint = taskCheckpoint(checkpointValue, now);
+  const dayStart = localDayStartUtc(now);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
+  const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+
+  const days = await prisma.sellerProductionDay.findMany({
+    where: {
+      workDate: { gte: dayStart, lt: dayEnd },
+      ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+    },
+    select: {
+      id: true,
+      sellerId: true,
+      status: true,
+      scheduleStart: true,
+      scheduleEnd: true,
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          active: true,
+        },
+      },
+      store: { select: { id: true, name: true, code: true } },
+      items: {
+        select: { ruleKey: true, phase: true, position: true, title: true, status: true },
+        orderBy: { position: 'asc' },
+      },
+    },
+  });
+
+  days.sort((a, b) => String(a.seller?.name || '').localeCompare(
+    String(b.seller?.name || ''),
+    'pt-BR',
+  ));
+
+  const lines = [
+    `📊 *PERCENTUAL DE TAREFAS — ${checkpoint.label}*`,
+    `${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`,
+  ];
+
+  if (!days.length) {
+    lines.push('⚪ Nenhuma tarefa registrada hoje.');
+    return lines.join('\n');
+  }
+
+  lines.push('', 'Produção aprovada pela fiscalização:');
+  for (const day of days) {
+    const result = classifyProductionDay(day, checkpoint.minutes);
+    const items = Array.isArray(day.items) ? day.items : [];
+    const totalTasks = items.length;
+    const approvedTasks = result.approved.length;
+    const percentage = totalTasks > 0 ? Math.round((approvedTasks / totalTasks) * 100) : 0;
+    const submittedTasks = items.filter((item) => item.status === 'SUBMITTED').length;
+    const rejectedTasks = items.filter((item) => item.status === 'REJECTED').length;
+    const state = day.status === 'EXCUSED'
+      ? 'DIA JUSTIFICADO'
+      : rejectedTasks
+        ? 'DEVOLVIDA PARA CORREÇÃO'
+        : submittedTasks
+          ? 'AGUARDANDO FISCALIZAÇÃO'
+          : totalTasks > 0 && approvedTasks === totalTasks
+            ? 'CONCLUÍDO'
+            : approvedTasks
+              ? 'PARCIALMENTE CUMPRIDO'
+              : 'SEM PRODUÇÃO APROVADA';
+    const marker = percentage === 100 ? '✅' : percentage > 0 ? '⚠️' : '❌';
+    lines.push(
+      `${marker} *${day.seller?.name || 'Vendedor'}* — ${percentage}% (${approvedTasks}/${totalTasks} tarefas aprovadas) · ${state}`,
+    );
+  }
+
+  lines.push(
+    '',
+    'Cálculo: tarefas aprovadas pela fiscalização ÷ tarefas previstas do dia.',
+    '0% = nenhuma tarefa aprovada até este relatório.',
+  );
   return lines.join('\n');
 }
 
