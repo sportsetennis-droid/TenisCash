@@ -76,7 +76,6 @@ function startOne(cameraNumber, port) {
     '-probesize', '3000000',
     '-reconnect', '1',
     '-reconnect_streamed', '1',
-    '-reconnect_at_eof', '1',
     '-reconnect_delay_max', '2',
     '-i', inputUrl,
     '-filter_complex', correctionFilter(),
@@ -136,7 +135,7 @@ function startOne(cameraNumber, port) {
     children.delete(cameraNumber);
     const detail = stderr.trim().split(/\r?\n/).slice(-2).join(' | ');
     console.warn(`[camera-correction] camera=${cameraNumber} exit=${code} signal=${signal || '-'} ${detail}`);
-    schedule(cameraNumber, port, 1000);
+    schedule(cameraNumber, port, /429 Too Many Requests/.test(stderr) ? 60000 : 1000);
   });
 }
 
