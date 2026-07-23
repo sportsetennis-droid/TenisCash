@@ -6,7 +6,7 @@
 // 2) RELATÓRIO DE VENDAS: 13h, 18h e 21h — por LOJA e por VENDEDOR.
 //    Mostra TODOS os vendedores ativos, inclusive os que zeraram.
 // 3) RELATÓRIO DE TAREFAS: 1h após a primeira escala abrir e depois a cada 3h.
-//    Mostra o aprovado, o que aguarda fiscalização e o não cumprido no prazo.
+//    Mostra o percentual de tarefas aprovadas, pendentes e em fiscalização.
 //
 // Envio: Evolution API (instância padrão = teniscash, o nº 9671 da S&T).
 // Timezone: America/Fortaleza (UTC-3 fixo, sem horário de verão) — regra do projeto.
@@ -427,7 +427,8 @@ function taskLineList(lines, label, emoji, items) {
 /**
  * Monta o relatório das atividades de produção do dia.
  * O sistema não transforma envio em cumprimento: somente APPROVED é "cumpriu".
- * PENDING/REJECTED só vira "não cumpriu" depois do prazo derivado da escala.
+ * O horário do checkpoint só define quando o relatório é emitido; não decide
+ * sozinho se a tarefa foi cumprida. Cumprimento exige registro e aprovação.
  */
 function taskCheckpoint(checkpointValue, now = new Date()) {
   const parsed = checkpointToMinutes(checkpointValue);
@@ -546,20 +547,24 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     const totalTasks = day.items.length;
     const approvedTasks = result.approved.length;
     const percentage = totalTasks ? Math.round((approvedTasks / totalTasks) * 100) : null;
+    const submittedTasks = day.items.filter((item) => item.status === 'SUBMITTED').length;
+    const rejectedTasks = day.items.filter((item) => item.status === 'REJECTED').length;
     const pointSummary = observedEntry
       ? `ponto ${fmtTime(observedEntry)}${observedExit ? `–${fmtTime(observedExit)}` : ' (saída pendente)'}`
       : observedExit
         ? `ponto saída ${fmtTime(observedExit)} (entrada pendente)`
         : 'sem ponto';
     const state = !hasPoint
-      ? 'SEM PONTO — não classificado como descumprimento'
-      : result.awaitingReview.length
+      ? 'SEM PONTO'
+      : rejectedTasks
+        ? 'DEVOLVIDA PARA CORREÇÃO'
+        : submittedTasks
         ? 'AGUARDANDO FISCALIZAÇÃO'
-        : result.noncompliant.length
-          ? 'NÃO CUMPRIU NO PRAZO'
-          : result.notDue.length
-            ? 'EM ANDAMENTO'
-            : 'CONCLUÍDO';
+        : approvedTasks === totalTasks
+          ? 'CONCLUÍDO'
+          : approvedTasks
+            ? 'PARCIALMENTE CUMPRIDO'
+            : 'PENDENTE DE REGISTRO';
     summaryRows.push(
       `${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}* — ${reportStore?.name || 'loja não informada'}`,
       `   ${percentage === null ? 'Percentual não calculado' : `${percentage}% (${approvedTasks}/${totalTasks})`} · ${pointSummary} · ${state}`,
