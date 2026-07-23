@@ -443,7 +443,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
     .split(',').map((value) => value.trim()).filter(Boolean);
 
-  const [productionDays, clockIns] = await Promise.all([
+  const [productionDays, clockIns, activeSellers] = await Promise.all([
     prisma.sellerProductionDay.findMany({
       where: {
         workDate: { gte: dayStart, lt: dayEnd },
@@ -485,8 +485,36 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       },
       orderBy: { timestamp: 'asc' },
     }),
+    prisma.user.findMany({
+      where: { role: 'seller', active: true },
+      select: { id: true, name: true, active: true },
+      orderBy: { name: 'asc' },
+    }),
   ]);
   const days = mergeTaskReportRows(productionDays, clockIns, production.RULES);
+  const listedSellerIds = new Set(days.map((day) => day.seller?.id || day.sellerId));
+  for (const seller of activeSellers) {
+    if (listedSellerIds.has(seller.id)) continue;
+    days.push({
+      id: `seller-no-point:${seller.id}`,
+      sellerId: seller.id,
+      seller,
+      store: null,
+      reportStore: null,
+      reportClockIns: [],
+      reportSynthetic: true,
+      status: 'OPEN',
+      scheduleStart: null,
+      scheduleEnd: null,
+      items: production.RULES.map((rule) => ({
+        ruleKey: rule.key,
+        phase: rule.phase,
+        position: rule.position,
+        title: rule.title,
+        status: 'PENDING',
+      })),
+    });
+  }
 
   days.sort((a, b) => {
     const storeOrder = String(a.reportStore?.name || a.store?.name || '').localeCompare(
@@ -497,12 +525,8 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   });
 
   const lines = [];
-  lines.push(`📋 *TAREFAS — POSIÇÃO DAS ${checkpoint.label}*`);
+  lines.push(`📊 *PERCENTUAL DE TAREFAS — ${checkpoint.label}*`);
   lines.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
-  lines.push('Somente tarefa aprovada pela fiscalização aparece como cumprida.');
-  lines.push('Prazo: chegada em até 1h da escala; etapas seguintes em ciclos de 3h.');
-  lines.push('Inclui todos que bateram ponto hoje e também quem já possuía checklist/escala.');
-  lines.push('━━━━━━━━━━━━━━');
 
   if (!days.length) {
     lines.push('⚪ Nenhum checklist de vendedor foi gerado para hoje.');
@@ -510,6 +534,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     return lines.join('\n');
   }
 
+  const compact = true;
   const totals = {
     sellers: days.length,
     approved: 0,
@@ -545,14 +570,26 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     const result = classifyProductionDay(effectiveDay, checkpoint.minutes);
     const hasPoint = Boolean(observedEntry || observedExit);
     if (hasPoint) pointRegistered += 1;
+    const totalTasks = day.items.length;
+    const approvedTasks = result.approved.length;
+    const percentage = totalTasks ? Math.round((approvedTasks / totalTasks) * 100) : null;
     const pointSummary = observedEntry
-      ? `entrada ${fmtTime(observedEntry)}${observedExit ? ` · saída ${fmtTime(observedExit)}` : ' · saída pendente'}`
+      ? `ponto ${fmtTime(observedEntry)}${observedExit ? `–${fmtTime(observedExit)}` : ' (saída pendente)'}`
       : observedExit
-        ? `saída ${fmtTime(observedExit)} · entrada pendente`
-        : 'sem ponto registrado';
+        ? `ponto saída ${fmtTime(observedExit)} (entrada pendente)`
+        : 'sem ponto';
+    const state = !hasPoint
+      ? 'SEM PONTO — não classificado como descumprimento'
+      : result.awaitingReview.length
+        ? 'AGUARDANDO FISCALIZAÇÃO'
+        : result.noncompliant.length
+          ? 'NÃO CUMPRIU NO PRAZO'
+          : result.notDue.length
+            ? 'EM ANDAMENTO'
+            : 'CONCLUÍDO';
     summaryRows.push(
-      `  ${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}* — ${reportStore?.name || 'Loja não informada'} · ${pointSummary}`,
-      `     ✅ ${result.approved.length} · 🔎 ${result.awaitingReview.length} · ❌ ${result.noncompliant.length} · ↩️ ${result.correctionInTime.length} · ⏳ ${result.notDue.length}`,
+      `${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}* — ${reportStore?.name || 'loja não informada'}`,
+      `   ${percentage === null ? 'Percentual não calculado' : `${percentage}% (${approvedTasks}/${totalTasks})`} · ${pointSummary} · ${state}`,
     );
     totals.approved += result.approved.length;
     totals.awaitingReview += result.awaitingReview.length;
@@ -563,6 +600,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     if (!result.scheduleKnown && !result.dayExcused) totals.unknownSchedule += 1;
     if (result.scheduleKnown && !result.endKnown && !result.dayExcused) totals.missingEnd += 1;
 
+    if (!compact) {
     const schedule = day.scheduleStart && day.scheduleEnd
       ? ` · escala ${day.scheduleStart}–${day.scheduleEnd}`
       : effectiveStart && effectiveEnd
@@ -605,31 +643,20 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     if (!day.items.length) {
       lines.push('  ⚠️ Checklist sem tarefas cadastradas.');
     }
+    }
   }
 
   const pointMissing = Math.max(0, days.length - pointRegistered);
   lines.splice(summaryInsertIndex, 0,
     '',
-    `📍 *RESUMO DE TODOS — PONTO E TAREFAS (${pointRegistered}/${days.length} com ponto registrado)*`,
-    'Legenda: ✅ cumpriu · 🔎 aguardando fiscalização · ❌ não cumpriu no prazo · ↩️ devolvida no prazo · ⏳ ainda no prazo',
+    `📍 *PERCENTUAL DE TAREFAS — ${pointRegistered}/${days.length} com ponto registrado*`,
+    'Cálculo: tarefas aprovadas pela fiscalização ÷ tarefas previstas do dia.',
     ...summaryRows,
-    ...(pointMissing ? [`🔴 ${pointMissing} vendedor(es) do checklist estão sem ponto registrado.`] : []),
+    ...(pointMissing ? [`🔴 ${pointMissing} vendedor(es) sem ponto; percentual não classifica descumprimento sem registro.`] : []),
     '',
   );
 
-  lines.push('');
-  lines.push('━━━━━━━━━━━━━━');
-  lines.push(`👥 Vendedores com checklist: ${totals.sellers}`);
-  lines.push(`✅ Cumpridas: ${totals.approved} · 🔎 Aguardando fiscalização: ${totals.awaitingReview}`);
-  lines.push(`❌ Não cumpridas no prazo: ${totals.noncompliant} · ↩️ Em correção no prazo: ${totals.correctionInTime}`);
-  lines.push(`⏳ Ainda no prazo: ${totals.notDue} · ⚪ Justificadas: ${totals.excused}`);
-  if (totals.unknownSchedule) {
-    lines.push(`⚠️ ${totals.unknownSchedule} vendedor(es) sem horário de escala; o sistema não estimou prazos.`);
-  }
-  if (totals.missingEnd) {
-    lines.push(`⚠️ ${totals.missingEnd} vendedor(es) sem horário de saída; a saída ficou para conferência humana.`);
-  }
-  lines.push('Fiscalização e decisão final são humanas; o robô apenas relata os registros.');
+  lines.push('Somente APPROVED entra no percentual; SUBMITTED permanece aguardando fiscalização.');
   return lines.join('\n');
 }
 
