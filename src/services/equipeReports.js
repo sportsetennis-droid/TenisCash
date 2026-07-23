@@ -5,8 +5,8 @@
 //    pro almoço, retorno, saída do trabalho), avisa o grupo da empresa.
 // 2) RELATÓRIO DE VENDAS: 13h, 18h e 21h — por LOJA e por VENDEDOR.
 //    Mostra TODOS os vendedores ativos, inclusive os que zeraram.
-// 3) RELATÓRIO DE TAREFAS: nos mesmos horários, mostra o que foi aprovado,
-//    o que aguarda fiscalização e o que não foi cumprido no prazo da escala.
+// 3) RELATÓRIO DE TAREFAS: 1h após a primeira escala abrir e depois a cada 3h.
+//    Mostra o aprovado, o que aguarda fiscalização e o não cumprido no prazo.
 //
 // Envio: Evolution API (instância padrão = teniscash, o nº 9671 da S&T).
 // Timezone: America/Fortaleza (UTC-3 fixo, sem horário de verão) — regra do projeto.
@@ -22,6 +22,9 @@ const { prisma } = require('../middleware');
 const { sendEvolutionRaw, isEvolutionConfigured } = require('../whatsapp');
 const {
   classifyProductionDay,
+  checkpointToMinutes,
+  formatMinutes,
+  buildTaskReportSchedule,
   splitWhatsAppText,
 } = require('./taskComplianceReport');
 
@@ -424,8 +427,15 @@ function taskLineList(lines, label, emoji, items) {
  * O sistema não transforma envio em cumprimento: somente APPROVED é "cumpriu".
  * PENDING/REJECTED só vira "não cumpriu" depois do prazo derivado da escala.
  */
-async function buildTaskComplianceReport(checkpointHour, now = new Date()) {
-  const hour = [13, 18, 21].includes(Number(checkpointHour)) ? Number(checkpointHour) : 13;
+function taskCheckpoint(checkpointValue, now = new Date()) {
+  const parsed = checkpointToMinutes(checkpointValue);
+  const local = localParts(now);
+  const minutes = parsed === null ? (local.H * 60) + local.Min : parsed;
+  return { minutes, label: formatMinutes(minutes) };
+}
+
+async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
+  const checkpoint = taskCheckpoint(checkpointValue, now);
   const dayStart = localDayStartUtc(now);
   const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
@@ -456,9 +466,10 @@ async function buildTaskComplianceReport(checkpointHour, now = new Date()) {
   });
 
   const lines = [];
-  lines.push(`📋 *TAREFAS — ${CHECKPOINT_LABEL[hour]}*`);
+  lines.push(`📋 *TAREFAS — POSIÇÃO DAS ${checkpoint.label}*`);
   lines.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
   lines.push('Somente tarefa aprovada pela fiscalização aparece como cumprida.');
+  lines.push('Prazo: chegada em até 1h da escala; etapas seguintes em ciclos de 3h.');
   lines.push('━━━━━━━━━━━━━━');
 
   if (!days.length) {
@@ -486,7 +497,7 @@ async function buildTaskComplianceReport(checkpointHour, now = new Date()) {
       lines.push(`🏬 *${day.store?.name || 'Loja não informada'}*`);
     }
 
-    const result = classifyProductionDay(day, hour);
+    const result = classifyProductionDay(day, checkpoint.minutes);
     totals.approved += result.approved.length;
     totals.awaitingReview += result.awaitingReview.length;
     totals.noncompliant += result.noncompliant.length;
@@ -533,10 +544,11 @@ async function buildTaskComplianceReport(checkpointHour, now = new Date()) {
   return lines.join('\n');
 }
 
-async function sendTaskComplianceReport(checkpointHour, now = new Date()) {
+async function sendTaskComplianceReport(checkpointValue, now = new Date()) {
+  const checkpoint = taskCheckpoint(checkpointValue, now);
   let text;
   try {
-    text = await buildTaskComplianceReport(checkpointHour, now);
+    text = await buildTaskComplianceReport(checkpoint.minutes, now);
   } catch (e) {
     console.error('[equipeReports] buildTaskComplianceReport falhou:', e.message);
     return { sent: false, error: e.message };
@@ -544,7 +556,7 @@ async function sendTaskComplianceReport(checkpointHour, now = new Date()) {
 
   const jid = tarefasGroupJid();
   if (!jid || !isEvolutionConfigured()) {
-    console.log(`[equipeReports] tarefas ${checkpointHour}h NÃO enviadas (grupo não configurado).`);
+    console.log(`[equipeReports] tarefas ${checkpoint.label} NÃO enviadas (grupo não configurado).`);
     return { sent: false, text, reason: 'no_group' };
   }
 
@@ -560,32 +572,106 @@ async function sendTaskComplianceReport(checkpointHour, now = new Date()) {
   }
   const sent = results.length === chunks.length && results.every((result) => result.ok);
   const error = results.find((result) => !result.ok)?.error;
-  console.log(`[equipeReports] tarefas ${checkpointHour}h → ${sent ? 'ENVIADAS' : 'FALHARAM: ' + (error || 'envio incompleto')}`);
+  console.log(`[equipeReports] tarefas ${checkpoint.label} → ${sent ? 'ENVIADAS' : 'FALHARAM: ' + (error || 'envio incompleto')}`);
   return { sent, text, chunks: chunks.length, error };
 }
 
+async function loadTaskReportSchedule(now = new Date()) {
+  const dayStart = localDayStartUtc(now);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
+  const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const shifts = await prisma.sellerProductionDay.findMany({
+    where: {
+      workDate: { gte: dayStart, lt: dayEnd },
+      ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+    },
+    select: { scheduleStart: true, scheduleEnd: true },
+  });
+  return buildTaskReportSchedule(shifts);
+}
+
+function taskReportDeliveryKey(now, slotMinutes) {
+  const { y, m, d } = localParts(now);
+  const ymd = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return `equipe_tasks_report:${ymd}:${String(slotMinutes)}`;
+}
+
+async function reserveTaskReportDelivery(key, now = new Date()) {
+  try {
+    await prisma.config.create({
+      data: {
+        id: key,
+        key,
+        value: JSON.stringify({ status: 'SENDING', reservedAt: now.toISOString() }),
+      },
+    });
+    return true;
+  } catch (error) {
+    if (error?.code === 'P2002') return false;
+    throw error;
+  }
+}
+
+async function maybeSendScheduledTaskReport(now = new Date()) {
+  const schedule = await loadTaskReportSchedule(now);
+  if (!schedule.scheduleKnown) return { sent: false, reason: 'no_schedule' };
+  const { H, Min } = localParts(now);
+  const currentMinutes = (H * 60) + Min;
+  const slot = schedule.slots.find((value) => value === currentMinutes);
+  if (slot === undefined) return { sent: false, reason: 'not_due', schedule };
+
+  const deliveryKey = taskReportDeliveryKey(now, slot);
+  const reserved = await reserveTaskReportDelivery(deliveryKey, now);
+  if (!reserved) return { sent: false, reason: 'already_processed', schedule };
+
+  const result = await sendTaskComplianceReport(slot, now);
+  if (result.sent) {
+    await prisma.config.update({
+      where: { key: deliveryKey },
+      data: { value: JSON.stringify({ status: 'SENT', sentAt: new Date().toISOString(), chunks: result.chunks }) },
+    }).catch(() => {});
+  } else {
+    // Libera para a segunda tentativa dentro do mesmo minuto (:30).
+    await prisma.config.delete({ where: { key: deliveryKey } }).catch(() => {});
+  }
+  return { ...result, schedule, slot };
+}
+
 // ---------------------------------------------------------------------
-// CRON — 13h, 18h, 21h (America/Fortaleza)
+// CRON — vendas/presença fixos; tarefas conforme a primeira escala do dia
 // ---------------------------------------------------------------------
 function startEquipeReportsCron() {
   if (process.env.DISABLE_EQUIPE_REPORTS === '1') {
     console.log('[equipeReports] desativado (DISABLE_EQUIPE_REPORTS=1)');
     return;
   }
-  // cada checkpoint: vendas + presença + cumprimento das tarefas
+  // Vendas e presença continuam nos checkpoints já existentes.
   const checkpoint = (h) => async () => {
     try { await sendSalesReport(h); } catch (e) { console.error('[equipeReports] sendSalesReport', h, e.message); }
     try { await sendPresenceReport(); } catch (e) { console.error('[equipeReports] sendPresenceReport', e.message); }
-    try { await sendTaskComplianceReport(h); } catch (e) { console.error('[equipeReports] sendTaskComplianceReport', h, e.message); }
   };
   cron.schedule('0 13 * * *', checkpoint(13), { timezone: 'America/Fortaleza' });
   cron.schedule('0 18 * * *', checkpoint(18), { timezone: 'America/Fortaleza' });
   cron.schedule('0 21 * * *', checkpoint(21), { timezone: 'America/Fortaleza' });
+  // Verifica duas vezes no minuto previsto. A reserva persistente impede duplicidade.
+  cron.schedule('0,30 * * * * *', () => {
+    maybeSendScheduledTaskReport().catch((e) => console.error('[equipeReports] tarefas por escala', e.message));
+  }, { timezone: 'America/Fortaleza' });
   const jid = vendasGroupJid();
   console.log(
-    `[equipeReports] cron iniciado (vendas+presença+tarefas 13h/18h/21h America/Fortaleza)` +
+    `[equipeReports] cron iniciado (vendas+presença 13h/18h/21h; tarefas +1h da primeira escala e depois a cada 3h)` +
     (jid ? '' : ' — ⚠️ WHATSAPP_GROUP_JID vazio: nada será enviado até configurar o grupo')
   );
+  loadTaskReportSchedule().then((schedule) => {
+    if (!schedule.scheduleKnown) {
+      console.log('[equipeReports] tarefas: hoje ainda não há escala válida; nenhum horário foi estimado');
+      return;
+    }
+    console.log(
+      `[equipeReports] tarefas de hoje: abertura ${formatMinutes(schedule.openingMinutes)}; envios ${schedule.slots.map(formatMinutes).join(', ')}`
+    );
+  }).catch((e) => console.error('[equipeReports] leitura da escala', e.message));
 }
 
 module.exports = {
@@ -597,6 +683,8 @@ module.exports = {
   sendPresenceReport,
   buildTaskComplianceReport,
   sendTaskComplianceReport,
+  loadTaskReportSchedule,
+  maybeSendScheduledTaskReport,
   pontoGroupJid,
   vendasGroupJid,
   tarefasGroupJid,

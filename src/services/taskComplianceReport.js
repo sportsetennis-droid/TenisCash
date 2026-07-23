@@ -13,25 +13,78 @@ function parseScheduleMinutes(value) {
   return (hour * 60) + minute;
 }
 
-function scheduleDeadlineState(day, checkpointHour) {
+function checkpointToMinutes(value) {
+  if (typeof value === 'string' && value.includes(':')) return parseScheduleMinutes(value);
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  // Compatibilidade: 13 continua significando 13h; 780 significa minuto do dia.
+  if (numeric <= 24) return Math.round(numeric * 60);
+  if (numeric < 2880) return Math.round(numeric);
+  return null;
+}
+
+function formatMinutes(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return '';
+  const normalized = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Horários do relatório global:
+ * primeira escala do dia + 1h; depois, a cada 3h, até alcançar o fechamento
+ * da última escala. Horários inválidos são ignorados, nunca estimados.
+ */
+function buildTaskReportSchedule(shifts) {
+  const valid = [];
+  for (const shift of Array.isArray(shifts) ? shifts : []) {
+    const start = parseScheduleMinutes(shift?.scheduleStart ?? shift?.startTime);
+    let end = parseScheduleMinutes(shift?.scheduleEnd ?? shift?.endTime);
+    if (start === null || end === null) continue;
+    if (end <= start) end += 1440;
+    valid.push({ start, end });
+  }
+  if (!valid.length) {
+    return { scheduleKnown: false, openingMinutes: null, closingMinutes: null, slots: [] };
+  }
+
+  const openingMinutes = Math.min(...valid.map((row) => row.start));
+  const closingMinutes = Math.max(...valid.map((row) => row.end));
+  const firstReportMinutes = openingMinutes + 60;
+  const slots = [firstReportMinutes];
+  while (slots[slots.length - 1] < closingMinutes && slots.length < 12) {
+    slots.push(slots[slots.length - 1] + 180);
+  }
+  return {
+    scheduleKnown: true,
+    openingMinutes,
+    closingMinutes,
+    firstReportMinutes,
+    slots,
+  };
+}
+
+function scheduleDeadlineState(day, checkpointValue) {
   const start = parseScheduleMinutes(day?.scheduleStart);
   let end = parseScheduleMinutes(day?.scheduleEnd);
-  if (start === null || end === null) {
+  let checkpoint = checkpointToMinutes(checkpointValue);
+  if (start === null || end === null || checkpoint === null) {
     return { scheduleKnown: false, duePhases: new Set() };
   }
   if (end <= start) end += 1440;
 
-  let checkpoint = Number(checkpointHour) * 60;
   if (checkpoint < start && end > 1440) checkpoint += 1440;
-  const midpoint = start + Math.floor((end - start) / 2);
+  const deadlines = {
+    ARRIVAL: Math.min(start + 60, end),
+    FIRST_TURN: Math.min(start + 240, end),
+    SECOND_TURN: Math.min(start + 420, end),
+    EXIT: end,
+  };
   const duePhases = new Set();
-  if (checkpoint >= start) duePhases.add('ARRIVAL');
-  if (checkpoint >= midpoint) duePhases.add('FIRST_TURN');
-  if (checkpoint >= end) {
-    duePhases.add('SECOND_TURN');
-    duePhases.add('EXIT');
+  for (const phase of PHASES) {
+    if (checkpoint >= deadlines[phase]) duePhases.add(phase);
   }
-  return { scheduleKnown: true, start, midpoint, end, checkpoint, duePhases };
+  return { scheduleKnown: true, start, end, checkpoint, deadlines, duePhases };
 }
 
 function classifyProductionDay(day, checkpointHour) {
@@ -118,6 +171,9 @@ function splitWhatsAppText(text, maxChars = 3500) {
 module.exports = {
   PHASES,
   parseScheduleMinutes,
+  checkpointToMinutes,
+  formatMinutes,
+  buildTaskReportSchedule,
   scheduleDeadlineState,
   classifyProductionDay,
   splitWhatsAppText,
