@@ -30,10 +30,11 @@
     .cameras{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
     .camera{appearance:none;border:1px solid #d9dedb;background:#f7f9f8;color:#2e3a35;border-radius:12px;padding:11px 6px;font-weight:850;cursor:pointer}
     .camera.active{border-color:var(--green);background:var(--green);color:white;box-shadow:0 5px 14px rgba(7,91,67,.22)}
-    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 18px 20px}
+    .actions{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;padding:12px 18px 20px}
     .action{display:flex;align-items:center;justify-content:center;text-decoration:none;border-radius:14px;padding:14px;font-size:14px;font-weight:900}
     .action.primary{background:var(--gold);color:#2c260f}
     .action.secondary{background:#edf5f1;color:var(--green);border:1px solid #cbe0d7}
+    .action.whatsapp{background:#075e54;color:#fff;border:1px solid #075e54}
     .note{text-align:center;color:var(--muted);font-size:11px;padding:0 18px 18px}
     @media(max-width:680px){
       body{padding:0;background:white}
@@ -71,9 +72,10 @@
 
       <div class="actions">
         <a class="action primary" href="/aovivo/LOJA05" target="_blank" rel="noopener">Falar com um vendedor ao vivo</a>
-        <a class="action secondary" href="https://www.sportsetennis.com.br/" target="_top">Comprar produtos</a>
+        <a class="action whatsapp" href="https://wa.me/5583989042285?text=Ol%C3%A1%21%20Estou%20na%20loja%20ao%20vivo%20da%20Praia%20de%20Tamba%C3%BA%20e%20quero%20comprar.%20Prefiro%20atendimento%20por%20chamada%20de%20v%C3%ADdeo." target="_blank" rel="noopener">Vídeo pelo WhatsApp</a>
+        <a class="action secondary" href="https://wa.me/5583989042285?text=Ol%C3%A1%21%20Estou%20na%20loja%20ao%20vivo%20da%20Praia%20de%20Tamba%C3%BA%20e%20quero%20comprar.%20Prefiro%20atendimento%20por%20liga%C3%A7%C3%A3o%20de%20voz." target="_blank" rel="noopener">Ligação pelo WhatsApp</a>
       </div>
-      <div class="note">Transmissão de vídeo sem captação de áudio.</div>
+      <div class="note">Transmissão sem áudio. O WhatsApp abrirá com o pedido de chamada para o vendedor.</div>
     </section>
   </main>
 
