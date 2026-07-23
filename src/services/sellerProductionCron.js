@@ -9,6 +9,12 @@ const production = require('./sellerProduction');
 const prisma = new PrismaClient();
 const TZ = 'America/Fortaleza';
 
+// Importacao tardia evita iniciar o ciclo de WhatsApp em testes/rotas que nao
+// precisam publicar uma atualizacao para o grupo.
+function taskReportNotifier() {
+  return require('./equipeReports');
+}
+
 function localYmd(date = new Date()) {
   return date.toLocaleDateString('en-CA', { timeZone: TZ });
 }
@@ -137,6 +143,7 @@ async function autoApprovePendingProductionItems() {
       productRefs: true,
       requirementsConfirmedJson: true,
       noInstagramStoryConfirmed: true,
+      day: { select: { sellerId: true } },
       evidence: {
         select: {
           kind: true,
@@ -174,7 +181,14 @@ async function autoApprovePendingProductionItems() {
         });
         return true;
       });
-      if (rejectedResult) rejected += 1;
+      if (rejectedResult) {
+        rejected += 1;
+        taskReportNotifier().notifyTaskStatusChange({
+          dayId: item.dayId,
+          event: 'fiscalização automática rejeitou uma tarefa',
+          at: rejectedAt,
+        }).catch((error) => console.error('[sellerProductionCron] atualização real não enviada:', error.message));
+      }
       continue;
     }
     if (!decision.approved) {
@@ -221,6 +235,13 @@ async function autoApprovePendingProductionItems() {
 
     if (result.approved) approved += 1;
     if (result.finalized) finalized += 1;
+    if (result.approved) {
+      taskReportNotifier().notifyTaskStatusChange({
+        dayId: item.dayId,
+        event: result.finalized ? 'fiscalização automática concluiu o checklist' : 'fiscalização automática aprovou uma tarefa',
+        at: reviewedAt,
+      }).catch((error) => console.error('[sellerProductionCron] atualização real não enviada:', error.message));
+    }
   }
 
   if (approved || rejected || skipped) {

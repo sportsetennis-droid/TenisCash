@@ -25,6 +25,22 @@ function run() {
 
   const noChecklist = reports.buildPersonalTaskReportText({ name: 'Elias', items: [] });
   assert(noChecklist.includes('não calculável'));
+
+  const live = reports.buildLiveTaskUpdateText({
+    sellerName: 'Elias',
+    event: 'fiscalizacao',
+    items: [
+      { position: 1, title: 'Chegada', status: 'APPROVED' },
+      { position: 2, title: 'Reels', status: 'PENDING' },
+      { position: 3, title: 'Foto', status: 'SUBMITTED' },
+    ],
+  });
+  assert(live.includes('Elias'));
+  assert(live.includes('33%'));
+  assert(live.includes('Chegada'));
+  assert(live.includes('Reels'));
+  assert(live.includes('SEM registro aprovado') || live.includes('sem registro aprovado'));
+  assert(live.includes('NÃO é considerada executada') || live.includes('NAO e considerada executada'));
   console.log('OK: mensagens pessoais de entrada e resumo de saída');
   process.exit(0);
 }

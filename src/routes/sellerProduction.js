@@ -10,6 +10,7 @@ const { authMiddleware, storeScope, prisma } = require('../middleware');
 const production = require('../services/sellerProduction');
 const evidenceStore = require('../services/productionEvidenceStore');
 const { ensureScheduledProductionDays } = require('../services/sellerProductionCron');
+const equipeReports = require('../services/equipeReports');
 
 const router = express.Router();
 router.use(authMiddleware, storeScope);
@@ -523,6 +524,11 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
     });
 
     const updated = await prisma.sellerProductionDay.findUnique({ where: { id: item.dayId }, include: dayInclude() });
+    equipeReports.notifyTaskStatusChange({
+      dayId: item.dayId,
+      event: automaticReview.approved ? 'fiscalização automática aprovou uma tarefa' : automaticRejected ? 'fiscalização automática rejeitou uma tarefa' : 'vendedor registrou uma tarefa',
+      at: new Date(),
+    }).catch((error) => console.error('[seller-production] atualização real não enviada:', error.message));
     res.json({
       ok: true,
       verification: {
@@ -552,6 +558,11 @@ router.post('/days/:dayId/submit', requireSellerScope, async (req, res) => {
       data: { status: 'SUBMITTED', sellerNote: String(req.body.note || '').trim().slice(0, 4000) || null, submittedAt: new Date() },
       include: dayInclude(),
     });
+    equipeReports.notifyTaskStatusChange({
+      dayId: day.id,
+      event: 'vendedor enviou o checklist completo para fiscalização',
+      at: new Date(),
+    }).catch((error) => console.error('[seller-production] atualização real não enviada:', error.message));
     res.json({ ok: true, day: serializeDay(updated) });
   } catch (err) {
     console.error('[seller-production/day-submit]', err);
@@ -610,6 +621,11 @@ router.post('/items/:itemId/review', requireReviewer, async (req, res) => {
     const progress = production.dayProgress(rows);
     const dayStatus = progress.rejected ? 'CHANGES_REQUIRED' : (progress.complete ? 'SUBMITTED' : 'OPEN');
     const updated = await prisma.sellerProductionDay.update({ where: { id: item.dayId }, data: { status: dayStatus }, include: dayInclude() });
+    equipeReports.notifyTaskStatusChange({
+      dayId: item.dayId,
+      event: action === 'APPROVE' ? 'fiscalização humana aprovou uma tarefa' : 'fiscalização humana rejeitou uma tarefa',
+      at: new Date(),
+    }).catch((error) => console.error('[seller-production] atualização real não enviada:', error.message));
     res.json({ ok: true, day: serializeDay(updated) });
   } catch (err) {
     console.error('[seller-production/item-review]', err);
@@ -658,6 +674,11 @@ router.post('/days/:dayId/finalize', requireReviewer, async (req, res) => {
       }
     });
     const updated = await prisma.sellerProductionDay.findUnique({ where: { id: day.id }, include: dayInclude() });
+    equipeReports.notifyTaskStatusChange({
+      dayId: day.id,
+      event: action === 'APPROVE' ? 'fiscalização humana encerrou o dia como aprovado' : action === 'EXCUSE' ? 'fiscalização justificou o dia' : 'fiscalização encerrou o dia como não conforme',
+      at: new Date(),
+    }).catch((error) => console.error('[seller-production] atualização real não enviada:', error.message));
     res.json({ ok: true, day: serializeDay(updated) });
   } catch (err) {
     console.error('[seller-production/day-finalize]', err);

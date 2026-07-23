@@ -215,6 +215,7 @@ async function notifyPersonalClockMessage(p = {}) {
       `🌤️ Bom dia, ${name}!`,
       'Seu ponto de entrada foi registrado.',
       'As tarefas e obrigações do dia devem ser realizadas e registradas no TenisCash com as evidências solicitadas. Esse acompanhamento é importante para manter a transparência e o reconhecimento do seu trabalho.',
+      'Tudo que for enviado, aprovado, rejeitado ou ficar pendente será registrado. Atividade obrigatória sem registro aprovado não é considerada executada.',
       'Se tiver qualquer dúvida, estamos disponíveis para ajudar pelo canal da empresa.',
       'Bom trabalho!',
     ].join('\n');
@@ -237,6 +238,82 @@ async function notifyPersonalClockMessage(p = {}) {
     }));
   const content = buildPersonalTaskReportText({ name, now: at, items, dayStatus: day?.status || 'CHECKLIST_NAO_CRIADO' });
   return createPersonalAnnouncement({ userId: user.id, title: `Resumo pessoal de tarefas — ${fmtDateBR(at)}`, content, at });
+}
+
+function liveTaskStatus(item) {
+  const status = String(item?.status || 'PENDING').toUpperCase();
+  if (status === 'APPROVED') return { emoji: '✅', label: 'REALIZADA/APROVADA', kind: 'approved' };
+  if (status === 'EXCUSED') return { emoji: '🟦', label: 'DISPENSADA PELA EMPRESA', kind: 'excused' };
+  if (status === 'SUBMITTED') return { emoji: '🔎', label: 'ENVIADA — AGUARDANDO FISCALIZAÇÃO', kind: 'pending_review' };
+  if (status === 'REJECTED') return { emoji: '❌', label: 'NÃO REALIZADA — DEVOLVIDA PARA CORREÇÃO', kind: 'not_done' };
+  return { emoji: '❌', label: 'NÃO REALIZADA — SEM REGISTRO APROVADO', kind: 'not_done' };
+}
+
+function buildLiveTaskUpdateText({ sellerName = 'Vendedor', items = [], dayStatus = null, event = 'atualização', now = new Date() } = {}) {
+  const rows = Array.isArray(items) ? [...items].sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+  const states = rows.map((item) => ({ item, ...liveTaskStatus(item) }));
+  const approved = states.filter((row) => row.kind === 'approved').length;
+  const excused = states.filter((row) => row.kind === 'excused').length;
+  const pendingReview = states.filter((row) => row.kind === 'pending_review').length;
+  const notDone = states.filter((row) => row.kind === 'not_done').length;
+  const percentage = rows.length ? Math.round((approved / rows.length) * 100) : 0;
+  const lines = [
+    `⚡ *ATUALIZAÇÃO REAL DE TAREFAS — ${fmtDateBR(now)} · ${fmtTime(now)}*`,
+    '🔒 Tudo que é enviado, aprovado, rejeitado ou fica pendente está sendo registrado no histórico do TenisCash.',
+    '⚠️ Atividade obrigatória sem registro aprovado NÃO é considerada executada.',
+    `👤 *${sellerName}* · evento: ${event}`,
+    `📊 ${percentage}% aprovadas (${approved}/${rows.length}) · dispensadas: ${excused} · aguardando fiscalização: ${pendingReview} · não realizadas: ${notDone}`,
+  ];
+  if (!rows.length) {
+    lines.push('⚠️ Nenhuma tarefa foi encontrada para este vendedor e este dia.');
+    return lines.join('\n');
+  }
+  lines.push('', '*Tarefas do vendedor:*');
+  states.forEach(({ item, emoji, label }) => {
+    const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+    const note = item.reviewNote ? ` — ${String(item.reviewNote).replace(/\s+/g, ' ').trim()}` : '';
+    lines.push(`${emoji} ${title} — ${label}${note}`);
+  });
+  return lines.join('\n');
+}
+
+async function notifyTaskStatusChange({ sellerId, dayId, event = 'atualização', at = new Date() } = {}) {
+  if (!sellerId && !dayId) return { sent: false, reason: 'missing_target' };
+  const timestamp = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date();
+  let day;
+  if (dayId) {
+    day = await prisma.sellerProductionDay.findUnique({
+      where: { id: dayId },
+      select: {
+        status: true,
+        seller: { select: { id: true, name: true } },
+        items: { orderBy: { position: 'asc' }, select: { position: true, title: true, ruleKey: true, status: true, reviewNote: true } },
+      },
+    });
+  } else {
+    const workDate = localDayStartUtc(timestamp);
+    day = await prisma.sellerProductionDay.findUnique({
+      where: { sellerId_workDate: { sellerId, workDate } },
+      select: {
+        status: true,
+        seller: { select: { id: true, name: true } },
+        items: { orderBy: { position: 'asc' }, select: { position: true, title: true, ruleKey: true, status: true, reviewNote: true } },
+      },
+    });
+  }
+  if (!day) return { sent: false, reason: 'day_not_found' };
+  const text = buildLiveTaskUpdateText({ sellerName: day.seller?.name, items: day.items, dayStatus: day.status, event, now: timestamp });
+  const jid = tarefasGroupJid();
+  if (!jid || !isEvolutionConfigured()) return { sent: false, text, reason: 'no_group' };
+  const chunks = splitWhatsAppText(text);
+  const results = [];
+  for (const chunk of chunks) {
+    const result = await sendEvolutionRaw(jid, chunk);
+    results.push(result);
+    if (!result.ok) break;
+  }
+  const sent = results.length === chunks.length && results.every((result) => result.ok);
+  return { sent, text, chunks: chunks.length, error: results.find((result) => !result.ok)?.error };
 }
 
 async function notifyClockEvent(p = {}) {
@@ -802,7 +879,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       },
       store: { select: { id: true, name: true, code: true } },
       items: {
-        select: { ruleKey: true, phase: true, position: true, title: true, status: true },
+        select: { ruleKey: true, phase: true, position: true, title: true, status: true, reviewNote: true },
         orderBy: { position: 'asc' },
       },
     },
@@ -823,7 +900,12 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     return lines.join('\n');
   }
 
-  lines.push('', 'Produção aprovada pela fiscalização:');
+  lines.push(
+    '',
+    'Produção aprovada pela fiscalização:',
+    '🔒 Tudo que é enviado, aprovado, rejeitado ou fica pendente está sendo registrado no histórico do TenisCash.',
+    '⚠️ Atividade obrigatória sem registro aprovado NÃO é considerada executada.',
+  );
   for (const day of days) {
     const result = classifyProductionDay(day, checkpoint.minutes);
     const items = Array.isArray(day.items) ? day.items : [];
@@ -847,6 +929,12 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     lines.push(
       `${marker} *${day.seller?.name || 'Vendedor'}* — ${percentage}% (${approvedTasks}/${totalTasks} tarefas aprovadas) · ${state}`,
     );
+    for (const item of items) {
+      const status = liveTaskStatus(item);
+      const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+      const note = item.reviewNote ? ` — ${String(item.reviewNote).replace(/\s+/g, ' ').trim()}` : '';
+      lines.push(`  ${status.emoji} ${title} — ${status.label}${note}`);
+    }
   }
 
   lines.push(
@@ -1011,6 +1099,8 @@ module.exports = {
   notifyClockEvent,
   notifyPersonalClockMessage,
   buildPersonalTaskReportText,
+  notifyTaskStatusChange,
+  buildLiveTaskUpdateText,
   buildPresenceReport,
   sendPresenceReport,
   buildTaskComplianceReport,
