@@ -113,11 +113,16 @@ function Publish-CameraLive($camera) {
         if ($safeName -notmatch '^[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4$') { throw 'Nome de fragmento inválido.' }
         $filePath = Join-Path $cameraDir $safeName
         $sentPath = $filePath + '.sent'
-        if (-not (Test-Path -LiteralPath $sentPath)) {
-            $resourceUrl = [Uri]::new([Uri]$variantUrl, [string]$resourceName).AbsoluteUri
-            $tempPath = $filePath + '.tmp'
-            Invoke-WebRequest -UseBasicParsing -Uri $resourceUrl -WebSession $cameraSession -OutFile $tempPath -TimeoutSec 30
-            Move-Item -LiteralPath $tempPath -Destination $filePath -Force
+        $refreshInit = $safeName -match '_init\.mp4$' -and
+            (Test-Path -LiteralPath $sentPath) -and
+            (Get-Item -LiteralPath $sentPath).LastWriteTime -lt (Get-Date).AddMinutes(-5)
+        if (-not (Test-Path -LiteralPath $sentPath) -or $refreshInit) {
+            if (-not (Test-Path -LiteralPath $filePath)) {
+                $resourceUrl = [Uri]::new([Uri]$variantUrl, [string]$resourceName).AbsoluteUri
+                $tempPath = $filePath + '.tmp'
+                Invoke-WebRequest -UseBasicParsing -Uri $resourceUrl -WebSession $cameraSession -OutFile $tempPath -TimeoutSec 30
+                Move-Item -LiteralPath $tempPath -Destination $filePath -Force
+            }
             Send-LiveFile -camera $camera.name -file (Get-Item -LiteralPath $filePath)
             Set-Content -LiteralPath $sentPath -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding ASCII
         }

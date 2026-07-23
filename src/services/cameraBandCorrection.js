@@ -135,7 +135,12 @@ function startOne(cameraNumber, port) {
     children.delete(cameraNumber);
     const detail = stderr.trim().split(/\r?\n/).slice(-2).join(' | ');
     console.warn(`[camera-correction] camera=${cameraNumber} exit=${code} signal=${signal || '-'} ${detail}`);
-    schedule(cameraNumber, port, /429 Too Many Requests/.test(stderr) ? 60000 : 1000);
+    const retryDelay = /429 Too Many Requests/.test(stderr)
+      ? 60000
+      : /404 Not Found|Failed to open an initialization section/.test(stderr)
+        ? 10000
+        : 1000;
+    schedule(cameraNumber, port, retryDelay);
   });
 }
 

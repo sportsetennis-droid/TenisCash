@@ -944,8 +944,19 @@ router.post('/agent-camera-live', async (req, res) => {
     const cutoff = Date.now() - 15 * 60 * 1000;
     setImmediate(async () => {
       try {
+        let currentInit = '';
+        try {
+          const playlist = await _agFs.promises.readFile(_agPath.join(dir, 'index.m3u8'), 'utf8');
+          const match = playlist.match(/#EXT-X-MAP:.*URI="([^"?]+)(?:\?[^"]*)?"/);
+          currentInit = match ? _agPath.basename(match[1]) : '';
+        } catch {}
         for (const entry of await _agFs.promises.readdir(dir, { withFileTypes: true })) {
-          if (!entry.isFile() || entry.name === 'index.m3u8' || entry.name.endsWith('.part')) continue;
+          if (
+            !entry.isFile()
+            || entry.name === 'index.m3u8'
+            || entry.name === currentInit
+            || entry.name.endsWith('.part')
+          ) continue;
           const full = _agPath.join(dir, entry.name);
           const stat = await _agFs.promises.stat(full);
           if (stat.mtimeMs < cutoff) await _agFs.promises.unlink(full);
