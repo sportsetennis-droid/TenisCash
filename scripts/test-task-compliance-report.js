@@ -6,6 +6,7 @@ const {
   scheduleDeadlineState,
   classifyProductionDay,
   splitWhatsAppText,
+  mergeTaskReportRows,
 } = require('../src/services/taskComplianceReport');
 
 function item(position, phase, status, title = `${phase} ${position}`) {
@@ -126,6 +127,39 @@ function run() {
   const chunks = splitWhatsAppText('linha curta\n'.repeat(1000), 500);
   assert(chunks.length > 1);
   assert(chunks.every((chunk) => chunk.length <= 500), 'nenhuma parte pode ultrapassar o limite');
+
+  const mergedRows = mergeTaskReportRows(
+    [{
+      id: 'day-a',
+      sellerId: 'seller-a',
+      seller: { id: 'seller-a', name: 'Ana' },
+      store: { id: 'store-1', name: 'Loja 1' },
+      items: [item(1, 'ARRIVAL', 'APPROVED')],
+    }],
+    [
+      {
+        userId: 'seller-a',
+        user: { id: 'seller-a', name: 'Ana' },
+        store: { id: 'store-1', name: 'Loja 1' },
+        type: 'entry',
+        timestamp: new Date('2026-07-23T11:00:00.000Z'),
+      },
+      {
+        userId: 'seller-b',
+        user: { id: 'seller-b', name: 'Bruno' },
+        store: { id: 'store-2', name: 'Loja 2' },
+        type: 'entry',
+        timestamp: new Date('2026-07-23T12:00:00.000Z'),
+      },
+    ],
+    [{ key: 'ARRIVAL_STORY_1', phase: 'ARRIVAL', position: 1, title: 'Story de chegada' }],
+  );
+  assert.strictEqual(mergedRows.length, 2, 'deve unir checklist e todos os vendedores que bateram ponto');
+  const clockOnlyRow = mergedRows.find((row) => row.sellerId === 'seller-b');
+  assert(clockOnlyRow, 'vendedor que apenas bateu ponto precisa aparecer no relatório');
+  assert.strictEqual(clockOnlyRow.reportSynthetic, true);
+  assert.strictEqual(clockOnlyRow.items.length, 1, 'vendedor sem checklist deve ser comparado às regras vigentes');
+  assert.strictEqual(clockOnlyRow.reportStore.name, 'Loja 2', 'a loja deve vir do ponto real');
 
   console.log('OK: relatório de cumprimento usa prazo da escala e aprovação humana');
 }
