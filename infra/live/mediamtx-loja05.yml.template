@@ -46,3 +46,15 @@ paths:
     source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.87:554/stream1
   loja05_camera6:
     source: rtsp://__RTSP_USER__:__RTSP_PASSWORD__@192.168.0.89:554/stream1
+  loja05_camera1_fixed:
+    source: publisher
+  loja05_camera2_fixed:
+    source: publisher
+  loja05_camera3_fixed:
+    source: publisher
+  loja05_camera4_fixed:
+    source: publisher
+  loja05_camera5_fixed:
+    source: publisher
+  loja05_camera6_fixed:
+    source: publisher

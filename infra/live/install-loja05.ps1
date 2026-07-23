@@ -35,6 +35,7 @@ $uploader = Join-Path $PSScriptRoot 'upload-segment.ps1'
 $recorder = Join-Path $PSScriptRoot 'record-loja05.ps1'
 $recordingUploader = Join-Path $PSScriptRoot 'upload-recordings.ps1'
 $cloudLive = Join-Path $PSScriptRoot 'cloud-live-loja05.ps1'
+$bandCorrection = Join-Path $PSScriptRoot 'correct-horizontal-bands.py'
 if (-not (Test-Path -LiteralPath $template)) { throw 'Template do gravador não encontrado.' }
 if (-not (Test-Path -LiteralPath $uploader)) { throw 'Uploader do gravador não encontrado.' }
 
@@ -49,6 +50,8 @@ Copy-Item -LiteralPath $uploader -Destination (Join-Path $root 'upload-segment.p
 Copy-Item -LiteralPath $recorder -Destination (Join-Path $root 'record-loja05.ps1') -Force
 Copy-Item -LiteralPath $recordingUploader -Destination (Join-Path $root 'upload-recordings.ps1') -Force
 Copy-Item -LiteralPath $cloudLive -Destination (Join-Path $root 'cloud-live-loja05.ps1') -Force
+if (-not (Test-Path -LiteralPath $bandCorrection)) { throw 'Corretor de imagem nao encontrado.' }
+Copy-Item -LiteralPath $bandCorrection -Destination (Join-Path $root 'correct-horizontal-bands.py') -Force
 
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     winget install --id Gyan.FFmpeg --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
@@ -56,14 +59,22 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
 $ffmpegSource = (Get-Command ffmpeg -ErrorAction Stop).Source
 Copy-Item -LiteralPath $ffmpegSource -Destination (Join-Path $root 'ffmpeg.exe') -Force
 
+$python = Join-Path $env:LocalAppData 'Programs\Python\Python312\python.exe'
+if (-not (Test-Path -LiteralPath $python)) {
+    winget install --id Python.Python.3.12 --exact --silent --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity
+}
+if (-not (Test-Path -LiteralPath $python)) { throw 'Python 3.12 nao foi instalado.' }
+& $python -m pip install --disable-pip-version-check --quiet 'opencv-python-headless>=4.10,<6'
+if ($LASTEXITCODE -ne 0) { throw 'OpenCV nao foi instalado.' }
+
 $cameraConfig = @{
     cameras = @(
-        @{ name = 'loja05_camera1'; source = 'http://127.0.0.1:8888/loja05_camera1/index.m3u8' },
-        @{ name = 'loja05_camera2'; source = 'http://127.0.0.1:8888/loja05_camera2/index.m3u8' },
-        @{ name = 'loja05_camera3'; source = 'http://127.0.0.1:8888/loja05_camera3/index.m3u8' },
-        @{ name = 'loja05_camera4'; source = 'http://127.0.0.1:8888/loja05_camera4/index.m3u8' },
-        @{ name = 'loja05_camera5'; source = 'http://127.0.0.1:8888/loja05_camera5/index.m3u8' },
-        @{ name = 'loja05_camera6'; source = 'http://127.0.0.1:8888/loja05_camera6/index.m3u8' }
+        @{ name = 'loja05_camera1'; source = 'http://127.0.0.1:8888/loja05_camera1_fixed/index.m3u8' },
+        @{ name = 'loja05_camera2'; source = 'http://127.0.0.1:8888/loja05_camera2_fixed/index.m3u8' },
+        @{ name = 'loja05_camera3'; source = 'http://127.0.0.1:8888/loja05_camera3_fixed/index.m3u8' },
+        @{ name = 'loja05_camera4'; source = 'http://127.0.0.1:8888/loja05_camera4_fixed/index.m3u8' },
+        @{ name = 'loja05_camera5'; source = 'http://127.0.0.1:8888/loja05_camera5_fixed/index.m3u8' },
+        @{ name = 'loja05_camera6'; source = 'http://127.0.0.1:8888/loja05_camera6_fixed/index.m3u8' }
     )
 } | ConvertTo-Json -Depth 4
 $cameraConfigPath = Join-Path $root 'camera-config.json'
@@ -79,6 +90,16 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccou
 $settings = New-ScheduledTaskSettingsSet -RestartCount 20 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
+
+$bandTaskName = 'TenisCashCameraBandCorrection'
+try { Stop-ScheduledTask -TaskName $bandTaskName -ErrorAction SilentlyContinue } catch {}
+try { Unregister-ScheduledTask -TaskName $bandTaskName -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+$bandScript = Join-Path $root 'correct-horizontal-bands.py'
+$bandArguments = ('-u "{0}" --store-prefix loja05 --camera-count 6 --ffmpeg "{1}" --encoder h264_mf' -f $bandScript, (Join-Path $root 'ffmpeg.exe'))
+$bandAction = New-ScheduledTaskAction -Execute $python -Argument $bandArguments -WorkingDirectory $root
+$bandSettings = New-ScheduledTaskSettingsSet -RestartCount 20 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName $bandTaskName -Action $bandAction -Trigger $trigger -Principal $principal -Settings $bandSettings -Force | Out-Null
+Start-ScheduledTask -TaskName $bandTaskName
 
 $recorderTaskName = 'TenisCashCameraRecorder'
 try { Stop-ScheduledTask -TaskName $recorderTaskName -ErrorAction SilentlyContinue } catch {}
@@ -114,5 +135,6 @@ $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | 
     Playback = [bool]($listeners | Where-Object LocalPort -eq 9996)
     RecorderState = (Get-ScheduledTask -TaskName $recorderTaskName).State.ToString()
     CloudLiveState = (Get-ScheduledTask -TaskName $cloudLiveTaskName).State.ToString()
+    BandCorrectionState = (Get-ScheduledTask -TaskName $bandTaskName).State.ToString()
     Version = $version
 } | ConvertTo-Json -Compress

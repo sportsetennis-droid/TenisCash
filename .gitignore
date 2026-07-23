@@ -18,6 +18,8 @@ output/adidas-*.json
 
 # Live commerce — binários da câmera (baixados local, ~100MB, não versionar)
 infra/live/*.exe
+__pycache__/
+*.pyc
 
 # Centro de Comando — teto de custo gravado em runtime (efêmero na Railway)
 src/ai/command-center/cap.json
