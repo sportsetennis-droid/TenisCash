@@ -486,6 +486,15 @@ app.get('/media/product-video/:file', (req, res) => {
 
 // Servir frontend (produção)
 const path = require('path');
+
+// Site proprio da loja Praia de Tambau. O dominio exclusivo abre a
+// transmissao diretamente, sem depender da plataforma de e-commerce.
+app.get('/', (req, res, next) => {
+  if (String(req.hostname || '').toLowerCase() !== 'praiadetambau.sportsetennis.com.br') return next();
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  return res.sendFile(path.join(__dirname, '../public/praiadetambau.html'), { cacheControl: false });
+});
+
 app.use(express.static(path.join(__dirname, '../public'), {
   // ETag pro browser revalidar; imagens estáticas cacheiam normal,
   // arquivos com ?v=NNN são cacheados forever (immutable).
