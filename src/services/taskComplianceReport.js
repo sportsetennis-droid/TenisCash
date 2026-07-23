@@ -52,8 +52,11 @@ function buildTaskReportSchedule(shifts, options = {}) {
   const openingMinutes = observedOpening === null
     ? Math.min(...valid.map((row) => row.start))
     : observedOpening;
-  // Sem fechamento cadastrado, mantém o ciclo somente dentro do dia corrente.
-  const closingMinutes = valid.length ? Math.max(...valid.map((row) => row.end)) : 1439;
+  const observedClosing = checkpointToMinutes(options.closingMinutes);
+  // Sem escala nem ponto de saída completo, mantém o ciclo dentro do dia corrente.
+  const closingMinutes = valid.length
+    ? Math.max(...valid.map((row) => row.end))
+    : observedClosing ?? 1439;
   const firstReportMinutes = openingMinutes + 60;
   const slots = firstReportMinutes < 1440 ? [firstReportMinutes] : [];
   while (slots[slots.length - 1] < closingMinutes && slots.length < 12) {
