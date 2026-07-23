@@ -35,7 +35,7 @@ function formatMinutes(value) {
  * primeira escala do dia + 1h; depois, a cada 3h, até alcançar o fechamento
  * da última escala. Horários inválidos são ignorados, nunca estimados.
  */
-function buildTaskReportSchedule(shifts) {
+function buildTaskReportSchedule(shifts, options = {}) {
   const valid = [];
   for (const shift of Array.isArray(shifts) ? shifts : []) {
     const start = parseScheduleMinutes(shift?.scheduleStart ?? shift?.startTime);
@@ -44,16 +44,22 @@ function buildTaskReportSchedule(shifts) {
     if (end <= start) end += 1440;
     valid.push({ start, end });
   }
-  if (!valid.length) {
+  const observedOpening = checkpointToMinutes(options.openingMinutes);
+  if (!valid.length && observedOpening === null) {
     return { scheduleKnown: false, openingMinutes: null, closingMinutes: null, slots: [] };
   }
 
-  const openingMinutes = Math.min(...valid.map((row) => row.start));
-  const closingMinutes = Math.max(...valid.map((row) => row.end));
+  const openingMinutes = observedOpening === null
+    ? Math.min(...valid.map((row) => row.start))
+    : observedOpening;
+  // Sem fechamento cadastrado, mantém o ciclo somente dentro do dia corrente.
+  const closingMinutes = valid.length ? Math.max(...valid.map((row) => row.end)) : 1439;
   const firstReportMinutes = openingMinutes + 60;
-  const slots = [firstReportMinutes];
+  const slots = firstReportMinutes < 1440 ? [firstReportMinutes] : [];
   while (slots[slots.length - 1] < closingMinutes && slots.length < 12) {
-    slots.push(slots[slots.length - 1] + 180);
+    const next = slots[slots.length - 1] + 180;
+    if (next >= 1440) break;
+    slots.push(next);
   }
   return {
     scheduleKnown: true,
@@ -68,23 +74,25 @@ function scheduleDeadlineState(day, checkpointValue) {
   const start = parseScheduleMinutes(day?.scheduleStart);
   let end = parseScheduleMinutes(day?.scheduleEnd);
   let checkpoint = checkpointToMinutes(checkpointValue);
-  if (start === null || end === null || checkpoint === null) {
-    return { scheduleKnown: false, duePhases: new Set() };
+  if (start === null || checkpoint === null) {
+    return { scheduleKnown: false, endKnown: false, duePhases: new Set() };
   }
-  if (end <= start) end += 1440;
+  const endKnown = end !== null;
+  if (endKnown && end <= start) end += 1440;
 
-  if (checkpoint < start && end > 1440) checkpoint += 1440;
+  if (endKnown && checkpoint < start && end > 1440) checkpoint += 1440;
+  const cap = (value) => (endKnown ? Math.min(value, end) : value);
   const deadlines = {
-    ARRIVAL: Math.min(start + 60, end),
-    FIRST_TURN: Math.min(start + 240, end),
-    SECOND_TURN: Math.min(start + 420, end),
-    EXIT: end,
+    ARRIVAL: cap(start + 60),
+    FIRST_TURN: cap(start + 240),
+    SECOND_TURN: cap(start + 420),
+    EXIT: endKnown ? end : null,
   };
   const duePhases = new Set();
   for (const phase of PHASES) {
-    if (checkpoint >= deadlines[phase]) duePhases.add(phase);
+    if (deadlines[phase] !== null && checkpoint >= deadlines[phase]) duePhases.add(phase);
   }
-  return { scheduleKnown: true, start, end, checkpoint, deadlines, duePhases };
+  return { scheduleKnown: true, endKnown, start, end, checkpoint, deadlines, duePhases };
 }
 
 function classifyProductionDay(day, checkpointHour) {
@@ -97,6 +105,7 @@ function classifyProductionDay(day, checkpointHour) {
     notDue: [],
     excused: [],
     scheduleKnown: deadline.scheduleKnown,
+    endKnown: deadline.endKnown,
     duePhases: deadline.duePhases,
     dayExcused: day?.status === 'EXCUSED',
   };

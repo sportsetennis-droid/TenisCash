@@ -31,6 +31,13 @@ function run() {
     'minutos da escala devem ser preservados sem arredondamento',
   );
   assert.strictEqual(buildTaskReportSchedule([{ scheduleStart: null, scheduleEnd: null }]).scheduleKnown, false);
+  const observedOpeningSchedule = buildTaskReportSchedule([], { openingMinutes: 8 * 60 });
+  assert.strictEqual(observedOpeningSchedule.scheduleKnown, true, 'primeiro ponto deve provar a abertura sem estimativa');
+  assert.deepStrictEqual(
+    observedOpeningSchedule.slots.map(formatMinutes),
+    ['09:00', '12:00', '15:00', '18:00', '21:00'],
+    'sem fechamento cadastrado, os ciclos devem permanecer dentro do mesmo dia',
+  );
   assert.strictEqual(checkpointToMinutes('09:30'), 570);
   assert.strictEqual(checkpointToMinutes(13), 780, 'número pequeno mantém compatibilidade como hora');
   assert.strictEqual(checkpointToMinutes(570), 570, 'número grande representa minuto do dia');
@@ -49,6 +56,14 @@ function run() {
     [...scheduleDeadlineState(shift, '15:00').duePhases],
     ['ARRIVAL', 'FIRST_TURN', 'SECOND_TURN'],
     'mais três horas depois deve vencer o segundo turno',
+  );
+  const entryOnly = scheduleDeadlineState({ scheduleStart: '08:00', scheduleEnd: null }, '21:00');
+  assert.strictEqual(entryOnly.scheduleKnown, true);
+  assert.strictEqual(entryOnly.endKnown, false);
+  assert.deepStrictEqual(
+    [...entryOnly.duePhases],
+    ['ARRIVAL', 'FIRST_TURN', 'SECOND_TURN'],
+    'sem horário de saída, a saída não pode ser acusada automaticamente',
   );
   assert.deepStrictEqual(
     [...scheduleDeadlineState(shift, 13).duePhases],
