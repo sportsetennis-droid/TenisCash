@@ -4189,9 +4189,20 @@ async function api(path, method='GET', body=null) {
 }
 
 async function sendTaskReportNow() {
-  if (!window.confirm('Enviar agora ao grupo o relatório de cumprimento das tarefas?')) return;
   const button = document.getElementById('task-report-send-btn');
-  const originalText = button ? button.textContent : '';
+  if (button && button.dataset.confirmed !== '1') {
+    button.dataset.confirmed = '1';
+    button.textContent = 'Confirmar envio';
+    setTimeout(() => {
+      if (button.dataset.confirmed === '1') {
+        delete button.dataset.confirmed;
+        button.textContent = '📋 Enviar tarefas';
+      }
+    }, 8000);
+    return;
+  }
+  if (button) delete button.dataset.confirmed;
+  const originalText = '📋 Enviar tarefas';
   if (button) {
     button.disabled = true;
     button.textContent = 'Enviando...';
