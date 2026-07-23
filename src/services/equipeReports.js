@@ -615,43 +615,26 @@ async function loadTaskReportSchedule(now = new Date()) {
     workDate: { gte: dayStart, lt: dayEnd },
     ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
   };
-  const [shifts, dailyClockIns] = await Promise.all([
+  const [shifts, firstEntry] = await Promise.all([
     prisma.sellerProductionDay.findMany({
       where,
       select: { scheduleStart: true, scheduleEnd: true },
     }),
-    prisma.clockIn.findMany({
+    prisma.clockIn.findFirst({
       where: {
-        type: { in: ['entry', 'exit'] },
+        type: 'entry',
         timestamp: { gte: dayStart, lt: dayEnd },
         ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
       },
-      select: { userId: true, type: true, timestamp: true },
+      select: { timestamp: true },
       orderBy: { timestamp: 'asc' },
     }),
   ]);
-  const firstEntry = dailyClockIns.find((row) => row.type === 'entry');
-  const enteredUsers = new Set(dailyClockIns.filter((row) => row.type === 'entry').map((row) => row.userId));
-  const lastByUser = new Map();
-  dailyClockIns.forEach((row) => {
-    if (enteredUsers.has(row.userId)) lastByUser.set(row.userId, row);
-  });
-  const allExited = enteredUsers.size > 0
-    && [...enteredUsers].every((userId) => lastByUser.get(userId)?.type === 'exit');
-  const lastExit = allExited
-    ? dailyClockIns.slice().reverse().find((row) => row.type === 'exit')
-    : null;
   const entryParts = firstEntry ? localParts(firstEntry.timestamp) : null;
-  const exitParts = lastExit ? localParts(lastExit.timestamp) : null;
   const observedOpening = entryParts ? (entryParts.H * 60) + entryParts.Min : null;
-  const observedClosing = exitParts ? (exitParts.H * 60) + exitParts.Min : null;
   return {
-    ...buildTaskReportSchedule(shifts, {
-      openingMinutes: observedOpening,
-      closingMinutes: observedClosing,
-    }),
+    ...buildTaskReportSchedule(shifts, { openingMinutes: observedOpening }),
     source: firstEntry ? 'FIRST_CLOCK_IN' : 'SCHEDULE',
-    observedClosing,
   };
 }
 
@@ -733,7 +716,7 @@ function startEquipeReportsCron() {
       return;
     }
     console.log(
-      `[equipeReports] tarefas de hoje: abertura ${formatMinutes(schedule.openingMinutes)} (${schedule.source === 'FIRST_CLOCK_IN' ? 'primeiro ponto' : 'escala'}); envios ${schedule.slots.map(formatMinutes).join(', ')}${schedule.observedClosing !== null ? `; fechamento pelo ponto ${formatMinutes(schedule.observedClosing)}` : ''}`
+      `[equipeReports] tarefas de hoje: abertura ${formatMinutes(schedule.openingMinutes)} (${schedule.source === 'FIRST_CLOCK_IN' ? 'primeiro ponto' : 'escala'}); envios ${schedule.slots.map(formatMinutes).join(', ')}`
     );
   }).catch((e) => console.error('[equipeReports] leitura da escala', e.message));
 }
