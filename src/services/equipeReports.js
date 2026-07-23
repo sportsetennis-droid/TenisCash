@@ -5,6 +5,8 @@
 //    pro almoço, retorno, saída do trabalho), avisa o grupo da empresa.
 // 2) RELATÓRIO DE VENDAS: 13h, 18h e 21h — por LOJA e por VENDEDOR.
 //    Mostra TODOS os vendedores ativos, inclusive os que zeraram.
+// 3) RELATÓRIO DE TAREFAS: nos mesmos horários, mostra o que foi aprovado,
+//    o que aguarda fiscalização e o que não foi cumprido no prazo da escala.
 //
 // Envio: Evolution API (instância padrão = teniscash, o nº 9671 da S&T).
 // Timezone: America/Fortaleza (UTC-3 fixo, sem horário de verão) — regra do projeto.
@@ -18,6 +20,10 @@
 const cron = require('node-cron');
 const { prisma } = require('../middleware');
 const { sendEvolutionRaw, isEvolutionConfigured } = require('../whatsapp');
+const {
+  classifyProductionDay,
+  splitWhatsAppText,
+} = require('./taskComplianceReport');
 
 const TZ_OFFSET_MIN = -180; // America/Fortaleza (UTC-3)
 
@@ -29,6 +35,9 @@ function pontoGroupJid() {
 }
 function vendasGroupJid() {
   return (process.env.WHATSAPP_VENDAS_GROUP_JID || process.env.WHATSAPP_GROUP_JID || '').trim();
+}
+function tarefasGroupJid() {
+  return (process.env.WHATSAPP_TAREFAS_GROUP_JID || process.env.WHATSAPP_GROUP_JID || '').trim();
 }
 
 // ---------------------------------------------------------------------
@@ -402,6 +411,160 @@ async function sendPresenceReport(now = new Date()) {
 }
 
 // ---------------------------------------------------------------------
+// 4) CUMPRIMENTO DAS TAREFAS — aprovado, em fiscalização e não cumprido
+// ---------------------------------------------------------------------
+function taskLineList(lines, label, emoji, items) {
+  if (!items.length) return;
+  lines.push(`  ${emoji} *${label} (${items.length})*`);
+  items.forEach((item) => lines.push(`    • ${item.title}`));
+}
+
+/**
+ * Monta o relatório das atividades de produção do dia.
+ * O sistema não transforma envio em cumprimento: somente APPROVED é "cumpriu".
+ * PENDING/REJECTED só vira "não cumpriu" depois do prazo derivado da escala.
+ */
+async function buildTaskComplianceReport(checkpointHour, now = new Date()) {
+  const hour = [13, 18, 21].includes(Number(checkpointHour)) ? Number(checkpointHour) : 13;
+  const dayStart = localDayStartUtc(now);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
+  const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+
+  const days = await prisma.sellerProductionDay.findMany({
+    where: {
+      workDate: { gte: dayStart, lt: dayEnd },
+      ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+    },
+    select: {
+      id: true,
+      status: true,
+      scheduleStart: true,
+      scheduleEnd: true,
+      seller: { select: { id: true, name: true, active: true } },
+      store: { select: { id: true, name: true, code: true } },
+      items: {
+        select: { ruleKey: true, phase: true, position: true, title: true, status: true },
+        orderBy: { position: 'asc' },
+      },
+    },
+  });
+
+  days.sort((a, b) => {
+    const storeOrder = String(a.store?.name || '').localeCompare(String(b.store?.name || ''), 'pt-BR');
+    return storeOrder || String(a.seller?.name || '').localeCompare(String(b.seller?.name || ''), 'pt-BR');
+  });
+
+  const lines = [];
+  lines.push(`📋 *TAREFAS — ${CHECKPOINT_LABEL[hour]}*`);
+  lines.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
+  lines.push('Somente tarefa aprovada pela fiscalização aparece como cumprida.');
+  lines.push('━━━━━━━━━━━━━━');
+
+  if (!days.length) {
+    lines.push('⚪ Nenhum checklist de vendedor foi gerado para hoje.');
+    lines.push('Isso não é classificado automaticamente como descumprimento: confira a escala publicada.');
+    return lines.join('\n');
+  }
+
+  const totals = {
+    sellers: days.length,
+    approved: 0,
+    awaitingReview: 0,
+    noncompliant: 0,
+    correctionInTime: 0,
+    notDue: 0,
+    excused: 0,
+    unknownSchedule: 0,
+  };
+  let currentStoreId = null;
+
+  for (const day of days) {
+    if (day.store?.id !== currentStoreId) {
+      if (currentStoreId !== null) lines.push('');
+      currentStoreId = day.store?.id;
+      lines.push(`🏬 *${day.store?.name || 'Loja não informada'}*`);
+    }
+
+    const result = classifyProductionDay(day, hour);
+    totals.approved += result.approved.length;
+    totals.awaitingReview += result.awaitingReview.length;
+    totals.noncompliant += result.noncompliant.length;
+    totals.correctionInTime += result.correctionInTime.length;
+    totals.notDue += result.notDue.length;
+    totals.excused += result.excused.length;
+    if (!result.scheduleKnown && !result.dayExcused) totals.unknownSchedule += 1;
+
+    const schedule = day.scheduleStart && day.scheduleEnd
+      ? ` · escala ${day.scheduleStart}–${day.scheduleEnd}`
+      : '';
+    lines.push(`👤 *${day.seller?.name || 'Vendedor'}*${schedule}`);
+
+    if (result.dayExcused) {
+      lines.push('  ⚪ *Dia justificado pela fiscalização*');
+      continue;
+    }
+    taskLineList(lines, 'CUMPRIU', '✅', result.approved);
+    taskLineList(lines, 'ENVIOU — AGUARDANDO FISCALIZAÇÃO', '🔎', result.awaitingReview);
+    taskLineList(lines, 'NÃO CUMPRIU NO PRAZO', '❌', result.noncompliant);
+    taskLineList(lines, 'DEVOLVIDA PARA CORREÇÃO — AINDA NO PRAZO', '↩️', result.correctionInTime);
+    taskLineList(lines, 'JUSTIFICADA', '⚪', result.excused);
+    if (result.notDue.length) {
+      lines.push(`  ⏳ Ainda no prazo: ${result.notDue.length} tarefa(s)`);
+    }
+    if (!result.scheduleKnown) {
+      lines.push('  ⚠️ Sem horário de escala: pendências não foram chamadas de descumprimento.');
+    }
+    if (!day.items.length) {
+      lines.push('  ⚠️ Checklist sem tarefas cadastradas.');
+    }
+  }
+
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━');
+  lines.push(`👥 Vendedores com checklist: ${totals.sellers}`);
+  lines.push(`✅ Cumpridas: ${totals.approved} · 🔎 Aguardando fiscalização: ${totals.awaitingReview}`);
+  lines.push(`❌ Não cumpridas no prazo: ${totals.noncompliant} · ↩️ Em correção no prazo: ${totals.correctionInTime}`);
+  lines.push(`⏳ Ainda no prazo: ${totals.notDue} · ⚪ Justificadas: ${totals.excused}`);
+  if (totals.unknownSchedule) {
+    lines.push(`⚠️ ${totals.unknownSchedule} vendedor(es) sem horário de escala; o sistema não estimou prazos.`);
+  }
+  lines.push('Fiscalização e decisão final são humanas; o robô apenas relata os registros.');
+  return lines.join('\n');
+}
+
+async function sendTaskComplianceReport(checkpointHour, now = new Date()) {
+  let text;
+  try {
+    text = await buildTaskComplianceReport(checkpointHour, now);
+  } catch (e) {
+    console.error('[equipeReports] buildTaskComplianceReport falhou:', e.message);
+    return { sent: false, error: e.message };
+  }
+
+  const jid = tarefasGroupJid();
+  if (!jid || !isEvolutionConfigured()) {
+    console.log(`[equipeReports] tarefas ${checkpointHour}h NÃO enviadas (grupo não configurado).`);
+    return { sent: false, text, reason: 'no_group' };
+  }
+
+  const rawChunks = splitWhatsAppText(text);
+  const chunks = rawChunks.map((chunk, index) => (
+    rawChunks.length > 1 ? `*TAREFAS — parte ${index + 1}/${rawChunks.length}*\n${chunk}` : chunk
+  ));
+  const results = [];
+  for (const chunk of chunks) {
+    const result = await sendEvolutionRaw(jid, chunk);
+    results.push(result);
+    if (!result.ok) break;
+  }
+  const sent = results.length === chunks.length && results.every((result) => result.ok);
+  const error = results.find((result) => !result.ok)?.error;
+  console.log(`[equipeReports] tarefas ${checkpointHour}h → ${sent ? 'ENVIADAS' : 'FALHARAM: ' + (error || 'envio incompleto')}`);
+  return { sent, text, chunks: chunks.length, error };
+}
+
+// ---------------------------------------------------------------------
 // CRON — 13h, 18h, 21h (America/Fortaleza)
 // ---------------------------------------------------------------------
 function startEquipeReportsCron() {
@@ -409,17 +572,18 @@ function startEquipeReportsCron() {
     console.log('[equipeReports] desativado (DISABLE_EQUIPE_REPORTS=1)');
     return;
   }
-  // cada checkpoint: relatório de vendas + foto da presença (quem está na loja)
+  // cada checkpoint: vendas + presença + cumprimento das tarefas
   const checkpoint = (h) => async () => {
     try { await sendSalesReport(h); } catch (e) { console.error('[equipeReports] sendSalesReport', h, e.message); }
     try { await sendPresenceReport(); } catch (e) { console.error('[equipeReports] sendPresenceReport', e.message); }
+    try { await sendTaskComplianceReport(h); } catch (e) { console.error('[equipeReports] sendTaskComplianceReport', h, e.message); }
   };
   cron.schedule('0 13 * * *', checkpoint(13), { timezone: 'America/Fortaleza' });
   cron.schedule('0 18 * * *', checkpoint(18), { timezone: 'America/Fortaleza' });
   cron.schedule('0 21 * * *', checkpoint(21), { timezone: 'America/Fortaleza' });
   const jid = vendasGroupJid();
   console.log(
-    `[equipeReports] cron iniciado (vendas+presença 13h/18h/21h America/Fortaleza)` +
+    `[equipeReports] cron iniciado (vendas+presença+tarefas 13h/18h/21h America/Fortaleza)` +
     (jid ? '' : ' — ⚠️ WHATSAPP_GROUP_JID vazio: nada será enviado até configurar o grupo')
   );
 }
@@ -431,6 +595,9 @@ module.exports = {
   notifyClockEvent,
   buildPresenceReport,
   sendPresenceReport,
+  buildTaskComplianceReport,
+  sendTaskComplianceReport,
   pontoGroupJid,
   vendasGroupJid,
+  tarefasGroupJid,
 };

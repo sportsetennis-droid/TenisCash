@@ -443,6 +443,28 @@ router.post('/reports/presence/send', adminOnly, async (req, res) => {
   }
 });
 
+// TAREFAS — cumprimento por vendedor, conforme aprovação e prazo real da escala.
+router.get('/reports/tasks/preview', adminOnly, async (req, res) => {
+  try {
+    const cp = parseInt(req.query.checkpoint, 10);
+    const hour = [13, 18, 21].includes(cp) ? cp : 13;
+    const text = await equipeReports.buildTaskComplianceReport(hour);
+    res.type('text/plain; charset=utf-8').send(text);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post('/reports/tasks/send', adminOnly, async (req, res) => {
+  try {
+    const cp = parseInt((req.body || {}).checkpoint, 10);
+    const hour = [13, 18, 21].includes(cp) ? cp : 13;
+    const out = await equipeReports.sendTaskComplianceReport(hour);
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =====================================================================
 // PONTO DO DIA — opcionalmente de um vendedor específico (PDV usa)
 // =====================================================================
