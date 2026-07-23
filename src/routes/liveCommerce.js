@@ -13,6 +13,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const fs = require('node:fs');
+const path = require('node:path');
 const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 const bus = require('../services/liveBus');
 const pushSvc = require('../services/pushNotifications');
@@ -22,6 +24,9 @@ const router = express.Router();
 
 const MAX_MSG = 2000;
 const clean = (s) => String(s == null ? '' : s).trim();
+const CAMERA_LIVE_DIR = process.env.CAMERA_LIVE_DIR || (process.platform === 'win32'
+  ? path.join(process.cwd(), 'data', 'camera-live')
+  : '/data/camera-live');
 
 // ---------------------------------------------------------------------
 // Helpers
@@ -100,6 +105,26 @@ function publicMsg(m) {
 // =====================================================================
 
 // Estado da transmissão de uma loja (a página /aovivo consulta isso).
+// Vitrine ao vivo de Tambaú. Os fragmentos enviados pelo notebook não têm
+// áudio; esta rota expõe somente as seis câmeras autorizadas da LOJA05.
+router.get('/camera/:storeCode/:camera/:name', (req, res) => {
+  const storeCode = String(req.params.storeCode || '').toUpperCase();
+  const camera = String(req.params.camera || '').toLowerCase();
+  const name = path.basename(String(req.params.name || '')).replace(/[^A-Za-z0-9._-]/g, '');
+  if (storeCode !== 'LOJA05' || !/^loja05_camera[1-6]$/.test(camera)) {
+    return res.status(404).json({ error: 'câmera não encontrada' });
+  }
+  if (!/^(?:index\.m3u8|[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4)$/.test(name)) {
+    return res.status(400).json({ error: 'arquivo HLS inválido' });
+  }
+  const full = path.join(CAMERA_LIVE_DIR, storeCode, camera, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: 'transmissão iniciando' });
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, no-store, max-age=0');
+  res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4');
+  fs.createReadStream(full).pipe(res);
+});
+
 router.get('/channel/:storeCode', async (req, res) => {
   try {
     const store = await resolveStore(req.params.storeCode);

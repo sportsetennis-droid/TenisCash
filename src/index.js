@@ -530,6 +530,14 @@ VITRINE_SLUGS.forEach((slug) => {
 // Página pública da NOTA FISCAL (cliente abre pelo link que recebe no WhatsApp; sem login).
 // A chave de acesso já é impressa no cupom (semi-pública) — a SEFAZ deixa qualquer um
 // consultar por ela, então renderizar o cupom por chave aqui é seguro.
+// Loja Tambaú ao vivo — incorporada em sportsetennis.com.br/praiadetambau.
+app.get('/praiadetambau', (req, res) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://sportsetennis.com.br https://www.sportsetennis.com.br");
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/praiadetambau.html'), { cacheControl: false });
+});
+
 app.get('/nota/:accessKey', async (req, res) => {
   try {
     const { prisma } = require('./middleware');

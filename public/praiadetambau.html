@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Praia de Tambaú ao vivo | Sports & Tennis</title>
+  <meta name="description" content="Conheça a loja Sports & Tennis Praia de Tambaú ao vivo e fale com nossa equipe.">
+  <style>
+    *{box-sizing:border-box}
+    :root{--green:#075b43;--green2:#0b7658;--gold:#e6bd4b;--cream:#f7f3e8;--ink:#14211d;--muted:#64716c}
+    html,body{margin:0;min-height:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--cream);color:var(--ink)}
+    body{padding:14px}
+    .page{width:min(1180px,100%);margin:auto}
+    .hero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,var(--green),var(--green2));color:white}
+    .eyebrow{font-size:11px;font-weight:900;letter-spacing:1.8px;color:#ffe18c}
+    h1{font-size:clamp(24px,4vw,42px);line-height:1;margin:7px 0 8px}
+    .hero p{margin:0;font-size:14px;opacity:.9}
+    .live{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900;white-space:nowrap}
+    .dot{width:9px;height:9px;border-radius:50%;background:#ff4055;box-shadow:0 0 0 5px rgba(255,64,85,.18);animation:pulse 1.4s infinite}
+    @keyframes pulse{50%{opacity:.38}}
+    .content{background:white;border:1px solid #e6e1d5;border-top:0;border-radius:0 0 22px 22px;overflow:hidden;box-shadow:0 18px 60px rgba(25,45,38,.12)}
+    .stage{position:relative;aspect-ratio:16/9;background:#040706}
+    video{width:100%;height:100%;display:block;object-fit:contain;background:#040706}
+    .overlay{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.66);color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800;backdrop-filter:blur(8px)}
+    .muted{color:#d8ddd9;font-weight:600}
+    .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;background:radial-gradient(circle at center,#20352e,#050807);font-weight:800;text-align:center;padding:25px}
+    .loading.hide{display:none}
+    .picker{padding:16px 18px 8px}
+    .picker-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px}
+    .cameras{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+    .camera{appearance:none;border:1px solid #d9dedb;background:#f7f9f8;color:#2e3a35;border-radius:12px;padding:11px 6px;font-weight:850;cursor:pointer}
+    .camera.active{border-color:var(--green);background:var(--green);color:white;box-shadow:0 5px 14px rgba(7,91,67,.22)}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 18px 20px}
+    .action{display:flex;align-items:center;justify-content:center;text-decoration:none;border-radius:14px;padding:14px;font-size:14px;font-weight:900}
+    .action.primary{background:var(--gold);color:#2c260f}
+    .action.secondary{background:#edf5f1;color:var(--green);border:1px solid #cbe0d7}
+    .note{text-align:center;color:var(--muted);font-size:11px;padding:0 18px 18px}
+    @media(max-width:680px){
+      body{padding:0;background:white}
+      .hero{border-radius:0;padding:17px 16px}
+      .hero p{font-size:12px}.live{padding:7px 9px}
+      .content{border:0;border-radius:0;box-shadow:none}
+      .cameras{grid-template-columns:repeat(3,1fr)}
+      .actions{grid-template-columns:1fr}
+      .overlay{left:9px;bottom:9px}
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">SPORTS &amp; TENNIS</div>
+        <h1>Praia de Tambaú</h1>
+        <p>Entre na loja ao vivo e veja o movimento em tempo real.</p>
+      </div>
+      <div class="live"><span class="dot"></span> AO VIVO</div>
+    </header>
+
+    <section class="content">
+      <div class="stage">
+        <video id="liveVideo" autoplay muted playsinline disablepictureinpicture></video>
+        <div id="loading" class="loading">Conectando à câmera 1…</div>
+        <div class="overlay">Câmera <span id="cameraNumber">1</span> <span class="muted">• sem áudio</span></div>
+      </div>
+
+      <div class="picker">
+        <div class="picker-title">Escolha o ambiente</div>
+        <div id="cameraPicker" class="cameras"></div>
+      </div>
+
+      <div class="actions">
+        <a class="action primary" href="/aovivo/LOJA05" target="_blank" rel="noopener">Falar com um vendedor ao vivo</a>
+        <a class="action secondary" href="https://www.sportsetennis.com.br/" target="_top">Comprar produtos</a>
+      </div>
+      <div class="note">Transmissão de vídeo sem captação de áudio.</div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+  <script>
+    (function(){
+      var video = document.getElementById('liveVideo');
+      var loading = document.getElementById('loading');
+      var picker = document.getElementById('cameraPicker');
+      var number = document.getElementById('cameraNumber');
+      var hls = null;
+      var selected = 1;
+
+      video.muted = true;
+      video.volume = 0;
+
+      function source(camera){
+        return '/api/live/camera/LOJA05/loja05_camera' + camera + '/index.m3u8';
+      }
+
+      function setStatus(text, visible){
+        loading.textContent = text;
+        loading.classList.toggle('hide', !visible);
+      }
+
+      function renderButtons(){
+        picker.innerHTML = '';
+        for (var i=1;i<=6;i++){
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'camera' + (i === selected ? ' active' : '');
+          button.textContent = 'Câmera ' + i;
+          button.dataset.camera = i;
+          button.addEventListener('click', function(){ connect(Number(this.dataset.camera)); });
+          picker.appendChild(button);
+        }
+      }
+
+      function connect(camera){
+        selected = camera;
+        number.textContent = camera;
+        renderButtons();
+        setStatus('Conectando à câmera ' + camera + '…', true);
+        if (hls){ try{ hls.destroy(); }catch(_){} hls = null; }
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+
+        var url = source(camera);
+        if (window.Hls && Hls.isSupported()){
+          var current = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
+          hls = current;
+          current.loadSource(url);
+          current.attachMedia(video);
+          current.on(Hls.Events.MANIFEST_PARSED, function(){
+            if (hls !== current) return;
+            video.play().catch(function(){});
+          });
+          current.on(Hls.Events.ERROR, function(_event, data){
+            if (hls !== current || !data || !data.fatal) return;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) current.startLoad();
+            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) current.recoverMediaError();
+            setStatus('Reconectando à câmera ' + camera + '…', true);
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')){
+          video.src = url;
+          video.play().catch(function(){});
+        } else {
+          setStatus('Este navegador não consegue abrir a transmissão.', true);
+        }
+      }
+
+      video.addEventListener('playing', function(){ setStatus('', false); });
+      video.addEventListener('volumechange', function(){ video.muted = true; video.volume = 0; });
+      video.addEventListener('waiting', function(){ setStatus('Atualizando transmissão…', true); });
+      renderButtons();
+      connect(1);
+    })();
+  </script>
+</body>
+</html>
