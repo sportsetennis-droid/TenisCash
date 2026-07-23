@@ -1,5 +1,8 @@
 const assert = require('assert');
 const {
+  checkpointToMinutes,
+  formatMinutes,
+  buildTaskReportSchedule,
   scheduleDeadlineState,
   classifyProductionDay,
   splitWhatsAppText,
@@ -11,6 +14,42 @@ function item(position, phase, status, title = `${phase} ${position}`) {
 
 function run() {
   const shift = { scheduleStart: '08:00', scheduleEnd: '18:00' };
+  const dailySchedule = buildTaskReportSchedule([
+    shift,
+    { scheduleStart: '09:00', scheduleEnd: '17:00' },
+  ]);
+  assert.strictEqual(dailySchedule.openingMinutes, 8 * 60, 'deve usar a primeira escala como abertura real');
+  assert.strictEqual(dailySchedule.closingMinutes, 18 * 60, 'deve alcançar o fechamento da última escala');
+  assert.deepStrictEqual(
+    dailySchedule.slots.map(formatMinutes),
+    ['09:00', '12:00', '15:00', '18:00'],
+    'primeiro relatório deve sair +1h e os demais a cada 3h',
+  );
+  assert.deepStrictEqual(
+    buildTaskReportSchedule([{ scheduleStart: '09:30', scheduleEnd: '20:00' }]).slots.map(formatMinutes),
+    ['10:30', '13:30', '16:30', '19:30', '22:30'],
+    'minutos da escala devem ser preservados sem arredondamento',
+  );
+  assert.strictEqual(buildTaskReportSchedule([{ scheduleStart: null, scheduleEnd: null }]).scheduleKnown, false);
+  assert.strictEqual(checkpointToMinutes('09:30'), 570);
+  assert.strictEqual(checkpointToMinutes(13), 780, 'número pequeno mantém compatibilidade como hora');
+  assert.strictEqual(checkpointToMinutes(570), 570, 'número grande representa minuto do dia');
+
+  assert.deepStrictEqual(
+    [...scheduleDeadlineState(shift, '09:00').duePhases],
+    ['ARRIVAL'],
+    'primeira conferência deve cobrar somente a chegada',
+  );
+  assert.deepStrictEqual(
+    [...scheduleDeadlineState(shift, '12:00').duePhases],
+    ['ARRIVAL', 'FIRST_TURN'],
+    'três horas depois deve vencer o primeiro turno',
+  );
+  assert.deepStrictEqual(
+    [...scheduleDeadlineState(shift, '15:00').duePhases],
+    ['ARRIVAL', 'FIRST_TURN', 'SECOND_TURN'],
+    'mais três horas depois deve vencer o segundo turno',
+  );
   assert.deepStrictEqual(
     [...scheduleDeadlineState(shift, 13).duePhases],
     ['ARRIVAL', 'FIRST_TURN'],
