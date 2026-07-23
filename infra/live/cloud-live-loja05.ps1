@@ -38,6 +38,47 @@ function Get-ResponseText($response) {
     return [string]$response.Content
 }
 
+function Get-LatestPlaylist([string]$playlistText, [int]$keepCount = 3) {
+    $lines = @($playlistText -split "`r?`n")
+    $segmentIndexes = @()
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $value = $lines[$i].Trim()
+        if ($value -and -not $value.StartsWith('#')) { $segmentIndexes += $i }
+    }
+    if ($segmentIndexes.Count -le $keepCount) { return $playlistText }
+
+    $originalSequence = 0
+    $sequenceLine = @($lines | Where-Object { $_ -match '^#EXT-X-MEDIA-SEQUENCE:(\d+)$' })[0]
+    if ($sequenceLine -match '^#EXT-X-MEDIA-SEQUENCE:(\d+)$') { $originalSequence = [int64]$Matches[1] }
+    $dropCount = $segmentIndexes.Count - $keepCount
+    $newSequence = $originalSequence + $dropCount
+
+    $result = [Collections.Generic.List[string]]::new()
+    $firstSegmentTag = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^#EXTINF:') { $firstSegmentTag = $i; break }
+    }
+    if ($firstSegmentTag -lt 0) { return $playlistText }
+
+    for ($i = 0; $i -lt $firstSegmentTag; $i++) {
+        if ($lines[$i] -match '^#EXT-X-MEDIA-SEQUENCE:') {
+            $result.Add("#EXT-X-MEDIA-SEQUENCE:$newSequence")
+        } else {
+            $result.Add($lines[$i])
+        }
+    }
+
+    foreach ($uriIndex in @($segmentIndexes | Select-Object -Last $keepCount)) {
+        $start = $uriIndex - 1
+        while ($start -ge $firstSegmentTag -and $lines[$start].Trim().StartsWith('#')) { $start-- }
+        $start++
+        for ($i = $start; $i -le $uriIndex; $i++) { $result.Add($lines[$i]) }
+    }
+
+    if ($lines -contains '#EXT-X-ENDLIST') { $result.Add('#EXT-X-ENDLIST') }
+    return ($result -join "`n") + "`n"
+}
+
 function Send-LiveFile([string]$camera, [IO.FileInfo]$file) {
     $headers = @{
         'X-Agent-Token' = $token
@@ -57,7 +98,7 @@ function Publish-CameraLive($camera) {
     if (-not $variant) { throw 'Playlist da câmera sem variante de vídeo.' }
     $variantUrl = [Uri]::new([Uri]$masterUrl, $variant).AbsoluteUri
     $media = Invoke-WebRequest -UseBasicParsing -Uri $variantUrl -WebSession $cameraSession -TimeoutSec 15
-    $playlistText = Get-ResponseText $media
+    $playlistText = Get-LatestPlaylist -playlistText (Get-ResponseText $media) -keepCount 3
 
     $resourceNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($line in ($playlistText -split "`r?`n")) {
