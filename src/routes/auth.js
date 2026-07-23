@@ -796,7 +796,9 @@ const _cameraLiveDir = process.env.CAMERA_LIVE_DIR || (process.platform === 'win
   : '/data/camera-live');
 const _cameraUploadLimit = 90 * 1024 * 1024;
 const _cameraLiveUploadLimit = 20 * 1024 * 1024;
-const _cameraArchiveMaxBytes = Math.max(1024 * 1024 * 1024, Number(process.env.CAMERA_ARCHIVE_MAX_BYTES || 45 * 1024 * 1024 * 1024));
+// O volume atual tem 50 GB. Mantemos uma folga real para o HLS ao vivo,
+// arquivos temporarios e operacoes do sistema, evitando ENOSPC.
+const _cameraArchiveMaxBytes = Math.max(1024 * 1024 * 1024, Number(process.env.CAMERA_ARCHIVE_MAX_BYTES || 38 * 1024 * 1024 * 1024));
 const _cameraRetentionMs = Math.max(3600000, Number(process.env.CAMERA_CLOUD_RETENTION_HOURS || 24) * 3600000);
 let _cameraCleanupRunning = false;
 
@@ -819,18 +821,36 @@ async function _cleanupCameraArchive() {
   _cameraCleanupRunning = true;
   try {
     const files = await _cameraArchiveFiles(_cameraArchiveDir);
+    let deletedCount = 0;
+    let deletedBytes = 0;
     const cutoff = Date.now() - _cameraRetentionMs;
     for (const file of files.filter(item => item.mtimeMs < cutoff)) {
-      try { await _agFs.promises.unlink(file.full); file.deleted = true; } catch {}
+      try {
+        await _agFs.promises.unlink(file.full);
+        file.deleted = true;
+        deletedCount += 1;
+        deletedBytes += file.size;
+      } catch {}
     }
     const active = files.filter(item => !item.deleted).sort((a, b) => a.mtimeMs - b.mtimeMs);
     let total = active.reduce((sum, item) => sum + item.size, 0);
     for (const file of active) {
       if (total <= _cameraArchiveMaxBytes) break;
-      try { await _agFs.promises.unlink(file.full); total -= file.size; } catch {}
+      try {
+        await _agFs.promises.unlink(file.full);
+        total -= file.size;
+        deletedCount += 1;
+        deletedBytes += file.size;
+      } catch {}
     }
+    if (deletedCount) console.log(`[camera-cleanup] removidos=${deletedCount} bytes=${deletedBytes} restante=${total}`);
   } finally { _cameraCleanupRunning = false; }
 }
+
+// A limpeza precisa ocorrer tambem no boot: se o volume lotou enquanto o
+// servidor estava parado, nenhum novo upload consegue chegar ao trecho que
+// dispara a manutencao normal.
+setImmediate(() => _cleanupCameraArchive().catch(err => console.error('[camera-cleanup-startup]', err.message)));
 
 router.post('/agent-camera-segment', async (req, res) => {
   let tempFile = null;
@@ -930,6 +950,10 @@ router.post('/agent-camera-live', async (req, res) => {
   } catch (err) {
     if (tempFile) { try { await _agFs.promises.unlink(tempFile); } catch {} }
     if (err && err.message === 'LIVE_UPLOAD_LIMIT') return res.status(413).json({ error: 'arquivo HLS acima de 20 MB' });
+    if (err && err.code === 'ENOSPC') {
+      setImmediate(() => _cleanupCameraArchive().catch(cleanupErr => console.error('[camera-cleanup-enospc]', cleanupErr.message)));
+      return res.status(507).json({ error: 'armazenamento em manutencao; tente novamente' });
+    }
     console.error('[agent-camera-live]', err);
     res.status(500).json({ error: 'falha ao armazenar transmissão' });
   }
