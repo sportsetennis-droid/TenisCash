@@ -148,6 +148,8 @@
       }
 
       video.addEventListener('playing', function(){ setStatus('', false); });
+      video.addEventListener('loadeddata', function(){ if (video.videoWidth) setStatus('', false); });
+      video.addEventListener('timeupdate', function(){ if (video.currentTime > 0 && video.videoWidth) setStatus('', false); });
       video.addEventListener('volumechange', function(){ video.muted = true; video.volume = 0; });
       video.addEventListener('waiting', function(){ setStatus('Atualizando transmissão…', true); });
       renderButtons();
