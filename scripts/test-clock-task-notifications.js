@@ -36,11 +36,12 @@ function run() {
     ],
   });
   assert(live.includes('Elias'));
-  assert(live.includes('33%'));
+  assert(live.includes('FEZ:'));
   assert(live.includes('Chegada'));
   assert(live.includes('Reels'));
-  assert(live.includes('SEM registro aprovado') || live.includes('sem registro aprovado'));
-  assert(live.includes('NÃO é considerada executada') || live.includes('NAO e considerada executada'));
+  assert(live.includes('NÃO FEZ:'));
+  assert(live.includes('Foto'));
+  assert(!live.includes('%'));
   console.log('OK: mensagens pessoais de entrada e resumo de saída');
   process.exit(0);
 }

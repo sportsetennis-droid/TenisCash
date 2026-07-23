@@ -252,28 +252,24 @@ function liveTaskStatus(item) {
 function buildLiveTaskUpdateText({ sellerName = 'Vendedor', items = [], dayStatus = null, event = 'atualização', now = new Date() } = {}) {
   const rows = Array.isArray(items) ? [...items].sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
   const states = rows.map((item) => ({ item, ...liveTaskStatus(item) }));
-  const approved = states.filter((row) => row.kind === 'approved').length;
-  const excused = states.filter((row) => row.kind === 'excused').length;
-  const pendingReview = states.filter((row) => row.kind === 'pending_review').length;
-  const notDone = states.filter((row) => row.kind === 'not_done').length;
-  const percentage = rows.length ? Math.round((approved / rows.length) * 100) : 0;
-  const lines = [
-    `⚡ *ATUALIZAÇÃO REAL DE TAREFAS — ${fmtDateBR(now)} · ${fmtTime(now)}*`,
-    '🔒 Tudo que é enviado, aprovado, rejeitado ou fica pendente está sendo registrado no histórico do TenisCash.',
-    '⚠️ Atividade obrigatória sem registro aprovado NÃO é considerada executada.',
-    `👤 *${sellerName}* · evento: ${event}`,
-    `📊 ${percentage}% aprovadas (${approved}/${rows.length}) · dispensadas: ${excused} · aguardando fiscalização: ${pendingReview} · não realizadas: ${notDone}`,
-  ];
-  if (!rows.length) {
-    lines.push('⚠️ Nenhuma tarefa foi encontrada para este vendedor e este dia.');
-    return lines.join('\n');
+  const done = states.filter((row) => row.kind === 'approved');
+  const notDone = states.filter((row) => row.kind !== 'approved');
+  const lines = [`*${sellerName}*`];
+  lines.push('FEZ:');
+  if (done.length) {
+    done.forEach(({ item }) => lines.push(`- ${String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim()}`));
+  } else {
+    lines.push('- Nenhuma tarefa aprovada');
   }
-  lines.push('', '*Tarefas do vendedor:*');
-  states.forEach(({ item, emoji, label }) => {
-    const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
-    const note = item.reviewNote ? ` — ${String(item.reviewNote).replace(/\s+/g, ' ').trim()}` : '';
-    lines.push(`${emoji} ${title} — ${label}${note}`);
-  });
+  lines.push('NÃO FEZ:');
+  if (notDone.length) {
+    notDone.forEach(({ item }) => {
+      const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+      lines.push(`- ${title}`);
+    });
+  } else {
+    lines.push('- Nenhuma');
+  }
   return lines.join('\n');
 }
 
@@ -850,10 +846,9 @@ function taskCheckpoint(checkpointValue, now = new Date()) {
  *
  * O relatório de ponto é separado: nenhum registro de ponto é consultado,
  * usado para filtrar vendedores ou exibido aqui. A produção é medida apenas
- * pelas tarefas do checklist e somente APPROVED entra no percentual.
+ * pelas tarefas do checklist, separando apenas o que foi aprovado do que não foi.
  */
 async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
-  const checkpoint = taskCheckpoint(checkpointValue, now);
   const dayStart = localDayStartUtc(now);
   const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
@@ -890,59 +885,38 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     'pt-BR',
   ));
 
-  const lines = [
-    `📊 *PERCENTUAL DE TAREFAS — ${checkpoint.label}*`,
-    `${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`,
-  ];
-
   if (!days.length) {
-    lines.push('⚪ Nenhuma tarefa registrada hoje.');
-    return lines.join('\n');
+    return 'Nenhum vendedor com tarefas registradas hoje.';
   }
 
-  lines.push(
-    '',
-    'Produção aprovada pela fiscalização:',
-    '🔒 Tudo que é enviado, aprovado, rejeitado ou fica pendente está sendo registrado no histórico do TenisCash.',
-    '⚠️ Atividade obrigatória sem registro aprovado NÃO é considerada executada.',
-  );
+  const lines = [];
   for (const day of days) {
-    const result = classifyProductionDay(day, checkpoint.minutes);
     const items = Array.isArray(day.items) ? day.items : [];
-    const totalTasks = items.length;
-    const approvedTasks = result.approved.length;
-    const percentage = totalTasks > 0 ? Math.round((approvedTasks / totalTasks) * 100) : 0;
-    const submittedTasks = items.filter((item) => item.status === 'SUBMITTED').length;
-    const rejectedTasks = items.filter((item) => item.status === 'REJECTED').length;
-    const state = day.status === 'EXCUSED'
-      ? 'DIA JUSTIFICADO'
-      : rejectedTasks
-        ? 'DEVOLVIDA PARA CORREÇÃO'
-        : submittedTasks
-          ? 'AGUARDANDO FISCALIZAÇÃO'
-          : totalTasks > 0 && approvedTasks === totalTasks
-            ? 'CONCLUÍDO'
-            : approvedTasks
-              ? 'PARCIALMENTE CUMPRIDO'
-              : 'SEM PRODUÇÃO APROVADA';
-    const marker = percentage === 100 ? '✅' : percentage > 0 ? '⚠️' : '❌';
-    lines.push(
-      `${marker} *${day.seller?.name || 'Vendedor'}* — ${percentage}% (${approvedTasks}/${totalTasks} tarefas aprovadas) · ${state}`,
-    );
-    for (const item of items) {
-      const status = liveTaskStatus(item);
-      const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
-      const note = item.reviewNote ? ` — ${String(item.reviewNote).replace(/\s+/g, ' ').trim()}` : '';
-      lines.push(`  ${status.emoji} ${title} — ${status.label}${note}`);
+    const states = items.map((item) => ({ item, ...liveTaskStatus(item) }));
+    const done = states.filter((row) => row.kind === 'approved');
+    const notDone = states.filter((row) => row.kind !== 'approved');
+    lines.push(`*${day.seller?.name || 'Vendedor'}*`);
+    lines.push('FEZ:');
+    if (done.length) {
+      done.forEach(({ item }) => {
+        const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+        lines.push(`- ${title}`);
+      });
+    } else {
+      lines.push('- Nenhuma tarefa aprovada');
     }
+    lines.push('NÃO FEZ:');
+    if (notDone.length) {
+      notDone.forEach(({ item }) => {
+        const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+        lines.push(`- ${title}`);
+      });
+    } else {
+      lines.push('- Nenhuma');
+    }
+    lines.push('');
   }
-
-  lines.push(
-    '',
-    'Cálculo: tarefas aprovadas pela fiscalização ÷ tarefas previstas do dia.',
-    '0% = nenhuma tarefa aprovada até este relatório.',
-  );
-  return lines.join('\n');
+  return lines.join('\n').trim();
 }
 
 async function sendTaskComplianceReport(checkpointValue, now = new Date()) {
@@ -961,10 +935,9 @@ async function sendTaskComplianceReport(checkpointValue, now = new Date()) {
     return { sent: false, text, reason: 'no_group' };
   }
 
-  const rawChunks = splitWhatsAppText(text);
-  const chunks = rawChunks.map((chunk, index) => (
-    rawChunks.length > 1 ? `*TAREFAS — parte ${index + 1}/${rawChunks.length}*\n${chunk}` : chunk
-  ));
+  // Mesmo quando o WhatsApp precisa dividir a mensagem, cada parte continua
+  // contendo somente nomes de vendedores e as tarefas feitas ou não feitas.
+  const chunks = splitWhatsAppText(text);
   const results = [];
   for (const chunk of chunks) {
     const result = await sendEvolutionRaw(jid, chunk);
