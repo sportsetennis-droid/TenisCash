@@ -23,10 +23,26 @@ function selectedCameras() {
 }
 
 function correctionFilter() {
-  // The dark band moves between frames. A short luminance persistence fills
-  // the underexposed rows from the immediately previous bright phase while
-  // leaving chroma untouched. The low decay avoids visible motion trails.
-  return '[0:v]format=yuv420p,lagfun=decay=0.60:planes=1[out]';
+  /*
+   * The TC60/LED mismatch repeats its rolling-shutter pattern every few
+   * frames. Build a low-resolution illumination map for each horizontal row,
+   * average several complete LED cycles and apply only the resulting gain to
+   * the current frame. Pixels from older frames are never mixed into the
+   * output, so people and products remain sharp instead of leaving trails.
+   */
+  const width = 1920;
+  const height = 1080;
+  const sampleColumns = 8;
+  const referenceFrames = 30;
+  const gainScale = 64;
+
+  return [
+    `[0:v]scale=${width}:${height}:flags=lanczos,format=yuv420p,split=3[orig][rowcur][rowbase]`,
+    `[rowcur]scale=${sampleColumns}:${height}:flags=area,scale=${width}:${height}:flags=bilinear[curmap]`,
+    `[rowbase]scale=${sampleColumns}:${height}:flags=area,tmix=frames=${referenceFrames}:weights=1,scale=${width}:${height}:flags=bilinear[basemap]`,
+    `[basemap][curmap]lut2=c0=clip(x*${gainScale}/max(y\\,1)\\,0\\,255):c1=${gainScale}:c2=${gainScale}[gainmap]`,
+    `[orig][gainmap]lut2=c0=clip(x*y/${gainScale}\\,0\\,255):c1=x:c2=x[out]`,
+  ].join(';');
 }
 
 function outputPrefix(cameraNumber) {
