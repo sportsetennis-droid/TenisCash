@@ -27,6 +27,9 @@ const clean = (s) => String(s == null ? '' : s).trim();
 const CAMERA_LIVE_DIR = process.env.CAMERA_LIVE_DIR || (process.platform === 'win32'
   ? path.join(process.cwd(), 'data', 'camera-live')
   : '/data/camera-live');
+const CAMERA_CORRECTED_DIR = process.env.CAMERA_CORRECTED_DIR || (process.platform === 'win32'
+  ? path.join(process.cwd(), 'data', 'camera-live-corrected')
+  : '/data/camera-live-corrected');
 
 // ---------------------------------------------------------------------
 // Helpers
@@ -117,11 +120,27 @@ router.get('/camera/:storeCode/:camera/:name', (req, res) => {
   if (!/^(?:index\.m3u8|[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4)$/.test(name)) {
     return res.status(400).json({ error: 'arquivo HLS inválido' });
   }
-  const full = path.join(CAMERA_LIVE_DIR, storeCode, camera, name);
+  const rawRequested = String(req.query.raw || '') === '1';
+  const correctedPlaylist = path.join(CAMERA_CORRECTED_DIR, storeCode, camera, 'index.m3u8');
+  let correctedReady = false;
+  if (!rawRequested && fs.existsSync(correctedPlaylist)) {
+    try {
+      correctedReady = Date.now() - fs.statSync(correctedPlaylist).mtimeMs < 20000;
+    } catch (_) {}
+  }
+  const root = correctedReady ? CAMERA_CORRECTED_DIR : CAMERA_LIVE_DIR;
+  const full = path.join(root, storeCode, camera, name);
   if (!fs.existsSync(full)) return res.status(404).json({ error: 'transmissão iniciando' });
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'public, no-store, max-age=0');
   res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4');
+  if (rawRequested && name.endsWith('.m3u8')) {
+    const playlist = fs.readFileSync(full, 'utf8').replace(
+      /(\.mp4)(\?[^"\r\n]*)?/g,
+      (_match, extension, query = '') => `${extension}${query}${query ? '&' : '?'}raw=1`,
+    );
+    return res.send(playlist);
+  }
   fs.createReadStream(full).pipe(res);
 });
 

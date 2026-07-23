@@ -1524,6 +1524,12 @@ app.get('*', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);
 
+  try {
+    require('./services/cameraBandCorrection').startCameraBandCorrection(PORT);
+  } catch (e) {
+    console.error('[camera-correction] falha ao iniciar:', e.message);
+  }
+
   // Estoque, gate e limpeza reversivel da Nuvemshop nao dependem dos crons de IA.
   try { startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
 
