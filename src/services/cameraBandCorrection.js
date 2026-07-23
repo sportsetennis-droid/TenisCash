@@ -22,7 +22,14 @@ function selectedCameras() {
   return [...new Set(configured)];
 }
 
-function correctionFilter() {
+function correctionFilter(cameraNumber) {
+  // Roll out the heavier adaptive correction on one feed at a time. Applying
+  // it to all six 1080p feeds in the web service can make the HLS readers lag
+  // behind the short source playlists and reconnect continuously.
+  if (cameraNumber !== 1) {
+    return '[0:v]format=yuv420p,lagfun=decay=0.60:planes=1[out]';
+  }
+
   /*
    * The TC60/LED mismatch repeats its rolling-shutter pattern every few
    * frames. Build a low-resolution illumination map for each horizontal row,
@@ -33,13 +40,13 @@ function correctionFilter() {
   const width = 1920;
   const height = 1080;
   const sampleColumns = 8;
-  const referenceFrames = 30;
-  const gainScale = 64;
+  const referenceFrames = 24;
+  const gainScale = 32;
 
   return [
-    `[0:v]scale=${width}:${height}:flags=lanczos,format=yuv420p,split=3[orig][rowcur][rowbase]`,
-    `[rowcur]scale=${sampleColumns}:${height}:flags=area,scale=${width}:${height}:flags=bilinear[curmap]`,
-    `[rowbase]scale=${sampleColumns}:${height}:flags=area,tmix=frames=${referenceFrames}:weights=1,scale=${width}:${height}:flags=bilinear[basemap]`,
+    `[0:v]fps=8,scale=${width}:${height}:flags=lanczos,format=yuv420p,split=3[orig][rowcur][rowbase]`,
+    `[rowcur]scale=${sampleColumns}:${height}:flags=area,avgblur=sizeX=1:sizeY=9,scale=${width}:${height}:flags=bilinear[curmap]`,
+    `[rowbase]scale=${sampleColumns}:${height}:flags=area,tmix=frames=${referenceFrames}:weights=1,avgblur=sizeX=1:sizeY=151,scale=${width}:${height}:flags=bilinear[basemap]`,
     `[basemap][curmap]lut2=c0=clip(x*${gainScale}/max(y\\,1)\\,0\\,255):c1=${gainScale}:c2=${gainScale}[gainmap]`,
     `[orig][gainmap]lut2=c0=clip(x*y/${gainScale}\\,0\\,255):c1=x:c2=x[out]`,
   ].join(';');
@@ -94,7 +101,7 @@ function startOne(cameraNumber, port) {
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '2',
     '-i', inputUrl,
-    '-filter_complex', correctionFilter(),
+    '-filter_complex', correctionFilter(cameraNumber),
     '-map', '[out]',
     '-an',
     '-c:v', 'libx264',
@@ -106,6 +113,7 @@ function startOne(cameraNumber, port) {
     '-g', '30',
     '-keyint_min', '30',
     '-sc_threshold', '0',
+    '-force_key_frames', 'expr:gte(t,n_forced*2)',
     '-f', 'hls',
     '-hls_time', '2',
     '-hls_list_size', '4',
