@@ -3,6 +3,7 @@
 // mesma definicao. Penalidades trabalhistas nunca sao aplicadas aqui.
 
 const crypto = require('crypto');
+const vision = require('./sellerProductionVision');
 
 const POLICY_VERSION = 'ST-PRODUCAO-2026-07-V2';
 const INCENTIVE_PCT = 10;
@@ -155,7 +156,7 @@ function validateSubmission(rule, payload, context = {}) {
  * passaram por validateSubmission. Conteúdo visual que não puder ser
  * comprovado automaticamente continua na fila para revisão humana.
  */
-function automaticSubmissionReview({ rule, payload = {}, evidence = [] } = {}) {
+function automaticSubmissionReviewLegacy({ rule, payload = {}, evidence = [] } = {}) {
   if (!rule) return { approved: false, reason: 'Regra da atividade não encontrada.' };
 
   const rows = Array.isArray(evidence) ? evidence : [];
@@ -191,6 +192,64 @@ function automaticSubmissionReview({ rule, payload = {}, evidence = [] } = {}) {
   return {
     approved: true,
     note: 'Aprovada automaticamente: requisitos, evidências e integridade técnica conferidos pelo robô.',
+    payload,
+  };
+}
+
+async function automaticSubmissionReview({ rule, payload = {}, evidence = [], visualReview = null } = {}) {
+  if (!rule) return { approved: false, rejected: false, needsHumanReview: true, reason: 'Regra da atividade não encontrada.' };
+
+  const rows = Array.isArray(evidence) ? evidence : [];
+  const validationErrors = validateSubmission(rule, payload, {
+    evidenceMediaTypes: rows.map((entry) => entry.mediaType).filter(Boolean),
+    evidenceKinds: rows.map((entry) => entry.kind).filter(Boolean),
+  });
+  if (validationErrors.length) return { approved: false, rejected: true, needsHumanReview: false, reason: validationErrors.join(' ') };
+
+  const flagged = rows.find((entry) => {
+    const checks = entry?.automatedChecks || {};
+    return entry?.automatedStatus === 'FLAGGED_DUPLICATE'
+      || checks.exactDuplicateDetected
+      || checks.fileNonEmpty === false
+      || checks.mediaTypeMatches === false;
+  });
+  if (flagged) return { approved: false, rejected: true, needsHumanReview: false, reason: 'Evidência duplicada ou tecnicamente inconsistente.' };
+
+  const missingIntegrity = rows.find((entry) => {
+    const checks = entry?.automatedChecks || {};
+    return !checks.hashCaptured || checks.fileNonEmpty !== true;
+  });
+  if (missingIntegrity) return { approved: false, rejected: true, needsHumanReview: false, reason: 'Evidência sem integridade técnica confirmada.' };
+
+  const visual = visualReview || await vision.reviewSubmission({ rule, payload, evidence: rows });
+  const decision = String(visual?.decision || 'REVIEW').toUpperCase();
+  const confidence = Math.round(Number(visual?.confidence || 0) * 100);
+  if (decision === 'APPROVE') {
+    return {
+      approved: true,
+      rejected: false,
+      needsHumanReview: false,
+      note: `Aprovada instantaneamente pela conferência visual (${confidence}%): ${visual.reason}`,
+      visual,
+      payload,
+    };
+  }
+  if (decision === 'REJECT') {
+    return {
+      approved: false,
+      rejected: true,
+      needsHumanReview: false,
+      reason: `Devolvida instantaneamente pela conferência visual (${confidence}%): ${visual.reason}`,
+      visual,
+      payload,
+    };
+  }
+  return {
+    approved: false,
+    rejected: false,
+    needsHumanReview: true,
+    reason: `Aguardando conferência humana: ${visual?.reason || 'resultado visual inconclusivo.'}`,
+    visual,
     payload,
   };
 }

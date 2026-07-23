@@ -140,6 +140,7 @@ async function autoApprovePendingProductionItems() {
       evidence: {
         select: {
           kind: true,
+          storedName: true,
           mediaType: true,
           bytes: true,
           automatedStatus: true,
@@ -152,12 +153,30 @@ async function autoApprovePendingProductionItems() {
   let approved = 0;
   let finalized = 0;
   let skipped = 0;
+  let rejected = 0;
   for (const item of items) {
-    const decision = production.automaticSubmissionReview({
+    const decision = await production.automaticSubmissionReview({
       rule: production.ruleForKey(item.ruleKey),
       payload: item,
       evidence: item.evidence,
     });
+    if (decision.rejected) {
+      const rejectedAt = new Date();
+      const rejectedResult = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.sellerProductionItem.updateMany({
+          where: { id: item.id, status: 'SUBMITTED' },
+          data: { status: 'REJECTED', reviewedById: null, reviewedAt: rejectedAt, reviewNote: decision.reason },
+        });
+        if (claimed.count !== 1) return false;
+        await tx.sellerProductionEvidence.updateMany({
+          where: { itemId: item.id, automatedStatus: { not: 'FLAGGED_DUPLICATE' } },
+          data: { automatedStatus: 'AI_REJECTED' },
+        });
+        return true;
+      });
+      if (rejectedResult) rejected += 1;
+      continue;
+    }
     if (!decision.approved) {
       skipped += 1;
       continue;
@@ -204,10 +223,10 @@ async function autoApprovePendingProductionItems() {
     if (result.finalized) finalized += 1;
   }
 
-  if (approved || skipped) {
+  if (approved || rejected || skipped) {
     console.log(`[sellerProductionCron] fiscalização automática: ${approved} aprovada(s), ${skipped} pendente(s) de revisão humana`);
   }
-  return { checked: items.length, approved, finalized, skipped, disabled: false };
+  return { checked: items.length, approved, rejected, finalized, skipped, disabled: false };
 }
 
 async function ensureScheduledProductionDays(date = new Date()) {

@@ -463,17 +463,21 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
 
     const automaticReviewEnabled = process.env.AUTO_APPROVE_SELLER_TASKS !== '0';
     const automaticReview = automaticReviewEnabled
-      ? production.automaticSubmissionReview({ rule, payload, evidence: savedFiles })
+      ? await production.automaticSubmissionReview({ rule, payload, evidence: savedFiles })
       : { approved: false, reason: 'Fiscalização automática desativada por configuração.' };
     const autoApprovedAt = automaticReview.approved ? new Date() : null;
-    if (automaticReview.approved) {
+    const automaticRejected = automaticReview.rejected === true;
+    const itemStatus = automaticReview.approved ? 'APPROVED' : automaticRejected ? 'REJECTED' : 'SUBMITTED';
+    if (automaticReview.approved || automaticRejected || automaticReview.needsHumanReview) {
       for (const file of savedFiles) {
-        file.automatedStatus = 'AUTO_APPROVED';
+        file.automatedStatus = automaticReview.approved ? 'AUTO_APPROVED' : automaticRejected ? 'AI_REJECTED' : 'AI_REVIEW_REQUIRED';
         file.automatedChecks = {
           ...(file.automatedChecks || {}),
-          humanReviewRequired: false,
-          reviewMode: 'AUTOMATIC',
-          approvedAt: autoApprovedAt.toISOString(),
+          humanReviewRequired: !automaticReview.approved,
+          reviewMode: automaticReview.approved || automaticRejected ? 'AI_VISUAL' : 'AI_REVIEW_REQUIRED',
+          aiDecision: automaticReview.approved ? 'APPROVE' : automaticRejected ? 'REJECT' : 'REVIEW',
+          aiReason: automaticReview.note || automaticReview.reason || null,
+          ...(autoApprovedAt ? { approvedAt: autoApprovedAt.toISOString() } : {}),
         };
       }
     }
@@ -483,7 +487,7 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
       const claimed = await tx.sellerProductionItem.updateMany({
         where: { id: item.id, status: { in: ['PENDING', 'REJECTED'] } },
         data: {
-          status: automaticReview.approved ? 'APPROVED' : 'SUBMITTED',
+          status: itemStatus,
           note: String(req.body.note || '').trim().slice(0, 4000) || null,
           publicationUrl: String(req.body.publicationUrl || '').trim().slice(0, 1000) || null,
           whatsappProofUrl: String(req.body.whatsappProofUrl || '').trim().slice(0, 1000) || null,
@@ -493,10 +497,8 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
           noInstagramStoryConfirmed: parseBoolean(req.body.noInstagramStoryConfirmed),
           submittedAt,
           reviewedById: null,
-          reviewedAt: autoApprovedAt,
-          reviewNote: automaticReview.approved
-            ? automaticReview.note
-            : null,
+          reviewedAt: autoApprovedAt || (automaticRejected ? new Date() : null),
+          reviewNote: automaticReview.approved ? automaticReview.note : (automaticReview.reason || null),
         },
       });
       if (claimed.count !== 1) throw new Error('Atividade alterada por outra operacao. Atualize a tela.');
@@ -521,7 +523,15 @@ router.post('/items/:itemId/submit', requireSellerScope, submissionUpload, async
     });
 
     const updated = await prisma.sellerProductionDay.findUnique({ where: { id: item.dayId }, include: dayInclude() });
-    res.json({ ok: true, day: serializeDay(updated) });
+    res.json({
+      ok: true,
+      verification: {
+        mode: automaticReview.approved || automaticRejected ? 'AI_VISUAL' : 'AI_REVIEW_REQUIRED',
+        status: automaticReview.approved ? 'APPROVED' : automaticRejected ? 'REJECTED' : 'SUBMITTED',
+        reason: automaticReview.note || automaticReview.reason || null,
+      },
+      day: serializeDay(updated),
+    });
   } catch (err) {
     for (const file of savedFiles) evidenceStore.remove(file.storedName);
     console.error('[seller-production/item-submit]', err);

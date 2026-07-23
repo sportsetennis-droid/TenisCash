@@ -2,7 +2,7 @@ const assert = require('assert');
 const production = require('../src/services/sellerProduction');
 const productionRobot = require('../src/services/sellerProductionCron');
 
-function run() {
+async function run() {
   assert.strictEqual(production.RULES.length, 26, 'deve haver 26 atividades por dia');
   assert.strictEqual(production.RULES.filter((r) => r.socialReel).length, 6, 'deve haver 6 reels');
   assert.strictEqual(production.RULES.filter((r) => r.socialStory).length, 12, 'deve haver 12 stories');
@@ -24,7 +24,7 @@ function run() {
     noInstagramStoryConfirmed: true,
   };
   assert.deepStrictEqual(production.validateSubmission(productRule, completeProductPayload, { evidenceKinds: ['WHATSAPP_PROOF'] }), [], 'reels completo deve ser valido');
-  const automaticReview = production.automaticSubmissionReview({
+  const automaticReview = await production.automaticSubmissionReview({
     rule: productRule,
     payload: completeProductPayload,
     evidence: [{
@@ -33,9 +33,10 @@ function run() {
       automatedStatus: 'TECHNICALLY_VALID',
       automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true },
     }],
+    visualReview: { decision: 'APPROVE', confidence: 0.99, reason: 'Imagem de teste compatível.' },
   });
-  assert.strictEqual(automaticReview.approved, true, 'envio tecnicamente valido deve ser aprovado automaticamente');
-  const duplicateReview = production.automaticSubmissionReview({
+  assert.strictEqual(automaticReview.approved, true, 'envio com revisão visual clara deve ser aprovado automaticamente');
+  const duplicateReview = await production.automaticSubmissionReview({
     rule: productRule,
     payload: completeProductPayload,
     evidence: [{
@@ -44,8 +45,21 @@ function run() {
       automatedStatus: 'FLAGGED_DUPLICATE',
       automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true, exactDuplicateDetected: true },
     }],
+    visualReview: { decision: 'APPROVE', confidence: 0.99, reason: 'Imagem de teste compatível.' },
   });
   assert.strictEqual(duplicateReview.approved, false, 'evidencia duplicada deve ficar para revisao');
+  const inconclusiveReview = await production.automaticSubmissionReview({
+    rule: productRule,
+    payload: completeProductPayload,
+    evidence: [{
+      kind: 'WHATSAPP_PROOF',
+      mediaType: 'photo',
+      automatedStatus: 'TECHNICALLY_VALID',
+      automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true },
+    }],
+    visualReview: { decision: 'REVIEW', confidence: 0.62, reason: 'Imagem não permite confirmar o conteúdo.' },
+  });
+  assert.strictEqual(inconclusiveReview.needsHumanReview, true, 'dúvida visual deve ir para revisão humana');
 
   const wrongDuration = production.validateSubmission(productRule, { ...completeProductPayload, durationSeconds: 44 }, { evidenceKinds: ['WHATSAPP_PROOF'] });
   assert(wrongDuration.some((message) => message.includes('45 segundos')), 'duracao deve ser exata');
@@ -94,4 +108,4 @@ function run() {
   console.log('OK: producao diaria, validacoes e elegibilidade mensal');
 }
 
-run();
+run().catch((err) => { console.error(err); process.exitCode = 1; });
