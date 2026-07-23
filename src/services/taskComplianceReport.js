@@ -177,6 +177,72 @@ function splitWhatsAppText(text, maxChars = 3500) {
   return chunks.length ? chunks : [''];
 }
 
+function mergeTaskReportRows(productionDays, clockIns, rules) {
+  const rowsBySeller = new Map();
+  const attendanceBySeller = new Map();
+
+  for (const day of Array.isArray(productionDays) ? productionDays : []) {
+    const sellerId = day?.seller?.id || day?.sellerId;
+    if (!sellerId) continue;
+    rowsBySeller.set(sellerId, { ...day, reportSynthetic: false });
+  }
+
+  for (const clock of Array.isArray(clockIns) ? clockIns : []) {
+    const sellerId = clock?.user?.id || clock?.userId;
+    if (!sellerId) continue;
+    if (!attendanceBySeller.has(sellerId)) attendanceBySeller.set(sellerId, []);
+    attendanceBySeller.get(sellerId).push(clock);
+  }
+
+  for (const [sellerId, attendance] of attendanceBySeller) {
+    attendance.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const firstEntry = attendance.find((event) => event.type === 'entry');
+    const reportStore = firstEntry?.store || attendance[0]?.store || null;
+    const existing = rowsBySeller.get(sellerId);
+    if (existing) {
+      rowsBySeller.set(sellerId, {
+        ...existing,
+        reportClockIns: attendance,
+        reportStore: reportStore || existing.store,
+      });
+      continue;
+    }
+
+    const seller = attendance[0]?.user || { id: sellerId, name: 'Vendedor' };
+    rowsBySeller.set(sellerId, {
+      id: `clock-in:${sellerId}`,
+      sellerId,
+      seller,
+      store: reportStore,
+      reportStore,
+      reportClockIns: attendance,
+      reportSynthetic: true,
+      status: 'OPEN',
+      scheduleStart: null,
+      scheduleEnd: null,
+      items: (Array.isArray(rules) ? rules : []).map((rule) => ({
+        ruleKey: rule.key,
+        phase: rule.phase,
+        position: rule.position,
+        title: rule.title,
+        status: 'PENDING',
+      })),
+    });
+  }
+
+  for (const [sellerId, row] of rowsBySeller) {
+    if (!row.reportClockIns) {
+      rowsBySeller.set(sellerId, {
+        ...row,
+        reportClockIns: [],
+        reportStore: row.store,
+      });
+    }
+  }
+
+  return [...rowsBySeller.values()];
+}
+
 module.exports = {
   PHASES,
   parseScheduleMinutes,
@@ -186,4 +252,5 @@ module.exports = {
   scheduleDeadlineState,
   classifyProductionDay,
   splitWhatsAppText,
+  mergeTaskReportRows,
 };

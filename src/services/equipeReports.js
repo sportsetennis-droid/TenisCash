@@ -20,12 +20,14 @@
 const cron = require('node-cron');
 const { prisma } = require('../middleware');
 const { sendEvolutionRaw, isEvolutionConfigured } = require('../whatsapp');
+const production = require('./sellerProduction');
 const {
   classifyProductionDay,
   checkpointToMinutes,
   formatMinutes,
   buildTaskReportSchedule,
   splitWhatsAppText,
+  mergeTaskReportRows,
 } = require('./taskComplianceReport');
 
 const TZ_OFFSET_MIN = -180; // America/Fortaleza (UTC-3)
@@ -441,38 +443,56 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
     .split(',').map((value) => value.trim()).filter(Boolean);
 
-  const days = await prisma.sellerProductionDay.findMany({
-    where: {
-      workDate: { gte: dayStart, lt: dayEnd },
-      ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
-    },
-    select: {
-      id: true,
-      status: true,
-      scheduleStart: true,
-      scheduleEnd: true,
-      seller: {
-        select: {
-          id: true,
-          name: true,
-          active: true,
-          clockIns: {
-            where: { type: { in: ['entry', 'exit'] }, timestamp: { gte: dayStart, lt: dayEnd } },
-            select: { type: true, timestamp: true },
-            orderBy: { timestamp: 'asc' },
+  const [productionDays, clockIns] = await Promise.all([
+    prisma.sellerProductionDay.findMany({
+      where: {
+        workDate: { gte: dayStart, lt: dayEnd },
+        ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+      },
+      select: {
+        id: true,
+        sellerId: true,
+        status: true,
+        scheduleStart: true,
+        scheduleEnd: true,
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
           },
         },
+        store: { select: { id: true, name: true, code: true } },
+        items: {
+          select: { ruleKey: true, phase: true, position: true, title: true, status: true },
+          orderBy: { position: 'asc' },
+        },
       },
-      store: { select: { id: true, name: true, code: true } },
-      items: {
-        select: { ruleKey: true, phase: true, position: true, title: true, status: true },
-        orderBy: { position: 'asc' },
+    }),
+    prisma.clockIn.findMany({
+      where: {
+        type: { in: ['entry', 'exit'] },
+        timestamp: { gte: dayStart, lt: dayEnd },
+        user: { role: 'seller', active: true },
+        ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
       },
-    },
-  });
+      select: {
+        userId: true,
+        type: true,
+        timestamp: true,
+        user: { select: { id: true, name: true, active: true } },
+        store: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { timestamp: 'asc' },
+    }),
+  ]);
+  const days = mergeTaskReportRows(productionDays, clockIns, production.RULES);
 
   days.sort((a, b) => {
-    const storeOrder = String(a.store?.name || '').localeCompare(String(b.store?.name || ''), 'pt-BR');
+    const storeOrder = String(a.reportStore?.name || a.store?.name || '').localeCompare(
+      String(b.reportStore?.name || b.store?.name || ''),
+      'pt-BR',
+    );
     return storeOrder || String(a.seller?.name || '').localeCompare(String(b.seller?.name || ''), 'pt-BR');
   });
 
@@ -481,6 +501,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   lines.push(`${fmtDateBR(now)} · 🕒 ${fmtTime(now)}`);
   lines.push('Somente tarefa aprovada pela fiscalização aparece como cumprida.');
   lines.push('Prazo: chegada em até 1h da escala; etapas seguintes em ciclos de 3h.');
+  lines.push('Inclui todos que bateram ponto hoje e também quem já possuía checklist/escala.');
   lines.push('━━━━━━━━━━━━━━');
 
   if (!days.length) {
@@ -503,13 +524,14 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   let currentStoreId = null;
 
   for (const day of days) {
-    if (day.store?.id !== currentStoreId) {
+    const reportStore = day.reportStore || day.store;
+    if (reportStore?.id !== currentStoreId) {
       if (currentStoreId !== null) lines.push('');
-      currentStoreId = day.store?.id;
-      lines.push(`🏬 *${day.store?.name || 'Loja não informada'}*`);
+      currentStoreId = reportStore?.id;
+      lines.push(`🏬 *${reportStore?.name || 'Loja não informada'}*`);
     }
 
-    const sellerClockIns = day.seller?.clockIns || [];
+    const sellerClockIns = day.reportClockIns || [];
     const observedEntry = sellerClockIns.find((row) => row.type === 'entry')?.timestamp;
     const observedExit = sellerClockIns.slice().reverse().find((row) => row.type === 'exit')?.timestamp;
     const effectiveStart = day.scheduleStart || (observedEntry ? fmtTime(observedEntry) : null);
@@ -535,6 +557,19 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
           ? ` · entrada registrada ${effectiveStart}`
       : '';
     lines.push(`👤 *${day.seller?.name || 'Vendedor'}*${schedule}`);
+    if (observedEntry) {
+      lines.push(
+        `  🟢 Ponto na ${reportStore?.name || 'loja'}: entrada ${fmtTime(observedEntry)}`
+        + (observedExit ? ` · saída ${fmtTime(observedExit)}` : ' · saída ainda não registrada'),
+      );
+    } else if (observedExit) {
+      lines.push(`  ⚠️ Ponto: saída ${fmtTime(observedExit)} sem entrada registrada`);
+    } else {
+      lines.push('  🔴 Ponto: não registrado hoje');
+    }
+    if (day.reportSynthetic) {
+      lines.push('  ℹ️ Sem checklist aberto: as tarefas foram conferidas pelas regras vigentes e pelos registros existentes.');
+    }
 
     if (result.dayExcused) {
       lines.push('  ⚪ *Dia justificado pela fiscalização*');
