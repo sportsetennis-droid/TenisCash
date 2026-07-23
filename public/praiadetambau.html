@@ -3,159 +3,442 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Praia de Tambaú ao vivo | Sports & Tennis</title>
-  <meta name="description" content="Conheça a loja Sports & Tennis Praia de Tambaú ao vivo e fale com nossa equipe.">
+  <meta name="theme-color" content="#f05a00">
+  <title>Praia de Tambaú ao vivo | Sports &amp; Tennis</title>
+  <meta name="description" content="Visite a Sports & Tennis Praia de Tambaú ao vivo, acompanhe as câmeras da loja e fale com um vendedor pelo WhatsApp.">
+  <meta property="og:title" content="Sports & Tennis Praia de Tambaú ao vivo">
+  <meta property="og:description" content="Veja a loja ao vivo e fale agora com um vendedor.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://praiadetambau.sportsetennis.com.br/">
+  <meta property="og:image" content="https://praiadetambau.sportsetennis.com.br/og-praiadetambau.png">
+  <meta name="twitter:card" content="summary_large_image">
   <style>
     *{box-sizing:border-box}
-    :root{--green:#075b43;--green2:#0b7658;--gold:#e6bd4b;--cream:#f7f3e8;--ink:#14211d;--muted:#64716c}
-    html,body{margin:0;min-height:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--cream);color:var(--ink)}
-    body{padding:14px}
-    .page{width:min(1180px,100%);margin:auto}
-    .hero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,var(--green),var(--green2));color:white}
-    .eyebrow{font-size:11px;font-weight:900;letter-spacing:1.8px;color:#ffe18c}
-    h1{font-size:clamp(24px,4vw,42px);line-height:1;margin:7px 0 8px}
-    .hero p{margin:0;font-size:14px;opacity:.9}
-    .live{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:900;white-space:nowrap}
-    .dot{width:9px;height:9px;border-radius:50%;background:#ff4055;box-shadow:0 0 0 5px rgba(255,64,85,.18);animation:pulse 1.4s infinite}
-    @keyframes pulse{50%{opacity:.38}}
-    .content{background:white;border:1px solid #e6e1d5;border-top:0;border-radius:0 0 22px 22px;overflow:hidden;box-shadow:0 18px 60px rgba(25,45,38,.12)}
-    .stage{position:relative;aspect-ratio:16/9;background:#040706}
-    video{width:100%;height:100%;display:block;object-fit:contain;background:#040706}
-    .overlay{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.66);color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800;backdrop-filter:blur(8px)}
-    .muted{color:#d8ddd9;font-weight:600}
-    .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;background:radial-gradient(circle at center,#20352e,#050807);font-weight:800;text-align:center;padding:25px}
-    .loading.hide{display:none}
-    .picker{padding:16px 18px 8px}
-    .picker-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px}
-    .cameras{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-    .camera{appearance:none;border:1px solid #d9dedb;background:#f7f9f8;color:#2e3a35;border-radius:12px;padding:11px 6px;font-weight:850;cursor:pointer}
-    .camera.active{border-color:var(--green);background:var(--green);color:white;box-shadow:0 5px 14px rgba(7,91,67,.22)}
-    .actions{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;padding:12px 18px 20px}
-    .action{display:flex;align-items:center;justify-content:center;text-decoration:none;border-radius:14px;padding:14px;font-size:14px;font-weight:900}
-    .action.primary{background:var(--gold);color:#2c260f}
-    .action.secondary{background:#edf5f1;color:var(--green);border:1px solid #cbe0d7}
-    .action.whatsapp{background:#075e54;color:#fff;border:1px solid #075e54}
-    .note{text-align:center;color:var(--muted);font-size:11px;padding:0 18px 18px}
-    @media(max-width:680px){
-      body{padding:0;background:white}
-      .hero{border-radius:0;padding:17px 16px}
-      .hero p{font-size:12px}.live{padding:7px 9px}
+    :root{
+      --orange:#f05a00;
+      --orange-dark:#c74300;
+      --orange-light:#ff8a22;
+      --yellow:#ffc928;
+      --ink:#17130f;
+      --paper:#fffaf4;
+      --white:#fff;
+      --muted:#71665d;
+      --line:rgba(45,27,12,.13);
+      --shadow:0 24px 70px rgba(86,36,0,.22);
+    }
+    html{scroll-behavior:smooth}
+    html,body{margin:0;min-height:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink)}
+    body{
+      padding:20px;
+      background:
+        radial-gradient(circle at 7% 4%,rgba(255,217,120,.55),transparent 28rem),
+        radial-gradient(circle at 94% 35%,rgba(133,41,0,.18),transparent 34rem),
+        linear-gradient(145deg,#ff8a1f 0%,var(--orange) 48%,#d84600 100%);
+    }
+    button,a{-webkit-tap-highlight-color:transparent}
+    button:focus-visible,a:focus-visible{outline:3px solid var(--yellow);outline-offset:3px}
+    .page{width:min(1440px,100%);margin:0 auto}
+    .hero{
+      position:relative;
+      overflow:hidden;
+      display:grid;
+      grid-template-columns:1fr auto;
+      align-items:center;
+      gap:24px;
+      padding:28px 32px;
+      border:1px solid rgba(255,255,255,.28);
+      border-radius:28px 28px 0 0;
+      background:linear-gradient(120deg,rgba(24,18,13,.98),rgba(50,28,13,.92));
+      color:var(--white);
+    }
+    .hero:after{
+      content:"";
+      position:absolute;
+      width:320px;
+      height:320px;
+      right:9%;
+      top:-240px;
+      border:52px solid rgba(240,90,0,.55);
+      border-radius:50%;
+      pointer-events:none;
+    }
+    .brand{position:relative;z-index:1}
+    .eyebrow{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:950;letter-spacing:2.1px;color:#ffbd72}
+    .eyebrow:before{content:"";width:27px;height:3px;border-radius:3px;background:var(--orange)}
+    h1{font-size:clamp(30px,4.5vw,58px);line-height:.96;letter-spacing:-2px;margin:10px 0 11px}
+    .hero p{max-width:680px;margin:0;color:#f0e7df;font-size:clamp(13px,1.8vw,17px);line-height:1.5}
+    .live{
+      position:relative;
+      z-index:1;
+      display:inline-flex;
+      align-items:center;
+      gap:9px;
+      border:1px solid rgba(255,255,255,.25);
+      border-radius:999px;
+      padding:10px 14px;
+      background:rgba(255,255,255,.08);
+      font-size:12px;
+      font-weight:950;
+      white-space:nowrap;
+      backdrop-filter:blur(8px);
+    }
+    .dot{width:9px;height:9px;border-radius:50%;background:#ff3e4e;box-shadow:0 0 0 6px rgba(255,62,78,.16);animation:pulse 1.4s infinite}
+    @keyframes pulse{50%{opacity:.4;transform:scale(.85)}}
+    .content{
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.5);
+      border-top:0;
+      border-radius:0 0 28px 28px;
+      background:var(--paper);
+      box-shadow:var(--shadow);
+    }
+    .control-bar{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:18px;
+      padding:20px 22px;
+      border-bottom:1px solid var(--line);
+      background:rgba(255,255,255,.78);
+    }
+    .control-label{margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:950;letter-spacing:1.1px;text-transform:uppercase}
+    .view-modes,.camera-picker{display:flex;flex-wrap:wrap;gap:8px}
+    .mode,.camera{
+      appearance:none;
+      border:1px solid #ded4cb;
+      border-radius:12px;
+      background:#fff;
+      color:#39302a;
+      padding:10px 13px;
+      font:inherit;
+      font-size:13px;
+      font-weight:850;
+      cursor:pointer;
+      transition:transform .16s ease,border-color .16s ease,background .16s ease,color .16s ease;
+    }
+    .mode:hover,.camera:hover{transform:translateY(-1px);border-color:var(--orange)}
+    .mode.active,.camera.active{border-color:var(--orange);background:var(--orange);color:#fff;box-shadow:0 7px 17px rgba(240,90,0,.23)}
+    .mode.all.active{border-color:var(--ink);background:var(--ink)}
+    .stage-shell{padding:18px;background:#1a1511}
+    .stage-grid{display:grid;gap:12px}
+    .stage-grid.single{grid-template-columns:1fr}
+    .stage-grid.all{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .stream{
+      position:relative;
+      overflow:hidden;
+      aspect-ratio:16/9;
+      min-width:0;
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:16px;
+      background:#090806;
+      box-shadow:0 12px 28px rgba(0,0,0,.22);
+    }
+    .stage-grid.single .stream{border-radius:20px}
+    video{width:100%;height:100%;display:block;object-fit:contain;background:#090806}
+    .stream-status{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      color:#fff;
+      background:radial-gradient(circle at center,#4f2a13,#080706 76%);
+      font-size:13px;
+      font-weight:850;
+      text-align:center;
+    }
+    .stream-status.hide{display:none}
+    .stream-label{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      max-width:calc(100% - 20px);
+      border:1px solid rgba(255,255,255,.16);
+      border-radius:10px;
+      padding:7px 9px;
+      background:rgba(14,11,8,.72);
+      color:#fff;
+      font-size:11px;
+      font-weight:900;
+      backdrop-filter:blur(7px);
+    }
+    .stream-label span{color:#d8d1cb;font-weight:650}
+    .expand{
+      position:absolute;
+      top:10px;
+      right:10px;
+      appearance:none;
+      border:1px solid rgba(255,255,255,.22);
+      border-radius:9px;
+      padding:7px 9px;
+      background:rgba(14,11,8,.68);
+      color:#fff;
+      font:inherit;
+      font-size:10px;
+      font-weight:900;
+      cursor:pointer;
+      backdrop-filter:blur(7px);
+    }
+    .stage-grid.single .expand{display:none}
+    .sales{
+      display:grid;
+      grid-template-columns:minmax(0,1.1fr) minmax(420px,.9fr);
+      align-items:center;
+      gap:26px;
+      padding:25px 26px 28px;
+      background:linear-gradient(120deg,#fffaf4,#fff 58%,#fff3e4);
+    }
+    .sales-kicker{margin-bottom:7px;color:var(--orange-dark);font-size:11px;font-weight:950;letter-spacing:1.4px;text-transform:uppercase}
+    .sales h2{margin:0 0 8px;font-size:clamp(22px,3vw,34px);letter-spacing:-.8px}
+    .sales p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}
+    .actions{display:grid;grid-template-columns:1.25fr .75fr;gap:10px}
+    .action{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      min-height:52px;
+      border-radius:14px;
+      padding:13px 15px;
+      text-decoration:none;
+      font-size:13px;
+      font-weight:950;
+      text-align:center;
+      transition:transform .16s ease,box-shadow .16s ease;
+    }
+    .action:hover{transform:translateY(-2px)}
+    .action.whatsapp{background:var(--orange);color:#fff;box-shadow:0 10px 24px rgba(240,90,0,.24)}
+    .action.call{border:1px solid #d8cec5;background:var(--ink);color:#fff}
+    .note{padding:0 26px 23px;color:var(--muted);font-size:11px;text-align:center}
+    @media(max-width:1000px){
+      .control-bar{align-items:stretch;flex-direction:column}
+      .stage-grid.all{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .sales{grid-template-columns:1fr}
+    }
+    @media(max-width:650px){
+      body{padding:0;background:var(--orange)}
+      .hero{grid-template-columns:1fr;border-radius:0;padding:22px 18px}
+      .hero:after{right:-140px}
+      h1{letter-spacing:-1px}
+      .live{position:absolute;top:18px;right:16px;padding:7px 10px;font-size:10px}
       .content{border:0;border-radius:0;box-shadow:none}
-      .cameras{grid-template-columns:repeat(3,1fr)}
+      .control-bar{padding:16px}
+      .mode{flex:1}
+      .camera-picker{display:grid;grid-template-columns:repeat(3,1fr)}
+      .camera{padding:10px 5px}
+      .stage-shell{padding:8px}
+      .stage-grid.all{grid-template-columns:1fr;gap:8px}
+      .stream,.stage-grid.single .stream{border-radius:10px}
+      .sales{padding:22px 18px}
       .actions{grid-template-columns:1fr}
-      .overlay{left:9px;bottom:9px}
+      .note{padding:0 18px 20px}
     }
   </style>
 </head>
 <body>
   <main class="page">
     <header class="hero">
-      <div>
+      <div class="brand">
         <div class="eyebrow">SPORTS &amp; TENNIS</div>
         <h1>Praia de Tambaú</h1>
-        <p>Entre na loja ao vivo e veja o movimento em tempo real.</p>
+        <p>Entre na loja agora, acompanhe os ambientes em tempo real e compre com atendimento ao vivo.</p>
       </div>
-      <div class="live"><span class="dot"></span> AO VIVO</div>
+      <div class="live"><span class="dot"></span> LOJA AO VIVO</div>
     </header>
 
     <section class="content">
-      <div class="stage">
-        <video id="liveVideo" autoplay muted playsinline disablepictureinpicture></video>
-        <div id="loading" class="loading">Conectando à câmera 1…</div>
-        <div class="overlay">Câmera <span id="cameraNumber">1</span> <span class="muted">• sem áudio</span></div>
+      <div class="control-bar">
+        <div>
+          <div class="control-label">Modo de visualização</div>
+          <div class="view-modes">
+            <button id="singleMode" class="mode active" type="button" aria-pressed="true">Uma câmera</button>
+            <button id="allMode" class="mode all" type="button" aria-pressed="false">Todas ao mesmo tempo</button>
+          </div>
+        </div>
+        <div>
+          <div class="control-label">Escolha a câmera</div>
+          <div id="cameraPicker" class="camera-picker"></div>
+        </div>
       </div>
 
-      <div class="picker">
-        <div class="picker-title">Escolha o ambiente</div>
-        <div id="cameraPicker" class="cameras"></div>
+      <div class="stage-shell">
+        <div id="stage" class="stage-grid single" aria-live="polite"></div>
       </div>
 
-      <div class="actions">
-        <a class="action primary" href="/aovivo/LOJA05" target="_blank" rel="noopener">Falar com um vendedor ao vivo</a>
-        <a class="action whatsapp" href="tel:+5583989042285">Ligar agora para comprar</a>
+      <div class="sales">
+        <div>
+          <div class="sales-kicker">Atendimento da Loja 05</div>
+          <h2>Gostou de algum produto?</h2>
+          <p>Abra o WhatsApp da loja e fale diretamente com um vendedor. Ele pode mostrar os produtos ao vivo e ajudar na compra.</p>
+        </div>
+        <div class="actions">
+          <a class="action whatsapp" href="https://wa.me/5583989042285?text=Ol%C3%A1%2C%20quero%20falar%20com%20um%20vendedor%20da%20Sports%20%26%20Tennis%20Praia%20de%20Tamba%C3%BA." target="_blank" rel="noopener">💬 Falar com o vendedor no WhatsApp</a>
+          <a class="action call" href="tel:+5583989042285">☎ Ligar para a loja</a>
+        </div>
       </div>
-      <div class="note">Transmissão sem áudio. A ligação abre diretamente o telefone da Loja 05.</div>
+      <div class="note">As transmissões são exibidas sem áudio para preservar a privacidade da loja.</div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script>
     (function(){
-      var video = document.getElementById('liveVideo');
-      var loading = document.getElementById('loading');
+      var stage = document.getElementById('stage');
       var picker = document.getElementById('cameraPicker');
-      var number = document.getElementById('cameraNumber');
-      var hls = null;
+      var singleMode = document.getElementById('singleMode');
+      var allMode = document.getElementById('allMode');
       var selected = 1;
-
-      video.muted = true;
-      video.volume = 0;
+      var view = 'single';
+      var players = [];
 
       function source(camera){
         return '/api/live/camera/LOJA05/loja05_camera' + camera + '/index.m3u8';
       }
 
-      function setStatus(text, visible){
-        loading.textContent = text;
-        loading.classList.toggle('hide', !visible);
+      function setStatus(status, text, visible){
+        status.textContent = text;
+        status.classList.toggle('hide', !visible);
       }
 
-      function renderButtons(){
+      function stopPlayers(){
+        players.forEach(function(player){
+          if (player.hls){ try{ player.hls.destroy(); }catch(_){} }
+          try{
+            player.video.pause();
+            player.video.removeAttribute('src');
+            player.video.load();
+          }catch(_){}
+        });
+        players = [];
+      }
+
+      function attach(video, status, camera){
+        video.muted = true;
+        video.volume = 0;
+
+        function hasFrame(){
+          return video.currentTime > 0 && video.videoWidth > 0;
+        }
+
+        function hideWhenReady(){
+          if (video.videoWidth > 0) setStatus(status, '', false);
+        }
+
+        video.addEventListener('playing', hideWhenReady);
+        video.addEventListener('loadeddata', hideWhenReady);
+        video.addEventListener('timeupdate', hideWhenReady);
+        video.addEventListener('volumechange', function(){ video.muted = true; video.volume = 0; });
+        video.addEventListener('waiting', function(){
+          setStatus(status, 'Atualizando câmera ' + camera + '…', !hasFrame());
+        });
+
+        if (window.Hls && Hls.isSupported()){
+          var hls = new Hls({
+            lowLatencyMode:true,
+            liveSyncDuration:3,
+            backBufferLength:12,
+            maxBufferLength:12
+          });
+          players.push({ video:video, hls:hls });
+          hls.loadSource(source(camera));
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, function(){ video.play().catch(function(){}); });
+          hls.on(Hls.Events.ERROR, function(_event, data){
+            if (!data || !data.fatal) return;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+            setStatus(status, 'Reconectando câmera ' + camera + '…', !hasFrame());
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')){
+          players.push({ video:video, hls:null });
+          video.src = source(camera);
+          video.play().catch(function(){});
+        } else {
+          setStatus(status, 'Este navegador não consegue abrir a transmissão.', true);
+        }
+      }
+
+      function createStream(camera){
+        var card = document.createElement('article');
+        card.className = 'stream';
+        card.setAttribute('aria-label', 'Transmissão da câmera ' + camera);
+
+        var video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.disablePictureInPicture = true;
+
+        var status = document.createElement('div');
+        status.className = 'stream-status';
+        status.textContent = 'Conectando à câmera ' + camera + '…';
+
+        var label = document.createElement('div');
+        label.className = 'stream-label';
+        label.innerHTML = 'Câmera ' + camera + ' <span>• sem áudio</span>';
+
+        var expand = document.createElement('button');
+        expand.type = 'button';
+        expand.className = 'expand';
+        expand.textContent = 'Ampliar';
+        expand.setAttribute('aria-label', 'Ampliar câmera ' + camera);
+        expand.addEventListener('click', function(){
+          selected = camera;
+          view = 'single';
+          render();
+          window.scrollTo({ top:0, behavior:'smooth' });
+        });
+
+        card.appendChild(video);
+        card.appendChild(status);
+        card.appendChild(label);
+        card.appendChild(expand);
+        stage.appendChild(card);
+        attach(video, status, camera);
+      }
+
+      function renderPicker(){
         picker.innerHTML = '';
         for (var i=1;i<=6;i++){
           var button = document.createElement('button');
           button.type = 'button';
-          button.className = 'camera' + (i === selected ? ' active' : '');
+          button.className = 'camera' + (view === 'single' && i === selected ? ' active' : '');
           button.textContent = 'Câmera ' + i;
           button.dataset.camera = i;
-          button.addEventListener('click', function(){ connect(Number(this.dataset.camera)); });
+          button.setAttribute('aria-pressed', view === 'single' && i === selected ? 'true' : 'false');
+          button.addEventListener('click', function(){
+            selected = Number(this.dataset.camera);
+            view = 'single';
+            render();
+          });
           picker.appendChild(button);
         }
       }
 
-      function connect(camera){
-        selected = camera;
-        number.textContent = camera;
-        renderButtons();
-        setStatus('Conectando à câmera ' + camera + '…', true);
-        if (hls){ try{ hls.destroy(); }catch(_){} hls = null; }
-        video.pause();
-        video.removeAttribute('src');
-        video.load();
+      function render(){
+        stopPlayers();
+        stage.innerHTML = '';
+        stage.className = 'stage-grid ' + view;
+        singleMode.classList.toggle('active', view === 'single');
+        allMode.classList.toggle('active', view === 'all');
+        singleMode.setAttribute('aria-pressed', view === 'single' ? 'true' : 'false');
+        allMode.setAttribute('aria-pressed', view === 'all' ? 'true' : 'false');
+        renderPicker();
 
-        var url = source(camera);
-        if (window.Hls && Hls.isSupported()){
-          var current = new Hls({ lowLatencyMode:true, liveSyncDuration:3 });
-          hls = current;
-          current.loadSource(url);
-          current.attachMedia(video);
-          current.on(Hls.Events.MANIFEST_PARSED, function(){
-            if (hls !== current) return;
-            video.play().catch(function(){});
-          });
-          current.on(Hls.Events.ERROR, function(_event, data){
-            if (hls !== current || !data || !data.fatal) return;
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) current.startLoad();
-            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) current.recoverMediaError();
-            setStatus('Reconectando à câmera ' + camera + '…', true);
-          });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')){
-          video.src = url;
-          video.play().catch(function(){});
+        if (view === 'all'){
+          for (var i=1;i<=6;i++) createStream(i);
         } else {
-          setStatus('Este navegador não consegue abrir a transmissão.', true);
+          createStream(selected);
         }
       }
 
-      video.addEventListener('playing', function(){ setStatus('', false); });
-      video.addEventListener('loadeddata', function(){ if (video.videoWidth) setStatus('', false); });
-      video.addEventListener('timeupdate', function(){ if (video.currentTime > 0 && video.videoWidth) setStatus('', false); });
-      video.addEventListener('volumechange', function(){ video.muted = true; video.volume = 0; });
-      video.addEventListener('waiting', function(){
-        setStatus('Atualizando transmissão…', !(video.currentTime > 0 && video.videoWidth));
-      });
-      renderButtons();
-      connect(1);
+      singleMode.addEventListener('click', function(){ view = 'single'; render(); });
+      allMode.addEventListener('click', function(){ view = 'all'; render(); });
+      render();
     })();
   </script>
 </body>
