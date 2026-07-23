@@ -18,6 +18,7 @@
     "test:labels": "node scripts/test-label-145x25.js",
     "test:relationship-commission": "node scripts/test-relationship-commission.js",
     "test:seller-production": "node scripts/test-seller-production.js && node scripts/test-task-compliance-report.js",
+    "test:clock-notifications": "node scripts/test-clock-task-notifications.js",
     "test:seller-assistant": "node scripts/test-seller-assistant.js"
   },
   "dependencies": {

@@ -27,6 +27,7 @@ const {
   buildTaskReportSchedule,
   splitWhatsAppText,
 } = require('./taskComplianceReport');
+const production = require('./sellerProduction');
 
 const TZ_OFFSET_MIN = -180; // America/Fortaleza (UTC-3)
 
@@ -110,8 +111,140 @@ async function resolveStoreName(storeId, fallback) {
  * Avisa o grupo que alguém bateu o ponto. Fire-and-forget (nunca derruba a rota).
  * @param {{userId?:string, userName?:string, storeId?:string, storeName?:string, type:string, at?:Date}} p
  */
+function personalStatusForItem(item) {
+  const status = String(item?.status || 'PENDING').toUpperCase();
+  if (status === 'APPROVED') return { kind: 'done', label: 'aprovada pela fiscalizacao' };
+  if (status === 'EXCUSED') return { kind: 'excused', label: 'dispensada pela empresa' };
+  if (status === 'SUBMITTED') return { kind: 'not_done', label: 'enviada, aguardando fiscalizacao' };
+  if (status === 'REJECTED') return { kind: 'not_done', label: 'devolvida para correcao' };
+  return { kind: 'not_done', label: 'sem registro aprovado' };
+}
+
+function formatPersonalPercent(value) {
+  if (Number.isInteger(value)) return `${value}%`;
+  return `${value.toFixed(1).replace('.', ',')}%`;
+}
+
+/** Texto do resumo pessoal emitido no encerramento do ponto. */
+function buildPersonalTaskReportText({ name = 'Vendedor', now = new Date(), items = [], dayStatus = null } = {}) {
+  const rows = Array.isArray(items) ? [...items].sort((a, b) => Number(a.position || 0) - Number(b.position || 0)) : [];
+  const lines = [
+    `📋 *SEU RESUMO DE TAREFAS — ${fmtDateBR(now)}*`,
+    `Olá, ${name}. Este é o registro pessoal do seu checklist no encerramento do ponto.`,
+  ];
+  if (!rows.length) {
+    lines.push('⚠️ Checklist diário não encontrado ou sem itens registrados.');
+    lines.push('Percentual: não calculável, porque não existe base de tarefas registrada para este dia.');
+    lines.push('Se isso estiver incorreto, fale conosco pelo canal de dúvidas.');
+    return lines.join('\n');
+  }
+  const classified = rows.map((item) => ({ item, ...personalStatusForItem(item) }));
+  const done = classified.filter((row) => row.kind === 'done');
+  const excused = classified.filter((row) => row.kind === 'excused');
+  const notDone = classified.filter((row) => row.kind === 'not_done');
+  const recognized = done.length + excused.length;
+  const pct = (recognized / rows.length) * 100;
+  lines.push(`✅ Realizadas e aprovadas: ${done.length}/${rows.length}`);
+  lines.push(`🟦 Dispensadas pela empresa: ${excused.length}/${rows.length}`);
+  lines.push(`📈 Cumprimento reconhecido: ${formatPersonalPercent(pct)}`);
+  if (dayStatus) lines.push(`Status do checklist: ${String(dayStatus).toUpperCase()}`);
+  if (notDone.length) {
+    lines.push(`❌ Não consideradas realizadas: ${notDone.length}`);
+    notDone.forEach(({ item, label }) => {
+      const title = String(item.title || item.ruleKey || 'Tarefa sem título').replace(/\s+/g, ' ').trim();
+      const detail = item.reviewNote ? ` — ${String(item.reviewNote).replace(/\s+/g, ' ').trim()}` : '';
+      lines.push(`• ${title}: ${label}${detail}`);
+    });
+  } else {
+    lines.push('✅ Nenhuma tarefa ficou sem aprovação ou registro de dispensa.');
+  }
+  lines.push('Em caso de dúvida sobre qualquer item, estamos disponíveis para ajudar.');
+  return lines.join('\n');
+}
+
+async function findPersonalMessageSender(excludeUserId) {
+  return prisma.user.findFirst({
+    where: {
+      active: true,
+      role: { in: ['superadmin', 'admin', 'manager'] },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+    },
+    orderBy: [{ role: 'desc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  });
+}
+
+async function createPersonalAnnouncement({ userId, title, content, at }) {
+  if (!userId || !title || !content) return { sent: false, reason: 'missing_fields' };
+  const timestamp = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date();
+  const dayStart = localDayStartUtc(timestamp);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const existing = await prisma.message.findFirst({
+    where: { toId: userId, title, createdAt: { gte: dayStart, lt: dayEnd } },
+    select: { id: true },
+  });
+  if (existing) return { sent: false, duplicate: true, messageId: existing.id };
+  const sender = await findPersonalMessageSender(userId);
+  if (!sender) {
+    console.warn(`[equipeReports] mensagem pessoal nao enviada para ${userId}: nenhum administrador ativo.`);
+    return { sent: false, reason: 'no_sender' };
+  }
+  const message = await prisma.message.create({
+    data: {
+      fromId: sender.id,
+      toId: userId,
+      type: 'announcement',
+      title,
+      content,
+      priority: 'normal',
+      status: 'sent',
+    },
+    select: { id: true },
+  });
+  return { sent: true, messageId: message.id };
+}
+
+async function notifyPersonalClockMessage(p = {}) {
+  if (!p.userId || !['entry', 'exit'].includes(p.type)) return { sent: false, reason: 'event_not_supported' };
+  const at = p.at instanceof Date ? p.at : new Date(p.at || Date.now());
+  const user = await prisma.user.findUnique({ where: { id: p.userId }, select: { id: true, name: true } });
+  if (!user) return { sent: false, reason: 'user_not_found' };
+  const name = p.userName || user.name || 'Vendedor';
+  if (p.type === 'entry') {
+    const content = [
+      `🌤️ Bom dia, ${name}!`,
+      'Seu ponto de entrada foi registrado.',
+      'As tarefas e obrigações do dia devem ser realizadas e registradas no TenisCash com as evidências solicitadas. Esse acompanhamento é importante para manter a transparência e o reconhecimento do seu trabalho.',
+      'Se tiver qualquer dúvida, estamos disponíveis para ajudar pelo canal da empresa.',
+      'Bom trabalho!',
+    ].join('\n');
+    return createPersonalAnnouncement({ userId: user.id, title: 'Bom dia — obrigações do dia', content, at });
+  }
+  const workDate = localDayStartUtc(at);
+  const day = await prisma.sellerProductionDay.findUnique({
+    where: { sellerId_workDate: { sellerId: user.id, workDate } },
+    select: { status: true, items: { orderBy: { position: 'asc' }, select: { position: true, title: true, ruleKey: true, status: true, reviewNote: true } } },
+  });
+  // Se o cron ainda nao tiver criado o checklist, a politica vigente fornece
+  // a base das tarefas. Assim o encerramento registra 0% sem inventar execucao.
+  const items = day?.items?.length
+    ? day.items
+    : production.RULES.map((rule) => ({
+      position: rule.position,
+      title: rule.title,
+      ruleKey: rule.key,
+      status: 'PENDING',
+    }));
+  const content = buildPersonalTaskReportText({ name, now: at, items, dayStatus: day?.status || 'CHECKLIST_NAO_CRIADO' });
+  return createPersonalAnnouncement({ userId: user.id, title: `Resumo pessoal de tarefas — ${fmtDateBR(at)}`, content, at });
+}
+
 async function notifyClockEvent(p = {}) {
   try {
+    await notifyPersonalClockMessage(p).catch((e) => {
+      console.error('[equipeReports] mensagem pessoal do ponto falhou:', e.message);
+    });
+
     const jid = pontoGroupJid();
     if (!jid || !isEvolutionConfigured()) return; // gate: nada configurado = silêncio
     const meta = TYPE_META[p.type];
@@ -876,6 +1009,8 @@ module.exports = {
   sendSalesReport,
   buildSalesReport,
   notifyClockEvent,
+  notifyPersonalClockMessage,
+  buildPersonalTaskReportText,
   buildPresenceReport,
   sendPresenceReport,
   buildTaskComplianceReport,
