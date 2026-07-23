@@ -451,7 +451,18 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       status: true,
       scheduleStart: true,
       scheduleEnd: true,
-      seller: { select: { id: true, name: true, active: true } },
+      seller: {
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          clockIns: {
+            where: { type: { in: ['entry', 'exit'] }, timestamp: { gte: dayStart, lt: dayEnd } },
+            select: { type: true, timestamp: true },
+            orderBy: { timestamp: 'asc' },
+          },
+        },
+      },
       store: { select: { id: true, name: true, code: true } },
       items: {
         select: { ruleKey: true, phase: true, position: true, title: true, status: true },
@@ -487,6 +498,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     notDue: 0,
     excused: 0,
     unknownSchedule: 0,
+    missingEnd: 0,
   };
   let currentStoreId = null;
 
@@ -497,7 +509,15 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       lines.push(`🏬 *${day.store?.name || 'Loja não informada'}*`);
     }
 
-    const result = classifyProductionDay(day, checkpoint.minutes);
+    const sellerClockIns = day.seller?.clockIns || [];
+    const observedEntry = sellerClockIns.find((row) => row.type === 'entry')?.timestamp;
+    const observedExit = sellerClockIns.slice().reverse().find((row) => row.type === 'exit')?.timestamp;
+    const effectiveStart = day.scheduleStart || (observedEntry ? fmtTime(observedEntry) : null);
+    const effectiveEnd = day.scheduleEnd || (observedExit ? fmtTime(observedExit) : null);
+    const effectiveDay = effectiveStart === day.scheduleStart && effectiveEnd === day.scheduleEnd
+      ? day
+      : { ...day, scheduleStart: effectiveStart, scheduleEnd: effectiveEnd };
+    const result = classifyProductionDay(effectiveDay, checkpoint.minutes);
     totals.approved += result.approved.length;
     totals.awaitingReview += result.awaitingReview.length;
     totals.noncompliant += result.noncompliant.length;
@@ -505,9 +525,14 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     totals.notDue += result.notDue.length;
     totals.excused += result.excused.length;
     if (!result.scheduleKnown && !result.dayExcused) totals.unknownSchedule += 1;
+    if (result.scheduleKnown && !result.endKnown && !result.dayExcused) totals.missingEnd += 1;
 
     const schedule = day.scheduleStart && day.scheduleEnd
       ? ` · escala ${day.scheduleStart}–${day.scheduleEnd}`
+      : effectiveStart && effectiveEnd
+        ? ` · ponto diário ${effectiveStart}–${effectiveEnd}`
+        : effectiveStart
+          ? ` · entrada registrada ${effectiveStart}`
       : '';
     lines.push(`👤 *${day.seller?.name || 'Vendedor'}*${schedule}`);
 
@@ -525,6 +550,8 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     }
     if (!result.scheduleKnown) {
       lines.push('  ⚠️ Sem horário de escala: pendências não foram chamadas de descumprimento.');
+    } else if (!result.endKnown) {
+      lines.push('  ⚠️ Sem horário de saída: a tarefa de saída não foi chamada de descumprimento.');
     }
     if (!day.items.length) {
       lines.push('  ⚠️ Checklist sem tarefas cadastradas.');
@@ -539,6 +566,9 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
   lines.push(`⏳ Ainda no prazo: ${totals.notDue} · ⚪ Justificadas: ${totals.excused}`);
   if (totals.unknownSchedule) {
     lines.push(`⚠️ ${totals.unknownSchedule} vendedor(es) sem horário de escala; o sistema não estimou prazos.`);
+  }
+  if (totals.missingEnd) {
+    lines.push(`⚠️ ${totals.missingEnd} vendedor(es) sem horário de saída; a saída ficou para conferência humana.`);
   }
   lines.push('Fiscalização e decisão final são humanas; o robô apenas relata os registros.');
   return lines.join('\n');
@@ -581,14 +611,31 @@ async function loadTaskReportSchedule(now = new Date()) {
   const dayEnd = new Date(dayStart.getTime() + 24 * 3600 * 1000);
   const codeFilter = (process.env.RELATORIO_STORE_CODES || '')
     .split(',').map((value) => value.trim()).filter(Boolean);
-  const shifts = await prisma.sellerProductionDay.findMany({
-    where: {
-      workDate: { gte: dayStart, lt: dayEnd },
-      ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
-    },
-    select: { scheduleStart: true, scheduleEnd: true },
-  });
-  return buildTaskReportSchedule(shifts);
+  const where = {
+    workDate: { gte: dayStart, lt: dayEnd },
+    ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+  };
+  const [shifts, firstEntry] = await Promise.all([
+    prisma.sellerProductionDay.findMany({
+      where,
+      select: { scheduleStart: true, scheduleEnd: true },
+    }),
+    prisma.clockIn.findFirst({
+      where: {
+        type: 'entry',
+        timestamp: { gte: dayStart, lt: dayEnd },
+        ...(codeFilter.length ? { store: { code: { in: codeFilter } } } : {}),
+      },
+      select: { timestamp: true },
+      orderBy: { timestamp: 'asc' },
+    }),
+  ]);
+  const entryParts = firstEntry ? localParts(firstEntry.timestamp) : null;
+  const observedOpening = entryParts ? (entryParts.H * 60) + entryParts.Min : null;
+  return {
+    ...buildTaskReportSchedule(shifts, { openingMinutes: observedOpening }),
+    source: firstEntry ? 'FIRST_CLOCK_IN' : 'SCHEDULE',
+  };
 }
 
 function taskReportDeliveryKey(now, slotMinutes) {
@@ -669,7 +716,7 @@ function startEquipeReportsCron() {
       return;
     }
     console.log(
-      `[equipeReports] tarefas de hoje: abertura ${formatMinutes(schedule.openingMinutes)}; envios ${schedule.slots.map(formatMinutes).join(', ')}`
+      `[equipeReports] tarefas de hoje: abertura ${formatMinutes(schedule.openingMinutes)} (${schedule.source === 'FIRST_CLOCK_IN' ? 'primeiro ponto' : 'escala'}); envios ${schedule.slots.map(formatMinutes).join(', ')}`
     );
   }).catch((e) => console.error('[equipeReports] leitura da escala', e.message));
 }
