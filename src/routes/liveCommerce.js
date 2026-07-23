@@ -141,6 +141,7 @@ router.get('/camera/:storeCode/:camera/:name', (req, res) => {
     );
     return res.send(playlist);
   }
+  res.setHeader('Content-Length', fs.statSync(full).size);
   fs.createReadStream(full).pipe(res);
 });
 
