@@ -30,7 +30,9 @@ function correctionFilter() {
 }
 
 function outputPrefix(cameraNumber) {
-  return `c0ffee0${cameraNumber}_video1`;
+  // A unique prefix keeps the previous playlist playable while FFmpeg
+  // reconnects to a source whose HLS timeline was restarted.
+  return `c${cameraNumber}${Date.now().toString(16)}_video1`;
 }
 
 function rawPlaylist(cameraNumber) {
@@ -60,7 +62,6 @@ function startOne(cameraNumber, port) {
 
   const camera = `loja05_camera${cameraNumber}`;
   const outputDir = correctedDirectory(cameraNumber);
-  fs.rmSync(outputDir, { recursive: true, force: true });
   fs.mkdirSync(outputDir, { recursive: true });
   const prefix = outputPrefix(cameraNumber);
   const inputUrl = `http://127.0.0.1:${port}/api/live/camera/${STORE}/${camera}/index.m3u8?raw=1`;
@@ -73,6 +74,10 @@ function startOne(cameraNumber, port) {
     '-fflags', '+genpts+discardcorrupt',
     '-analyzeduration', '3000000',
     '-probesize', '3000000',
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_at_eof', '1',
+    '-reconnect_delay_max', '2',
     '-i', inputUrl,
     '-filter_complex', correctionFilter(),
     '-map', '[out]',
@@ -108,6 +113,22 @@ function startOne(cameraNumber, port) {
   child.stderr.on('data', (chunk) => {
     stderr = (stderr + chunk).slice(-4000);
   });
+
+  // After the new playlist is live, discard files from older generations.
+  // Until then the last good corrected playlist remains available to viewers.
+  const cleanupTimer = setTimeout(() => {
+    try {
+      const playlist = fs.readFileSync(playlistPath, 'utf8');
+      if (!playlist.includes(prefix)) return;
+      for (const name of fs.readdirSync(outputDir)) {
+        if (name.endsWith('.mp4') && !name.startsWith(prefix)) {
+          fs.rmSync(path.join(outputDir, name), { force: true });
+        }
+      }
+    } catch (_) {}
+  }, 10000);
+  cleanupTimer.unref();
+
   child.once('error', (error) => {
     console.error(`[camera-correction] camera=${cameraNumber} spawn=${error.message}`);
   });
@@ -115,7 +136,7 @@ function startOne(cameraNumber, port) {
     children.delete(cameraNumber);
     const detail = stderr.trim().split(/\r?\n/).slice(-2).join(' | ');
     console.warn(`[camera-correction] camera=${cameraNumber} exit=${code} signal=${signal || '-'} ${detail}`);
-    schedule(cameraNumber, port);
+    schedule(cameraNumber, port, 1000);
   });
 }
 
