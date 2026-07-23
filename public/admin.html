@@ -321,6 +321,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <span id="msg-bell-badge" style="display:none;position:absolute;top:-6px;right:-8px;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:900">0</span>
       </button>
       <button class="refresh-btn" onclick="loadDashboard()">↻ Atualizar</button>
+      <button class="refresh-btn" id="task-report-send-btn" onclick="sendTaskReportNow()">📋 Enviar tarefas</button>
       <button class="logout-btn" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -4184,6 +4185,28 @@ async function api(path, method='GET', body=null) {
     return await res.json();
   } catch(e) {
     return { error: 'Erro de conexão' };
+  }
+}
+
+async function sendTaskReportNow() {
+  if (!window.confirm('Enviar agora ao grupo o relatório de cumprimento das tarefas?')) return;
+  const button = document.getElementById('task-report-send-btn');
+  const originalText = button ? button.textContent : '';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Enviando...';
+  }
+  try {
+    const result = await api('/seller/reports/tasks/send', 'POST', {});
+    if (!result.sent) throw new Error(result.error || result.reason || 'O WhatsApp não confirmou o envio.');
+    alert(`Relatório enviado ao grupo${result.chunks > 1 ? ` em ${result.chunks} partes` : ''}.`);
+  } catch (error) {
+    alert(`Não foi possível enviar o relatório: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
 }
 
