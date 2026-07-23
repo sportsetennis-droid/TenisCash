@@ -8,6 +8,7 @@ const router = express.Router();
 const path = require('node:path');
 const fs = require('node:fs');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const cameraLiveCache = require('../services/cameraLiveCache');
 
 router.use(authMiddleware, adminMiddleware);
 
@@ -142,9 +143,15 @@ router.get('/camera-live/:store/:camera/:name', (req, res) => {
   }
   if (!/^(?:index\.m3u8|[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4)$/.test(name)) return res.status(400).json({ error: 'arquivo HLS inválido' });
   const full = path.join(CAMERA_LIVE_DIR, store, camera, name);
-  if (!fs.existsSync(full)) return res.status(404).json({ error: 'transmissão ainda não disponível' });
+  const cached = name.endsWith('.mp4') ? cameraLiveCache.get(store, camera, name) : null;
+  if (!cached && !fs.existsSync(full)) return res.status(404).json({ error: 'transmissão ainda não disponível' });
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4');
+  if (cached) {
+    res.setHeader('Content-Length', cached.length);
+    return res.end(cached);
+  }
+  res.setHeader('Content-Length', fs.statSync(full).size);
   fs.createReadStream(full).pipe(res);
 });
 

@@ -18,6 +18,7 @@ const path = require('node:path');
 const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 const bus = require('../services/liveBus');
 const pushSvc = require('../services/pushNotifications');
+const cameraLiveCache = require('../services/cameraLiveCache');
 const whatsapp = require('../whatsapp');
 
 const router = express.Router();
@@ -130,7 +131,10 @@ router.get('/camera/:storeCode/:camera/:name', (req, res) => {
   }
   const root = correctedReady ? CAMERA_CORRECTED_DIR : CAMERA_LIVE_DIR;
   const full = path.join(root, storeCode, camera, name);
-  if (!fs.existsSync(full)) return res.status(404).json({ error: 'transmissão iniciando' });
+  const cached = !correctedReady && name.endsWith('.mp4')
+    ? cameraLiveCache.get(storeCode, camera, name)
+    : null;
+  if (!cached && !fs.existsSync(full)) return res.status(404).json({ error: 'transmissão iniciando' });
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'public, no-store, max-age=0');
   res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4');
@@ -140,6 +144,10 @@ router.get('/camera/:storeCode/:camera/:name', (req, res) => {
       (_match, extension, query = '') => `${extension}${query}${query ? '&' : '?'}raw=1`,
     );
     return res.send(playlist);
+  }
+  if (cached) {
+    res.setHeader('Content-Length', cached.length);
+    return res.end(cached);
   }
   res.setHeader('Content-Length', fs.statSync(full).size);
   fs.createReadStream(full).pipe(res);

@@ -662,6 +662,7 @@ const _agFs = require('node:fs');
 const _agCrypto = require('node:crypto');
 const { Transform: _CameraUploadTransform } = require('node:stream');
 const { pipeline: _cameraUploadPipeline } = require('node:stream/promises');
+const _cameraLiveCache = require('../services/cameraLiveCache');
 const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'screencap.cs', 'package.json'];
 const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
 
@@ -925,21 +926,31 @@ router.post('/agent-camera-live', async (req, res) => {
     const finalFile = _agPath.join(dir, fileName);
     if (fileName !== 'index.m3u8' && _agFs.existsSync(finalFile)) {
       const stat = await _agFs.promises.stat(finalFile);
+      setImmediate(async () => {
+        try {
+          _cameraLiveCache.set(store.code, camera, fileName, await _agFs.promises.readFile(finalFile));
+        } catch {}
+      });
       return res.json({ ok: true, duplicate: true, stored: `${store.code}/${camera}/${fileName}`, bytes: stat.size });
     }
 
     tempFile = finalFile + '.' + _agCrypto.randomBytes(6).toString('hex') + '.part';
     let received = 0;
+    const liveChunks = fileName.endsWith('.mp4') ? [] : null;
     const limiter = new _CameraUploadTransform({
       transform(chunk, _encoding, callback) {
         received += chunk.length;
-        if (received > _cameraLiveUploadLimit) callback(new Error('LIVE_UPLOAD_LIMIT'));
-        else callback(null, chunk);
+        if (received > _cameraLiveUploadLimit) return callback(new Error('LIVE_UPLOAD_LIMIT'));
+        if (liveChunks) liveChunks.push(Buffer.from(chunk));
+        callback(null, chunk);
       },
     });
     await _cameraUploadPipeline(req, limiter, _agFs.createWriteStream(tempFile, { flags: 'wx' }));
     await _agFs.promises.rename(tempFile, finalFile);
     tempFile = null;
+    if (liveChunks) {
+      _cameraLiveCache.set(store.code, camera, fileName, Buffer.concat(liveChunks, received));
+    }
 
     const cutoff = Date.now() - 15 * 60 * 1000;
     setImmediate(async () => {
