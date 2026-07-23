@@ -522,6 +522,9 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
     missingEnd: 0,
   };
   let currentStoreId = null;
+  const summaryRows = [];
+  const summaryInsertIndex = lines.length;
+  let pointRegistered = 0;
 
   for (const day of days) {
     const reportStore = day.reportStore || day.store;
@@ -540,6 +543,17 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       ? day
       : { ...day, scheduleStart: effectiveStart, scheduleEnd: effectiveEnd };
     const result = classifyProductionDay(effectiveDay, checkpoint.minutes);
+    const hasPoint = Boolean(observedEntry || observedExit);
+    if (hasPoint) pointRegistered += 1;
+    const pointSummary = observedEntry
+      ? `entrada ${fmtTime(observedEntry)}${observedExit ? ` · saída ${fmtTime(observedExit)}` : ' · saída pendente'}`
+      : observedExit
+        ? `saída ${fmtTime(observedExit)} · entrada pendente`
+        : 'sem ponto registrado';
+    summaryRows.push(
+      `  ${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}* — ${reportStore?.name || 'Loja não informada'} · ${pointSummary}`,
+      `     ✅ ${result.approved.length} · 🔎 ${result.awaitingReview.length} · ❌ ${result.noncompliant.length} · ↩️ ${result.correctionInTime.length} · ⏳ ${result.notDue.length}`,
+    );
     totals.approved += result.approved.length;
     totals.awaitingReview += result.awaitingReview.length;
     totals.noncompliant += result.noncompliant.length;
@@ -592,6 +606,16 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
       lines.push('  ⚠️ Checklist sem tarefas cadastradas.');
     }
   }
+
+  const pointMissing = Math.max(0, days.length - pointRegistered);
+  lines.splice(summaryInsertIndex, 0,
+    '',
+    `📍 *RESUMO DE TODOS — PONTO E TAREFAS (${pointRegistered}/${days.length} com ponto registrado)*`,
+    'Legenda: ✅ cumpriu · 🔎 aguardando fiscalização · ❌ não cumpriu no prazo · ↩️ devolvida no prazo · ⏳ ainda no prazo',
+    ...summaryRows,
+    ...(pointMissing ? [`🔴 ${pointMissing} vendedor(es) do checklist estão sem ponto registrado.`] : []),
+    '',
+  );
 
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
