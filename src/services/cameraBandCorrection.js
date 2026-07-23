@@ -23,18 +23,10 @@ function selectedCameras() {
 }
 
 function correctionFilter() {
-  // The black band moves through the sensor rows. This keeps the best recent
-  // light level for each row without mixing people or products across frames.
-  return [
-    '[0:v]format=yuv420p,split=2[base][analysis]',
-    '[base]extractplanes=y+u+v[y][u][v]',
-    '[analysis]extractplanes=y,scale=1:1080:flags=area,split=2[row][history]',
-    '[history]lagfun=decay=0.995[reference]',
-    "[row][reference]lut2=c0='clip(90+(y*100/max(x,8)-100)*0.54,90,150)'[gainrow]",
-    '[gainrow]scale=1920:1080:flags=neighbor[gain]',
-    "[y][gain]lut2=c0='clip(x*y/100,0,255)'[correctedy]",
-    '[correctedy][u][v]mergeplanes=0x001020:yuv420p[out]',
-  ].join(';');
+  // The dark band moves between frames. A short luminance persistence fills
+  // the underexposed rows from the immediately previous bright phase while
+  // leaving chroma untouched. The low decay avoids visible motion trails.
+  return '[0:v]format=yuv420p,lagfun=decay=0.60:planes=1[out]';
 }
 
 function outputPrefix(cameraNumber) {
