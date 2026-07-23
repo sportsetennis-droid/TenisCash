@@ -566,7 +566,7 @@ async function buildTaskComplianceReport(checkpointValue, now = new Date()) {
             ? 'PARCIALMENTE CUMPRIDO'
             : 'PENDENTE DE REGISTRO';
     summaryRows.push(
-      `${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}* — ${reportStore?.name || 'loja não informada'}`,
+      `${hasPoint ? '🟢' : '🔴'} *${day.seller?.name || 'Vendedor'}*`,
       `   ${percentage === null ? 'Percentual não calculado' : `${percentage}% (${approvedTasks}/${totalTasks})`} · ${pointSummary} · ${state}`,
     );
     totals.approved += result.approved.length;
