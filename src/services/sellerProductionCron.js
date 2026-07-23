@@ -115,6 +115,101 @@ async function sendReminder(day, kind, progress, senderId) {
   }
 }
 
+async function autoApprovePendingProductionItems() {
+  if (process.env.AUTO_APPROVE_SELLER_TASKS === '0') {
+    return { checked: 0, approved: 0, finalized: 0, skipped: 0, disabled: true };
+  }
+
+  const items = await prisma.sellerProductionItem.findMany({
+    where: {
+      status: 'SUBMITTED',
+      day: { status: { notIn: ['APPROVED', 'NONCOMPLIANT', 'EXCUSED'] } },
+    },
+    orderBy: { submittedAt: 'asc' },
+    take: 500,
+    select: {
+      id: true,
+      dayId: true,
+      ruleKey: true,
+      publicationUrl: true,
+      whatsappProofUrl: true,
+      durationSeconds: true,
+      productRefs: true,
+      requirementsConfirmedJson: true,
+      noInstagramStoryConfirmed: true,
+      evidence: {
+        select: {
+          kind: true,
+          mediaType: true,
+          bytes: true,
+          automatedStatus: true,
+          automatedChecks: true,
+        },
+      },
+    },
+  });
+
+  let approved = 0;
+  let finalized = 0;
+  let skipped = 0;
+  for (const item of items) {
+    const decision = production.automaticSubmissionReview({
+      rule: production.ruleForKey(item.ruleKey),
+      payload: item,
+      evidence: item.evidence,
+    });
+    if (!decision.approved) {
+      skipped += 1;
+      continue;
+    }
+
+    const reviewedAt = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.sellerProductionItem.updateMany({
+        where: { id: item.id, status: 'SUBMITTED' },
+        data: {
+          status: 'APPROVED',
+          reviewedById: null,
+          reviewedAt,
+          reviewNote: decision.note,
+        },
+      });
+      if (claimed.count !== 1) return { approved: false, finalized: false };
+
+      if (item.evidence.length) {
+        await tx.sellerProductionEvidence.updateMany({
+          where: { itemId: item.id, automatedStatus: { not: 'FLAGGED_DUPLICATE' } },
+          data: { automatedStatus: 'AUTO_APPROVED' },
+        });
+      }
+
+      const rows = await tx.sellerProductionItem.findMany({ where: { dayId: item.dayId }, select: { status: true } });
+      const progress = production.dayProgress(rows);
+      if (!progress.complete) return { approved: true, finalized: false };
+
+      const closed = await tx.sellerProductionDay.updateMany({
+        where: { id: item.dayId, status: { notIn: ['APPROVED', 'NONCOMPLIANT', 'EXCUSED'] } },
+        data: {
+          status: 'APPROVED',
+          finalizedById: null,
+          finalizedAt: reviewedAt,
+          submittedAt: null,
+          finalNote: 'Dia aprovado automaticamente: todas as atividades passaram pela validação técnica do robô.',
+        },
+      });
+      return { approved: true, finalized: closed.count === 1 };
+    });
+
+    if (result.approved) approved += 1;
+    if (result.finalized) finalized += 1;
+  }
+
+  if (approved || skipped) {
+    console.log(`[sellerProductionCron] fiscalização automática: ${approved} aprovada(s), ${skipped} pendente(s) de revisão humana`);
+  }
+  return { checked: items.length, approved, finalized, skipped, disabled: false };
+}
+
 async function ensureScheduledProductionDays(date = new Date()) {
   const ymd = localYmd(date);
   const { start, end } = dayBounds(ymd);
@@ -221,9 +316,15 @@ async function ensureScheduledProductionDays(date = new Date()) {
 
 async function monitorSellerProduction(date = new Date()) {
   await ensureScheduledProductionDays(date);
+  let automaticReview = { checked: 0, approved: 0, finalized: 0, skipped: 0 };
+  try {
+    automaticReview = await autoApprovePendingProductionItems();
+  } catch (err) {
+    console.error('[sellerProductionCron] fiscalizacao automatica falhou:', err.message);
+  }
   const { start, end } = dayBounds(localYmd(date));
   const sender = await findRobotSender();
-  if (!sender) return { checked: 0, sent: 0, reason: 'no_admin_sender' };
+  if (!sender) return { checked: 0, sent: 0, automaticReview, reason: 'no_admin_sender' };
   const days = await prisma.sellerProductionDay.findMany({
     where: { workDate: { gte: start, lt: end }, status: { notIn: ['APPROVED', 'NONCOMPLIANT', 'EXCUSED'] } },
     include: { items: { select: { status: true } }, reminders: { select: { kind: true } } },
@@ -239,13 +340,13 @@ async function monitorSellerProduction(date = new Date()) {
     }
   }
   console.log(`[sellerProductionCron] monitor: ${days.length} dia(s), ${sent} lembrete(s)`);
-  return { checked: days.length, sent };
+  return { checked: days.length, sent, automaticReview };
 }
 
 function startSellerProductionCron() {
   cron.schedule('5 0 * * *', () => ensureScheduledProductionDays().catch((err) => console.error('[sellerProductionCron] criacao falhou:', err.message)), { timezone: TZ });
-  cron.schedule('*/15 * * * *', () => monitorSellerProduction().catch((err) => console.error('[sellerProductionCron] monitor falhou:', err.message)), { timezone: TZ });
-  console.log(`[sellerProductionCron] agendado: checklist 00:05 + monitor a cada 15 min (timezone ${TZ})`);
+  cron.schedule('*/5 * * * *', () => monitorSellerProduction().catch((err) => console.error('[sellerProductionCron] monitor falhou:', err.message)), { timezone: TZ });
+  console.log(`[sellerProductionCron] agendado: checklist 00:05 + fiscalizacao automatica/monitor a cada 5 min (timezone ${TZ})`);
   monitorSellerProduction().catch((err) => console.error('[sellerProductionCron] startup falhou:', err.message));
 }
 
@@ -253,6 +354,7 @@ module.exports = {
   startSellerProductionCron,
   ensureScheduledProductionDays,
   monitorSellerProduction,
+  autoApprovePendingProductionItems,
   reminderKinds,
   reminderCopy,
   localYmd,

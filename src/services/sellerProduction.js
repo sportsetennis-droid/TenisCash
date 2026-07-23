@@ -159,6 +159,13 @@ function automaticSubmissionReview({ rule, payload = {}, evidence = [] } = {}) {
   if (!rule) return { approved: false, reason: 'Regra da atividade não encontrada.' };
 
   const rows = Array.isArray(evidence) ? evidence : [];
+  const validationErrors = validateSubmission(rule, payload, {
+    evidenceMediaTypes: rows.map((entry) => entry.mediaType).filter(Boolean),
+    evidenceKinds: rows.map((entry) => entry.kind).filter(Boolean),
+  });
+  if (validationErrors.length) {
+    return { approved: false, reason: validationErrors.join(' ') };
+  }
   const flagged = rows.find((entry) => {
     const checks = entry?.automatedChecks || {};
     return entry?.automatedStatus === 'FLAGGED_DUPLICATE'

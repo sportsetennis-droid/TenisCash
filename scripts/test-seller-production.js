@@ -28,6 +28,8 @@ function run() {
     rule: productRule,
     payload: completeProductPayload,
     evidence: [{
+      kind: 'WHATSAPP_PROOF',
+      mediaType: 'photo',
       automatedStatus: 'TECHNICALLY_VALID',
       automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true },
     }],
@@ -37,6 +39,8 @@ function run() {
     rule: productRule,
     payload: completeProductPayload,
     evidence: [{
+      kind: 'WHATSAPP_PROOF',
+      mediaType: 'photo',
       automatedStatus: 'FLAGGED_DUPLICATE',
       automatedChecks: { hashCaptured: true, fileNonEmpty: true, mediaTypeMatches: true, exactDuplicateDetected: true },
     }],
