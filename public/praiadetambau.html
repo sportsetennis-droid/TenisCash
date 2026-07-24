@@ -247,7 +247,7 @@
         <h1>Praia de Tambaú</h1>
         <p>Entre na loja agora, acompanhe os ambientes em tempo real e compre com atendimento ao vivo.</p>
       </div>
-      <div class="live"><span class="dot"></span> LOJA AO VIVO</div>
+      <div class="live" id="storeLiveStatus"><span class="dot"></span> VERIFICANDO TRANSMISSÃO</div>
     </header>
 
     <section class="content">
@@ -294,6 +294,9 @@
       var selected = 1;
       var view = 'single';
       var players = [];
+      var cameraOnline = {};
+      var lastOnlineSignature = '';
+      var liveStatus = document.getElementById('storeLiveStatus');
 
       function source(camera){
         return '/api/live/camera/LOJA05/loja05_camera' + camera + '/index.m3u8';
@@ -398,7 +401,12 @@
         card.appendChild(label);
         card.appendChild(expand);
         stage.appendChild(card);
-        attach(video, status, camera);
+        if (cameraOnline[camera]){
+          attach(video, status, camera);
+        } else {
+          video.style.display = 'none';
+          setStatus(status, 'TRANSMISSÃO OFFLINE — nenhuma imagem antiga será exibida.', true);
+        }
       }
 
       function renderPicker(){
@@ -438,7 +446,34 @@
 
       singleMode.addEventListener('click', function(){ view = 'single'; render(); });
       allMode.addEventListener('click', function(){ view = 'all'; render(); });
-      render();
+      function checkCameraStatus(){
+        return fetch('/api/live/camera-status/LOJA05', { cache:'no-store' })
+          .then(function(response){ if (!response.ok) throw new Error('offline'); return response.json(); })
+          .then(function(data){
+            var next = {};
+            (data.cameras || []).forEach(function(item){ next[item.camera] = item.online === true; });
+            var signature = JSON.stringify(next);
+            cameraOnline = next;
+            var onlineCount = Object.keys(next).filter(function(key){ return next[key]; }).length;
+            liveStatus.innerHTML = onlineCount > 0
+              ? '<span class="dot"></span> LOJA AO VIVO'
+              : 'TRANSMISSÃO OFFLINE';
+            if (signature !== lastOnlineSignature){
+              lastOnlineSignature = signature;
+              render();
+            }
+          })
+          .catch(function(){
+            cameraOnline = {};
+            liveStatus.innerHTML = 'TRANSMISSÃO OFFLINE';
+            if (lastOnlineSignature !== 'offline'){
+              lastOnlineSignature = 'offline';
+              render();
+            }
+          });
+      }
+      checkCameraStatus();
+      setInterval(checkCameraStatus, 10000);
     })();
   </script>
 </body>

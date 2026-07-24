@@ -914,6 +914,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       let cameraAISelectedStore = '05';
       let cameraAISelectedCamera = 'cam01';
       let cameraAISecurityObjectUrls = [];
+      let cameraAISecurityTimer = null;
       const CAMERA_AI_STORES = {
         '01': { name:'Loja 01', cameras:[] },
         '02': { name:'Loja 02', cameras:[] },
@@ -1245,12 +1246,23 @@ tr:hover td{background:rgba(0,0,0,0.02)}
             if (pilotText) pilotText.textContent = 'Imagem parada desde ' + lastFrame;
             if (pilotDot) pilotDot.style.background = '#ef4444';
             if (liveBadge) liveBadge.style.display = 'none';
+            const video = document.getElementById('camera-ai-video');
+            const empty = document.getElementById('camera-ai-video-empty');
+            const emptyTitle = document.getElementById('camera-ai-empty-title');
+            const emptyDetail = document.getElementById('camera-ai-empty-detail');
+            if (video) { video.pause(); video.style.display = 'none'; }
+            if (empty) empty.style.display = 'block';
+            if (emptyTitle) emptyTitle.textContent = 'TRANSMISSÃO OFFLINE';
+            if (emptyDetail) emptyDetail.textContent = 'Último quadro real recebido em ' + lastFrame + '.';
             cameraAISetMessage('Esta imagem não está ao vivo. O último quadro recebido foi em ' + lastFrame + '.');
           } else if (selectedCameraStatus?.feedFresh) {
             if (pilotText) pilotText.textContent = 'Ao vivo';
             if (pilotDot) pilotDot.style.background = '#10b981';
             const video = document.getElementById('camera-ai-video');
-            if (liveBadge && video?.style.display !== 'none') liveBadge.style.display = 'block';
+            const empty = document.getElementById('camera-ai-video-empty');
+            if (video) { video.style.display = 'block'; video.play().catch(() => {}); }
+            if (empty) empty.style.display = 'none';
+            if (liveBadge) liveBadge.style.display = 'block';
             const playerMessage = document.getElementById('camera-ai-player-message');
             if (playerMessage?.textContent.startsWith('Esta imagem não está ao vivo')) cameraAISetMessage('');
           }
@@ -1349,6 +1361,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         }
         const savedStore = localStorage.getItem('tc_camera_ai_selected_store');
         cameraAISelectStore(CAMERA_AI_STORES[savedStore] ? savedStore : '05');
+        if (cameraAISecurityTimer) clearInterval(cameraAISecurityTimer);
+        cameraAISecurityTimer = setInterval(cameraAILoadSecurityStatus, 10000);
       }
       setTimeout(cameraAIInit, 300);
     </script>

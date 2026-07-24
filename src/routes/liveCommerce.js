@@ -31,6 +31,7 @@ const CAMERA_LIVE_DIR = process.env.CAMERA_LIVE_DIR || (process.platform === 'wi
 const CAMERA_CORRECTED_DIR = process.env.CAMERA_CORRECTED_DIR || (process.platform === 'win32'
   ? path.join(process.cwd(), 'data', 'camera-live-corrected')
   : '/data/camera-live-corrected');
+const CAMERA_FEED_FRESH_MS = Math.max(15000, Number(process.env.CAMERA_FEED_FRESH_MS || 30000));
 
 // ---------------------------------------------------------------------
 // Helpers
@@ -111,6 +112,26 @@ function publicMsg(m) {
 // Estado da transmissão de uma loja (a página /aovivo consulta isso).
 // Vitrine ao vivo de Tambaú. Os fragmentos enviados pelo notebook não têm
 // áudio; esta rota expõe somente as seis câmeras autorizadas da LOJA05.
+router.get('/camera-status/:storeCode', (req, res) => {
+  const storeCode = String(req.params.storeCode || '').toUpperCase();
+  if (storeCode !== 'LOJA05') return res.status(404).json({ error: 'loja não encontrada' });
+  const cameras = [];
+  for (let cameraNumber = 1; cameraNumber <= 6; cameraNumber += 1) {
+    const camera = `loja05_camera${cameraNumber}`;
+    const playlist = path.join(CAMERA_LIVE_DIR, storeCode, camera, 'index.m3u8');
+    let lastFrameAt = null;
+    try { lastFrameAt = fs.statSync(playlist).mtime.toISOString(); } catch (_) {}
+    cameras.push({
+      camera: cameraNumber,
+      online: !!lastFrameAt && Date.now() - new Date(lastFrameAt).getTime() <= CAMERA_FEED_FRESH_MS,
+      lastFrameAt,
+    });
+  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, no-store, max-age=0');
+  res.json({ storeCode, cameras, serverTime: new Date().toISOString() });
+});
+
 router.get('/camera/:storeCode/:camera/:name', (req, res) => {
   const storeCode = String(req.params.storeCode || '').toUpperCase();
   const camera = String(req.params.camera || '').toLowerCase();
@@ -120,6 +141,14 @@ router.get('/camera/:storeCode/:camera/:name', (req, res) => {
   }
   if (!/^(?:index\.m3u8|[A-Fa-f0-9]+_video\d+_(?:init|seg\d+)\.mp4)$/.test(name)) {
     return res.status(400).json({ error: 'arquivo HLS inválido' });
+  }
+  const rawPlaylist = path.join(CAMERA_LIVE_DIR, storeCode, camera, 'index.m3u8');
+  let feedFresh = false;
+  try { feedFresh = Date.now() - fs.statSync(rawPlaylist).mtimeMs <= CAMERA_FEED_FRESH_MS; } catch (_) {}
+  if (!feedFresh) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, no-store, max-age=0');
+    return res.status(503).json({ error: 'transmissão offline' });
   }
   const rawRequested = String(req.query.raw || '') === '1';
   const correctedPlaylist = path.join(CAMERA_CORRECTED_DIR, storeCode, camera, 'index.m3u8');
