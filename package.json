@@ -19,7 +19,8 @@
     "test:relationship-commission": "node scripts/test-relationship-commission.js",
     "test:seller-production": "node scripts/test-seller-production.js && node scripts/test-task-compliance-report.js",
     "test:clock-notifications": "node scripts/test-clock-task-notifications.js",
-    "test:seller-assistant": "node scripts/test-seller-assistant.js"
+    "test:seller-assistant": "node scripts/test-seller-assistant.js",
+    "test:camera-security-ai": "node scripts/test-camera-security-ai.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",

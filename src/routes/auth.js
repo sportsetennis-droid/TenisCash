@@ -663,6 +663,7 @@ const _agCrypto = require('node:crypto');
 const { Transform: _CameraUploadTransform } = require('node:stream');
 const { pipeline: _cameraUploadPipeline } = require('node:stream/promises');
 const _cameraLiveCache = require('../services/cameraLiveCache');
+const _cameraSecurityAI = require('../services/cameraSecurityAI');
 const AGENT_FILES = ['index.js', 'fiscalSefazDirect.mjs', 'fiscalAcquirers.js', 'supervisor.js', 'monitor.js', 'screencap.cs', 'package.json'];
 const agentDir = () => _agPath.join(__dirname, '..', '..', 'agents', 'fiscal-agent');
 
@@ -950,6 +951,19 @@ router.post('/agent-camera-live', async (req, res) => {
     tempFile = null;
     if (liveChunks) {
       _cameraLiveCache.set(store.code, camera, fileName, Buffer.concat(liveChunks, received));
+    }
+    if (fileName === 'index.m3u8') {
+      setImmediate(() => {
+        try {
+          _cameraSecurityAI.onPlaylistUpdated({
+            storeCode: store.code,
+            camera,
+            playlistPath: finalFile,
+          });
+        } catch (err) {
+          console.error('[camera-security-ai/trigger]', err.message);
+        }
+      });
     }
 
     const cutoff = Date.now() - 15 * 60 * 1000;

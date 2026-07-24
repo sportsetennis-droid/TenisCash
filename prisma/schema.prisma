@@ -5223,7 +5223,7 @@ model CentralContabilJsonStore {
 model AgentCommand {
   id        String   @id @default(cuid())
   storeCode String
-  type      String // restart-agent | update-agent | update-supervisor | tailscale-up | funnel-up | get-health | get-log | ping
+  type      String // restart-agent | update-agent | update-supervisor | tailscale-up | funnel-up | get-health | get-log | camera-status | restart-cameras | ping
   args      Json?
   status    String   @default("pending") // pending | sent | done | failed
   result    String?

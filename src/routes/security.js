@@ -9,6 +9,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const cameraLiveCache = require('../services/cameraLiveCache');
+const cameraSecurityAI = require('../services/cameraSecurityAI');
 
 router.use(authMiddleware, adminMiddleware);
 
@@ -19,7 +20,7 @@ const CAMERA_ARCHIVE_DIR = process.env.CAMERA_ARCHIVE_DIR || (process.platform =
 const CAMERA_LIVE_DIR = process.env.CAMERA_LIVE_DIR || (process.platform === 'win32'
   ? path.join(process.cwd(), 'data', 'camera-live')
   : '/data/camera-live');
-const CMD_TYPES = ['restart-agent', 'update-agent', 'update-supervisor', 'tailscale-up', 'funnel-up', 'get-health', 'get-log', 'capture-list', 'capture-pull', 'ping'];
+const CMD_TYPES = ['restart-agent', 'update-agent', 'update-supervisor', 'tailscale-up', 'funnel-up', 'get-health', 'get-log', 'camera-status', 'restart-cameras', 'capture-list', 'capture-pull', 'ping'];
 
 // Estado de TODAS as maquinas (heartbeat dos Supervisores).
 router.get('/machines', async (req, res) => {
@@ -153,6 +154,64 @@ router.get('/camera-live/:store/:camera/:name', (req, res) => {
   }
   res.setHeader('Content-Length', fs.statSync(full).size);
   fs.createReadStream(full).pipe(res);
+});
+
+router.get('/camera-ai/status', async (_req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await cameraSecurityAI.getStatus());
+  } catch (err) {
+    console.error('[security/camera-ai/status]', err);
+    res.status(500).json({ error: 'Falha ao consultar a IA de segurança.' });
+  }
+});
+
+router.get('/camera-ai/events', async (req, res) => {
+  try {
+    const store = req.query.store ? String(req.query.store).toUpperCase() : '';
+    const camera = req.query.camera ? String(req.query.camera).toLowerCase() : '';
+    if (store && !/^LOJA\d{2}$/.test(store)) return res.status(400).json({ error: 'loja inválida' });
+    if (camera && !/^loja\d{2}_camera\d+$/.test(camera)) return res.status(400).json({ error: 'câmera inválida' });
+    const events = await cameraSecurityAI.listEvents({
+      store,
+      camera,
+      limit: Math.min(200, Number(req.query.limit) || 50),
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ events });
+  } catch (err) {
+    console.error('[security/camera-ai/events]', err);
+    res.status(500).json({ error: 'Falha ao consultar os eventos.' });
+  }
+});
+
+router.get('/camera-ai/evidence/:eventId/:name', async (req, res) => {
+  try {
+    const full = await cameraSecurityAI.evidencePath(req.params.eventId, req.params.name);
+    if (!full) return res.status(404).json({ error: 'evidência não encontrada' });
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, no-store');
+    fs.createReadStream(full).pipe(res);
+  } catch (err) {
+    console.error('[security/camera-ai/evidence]', err);
+    res.status(500).json({ error: 'Falha ao abrir a evidência.' });
+  }
+});
+
+router.post('/camera-ai/events/:id/review', async (req, res) => {
+  try {
+    const event = await cameraSecurityAI.reviewEvent({
+      id: req.params.id,
+      status: req.body?.status,
+      note: req.body?.note,
+      userId: req.userId,
+    });
+    res.json({ ok: true, event });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    console.error('[security/camera-ai/review]', err);
+    res.status(500).json({ error: 'Falha ao registrar a revisão.' });
+  }
 });
 
 module.exports = router;

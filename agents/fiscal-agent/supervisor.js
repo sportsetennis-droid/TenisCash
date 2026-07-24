@@ -26,7 +26,7 @@ try {
   });
 } catch {}
 
-const VERSION = '1.1';
+const VERSION = '1.2';
 const CENTRAL = (process.env.CENTRAL_URL || 'https://teniscash.com.br').replace(/\/$/, '');
 const TOKEN = (process.env.AGENT_TOKEN || '').trim();
 const AGENT_PORT = parseInt(process.env.PORT || '8765', 10);
@@ -113,6 +113,16 @@ async function updateSupervisor() {
   return { ok: false, out: 'resposta inesperada' };
 }
 
+async function cameraStatus() {
+  const command = `$names=@('TenisCashCameraAgent','TenisCashCameraRecorder','TenisCashCameraCloudLive'); $tasks=@(); foreach($name in $names){ $task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue; $tasks += [pscustomobject]@{name=$name;state=if($task){$task.State.ToString()}else{'MISSING'}} }; $segments=Get-ChildItem -LiteralPath 'C:\\TenisCash\\CameraAgent\\recordings' -Filter '*.mp4' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1; [pscustomobject]@{tasks=$tasks;hls=[bool](Get-NetTCPConnection -LocalPort 8888 -State Listen -ErrorAction SilentlyContinue);latestRecording=if($segments){$segments.LastWriteTime.ToString('o')}else{$null}} | ConvertTo-Json -Depth 4 -Compress`;
+  return ps(command, 30000);
+}
+
+async function restartCameras() {
+  const command = `$names=@('TenisCashCameraCloudLive','TenisCashCameraRecorder','TenisCashCameraAgent'); foreach($name in $names){ try { Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue } catch {} }; Start-Sleep -Seconds 2; Start-ScheduledTask -TaskName 'TenisCashCameraAgent' -ErrorAction Stop; Start-Sleep -Seconds 6; Start-ScheduledTask -TaskName 'TenisCashCameraRecorder' -ErrorAction Stop; Start-ScheduledTask -TaskName 'TenisCashCameraCloudLive' -ErrorAction Stop; Start-Sleep -Seconds 5; $tasks=@(); foreach($name in @('TenisCashCameraAgent','TenisCashCameraRecorder','TenisCashCameraCloudLive')){ $task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue; $tasks += [pscustomobject]@{name=$name;state=if($task){$task.State.ToString()}else{'MISSING'}} }; [pscustomobject]@{tasks=$tasks;hls=[bool](Get-NetTCPConnection -LocalPort 8888 -State Listen -ErrorAction SilentlyContinue)} | ConvertTo-Json -Depth 4 -Compress`;
+  return ps(command, 45000);
+}
+
 // ---- gravacao de seguranca do caixa (buffer 36h gravado pelo monitor.js) ----
 const REC_DIR = path.join(__dirname, 'rec', 'screen');
 
@@ -158,6 +168,8 @@ async function executeCommand(cmd) {
     case 'funnel-up': return ps(`tailscale funnel --bg ${AGENT_PORT}`);
     case 'get-health': { const h = await checkAgent(); return { ok: h.healthy, out: JSON.stringify(h) }; }
     case 'get-log': { try { const a = fs.readFileSync(path.join(__dirname, 'agent.log'), 'utf8'); return { ok: true, out: a.slice(-3500) }; } catch (e) { return { ok: false, out: e.message }; } }
+    case 'camera-status': return cameraStatus();
+    case 'restart-cameras': return restartCameras();
     case 'capture-list': return captureList(cmd.args);
     case 'capture-pull': return capturePull(cmd.args);
     case 'ping': return { ok: true, out: 'pong ' + VERSION };

@@ -853,6 +853,30 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div id="camera-ai-recording-list" style="display:grid;gap:8px"></div>
     </div>
 
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px;border:1px solid rgba(229,87,30,.35)">
+      <div style="padding:18px;background:linear-gradient(135deg,#E5571E,#b9380b);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;opacity:.82">IA de segurança</div>
+          <div id="camera-ai-security-title" style="font-size:20px;font-weight:900;margin-top:5px">Verificando ativação...</div>
+          <div id="camera-ai-security-detail" style="font-size:12px;margin-top:5px;opacity:.88">A IA registra eventos suspeitos para revisão humana.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;background:rgba(0,0,0,.18);padding:10px 14px;border-radius:999px;font-size:12px;font-weight:900">
+          <span id="camera-ai-security-dot" style="width:10px;height:10px;border-radius:50%;background:#fbbf24"></span>
+          <span id="camera-ai-security-badge">AGUARDANDO</span>
+        </div>
+      </div>
+      <div style="padding:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <div style="font-size:16px;font-weight:900">Eventos para revisar</div>
+            <div id="camera-ai-event-summary" style="font-size:12px;color:var(--text2);margin-top:4px">Consultando eventos da loja...</div>
+          </div>
+          <button class="refresh-btn" onclick="cameraAILoadSecurity()">Atualizar IA</button>
+        </div>
+        <div id="camera-ai-event-list" style="display:grid;gap:12px"></div>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
       <div class="card" style="padding:18px">
         <div style="font-size:12px;color:var(--text2);font-weight:700;text-transform:uppercase">Câmeras nesta loja</div>
@@ -889,6 +913,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       let cameraAIHls = null;
       let cameraAISelectedStore = '05';
       let cameraAISelectedCamera = 'cam01';
+      let cameraAISecurityObjectUrls = [];
       const CAMERA_AI_STORES = {
         '01': { name:'Loja 01', cameras:[] },
         '02': { name:'Loja 02', cameras:[] },
@@ -902,6 +927,11 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       };
       function cameraAIReadJSON(key, fallback) {
         try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (_) { return fallback; }
+      }
+      function cameraAIEscape(value) {
+        return String(value ?? '').replace(/[&<>"']/g, character => ({
+          '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+        })[character]);
       }
       function cameraAIStreams() { return cameraAIReadJSON('tc_camera_ai_streams_v2', {}); }
       function cameraAIStreamKey() { return cameraAISelectedStore + ':' + cameraAISelectedCamera; }
@@ -1085,6 +1115,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         cameraAIUpdateStatus(Boolean(savedUrl));
         if (savedUrl) cameraAIConnectStream();
         cameraAILoadRecordings();
+        cameraAILoadSecurity();
       }
       let cameraAIRecordingObjectUrl = '';
       function cameraAIFormatBytes(bytes) {
@@ -1135,6 +1166,173 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         } catch (_) {
           summary.textContent = 'Não foi possível abrir esta gravação.';
         }
+      }
+      function cameraAISecurityCategory(category) {
+        return ({
+          CONCEALMENT:'Possível ocultação de produto',
+          UNPAID_EXIT:'Possível saída com produto',
+          RESTRICTED_AREA:'Acesso a área restrita',
+          FORCED_ACCESS:'Acesso forçado',
+          AGGRESSION:'Agressão ou conflito',
+          PRODUCT_SWEEP:'Retirada rápida de produtos',
+          OTHER:'Movimentação incomum'
+        })[category] || 'Movimentação incomum';
+      }
+      function cameraAIReviewLabel(status) {
+        return ({
+          PENDING:'Pendente',
+          ACKNOWLEDGED:'Revisado',
+          FALSE_POSITIVE:'Falso positivo',
+          ESCALATED:'Atenção necessária'
+        })[status] || status;
+      }
+      async function cameraAILoadEventEvidence(event) {
+        const image = document.getElementById('camera-ai-event-image-' + event.id);
+        const name = Array.isArray(event.evidence) ? event.evidence[0] : '';
+        if (!image || !name) return;
+        try {
+          const headers = { 'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const response = await fetch('/api/admin/security/camera-ai/evidence/' + encodeURIComponent(event.id) + '/' + encodeURIComponent(name), { headers });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const objectUrl = URL.createObjectURL(await response.blob());
+          cameraAISecurityObjectUrls.push(objectUrl);
+          image.src = objectUrl;
+          image.style.display = 'block';
+          const empty = document.getElementById('camera-ai-event-image-empty-' + event.id);
+          if (empty) empty.style.display = 'none';
+        } catch (_) {}
+      }
+      async function cameraAIReviewEvent(eventId, status) {
+        try {
+          const headers = {
+            'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || ''),
+            'Content-Type':'application/json'
+          };
+          const response = await fetch('/api/admin/security/camera-ai/events/' + encodeURIComponent(eventId) + '/review', {
+            method:'POST',
+            headers,
+            body:JSON.stringify({ status })
+          });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          await cameraAILoadSecurity();
+        } catch (_) {
+          const summary = document.getElementById('camera-ai-event-summary');
+          if (summary) summary.textContent = 'Não foi possível registrar a revisão. Tente novamente.';
+        }
+      }
+      async function cameraAILoadSecurityStatus() {
+        const title = document.getElementById('camera-ai-security-title');
+        const detail = document.getElementById('camera-ai-security-detail');
+        const badge = document.getElementById('camera-ai-security-badge');
+        const dot = document.getElementById('camera-ai-security-dot');
+        if (!title || !detail || !badge || !dot) return;
+        try {
+          const headers = { 'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const response = await fetch('/api/admin/security/camera-ai/status', { headers });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const data = await response.json();
+          const storeCode = 'LOJA' + cameraAISelectedStore;
+          const cameras = (data.cameras || []).filter(item => item.store === storeCode);
+          const monitoring = cameras.filter(item => item.monitoring).length;
+          const fresh = cameras.filter(item => item.feedFresh).length;
+          const selectedCameraName = 'loja' + cameraAISelectedStore + '_camera' + Number(String(cameraAISelectedCamera || '').replace('cam', ''));
+          const selectedCameraStatus = cameras.find(item => item.camera === selectedCameraName);
+          const pilotText = document.getElementById('camera-ai-status-text');
+          const pilotDot = document.getElementById('camera-ai-status-dot');
+          const liveBadge = document.getElementById('camera-ai-live-badge');
+          if (selectedCameraStatus && !selectedCameraStatus.feedFresh) {
+            const lastFrame = selectedCameraStatus.lastFrameAt ? new Date(selectedCameraStatus.lastFrameAt).toLocaleString('pt-BR') : 'horário desconhecido';
+            if (pilotText) pilotText.textContent = 'Imagem parada desde ' + lastFrame;
+            if (pilotDot) pilotDot.style.background = '#ef4444';
+            if (liveBadge) liveBadge.style.display = 'none';
+            cameraAISetMessage('Esta imagem não está ao vivo. O último quadro recebido foi em ' + lastFrame + '.');
+          } else if (selectedCameraStatus?.feedFresh) {
+            if (pilotText) pilotText.textContent = 'Ao vivo';
+            if (pilotDot) pilotDot.style.background = '#10b981';
+            const video = document.getElementById('camera-ai-video');
+            if (liveBadge && video?.style.display !== 'none') liveBadge.style.display = 'block';
+            const playerMessage = document.getElementById('camera-ai-player-message');
+            if (playerMessage?.textContent.startsWith('Esta imagem não está ao vivo')) cameraAISetMessage('');
+          }
+          if (!data.enabled) {
+            title.textContent = 'IA desativada';
+            detail.textContent = 'Ative o serviço para iniciar a triagem de segurança.';
+            badge.textContent = 'DESATIVADA';
+            dot.style.background = '#ef4444';
+          } else if (!data.configured) {
+            title.textContent = 'IA ainda não configurada';
+            detail.textContent = 'A chave do serviço de visão precisa ser configurada.';
+            badge.textContent = 'SEM CONFIGURAÇÃO';
+            dot.style.background = '#ef4444';
+          } else if (monitoring > 0) {
+            title.textContent = 'IA ativa em ' + monitoring + ' de ' + cameras.length + ' câmeras';
+            detail.textContent = 'Triagem de movimento e visão ativa · ' + data.pendingEvents + ' evento(s) pendente(s) · evidências por ' + data.retentionDays + ' dias.';
+            badge.textContent = 'MONITORANDO';
+            dot.style.background = '#22c55e';
+          } else {
+            title.textContent = 'IA pronta, mas a transmissão está parada';
+            detail.textContent = fresh ? 'Os quadros estão chegando; a análise será iniciada automaticamente.' : 'O notebook da loja precisa voltar a enviar as câmeras. A IA reinicia sozinha.';
+            badge.textContent = 'CÂMERAS OFFLINE';
+            dot.style.background = '#fbbf24';
+          }
+        } catch (_) {
+          title.textContent = 'Não foi possível consultar a IA';
+          detail.textContent = 'Atualize o painel para tentar novamente.';
+          badge.textContent = 'SEM RESPOSTA';
+          dot.style.background = '#ef4444';
+        }
+      }
+      async function cameraAILoadSecurityEvents() {
+        const list = document.getElementById('camera-ai-event-list');
+        const summary = document.getElementById('camera-ai-event-summary');
+        if (!list || !summary) return;
+        cameraAISecurityObjectUrls.forEach(url => URL.revokeObjectURL(url));
+        cameraAISecurityObjectUrls = [];
+        summary.textContent = 'Consultando eventos da loja...';
+        list.innerHTML = '';
+        try {
+          const headers = { 'Authorization':'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+          const response = await fetch('/api/admin/security/camera-ai/events?store=LOJA' + cameraAISelectedStore + '&limit=30', { headers });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const data = await response.json();
+          const events = Array.isArray(data.events) ? data.events : [];
+          const pending = events.filter(event => event.reviewStatus === 'PENDING').length;
+          summary.textContent = events.length
+            ? events.length + ' evento(s) recente(s) · ' + pending + ' aguardando revisão'
+            : 'Nenhum evento suspeito registrado nesta loja.';
+          list.innerHTML = events.map(event => {
+            const cameraNumber = String(event.camera || '').split('camera').pop();
+            const when = new Date(event.detectedAt).toLocaleString('pt-BR');
+            const riskColor = event.risk === 'HIGH' ? '#dc2626' : '#E5571E';
+            const reviewed = event.reviewStatus !== 'PENDING';
+            return `<div style="display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:14px;border:1px solid var(--border);border-left:5px solid ${riskColor};border-radius:12px;padding:12px;background:var(--card)">
+              <div style="min-height:122px;border-radius:9px;overflow:hidden;background:#111827;display:flex;align-items:center;justify-content:center">
+                <img id="camera-ai-event-image-${cameraAIEscape(event.id)}" alt="Evidência do evento" style="display:none;width:100%;height:100%;min-height:122px;object-fit:cover">
+                <span id="camera-ai-event-image-empty-${cameraAIEscape(event.id)}" style="font-size:12px;color:#9ca3af">Carregando evidência...</span>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <strong style="color:${riskColor}">${cameraAIEscape(cameraAISecurityCategory(event.category))}</strong>
+                  <span style="font-size:11px;font-weight:900;color:var(--text2)">${cameraAIEscape(cameraAIReviewLabel(event.reviewStatus))}</span>
+                </div>
+                <div style="font-size:13px;margin-top:7px">${cameraAIEscape(event.summary)}</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:7px">Câmera ${cameraAIEscape(cameraNumber)} · ${cameraAIEscape(when)} · confiança ${Math.round(Number(event.confidence || 0) * 100)}%</div>
+                ${reviewed ? '' : `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                  <button class="refresh-btn" onclick="cameraAIReviewEvent('${cameraAIEscape(event.id)}','ACKNOWLEDGED')">Marcar revisado</button>
+                  <button class="refresh-btn" onclick="cameraAIReviewEvent('${cameraAIEscape(event.id)}','FALSE_POSITIVE')">Falso positivo</button>
+                  <button class="refresh-btn" onclick="cameraAIReviewEvent('${cameraAIEscape(event.id)}','ESCALATED')" style="color:#dc2626">Atenção necessária</button>
+                </div>`}
+              </div>
+            </div>`;
+          }).join('');
+          events.forEach(cameraAILoadEventEvidence);
+        } catch (_) {
+          summary.textContent = 'Não foi possível consultar os eventos agora.';
+        }
+      }
+      function cameraAILoadSecurity() {
+        cameraAILoadSecurityStatus();
+        cameraAILoadSecurityEvents();
       }
       function cameraAIRefreshStatus() {
         cameraAISelectStore(cameraAISelectedStore);
