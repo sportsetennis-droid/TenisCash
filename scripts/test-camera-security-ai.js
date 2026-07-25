@@ -31,4 +31,23 @@ assert.deepEqual(cameraSecurityAI.parseTargets('LOJA05:1-3,LOJA06:2'), [
   { store: 'LOJA06', camera: 'loja06_camera2' },
 ]);
 
+const afterHours = cameraSecurityAI.localSecurityDecision({
+  score: 0.03,
+  now: new Date('2026-07-25T23:30:00-03:00'),
+});
+assert.equal(afterHours.risk, 'REVIEW');
+assert.equal(afterHours.category, 'RESTRICTED_AREA');
+
+const normalMovement = cameraSecurityAI.localSecurityDecision({
+  score: 0.03,
+  now: new Date('2026-07-25T15:00:00-03:00'),
+});
+assert.equal(normalMovement.risk, 'NONE');
+
+const strongMovement = cameraSecurityAI.localSecurityDecision({
+  score: 0.2,
+  now: new Date('2026-07-25T15:00:00-03:00'),
+});
+assert.equal(strongMovement.risk, 'REVIEW');
+
 console.log('camera-security-ai: ok');

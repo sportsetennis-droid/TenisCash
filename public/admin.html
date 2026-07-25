@@ -1282,7 +1282,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
             dot.style.background = '#ef4444';
           } else if (monitoring > 0) {
             title.textContent = 'IA ativa em ' + monitoring + ' de ' + cameras.length + ' câmeras';
-            detail.textContent = 'Triagem de movimento e visão ativa · ' + data.pendingEvents + ' evento(s) pendente(s) · evidências por ' + data.retentionDays + ' dias.';
+            detail.textContent = (data.provider === 'local' ? 'Visão computacional local ativa' : 'Triagem de movimento e visão ativa')
+              + ' · ' + data.pendingEvents + ' evento(s) pendente(s) · evidências por ' + data.retentionDays + ' dias.';
             badge.textContent = 'MONITORANDO';
             dot.style.background = '#22c55e';
           } else {

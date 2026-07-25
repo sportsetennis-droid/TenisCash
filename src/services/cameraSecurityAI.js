@@ -16,16 +16,28 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { prisma } = require('../middleware');
 const pushNotifications = require('./pushNotifications');
 
+const requestedProvider = String(process.env.CAMERA_SECURITY_AI_PROVIDER || '').trim().toLowerCase();
+const PROVIDER = ['local', 'openai', 'anthropic'].includes(requestedProvider)
+  ? requestedProvider
+  : (process.env.OPENAI_API_KEY ? 'openai' : 'anthropic');
 const MODEL = process.env.CAMERA_SECURITY_AI_MODEL
-  || process.env.AI_VISION_MODEL
-  || process.env.AI_MODEL
-  || 'claude-haiku-4-5-20251001';
+  || (PROVIDER === 'local'
+    ? 'local-motion-v1'
+    : PROVIDER === 'openai'
+    ? (process.env.CAMERA_SECURITY_OPENAI_MODEL || 'gpt-5.6-luna')
+    : (process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001'));
 const ENABLED = process.env.CAMERA_SECURITY_AI !== '0';
 const SCAN_INTERVAL_MS = Math.max(15000, Number(process.env.CAMERA_SECURITY_AI_SCAN_MS || 20000));
 const FRESH_FEED_MS = Math.max(20000, Number(process.env.CAMERA_SECURITY_AI_FRESH_MS || 45000));
 const MOTION_THRESHOLD = Math.max(0.005, Math.min(0.5, Number(process.env.CAMERA_SECURITY_AI_MOTION_THRESHOLD || 0.022)));
 const MAX_AI_CALLS_PER_HOUR = Math.max(1, Number(process.env.CAMERA_SECURITY_AI_MAX_CALLS_HOUR || 60));
 const CONCURRENCY = Math.max(1, Math.min(3, Number(process.env.CAMERA_SECURITY_AI_CONCURRENCY || 1)));
+const LOCAL_REVIEW_THRESHOLD = Math.max(
+  MOTION_THRESHOLD,
+  Math.min(0.5, Number(process.env.CAMERA_SECURITY_AI_LOCAL_REVIEW_THRESHOLD || 0.075))
+);
+const LOCAL_OPEN_HOUR = Math.max(0, Math.min(23, Number(process.env.CAMERA_SECURITY_AI_LOCAL_OPEN_HOUR || 7)));
+const LOCAL_CLOSE_HOUR = Math.max(1, Math.min(24, Number(process.env.CAMERA_SECURITY_AI_LOCAL_CLOSE_HOUR || 22)));
 const RETENTION_MS = Math.max(86400000, Number(process.env.CAMERA_SECURITY_AI_RETENTION_DAYS || 7) * 86400000);
 const MAX_EVENTS = Math.max(50, Number(process.env.CAMERA_SECURITY_AI_MAX_EVENTS || 500));
 const SECURITY_DIR = process.env.CAMERA_SECURITY_AI_DIR || (process.platform === 'win32'
@@ -77,7 +89,10 @@ let statusWriteTimer = null;
 let lastCleanupAt = 0;
 
 function isConfigured() {
-  return !!process.env.ANTHROPIC_API_KEY;
+  if (PROVIDER === 'local') return true;
+  return PROVIDER === 'openai'
+    ? !!process.env.OPENAI_API_KEY
+    : !!process.env.ANTHROPIC_API_KEY;
 }
 
 function cameraKey(store, camera) {
@@ -265,18 +280,15 @@ async function motionScore(frames) {
   return comparisons ? total / comparisons : 0;
 }
 
-async function analyzeFrames({ store, camera, frames, score }) {
-  const images = await Promise.all(frames.slice(0, 3).map(async (filePath) => {
-    const buffer = await sharp(filePath)
-      .resize({ width: 960, height: 960, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 72, mozjpeg: true })
-      .toBuffer();
-    return {
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/jpeg', data: buffer.toString('base64') },
-    };
-  }));
-  const prompt = `Analise esta sequência cronológica de quadros de uma câmera de segurança de uma loja de calçados.
+async function prepareVisionImages(frames) {
+  return Promise.all(frames.slice(0, 3).map((filePath) => sharp(filePath)
+    .resize({ width: 960, height: 960, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 72, mozjpeg: true })
+    .toBuffer()));
+}
+
+function visionPrompt({ store, camera, score }) {
+  return `Analise esta sequência cronológica de quadros de uma câmera de segurança de uma loja de calçados.
 Local: ${store}. Câmera: ${camera}. Mudança visual medida: ${(score * 100).toFixed(1)}%.
 
 Classifique SOMENTE ações visíveis ao longo da sequência:
@@ -296,16 +308,131 @@ Regras obrigatórias:
 
 Responda apenas JSON válido:
 {"risk":"NONE|REVIEW|HIGH","confidence":0.0,"category":"OTHER","summary":"descrição curta em PT-BR sem acusar ninguém","observations":["ações objetivamente visíveis"],"requiresHumanReview":true}`;
+}
+
+async function analyzeFramesAnthropic({ images, prompt }) {
+  const content = images.map((buffer) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/jpeg', data: buffer.toString('base64') },
+  }));
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 350,
     system: 'Você faz triagem conservadora de segurança no varejo. Responda somente JSON. Não identifique pessoas e nunca declare que houve crime.',
-    messages: [{ role: 'user', content: [...images, { type: 'text', text: prompt }] }],
+    messages: [{ role: 'user', content: [...content, { type: 'text', text: prompt }] }],
   });
   return normalizeDecision(parseModelJson(
     (response.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n')
   ));
+}
+
+async function analyzeFramesOpenAI({ images, prompt }) {
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      risk: { type: 'string', enum: ['NONE', 'REVIEW', 'HIGH'] },
+      confidence: { type: 'number', minimum: 0, maximum: 1 },
+      category: { type: 'string', enum: [...VALID_CATEGORIES] },
+      summary: { type: 'string' },
+      observations: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+      requiresHumanReview: { type: 'boolean', enum: [true] },
+    },
+    required: ['risk', 'confidence', 'category', 'summary', 'observations', 'requiresHumanReview'],
+  };
+  const content = images.map((buffer) => ({
+    type: 'input_image',
+    image_url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
+    detail: 'low',
+  }));
+  content.push({ type: 'input_text', text: prompt });
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      instructions: 'Você faz triagem conservadora de segurança no varejo. Não identifique pessoas e nunca declare que houve crime.',
+      input: [{ role: 'user', content }],
+      max_output_tokens: 450,
+      reasoning: { effort: 'low' },
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'security_decision',
+          strict: true,
+          schema,
+        },
+        verbosity: 'low',
+      },
+      store: false,
+    }),
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    let detail = raw.slice(0, 500);
+    try { detail = JSON.parse(raw)?.error?.message || detail; } catch (_) {}
+    throw new Error(`OpenAI ${response.status}: ${detail}`);
+  }
+  const payload = JSON.parse(raw);
+  const text = typeof payload.output_text === 'string'
+    ? payload.output_text
+    : (payload.output || [])
+      .flatMap((item) => item?.content || [])
+      .map((item) => item?.text || item?.output_text || '')
+      .filter(Boolean)
+      .join('\n');
+  const parsed = parseModelJson(text);
+  if (!parsed) throw new Error('OPENAI_RESPONSE_INVALID');
+  return normalizeDecision(parsed);
+}
+
+function localSecurityDecision({ score, now = new Date() }) {
+  const localHour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Fortaleza',
+    hour: '2-digit',
+    hour12: false,
+  }).format(now)) % 24;
+  const afterHours = localHour < LOCAL_OPEN_HOUR || localHour >= LOCAL_CLOSE_HOUR;
+  if (afterHours && score >= MOTION_THRESHOLD) {
+    return normalizeDecision({
+      risk: 'REVIEW',
+      confidence: 0.92,
+      category: 'RESTRICTED_AREA',
+      summary: 'Movimentação relevante detectada fora do horário normal da loja.',
+      observations: [`Mudança visual de ${(score * 100).toFixed(1)}% fora do horário configurado.`],
+      requiresHumanReview: true,
+    });
+  }
+  if (score >= LOCAL_REVIEW_THRESHOLD) {
+    return normalizeDecision({
+      risk: 'REVIEW',
+      confidence: 0.84,
+      category: 'OTHER',
+      summary: 'Movimentação rápida ou ampla detectada; revisar os quadros gravados.',
+      observations: [`Mudança visual de ${(score * 100).toFixed(1)}% acima do limite local.`],
+      requiresHumanReview: true,
+    });
+  }
+  return normalizeDecision({
+    risk: 'NONE',
+    confidence: 0.9,
+    category: 'OTHER',
+    summary: 'Movimentação dentro do padrão local.',
+    observations: [],
+    requiresHumanReview: true,
+  });
+}
+
+async function analyzeFrames({ store, camera, frames, score }) {
+  if (PROVIDER === 'local') return localSecurityDecision({ score });
+  const images = await prepareVisionImages(frames);
+  const prompt = visionPrompt({ store, camera, score });
+  if (PROVIDER === 'openai') return analyzeFramesOpenAI({ images, prompt });
+  return analyzeFramesAnthropic({ images, prompt });
 }
 
 async function readEventsUnsafe() {
@@ -369,7 +496,7 @@ async function persistEvent({ store, camera, frames, decision, score }) {
 }
 
 async function alertAdmins(event) {
-  if (event.risk !== 'HIGH') return;
+  if (event.risk !== 'HIGH' && event.category !== 'RESTRICTED_AREA') return;
   try {
     const users = await prisma.user.findMany({
       where: { active: true, role: { in: ['superadmin', 'admin', 'manager'] } },
@@ -419,16 +546,18 @@ async function processCamera(target) {
       });
       return;
     }
-    trimAiCallWindow();
-    if (aiCallTimes.length >= MAX_AI_CALLS_PER_HOUR) {
-      setStatus(key, {
-        state: 'RATE_LIMITED',
-        lastMotionScore: Number(score.toFixed(4)),
-        lastError: 'Limite preventivo de análises atingido; a triagem local continua.',
-      });
-      return;
+    if (PROVIDER !== 'local') {
+      trimAiCallWindow();
+      if (aiCallTimes.length >= MAX_AI_CALLS_PER_HOUR) {
+        setStatus(key, {
+          state: 'RATE_LIMITED',
+          lastMotionScore: Number(score.toFixed(4)),
+          lastError: 'Limite preventivo de análises atingido; a triagem local continua.',
+        });
+        return;
+      }
+      aiCallTimes.push(Date.now());
     }
-    aiCallTimes.push(Date.now());
     const decision = await analyzeFrames({
       store: target.store,
       camera: target.camera,
@@ -438,9 +567,10 @@ async function processCamera(target) {
     let event = null;
     if (shouldStoreDecision(decision)) {
       const previous = await listEvents({ store: target.store, camera: target.camera, limit: 1, skipCleanup: true });
+      const duplicateCooldownMs = decision.category === 'RESTRICTED_AREA' ? 600000 : 120000;
       const recentDuplicate = previous[0]
         && previous[0].category === decision.category
-        && Date.now() - new Date(previous[0].detectedAt).getTime() < 120000;
+        && Date.now() - new Date(previous[0].detectedAt).getTime() < duplicateCooldownMs;
       if (!recentDuplicate) {
         event = await persistEvent({
           store: target.store,
@@ -651,6 +781,7 @@ async function getStatus() {
   return {
     enabled: ENABLED,
     configured: isConfigured(),
+    provider: PROVIDER,
     model: MODEL,
     mode: 'motion_then_vision',
     requiresHumanReview: true,
@@ -673,6 +804,7 @@ module.exports = {
   getStatus,
   isConfigured,
   listEvents,
+  localSecurityDecision,
   normalizeDecision,
   onPlaylistUpdated,
   parseModelJson,
