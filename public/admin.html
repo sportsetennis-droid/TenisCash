@@ -937,8 +937,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       function cameraAIStreams() { return cameraAIReadJSON('tc_camera_ai_streams_v2', {}); }
       function cameraAIStreamKey() { return cameraAISelectedStore + ':' + cameraAISelectedCamera; }
       function cameraAIDefaultLiveUrl() {
-        if (cameraAISelectedStore !== '05' || !/^cam0[1-6]$/.test(cameraAISelectedCamera)) return '';
-        return '/api/admin/security/camera-live/LOJA05/loja05_camera' + Number(cameraAISelectedCamera.slice(3)) + '/index.m3u8';
+        const store = CAMERA_AI_STORES[cameraAISelectedStore];
+        if (!store?.cameras.some(camera => camera.id === cameraAISelectedCamera)) return '';
+        const cameraNumber = Number(cameraAISelectedCamera.replace('cam', ''));
+        if (!Number.isInteger(cameraNumber) || cameraNumber < 1) return '';
+        return '/api/admin/security/camera-live/LOJA' + cameraAISelectedStore
+          + '/loja' + cameraAISelectedStore + '_camera' + cameraNumber + '/index.m3u8';
       }
       function cameraAIResetPlayer() {
         if (cameraAIHls) { cameraAIHls.destroy(); cameraAIHls = null; }
