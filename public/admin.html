@@ -10442,7 +10442,7 @@ function _lblShowCart() {
     const p = _lblCacheProducts[pid];
     if (!p) return;
     const qty = _lblQuantity(s);
-    if (qty > 0) items.push({ name: p.name, size: '—', qty, sku: p.sku });
+    if (qty > 0) items.push({ name: p.name, size: '', qty, sku: p.sku });
   });
   if (!items.length) { alert('Carrinho vazio'); return; }
   const template = _lblTemplates[document.getElementById('labels-template')?.value];
@@ -10450,7 +10450,7 @@ function _lblShowCart() {
   const physicalTotal = logicalTotal * Math.max(1, Number(template?.layoutConfig?.labelsPerProduct || 1));
   let txt = 'CARRINHO (' + physicalTotal + ' etiquetas fisicas):\n\n';
   items.forEach(i => { txt += `• ${i.name} [${i.size}] x ${i.qty}\n`; });
-  txt = txt.replace(/ \[—\]/g, '');
+  txt = txt.replace(/ \[\]/g, '');
   alert(txt);
 }
 async function labelsCreateBatch() {
