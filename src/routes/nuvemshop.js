@@ -73,6 +73,28 @@ adminRouter.get('/categories', async (_req, res) => {
   }
 });
 
+// Consulta pontual usada pelo painel para confirmar uma vitrine de ofertas:
+// retorna a categoria pelo handle e os produtos realmente vinculados a ela.
+// O token da Nuvemshop permanece no servidor.
+adminRouter.get('/categories/by-handle/:handle', async (req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' }, orderBy: { createdAt: 'desc' } });
+    if (!connection) return res.status(404).json({ error: 'Nuvemshop não está conectada' });
+    const handle = String(req.params.handle || '').trim();
+    if (!handle) return res.status(400).json({ error: 'Informe o handle da categoria' });
+    const listed = await ns.nuvemshopApi(connection, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
+    const category = (Array.isArray(listed) ? listed : []).find((item) => {
+      const value = item && typeof item.handle === 'object' ? (item.handle.pt || item.handle['pt-BR'] || Object.values(item.handle)[0]) : item?.handle;
+      return String(value || '') === handle;
+    });
+    if (!category) return res.status(404).json({ error: 'Categoria não encontrada', handle });
+    const products = await ns.nuvemshopApi(connection, 'GET', `/products?category_id=${encodeURIComponent(category.id)}&per_page=100&page=1`);
+    res.json({ category, products: Array.isArray(products) ? products : [] });
+  } catch (err) {
+    res.status(502).json({ error: 'Não foi possível consultar a categoria', detail: err.message });
+  }
+});
+
 adminRouter.get('/sync-logs', async (_req, res) => {
   try {
     const logs = await prisma.nuvemshopSyncLog.findMany({

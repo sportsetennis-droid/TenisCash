@@ -246,10 +246,7 @@ async function syncOfferCategory(offer, conn) {
     const has = before.includes(Number(category.id));
     const shouldHave = selected.has(String(remoteId));
     const after = shouldHave ? Array.from(new Set([...before, Number(category.id)])) : before.filter((id) => id !== Number(category.id));
-    if (has !== shouldHave) {
-      try { await ns.updateProduct(conn, remoteId, { categories: after }); }
-      catch (e) { throw new Error(`${e.message} | qr-category-debug ${JSON.stringify({ remoteId, raw: product.categories, before, after, categoryId: category.id })}`); }
-    }
+    if (has !== shouldHave) await ns.updateProduct(conn, remoteId, { categories: after });
   }
   return { id: category.id, handle, url: storeOfferUrl(code) };
 }
@@ -308,16 +305,6 @@ adminRouter.post('/plates/:plate/sync-category', async (req, res) => {
     const category = await syncOfferCategory(offer, conn);
     res.json({ category, destinationUrl: storeOfferUrl(plateCode(n), offer.couponCode) });
   } catch (e) { res.status(502).json({ error: 'Não foi possível sincronizar a categoria da placa', detail: e.message }); }
-});
-
-adminRouter.post('/plates/:plate/sync-category-debug', async (req, res) => {
-  try {
-    const n = plateNumber(req.params.plate);
-    const offer = await prisma.qROffer.findFirst({ where: { board: { number: n }, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { board: true, products: { include: { product: true } } } });
-    const conn = await activeConnection();
-    const category = await syncOfferCategory(offer, conn);
-    res.json({ ok: true, category });
-  } catch (e) { res.json({ ok: false, detail: e.message }); }
 });
 
 adminRouter.post('/offers', async (req, res) => {
