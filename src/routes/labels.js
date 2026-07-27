@@ -256,12 +256,22 @@ router.get('/batches/:id/pdf', async (req, res) => {
           { displayName: { equals: storeName, mode: 'insensitive' } },
         ],
       },
-      select: { logoUrl: true },
+      select: { id: true, logoUrl: true },
       take: 1,
     });
     let storeLogoUrl = storeProfiles[0]?.logoUrl || null;
     if (!storeLogoUrl && isFourSideProductTemplate(batch.template)) {
       storeLogoUrl = await resolveBrandLogoUrl(storeName);
+      if (storeLogoUrl && storeProfiles[0]?.id) {
+        // Deixa a logo oficial disponível no painel para as próximas
+        // etiquetas e para os demais materiais da marca.
+        await prisma.brandProfile.update({
+          where: { id: storeProfiles[0].id },
+          data: { logoUrl: storeLogoUrl },
+        }).catch((err) => {
+          console.warn('[labels] não foi possível persistir a logo oficial da loja:', err.message);
+        });
+      }
     }
 
     // Base URL pra QRs apontarem pra página pública do produto
