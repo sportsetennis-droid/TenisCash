@@ -38,6 +38,19 @@ adminRouter.get('/status', async (_req, res) => {
   }
 });
 
+// Diagnóstico somente leitura dos scripts associados à loja. A consulta usa
+// o token OAuth armazenado no servidor e nunca expõe esse token ao navegador.
+adminRouter.get('/scripts', async (_req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' }, orderBy: { createdAt: 'desc' } });
+    if (!connection) return res.status(404).json({ error: 'Nuvemshop não está conectada' });
+    const scripts = await ns.listScripts(connection, { perPage: 100, page: 1 });
+    res.json({ scripts });
+  } catch (err) {
+    res.status(502).json({ error: 'Não foi possível consultar os scripts da Nuvemshop', detail: err.message });
+  }
+});
+
 adminRouter.get('/sync-logs', async (_req, res) => {
   try {
     const logs = await prisma.nuvemshopSyncLog.findMany({

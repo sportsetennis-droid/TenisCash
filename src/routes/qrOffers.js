@@ -23,6 +23,10 @@ function plateNumber(raw) {
 
 function plateCode(n) { return `placa-${String(n).padStart(2, '0')}`; }
 
+// Os QR codes já impressos continuam apontando para a URL fixa do TenisCash.
+// Essa URL redireciona para a loja, onde o script da Nuvemshop apresenta a oferta.
+function storeOfferUrl(code) { return `${STORE_BASE}/?oferta=${encodeURIComponent(code)}`; }
+
 function escapeHtml(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -191,9 +195,10 @@ adminRouter.get('/plates', async (_req, res) => {
     const out = [];
     for (const board of boards) {
       const current = await prisma.qROffer.findFirst({ where: { boardId: board.id, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { _count: { select: { products: true } } } });
-      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: `${PUBLIC_BASE}/oferta/${board.code}`, qrDataUrl: await QRCode.toDataURL(`${PUBLIC_BASE}/oferta/${board.code}`, { margin: 1, width: 320 }), current: current ? { id: current.id, title: current.title, status: current.startsAt <= now && current.endsAt > now ? 'ACTIVE' : 'SCHEDULED', startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
+      const qrUrl = `${PUBLIC_BASE}/oferta/${board.code}`;
+      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: qrUrl, destinationUrl: storeOfferUrl(board.code), qrDataUrl: await QRCode.toDataURL(qrUrl, { margin: 1, width: 320 }), current: current ? { id: current.id, title: current.title, status: current.startsAt <= now && current.endsAt > now ? 'ACTIVE' : 'SCHEDULED', startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
     }
-    res.json({ boards: out, publicBase: PUBLIC_BASE, storeBase: STORE_BASE });
+    res.json({ boards: out, publicBase: PUBLIC_BASE, storeBase: STORE_BASE, qrDestination: 'store' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -256,7 +261,7 @@ adminRouter.post('/offers/:id/publish', async (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
     if (new Date(offer.endsAt) <= new Date()) return res.status(400).json({ error: 'A validade da oferta já terminou' });
     const updated = await publishOffer(offer);
-    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}` });
+    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}`, destinationUrl: storeOfferUrl(offer.board.code) });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -286,9 +291,10 @@ publicRouter.get('/qr-ofertas-folha', async (_req, res) => {
     const boards = await ensureBoards();
     const cards = [];
     for (const board of boards) {
-      const fixedUrl = `${PUBLIC_BASE}/oferta/${board.code}`;
-      const qr = await QRCode.toDataURL(fixedUrl, { margin: 1, width: 420 });
-      cards.push(`<article><div class="head">OFERTA DE HOJE<br><small>PLACA ${String(board.number).padStart(2, '0')}</small></div><img src="${qr}" alt="QR ${board.code}"><strong>${fixedUrl}</strong></article>`);
+      const qrUrl = `${PUBLIC_BASE}/oferta/${board.code}`;
+      const destinationUrl = storeOfferUrl(board.code);
+      const qr = await QRCode.toDataURL(qrUrl, { margin: 1, width: 420 });
+      cards.push(`<article><div class="head">OFERTA DE HOJE<br><small>PLACA ${String(board.number).padStart(2, '0')}</small></div><img src="${qr}" alt="QR ${board.code}"><strong>${destinationUrl}</strong><small class="fixed">QR fixo · destino final na loja</small></article>`);
     }
     res.type('html').send(`<!doctype html><meta charset="utf-8"><title>12 QR — Sports &amp; Tennis</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;margin:0;color:#111}.toolbar{padding:12px 0;text-align:right}.toolbar button{padding:9px 15px;border:0;border-radius:7px;background:#f4511e;color:#fff;font-weight:800;cursor:pointer}.sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm}article{border:1px solid #ddd;min-height:76mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:4mm;box-sizing:border-box;break-inside:avoid}.head{font-size:15px;font-weight:900;color:#fff;background:#f4511e;width:100%;padding:7px 0;line-height:1.25}.head small{font-size:10px}.sheet img{width:42mm;height:42mm;margin:4mm 0}.sheet strong{font-size:7px;word-break:break-all}@media print{.toolbar{display:none}.sheet{gap:5mm}}</style><div class="toolbar"><button onclick="window.print()">Imprimir / salvar PDF</button></div><main class="sheet">${cards.join('')}</main>`);
   } catch (e) { res.status(500).type('html').send('<h1>Não foi possível gerar a folha dos QR</h1>'); }
@@ -298,6 +304,10 @@ publicRouter.get('/oferta/:plate', async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
     if (!n) return res.status(404).type('html').send('<h1>Placa inválida</h1>');
+    // Redireciona os QR codes antigos para o domínio oficial da loja. O QR
+    // impresso permanece igual; só a experiência final muda para a Nuvemshop.
+    res.set('Cache-Control', 'no-store');
+    return res.redirect(302, storeOfferUrl(plateCode(n)));
     const { board, offer } = await findOfferByPlate(n);
     const code = board ? board.code : plateCode(n);
     const productCards = offer && offer.products.length ? offer.products.map((p) => `<article class="product"><img src="${escapeHtml(p.imageUrl || '')}" alt="${escapeHtml(p.name)}"><div><small>${escapeHtml(p.brand || '')}</small><h2>${escapeHtml(p.name)}</h2><p class="price">R$ ${Number(p.promoPrice || p.price || 0).toFixed(2).replace('.', ',')}</p><a href="${escapeHtml(p.storeUrl)}">Comprar com desconto</a></div></article>`).join('') : '<div class="empty">Esta placa está entre uma oferta e outra. Volte mais tarde.</div>';

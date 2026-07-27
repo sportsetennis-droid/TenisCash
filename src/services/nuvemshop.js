@@ -133,6 +133,12 @@ async function getCustomer(connection, customerId) {
   return nuvemshopApi(connection, 'GET', `/customers/${customerId}`);
 }
 
+async function listScripts(connection, opts = {}) {
+  const perPage = Number(opts.perPage) || 100;
+  const page = Number(opts.page) || 1;
+  return nuvemshopApi(connection, 'GET', `/scripts?per_page=${perPage}&page=${page}`);
+}
+
 async function updateVariantStock(connection, productId, variantId, stock) {
   return nuvemshopApi(connection, 'PUT', `/products/${productId}/variants/${variantId}`, { stock });
 }
@@ -214,6 +220,7 @@ module.exports = {
   deleteProduct,
   getOrder,
   getCustomer,
+  listScripts,
   updateVariantStock,
   buildCouponPayload,
   createCoupon,
