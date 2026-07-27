@@ -372,8 +372,12 @@ publicRouter.get('/oferta/:plate', async (req, res) => {
     // Redireciona os QR codes antigos para o domínio oficial da loja. O QR
     // impresso permanece igual; só a experiência final muda para a Nuvemshop.
     res.set('Cache-Control', 'no-store');
-    return res.redirect(302, storeOfferUrl(plateCode(n)));
-    const { board, offer } = await findOfferByPlate(n);
+    const { offer } = await findOfferByPlate(n);
+    const target = offer && offer.products && offer.products[0] && offer.products[0].storeUrl
+      ? offer.products[0].storeUrl
+      : storeOfferUrl(plateCode(n));
+    return res.redirect(302, target);
+    const { board, offer: legacyOffer } = await findOfferByPlate(n);
     const code = board ? board.code : plateCode(n);
     const productCards = offer && offer.products.length ? offer.products.map((p) => `<article class="product"><img src="${escapeHtml(p.imageUrl || '')}" alt="${escapeHtml(p.name)}"><div><small>${escapeHtml(p.brand || '')}</small><h2>${escapeHtml(p.name)}</h2><p class="price">R$ ${Number(p.promoPrice || p.price || 0).toFixed(2).replace('.', ',')}</p><a href="${escapeHtml(p.storeUrl)}">Comprar com desconto</a></div></article>`).join('') : '<div class="empty">Esta placa está entre uma oferta e outra. Volte mais tarde.</div>';
     const end = offer ? new Date(offer.endsAt).toISOString() : '';
