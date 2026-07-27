@@ -4448,7 +4448,13 @@ async function openAuthedFile(path) {
     const r = await fetch(url, { headers });
     if (!r.ok) {
       let msg = 'Erro ' + r.status;
-      try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+      try {
+        const j = await r.json();
+        if (j.error) msg = j.error;
+        if (Array.isArray(j.missingLogos) && j.missingLogos.length) {
+          msg += '\n\nLogos faltantes:\n- ' + j.missingLogos.join('\n- ');
+        }
+      } catch {}
       alert('Não foi possível abrir o arquivo: ' + msg);
       return;
     }
@@ -9284,10 +9290,7 @@ async function aiDecide(approvalId, decision) {
   const note = prompt('Observação (opcional):') || '';
   const data = await api(`/admin/ai/approvals/${approvalId}/decision`, 'POST', { decision, note });
   if (data.error) {
-    const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
-      ? '\\n\\nLogos faltantes:\\n- ' + data.missingLogos.join('\\n- ')
-      : '';
-    alert('Erro: ' + data.error + missing);
+    alert('Erro: ' + data.error);
     return;
   }
   loadAIApprovals();
@@ -10360,7 +10363,13 @@ async function labelsCreateBatch() {
   const data = await api('/admin/labels/batches/quick', 'POST', {
     templateId, selections, usePromo,
   });
-  if (data.error) { alert('Erro: ' + data.error); return; }
+  if (data.error) {
+    const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
+      ? '\n\nLogos faltantes:\n- ' + data.missingLogos.join('\n- ')
+      : '';
+    alert('Erro: ' + data.error + missing);
+    return;
+  }
   // Abre PDF
   openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf');
   // Limpa carrinho
