@@ -87,6 +87,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 .refresh-btn{padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';transition:all .2s}
 .refresh-btn:hover{border-color:var(--orange);color:var(--orange)}
 .tabs{display:flex;gap:4px;margin-bottom:20px}
+.admin-main-tabs{display:flex!important;flex-wrap:wrap;gap:6px;padding:10px;margin:0 0 20px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.24);border-radius:12px;position:sticky;top:0;z-index:200;backdrop-filter:blur(10px)}
+.admin-main-tabs .tab{flex:0 0 auto}
 .tab{padding:10px 20px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Chakra Petch';letter-spacing:1px;transition:all .2s}
 .tab.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .tab:hover:not(.active){border-color:var(--orange);color:var(--orange)}
@@ -368,8 +370,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     .hub-back-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,109,0,0.4); }
   </style>
 
-  <!-- TABS (escondida — navegação é via cards do Hub) -->
-  <div class="tabs" style="display:none;">
+  <!-- TABS PRINCIPAL — disponível também dentro de cada módulo -->
+  <div class="tabs admin-main-tabs" style="display:flex;">
     <button class="tab active" onclick="switchTab('home',this)">🏠 Início</button>
     <button class="tab" onclick="switchTab('users',this)">Usuários</button>
     <button class="tab" onclick="switchTab('transactions',this)">Transações</button>
