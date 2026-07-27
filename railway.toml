@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "npx prisma db push && node src/seed.js && node src/index.js"
+startCommand = "npx prisma db push --accept-data-loss && node src/seed.js && node src/index.js"
 # Healthcheck: o Railway bate em /api/health depois de subir o deploy novo.
 # Se NÃO responder 200 (ex: app crashou no boot), o deploy é marcado como falho e o
 # Railway MANTÉM a versão anterior no ar -> deploy quebrado nao derruba o prod.
