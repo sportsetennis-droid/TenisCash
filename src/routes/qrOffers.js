@@ -246,7 +246,10 @@ async function syncOfferCategory(offer, conn) {
     const has = before.includes(Number(category.id));
     const shouldHave = selected.has(String(remoteId));
     const after = shouldHave ? Array.from(new Set([...before, Number(category.id)])) : before.filter((id) => id !== Number(category.id));
-    if (has !== shouldHave) await ns.updateProduct(conn, remoteId, { categories: after });
+    if (has !== shouldHave) {
+      try { await ns.updateProduct(conn, remoteId, { categories: after }); }
+      catch (e) { throw new Error(`${e.message} | qr-category-debug ${JSON.stringify({ remoteId, raw: product.categories, before, after, categoryId: category.id })}`); }
+    }
   }
   return { id: category.id, handle, url: storeOfferUrl(code) };
 }
