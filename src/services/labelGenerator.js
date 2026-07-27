@@ -479,15 +479,22 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     if (item._storeLogoIconBuffer || item._storeLogoWordmarkBuffer || item._storeLogoBuffer) {
       try {
         if (item._storeLogoIconBuffer && item._storeLogoWordmarkBuffer) {
-          doc.image(item._storeLogoIconBuffer, x + pad, y + h * 0.06, {
-            fit: [innerW * 0.68, h * 0.62],
-            align: 'center',
-            valign: 'center',
+          // O PDFKit posiciona o box de fit pela borda esquerda. Como os dois
+          // recortes possuem proporções diferentes, calculamos o tamanho real
+          // e centralizamos o conteúdo, não apenas a caixa transparente.
+          const iconW = innerW * 0.68;
+          const iconH = iconW * (205 / 190);
+          const iconAreaH = h * 0.62;
+          doc.image(item._storeLogoIconBuffer, x + (w - iconW) / 2, y + h * 0.06 + (iconAreaH - iconH) / 2, {
+            width: iconW,
+            height: iconH,
           });
-          doc.image(item._storeLogoWordmarkBuffer, x + pad, y + h * 0.73, {
-            fit: [innerW * 0.88, h * 0.20],
-            align: 'center',
-            valign: 'center',
+          const wordmarkW = innerW * 0.88;
+          const wordmarkH = wordmarkW * (191 / 660);
+          const wordmarkAreaH = h * 0.20;
+          doc.image(item._storeLogoWordmarkBuffer, x + (w - wordmarkW) / 2, y + h * 0.73 + (wordmarkAreaH - wordmarkH) / 2, {
+            width: wordmarkW,
+            height: wordmarkH,
           });
         } else if (item._storeLogoBuffer) {
           doc.image(item._storeLogoBuffer, x + pad, y + h * 0.18, {
