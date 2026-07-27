@@ -440,6 +440,7 @@ model Product {
   // Marketing IA: criativos gerados (foto editorial, vídeo Reels, sem-fundo)
   creatives                  ProductCreative[]                  @relation("creativesForProduct")
   sellerAssistantAssignments SellerAssistantProductAssignment[] @relation("sellerAssistantAssignmentProduct")
+  qrOfferProducts            QROfferProduct[]
 
   @@index([brand, category])
   @@index([active, featured])
@@ -2500,6 +2501,63 @@ model CampaignProduct {
 
   @@unique([campaignId, productId])
   @@index([campaignId])
+}
+
+// ============================================================
+// OFERTAS QR FIXAS — 12 placas físicas, conteúdo rotativo
+// ============================================================
+// O valor impresso nas placas nunca muda: /oferta/placa-01 ...
+// /oferta/placa-12. Só a oferta vinculada à placa muda, com janela
+// de validade controlada pelo TenisCash e cupom espelhado na Nuvemshop.
+
+model QRBoard {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  code      String   @unique // placa-01 ... placa-12 (imutável depois do seed)
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers QROffer[]
+}
+
+model QROffer {
+  id            String    @id @default(cuid())
+  boardId       String
+  title         String
+  status        String    @default("DRAFT") // DRAFT | ACTIVE | EXPIRED | CANCELLED
+  startsAt      DateTime
+  endsAt        DateTime
+  durationHours Int       @default(24)
+  discountPct   Float     @default(0)
+  freeExchange  Boolean   @default(true)
+  couponCode    String?   @unique
+  nsCouponId    String?
+  notes         String?
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  board    QRBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  products QROfferProduct[]
+
+  @@index([boardId, status, startsAt, endsAt])
+  @@index([status, endsAt])
+}
+
+model QROfferProduct {
+  id        String   @id @default(cuid())
+  offerId   String
+  productId String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  offer   QROffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, productId])
+  @@index([offerId, position])
+  @@index([productId])
 }
 
 // ============================================================
