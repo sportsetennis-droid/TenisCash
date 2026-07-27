@@ -71,12 +71,45 @@ async function ensureAllProductInternalBarcodes(prisma, options = {}) {
     select: { id: true, internalBarcode: true },
     orderBy: { createdAt: 'asc' },
   });
+
+  // O seed roda no boot. Carregamos os códigos ocupados uma única vez para
+  // não fazer três consultas por produto (o backfill pode ter milhares de cards).
+  const [internalRows, sizeRows, nfeRows] = await Promise.all([
+    prisma.product.findMany({ where: { internalBarcode: { not: null } }, select: { internalBarcode: true } }),
+    prisma.productSize.findMany({ where: { barcode: { startsWith: INTERNAL_PREFIX } }, select: { barcode: true } }),
+    prisma.xmlFiscalItem.findMany({ where: { ean: { startsWith: INTERNAL_PREFIX } }, select: { ean: true } }),
+  ]);
+  const used = new Set([
+    ...internalRows.map((row) => row.internalBarcode).filter(Boolean),
+    ...sizeRows.map((row) => row.barcode).filter(Boolean),
+    ...nfeRows.map((row) => row.ean).filter(Boolean),
+  ]);
+
   let created = 0;
+  let writes = [];
+  const flush = async () => {
+    if (!writes.length) return;
+    const batch = writes;
+    writes = [];
+    await prisma.$transaction(batch);
+  };
   for (const product of products) {
     if (product.internalBarcode) continue;
-    await ensureProductInternalBarcode(prisma, product);
+    let code = null;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const candidate = internalBarcodeCandidate(product.id, attempt);
+      if (!used.has(candidate)) {
+        code = candidate;
+        used.add(candidate);
+        break;
+      }
+    }
+    if (!code) throw new Error(`NÃ£o foi possÃ­vel reservar cÃ³digo interno para o produto ${product.id}`);
+    writes.push(prisma.product.update({ where: { id: product.id }, data: { internalBarcode: code } }));
     created++;
+    if (writes.length >= 100) await flush();
   }
+  await flush();
   return { total: products.length, created };
 }
 
