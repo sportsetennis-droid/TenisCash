@@ -614,7 +614,9 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           .text(`De ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false, strike: true });
       }
     }
-    const barcodeY = y + h - mm(22);
+    // O preço fica na faixa superior e o código ocupa a faixa inferior,
+    // aproveitando o espaço livre sem encostar na borda de corte.
+    const barcodeY = y + h - mm(12.5);
     // A etiqueta usa exclusivamente o novo código interno. O EAN/SKU
     // original continua gravado no produto e disponível nas consultas, mas
     // não é impresso para evitar dois códigos na mesma etiqueta.
