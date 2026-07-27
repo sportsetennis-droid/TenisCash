@@ -289,6 +289,20 @@ router.get('/batches/:id/pdf', async (req, res) => {
       };
     });
 
+    if (isFourSideProductTemplate(batch.template)) {
+      const missingLogos = [];
+      if (!storeLogoUrl) missingLogos.push(`loja: ${storeName}`);
+      [...new Set(items.map((item) => item.brand).filter(Boolean))].forEach((brand) => {
+        if (!items.some((item) => item.brand === brand && item.brandLogoUrl)) missingLogos.push(`marca: ${brand}`);
+      });
+      if (missingLogos.length) {
+        return res.status(409).json({
+          error: 'Cadastre as logos da loja e das marcas antes de gerar a etiqueta.',
+          missingLogos,
+        });
+      }
+    }
+
     const pdfBuffer = await generateLabelsPDF({
       template: batch.template,
       items,

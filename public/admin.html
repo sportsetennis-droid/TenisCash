@@ -9283,7 +9283,13 @@ async function loadAIApprovals() {
 async function aiDecide(approvalId, decision) {
   const note = prompt('Observação (opcional):') || '';
   const data = await api(`/admin/ai/approvals/${approvalId}/decision`, 'POST', { decision, note });
-  if (data.error) { alert('Erro: ' + data.error); return; }
+  if (data.error) {
+    const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
+      ? '\\n\\nLogos faltantes:\\n- ' + data.missingLogos.join('\\n- ')
+      : '';
+    alert('Erro: ' + data.error + missing);
+    return;
+  }
   loadAIApprovals();
 }
 
