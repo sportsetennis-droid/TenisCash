@@ -20,6 +20,20 @@ function labelsPerProduct(template) {
   return isFourSideProductTemplate(template) ? 2 : 1;
 }
 
+function brandSlug(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function brandSlugCompact(value) {
+  return brandSlug(value).replace(/-/g, '');
+}
+
 // Garante que os templates default existem (idempotente)
 async function ensureDefaultTemplates() {
   const defaults = defaultTemplates();
@@ -187,14 +201,43 @@ router.get('/batches/:id/pdf', async (req, res) => {
       })
       : [];
     const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+    const brandNames = [...new Set(products.map((p) => String(p.brand || '').trim()).filter(Boolean))];
+    const brandSlugs = [...new Set(brandNames.flatMap((name) => [brandSlug(name), brandSlugCompact(name)]).filter(Boolean))];
+    const brandProfileRows = brandNames.length
+      ? await prisma.brandProfile.findMany({
+        where: {
+          OR: [
+            { slug: { in: brandSlugs } },
+            ...brandNames.map((name) => ({ displayName: { equals: name, mode: 'insensitive' } })),
+          ],
+        },
+        select: { slug: true, displayName: true, logoUrl: true },
+      })
+      : [];
+    const brandLogos = new Map();
+    brandProfileRows.forEach((row) => {
+      if (!row.logoUrl) return;
+      brandLogos.set(brandSlug(row.slug), row.logoUrl);
+      brandLogos.set(brandSlugCompact(row.slug), row.logoUrl);
+      brandLogos.set(brandSlug(row.displayName), row.logoUrl);
+      brandLogos.set(brandSlugCompact(row.displayName), row.logoUrl);
+    });
     const store = batch.storeId
       ? await prisma.store.findUnique({ where: { id: batch.storeId }, select: { name: true } })
       : null;
     const storeName = store?.name || 'Sports & Tennis';
-    const brandProfile = await prisma.brandProfile.findUnique({
-      where: { slug: 'sportsetennis' },
+    const storeKeys = [...new Set([brandSlug(storeName), brandSlugCompact(storeName)].filter(Boolean))];
+    const storeProfiles = await prisma.brandProfile.findMany({
+      where: {
+        OR: [
+          { slug: { in: storeKeys } },
+          { displayName: { equals: storeName, mode: 'insensitive' } },
+        ],
+      },
       select: { logoUrl: true },
+      take: 1,
     });
+    const storeLogoUrl = storeProfiles[0]?.logoUrl || null;
 
     // Base URL pra QRs apontarem pra página pública do produto
     const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -228,8 +271,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
         description: p ? (p.longDescription || p.shortDescription || p.name) : baseName,
         availableSizes,
         storeName,
-        storeLogoUrl: brandProfile?.logoUrl || null,
+        storeLogoUrl,
         brand: p ? p.brand : '',
+        brandLogoUrl: p ? (brandLogos.get(brandSlug(p.brand)) || brandLogos.get(brandSlugCompact(p.brand)) || null) : null,
         sku: p ? p.sku : '',
         supplierRef: ctx.supplierRef || null,
         gender: genderLabel,
@@ -249,7 +293,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       template: batch.template,
       items,
       storeName,
-      storeLogoUrl: brandProfile?.logoUrl || null,
+      storeLogoUrl,
     });
 
     await prisma.labelBatch.update({

@@ -332,9 +332,18 @@ async function loadLogoBuffer(value) {
     const response = await fetch(v);
     if (!response.ok) return null;
     const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-    const isRaster = /image\/(png|jpe?g)/.test(contentType) || /\.(png|jpe?g)(?:\?|$)/i.test(v);
-    if (!isRaster) return null;
-    return Buffer.from(await response.arrayBuffer());
+    const isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
+    const raw = Buffer.from(await response.arrayBuffer());
+    if (isSvg) {
+      try {
+        return await require('sharp')(raw).png().toBuffer();
+      } catch (err) {
+        console.warn('[labels] nao foi possivel converter logo SVG:', err?.message || err);
+        return null;
+      }
+    }
+    const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
+    return isRaster ? raw : null;
   } catch (err) {
     console.warn('[labels] logo da loja indisponivel; usando nome textual:', err?.message || err);
     return null;
@@ -363,15 +372,25 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   };
 
   if (side === 'brand') {
-    const brand = String(item.brand || '').trim();
-    centered(brand || 'MARCA NAO INFORMADA', 18, y + h * 0.42, { lineBreak: false });
+    if (item._brandLogoBuffer) {
+      try {
+        doc.image(item._brandLogoBuffer, x + pad, y + h * 0.28, {
+          fit: [innerW, h * 0.38],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {
+        centered('LOGO DA MARCA PENDENTE', 9, y + h * 0.42, { lineBreak: false });
+      }
+    } else {
+      centered('LOGO DA MARCA PENDENTE', 9, y + h * 0.42, { lineBreak: false });
+    }
     return;
   }
 
   if (side === 'store') {
-    // NÃ£o usa uma imagem desconhecida como logo. O nome oficial da loja Ã© o
-    // fallback verificÃ¡vel atÃ© que um logo real seja cadastrado no perfil.
-    const store = String(item.storeName || 'SPORTS & TENNIS').trim();
+    // A face sÃ³ recebe a imagem cadastrada no BrandProfile; sem imagem,
+    // sinaliza pendÃªncia em vez de transformar o nome em uma falsa logo.
     if (item._storeLogoBuffer) {
       try {
         doc.image(item._storeLogoBuffer, x + pad, y + h * 0.28, {
@@ -380,10 +399,10 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           valign: 'center',
         });
       } catch {
-        centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+        centered('LOGO DA LOJA PENDENTE', 9, y + h * 0.40, { lineBreak: false });
       }
     } else {
-      centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+      centered('LOGO DA LOJA PENDENTE', 9, y + h * 0.40, { lineBreak: false });
     }
     return;
   }
@@ -561,6 +580,15 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   if (fourSide && storeLogoUrl) {
     const logoBuffer = await loadLogoBuffer(storeLogoUrl);
     if (logoBuffer) flat.forEach((item) => { item._storeLogoBuffer = logoBuffer; });
+  }
+  if (fourSide) {
+    const brandUrls = [...new Set(flat.map((item) => String(item.brandLogoUrl || '').trim()).filter(Boolean))];
+    const brandBuffers = await Promise.all(brandUrls.map(async (url) => [url, await loadLogoBuffer(url)]));
+    const byUrl = new Map(brandBuffers.filter(([, buffer]) => buffer));
+    flat.forEach((item) => {
+      const url = String(item.brandLogoUrl || '').trim();
+      if (url && byUrl.has(url)) item._brandLogoBuffer = byUrl.get(url);
+    });
   }
 
   if (!flat.length) {
