@@ -9,11 +9,16 @@ const {
   defaultTemplates,
   isSTHorizontalTemplate,
   isDuplexTemplate,
+  isFourSideProductTemplate,
 } = require('../services/labelGenerator');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
+
+function labelsPerProduct(template) {
+  return isFourSideProductTemplate(template) ? 2 : 1;
+}
 
 // Garante que os templates default existem (idempotente)
 async function ensureDefaultTemplates() {
@@ -30,6 +35,7 @@ async function ensureDefaultTemplates() {
     // O template S&T horizontal usa QR e não usa código de barras.
     const isST = isSTHorizontalTemplate(def);
     const isDuplex = isDuplexTemplate(def);
+    const isFourSide = isFourSideProductTemplate(def);
     const wantedData = {
       name: def.name,
       type: def.type,
@@ -46,7 +52,7 @@ async function ensureDefaultTemplates() {
       showPrice: true,
       showPromotionalPrice: isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE',
       showBarcode: isST ? false : def.type !== 'PROMOTIONAL',
-      showQRCode: isST ? true : false,
+      showQRCode: isST || isFourSide,
       showSku: true,
       showProductName: true,
       showBrand: true,
@@ -102,6 +108,8 @@ router.post('/batches', async (req, res) => {
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'items é obrigatório' });
 
+    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    const physicalPerProduct = labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {
         name: name || 'Lote ' + new Date().toLocaleString('pt-BR'),
@@ -109,7 +117,7 @@ router.post('/batches', async (req, res) => {
         storeId: storeId || null,
         createdById: req.userId,
         status: 'DRAFT',
-        totalLabels: items.reduce((s, x) => s + (parseInt(x.quantity, 10) || 1), 0),
+        totalLabels: items.reduce((s, x) => s + (parseInt(x.quantity, 10) || 1), 0) * physicalPerProduct,
         items: {
           create: items.map((it) => ({
             productId: it.productId || null,
@@ -173,9 +181,16 @@ router.get('/batches/:id/pdf', async (req, res) => {
     // Enriquece com dados de produto
     const productIds = batch.items.map((i) => i.productId).filter(Boolean);
     const products = productIds.length
-      ? await prisma.product.findMany({ where: { id: { in: productIds } } })
+      ? await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        include: { sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } } },
+      })
       : [];
     const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+    const store = batch.storeId
+      ? await prisma.store.findUnique({ where: { id: batch.storeId }, select: { name: true } })
+      : null;
+    const storeName = store?.name || 'Sports & Tennis';
 
     // Base URL pra QRs apontarem pra página pública do produto
     const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -198,9 +213,17 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
+      const availableSizes = p?.sizes
+        ?.filter((s) => Number(s.stock || 0) > 0)
+        .map((s) => s.size)
+        .filter(Boolean)
+        .join(' | ') || '';
       const finalName = sizeStr ? `${baseName} • TAM ${sizeStr}` : baseName;
       return {
         name: finalName,
+        description: p ? (p.longDescription || p.shortDescription || p.name) : baseName,
+        availableSizes,
+        storeName,
         brand: p ? p.brand : '',
         sku: p ? p.sku : '',
         supplierRef: ctx.supplierRef || null,
@@ -278,7 +301,7 @@ router.delete('/batches/:id', async (req, res) => {
 //   2) { selections: [{ productId, size?, quantity }] } (novo — por tamanho)
 router.post('/batches/quick', async (req, res) => {
   try {
-    const { templateId, name, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
+    const { templateId, name, storeId, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
 
     let items = [];
@@ -312,11 +335,13 @@ router.post('/batches/quick', async (req, res) => {
       return res.status(400).json({ error: 'Envie productIds ou selections' });
     }
     if (!items.length) return res.status(400).json({ error: 'Nenhum item gerado' });
-    const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0);
+    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0) * labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {
         name: name || ('Lote rápido ' + new Date().toLocaleString('pt-BR')),
         templateId,
+        storeId: storeId || null,
         createdById: req.userId,
         status: 'DRAFT',
         totalLabels,

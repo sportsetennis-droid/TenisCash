@@ -29,6 +29,16 @@ function isDuplexTemplate(template) {
   return Boolean(config && typeof config === 'object' && config.duplex === true);
 }
 
+// O padrÃ£o 5x7 cm usa duas etiquetas fÃ­sicas por produto. Cada etiqueta
+// tem frente e verso, portanto as quatro faces sÃ£o: marca, loja, dados e QR.
+function isFourSideProductTemplate(template) {
+  const config = template?.layoutConfig;
+  return isDuplexTemplate(template) && Number(config?.labelsPerProduct || 1) === 2;
+}
+
+const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
+const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
+
 function defaultTemplates() {
   return {
     st_145x25: {
@@ -104,7 +114,16 @@ function defaultTemplates() {
       layoutConfig: {
         duplex: true,
         duplexBinding: 'long-edge',
-        backLayout: 'same',
+        backLayout: 'four-sides',
+        labelsPerProduct: 2,
+        sides: {
+          frontA: 'brand',
+          frontB: 'store',
+          backA: 'details',
+          backB: 'qr',
+        },
+        backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
+        backgroundHex: FOUR_SIDE_ORANGE,
       },
     },
     a4_4_promo: {
@@ -141,14 +160,15 @@ function fmtBRL(n) {
 
 // Renderiza algo que parece código de barras (visual). Para etiqueta real
 // passe `realBars=true` futuramente quando integrarmos bwip-js.
-function drawFakeBarcode(doc, value, x, y, w, h) {
+function drawFakeBarcode(doc, value, x, y, w, h, options = {}) {
   const code = String(value || '').slice(0, 32);
   if (!code) return;
+  const color = options.color || '#000';
   const usable = w;
   const barCount = Math.min(60, Math.max(20, code.length * 4));
   const barWidth = usable / barCount;
   doc.save();
-  doc.fillColor('#000');
+  doc.fillColor(color);
   for (let i = 0; i < barCount; i++) {
     // Pseudo-aleatório determinístico do código
     const c = code.charCodeAt(i % code.length);
@@ -158,7 +178,7 @@ function drawFakeBarcode(doc, value, x, y, w, h) {
     }
   }
   doc.restore();
-  doc.fontSize(6).fillColor('#000').text(code, x, y + h * 0.78, { width: usable, align: 'center' });
+  doc.fontSize(6).fillColor(color).text(code, x, y + h * 0.78, { width: usable, align: 'center' });
 }
 
 async function drawQR(doc, value, x, y, size) {
@@ -300,6 +320,84 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   }
 }
 
+// Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
+// Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
+function drawProductFourSide(doc, item, template, x, y, w, h, side) {
+  const WHITE = '#FFFFFF';
+  const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
+  // PDFKit interpreta arrays de quatro componentes como CMYK em percentuais.
+  const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+  const pad = mm(3);
+  const innerW = Math.max(mm(5), w - pad * 2);
+  doc.rect(x, y, w, h).fillColor(ORANGE).fill();
+
+  const centered = (text, fs, yy, opts = {}) => {
+    doc.font('Helvetica-Bold').fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
+      width: innerW,
+      align: 'center',
+      lineBreak: opts.lineBreak !== false,
+      height: opts.height,
+      ellipsis: opts.ellipsis,
+    });
+  };
+
+  if (side === 'brand') {
+    const brand = String(item.brand || '').trim();
+    centered(brand || 'MARCA NAO INFORMADA', 18, y + h * 0.42, { lineBreak: false });
+    return;
+  }
+
+  if (side === 'store') {
+    // NÃ£o usa uma imagem desconhecida como logo. O nome oficial da loja Ã© o
+    // fallback verificÃ¡vel atÃ© que um logo real seja cadastrado no perfil.
+    const store = String(item.storeName || 'SPORTS & TENNIS').trim();
+    centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+    return;
+  }
+
+  if (side === 'details') {
+    const description = String(item.description || item.name || '').trim();
+    const selectedSize = item.size ? `Tamanho selecionado: ${item.size}` : '';
+    const sizes = item.availableSizes ? `Disponiveis: ${item.availableSizes}` : '';
+    doc.font('Helvetica-Bold').fontSize(7).fillColor(WHITE)
+     .text('DESCRICAO DO PRODUTO', x + pad, y + pad, { width: innerW, align: 'center', lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(WHITE)
+      .text(description, x + pad, y + pad + mm(5), { width: innerW, height: mm(14), align: 'center', ellipsis: true });
+    if (selectedSize) {
+      doc.font('Helvetica').fontSize(7).fillColor(WHITE)
+        .text(selectedSize, x + pad, y + mm(25), { width: innerW, align: 'center', ellipsis: true });
+    }
+    if (sizes) {
+      doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+        .text(sizes, x + pad, y + mm(30), { width: innerW, height: mm(10), align: 'center', ellipsis: true });
+    }
+    const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
+    const value = usePromo ? item.promotionalPrice : item.price;
+    if (value != null) {
+      doc.font('Helvetica-Bold').fontSize(16).fillColor(WHITE)
+        .text(fmtBRL(value), x + pad, y + h - mm(28), { width: innerW, align: 'center', lineBreak: false });
+      if (usePromo && item.price != null) {
+        doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+          .text(`De ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false, strike: true });
+      }
+    }
+    if (item.barcode) {
+      drawFakeBarcode(doc, item.barcode, x + pad, y + h - mm(15), innerW, mm(12), { color: WHITE });
+    }
+    return;
+  }
+
+  // Face QR: o cartÃ£o branco preserva o contraste e a leitura na impressÃ£o.
+  centered('CONSULTE O PRODUTO', 8, y + pad, { lineBreak: false });
+  const qrSize = Math.min(innerW - mm(4), h - mm(21));
+  const qrX = x + (w - qrSize) / 2;
+  const qrY = y + mm(13);
+  doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
+  if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
+ doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+   .text('Aponte a camera para consultar', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
+}
+
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
   // Detecta o layout horizontal S&T atual e os formatos legados para PDFs antigos.
@@ -388,6 +486,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const paperSize = t.paperSize || 'A4';
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
   const duplex = isDuplexTemplate(t);
+  const fourSide = isFourSideProductTemplate(t);
 
   const doc = new PDFDocument({
     size: layoutW,
@@ -416,7 +515,14 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const flat = [];
   for (const it of items || []) {
     const q = Math.max(1, parseInt(it.quantity || 1, 10));
-    for (let i = 0; i < q; i++) flat.push({ ...it });
+    for (let i = 0; i < q; i++) {
+      if (fourSide) {
+        flat.push({ ...it, _pairSlot: 0 });
+        flat.push({ ...it, _pairSlot: 1 });
+      } else {
+        flat.push({ ...it });
+      }
+    }
   }
 
   if (!flat.length) {
@@ -438,7 +544,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const qrJobs = []; // {item, x, y, size, pageIndex}
   let currentPageIndex = 0;
 
-  function drawPage(pageItems, pageIndex) {
+  function drawPage(pageItems, pageIndex, pageSide) {
     pageItems.forEach((item, slot) => {
       const col = slot % cols;
       const row = Math.floor(slot / cols);
@@ -448,16 +554,21 @@ async function generateLabelsPDF({ template, items, storeName }) {
       doc.save();
       // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
       const isST = isSTHorizontalTemplate(t);
-      if (isST) {
+      if (fourSide) {
+        const side = pageSide === 'front'
+          ? (item._pairSlot === 1 ? 'store' : 'brand')
+          : (item._pairSlot === 1 ? 'qr' : 'details');
+        drawProductFourSide(doc, item, t, x, y, labelW, labelH, side);
+      } else if (isST) {
         doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
       } else {
         doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
       }
-      if (storeName && t.showStore) {
+      if (!fourSide && storeName && t.showStore) {
         doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
       }
       // Frente e verso usam a mesma grade e os mesmos itens para manter o alinhamento.
-      drawLabelContent(doc, item, t, x, y, labelW, labelH);
+      if (!fourSide) drawLabelContent(doc, item, t, x, y, labelW, labelH);
       if (item._qrPos) {
         qrJobs.push({ item, pageIndex, ...item._qrPos });
         delete item._qrPos;
@@ -468,12 +579,12 @@ async function generateLabelsPDF({ template, items, storeName }) {
 
   for (let sheetStart = 0; sheetStart < flat.length; sheetStart += perPage) {
     const sheetItems = flat.slice(sheetStart, sheetStart + perPage);
-    drawPage(sheetItems, currentPageIndex);
+    drawPage(sheetItems, currentPageIndex, duplex ? 'front' : null);
 
     if (duplex) {
       doc.addPage({ size: layoutW, margins: { top: 0, left: 0, right: 0, bottom: 0 } });
       currentPageIndex++;
-      drawPage(sheetItems, currentPageIndex);
+      drawPage(sheetItems, currentPageIndex, 'back');
     }
 
     if (sheetStart + perPage < flat.length) {
@@ -497,4 +608,5 @@ module.exports = {
   defaultTemplates,
   isSTHorizontalTemplate,
   isDuplexTemplate,
+  isFourSideProductTemplate,
 };
