@@ -209,7 +209,7 @@ adminRouter.get('/plates', async (_req, res) => {
     for (const board of boards) {
       const current = await prisma.qROffer.findFirst({ where: { boardId: board.id, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { _count: { select: { products: true } } } });
       const qrUrl = fixedQrUrl(board.code);
-      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: qrUrl, destinationUrl: storeOfferUrl(board.code), qrSvgUrl: `/qr-ofertas/${board.code}.svg`, qrPngUrl: `/qr-ofertas/${board.code}.png`, qrDataUrl: await QRCode.toDataURL(qrUrl, { margin: 4, width: 1000, errorCorrectionLevel: 'H' }), current: current ? { id: current.id, title: current.title, status: current.startsAt <= now && current.endsAt > now ? 'ACTIVE' : 'SCHEDULED', startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
+      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: qrUrl, destinationUrl: storeOfferUrl(board.code), qrSvgUrl: `/qr-ofertas/${board.code}?format=svg`, qrPngUrl: `/qr-ofertas/${board.code}?format=png`, qrDataUrl: await QRCode.toDataURL(qrUrl, { margin: 4, width: 1000, errorCorrectionLevel: 'H' }), current: current ? { id: current.id, title: current.title, status: current.startsAt <= now && current.endsAt > now ? 'ACTIVE' : 'SCHEDULED', startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
     }
     res.json({ boards: out, publicBase: PUBLIC_BASE, storeBase: STORE_BASE, qrDestination: 'store' });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -305,8 +305,8 @@ publicRouter.get('/qr-ofertas-folha', async (_req, res) => {
     const cards = boards.map((board) => {
       const code = board.code;
       const destinationUrl = storeOfferUrl(code);
-      const svgUrl = `/qr-ofertas/${code}.svg`;
-      const pngUrl = `/qr-ofertas/${code}.png`;
+      const svgUrl = `/qr-ofertas/${code}?format=svg`;
+      const pngUrl = `/qr-ofertas/${code}?format=png`;
       return `<article><div class="head">OFERTA DE HOJE<br><small>PLACA ${String(board.number).padStart(2, '0')}</small></div><img src="${svgUrl}" alt="QR ${code}"><strong>${destinationUrl}</strong><small class="fixed">QR vetorial · pronto para grande formato</small><div class="downloads"><a href="${svgUrl}" download="sports-tennis-${code}.svg">Baixar SVG</a><a href="${pngUrl}" download="sports-tennis-${code}.png">PNG 2400px</a></div></article>`;
     });
     res.type('html').send(`<!doctype html><meta charset="utf-8"><title>12 QR — Sports &amp; Tennis</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;margin:0;color:#111}.toolbar{padding:12px 0;text-align:right}.toolbar button{padding:9px 15px;border:0;border-radius:7px;background:#f4511e;color:#fff;font-weight:800;cursor:pointer}.sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm}article{border:1px solid #ddd;min-height:76mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:4mm;box-sizing:border-box;break-inside:avoid}.head{font-size:15px;font-weight:900;color:#fff;background:#f4511e;width:100%;padding:7px 0;line-height:1.25}.head small{font-size:10px}.sheet img{width:42mm;height:42mm;margin:4mm 0;image-rendering:pixelated}.sheet strong{font-size:7px;word-break:break-all}.fixed{font-size:8px;margin-top:2mm;color:#555}.downloads{display:flex;gap:6px;margin-top:3mm;font-size:8px}.downloads a{color:#c43d15}@media print{.toolbar,.downloads{display:none}.sheet{gap:5mm}}</style><div class="toolbar"><button onclick="window.print()">Imprimir / salvar PDF</button></div><main class="sheet">${cards.join('')}</main>`);
@@ -330,7 +330,23 @@ publicRouter.get('/qr-ofertas-folha-legacy', async (_req, res) => {
 });
 
 // Arquivos individuais para impressão: SVG é vetorial e não perde qualidade,
-// enquanto o PNG de 2400px atende gráficas que exigem bitmap.
+// enquanto o PNG de 2400px atende gráficas que exigem bitmap. A rota aceita
+// ?format=svg/png para funcionar também em hospedagens que reescrevem extensões.
+publicRouter.get('/qr-ofertas/:plate', async (req, res, next) => {
+  const raw = String(req.params.plate || '');
+  const n = plateNumber(raw);
+  if (!n) return next();
+  const wantsPng = String(req.query.format || '').toLowerCase() === 'png' || /\.png$/i.test(raw);
+  try {
+    if (wantsPng) {
+      res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'Content-Disposition': `inline; filename="sports-tennis-${plateCode(n)}.png"` });
+      return res.send(await qrPng(plateCode(n)));
+    }
+    res.set({ 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Disposition': `inline; filename="sports-tennis-${plateCode(n)}.svg"` });
+    return res.send(await qrSvg(plateCode(n)));
+  } catch (e) { return next(e); }
+});
+
 publicRouter.get('/qr-ofertas/:plate.svg', async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
