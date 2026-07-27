@@ -301,6 +301,16 @@ adminRouter.post('/plates/:plate/sync-category', async (req, res) => {
   } catch (e) { res.status(502).json({ error: 'Não foi possível sincronizar a categoria da placa', detail: e.message }); }
 });
 
+adminRouter.post('/plates/:plate/sync-category-debug', async (req, res) => {
+  try {
+    const n = plateNumber(req.params.plate);
+    const offer = await prisma.qROffer.findFirst({ where: { board: { number: n }, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { board: true, products: { include: { product: true } } } });
+    const conn = await activeConnection();
+    const category = await syncOfferCategory(offer, conn);
+    res.json({ ok: true, category });
+  } catch (e) { res.json({ ok: false, detail: e.message }); }
+});
+
 adminRouter.post('/offers', async (req, res) => {
   try {
     const n = plateNumber(req.body.plate);
