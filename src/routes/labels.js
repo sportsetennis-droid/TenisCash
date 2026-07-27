@@ -11,6 +11,7 @@ const {
   isDuplexTemplate,
   isFourSideProductTemplate,
 } = require('../services/labelGenerator');
+const { resolveBrandLogoUrl } = require('../services/brandLogoResolver');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -222,6 +223,27 @@ router.get('/batches/:id/pdf', async (req, res) => {
       brandLogos.set(brandSlug(row.displayName), row.logoUrl);
       brandLogos.set(brandSlugCompact(row.displayName), row.logoUrl);
     });
+
+    // Quando a logo ainda não foi cadastrada no painel, tenta obter uma
+    // correspondência exata em fontes públicas de logos SVG/PNG transparentes.
+    // A resolução é cacheada no processo e nunca substitui uma logo já
+    // cadastrada manualmente.
+    if (isFourSideProductTemplate(batch.template)) {
+      const brandsWithoutProfileLogo = brandNames.filter((name) => {
+        const key = brandSlug(name);
+        const compactKey = brandSlugCompact(name);
+        return !brandLogos.get(key) && !brandLogos.get(compactKey);
+      });
+      const resolvedBrands = await Promise.all(brandsWithoutProfileLogo.map(async (name) => ({
+        name,
+        url: await resolveBrandLogoUrl(name),
+      })));
+      resolvedBrands.forEach(({ name, url }) => {
+        if (!url) return;
+        brandLogos.set(brandSlug(name), url);
+        brandLogos.set(brandSlugCompact(name), url);
+      });
+    }
     const store = batch.storeId
       ? await prisma.store.findUnique({ where: { id: batch.storeId }, select: { name: true } })
       : null;
@@ -237,7 +259,10 @@ router.get('/batches/:id/pdf', async (req, res) => {
       select: { logoUrl: true },
       take: 1,
     });
-    const storeLogoUrl = storeProfiles[0]?.logoUrl || null;
+    let storeLogoUrl = storeProfiles[0]?.logoUrl || null;
+    if (!storeLogoUrl && isFourSideProductTemplate(batch.template)) {
+      storeLogoUrl = await resolveBrandLogoUrl(storeName);
+    }
 
     // Base URL pra QRs apontarem pra página pública do produto
     const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -297,7 +322,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       });
       if (missingLogos.length) {
         return res.status(409).json({
-          error: 'Cadastre as logos da loja e das marcas antes de gerar a etiqueta.',
+          error: 'Não foi encontrada uma logo confiável para todos os lados da etiqueta. Cadastre a logo faltante no painel de Marcas.',
           missingLogos,
         });
       }
