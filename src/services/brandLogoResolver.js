@@ -22,6 +22,13 @@ const SIMPLE_ICON_ALIASES = {
   'zero-american': 'zeroamerican',
 };
 
+// Logo oficial publicada pela própria loja Sports & Tennis no cabeçalho do
+// site institucional. O arquivo é PNG transparente e tem resolução suficiente
+// para a etiqueta; a URL é mantida aqui para não usar uma marca parecida.
+const OFFICIAL_LOGO_URLS = {
+  'sports and tennis': 'https://d2az8otjr0j19j.cloudfront.net/templates/007/890/890/twig/static/images/st-logo-sports-tennis-white-transparent-20260601.png?v=20260601-logo3',
+};
+
 // Termos comuns do catálogo que costumam retornar logos de instituições,
 // clubes ou unidades militares no Commons. Sem confirmação da identidade,
 // eles ficam pendentes para cadastro manual.
@@ -90,6 +97,12 @@ async function simpleIconsCandidate(name) {
     console.warn(`[brand-logo] Simple Icons indisponível para "${name}": ${err.message}`);
     return null;
   }
+}
+
+async function officialCandidate(name) {
+  const url = OFFICIAL_LOGO_URLS[normalize(name)];
+  if (!url) return null;
+  return (await hasTransparentBackground(url, 'image/png')) ? url : null;
 }
 
 function commonsTitleScore(title, brand) {
@@ -208,6 +221,8 @@ async function resolveBrandLogoUrl(name) {
   if (CACHE.has(key)) return CACHE.get(key);
 
   const promise = (async () => {
+    const official = await officialCandidate(brand);
+    if (official) return official;
     const simple = await simpleIconsCandidate(brand);
     if (simple) return simple;
     return commonsCandidate(brand);
