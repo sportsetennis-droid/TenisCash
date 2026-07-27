@@ -320,6 +320,27 @@ function drawLabelHorizontal(doc, item, template, x, y, w, h) {
   }
 }
 
+async function loadLogoBuffer(value) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  try {
+    if (v.startsWith('data:image/')) {
+      const b64 = v.split(',')[1];
+      return b64 ? Buffer.from(b64, 'base64') : null;
+    }
+    if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
+    const response = await fetch(v);
+    if (!response.ok) return null;
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    const isRaster = /image\/(png|jpe?g)/.test(contentType) || /\.(png|jpe?g)(?:\?|$)/i.test(v);
+    if (!isRaster) return null;
+    return Buffer.from(await response.arrayBuffer());
+  } catch (err) {
+    console.warn('[labels] logo da loja indisponivel; usando nome textual:', err?.message || err);
+    return null;
+  }
+}
+
 // Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
 // Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
 function drawProductFourSide(doc, item, template, x, y, w, h, side) {
@@ -351,7 +372,19 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     // NÃ£o usa uma imagem desconhecida como logo. O nome oficial da loja Ã© o
     // fallback verificÃ¡vel atÃ© que um logo real seja cadastrado no perfil.
     const store = String(item.storeName || 'SPORTS & TENNIS').trim();
-    centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+    if (item._storeLogoBuffer) {
+      try {
+        doc.image(item._storeLogoBuffer, x + pad, y + h * 0.28, {
+          fit: [innerW, h * 0.38],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {
+        centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+      }
+    } else {
+      centered(store.toUpperCase(), 14, y + h * 0.40, { lineBreak: true, height: mm(14) });
+    }
     return;
   }
 
@@ -481,7 +514,7 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
  * @param {Array}  opts.items - [{name, brand, sku, size, color, price, promotionalPrice, barcode, qrCodeValue, quantity}]
  * @returns {Promise<Buffer>}
  */
-async function generateLabelsPDF({ template, items, storeName }) {
+async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   const t = template;
   const paperSize = t.paperSize || 'A4';
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
@@ -523,6 +556,11 @@ async function generateLabelsPDF({ template, items, storeName }) {
         flat.push({ ...it });
       }
     }
+  }
+
+  if (fourSide && storeLogoUrl) {
+    const logoBuffer = await loadLogoBuffer(storeLogoUrl);
+    if (logoBuffer) flat.forEach((item) => { item._storeLogoBuffer = logoBuffer; });
   }
 
   if (!flat.length) {

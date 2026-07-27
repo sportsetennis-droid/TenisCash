@@ -191,6 +191,10 @@ router.get('/batches/:id/pdf', async (req, res) => {
       ? await prisma.store.findUnique({ where: { id: batch.storeId }, select: { name: true } })
       : null;
     const storeName = store?.name || 'Sports & Tennis';
+    const brandProfile = await prisma.brandProfile.findUnique({
+      where: { slug: 'sportsetennis' },
+      select: { logoUrl: true },
+    });
 
     // Base URL pra QRs apontarem pra página pública do produto
     const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -224,6 +228,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         description: p ? (p.longDescription || p.shortDescription || p.name) : baseName,
         availableSizes,
         storeName,
+        storeLogoUrl: brandProfile?.logoUrl || null,
         brand: p ? p.brand : '',
         sku: p ? p.sku : '',
         supplierRef: ctx.supplierRef || null,
@@ -243,6 +248,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
     const pdfBuffer = await generateLabelsPDF({
       template: batch.template,
       items,
+      storeName,
+      storeLogoUrl: brandProfile?.logoUrl || null,
     });
 
     await prisma.labelBatch.update({
