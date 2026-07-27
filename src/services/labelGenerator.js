@@ -24,6 +24,11 @@ function isSTHorizontalTemplate(template) {
     || (widthMm === 130 && heightMm >= 14 && heightMm <= 27);
 }
 
+function isDuplexTemplate(template) {
+  const config = template?.layoutConfig;
+  return Boolean(config && typeof config === 'object' && config.duplex === true);
+}
+
 function defaultTemplates() {
   return {
     st_145x25: {
@@ -82,6 +87,25 @@ function defaultTemplates() {
       marginLeftMm: 5,
       gapHorizontalMm: 3,
       gapVerticalMm: 3,
+    },
+    a4_16_5x7_duplex: {
+      type: 'PRODUCT',
+      name: 'A4 16 etiquetas (5x7 cm) — frente e verso',
+      paperSize: 'A4',
+      widthMm: 50,
+      heightMm: 70,
+      columns: 4,
+      rows: 4,
+      // 4×50mm = 200mm em 210mm; 4×70mm = 280mm em 297mm.
+      marginTopMm: 8.5,
+      marginLeftMm: 5,
+      gapHorizontalMm: 0,
+      gapVerticalMm: 0,
+      layoutConfig: {
+        duplex: true,
+        duplexBinding: 'long-edge',
+        backLayout: 'same',
+      },
     },
     a4_4_promo: {
       type: 'PROMOTIONAL',
@@ -404,38 +428,53 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const cols = t.columns || 1;
   const rows = t.rows || 1;
   const perPage = cols * rows;
+  const duplex = isDuplexTemplate(t);
 
   const qrJobs = []; // {item, x, y, size, pageIndex}
   let currentPageIndex = 0;
 
-  for (let i = 0; i < flat.length; i++) {
-    if (i > 0 && i % perPage === 0) {
+  function drawPage(pageItems, pageIndex) {
+    pageItems.forEach((item, slot) => {
+      const col = slot % cols;
+      const row = Math.floor(slot / cols);
+      const x = marginX + col * (labelW + gapX);
+      const y = marginY + row * (labelH + gapY);
+
+      doc.save();
+      // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
+      const isST = isSTHorizontalTemplate(t);
+      if (isST) {
+        doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
+      } else {
+        doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
+      }
+      if (storeName && t.showStore) {
+        doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
+      }
+      // Frente e verso usam a mesma grade e os mesmos itens para manter o alinhamento.
+      drawLabelContent(doc, item, t, x, y, labelW, labelH);
+      if (item._qrPos) {
+        qrJobs.push({ item, pageIndex, ...item._qrPos });
+        delete item._qrPos;
+      }
+      doc.restore();
+    });
+  }
+
+  for (let sheetStart = 0; sheetStart < flat.length; sheetStart += perPage) {
+    const sheetItems = flat.slice(sheetStart, sheetStart + perPage);
+    drawPage(sheetItems, currentPageIndex);
+
+    if (duplex) {
+      doc.addPage({ size: layoutW, margins: { top: 0, left: 0, right: 0, bottom: 0 } });
+      currentPageIndex++;
+      drawPage(sheetItems, currentPageIndex);
+    }
+
+    if (sheetStart + perPage < flat.length) {
       doc.addPage({ size: layoutW, margins: { top: 0, left: 0, right: 0, bottom: 0 } });
       currentPageIndex++;
     }
-    const slot = i % perPage;
-    const col = slot % cols;
-    const row = Math.floor(slot / cols);
-    const x = marginX + col * (labelW + gapX);
-    const y = marginY + row * (labelH + gapY);
-
-    doc.save();
-    // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
-    const isST = isSTHorizontalTemplate(t);
-    if (isST) {
-      doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
-    } else {
-      doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
-    }
-    if (storeName && t.showStore) {
-      doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
-    }
-    drawLabelContent(doc, flat[i], t, x, y, labelW, labelH);
-    if (flat[i]._qrPos) {
-      qrJobs.push({ item: flat[i], pageIndex: currentPageIndex, ...flat[i]._qrPos });
-      delete flat[i]._qrPos;
-    }
-    doc.restore();
   }
 
   // Renderizar QR codes — switchToPage pra garantir QR na página certa
@@ -452,4 +491,5 @@ module.exports = {
   generateLabelsPDF,
   defaultTemplates,
   isSTHorizontalTemplate,
+  isDuplexTemplate,
 };

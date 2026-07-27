@@ -8,6 +8,7 @@ const {
   generateLabelsPDF,
   defaultTemplates,
   isSTHorizontalTemplate,
+  isDuplexTemplate,
 } = require('../services/labelGenerator');
 
 const router = express.Router();
@@ -28,6 +29,7 @@ async function ensureDefaultTemplates() {
     }
     // O template S&T horizontal usa QR e não usa código de barras.
     const isST = isSTHorizontalTemplate(def);
+    const isDuplex = isDuplexTemplate(def);
     const wantedData = {
       name: def.name,
       type: def.type,
@@ -51,12 +53,18 @@ async function ensureDefaultTemplates() {
       showSize: def.type === 'PRODUCT',
       showColor: def.type === 'PRODUCT',
       showStore: false,
+      layoutConfig: def.layoutConfig || null,
       isDefault: true,
     };
     if (!existing) {
       await prisma.labelTemplate.create({ data: wantedData });
-    } else if (isST) {
-      const needsSync = Object.entries(wantedData).some(([field, value]) => existing[field] !== value);
+    } else if (isST || isDuplex) {
+      const needsSync = Object.entries(wantedData).some(([field, value]) => {
+        if (field === 'layoutConfig') {
+          return JSON.stringify(existing[field] || null) !== JSON.stringify(value || null);
+        }
+        return existing[field] !== value;
+      });
       if (needsSync) {
         // Migra o modelo S&T legado sem sobrescrever ajustes dos outros templates.
         await prisma.labelTemplate.update({ where: { id: existing.id }, data: wantedData });

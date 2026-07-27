@@ -561,9 +561,9 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       </button>
       <button class="hub-card" onclick="switchTabByName('labels')">
         <div class="hub-card-icon">🏷️</div>
-        <div class="hub-card-title">Etiquetas</div>
-        <div class="hub-card-desc">Imprimir preço + código de barras</div>
-        <span class="hub-card-badge">LOJA</span>
+        <div class="hub-card-title">Etiquetas de produtos</div>
+        <div class="hub-card-desc">A4 com 16 etiquetas de 5×7 cm, frente e verso</div>
+        <span class="hub-card-badge">5×7 DUPLEX</span>
       </button>
       <button class="hub-card" onclick="switchTabByName('stocktake')">
         <div class="hub-card-icon">📋</div>
@@ -1853,7 +1853,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
-    <span style="font-size:12px;color:var(--text2)">Padrão S&amp;T: 14,5 × 2,5 cm · imprimir em tamanho real (100%)</span>
+    <span style="font-size:12px;color:var(--text2)">Novo padrão: 5 × 7 cm · 16 por folha A4 · frente e verso · imprimir em 100% e virar na borda longa</span>
   </div>
   <!-- Compat: hidden -->
   <input type="hidden" id="labels-search">
@@ -9780,6 +9780,7 @@ let _labelsSelected = {}; // legacy
 // Novo estado: { productId: { product, sizes: {'39': 2, '40': 1, _any: 0} } }
 let _lblSel = {};
 let _lblCacheProducts = {};
+let _lblTemplates = {};
 async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
@@ -9802,15 +9803,17 @@ async function initLabelsTab() {
     }
   }
   await loadLabelTemplates();
-  // Auto-seleciona o template S&T 14,5 × 2,5 cm; mantém fallback para instalações antigas.
+  // Auto-seleciona o novo modelo 5×7 duplex; mantém fallback para instalações antigas.
   const sel = document.getElementById('labels-template');
   if (sel) {
     const opts = [...sel.options];
-    const stOpt = opts.find(o => /S&T.*14,5x2,5|14,5x2,5/i.test(o.textContent))
+    const stOpt = opts.find(o => /5x7|5 × 7|16 etiquetas/i.test(o.textContent))
+              || opts.find(o => /S&T.*14,5x2,5|14,5x2,5/i.test(o.textContent))
               || opts.find(o => /S&T.*15x3|15x3/i.test(o.textContent))
               || opts.find(o => /S&T.*2cm|13x2/i.test(o.textContent))
               || opts.find(o => /S&T|13x1,5|13x15/i.test(o.textContent));
     if (stOpt) sel.value = stOpt.value;
+    sel.onchange = _lblUpdateCart;
   }
   _lblUpdateCart();
   // Auto-carrega produtos pra cards já aparecerem (sem precisar buscar)
@@ -10145,6 +10148,7 @@ async function loadLabelTemplates() {
   const sel = document.getElementById('labels-template');
   const data = await api('/admin/labels/templates');
   if (data.error) { sel.innerHTML = '<option>Erro</option>'; return; }
+  _lblTemplates = Object.fromEntries((data.templates || []).map(t => [t.id, t]));
   sel.innerHTML = (data.templates || []).map(t => `<option value="${t.id}">${escapeHtml(t.name)} — ${t.type}</option>`).join('');
 }
 async function labelsSearchProducts() {
@@ -10297,8 +10301,12 @@ function _lblUpdateCart() {
   document.querySelectorAll('#labels-products-wrap > div > div').forEach(card => {});
   if (totalLabels === 0) summary.textContent = 'Nenhuma etiqueta selecionada';
   else {
-    const folhas = Math.ceil(totalLabels / 18);
-    summary.textContent = `${totalLabels} etiqueta${totalLabels > 1 ? 's' : ''} • ${totalProducts} produto${totalProducts > 1 ? 's' : ''} • ${folhas} folha${folhas > 1 ? 's' : ''} A4`;
+    const template = _lblTemplates[document.getElementById('labels-template')?.value];
+    const porFolha = Math.max(1, Number(template?.columns || 4) * Number(template?.rows || 4));
+    const folhas = Math.ceil(totalLabels / porFolha);
+    const duplex = template?.layoutConfig?.duplex === true;
+    const paginas = folhas * (duplex ? 2 : 1);
+    summary.textContent = `${totalLabels} etiqueta${totalLabels > 1 ? 's' : ''} • ${totalProducts} produto${totalProducts > 1 ? 's' : ''} • ${folhas} folha${folhas > 1 ? 's' : ''} A4${duplex ? ` • ${paginas} páginas (frente e verso)` : ''}`;
   }
 }
 
@@ -10333,7 +10341,7 @@ async function labelsCreateBatch() {
     });
   }
   if (!selections.length) { alert('Selecione pelo menos 1 etiqueta. Use os campos de quantidade por tamanho em cada card.'); return; }
-  if (!templateId) { alert('Escolha um template (recomendado: "S&T Etiqueta 14,5x2,5cm")'); return; }
+  if (!templateId) { alert('Escolha um template (recomendado: "A4 16 etiquetas (5x7 cm) — frente e verso")'); return; }
   const data = await api('/admin/labels/batches/quick', 'POST', {
     templateId, selections, usePromo,
   });
