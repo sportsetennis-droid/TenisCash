@@ -615,16 +615,11 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       }
     }
     const barcodeY = y + h - mm(22);
-    if (item.barcode) {
-      drawBarcode128(doc, item.barcode, x + pad, barcodeY, innerW, mm(8.5), {
-        color: '#000000',
-        background: '#FFFFFF',
-        caption: 'ORIGINAL',
-        captionSize: 4.6,
-      });
-    }
+    // A etiqueta usa exclusivamente o novo código interno. O EAN/SKU
+    // original continua gravado no produto e disponível nas consultas, mas
+    // não é impresso para evitar dois códigos na mesma etiqueta.
     if (item.internalBarcode) {
-      drawBarcode128(doc, item.internalBarcode, x + pad, y + h - mm(11), innerW, mm(8.5), {
+      drawBarcode128(doc, item.internalBarcode, x + pad, barcodeY, innerW, mm(8.5), {
         color: '#000000',
         background: '#FFFFFF',
         caption: 'INTERNO',
@@ -710,9 +705,9 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
   // Barcode + QR no rodapé
   const footerH = mm(7);
   const footerY = y + h - footerH - mm(1);
-  if (t.showBarcode !== false && item.barcode) {
+  if (t.showBarcode !== false && item.internalBarcode) {
     const barW = t.showQRCode ? innerW * 0.7 : innerW;
-    drawBarcode128(doc, item.barcode, padX, footerY, barW, footerH);
+    drawBarcode128(doc, item.internalBarcode, padX, footerY, barW, footerH, { caption: 'INTERNO', captionSize: 4.6 });
   }
   // QR é assíncrono, marcamos posição (renderizado em outra passada quando precisar)
   if (t.showQRCode && item.qrCodeValue) {
