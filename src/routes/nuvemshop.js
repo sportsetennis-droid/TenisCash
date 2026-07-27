@@ -62,6 +62,17 @@ adminRouter.get('/pages', async (_req, res) => {
   }
 });
 
+adminRouter.get('/categories', async (_req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' }, orderBy: { createdAt: 'desc' } });
+    if (!connection) return res.status(404).json({ error: 'Nuvemshop nÃ£o estÃ¡ conectada' });
+    const categories = await ns.nuvemshopApi(connection, 'GET', '/categories?per_page=5&page=1');
+    res.json({ categories });
+  } catch (err) {
+    res.status(502).json({ error: 'NÃ£o foi possÃ­vel consultar as categorias da Nuvemshop', detail: err.message });
+  }
+});
+
 adminRouter.get('/sync-logs', async (_req, res) => {
   try {
     const logs = await prisma.nuvemshopSyncLog.findMany({
