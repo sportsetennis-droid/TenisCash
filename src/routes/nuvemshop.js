@@ -89,7 +89,8 @@ adminRouter.get('/categories/by-handle/:handle', async (req, res) => {
     });
     if (!category) return res.status(404).json({ error: 'Categoria não encontrada', handle });
     const products = await ns.nuvemshopApi(connection, 'GET', `/products?category_id=${encodeURIComponent(category.id)}&per_page=100&page=1`);
-    res.json({ category, products: Array.isArray(products) ? products : [] });
+    const children = await ns.nuvemshopApi(connection, 'GET', `/categories?parent_id=${encodeURIComponent(category.id)}&language=pt&per_page=100&page=1`);
+    res.json({ category, children: Array.isArray(children) ? children : [], products: Array.isArray(products) ? products : [] });
   } catch (err) {
     res.status(502).json({ error: 'Não foi possível consultar a categoria', detail: err.message });
   }
