@@ -398,7 +398,7 @@ router.delete('/batches/:id', async (req, res) => {
 // Cria lote rápido a partir de filtros de produto.
 // Aceita 2 formatos:
 //   1) { productIds: [...], quantityPerProduct: N }  (legado)
-//   2) { selections: [{ productId, size?, quantity }] } (novo — por tamanho)
+//   2) { selections: [{ productId, quantity }] } (novo — por produto/modelo)
 router.post('/batches/quick', async (req, res) => {
   try {
     const { templateId, name, storeId, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
@@ -406,7 +406,7 @@ router.post('/batches/quick', async (req, res) => {
 
     let items = [];
     if (Array.isArray(selections) && selections.length) {
-      // Formato novo: lista de seleções com size opcional + qty
+      // Formato novo: lista de seleções por produto/modelo; tamanho é opcional
       const uniqueIds = [...new Set(selections.map(s => s.productId).filter(Boolean))];
       const products = await prisma.product.findMany({ where: { id: { in: uniqueIds } } });
       const byId = Object.fromEntries(products.map(p => [p.id, p]));

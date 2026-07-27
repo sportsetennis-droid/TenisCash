@@ -324,26 +324,32 @@ async function loadLogoBuffer(value) {
   const v = String(value || '').trim();
   if (!v) return null;
   try {
+    let raw;
     if (v.startsWith('data:image/')) {
       const b64 = v.split(',')[1];
-      return b64 ? Buffer.from(b64, 'base64') : null;
+      raw = b64 ? Buffer.from(b64, 'base64') : null;
+    } else {
+      if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
+      const response = await fetch(v);
+      if (!response.ok) return null;
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      const isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
+      const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
+      if (!isSvg && !isRaster) return null;
+      raw = Buffer.from(await response.arrayBuffer());
     }
-    if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
-    const response = await fetch(v);
-    if (!response.ok) return null;
-    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-    const isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
-    const raw = Buffer.from(await response.arrayBuffer());
-    if (isSvg) {
-      try {
-        return await require('sharp')(raw).png().toBuffer();
-      } catch (err) {
-        console.warn('[labels] nao foi possivel converter logo SVG:', err?.message || err);
-        return null;
-      }
+    if (!raw) return null;
+
+    // Todas as logos desta etiqueta são impressas em branco sobre o laranja.
+    // Mantemos o canal alfa original e trocamos apenas os pixels visíveis.
+    const sharp = require('sharp');
+    const { data, info } = await sharp(raw).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let i = 0; i < data.length; i += info.channels) {
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
     }
-    const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
-    return isRaster ? raw : null;
+    return await sharp(data, { raw: info }).png().toBuffer();
   } catch (err) {
     console.warn('[labels] logo da loja indisponivel; usando nome textual:', err?.message || err);
     return null;
@@ -375,7 +381,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     if (item._brandLogoBuffer) {
       try {
         doc.image(item._brandLogoBuffer, x + pad, y + h * 0.28, {
-          fit: [innerW, h * 0.38],
+          fit: [innerW, h * 0.56],
           align: 'center',
           valign: 'center',
         });
@@ -393,11 +399,12 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     // sinaliza pendÃªncia em vez de transformar o nome em uma falsa logo.
     if (item._storeLogoBuffer) {
       try {
-        doc.image(item._storeLogoBuffer, x + pad, y + h * 0.28, {
-          fit: [innerW, h * 0.38],
+        doc.image(item._storeLogoBuffer, x + pad, y + h * 0.10, {
+          fit: [innerW, h * 0.60],
           align: 'center',
           valign: 'center',
         });
+        centered(item.storeName || 'Sports & Tennis', 8, y + h * 0.78, { lineBreak: false });
       } catch {
         centered('LOGO DA LOJA PENDENTE', 9, y + h * 0.40, { lineBreak: false });
       }
@@ -440,7 +447,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   }
 
   // Face QR: o cartÃ£o branco preserva o contraste e a leitura na impressÃ£o.
-  centered('CONSULTE O PRODUTO', 8, y + pad, { lineBreak: false });
+  centered('CONSULTE MAIS INFORMAÇÕES', 8, y + pad, { lineBreak: false });
   const qrSize = Math.min(innerW - mm(4), h - mm(21));
   const qrX = x + (w - qrSize) / 2;
   const qrY = y + mm(13);

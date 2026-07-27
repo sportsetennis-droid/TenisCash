@@ -602,6 +602,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Promoções por produto e cliente</div>
         <span class="hub-card-badge">MARKETING</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('qrOffers')">
+        <div class="hub-card-icon">📲</div>
+        <div class="hub-card-title">Ofertas QR — 12 placas</div>
+        <div class="hub-card-desc">QR fixo, oferta exclusiva e cupom de 24 horas na Nuvemshop</div>
+        <span class="hub-card-badge">QR + NUVEMSHOP</span>
+      </button>
       <button class="hub-card" onclick="switchTabByName('recs')">
         <div class="hub-card-icon">🎯</div>
         <div class="hub-card-title">Recomendações</div>
@@ -753,6 +759,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       function switchTabByName(name) {
         const btn = document.querySelector(`.tab[onclick*="switchTab('${name}'"]`);
         if (btn) btn.click();
+        else if (typeof switchTab === 'function') switchTab(name, null);
       }
       async function loadHubStats() {
         try {
@@ -2573,6 +2580,51 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" class="btn" id="cmp-filter-btn">Filtrar</button>
   </div>
   <div id="cmp-list-wrap"></div>
+</div>
+
+<!-- OFERTAS QR FIXAS -->
+<div class="section" id="tab-qrOffers" style="display:none">
+  <div class="section-head">
+    <div>
+      <span class="section-title">Ofertas QR — 12 placas</span>
+      <div style="font-size:12px;color:#8e8e93;margin-top:4px">Os QR impressos são permanentes. Publique uma seleção nova por placa, com cupom da Nuvemshop válido por até 24 horas.</div>
+    </div>
+    <button type="button" class="refresh-btn" id="qro-refresh">↻</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+    <button type="button" class="btn btn-primary" id="qro-new">+ Nova oferta QR</button>
+    <a class="btn" href="/qr-ofertas-folha" target="_blank" rel="noopener">🖨️ Abrir folha dos 12 QR</a>
+    <span id="qro-status" style="font-size:12px;color:#8e8e93"></span>
+  </div>
+  <div id="qro-boards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
+  <div id="qro-editor" style="display:none;margin-top:18px;background:white;border:1px solid #e5e5ea;border-radius:16px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><strong id="qro-editor-title" style="font-size:17px">Nova oferta</strong><button type="button" class="btn" id="qro-close">Fechar</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+      <label style="font-size:11px;font-weight:700;color:#555">Placa
+        <select id="qro-plate" class="form-input" style="margin-top:4px;background:white"><option value="1">Placa 01</option><option value="2">Placa 02</option><option value="3">Placa 03</option><option value="4">Placa 04</option><option value="5">Placa 05</option><option value="6">Placa 06</option><option value="7">Placa 07</option><option value="8">Placa 08</option><option value="9">Placa 09</option><option value="10">Placa 10</option><option value="11">Placa 11</option><option value="12">Placa 12</option></select>
+      </label>
+      <label style="font-size:11px;font-weight:700;color:#555">Título da oferta
+        <input id="qro-title" class="form-input" style="margin-top:4px;background:white" maxlength="140" placeholder="Ex.: Oferta relâmpago da placa 01">
+      </label>
+      <label style="font-size:11px;font-weight:700;color:#555">Desconto extra (%)
+        <input id="qro-discount" class="form-input" type="number" min="0" max="80" step="0.5" value="10" style="margin-top:4px;background:white">
+      </label>
+      <label style="font-size:11px;font-weight:700;color:#555">Começa em
+        <input id="qro-starts" class="form-input" type="datetime-local" style="margin-top:4px;background:white">
+      </label>
+      <label style="font-size:11px;font-weight:700;color:#555">Validade (horas)
+        <input id="qro-duration" class="form-input" type="number" min="1" max="24" value="24" style="margin-top:4px;background:white">
+      </label>
+      <label style="font-size:11px;font-weight:700;color:#555;display:flex;align-items:center;gap:8px;padding-top:20px"><input id="qro-exchange" type="checkbox" checked> Troca grátis</label>
+    </div>
+    <label style="display:block;font-size:11px;font-weight:700;color:#555;margin-top:10px">Observação
+      <textarea id="qro-notes" class="form-input" rows="2" style="margin-top:4px;background:white" placeholder="Mensagem de urgência, público ou instrução interna"></textarea>
+    </label>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap"><strong style="font-size:13px">Produtos da oferta</strong><input id="qro-product-search" class="form-input" style="max-width:300px;background:white" placeholder="Buscar nome, marca ou SKU"><button type="button" class="btn" id="qro-product-search-btn">Buscar</button></div>
+    <div id="qro-product-results" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:10px;max-height:330px;overflow:auto"></div>
+    <div style="margin-top:12px;font-size:12px;color:#8e8e93">Selecionados: <span id="qro-selected-count">0</span> — somente produtos ativos, com foto, estoque físico bipado e publicados na Nuvemshop.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn" id="qro-save">Salvar rascunho</button><button type="button" class="btn btn-primary" id="qro-save-publish">Salvar e publicar</button></div>
+  </div>
 </div>
 
 <!-- ESTOQUE -->
@@ -7936,7 +7988,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','cameraAI','whatsapp','infoproducts'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','qrOffers','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','cameraAI','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -7959,6 +8011,7 @@ function switchTab(tab, btn) {
   if (tab === 'vitrine') { try { initVitrineTab(); } catch (e) { console.warn('initVitrineTab falhou:', e); } }
   if (tab === 'productImages') { initProductImagesTab(); }
   if (tab === 'campaigns') { initCampaignsTab(); }
+  if (tab === 'qrOffers') { initQROffersTab(); }
   if (tab === 'inventory') { initInventoryTab(); }
   if (tab === 'stocktake') { initStocktakeTab(); }
   if (tab === 'fiscal') { initFiscalTab(); }
@@ -9788,10 +9841,17 @@ async function loadAIAgents() {
 // ==================== ETIQUETAS ====================
 let _labelsInit = false;
 let _labelsSelected = {}; // legacy
-// Novo estado: { productId: { product, sizes: {'39': 2, '40': 1, _any: 0} } }
+// Estado das etiquetas: { productId: { quantity: N } }.
+// A etiqueta representa o produto/modelo; tamanho é apenas informação
+// disponível no verso e nunca é usado para selecionar a etiqueta.
 let _lblSel = {};
 let _lblCacheProducts = {};
 let _lblTemplates = {};
+function _lblQuantity(entry) {
+  if (!entry) return 0;
+  if (entry.quantity != null) return Math.max(0, Number(entry.quantity) || 0);
+  return Object.values(entry.sizes || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+}
 async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
@@ -9801,7 +9861,7 @@ async function initLabelsTab() {
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
     document.getElementById('labels-cart-add-all').onclick = () => {
       // Clica em "+1 de tudo" pra cada card visível
-      document.querySelectorAll('#labels-products-wrap .js-lbl-add-all').forEach(btn => btn.click());
+      document.querySelectorAll('#labels-products-wrap .js-lbl-product-add').forEach(btn => btn.click());
     };
     // PSBar padronizada — sincroniza com labels-search (hidden)
     if (window.PSBar) {
@@ -10186,19 +10246,19 @@ async function labelsSearchProducts() {
   products.forEach(p => { _lblCacheProducts[p.id] = p; });
 
   // Cards
-  let html = `<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">${products.length} produtos. Clique nos tamanhos pra adicionar etiquetas.</p>`;
+  let html = `<p style="font-size:13px;color:var(--text2);margin-bottom:12px;">${products.length} produtos. Selecione a marca no filtro e clique em +1 etiqueta no produto. Não é necessário escolher tamanho.</p>`;
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">';
   products.forEach(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
     const cls = ctx.classification || {};
     const ref = ctx.supplierRef || p.sku;
     const sel = _lblSel[p.id] || { sizes: {} };
-    const totalThis = Object.values(sel.sizes || {}).reduce((s,n) => s + (n || 0), 0);
+    const totalThis = _lblQuantity(sel);
     const sizes = (p.sizes || []).map(s => ({ size: s.size, stock: s.stock || 0, qty: sel.sizes?.[s.size] || 0 }));
     const priceStr = 'R$ ' + Number(p.promoPrice || p.price || 0).toFixed(2).replace('.', ',');
 
     html += `
-      <div style="background:white;border:1.5px solid ${totalThis > 0 ? '#E5571E' : '#e5e5ea'};border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;${totalThis > 0 ? 'box-shadow:0 6px 18px rgba(255,109,0,0.15);' : ''}">
+      <div class="js-lbl-product-card" data-pid="${escapeHtml(p.id)}" style="background:white;border:1.5px solid ${totalThis > 0 ? '#E5571E' : '#e5e5ea'};border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;${totalThis > 0 ? 'box-shadow:0 6px 18px rgba(255,109,0,0.15);' : ''}">
         <div style="display:flex;gap:10px;align-items:flex-start;">
           ${p.imageUrl ? `<img src="${escapeHtml(p.imageUrl)}" style="width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;">` : '<div style="width:60px;height:60px;background:#f5f5f7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📦</div>'}
           <div style="flex:1;min-width:0;">
@@ -10214,6 +10274,18 @@ async function labelsSearchProducts() {
           </div>
         </div>
         <div style="border-top:1px dashed #e5e5ea;padding-top:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">ETIQUETA DO PRODUTO</div>
+            <div style="font-size:10px;color:#6e6e73;">sem escolher tamanho</div>
+          </div>
+          <div style="font-size:11px;color:#6e6e73;margin-top:5px;">Tamanhos disponíveis: ${sizes.length ? escapeHtml(sizes.map(s => s.size).join(' | ')) : 'não cadastrados'}</div>
+          <div style="display:flex;gap:7px;align-items:center;margin-top:9px;">
+            <button type="button" class="js-lbl-product-minus" data-pid="${escapeHtml(p.id)}" style="width:34px;height:32px;background:#f5f5f7;color:#1d1d1f;border:1px solid #e5e5ea;border-radius:7px;font-size:18px;font-weight:800;cursor:pointer;">−</button>
+            <input type="number" min="0" max="200" value="${totalThis}" data-pid="${escapeHtml(p.id)}" class="js-lbl-product-qty" aria-label="Quantidade de etiquetas" style="width:72px;height:32px;padding:4px;border:1px solid #e5e5ea;border-radius:7px;font-size:14px;font-weight:700;text-align:center;background:white;color:#1d1d1f;">
+            <button type="button" class="js-lbl-product-add" data-pid="${escapeHtml(p.id)}" style="padding:7px 12px;background:#E5571E;color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">+1 etiqueta</button>
+          </div>
+        </div>
+        <div class="js-lbl-size-controls" style="display:none;border-top:1px dashed #e5e5ea;padding-top:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <div style="font-size:10px;color:#8e8e93;font-weight:700;letter-spacing:1px;">ETIQUETAS POR TAMANHO (clique pra +1)</div>
             ${sizes.length ? `<button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:4px 10px;background:#E5571E;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+ 1 de tudo</button>` : ''}
@@ -10230,11 +10302,48 @@ async function labelsSearchProducts() {
               <button type="button" class="js-lbl-add-all" data-pid="${p.id}" style="padding:5px 10px;background:#E5571E;color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">+1</button>
             </div>`}
         </div>
-        ${totalThis > 0 ? `<div style="font-size:11px;color:#E5571E;font-weight:700;text-align:right;">${totalThis} etiquetas selecionadas neste produto</div>` : ''}
+        <div class="js-lbl-product-total" style="font-size:11px;color:#E5571E;font-weight:700;text-align:right;${totalThis > 0 ? '' : 'display:none;'}">${totalThis} etiqueta${totalThis === 1 ? '' : 's'} selecionada${totalThis === 1 ? '' : 's'} neste produto</div>
       </div>`;
   });
   html += '</div>';
   wrap.innerHTML = html;
+
+  // A seleção é por produto/modelo. O tamanho é somente informativo.
+  function _lblSetProductQuantity(pid, value) {
+    const next = Math.max(0, Math.min(200, parseInt(value, 10) || 0));
+    if (next > 0) _lblSel[pid] = { quantity: next };
+    else delete _lblSel[pid];
+    const card = wrap.querySelector('.js-lbl-product-card[data-pid="' + pid + '"]');
+    const input = card?.querySelector('.js-lbl-product-qty');
+    const total = card?.querySelector('.js-lbl-product-total');
+    if (input) input.value = next;
+    if (card) {
+      card.style.borderColor = next > 0 ? '#E5571E' : '#e5e5ea';
+      card.style.boxShadow = next > 0 ? '0 6px 18px rgba(255,109,0,0.15)' : '';
+    }
+    if (total) {
+      total.textContent = next + ' etiqueta' + (next === 1 ? '' : 's') + ' selecionada' + (next === 1 ? '' : 's') + ' neste produto';
+      total.style.display = next > 0 ? '' : 'none';
+    }
+    _lblUpdateCart();
+  }
+  wrap.querySelectorAll('.js-lbl-product-add').forEach(btn => {
+    btn.onclick = () => {
+      const pid = btn.dataset.pid;
+      const input = wrap.querySelector('.js-lbl-product-qty[data-pid="' + pid + '"]');
+      _lblSetProductQuantity(pid, (parseInt(input?.value, 10) || 0) + 1);
+    };
+  });
+  wrap.querySelectorAll('.js-lbl-product-minus').forEach(btn => {
+    btn.onclick = () => {
+      const pid = btn.dataset.pid;
+      const input = wrap.querySelector('.js-lbl-product-qty[data-pid="' + pid + '"]');
+      _lblSetProductQuantity(pid, (parseInt(input?.value, 10) || 0) - 1);
+    };
+  });
+  wrap.querySelectorAll('.js-lbl-product-qty').forEach(input => {
+    input.onchange = input.oninput = () => _lblSetProductQuantity(input.dataset.pid, input.value);
+  });
 
   // Helper interno: aplica delta a um (pid, size)
   function _lblBump(pid, size, delta) {
@@ -10307,7 +10416,7 @@ function _lblUpdateCart() {
   let totalLabels = 0;
   let totalProducts = 0;
   Object.values(_lblSel).forEach(s => {
-    const sum = Object.values(s.sizes || {}).reduce((a,b) => a + (b || 0), 0);
+    const sum = _lblQuantity(s);
     if (sum > 0) totalProducts++;
     totalLabels += sum;
   });
@@ -10332,9 +10441,8 @@ function _lblShowCart() {
   Object.entries(_lblSel).forEach(([pid, s]) => {
     const p = _lblCacheProducts[pid];
     if (!p) return;
-    Object.entries(s.sizes || {}).forEach(([size, qty]) => {
-      if (qty > 0) items.push({ name: p.name, size: size === '_any' ? '—' : size, qty, sku: p.sku });
-    });
+    const qty = _lblQuantity(s);
+    if (qty > 0) items.push({ name: p.name, size: '—', qty, sku: p.sku });
   });
   if (!items.length) { alert('Carrinho vazio'); return; }
   const template = _lblTemplates[document.getElementById('labels-template')?.value];
@@ -10342,6 +10450,7 @@ function _lblShowCart() {
   const physicalTotal = logicalTotal * Math.max(1, Number(template?.layoutConfig?.labelsPerProduct || 1));
   let txt = 'CARRINHO (' + physicalTotal + ' etiquetas fisicas):\n\n';
   items.forEach(i => { txt += `• ${i.name} [${i.size}] x ${i.qty}\n`; });
+  txt = txt.replace(/ \[—\]/g, '');
   alert(txt);
 }
 async function labelsCreateBatch() {
@@ -10350,9 +10459,8 @@ async function labelsCreateBatch() {
   // Constrói selections do novo estado
   const selections = [];
   Object.entries(_lblSel).forEach(([pid, s]) => {
-    Object.entries(s.sizes || {}).forEach(([size, qty]) => {
-      if (qty > 0) selections.push({ productId: pid, size: size === '_any' ? null : size, quantity: qty });
-    });
+    const qty = _lblQuantity(s);
+    if (qty > 0) selections.push({ productId: pid, quantity: qty });
   });
   // Fallback: estado legacy (_labelsSelected)
   if (!selections.length) {
@@ -10360,7 +10468,7 @@ async function labelsCreateBatch() {
       if (qty > 0) selections.push({ productId: pid, quantity: qty });
     });
   }
-  if (!selections.length) { alert('Selecione pelo menos 1 etiqueta. Use os campos de quantidade por tamanho em cada card.'); return; }
+  if (!selections.length) { alert('Selecione pelo menos 1 produto e informe a quantidade de etiquetas.'); return; }
   if (!templateId) { alert('Escolha um template (recomendado: "A4 16 etiquetas (5x7 cm) — frente e verso")'); return; }
   const data = await api('/admin/labels/batches/quick', 'POST', {
     templateId, selections, usePromo,
@@ -12822,6 +12930,89 @@ async function campaignDelete(id) {
   if (!confirm('Excluir campanha?')) return;
   await api('/admin/campaigns/' + id, 'DELETE');
   loadCampaigns();
+}
+
+// ==================== OFERTAS QR FIXAS (12 PLACAS) ====================
+let _qroInit = false;
+let _qroSelected = new Map();
+let _qroEditing = null;
+function qroPad(n) { return String(n).padStart(2, '0'); }
+function qroEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function qroLocalDateTime(d) {
+  const x = d ? new Date(d) : new Date(Date.now() + 60 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return x.getFullYear() + '-' + p(x.getMonth()+1) + '-' + p(x.getDate()) + 'T' + p(x.getHours()) + ':' + p(x.getMinutes());
+}
+function qroSetStatus(text, bad) { const el = document.getElementById('qro-status'); if (el) { el.textContent = text || ''; el.style.color = bad ? '#c0392b' : '#8e8e93'; } }
+function qroUpdateCount() { const el = document.getElementById('qro-selected-count'); if (el) el.textContent = String(_qroSelected.size); }
+function qroOpenNew(plate) {
+  _qroEditing = null; _qroSelected = new Map(); qroUpdateCount();
+  document.getElementById('qro-editor-title').textContent = 'Nova oferta QR';
+  document.getElementById('qro-plate').value = String(plate || 1);
+  document.getElementById('qro-title').value = '';
+  document.getElementById('qro-discount').value = 10;
+  document.getElementById('qro-starts').value = qroLocalDateTime();
+  document.getElementById('qro-duration').value = 24;
+  document.getElementById('qro-exchange').checked = true;
+  document.getElementById('qro-notes').value = '';
+  document.getElementById('qro-product-search').value = '';
+  document.getElementById('qro-editor').style.display = 'block';
+  qroLoadProducts();
+  document.getElementById('qro-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+async function qroLoadBoards() {
+  const wrap = document.getElementById('qro-boards'); if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Carregando placas...</div>';
+  const data = await api('/admin/qr-offers/plates');
+  if (data.error) { wrap.innerHTML = '<div style="color:#c0392b">'+qroEsc(data.error)+'</div>'; return; }
+  wrap.innerHTML = (data.boards || []).map(function (b) {
+    const c = b.current;
+    const state = c ? ('<strong style="color:#0a843d">'+qroEsc(c.status)+'</strong><br>'+qroEsc(c.title)+'<br><small>'+Number(c.discountPct||0).toFixed(0)+'% · '+(c.products||0)+' produtos · termina '+new Date(c.endsAt).toLocaleString('pt-BR')+'</small>') : '<span style="color:#8e8e93">Sem oferta publicada</span>';
+    return '<article style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:12px;display:grid;grid-template-columns:70px 1fr;gap:10px;align-items:center">'+
+      '<img src="'+qroEsc(b.qrDataUrl)+'" alt="QR '+qroPad(b.number)+'" style="width:70px;height:70px;background:white">'+
+      '<div><div style="font-size:13px;font-weight:800">Placa '+qroPad(b.number)+'</div><div style="font-size:11px;line-height:1.4;margin:5px 0">'+state+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><button type="button" class="btn" data-qro-new="'+b.number+'" style="font-size:11px;padding:5px 8px">Nova oferta</button><a class="btn" href="'+qroEsc(b.fixedUrl)+'" target="_blank" rel="noopener" style="font-size:11px;padding:5px 8px">Abrir QR</a></div></div></article>';
+  }).join('');
+  wrap.querySelectorAll('[data-qro-new]').forEach(function (btn) { btn.addEventListener('click', function () { qroOpenNew(Number(btn.dataset.qroNew)); }); });
+}
+async function qroLoadProducts() {
+  const wrap = document.getElementById('qro-product-results'); if (!wrap) return;
+  wrap.innerHTML = '<div class="loading-spinner">Buscando produtos...</div>';
+  const q = document.getElementById('qro-product-search').value.trim();
+  const data = await api('/admin/qr-offers/products' + (q ? '?search=' + encodeURIComponent(q) : ''));
+  if (data.error) { wrap.innerHTML = '<div style="color:#c0392b">'+qroEsc(data.error)+'</div>'; return; }
+  const list = data.products || [];
+  if (!list.length) { wrap.innerHTML = '<div style="color:#8e8e93;padding:14px">Nenhum produto elegível encontrado.</div>'; return; }
+  wrap.innerHTML = list.map(function (p) { const checked = _qroSelected.has(p.id); return '<label data-qro-product="'+qroEsc(p.id)+'" style="display:flex;gap:8px;align-items:center;padding:8px;border:1px solid '+(checked?'#f4511e':'#e5e5ea')+';border-radius:10px;background:'+(checked?'#fff5ee':'#fff')+';cursor:pointer"><input type="checkbox" '+(checked?'checked':'')+'><img src="'+qroEsc(p.imageUrl||'')+'" style="width:46px;height:46px;object-fit:contain;background:#f7f7f7;border-radius:7px"><span style="min-width:0"><strong style="display:block;font-size:11px;line-height:1.25">'+qroEsc(p.name)+'</strong><small style="color:#8e8e93">'+qroEsc(p.brand||'')+' · '+qroEsc(p.sku||'')+' · R$ '+Number(p.promoPrice||p.price||0).toFixed(2).replace('.',',')+'</small></span></label>'; }).join('');
+  wrap.querySelectorAll('[data-qro-product]').forEach(function (label) { label.addEventListener('change', function (ev) { const id = label.getAttribute('data-qro-product'); const p = list.find(function (x) { return x.id === id; }); if (!p) return; if (ev.target.checked) _qroSelected.set(id, p); else _qroSelected.delete(id); label.style.borderColor = ev.target.checked ? '#f4511e' : '#e5e5ea'; label.style.background = ev.target.checked ? '#fff5ee' : '#fff'; qroUpdateCount(); }); });
+  qroUpdateCount();
+}
+async function qroSave(publish) {
+  const body = { plate: Number(document.getElementById('qro-plate').value), title: document.getElementById('qro-title').value.trim(), discountPct: Number(document.getElementById('qro-discount').value), startsAt: new Date(document.getElementById('qro-starts').value).toISOString(), durationHours: Number(document.getElementById('qro-duration').value), freeExchange: document.getElementById('qro-exchange').checked, notes: document.getElementById('qro-notes').value.trim(), productIds: Array.from(_qroSelected.keys()) };
+  if (!body.title) { alert('Informe o título da oferta.'); return; }
+  if (!body.productIds.length) { alert('Selecione ao menos um produto.'); return; }
+  qroSetStatus(publish ? 'Publicando na Nuvemshop…' : 'Salvando…');
+  let data = await api('/admin/qr-offers/offers', 'POST', body);
+  if (data.error) { qroSetStatus(data.error, true); alert(data.error); return; }
+  if (publish && data.offer && data.offer.id) {
+    data = await api('/admin/qr-offers/offers/' + encodeURIComponent(data.offer.id) + '/publish', 'POST', {});
+    if (data.error) { qroSetStatus(data.error, true); alert('Rascunho salvo, mas não publicou: '+data.error); return; }
+  }
+  qroSetStatus(publish ? 'Oferta publicada e cupom criado na Nuvemshop.' : 'Rascunho salvo.');
+  document.getElementById('qro-editor').style.display = 'none';
+  qroLoadBoards();
+}
+function initQROffersTab() {
+  if (!_qroInit) {
+    _qroInit = true;
+    document.getElementById('qro-refresh').onclick = qroLoadBoards;
+    document.getElementById('qro-new').onclick = function () { qroOpenNew(1); };
+    document.getElementById('qro-close').onclick = function () { document.getElementById('qro-editor').style.display = 'none'; };
+    document.getElementById('qro-product-search-btn').onclick = qroLoadProducts;
+    document.getElementById('qro-product-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') qroLoadProducts(); });
+    document.getElementById('qro-save').onclick = function () { qroSave(false); };
+    document.getElementById('qro-save-publish').onclick = function () { qroSave(true); };
+  }
+  qroLoadBoards();
 }
 
 // ==================== ESTOQUE ====================
