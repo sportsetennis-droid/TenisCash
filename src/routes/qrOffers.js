@@ -210,6 +210,12 @@ function localizedValue(value) {
   return String(value.pt || value.pt_BR || value['pt-BR'] || Object.values(value)[0] || '');
 }
 
+function numericCategoryId(value) {
+  const raw = value && typeof value === 'object' ? value.id : value;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : null;
+}
+
 // Cria/atualiza a categoria oculta que funciona como vitrine da placa.
 // A categoria não é adicionada ao menu; o endereço só é divulgado no QR.
 async function syncOfferCategory(offer, conn) {
@@ -236,7 +242,7 @@ async function syncOfferCategory(offer, conn) {
   const remoteIds = new Set([...related.map((item) => String(item.id)), ...selected]);
   for (const remoteId of remoteIds) {
     const product = await ns.getProduct(conn, remoteId);
-    const before = Array.isArray(product.categories) ? product.categories.map((id) => Number(id)) : [];
+    const before = Array.isArray(product.categories) ? product.categories.map(numericCategoryId).filter((id) => id != null) : [];
     const has = before.includes(Number(category.id));
     const shouldHave = selected.has(String(remoteId));
     const after = shouldHave ? Array.from(new Set([...before, Number(category.id)])) : before.filter((id) => id !== Number(category.id));
