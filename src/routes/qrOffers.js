@@ -28,13 +28,7 @@ function plateCode(n) { return `placa-${String(n).padStart(2, '0')}`; }
 
 // Os QR codes já impressos continuam apontando para a URL fixa do TenisCash.
 // Essa URL redireciona para a loja, onde o script da Nuvemshop apresenta a oferta.
-function offerCategoryHandle(code) { return `ofertas${String(code).replace(/[^a-z0-9]/gi, '')}`; }
-
-function storeOfferUrl(code, couponCode) {
-  const categoryHandle = offerCategoryHandle(code);
-  const base = `${STORE_BASE}/${categoryHandle}/`;
-  return couponCode ? `${base}?coupon=${encodeURIComponent(couponCode)}` : base;
-}
+function storeOfferUrl(code) { return `${STORE_BASE}/?oferta=${encodeURIComponent(code)}`; }
 
 function fixedQrUrl(code) { return `${PUBLIC_BASE}/oferta/${code}`; }
 
@@ -189,83 +183,9 @@ async function deactivateBoardOffers(boardId, exceptId) {
   }
 }
 
-function localizedValue(value) {
-  if (!value || typeof value !== 'object') return String(value || '');
-  return String(value.pt || value.pt_BR || value['pt-BR'] || Object.values(value)[0] || '');
-}
-
-// Mantém uma categoria oculta na Nuvemshop para cada placa. Ela não aparece
-// no menu, mas a URL permanece estável e pode ser aberta pelo QR.
-const OFFER_FILTERS = ['Homem', 'Mulher', 'Tênis', 'Chuteira', 'Roupas', 'Legging', 'Acessórios'];
-
-function productOfferFilters(product) {
-  const text = `${product && product.name || ''} ${product && product.category || ''} ${product && product.subcategory || ''}`.toLowerCase();
-  const tags = [];
-  if (/masculin|homem|men\b/.test(text)) tags.push('Homem');
-  if (/feminin|mulher|woman|women/.test(text)) tags.push('Mulher');
-  if (/chuteira/.test(text)) tags.push('Chuteira');
-  else if (/\btenis\b|tênis|sapatilha|sneaker/.test(text)) tags.push('Tênis');
-  if (/legging|short|camiseta|regata|top |calça|calca|roupa|vestido/.test(text)) tags.push('Roupas');
-  if (/legging/.test(text)) tags.push('Legging');
-  if (/acess|meia|caneleira|tornozeleira|bolsa|mochila|garrafa|luva|manguito|bomba|munhequeira/.test(text)) tags.push('Acessórios');
-  return tags.length ? tags : ['Acessórios'];
-}
-
-async function ensureOfferChildCategory(conn, parentId, name) {
-  const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?parent_id=${encodeURIComponent(parentId)}&language=pt&per_page=100&page=1`);
-  const categories = Array.isArray(listed) ? listed : [];
-  let category = categories.find((item) => localizedValue(item.name) === name);
-  if (!category) category = await ns.nuvemshopApi(conn, 'POST', '/categories', { name: { pt: name }, parent: Number(parentId), visibility: 'hidden' });
-  return category;
-}
-
-async function syncOfferCategory(offer, conn) {
-  const code = plateCode(offer.board.number);
-  const categoryHandle = offerCategoryHandle(code);
-  const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(categoryHandle)}&language=pt&per_page=50&page=1`);
-  const categories = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.results) ? listed.results : []);
-  let category = categories.find((item) => localizedValue(item.handle) === categoryHandle);
-  if (!category) {
-    category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
-      name: { pt: `OfertasPlaca${String(offer.board.number).padStart(2, '0')}` },
-      description: { pt: 'Oferta exclusiva acessível pelo QR Code.' },
-      visibility: 'hidden',
-    });
-  } else if (category.visibility !== 'hidden') {
-    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, { visibility: 'hidden' });
-  }
-
-  const childCategories = new Map();
-  for (const name of OFFER_FILTERS) childCategories.set(name, await ensureOfferChildCategory(conn, category.id, name));
-  const childIds = new Set(Array.from(childCategories.values()).map((item) => Number(item.id)));
-  const localIds = (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
-  const mappings = await prisma.nuvemshopProductMapping.findMany({ where: { localProductId: { in: localIds } }, select: { localProductId: true, nuvemshopProductId: true } });
-  const selectedRemoteIds = new Set(mappings.map((row) => String(row.nuvemshopProductId)));
-  const localProductById = new Map((offer.products || []).map((row) => [String(row.productId || (row.product && row.product.id)), row.product || {}]));
-  const remoteToLocal = new Map(mappings.map((row) => [String(row.nuvemshopProductId), String(row.localProductId)]));
-  const currentRemote = await ns.nuvemshopApi(conn, 'GET', `/products?category_id=${encodeURIComponent(category.id)}&per_page=100&page=1`);
-  const related = Array.isArray(currentRemote) ? currentRemote : [];
-  const remoteIds = new Set([...related.map((p) => String(p.id)), ...selectedRemoteIds]);
-  for (const remoteId of remoteIds) {
-    const remote = await ns.getProduct(conn, remoteId);
-    const before = Array.isArray(remote.categories) ? remote.categories.map((id) => Number(id)) : [];
-    const has = before.includes(Number(category.id));
-    const shouldHave = selectedRemoteIds.has(String(remoteId));
-    const desiredChildren = shouldHave
-      ? productOfferFilters(localProductById.get(remoteToLocal.get(String(remoteId)))).map((name) => childCategories.get(name)).filter(Boolean).map((item) => Number(item.id))
-      : [];
-    const after = shouldHave
-      ? Array.from(new Set([...before.filter((id) => !childIds.has(id)), Number(category.id), ...desiredChildren]))
-      : before.filter((id) => id !== Number(category.id) && !childIds.has(id));
-    if (has !== shouldHave || after.join(',') !== before.join(',')) await ns.updateProduct(conn, remoteId, { categories: after });
-  }
-  return { id: category.id, code, url: storeOfferUrl(code) };
-}
-
 async function publishOffer(offer) {
   const conn = await activeConnection();
   if (!conn) throw new Error('Nuvemshop não está conectada no TenisCash');
-  await syncOfferCategory(offer, conn);
   const suffix = String(offer.id || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase();
   const code = offer.couponCode || `QR${String(offer.board.number).padStart(2, '0')}-${new Date(offer.startsAt).toISOString().slice(0, 10).replace(/-/g, '')}-${suffix}`;
   let coupon;
@@ -354,7 +274,7 @@ adminRouter.post('/offers/:id/publish', async (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
     if (new Date(offer.endsAt) <= new Date()) return res.status(400).json({ error: 'A validade da oferta já terminou' });
     const updated = await publishOffer(offer);
-    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}`, destinationUrl: storeOfferUrl(offer.board.code, updated.couponCode) });
+    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}`, destinationUrl: storeOfferUrl(offer.board.code) });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -453,7 +373,9 @@ publicRouter.get('/oferta/:plate', async (req, res) => {
     // impresso permanece igual; só a experiência final muda para a Nuvemshop.
     res.set('Cache-Control', 'no-store');
     const { offer } = await findOfferByPlate(n);
-    const target = offer ? storeOfferUrl(plateCode(n), offer.couponCode) : storeOfferUrl(plateCode(n));
+    const target = offer && offer.products && offer.products[0] && offer.products[0].storeUrl
+      ? offer.products[0].storeUrl
+      : storeOfferUrl(plateCode(n));
     return res.redirect(302, target);
     const { board, offer: legacyOffer } = await findOfferByPlate(n);
     const code = board ? board.code : plateCode(n);
