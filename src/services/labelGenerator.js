@@ -387,6 +387,7 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const t = template;
   const paperSize = t.paperSize || 'A4';
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
+  const duplex = isDuplexTemplate(t);
 
   const doc = new PDFDocument({
     size: layoutW,
@@ -398,6 +399,11 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const viewerPreferences = doc._root.data.ViewerPreferences || doc.ref({});
   viewerPreferences.data.PrintScaling = 'None';
   viewerPreferences.data.PickTrayByPDFSize = true;
+  if (duplex) {
+    viewerPreferences.data.Duplex = t.layoutConfig?.duplexBinding === 'short-edge'
+      ? 'DuplexFlipShortEdge'
+      : 'DuplexFlipLongEdge';
+  }
   doc._root.data.ViewerPreferences = viewerPreferences;
   const chunks = [];
   doc.on('data', (c) => chunks.push(c));
@@ -428,7 +434,6 @@ async function generateLabelsPDF({ template, items, storeName }) {
   const cols = t.columns || 1;
   const rows = t.rows || 1;
   const perPage = cols * rows;
-  const duplex = isDuplexTemplate(t);
 
   const qrJobs = []; // {item, x, y, size, pageIndex}
   let currentPageIndex = 0;

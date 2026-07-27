@@ -54,10 +54,11 @@ async function ensureDefaultTemplates() {
       showColor: def.type === 'PRODUCT',
       showStore: false,
       layoutConfig: def.layoutConfig || null,
-      isDefault: true,
+      isDefault: key === 'a4_16_5x7_duplex',
     };
+    let templateRecord = existing;
     if (!existing) {
-      await prisma.labelTemplate.create({ data: wantedData });
+      templateRecord = await prisma.labelTemplate.create({ data: wantedData });
     } else if (isST || isDuplex) {
       const needsSync = Object.entries(wantedData).some(([field, value]) => {
         if (field === 'layoutConfig') {
@@ -67,8 +68,14 @@ async function ensureDefaultTemplates() {
       });
       if (needsSync) {
         // Migra o modelo S&T legado sem sobrescrever ajustes dos outros templates.
-        await prisma.labelTemplate.update({ where: { id: existing.id }, data: wantedData });
+        templateRecord = await prisma.labelTemplate.update({ where: { id: existing.id }, data: wantedData });
       }
+    }
+    if (key === 'a4_16_5x7_duplex' && templateRecord) {
+      await prisma.labelTemplate.updateMany({
+        where: { id: { not: templateRecord.id } },
+        data: { isDefault: false },
+      });
     }
   }
 }
