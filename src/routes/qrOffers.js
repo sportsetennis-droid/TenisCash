@@ -201,7 +201,7 @@ async function publishOffer(offer) {
   }
   await deactivateBoardOffers(offer.boardId, offer.id);
   const updated = await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'ACTIVE', couponCode: code, nsCouponId: coupon && coupon.id != null ? String(coupon.id) : offer.nsCouponId, publishedAt: new Date() } });
-  syncOfferCategory(offer, conn).catch((e) => console.error('[qr-offers/category]', e.message));
+  syncOfferCategory({ ...offer, ...updated, couponCode: code, nsCouponId: updated.nsCouponId, status: 'ACTIVE' }, conn).catch((e) => console.error('[qr-offers/category]', e.message));
   return updated;
 }
 
@@ -216,6 +216,14 @@ function numericCategoryId(value) {
   return Number.isInteger(n) ? n : null;
 }
 
+function offerCategoryDescription(offer) {
+  const title = escapeHtml(offer.title || 'Oferta exclusiva');
+  const discount = Number(offer.discountPct);
+  const pct = Number.isFinite(discount) ? `${discount}% OFF` : 'desconto exclusivo';
+  const coupon = escapeHtml(offer.couponCode || 'informado no checkout');
+  return `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}: ${pct}. Confira o preco normal do produto no site e aplique o cupom ${coupon} no checkout. Validade de ate 24 horas. ${title}`;
+}
+
 // Cria/atualiza a categoria oculta que funciona como vitrine da placa.
 // A categoria não é adicionada ao menu; o endereço só é divulgado no QR.
 async function syncOfferCategory(offer, conn) {
@@ -227,11 +235,13 @@ async function syncOfferCategory(offer, conn) {
   if (!category) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
       name: { pt: `OfertasPlaca${String(offer.board.number).padStart(2, '0')}` },
-      description: { pt: 'Ofertas exclusivas da placa. Confira o preço normal no site e use o cupom da placa no checkout.' },
+      description: { pt: offerCategoryDescription(offer) },
       visibility: 'hidden',
     });
-  } else if (category.visibility !== 'hidden') {
-    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, { visibility: 'hidden' });
+  } else {
+    const changes = { description: { pt: offerCategoryDescription(offer) } };
+    if (category.visibility !== 'hidden') changes.visibility = 'hidden';
+    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, changes);
   }
 
   const localIds = (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
