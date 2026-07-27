@@ -725,8 +725,15 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
 
   function drawPage(pageItems, pageIndex, pageSide) {
     pageItems.forEach((item, slot) => {
-      const col = slot % cols;
-      const row = Math.floor(slot / cols);
+      const rawCol = slot % cols;
+      const rawRow = Math.floor(slot / cols);
+      // No duplex pela borda longa, o verso precisa ser espelhado na
+      // horizontal para cair atrás da mesma etiqueta ao virar a folha.
+      // Para uma configuração pela borda curta, o espelho é vertical.
+      const flipBack = pageSide === 'back' && duplex;
+      const flipLongEdge = t.layoutConfig?.duplexBinding !== 'short-edge';
+      const col = flipBack && flipLongEdge ? cols - 1 - rawCol : rawCol;
+      const row = flipBack && !flipLongEdge ? rows - 1 - rawRow : rawRow;
       const x = marginX + col * (labelW + gapX);
       const y = marginY + row * (labelH + gapY);
 
