@@ -11,6 +11,22 @@
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const { Buffer } = require('buffer');
+const fs = require('fs');
+const path = require('path');
+
+const LABEL_FONT_REGULAR = path.join(__dirname, '../../node_modules/@expo-google-fonts/roboto/400Regular/Roboto_400Regular.ttf');
+const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/roboto/700Bold/Roboto_700Bold.ttf');
+
+function registerLabelFonts(doc) {
+  if (!fs.existsSync(LABEL_FONT_REGULAR) || !fs.existsSync(LABEL_FONT_BOLD)) return false;
+  try {
+    doc.registerFont('TenisRoboto', LABEL_FONT_REGULAR);
+    doc.registerFont('TenisRobotoBold', LABEL_FONT_BOLD);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const MM_TO_PT = 2.83464567; // 1mm = 2.83464567pt
 
@@ -358,8 +374,61 @@ async function loadLogoBuffer(value) {
 
 // Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
 // Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
+// Separa a logo oficial da Sports & Tennis em dois elementos visuais: o
+// desenho grande e o wordmark que fica abaixo dele na etiqueta.
+async function loadStoreLogoParts(value) {
+  const v = String(value || '').trim();
+  try {
+    const raw = await (async () => {
+      if (v.startsWith('data:image/')) {
+        const b64 = v.split(',')[1];
+        return b64 ? Buffer.from(b64, 'base64') : null;
+      }
+      if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
+      const response = await fetch(v);
+      if (!response.ok) return null;
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      const isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
+      const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
+      if (!isSvg && !isRaster) return null;
+      return Buffer.from(await response.arrayBuffer());
+    })();
+    if (!raw) return {};
+
+    const sharp = require('sharp');
+    const meta = await sharp(raw).metadata();
+    const official = /st-logo-sports-tennis-white-transparent/i.test(v)
+      && Number(meta.width) >= 900 && Number(meta.height) >= 200;
+    if (!official) return { full: await loadLogoBuffer(v) };
+
+    const makePart = async (crop) => {
+      // O trim ocorre depois do extract, pois algumas versões do sharp não
+      // aceitam a área extraída como entrada da operação seguinte.
+      const extracted = await sharp(raw).ensureAlpha().extract(crop).png().toBuffer();
+      const { data, info } = await sharp(extracted).trim().ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      for (let i = 0; i < data.length; i += info.channels) {
+        data[i] = 255;
+        data[i + 1] = 255;
+        data[i + 2] = 255;
+      }
+      return sharp(data, { raw: info }).png().toBuffer();
+    };
+
+    const splitX = Math.min(230, Number(meta.width) - 1);
+    return {
+      icon: await makePart({ left: 0, top: 0, width: splitX, height: Number(meta.height) }),
+      wordmark: await makePart({ left: splitX, top: 0, width: Number(meta.width) - splitX, height: Number(meta.height) }),
+    };
+  } catch (err) {
+    console.warn('[labels] não foi possível separar a logo da loja:', err?.message || err);
+    return { full: await loadLogoBuffer(v) };
+  }
+}
+
 function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const WHITE = '#FFFFFF';
+  const FONT_REGULAR = doc._tenisLabelFonts ? 'TenisRoboto' : 'Helvetica';
+  const FONT_BOLD = doc._tenisLabelFonts ? 'TenisRobotoBold' : 'Helvetica-Bold';
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   // PDFKit interpreta arrays de quatro componentes como CMYK em percentuais.
   const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -368,7 +437,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   doc.rect(x, y, w, h).fillColor(ORANGE).fill();
 
   const centered = (text, fs, yy, opts = {}) => {
-    doc.font('Helvetica-Bold').fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
+    doc.font(FONT_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
       width: innerW,
       align: 'center',
       lineBreak: opts.lineBreak !== false,
@@ -397,14 +466,33 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   if (side === 'store') {
     // A face sÃ³ recebe a imagem cadastrada no BrandProfile; sem imagem,
     // sinaliza pendÃªncia em vez de transformar o nome em uma falsa logo.
-    if (item._storeLogoBuffer) {
+    if (item._storeLogoIconBuffer || item._storeLogoWordmarkBuffer || item._storeLogoBuffer) {
       try {
-        doc.image(item._storeLogoBuffer, x + pad, y + h * 0.10, {
-          fit: [innerW, h * 0.60],
-          align: 'center',
-          valign: 'center',
-        });
-        centered(item.storeName || 'Sports & Tennis', 8, y + h * 0.78, { lineBreak: false });
+        if (item._storeLogoIconBuffer && item._storeLogoWordmarkBuffer) {
+          doc.image(item._storeLogoIconBuffer, x + pad, y + h * 0.06, {
+            fit: [innerW * 0.68, h * 0.62],
+            align: 'center',
+            valign: 'center',
+          });
+          doc.image(item._storeLogoWordmarkBuffer, x + pad, y + h * 0.73, {
+            fit: [innerW * 0.88, h * 0.20],
+            align: 'center',
+            valign: 'center',
+          });
+        } else if (item._storeLogoBuffer) {
+          doc.image(item._storeLogoBuffer, x + pad, y + h * 0.18, {
+            fit: [innerW, h * 0.54],
+            align: 'center',
+            valign: 'center',
+          });
+        } else if (item._storeLogoIconBuffer) {
+          doc.image(item._storeLogoIconBuffer, x + pad, y + h * 0.12, {
+            fit: [innerW * 0.72, h * 0.62],
+            align: 'center',
+            valign: 'center',
+          });
+          centered(item.storeName || 'Sports & Tennis', 8, y + h * 0.78, { lineBreak: false });
+        }
       } catch {
         centered('LOGO DA LOJA PENDENTE', 9, y + h * 0.40, { lineBreak: false });
       }
@@ -415,28 +503,28 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   }
 
   if (side === 'details') {
-    const description = String(item.description || item.name || '').trim();
-    const selectedSize = item.size ? `Tamanho selecionado: ${item.size}` : '';
+    const productName = String(item.productName || item.name || '').trim();
+    const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const sizes = item.availableSizes ? `Disponiveis: ${item.availableSizes}` : '';
-    doc.font('Helvetica-Bold').fontSize(7).fillColor(WHITE)
+    doc.font(FONT_BOLD).fontSize(7).fillColor(WHITE)
      .text('DESCRICAO DO PRODUTO', x + pad, y + pad, { width: innerW, align: 'center', lineBreak: false });
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(WHITE)
-      .text(description, x + pad, y + pad + mm(5), { width: innerW, height: mm(14), align: 'center', ellipsis: true });
-    if (selectedSize) {
-      doc.font('Helvetica').fontSize(7).fillColor(WHITE)
-        .text(selectedSize, x + pad, y + mm(25), { width: innerW, align: 'center', ellipsis: true });
+    doc.font(FONT_BOLD).fontSize(10).fillColor(WHITE)
+      .text(productName, x + pad, y + pad + mm(5), { width: innerW, height: mm(11), align: 'center', ellipsis: true });
+    if (categoryLabel) {
+      doc.font(FONT_BOLD).fontSize(7).fillColor(WHITE)
+        .text(categoryLabel, x + pad, y + mm(21), { width: innerW, height: mm(8), align: 'center', ellipsis: true });
     }
     if (sizes) {
-      doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+      doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
         .text(sizes, x + pad, y + mm(30), { width: innerW, height: mm(10), align: 'center', ellipsis: true });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
-      doc.font('Helvetica-Bold').fontSize(16).fillColor(WHITE)
+      doc.font(FONT_BOLD).fontSize(16).fillColor(WHITE)
         .text(fmtBRL(value), x + pad, y + h - mm(28), { width: innerW, align: 'center', lineBreak: false });
       if (usePromo && item.price != null) {
-        doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+        doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
           .text(`De ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false, strike: true });
       }
     }
@@ -453,7 +541,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const qrY = y + mm(13);
   doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
- doc.font('Helvetica').fontSize(6.5).fillColor(WHITE)
+  doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
    .text('Aponte a camera para consultar', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
 }
 
@@ -552,6 +640,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
     margins: { top: 0, left: 0, right: 0, bottom: 0 },
     bufferPages: true, // permite switchToPage no segundo pass dos QRs
   });
+  doc._tenisLabelFonts = fourSide && registerLabelFonts(doc);
   // Solicita aos leitores de PDF que imprimam em tamanho real. A preferência é
   // gravada no próprio arquivo e evita que leitores compatíveis ativem "Ajustar".
   const viewerPreferences = doc._root.data.ViewerPreferences || doc.ref({});
@@ -585,8 +674,10 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   }
 
   if (fourSide && storeLogoUrl) {
-    const logoBuffer = await loadLogoBuffer(storeLogoUrl);
-    if (logoBuffer) flat.forEach((item) => { item._storeLogoBuffer = logoBuffer; });
+    const logoParts = await loadStoreLogoParts(storeLogoUrl);
+    if (logoParts.icon) flat.forEach((item) => { item._storeLogoIconBuffer = logoParts.icon; });
+    if (logoParts.wordmark) flat.forEach((item) => { item._storeLogoWordmarkBuffer = logoParts.wordmark; });
+    if (logoParts.full) flat.forEach((item) => { item._storeLogoBuffer = logoParts.full; });
   }
   if (fourSide) {
     const brandUrls = [...new Set(flat.map((item) => String(item.brandLogoUrl || '').trim()).filter(Boolean))];

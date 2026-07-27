@@ -300,10 +300,16 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .map((s) => s.size)
         .filter(Boolean)
         .join(' | ') || '';
-      const finalName = sizeStr ? `${baseName} • TAM ${sizeStr}` : baseName;
+      const productName = baseName;
+      const categoryParts = [p?.category, p?.subcategory, cls.modality, cls.tier]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      const categoryLabel = [...new Set(categoryParts)].join(' · ');
       return {
-        name: finalName,
-        description: p ? (p.longDescription || p.shortDescription || p.name) : baseName,
+        name: productName,
+        productName,
+        description: productName,
+        categoryLabel,
         availableSizes,
         storeName,
         storeLogoUrl,
