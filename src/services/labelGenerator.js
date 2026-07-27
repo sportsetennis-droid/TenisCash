@@ -135,8 +135,8 @@ function defaultTemplates() {
         labelsPerProduct: 2,
         sides: {
           frontA: 'brand',
-          frontB: 'store',
-          backA: 'details',
+          frontB: 'details',
+          backA: 'store',
           backB: 'qr',
         },
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
@@ -730,8 +730,8 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       const isST = isSTHorizontalTemplate(t);
       if (fourSide) {
         const side = pageSide === 'front'
-          ? (item._pairSlot === 1 ? 'store' : 'brand')
-          : (item._pairSlot === 1 ? 'qr' : 'details');
+          ? (item._pairSlot === 1 ? 'details' : 'brand')
+          : (item._pairSlot === 1 ? 'qr' : 'store');
         drawProductFourSide(doc, item, t, x, y, labelW, labelH, side);
       } else if (isST) {
         doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
