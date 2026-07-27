@@ -54,6 +54,7 @@ function isFourSideProductTemplate(template) {
 
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
+const FOUR_SIDE_CUT_BORDER_MM = 0.8;
 
 function defaultTemplates() {
   return {
@@ -435,6 +436,15 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const pad = mm(3);
   const innerW = Math.max(mm(5), w - pad * 2);
   doc.rect(x, y, w, h).fillColor(ORANGE).fill();
+  // As células da grade encostam umas nas outras. A linha branca funciona
+  // como guia visual contínua para a navalha, mantendo a etiqueta em 5x7 cm.
+  const cutBorder = mm(FOUR_SIDE_CUT_BORDER_MM);
+  doc.save();
+  doc.rect(x + cutBorder / 2, y + cutBorder / 2, w - cutBorder, h - cutBorder)
+    .lineWidth(cutBorder)
+    .strokeColor('#FFFFFF')
+    .stroke();
+  doc.restore();
 
   const centered = (text, fs, yy, opts = {}) => {
     doc.font(FONT_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
