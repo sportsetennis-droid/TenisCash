@@ -9800,6 +9800,9 @@ async function initLabelsTab() {
           labelsSearchProducts();
         },
       });
+      // O navegador pode restaurar selects antigos ao reconstruir a tela.
+      // Etiquetas começa sem filtros herdados; o usuário escolhe só o que deseja.
+      PSBar.clear('lbl');
     }
   }
   await loadLabelTemplates();
