@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const { ensureAllProductInternalBarcodes } = require('./services/internalBarcode');
 const prisma = new PrismaClient();
 
 async function seed() {
@@ -50,6 +51,9 @@ async function seed() {
     });
   }
   console.log('Regras de marca configuradas:', brands.length);
+
+  const internalBarcodes = await ensureAllProductInternalBarcodes(prisma);
+  console.log('Códigos internos de produtos:', internalBarcodes);
 
   // (Promo "Inauguração TenisCash" foi removida do seed em 2026-05 — não recriar)
 

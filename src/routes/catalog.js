@@ -227,6 +227,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       const fields = t => ([
         { name: { contains: t, mode: 'insensitive' } },
         { sku: { contains: t, mode: 'insensitive' } },
+        { internalBarcode: { contains: t, mode: 'insensitive' } },
         { brand: { contains: t, mode: 'insensitive' } },
         { category: { contains: t, mode: 'insensitive' } },
         { subcategory: { contains: t, mode: 'insensitive' } },
@@ -251,6 +252,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
         select: {
           id: true,
           sku: true,
+          internalBarcode: true,
           name: true,
           brand: true,
           category: true,
@@ -318,6 +320,7 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
       select: {
         id: true,
         sku: true,
+        internalBarcode: true,
         name: true,
         brand: true,
         category: true,

@@ -35,6 +35,7 @@ function toResult(p) {
     name: p.name,
     brand: p.brand,
     ref: p.sku || ctx.supplierRef || null,
+    internalBarcode: p.internalBarcode || null,
     color: ctx.color || null,
     price: p.price ?? null,
     promoPrice: p.promoPrice ?? null,
@@ -45,7 +46,7 @@ function toResult(p) {
 }
 
 const SELECT = {
-  id: true, name: true, brand: true, sku: true,
+  id: true, name: true, brand: true, sku: true, internalBarcode: true,
   price: true, promoPrice: true, imageUrl: true, aiContext: true,
   sizes: { select: { stock: true } }, // só a quantidade — nunca custo
 };
@@ -134,6 +135,7 @@ router.get('/', async (req, res) => {
         { name: { contains: t, mode: 'insensitive' } },
         { brand: { contains: t, mode: 'insensitive' } },
         { sku: { contains: t, mode: 'insensitive' } },
+        { internalBarcode: { contains: t, mode: 'insensitive' } },
         { category: { contains: t, mode: 'insensitive' } },
         { subcategory: { contains: t, mode: 'insensitive' } },
         { aiContext: { path: ['supplierRef'], string_contains: t } },
@@ -163,6 +165,18 @@ router.get('/', async (req, res) => {
     if (total === 0 && offset === 0 && /^\d{6,}$/.test(q)) {
       const found = [];
       const seen = new Set();
+      const internalCodes = [...new Set([q, q.replace(/^0+/, '')].filter(Boolean))];
+      const internalProducts = await prisma.product.findMany({
+        where: { internalBarcode: { in: internalCodes } },
+        select: SELECT,
+        take: 5,
+      });
+      for (const p of internalProducts) {
+        if (p && p.active !== false && !seen.has(p.id)) {
+          seen.add(p.id);
+          found.push(p);
+        }
+      }
       const sizes = await prisma.productSize.findMany({
         where: { barcode: q },
         select: { product: { select: SELECT } },

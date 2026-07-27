@@ -340,7 +340,24 @@ router.post('/troca', async (req, res) => {
     const newResolved = [];
     for (const n of newItems) {
       const qty = parseInt(n.qty, 10) || 1;
-      const ps = n.barcode ? await prisma.productSize.findFirst({ where: { barcode: String(n.barcode).trim() }, include: { product: true } }) : null;
+      const code = n.barcode ? String(n.barcode).trim() : '';
+      let ps = code ? await prisma.productSize.findFirst({ where: { barcode: code }, include: { product: true } }) : null;
+      if (!ps && code) {
+        const internalProduct = await prisma.product.findUnique({
+          where: { internalBarcode: code },
+          include: { sizes: { orderBy: { size: 'asc' } } },
+        });
+        if (internalProduct) {
+          const requestedSize = n.size == null ? '' : String(n.size).trim().toLowerCase();
+          const selectedSize = requestedSize
+            ? internalProduct.sizes.find((s) => String(s.size || '').trim().toLowerCase() === requestedSize)
+            : (internalProduct.sizes.length === 1 ? internalProduct.sizes[0] : null);
+          if (!selectedSize) {
+            return res.status(400).json({ error: 'CÃ³digo interno reconhecido para ' + internalProduct.name + '; informe o tamanho/numeraÃ§Ã£o para concluir a venda', needsSize: true, internalBarcode: code, sizes: internalProduct.sizes.map((s) => s.size) });
+          }
+          ps = { ...selectedSize, product: internalProduct };
+        }
+      }
       if (!ps?.product) return res.status(400).json({ error: 'Código ' + (n.barcode || '?') + ' não cadastrado — bipe um produto do catálogo' });
       const price = (ps.product.promoPrice > 0 ? ps.product.promoPrice : ps.product.price) || 0;
       if (price <= 0) return res.status(400).json({ error: ps.product.name + ' sem preço de venda — ajuste o preço antes de vender' });

@@ -1,6 +1,23 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const { allocateInternalBarcode } = require('./services/internalBarcode');
 const prisma = new PrismaClient();
+
+// Todo produto criado pelo fluxo principal já nasce com o código interno.
+// O preenchimento continua sendo idempotente no seed/etiquetas para cobrir
+// produtos antigos e importações feitas por clientes Prisma independentes.
+prisma.$use(async (params, next) => {
+  if (params.model === 'Product' && ['create', 'upsert', 'createMany'].includes(params.action)) {
+    const rows = params.action === 'upsert' ? [params.args.create] : (Array.isArray(params.args.data) ? params.args.data : [params.args.data]);
+    for (const row of rows) {
+      if (!row || row.internalBarcode) continue;
+      if (!row.id) row.id = crypto.randomUUID();
+      row.internalBarcode = await allocateInternalBarcode(prisma, row.id);
+    }
+  }
+  return next(params);
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-secret-change-in-production';
 

@@ -1952,9 +1952,14 @@ async function trocaBipe() {
     if (!(d.recognized && d.product)) { alert('Código ' + code + ' não cadastrado — produto precisa estar no catálogo.'); return; }
     const price = d.product.promoPrice || d.product.price || 0;
     if (price <= 0) { alert((d.product.name || 'Produto') + ' sem preço de venda — ajuste o preço antes.'); return; }
+    let size = d.product.size || '';
+    if (d.needsSize || !size) {
+      size = _promptManualSellerSize(d.product.name, (d.sizeOptions || []).map((s) => s.size).filter(Boolean).join(', '));
+      if (!size) return;
+    }
     const ex = _troca.novos.find(n => n.barcode === code);
     if (ex) ex.qty++;
-    else _troca.novos.push({ barcode: code, qty: 1, name: d.product.name || '', size: d.product.size || '', price });
+    else _troca.novos.push({ barcode: code, qty: 1, name: d.product.name || '', size, price });
     renderTrocaModal();
   } catch (e) { alert('Erro no bipe: ' + e.message); }
 }

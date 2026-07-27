@@ -18,6 +18,7 @@ function resolveProductLink(localProductId, name, prefix = '/p/') {
 const baseProductSelect = {
   id: true,
   sku: true,
+  internalBarcode: true,
   name: true,
   brand: true,
   category: true,
@@ -55,6 +56,7 @@ function formatProductCard(p) {
   return {
     id: p.id,
     sku: p.sku,
+    internalBarcode: p.internalBarcode || null,
     name: p.name,
     brand: p.brand,
     category: p.category,
@@ -126,7 +128,7 @@ async function searchProductsForAI(query) {
   console.log('[ai] tool search_products matchedBrands:', matchedBrands);
 
   const orderBy = [{ featured: 'desc' }, { name: 'asc' }];
-  const fields = ['name', 'sku', 'category', 'subcategory', 'shortDescription', 'longDescription'];
+  const fields = ['name', 'sku', 'internalBarcode', 'category', 'subcategory', 'shortDescription', 'longDescription'];
   const anyFieldContains = (term) => ({ OR: fields.map((f) => ({ [f]: { contains: term, mode: 'insensitive' } })) });
   // busca um pool maior (take 80) e RE-RANQUEIA por relevância abaixo (nome/categoria > descrição).
   const run = (where) => prisma.product.findMany({ where, take: 80, orderBy, select: baseProductSelect });
@@ -206,7 +208,10 @@ async function getProductBySkuForAI(sku) {
 
   const p = await prisma.product.findFirst({
     where: {
-      sku: { equals: s, mode: 'insensitive' },
+      OR: [
+        { sku: { equals: s, mode: 'insensitive' } },
+        { internalBarcode: s },
+      ],
       active: true,
     },
     select: {

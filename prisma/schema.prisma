@@ -391,6 +391,9 @@ model SellerWallet {
 model Product {
   id          String  @id @default(uuid())
   sku         String  @unique
+  // Código interno exclusivo do produto (não substitui o GTIN/EAN ou SKU).
+  // É compartilhado pelas numerações do mesmo card e nunca se repete entre cards.
+  internalBarcode String? @unique
   name        String
   brand       String
   category    String // tenis, roupa, acessorio

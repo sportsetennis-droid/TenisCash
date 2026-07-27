@@ -40,6 +40,7 @@ const PRIORITY_WEIGHT = {
 const SELLER_PRODUCT_SELECT = {
   id: true,
   sku: true,
+  internalBarcode: true,
   name: true,
   brand: true,
   category: true,
@@ -422,6 +423,7 @@ function formatSellerProduct(product, filters = {}) {
   return {
     id: product.id,
     sku: product.sku,
+    internalBarcode: product.internalBarcode || null,
     name: product.name,
     brand: product.brand,
     category: product.category,
@@ -2419,6 +2421,7 @@ router.get('/product-code/:code', requireSeller, async (req, res) => {
         active: true,
         OR: [
           { sku: { equals: code, mode: 'insensitive' } },
+          { internalBarcode: code },
           { sizes: { some: { barcode: code } } },
         ],
       },
@@ -2447,7 +2450,9 @@ router.get('/product-code/:code', requireSeller, async (req, res) => {
       exact: true,
       code,
       store: snapshot.seller.store ? { id: snapshot.seller.store.id, code: snapshot.seller.store.code, name: snapshot.seller.store.name } : null,
-      matchType: String(product.sku || '').toLowerCase() === code.toLowerCase() ? 'SKU' : 'BARCODE',
+      matchType: String(product.internalBarcode || '') === code
+        ? 'INTERNO'
+        : (String(product.sku || '').toLowerCase() === code.toLowerCase() ? 'SKU' : 'BARCODE'),
       matchedSizes: product.sizes
         .filter((size) => size.barcode === code)
         .map((size) => ({ size: size.size, barcode: size.barcode })),

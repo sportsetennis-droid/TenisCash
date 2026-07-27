@@ -177,6 +177,77 @@ function fmtBRL(n) {
 
 // Renderiza algo que parece código de barras (visual). Para etiqueta real
 // passe `realBars=true` futuramente quando integrarmos bwip-js.
+// Padrões Code 128 (cada símbolo tem 11 módulos; STOP tem 13). O desenho
+// vetorial permite leitura por leitor de caixa sem depender de imagem raster.
+const CODE128_BARS = [
+  11011001100, 11001101100, 11001100110, 10010011000, 10010001100,
+  10001001100, 10011001000, 10011000100, 10001100100, 11001001000,
+  11001000100, 11000100100, 10110011100, 10011011100, 10011001110,
+  10111001100, 10011101100, 10011100110, 11001110010, 11001011100,
+  11001001110, 11011100100, 11001110100, 11101101110, 11101001100,
+  11100101100, 11100100110, 11101100100, 11100110100, 11100110010,
+  11011011000, 11011000110, 11000110110, 10100011000, 10001011000,
+  10001000110, 10110001000, 10001101000, 10001100010, 11010001000,
+  11000101000, 11000100010, 10110111000, 10110001110, 10001101110,
+  10111011000, 10111000110, 10001110110, 11101110110, 11010001110,
+  11000101110, 11011101000, 11011100010, 11011101110, 11101011000,
+  11101000110, 11100010110, 11101101000, 11101100010, 11100011010,
+  11101111010, 11001000010, 11110001010, 10100110000, 10100001100,
+  10010110000, 10010000110, 10000101100, 10000100110, 10110010000,
+  10110000100, 10011010000, 10011000010, 10000110100, 10000110010,
+  11000010010, 11001010000, 11110111010, 11000010100, 10001111010,
+  10100111100, 10010111100, 10010011110, 10111100100, 10011110100,
+  10011110010, 11110100100, 11110010100, 11110010010, 11011011110,
+  11011110110, 11110110110, 10101111000, 10100011110, 10001011110,
+  10111101000, 10111100010, 11110101000, 11110100010, 10111011110,
+  10111101110, 11101011110, 11110101110, 11010000100, 11010010000,
+  11010011100, 1100011101011,
+];
+
+function code128Pattern(value) {
+  const code = String(value || '').replace(/[^\x20-\x7E]/g, '?').slice(0, 48);
+  if (!code) return null;
+  const symbols = [104]; // START B: texto ASCII imprimível
+  for (const char of code) symbols.push(char.charCodeAt(0) - 32);
+  let checksum = symbols[0];
+  for (let i = 1; i < symbols.length; i++) checksum += symbols[i] * i;
+  symbols.push(checksum % 103, 106);
+  return symbols.map((symbol) => String(CODE128_BARS[symbol])).join('');
+}
+
+function drawBarcode128(doc, value, x, y, w, h, options = {}) {
+  const code = String(value || '').trim().slice(0, 48);
+  if (!code) return;
+  const pattern = code128Pattern(code);
+  if (!pattern) return;
+  const color = options.color || '#000';
+  const caption = options.caption ? `${options.caption}: ${code}` : code;
+  const quiet = Math.min(mm(1), w * 0.04);
+  const moduleWidth = (w - quiet * 2) / pattern.length;
+  const barHeight = h * 0.74;
+  doc.save();
+  if (options.background) {
+    doc.fillColor(options.background).rect(x, y, w, h).fill();
+  }
+  doc.fillColor(color);
+  let runStart = null;
+  for (let i = 0; i <= pattern.length; i++) {
+    const isBar = i < pattern.length && pattern[i] === '1';
+    if (isBar && runStart == null) runStart = i;
+    if ((!isBar || i === pattern.length) && runStart != null) {
+      doc.rect(x + quiet + runStart * moduleWidth, y, (i - runStart) * moduleWidth, barHeight).fill();
+      runStart = null;
+    }
+  }
+  doc.restore();
+  doc.fontSize(options.captionSize || 5.5).fillColor(color).text(caption, x, y + barHeight + mm(0.4), {
+    width: w,
+    align: 'center',
+    lineBreak: false,
+    ellipsis: true,
+  });
+}
+
 function drawFakeBarcode(doc, value, x, y, w, h, options = {}) {
   const code = String(value || '').slice(0, 32);
   if (!code) return;
@@ -543,8 +614,22 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           .text(`De ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false, strike: true });
       }
     }
+    const barcodeY = y + h - mm(22);
     if (item.barcode) {
-      drawFakeBarcode(doc, item.barcode, x + pad, y + h - mm(15), innerW, mm(12), { color: WHITE });
+      drawBarcode128(doc, item.barcode, x + pad, barcodeY, innerW, mm(8.5), {
+        color: '#000000',
+        background: '#FFFFFF',
+        caption: 'ORIGINAL',
+        captionSize: 4.6,
+      });
+    }
+    if (item.internalBarcode) {
+      drawBarcode128(doc, item.internalBarcode, x + pad, y + h - mm(11), innerW, mm(8.5), {
+        color: '#000000',
+        background: '#FFFFFF',
+        caption: 'INTERNO',
+        captionSize: 4.6,
+      });
     }
     return;
   }
@@ -627,7 +712,7 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
   const footerY = y + h - footerH - mm(1);
   if (t.showBarcode !== false && item.barcode) {
     const barW = t.showQRCode ? innerW * 0.7 : innerW;
-    drawFakeBarcode(doc, item.barcode, padX, footerY, barW, footerH);
+    drawBarcode128(doc, item.barcode, padX, footerY, barW, footerH);
   }
   // QR é assíncrono, marcamos posição (renderizado em outra passada quando precisar)
   if (t.showQRCode && item.qrCodeValue) {

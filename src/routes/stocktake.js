@@ -419,7 +419,7 @@ router.post('/bipe', async (req, res) => {
       matched = await prisma.productSize.findMany({
         where: { barcode: { in: barcodeVariants(code) } },
         include: {
-          product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } },
+          product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, imageUrl: true } },
         },
       });
     } catch (e) {
@@ -431,7 +431,7 @@ router.post('/bipe', async (req, res) => {
       try {
         const nfeItem = await prisma.xmlFiscalItem.findFirst({
           where: { ean: { in: barcodeVariants(code) }, productId: { not: null } },
-          select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, active: true, imageUrl: true } } },
+          select: { ean: true, description: true, productId: true, product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, imageUrl: true } } },
           orderBy: { createdAt: 'desc' },
         });
         if (nfeItem && nfeItem.product) {
@@ -455,8 +455,31 @@ router.post('/bipe', async (req, res) => {
       }
     }
 
+    // CÃ³digo interno identifica o card inteiro, nÃ£o uma numeraÃ§Ã£o isolada.
+    // Por isso retornamos o produto mesmo quando ele tem vÃ¡rios tamanhos;
+    // o estoque fica pendente de tamanho, sem escolher uma variante por chute.
+    let internalProduct = null;
+    if (matched.length === 0) {
+      try {
+        internalProduct = await prisma.product.findFirst({
+          where: { internalBarcode: { in: barcodeVariants(code) }, active: true },
+          select: {
+            id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, imageUrl: true,
+            sizes: { select: { id: true, size: true, barcode: true, sizeConfirmedAt: true, stock: true }, orderBy: { size: 'asc' } },
+          },
+        });
+      } catch (e) {
+        console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_internal_barcode', error: e.message }));
+      }
+    }
+
     const resolution = chooseUniqueBarcodeCandidate(matched);
-    const { found, duplicate, chosen } = resolution;
+    const found = resolution.found || Boolean(internalProduct);
+    const duplicate = resolution.duplicate;
+    const internalOnlySize = internalProduct?.sizes?.length === 1 ? internalProduct.sizes[0] : null;
+    const chosen = resolution.chosen || (internalProduct
+      ? { id: internalOnlySize?.id || null, size: internalOnlySize?.size || null, barcode: code, product: internalProduct }
+      : null);
 
     // Snapshot do vendedor (se sellerId enviado e sellerName ausente)
     let sellerNameSnap = sellerName || null;
@@ -511,6 +534,8 @@ router.post('/bipe', async (req, res) => {
         console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'storestock_apply', error: e.message }));
         blockedReason = 'stock_apply_failed';
       }
+    } else if (chosen && !chosen.id) {
+      blockedReason = 'missing_size';
     } else if (duplicate) {
       blockedReason = 'ambiguous_barcode';
     } else if (resolution.inactiveOnly) {
@@ -521,13 +546,21 @@ router.post('/bipe', async (req, res) => {
 
     // Regra Adidas (dono 2026-06-10): tamanho não-confirmado → frontend pede o número da caixa.
     // As opções vêm da FAIXA escrita no item (dono 2026-06-11): só os tamanhos daquele produto.
-    const needsSizeResp = chosen ? needsManualSize(chosen.product.brand, chosen) : false;
-    const sizeOptionsResp = needsSizeResp ? await sizeOptionsForBipe(chosen.product.name, code) : null;
+    const needsSizeResp = chosen ? (!chosen.id || needsManualSize(chosen.product.brand, chosen)) : false;
+    const internalSizeOptions = internalProduct?.sizes?.map((s) => ({
+      size: s.size,
+      stock: s.stock,
+      productSizeId: s.id,
+      barcode: s.barcode,
+    })) || [];
+    const sizeOptionsResp = needsSizeResp
+      ? (internalSizeOptions.length ? internalSizeOptions : await sizeOptionsForBipe(chosen.product.name, code))
+      : null;
 
     // CHECAGEM INTELIGENTE (dono 2026-06-11): contraprova pelo COMPRADO — Σbipes do código
     // não pode passar do comprado. Passou => alerta na tela (registro fica; regra: conferir, não apagar).
     let alertaDup = null;
-    if (chosen) {
+    if (chosen?.id) {
       try {
         const psRow = await prisma.productSize.findUnique({ where: { id: chosen.id }, select: { stock: true } });
         const comprado = (psRow && psRow.stock) || 0;
@@ -552,6 +585,7 @@ router.post('/bipe', async (req, res) => {
             brand: chosen.product.brand,
             size: chosen.size,
             sku: chosen.product.sku,
+            internalBarcode: chosen.product.internalBarcode || null,
             imageUrl: chosen.product.imageUrl,
             active: chosen.product.active,
           }
@@ -647,12 +681,28 @@ router.get('/lookup/:barcode', async (req, res) => {
   try {
     const code = String(req.params.barcode || '').trim();
     if (!code) return res.status(400).json({ error: 'barcode vazio' });
-    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, active: true, price: true, promoPrice: true } } }, take: 5 });
+    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, price: true, promoPrice: true } } }, take: 5 });
     const active = sizes.filter((s) => s.product && s.product.active);
     if (active.length) {
       if (active.length > 1) return res.json({ recognized: true, ambiguous: true, product: null });
       const s = active[0];
-      return res.json({ recognized: true, ambiguous: false, product: { id: s.product.id, productSizeId: s.id, name: s.product.name, brand: s.product.brand, size: s.size, sizeConfirmedAt: s.sizeConfirmedAt, price: s.product.price, promoPrice: s.product.promoPrice } });
+      return res.json({ recognized: true, ambiguous: false, product: { id: s.product.id, productSizeId: s.id, name: s.product.name, brand: s.product.brand, size: s.size, sizeConfirmedAt: s.sizeConfirmedAt, price: s.product.price, promoPrice: s.product.promoPrice, internalBarcode: s.product.internalBarcode || null } });
+    }
+    const internal = await prisma.product.findFirst({
+      where: { internalBarcode: { in: barcodeVariants(code) }, active: true },
+      select: {
+        id: true, name: true, brand: true, sku: true, internalBarcode: true, price: true, promoPrice: true,
+        sizes: { select: { id: true, size: true, barcode: true, stock: true, sizeConfirmedAt: true }, orderBy: { size: 'asc' } },
+      },
+    });
+    if (internal) {
+      return res.json({
+        recognized: true,
+        ambiguous: false,
+        needsSize: internal.sizes.length > 1,
+        sizeOptions: internal.sizes.map((s) => ({ productSizeId: s.id, size: s.size, stock: s.stock, barcode: s.barcode })),
+        product: { id: internal.id, productSizeId: internal.sizes.length === 1 ? internal.sizes[0].id : null, name: internal.name, brand: internal.brand, size: internal.sizes.length === 1 ? internal.sizes[0].size : null, sizeConfirmedAt: internal.sizes.length === 1 ? internal.sizes[0].sizeConfirmedAt : null, sku: internal.sku, internalBarcode: internal.internalBarcode, price: internal.price, promoPrice: internal.promoPrice },
+      });
     }
     const x = await prisma.xmlFiscalItem.findFirst({ where: { ean: code }, select: { id: true, description: true } });
     res.json({ recognized: false, inNfe: !!x, nfeDescription: x ? x.description : null });

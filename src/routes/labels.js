@@ -12,6 +12,7 @@ const {
   isFourSideProductTemplate,
 } = require('../services/labelGenerator');
 const { resolveBrandLogoUrl } = require('../services/brandLogoResolver');
+const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -201,6 +202,11 @@ router.get('/batches/:id/pdf', async (req, res) => {
         include: { sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } } },
       })
       : [];
+    for (const product of products) {
+      if (!product.internalBarcode) {
+        product.internalBarcode = await ensureProductInternalBarcode(prisma, product);
+      }
+    }
     const byId = Object.fromEntries(products.map((p) => [p.id, p]));
     const brandNames = [...new Set(products.map((p) => String(p.brand || '').trim()).filter(Boolean))];
     const brandSlugs = [...new Set(brandNames.flatMap((name) => [brandSlug(name), brandSlugCompact(name)]).filter(Boolean))];
@@ -324,7 +330,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
         size: sizeStr,
         price: it.price != null ? it.price : (p ? p.price : null),
         promotionalPrice: it.promotionalPrice != null ? it.promotionalPrice : (p ? p.promoPrice : null),
+        // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
+        internalBarcode: p?.internalBarcode || null,
         qrCodeValue: it.qrCodeValue || (p ? `${baseUrl}/p/${p.id}` : null),
         quantity: it.quantity || 1,
       };
