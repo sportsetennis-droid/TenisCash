@@ -360,7 +360,7 @@ async function loadLogoBuffer(value) {
     // Todas as logos desta etiqueta são impressas em branco sobre o laranja.
     // Mantemos o canal alfa original e trocamos apenas os pixels visíveis.
     const sharp = require('sharp');
-    const { data, info } = await sharp(raw).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { data, info } = await sharp(raw).ensureAlpha().trim().raw().toBuffer({ resolveWithObject: true });
     for (let i = 0; i < data.length; i += info.channels) {
       data[i] = 255;
       data[i + 1] = 255;
@@ -435,16 +435,14 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
   const pad = mm(3);
   const innerW = Math.max(mm(5), w - pad * 2);
-  doc.rect(x, y, w, h).fillColor(ORANGE).fill();
-  // As células da grade encostam umas nas outras. A linha branca funciona
-  // como guia visual contínua para a navalha, mantendo a etiqueta em 5x7 cm.
+  // As células da grade encostam umas nas outras. A faixa branca preenchida
+  // funciona como guia contínua para a navalha, sem criar linha escura na
+  // rasterização do PDF, mantendo a etiqueta em 5x7 cm.
   const cutBorder = mm(FOUR_SIDE_CUT_BORDER_MM);
-  doc.save();
-  doc.rect(x + cutBorder / 2, y + cutBorder / 2, w - cutBorder, h - cutBorder)
-    .lineWidth(cutBorder)
-    .strokeColor('#FFFFFF')
-    .stroke();
-  doc.restore();
+  doc.rect(x, y, w, h).fillColor('#FFFFFF').fill();
+  doc.rect(x + cutBorder, y + cutBorder, w - cutBorder * 2, h - cutBorder * 2)
+    .fillColor(ORANGE)
+    .fill();
 
   const centered = (text, fs, yy, opts = {}) => {
     doc.font(FONT_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
