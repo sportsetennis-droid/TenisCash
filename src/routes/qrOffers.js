@@ -28,7 +28,12 @@ function plateCode(n) { return `placa-${String(n).padStart(2, '0')}`; }
 
 // Os QR codes já impressos continuam apontando para a URL fixa do TenisCash.
 // Essa URL redireciona para a loja, onde o script da Nuvemshop apresenta a oferta.
-function storeOfferUrl(code) { return `${STORE_BASE}/?oferta=${encodeURIComponent(code)}`; }
+function offerCategoryHandle(code) { return `ofertas${String(code).replace(/[^a-z0-9]/gi, '')}`; }
+
+function storeOfferUrl(code, couponCode) {
+  const base = `${STORE_BASE}/${offerCategoryHandle(code)}/`;
+  return couponCode ? `${base}?coupon=${encodeURIComponent(couponCode)}` : base;
+}
 
 function fixedQrUrl(code) { return `${PUBLIC_BASE}/oferta/${code}`; }
 
@@ -195,7 +200,49 @@ async function publishOffer(offer) {
     coupon = await ns.createCoupon(conn, { code, discountPct: offer.discountPct, valid: true });
   }
   await deactivateBoardOffers(offer.boardId, offer.id);
-  return prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'ACTIVE', couponCode: code, nsCouponId: coupon && coupon.id != null ? String(coupon.id) : offer.nsCouponId, publishedAt: new Date() } });
+  const updated = await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'ACTIVE', couponCode: code, nsCouponId: coupon && coupon.id != null ? String(coupon.id) : offer.nsCouponId, publishedAt: new Date() } });
+  syncOfferCategory(offer, conn).catch((e) => console.error('[qr-offers/category]', e.message));
+  return updated;
+}
+
+function localizedValue(value) {
+  if (!value || typeof value !== 'object') return String(value || '');
+  return String(value.pt || value.pt_BR || value['pt-BR'] || Object.values(value)[0] || '');
+}
+
+// Cria/atualiza a categoria oculta que funciona como vitrine da placa.
+// A categoria não é adicionada ao menu; o endereço só é divulgado no QR.
+async function syncOfferCategory(offer, conn) {
+  const code = plateCode(offer.board.number);
+  const handle = offerCategoryHandle(code);
+  const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
+  const categories = Array.isArray(listed) ? listed : [];
+  let category = categories.find((item) => localizedValue(item.handle) === handle);
+  if (!category) {
+    category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
+      name: { pt: `OfertasPlaca${String(offer.board.number).padStart(2, '0')}` },
+      description: { pt: 'Ofertas exclusivas da placa. Confira o preço normal no site e use o cupom da placa no checkout.' },
+      visibility: 'hidden',
+    });
+  } else if (category.visibility !== 'hidden') {
+    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, { visibility: 'hidden' });
+  }
+
+  const localIds = (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
+  const mappings = await prisma.nuvemshopProductMapping.findMany({ where: { localProductId: { in: localIds } }, select: { localProductId: true, nuvemshopProductId: true } });
+  const selected = new Set(mappings.map((row) => String(row.nuvemshopProductId)));
+  const current = await ns.nuvemshopApi(conn, 'GET', `/products?category_id=${encodeURIComponent(category.id)}&per_page=100&page=1`);
+  const related = Array.isArray(current) ? current : [];
+  const remoteIds = new Set([...related.map((item) => String(item.id)), ...selected]);
+  for (const remoteId of remoteIds) {
+    const product = await ns.getProduct(conn, remoteId);
+    const before = Array.isArray(product.categories) ? product.categories.map((id) => Number(id)) : [];
+    const has = before.includes(Number(category.id));
+    const shouldHave = selected.has(String(remoteId));
+    const after = shouldHave ? Array.from(new Set([...before, Number(category.id)])) : before.filter((id) => id !== Number(category.id));
+    if (has !== shouldHave) await ns.updateProduct(conn, remoteId, { categories: after });
+  }
+  return { id: category.id, handle, url: storeOfferUrl(code) };
 }
 
 // ---------------- ADMIN ----------------
@@ -241,6 +288,19 @@ adminRouter.get('/offers', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+adminRouter.post('/plates/:plate/sync-category', async (req, res) => {
+  try {
+    const n = plateNumber(req.params.plate);
+    if (!n) return res.status(400).json({ error: 'Placa deve ser entre 01 e 12' });
+    const offer = await prisma.qROffer.findFirst({ where: { board: { number: n }, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { board: true, products: { include: { product: true } } } });
+    if (!offer) return res.status(404).json({ error: 'A placa não tem oferta ativa' });
+    const conn = await activeConnection();
+    if (!conn) return res.status(502).json({ error: 'Nuvemshop não está conectada' });
+    const category = await syncOfferCategory(offer, conn);
+    res.json({ category, destinationUrl: storeOfferUrl(plateCode(n), offer.couponCode) });
+  } catch (e) { res.status(502).json({ error: 'Não foi possível sincronizar a categoria da placa', detail: e.message }); }
+});
+
 adminRouter.post('/offers', async (req, res) => {
   try {
     const n = plateNumber(req.body.plate);
@@ -274,7 +334,7 @@ adminRouter.post('/offers/:id/publish', async (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
     if (new Date(offer.endsAt) <= new Date()) return res.status(400).json({ error: 'A validade da oferta já terminou' });
     const updated = await publishOffer(offer);
-    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}`, destinationUrl: storeOfferUrl(offer.board.code) });
+    res.json({ offer: updated, fixedUrl: `${PUBLIC_BASE}/oferta/${offer.board.code}`, destinationUrl: storeOfferUrl(offer.board.code, updated.couponCode) });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -373,9 +433,7 @@ publicRouter.get('/oferta/:plate', async (req, res) => {
     // impresso permanece igual; só a experiência final muda para a Nuvemshop.
     res.set('Cache-Control', 'no-store');
     const { offer } = await findOfferByPlate(n);
-    const target = offer && offer.products && offer.products[0] && offer.products[0].storeUrl
-      ? offer.products[0].storeUrl
-      : storeOfferUrl(plateCode(n));
+    const target = offer ? storeOfferUrl(plateCode(n), offer.couponCode) : storeOfferUrl(plateCode(n));
     return res.redirect(302, target);
     const { board, offer: legacyOffer } = await findOfferByPlate(n);
     const code = board ? board.code : plateCode(n);
