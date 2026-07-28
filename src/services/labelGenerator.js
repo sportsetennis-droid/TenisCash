@@ -656,14 +656,14 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     }
     if (sizes) {
       doc.font(FONT_REGULAR).fontSize(6.2).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
+        .text(sizes, x + pad, y + mm(26), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
       if (usePromo && item.price != null) {
         const oldPriceText = `DE ${fmtBRL(item.price)}`;
-        const oldPriceY = y + h - mm(39);
+        const oldPriceY = y + h - mm(37);
         doc.font(FONT_MEDIUM).fontSize(13.5).fillColor(WHITE)
           .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
         // Risco explícito no centro do texto: não depende do suporte do
@@ -676,18 +676,18 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
           .stroke().restore();
         doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
+          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.5), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
       } else {
         doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(fmtBRL(value), x + pad, y + h - mm(27), { width: innerW, align: 'center', lineBreak: false });
+          .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.5), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
       }
     }
     // O preço fica na faixa superior e o código ocupa a faixa inferior,

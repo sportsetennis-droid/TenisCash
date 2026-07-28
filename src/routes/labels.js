@@ -79,6 +79,19 @@ function roundLabelPrice(value) {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
 }
 
+function extractLabelReference(product, context, item) {
+  const candidates = [context?.supplierRef, item?.supplierRef, product?.sku, item?.customText, product?.name]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  // A referência comercial é o código CK do modelo; o SKU interno do card
+  // não deve ocupar esse campo quando o CK estiver disponível.
+  for (const candidate of candidates) {
+    const match = candidate.match(/\bCK[0-9A-Z]{4,}\b/i);
+    if (match) return match[0].toUpperCase();
+  }
+  return candidates[0] || '';
+}
+
 // Garante que os templates default existem (idempotente)
 async function ensureDefaultTemplates() {
   const defaults = defaultTemplates();
@@ -349,12 +362,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .filter(Boolean)
         .join(' | ') || '';
       const categoryLabel = labelStyle(p, cls);
-      const referenceCandidates = [ctx.supplierRef, it.supplierRef, p?.sku]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean);
-      const reference = referenceCandidates.find((value) => /^CK[\w-]+$/i.test(value))
-        || referenceCandidates[0]
-        || '';
+      const reference = extractLabelReference(p, ctx, it);
       const price = it.price != null ? Number(it.price) : (p ? Number(p.price) : null);
       const configuredPromo = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
