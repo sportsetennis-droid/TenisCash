@@ -4518,15 +4518,20 @@ async function openAuthedFile(path) {
         }
       } catch {}
       alert('Não foi possível abrir o arquivo: ' + msg);
-      return;
+      return false;
     }
     const blob = await r.blob();
     const blobUrl = URL.createObjectURL(blob);
-    window.open(blobUrl, '_blank');
+    // Alguns navegadores bloqueiam window.open depois do fetch assíncrono.
+    // Nesse caso, abre o PDF na própria aba para que o arquivo não desapareça.
+    const popup = window.open(blobUrl, '_blank');
+    if (!popup) window.location.href = blobUrl;
     // Revoga após 60s pra liberar memória mas dar tempo do browser abrir
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    return true;
   } catch (e) {
     alert('Erro ao abrir arquivo: ' + e.message);
+    return false;
   }
 }
 window.openAuthedFile = openAuthedFile;
@@ -9913,10 +9918,13 @@ async function labelsGenerateAutomatic() {
     await loadLabelBatches();
     // Abre o primeiro lote automaticamente. Os demais ficam disponíveis na
     // tabela LOTES GERADOS, separados por loja.
-    await openAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf');
+    const opened = await openAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf');
+    if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
-    alert(`${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s).\nUma etiqueta por modelo, sem duplicar por tamanho.${suffix}`);
+    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${suffix}`;
+    const cartSummary = document.getElementById('labels-cart-summary');
+    if (cartSummary) cartSummary.textContent = summary;
   } catch (e) {
     alert('Erro ao gerar etiquetas automaticamente: ' + e.message);
   } finally {
