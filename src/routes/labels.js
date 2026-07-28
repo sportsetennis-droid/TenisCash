@@ -18,6 +18,9 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
+const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
+const LABEL_PROMOTION_FACTOR = 0.70;
+
 function labelsPerProduct(template) {
   return isFourSideProductTemplate(template) ? 2 : 1;
 }
@@ -42,18 +45,91 @@ function isConverseBrand(value) {
 }
 
 function isTennisProduct(product) {
-  const fields = [product?.category, product?.subcategory]
-    .map((value) => String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase())
+  const fields = [product?.name, product?.category, product?.subcategory]
+    .map(normalizeLabelText)
     .filter(Boolean);
   return fields.some((value) => /\btenis\b/.test(value));
+}
+
+function normalizeLabelText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const CLOTHING_TYPES = [
+  ['short saia', 'Short Saia'],
+  ['calca legging', 'Calça Legging'],
+  ['calca', 'Calça'],
+  ['bermuda', 'Bermuda'],
+  ['camiseta', 'Camiseta'],
+  ['camisa', 'Camisa'],
+  ['regata', 'Regata'],
+  ['legging', 'Legging'],
+  ['macaquinho', 'Macaquinho'],
+  ['macacao', 'Macacão'],
+  ['conjunto', 'Conjunto'],
+  ['cropped', 'Cropped'],
+  ['vestido', 'Vestido'],
+  ['short', 'Short'],
+  ['saia', 'Saia'],
+  ['top', 'Top'],
+  ['blusa', 'Blusa'],
+  ['jaqueta', 'Jaqueta'],
+  ['casaco', 'Casaco'],
+  ['moletom', 'Moletom'],
+  ['body', 'Body'],
+  ['biquini', 'Biquíni'],
+  ['maio', 'Maiô'],
+];
+
+function clothingType(product, source) {
+  const fields = [source, product?.category, product?.subcategory].map(normalizeLabelText).filter(Boolean);
+  for (const [needle, label] of CLOTHING_TYPES) {
+    if (fields.some((field) => new RegExp(`\\b${needle}\\b`).test(field))) return { needle, label };
+  }
+  return null;
+}
+
+function removeBrandPrefix(value, brand) {
+  const text = String(value || '').trim();
+  if (!brand) return text;
+  const escaped = String(brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(`^${escaped}[\\s-]*`, 'i'), '').trim();
+}
+
+function removeTypePrefix(value, needle) {
+  const words = String(value || '').trim().split(/\s+/).filter(Boolean);
+  const typeWords = String(needle || '').split(/\s+/).filter(Boolean);
+  const normalizedWords = words.map(normalizeLabelText);
+  const normalizedTypeWords = typeWords.map(normalizeLabelText);
+  if (!normalizedTypeWords.length || normalizedWords.slice(0, normalizedTypeWords.length).join(' ') !== normalizedTypeWords.join(' ')) return String(value || '').trim();
+  return words.slice(normalizedTypeWords.length).join(' ').trim();
+}
+
+function labelClothingName(product, source) {
+  const brand = String(product?.brand || '').trim();
+  const type = clothingType(product, source);
+  if (!type) return '';
+  let description = String(source || '').trim();
+  // Aceita cadastro com a marca antes do tipo: "Caju Brasil Bermuda ...".
+  description = removeBrandPrefix(description, brand);
+  description = removeTypePrefix(description, type.needle);
+  // E também o formato já parcialmente montado: "Bermuda Caju Brasil ...".
+  description = removeBrandPrefix(description, brand);
+  return [type.label, brand, description].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function labelProductName(product, fallback = '') {
   const source = String(product?.name || fallback || '').trim();
   const brand = String(product?.brand || '').trim();
+  const clothingName = labelClothingName(product, source);
+  const converseTennis = isConverseBrand(product?.brand)
+    && (isTennisProduct(product) || /all[\s-]*star|chuck[\s-]*taylor|star[\s-]*player/i.test(source));
+  if (clothingName && !converseTennis) return clothingName;
   if (!isConverseBrand(product?.brand) && !isTennisProduct(product)) return source;
   if (!isConverseBrand(product?.brand)) {
     // Para todos os tênis, a etiqueta começa com o tipo e a marca. Removemos
@@ -451,12 +527,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const configuredPromo = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
         : (p?.promoPrice != null ? Number(p.promoPrice) : null);
-      // Os 15% são uma prévia exclusiva da etiqueta e não alteram o preço no
+      // Os 30% são uma prévia exclusiva da etiqueta, condicionada à compra de
       // cadastro nem no caixa. Se já houver promoção cadastrada, ela prevalece.
       const promotionalPrice = configuredPromo != null
         ? configuredPromo
         : (isFourSideProductTemplate(batch.template) && Number.isFinite(price) && price > 0
-          ? roundLabelPrice(price * 0.85)
+          ? roundLabelPrice(price * LABEL_PROMOTION_FACTOR)
           : null);
       return {
         name: productName,
@@ -478,6 +554,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         size: sizeStr,
         price,
         promotionalPrice,
+        promotionText: LABEL_PROMOTION_TEXT,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
         internalBarcode: p?.internalBarcode || null,

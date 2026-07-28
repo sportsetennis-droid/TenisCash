@@ -664,6 +664,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const ckReference = referenceSource.match(/\b(CK\d{8})/i);
     const reference = (ckReference ? ckReference[1] : referenceSource).toUpperCase();
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
+    const promotionText = String(item.promotionText || '').trim();
     const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Tipografia hierárquica: nome forte, referência discreta e estilo em
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
@@ -722,6 +723,22 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
           .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
       }
+    }
+    if (promotionText) {
+      const offer = promotionText.toUpperCase();
+      let offerFs = 5.2;
+      for (; offerFs >= 3.5; offerFs -= 0.25) {
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(offerFs);
+        if (doc.widthOfString(offer) <= innerW) break;
+      }
+      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(Math.max(3.5, offerFs)).fillColor(WHITE)
+        .text(offer, x + pad, y + h - mm(14.8), {
+          width: innerW,
+          height: mm(3.2),
+          align: 'center',
+          lineBreak: false,
+          ellipsis: false,
+        });
     }
     // O preço fica na faixa superior e o código ocupa a faixa inferior,
     // aproveitando o espaço livre sem encostar na borda de corte.
