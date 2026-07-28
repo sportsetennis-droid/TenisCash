@@ -672,8 +672,16 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     // O estilo fica imediatamente abaixo do nome do produto, para que a
     // categoria seja lida como parte da identificação principal.
     if (categoryLabel) {
-      doc.font(FONT_CLASSIC_BOLD).fontSize(6.5).fillColor(WHITE)
-        .text(categoryLabel.toUpperCase(), x + pad, y + mm(18), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
+      // A categoria/estilo nunca deve receber reticÃªncias. Ajustamos a
+      // fonte atÃ© a frase inteira caber na largura da etiqueta.
+      const categoryText = categoryLabel.toUpperCase();
+      let categoryFs = 6.5;
+      for (; categoryFs >= 4; categoryFs -= 0.25) {
+        doc.font(FONT_CLASSIC_BOLD).fontSize(categoryFs);
+        if (doc.widthOfString(categoryText) <= innerW) break;
+      }
+      doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(4, categoryFs)).fillColor(WHITE)
+        .text(categoryText, x + pad, y + mm(18), { width: innerW, height: mm(6), align: 'center', ellipsis: false, lineBreak: false });
     }
     if (reference) {
       doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
