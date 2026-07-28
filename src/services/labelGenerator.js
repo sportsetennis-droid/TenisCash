@@ -14,14 +14,18 @@ const { Buffer } = require('buffer');
 const fs = require('fs');
 const path = require('path');
 
-const LABEL_FONT_REGULAR = path.join(__dirname, '../../node_modules/@expo-google-fonts/roboto/400Regular/Roboto_400Regular.ttf');
-const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/roboto/700Bold/Roboto_700Bold.ttf');
+// Inter tem desenho mais editorial e espaçamento mais equilibrado para uma
+// etiqueta premium, sem perder leitura em impressão pequena.
+const LABEL_FONT_REGULAR = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf');
+const LABEL_FONT_MEDIUM = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf');
+const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf');
 
 function registerLabelFonts(doc) {
-  if (!fs.existsSync(LABEL_FONT_REGULAR) || !fs.existsSync(LABEL_FONT_BOLD)) return false;
+  if (!fs.existsSync(LABEL_FONT_REGULAR) || !fs.existsSync(LABEL_FONT_MEDIUM) || !fs.existsSync(LABEL_FONT_BOLD)) return false;
   try {
-    doc.registerFont('TenisRoboto', LABEL_FONT_REGULAR);
-    doc.registerFont('TenisRobotoBold', LABEL_FONT_BOLD);
+    doc.registerFont('TenisInter', LABEL_FONT_REGULAR);
+    doc.registerFont('TenisInterMedium', LABEL_FONT_MEDIUM);
+    doc.registerFont('TenisInterBold', LABEL_FONT_BOLD);
     return true;
   } catch {
     return false;
@@ -499,8 +503,9 @@ async function loadStoreLogoParts(value) {
 
 function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const WHITE = '#FFFFFF';
-  const FONT_REGULAR = doc._tenisLabelFonts ? 'TenisRoboto' : 'Helvetica';
-  const FONT_BOLD = doc._tenisLabelFonts ? 'TenisRobotoBold' : 'Helvetica-Bold';
+  const FONT_REGULAR = doc._tenisLabelFonts ? 'TenisInter' : 'Helvetica';
+  const FONT_MEDIUM = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
+  const FONT_BOLD = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   // PDFKit interpreta arrays de quatro componentes como CMYK em percentuais.
   const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -600,7 +605,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     doc.font(FONT_BOLD).fontSize(9.5).fillColor(WHITE)
       .text(productName, x + pad, y + mm(5), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
     if (reference) {
-      doc.font(FONT_REGULAR).fontSize(6.6).fillColor(WHITE)
+      doc.font(FONT_MEDIUM).fontSize(6.6).fillColor(WHITE)
         .text(`REF.: ${reference}`, x + pad, y + mm(19), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (categoryLabel) {
@@ -608,7 +613,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         .text(categoryLabel.toUpperCase(), x + pad, y + mm(25), { width: innerW, height: mm(7), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (sizes) {
-      doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
+      doc.font(FONT_MEDIUM).fontSize(6.5).fillColor(WHITE)
         .text(sizes, x + pad, y + mm(32), { width: innerW, height: mm(8), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
