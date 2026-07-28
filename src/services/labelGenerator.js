@@ -712,31 +712,43 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.8), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(18.2), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.2), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
       } else {
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.8), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(18.2), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.2), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
       }
     }
-    if (promotionText) {
+    if (promotionText && usePromo) {
       const offer = promotionText.toUpperCase();
-      let offerFs = 4.8;
-      for (; offerFs >= 3.8; offerFs -= 0.2) {
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(offerFs);
-        if (doc.widthOfString(offer) <= innerW) break;
-      }
-      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(Math.max(3.5, offerFs)).fillColor(WHITE)
-        // A oferta fica imediatamente abaixo do preço promocional e nunca
-        // disputa espaço com pagamento ou código de barras.
-        .text(offer, x + pad, y + h - mm(21.4), {
+      const percentMatch = offer.match(/(\d+)\s*%/);
+      const calculatedPercent = Number.isFinite(Number(item.price)) && Number(item.price) > 0
+        ? Math.round((1 - Number(value) / Number(item.price)) * 100)
+        : null;
+      const percent = percentMatch ? percentMatch[1] : calculatedPercent;
+      const discountLine = percent ? `COM ${percent}% DE DESCONTO` : 'COM DESCONTO';
+      const conditionMatch = offer.match(/LEVANDO\s+(.+)/i);
+      const conditionLine = conditionMatch ? `LEVANDO ${conditionMatch[1]}` : 'LEVANDO 3 PRODUTOS';
+
+      // Vincula visualmente a porcentagem ao preço final, em vez de deixar
+      // uma frase promocional solta no rodapé da etiqueta.
+      doc.font(FONT_CLASSIC_BOLD).fontSize(6.2).fillColor(WHITE)
+        .text(discountLine, x + pad, y + h - mm(22.8), {
           width: innerW,
-          height: mm(2.8),
+          height: mm(2.6),
+          align: 'center',
+          lineBreak: false,
+          ellipsis: false,
+        });
+      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.2).fillColor(WHITE)
+        .text(conditionLine, x + pad, y + h - mm(20.2), {
+          width: innerW,
+          height: mm(2.4),
           align: 'center',
           lineBreak: false,
           ellipsis: false,
