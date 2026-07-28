@@ -654,7 +654,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
-   .text('Aponte a camera para consultar', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
+   .text('Aponte sua câmera', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
 }
 
 function drawLabelContent(doc, item, template, x, y, w, h) {
