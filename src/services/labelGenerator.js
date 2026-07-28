@@ -712,29 +712,31 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(18.8), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.2), { width: innerW, align: 'center', lineBreak: false });
       } else {
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
+          .text('À VISTA', x + pad, y + h - mm(18.8), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.2), { width: innerW, align: 'center', lineBreak: false });
       }
     }
     if (promotionText) {
       const offer = promotionText.toUpperCase();
-      let offerFs = 5.2;
-      for (; offerFs >= 3.5; offerFs -= 0.25) {
+      let offerFs = 4.8;
+      for (; offerFs >= 3.8; offerFs -= 0.2) {
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(offerFs);
         if (doc.widthOfString(offer) <= innerW) break;
       }
       doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(Math.max(3.5, offerFs)).fillColor(WHITE)
-        .text(offer, x + pad, y + h - mm(14.8), {
+        // A oferta fica imediatamente abaixo do preço promocional e nunca
+        // disputa espaço com pagamento ou código de barras.
+        .text(offer, x + pad, y + h - mm(21.4), {
           width: innerW,
-          height: mm(3.2),
+          height: mm(2.8),
           align: 'center',
           lineBreak: false,
           ellipsis: false,
