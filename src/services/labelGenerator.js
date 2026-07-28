@@ -417,15 +417,17 @@ async function loadLogoBuffer(value) {
   if (!v) return null;
   try {
     let raw;
+    let isSvg = false;
     if (v.startsWith('data:image/')) {
       const b64 = v.split(',')[1];
       raw = b64 ? Buffer.from(b64, 'base64') : null;
+      isSvg = /^data:image\/svg\+xml/i.test(v);
     } else {
       if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
       const response = await fetch(v);
       if (!response.ok) return null;
       const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-      const isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
+      isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
       const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
       if (!isSvg && !isRaster) return null;
       raw = Buffer.from(await response.arrayBuffer());
@@ -435,7 +437,15 @@ async function loadLogoBuffer(value) {
     // Todas as logos desta etiqueta são impressas em branco sobre o laranja.
     // Mantemos o canal alfa original e trocamos apenas os pixels visíveis.
     const sharp = require('sharp');
-    const { data, info } = await sharp(raw).ensureAlpha().trim().raw().toBuffer({ resolveWithObject: true });
+    // O Simple Icons entrega SVG em dimensões pequenas (geralmente 24 px).
+    // Renderizamos antes em alta resolução para que o PDF não amplie um bitmap
+    // minúsculo e deixe a marca serrilhada na impressão.
+    const source = sharp(raw, isSvg ? { density: 300 } : undefined)
+      .ensureAlpha()
+      .resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: false })
+      .trim()
+      .sharpen({ sigma: 1 });
+    const { data, info } = await source.raw().toBuffer({ resolveWithObject: true });
     for (let i = 0; i < data.length; i += info.channels) {
       data[i] = 255;
       data[i + 1] = 255;
