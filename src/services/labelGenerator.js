@@ -660,7 +660,9 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 
   if (side === 'details') {
     const productName = String(item.productName || item.name || '').trim();
-    const reference = String(item.reference || item.supplierRef || item.sku || '').trim();
+    const referenceSource = String(item.reference || item.supplierRef || '').trim();
+    const ckReference = referenceSource.match(/\b(CK\d{8})/i);
+    const reference = (ckReference ? ckReference[1] : referenceSource).toUpperCase();
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Tipografia hierárquica: nome forte, referência discreta e estilo em

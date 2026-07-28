@@ -80,16 +80,19 @@ function roundLabelPrice(value) {
 }
 
 function extractLabelReference(product, context, item) {
-  const candidates = [context?.supplierRef, item?.supplierRef, product?.sku, item?.customText, product?.name]
+  const candidates = [context?.supplierRef, item?.supplierRef, item?.customText, product?.name]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   // A referência comercial é o código CK do modelo; o SKU interno do card
-  // não deve ocupar esse campo quando o CK estiver disponível.
+  // nunca deve ocupar esse campo. Para Converse, o código-base tem CK + oito
+  // dígitos; se o fornecedor anexar tamanho ao final, preservamos só o CK.
   for (const candidate of candidates) {
-    const match = candidate.match(/\bCK[0-9A-Z]{4,}\b/i);
+    const match = candidate.match(/\b(CK\d{8})/i);
     if (match) return match[0].toUpperCase();
   }
-  return candidates[0] || '';
+  // Para outras marcas, aceita somente uma referência alfanumérica de
+  // fornecedor; valores de SKU interno, EAN e descrições não entram na etiqueta.
+  return candidates.find((candidate) => /^[A-Z]{2,4}[A-Z0-9]{4,12}$/i.test(candidate)) || '';
 }
 
 // Garante que os templates default existem (idempotente)
