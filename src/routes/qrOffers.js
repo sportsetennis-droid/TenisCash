@@ -441,7 +441,16 @@ publicRouter.get('/qr-ofertas/:plate.png', async (req, res) => {
   } catch (e) { res.status(500).type('text').send('QR indisponivel'); }
 });
 
-publicRouter.get('/oferta/:plate', async (req, res) => {
+// Compatibilidade para placas que tenham sido impressas com uma variação
+// antiga do caminho. Todas continuam levando à mesma categoria atual.
+publicRouter.get([
+  '/oferta/:plate',
+  '/oferta/placa:plate',
+  '/ofertas/:plate',
+  '/ofertasplaca:plate',
+  '/ofertasplaca/:plate',
+  '/qr-oferta/:plate',
+], async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
     if (!n) return res.status(404).type('html').send('<h1>Placa inválida</h1>');
