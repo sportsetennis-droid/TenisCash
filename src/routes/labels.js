@@ -11,7 +11,7 @@ const {
   isDuplexTemplate,
   isFourSideProductTemplate,
 } = require('../services/labelGenerator');
-const { resolveBrandLogoUrl } = require('../services/brandLogoResolver');
+const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brandLogoResolver');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 
 const router = express.Router();
@@ -436,13 +436,13 @@ router.get('/batches/:id/pdf', async (req, res) => {
       })
       : [];
     const brandLogos = new Map();
-    brandProfileRows.forEach((row) => {
-      if (!row.logoUrl) return;
+    await Promise.all(brandProfileRows.map(async (row) => {
+      if (!row.logoUrl || !await validateBrandLogoUrl(row.logoUrl)) return;
       brandLogos.set(brandSlug(row.slug), row.logoUrl);
       brandLogos.set(brandSlugCompact(row.slug), row.logoUrl);
       brandLogos.set(brandSlug(row.displayName), row.logoUrl);
       brandLogos.set(brandSlugCompact(row.displayName), row.logoUrl);
-    });
+    }));
 
     // Quando a logo ainda não foi cadastrada no painel, tenta obter uma
     // correspondência exata em fontes públicas de logos SVG/PNG transparentes.
@@ -479,7 +479,10 @@ router.get('/batches/:id/pdf', async (req, res) => {
       select: { id: true, logoUrl: true },
       take: 1,
     });
-    let storeLogoUrl = storeProfiles[0]?.logoUrl || null;
+    let storeLogoUrl = storeProfiles[0]?.logoUrl
+      && await validateBrandLogoUrl(storeProfiles[0].logoUrl)
+      ? storeProfiles[0].logoUrl
+      : null;
     if (!storeLogoUrl && isFourSideProductTemplate(batch.template)) {
       storeLogoUrl = await resolveBrandLogoUrl(storeName);
       if (storeLogoUrl && storeProfiles[0]?.id) {

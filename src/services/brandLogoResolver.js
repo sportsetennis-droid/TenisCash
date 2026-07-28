@@ -10,7 +10,12 @@
 const SIMPLE_ICONS_CDN = 'https://cdn.simpleicons.org';
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
 const CACHE = new Map();
+const QUALITY_CACHE = new Map();
 const REQUEST_TIMEOUT_MS = 4500;
+const MIN_RASTER_LOGO_WIDTH = 512;
+const MIN_RASTER_LOGO_HEIGHT = 64;
+const fs = require('fs');
+const path = require('path');
 const sharp = require('sharp');
 
 // Slugs que não seguem exatamente o nome comercial no catálogo do Simple Icons.
@@ -25,12 +30,24 @@ const SIMPLE_ICON_ALIASES = {
 // Logo oficial publicada pela própria loja Sports & Tennis no cabeçalho do
 // site institucional. O arquivo é PNG transparente e tem resolução suficiente
 // para a etiqueta; a URL é mantida aqui para não usar uma marca parecida.
+const CAJUBRASIL_OFFICIAL_SVG = (() => {
+  try {
+    const file = path.join(__dirname, '../../assets/logos/cajubrasil-negative.svg');
+    return `data:image/svg+xml;base64,${fs.readFileSync(file).toString('base64')}`;
+  } catch (err) {
+    console.warn('[brand-logo] vetor oficial da Cajubrasil indisponivel:', err.message);
+    return null;
+  }
+})();
+
+const CAJUBRASIL_FALLBACK_URL = 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png';
+
 const OFFICIAL_LOGO_URLS = {
   'sports and tennis': 'https://d2az8otjr0j19j.cloudfront.net/templates/007/890/890/twig/static/images/st-logo-sports-tennis-white-transparent-20260601.png?v=20260601-logo3',
   // Logo oficial publicada no cabeÃ§alho da loja da Caju Brasil (PNG com
   // canal alfa, hospedada no prÃ³prio domÃ­nio VTEX da marca).
-  'caju brasil': 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png',
-  'cajubrasil': 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png',
+  'caju brasil': CAJUBRASIL_OFFICIAL_SVG || CAJUBRASIL_FALLBACK_URL,
+  'cajubrasil': CAJUBRASIL_OFFICIAL_SVG || CAJUBRASIL_FALLBACK_URL,
 };
 
 // Termos comuns do catálogo que costumam retornar logos de instituições,
@@ -112,7 +129,9 @@ async function officialCandidate(name) {
   const url = OFFICIAL_LOGO_URLS[normalized]
     || (normalized.startsWith('sports and tennis ') ? OFFICIAL_LOGO_URLS['sports and tennis'] : null);
   if (!url) return null;
-  return (await hasTransparentBackground(url, 'image/png')) ? url : null;
+  const mime = /^data:([^;,]+)/i.exec(url)?.[1]
+    || (/\.svg(?:$|\?)/i.test(url) ? 'image/svg+xml' : 'image/png');
+  return (await hasTransparentBackground(url, mime)) ? url : null;
 }
 
 function commonsTitleScore(title, brand) {
@@ -198,17 +217,32 @@ async function commonsCandidate(name) {
 
 async function hasTransparentBackground(url, mime) {
   try {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) return false;
-    const bytes = Buffer.from(await response.arrayBuffer());
+    let bytes;
+    let resolvedMime = String(mime || '');
+    if (/^data:image\//i.test(String(url || ''))) {
+      const match = String(url).match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/is);
+      if (!match) return false;
+      resolvedMime = match[1] || resolvedMime;
+      const payload = match[2] || '';
+      bytes = /;base64/i.test(match[0].slice(0, match[0].indexOf(',') + 1))
+        ? Buffer.from(payload, 'base64')
+        : Buffer.from(decodeURIComponent(payload));
+    } else {
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) return false;
+      resolvedMime = response.headers.get('content-type') || resolvedMime;
+      bytes = Buffer.from(await response.arrayBuffer());
+    }
     if (bytes.length > 8 * 1024 * 1024) return false;
-    if (/svg/i.test(String(mime || '')) || /\.svg(?:$|\?)/i.test(url)) {
+    if (/svg/i.test(resolvedMime) || /\.svg(?:$|\?)/i.test(url)) {
       const source = bytes.toString('utf8');
       // SVGs sem uma camada de fundo são escaláveis e preservam transparência.
       // Rejeita apenas o padrão explícito de uma tela branca ocupando tudo.
       return !/<rect[^>]+(?:width=["']100%["'][^>]+height=["']100%["']|height=["']100%["'][^>]+width=["']100%["'])[^>]+fill=["'](?:#fff(?:fff)?|white)["']/i.test(source);
     }
     const metadata = await sharp(bytes).metadata();
+    if (Number(metadata.width || 0) < MIN_RASTER_LOGO_WIDTH
+      || Number(metadata.height || 0) < MIN_RASTER_LOGO_HEIGHT) return false;
     if (!metadata.hasAlpha) return false;
     const stats = await sharp(bytes).stats();
     const alpha = stats.channels?.[stats.channels.length - 1];
@@ -243,11 +277,31 @@ async function resolveBrandLogoUrl(name) {
   return resolved || null;
 }
 
+/**
+ * Valida uma logo cadastrada manualmente antes de permitir a impressão.
+ * Isso impede que uma imagem transparente, porém pequena demais, seja
+ * ampliada e saia pixelada na etiqueta.
+ */
+async function validateBrandLogoUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return false;
+  if (QUALITY_CACHE.has(value)) return QUALITY_CACHE.get(value);
+  const mime = /^data:([^;,]+)/i.exec(value)?.[1]
+    || (/\.svg(?:$|\?)/i.test(value) ? 'image/svg+xml' : '');
+  const promise = hasTransparentBackground(value, mime);
+  QUALITY_CACHE.set(value, promise);
+  const valid = await promise;
+  QUALITY_CACHE.set(value, valid);
+  return valid;
+}
+
 function clearBrandLogoCache() {
   CACHE.clear();
+  QUALITY_CACHE.clear();
 }
 
 module.exports = {
   resolveBrandLogoUrl,
+  validateBrandLogoUrl,
   clearBrandLogoCache,
 };
