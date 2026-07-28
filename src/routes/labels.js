@@ -36,6 +36,44 @@ function brandSlugCompact(value) {
   return brandSlug(value).replace(/-/g, '');
 }
 
+function isConverseBrand(value) {
+  const slug = brandSlug(value);
+  return slug === 'converse' || slug.includes('converse');
+}
+
+function labelProductName(product, fallback = '') {
+  const source = String(product?.name || fallback || '').trim();
+  if (!isConverseBrand(product?.brand)) return source;
+  const normalized = source
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (/all[\s-]*star|chuck[\s-]*taylor/.test(normalized)) {
+    return 'TÊNIS ALL STAR CHUCK TAYLOR CONVERSE';
+  }
+  return 'TÊNIS CONVERSE STAR PLAYER';
+}
+
+function cleanLabelCategory(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  // Gênero serve para filtro do catálogo, não para a etiqueta física.
+  if (/^(tenis|calcados?)\s+(mulher|feminino|homem|masculino)$/.test(normalized)) return '';
+  return text;
+}
+
+function labelStyle(product, classification = {}) {
+  if (isConverseBrand(product?.brand)) return 'ESTILO DE VIDA CLÁSSICO';
+  const parts = [product?.category, product?.subcategory, classification.modality, classification.tier]
+    .map(cleanLabelCategory)
+    .filter(Boolean);
+  return [...new Set(parts)].join(' · ');
+}
+
 // Garante que os templates default existem (idempotente)
 async function ensureDefaultTemplates() {
   const defaults = defaultTemplates();
@@ -291,8 +329,6 @@ router.get('/batches/:id/pdf', async (req, res) => {
         catch { return {}; }
       })();
       const cls = ctx.classification || {};
-      // Mapeia gênero pra label curta de etiqueta
-      const genderLabel = { 'Masculino': 'HOMEM', 'Feminino': 'MULHER', 'Inf. M': 'MENINO', 'Inf. F': 'MENINA' }[cls.gender] || cls.gender || '';
       // Tamanho: extrai do customText ("Tam: 38") ou it.size se houver
       let sizeStr = it.size || null;
       if (!sizeStr && it.customText) {
@@ -301,29 +337,28 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
+      const productName = labelProductName(p, baseName);
       const availableSizes = p?.sizes
         ?.filter((s) => Number(s.stock || 0) > 0)
         .map((s) => s.size)
         .filter(Boolean)
         .join(' | ') || '';
-      const productName = baseName;
-      const categoryParts = [p?.category, p?.subcategory, cls.modality, cls.tier]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean);
-      const categoryLabel = [...new Set(categoryParts)].join(' · ');
+      const categoryLabel = labelStyle(p, cls);
+      const reference = String(p?.sku || ctx.supplierRef || it.supplierRef || '').trim();
       return {
         name: productName,
         productName,
         description: productName,
         categoryLabel,
+        reference,
         availableSizes,
         storeName,
         storeLogoUrl,
         brand: p ? p.brand : '',
         brandLogoUrl: p ? (brandLogos.get(brandSlug(p.brand)) || brandLogos.get(brandSlugCompact(p.brand)) || null) : null,
-        sku: p ? p.sku : '',
-        supplierRef: ctx.supplierRef || null,
-        gender: genderLabel,
+        sku: reference,
+        supplierRef: reference || null,
+        gender: '',
         category: p ? p.category : '',
         modality: cls.modality || '',
         tier: cls.tier || '',

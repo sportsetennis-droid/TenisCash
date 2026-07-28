@@ -528,7 +528,9 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   if (side === 'brand') {
     if (item._brandLogoBuffer) {
       try {
-        doc.image(item._brandLogoBuffer, x + pad, y + h * 0.28, {
+        // Centraliza a logo pelo centro da etiqueta; o box anterior começava
+        // em 28% da altura e deixava a marca visualmente baixa.
+        doc.image(item._brandLogoBuffer, x + pad, y + h * 0.22, {
           fit: [innerW, h * 0.56],
           align: 'center',
           valign: 'center',
@@ -590,28 +592,41 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 
   if (side === 'details') {
     const productName = String(item.productName || item.name || '').trim();
+    const reference = String(item.reference || item.supplierRef || item.sku || '').trim();
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const sizes = item.availableSizes ? `Disponiveis: ${item.availableSizes}` : '';
-    doc.font(FONT_BOLD).fontSize(7).fillColor(WHITE)
-     .text('DESCRICAO DO PRODUTO', x + pad, y + pad, { width: innerW, align: 'center', lineBreak: false });
-    doc.font(FONT_BOLD).fontSize(10).fillColor(WHITE)
-      .text(productName, x + pad, y + pad + mm(5), { width: innerW, height: mm(11), align: 'center', ellipsis: true });
+    // Tipografia hierárquica: nome forte, referência discreta e estilo em
+    // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
+    doc.font(FONT_BOLD).fontSize(9.5).fillColor(WHITE)
+      .text(productName, x + pad, y + mm(5), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
+    if (reference) {
+      doc.font(FONT_REGULAR).fontSize(6.6).fillColor(WHITE)
+        .text(`REF.: ${reference}`, x + pad, y + mm(19), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
+    }
     if (categoryLabel) {
-      doc.font(FONT_BOLD).fontSize(7).fillColor(WHITE)
-        .text(categoryLabel, x + pad, y + mm(21), { width: innerW, height: mm(8), align: 'center', ellipsis: true });
+      doc.font(FONT_BOLD).fontSize(7.2).fillColor(WHITE)
+        .text(categoryLabel.toUpperCase(), x + pad, y + mm(25), { width: innerW, height: mm(7), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (sizes) {
       doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(30), { width: innerW, height: mm(10), align: 'center', ellipsis: true });
+        .text(sizes, x + pad, y + mm(32), { width: innerW, height: mm(8), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
-      doc.font(FONT_BOLD).fontSize(16).fillColor(WHITE)
-        .text(fmtBRL(value), x + pad, y + h - mm(28), { width: innerW, align: 'center', lineBreak: false });
       if (usePromo && item.price != null) {
         doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
-          .text(`De ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false, strike: true });
+          .text(`DE ${fmtBRL(item.price)}`, x + pad, y + h - mm(36), { width: innerW, align: 'center', lineBreak: false, strike: true });
+        doc.font(FONT_BOLD).fontSize(15).fillColor(WHITE)
+          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
+        const discountPercent = Math.round((1 - Number(value) / Number(item.price)) * 100);
+        if (discountPercent > 0 && Number.isFinite(discountPercent)) {
+          doc.font(FONT_BOLD).fontSize(6.5).fillColor(WHITE)
+            .text(`${discountPercent}% OFF`, x + pad, y + h - mm(20), { width: innerW, align: 'center', lineBreak: false });
+        }
+      } else {
+        doc.font(FONT_BOLD).fontSize(15).fillColor(WHITE)
+          .text(fmtBRL(value), x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
       }
     }
     // O preço fica na faixa superior e o código ocupa a faixa inferior,
