@@ -440,18 +440,50 @@ async function loadLogoBuffer(value) {
     // O Simple Icons entrega SVG em dimensões pequenas (geralmente 24 px).
     // Renderizamos antes em alta resolução para que o PDF não amplie um bitmap
     // minúsculo e deixe a marca serrilhada na impressão.
-    const source = sharp(raw, isSvg ? { density: 300 } : undefined)
+    const sourceOptions = isSvg ? { density: 300 } : {};
+    const metadata = await sharp(raw, sourceOptions).metadata();
+    const source = sharp(raw, sourceOptions)
       .ensureAlpha()
       .resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: false })
-      .trim()
       .sharpen({ sigma: 1 });
     const { data, info } = await source.raw().toBuffer({ resolveWithObject: true });
+
+    // Algumas logos foram cadastradas como JPG com fundo laranja. Retiramos
+    // apenas um fundo de cor uniforme, preservando a borda antialiasada do
+    // desenho. Logos PNG/SVG já transparentes não passam por esta máscara.
+    let background = null;
+    if (!metadata.hasAlpha && info.channels >= 4) {
+      const points = [
+        [0, 0],
+        [Math.max(0, info.width - 1), 0],
+        [0, Math.max(0, info.height - 1)],
+        [Math.max(0, info.width - 1), Math.max(0, info.height - 1)],
+      ].map(([x, y]) => {
+        const offset = (y * info.width + x) * info.channels;
+        return [data[offset], data[offset + 1], data[offset + 2]];
+      });
+      const spread = Math.max(...[0, 1, 2].map((channel) => Math.max(...points.map((point) => point[channel])) - Math.min(...points.map((point) => point[channel]))));
+      if (spread < 45) {
+        background = [0, 1, 2].map((channel) => Math.round(points.reduce((sum, point) => sum + point[channel], 0) / points.length));
+      }
+    }
     for (let i = 0; i < data.length; i += info.channels) {
+      if (background) {
+        const distance = Math.sqrt(
+          ((data[i] - background[0]) ** 2)
+          + ((data[i + 1] - background[1]) ** 2)
+          + ((data[i + 2] - background[2]) ** 2),
+        );
+        if (distance < 85) {
+          const edgeAlpha = Math.max(0, Math.min(255, Math.round(((distance - 12) / 73) * 255)));
+          data[i + 3] = Math.min(data[i + 3], edgeAlpha);
+        }
+      }
       data[i] = 255;
       data[i + 1] = 255;
       data[i + 2] = 255;
     }
-    return await sharp(data, { raw: info }).png().toBuffer();
+    return await sharp(data, { raw: info }).trim().png().toBuffer();
   } catch (err) {
     console.warn('[labels] logo da loja indisponivel; usando nome textual:', err?.message || err);
     return null;
