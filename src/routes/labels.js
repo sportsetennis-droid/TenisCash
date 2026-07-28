@@ -177,6 +177,32 @@ router.get('/templates', async (_req, res) => {
   }
 });
 
+// Opções da geração automática: lojas, marcas e categorias presentes no
+// catálogo ativo. O estoque por loja é aplicado somente no momento da geração.
+router.get('/options', async (_req, res) => {
+  try {
+    const [stores, products] = await Promise.all([
+      prisma.store.findMany({
+        where: { active: true },
+        select: { id: true, code: true, name: true },
+        orderBy: { code: 'asc' },
+      }),
+      prisma.product.findMany({
+        where: { active: true },
+        select: { brand: true, category: true },
+      }),
+    ]);
+    const brands = [...new Set(products.map((p) => String(p.brand || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    const categories = [...new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    res.json({ stores, brands, categories });
+  } catch (err) {
+    console.error('[labels/options] erro:', err);
+    res.status(500).json({ error: 'Erro ao carregar opções de etiquetas' });
+  }
+});
+
 router.post('/batches', async (req, res) => {
   try {
     const { name, templateId, storeId, items } = req.body || {};
@@ -258,7 +284,18 @@ router.get('/batches/:id/pdf', async (req, res) => {
     const products = productIds.length
       ? await prisma.product.findMany({
         where: { id: { in: productIds } },
-        include: { sizes: { select: { size: true, stock: true }, orderBy: { size: 'asc' } } },
+        include: {
+          sizes: {
+            select: {
+              size: true,
+              stock: true,
+              storeStocks: batch.storeId
+                ? { where: { storeId: batch.storeId }, select: { stock: true } }
+                : true,
+            },
+            orderBy: { size: 'asc' },
+          },
+        },
       })
       : [];
     for (const product of products) {
@@ -360,7 +397,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const baseName = p ? p.name : (it.customText || '');
       const productName = labelProductName(p, baseName);
       const availableSizes = p?.sizes
-        ?.filter((s) => Number(s.stock || 0) > 0)
+        ?.filter((s) => batch.storeId
+          ? (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
+          : Number(s.stock || 0) > 0)
         .map((s) => s.size)
         .filter(Boolean)
         .join(' | ') || '';
@@ -534,6 +573,110 @@ router.post('/batches/quick', async (req, res) => {
   } catch (err) {
     console.error('[labels/batches/quick] erro:', err);
     res.status(500).json({ error: 'Erro ao criar lote rápido', detail: err.message });
+  }
+});
+
+// Gera lotes automaticamente usando o estoque físico por loja.
+// A unidade da etiqueta é o modelo/produto: uma seleção cria um par físico
+// no template 5x7 (frente e verso), independentemente da quantidade de tamanhos.
+router.post('/batches/auto', async (req, res) => {
+  try {
+    const {
+      templateId,
+      name,
+      storeId,
+      allStores,
+      brand,
+      category,
+      usePromo,
+    } = req.body || {};
+    if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
+
+    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    if (!templateMeta) return res.status(404).json({ error: 'Template de etiqueta não encontrado' });
+
+    const generateForStore = allStores === true || storeId === 'all';
+    if (!generateForStore && !storeId) {
+      return res.status(400).json({ error: 'Escolha uma loja ou selecione todas as lojas' });
+    }
+
+    const stores = generateForStore
+      ? await prisma.store.findMany({
+        where: { active: true },
+        select: { id: true, code: true, name: true },
+        orderBy: { code: 'asc' },
+      })
+      : await prisma.store.findMany({
+        where: { id: storeId, active: true },
+        select: { id: true, code: true, name: true },
+        take: 1,
+      });
+    if (!stores.length) return res.status(404).json({ error: 'Loja não encontrada ou inativa' });
+
+    const batches = [];
+    const emptyStores = [];
+    for (const store of stores) {
+      const products = await prisma.product.findMany({
+        where: {
+          active: true,
+          ...(brand ? { brand: { equals: String(brand).trim(), mode: 'insensitive' } } : {}),
+          ...(category ? { category: { equals: String(category).trim(), mode: 'insensitive' } } : {}),
+          // Fonte da verdade: basta um tamanho com saldo físico positivo na loja.
+          sizes: { some: { storeStocks: { some: { storeId: store.id, stock: { gt: 0 } } } } },
+        },
+        select: { id: true, sku: true, price: true, promoPrice: true },
+        orderBy: [{ brand: 'asc' }, { name: 'asc' }],
+      });
+
+      if (!products.length) {
+        emptyStores.push({ storeId: store.id, code: store.code, name: store.name });
+        continue;
+      }
+
+      const items = products.map((p) => ({
+        productId: p.id,
+        // Uma etiqueta por modelo, nunca uma etiqueta por tamanho/quantidade em estoque.
+        quantity: 1,
+        price: p.price,
+        promotionalPrice: usePromo ? p.promoPrice : null,
+        barcode: p.sku,
+      }));
+      const totalLabels = items.length * labelsPerProduct(templateMeta);
+      const filterName = [brand && `marca ${brand}`, category && `categoria ${category}`]
+        .filter(Boolean)
+        .join(' · ');
+      const batch = await prisma.labelBatch.create({
+        data: {
+          name: name || `Etiquetas ${store.code}${filterName ? ` — ${filterName}` : ''}`,
+          templateId,
+          storeId: store.id,
+          createdById: req.userId,
+          status: 'DRAFT',
+          totalLabels,
+          items: { create: items },
+        },
+        include: { items: true, template: true },
+      });
+      batches.push({
+        id: batch.id,
+        name: batch.name,
+        storeId: store.id,
+        storeCode: store.code,
+        storeName: store.name,
+        models: products.length,
+        physicalLabels: totalLabels,
+      });
+    }
+
+    res.json({
+      batches,
+      totalBatches: batches.length,
+      totalModels: batches.reduce((sum, b) => sum + b.models, 0),
+      emptyStores,
+    });
+  } catch (err) {
+    console.error('[labels/batches/auto] erro:', err);
+    res.status(500).json({ error: 'Erro ao gerar etiquetas automaticamente', detail: err.message });
   }
 });
 

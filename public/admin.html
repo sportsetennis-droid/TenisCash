@@ -1864,6 +1864,14 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
     <span style="font-size:12px;color:var(--text2)">Novo padrão: 5 × 7 cm · 2 etiquetas por produto · 4 faces · logos da marca e da loja (cadastro ou busca automática confiável) · fundo laranja CMYK C0 M80 Y100 K0 · QR Code</span>
   </div>
+  <div id="labels-auto-panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:12px 14px;background:#fff7f2;border:1px solid #ffd8c5;border-radius:12px">
+    <strong style="font-size:12px;color:#8d3216;letter-spacing:.4px">GERAÇÃO AUTOMÁTICA</strong>
+    <select id="labels-auto-store" class="search-box" style="min-width:220px"><option value="all">Todas as lojas — um lote por loja</option></select>
+    <select id="labels-auto-brand" class="search-box" style="min-width:170px"><option value="">Todas as marcas</option></select>
+    <select id="labels-auto-category" class="search-box" style="min-width:170px"><option value="">Todas as categorias</option></select>
+    <button type="button" id="labels-generate-auto" style="padding:9px 14px;background:#8d3216;color:white;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">⚡ GERAR POR FILTROS</button>
+    <span style="font-size:11px;color:#8e6253">Uma etiqueta por modelo com estoque na loja — nunca por tamanho.</span>
+  </div>
   <!-- Compat: hidden -->
   <input type="hidden" id="labels-search">
   <input type="hidden" id="labels-qty" value="1">
@@ -9847,16 +9855,80 @@ let _labelsSelected = {}; // legacy
 let _lblSel = {};
 let _lblCacheProducts = {};
 let _lblTemplates = {};
+let _lblAutoOptionsLoaded = false;
 function _lblQuantity(entry) {
   if (!entry) return 0;
   if (entry.quantity != null) return Math.max(0, Number(entry.quantity) || 0);
   return Object.values(entry.sizes || {}).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
 }
+async function loadLabelAutoOptions() {
+  const storeSel = document.getElementById('labels-auto-store');
+  const brandSel = document.getElementById('labels-auto-brand');
+  const categorySel = document.getElementById('labels-auto-category');
+  if (!storeSel || !brandSel || !categorySel) return;
+  try {
+    const data = await api('/admin/labels/options');
+    if (data.error) throw new Error(data.error);
+    const currentStore = storeSel.value || 'all';
+    const currentBrand = brandSel.value || '';
+    const currentCategory = categorySel.value || '';
+    storeSel.innerHTML = '<option value="all">Todas as lojas — um lote por loja</option>'
+      + (data.stores || []).map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.code)} — ${escapeHtml(s.name)}</option>`).join('');
+    brandSel.innerHTML = '<option value="">Todas as marcas</option>'
+      + (data.brands || []).map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+    categorySel.innerHTML = '<option value="">Todas as categorias</option>'
+      + (data.categories || []).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    if ([...storeSel.options].some(o => o.value === currentStore)) storeSel.value = currentStore;
+    if ([...brandSel.options].some(o => o.value === currentBrand)) brandSel.value = currentBrand;
+    if ([...categorySel.options].some(o => o.value === currentCategory)) categorySel.value = currentCategory;
+    _lblAutoOptionsLoaded = true;
+  } catch (e) {
+    console.warn('opções de geração automática de etiquetas', e);
+  }
+}
+async function labelsGenerateAutomatic() {
+  const button = document.getElementById('labels-generate-auto');
+  const templateId = document.getElementById('labels-template')?.value;
+  const storeValue = document.getElementById('labels-auto-store')?.value || 'all';
+  const brand = document.getElementById('labels-auto-brand')?.value || '';
+  const category = document.getElementById('labels-auto-category')?.value || '';
+  if (!templateId) { alert('Escolha um modelo de etiqueta.'); return; }
+  if (button) { button.disabled = true; button.textContent = 'GERANDO...'; }
+  try {
+    const data = await api('/admin/labels/batches/auto', 'POST', {
+      templateId,
+      storeId: storeValue === 'all' ? null : storeValue,
+      allStores: storeValue === 'all',
+      brand: brand || null,
+      category: category || null,
+      usePromo: !!document.getElementById('labels-use-promo')?.checked,
+    });
+    if (data.error) { alert(data.error + (data.detail ? '\n\n' + data.detail : '')); return; }
+    const batches = data.batches || [];
+    if (!batches.length) {
+      alert('Nenhum modelo com estoque físico encontrou esses filtros.');
+      await loadLabelBatches();
+      return;
+    }
+    await loadLabelBatches();
+    // Abre o primeiro lote automaticamente. Os demais ficam disponíveis na
+    // tabela LOTES GERADOS, separados por loja.
+    await openAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf');
+    const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
+    const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
+    alert(`${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s).\nUma etiqueta por modelo, sem duplicar por tamanho.${suffix}`);
+  } catch (e) {
+    alert('Erro ao gerar etiquetas automaticamente: ' + e.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = '⚡ GERAR POR FILTROS'; }
+  }
+}
 async function initLabelsTab() {
   if (!_labelsInit) {
     _labelsInit = true;
-    document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelBatches(); labelsSearchProducts(); };
+    document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelAutoOptions(); loadLabelBatches(); labelsSearchProducts(); };
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
+    document.getElementById('labels-generate-auto').onclick = labelsGenerateAutomatic;
     document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
     document.getElementById('labels-cart-add-all').onclick = () => {
@@ -9877,6 +9949,7 @@ async function initLabelsTab() {
     }
   }
   await loadLabelTemplates();
+  if (!_lblAutoOptionsLoaded) await loadLabelAutoOptions();
   // Auto-seleciona o novo modelo 5×7 duplex; mantém fallback para instalações antigas.
   const sel = document.getElementById('labels-template');
   if (sel) {
@@ -10251,7 +10324,9 @@ async function labelsSearchProducts() {
   products.forEach(p => {
     const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
     const cls = ctx.classification || {};
-    const ref = ctx.supplierRef || p.sku;
+    const refRaw = String(ctx.supplierRef || '').trim();
+    const refMatch = refRaw.match(/\b(CK\d{8})/i);
+    const ref = (refMatch ? refMatch[1] : refRaw) || 'não cadastrada';
     const sel = _lblSel[p.id] || { sizes: {} };
     const totalThis = _lblQuantity(sel);
     const sizes = (p.sizes || []).map(s => ({ size: s.size, stock: s.stock || 0, qty: sel.sizes?.[s.size] || 0 }));
