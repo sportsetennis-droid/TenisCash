@@ -662,10 +662,21 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
       if (usePromo && item.price != null) {
-        doc.font(FONT_MEDIUM).fontSize(8.2).fillColor(WHITE)
-          .text(`DE ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false });
+        const oldPriceText = `DE ${fmtBRL(item.price)}`;
+        const oldPriceY = y + h - mm(39);
+        doc.font(FONT_MEDIUM).fontSize(13.5).fillColor(WHITE)
+          .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
+        // Risco explícito no centro do texto: não depende do suporte do
+        // PDFKit à opção strike e permanece visível na impressão.
+        const oldPriceWidth = Math.min(innerW, doc.widthOfString(oldPriceText));
+        const oldPriceX = x + (w - oldPriceWidth) / 2;
+        const oldPriceLineY = oldPriceY + 13.5 * 0.72;
+        doc.save().strokeColor(WHITE).lineWidth(0.9)
+          .moveTo(oldPriceX, oldPriceLineY)
+          .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
+          .stroke().restore();
         doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(27), { width: innerW, align: 'center', lineBreak: false });
+          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
           .text('À VISTA', x + pad, y + h - mm(18.5), { width: innerW, align: 'center', lineBreak: false });
         doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
