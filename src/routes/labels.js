@@ -61,14 +61,33 @@ function cleanLabelCategory(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-  // Gênero serve para filtro do catálogo, não para a etiqueta física.
-  if (/^(tenis|calcados?)\s+(mulher|feminino|homem|masculino)$/.test(normalized)) return '';
-  return text;
+  // Categoria, subcategoria e gênero servem para filtro do catálogo, não
+  // para a etiqueta física. A regra é geral: nunca deixar "tênis",
+  // "homem", "mulher" ou equivalentes escaparem para nenhuma etiqueta.
+  const withoutCatalogTerms = normalized
+    .replace(/\b(?:tenis|calcados?|shoes|footwear)\b/g, ' ')
+    .replace(/\b(?:homem|masculino|mulher|feminino|men|women|unissex|unisex)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!withoutCatalogTerms) return '';
+  if (withoutCatalogTerms === normalized) return text;
+  // Rótulos como "Tênis de corrida" não devem virar "de corrida".
+  const cleaned = text
+    .replace(/\b(?:tênis|tenis|calçados?|shoes|footwear)\b/gi, ' ')
+    .replace(/\b(?:homem|masculino|mulher|feminino|men|women|unissex|unisex)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^de\s+/i, '')
+    .trim();
+  return cleaned;
 }
 
 function labelStyle(product, classification = {}) {
   if (isConverseBrand(product?.brand)) return 'ESTILO DE VIDA CLÁSSICO';
-  const parts = [product?.category, product?.subcategory, classification.modality, classification.tier]
+  // Não usamos category/subcategory do catálogo: eles são dimensões de
+  // busca (normalmente "Tênis Homem/Mulher") e não devem aparecer na arte.
+  // Mantemos apenas a classificação comercial já definida para a etiqueta.
+  const parts = [classification.modality, classification.tier]
     .map(cleanLabelCategory)
     .filter(Boolean);
   return [...new Set(parts)].join(' · ');
