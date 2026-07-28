@@ -41,9 +41,32 @@ function isConverseBrand(value) {
   return slug === 'converse' || slug.includes('converse');
 }
 
+function isTennisProduct(product) {
+  const fields = [product?.category, product?.subcategory]
+    .map((value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase())
+    .filter(Boolean);
+  return fields.some((value) => /\btenis\b/.test(value));
+}
+
 function labelProductName(product, fallback = '') {
   const source = String(product?.name || fallback || '').trim();
-  if (!isConverseBrand(product?.brand)) return source;
+  const brand = String(product?.brand || '').trim();
+  if (!isConverseBrand(product?.brand) && !isTennisProduct(product)) return source;
+  if (!isConverseBrand(product?.brand)) {
+    // Para todos os tênis, a etiqueta começa com o tipo e a marca. Removemos
+    // prefixos que já possam existir no cadastro para não duplicá-los.
+    let description = source
+      .replace(/^t[eê]nis\s+/i, '')
+      .trim();
+    if (brand) {
+      const brandPattern = new RegExp(`^${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s-]*`, 'i');
+      description = description.replace(brandPattern, '').trim();
+    }
+    return ['Tênis', brand, description].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
   const normalized = source
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
