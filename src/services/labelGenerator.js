@@ -14,22 +14,40 @@ const { Buffer } = require('buffer');
 const fs = require('fs');
 const path = require('path');
 
-// Inter tem desenho mais editorial e espaçamento mais equilibrado para uma
-// etiqueta premium, sem perder leitura em impressão pequena.
+// A etiqueta usa famílias locais para manter o mesmo resultado no PDF e na
+// impressão. Roboto Slab é a tipografia principal, com peso e desenho clássico.
 const LABEL_FONT_REGULAR = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf');
 const LABEL_FONT_MEDIUM = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf');
 const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf');
+const LABEL_FONT_CLASSIC_REGULAR = path.join(__dirname, '../../assets/fonts/RobotoSlab-Regular.ttf');
+const LABEL_FONT_CLASSIC_SEMIBOLD = path.join(__dirname, '../../assets/fonts/RobotoSlab-SemiBold.ttf');
+const LABEL_FONT_CLASSIC_BOLD = path.join(__dirname, '../../assets/fonts/RobotoSlab-Bold.ttf');
 
 function registerLabelFonts(doc) {
-  if (!fs.existsSync(LABEL_FONT_REGULAR) || !fs.existsSync(LABEL_FONT_MEDIUM) || !fs.existsSync(LABEL_FONT_BOLD)) return false;
-  try {
-    doc.registerFont('TenisInter', LABEL_FONT_REGULAR);
-    doc.registerFont('TenisInterMedium', LABEL_FONT_MEDIUM);
-    doc.registerFont('TenisInterBold', LABEL_FONT_BOLD);
-    return true;
-  } catch {
-    return false;
+  let interRegistered = false;
+  if (fs.existsSync(LABEL_FONT_REGULAR) && fs.existsSync(LABEL_FONT_MEDIUM) && fs.existsSync(LABEL_FONT_BOLD)) {
+    try {
+      doc.registerFont('TenisInter', LABEL_FONT_REGULAR);
+      doc.registerFont('TenisInterMedium', LABEL_FONT_MEDIUM);
+      doc.registerFont('TenisInterBold', LABEL_FONT_BOLD);
+      interRegistered = true;
+    } catch {
+      interRegistered = false;
+    }
   }
+
+  doc._tenisClassicLabelFonts = false;
+  if (fs.existsSync(LABEL_FONT_CLASSIC_REGULAR) && fs.existsSync(LABEL_FONT_CLASSIC_SEMIBOLD) && fs.existsSync(LABEL_FONT_CLASSIC_BOLD)) {
+    try {
+      doc.registerFont('TenisSlab', LABEL_FONT_CLASSIC_REGULAR);
+      doc.registerFont('TenisSlabSemiBold', LABEL_FONT_CLASSIC_SEMIBOLD);
+      doc.registerFont('TenisSlabBold', LABEL_FONT_CLASSIC_BOLD);
+      doc._tenisClassicLabelFonts = true;
+    } catch {
+      doc._tenisClassicLabelFonts = false;
+    }
+  }
+  return interRegistered;
 }
 
 const MM_TO_PT = 2.83464567; // 1mm = 2.83464567pt
@@ -548,6 +566,9 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const FONT_REGULAR = doc._tenisLabelFonts ? 'TenisInter' : 'Helvetica';
   const FONT_MEDIUM = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
   const FONT_BOLD = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  const FONT_CLASSIC = doc._tenisClassicLabelFonts ? 'TenisSlab' : FONT_REGULAR;
+  const FONT_CLASSIC_SEMIBOLD = doc._tenisClassicLabelFonts ? 'TenisSlabSemiBold' : FONT_MEDIUM;
+  const FONT_CLASSIC_BOLD = doc._tenisClassicLabelFonts ? 'TenisSlabBold' : FONT_BOLD;
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   // PDFKit interpreta arrays de quatro componentes como CMYK em percentuais.
   const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -563,7 +584,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     .fill();
 
   const centered = (text, fs, yy, opts = {}) => {
-    doc.font(FONT_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
+    doc.font(FONT_CLASSIC_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
       width: innerW,
       align: 'center',
       lineBreak: opts.lineBreak !== false,
@@ -644,20 +665,20 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Tipografia hierárquica: nome forte, referência discreta e estilo em
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
-    doc.font(FONT_MEDIUM).fontSize(9).fillColor(WHITE)
+    doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(8.5).fillColor(WHITE)
       .text(productName, x + pad, y + mm(4), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
     // O estilo fica imediatamente abaixo do nome do produto, para que a
     // categoria seja lida como parte da identificação principal.
     if (categoryLabel) {
-      doc.font(FONT_BOLD).fontSize(6.8).fillColor(WHITE)
+      doc.font(FONT_CLASSIC_BOLD).fontSize(6.5).fillColor(WHITE)
         .text(categoryLabel.toUpperCase(), x + pad, y + mm(18), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (reference) {
-      doc.font(FONT_REGULAR).fontSize(6.4).fillColor(WHITE)
+      doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
         .text(`REF.: ${reference}`, x + pad, y + mm(24), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (sizes) {
-      doc.font(FONT_REGULAR).fontSize(6.2).fillColor(WHITE)
+      doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
         .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
@@ -666,7 +687,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       if (usePromo && item.price != null) {
         const oldPriceText = `DE ${fmtBRL(item.price)}`;
         const oldPriceY = y + h - mm(35);
-        doc.font(FONT_MEDIUM).fontSize(13.5).fillColor(WHITE)
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(13.5).fillColor(WHITE)
           .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
         // Risco explícito no centro do texto: não depende do suporte do
         // PDFKit à opção strike e permanece visível na impressão.
@@ -677,18 +698,18 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           .moveTo(oldPriceX, oldPriceLineY)
           .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
           .stroke().restore();
-        doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
+        doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
           .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
+        doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
           .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
       } else {
-        doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
+        doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
           .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
           .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
+        doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
           .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
       }
     }
@@ -716,7 +737,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const qrY = y + mm(13);
   doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
-  doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
+  doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
    .text('Aponte sua câmera', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
 }
 
