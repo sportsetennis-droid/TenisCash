@@ -96,6 +96,17 @@ adminRouter.get('/categories/by-handle/:handle', async (req, res) => {
   }
 });
 
+adminRouter.get('/categories/:id', async (req, res) => {
+  try {
+    const connection = await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' }, orderBy: { createdAt: 'desc' } });
+    if (!connection) return res.status(404).json({ error: 'Nuvemshop não está conectada' });
+    const category = await ns.nuvemshopApi(connection, 'GET', `/categories/${encodeURIComponent(req.params.id)}`);
+    res.json({ category });
+  } catch (err) {
+    res.status(502).json({ error: 'Não foi possível consultar a categoria', detail: err.message });
+  }
+});
+
 adminRouter.get('/sync-logs', async (_req, res) => {
   try {
     const logs = await prisma.nuvemshopSyncLog.findMany({
