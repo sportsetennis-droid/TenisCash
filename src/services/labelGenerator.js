@@ -697,7 +697,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     if (value != null) {
       if (usePromo && item.price != null) {
         const oldPriceText = `DE ${fmtBRL(item.price)}`;
-        const oldPriceY = y + h - mm(35);
+        const oldPriceY = y + h - mm(36.2);
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(13.5).fillColor(WHITE)
           .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
         // Risco explícito no centro do texto: não depende do suporte do
@@ -710,18 +710,18 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
           .stroke().restore();
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.2), { width: innerW, align: 'center', lineBreak: false });
+          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29.7), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.8).fillColor(WHITE)
+          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17.4), { width: innerW, height: mm(2.8), align: 'center', lineBreak: false, ellipsis: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
+          .text('', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
       } else {
         doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(18.2), { width: innerW, align: 'center', lineBreak: false });
+          .text(fmtBRL(value), x + pad, y + h - mm(29.7), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.8).fillColor(WHITE)
+          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17.4), { width: innerW, height: mm(2.8), align: 'center', lineBreak: false, ellipsis: false });
         doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
+          .text('', x + pad, y + h - mm(15.4), { width: innerW, align: 'center', lineBreak: false });
       }
     }
     if (promotionText && usePromo) {
@@ -737,16 +737,16 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 
       // Vincula visualmente a porcentagem ao preço final, em vez de deixar
       // uma frase promocional solta no rodapé da etiqueta.
-      doc.font(FONT_CLASSIC_BOLD).fontSize(6.2).fillColor(WHITE)
-        .text(discountLine, x + pad, y + h - mm(22.8), {
+      doc.font(FONT_CLASSIC_BOLD).fontSize(6.8).fillColor(WHITE)
+        .text(discountLine, x + pad, y + h - mm(24.2), {
           width: innerW,
           height: mm(2.6),
           align: 'center',
           lineBreak: false,
           ellipsis: false,
         });
-      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.2).fillColor(WHITE)
-        .text(conditionLine, x + pad, y + h - mm(20.2), {
+      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.6).fillColor(WHITE)
+        .text(conditionLine, x + pad, y + h - mm(21.4), {
           width: innerW,
           height: mm(2.4),
           align: 'center',
