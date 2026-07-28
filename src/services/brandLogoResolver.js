@@ -27,6 +27,10 @@ const SIMPLE_ICON_ALIASES = {
 // para a etiqueta; a URL é mantida aqui para não usar uma marca parecida.
 const OFFICIAL_LOGO_URLS = {
   'sports and tennis': 'https://d2az8otjr0j19j.cloudfront.net/templates/007/890/890/twig/static/images/st-logo-sports-tennis-white-transparent-20260601.png?v=20260601-logo3',
+  // Logo oficial publicada no cabeÃ§alho da loja da Caju Brasil (PNG com
+  // canal alfa, hospedada no prÃ³prio domÃ­nio VTEX da marca).
+  'caju brasil': 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png',
+  'cajubrasil': 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png',
 };
 
 // Termos comuns do catálogo que costumam retornar logos de instituições,
