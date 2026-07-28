@@ -74,11 +74,6 @@ function labelStyle(product, classification = {}) {
   return [...new Set(parts)].join(' · ');
 }
 
-function roundLabelPrice(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
-}
-
 function extractLabelReference(product, context, item) {
   const candidates = [context?.supplierRef, item?.supplierRef, item?.customText, product?.name]
     .map((value) => String(value || '').trim())
@@ -107,7 +102,7 @@ async function ensureDefaultTemplates() {
         if (existing) break;
       }
     }
-    // O template S&T horizontal usa QR e não usa código de barras.
+    // O template de certeza usa logos e código interno, sem preço e sem QR.
     const isST = isSTHorizontalTemplate(def);
     const isDuplex = isDuplexTemplate(def);
     const isFourSide = isFourSideProductTemplate(def);
@@ -124,10 +119,10 @@ async function ensureDefaultTemplates() {
       gapHorizontalMm: def.gapHorizontalMm || 0,
       gapVerticalMm: def.gapVerticalMm || 0,
       showLogo: true,
-      showPrice: true,
-      showPromotionalPrice: isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE',
+      showPrice: !isFourSide,
+      showPromotionalPrice: !isFourSide && (isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE'),
       showBarcode: isST ? false : def.type !== 'PROMOTIONAL',
-      showQRCode: isST || isFourSide,
+      showQRCode: isST,
       showSku: true,
       showProductName: true,
       showBrand: true,
@@ -210,6 +205,7 @@ router.post('/batches', async (req, res) => {
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'items é obrigatório' });
 
     const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    const suppressCommercial = isFourSideProductTemplate(templateMeta);
     const physicalPerProduct = labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {
@@ -224,10 +220,10 @@ router.post('/batches', async (req, res) => {
             productId: it.productId || null,
             inventoryId: it.inventoryId || null,
             quantity: parseInt(it.quantity, 10) || 1,
-            price: it.price != null ? Number(it.price) : null,
-            promotionalPrice: it.promotionalPrice != null ? Number(it.promotionalPrice) : null,
+            price: suppressCommercial ? null : (it.price != null ? Number(it.price) : null),
+            promotionalPrice: suppressCommercial ? null : (it.promotionalPrice != null ? Number(it.promotionalPrice) : null),
             barcode: it.barcode || null,
-            qrCodeValue: it.qrCodeValue || null,
+            qrCodeValue: suppressCommercial ? null : (it.qrCodeValue || null),
             customText: it.customText || null,
           })),
         },
@@ -379,6 +375,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
     // Base URL pra QRs apontarem pra página pública do produto
     const baseUrl = (req.headers.origin || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 
+    const fourSideBatch = isFourSideProductTemplate(batch.template);
     const items = batch.items.map((it) => {
       const p = it.productId ? byId[it.productId] : null;
       const ctx = (() => {
@@ -409,13 +406,11 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const configuredPromo = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
         : (p?.promoPrice != null ? Number(p.promoPrice) : null);
-      // Os 15% são uma prévia exclusiva da etiqueta e não alteram o preço no
-      // cadastro nem no caixa. Se já houver promoção cadastrada, ela prevalece.
-      const promotionalPrice = configuredPromo != null
+      const promotionalPrice = fourSideBatch
+        ? null
+        : configuredPromo != null
         ? configuredPromo
-        : (isFourSideProductTemplate(batch.template) && Number.isFinite(price) && price > 0
-          ? roundLabelPrice(price * 0.85)
-          : null);
+        : null;
       return {
         name: productName,
         productName,
@@ -434,12 +429,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
         modality: cls.modality || '',
         tier: cls.tier || '',
         size: sizeStr,
-        price,
+        price: fourSideBatch ? null : price,
         promotionalPrice,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
         internalBarcode: p?.internalBarcode || null,
-        qrCodeValue: it.qrCodeValue || (p ? `${baseUrl}/p/${p.id}` : null),
+        qrCodeValue: fourSideBatch ? null : (it.qrCodeValue || (p ? `${baseUrl}/p/${p.id}` : null)),
         quantity: it.quantity || 1,
       };
     });
@@ -523,6 +518,8 @@ router.post('/batches/quick', async (req, res) => {
   try {
     const { templateId, name, storeId, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
+    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    const suppressCommercial = isFourSideProductTemplate(templateMeta);
 
     let items = [];
     if (Array.isArray(selections) && selections.length) {
@@ -536,8 +533,8 @@ router.post('/batches/quick', async (req, res) => {
         return {
           productId: p.id,
           quantity: Math.max(1, parseInt(s.quantity, 10) || 1),
-          price: p.price,
-          promotionalPrice: usePromo ? p.promoPrice : null,
+          price: suppressCommercial ? null : p.price,
+          promotionalPrice: suppressCommercial ? null : (usePromo ? p.promoPrice : null),
           barcode: p.sku,
           customText: s.size ? ('Tam: ' + s.size) : null,
         };
@@ -547,15 +544,14 @@ router.post('/batches/quick', async (req, res) => {
       items = products.map((p) => ({
         productId: p.id,
         quantity: parseInt(quantityPerProduct, 10) || 1,
-        price: p.price,
-        promotionalPrice: usePromo ? p.promoPrice : null,
+        price: suppressCommercial ? null : p.price,
+        promotionalPrice: suppressCommercial ? null : (usePromo ? p.promoPrice : null),
         barcode: p.sku,
       }));
     } else {
       return res.status(400).json({ error: 'Envie productIds ou selections' });
     }
     if (!items.length) return res.status(400).json({ error: 'Nenhum item gerado' });
-    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
     const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0) * labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {
@@ -594,6 +590,7 @@ router.post('/batches/auto', async (req, res) => {
 
     const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
     if (!templateMeta) return res.status(404).json({ error: 'Template de etiqueta não encontrado' });
+    const suppressCommercial = isFourSideProductTemplate(templateMeta);
 
     const generateForStore = allStores === true || storeId === 'all';
     if (!generateForStore && !storeId) {
@@ -637,8 +634,8 @@ router.post('/batches/auto', async (req, res) => {
         productId: p.id,
         // Uma etiqueta por modelo, nunca uma etiqueta por tamanho/quantidade em estoque.
         quantity: 1,
-        price: p.price,
-        promotionalPrice: usePromo ? p.promoPrice : null,
+        price: suppressCommercial ? null : p.price,
+        promotionalPrice: suppressCommercial ? null : (usePromo ? p.promoPrice : null),
         barcode: p.sku,
       }));
       const totalLabels = items.length * labelsPerProduct(templateMeta);

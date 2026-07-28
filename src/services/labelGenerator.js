@@ -2,7 +2,7 @@
 // Label Generator — gera PDF de etiquetas usando pdfkit + bwip-js opcional
 // =====================================================================
 // Suporta: A4 (5x13, 3x10, 2x5, 2x2) e térmica (40x30, 50x30, 60x40, 100x50)
-// Renderiza: nome do produto, marca, SKU, preço normal, preço promo, código de barras (texto), QR.
+// Renderiza: nome do produto, marca, SKU, logos, frases de certeza e códigos internos.
 // Para evitar dependência extra de geração visual de barcode, desenha
 // código como retângulos simples (CODE128-like estético) + texto legível
 // embaixo. Para produção fiscal séria, integre bwip-js depois.
@@ -67,8 +67,8 @@ function isDuplexTemplate(template) {
   return Boolean(config && typeof config === 'object' && config.duplex === true);
 }
 
-// O padrÃ£o 5x7 cm usa duas etiquetas fÃ­sicas por produto. Cada etiqueta
-// tem frente e verso, portanto as quatro faces sÃ£o: marca, loja, dados e QR.
+// O padrão 5x7 cm usa duas etiquetas físicas por produto. Cada etiqueta
+// tem frente e verso: marca, loja, identificação e frase de certeza.
 function isFourSideProductTemplate(template) {
   const config = template?.layoutConfig;
   return isDuplexTemplate(template) && Number(config?.labelsPerProduct || 1) === 2;
@@ -77,6 +77,37 @@ function isFourSideProductTemplate(template) {
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_CUT_BORDER_MM = 0.8;
+const DEFAULT_CERTAINTY_PHRASES = [
+  'EU POSSO. EU CONSIGO. EU VOU.',
+  'VOCÊ ESTÁ PRONTO.',
+  'SEU PRÓXIMO NÍVEL COMEÇA AGORA.',
+  'A CONQUISTA É SUA.',
+  'VÁ COM CERTEZA.',
+  'O PRÓXIMO PASSO É SEU.',
+  'SUA MELHOR VERSÃO COMEÇA AGORA.',
+  'VOCÊ CHEGOU PARA SUPERAR.',
+];
+
+function certaintyPhraseForItem(item, template) {
+  const explicit = String(item?.certaintyPhrase || '').trim();
+  if (explicit) return explicit.toUpperCase();
+  const configured = Array.isArray(template?.layoutConfig?.certaintyPhrases)
+    ? template.layoutConfig.certaintyPhrases.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const phrases = configured.length ? configured : DEFAULT_CERTAINTY_PHRASES;
+  const identity = [
+    item?.productName,
+    item?.name,
+    item?.brand,
+    item?.reference,
+    item?.internalBarcode,
+  ].filter(Boolean).join('|');
+  let hash = 0;
+  for (let index = 0; index < identity.length; index++) {
+    hash = ((hash * 31) + identity.charCodeAt(index)) >>> 0;
+  }
+  return String(phrases[hash % phrases.length]).toUpperCase();
+}
 
 function defaultTemplates() {
   return {
@@ -139,7 +170,7 @@ function defaultTemplates() {
     },
     a4_16_5x7_duplex: {
       type: 'PRODUCT',
-      name: 'A4 16 etiquetas (5x7 cm) — frente e verso',
+      name: 'A4 16 etiquetas (5x7 cm) — certeza e logos',
       paperSize: 'A4',
       widthMm: 50,
       heightMm: 70,
@@ -159,11 +190,15 @@ function defaultTemplates() {
           frontA: 'brand',
           frontB: 'details',
           backA: 'store',
-          backB: 'qr',
+          backB: 'certainty',
         },
+        certaintyPhrases: DEFAULT_CERTAINTY_PHRASES,
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
       },
+      legacyNames: [
+        'A4 16 etiquetas (5x7 cm) — frente e verso',
+      ],
     },
     a4_4_promo: {
       type: 'PROMOTIONAL',
@@ -683,41 +718,15 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
         .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
-    const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
-    const value = usePromo ? item.promotionalPrice : item.price;
-    if (value != null) {
-      if (usePromo && item.price != null) {
-        const oldPriceText = `DE ${fmtBRL(item.price)}`;
-        const oldPriceY = y + h - mm(35);
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(13.5).fillColor(WHITE)
-          .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
-        // Risco explícito no centro do texto: não depende do suporte do
-        // PDFKit à opção strike e permanece visível na impressão.
-        const oldPriceWidth = Math.min(innerW, doc.widthOfString(oldPriceText));
-        const oldPriceX = x + (w - oldPriceWidth) / 2;
-        const oldPriceLineY = oldPriceY + 13.5 * 0.72;
-        doc.save().strokeColor(WHITE).lineWidth(0.9)
-          .moveTo(oldPriceX, oldPriceLineY)
-          .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
-          .stroke().restore();
-        doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
-      } else {
-        doc.font(FONT_CLASSIC_BOLD).fontSize(13.5).fillColor(WHITE)
-          .text(fmtBRL(value), x + pad, y + h - mm(28.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-          .text('À VISTA', x + pad, y + h - mm(20.5), { width: innerW, align: 'center', lineBreak: false });
-        doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
-          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17), { width: innerW, align: 'center', lineBreak: false });
-      }
-    }
-    // O preço fica na faixa superior e o código ocupa a faixa inferior,
-    // aproveitando o espaço livre sem encostar na borda de corte.
-    const barcodeY = y + h - mm(12.5);
+    doc.font(FONT_CLASSIC_BOLD).fontSize(10.5).fillColor(WHITE)
+      .text('ESCOLHA COM CERTEZA.', x + pad, y + h - mm(31), {
+        width: innerW,
+        height: mm(10),
+        align: 'center',
+        lineBreak: false,
+      });
+    // O código interno permanece como identificação operacional, sem preço.
+    const barcodeY = y + h - mm(15);
     // A etiqueta usa exclusivamente o novo código interno. O EAN/SKU
     // original continua gravado no produto e disponível nas consultas, mas
     // não é impresso para evitar dois códigos na mesma etiqueta.
@@ -732,15 +741,44 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     return;
   }
 
-  // Face QR: o cartÃ£o branco preserva o contraste e a leitura na impressÃ£o.
-  centered('CONSULTE MAIS INFORMAÇÕES', 8, y + pad, { lineBreak: false });
-  const qrSize = Math.min(innerW - mm(4), h - mm(21));
-  const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(13);
-  doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
-  if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
-  doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
-   .text('Aponte sua câmera', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
+  // Face de certeza: uma afirmação estável por produto substitui o QR Code.
+  const phrase = certaintyPhraseForItem(item, template);
+  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.4).fillColor(WHITE)
+    .text('UMA CERTEZA PARA VOCÊ', x + pad, y + mm(6), {
+      width: innerW,
+      align: 'center',
+      lineBreak: false,
+    });
+  doc.save().strokeColor(WHITE).opacity(0.7).lineWidth(0.7)
+    .moveTo(x + mm(10), y + mm(14))
+    .lineTo(x + w - mm(10), y + mm(14))
+    .stroke().restore();
+  const phraseBoxY = y + mm(18);
+  const phraseBoxH = h - mm(34);
+  let phraseFs = 15;
+  doc.font(FONT_CLASSIC_BOLD);
+  while (phraseFs > 9) {
+    doc.fontSize(phraseFs);
+    if (doc.heightOfString(phrase, { width: innerW, align: 'center' }) <= phraseBoxH) break;
+    phraseFs -= 0.5;
+  }
+  doc.font(FONT_CLASSIC_BOLD).fontSize(phraseFs);
+  const phraseHeight = Math.min(
+    phraseBoxH,
+    doc.heightOfString(phrase, { width: innerW, align: 'center' }),
+  );
+  doc.fillColor(WHITE).text(phrase, x + pad, phraseBoxY + (phraseBoxH - phraseHeight) / 2, {
+    width: innerW,
+    height: phraseBoxH,
+    align: 'center',
+    ellipsis: true,
+  });
+  doc.font(FONT_CLASSIC).fontSize(5.8).fillColor(WHITE)
+    .text('LEVE ESSA CERTEZA COM VOCÊ', x + pad, y + h - mm(8), {
+      width: innerW,
+      align: 'center',
+      lineBreak: false,
+    });
 }
 
 function drawLabelContent(doc, item, template, x, y, w, h) {
@@ -924,9 +962,10 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
       const isST = isSTHorizontalTemplate(t);
       if (fourSide) {
+        const sides = t.layoutConfig?.sides || {};
         const side = pageSide === 'front'
-          ? (item._pairSlot === 1 ? 'details' : 'brand')
-          : (item._pairSlot === 1 ? 'qr' : 'store');
+          ? (item._pairSlot === 1 ? (sides.frontB || 'details') : (sides.frontA || 'brand'))
+          : (item._pairSlot === 1 ? (sides.backB || 'certainty') : (sides.backA || 'store'));
         drawProductFourSide(doc, item, t, x, y, labelW, labelH, side);
       } else if (isST) {
         doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
@@ -978,4 +1017,6 @@ module.exports = {
   isSTHorizontalTemplate,
   isDuplexTemplate,
   isFourSideProductTemplate,
+  certaintyPhraseForItem,
+  DEFAULT_CERTAINTY_PHRASES,
 };

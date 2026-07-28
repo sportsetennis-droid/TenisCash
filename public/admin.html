@@ -1861,8 +1861,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div id="psbar-lbl"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
-    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
-    <span style="font-size:12px;color:var(--text2)">Novo padrão: 5 × 7 cm · 2 etiquetas por produto · 4 faces · logos da marca e da loja (cadastro ou busca automática confiável) · fundo laranja CMYK C0 M80 Y100 K0 · QR Code</span>
+    <input type="checkbox" id="labels-use-promo" hidden>
+    <span style="font-size:12px;color:var(--text2)">Novo padrão: 5 × 7 cm · 2 etiquetas por produto · 4 faces · logo da marca · logo da loja · identificação interna · frase de certeza · sem preço e sem QR Code</span>
   </div>
   <div id="labels-auto-panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:12px 14px;background:#fff7f2;border:1px solid #ffd8c5;border-radius:12px">
     <strong style="font-size:12px;color:#8d3216;letter-spacing:.4px">GERAÇÃO AUTOMÁTICA</strong>
@@ -10538,7 +10538,7 @@ function _lblShowCart() {
 }
 async function labelsCreateBatch() {
   const templateId = document.getElementById('labels-template').value;
-  const usePromo = document.getElementById('labels-use-promo').checked;
+  const usePromo = false;
   // Constrói selections do novo estado
   const selections = [];
   Object.entries(_lblSel).forEach(([pid, s]) => {
@@ -10552,7 +10552,7 @@ async function labelsCreateBatch() {
     });
   }
   if (!selections.length) { alert('Selecione pelo menos 1 produto e informe a quantidade de etiquetas.'); return; }
-  if (!templateId) { alert('Escolha um template (recomendado: "A4 16 etiquetas (5x7 cm) — frente e verso")'); return; }
+  if (!templateId) { alert('Escolha um template (recomendado: "A4 16 etiquetas (5x7 cm) — certeza e logos")'); return; }
   const data = await api('/admin/labels/batches/quick', 'POST', {
     templateId, selections, usePromo,
   });
