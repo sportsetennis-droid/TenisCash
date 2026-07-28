@@ -646,24 +646,26 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
     doc.font(FONT_MEDIUM).fontSize(9).fillColor(WHITE)
       .text(productName, x + pad, y + mm(4), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
-    if (reference) {
-      doc.font(FONT_REGULAR).fontSize(6.4).fillColor(WHITE)
-        .text(`REF.: ${reference}`, x + pad, y + mm(17), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
-    }
+    // O estilo fica imediatamente abaixo do nome do produto, para que a
+    // categoria seja lida como parte da identificação principal.
     if (categoryLabel) {
       doc.font(FONT_BOLD).fontSize(6.8).fillColor(WHITE)
-        .text(categoryLabel.toUpperCase(), x + pad, y + mm(22), { width: innerW, height: mm(7), align: 'center', ellipsis: true, lineBreak: false });
+        .text(categoryLabel.toUpperCase(), x + pad, y + mm(18), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
+    }
+    if (reference) {
+      doc.font(FONT_REGULAR).fontSize(6.4).fillColor(WHITE)
+        .text(`REF.: ${reference}`, x + pad, y + mm(24), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (sizes) {
       doc.font(FONT_REGULAR).fontSize(6.2).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(26), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
+        .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
       if (usePromo && item.price != null) {
         const oldPriceText = `DE ${fmtBRL(item.price)}`;
-        const oldPriceY = y + h - mm(37);
+        const oldPriceY = y + h - mm(35);
         doc.font(FONT_MEDIUM).fontSize(13.5).fillColor(WHITE)
           .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
         // Risco explícito no centro do texto: não depende do suporte do
