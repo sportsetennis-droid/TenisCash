@@ -236,11 +236,11 @@ async function syncOfferCategory(offer, conn) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
       name: { pt: `OfertasPlaca${String(offer.board.number).padStart(2, '0')}` },
       description: { pt: offerCategoryDescription(offer) },
-      visibility: 'hidden',
+      visibility: 'visible',
     });
   } else {
     const changes = { description: { pt: offerCategoryDescription(offer) } };
-    if (category.visibility !== 'hidden') changes.visibility = 'hidden';
+    if (category.visibility !== 'visible') changes.visibility = 'visible';
     category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, changes);
   }
 
