@@ -74,6 +74,11 @@ function labelStyle(product, classification = {}) {
   return [...new Set(parts)].join(' · ');
 }
 
+function roundLabelPrice(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
+}
+
 // Garante que os templates default existem (idempotente)
 async function ensureDefaultTemplates() {
   const defaults = defaultTemplates();
@@ -344,7 +349,23 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .filter(Boolean)
         .join(' | ') || '';
       const categoryLabel = labelStyle(p, cls);
-      const reference = String(p?.sku || ctx.supplierRef || it.supplierRef || '').trim();
+      const referenceCandidates = [ctx.supplierRef, it.supplierRef, p?.sku]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      const reference = referenceCandidates.find((value) => /^CK[\w-]+$/i.test(value))
+        || referenceCandidates[0]
+        || '';
+      const price = it.price != null ? Number(it.price) : (p ? Number(p.price) : null);
+      const configuredPromo = it.promotionalPrice != null
+        ? Number(it.promotionalPrice)
+        : (p?.promoPrice != null ? Number(p.promoPrice) : null);
+      // Os 15% são uma prévia exclusiva da etiqueta e não alteram o preço no
+      // cadastro nem no caixa. Se já houver promoção cadastrada, ela prevalece.
+      const promotionalPrice = configuredPromo != null
+        ? configuredPromo
+        : (isFourSideProductTemplate(batch.template) && Number.isFinite(price) && price > 0
+          ? roundLabelPrice(price * 0.85)
+          : null);
       return {
         name: productName,
         productName,
@@ -363,8 +384,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
         modality: cls.modality || '',
         tier: cls.tier || '',
         size: sizeStr,
-        price: it.price != null ? it.price : (p ? p.price : null),
-        promotionalPrice: it.promotionalPrice != null ? it.promotionalPrice : (p ? p.promoPrice : null),
+        price,
+        promotionalPrice,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
         internalBarcode: p?.internalBarcode || null,
