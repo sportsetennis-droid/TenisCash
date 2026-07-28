@@ -100,7 +100,13 @@ async function simpleIconsCandidate(name) {
 }
 
 async function officialCandidate(name) {
-  const url = OFFICIAL_LOGO_URLS[normalize(name)];
+  const normalized = normalize(name);
+  // As unidades físicas usam nomes complementares (por exemplo,
+  // "Sports & Tennis Praia do Bessa"), mas continuam usando a mesma logo
+  // oficial da rede. Não confundimos outras marcas: somente nomes que
+  // começam com a marca da rede recebem este alias.
+  const url = OFFICIAL_LOGO_URLS[normalized]
+    || (normalized.startsWith('sports and tennis ') ? OFFICIAL_LOGO_URLS['sports and tennis'] : null);
   if (!url) return null;
   return (await hasTransparentBackground(url, 'image/png')) ? url : null;
 }
