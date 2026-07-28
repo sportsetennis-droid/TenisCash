@@ -216,6 +216,10 @@ function numericCategoryId(value) {
   return Number.isInteger(n) ? n : null;
 }
 
+function offerCategoryName(offer) {
+  return `Ofertas Placa ${String(offer.board.number).padStart(2, '0')}`;
+}
+
 function offerCategoryDescription(offer) {
   const title = escapeHtml(offer.title || 'Oferta exclusiva');
   const discount = Number(offer.discountPct);
@@ -229,19 +233,44 @@ function offerCategoryDescription(offer) {
 async function syncOfferCategory(offer, conn) {
   const code = plateCode(offer.board.number);
   const handle = offerCategoryHandle(code);
+  const name = offerCategoryName(offer);
   const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
   const categories = Array.isArray(listed) ? listed : [];
   let category = categories.find((item) => localizedValue(item.handle) === handle);
+
+  // Recupera uma categoria criada pela versao antiga sem handle/nome, evitando duplicatas.
+  if (!category) {
+    const all = await ns.fetchAllPages(conn, '/categories', { perPage: 100, max: 500 });
+    const marker = `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}:`;
+    category = all.find((item) => localizedValue(item.description).includes(marker));
+  }
+
   if (!category) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
-      name: { pt: `OfertasPlaca${String(offer.board.number).padStart(2, '0')}` },
+      name: { pt: name },
       description: { pt: offerCategoryDescription(offer) },
       visibility: 'visible',
+      parent: null,
     });
   } else {
-    const changes = { description: { pt: offerCategoryDescription(offer) } };
-    if (category.visibility !== 'visible') changes.visibility = 'visible';
-    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, changes);
+    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
+      name: { pt: name },
+      description: { pt: offerCategoryDescription(offer) },
+      visibility: 'visible',
+      parent: null,
+    });
+  }
+
+  // Nuvemshop renderiza categoria oculta como pagina 404 com HTTP 200.
+  if (category && (category.visibility !== 'visible' || !localizedValue(category.name))) {
+    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
+      name: { pt: name },
+      visibility: 'visible',
+      parent: null,
+    });
+  }
+  if (!category || category.visibility !== 'visible' || !localizedValue(category.handle)) {
+    throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} nao ficou publica na Nuvemshop`);
   }
 
   const localIds = (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
