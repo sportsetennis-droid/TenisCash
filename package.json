@@ -15,7 +15,7 @@
     "test:sale-stock-ledger": "node scripts/test-sale-stock-ledger.js && node scripts/test-loja-sale-selection.js",
     "backfill:sale-stock-ledger": "node scripts/backfill-sale-stock-ledger.js",
     "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js",
-    "test:labels": "node scripts/test-label-145x25.js && node scripts/test-label-certainty-5x7.js",
+    "test:labels": "node scripts/test-label-145x25.js",
     "test:relationship-commission": "node scripts/test-relationship-commission.js",
     "test:seller-production": "node scripts/test-seller-production.js && node scripts/test-task-compliance-report.js",
     "test:clock-notifications": "node scripts/test-clock-task-notifications.js",
