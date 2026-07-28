@@ -18,7 +18,7 @@ const path = require('path');
 // etiqueta premium, sem perder leitura em impressão pequena.
 const LABEL_FONT_REGULAR = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf');
 const LABEL_FONT_MEDIUM = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf');
-const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf');
+const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf');
 
 function registerLabelFonts(doc) {
   if (!fs.existsSync(LABEL_FONT_REGULAR) || !fs.existsSync(LABEL_FONT_MEDIUM) || !fs.existsSync(LABEL_FONT_BOLD)) return false;
@@ -641,39 +641,42 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const productName = String(item.productName || item.name || '').trim();
     const reference = String(item.reference || item.supplierRef || item.sku || '').trim();
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
-    const sizes = item.availableSizes ? `Disponiveis: ${item.availableSizes}` : '';
+    const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Tipografia hierárquica: nome forte, referência discreta e estilo em
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
-    doc.font(FONT_BOLD).fontSize(9.5).fillColor(WHITE)
-      .text(productName, x + pad, y + mm(5), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
+    doc.font(FONT_MEDIUM).fontSize(9).fillColor(WHITE)
+      .text(productName, x + pad, y + mm(4), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
     if (reference) {
-      doc.font(FONT_MEDIUM).fontSize(6.6).fillColor(WHITE)
-        .text(`REF.: ${reference}`, x + pad, y + mm(19), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
+      doc.font(FONT_REGULAR).fontSize(6.4).fillColor(WHITE)
+        .text(`REF.: ${reference}`, x + pad, y + mm(17), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (categoryLabel) {
-      doc.font(FONT_BOLD).fontSize(7.2).fillColor(WHITE)
-        .text(categoryLabel.toUpperCase(), x + pad, y + mm(25), { width: innerW, height: mm(7), align: 'center', ellipsis: true, lineBreak: false });
+      doc.font(FONT_BOLD).fontSize(6.8).fillColor(WHITE)
+        .text(categoryLabel.toUpperCase(), x + pad, y + mm(22), { width: innerW, height: mm(7), align: 'center', ellipsis: true, lineBreak: false });
     }
     if (sizes) {
-      doc.font(FONT_MEDIUM).fontSize(6.5).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(32), { width: innerW, height: mm(8), align: 'center', ellipsis: true, lineBreak: false });
+      doc.font(FONT_REGULAR).fontSize(6.2).fillColor(WHITE)
+        .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
       if (usePromo && item.price != null) {
-        doc.font(FONT_REGULAR).fontSize(6.5).fillColor(WHITE)
-          .text(`DE ${fmtBRL(item.price)}`, x + pad, y + h - mm(36), { width: innerW, align: 'center', lineBreak: false, strike: true });
-        doc.font(FONT_BOLD).fontSize(15).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
-        const discountPercent = Math.round((1 - Number(value) / Number(item.price)) * 100);
-        if (discountPercent > 0 && Number.isFinite(discountPercent)) {
-          doc.font(FONT_BOLD).fontSize(6.5).fillColor(WHITE)
-            .text(`${discountPercent}% OFF`, x + pad, y + h - mm(20), { width: innerW, align: 'center', lineBreak: false });
-        }
+        doc.font(FONT_MEDIUM).fontSize(8.2).fillColor(WHITE)
+          .text(`DE ${fmtBRL(item.price)}`, x + pad, y + h - mm(34), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
+          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(27), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
+          .text('À VISTA', x + pad, y + h - mm(18.5), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15), { width: innerW, align: 'center', lineBreak: false });
       } else {
-        doc.font(FONT_BOLD).fontSize(15).fillColor(WHITE)
-          .text(fmtBRL(value), x + pad, y + h - mm(29), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_BOLD).fontSize(13.5).fillColor(WHITE)
+          .text(fmtBRL(value), x + pad, y + h - mm(27), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_MEDIUM).fontSize(6.2).fillColor(WHITE)
+          .text('À VISTA', x + pad, y + h - mm(18.5), { width: innerW, align: 'center', lineBreak: false });
+        doc.font(FONT_REGULAR).fontSize(5.8).fillColor(WHITE)
+          .text('OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(15), { width: innerW, align: 'center', lineBreak: false });
       }
     }
     // O preço fica na faixa superior e o código ocupa a faixa inferior,
