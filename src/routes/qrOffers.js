@@ -240,21 +240,24 @@ async function syncOfferCategory(offer, conn) {
 
   // Recupera uma categoria criada pela versao antiga sem handle/nome, evitando duplicatas.
   if (!category) {
-    const all = await ns.fetchAllPages(conn, '/categories', { perPage: 100, max: 500 });
+    // Limita a consulta a categorias recentes: buscar a arvore inteira da loja
+    // pode atravessar o rate limit da Nuvemshop e impedir a publicacao.
+    const updatedAfter = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const all = await ns.nuvemshopApi(conn, 'GET', `/categories?updated_at_min=${encodeURIComponent(updatedAfter)}&per_page=100&page=1`);
     const marker = `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}:`;
-    category = all.find((item) => localizedValue(item.description).includes(marker));
+    category = (Array.isArray(all) ? all : []).find((item) => localizedValue(item.description).includes(marker));
   }
 
   if (!category) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
-      name: { pt: name },
+      name: { pt: name, es: name, en: name },
       description: { pt: offerCategoryDescription(offer) },
       visibility: 'visible',
       parent: null,
     });
   } else {
     category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
-      name: { pt: name },
+      name: { pt: name, es: name, en: name },
       description: { pt: offerCategoryDescription(offer) },
       visibility: 'visible',
       parent: null,
@@ -264,7 +267,7 @@ async function syncOfferCategory(offer, conn) {
   // Nuvemshop renderiza categoria oculta como pagina 404 com HTTP 200.
   if (category && (category.visibility !== 'visible' || !localizedValue(category.name))) {
     category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
-      name: { pt: name },
+      name: { pt: name, es: name, en: name },
       visibility: 'visible',
       parent: null,
     });
