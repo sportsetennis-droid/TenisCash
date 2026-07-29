@@ -672,10 +672,10 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const descriptionTop = y + punchClearance + mm(1.5);
     // Tipografia hierárquica: nome forte, referência discreta e estilo em
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
-    doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(8.5).fillColor(WHITE)
+    doc.font(FONT_CLASSIC_BOLD).fontSize(9.5).fillColor(WHITE)
       .text(productName, x + pad, descriptionTop, {
         width: innerW,
-        height: mm(8.2),
+        height: mm(9),
         align: 'center',
         ellipsis: true,
       });
