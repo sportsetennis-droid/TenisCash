@@ -1135,7 +1135,9 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       }
       doc.restore();
     });
-    if (fourSide) {
+    // As guias de corte pertencem somente à frente. No verso, a sangria deve
+    // permanecer lisa para não criar linhas visíveis sobre o fundo laranja.
+    if (fourSide && pageSide !== 'back') {
       drawFourSideCutMarks(doc, t, {
         labelW,
         labelH,
