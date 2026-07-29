@@ -41,6 +41,7 @@ const CAJUBRASIL_OFFICIAL_SVG = (() => {
 })();
 
 const CAJUBRASIL_FALLBACK_URL = 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png';
+const UMBRO_STACKED_OFFICIAL_SVG = 'https://upload.wikimedia.org/wikipedia/commons/2/22/Umbro_logo_%28current%29.svg';
 
 const OFFICIAL_LOGO_URLS = {
   'sports and tennis': 'https://d2az8otjr0j19j.cloudfront.net/templates/007/890/890/twig/static/images/st-logo-sports-tennis-white-transparent-20260601.png?v=20260601-logo3',
@@ -48,6 +49,10 @@ const OFFICIAL_LOGO_URLS = {
   // canal alfa, hospedada no prÃ³prio domÃ­nio VTEX da marca).
   'caju brasil': CAJUBRASIL_OFFICIAL_SVG || CAJUBRASIL_FALLBACK_URL,
   'cajubrasil': CAJUBRASIL_OFFICIAL_SVG || CAJUBRASIL_FALLBACK_URL,
+  // A busca genérica do Commons prioriza "Umbro logo.svg", uma composição
+  // horizontal (1000x378) que parece esticada na face vertical da etiqueta.
+  // A identidade usada no produto é a composição oficial empilhada (1000x649).
+  'umbro': UMBRO_STACKED_OFFICIAL_SVG,
 };
 
 // Termos comuns do catálogo que costumam retornar logos de instituições,
