@@ -778,6 +778,65 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
    .text('Aponte sua câmera', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
 }
 
+function drawFourSideCutMarks(doc, template, geometry) {
+  const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
+  const orange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+  const {
+    labelW,
+    labelH,
+    gapX,
+    gapY,
+    marginX,
+    marginY,
+    cols,
+    rows,
+  } = geometry;
+  const gridRight = marginX + cols * labelW + Math.max(0, cols - 1) * gapX;
+  const gridBottom = marginY + rows * labelH + Math.max(0, rows - 1) * gapY;
+  const markLength = mm(3);
+  const edgeGap = mm(0.45);
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+
+  const verticalCuts = [];
+  for (let col = 0; col < cols; col += 1) {
+    verticalCuts.push(marginX + col * (labelW + gapX));
+    verticalCuts.push(marginX + col * (labelW + gapX) + labelW);
+  }
+  const horizontalCuts = [];
+  for (let row = 0; row < rows; row += 1) {
+    horizontalCuts.push(marginY + row * (labelH + gapY));
+    horizontalCuts.push(marginY + row * (labelH + gapY) + labelH);
+  }
+
+  doc.save().strokeColor(orange).lineWidth(0.75).lineCap('butt');
+  [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))].forEach((x) => {
+    if (marginY > edgeGap) {
+      doc.moveTo(x, Math.max(0, marginY - markLength))
+        .lineTo(x, Math.max(0, marginY - edgeGap))
+        .stroke();
+    }
+    if (gridBottom < pageH - edgeGap) {
+      doc.moveTo(x, Math.min(pageH, gridBottom + edgeGap))
+        .lineTo(x, Math.min(pageH, gridBottom + markLength))
+        .stroke();
+    }
+  });
+  [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))].forEach((y) => {
+    if (marginX > edgeGap) {
+      doc.moveTo(Math.max(0, marginX - markLength), y)
+        .lineTo(Math.max(0, marginX - edgeGap), y)
+        .stroke();
+    }
+    if (gridRight < pageW - edgeGap) {
+      doc.moveTo(Math.min(pageW, gridRight + edgeGap), y)
+        .lineTo(Math.min(pageW, gridRight + markLength), y)
+        .stroke();
+    }
+  });
+  doc.restore();
+}
+
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
   // Detecta o layout horizontal S&T atual e os formatos legados para PDFs antigos.
@@ -979,6 +1038,18 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       }
       doc.restore();
     });
+    if (fourSide) {
+      drawFourSideCutMarks(doc, t, {
+        labelW,
+        labelH,
+        gapX,
+        gapY,
+        marginX,
+        marginY,
+        cols,
+        rows,
+      });
+    }
   }
 
   for (let sheetStart = 0; sheetStart < flat.length; sheetStart += perPage) {

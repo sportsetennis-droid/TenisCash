@@ -43,6 +43,28 @@ const CAJUBRASIL_OFFICIAL_SVG = (() => {
 const CAJUBRASIL_FALLBACK_URL = 'https://cajubrasil.vtexassets.com/assets/vtex/assets-builder/cajubrasil.store-theme/5.0.90/images/logos/logo___f7dd4dd2bc98ab3ded6e83f27ce24d3d.png';
 const UMBRO_STACKED_OFFICIAL_SVG = 'https://upload.wikimedia.org/wikipedia/commons/2/22/Umbro_logo_%28current%29.svg';
 
+// Biblioteca local preparada a partir dos sites oficiais das marcas e, quando
+// o fabricante não publica a arte no próprio site, de arquivos exatos do
+// Wikimedia Commons. Manter a arte dentro da aplicação elimina bloqueios e
+// limites de requisição durante a geração de lotes grandes de etiquetas.
+const LOCAL_BRAND_LOGO_URLS = (() => {
+  try {
+    const directory = path.join(__dirname, '../../assets/logos/brands');
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'sources.json'), 'utf8'));
+    return Object.values(manifest).reduce((logos, entry) => {
+      if (!entry?.brand || !entry?.file) return logos;
+      const file = path.join(directory, entry.file);
+      const extension = path.extname(file).toLowerCase();
+      const mime = extension === '.svg' ? 'image/svg+xml' : 'image/png';
+      logos[normalize(entry.brand)] = `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+      return logos;
+    }, {});
+  } catch (err) {
+    console.warn('[brand-logo] biblioteca local de marcas indisponivel:', err.message);
+    return {};
+  }
+})();
+
 const OFFICIAL_LOGO_URLS = {
   'sports and tennis': 'https://d2az8otjr0j19j.cloudfront.net/templates/007/890/890/twig/static/images/st-logo-sports-tennis-white-transparent-20260601.png?v=20260601-logo3',
   // Logo oficial publicada no cabeÃ§alho da loja da Caju Brasil (PNG com
@@ -59,7 +81,7 @@ const OFFICIAL_LOGO_URLS = {
 // clubes ou unidades militares no Commons. Sem confirmação da identidade,
 // eles ficam pendentes para cadastro manual.
 const AMBIGUOUS_COMMONS_NAMES = new Set([
-  'army', 'bel', 'fiber', 'impacto', 'leader', 'n1', 'ous', 'vitoria',
+  'army', 'bel', 'fiber', 'impacto', 'impulse', 'leader', 'n1', 'ous', 'vitoria',
 ]);
 
 function normalize(value) {
@@ -131,7 +153,8 @@ async function officialCandidate(name) {
   // "Sports & Tennis Praia do Bessa"), mas continuam usando a mesma logo
   // oficial da rede. Não confundimos outras marcas: somente nomes que
   // começam com a marca da rede recebem este alias.
-  const url = OFFICIAL_LOGO_URLS[normalized]
+  const url = LOCAL_BRAND_LOGO_URLS[normalized]
+    || OFFICIAL_LOGO_URLS[normalized]
     || (normalized.startsWith('sports and tennis ') ? OFFICIAL_LOGO_URLS['sports and tennis'] : null);
   if (!url) return null;
   const mime = /^data:([^;,]+)/i.exec(url)?.[1]
