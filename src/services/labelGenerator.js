@@ -80,7 +80,7 @@ const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_FRONT_BLEED_MM = 0.8;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
-const FOUR_SIDE_BORDER_MM = 0.5;
+const FOUR_SIDE_BORDER_MM = 5;
 
 function defaultTemplates() {
   return {
@@ -610,7 +610,8 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const FONT_CLASSIC = doc._tenisClassicLabelFonts ? 'TenisSlab' : FONT_REGULAR;
   const FONT_CLASSIC_SEMIBOLD = doc._tenisClassicLabelFonts ? 'TenisSlabSemiBold' : FONT_MEDIUM;
   const FONT_CLASSIC_BOLD = doc._tenisClassicLabelFonts ? 'TenisSlabBold' : FONT_BOLD;
-  const pad = mm(3);
+  const borderMm = Number(template?.layoutConfig?.labelBorderMm || FOUR_SIDE_BORDER_MM);
+  const pad = mm(Math.max(3, borderMm + 1.5));
   const innerW = Math.max(mm(5), w - pad * 2);
 
   const centered = (text, fs, yy, opts = {}) => {
@@ -621,6 +622,13 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       height: opts.height,
       ellipsis: opts.ellipsis,
     });
+  };
+  const fitSingleLineFont = (text, font, maxSize, minSize, maxWidth = innerW) => {
+    for (let size = maxSize; size >= minSize; size -= 0.2) {
+      doc.font(font).fontSize(size);
+      if (doc.widthOfString(String(text || '')) <= maxWidth) return size;
+    }
+    return minSize;
   };
 
   if (side === 'brand') {
@@ -798,7 +806,8 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           lineBreak: false,
           ellipsis: false,
         });
-      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.9).fillColor(WHITE)
+      const conditionFs = fitSingleLineFont(conditionLine, FONT_CLASSIC_SEMIBOLD, 5.9, 4.2);
+      doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(conditionFs).fillColor(WHITE)
         .text(conditionLine, x + pad, y + h - mm(19.7), {
           width: innerW,
           height: mm(2.4),
@@ -832,14 +841,16 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 
   // QR e código interno compartilham um único painel de leitura.
   const qrPunchClearance = mm(10);
-  centered('CONSULTE MAIS INFORMAÇÕES', 7.4, y + qrPunchClearance + mm(1.8), {
+  const qrHeading = 'CONSULTE MAIS INFORMAÇÕES';
+  const qrHeadingFs = fitSingleLineFont(qrHeading, FONT_CLASSIC_BOLD, 7.4, 4.2);
+  centered(qrHeading, qrHeadingFs, y + qrPunchClearance + mm(1.8), {
     height: mm(4.5),
     ellipsis: false,
     lineBreak: false,
   });
-  const scanX = x + mm(4);
+  const scanX = x + pad;
   const scanY = y + mm(18.5);
-  const scanW = w - mm(8);
+  const scanW = w - pad * 2;
   const scanH = mm(41);
   doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.4)).fillColor(WHITE).fill().restore();
   const qrSize = mm(24.5);
@@ -853,8 +864,8 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       captionSize: 4.5,
     });
   }
-  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(6.2), {
+  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.4).fillColor(WHITE)
+    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(8.5), {
       width: innerW,
       align: 'center',
       lineBreak: false,
@@ -862,7 +873,8 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 }
 
 function drawFourSideLabelBorder(doc, template, x, y, w, h) {
-  // 0,05 cm = 0,5 mm. A moldura fica inteiramente dentro da etiqueta:
+  // Meio centímetro = 0,5 cm = 5 mm. A moldura fica inteiramente
+  // dentro da etiqueta:
   // mesmo com a sangria laranja do lado de fora, o acabamento branco
   // permanece visível depois do corte.
   const border = mm(Number(template?.layoutConfig?.labelBorderMm || FOUR_SIDE_BORDER_MM));
@@ -938,11 +950,11 @@ function drawFourSideCutMarks(doc, template, geometry) {
   });
   doc.restore();
 
-  // Como as etiquetas encostam umas nas outras, uma linha branca fina e
-  // tracejada mostra todos os cortes sem criar uma faixa larga que apareça
-  // quando a navalha desviar alguns décimos.
+  // A guia laranja fica centralizada sobre a moldura branca de 5 mm. Assim,
+  // a pessoa identifica exatamente o corte mesmo quando duas molduras brancas
+  // se encontram.
   doc.save()
-    .strokeColor('#FFFFFF')
+    .strokeColor(orange)
     .lineWidth(mm(0.14))
     .lineCap('butt')
     .dash(mm(1.6), { space: mm(1.25) });
@@ -954,10 +966,10 @@ function drawFourSideCutMarks(doc, template, geometry) {
   });
   doc.undash().restore();
 
-  // Cada encontro da grade recebe uma única cruz branca centralizada,
+  // Cada encontro da grade recebe uma única cruz laranja centralizada,
   // compartilhada pelas quatro etiquetas ao redor.
   const centeredMarkArm = mm(2.4);
-  doc.save().strokeColor('#FFFFFF').lineWidth(mm(0.18)).lineCap('butt');
+  doc.save().strokeColor(orange).lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((cutX) => {
     uniqueHorizontalCuts.forEach((cutY) => {
       doc.moveTo(Math.max(0, cutX - centeredMarkArm), cutY)

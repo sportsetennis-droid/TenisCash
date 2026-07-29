@@ -21,7 +21,7 @@ async function main() {
   assert.equal(template.marginTopMm, 11);
   assert.ok(template.legacyNames.includes('S&T Etiqueta 15x3cm (9 por A4)'));
   assert.equal(isSTHorizontalTemplate(template), true);
-  assert.equal(duplexTemplate.layoutConfig.labelBorderMm, 0.5);
+  assert.equal(duplexTemplate.layoutConfig.labelBorderMm, 5);
 
   const pdf = await generateLabelsPDF({
     template: {
