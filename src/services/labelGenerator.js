@@ -666,10 +666,19 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const promotionText = String(item.promotionText || '').trim();
     const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
+    // Reserva física para o furo: nenhum texto da face de descrição pode
+    // ocupar os primeiros 10 mm da etiqueta.
+    const punchClearance = mm(10);
+    const descriptionTop = y + punchClearance + mm(1.5);
     // Tipografia hierárquica: nome forte, referência discreta e estilo em
     // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
     doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(8.5).fillColor(WHITE)
-      .text(productName, x + pad, y + mm(4), { width: innerW, height: mm(13), align: 'center', ellipsis: true });
+      .text(productName, x + pad, descriptionTop, {
+        width: innerW,
+        height: mm(8.2),
+        align: 'center',
+        ellipsis: true,
+      });
     // O estilo fica imediatamente abaixo do nome do produto, para que a
     // categoria seja lida como parte da identificação principal.
     if (categoryLabel) {
@@ -682,42 +691,92 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         if (doc.widthOfString(categoryText) <= innerW) break;
       }
       doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(4, categoryFs)).fillColor(WHITE)
-        .text(categoryText, x + pad, y + mm(18), { width: innerW, height: mm(6), align: 'center', ellipsis: false, lineBreak: false });
+        .text(categoryText, x + pad, y + mm(20.8), {
+          width: innerW,
+          height: mm(4),
+          align: 'center',
+          ellipsis: false,
+          lineBreak: false,
+        });
     }
     if (reference) {
       doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
-        .text(`REF.: ${reference}`, x + pad, y + mm(24), { width: innerW, height: mm(5), align: 'center', ellipsis: true, lineBreak: false });
+        .text(`REF.: ${reference}`, x + pad, y + mm(25.2), {
+          width: innerW,
+          height: mm(3.8),
+          align: 'center',
+          ellipsis: true,
+          lineBreak: false,
+        });
     }
     if (sizes) {
       doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
+        .text(sizes, x + pad, y + mm(29.2), {
+          width: innerW,
+          height: mm(3.8),
+          align: 'center',
+          ellipsis: true,
+          lineBreak: false,
+        });
     }
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
+      const fitPriceFont = (text, font, maxSize, minSize) => {
+        for (let size = maxSize; size >= minSize; size -= 0.25) {
+          doc.font(font).fontSize(size);
+          if (doc.widthOfString(text) <= innerW) return size;
+        }
+        return minSize;
+      };
       if (usePromo && item.price != null) {
         const oldPriceText = `DE ${fmtBRL(item.price)}`;
-        const oldPriceY = y + h - mm(36.2);
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(14.2).fillColor(WHITE)
+        const oldPriceY = y + mm(33.4);
+        const oldPriceSize = fitPriceFont(oldPriceText, FONT_CLASSIC_SEMIBOLD, 16.5, 12.5);
+        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(oldPriceSize).fillColor(WHITE)
           .text(oldPriceText, x + pad, oldPriceY, { width: innerW, align: 'center', lineBreak: false });
         // Risco explícito no centro do texto: não depende do suporte do
         // PDFKit à opção strike e permanece visível na impressão.
         const oldPriceWidth = Math.min(innerW, doc.widthOfString(oldPriceText));
         const oldPriceX = x + (w - oldPriceWidth) / 2;
-        const oldPriceLineY = oldPriceY + 14.2 * 0.72;
+        const oldPriceLineY = oldPriceY + oldPriceSize * 0.72;
         doc.save().strokeColor(WHITE).lineWidth(0.9)
           .moveTo(oldPriceX, oldPriceLineY)
           .lineTo(oldPriceX + oldPriceWidth, oldPriceLineY)
           .stroke().restore();
-        doc.font(FONT_CLASSIC_BOLD).fontSize(14.2).fillColor(WHITE)
-          .text(`POR ${fmtBRL(value)}`, x + pad, y + h - mm(29.7), { width: innerW, align: 'center', lineBreak: false });
+        const finalPriceText = `POR ${fmtBRL(value)}`;
+        const finalPriceSize = fitPriceFont(finalPriceText, FONT_CLASSIC_BOLD, 19.5, 14.2);
+        doc.font(FONT_CLASSIC_BOLD).fontSize(finalPriceSize).fillColor(WHITE)
+          .text(finalPriceText, x + pad, y + mm(39.6), {
+            width: innerW,
+            align: 'center',
+            lineBreak: false,
+          });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6).fillColor(WHITE)
-          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17.4), { width: innerW, height: mm(2.8), align: 'center', lineBreak: false, ellipsis: false });
+          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.8), {
+            width: innerW,
+            height: mm(2.8),
+            align: 'center',
+            lineBreak: false,
+            ellipsis: false,
+          });
       } else {
-        doc.font(FONT_CLASSIC_BOLD).fontSize(14.2).fillColor(WHITE)
-          .text(fmtBRL(value), x + pad, y + h - mm(29.7), { width: innerW, align: 'center', lineBreak: false });
+        const finalPriceText = fmtBRL(value);
+        const finalPriceSize = fitPriceFont(finalPriceText, FONT_CLASSIC_BOLD, 20, 14.2);
+        doc.font(FONT_CLASSIC_BOLD).fontSize(finalPriceSize).fillColor(WHITE)
+          .text(finalPriceText, x + pad, y + mm(39.6), {
+            width: innerW,
+            align: 'center',
+            lineBreak: false,
+          });
         doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6).fillColor(WHITE)
-          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(17.4), { width: innerW, height: mm(2.8), align: 'center', lineBreak: false, ellipsis: false });
+          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.8), {
+            width: innerW,
+            height: mm(2.8),
+            align: 'center',
+            lineBreak: false,
+            ellipsis: false,
+          });
       }
     }
     if (promotionText && usePromo) {
@@ -734,7 +793,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       // Vincula visualmente a porcentagem ao preço final, em vez de deixar
       // uma frase promocional solta no rodapé da etiqueta.
       doc.font(FONT_CLASSIC_BOLD).fontSize(7.2).fillColor(WHITE)
-        .text(discountLine, x + pad, y + h - mm(24.2), {
+        .text(discountLine, x + pad, y + h - mm(22.5), {
           width: innerW,
           height: mm(2.6),
           align: 'center',
@@ -742,7 +801,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           ellipsis: false,
         });
       doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.9).fillColor(WHITE)
-        .text(conditionLine, x + pad, y + h - mm(21.4), {
+        .text(conditionLine, x + pad, y + h - mm(19.7), {
           width: innerW,
           height: mm(2.4),
           align: 'center',
