@@ -309,6 +309,26 @@ async function drawQR(doc, value, x, y, size) {
   }
 }
 
+// PDFKit preserva a proporção quando recebe `fit`, mas logos recortadas e
+// imagens com orientação EXIF podem chegar com caixas transparentes diferentes.
+// Calculamos explicitamente o maior retângulo proporcional para nunca deformar
+// o desenho, centralizando-o dentro da área reservada da etiqueta.
+function drawImageContain(doc, source, x, y, boxW, boxH) {
+  if (!source || boxW <= 0 || boxH <= 0) return;
+  const image = doc.openImage(source);
+  const imageW = Number(image.width);
+  const imageH = Number(image.height);
+  if (!Number.isFinite(imageW) || !Number.isFinite(imageH) || imageW <= 0 || imageH <= 0) return;
+  const scale = Math.min(boxW / imageW, boxH / imageH);
+  const drawW = imageW * scale;
+  const drawH = imageH * scale;
+  doc.image(image, x + (boxW - drawW) / 2, y + (boxH - drawH) / 2, {
+    width: drawW,
+    height: drawH,
+    ignoreOrientation: true,
+  });
+}
+
 // ===== Layout HORIZONTAL S&T (150mm × 30mm; mantém legado 130mm) — FUNDO LARANJA =====
 // Fundo: laranja (#E5571E) pintado em generateLabelsPDF antes desta função
 // Texto: branco. Preço: branco bem grande. QR: card branco atrás pra contraste.
@@ -598,11 +618,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       try {
         // Centraliza a logo pelo centro da etiqueta; o box anterior começava
         // em 28% da altura e deixava a marca visualmente baixa.
-        doc.image(item._brandLogoBuffer, x + pad, y + h * 0.22, {
-          fit: [innerW, h * 0.56],
-          align: 'center',
-          valign: 'center',
-        });
+        drawImageContain(doc, item._brandLogoBuffer, x + pad, y + h * 0.22, innerW, h * 0.56);
       } catch {
         centered('LOGO DA MARCA PENDENTE', 9, y + h * 0.42, { lineBreak: false });
       }
@@ -622,31 +638,15 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           // recortes possuem proporções diferentes, calculamos o tamanho real
           // e centralizamos o conteúdo, não apenas a caixa transparente.
           const iconW = innerW * 0.68;
-          const iconH = iconW * (205 / 190);
           const iconAreaH = h * 0.62;
-          doc.image(item._storeLogoIconBuffer, x + (w - iconW) / 2, y + h * 0.06 + (iconAreaH - iconH) / 2, {
-            width: iconW,
-            height: iconH,
-          });
+          drawImageContain(doc, item._storeLogoIconBuffer, x + (w - iconW) / 2, y + h * 0.06, iconW, iconAreaH);
           const wordmarkW = innerW * 0.88;
-          const wordmarkH = wordmarkW * (191 / 660);
           const wordmarkAreaH = h * 0.20;
-          doc.image(item._storeLogoWordmarkBuffer, x + (w - wordmarkW) / 2, y + h * 0.73 + (wordmarkAreaH - wordmarkH) / 2, {
-            width: wordmarkW,
-            height: wordmarkH,
-          });
+          drawImageContain(doc, item._storeLogoWordmarkBuffer, x + (w - wordmarkW) / 2, y + h * 0.73, wordmarkW, wordmarkAreaH);
         } else if (item._storeLogoBuffer) {
-          doc.image(item._storeLogoBuffer, x + pad, y + h * 0.18, {
-            fit: [innerW, h * 0.54],
-            align: 'center',
-            valign: 'center',
-          });
+          drawImageContain(doc, item._storeLogoBuffer, x + pad, y + h * 0.18, innerW, h * 0.54);
         } else if (item._storeLogoIconBuffer) {
-          doc.image(item._storeLogoIconBuffer, x + pad, y + h * 0.12, {
-            fit: [innerW * 0.72, h * 0.62],
-            align: 'center',
-            valign: 'center',
-          });
+          drawImageContain(doc, item._storeLogoIconBuffer, x + pad, y + h * 0.12, innerW * 0.72, h * 0.62);
           centered(item.storeName || 'Sports & Tennis', 8, y + h * 0.78, { lineBreak: false });
         }
       } catch {
