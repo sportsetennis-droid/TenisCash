@@ -692,12 +692,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
         .text(sizes, x + pad, y + mm(28), { width: innerW, height: mm(6), align: 'center', ellipsis: true, lineBreak: false });
     }
-    // Divide a identificação do produto da área comercial para aproveitar
-    // melhor a altura útil da etiqueta e facilitar a leitura à distância.
-    doc.save().strokeColor(WHITE).lineWidth(0.45)
-      .moveTo(x + pad, y + h - mm(38.8))
-      .lineTo(x + w - pad, y + h - mm(38.8))
-      .stroke().restore();
     const usePromo = item.promotionalPrice != null && item.promotionalPrice < (item.price || Infinity);
     const value = usePromo ? item.promotionalPrice : item.price;
     if (value != null) {
