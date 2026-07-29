@@ -78,10 +78,8 @@ function isFourSideProductTemplate(template) {
 
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
-const FOUR_SIDE_CUT_BORDER_MM = 0.8;
+const FOUR_SIDE_FRONT_BLEED_MM = 0.8;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
-const FOUR_SIDE_FRAME_WIDTH_MM = 0.5;
-const FOUR_SIDE_FRAME_INSET_MM = 2;
 
 function defaultTemplates() {
   return {
@@ -534,6 +532,71 @@ async function loadLogoBuffer(value) {
   }
 }
 
+// Prepara a foto real para a pequena vitrine da face de preço.
+async function loadProductImageBuffer(value) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  try {
+    let raw;
+    let isSvg = false;
+    if (v.startsWith('data:image/')) {
+      const b64 = v.split(',')[1];
+      raw = b64 ? Buffer.from(b64, 'base64') : null;
+      isSvg = /^data:image\/svg\+xml/i.test(v);
+    } else {
+      if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
+      const response = await fetch(v);
+      if (!response.ok) return null;
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
+      const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
+      if (!isSvg && !isRaster) return null;
+      raw = Buffer.from(await response.arrayBuffer());
+    }
+    if (!raw) return null;
+
+    const sharp = require('sharp');
+    return await sharp(raw, isSvg ? { density: 300 } : {})
+      .rotate()
+      .resize({
+        width: 1200,
+        height: 800,
+        fit: 'inside',
+        withoutEnlargement: false,
+      })
+      .sharpen({ sigma: 0.8 })
+      .png()
+      .toBuffer();
+  } catch (err) {
+    console.warn('[labels] imagem do produto indisponível na etiqueta:', err?.message || err);
+    return null;
+  }
+}
+
+function drawSneakerFallback(doc, x, y, w, h, color) {
+  const px = (value) => x + w * value;
+  const py = (value) => y + h * value;
+  doc.save()
+    .fillColor(color)
+    .path([
+      `M ${px(0.06)} ${py(0.62)}`,
+      `C ${px(0.18)} ${py(0.58)} ${px(0.27)} ${py(0.45)} ${px(0.34)} ${py(0.24)}`,
+      `L ${px(0.49)} ${py(0.31)}`,
+      `L ${px(0.58)} ${py(0.49)}`,
+      `C ${px(0.69)} ${py(0.54)} ${px(0.83)} ${py(0.55)} ${px(0.93)} ${py(0.63)}`,
+      `C ${px(0.99)} ${py(0.68)} ${px(0.97)} ${py(0.79)} ${px(0.88)} ${py(0.82)}`,
+      `L ${px(0.20)} ${py(0.82)}`,
+      `C ${px(0.09)} ${py(0.82)} ${px(0.03)} ${py(0.73)} ${px(0.06)} ${py(0.62)}`,
+      'Z',
+    ].join(' '))
+    .fill();
+  doc.lineWidth(Math.max(0.45, h * 0.035)).strokeColor('#FFFFFF');
+  [0.42, 0.50, 0.58].forEach((offset) => {
+    doc.moveTo(px(offset), py(0.43)).lineTo(px(offset + 0.10), py(0.54)).stroke();
+  });
+  doc.restore();
+}
+
 // Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
 // Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
 // Separa a logo oficial da Sports & Tennis em dois elementos visuais: o
@@ -610,39 +673,8 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const FONT_CLASSIC = doc._tenisClassicLabelFonts ? 'TenisSlab' : FONT_REGULAR;
   const FONT_CLASSIC_SEMIBOLD = doc._tenisClassicLabelFonts ? 'TenisSlabSemiBold' : FONT_MEDIUM;
   const FONT_CLASSIC_BOLD = doc._tenisClassicLabelFonts ? 'TenisSlabBold' : FONT_BOLD;
-  const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
-  // PDFKit interpreta arrays de quatro componentes como CMYK em percentuais.
-  const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
   const pad = mm(3);
   const innerW = Math.max(mm(5), w - pad * 2);
-  // As células da grade encostam umas nas outras. Na frente, a faixa branca
-  // funciona como guia para a navalha; no verso, a sangria absorve o pequeno
-  // desvio mecânico da segunda passagem da folha.
-  const cutBorder = mm(FOUR_SIDE_CUT_BORDER_MM);
-  const isBackFace = side === 'store' || side === 'qr';
-  if (!isBackFace) {
-    doc.rect(x, y, w, h).fillColor('#FFFFFF').fill();
-    doc.rect(x + cutBorder, y + cutBorder, w - cutBorder * 2, h - cutBorder * 2)
-      .fillColor(ORANGE)
-      .fill();
-  }
-  // Moldura decorativa interna: 0,05 cm de espessura, distante da linha de
-  // corte. O fundo permanece sólido porque degradês evidenciam banding em
-  // impressoras jato de tinta e prejudicam a uniformidade do laranja.
-  const frameWidth = mm(FOUR_SIDE_FRAME_WIDTH_MM);
-  const frameInset = mm(FOUR_SIDE_FRAME_INSET_MM);
-  doc.save()
-    .roundedRect(
-      x + frameInset,
-      y + frameInset,
-      w - frameInset * 2,
-      h - frameInset * 2,
-      mm(1.5),
-    )
-    .lineWidth(frameWidth)
-    .strokeColor(WHITE)
-    .stroke()
-    .restore();
 
   const centered = (text, fs, yy, opts = {}) => {
     doc.font(FONT_CLASSIC_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
@@ -657,8 +689,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   if (side === 'brand') {
     if (item._brandLogoBuffer) {
       try {
-        // Centraliza a logo pelo centro da etiqueta; o box anterior começava
-        // em 28% da altura e deixava a marca visualmente baixa.
         drawImageContain(doc, item._brandLogoBuffer, x + pad, y + h * 0.22, innerW, h * 0.56);
       } catch {
         centered('LOGO DA MARCA PENDENTE', 9, y + h * 0.42, { lineBreak: false });
@@ -850,38 +880,102 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           ellipsis: false,
         });
     }
-    // O preço fica na faixa superior e o código ocupa a faixa inferior,
-    // aproveitando o espaço livre sem encostar na borda de corte.
-    const barcodeY = y + h - mm(12.5);
-    // A etiqueta usa exclusivamente o novo código interno. O EAN/SKU
-    // original continua gravado no produto e disponível nas consultas, mas
-    // não é impresso para evitar dois códigos na mesma etiqueta.
-    if (item.internalBarcode) {
-      drawBarcode128(doc, item.internalBarcode, x + pad, barcodeY, innerW, mm(8.5), {
-        color: '#000000',
-        background: '#FFFFFF',
-        caption: 'INTERNO',
-        captionSize: 4.6,
-      });
+    // O código de barras foi movido para a mesma área do QR. O espaço liberado
+    // recebe a imagem real do produto, totalmente dentro da zona segura.
+    const visualY = y + h - mm(11.4);
+    const visualX = x + pad;
+    const visualW = mm(13.5);
+    const visualH = mm(8.6);
+    doc.save().roundedRect(visualX, visualY, visualW, visualH, mm(1.2)).fillColor(WHITE).fill().restore();
+    if (item._productImageBuffer) {
+      try {
+        doc.save()
+          .roundedRect(visualX, visualY, visualW, visualH, mm(1.2))
+          .clip();
+        drawImageContain(
+          doc,
+          item._productImageBuffer,
+          visualX + mm(0.7),
+          visualY + mm(0.7),
+          visualW - mm(1.4),
+          visualH - mm(1.4),
+        );
+        doc.restore();
+      } catch {
+        const fallbackW = mm(18);
+        const fallbackDrawW = Math.min(visualW - mm(2), fallbackW);
+        drawSneakerFallback(
+          doc,
+          visualX + (visualW - fallbackDrawW) / 2,
+          visualY + mm(0.7),
+          fallbackDrawW,
+          visualH - mm(1.4),
+          FOUR_SIDE_ORANGE,
+        );
+      }
+    } else {
+      const fallbackW = mm(18);
+      drawSneakerFallback(
+        doc,
+        visualX + (visualW - Math.min(visualW - mm(2), fallbackW)) / 2,
+        visualY + mm(0.7),
+        Math.min(visualW - mm(2), fallbackW),
+        visualH - mm(1.4),
+        FOUR_SIDE_ORANGE,
+      );
     }
+    const brandName = String(item.brand || 'ESPORTE').trim().toUpperCase();
+    const messageX = x + mm(18.2);
+    const messageW = w - mm(21.2);
+    doc.font(FONT_CLASSIC_BOLD).fontSize(6).fillColor(WHITE)
+      .text(`${brandName}  •`, messageX, visualY + mm(0.15), {
+        width: messageW,
+        height: mm(2.7),
+        align: 'center',
+        lineBreak: false,
+        ellipsis: true,
+      });
+    doc.font(FONT_CLASSIC_BOLD).fontSize(5.3).fillColor(WHITE)
+      .text('PERFORMANCE PARA QUEM\nVIVE O ESPORTE.', messageX, visualY + mm(2.8), {
+        width: messageW,
+        height: mm(5.5),
+        align: 'center',
+        lineBreak: true,
+        ellipsis: false,
+      });
     return;
   }
 
-  // Face QR: o cartÃ£o branco preserva o contraste e a leitura na impressÃ£o.
-  // A face do QR também reserva os primeiros 10 mm para o furo.
-  // O título e o código descem juntos para manter a composição centralizada.
+  // QR e código interno ficam juntos em um único painel de leitura, com
+  // dimensões físicas seguras para câmera e leitor de caixa.
   const qrPunchClearance = mm(10);
-  centered('CONSULTE MAIS\nINFORMAÇÕES', 8, y + qrPunchClearance + mm(1.5), {
-    height: mm(7.5),
+  centered('CONSULTE MAIS INFORMAÇÕES', 7.4, y + qrPunchClearance + mm(1.8), {
+    height: mm(4.5),
     ellipsis: false,
+    lineBreak: false,
   });
-  const qrSize = Math.min(innerW - mm(4), h - mm(30));
+  const scanX = x + mm(4);
+  const scanY = y + mm(18.5);
+  const scanW = w - mm(8);
+  const scanH = mm(41);
+  doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.4)).fillColor(WHITE).fill().restore();
+  const qrSize = mm(24.5);
   const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(21);
-  doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
+  const qrY = y + mm(19.2);
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
-  doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
-   .text('Aponte sua câmera', x + pad, y + h - mm(6), { width: innerW, align: 'center', lineBreak: false });
+  if (item.internalBarcode) {
+    drawBarcode128(doc, item.internalBarcode, scanX + mm(2.5), y + mm(45.4), scanW - mm(5), mm(10.8), {
+      color: '#000000',
+      caption: 'INTERNO',
+      captionSize: 4.5,
+    });
+  }
+  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
+    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(6.2), {
+      width: innerW,
+      align: 'center',
+      lineBreak: false,
+    });
 }
 
 function drawFourSideCutMarks(doc, template, geometry) {
@@ -1104,6 +1198,23 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       const url = String(item.brandLogoUrl || '').trim();
       if (url && byUrl.has(url)) item._brandLogoBuffer = byUrl.get(url);
     });
+
+    // A foto real do produto humaniza a face de preço. O carregamento é
+    // limitado a quatro imagens por vez para não pressionar a memória em lotes
+    // grandes; quando não há foto válida, o desenho vetorial assume o lugar.
+    const productImageUrls = [...new Set(flat.map((item) => String(item.productImageUrl || '').trim()).filter(Boolean))];
+    const productImagesByUrl = new Map();
+    for (let start = 0; start < productImageUrls.length; start += 4) {
+      const group = productImageUrls.slice(start, start + 4);
+      const loaded = await Promise.all(group.map(async (url) => [url, await loadProductImageBuffer(url)]));
+      loaded.forEach(([url, buffer]) => {
+        if (buffer) productImagesByUrl.set(url, buffer);
+      });
+    }
+    flat.forEach((item) => {
+      const url = String(item.productImageUrl || '').trim();
+      if (url && productImagesByUrl.has(url)) item._productImageBuffer = productImagesByUrl.get(url);
+    });
   }
 
   if (!flat.length) {
@@ -1141,17 +1252,20 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       return { x, y };
     };
 
-    if (fourSide && pageSide === 'back') {
-      // A sangria do verso é um único caminho preenchido uma única vez.
-      // Isso evita que retângulos sobrepostos recebam mais tinta na Epson e
-      // apareçam como linhas escuras sobre o fundo laranja.
+    if (fourSide) {
+      // Frente e verso recebem fundo até além da linha de corte. Assim, um
+      // pequeno desvio humano não revela uma borda branca. Todos os retângulos
+      // formam um único caminho para não sobrepor tinta nem criar faixas.
       const cmyk = t.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
-      const backOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
-      const backBleed = mm(Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM));
-      doc.save().fillColor(backOrange);
+      const backgroundOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+      const bleedMm = pageSide === 'back'
+        ? Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM)
+        : FOUR_SIDE_FRONT_BLEED_MM;
+      const bleed = mm(bleedMm);
+      doc.save().fillColor(backgroundOrange);
       pageItems.forEach((item, slot) => {
         const { x, y } = slotPosition(slot);
-        doc.rect(x - backBleed, y - backBleed, labelW + backBleed * 2, labelH + backBleed * 2);
+        doc.rect(x - bleed, y - bleed, labelW + bleed * 2, labelH + bleed * 2);
       });
       doc.fill();
       doc.restore();
