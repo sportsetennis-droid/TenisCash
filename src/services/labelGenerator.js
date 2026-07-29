@@ -852,8 +852,10 @@ function drawFourSideCutMarks(doc, template, geometry) {
   } = geometry;
   const gridRight = marginX + cols * labelW + Math.max(0, cols - 1) * gapX;
   const gridBottom = marginY + rows * labelH + Math.max(0, rows - 1) * gapY;
-  const markLength = mm(3);
-  const edgeGap = mm(0.45);
+  // Os traços ficam visíveis somente no papel branco, fora das etiquetas.
+  // O comprimento maior facilita alinhar a régua/navalha pelos dois lados.
+  const markLength = mm(5);
+  const edgeGap = mm(0.35);
   const pageW = doc.page.width;
   const pageH = doc.page.height;
 
@@ -868,7 +870,7 @@ function drawFourSideCutMarks(doc, template, geometry) {
     horizontalCuts.push(marginY + row * (labelH + gapY) + labelH);
   }
 
-  doc.save().strokeColor(orange).lineWidth(0.75).lineCap('butt');
+  doc.save().strokeColor(orange).lineWidth(1).lineCap('butt');
   [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))].forEach((x) => {
     if (marginY > edgeGap) {
       doc.moveTo(x, Math.max(0, marginY - markLength))
