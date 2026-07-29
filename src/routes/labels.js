@@ -44,11 +44,21 @@ function isConverseBrand(value) {
   return slug === 'converse' || slug.includes('converse');
 }
 
+// A categoria do catÃ¡logo nem sempre Ã© confiÃ¡vel: alguns acessÃ³rios acabam
+// classificados como "TÃªnis". O nome do item tem prioridade para impedir
+// que a etiqueta chame uma joelheira, luva ou outro acessÃ³rio de tÃªnis.
+const NON_FOOTWEAR_NAME_PATTERN = /\b(?:joelheira|cotoveleira|munhequeira|tornozeleira|caneleira|protetor(?:es)?|meia(?:s)?|luva(?:s)?|bola(?:s)?|mochila(?:s)?|bolsa(?:s)?|garrafa(?:s)?|squeeze|faixa(?:s)?|bandagem(?:s)?|chaveiro(?:s)?|bone|viseira(?:s)?|carteira(?:s)?|necessaire(?:s)?|sacola(?:s)?|acessorio(?:s)?)\b/;
+const FOOTWEAR_NAME_PATTERN = /\b(?:tenis|sapat[eê]nis|chuteira(?:s)?|sapatilha(?:s)?|sandalia(?:s)?|bota(?:s)?|calcado(?:s)?)\b/;
+const FOOTWEAR_CATEGORY_PATTERN = /\b(?:tenis|calcados?|footwear|shoes?)\b/;
+
 function isTennisProduct(product) {
-  const fields = [product?.name, product?.category, product?.subcategory]
+  const name = normalizeLabelText(product?.name);
+  const categoryFields = [product?.category, product?.subcategory]
     .map(normalizeLabelText)
     .filter(Boolean);
-  return fields.some((value) => /\btenis\b/.test(value));
+  if (NON_FOOTWEAR_NAME_PATTERN.test(name)) return false;
+  if (FOOTWEAR_NAME_PATTERN.test(name)) return true;
+  return categoryFields.some((value) => FOOTWEAR_CATEGORY_PATTERN.test(value));
 }
 
 function normalizeLabelText(value) {
