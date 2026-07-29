@@ -80,7 +80,6 @@ const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_FRONT_BLEED_MM = 0.8;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
-const FOUR_SIDE_BORDER_MM = 5;
 
 function defaultTemplates() {
   return {
@@ -168,7 +167,6 @@ function defaultTemplates() {
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
         backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
-        labelBorderMm: FOUR_SIDE_BORDER_MM,
       },
     },
     a4_4_promo: {
@@ -610,8 +608,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const FONT_CLASSIC = doc._tenisClassicLabelFonts ? 'TenisSlab' : FONT_REGULAR;
   const FONT_CLASSIC_SEMIBOLD = doc._tenisClassicLabelFonts ? 'TenisSlabSemiBold' : FONT_MEDIUM;
   const FONT_CLASSIC_BOLD = doc._tenisClassicLabelFonts ? 'TenisSlabBold' : FONT_BOLD;
-  const borderMm = Number(template?.layoutConfig?.labelBorderMm || FOUR_SIDE_BORDER_MM);
-  const pad = mm(Math.max(3, borderMm + 1.5));
+  const pad = mm(3);
   const innerW = Math.max(mm(5), w - pad * 2);
 
   const centered = (text, fs, yy, opts = {}) => {
@@ -848,9 +845,9 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     ellipsis: false,
     lineBreak: false,
   });
-  const scanX = x + pad;
+  const scanX = x + mm(4);
   const scanY = y + mm(18.5);
-  const scanW = w - pad * 2;
+  const scanW = w - mm(8);
   const scanH = mm(41);
   doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.4)).fillColor(WHITE).fill().restore();
   const qrSize = mm(24.5);
@@ -864,27 +861,12 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       captionSize: 4.5,
     });
   }
-  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(5.4).fillColor(WHITE)
-    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(8.5), {
+  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
+    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(6.2), {
       width: innerW,
       align: 'center',
       lineBreak: false,
     });
-}
-
-function drawFourSideLabelBorder(doc, template, x, y, w, h) {
-  // Meio centímetro = 0,5 cm = 5 mm. A moldura fica inteiramente
-  // dentro da etiqueta:
-  // mesmo com a sangria laranja do lado de fora, o acabamento branco
-  // permanece visível depois do corte.
-  const border = mm(Number(template?.layoutConfig?.labelBorderMm || FOUR_SIDE_BORDER_MM));
-  const inset = border / 2;
-  doc.save()
-    .lineWidth(border)
-    .strokeColor('#FFFFFF')
-    .rect(x + inset, y + inset, w - border, h - border)
-    .stroke()
-    .restore();
 }
 
 function drawFourSideCutMarks(doc, template, geometry) {
@@ -950,11 +932,11 @@ function drawFourSideCutMarks(doc, template, geometry) {
   });
   doc.restore();
 
-  // A guia laranja fica centralizada sobre a moldura branca de 5 mm. Assim,
-  // a pessoa identifica exatamente o corte mesmo quando duas molduras brancas
-  // se encontram.
+  // Como as etiquetas encostam umas nas outras, uma linha branca fina e
+  // tracejada mostra todos os cortes sem criar uma faixa larga que apareça
+  // quando a navalha desviar alguns décimos.
   doc.save()
-    .strokeColor(orange)
+    .strokeColor('#FFFFFF')
     .lineWidth(mm(0.14))
     .lineCap('butt')
     .dash(mm(1.6), { space: mm(1.25) });
@@ -966,10 +948,10 @@ function drawFourSideCutMarks(doc, template, geometry) {
   });
   doc.undash().restore();
 
-  // Cada encontro da grade recebe uma única cruz laranja centralizada,
+  // Cada encontro da grade recebe uma única cruz branca centralizada,
   // compartilhada pelas quatro etiquetas ao redor.
   const centeredMarkArm = mm(2.4);
-  doc.save().strokeColor(orange).lineWidth(mm(0.18)).lineCap('butt');
+  doc.save().strokeColor('#FFFFFF').lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((cutX) => {
     uniqueHorizontalCuts.forEach((cutY) => {
       doc.moveTo(Math.max(0, cutX - centeredMarkArm), cutY)
@@ -1192,7 +1174,6 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
           ? (item._pairSlot === 1 ? 'details' : 'brand')
           : (item._pairSlot === 1 ? 'qr' : 'store');
         drawProductFourSide(doc, item, t, x, y, labelW, labelH, side);
-        drawFourSideLabelBorder(doc, t, x, y, labelW, labelH);
       } else if (isST) {
         doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
       } else {
