@@ -532,71 +532,6 @@ async function loadLogoBuffer(value) {
   }
 }
 
-// Prepara a foto real para a pequena vitrine da face de preço.
-async function loadProductImageBuffer(value) {
-  const v = String(value || '').trim();
-  if (!v) return null;
-  try {
-    let raw;
-    let isSvg = false;
-    if (v.startsWith('data:image/')) {
-      const b64 = v.split(',')[1];
-      raw = b64 ? Buffer.from(b64, 'base64') : null;
-      isSvg = /^data:image\/svg\+xml/i.test(v);
-    } else {
-      if (!/^https?:\/\//i.test(v) || !globalThis.fetch) return null;
-      const response = await fetch(v);
-      if (!response.ok) return null;
-      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-      isSvg = /image\/svg\+xml/.test(contentType) || /\.svg(?:\?|$)/i.test(v);
-      const isRaster = /image\/(png|jpe?g|webp)/.test(contentType) || /\.(png|jpe?g|webp)(?:\?|$)/i.test(v);
-      if (!isSvg && !isRaster) return null;
-      raw = Buffer.from(await response.arrayBuffer());
-    }
-    if (!raw) return null;
-
-    const sharp = require('sharp');
-    return await sharp(raw, isSvg ? { density: 300 } : {})
-      .rotate()
-      .resize({
-        width: 1200,
-        height: 800,
-        fit: 'inside',
-        withoutEnlargement: false,
-      })
-      .sharpen({ sigma: 0.8 })
-      .png()
-      .toBuffer();
-  } catch (err) {
-    console.warn('[labels] imagem do produto indisponível na etiqueta:', err?.message || err);
-    return null;
-  }
-}
-
-function drawSneakerFallback(doc, x, y, w, h, color) {
-  const px = (value) => x + w * value;
-  const py = (value) => y + h * value;
-  doc.save()
-    .fillColor(color)
-    .path([
-      `M ${px(0.06)} ${py(0.62)}`,
-      `C ${px(0.18)} ${py(0.58)} ${px(0.27)} ${py(0.45)} ${px(0.34)} ${py(0.24)}`,
-      `L ${px(0.49)} ${py(0.31)}`,
-      `L ${px(0.58)} ${py(0.49)}`,
-      `C ${px(0.69)} ${py(0.54)} ${px(0.83)} ${py(0.55)} ${px(0.93)} ${py(0.63)}`,
-      `C ${px(0.99)} ${py(0.68)} ${px(0.97)} ${py(0.79)} ${px(0.88)} ${py(0.82)}`,
-      `L ${px(0.20)} ${py(0.82)}`,
-      `C ${px(0.09)} ${py(0.82)} ${px(0.03)} ${py(0.73)} ${px(0.06)} ${py(0.62)}`,
-      'Z',
-    ].join(' '))
-    .fill();
-  doc.lineWidth(Math.max(0.45, h * 0.035)).strokeColor('#FFFFFF');
-  [0.42, 0.50, 0.58].forEach((offset) => {
-    doc.moveTo(px(offset), py(0.43)).lineTo(px(offset + 0.10), py(0.54)).stroke();
-  });
-  doc.restore();
-}
-
 // Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
 // Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
 // Separa a logo oficial da Sports & Tennis em dois elementos visuais: o
@@ -823,14 +758,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
             align: 'center',
             lineBreak: false,
           });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6).fillColor(WHITE)
-          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.8), {
-            width: innerW,
-            height: mm(2.8),
-            align: 'center',
-            lineBreak: false,
-            ellipsis: false,
-          });
       } else {
         const finalPriceText = fmtBRL(value);
         const finalPriceSize = fitPriceFont(finalPriceText, FONT_CLASSIC_BOLD, 20, 14.2);
@@ -839,14 +766,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
             width: innerW,
             align: 'center',
             lineBreak: false,
-          });
-        doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6).fillColor(WHITE)
-          .text('À VISTA  •  OU ATÉ 10X NOS CARTÕES', x + pad, y + h - mm(16.8), {
-            width: innerW,
-            height: mm(2.8),
-            align: 'center',
-            lineBreak: false,
-            ellipsis: false,
           });
       }
     }
@@ -880,98 +799,36 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           ellipsis: false,
         });
     }
-    // O código de barras foi movido para a mesma área do QR. O espaço liberado
-    // recebe a imagem real do produto, totalmente dentro da zona segura.
-    const visualY = y + h - mm(11.4);
-    const visualX = x + pad;
-    const visualW = mm(13.5);
-    const visualH = mm(8.6);
-    doc.save().roundedRect(visualX, visualY, visualW, visualH, mm(1.2)).fillColor(WHITE).fill().restore();
-    if (item._productImageBuffer) {
-      try {
-        doc.save()
-          .roundedRect(visualX, visualY, visualW, visualH, mm(1.2))
-          .clip();
-        drawImageContain(
-          doc,
-          item._productImageBuffer,
-          visualX + mm(0.7),
-          visualY + mm(0.7),
-          visualW - mm(1.4),
-          visualH - mm(1.4),
-        );
-        doc.restore();
-      } catch {
-        const fallbackW = mm(18);
-        const fallbackDrawW = Math.min(visualW - mm(2), fallbackW);
-        drawSneakerFallback(
-          doc,
-          visualX + (visualW - fallbackDrawW) / 2,
-          visualY + mm(0.7),
-          fallbackDrawW,
-          visualH - mm(1.4),
-          FOUR_SIDE_ORANGE,
-        );
-      }
-    } else {
-      const fallbackW = mm(18);
-      drawSneakerFallback(
-        doc,
-        visualX + (visualW - Math.min(visualW - mm(2), fallbackW)) / 2,
-        visualY + mm(0.7),
-        Math.min(visualW - mm(2), fallbackW),
-        visualH - mm(1.4),
-        FOUR_SIDE_ORANGE,
-      );
+    // O código interno fica sozinho em um cartão com respiro branco. Isso
+    // preserva a leitura e mantém a face de preço limpa.
+    if (item.internalBarcode) {
+      const cardW = mm(39);
+      const cardH = mm(13);
+      const cardX = x + (w - cardW) / 2;
+      const cardY = y + h - mm(15);
+      doc.save().roundedRect(cardX, cardY, cardW, cardH, mm(0.8)).fillColor(WHITE).fill().restore();
+      drawBarcode128(doc, item.internalBarcode, cardX + mm(1), cardY + mm(1.2), cardW - mm(2), mm(10.2), {
+        color: '#000000',
+        caption: 'INTERNO',
+        captionSize: 3.6,
+      });
     }
-    const brandName = String(item.brand || 'ESPORTE').trim().toUpperCase();
-    const messageX = x + mm(18.2);
-    const messageW = w - mm(21.2);
-    doc.font(FONT_CLASSIC_BOLD).fontSize(6).fillColor(WHITE)
-      .text(`${brandName}  •`, messageX, visualY + mm(0.15), {
-        width: messageW,
-        height: mm(2.7),
-        align: 'center',
-        lineBreak: false,
-        ellipsis: true,
-      });
-    doc.font(FONT_CLASSIC_BOLD).fontSize(5.3).fillColor(WHITE)
-      .text('PERFORMANCE PARA QUEM\nVIVE O ESPORTE.', messageX, visualY + mm(2.8), {
-        width: messageW,
-        height: mm(5.5),
-        align: 'center',
-        lineBreak: true,
-        ellipsis: false,
-      });
     return;
   }
 
-  // QR e código interno ficam juntos em um único painel de leitura, com
-  // dimensões físicas seguras para câmera e leitor de caixa.
+  // O verso volta a ter somente o QR em tamanho amplo.
   const qrPunchClearance = mm(10);
-  centered('CONSULTE MAIS INFORMAÇÕES', 7.4, y + qrPunchClearance + mm(1.8), {
-    height: mm(4.5),
+  centered('CONSULTE MAIS\nINFORMAÇÕES', 8, y + qrPunchClearance + mm(1.5), {
+    height: mm(7.5),
     ellipsis: false,
-    lineBreak: false,
   });
-  const scanX = x + mm(4);
-  const scanY = y + mm(18.5);
-  const scanW = w - mm(8);
-  const scanH = mm(41);
-  doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.4)).fillColor(WHITE).fill().restore();
-  const qrSize = mm(24.5);
+  const qrSize = Math.min(innerW - mm(4), h - mm(30));
   const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(19.2);
+  const qrY = y + mm(21);
+  doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
-  if (item.internalBarcode) {
-    drawBarcode128(doc, item.internalBarcode, scanX + mm(2.5), y + mm(45.4), scanW - mm(5), mm(10.8), {
-      color: '#000000',
-      caption: 'INTERNO',
-      captionSize: 4.5,
-    });
-  }
-  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
-    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(6.2), {
+  doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
+    .text('Aponte sua câmera', x + pad, y + h - mm(6), {
       width: innerW,
       align: 'center',
       lineBreak: false,
@@ -1199,22 +1056,6 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       if (url && byUrl.has(url)) item._brandLogoBuffer = byUrl.get(url);
     });
 
-    // A foto real do produto humaniza a face de preço. O carregamento é
-    // limitado a quatro imagens por vez para não pressionar a memória em lotes
-    // grandes; quando não há foto válida, o desenho vetorial assume o lugar.
-    const productImageUrls = [...new Set(flat.map((item) => String(item.productImageUrl || '').trim()).filter(Boolean))];
-    const productImagesByUrl = new Map();
-    for (let start = 0; start < productImageUrls.length; start += 4) {
-      const group = productImageUrls.slice(start, start + 4);
-      const loaded = await Promise.all(group.map(async (url) => [url, await loadProductImageBuffer(url)]));
-      loaded.forEach(([url, buffer]) => {
-        if (buffer) productImagesByUrl.set(url, buffer);
-      });
-    }
-    flat.forEach((item) => {
-      const url = String(item.productImageUrl || '').trim();
-      if (url && productImagesByUrl.has(url)) item._productImageBuffer = productImagesByUrl.get(url);
-    });
   }
 
   if (!flat.length) {

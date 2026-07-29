@@ -694,7 +694,6 @@ router.get('/batches/:id/pdf', async (req, res) => {
         storeLogoUrl,
         brand: p ? p.brand : '',
         brandLogoUrl: p ? (brandLogos.get(brandSlug(p.brand)) || brandLogos.get(brandSlugCompact(p.brand)) || null) : null,
-        productImageUrl: p?.imageUrl || null,
         sku: reference,
         supplierRef: reference || null,
         gender: '',
