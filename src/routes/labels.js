@@ -334,7 +334,9 @@ function labelProductName(product, fallback = '') {
 }
 
 function labelDescriptionWords(value) {
-  return String(value || '').match(/[\p{L}\p{N}]+(?:[-/][\p{L}\p{N}]+)*/gu) || [];
+  return String(value || '')
+    .replace(/[-/|:]+/g, ' ')
+    .match(/[\p{L}\p{N}]+/gu) || [];
 }
 
 function dedupeLabelWords(words) {
@@ -345,6 +347,15 @@ function dedupeLabelWords(words) {
     seen.add(normalized);
     return true;
   });
+}
+
+function stripLabelSizeSuffix(value) {
+  const sizeToken = '(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|ÚNICO|ÚNICA|\\d{2,3}(?:[/-]\\d{2,3})?)';
+  return String(value || '')
+    .replace(new RegExp(`(?:^|[\\s|;,-])tam(?:anho)?\\.?\\s*[:=-]?\\s*${sizeToken}\\s*$`, 'iu'), ' ')
+    .replace(new RegExp(`(?:\\s+-\\s*|\\s+)${sizeToken}\\s*$`, 'iu'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function stableLabelPhraseIndex(value, length) {
@@ -386,19 +397,26 @@ function labelMotivationText(product, classification = {}, seed = '') {
   return phrases[stableLabelPhraseIndex(identity, phrases.length)];
 }
 
-// A descrição é somente o nome comercial/modelo. Marca, tipo, modalidade e
-// referência já possuem áreas próprias e não podem se repetir nesse campo.
-function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '') {
-  const source = String(product?.name || fallback || '').trim();
-  const type = productType(product, source);
+// A descrição reúne o que identifica o produto para o cliente: tipo, marca e
+// modelo/material. Tamanho, cor, modalidade e códigos ficam em campos próprios.
+const LABEL_COLOR_WORDS = new Set([
+  'azl', 'azul', 'bco', 'branco', 'bege', 'cinza', 'cnz', 'coral', 'dourado',
+  'frtc', 'grafite', 'grf', 'laranja', 'lima', 'lrj', 'lrjf', 'mar', 'marinho',
+  'mcmt', 'multicolor', 'preto', 'pta', 'pto', 'purp', 'roxo', 'royal', 'verde',
+  'vermelho', 'vrdl', 'vrm',
+]);
+
+function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
+  const source = stripLabelSizeSuffix(product?.name || fallback);
+  const classification = context.classification || productClassification(product);
+  const modality = isTennisProduct(product)
+    ? footwearModality(product, source)
+    : classification.modality;
   const reserved = [
-    product?.brand,
     reference,
-    categoryLabel,
-    type?.needle,
-    type?.label,
-    isTennisProduct(product) ? footwearType(product) : '',
-    isTennisProduct(product) ? footwearModality(product, source) : '',
+    context.supplierRef,
+    context.color,
+    modality,
   ]
     .flatMap(labelDescriptionWords)
     .map(normalizeLabelText)
@@ -411,8 +429,9 @@ function labelProductDescription(product, fallback = '', reference = '', categor
     // Remove referências/SKUs mistos e códigos numéricos longos, preservando
     // números curtos que façam parte do modelo comercial (por exemplo, "Pro 5").
     if (/^(?=.*[a-z])(?=.*\d)[a-z0-9/-]{4,}$/i.test(normalized)) return false;
-    if (/^\d{4,}$/.test(normalized)) return false;
-    if (/^(?:ref|referencia|sku|codigo|cod)$/i.test(normalized)) return false;
+    if (/^\d{3,}$/.test(normalized)) return false;
+    if (/^(?:ref|referencia|sku|codigo|cod|tam|tamanho)$/i.test(normalized)) return false;
+    if (LABEL_COLOR_WORDS.has(normalized)) return false;
     return !/^(?:unissex|unisex|feminino|feminina|masculino|masculina|homem|mulher|men|women)$/i.test(normalized);
   }));
 
@@ -450,17 +469,27 @@ function cleanLabelCategory(value) {
 function labelStyle(product, classification = {}) {
   if (isConverseBrand(product?.brand)) return 'ESTILO DE VIDA CLÁSSICO';
   const type = productType(product, product?.name || '');
-  const typeLabel = isTennisProduct(product)
-    ? footwearType(product)
-    : (type?.label || '');
-  const modality = isTennisProduct(product)
-    ? footwearModality(product, product?.name || '')
-    : cleanLabelCategory(classification.modality);
-  const mainLabel = typeLabel && modality
-    ? `${typeLabel} de ${modality}`
-    : (typeLabel || modality);
-  const parts = [mainLabel, cleanLabelCategory(classification.tier)].filter(Boolean);
-  return dedupeLabelWords(parts.flatMap(labelDescriptionWords)).join(' ').toUpperCase();
+  const clothing = clothingType(product, product?.name || '');
+  if (isTennisProduct(product)) {
+    const footwear = normalizeLabelText(footwearType(product));
+    const modality = footwearModality(product, product?.name || '');
+    if (footwear === 'chuteira' && modality) return modality.toUpperCase();
+    return 'CALÇADO ESPORTIVO';
+  }
+  if (clothing) return 'ROUPA ESPORTIVA';
+  if (type) {
+    if (/^(?:joelheira|cotoveleira|munhequeira|tornozeleira|caneleira|protetor)$/i.test(type.needle)) {
+      return 'PROTEÇÃO ESPORTIVA';
+    }
+    if (/^(?:bola|raquete|rede|cone|halter|kettlebell|colchonete)$/i.test(type.needle)) {
+      return 'EQUIPAMENTO ESPORTIVO';
+    }
+    return 'ACESSÓRIO ESPORTIVO';
+  }
+  const modality = cleanLabelCategory(classification.modality);
+  return /^(?:outro|outros|geral|não informado|nao informado)$/i.test(modality)
+    ? 'PRODUTO ESPORTIVO'
+    : (modality || 'PRODUTO ESPORTIVO').toUpperCase();
 }
 
 function roundLabelPrice(value) {
@@ -796,12 +825,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .join(' | ') || '';
       const categoryLabel = labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
-      const canonicalName = labelProductName(p, baseName);
       const productName = labelProductDescription(
-        p ? { ...p, name: canonicalName } : p,
-        canonicalName,
+        p,
+        baseName,
         reference,
         categoryLabel,
+        ctx,
       );
       const motivationText = labelMotivationText(
         p,
