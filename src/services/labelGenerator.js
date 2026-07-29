@@ -77,6 +77,7 @@ function isFourSideProductTemplate(template) {
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_CUT_BORDER_MM = 0.8;
+const FOUR_SIDE_BACK_BLEED_MM = 2;
 
 function defaultTemplates() {
   return {
@@ -163,6 +164,7 @@ function defaultTemplates() {
         },
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
+        backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
       },
     },
     a4_4_promo: {
@@ -594,14 +596,25 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   const ORANGE = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
   const pad = mm(3);
   const innerW = Math.max(mm(5), w - pad * 2);
-  // As células da grade encostam umas nas outras. A faixa branca preenchida
-  // funciona como guia contínua para a navalha, sem criar linha escura na
-  // rasterização do PDF, mantendo a etiqueta em 5x7 cm.
+  // As células da grade encostam umas nas outras. Na frente, a faixa branca
+  // funciona como guia para a navalha; no verso, a sangria absorve o pequeno
+  // desvio mecânico da segunda passagem da folha.
   const cutBorder = mm(FOUR_SIDE_CUT_BORDER_MM);
-  doc.rect(x, y, w, h).fillColor('#FFFFFF').fill();
-  doc.rect(x + cutBorder, y + cutBorder, w - cutBorder * 2, h - cutBorder * 2)
-    .fillColor(ORANGE)
-    .fill();
+  const isBackFace = side === 'store' || side === 'qr';
+  if (isBackFace) {
+    // O duplex de impressoras de escritório tem tolerância mecânica na
+    // segunda passagem do papel. A sangria protege o verso de bordas brancas
+    // quando o corte segue a guia centralizada impressa na frente.
+    const backBleed = mm(Number(template?.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM));
+    doc.rect(x - backBleed, y - backBleed, w + backBleed * 2, h + backBleed * 2)
+      .fillColor(ORANGE)
+      .fill();
+  } else {
+    doc.rect(x, y, w, h).fillColor('#FFFFFF').fill();
+    doc.rect(x + cutBorder, y + cutBorder, w - cutBorder * 2, h - cutBorder * 2)
+      .fillColor(ORANGE)
+      .fill();
+  }
 
   const centered = (text, fs, yy, opts = {}) => {
     doc.font(FONT_CLASSIC_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
