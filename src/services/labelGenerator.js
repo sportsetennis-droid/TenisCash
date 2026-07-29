@@ -80,6 +80,8 @@ const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_CUT_BORDER_MM = 0.8;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
+const FOUR_SIDE_FRAME_WIDTH_MM = 0.5;
+const FOUR_SIDE_FRAME_INSET_MM = 2;
 
 function defaultTemplates() {
   return {
@@ -624,6 +626,23 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
       .fillColor(ORANGE)
       .fill();
   }
+  // Moldura decorativa interna: 0,05 cm de espessura, distante da linha de
+  // corte. O fundo permanece sólido porque degradês evidenciam banding em
+  // impressoras jato de tinta e prejudicam a uniformidade do laranja.
+  const frameWidth = mm(FOUR_SIDE_FRAME_WIDTH_MM);
+  const frameInset = mm(FOUR_SIDE_FRAME_INSET_MM);
+  doc.save()
+    .roundedRect(
+      x + frameInset,
+      y + frameInset,
+      w - frameInset * 2,
+      h - frameInset * 2,
+      mm(1.5),
+    )
+    .lineWidth(frameWidth)
+    .strokeColor(WHITE)
+    .stroke()
+    .restore();
 
   const centered = (text, fs, yy, opts = {}) => {
     doc.font(FONT_CLASSIC_BOLD).fontSize(fs).fillColor(WHITE).text(String(text || ''), x + pad, yy, {
