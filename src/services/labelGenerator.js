@@ -80,6 +80,7 @@ const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_FRONT_BLEED_MM = 0.8;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
+const FOUR_SIDE_BORDER_MM = 0.5;
 
 function defaultTemplates() {
   return {
@@ -167,6 +168,7 @@ function defaultTemplates() {
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
         backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
+        labelBorderMm: FOUR_SIDE_BORDER_MM,
       },
     },
     a4_4_promo: {
@@ -859,6 +861,20 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     });
 }
 
+function drawFourSideLabelBorder(doc, template, x, y, w, h) {
+  // 0,05 cm = 0,5 mm. A moldura fica inteiramente dentro da etiqueta:
+  // mesmo com a sangria laranja do lado de fora, o acabamento branco
+  // permanece visível depois do corte.
+  const border = mm(Number(template?.layoutConfig?.labelBorderMm || FOUR_SIDE_BORDER_MM));
+  const inset = border / 2;
+  doc.save()
+    .lineWidth(border)
+    .strokeColor('#FFFFFF')
+    .rect(x + inset, y + inset, w - border, h - border)
+    .stroke()
+    .restore();
+}
+
 function drawFourSideCutMarks(doc, template, geometry) {
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   const orange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -1164,6 +1180,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
           ? (item._pairSlot === 1 ? 'details' : 'brand')
           : (item._pairSlot === 1 ? 'qr' : 'store');
         drawProductFourSide(doc, item, t, x, y, labelW, labelH, side);
+        drawFourSideLabelBorder(doc, t, x, y, labelW, labelH);
       } else if (isST) {
         doc.rect(x, y, labelW, labelH).fillColor('#E5571E').fill();
       } else {

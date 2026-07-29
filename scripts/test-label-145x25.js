@@ -8,7 +8,9 @@ const {
 } = require('../src/services/labelGenerator');
 
 async function main() {
-  const template = defaultTemplates().st_145x25;
+  const templates = defaultTemplates();
+  const template = templates.st_145x25;
+  const duplexTemplate = templates.a4_16_5x7_duplex;
 
   assert.ok(template, 'Template S&T 14,5x2,5cm não encontrado');
   assert.equal(template.widthMm, 145);
@@ -19,6 +21,7 @@ async function main() {
   assert.equal(template.marginTopMm, 11);
   assert.ok(template.legacyNames.includes('S&T Etiqueta 15x3cm (9 por A4)'));
   assert.equal(isSTHorizontalTemplate(template), true);
+  assert.equal(duplexTemplate.layoutConfig.labelBorderMm, 0.5);
 
   const pdf = await generateLabelsPDF({
     template: {
