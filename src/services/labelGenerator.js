@@ -671,17 +671,23 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const reference = (ckReference ? ckReference[1] : referenceSource).toUpperCase();
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const promotionText = String(item.promotionText || '').trim();
+    const motivationText = String(item.motivationText || '').trim().toUpperCase();
     const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Reserva física para o furo: nenhum texto da face de descrição pode
     // ocupar os primeiros 10 mm da etiqueta.
     const punchClearance = mm(10);
     const descriptionTop = y + punchClearance + mm(1.5);
-    // Tipografia hierárquica: nome forte, referência discreta e estilo em
-    // caixa alta. O título genérico "DESCRIÇÃO DO PRODUTO" foi removido.
-    doc.font(FONT_CLASSIC_BOLD).fontSize(9.5).fillColor(WHITE)
+    // A descrição é a informação principal: maior, pesada e com até duas
+    // linhas, sem sacrificar a área de 10 mm reservada para o furo.
+    let descriptionFs = 12.5;
+    for (; descriptionFs >= 9.5; descriptionFs -= 0.25) {
+      doc.font(FONT_CLASSIC_BOLD).fontSize(descriptionFs);
+      if (doc.heightOfString(productName, { width: innerW, align: 'center' }) <= mm(9.2)) break;
+    }
+    doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(9.5, descriptionFs)).fillColor(WHITE)
       .text(productName, x + pad, descriptionTop, {
         width: innerW,
-        height: mm(9),
+        height: mm(9.2),
         align: 'center',
         ellipsis: true,
       });
@@ -697,7 +703,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
         if (doc.widthOfString(categoryText) <= innerW) break;
       }
       doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(4, categoryFs)).fillColor(WHITE)
-        .text(categoryText, x + pad, y + mm(20.8), {
+        .text(categoryText, x + pad, y + mm(22), {
           width: innerW,
           height: mm(4),
           align: 'center',
@@ -707,7 +713,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     }
     if (reference) {
       doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
-        .text(`REF.: ${reference}`, x + pad, y + mm(25.2), {
+        .text(`REF.: ${reference}`, x + pad, y + mm(26.2), {
           width: innerW,
           height: mm(3.8),
           align: 'center',
@@ -717,7 +723,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     }
     if (sizes) {
       doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(29.2), {
+        .text(sizes, x + pad, y + mm(30.1), {
           width: innerW,
           height: mm(3.8),
           align: 'center',
@@ -799,36 +805,54 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
           ellipsis: false,
         });
     }
-    // O código interno fica sozinho em um cartão com respiro branco. Isso
-    // preserva a leitura e mantém a face de preço limpa.
-    if (item.internalBarcode) {
-      const cardW = mm(39);
-      const cardH = mm(13);
-      const cardX = x + (w - cardW) / 2;
-      const cardY = y + h - mm(15);
-      doc.save().roundedRect(cardX, cardY, cardW, cardH, mm(0.8)).fillColor(WHITE).fill().restore();
-      drawBarcode128(doc, item.internalBarcode, cardX + mm(1), cardY + mm(1.2), cardW - mm(2), mm(10.2), {
-        color: '#000000',
-        caption: 'INTERNO',
-        captionSize: 3.6,
+    if (motivationText) {
+      const phraseBoxY = y + h - mm(14);
+      const phraseBoxH = mm(8.6);
+      let phraseFs = 7.4;
+      for (; phraseFs >= 6.2; phraseFs -= 0.2) {
+        doc.font(FONT_CLASSIC_BOLD).fontSize(phraseFs);
+        if (doc.heightOfString(motivationText, { width: innerW, align: 'center' }) <= phraseBoxH) break;
+      }
+      doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(6.2, phraseFs)).fillColor(WHITE);
+      const phraseHeight = Math.min(
+        phraseBoxH,
+        doc.heightOfString(motivationText, { width: innerW, align: 'center' }),
+      );
+      doc.text(motivationText, x + pad, phraseBoxY + (phraseBoxH - phraseHeight) / 2, {
+        width: innerW,
+        height: phraseBoxH,
+        align: 'center',
+        ellipsis: false,
       });
     }
     return;
   }
 
-  // O verso volta a ter somente o QR em tamanho amplo.
+  // QR e código interno compartilham um único painel de leitura.
   const qrPunchClearance = mm(10);
-  centered('CONSULTE MAIS\nINFORMAÇÕES', 8, y + qrPunchClearance + mm(1.5), {
-    height: mm(7.5),
+  centered('CONSULTE MAIS INFORMAÇÕES', 7.4, y + qrPunchClearance + mm(1.8), {
+    height: mm(4.5),
     ellipsis: false,
+    lineBreak: false,
   });
-  const qrSize = Math.min(innerW - mm(4), h - mm(30));
+  const scanX = x + mm(4);
+  const scanY = y + mm(18.5);
+  const scanW = w - mm(8);
+  const scanH = mm(41);
+  doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.4)).fillColor(WHITE).fill().restore();
+  const qrSize = mm(24.5);
   const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(21);
-  doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
+  const qrY = y + mm(19.2);
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
-  doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
-    .text('Aponte sua câmera', x + pad, y + h - mm(6), {
+  if (item.internalBarcode) {
+    drawBarcode128(doc, item.internalBarcode, scanX + mm(2.5), y + mm(45.4), scanW - mm(5), mm(10.8), {
+      color: '#000000',
+      caption: 'INTERNO',
+      captionSize: 4.5,
+    });
+  }
+  doc.font(FONT_CLASSIC_SEMIBOLD).fontSize(6.2).fillColor(WHITE)
+    .text('APONTE A CÂMERA  •  CONFIRA', x + pad, y + h - mm(6.2), {
       width: innerW,
       align: 'center',
       lineBreak: false,
@@ -870,6 +894,7 @@ function drawFourSideCutMarks(doc, template, geometry) {
   const uniqueVerticalCuts = [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))];
   const uniqueHorizontalCuts = [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))];
 
+  // Marcas externas laranja continuam sobre as margens brancas.
   doc.save().strokeColor(orange).lineWidth(1).lineCap('butt');
   uniqueVerticalCuts.forEach((x) => {
     if (marginY > edgeGap) {
@@ -895,11 +920,28 @@ function drawFourSideCutMarks(doc, template, geometry) {
         .stroke();
     }
   });
+  doc.restore();
 
-  // Cada encontro da grade recebe uma única marca centralizada, compartilhada
-  // pelos quatro lados. Ela continua visível mesmo quando restam poucas peças.
+  // Como as etiquetas encostam umas nas outras, uma linha branca fina e
+  // tracejada mostra todos os cortes sem criar uma faixa larga que apareça
+  // quando a navalha desviar alguns décimos.
+  doc.save()
+    .strokeColor('#FFFFFF')
+    .lineWidth(mm(0.14))
+    .lineCap('butt')
+    .dash(mm(1.6), { space: mm(1.25) });
+  uniqueVerticalCuts.forEach((cutX) => {
+    doc.moveTo(cutX, marginY).lineTo(cutX, gridBottom).stroke();
+  });
+  uniqueHorizontalCuts.forEach((cutY) => {
+    doc.moveTo(marginX, cutY).lineTo(gridRight, cutY).stroke();
+  });
+  doc.undash().restore();
+
+  // Cada encontro da grade recebe uma única cruz branca centralizada,
+  // compartilhada pelas quatro etiquetas ao redor.
   const centeredMarkArm = mm(2.4);
-  doc.lineWidth(0.8);
+  doc.save().strokeColor('#FFFFFF').lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((cutX) => {
     uniqueHorizontalCuts.forEach((cutY) => {
       doc.moveTo(Math.max(0, cutX - centeredMarkArm), cutY)

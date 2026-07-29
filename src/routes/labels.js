@@ -20,6 +20,40 @@ router.use(adminMiddleware);
 
 const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
 const LABEL_PROMOTION_FACTOR = 0.70;
+const UMBRO_MOTIVATION_PHRASES = {
+  futsal: [
+    'DOMINE A QUADRA. DECIDA O JOGO.',
+    'SEU PRÓXIMO GOL COMEÇA AQUI.',
+    'ENTRE EM QUADRA PARA VENCER.',
+    'CONTROLE, VELOCIDADE E ATITUDE.',
+    'JOGUE COM CONFIANÇA. VÁ PARA CIMA.',
+  ],
+  football: [
+    'SEU PRÓXIMO GOL COMEÇA AQUI.',
+    'CONTROLE, VELOCIDADE E ATITUDE.',
+    'JOGUE COM CONFIANÇA. VÁ PARA CIMA.',
+  ],
+  footwear: [
+    'CONFORTO PARA IR ALÉM.',
+    'MOVA-SE COM CONFIANÇA E ATITUDE.',
+    'ENCONTRE SEU RITMO. SUPERE LIMITES.',
+  ],
+  clothing: [
+    'VISTA SUA ATITUDE. MOVA-SE COM CONFIANÇA.',
+    'CONFORTO NO MOVIMENTO. ESTILO EM AÇÃO.',
+    'FEITO PARA ACOMPANHAR SEU RITMO.',
+  ],
+  accessory: [
+    'O DETALHE CERTO ELEVA SEU DESEMPENHO.',
+    'PREPARE-SE MELHOR. SIGA COM CONFIANÇA.',
+    'PRONTO PARA ACOMPANHAR CADA DESAFIO.',
+  ],
+  general: [
+    'PERFORMANCE PARA SEU PRÓXIMO DESAFIO.',
+    'MOVIMENTO, CONFIANÇA E ATITUDE.',
+    'ESCOLHA SEU RITMO. VÁ ALÉM.',
+  ],
+};
 
 function labelsPerProduct(template) {
   return isFourSideProductTemplate(template) ? 2 : 1;
@@ -299,6 +333,92 @@ function labelProductName(product, fallback = '') {
   return 'TÊNIS CONVERSE STAR PLAYER';
 }
 
+function labelDescriptionWords(value) {
+  return String(value || '').match(/[\p{L}\p{N}]+(?:[-/][\p{L}\p{N}]+)*/gu) || [];
+}
+
+function dedupeLabelWords(words) {
+  const seen = new Set();
+  return words.filter((word) => {
+    const normalized = normalizeLabelText(word);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function stableLabelPhraseIndex(value, length) {
+  let hash = 2166136261;
+  for (const char of String(value || '')) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return length > 0 ? (hash >>> 0) % length : 0;
+}
+
+function labelMotivationText(product, classification = {}, seed = '') {
+  if (brandSlug(product?.brand) !== 'umbro') return '';
+  const source = String(product?.name || '');
+  const clothing = clothingType(product, source);
+  const typed = productType(product, source);
+  let group = 'general';
+
+  if (isTennisProduct(product)) {
+    if (normalizeLabelText(footwearType(product)) === 'chuteira') {
+      const modality = normalizeLabelText(
+        footwearModality(product, source)
+        || classification.modality
+        || product?.subcategory
+        || product?.category,
+      );
+      group = /\b(?:futsal|indoor)\b/.test(modality) ? 'futsal' : 'football';
+    } else {
+      group = 'footwear';
+    }
+  } else if (clothing) {
+    group = 'clothing';
+  } else if (typed) {
+    group = 'accessory';
+  }
+
+  const phrases = UMBRO_MOTIVATION_PHRASES[group] || UMBRO_MOTIVATION_PHRASES.general;
+  const identity = seed || [product?.id, product?.name, product?.sku, group].filter(Boolean).join('|');
+  return phrases[stableLabelPhraseIndex(identity, phrases.length)];
+}
+
+// A descrição é somente o nome comercial/modelo. Marca, tipo, modalidade e
+// referência já possuem áreas próprias e não podem se repetir nesse campo.
+function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '') {
+  const source = String(product?.name || fallback || '').trim();
+  const type = productType(product, source);
+  const reserved = [
+    product?.brand,
+    reference,
+    categoryLabel,
+    type?.needle,
+    type?.label,
+    isTennisProduct(product) ? footwearType(product) : '',
+    isTennisProduct(product) ? footwearModality(product, source) : '',
+  ]
+    .flatMap(labelDescriptionWords)
+    .map(normalizeLabelText)
+    .filter((word) => word && word !== 'de' && word !== 'da' && word !== 'do');
+  const reservedWords = new Set(reserved);
+
+  const cleanedWords = dedupeLabelWords(labelDescriptionWords(source).filter((word) => {
+    const normalized = normalizeLabelText(word);
+    if (!normalized || reservedWords.has(normalized)) return false;
+    // Remove referências/SKUs mistos e códigos numéricos longos, preservando
+    // números curtos que façam parte do modelo comercial (por exemplo, "Pro 5").
+    if (/^(?=.*[a-z])(?=.*\d)[a-z0-9/-]{4,}$/i.test(normalized)) return false;
+    if (/^\d{4,}$/.test(normalized)) return false;
+    if (/^(?:ref|referencia|sku|codigo|cod)$/i.test(normalized)) return false;
+    return !/^(?:unissex|unisex|feminino|feminina|masculino|masculina|homem|mulher|men|women)$/i.test(normalized);
+  }));
+
+  return cleanedWords.join(' ').trim() || 'MODELO ESPORTIVO';
+}
+
 function cleanLabelCategory(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -329,13 +449,18 @@ function cleanLabelCategory(value) {
 
 function labelStyle(product, classification = {}) {
   if (isConverseBrand(product?.brand)) return 'ESTILO DE VIDA CLÁSSICO';
-  // Não usamos category/subcategory do catálogo: eles são dimensões de
-  // busca (normalmente "Tênis Homem/Mulher") e não devem aparecer na arte.
-  // Mantemos apenas a classificação comercial já definida para a etiqueta.
-  const parts = [classification.modality, classification.tier]
-    .map(cleanLabelCategory)
-    .filter(Boolean);
-  return [...new Set(parts)].join(' · ');
+  const type = productType(product, product?.name || '');
+  const typeLabel = isTennisProduct(product)
+    ? footwearType(product)
+    : (type?.label || '');
+  const modality = isTennisProduct(product)
+    ? footwearModality(product, product?.name || '')
+    : cleanLabelCategory(classification.modality);
+  const mainLabel = typeLabel && modality
+    ? `${typeLabel} de ${modality}`
+    : (typeLabel || modality);
+  const parts = [mainLabel, cleanLabelCategory(classification.tier)].filter(Boolean);
+  return dedupeLabelWords(parts.flatMap(labelDescriptionWords)).join(' ').toUpperCase();
 }
 
 function roundLabelPrice(value) {
@@ -662,7 +787,6 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
-      const productName = labelProductName(p, baseName);
       const availableSizes = p?.sizes
         ?.filter((s) => batch.storeId
           ? (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
@@ -672,6 +796,18 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .join(' | ') || '';
       const categoryLabel = labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
+      const canonicalName = labelProductName(p, baseName);
+      const productName = labelProductDescription(
+        p ? { ...p, name: canonicalName } : p,
+        canonicalName,
+        reference,
+        categoryLabel,
+      );
+      const motivationText = labelMotivationText(
+        p,
+        cls,
+        [p?.id, baseName, reference, categoryLabel].filter(Boolean).join('|'),
+      );
       const price = it.price != null ? Number(it.price) : (p ? Number(p.price) : null);
       const configuredPromo = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
@@ -704,6 +840,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         price,
         promotionalPrice,
         promotionText: LABEL_PROMOTION_TEXT,
+        motivationText,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
         internalBarcode: p?.internalBarcode || null,
@@ -951,5 +1088,8 @@ router.post('/batches/auto', async (req, res) => {
 // Exposto apenas para os testes determinísticos de composição das etiquetas;
 // o objeto continua sendo um Router Express normalmente.
 router.labelProductName = labelProductName;
+router.labelProductDescription = labelProductDescription;
+router.labelMotivationText = labelMotivationText;
+router.labelStyle = labelStyle;
 router.productType = productType;
 module.exports = router;
