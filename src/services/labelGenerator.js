@@ -875,9 +875,11 @@ function drawFourSideCutMarks(doc, template, geometry) {
     horizontalCuts.push(marginY + row * (labelH + gapY));
     horizontalCuts.push(marginY + row * (labelH + gapY) + labelH);
   }
+  const uniqueVerticalCuts = [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))];
+  const uniqueHorizontalCuts = [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))];
 
   doc.save().strokeColor(orange).lineWidth(1).lineCap('butt');
-  [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))].forEach((x) => {
+  uniqueVerticalCuts.forEach((x) => {
     if (marginY > edgeGap) {
       doc.moveTo(x, Math.max(0, marginY - markLength))
         .lineTo(x, Math.max(0, marginY - edgeGap))
@@ -889,7 +891,7 @@ function drawFourSideCutMarks(doc, template, geometry) {
         .stroke();
     }
   });
-  [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))].forEach((y) => {
+  uniqueHorizontalCuts.forEach((y) => {
     if (marginX > edgeGap) {
       doc.moveTo(Math.max(0, marginX - markLength), y)
         .lineTo(Math.max(0, marginX - edgeGap), y)
@@ -901,6 +903,35 @@ function drawFourSideCutMarks(doc, template, geometry) {
         .stroke();
     }
   });
+
+  // Repete a referência em "L" nos quatro cantos de cada etiqueta. Os braços
+  // ficam dentro da faixa branca individual; assim, mesmo após destacar uma
+  // parte da folha, as etiquetas restantes conservam suas próprias marcas.
+  const cornerArm = mm(2.4);
+  const cornerInset = mm(FOUR_SIDE_CUT_BORDER_MM / 2);
+  doc.lineWidth(0.8);
+  const drawCorner = (cornerX, cornerY, horizontalDirection, verticalDirection) => {
+    doc.moveTo(cornerX, cornerY)
+      .lineTo(cornerX + cornerArm * horizontalDirection, cornerY)
+      .stroke();
+    doc.moveTo(cornerX, cornerY)
+      .lineTo(cornerX, cornerY + cornerArm * verticalDirection)
+      .stroke();
+  };
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const cellX = marginX + col * (labelW + gapX);
+      const cellY = marginY + row * (labelH + gapY);
+      const left = cellX + cornerInset;
+      const right = cellX + labelW - cornerInset;
+      const top = cellY + cornerInset;
+      const bottom = cellY + labelH - cornerInset;
+      drawCorner(left, top, 1, 1);
+      drawCorner(right, top, -1, 1);
+      drawCorner(left, bottom, 1, -1);
+      drawCorner(right, bottom, -1, -1);
+    }
+  }
   doc.restore();
 }
 
