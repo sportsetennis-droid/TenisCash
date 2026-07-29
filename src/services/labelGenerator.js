@@ -827,10 +827,16 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   }
 
   // Face QR: o cartÃ£o branco preserva o contraste e a leitura na impressÃ£o.
-  centered('CONSULTE MAIS INFORMAÇÕES', 8, y + pad, { lineBreak: false });
-  const qrSize = Math.min(innerW - mm(4), h - mm(21));
+  // A face do QR também reserva os primeiros 10 mm para o furo.
+  // O título e o código descem juntos para manter a composição centralizada.
+  const qrPunchClearance = mm(10);
+  centered('CONSULTE MAIS\nINFORMAÇÕES', 8, y + qrPunchClearance + mm(1.5), {
+    height: mm(7.5),
+    ellipsis: false,
+  });
+  const qrSize = Math.min(innerW - mm(4), h - mm(30));
   const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(13);
+  const qrY = y + mm(21);
   doc.rect(qrX, qrY, qrSize, qrSize).fillColor(WHITE).fill();
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   doc.font(FONT_CLASSIC).fontSize(6.5).fillColor(WHITE)
