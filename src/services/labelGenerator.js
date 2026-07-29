@@ -22,6 +22,8 @@ const LABEL_FONT_BOLD = path.join(__dirname, '../../node_modules/@expo-google-fo
 const LABEL_FONT_CLASSIC_REGULAR = path.join(__dirname, '../../assets/fonts/RobotoSlab-Regular.ttf');
 const LABEL_FONT_CLASSIC_SEMIBOLD = path.join(__dirname, '../../assets/fonts/RobotoSlab-SemiBold.ttf');
 const LABEL_FONT_CLASSIC_BOLD = path.join(__dirname, '../../assets/fonts/RobotoSlab-Bold.ttf');
+const SPORTS_TENNIS_ICON_HIRES = path.join(__dirname, '../../assets/logos/sports-tennis-icon-white-hires.png');
+const SPORTS_TENNIS_WORDMARK_HIRES = path.join(__dirname, '../../assets/logos/sports-tennis-wordmark-white-hires.png');
 
 function registerLabelFonts(doc) {
   let interRegistered = false;
@@ -537,6 +539,21 @@ async function loadLogoBuffer(value) {
 async function loadStoreLogoParts(value) {
   const v = String(value || '').trim();
   try {
+    const officialSportsTennis = /st-logo-sports-tennis-white-transparent/i.test(v);
+    if (
+      officialSportsTennis
+      && fs.existsSync(SPORTS_TENNIS_ICON_HIRES)
+      && fs.existsSync(SPORTS_TENNIS_WORDMARK_HIRES)
+    ) {
+      // A imagem oficial horizontal tem somente 230 px de largura no símbolo.
+      // Usar os recortes locais em 600 dpi evita ampliar essa miniatura e
+      // preserva bordas nítidas na impressão.
+      return {
+        icon: fs.readFileSync(SPORTS_TENNIS_ICON_HIRES),
+        wordmark: fs.readFileSync(SPORTS_TENNIS_WORDMARK_HIRES),
+      };
+    }
+
     const raw = await (async () => {
       if (v.startsWith('data:image/')) {
         const b64 = v.split(',')[1];
@@ -555,7 +572,7 @@ async function loadStoreLogoParts(value) {
 
     const sharp = require('sharp');
     const meta = await sharp(raw).metadata();
-    const official = /st-logo-sports-tennis-white-transparent/i.test(v)
+    const official = officialSportsTennis
       && Number(meta.width) >= 900 && Number(meta.height) >= 200;
     if (!official) return { full: await loadLogoBuffer(v) };
 
