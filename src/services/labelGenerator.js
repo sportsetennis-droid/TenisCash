@@ -601,15 +601,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
   // desvio mecânico da segunda passagem da folha.
   const cutBorder = mm(FOUR_SIDE_CUT_BORDER_MM);
   const isBackFace = side === 'store' || side === 'qr';
-  if (isBackFace) {
-    // O duplex de impressoras de escritório tem tolerância mecânica na
-    // segunda passagem do papel. A sangria protege o verso de bordas brancas
-    // quando o corte segue a guia centralizada impressa na frente.
-    const backBleed = mm(Number(template?.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM));
-    doc.rect(x - backBleed, y - backBleed, w + backBleed * 2, h + backBleed * 2)
-      .fillColor(ORANGE)
-      .fill();
-  } else {
+  if (!isBackFace) {
     doc.rect(x, y, w, h).fillColor('#FFFFFF').fill();
     doc.rect(x + cutBorder, y + cutBorder, w - cutBorder * 2, h - cutBorder * 2)
       .fillColor(ORANGE)
@@ -1098,7 +1090,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   let currentPageIndex = 0;
 
   function drawPage(pageItems, pageIndex, pageSide) {
-    pageItems.forEach((item, slot) => {
+    const slotPosition = (slot) => {
       const rawCol = slot % cols;
       const rawRow = Math.floor(slot / cols);
       // No duplex pela borda longa, o verso precisa ser espelhado na
@@ -1110,7 +1102,27 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       const row = flipBack && !flipLongEdge ? rows - 1 - rawRow : rawRow;
       const x = marginX + col * (labelW + gapX);
       const y = marginY + row * (labelH + gapY);
+      return { x, y };
+    };
 
+    if (fourSide && pageSide === 'back') {
+      // A sangria do verso é um único caminho preenchido uma única vez.
+      // Isso evita que retângulos sobrepostos recebam mais tinta na Epson e
+      // apareçam como linhas escuras sobre o fundo laranja.
+      const cmyk = t.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
+      const backOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+      const backBleed = mm(Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM));
+      doc.save().fillColor(backOrange);
+      pageItems.forEach((item, slot) => {
+        const { x, y } = slotPosition(slot);
+        doc.rect(x - backBleed, y - backBleed, labelW + backBleed * 2, labelH + backBleed * 2);
+      });
+      doc.fill();
+      doc.restore();
+    }
+
+    pageItems.forEach((item, slot) => {
+      const { x, y } = slotPosition(slot);
       doc.save();
       // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
       const isST = isSTHorizontalTemplate(t);
