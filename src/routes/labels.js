@@ -53,9 +53,12 @@ const FOOTWEAR_CATEGORY_PATTERN = /\b(?:tenis|chuteiras?|calcados?|footwear|shoe
 
 function isTennisProduct(product) {
   const name = normalizeLabelText(product?.name);
-  const categoryFields = [product?.category, product?.subcategory]
+  const categoryFields = [product?.category, product?.subcategory, productClassification(product).type]
     .map(normalizeLabelText)
     .filter(Boolean);
+  // O nome/tipo explícito tem prioridade sobre uma categoria antiga ou
+  // incorreta (por exemplo, uma joelheira cadastrada como "Tênis").
+  if (productType(product, product?.name)) return false;
   if (NON_FOOTWEAR_NAME_PATTERN.test(name)) return false;
   if (FOOTWEAR_NAME_PATTERN.test(name)) return true;
   return categoryFields.some((value) => FOOTWEAR_CATEGORY_PATTERN.test(value));
@@ -71,7 +74,7 @@ function productClassification(product) {
 }
 
 function footwearType(product) {
-  const fields = [product?.name, product?.category, product?.subcategory, productClassification(product).modality]
+  const fields = [product?.name, product?.category, product?.subcategory, productClassification(product).type, productClassification(product).modality]
     .map(normalizeLabelText)
     .filter(Boolean);
   if (fields.some((value) => /\bchuteira\b/.test(value))) return 'Chuteira';
@@ -132,12 +135,96 @@ const CLOTHING_TYPES = [
   ['maio', 'Maiô'],
 ];
 
+// Tipos de produtos que não são calçados. O rótulo deve repetir o tipo
+// comercial real do item, mesmo quando a categoria antiga do cadastro estiver
+// incorreta ou genérica (por exemplo: "Joelheira" nunca vira "Tênis").
+const NON_FOOTWEAR_TYPE_RULES = [
+  ['joelheira', 'Joelheira'],
+  ['cotoveleira', 'Cotoveleira'],
+  ['munhequeira', 'Munhequeira'],
+  ['tornozeleira', 'Tornozeleira'],
+  ['caneleira', 'Caneleira'],
+  ['perneira', 'Perneira'],
+  ['protetor', 'Protetor'],
+  ['meia', 'Meia'],
+  ['luva', 'Luva'],
+  ['bola', 'Bola'],
+  ['raquete', 'Raquete'],
+  ['mochila', 'Mochila'],
+  ['bolsa', 'Bolsa'],
+  ['garrafa', 'Garrafa'],
+  ['squeeze', 'Squeeze'],
+  ['faixa', 'Faixa'],
+  ['bandagem', 'Bandagem'],
+  ['chaveiro', 'Chaveiro'],
+  ['bone', 'Boné'],
+  ['viseira', 'Viseira'],
+  ['touca', 'Touca'],
+  ['oculos', 'Óculos'],
+  ['carteira', 'Carteira'],
+  ['necessaire', 'Nécessaire'],
+  ['sacola', 'Sacola'],
+  ['pochete', 'Pochete'],
+  ['corda', 'Corda'],
+  ['halter', 'Halter'],
+  ['kettlebell', 'Kettlebell'],
+  ['colchonete', 'Colchonete'],
+  ['rede', 'Rede'],
+  ['apito', 'Apito'],
+  ['cone', 'Cone'],
+  ['bomba', 'Bomba'],
+  ['capacete', 'Capacete'],
+  ['toalha', 'Toalha'],
+];
+
+function typeFieldMatches(field, needle) {
+  const escaped = String(needle || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const plural = String(needle || '').includes(' ') ? '' : 's?';
+  return new RegExp(`\\b${escaped}${plural}\\b`).test(field);
+}
+
 function clothingType(product, source) {
   const fields = [source, product?.category, product?.subcategory].map(normalizeLabelText).filter(Boolean);
   for (const [needle, label] of CLOTHING_TYPES) {
-    if (fields.some((field) => new RegExp(`\\b${needle}\\b`).test(field))) return { needle, label };
+    if (fields.some((field) => typeFieldMatches(field, needle))) return { needle, label };
   }
   return null;
+}
+
+function productType(product, source = '') {
+  const fields = [
+    source,
+    product?.name,
+    product?.subcategory,
+    product?.category,
+    productClassification(product).modality,
+  ].map(normalizeLabelText).filter(Boolean);
+  const clothing = clothingType(product, source || product?.name || '');
+  if (clothing) return clothing;
+  for (const [needle, label] of NON_FOOTWEAR_TYPE_RULES) {
+    if (fields.some((field) => typeFieldMatches(field, needle))) return { needle, label };
+  }
+  return null;
+}
+
+function stripLeadingCatalogGender(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^(?:unissex|unisex|feminino|feminina|masculino|masculina|homem|mulher|men|women)\s+/i, '')
+    .trim();
+}
+
+function labelTypedNonFootwearName(product, source, type) {
+  const brand = String(product?.brand || '').trim();
+  let description = String(source || '').trim();
+  description = removeBrandPrefix(description, brand);
+  // Retira o tipo em qualquer posição usual: "Umbro Joelheira",
+  // "Joelheira Umbro" ou "Joelheira Unissex Umbro".
+  description = description.replace(new RegExp(`\\b${type.needle}s?\\b`, 'i'), ' ');
+  description = stripLeadingCatalogGender(description).replace(/\s+/g, ' ').trim();
+  description = removeBrandPrefix(description, brand);
+  description = stripLeadingCatalogGender(description);
+  return [type.label, brand, description].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function removeBrandPrefix(value, brand) {
@@ -152,7 +239,10 @@ function removeTypePrefix(value, needle) {
   const typeWords = String(needle || '').split(/\s+/).filter(Boolean);
   const normalizedWords = words.map(normalizeLabelText);
   const normalizedTypeWords = typeWords.map(normalizeLabelText);
-  if (!normalizedTypeWords.length || normalizedWords.slice(0, normalizedTypeWords.length).join(' ') !== normalizedTypeWords.join(' ')) return String(value || '').trim();
+  const first = normalizedWords.slice(0, normalizedTypeWords.length).join(' ');
+  const expected = normalizedTypeWords.join(' ');
+  const pluralExpected = normalizedTypeWords.length === 1 ? `${expected}s` : expected;
+  if (!normalizedTypeWords.length || (first !== expected && first !== pluralExpected)) return String(value || '').trim();
   return words.slice(normalizedTypeWords.length).join(' ').trim();
 }
 
@@ -173,10 +263,14 @@ function labelProductName(product, fallback = '') {
   const source = String(product?.name || fallback || '').trim();
   const brand = String(product?.brand || '').trim();
   const clothingName = labelClothingName(product, source);
+  const typedName = productType(product, source);
   const converseTennis = isConverseBrand(product?.brand)
     && (isTennisProduct(product) || /all[\s-]*star|chuck[\s-]*taylor|star[\s-]*player/i.test(source));
   if (clothingName && !converseTennis) return clothingName;
-  if (!isConverseBrand(product?.brand) && !isTennisProduct(product)) return source;
+  if (typedName && !converseTennis) return labelTypedNonFootwearName(product, source, typedName);
+  if (!isConverseBrand(product?.brand) && !isTennisProduct(product)) {
+    return typedName ? labelTypedNonFootwearName(product, source, typedName) : source;
+  }
   if (!isConverseBrand(product?.brand)) {
     const typeLabel = footwearType(product);
     const modality = typeLabel === 'Chuteira' ? footwearModality(product, source) : '';
@@ -854,4 +948,8 @@ router.post('/batches/auto', async (req, res) => {
   }
 });
 
+// Exposto apenas para os testes determinísticos de composição das etiquetas;
+// o objeto continua sendo um Router Express normalmente.
+router.labelProductName = labelProductName;
+router.productType = productType;
 module.exports = router;
