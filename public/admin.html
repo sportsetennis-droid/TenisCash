@@ -10017,7 +10017,10 @@ async function loadLabelAutoOptions() {
 }
 async function labelsGenerateAutomatic() {
   const button = document.getElementById('labels-generate-auto');
-  const templateId = document.getElementById('labels-template')?.value;
+  const templateSelect = document.getElementById('labels-template');
+  const defaultTemplate = Object.values(_lblTemplates).find(template => template.isDefault);
+  const templateId = defaultTemplate?.id || templateSelect?.value;
+  if (defaultTemplate && templateSelect) templateSelect.value = defaultTemplate.id;
   const storeValue = document.getElementById('labels-auto-store')?.value || 'all';
   const brand = document.getElementById('labels-auto-brand')?.value || '';
   const category = document.getElementById('labels-auto-category')?.value || '';
@@ -10046,7 +10049,8 @@ async function labelsGenerateAutomatic() {
     if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
-    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${suffix}`;
+    const templateSummary = data.templateName ? ` Modelo: ${data.templateName}.` : '';
+    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${templateSummary}${suffix}`;
     const cartSummary = document.getElementById('labels-cart-summary');
     if (cartSummary) cartSummary.textContent = summary;
   } catch (e) {
@@ -10425,10 +10429,19 @@ async function fiscalCancelDoc(docId, chaveTail) {
 
 async function loadLabelTemplates() {
   const sel = document.getElementById('labels-template');
+  const previousTemplateId = sel.value;
   const data = await api('/admin/labels/templates');
   if (data.error) { sel.innerHTML = '<option>Erro</option>'; return; }
   _lblTemplates = Object.fromEntries((data.templates || []).map(t => [t.id, t]));
-  sel.innerHTML = (data.templates || []).map(t => `<option value="${t.id}">${escapeHtml(t.name)} — ${t.type}</option>`).join('');
+  sel.innerHTML = (data.templates || []).map(t => (
+    `<option value="${t.id}">${escapeHtml(t.name)} — ${t.type}${t.isDefault ? ' — PADRÃO' : ''}</option>`
+  )).join('');
+  const defaultTemplate = (data.templates || []).find(t => t.isDefault);
+  if (previousTemplateId && _lblTemplates[previousTemplateId]) {
+    sel.value = previousTemplateId;
+  } else if (defaultTemplate) {
+    sel.value = defaultTemplate.id;
+  }
 }
 async function labelsSearchProducts() {
   const wrap = document.getElementById('labels-products-wrap');

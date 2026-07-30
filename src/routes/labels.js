@@ -600,7 +600,7 @@ router.get('/templates', async (_req, res) => {
       .flatMap((template) => template.legacyNames || []);
     const templates = await prisma.labelTemplate.findMany({
       where: deprecatedNames.length ? { name: { notIn: deprecatedNames } } : undefined,
-      orderBy: { name: 'asc' },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
     res.json({ templates });
   } catch (err) {
@@ -1032,7 +1032,6 @@ router.post('/batches/quick', async (req, res) => {
 router.post('/batches/auto', async (req, res) => {
   try {
     const {
-      templateId,
       name,
       storeId,
       allStores,
@@ -1040,10 +1039,16 @@ router.post('/batches/auto', async (req, res) => {
       category,
       usePromo,
     } = req.body || {};
-    if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
-
-    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
-    if (!templateMeta) return res.status(404).json({ error: 'Template de etiqueta não encontrado' });
+    // A geração automática por loja/marca sempre usa a etiqueta 5x7 aprovada.
+    // Antes, o front enviava o primeiro template em ordem alfabética e criava
+    // lotes de preço antigos mesmo quando a loja e a marca estavam corretas.
+    await ensureDefaultTemplates();
+    const templateMeta = await prisma.labelTemplate.findFirst({
+      where: { isDefault: true },
+    });
+    if (!templateMeta || !isProductDuplexTemplate(templateMeta)) {
+      return res.status(500).json({ error: 'Template padrão 5x7 frente e verso não encontrado' });
+    }
 
     const generateForStore = allStores === true || storeId === 'all';
     if (!generateForStore && !storeId) {
@@ -1120,6 +1125,8 @@ router.post('/batches/auto', async (req, res) => {
 
     res.json({
       batches,
+      templateId: templateMeta.id,
+      templateName: templateMeta.name,
       totalBatches: batches.length,
       totalModels: batches.reduce((sum, b) => sum + b.models, 0),
       emptyStores,
