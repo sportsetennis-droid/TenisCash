@@ -10,6 +10,7 @@ const express = require('express');
 const { prisma } = require('../middleware');
 const pagbank = require('../services/pagbank');
 const relationshipCommission = require('../services/relationshipCommission');
+const storeRadio = require('../services/storeRadio');
 
 const router = express.Router();
 
@@ -48,6 +49,9 @@ async function confirmAndEmit(sale, store, orderId, tag) {
   if (!pay.paid) { console.log(`[pagbank ${tag}] ainda nao pago`, { sale: sale.id, status: pay.status }); return { paid: false, status: pay.status }; }
   // marca a venda paga
   if (sale.status !== 'completed') await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } }).catch(() => {});
+  await storeRadio.queueSaleAnnouncement(sale.id).catch((error) => {
+    console.error(`[store-radio ${tag}] anúncio não enfileirado:`, error.message);
+  });
   await relationshipCommission.activateJourneyAfterPayment(prisma, sale.id).catch(() => {});
   await relationshipCommission.submitReservedReferralAfterPayment(prisma, sale.id).catch((error) => {
     console.error(`[pagbank ${tag}] indicacao nao enviada para fiscalizacao:`, error.message);

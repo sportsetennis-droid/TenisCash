@@ -8,6 +8,7 @@ const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
 const relationshipCommission = require('../services/relationshipCommission');
 const commissionEvidenceStore = require('../services/commissionEvidenceStore');
+const storeRadio = require('../services/storeRadio');
 
 const router = express.Router();
 
@@ -1292,6 +1293,13 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     }
     if (persistedSale?.status === 'completed' && result.referralAttribution?.reserved) {
       result.referralAttribution = await relationshipCommission.submitReservedReferralAfterPayment(prisma, result.sale.id);
+    }
+    if (persistedSale?.status === 'completed') {
+      // O anúncio é enfileirado somente depois da confirmação da venda. A chave
+      // idempotente impede duplicação em retries do caixa ou do webhook.
+      await storeRadio.queueSaleAnnouncement(result.sale.id).catch((err) => {
+        console.error('[store-radio] venda física:', err.message);
+      });
     }
 
     res.json({

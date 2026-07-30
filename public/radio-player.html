@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Rádio da Loja · TenisCash</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#27201b;background:#fff6ef}
+    body{margin:0;padding:24px;min-height:100vh;box-sizing:border-box}
+    .panel{max-width:430px;margin:0 auto;background:#fff;border:1px solid #f5c8aa;border-radius:18px;padding:24px;box-shadow:0 12px 35px #d9571e1c}
+    h1{font-size:23px;margin:0 0 6px;color:#d94e18}.sub{font-size:13px;color:#756b64;line-height:1.45;margin-bottom:20px}
+    button{border:0;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer;background:#e5571e;color:#fff;width:100%;font-size:14px}
+    button.secondary{background:#fff;color:#d94e18;border:1px solid #e5571e;margin-top:9px}
+    button:disabled{opacity:.5;cursor:not-allowed}.status{margin-top:17px;padding:12px;border-radius:10px;background:#fff6ef;color:#756b64;font-size:13px;line-height:1.5;min-height:20px}
+    .live{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#168346;margin:16px 0 7px}.dot{width:9px;height:9px;border-radius:50%;background:#b2b2b2}.dot.on{background:#18a854;box-shadow:0 0 0 4px #18a85422}
+    #last{font-size:13px;color:#403833;line-height:1.5;word-break:break-word}.hint{font-size:12px;color:#8c8179;line-height:1.45;margin-top:18px}
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>🔊 Rádio da Loja</h1>
+    <div class="sub">Mantenha esta janela aberta no computador ligado à caixa JBL. Os anúncios de venda confirmada serão reproduzidos automaticamente.</div>
+    <button id="activate" onclick="activateAudio()">Ativar áudio nesta máquina</button>
+    <button class="secondary" onclick="stopAudio()">Parar áudio agora</button>
+    <div class="live"><span id="dot" class="dot"></span><span id="liveText">Aguardando ativação</span></div>
+    <div id="status" class="status">Conectando ao TenisCash…</div>
+    <div style="margin-top:16px;font-size:12px;color:#8c8179">Último anúncio</div>
+    <div id="last">—</div>
+    <div class="hint">Se não ouvir: confira se a JBL está conectada por Bluetooth, escolhida como saída padrão do Windows e com volume ligado.</div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const storeId = params.get('storeId') || '';
+    const token = params.get('token') || '';
+    let active = false;
+    let busy = false;
+    let timer = null;
+    let voices = [];
+    const $ = (id) => document.getElementById(id);
+    function headers() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }; }
+    function setStatus(text) { $('status').textContent = text; }
+    function setLive(on, text) { $('dot').className = 'dot' + (on ? ' on' : ''); $('liveText').textContent = text; }
+    function refreshVoices() { voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; }
+    if (window.speechSynthesis) { refreshVoices(); window.speechSynthesis.onvoiceschanged = refreshVoices; }
+    function activateAudio() {
+      if (!window.speechSynthesis) { setStatus('Este navegador não oferece voz do sistema. Abra no Chrome/Edge do computador da loja.'); return; }
+      active = true; window.speechSynthesis.cancel(); $('activate').disabled = true; setLive(true, 'Player ativo'); setStatus('Player ativo. Aguardando vendas confirmadas…'); poll();
+    }
+    function stopAudio() {
+      active = false; busy = false; if (window.speechSynthesis) window.speechSynthesis.cancel(); $('activate').disabled = false; setLive(false, 'Áudio parado'); setStatus('Áudio parado. Clique em “Ativar áudio” para continuar.');
+    }
+    async function api(path, options = {}) {
+      const r = await fetch('/api/admin/store-radio' + path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+      const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || 'Falha de comunicação'); return data;
+    }
+    function chooseVoice(config) {
+      const wanted = String(config?.voiceName || '').toLowerCase();
+      return voices.find((v) => wanted && v.name.toLowerCase() === wanted)
+        || voices.find((v) => /^pt[-_]br$/i.test(v.lang))
+        || voices.find((v) => /^pt/i.test(v.lang))
+        || voices[0] || null;
+    }
+    async function play(announcement, config) {
+      busy = true; $('last').textContent = announcement.message; setStatus('Reproduzindo anúncio…');
+      const utterance = new SpeechSynthesisUtterance(announcement.message);
+      utterance.lang = config?.language || 'pt-BR'; utterance.volume = Math.max(0, Math.min(1, Number(config?.volume ?? 1))); utterance.rate = .96; utterance.pitch = 1;
+      const voice = chooseVoice(config); if (voice) utterance.voice = voice;
+      await new Promise((resolve) => {
+        utterance.onend = resolve; utterance.onerror = resolve; window.speechSynthesis.speak(utterance);
+      });
+      try { await api('/' + encodeURIComponent(announcement.id) + '/complete', { method: 'POST', body: '{}' }); } catch (_) {}
+      busy = false; if (active) setStatus('Player ativo. Aguardando vendas confirmadas…');
+    }
+    async function poll() {
+      if (!active || busy || !storeId) return;
+      try {
+        const data = await api('/next?storeId=' + encodeURIComponent(storeId));
+        if (data.announcement) await play(data.announcement, data.config);
+      } catch (e) { setStatus(e.message); }
+    }
+    if (!storeId || !token) { $('activate').disabled = true; setStatus('Link do player inválido. Abra pelo card Rádio da Loja no painel administrativo.'); }
+    timer = setInterval(poll, 2200);
+  </script>
+</body>
+</html>

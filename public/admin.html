@@ -396,6 +396,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button class="tab" onclick="switchTab('tiktok',this)">🛍️ TikTok Shop</button>
     <button class="tab" onclick="switchTab('metacatalog',this)">📘 Catálogo Meta</button>
     <button class="tab" onclick="switchTab('financial',this)">Financeiro</button>
+    <button class="tab" onclick="switchTab('radio',this)">🔊 Rádio da Loja</button>
     <button class="tab" onclick="switchTab('suppliers',this)">Fornecedores</button>
     <button class="tab" onclick="switchTab('productImages',this)">Imagens</button>
     <button class="tab" onclick="switchTab('categories',this)">Categorias</button>
@@ -655,6 +656,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <div class="hub-card-desc">Contas a pagar e a receber</div>
         <span class="hub-card-badge">CAIXA</span>
       </button>
+      <button class="hub-card" onclick="switchTabByName('radio')">
+        <div class="hub-card-icon">🔊</div>
+        <div class="hub-card-title">Rádio da Loja</div>
+        <div class="hub-card-desc">Anúncio automático após venda na caixa Bluetooth</div>
+        <span class="hub-card-badge">ÁUDIO + IA</span>
+      </button>
       <button class="hub-card" onclick="switchTabByName('financeiro')">
         <div class="hub-card-icon">💰</div>
         <div class="hub-card-title">Raio-X do dia</div>
@@ -794,6 +801,123 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       })();
       // Carrega no boot
       setTimeout(loadHubStats, 800);
+    </script>
+  </div>
+
+  <!-- RÁDIO DA LOJA SECTION -->
+  <div class="section" id="tab-radio" style="display:none">
+    <button class="hub-back-btn" onclick="switchTabByName('home')">← Voltar ao Início</button>
+    <div class="section-head">
+      <span class="section-title">🔊 Rádio da Loja</span>
+      <button class="refresh-btn" onclick="storeRadioLoadConfig()">↻ Atualizar</button>
+    </div>
+    <div class="card" style="padding:18px;margin-bottom:16px;background:#fff8f2;border-color:#f7c9ab">
+      <div style="font-weight:800;color:#b33e10;margin-bottom:8px">Como funciona</div>
+      <div style="font-size:13px;line-height:1.55;color:#4a4a4a">
+        Ligue uma caixa JBL (ou qualquer caixa Bluetooth) ao computador da loja, defina-a como saída de som padrão do Windows e abra o player. Quando uma venda for confirmada, o TenisCash coloca um anúncio nesta fila e a voz em português reproduz pela caixa. A venda só é anunciada depois do pagamento confirmado.
+      </div>
+    </div>
+    <div class="card" style="padding:18px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px);gap:14px;align-items:end">
+        <label class="form-label">Loja
+          <select id="store-radio-store" class="form-input" onchange="storeRadioSelectStore()"></select>
+        </label>
+        <label style="display:flex;align-items:center;gap:9px;padding-bottom:10px;font-weight:700;font-size:13px">
+          <input id="store-radio-enabled" type="checkbox" style="width:18px;height:18px"> Ativar anúncios automáticos
+        </label>
+      </div>
+      <label class="form-label" style="display:block;margin-top:12px">Mensagem padrão
+        <textarea id="store-radio-template" class="form-input" rows="3" maxlength="500" placeholder="A Sports &amp; Tennis agradece sua compra! Aproveite seu novo produto e volte sempre."></textarea>
+      </label>
+      <div style="display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:end;margin-top:12px">
+        <label class="form-label">Volume da voz
+          <input id="store-radio-volume" type="range" min="0" max="1" step="0.05" value="1" style="width:100%" oninput="document.getElementById('store-radio-volume-value').textContent=Math.round(this.value*100)+'%'">
+          <span id="store-radio-volume-value" style="font-size:12px;color:var(--text2)">100%</span>
+        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn-primary" onclick="storeRadioSave()">Salvar configuração</button>
+          <button class="btn-secondary" onclick="storeRadioTest()">🔔 Enviar teste</button>
+          <button class="btn-secondary" onclick="storeRadioOpenPlayer()">▶ Abrir player da loja</button>
+        </div>
+      </div>
+      <div id="store-radio-status" style="margin-top:12px;font-size:13px;color:var(--text2)">Carregando…</div>
+    </div>
+    <div class="card" style="padding:18px">
+      <div style="font-weight:800;margin-bottom:10px">Fila e histórico recente</div>
+      <div id="store-radio-queue" style="font-size:13px;color:var(--text2);margin-bottom:12px">—</div>
+      <div id="store-radio-history" style="display:grid;gap:8px"></div>
+    </div>
+    <script>
+      let storeRadioData = { stores: [] };
+      function storeRadioHeaders() {
+        return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
+      }
+      async function storeRadioApi(path, options = {}) {
+        const response = await fetch('/api/admin/store-radio' + path, { ...options, headers: { ...storeRadioHeaders(), ...(options.headers || {}) } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Não foi possível comunicar com a rádio.');
+        return data;
+      }
+      function storeRadioCurrent() {
+        const id = document.getElementById('store-radio-store')?.value;
+        return storeRadioData.stores.find((s) => s.id === id) || storeRadioData.stores[0] || null;
+      }
+      function storeRadioSelectStore() {
+        const current = storeRadioCurrent();
+        if (!current) return;
+        const cfg = current.radioConfig || {};
+        document.getElementById('store-radio-enabled').checked = !!cfg.enabled;
+        document.getElementById('store-radio-template').value = cfg.announcementTemplate || storeRadioData.defaultTemplate || '';
+        document.getElementById('store-radio-volume').value = Number.isFinite(Number(cfg.volume)) ? Number(cfg.volume) : 1;
+        document.getElementById('store-radio-volume-value').textContent = Math.round(Number(document.getElementById('store-radio-volume').value) * 100) + '%';
+        const q = current.queue || {};
+        document.getElementById('store-radio-queue').textContent = `Na fila: ${q.queued || 0} · reproduzindo: ${q.playing || 0} · reproduzidos: ${q.played || 0} · falhas: ${q.failed || 0}`;
+        storeRadioLoadHistory(current.id);
+      }
+      async function storeRadioLoadConfig() {
+        try {
+          storeRadioData = await storeRadioApi('/config');
+          const select = document.getElementById('store-radio-store');
+          const old = select.value;
+          select.innerHTML = (storeRadioData.stores || []).map((s) => `<option value="${s.id}">${s.name} (${s.code})</option>`).join('');
+          if (storeRadioData.stores.some((s) => s.id === old)) select.value = old;
+          storeRadioSelectStore();
+          document.getElementById('store-radio-status').textContent = 'Pronto. Ative, salve e abra o player no computador ligado à caixa.';
+        } catch (e) { document.getElementById('store-radio-status').textContent = e.message; }
+      }
+      async function storeRadioLoadHistory(storeId) {
+        try {
+          const data = await storeRadioApi('/history?storeId=' + encodeURIComponent(storeId) + '&limit=8');
+          const target = document.getElementById('store-radio-history');
+          target.innerHTML = (data.announcements || []).map((row) => `<div style="padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px"><b>${row.status}</b> · ${new Date(row.createdAt).toLocaleString('pt-BR')}<br>${String(row.message || '').replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>`).join('') || '<div style="color:var(--text2);font-size:12px">Nenhum anúncio ainda.</div>';
+        } catch (_) {}
+      }
+      async function storeRadioSave() {
+        const current = storeRadioCurrent(); if (!current) return;
+        const status = document.getElementById('store-radio-status');
+        try {
+          const data = await storeRadioApi('/config/' + encodeURIComponent(current.id), { method: 'PATCH', body: JSON.stringify({ enabled: document.getElementById('store-radio-enabled').checked, volume: Number(document.getElementById('store-radio-volume').value), announcementTemplate: document.getElementById('store-radio-template').value }) });
+          current.radioConfig = data.config;
+          status.textContent = data.config.enabled ? 'Rádio ativada. Abra o player na máquina da loja.' : 'Rádio salva e desativada.';
+        } catch (e) { status.textContent = e.message; }
+      }
+      async function storeRadioTest() {
+        const current = storeRadioCurrent(); if (!current) return;
+        const status = document.getElementById('store-radio-status');
+        try { await storeRadioApi('/test', { method: 'POST', body: JSON.stringify({ storeId: current.id }) }); status.textContent = 'Teste colocado na fila. Deixe o player aberto para ouvir.'; storeRadioLoadConfig(); }
+        catch (e) { status.textContent = e.message; }
+      }
+      function storeRadioOpenPlayer() {
+        const current = storeRadioCurrent(); if (!current) return;
+        const token = localStorage.getItem('tc_admin_token') || '';
+        window.open('/radio-player.html?storeId=' + encodeURIComponent(current.id) + '&token=' + encodeURIComponent(token), '_blank', 'width=460,height=620');
+      }
+      window.storeRadioLoadConfig = storeRadioLoadConfig;
+      window.storeRadioSelectStore = storeRadioSelectStore;
+      window.storeRadioSave = storeRadioSave;
+      window.storeRadioTest = storeRadioTest;
+      window.storeRadioOpenPlayer = storeRadioOpenPlayer;
+      setTimeout(storeRadioLoadConfig, 900);
     </script>
   </div>
 
@@ -8001,7 +8125,7 @@ function switchTab(tab, btn) {
   if (tabPrt) tabPrt.style.display = tab === 'partners' ? 'block' : 'none';
   const tabAI = document.getElementById('tab-aiCenter');
   if (tabAI) tabAI.style.display = tab === 'aiCenter' ? 'block' : 'none';
-  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','suppliers','categories','vitrine','productImages','campaigns','qrOffers','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','cameraAI','whatsapp','infoproducts'];
+  const extraTabs = ['labels','curation','interview','xml','recs','ns','tiktok','financial','radio','suppliers','categories','vitrine','productImages','campaigns','qrOffers','inventory','images','markup','stocktake','fiscal','nfegeral','marketing','cameraAI','whatsapp','infoproducts'];
   extraTabs.forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = tab === t ? 'block' : 'none';

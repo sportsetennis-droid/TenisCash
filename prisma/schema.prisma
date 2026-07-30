@@ -329,6 +329,10 @@ model Store {
   sellerInternalRequests     SellerInternalRequest[]
   sellerConductReports       SellerConductReport[]
   sellerAssistantAssignments SellerAssistantProductAssignment[] @relation("sellerAssistantAssignmentStore")
+
+  // Rádio da loja: fila de anúncios reproduzidos no computador ligado à caixa Bluetooth.
+  radioConfig        StoreRadioConfig?
+  radioAnnouncements RadioAnnouncement[]
 }
 
 // ============================================================
@@ -574,10 +578,52 @@ model Sale {
   relationshipJourney       SellerCommissionJourney? @relation("relationshipJourneySale")
   referralCommissionStage   SellerCommissionStage?   @relation("referralConvertedSale")
   sellerReferralAttribution SellerReferralCode?      @relation("sellerReferralConvertedSale")
+  radioAnnouncements        RadioAnnouncement[]
 
   @@index([sellerId, createdAt])
   @@index([clientId])
   @@index([customerUserId, createdAt])
+}
+
+// ============================================================
+// RÁDIO DA LOJA — anúncios locais via navegador + caixa Bluetooth
+// Não depende de uma caixa JBL específica nem de chave de API de voz:
+// o player usa a voz pt-BR instalada no Windows e envia o áudio para o
+// dispositivo de saída padrão (por exemplo, uma JBL conectada por Bluetooth).
+// ============================================================
+
+model StoreRadioConfig {
+  id                   String   @id @default(cuid())
+  storeId              String   @unique
+  store                Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  enabled              Boolean  @default(false)
+  volume               Float    @default(1)
+  language             String   @default("pt-BR")
+  voiceName            String?
+  announcementTemplate String   @default("A Sports & Tennis agradece sua compra! Aproveite seu novo produto e volte sempre.")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model RadioAnnouncement {
+  id          String    @id @default(cuid())
+  storeId     String?
+  store       Store?    @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  saleId      String?
+  sale        Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  eventKey    String    @unique
+  source      String    @default("sale") // sale | test | manual
+  message     String
+  status      String    @default("QUEUED") // QUEUED | PLAYING | PLAYED | FAILED
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  claimedAt   DateTime?
+  playedAt    DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  @@index([storeId, status, availableAt])
+  @@index([status, createdAt])
 }
 
 model SaleItem {

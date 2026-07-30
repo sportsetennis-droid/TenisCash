@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
 const { assessProductForNuvemshop } = require('./nuvemshopEligibility');
+const storeRadio = require('./storeRadio');
 
 // Storefront currently bound to www.sportsetennis.com.br (LS.store.id).
 // An env override keeps migrations possible without ever falling back to an
@@ -436,6 +437,12 @@ async function upsertSaleFromOrder(nsOrder) {
     }
   }
 
+  // order/paid pode chegar depois de order/created: transforma a Sale local
+  // em concluída antes de criar o anúncio (sem repetir em webhooks duplicados).
+  if (sale && nsOrder.payment_status === 'paid' && sale.status !== 'completed') {
+    sale = await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } });
+  }
+
   // Mapping
   if (existing) {
     await prisma.nuvemshopOrderMapping.update({
@@ -570,6 +577,12 @@ async function upsertSaleFromOrder(nsOrder) {
   } catch (err) {
     console.error('[fiscal pre-emission NS]', err.message);
     await logSync('fiscal', 'error', `order/paid ${nsOrder.id} pré-emissão NFe falhou: ${err.message}`);
+  }
+
+  if (nsOrder.payment_status === 'paid' && sale) {
+    await storeRadio.queueSaleAnnouncement(sale.id).catch((err) => {
+      console.error('[store-radio] venda Nuvemshop:', err.message);
+    });
   }
 
   return sale;
