@@ -962,25 +962,36 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       }
     }
 
-    const productName = String(item.productName || item.name || '').trim().toUpperCase();
-    const descriptionY = y + mm(24.1);
-    const descriptionH = mm(11.2);
+    let productName = String(item.productName || item.name || '').trim().toUpperCase();
+    const descriptionY = y + mm(23.4);
+    const descriptionH = mm(12.4);
+    const descriptionFitH = descriptionH - mm(0.8);
+    const productWords = productName.split(/\s+/).filter(Boolean);
+    doc.font(FONT_BOLD).fontSize(8);
+    while (productWords.length > 2 && doc.heightOfString(productWords.join(' '), {
+      width: innerW,
+      align: 'left',
+      lineGap: -0.4,
+    }) > descriptionFitH) {
+      productWords.pop();
+    }
+    productName = productWords.join(' ');
     let descriptionFs = 11.6;
-    for (; descriptionFs >= 8.4; descriptionFs -= 0.2) {
+    for (; descriptionFs >= 8; descriptionFs -= 0.2) {
       doc.font(FONT_BOLD).fontSize(descriptionFs);
       if (doc.heightOfString(productName, {
         width: innerW,
         align: 'left',
         lineGap: -0.4,
-      }) <= descriptionH) break;
+      }) <= descriptionFitH) break;
     }
-    doc.font(FONT_BOLD).fontSize(Math.max(8.4, descriptionFs)).fillColor(CHARCOAL)
+    doc.font(FONT_BOLD).fontSize(Math.max(8, descriptionFs)).fillColor(CHARCOAL)
       .text(productName, x + pad, descriptionY, {
         width: innerW,
         height: descriptionH,
         align: 'left',
         lineGap: -0.4,
-        ellipsis: true,
+        ellipsis: false,
       });
 
     const category = String(item.categoryLabel || item.category || '').trim().toUpperCase();

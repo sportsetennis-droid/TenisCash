@@ -95,6 +95,64 @@ const cases = [
     description: 'CAMISETA BIG LOG',
     style: 'ROUPA ESPORTIVA',
   },
+  {
+    product: {
+      name: 'DIADORA DFSC082-06 PLAYMAKER BRANCO/LILAS',
+      brand: 'DIADORA',
+      category: 'Tênis',
+      subcategory: 'Unissex',
+    },
+    context: {
+      classification: { modality: 'Estilo de Vida', tier: 'Casual' },
+    },
+    reference: '',
+    description: 'DIADORA PLAYMAKER',
+    style: 'CALÇADO ESPORTIVO',
+  },
+  {
+    product: {
+      name: 'SANDALIA MASC HURLEY ONE E ONLY DENIM 43/44/2',
+      brand: 'HURLEY',
+      category: 'Calçados',
+      subcategory: 'Homem',
+    },
+    context: {
+      supplierRef: 'HU0001C0009',
+      classification: { type: 'Outro', modality: 'Sandália', tier: 'Básica' },
+    },
+    reference: 'HU0001C0009',
+    description: 'SANDALIA HURLEY ONE E ONLY DENIM',
+    style: 'CALÇADO ESPORTIVO',
+  },
+  {
+    product: {
+      name: 'REF: GW1988 - ADIDAS TENIS TENSAUR SPORT 2 0 18/24 1122222',
+      brand: 'ADIDAS',
+      category: 'Calçados',
+    },
+    context: {
+      supplierRef: 'GW1988',
+      classification: {},
+    },
+    reference: 'GW1988',
+    description: 'ADIDAS TENIS TENSAUR SPORT 2.0',
+    style: 'CALÇADO ESPORTIVO',
+  },
+  {
+    product: {
+      name: 'CHUTEIRA FUTSAL JOMA TOP FLEX JR VELCRO- AZL',
+      brand: 'JOMA',
+      category: 'Chuteiras',
+      subcategory: 'Menino',
+    },
+    context: {
+      supplierRef: 'TPJS2444INV.26',
+      classification: { type: 'Chuteira', modality: 'Futsal', tier: 'Treino' },
+    },
+    reference: '',
+    description: 'CHUTEIRA JOMA TOP FLEX JR VELCRO',
+    style: 'FUTSAL',
+  },
 ];
 
 for (const testCase of cases) {
@@ -111,5 +169,13 @@ for (const testCase of cases) {
   assert.equal(style, testCase.style);
   assert.doesNotMatch(description, /\b(?:tam|tamanho)\b/i);
 }
+
+assert.deepEqual(
+  [
+    'Único-5208', 'T-4065426038514', '38', 'M', '43/44/2', '40.5',
+    '4041', 'GG-1735', '?-6717', 'T-42', '39BRA',
+  ].map(labels.normalizeLabelAvailableSize),
+  ['ÚNICO', '', '38', 'M', '43/44/2', '40,5', '40/41', 'GG', '', '42', '39'],
+);
 
 console.log('Identificação semântica das etiquetas validada.');

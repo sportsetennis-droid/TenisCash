@@ -96,9 +96,9 @@ function isTennisProduct(product) {
     .filter(Boolean);
   // O nome/tipo explícito tem prioridade sobre uma categoria antiga ou
   // incorreta (por exemplo, uma joelheira cadastrada como "Tênis").
-  if (productType(product, product?.name)) return false;
   if (NON_FOOTWEAR_NAME_PATTERN.test(name)) return false;
   if (FOOTWEAR_NAME_PATTERN.test(name)) return true;
+  if (productType(product, product?.name)) return false;
   return categoryFields.some((value) => FOOTWEAR_CATEGORY_PATTERN.test(value));
 }
 
@@ -354,7 +354,7 @@ function dedupeLabelWords(words) {
 }
 
 function stripLabelSizeSuffix(value) {
-  const sizeToken = '(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|ÚNICO|ÚNICA|\\d{2,3}(?:[/-]\\d{2,3})?)';
+  const sizeToken = '(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|ÚNICO|ÚNICA|\\d{2,3}(?:[/-]\\d{1,3}){0,3})';
   return String(value || '')
     .replace(new RegExp(`(?:^|[\\s|;,-])tam(?:anho)?\\.?\\s*[:=-]?\\s*${sizeToken}\\s*$`, 'iu'), ' ')
     .replace(new RegExp(`(?:\\s+-\\s*|\\s+)${sizeToken}\\s*$`, 'iu'), ' ')
@@ -407,12 +407,17 @@ const LABEL_COLOR_WORDS = new Set([
   'azl', 'azul', 'bco', 'branco', 'bege', 'cinza', 'cnz', 'coral', 'dourado',
   'cor', 'cores',
   'frtc', 'grafite', 'grf', 'laranja', 'lima', 'lrj', 'lrjf', 'mar', 'marinho',
-  'mcmt', 'multicolor', 'preto', 'pta', 'pto', 'purp', 'roxo', 'royal', 'verde',
-  'vermelho', 'vrdl', 'vrm', 'sortida', 'sortidas', 'sortido', 'sortidos',
+  'mcmt', 'multicolor', 'preto', 'preta', 'pta', 'pto', 'purp', 'roxo', 'royal', 'verde',
+  'vermelho', 'vermelha', 'vrdl', 'vrm', 'sortida', 'sortidas', 'sortido', 'sortidos',
+  'almond', 'amendoa', 'black', 'blue', 'cafe', 'celeste', 'green', 'lilac', 'lilas',
+  'milk', 'off', 'orange', 'pearl', 'pearled', 'rum', 'saxon', 'teal', 'terra',
+  'turq', 'turquesa', 'white', 'yellow',
 ]);
 
 function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
-  const source = stripLabelSizeSuffix(product?.name || fallback);
+  const source = stripLabelSizeSuffix(product?.name || fallback)
+    // Grades de tamanhos no meio do cadastro também não pertencem à descrição.
+    .replace(/\b(?:1[5-9]|[2-5]\d|6[0-5])(?:[/-](?:\d{1,3})){1,3}\b/g, ' ');
   const classification = context.classification || productClassification(product);
   const modality = isTennisProduct(product)
     ? footwearModality(product, source)
@@ -437,12 +442,16 @@ function labelProductDescription(product, fallback = '', reference = '', categor
     labelDescriptionWords(detectedType).map(normalizeLabelText).filter(Boolean),
   );
 
-  const cleanedWords = dedupeLabelWords(labelDescriptionWords(source).filter((word) => {
+  const sourceWords = labelDescriptionWords(source);
+  const cleanedWords = dedupeLabelWords(sourceWords.filter((word, index) => {
     const normalized = normalizeLabelText(word);
     if (!normalized || (reservedWords.has(normalized) && !protectedTypeWords.has(normalized))) return false;
     // Remove referências/SKUs mistos e códigos numéricos longos, preservando
     // números curtos que façam parte do modelo comercial (por exemplo, "Pro 5").
     if (/^(?=.*[a-z])(?=.*\d)[a-z0-9/-]{4,}$/i.test(normalized)) return false;
+    // Remove o sufixo numérico de referências compostas, como DFSC082-06.
+    if (/^\d{1,2}$/.test(normalized) && index > 0
+      && /^(?=.*[a-z])(?=.*\d)[a-z0-9]{4,}$/i.test(normalizeLabelText(sourceWords[index - 1]))) return false;
     if (/^\d{3,}$/.test(normalized)) return false;
     if (/^(?:ref|referencia|sku|codigo|cod|tam|tamanho)$/i.test(normalized)) return false;
     if (/^(?:pp|p|m|g|gg|xg|xgg|eg|egg|u|tu|unico|unica)$/i.test(normalized)) return false;
@@ -450,7 +459,74 @@ function labelProductDescription(product, fallback = '', reference = '', categor
     return !/^(?:unissex|unisex|feminino|feminina|fem|masculino|masculina|masc|homem|mulher|men|women|infantil|inf)$/i.test(normalized);
   }));
 
-  return cleanedWords.join(' ').trim() || 'MODELO ESPORTIVO';
+  const description = cleanedWords.join(' ')
+    // Preserva números comerciais como 2.0, sem deixá-los parecer uma grade.
+    .replace(/\b(\d)\s+(\d)\b/g, '$1.$2')
+    .trim();
+  if (!description) return 'MODELO ESPORTIVO';
+  if (description.length <= 60) return description;
+  const compact = [];
+  for (const word of description.split(/\s+/)) {
+    const next = [...compact, word].join(' ');
+    if (next.length > 60) break;
+    compact.push(word);
+  }
+  return compact.join(' ') || description.slice(0, 60).trim();
+}
+
+function normalizeLabelAvailableSize(value) {
+  let size = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!size || size === '?') return '';
+  if (/^UNICO(?:-\d+)?$/.test(size)) return 'ÚNICO';
+
+  const alphaSizes = {
+    PP: 'PP', P: 'P', M: 'M', G: 'G', GG: 'GG', XG: 'XG', XGG: 'XGG',
+    EG: 'EG', EGR: 'EGR', PEQ: 'PEQ', MED: 'MED', GRD: 'GRD', U: 'ÚNICO',
+    UN: 'ÚNICO', XS: 'XS', S: 'S', L: 'L', XL: 'XL', XXL: 'XXL', XXG: 'XXG',
+  };
+  if (alphaSizes[size]) return alphaSizes[size];
+
+  const alphaWithCode = size.match(/^(PP|P|M|G|GG|XG|XGG|EG|EGR|PEQ|MED|GRD)-\d{3,}$/);
+  if (alphaWithCode) return alphaSizes[alphaWithCode[1]] || alphaWithCode[1];
+
+  const prefixedSimple = size.match(/^T-\s*(\d{1,2}(?:[.,]5)?)$/);
+  if (prefixedSimple) size = prefixedSimple[1];
+  const brazilianSimple = size.match(/^(\d{1,2})(?:BR|BRA)$/);
+  if (brazilianSimple) size = brazilianSimple[1];
+  const namedSimple = size.match(/^(?:TAM|ANHO)(\d{1,2})$/);
+  if (namedSimple) size = namedSimple[1];
+  const namedAlpha = size.match(/^TAM(PP|P|M|G|GG|XG|XGG|EG)$/);
+  if (namedAlpha) return alphaSizes[namedAlpha[1]] || namedAlpha[1];
+
+  size = size.replace(/·/g, '.').replace(/AO|A/g, '-').replace(/\]$/g, '');
+  const codedNumeric = size.match(/^(\d{1,2})[.-]\d{3,4}$/);
+  if (codedNumeric) size = codedNumeric[1];
+
+  if (/^\d{4}$/.test(size)) {
+    const first = Number(size.slice(0, 2));
+    const second = Number(size.slice(2));
+    if (first >= 15 && first <= 75 && second >= 15 && second <= 75) return `${first}/${second}`;
+  }
+
+  if (/^\d{1,3}(?:[.,]\d)?$/.test(size)) {
+    const numeric = Number(size.replace(',', '.'));
+    if (numeric >= 1 && numeric <= 125) {
+      return Number.isInteger(numeric) ? String(numeric) : String(numeric).replace('.', ',');
+    }
+    return '';
+  }
+
+  const range = size.match(/^(\d{1,2})([/-])(\d{1,2})(?:\2(\d{1,2}))?$/);
+  if (range) {
+    const values = [range[1], range[3], range[4]].filter(Boolean).map(Number);
+    if (values.every((number) => number >= 1 && number <= 75)) return values.join(range[2]);
+  }
+  return '';
 }
 
 function cleanLabelCategory(value) {
@@ -836,13 +912,13 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
-      const availableSizes = p?.sizes
+      const availableSizes = [...new Set((p?.sizes || [])
         ?.filter((s) => batch.storeId
           ? (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
           : Number(s.stock || 0) > 0)
-        .map((s) => s.size)
+        .map((s) => normalizeLabelAvailableSize(s.size))
         .filter(Boolean)
-        .join(' | ') || '';
+      )].join(' | ');
       const categoryLabel = labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
       const productName = labelProductDescription(
@@ -1161,4 +1237,5 @@ router.labelProductDescription = labelProductDescription;
 router.labelMotivationText = labelMotivationText;
 router.labelStyle = labelStyle;
 router.productType = productType;
+router.normalizeLabelAvailableSize = normalizeLabelAvailableSize;
 module.exports = router;
