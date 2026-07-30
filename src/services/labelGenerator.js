@@ -998,7 +998,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
     if (Number.isFinite(value)) {
       if (usePromo && Number.isFinite(Number(item.price))) {
-        const oldPrice = `PREÇO ORIGINAL ${fmtBRL(item.price)}`;
+        const oldPrice = `PREÇO NORMAL ${fmtBRL(item.price)}`;
         const oldFs = fitSingleLine(oldPrice, FONT_BOLD, 7.2, 5.6);
         const oldY = y + mm(41.8);
         doc.font(FONT_BOLD).fontSize(oldFs).fillColor(MUTED)
