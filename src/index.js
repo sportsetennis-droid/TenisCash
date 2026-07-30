@@ -87,6 +87,7 @@ const servicesMarketingRoutes = require('./routes/services-marketing');
 const servicesClubRouter = require('./routes/services-club');
 const brandProfiles = require('./services/brandProfiles');
 const { startMessagesCron } = require('./services/messagesCron');
+const { startWhatsappHealthCron, getWhatsappHealthState } = require('./services/whatsappHealthCron');
 const { startMarketingCron } = require('./services/marketingCron');
 const { startDailyAgentsCron } = require('./services/dailyAgentsCron');
 const { startCatalogEngineCron } = require('./services/catalogEngineCron');
@@ -432,11 +433,14 @@ app.get('/api/health', (req, res) => {
   try {
     nuvemshopCatalog = require('./services/nuvemshopStockCron').getNuvemshopCronState();
   } catch (_) {}
+  let waHealth = null;
+  try { waHealth = getWhatsappHealthState(); } catch (_) {}
   res.json({
     status: 'ok',
     service: 'TenisCash API',
     version: '1.0.0',
     nuvemshopCatalog,
+    waHealth,
   });
 });
 
@@ -1565,6 +1569,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Robô do grupo da empresa: relatório de vendas 13h/18h/21h (ponto é em tempo real, via rota)
   try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
+  try { startWhatsappHealthCron(); } catch (e) { console.error('[waHealth] falha ao iniciar:', e.message); }
 
   // Checklist diario dos vendedores escalados. Nao aplica penalidades automaticamente.
   if (process.env.DISABLE_SELLER_PRODUCTION_CRON !== '1') {
