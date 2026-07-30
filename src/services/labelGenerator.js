@@ -1024,29 +1024,36 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const percentMatch = offer.match(/(\d+)\s*%/);
       const percent = percentMatch ? percentMatch[1] : null;
       const conditionMatch = offer.match(/LEVANDO\s+(.+?)(?:\.|$)/i);
-      const offerText = [
-        percent ? `${percent}% OFF` : 'OFERTA',
-        conditionMatch ? `LEVANDO ${conditionMatch[1]}` : '',
-      ].filter(Boolean).join(' - ');
-      const offerFs = fitSingleLine(offerText, FONT_BOLD, 6.4, 4.6);
-      doc.font(FONT_BOLD).fontSize(offerFs).fillColor(CHARCOAL)
-        .text(offerText, x + pad, y + mm(55.8), {
+      const offerHeadline = percent ? `PREÇO COM ${percent}% OFF` : 'PREÇO PROMOCIONAL';
+      const offerFs = fitSingleLine(offerHeadline, FONT_BOLD, 6.4, 5.2);
+      doc.font(FONT_BOLD).fontSize(offerFs).fillColor(ORANGE)
+        .text(offerHeadline, x + pad, y + mm(54.7), {
           width: innerW,
-          height: mm(3),
+          height: mm(2.7),
           lineBreak: false,
         });
+      if (conditionMatch) {
+        const conditionText = `LEVANDO ${conditionMatch[1]}`;
+        const conditionFs = fitSingleLine(conditionText, FONT_BOLD, 5.9, 4.8);
+        doc.font(FONT_BOLD).fontSize(conditionFs).fillColor(CHARCOAL)
+          .text(conditionText, x + pad, y + mm(57), {
+            width: innerW,
+            height: mm(2.6),
+            lineBreak: false,
+          });
+      }
     }
 
     const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
-      .moveTo(x + pad, y + mm(59.4))
-      .lineTo(x + w - pad, y + mm(59.4))
+      .moveTo(x + pad, y + mm(59.8))
+      .lineTo(x + w - pad, y + mm(59.8))
       .stroke().restore();
 
     const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.4, 5.2);
     doc.font(FONT_BOLD).fontSize(paymentFs).fillColor(CHARCOAL)
-      .text(paymentText, x + pad, y + mm(60.6), {
+      .text(paymentText, x + pad, y + mm(61), {
         width: innerW,
         height: mm(3.8),
         lineBreak: false,
