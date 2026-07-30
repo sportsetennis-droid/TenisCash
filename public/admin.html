@@ -1986,7 +1986,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
     <select class="search-box" id="labels-template" style="min-width:280px"></select>
     <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px"><input type="checkbox" id="labels-use-promo"> Usar preço promocional</label>
-    <span style="font-size:12px;color:var(--text2)">Novo padrão: 5 × 7 cm · 2 etiquetas por produto · 4 faces · logos da marca e da loja (cadastro ou busca automática confiável) · fundo laranja CMYK C0 M80 Y100 K0 · QR Code</span>
+    <span style="font-size:12px;color:var(--text2)">Padrão aprovado: 5 × 7 cm · 1 etiqueta por produto · frente e verso · logo da marca na frente · logo da loja, código de barras e QR Code atrás</span>
   </div>
   <div id="labels-auto-panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px;padding:12px 14px;background:#fff7f2;border:1px solid #ffd8c5;border-radius:12px">
     <strong style="font-size:12px;color:#8d3216;letter-spacing:.4px">GERAÇÃO AUTOMÁTICA</strong>
@@ -10010,6 +10010,10 @@ async function loadLabelAutoOptions() {
     if ([...storeSel.options].some(o => o.value === currentStore)) storeSel.value = currentStore;
     if ([...brandSel.options].some(o => o.value === currentBrand)) brandSel.value = currentBrand;
     if ([...categorySel.options].some(o => o.value === currentCategory)) categorySel.value = currentCategory;
+    if (!brandSel.dataset.categoryResetBound) {
+      brandSel.addEventListener('change', () => { categorySel.value = ''; });
+      brandSel.dataset.categoryResetBound = '1';
+    }
     _lblAutoOptionsLoaded = true;
   } catch (e) {
     console.warn('opções de geração automática de etiquetas', e);
@@ -10038,7 +10042,9 @@ async function labelsGenerateAutomatic() {
     if (data.error) { alert(data.error + (data.detail ? '\n\n' + data.detail : '')); return; }
     const batches = data.batches || [];
     if (!batches.length) {
-      alert('Nenhum modelo com estoque físico encontrou esses filtros.');
+      const selectedStore = document.getElementById('labels-auto-store')?.selectedOptions?.[0]?.textContent || '';
+      const selectedCategory = category ? ` · Categoria: ${category}` : '';
+      alert(`Nenhum modelo com estoque físico nesta loja encontrou os filtros.\nLoja: ${selectedStore}\nMarca: ${brand || 'todas'}${selectedCategory}`);
       await loadLabelBatches();
       return;
     }
@@ -10049,12 +10055,8 @@ async function labelsGenerateAutomatic() {
     if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
-    const fallback = (data.fallbackStores || []).map(s => s.code || s.name).join(', ');
-    const fallbackSummary = fallback
-      ? ` Estoque da loja ainda sem vínculo; usados modelos com estoque físico geral: ${fallback}.`
-      : '';
     const templateSummary = data.templateName ? ` Modelo: ${data.templateName}.` : '';
-    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${templateSummary}${fallbackSummary}${suffix}`;
+    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${templateSummary}${suffix}`;
     const cartSummary = document.getElementById('labels-cart-summary');
     if (cartSummary) cartSummary.textContent = summary;
   } catch (e) {

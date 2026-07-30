@@ -91,7 +91,7 @@ function isProductDuplexTemplate(template) {
 
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
-const FOUR_SIDE_FRONT_BLEED_MM = 0.8;
+const FOUR_SIDE_FRONT_BLEED_MM = 2;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
 
 function defaultTemplates() {

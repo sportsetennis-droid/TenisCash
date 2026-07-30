@@ -22,6 +22,7 @@ const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da 
 const LABEL_PROMOTION_FACTOR = 0.70;
 const LABEL_PAYMENT_TERMS = 'PIX, DINHEIRO OU CARTÃO';
 const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL E GARANTIA.';
+const INVALID_LABEL_BRAND = 'A DEFINIR';
 const UMBRO_MOTIVATION_PHRASES = {
   futsal: [
     'DOMINE A QUADRA. DECIDA O JOGO.',
@@ -620,7 +621,12 @@ router.get('/options', async (_req, res) => {
         orderBy: { code: 'asc' },
       }),
       prisma.product.findMany({
-        where: { active: true },
+        where: {
+          active: true,
+          price: { gt: 0 },
+          NOT: { brand: { equals: INVALID_LABEL_BRAND, mode: 'insensitive' } },
+          sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } },
+        },
         select: { brand: true, category: true },
       }),
     ]);
@@ -721,10 +727,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
             select: {
               size: true,
               stock: true,
-              // Carrega também o estoque das demais lojas para permitir a
-              // leitura dos tamanhos quando o ERP ainda não vinculou o saldo
-              // físico à loja escolhida para o lote.
-              storeStocks: { select: { storeId: true, stock: true } },
+              storeStocks: batch.storeId
+                ? { where: { storeId: batch.storeId }, select: { stock: true } }
+                : true,
             },
             orderBy: { size: 'asc' },
           },
@@ -831,17 +836,10 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
-      const productSizes = p?.sizes || [];
-      const storeAvailableSizes = batch.storeId
-        ? productSizes.filter((s) => (s.storeStocks || []).some((ss) => (
-          ss.storeId === batch.storeId && Number(ss.stock || 0) > 0
-        )))
-        : [];
-      const physicalAvailableSizes = productSizes.filter((s) => (
-        Number(s.stock || 0) > 0
-        || (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
-      ));
-      const availableSizes = (storeAvailableSizes.length ? storeAvailableSizes : physicalAvailableSizes)
+      const availableSizes = p?.sizes
+        ?.filter((s) => batch.storeId
+          ? (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
+          : Number(s.stock || 0) > 0)
         .map((s) => s.size)
         .filter(Boolean)
         .join(' | ') || '';
@@ -863,13 +861,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const configuredPromo = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
         : (p?.promoPrice != null ? Number(p.promoPrice) : null);
-      // Os 30% são uma prévia exclusiva da etiqueta, condicionada à compra de
-      // cadastro nem no caixa. Se já houver promoção cadastrada, ela prevalece.
-      const promotionalPrice = configuredPromo != null
-        ? configuredPromo
-        : (isProductDuplexTemplate(batch.template) && Number.isFinite(price) && price > 0
-          ? roundLabelPrice(price * LABEL_PROMOTION_FACTOR)
-          : null);
+      // A etiqueta 5x7 anuncia exatamente 30% OFF levando três produtos.
+      // O valor grande precisa, portanto, ser sempre 70% do preço normal.
+      const promotionalPrice = isProductDuplexTemplate(batch.template)
+        && Number.isFinite(price) && price > 0
+        ? roundLabelPrice(price * LABEL_PROMOTION_FACTOR)
+        : configuredPromo;
       return {
         name: productName,
         productName,
@@ -1057,6 +1054,11 @@ router.post('/batches/auto', async (req, res) => {
     if (!templateMeta || !isProductDuplexTemplate(templateMeta)) {
       return res.status(500).json({ error: 'Template padrão 5x7 frente e verso não encontrado' });
     }
+    if (brand && String(brand).trim().localeCompare(INVALID_LABEL_BRAND, 'pt-BR', { sensitivity: 'base' }) === 0) {
+      return res.status(400).json({
+        error: 'A marca “A DEFINIR” não pode gerar etiqueta. Corrija a marca e o preço do produto primeiro.',
+      });
+    }
 
     const generateForStore = allStores === true || storeId === 'all';
     if (!generateForStore && !storeId) {
@@ -1078,16 +1080,17 @@ router.post('/batches/auto', async (req, res) => {
 
     const batches = [];
     const emptyStores = [];
-    const fallbackStores = [];
     for (const store of stores) {
       const productFilter = {
         active: true,
+        price: { gt: 0 },
+        NOT: { brand: { equals: INVALID_LABEL_BRAND, mode: 'insensitive' } },
         ...(brand ? { brand: { equals: String(brand).trim(), mode: 'insensitive' } } : {}),
         ...(category ? { category: { equals: String(category).trim(), mode: 'insensitive' } } : {}),
       };
       const productSelection = { id: true, sku: true, price: true, promoPrice: true };
       const productOrder = [{ brand: 'asc' }, { name: 'asc' }];
-      let products = await prisma.product.findMany({
+      const products = await prisma.product.findMany({
         where: {
           ...productFilter,
           // Fonte da verdade: basta um tamanho com saldo físico positivo na loja.
@@ -1097,36 +1100,9 @@ router.post('/batches/auto', async (req, res) => {
         orderBy: productOrder,
       });
 
-      let usedPhysicalStockFallback = false;
-      if (!products.length) {
-        // Algumas lojas ainda não possuem StoreStock vinculado, embora o
-        // produto tenha saldo físico no estoque legado ou em outra loja.
-        // Nesse caso, mantém a loja selecionada no lote e usa apenas modelos
-        // que comprovadamente têm algum saldo físico positivo.
-        products = await prisma.product.findMany({
-          where: {
-            ...productFilter,
-            sizes: {
-              some: {
-                OR: [
-                  { stock: { gt: 0 } },
-                  { storeStocks: { some: { stock: { gt: 0 } } } },
-                ],
-              },
-            },
-          },
-          select: productSelection,
-          orderBy: productOrder,
-        });
-        usedPhysicalStockFallback = products.length > 0;
-      }
-
       if (!products.length) {
         emptyStores.push({ storeId: store.id, code: store.code, name: store.name });
         continue;
-      }
-      if (usedPhysicalStockFallback) {
-        fallbackStores.push({ storeId: store.id, code: store.code, name: store.name });
       }
 
       const items = products.map((p) => ({
@@ -1144,7 +1120,7 @@ router.post('/batches/auto', async (req, res) => {
       const batch = await prisma.labelBatch.create({
         data: {
           name: name || `Etiquetas ${store.code}${filterName ? ` — ${filterName}` : ''}`,
-          templateId,
+          templateId: templateMeta.id,
           storeId: store.id,
           createdById: req.userId,
           status: 'DRAFT',
@@ -1161,7 +1137,6 @@ router.post('/batches/auto', async (req, res) => {
         storeName: store.name,
         models: products.length,
         physicalLabels: totalLabels,
-        stockScope: usedPhysicalStockFallback ? 'physical-general' : 'store',
       });
     }
 
@@ -1172,7 +1147,6 @@ router.post('/batches/auto', async (req, res) => {
       totalBatches: batches.length,
       totalModels: batches.reduce((sum, b) => sum + b.models, 0),
       emptyStores,
-      fallbackStores,
     });
   } catch (err) {
     console.error('[labels/batches/auto] erro:', err);

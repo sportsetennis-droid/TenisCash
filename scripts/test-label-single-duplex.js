@@ -24,16 +24,18 @@ async function main() {
     path.join(__dirname, '..', 'assets', 'logos', 'brands', 'umbro.svg'),
     'utf8',
   );
-  const logoUrl = dataUri('image/svg+xml', logoSvg);
+  const brandLogoUrl = dataUri('image/svg+xml', logoSvg);
+  const storeLogoUrl = 'https://example.test/st-logo-sports-tennis-white-transparent.png';
   const pdf = await generateLabelsPDF({
     template,
     storeName: 'Sports & Tennis',
-    storeLogoUrl: logoUrl,
+    storeLogoUrl,
     items: [{
       productName: 'JOELHEIRA UMBRO NEOPRENE',
       categoryLabel: 'PROTEÇÃO ESPORTIVA',
       brand: 'Umbro',
-      brandLogoUrl: logoUrl,
+      brandLogoUrl,
+      availableSizes: 'P | M | 38',
       price: 50.27,
       promotionalPrice: 35.19,
       promotionText: 'Garanta 30% de Desconto levando três produtos da loja.',
@@ -41,7 +43,7 @@ async function main() {
       guaranteeText: 'PRODUTO ORIGINAL E GARANTIA.',
       internalBarcode: '2066231773937',
       qrCodeValue: 'https://www.teniscash.com.br/p/teste',
-      quantity: 9,
+      quantity: 16,
     }],
   });
 
