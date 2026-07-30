@@ -89,6 +89,10 @@ function isProductDuplexTemplate(template) {
   return isFourSideProductTemplate(template) || isSingleProductDuplexTemplate(template);
 }
 
+function isSaldoTemplate(template) {
+  return template?.layoutConfig?.labelDesign === 'saldo-5x7-v1';
+}
+
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
 const FOUR_SIDE_ORANGE_CMYK = { c: 0, m: 80, y: 100, k: 0 };
 const FOUR_SIDE_FRONT_BLEED_MM = 2;
@@ -179,6 +183,24 @@ function defaultTemplates() {
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
         backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
+      },
+    },
+    a4_16_5x7_saldo: {
+      type: 'PROMOTIONAL',
+      name: 'SALDO — A4 16 etiquetas (5x7 cm)',
+      paperSize: 'A4',
+      widthMm: 50,
+      heightMm: 70,
+      columns: 4,
+      rows: 4,
+      marginTopMm: 8.5,
+      marginLeftMm: 5,
+      gapHorizontalMm: 0,
+      gapVerticalMm: 0,
+      layoutConfig: {
+        labelDesign: 'saldo-5x7-v1',
+        backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
+        backgroundHex: '#E5571E',
       },
     },
     a4_4_promo: {
@@ -1137,6 +1159,20 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   }
 }
 
+// Etiqueta SALDO 5x7, de uma única face e totalmente separada do modelo
+// padrão frente/verso. O conteúdo é somente a palavra SALDO em branco.
+function drawSaldoLabel(doc, item, template, x, y, w, h) {
+  const orange = template?.layoutConfig?.backgroundHex || '#E5571E';
+  const font = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  doc.rect(x, y, w, h).fillColor(orange).fill();
+  doc.font(font).fontSize(31).fillColor('#FFFFFF')
+    .text('SALDO', x + mm(2), y + (h - 31) / 2 - mm(1), {
+      width: w - mm(4),
+      align: 'center',
+      lineBreak: false,
+    });
+}
+
 function drawFourSideCutMarks(doc, template, geometry) {
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   const orange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -1309,13 +1345,14 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   const fourSide = isFourSideProductTemplate(t);
   const singleDuplex = isSingleProductDuplexTemplate(t);
   const productDuplex = isProductDuplexTemplate(t);
+  const saldo = isSaldoTemplate(t);
 
   const doc = new PDFDocument({
     size: layoutW,
     margins: { top: 0, left: 0, right: 0, bottom: 0 },
     bufferPages: true, // permite switchToPage no segundo pass dos QRs
   });
-  doc._tenisLabelFonts = productDuplex && registerLabelFonts(doc);
+  doc._tenisLabelFonts = (productDuplex || saldo) && registerLabelFonts(doc);
   // Solicita aos leitores de PDF que imprimam em tamanho real. A preferência é
   // gravada no próprio arquivo e evita que leitores compatíveis ativem "Ajustar".
   const viewerPreferences = doc._root.data.ViewerPreferences || doc.ref({});
@@ -1427,7 +1464,9 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       doc.save();
       // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
       const isST = isSTHorizontalTemplate(t);
-      if (singleDuplex) {
+      if (saldo) {
+        drawSaldoLabel(doc, item, t, x, y, labelW, labelH);
+      } else if (singleDuplex) {
         drawProductSingleDuplex(
           doc,
           item,
@@ -1452,7 +1491,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
         doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
       }
       // Frente e verso usam a mesma grade e os mesmos itens para manter o alinhamento.
-      if (!productDuplex) drawLabelContent(doc, item, t, x, y, labelW, labelH);
+      if (!productDuplex && !saldo) drawLabelContent(doc, item, t, x, y, labelW, labelH);
       if (item._qrPos) {
         qrJobs.push({ item, pageIndex, ...item._qrPos });
         delete item._qrPos;
@@ -1461,7 +1500,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
     });
     // As guias de corte pertencem somente à frente. No verso, a sangria deve
     // permanecer lisa para não criar linhas visíveis na etiqueta.
-    if (productDuplex && pageSide !== 'back') {
+    if ((productDuplex || saldo) && pageSide !== 'back') {
       drawFourSideCutMarks(doc, t, {
         labelW,
         labelH,
@@ -1509,4 +1548,5 @@ module.exports = {
   isFourSideProductTemplate,
   isSingleProductDuplexTemplate,
   isProductDuplexTemplate,
+  isSaldoTemplate,
 };

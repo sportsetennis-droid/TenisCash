@@ -10,6 +10,7 @@ const {
   isSTHorizontalTemplate,
   isDuplexTemplate,
   isProductDuplexTemplate,
+  isSaldoTemplate,
 } = require('../services/labelGenerator');
 const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brandLogoResolver');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
@@ -620,6 +621,7 @@ async function ensureDefaultTemplates() {
     const isST = isSTHorizontalTemplate(def);
     const isDuplex = isDuplexTemplate(def);
     const isProductDuplex = isProductDuplexTemplate(def);
+    const isSaldo = isSaldoTemplate(def);
     const wantedData = {
       name: def.name,
       type: def.type,
@@ -632,14 +634,14 @@ async function ensureDefaultTemplates() {
       marginLeftMm: def.marginLeftMm || 0,
       gapHorizontalMm: def.gapHorizontalMm || 0,
       gapVerticalMm: def.gapVerticalMm || 0,
-      showLogo: true,
-      showPrice: true,
-      showPromotionalPrice: isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE',
+      showLogo: !isSaldo,
+      showPrice: !isSaldo,
+      showPromotionalPrice: !isSaldo && (isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE'),
       showBarcode: isST ? false : def.type !== 'PROMOTIONAL',
       showQRCode: isST || isProductDuplex,
-      showSku: true,
-      showProductName: true,
-      showBrand: true,
+      showSku: !isSaldo,
+      showProductName: !isSaldo,
+      showBrand: !isSaldo,
       showSize: def.type === 'PRODUCT',
       showColor: def.type === 'PRODUCT',
       showStore: false,
@@ -649,7 +651,7 @@ async function ensureDefaultTemplates() {
     let templateRecord = existing;
     if (!existing) {
       templateRecord = await prisma.labelTemplate.create({ data: wantedData });
-    } else if (isST || isDuplex) {
+    } else if (isST || isDuplex || isSaldo) {
       const needsSync = Object.entries(wantedData).some(([field, value]) => {
         if (field === 'layoutConfig') {
           return JSON.stringify(existing[field] || null) !== JSON.stringify(value || null);
