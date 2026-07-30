@@ -48,6 +48,53 @@ const cases = [
     description: 'CAMISETA UMBRO TREINO',
     style: 'ROUPA ESPORTIVA',
   },
+  {
+    product: {
+      name: 'MEIA UNISSEX DE USO COMUM CANO CURTO BRANCO/BRANCO',
+      brand: 'ACTVITTA',
+      category: 'tenis',
+      subcategory: 'Unissex',
+    },
+    context: {
+      color: 'BRANCO/BRANCO',
+      supplierRef: '5650',
+      classification: { type: 'Outro', modality: 'Meia', tier: 'Básica' },
+    },
+    reference: '5650',
+    description: 'MEIA DE USO COMUM CANO CURTO',
+    style: 'ACESSÓRIO ESPORTIVO',
+  },
+  {
+    product: {
+      name: 'BERMUDA COR: 077 (PRETO) TAM:',
+      brand: 'Body for Sure',
+      category: 'Roupas',
+      subcategory: 'Mulher',
+    },
+    context: {
+      color: 'Preto',
+      supplierRef: '04843',
+      classification: { modality: 'Bermuda', tier: 'Texturizada Leopard' },
+    },
+    reference: '04843',
+    description: 'BERMUDA',
+    style: 'ROUPA ESPORTIVA',
+  },
+  {
+    product: {
+      name: 'CAMISETA MASC BIG LOG P/GG 2442',
+      brand: 'ADIDAS',
+      category: 'Vestuário',
+      subcategory: 'Homem',
+    },
+    context: {
+      supplierRef: '2442',
+      classification: { modality: 'Camiseta', tier: 'Básica' },
+    },
+    reference: '2442',
+    description: 'CAMISETA BIG LOG',
+    style: 'ROUPA ESPORTIVA',
+  },
 ];
 
 for (const testCase of cases) {

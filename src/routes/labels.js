@@ -404,9 +404,10 @@ function labelMotivationText(product, classification = {}, seed = '') {
 // modelo/material. Tamanho, cor, modalidade e códigos ficam em campos próprios.
 const LABEL_COLOR_WORDS = new Set([
   'azl', 'azul', 'bco', 'branco', 'bege', 'cinza', 'cnz', 'coral', 'dourado',
+  'cor', 'cores',
   'frtc', 'grafite', 'grf', 'laranja', 'lima', 'lrj', 'lrjf', 'mar', 'marinho',
   'mcmt', 'multicolor', 'preto', 'pta', 'pto', 'purp', 'roxo', 'royal', 'verde',
-  'vermelho', 'vrdl', 'vrm',
+  'vermelho', 'vrdl', 'vrm', 'sortida', 'sortidas', 'sortido', 'sortidos',
 ]);
 
 function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
@@ -425,17 +426,27 @@ function labelProductDescription(product, fallback = '', reference = '', categor
     .map(normalizeLabelText)
     .filter((word) => word && word !== 'de' && word !== 'da' && word !== 'do');
   const reservedWords = new Set(reserved);
+  // Alguns cadastros antigos gravaram o tipo do produto no campo de cor.
+  // "BERMUDA", "MEIA" ou "BOLA" continuam sendo parte obrigatória da
+  // descrição, mesmo quando esse dado ruim aparece entre as palavras reservadas.
+  const detectedType = isTennisProduct(product)
+    ? footwearType(product)
+    : productType(product, source)?.label;
+  const protectedTypeWords = new Set(
+    labelDescriptionWords(detectedType).map(normalizeLabelText).filter(Boolean),
+  );
 
   const cleanedWords = dedupeLabelWords(labelDescriptionWords(source).filter((word) => {
     const normalized = normalizeLabelText(word);
-    if (!normalized || reservedWords.has(normalized)) return false;
+    if (!normalized || (reservedWords.has(normalized) && !protectedTypeWords.has(normalized))) return false;
     // Remove referências/SKUs mistos e códigos numéricos longos, preservando
     // números curtos que façam parte do modelo comercial (por exemplo, "Pro 5").
     if (/^(?=.*[a-z])(?=.*\d)[a-z0-9/-]{4,}$/i.test(normalized)) return false;
     if (/^\d{3,}$/.test(normalized)) return false;
     if (/^(?:ref|referencia|sku|codigo|cod|tam|tamanho)$/i.test(normalized)) return false;
+    if (/^(?:pp|p|m|g|gg|xg|xgg|eg|egg|u|tu|unico|unica)$/i.test(normalized)) return false;
     if (LABEL_COLOR_WORDS.has(normalized)) return false;
-    return !/^(?:unissex|unisex|feminino|feminina|masculino|masculina|homem|mulher|men|women)$/i.test(normalized);
+    return !/^(?:unissex|unisex|feminino|feminina|fem|masculino|masculina|masc|homem|mulher|men|women|infantil|inf)$/i.test(normalized);
   }));
 
   return cleanedWords.join(' ').trim() || 'MODELO ESPORTIVO';

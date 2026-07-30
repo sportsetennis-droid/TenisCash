@@ -213,8 +213,6 @@ function fmtBRL(n) {
   }
 }
 
-// Renderiza algo que parece código de barras (visual). Para etiqueta real
-// passe `realBars=true` futuramente quando integrarmos bwip-js.
 // Padrões Code 128 (cada símbolo tem 11 módulos; STOP tem 13). O desenho
 // vetorial permite leitura por leitor de caixa sem depender de imagem raster.
 const CODE128_BARS = [
@@ -245,8 +243,23 @@ const CODE128_BARS = [
 function code128Pattern(value) {
   const code = String(value || '').replace(/[^\x20-\x7E]/g, '?').slice(0, 48);
   if (!code) return null;
-  const symbols = [104]; // START B: texto ASCII imprimível
-  for (const char of code) symbols.push(char.charCodeAt(0) - 32);
+  let symbols;
+  if (/^\d{4,}$/.test(code)) {
+    // START C compacta dois dígitos por símbolo. Em códigos numéricos ímpares,
+    // troca para o conjunto B apenas no último dígito. Isso deixa as barras
+    // mais largas e confiáveis na impressão pequena da etiqueta.
+    symbols = [105];
+    const pairedLength = code.length - (code.length % 2);
+    for (let i = 0; i < pairedLength; i += 2) {
+      symbols.push(Number(code.slice(i, i + 2)));
+    }
+    if (pairedLength < code.length) {
+      symbols.push(100, code.charCodeAt(code.length - 1) - 32);
+    }
+  } else {
+    symbols = [104]; // START B: texto ASCII imprimível
+    for (const char of code) symbols.push(char.charCodeAt(0) - 32);
+  }
   let checksum = symbols[0];
   for (let i = 1; i < symbols.length; i++) checksum += symbols[i] * i;
   symbols.push(checksum % 103, 106);
