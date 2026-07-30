@@ -1035,7 +1035,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       ].filter(Boolean).join(' - ');
       const offerFs = fitSingleLine(offerText, FONT_BOLD, 6.4, 4.6);
       doc.font(FONT_BOLD).fontSize(offerFs).fillColor(CHARCOAL)
-        .text(offerText, x + pad, y + mm(54.4), {
+        .text(offerText, x + pad, y + mm(55.8), {
           width: innerW,
           height: mm(3),
           lineBreak: false,
@@ -1045,19 +1045,13 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
-      .moveTo(x + pad, y + mm(58))
-      .lineTo(x + w - pad, y + mm(58))
+      .moveTo(x + pad, y + mm(59.4))
+      .lineTo(x + w - pad, y + mm(59.4))
       .stroke().restore();
 
-    doc.font(FONT_BOLD).fontSize(4.8).fillColor(ORANGE)
-      .text('PAGAMENTO', x + pad, y + mm(59), {
-        width: innerW,
-        height: mm(2.4),
-        lineBreak: false,
-      });
     const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.4, 5.2);
     doc.font(FONT_BOLD).fontSize(paymentFs).fillColor(CHARCOAL)
-      .text(paymentText, x + pad, y + mm(61), {
+      .text(paymentText, x + pad, y + mm(60.6), {
         width: innerW,
         height: mm(3.8),
         lineBreak: false,
@@ -1098,25 +1092,18 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     }
   }
 
-  doc.font(FONT_BOLD).fontSize(7.2).fillColor(WHITE)
-    .text('ESCANEIE E CONFIRA', x + pad, y + mm(25.7), {
-      width: innerW,
-      align: 'center',
-      lineBreak: false,
-    });
-
   const scanX = x + mm(4);
-  const scanY = y + mm(30);
+  const scanY = y + mm(25.7);
   const scanW = w - mm(8);
-  const scanH = mm(36.5);
+  const scanH = mm(40.8);
   doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.5)).fillColor(CREAM).fill().restore();
 
   const qrSize = mm(23.2);
   const qrX = x + (w - qrSize) / 2;
-  const qrY = y + mm(30.7);
+  const qrY = y + mm(26.4);
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   if (item.internalBarcode) {
-    drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(54.7), scanW - mm(6), mm(9.6), {
+    drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(53.7), scanW - mm(6), mm(9.6), {
       color: '#000000',
       caption: 'INTERNO',
       captionSize: 4.6,
