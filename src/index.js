@@ -1567,8 +1567,10 @@ app.listen(PORT, '0.0.0.0', () => {
     try { startServicesCron(); } catch (e) { console.error('[servicesCron] falha ao iniciar:', e.message); }
   }
 
-  // Robô do grupo da empresa: relatório de vendas 13h/18h/21h (ponto é em tempo real, via rota)
-  try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
+  // Robô do grupo da empresa (relatórios de vendas/presença/tarefas 13h/18h/21h no WhatsApp):
+  // DESATIVADO a pedido do dono em 2026-07-29 — não publicar relatórios das pessoas no grupo.
+  // Para reativar, descomente a linha abaixo (e faça deploy).
+  // try { startEquipeReportsCron(); } catch (e) { console.error('[equipeReports] falha ao iniciar:', e.message); }
   try { startWhatsappHealthCron(); } catch (e) { console.error('[waHealth] falha ao iniciar:', e.message); }
 
   // Checklist diario dos vendedores escalados. Nao aplica penalidades automaticamente.
