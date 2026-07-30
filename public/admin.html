@@ -10049,8 +10049,12 @@ async function labelsGenerateAutomatic() {
     if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
+    const fallback = (data.fallbackStores || []).map(s => s.code || s.name).join(', ');
+    const fallbackSummary = fallback
+      ? ` Estoque da loja ainda sem vínculo; usados modelos com estoque físico geral: ${fallback}.`
+      : '';
     const templateSummary = data.templateName ? ` Modelo: ${data.templateName}.` : '';
-    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${templateSummary}${suffix}`;
+    const summary = `${data.totalModels || 0} modelo(s) em ${batches.length} lote(s) gerado(s). Uma etiqueta por modelo, sem duplicar por tamanho.${templateSummary}${fallbackSummary}${suffix}`;
     const cartSummary = document.getElementById('labels-cart-summary');
     if (cartSummary) cartSummary.textContent = summary;
   } catch (e) {

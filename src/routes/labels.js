@@ -721,9 +721,10 @@ router.get('/batches/:id/pdf', async (req, res) => {
             select: {
               size: true,
               stock: true,
-              storeStocks: batch.storeId
-                ? { where: { storeId: batch.storeId }, select: { stock: true } }
-                : true,
+              // Carrega também o estoque das demais lojas para permitir a
+              // leitura dos tamanhos quando o ERP ainda não vinculou o saldo
+              // físico à loja escolhida para o lote.
+              storeStocks: { select: { storeId: true, stock: true } },
             },
             orderBy: { size: 'asc' },
           },
@@ -830,10 +831,17 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
       // Nome com tamanho embutido (etiqueta mostra "TENIS X - TAM 38")
       const baseName = p ? p.name : (it.customText || '');
-      const availableSizes = p?.sizes
-        ?.filter((s) => batch.storeId
-          ? (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
-          : Number(s.stock || 0) > 0)
+      const productSizes = p?.sizes || [];
+      const storeAvailableSizes = batch.storeId
+        ? productSizes.filter((s) => (s.storeStocks || []).some((ss) => (
+          ss.storeId === batch.storeId && Number(ss.stock || 0) > 0
+        )))
+        : [];
+      const physicalAvailableSizes = productSizes.filter((s) => (
+        Number(s.stock || 0) > 0
+        || (s.storeStocks || []).some((ss) => Number(ss.stock || 0) > 0)
+      ));
+      const availableSizes = (storeAvailableSizes.length ? storeAvailableSizes : physicalAvailableSizes)
         .map((s) => s.size)
         .filter(Boolean)
         .join(' | ') || '';
@@ -1070,22 +1078,55 @@ router.post('/batches/auto', async (req, res) => {
 
     const batches = [];
     const emptyStores = [];
+    const fallbackStores = [];
     for (const store of stores) {
-      const products = await prisma.product.findMany({
+      const productFilter = {
+        active: true,
+        ...(brand ? { brand: { equals: String(brand).trim(), mode: 'insensitive' } } : {}),
+        ...(category ? { category: { equals: String(category).trim(), mode: 'insensitive' } } : {}),
+      };
+      const productSelection = { id: true, sku: true, price: true, promoPrice: true };
+      const productOrder = [{ brand: 'asc' }, { name: 'asc' }];
+      let products = await prisma.product.findMany({
         where: {
-          active: true,
-          ...(brand ? { brand: { equals: String(brand).trim(), mode: 'insensitive' } } : {}),
-          ...(category ? { category: { equals: String(category).trim(), mode: 'insensitive' } } : {}),
+          ...productFilter,
           // Fonte da verdade: basta um tamanho com saldo físico positivo na loja.
           sizes: { some: { storeStocks: { some: { storeId: store.id, stock: { gt: 0 } } } } },
         },
-        select: { id: true, sku: true, price: true, promoPrice: true },
-        orderBy: [{ brand: 'asc' }, { name: 'asc' }],
+        select: productSelection,
+        orderBy: productOrder,
       });
+
+      let usedPhysicalStockFallback = false;
+      if (!products.length) {
+        // Algumas lojas ainda não possuem StoreStock vinculado, embora o
+        // produto tenha saldo físico no estoque legado ou em outra loja.
+        // Nesse caso, mantém a loja selecionada no lote e usa apenas modelos
+        // que comprovadamente têm algum saldo físico positivo.
+        products = await prisma.product.findMany({
+          where: {
+            ...productFilter,
+            sizes: {
+              some: {
+                OR: [
+                  { stock: { gt: 0 } },
+                  { storeStocks: { some: { stock: { gt: 0 } } } },
+                ],
+              },
+            },
+          },
+          select: productSelection,
+          orderBy: productOrder,
+        });
+        usedPhysicalStockFallback = products.length > 0;
+      }
 
       if (!products.length) {
         emptyStores.push({ storeId: store.id, code: store.code, name: store.name });
         continue;
+      }
+      if (usedPhysicalStockFallback) {
+        fallbackStores.push({ storeId: store.id, code: store.code, name: store.name });
       }
 
       const items = products.map((p) => ({
@@ -1120,6 +1161,7 @@ router.post('/batches/auto', async (req, res) => {
         storeName: store.name,
         models: products.length,
         physicalLabels: totalLabels,
+        stockScope: usedPhysicalStockFallback ? 'physical-general' : 'store',
       });
     }
 
@@ -1130,6 +1172,7 @@ router.post('/batches/auto', async (req, res) => {
       totalBatches: batches.length,
       totalModels: batches.reduce((sum, b) => sum + b.models, 0),
       emptyStores,
+      fallbackStores,
     });
   } catch (err) {
     console.error('[labels/batches/auto] erro:', err);
