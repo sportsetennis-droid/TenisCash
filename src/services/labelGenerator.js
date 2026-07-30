@@ -1031,7 +1031,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     }
 
     const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
-    const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL. GARANTIA DE 90 DIAS.').toUpperCase();
+    const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
       .moveTo(x + pad, y + mm(56.1))
       .lineTo(x + w - pad, y + mm(56.1))

@@ -21,7 +21,7 @@ router.use(adminMiddleware);
 const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
 const LABEL_PROMOTION_FACTOR = 0.70;
 const LABEL_PAYMENT_TERMS = 'PIX, DINHEIRO OU CARTÃO';
-const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL. GARANTIA DE 90 DIAS.';
+const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL E GARANTIA.';
 const UMBRO_MOTIVATION_PHRASES = {
   futsal: [
     'DOMINE A QUADRA. DECIDA O JOGO.',

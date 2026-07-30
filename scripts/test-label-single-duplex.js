@@ -38,7 +38,7 @@ async function main() {
       promotionalPrice: 35.19,
       promotionText: 'Garanta 30% de Desconto levando três produtos da loja.',
       paymentTerms: 'PIX, DINHEIRO OU CARTÃO',
-      guaranteeText: 'PRODUTO ORIGINAL. GARANTIA DE 90 DIAS.',
+      guaranteeText: 'PRODUTO ORIGINAL E GARANTIA.',
       internalBarcode: '2066231773937',
       qrCodeValue: 'https://www.teniscash.com.br/p/teste',
       quantity: 9,
