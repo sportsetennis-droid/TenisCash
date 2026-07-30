@@ -998,20 +998,15 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
     if (Number.isFinite(value)) {
       if (usePromo && Number.isFinite(Number(item.price))) {
-        const oldPrice = `DE ${fmtBRL(item.price)}`;
-        const oldFs = fitSingleLine(oldPrice, FONT_MEDIUM, 7.6, 6);
+        const oldPrice = `PREÇO ORIGINAL ${fmtBRL(item.price)}`;
+        const oldFs = fitSingleLine(oldPrice, FONT_BOLD, 7.2, 5.6);
         const oldY = y + mm(41.8);
-        doc.font(FONT_MEDIUM).fontSize(oldFs).fillColor(MUTED)
+        doc.font(FONT_BOLD).fontSize(oldFs).fillColor(MUTED)
           .text(oldPrice, x + pad, oldY, {
             width: innerW,
             align: 'left',
             lineBreak: false,
           });
-        const oldW = doc.widthOfString(oldPrice);
-        doc.save().strokeColor(MUTED).lineWidth(0.65)
-          .moveTo(x + pad, oldY + oldFs * 0.72)
-          .lineTo(x + pad + oldW, oldY + oldFs * 0.72)
-          .stroke().restore();
       }
       const priceText = fmtBRL(value);
       const priceFs = fitSingleLine(priceText, FONT_BOLD, 22, 15.5);
