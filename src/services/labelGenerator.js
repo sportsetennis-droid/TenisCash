@@ -981,6 +981,18 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
         });
     }
 
+    const sizes = String(item.availableSizes || '').trim();
+    if (sizes) {
+      const sizesText = `TAMANHOS: ${sizes}`;
+      const sizesFs = fitSingleLine(sizesText, FONT_MEDIUM, 5.8, 4.2);
+      doc.font(FONT_MEDIUM).fontSize(sizesFs).fillColor(MUTED)
+        .text(sizesText, x + pad, y + mm(39.1), {
+          width: innerW,
+          height: mm(2.8),
+          lineBreak: false,
+        });
+    }
+
     const usePromo = item.promotionalPrice != null
       && Number(item.promotionalPrice) < Number(item.price || Infinity);
     const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
@@ -988,7 +1000,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       if (usePromo && Number.isFinite(Number(item.price))) {
         const oldPrice = `DE ${fmtBRL(item.price)}`;
         const oldFs = fitSingleLine(oldPrice, FONT_MEDIUM, 7.6, 6);
-        const oldY = y + mm(39.4);
+        const oldY = y + mm(41.8);
         doc.font(FONT_MEDIUM).fontSize(oldFs).fillColor(MUTED)
           .text(oldPrice, x + pad, oldY, {
             width: innerW,
@@ -1004,7 +1016,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const priceText = fmtBRL(value);
       const priceFs = fitSingleLine(priceText, FONT_BOLD, 22, 15.5);
       doc.font(FONT_BOLD).fontSize(priceFs).fillColor(ORANGE)
-        .text(priceText, x + pad, y + mm(43), {
+        .text(priceText, x + pad, y + mm(45.2), {
           width: innerW,
           height: mm(8.5),
           align: 'left',
@@ -1023,7 +1035,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       ].filter(Boolean).join(' - ');
       const offerFs = fitSingleLine(offerText, FONT_BOLD, 6.4, 4.6);
       doc.font(FONT_BOLD).fontSize(offerFs).fillColor(CHARCOAL)
-        .text(offerText, x + pad, y + mm(52), {
+        .text(offerText, x + pad, y + mm(54.4), {
           width: innerW,
           height: mm(3),
           lineBreak: false,
@@ -1033,38 +1045,31 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
-      .moveTo(x + pad, y + mm(56.1))
-      .lineTo(x + w - pad, y + mm(56.1))
+      .moveTo(x + pad, y + mm(58))
+      .lineTo(x + w - pad, y + mm(58))
       .stroke().restore();
 
-    doc.save().lineWidth(mm(0.35)).strokeColor(CHARCOAL)
-      .roundedRect(x + pad, y + mm(58.4), mm(5.1), mm(3.6), mm(0.45)).stroke()
-      .moveTo(x + pad + mm(0.35), y + mm(59.5))
-      .lineTo(x + pad + mm(4.75), y + mm(59.5)).stroke()
-      .restore();
-    const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.2, 4.4, innerW - mm(7));
+    doc.font(FONT_BOLD).fontSize(4.8).fillColor(ORANGE)
+      .text('PAGAMENTO', x + pad, y + mm(59), {
+        width: innerW,
+        height: mm(2.4),
+        lineBreak: false,
+      });
+    const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.4, 5.2);
     doc.font(FONT_BOLD).fontSize(paymentFs).fillColor(CHARCOAL)
-      .text(paymentText, x + pad + mm(7), y + mm(58.55), {
-        width: innerW - mm(7),
+      .text(paymentText, x + pad, y + mm(61), {
+        width: innerW,
         height: mm(3.8),
         lineBreak: false,
       });
 
-    const shieldX = x + pad + mm(0.2);
-    const shieldY = y + mm(63.6);
-    doc.save().lineWidth(mm(0.35)).strokeColor(ORANGE)
-      .polygon(
-        [shieldX + mm(2.2), shieldY],
-        [shieldX + mm(4.2), shieldY + mm(0.7)],
-        [shieldX + mm(3.8), shieldY + mm(3.1)],
-        [shieldX + mm(2.2), shieldY + mm(4.1)],
-        [shieldX + mm(0.6), shieldY + mm(3.1)],
-        [shieldX + mm(0.2), shieldY + mm(0.7)],
-      ).stroke().restore();
-    const warrantyFs = fitSingleLine(warrantyText, FONT_BOLD, 6.2, 4.4, innerW - mm(7));
+    doc.save().fillColor(ORANGE)
+      .rect(x + pad, y + mm(65.4), mm(0.75), mm(3.1))
+      .fill().restore();
+    const warrantyFs = fitSingleLine(warrantyText, FONT_BOLD, 6.4, 5.1, innerW - mm(2.2));
     doc.font(FONT_BOLD).fontSize(warrantyFs).fillColor(CHARCOAL)
-      .text(warrantyText, x + pad + mm(7), y + mm(64), {
-        width: innerW - mm(7),
+      .text(warrantyText, x + pad + mm(2.2), y + mm(65.25), {
+        width: innerW - mm(2.2),
         height: mm(3.8),
         lineBreak: false,
       });
@@ -1389,7 +1394,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       const cmyk = t.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
       const backgroundOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
       const background = singleDuplex
-        ? (pageSide === 'back' ? '#191A18' : '#F6F0E5')
+        ? (pageSide === 'back' ? backgroundOrange : '#F6F0E5')
         : backgroundOrange;
       const bleedMm = pageSide === 'back'
         ? Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM)
