@@ -9,7 +9,7 @@ const {
   defaultTemplates,
   isSTHorizontalTemplate,
   isDuplexTemplate,
-  isFourSideProductTemplate,
+  isProductDuplexTemplate,
 } = require('../services/labelGenerator');
 const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brandLogoResolver');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
@@ -20,6 +20,8 @@ router.use(adminMiddleware);
 
 const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
 const LABEL_PROMOTION_FACTOR = 0.70;
+const LABEL_PAYMENT_TERMS = 'PIX, DINHEIRO OU CARTÃO';
+const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL. GARANTIA DE 90 DIAS.';
 const UMBRO_MOTIVATION_PHRASES = {
   futsal: [
     'DOMINE A QUADRA. DECIDA O JOGO.',
@@ -56,7 +58,8 @@ const UMBRO_MOTIVATION_PHRASES = {
 };
 
 function labelsPerProduct(template) {
-  return isFourSideProductTemplate(template) ? 2 : 1;
+  if (!isDuplexTemplate(template)) return 1;
+  return Math.max(1, Number(template?.layoutConfig?.labelsPerProduct || 1));
 }
 
 function brandSlug(value) {
@@ -528,7 +531,7 @@ async function ensureDefaultTemplates() {
     // O template S&T horizontal usa QR e não usa código de barras.
     const isST = isSTHorizontalTemplate(def);
     const isDuplex = isDuplexTemplate(def);
-    const isFourSide = isFourSideProductTemplate(def);
+    const isProductDuplex = isProductDuplexTemplate(def);
     const wantedData = {
       name: def.name,
       type: def.type,
@@ -545,7 +548,7 @@ async function ensureDefaultTemplates() {
       showPrice: true,
       showPromotionalPrice: isST || def.type === 'PROMOTIONAL' || def.type === 'PRICE',
       showBarcode: isST ? false : def.type !== 'PROMOTIONAL',
-      showQRCode: isST || isFourSide,
+      showQRCode: isST || isProductDuplex,
       showSku: true,
       showProductName: true,
       showBrand: true,
@@ -748,7 +751,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
     // correspondência exata em fontes públicas de logos SVG/PNG transparentes.
     // A resolução é cacheada no processo e nunca substitui uma logo já
     // cadastrada manualmente.
-    if (isFourSideProductTemplate(batch.template)) {
+    if (isProductDuplexTemplate(batch.template)) {
       const brandsWithoutProfileLogo = brandNames.filter((name) => {
         const key = brandSlug(name);
         const compactKey = brandSlugCompact(name);
@@ -783,7 +786,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       && await validateBrandLogoUrl(storeProfiles[0].logoUrl)
       ? storeProfiles[0].logoUrl
       : null;
-    if (!storeLogoUrl && isFourSideProductTemplate(batch.template)) {
+    if (!storeLogoUrl && isProductDuplexTemplate(batch.template)) {
       storeLogoUrl = await resolveBrandLogoUrl(storeName);
       if (storeLogoUrl && storeProfiles[0]?.id) {
         // Deixa a logo oficial disponível no painel para as próximas
@@ -845,7 +848,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       // cadastro nem no caixa. Se já houver promoção cadastrada, ela prevalece.
       const promotionalPrice = configuredPromo != null
         ? configuredPromo
-        : (isFourSideProductTemplate(batch.template) && Number.isFinite(price) && price > 0
+        : (isProductDuplexTemplate(batch.template) && Number.isFinite(price) && price > 0
           ? roundLabelPrice(price * LABEL_PROMOTION_FACTOR)
           : null);
       return {
@@ -869,6 +872,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
         price,
         promotionalPrice,
         promotionText: LABEL_PROMOTION_TEXT,
+        paymentTerms: LABEL_PAYMENT_TERMS,
+        guaranteeText: LABEL_GUARANTEE_TEXT,
         motivationText,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
         barcode: it.barcode || (p ? p.sku : null),
@@ -878,7 +883,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       };
     });
 
-    if (isFourSideProductTemplate(batch.template)) {
+    if (isProductDuplexTemplate(batch.template)) {
       const missingLogos = [];
       if (!storeLogoUrl) missingLogos.push(`loja: ${storeName}`);
       [...new Set(items.map((item) => item.brand).filter(Boolean))].forEach((brand) => {
@@ -1011,8 +1016,8 @@ router.post('/batches/quick', async (req, res) => {
 });
 
 // Gera lotes automaticamente usando o estoque físico por loja.
-// A unidade da etiqueta é o modelo/produto: uma seleção cria um par físico
-// no template 5x7 (frente e verso), independentemente da quantidade de tamanhos.
+// A unidade da etiqueta e o modelo/produto: uma selecao cria uma unica peca
+// 5x7 com frente e verso, independentemente da quantidade de tamanhos.
 router.post('/batches/auto', async (req, res) => {
   try {
     const {

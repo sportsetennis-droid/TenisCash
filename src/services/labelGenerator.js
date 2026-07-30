@@ -69,11 +69,24 @@ function isDuplexTemplate(template) {
   return Boolean(config && typeof config === 'object' && config.duplex === true);
 }
 
-// O padrÃ£o 5x7 cm usa duas etiquetas fÃ­sicas por produto. Cada etiqueta
-// tem frente e verso, portanto as quatro faces sÃ£o: marca, loja, dados e QR.
+// Compatibilidade com lotes antigos, que usavam duas etiquetas fisicas
+// por produto e quatro faces separadas.
 function isFourSideProductTemplate(template) {
   const config = template?.layoutConfig;
   return isDuplexTemplate(template) && Number(config?.labelsPerProduct || 1) === 2;
+}
+
+function isSingleProductDuplexTemplate(template) {
+  const config = template?.layoutConfig;
+  return isDuplexTemplate(template)
+    && Number(template?.widthMm) === 50
+    && Number(template?.heightMm) === 70
+    && Number(config?.labelsPerProduct || 1) === 1
+    && config?.backLayout === 'store-and-codes';
+}
+
+function isProductDuplexTemplate(template) {
+  return isFourSideProductTemplate(template) || isSingleProductDuplexTemplate(template);
 }
 
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
@@ -156,14 +169,13 @@ function defaultTemplates() {
       layoutConfig: {
         duplex: true,
         duplexBinding: 'long-edge',
-        backLayout: 'four-sides',
-        labelsPerProduct: 2,
+        backLayout: 'store-and-codes',
+        labelsPerProduct: 1,
         sides: {
-          frontA: 'brand',
-          frontB: 'details',
-          backA: 'store',
-          backB: 'qr',
+          front: 'brand-product-price-payment-warranty',
+          back: 'store-barcode-qr',
         },
+        labelDesign: 'single-product-v1',
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
         backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
@@ -532,7 +544,7 @@ async function loadLogoBuffer(value) {
   }
 }
 
-// Layout especial 5x7 cm: cada produto ocupa dois slots fÃ­sicos.
+// Layout legado 5x7 cm: cada produto ocupa dois slots fisicos.
 // Slot 0 = marca na frente / dados no verso; slot 1 = loja na frente / QR no verso.
 // Separa a logo oficial da Sports & Tennis em dois elementos visuais: o
 // desenho grande e o wordmark que fica abaixo dele na etiqueta.
@@ -869,6 +881,244 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     });
 }
 
+// Etiqueta 5x7 em uma unica peca fisica por produto.
+// Frente: marca, descricao, preco, pagamento e garantia.
+// Verso: loja, codigo de barras e QR Code.
+function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
+  const CREAM = '#F6F0E5';
+  const CHARCOAL = '#191A18';
+  const ORANGE = '#F4511E';
+  const WHITE = '#FFFFFF';
+  const MUTED = '#716B62';
+  const FONT_MEDIUM = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
+  const FONT_BOLD = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  const pad = mm(3);
+  const innerW = w - pad * 2;
+
+  const fitSingleLine = (text, font, maxSize, minSize, maxWidth = innerW) => {
+    for (let size = maxSize; size >= minSize; size -= 0.2) {
+      doc.font(font).fontSize(size);
+      if (doc.widthOfString(String(text || '')) <= maxWidth) return size;
+    }
+    return minSize;
+  };
+
+  if (side === 'front') {
+    // Os 10 mm superiores ficam livres para o furo.
+    const brandTop = y + mm(10.8);
+    const brandBottom = y + mm(22.4);
+    doc.save();
+    doc.fillColor(CHARCOAL)
+      .polygon(
+        [x, brandTop],
+        [x + w, brandTop],
+        [x + w, brandBottom - mm(2.2)],
+        [x + w - mm(8), brandBottom],
+        [x, brandBottom],
+      )
+      .fill();
+    doc.fillColor(ORANGE)
+      .polygon(
+        [x + w - mm(7.5), brandTop],
+        [x + w, brandTop],
+        [x + w, brandBottom - mm(2.2)],
+        [x + w - mm(3.4), brandBottom - mm(1.25)],
+      )
+      .fill();
+    doc.restore();
+
+    if (item._brandLogoBuffer) {
+      try {
+        drawImageContain(
+          doc,
+          item._brandLogoBuffer,
+          x + mm(7),
+          brandTop + mm(1.1),
+          w - mm(18),
+          mm(8.8),
+        );
+      } catch {
+        const brandText = String(item.brand || 'MARCA').toUpperCase();
+        const brandFs = fitSingleLine(brandText, FONT_BOLD, 12, 7.5, w - mm(18));
+        doc.font(FONT_BOLD).fontSize(brandFs).fillColor(WHITE)
+          .text(brandText, x + mm(7), brandTop + mm(3.1), {
+            width: w - mm(18),
+            align: 'center',
+            lineBreak: false,
+          });
+      }
+    }
+
+    const productName = String(item.productName || item.name || '').trim().toUpperCase();
+    const descriptionY = y + mm(24.1);
+    const descriptionH = mm(11.2);
+    let descriptionFs = 11.6;
+    for (; descriptionFs >= 8.4; descriptionFs -= 0.2) {
+      doc.font(FONT_BOLD).fontSize(descriptionFs);
+      if (doc.heightOfString(productName, {
+        width: innerW,
+        align: 'left',
+        lineGap: -0.4,
+      }) <= descriptionH) break;
+    }
+    doc.font(FONT_BOLD).fontSize(Math.max(8.4, descriptionFs)).fillColor(CHARCOAL)
+      .text(productName, x + pad, descriptionY, {
+        width: innerW,
+        height: descriptionH,
+        align: 'left',
+        lineGap: -0.4,
+        ellipsis: true,
+      });
+
+    const category = String(item.categoryLabel || item.category || '').trim().toUpperCase();
+    if (category) {
+      const categoryFs = fitSingleLine(category, FONT_BOLD, 6.8, 4.8);
+      doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
+        .text(category, x + pad, y + mm(36.1), {
+          width: innerW,
+          height: mm(3.2),
+          lineBreak: false,
+        });
+    }
+
+    const usePromo = item.promotionalPrice != null
+      && Number(item.promotionalPrice) < Number(item.price || Infinity);
+    const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
+    if (Number.isFinite(value)) {
+      if (usePromo && Number.isFinite(Number(item.price))) {
+        const oldPrice = `DE ${fmtBRL(item.price)}`;
+        const oldFs = fitSingleLine(oldPrice, FONT_MEDIUM, 7.6, 6);
+        const oldY = y + mm(39.4);
+        doc.font(FONT_MEDIUM).fontSize(oldFs).fillColor(MUTED)
+          .text(oldPrice, x + pad, oldY, {
+            width: innerW,
+            align: 'left',
+            lineBreak: false,
+          });
+        const oldW = doc.widthOfString(oldPrice);
+        doc.save().strokeColor(MUTED).lineWidth(0.65)
+          .moveTo(x + pad, oldY + oldFs * 0.72)
+          .lineTo(x + pad + oldW, oldY + oldFs * 0.72)
+          .stroke().restore();
+      }
+      const priceText = fmtBRL(value);
+      const priceFs = fitSingleLine(priceText, FONT_BOLD, 22, 15.5);
+      doc.font(FONT_BOLD).fontSize(priceFs).fillColor(ORANGE)
+        .text(priceText, x + pad, y + mm(43), {
+          width: innerW,
+          height: mm(8.5),
+          align: 'left',
+          lineBreak: false,
+        });
+    }
+
+    if (usePromo && item.promotionText) {
+      const offer = String(item.promotionText).toUpperCase();
+      const percentMatch = offer.match(/(\d+)\s*%/);
+      const percent = percentMatch ? percentMatch[1] : null;
+      const conditionMatch = offer.match(/LEVANDO\s+(.+?)(?:\.|$)/i);
+      const offerText = [
+        percent ? `${percent}% OFF` : 'OFERTA',
+        conditionMatch ? `LEVANDO ${conditionMatch[1]}` : '',
+      ].filter(Boolean).join(' - ');
+      const offerFs = fitSingleLine(offerText, FONT_BOLD, 6.4, 4.6);
+      doc.font(FONT_BOLD).fontSize(offerFs).fillColor(CHARCOAL)
+        .text(offerText, x + pad, y + mm(52), {
+          width: innerW,
+          height: mm(3),
+          lineBreak: false,
+        });
+    }
+
+    const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
+    const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL. GARANTIA DE 90 DIAS.').toUpperCase();
+    doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
+      .moveTo(x + pad, y + mm(56.1))
+      .lineTo(x + w - pad, y + mm(56.1))
+      .stroke().restore();
+
+    doc.save().lineWidth(mm(0.35)).strokeColor(CHARCOAL)
+      .roundedRect(x + pad, y + mm(58.4), mm(5.1), mm(3.6), mm(0.45)).stroke()
+      .moveTo(x + pad + mm(0.35), y + mm(59.5))
+      .lineTo(x + pad + mm(4.75), y + mm(59.5)).stroke()
+      .restore();
+    const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.2, 4.4, innerW - mm(7));
+    doc.font(FONT_BOLD).fontSize(paymentFs).fillColor(CHARCOAL)
+      .text(paymentText, x + pad + mm(7), y + mm(58.55), {
+        width: innerW - mm(7),
+        height: mm(3.8),
+        lineBreak: false,
+      });
+
+    const shieldX = x + pad + mm(0.2);
+    const shieldY = y + mm(63.6);
+    doc.save().lineWidth(mm(0.35)).strokeColor(ORANGE)
+      .polygon(
+        [shieldX + mm(2.2), shieldY],
+        [shieldX + mm(4.2), shieldY + mm(0.7)],
+        [shieldX + mm(3.8), shieldY + mm(3.1)],
+        [shieldX + mm(2.2), shieldY + mm(4.1)],
+        [shieldX + mm(0.6), shieldY + mm(3.1)],
+        [shieldX + mm(0.2), shieldY + mm(0.7)],
+      ).stroke().restore();
+    const warrantyFs = fitSingleLine(warrantyText, FONT_BOLD, 6.2, 4.4, innerW - mm(7));
+    doc.font(FONT_BOLD).fontSize(warrantyFs).fillColor(CHARCOAL)
+      .text(warrantyText, x + pad + mm(7), y + mm(64), {
+        width: innerW - mm(7),
+        height: mm(3.8),
+        lineBreak: false,
+      });
+    return;
+  }
+
+  // Verso: os 10 mm superiores continuam livres para o mesmo furo.
+  const storeTop = y + mm(10.6);
+  if (item._storeLogoIconBuffer || item._storeLogoWordmarkBuffer || item._storeLogoBuffer) {
+    try {
+      if (item._storeLogoIconBuffer && item._storeLogoWordmarkBuffer) {
+        drawImageContain(doc, item._storeLogoIconBuffer, x + mm(4), storeTop, mm(11), mm(12.2));
+        drawImageContain(doc, item._storeLogoWordmarkBuffer, x + mm(16), storeTop + mm(2.1), mm(30), mm(8));
+      } else if (item._storeLogoBuffer) {
+        drawImageContain(doc, item._storeLogoBuffer, x + mm(5), storeTop, w - mm(10), mm(12));
+      }
+    } catch {
+      const fallback = String(item.storeName || 'SPORTS & TENNIS').toUpperCase();
+      const fallbackFs = fitSingleLine(fallback, FONT_BOLD, 10, 6.5);
+      doc.font(FONT_BOLD).fontSize(fallbackFs).fillColor(WHITE)
+        .text(fallback, x + pad, storeTop + mm(3), {
+          width: innerW,
+          align: 'center',
+          lineBreak: false,
+        });
+    }
+  }
+
+  doc.font(FONT_BOLD).fontSize(7.2).fillColor(WHITE)
+    .text('ESCANEIE E CONFIRA', x + pad, y + mm(25.7), {
+      width: innerW,
+      align: 'center',
+      lineBreak: false,
+    });
+
+  const scanX = x + mm(4);
+  const scanY = y + mm(30);
+  const scanW = w - mm(8);
+  const scanH = mm(36.5);
+  doc.save().roundedRect(scanX, scanY, scanW, scanH, mm(1.5)).fillColor(CREAM).fill().restore();
+
+  const qrSize = mm(23.2);
+  const qrX = x + (w - qrSize) / 2;
+  const qrY = y + mm(30.7);
+  if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
+  if (item.internalBarcode) {
+    drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(54.7), scanW - mm(6), mm(9.6), {
+      color: '#000000',
+      caption: 'INTERNO',
+      captionSize: 4.6,
+    });
+  }
+}
+
 function drawFourSideCutMarks(doc, template, geometry) {
   const cmyk = template?.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
   const orange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
@@ -932,26 +1182,11 @@ function drawFourSideCutMarks(doc, template, geometry) {
   });
   doc.restore();
 
-  // Como as etiquetas encostam umas nas outras, uma linha branca fina e
-  // tracejada mostra todos os cortes sem criar uma faixa larga que apareça
-  // quando a navalha desviar alguns décimos.
-  doc.save()
-    .strokeColor('#FFFFFF')
-    .lineWidth(mm(0.14))
-    .lineCap('butt')
-    .dash(mm(1.6), { space: mm(1.25) });
-  uniqueVerticalCuts.forEach((cutX) => {
-    doc.moveTo(cutX, marginY).lineTo(cutX, gridBottom).stroke();
-  });
-  uniqueHorizontalCuts.forEach((cutY) => {
-    doc.moveTo(marginX, cutY).lineTo(gridRight, cutY).stroke();
-  });
-  doc.undash().restore();
-
-  // Cada encontro da grade recebe uma única cruz branca centralizada,
-  // compartilhada pelas quatro etiquetas ao redor.
-  const centeredMarkArm = mm(2.4);
-  doc.save().strokeColor('#FFFFFF').lineWidth(mm(0.18)).lineCap('butt');
+  // Cada encontro da grade recebe uma unica cruz laranja centralizada,
+  // compartilhada pelas quatro etiquetas ao redor. Nao ha linhas longas
+  // sobre a arte.
+  const centeredMarkArm = mm(1.8);
+  doc.save().strokeColor(orange).lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((cutX) => {
     uniqueHorizontalCuts.forEach((cutY) => {
       doc.moveTo(Math.max(0, cutX - centeredMarkArm), cutY)
@@ -1054,13 +1289,15 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
   const duplex = isDuplexTemplate(t);
   const fourSide = isFourSideProductTemplate(t);
+  const singleDuplex = isSingleProductDuplexTemplate(t);
+  const productDuplex = isProductDuplexTemplate(t);
 
   const doc = new PDFDocument({
     size: layoutW,
     margins: { top: 0, left: 0, right: 0, bottom: 0 },
     bufferPages: true, // permite switchToPage no segundo pass dos QRs
   });
-  doc._tenisLabelFonts = fourSide && registerLabelFonts(doc);
+  doc._tenisLabelFonts = productDuplex && registerLabelFonts(doc);
   // Solicita aos leitores de PDF que imprimam em tamanho real. A preferência é
   // gravada no próprio arquivo e evita que leitores compatíveis ativem "Ajustar".
   const viewerPreferences = doc._root.data.ViewerPreferences || doc.ref({});
@@ -1093,13 +1330,13 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
     }
   }
 
-  if (fourSide && storeLogoUrl) {
+  if (productDuplex && storeLogoUrl) {
     const logoParts = await loadStoreLogoParts(storeLogoUrl);
     if (logoParts.icon) flat.forEach((item) => { item._storeLogoIconBuffer = logoParts.icon; });
     if (logoParts.wordmark) flat.forEach((item) => { item._storeLogoWordmarkBuffer = logoParts.wordmark; });
     if (logoParts.full) flat.forEach((item) => { item._storeLogoBuffer = logoParts.full; });
   }
-  if (fourSide) {
+  if (productDuplex) {
     const brandUrls = [...new Set(flat.map((item) => String(item.brandLogoUrl || '').trim()).filter(Boolean))];
     const brandBuffers = await Promise.all(brandUrls.map(async (url) => [url, await loadLogoBuffer(url)]));
     const byUrl = new Map(brandBuffers.filter(([, buffer]) => buffer));
@@ -1145,17 +1382,20 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       return { x, y };
     };
 
-    if (fourSide) {
+    if (productDuplex) {
       // Frente e verso recebem fundo até além da linha de corte. Assim, um
       // pequeno desvio humano não revela uma borda branca. Todos os retângulos
       // formam um único caminho para não sobrepor tinta nem criar faixas.
       const cmyk = t.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
       const backgroundOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+      const background = singleDuplex
+        ? (pageSide === 'back' ? '#191A18' : '#F6F0E5')
+        : backgroundOrange;
       const bleedMm = pageSide === 'back'
         ? Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM)
         : FOUR_SIDE_FRONT_BLEED_MM;
       const bleed = mm(bleedMm);
-      doc.save().fillColor(backgroundOrange);
+      doc.save().fillColor(background);
       pageItems.forEach((item, slot) => {
         const { x, y } = slotPosition(slot);
         doc.rect(x - bleed, y - bleed, labelW + bleed * 2, labelH + bleed * 2);
@@ -1169,7 +1409,18 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       doc.save();
       // Layout S&T: fundo laranja sólido (145mm × 25mm; formatos anteriores suportados)
       const isST = isSTHorizontalTemplate(t);
-      if (fourSide) {
+      if (singleDuplex) {
+        drawProductSingleDuplex(
+          doc,
+          item,
+          t,
+          x,
+          y,
+          labelW,
+          labelH,
+          pageSide === 'back' ? 'back' : 'front',
+        );
+      } else if (fourSide) {
         const side = pageSide === 'front'
           ? (item._pairSlot === 1 ? 'details' : 'brand')
           : (item._pairSlot === 1 ? 'qr' : 'store');
@@ -1179,11 +1430,11 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       } else {
         doc.rect(x, y, labelW, labelH).lineWidth(0.5).strokeColor('#ddd').stroke();
       }
-      if (!fourSide && storeName && t.showStore) {
+      if (!productDuplex && storeName && t.showStore) {
         doc.fontSize(6).fillColor(isST ? '#FFFFFF' : '#aaa').text(storeName, x + mm(1), y + mm(1));
       }
       // Frente e verso usam a mesma grade e os mesmos itens para manter o alinhamento.
-      if (!fourSide) drawLabelContent(doc, item, t, x, y, labelW, labelH);
+      if (!productDuplex) drawLabelContent(doc, item, t, x, y, labelW, labelH);
       if (item._qrPos) {
         qrJobs.push({ item, pageIndex, ...item._qrPos });
         delete item._qrPos;
@@ -1191,8 +1442,8 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       doc.restore();
     });
     // As guias de corte pertencem somente à frente. No verso, a sangria deve
-    // permanecer lisa para não criar linhas visíveis sobre o fundo laranja.
-    if (fourSide && pageSide !== 'back') {
+    // permanecer lisa para não criar linhas visíveis na etiqueta.
+    if (productDuplex && pageSide !== 'back') {
       drawFourSideCutMarks(doc, t, {
         labelW,
         labelH,
@@ -1238,4 +1489,6 @@ module.exports = {
   isSTHorizontalTemplate,
   isDuplexTemplate,
   isFourSideProductTemplate,
+  isSingleProductDuplexTemplate,
+  isProductDuplexTemplate,
 };
