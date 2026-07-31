@@ -810,120 +810,117 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     </script>
   </div>
 
-  <!-- RÁDIO DA LOJA SECTION -->
+  <!-- CENTRAL DE RÁDIO DAS LOJAS -->
   <div class="section" id="tab-radio" style="display:none">
     <button class="hub-back-btn" onclick="switchTabByName('home')">← Voltar ao Início</button>
     <div class="section-head">
-      <span class="section-title">🔊 Rádio da Loja</span>
-      <button class="refresh-btn" onclick="storeRadioLoadConfig()">↻ Atualizar</button>
+      <span class="section-title">🔊 Central de Rádio</span>
+      <button class="refresh-btn" onclick="radLoad()">↻ Atualizar</button>
     </div>
     <div class="card" style="padding:18px;margin-bottom:16px;background:#fff8f2;border-color:#f7c9ab">
-      <div style="font-weight:800;color:#b33e10;margin-bottom:8px">Como funciona</div>
-      <div style="font-size:13px;line-height:1.55;color:#4a4a4a">
-        Ligue uma caixa JBL (ou qualquer caixa Bluetooth) ao computador da loja, defina-a como saída de som padrão do Windows e abra o player. Quando uma venda for confirmada, o TenisCash coloca um anúncio nesta fila e a voz em português reproduz pela caixa. A venda só é anunciada depois do pagamento confirmado.
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <div style="font-weight:800;color:#b33e10">Comandar</div>
+        <select id="rad-target" class="form-input" style="max-width:300px"></select>
+        <span id="rad-cmd-status" style="font-size:12px;color:#1d8348;font-weight:700"></span>
       </div>
-    </div>
-    <div class="card" style="padding:18px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px);gap:14px;align-items:end">
-        <label class="form-label">Loja
-          <select id="store-radio-store" class="form-input" onchange="storeRadioSelectStore()"></select>
-        </label>
-        <label style="display:flex;align-items:center;gap:9px;padding-bottom:10px;font-weight:700;font-size:13px">
-          <input id="store-radio-enabled" type="checkbox" style="width:18px;height:18px"> Ativar anúncios automáticos
-        </label>
-      </div>
-      <label class="form-label" style="display:block;margin-top:12px">Mensagem padrão
-        <textarea id="store-radio-template" class="form-input" rows="3" maxlength="500" placeholder="A Sports &amp; Tennis agradece sua compra! Aproveite seu novo produto e volte sempre."></textarea>
-      </label>
-      <div style="display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:end;margin-top:12px">
-        <label class="form-label">Volume da voz
-          <input id="store-radio-volume" type="range" min="0" max="1" step="0.05" value="1" style="width:100%" oninput="document.getElementById('store-radio-volume-value').textContent=Math.round(this.value*100)+'%'">
-          <span id="store-radio-volume-value" style="font-size:12px;color:var(--text2)">100%</span>
-        </label>
+      <div style="display:grid;gap:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="rad-msg" class="form-input" style="flex:1;min-width:220px" placeholder="Mensagem / aviso pra FALAR na loja (voz)…" onkeydown="if(event.key==='Enter')radAnnounce()">
+          <button class="btn-primary" onclick="radAnnounce()">📣 Falar</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="rad-yt" class="form-input" style="flex:1;min-width:220px" placeholder="Link do YouTube (vídeo ou playlist)…" onkeydown="if(event.key==='Enter')radYouTube()">
+          <button class="btn-secondary" onclick="radYouTube()">▶ Tocar YouTube</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="rad-stream" class="form-input" style="flex:1;min-width:220px" placeholder="Link de uma rádio online (stream .mp3/.aac)…" onkeydown="if(event.key==='Enter')radStream()">
+          <button class="btn-secondary" onclick="radStream()">📻 Tocar rádio</button>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <button class="btn-primary" onclick="storeRadioSave()">Salvar configuração</button>
-          <button class="btn-secondary" onclick="storeRadioTest()">🔔 Enviar teste</button>
-          <button class="btn-secondary" onclick="storeRadioOpenPlayer()">▶ Abrir player da loja</button>
+          <button class="btn-secondary" onclick="radStop()">⏸ Parar música</button>
+          <button class="btn-secondary" onclick="radTest()">🔔 Teste de voz</button>
+          <button class="btn-secondary" onclick="radEnable(true)">Ligar rádio</button>
+          <button class="btn-secondary" onclick="radEnable(false)">Desligar</button>
         </div>
       </div>
-      <div id="store-radio-status" style="margin-top:12px;font-size:13px;color:var(--text2)">Carregando…</div>
+      <div style="font-size:11.5px;color:#8a7f78;margin-top:12px;line-height:1.5">Escolha <b>uma loja</b> ou <b>🌐 TODAS</b> e comande. A voz de venda toca sozinha em cada loja com a rádio ligada; a música e os avisos você dispara daqui — em uma ou em todas ao mesmo tempo.</div>
     </div>
-    <div class="card" style="padding:18px">
-      <div style="font-weight:800;margin-bottom:10px">Fila e histórico recente</div>
-      <div id="store-radio-queue" style="font-size:13px;color:var(--text2);margin-bottom:12px">—</div>
-      <div id="store-radio-history" style="display:grid;gap:8px"></div>
+    <div id="rad-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px"></div>
+    <div class="card" id="rad-tpl-card" style="padding:16px;margin-top:16px;display:none">
+      <div style="font-weight:800;margin-bottom:8px">Mensagem falada em cada VENDA — <span id="rad-tpl-store"></span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Use <code>{loja}</code>, <code>{produtos}</code>, <code>{valor}</code>. Ex.: "A {loja} agradece! Você levou {produtos}. Volte sempre!"</div>
+      <textarea id="rad-tpl" class="form-input" rows="3" maxlength="500"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn-primary" onclick="radSaveTpl()">Salvar mensagem de venda</button></div>
     </div>
     <script>
-      let storeRadioData = { stores: [] };
-      function storeRadioHeaders() {
-        return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
-      }
-      async function storeRadioApi(path, options = {}) {
-        const response = await fetch('/api/admin/store-radio' + path, { ...options, headers: { ...storeRadioHeaders(), ...(options.headers || {}) } });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Não foi possível comunicar com a rádio.');
-        return data;
-      }
-      function storeRadioCurrent() {
-        const id = document.getElementById('store-radio-store')?.value;
-        return storeRadioData.stores.find((s) => s.id === id) || storeRadioData.stores[0] || null;
-      }
-      function storeRadioSelectStore() {
-        const current = storeRadioCurrent();
-        if (!current) return;
-        const cfg = current.radioConfig || {};
-        document.getElementById('store-radio-enabled').checked = !!cfg.enabled;
-        document.getElementById('store-radio-template').value = cfg.announcementTemplate || storeRadioData.defaultTemplate || '';
-        document.getElementById('store-radio-volume').value = Number.isFinite(Number(cfg.volume)) ? Number(cfg.volume) : 1;
-        document.getElementById('store-radio-volume-value').textContent = Math.round(Number(document.getElementById('store-radio-volume').value) * 100) + '%';
-        const q = current.queue || {};
-        document.getElementById('store-radio-queue').textContent = `Na fila: ${q.queued || 0} · reproduzindo: ${q.playing || 0} · reproduzidos: ${q.played || 0} · falhas: ${q.failed || 0}`;
-        storeRadioLoadHistory(current.id);
-      }
-      async function storeRadioLoadConfig() {
-        try {
-          storeRadioData = await storeRadioApi('/config');
-          const select = document.getElementById('store-radio-store');
-          const old = select.value;
-          select.innerHTML = (storeRadioData.stores || []).map((s) => `<option value="${s.id}">${s.name} (${s.code})</option>`).join('');
-          if (storeRadioData.stores.some((s) => s.id === old)) select.value = old;
-          storeRadioSelectStore();
-          document.getElementById('store-radio-status').textContent = 'Pronto. Ative, salve e abra o player no computador ligado à caixa.';
-        } catch (e) { document.getElementById('store-radio-status').textContent = e.message; }
-      }
-      async function storeRadioLoadHistory(storeId) {
-        try {
-          const data = await storeRadioApi('/history?storeId=' + encodeURIComponent(storeId) + '&limit=8');
-          const target = document.getElementById('store-radio-history');
-          target.innerHTML = (data.announcements || []).map((row) => `<div style="padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px"><b>${row.status}</b> · ${new Date(row.createdAt).toLocaleString('pt-BR')}<br>${String(row.message || '').replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>`).join('') || '<div style="color:var(--text2);font-size:12px">Nenhum anúncio ainda.</div>';
-        } catch (_) {}
-      }
-      async function storeRadioSave() {
-        const current = storeRadioCurrent(); if (!current) return;
-        const status = document.getElementById('store-radio-status');
-        try {
-          const data = await storeRadioApi('/config/' + encodeURIComponent(current.id), { method: 'PATCH', body: JSON.stringify({ enabled: document.getElementById('store-radio-enabled').checked, volume: Number(document.getElementById('store-radio-volume').value), announcementTemplate: document.getElementById('store-radio-template').value }) });
-          current.radioConfig = data.config;
-          status.textContent = data.config.enabled ? 'Rádio ativada. Abra o player na máquina da loja.' : 'Rádio salva e desativada.';
-        } catch (e) { status.textContent = e.message; }
-      }
-      async function storeRadioTest() {
-        const current = storeRadioCurrent(); if (!current) return;
-        const status = document.getElementById('store-radio-status');
-        try { await storeRadioApi('/test', { method: 'POST', body: JSON.stringify({ storeId: current.id }) }); status.textContent = 'Teste colocado na fila. Deixe o player aberto para ouvir.'; storeRadioLoadConfig(); }
-        catch (e) { status.textContent = e.message; }
-      }
-      function storeRadioOpenPlayer() {
-        const current = storeRadioCurrent(); if (!current) return;
-        const token = localStorage.getItem('tc_admin_token') || '';
-        window.open('/radio-player.html?storeId=' + encodeURIComponent(current.id) + '&token=' + encodeURIComponent(token), '_blank', 'width=460,height=620');
-      }
-      window.storeRadioLoadConfig = storeRadioLoadConfig;
-      window.storeRadioSelectStore = storeRadioSelectStore;
-      window.storeRadioSave = storeRadioSave;
-      window.storeRadioTest = storeRadioTest;
-      window.storeRadioOpenPlayer = storeRadioOpenPlayer;
-      setTimeout(storeRadioLoadConfig, 900);
+      (function () {
+        let radState = { stores: [], defaultTemplate: '' };
+        const radTok = () => localStorage.getItem('tc_admin_token') || '';
+        const radEsc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        async function radApi(path, opts = {}) {
+          const r = await fetch('/api/admin/store-radio' + path, { ...opts, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + radTok(), ...(opts.headers || {}) } });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || 'Falha na rádio.');
+          return d;
+        }
+        function radTargets() { return document.getElementById('rad-target').value; }
+        function radCmd(t, bad) { const e = document.getElementById('rad-cmd-status'); if (!e) return; e.textContent = t; e.style.color = bad ? '#c0341a' : '#1d8348'; if (t) setTimeout(() => { if (e.textContent === t) e.textContent = ''; }, 4500); }
+        async function radLoad() {
+          try {
+            radState = await radApi('/state');
+            const sel = document.getElementById('rad-target'); const old = sel.value;
+            sel.innerHTML = '<option value="all">🌐 TODAS as lojas</option>' + (radState.stores || []).map((s) => `<option value="${s.id}">${radEsc(s.name)} (${radEsc(s.code)})</option>`).join('');
+            if (old) sel.value = old;
+            radGrid(); radTpl();
+          } catch (e) { radCmd(e.message, true); }
+        }
+        function radGrid() {
+          document.getElementById('rad-grid').innerHTML = (radState.stores || []).map((s) => {
+            const playing = s.media ? (s.media.kind === 'youtube' ? '▶ YouTube' : '📻 Rádio') + (s.media.title ? ' · ' + radEsc(s.media.title) : '') : '—';
+            return `<div class="card" style="padding:14px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${s.online ? '#18a854' : '#c9c9c9'};box-shadow:${s.online ? '0 0 0 4px #18a85422' : 'none'}"></span>
+                <b style="font-size:14px">${radEsc(s.name)}</b>
+              </div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${radEsc(s.code)} · ${s.enabled ? 'ligada' : '<span style="color:#c0341a">desligada</span>'} · ${s.online ? 'online' : 'offline'}</div>
+              <div style="font-size:12.5px;color:#1d1d1f;margin-bottom:6px">🎵 ${playing}</div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:10px">fila ${s.queue.queued} · tocando ${s.queue.playing} · ok ${s.queue.played}</div>
+              <button class="btn-secondary" style="width:100%" onclick="radOpenPlayer('${s.id}')">▶ Abrir player desta loja</button>
+            </div>`;
+          }).join('') || '<div style="color:var(--text2)">Nenhuma loja ativa.</div>';
+        }
+        function radTpl() {
+          const v = document.getElementById('rad-target').value;
+          const card = document.getElementById('rad-tpl-card');
+          const s = (radState.stores || []).find((x) => x.id === v);
+          if (!s) { card.style.display = 'none'; return; }
+          card.style.display = 'block';
+          document.getElementById('rad-tpl-store').textContent = s.name;
+          document.getElementById('rad-tpl').value = s.announcementTemplate || radState.defaultTemplate || '';
+        }
+        async function radAnnounce() {
+          const message = document.getElementById('rad-msg').value.trim(); if (!message) { radCmd('Escreva a mensagem.', true); return; }
+          try { const d = await radApi('/announce', { method: 'POST', body: JSON.stringify({ storeIds: radTargets(), message }) }); document.getElementById('rad-msg').value = ''; radCmd('📣 Falando em ' + d.count + ' loja(s).'); } catch (e) { radCmd(e.message, true); }
+        }
+        async function radYouTube() {
+          const ref = document.getElementById('rad-yt').value.trim(); if (!ref) { radCmd('Cole o link do YouTube.', true); return; }
+          try { const d = await radApi('/media', { method: 'POST', body: JSON.stringify({ storeIds: radTargets(), kind: 'youtube', ref }) }); radCmd('▶ YouTube em ' + d.count + ' loja(s).'); setTimeout(radLoad, 800); } catch (e) { radCmd(e.message, true); }
+        }
+        async function radStream() {
+          const ref = document.getElementById('rad-stream').value.trim(); if (!ref) { radCmd('Cole o link da rádio.', true); return; }
+          try { const d = await radApi('/media', { method: 'POST', body: JSON.stringify({ storeIds: radTargets(), kind: 'stream', ref }) }); radCmd('📻 Rádio em ' + d.count + ' loja(s).'); setTimeout(radLoad, 800); } catch (e) { radCmd(e.message, true); }
+        }
+        async function radStop() { try { const d = await radApi('/stop', { method: 'POST', body: JSON.stringify({ storeIds: radTargets() }) }); radCmd('⏸ Música parada em ' + d.count + ' loja(s).'); setTimeout(radLoad, 800); } catch (e) { radCmd(e.message, true); } }
+        async function radEnable(on) { try { const d = await radApi('/enable', { method: 'POST', body: JSON.stringify({ storeIds: radTargets(), enabled: on }) }); radCmd((on ? 'Ligada' : 'Desligada') + ' em ' + d.count + ' loja(s).'); setTimeout(radLoad, 800); } catch (e) { radCmd(e.message, true); } }
+        async function radTest() { const v = radTargets(); const sid = v === 'all' ? (radState.stores[0] || {}).id : v; if (!sid) { radCmd('Sem loja.', true); return; } try { await radApi('/test', { method: 'POST', body: JSON.stringify({ storeId: sid }) }); radCmd('🔔 Teste enviado — player aberto na loja ouve.'); } catch (e) { radCmd(e.message, true); } }
+        async function radSaveTpl() { const v = document.getElementById('rad-target').value; if (v === 'all') { radCmd('Escolha 1 loja pra editar a mensagem de venda.', true); return; } try { await radApi('/config/' + encodeURIComponent(v), { method: 'PATCH', body: JSON.stringify({ announcementTemplate: document.getElementById('rad-tpl').value }) }); radCmd('Mensagem de venda salva.'); } catch (e) { radCmd(e.message, true); } }
+        function radOpenPlayer(storeId) { const s = (radState.stores || []).find((x) => x.id === storeId); if (!s || !s.playerKey) { radCmd('Sem chave — ligue a rádio dessa loja primeiro (botão Ligar).', true); return; } window.open('/radio-player.html?storeId=' + encodeURIComponent(storeId) + '&key=' + encodeURIComponent(s.playerKey), '_blank', 'width=560,height=740'); }
+        window.radLoad = radLoad; window.radAnnounce = radAnnounce; window.radYouTube = radYouTube; window.radStream = radStream; window.radStop = radStop; window.radEnable = radEnable; window.radTest = radTest; window.radSaveTpl = radSaveTpl; window.radOpenPlayer = radOpenPlayer;
+        window.storeRadioLoadConfig = radLoad; // compat com quem chamava a função antiga
+        document.addEventListener('change', (e) => { if (e.target && e.target.id === 'rad-target') radTpl(); });
+        setTimeout(radLoad, 900);
+        setInterval(() => { const t = document.getElementById('tab-radio'); if (t && t.style.display !== 'none') radLoad(); }, 6000);
+      })();
     </script>
   </div>
 

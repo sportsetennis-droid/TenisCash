@@ -5,81 +5,206 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Rádio da Loja · TenisCash</title>
   <style>
-    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#27201b;background:#fff6ef}
-    body{margin:0;padding:24px;min-height:100vh;box-sizing:border-box}
-    .panel{max-width:430px;margin:0 auto;background:#fff;border:1px solid #f5c8aa;border-radius:18px;padding:24px;box-shadow:0 12px 35px #d9571e1c}
-    h1{font-size:23px;margin:0 0 6px;color:#d94e18}.sub{font-size:13px;color:#756b64;line-height:1.45;margin-bottom:20px}
-    button{border:0;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer;background:#e5571e;color:#fff;width:100%;font-size:14px}
-    button.secondary{background:#fff;color:#d94e18;border:1px solid #e5571e;margin-top:9px}
-    button:disabled{opacity:.5;cursor:not-allowed}.status{margin-top:17px;padding:12px;border-radius:10px;background:#fff6ef;color:#756b64;font-size:13px;line-height:1.5;min-height:20px}
-    .live{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#168346;margin:16px 0 7px}.dot{width:9px;height:9px;border-radius:50%;background:#b2b2b2}.dot.on{background:#18a854;box-shadow:0 0 0 4px #18a85422}
-    #last{font-size:13px;color:#403833;line-height:1.5;word-break:break-word}.hint{font-size:12px;color:#8c8179;line-height:1.45;margin-top:18px}
+    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#27201b;background:#0f0b09}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px;background:radial-gradient(1200px 600px at 50% -10%,#3a1c0e,#0f0b09)}
+    .panel{width:100%;max-width:520px;background:#fff;border-radius:20px;padding:22px;box-shadow:0 20px 60px #0008}
+    h1{font-size:22px;margin:0 0 2px;color:#d94e18;display:flex;align-items:center;gap:8px}
+    .store{font-size:13px;color:#8a7f78;margin-bottom:14px}
+    button{border:0;border-radius:12px;padding:14px 16px;font-weight:800;cursor:pointer;background:#e5571e;color:#fff;width:100%;font-size:15px}
+    button.secondary{background:#fff;color:#d94e18;border:1.5px solid #e5571e;margin-top:9px}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .live{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#8a8a8a;margin:16px 0 8px}
+    .dot{width:10px;height:10px;border-radius:50%;background:#c3c3c3}.dot.on{background:#18a854;box-shadow:0 0 0 5px #18a85422;animation:pulse 2s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 #18a85455}70%{box-shadow:0 0 0 8px #18a85400}100%{box-shadow:0 0 0 0 #18a85400}}
+    .status{margin-top:6px;padding:12px;border-radius:12px;background:#fff6ef;color:#6b625b;font-size:13px;line-height:1.5;min-height:20px}
+    .now{margin-top:12px;padding:12px 14px;border-radius:12px;background:#141013;color:#ffd9c4;font-size:13px;display:flex;align-items:center;gap:10px}
+    .now b{color:#fff}
+    #ytwrap{margin-top:14px;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;display:none}
+    #ytwrap.show{display:block}
+    #last{font-size:12.5px;color:#6b625b;line-height:1.5;word-break:break-word;margin-top:6px}
+    .hint{font-size:11.5px;color:#a49a92;line-height:1.45;margin-top:16px;border-top:1px solid #f0e7e0;padding-top:12px}
+    .bad{color:#c0341a;font-weight:700}
   </style>
 </head>
 <body>
   <main class="panel">
     <h1>🔊 Rádio da Loja</h1>
-    <div class="sub">Mantenha esta janela aberta no computador ligado à caixa JBL. Os anúncios de venda confirmada serão reproduzidos automaticamente.</div>
-    <button id="activate" onclick="activateAudio()">Ativar áudio nesta máquina</button>
-    <button class="secondary" onclick="stopAudio()">Parar áudio agora</button>
-    <div class="live"><span id="dot" class="dot"></span><span id="liveText">Aguardando ativação</span></div>
-    <div id="status" class="status">Conectando ao TenisCash…</div>
-    <div style="margin-top:16px;font-size:12px;color:#8c8179">Último anúncio</div>
+    <div class="store" id="storeLabel">Conectando…</div>
+
+    <button id="activate" onclick="activate()">▶ Ativar rádio nesta máquina</button>
+    <button class="secondary" onclick="stopAll()">Parar tudo</button>
+
+    <div class="live"><span id="dot" class="dot"></span><span id="liveText">Desligada</span></div>
+    <div id="status" class="status">Clique em “Ativar rádio” uma vez. Depois toca sozinho.</div>
+
+    <div id="now" class="now" style="display:none">🎵 <span id="nowText">—</span></div>
+    <div id="ytwrap"><div id="yt"></div></div>
+
+    <div style="margin-top:14px;font-size:11.5px;color:#a49a92">Último anúncio</div>
     <div id="last">—</div>
-    <div class="hint">Se não ouvir: confira se a JBL está conectada por Bluetooth, escolhida como saída padrão do Windows e com volume ligado.</div>
+
+    <div class="hint">Deixe esta janela aberta no computador ligado à caixa de som. Anúncios de venda e mensagens do escritório tocam automáticos; a música (YouTube/rádio) é comandada pela central. Não ouviu? Confira se a caixa é a saída padrão do Windows e o volume.</div>
   </main>
+
+  <audio id="stream" crossorigin="anonymous"></audio>
+
   <script>
     const params = new URLSearchParams(location.search);
     const storeId = params.get('storeId') || '';
-    const token = params.get('token') || '';
-    let active = false;
-    let busy = false;
-    let timer = null;
-    let voices = [];
+    const key = params.get('key') || params.get('token') || '';
+    const BASE = '/api/admin/store-radio';
     const $ = (id) => document.getElementById(id);
-    function headers() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }; }
-    function setStatus(text) { $('status').textContent = text; }
-    function setLive(on, text) { $('dot').className = 'dot' + (on ? ' on' : ''); $('liveText').textContent = text; }
-    function refreshVoices() { voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; }
-    if (window.speechSynthesis) { refreshVoices(); window.speechSynthesis.onvoiceschanged = refreshVoices; }
-    function activateAudio() {
-      if (!window.speechSynthesis) { setStatus('Este navegador não oferece voz do sistema. Abra no Chrome/Edge do computador da loja.'); return; }
-      active = true; window.speechSynthesis.cancel(); $('activate').disabled = true; setLive(true, 'Player ativo'); setStatus('Player ativo. Aguardando vendas confirmadas…'); poll();
+
+    let active = false, busy = false;
+    let mediaSig = null;            // assinatura da mídia atual (kind|ref|at)
+    let curVolume = 1, curLang = 'pt-BR', curVoiceName = '';
+    let yt = null, ytReady = false, pendingYT = null, ytMode = null;
+    let failStreak = 0;
+    let voices = [];
+
+    function setStatus(t, bad) { const s = $('status'); s.textContent = t; s.className = 'status' + (bad ? ' bad' : ''); }
+    function setLive(on, t) { $('dot').className = 'dot' + (on ? ' on' : ''); $('liveText').textContent = t; }
+    function setNow(t) { if (t) { $('now').style.display = 'flex'; $('nowText').textContent = t; } else { $('now').style.display = 'none'; } }
+    function refreshVoices() { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; }
+    if (window.speechSynthesis) { refreshVoices(); speechSynthesis.onvoiceschanged = refreshVoices; }
+
+    if (!storeId || !key) { $('activate').disabled = true; setStatus('Link do player sem chave. Abra pela central (aba Rádio → Abrir player) na loja certa.', true); }
+
+    // ---------- YouTube IFrame API ----------
+    (function loadYT() {
+      const s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+    })();
+    window.onYouTubeIframeAPIReady = function () {
+      yt = new YT.Player('yt', {
+        height: '100%', width: '100%',
+        playerVars: { autoplay: 1, controls: 1, rel: 0, playsinline: 1, modestbranding: 1 },
+        events: {
+          onReady: () => { ytReady = true; if (pendingYT) { const r = pendingYT; pendingYT = null; playYouTube(r); } },
+          onError: () => setStatus('Não consegui tocar esse vídeo do YouTube (pode estar bloqueado). Tente outro link.', true),
+        },
+      });
+    };
+    function parseYouTube(ref) {
+      ref = String(ref || '').trim();
+      let m = ref.match(/[?&]list=([A-Za-z0-9_-]+)/); if (m) return { list: m[1] };
+      if (/^(PL|UU|FL|RD|OL)[A-Za-z0-9_-]{8,}$/.test(ref)) return { list: ref };
+      m = ref.match(/[?&]v=([A-Za-z0-9_-]{11})/); if (m) return { video: m[1] };
+      m = ref.match(/youtu\.be\/([A-Za-z0-9_-]{11})/); if (m) return { video: m[1] };
+      m = ref.match(/\/(embed|shorts)\/([A-Za-z0-9_-]{11})/); if (m) return { video: m[2] };
+      if (/^[A-Za-z0-9_-]{11}$/.test(ref)) return { video: ref };
+      return { video: ref };
     }
-    function stopAudio() {
-      active = false; busy = false; if (window.speechSynthesis) window.speechSynthesis.cancel(); $('activate').disabled = false; setLive(false, 'Áudio parado'); setStatus('Áudio parado. Clique em “Ativar áudio” para continuar.');
+    function playYouTube(ref) {
+      stopStream();
+      if (!ytReady || !yt) { pendingYT = ref; return; }
+      const p = parseYouTube(ref);
+      try {
+        $('ytwrap').classList.add('show');
+        if (p.list) yt.loadPlaylist({ list: p.list, listType: 'playlist', index: 0 });
+        else yt.loadVideoById(p.video);
+        yt.setVolume(Math.round(curVolume * 100));
+        yt.playVideo();
+        ytMode = 'playing';
+      } catch (e) {}
     }
-    async function api(path, options = {}) {
-      const r = await fetch('/api/admin/store-radio' + path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-      const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || 'Falha de comunicação'); return data;
+    function stopYouTube() { try { if (yt && ytReady) yt.stopVideo(); } catch (e) {} $('ytwrap').classList.remove('show'); ytMode = null; }
+    function duckYouTube() { try { if (yt && ytReady && ytMode) yt.pauseVideo(); } catch (e) {} }
+    function resumeYouTube() { try { if (yt && ytReady && ytMode) { yt.setVolume(Math.round(curVolume * 100)); yt.playVideo(); } } catch (e) {} }
+
+    // ---------- Stream de áudio (rádio online) ----------
+    const audio = $('stream');
+    function playStream(url) { stopYouTube(); try { audio.src = url; audio.volume = curVolume; audio.play().catch(() => {}); } catch (e) {} }
+    function stopStream() { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (e) {} }
+    function duckStream() { try { if (audio.src) audio.pause(); } catch (e) {} }
+    function resumeStream() { try { if (audio.src) { audio.volume = curVolume; audio.play().catch(() => {}); } } catch (e) {} }
+
+    function stopMusic() { stopYouTube(); stopStream(); setNow(''); mediaSig = null; }
+    function duckMusic() { duckYouTube(); duckStream(); }
+    function resumeMusic() { resumeYouTube(); resumeStream(); }
+
+    // ---------- Mídia ambiente (comandada pela central) ----------
+    function applyMedia(media) {
+      if (!media || !media.kind) { if (mediaSig) stopMusic(); return; }
+      const sig = media.kind + '|' + (media.ref || '') + '|' + (media.at || '');
+      if (sig === mediaSig) return;   // já está tocando isso
+      mediaSig = sig;
+      if (media.kind === 'youtube') { setNow('YouTube' + (media.title ? ' · ' + media.title : '')); playYouTube(media.ref); }
+      else if (media.kind === 'stream') { setNow('Rádio' + (media.title ? ' · ' + media.title : '')); playStream(media.ref); }
     }
-    function chooseVoice(config) {
-      const wanted = String(config?.voiceName || '').toLowerCase();
+
+    // ---------- Voz (anúncios) ----------
+    function chooseVoice() {
+      const wanted = String(curVoiceName || '').toLowerCase();
       return voices.find((v) => wanted && v.name.toLowerCase() === wanted)
         || voices.find((v) => /^pt[-_]br$/i.test(v.lang))
-        || voices.find((v) => /^pt/i.test(v.lang))
-        || voices[0] || null;
+        || voices.find((v) => /^pt/i.test(v.lang)) || voices[0] || null;
     }
-    async function play(announcement, config) {
-      busy = true; $('last').textContent = announcement.message; setStatus('Reproduzindo anúncio…');
-      const utterance = new SpeechSynthesisUtterance(announcement.message);
-      utterance.lang = config?.language || 'pt-BR'; utterance.volume = Math.max(0, Math.min(1, Number(config?.volume ?? 1))); utterance.rate = .96; utterance.pitch = 1;
-      const voice = chooseVoice(config); if (voice) utterance.voice = voice;
-      await new Promise((resolve) => {
-        utterance.onend = resolve; utterance.onerror = resolve; window.speechSynthesis.speak(utterance);
-      });
-      try { await api('/' + encodeURIComponent(announcement.id) + '/complete', { method: 'POST', body: '{}' }); } catch (_) {}
-      busy = false; if (active) setStatus('Player ativo. Aguardando vendas confirmadas…');
+    async function speak(ann) {
+      busy = true; $('last').textContent = ann.message; setStatus('📣 Anunciando…');
+      duckMusic();
+      try {
+        const u = new SpeechSynthesisUtterance(ann.message);
+        u.lang = curLang || 'pt-BR'; u.volume = Math.max(0, Math.min(1, curVolume)); u.rate = 0.98; u.pitch = 1;
+        const v = chooseVoice(); if (v) u.voice = v;
+        await new Promise((resolve) => { u.onend = resolve; u.onerror = resolve; try { speechSynthesis.cancel(); } catch (e) {} speechSynthesis.speak(u); });
+      } catch (e) {}
+      try { await api('/' + encodeURIComponent(ann.id) + '/complete', { method: 'POST', body: '{}' }); } catch (e) {}
+      resumeMusic();
+      busy = false;
+      if (active) setStatus('No ar. Aguardando vendas e comandos…');
+    }
+
+    // ---------- Conexão ----------
+    function api(path, options = {}) {
+      const sep = path.includes('?') ? '&' : '?';
+      return fetch(BASE + path + sep + 'storeId=' + encodeURIComponent(storeId) + '&key=' + encodeURIComponent(key), {
+        ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      }).then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; });
     }
     async function poll() {
-      if (!active || busy || !storeId) return;
+      if (!active || busy) return;
       try {
-        const data = await api('/next?storeId=' + encodeURIComponent(storeId));
-        if (data.announcement) await play(data.announcement, data.config);
-      } catch (e) { setStatus(e.message); }
+        const data = await api('/next');
+        failStreak = 0;
+        const c = data.config || {};
+        curVolume = c.volume == null ? 1 : Number(c.volume);
+        curLang = c.language || 'pt-BR'; curVoiceName = c.voiceName || '';
+        applyMedia(c.media);
+        if (!data.enabled) setLive(true, 'Ligada (avisos pausados)');
+        else setLive(true, 'No ar');
+        if (data.announcement) await speak(data.announcement);
+      } catch (e) {
+        failStreak++;
+        setStatus(String(e.message || e).includes('Chave') ? 'Chave da rádio inválida — reabra pela central.' : 'Reconectando à central…', failStreak > 2);
+        setLive(false, 'Sem conexão');
+      }
     }
-    if (!storeId || !token) { $('activate').disabled = true; setStatus('Link do player inválido. Abra pelo card Rádio da Loja no painel administrativo.'); }
-    timer = setInterval(poll, 2200);
+
+    function activate() {
+      if (!window.speechSynthesis) { setStatus('Este navegador não tem voz. Abra no Chrome/Edge do computador da loja.', true); return; }
+      active = true;
+      try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} // desbloqueia a voz com o clique
+      $('activate').disabled = true;
+      setLive(true, 'No ar'); setStatus('No ar. Aguardando vendas e comandos…');
+      poll();
+    }
+    function stopAll() {
+      active = false; busy = false;
+      try { speechSynthesis.cancel(); } catch (e) {} stopMusic();
+      $('activate').disabled = false;
+      setLive(false, 'Parada'); setStatus('Parada. Clique em “Ativar rádio” pra voltar.');
+    }
+
+    // nome da loja
+    fetch('/api/stores/public').then((r) => r.json()).then((d) => {
+      const s = (d.stores || d || []).find((x) => x.id === storeId);
+      if (s) $('storeLabel').textContent = '📍 ' + (s.name || s.code || '');
+    }).catch(() => {});
+
+    setInterval(poll, 2600);
   </script>
 </body>
 </html>

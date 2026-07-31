@@ -1,6 +1,11 @@
 const { prisma } = require('../middleware');
+const crypto = require('node:crypto');
 
 const DEFAULT_TEMPLATE = 'A Sports & Tennis agradece sua compra! Aproveite seu novo produto e volte sempre.';
+
+function randomKey() {
+  return crypto.randomBytes(18).toString('hex'); // 36 hex — chave FIXA da rádio por loja (o player conecta com ela)
+}
 const COMPLETED_STATUSES = new Set(['completed', 'paid', 'approved']);
 
 function moneyBRL(value) {
@@ -50,6 +55,7 @@ async function ensureConfig(storeId, patch = {}) {
       language: cleanText(patch.language, 'pt-BR').slice(0, 20),
       voiceName: cleanText(patch.voiceName, '') || null,
       announcementTemplate: cleanText(patch.announcementTemplate, DEFAULT_TEMPLATE) || DEFAULT_TEMPLATE,
+      playerKey: randomKey(),
     },
     update: {
       ...(patch.enabled !== undefined ? { enabled: Boolean(patch.enabled) } : {}),
@@ -140,11 +146,107 @@ async function fail(id, error) {
   });
 }
 
+// Garante que a loja tem config + chave fixa (cria se faltar; faz backfill da chave em config antiga)
+async function ensurePlayerKey(storeId) {
+  if (!storeId) throw new Error('Loja obrigatória.');
+  const cfg = await prisma.storeRadioConfig.upsert({
+    where: { storeId },
+    create: { storeId, playerKey: randomKey() },
+    update: {},
+  });
+  if (cfg.playerKey) return cfg;
+  return prisma.storeRadioConfig.update({ where: { storeId }, data: { playerKey: randomKey() } });
+}
+
+// Autentica o PLAYER pela chave fixa da loja (sem token de admin, sem expirar)
+async function getByPlayerKey(storeId, key) {
+  if (!storeId || !key) return null;
+  const cfg = await prisma.storeRadioConfig.findUnique({ where: { storeId: String(storeId) } });
+  if (!cfg || !cfg.playerKey || cfg.playerKey !== String(key)) return null;
+  return cfg;
+}
+
+// "Online": marca que o player desta loja bateu ponto agora
+async function touchPlayer(storeId) {
+  try { await prisma.storeRadioConfig.update({ where: { storeId }, data: { playerSeenAt: new Date() } }); } catch (_) { /* config pode não existir ainda */ }
+}
+
+// Define a MÚSICA ambiente da loja (kind youtube|stream). kind falsy = PARAR música.
+async function setMedia(storeId, { kind, ref, title } = {}) {
+  const k = kind ? String(kind).toLowerCase() : null;
+  const ok = k === 'youtube' || k === 'stream';
+  return prisma.storeRadioConfig.update({
+    where: { storeId },
+    data: {
+      mediaKind: ok ? k : null,
+      mediaRef: ok ? (cleanText(ref, '').slice(0, 400) || null) : null,
+      mediaTitle: ok ? (cleanText(title, '').slice(0, 120) || null) : null,
+      mediaUpdatedAt: new Date(),
+    },
+  });
+}
+
+// Enfileira uma VOZ avulsa (aviso/mensagem do dono, broadcast) — interrompe a música e volta
+async function queueVoice({ storeId, message, source = 'announce' }) {
+  if (!storeId) throw new Error('Loja obrigatória.');
+  const text = cleanText(message, '');
+  if (!text) throw new Error('Mensagem vazia.');
+  return prisma.radioAnnouncement.create({
+    data: {
+      storeId,
+      eventKey: `${source}:${Date.now()}:${crypto.randomBytes(4).toString('hex')}`,
+      source: String(source).slice(0, 20),
+      message: text,
+    },
+  });
+}
+
+// Estado de TODAS as lojas pra central do dono (online, música tocando, fila, chave do player)
+async function listState() {
+  const stores = await prisma.store.findMany({
+    where: { active: true },
+    orderBy: { code: 'asc' },
+    select: { id: true, code: true, name: true, radioConfig: true },
+  });
+  const counts = await prisma.radioAnnouncement.groupBy({ by: ['storeId', 'status'], _count: { _all: true } }).catch(() => []);
+  const cmap = new Map();
+  for (const r of counts) cmap.set(`${r.storeId || 'none'}:${r.status}`, r._count._all);
+  const now = Date.now();
+  return stores.map((s) => {
+    const cfg = s.radioConfig || {};
+    const seen = cfg.playerSeenAt ? new Date(cfg.playerSeenAt).getTime() : 0;
+    return {
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      enabled: !!cfg.enabled,
+      playerKey: cfg.playerKey || null,
+      online: seen > 0 && now - seen < 20000,
+      playerSeenAt: cfg.playerSeenAt || null,
+      volume: cfg.volume == null ? 1 : cfg.volume,
+      announcementTemplate: cfg.announcementTemplate || DEFAULT_TEMPLATE,
+      media: cfg.mediaKind ? { kind: cfg.mediaKind, ref: cfg.mediaRef, title: cfg.mediaTitle } : null,
+      queue: {
+        queued: cmap.get(`${s.id}:QUEUED`) || 0,
+        playing: cmap.get(`${s.id}:PLAYING`) || 0,
+        played: cmap.get(`${s.id}:PLAYED`) || 0,
+        failed: cmap.get(`${s.id}:FAILED`) || 0,
+      },
+    };
+  });
+}
+
 module.exports = {
   DEFAULT_TEMPLATE,
   COMPLETED_STATUSES,
   ensureConfig,
+  ensurePlayerKey,
   getConfig,
+  getByPlayerKey,
+  touchPlayer,
+  setMedia,
+  queueVoice,
+  listState,
   queueSaleAnnouncement,
   queueTestAnnouncement,
   claimNext,

@@ -601,6 +601,15 @@ model StoreRadioConfig {
   language             String   @default("pt-BR")
   voiceName            String?
   announcementTemplate String   @default("A Sports & Tennis agradece sua compra! Aproveite seu novo produto e volte sempre.")
+  // "Rede real" da rádio: chave fixa por loja (o player conecta com ela, sem token que expira nem login admin)
+  playerKey            String?  @unique
+  // Mídia ambiente atual (música): kind = youtube | stream | null(parado). ref = videoId/playlistId ou URL do stream.
+  mediaKind            String?
+  mediaRef             String?
+  mediaTitle           String?
+  mediaUpdatedAt       DateTime?
+  // Status "online": última vez que o player desta loja bateu ponto
+  playerSeenAt         DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
