@@ -195,6 +195,9 @@ function defaultTemplates() {
         // Mantem os indicadores externos longe da borda da etiqueta para que
         // nao sobrem dois riscos nos cantos superiores depois do corte.
         cutMarkSafeGapMm: 4,
+        // O laranja do verso chega ate a borda superior da folha. Isso elimina
+        // a transicao de tinta que a impressora reproduzia como duas linhas.
+        backTopBleedToPageEdge: true,
       },
     },
     a4_16_5x7_saldo: {
@@ -1528,7 +1531,14 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       doc.save().fillColor(background);
       pageItems.forEach((item, slot) => {
         const { x, y } = slotPosition(slot);
-        doc.rect(x - bleed, y - bleed, labelW + bleed * 2, labelH + bleed * 2);
+        const rawRow = Math.floor(slot / cols);
+        const extendBackToTopEdge = singleDuplex
+          && pageSide === 'back'
+          && rawRow === 0
+          && t.layoutConfig?.backTopBleedToPageEdge !== false;
+        const backgroundTop = extendBackToTopEdge ? 0 : y - bleed;
+        const backgroundBottom = y + labelH + bleed;
+        doc.rect(x - bleed, backgroundTop, labelW + bleed * 2, backgroundBottom - backgroundTop);
       });
       doc.fill();
       doc.restore();
