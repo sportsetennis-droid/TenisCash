@@ -1,29 +1,48 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const radio = require('../services/storeRadio');
+const WebSocket = require('ws');
+const crypto = require('crypto');
 
-// Voz NEURAL (fal.ai ElevenLabs multilingual) — muito mais expressiva/emotiva que a voz do navegador.
-let _fal = null;
-async function getFal() {
-  if (_fal) return _fal;
-  const mod = await import('@fal-ai/client');
-  _fal = mod.fal;
-  if (process.env.FAL_KEY) _fal.config({ credentials: process.env.FAL_KEY });
-  return _fal;
+// Voz NEURAL pt-BR via Microsoft edge-tts (GRÁTIS, sem chave). Ritmo/pitch acelerados = mais animado.
+const EDGE_TRUSTED = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+const EDGE_VER = '1-143.0.3650.75'; // se um dia der 403, atualizar pra versão atual do Edge
+function edgeSecToken() {
+  let t = Math.floor(Date.now() / 1000) + 11644473600;
+  t -= t % 300;
+  t *= 1e7;
+  return crypto.createHash('sha256').update(String(t) + EDGE_TRUSTED, 'ascii').digest('hex').toUpperCase();
 }
-async function neuralTtsUrl(text, voice) {
-  const fal = await getFal();
-  const r = await fal.subscribe('fal-ai/elevenlabs/tts/multilingual-v2', {
-    input: {
-      text: String(text || '').slice(0, 900),
-      voice: voice || 'Aria',
-      stability: 0.3,          // baixo = mais expressivo/emotivo
-      similarity_boost: 0.75,
-      style: 0.7,              // alto = mais entusiasmo
-      speed: 1.06,             // um tiquinho acelerado = mais animado
-    },
+function edgeTtsMp3(text, voice) {
+  return new Promise((resolve, reject) => {
+    const cid = crypto.randomUUID().replace(/-/g, '');
+    const rid = crypto.randomUUID().replace(/-/g, '');
+    const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${EDGE_TRUSTED}&Sec-MS-GEC=${edgeSecToken()}&Sec-MS-GEC-Version=${EDGE_VER}&ConnectionId=${cid}`;
+    const ws = new WebSocket(url, { headers: {
+      Pragma: 'no-cache', 'Cache-Control': 'no-cache',
+      Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+      'Accept-Encoding': 'gzip, deflate, br', 'Accept-Language': 'en-US,en;q=0.9',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+    } });
+    const chunks = [];
+    const v = voice || 'pt-BR-ThalitaMultilingualNeural';
+    const safe = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').slice(0, 900);
+    const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='pt-BR'><voice name='${v}'><prosody rate='+18%' pitch='+10%'>${safe}</prosody></voice></speak>`;
+    let settled = false;
+    const done = (err, buf) => { if (settled) return; settled = true; try { ws.close(); } catch (e) {} if (err) reject(err); else resolve(buf); };
+    const timer = setTimeout(() => done(new Error('timeout')), 15000);
+    ws.on('open', () => {
+      ws.send(`X-Timestamp:${new Date().toISOString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
+      ws.send(`X-RequestId:${rid}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`);
+    });
+    ws.on('message', (d, isBin) => {
+      try {
+        if (isBin) { const hl = d.readUInt16BE(0); if (d.slice(2, 2 + hl).toString().includes('Path:audio')) chunks.push(d.slice(2 + hl)); }
+        else if (d.toString().includes('Path:turn.end')) { clearTimeout(timer); const buf = Buffer.concat(chunks); done(buf.length > 500 ? null : new Error('vazio'), buf); }
+      } catch (e) { clearTimeout(timer); done(e); }
+    });
+    ws.on('error', (e) => { clearTimeout(timer); done(e); });
   });
-  return (r && r.data && ((r.data.audio && r.data.audio.url) || r.data.url)) || null;
 }
 
 const router = express.Router();
@@ -90,20 +109,20 @@ router.post('/:id/fail', playerAuth, async (req, res) => {
   catch { res.status(500).json({ error: 'Não foi possível registrar a falha.' }); }
 });
 
-// Voz NEURAL do anúncio: o player pede aqui e toca o áudio (com emoção) em vez da voz robótica do navegador.
+// Voz NEURAL pt-BR do anúncio (edge-tts): o player toca o MP3 daqui em vez da voz robótica do navegador.
 router.get('/tts', playerAuth, async (req, res) => {
   try {
     const text = String(req.query.text || '').trim();
     if (!text) return res.status(400).json({ error: 'sem texto' });
-    if (!process.env.FAL_KEY) return res.status(503).json({ error: 'voz neural indisponível' });
-    const voice = req.radioConfig && req.radioConfig.voiceName ? req.radioConfig.voiceName : undefined;
-    const url = await neuralTtsUrl(text, voice);
-    if (!url) return res.status(502).json({ error: 'não gerou a voz' });
+    const voice = (req.radioConfig && req.radioConfig.voiceName) || 'pt-BR-ThalitaMultilingualNeural';
+    const mp3 = await edgeTtsMp3(text, voice);
+    if (!mp3 || mp3.length < 500) return res.status(502).json({ error: 'voz vazia' });
+    res.set('Content-Type', 'audio/mpeg');
     res.set('Cache-Control', 'no-store');
-    res.json({ ok: true, url });
+    res.send(mp3);
   } catch (e) {
     console.error('[store-radio] tts:', e && e.message);
-    res.status(502).json({ error: 'falha na voz neural' });
+    res.status(502).json({ error: 'falha na voz' });
   }
 });
 

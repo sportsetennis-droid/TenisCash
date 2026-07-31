@@ -169,10 +169,10 @@
       busy = true; $('last').textContent = ann.message; setStatus('📣 Anunciando…');
       duckMusic();
       let ok = false;
-      // 1) voz NEURAL (fal ElevenLabs) — com emoção/entusiasmo
+      // 1) voz NEURAL pt-BR (edge-tts no servidor) — toca o MP3 direto do endpoint
       try {
-        const d = await api('/tts?text=' + encodeURIComponent(ann.message));
-        if (d && d.url) ok = await playClip(d.url);
+        const ttsUrl = BASE + '/tts?text=' + encodeURIComponent(ann.message) + '&storeId=' + encodeURIComponent(storeId) + '&key=' + encodeURIComponent(key);
+        ok = await playClip(ttsUrl);
       } catch (e) {}
       // 2) fallback: voz do navegador (se a neural falhar/demorar)
       if (!ok) await speakBrowser(ann.message);
