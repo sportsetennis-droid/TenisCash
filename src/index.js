@@ -155,6 +155,7 @@ const limiter = rateLimit({
     const path = req.path || '';
     return (
       /^\/(?:api\/)?admin\//.test(path)
+      || /^\/(?:api\/)?radio\//.test(path)
       || /^\/(?:api\/)?auth\/agent-camera-live(?:\/|$)/.test(path)
       || isCameraAssetPath(path)
     );
@@ -377,6 +378,8 @@ app.use('/api/admin/recommendations', recommendationsRoutes);
 app.use('/api/admin/financial', financialRoutes);
 app.use('/api/admin/security', securityRoutes);
 app.use('/api/admin/store-radio', storeRadioRoutes);
+// Player da rádio: mesmo router, mas FORA de /api/admin (autentica pela chave fixa da loja, sem token).
+app.use('/api/radio', storeRadioRoutes);
 app.use('/api/admin/suppliers', suppliersRoutes);
 app.use('/api/admin/categories', categoriesRoutes);
 app.use('/api/admin/campaigns', campaignsRoutes);

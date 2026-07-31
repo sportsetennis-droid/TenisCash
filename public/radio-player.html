@@ -53,7 +53,7 @@
     const params = new URLSearchParams(location.search);
     const storeId = params.get('storeId') || '';
     const key = params.get('key') || params.get('token') || '';
-    const BASE = '/api/admin/store-radio';
+    const BASE = '/api/radio';
     const $ = (id) => document.getElementById(id);
 
     let active = false, busy = false;
