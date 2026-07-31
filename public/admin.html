@@ -10023,8 +10023,8 @@ async function labelsGenerateAutomatic() {
   const button = document.getElementById('labels-generate-auto');
   const templateSelect = document.getElementById('labels-template');
   const defaultTemplate = Object.values(_lblTemplates).find(template => template.isDefault);
-  const templateId = defaultTemplate?.id || templateSelect?.value;
-  if (defaultTemplate && templateSelect) {
+  const templateId = templateSelect?.value || defaultTemplate?.id;
+  if (!templateSelect?.value && defaultTemplate && templateSelect) {
     templateSelect.value = defaultTemplate.id;
     _lblSyncTemplateControls();
   }
@@ -10453,7 +10453,7 @@ function _lblSyncTemplateControls() {
   }
   if (hint) {
     hint.textContent = saldo
-      ? 'SALDO: 5 × 7 cm · uma face · somente fundo laranja e a palavra SALDO em branco'
+      ? 'SALDO: 5 × 7 cm · frente e costas · fundo laranja e a palavra SALDO repetida em toda a etiqueta nos dois lados'
       : 'Padrão aprovado: 5 × 7 cm · 1 etiqueta por produto · frente e verso · logo da marca na frente · logo da loja, código de barras e QR Code atrás';
   }
 }

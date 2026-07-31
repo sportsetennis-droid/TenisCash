@@ -1161,21 +1161,24 @@ router.post('/batches/auto', async (req, res) => {
   try {
     const {
       name,
+      templateId,
       storeId,
       allStores,
       brand,
       category,
       usePromo,
     } = req.body || {};
-    // A geração automática por loja/marca sempre usa a etiqueta 5x7 aprovada.
-    // Antes, o front enviava o primeiro template em ordem alfabética e criava
-    // lotes de preço antigos mesmo quando a loja e a marca estavam corretas.
+    // Respeita o modelo escolhido no painel. O fallback para o padrão mantém
+    // compatibilidade com clientes antigos que ainda não enviam templateId.
     await ensureDefaultTemplates();
-    const templateMeta = await prisma.labelTemplate.findFirst({
-      where: { isDefault: true },
-    });
-    if (!templateMeta || !isProductDuplexTemplate(templateMeta)) {
-      return res.status(500).json({ error: 'Template padrão 5x7 frente e verso não encontrado' });
+    const templateMeta = templateId
+      ? await prisma.labelTemplate.findUnique({ where: { id: templateId } })
+      : await prisma.labelTemplate.findFirst({ where: { isDefault: true } });
+    if (!templateMeta) {
+      return res.status(404).json({ error: 'Modelo de etiqueta não encontrado' });
+    }
+    if (!isProductDuplexTemplate(templateMeta) && !isSaldoTemplate(templateMeta)) {
+      return res.status(400).json({ error: 'A geração automática aceita apenas os modelos 5x7 frente e verso ou SALDO' });
     }
     if (brand && String(brand).trim().localeCompare(INVALID_LABEL_BRAND, 'pt-BR', { sensitivity: 'base' }) === 0) {
       return res.status(400).json({

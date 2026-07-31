@@ -20,7 +20,12 @@ async function main() {
   assert.equal(template.rows, 4);
   assert.equal(template.marginLeftMm, 5);
   assert.equal(template.marginTopMm, 8.5);
-  assert.equal(isDuplexTemplate(template), false);
+  assert.equal(isDuplexTemplate(template), true);
+  assert.equal(template.layoutConfig.duplexBinding, 'long-edge');
+  assert.equal(template.layoutConfig.labelsPerProduct, 1);
+  assert.deepEqual(template.layoutConfig.sides, { front: 'saldo', back: 'saldo' });
+  assert.equal(template.layoutConfig.saldoRepeatColumns, 2);
+  assert.equal(template.layoutConfig.saldoRepeatRows, 5);
   assert.equal(isSaldoTemplate(template), true);
 
   const items = Array.from({ length: 16 }, () => ({ quantity: 1 }));
@@ -35,8 +40,8 @@ async function main() {
   assert.ok(pdf.length > 3500, 'PDF SALDO está vazio ou incompleto');
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
   const source = pdf.toString('latin1');
-  assert.equal((source.match(/\/Type\s*\/Page\b/g) || []).length, 1);
-  assert.doesNotMatch(source, /\/Duplex\s*\//);
+  assert.equal((source.match(/\/Type\s*\/Page\b/g) || []).length, 2);
+  assert.match(source, /\/Duplex \/DuplexFlipLongEdge/);
   assert.match(source, /\/PrintScaling \/None/);
   assert.match(source, /\/PickTrayByPDFSize true/);
 

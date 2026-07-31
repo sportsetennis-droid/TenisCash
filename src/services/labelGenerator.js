@@ -200,6 +200,15 @@ function defaultTemplates() {
       gapHorizontalMm: 0,
       gapVerticalMm: 0,
       layoutConfig: {
+        duplex: true,
+        duplexBinding: 'long-edge',
+        labelsPerProduct: 1,
+        sides: {
+          front: 'saldo',
+          back: 'saldo',
+        },
+        saldoRepeatColumns: 2,
+        saldoRepeatRows: 5,
         labelDesign: 'saldo-5x7-v1',
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
@@ -1142,18 +1151,28 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   }
 }
 
-// Etiqueta SALDO 5x7, de uma única face e totalmente separada do modelo
-// padrão frente/verso. O conteúdo é somente a palavra SALDO em branco.
+// Etiqueta SALDO 5x7 duplex e totalmente separada do modelo de produto.
+// Frente e verso recebem um padrão repetido somente com SALDO em branco.
 function drawSaldoLabel(doc, item, template, x, y, w, h) {
   const orange = template?.layoutConfig?.backgroundHex || '#E5571E';
   const font = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  const columns = Math.max(1, Number(template?.layoutConfig?.saldoRepeatColumns || 2));
+  const rows = Math.max(1, Number(template?.layoutConfig?.saldoRepeatRows || 5));
+  const cellW = w / columns;
+  const cellH = h / rows;
+  const fontSize = 14;
   doc.rect(x, y, w, h).fillColor(orange).fill();
-  doc.font(font).fontSize(31).fillColor('#FFFFFF')
-    .text('SALDO', x + mm(2), y + (h - 31) / 2 - mm(1), {
-      width: w - mm(4),
-      align: 'center',
-      lineBreak: false,
-    });
+  doc.font(font).fontSize(fontSize).fillColor('#FFFFFF');
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      doc.text('SALDO', x + column * cellW, y + row * cellH + (cellH - fontSize) / 2 - 1, {
+        width: cellW,
+        height: cellH,
+        align: 'center',
+        lineBreak: false,
+      });
+    }
+  }
 }
 
 function drawFourSideCutMarks(doc, template, geometry) {
