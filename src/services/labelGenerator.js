@@ -338,7 +338,7 @@ function drawBarcode128(doc, value, x, y, w, h, options = {}) {
   const pattern = code128Pattern(code);
   if (!pattern) return;
   const color = options.color || '#000';
-  const caption = options.caption ? `${options.caption}: ${code}` : code;
+  const caption = options.captionText || (options.caption ? `${options.caption}: ${code}` : code);
   const quiet = Math.min(mm(1), w * 0.04);
   const moduleWidth = (w - quiet * 2) / pattern.length;
   const barHeight = h * 0.74;
@@ -1061,15 +1061,20 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
         });
     }
 
+    const color = String(item.color || '').trim().toUpperCase();
     const sizes = String(item.availableSizes || '').trim();
-    if (sizes) {
-      const sizesText = `TAMANHOS: ${sizes}`;
-      const sizesFs = fitSingleLine(sizesText, FONT_MEDIUM, 5.8, 4.2);
-      doc.font(FONT_MEDIUM).fontSize(sizesFs).fillColor(MUTED)
-        .text(sizesText, x + pad, y + mm(39.1), {
+    const productDetails = [
+      color ? `COR: ${color}` : '',
+      sizes ? `TAMANHOS: ${sizes}` : '',
+    ].filter(Boolean).join('  •  ');
+    if (productDetails) {
+      const detailsFs = fitSingleLine(productDetails, FONT_MEDIUM, 5.8, 4.2);
+      doc.font(FONT_MEDIUM).fontSize(detailsFs).fillColor(MUTED)
+        .text(productDetails, x + pad, y + mm(39.1), {
           width: innerW,
           height: mm(2.8),
           lineBreak: false,
+          ellipsis: true,
         });
     }
 
@@ -1180,10 +1185,13 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   const qrY = y + mm(26.4);
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   if (item.internalBarcode) {
+    const color = String(item.color || '').trim().toUpperCase();
+    const barcodeCaption = `INTERNO: ${item.internalBarcode}${color ? `  •  COR: ${color}` : ''}`;
+    const captionSize = fitSingleLine(barcodeCaption, FONT_MEDIUM, 4.6, 3.6, scanW - mm(6));
     drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(53.7), scanW - mm(6), mm(9.6), {
       color: '#000000',
-      caption: 'INTERNO',
-      captionSize: 4.6,
+      captionText: barcodeCaption,
+      captionSize,
     });
   }
 }

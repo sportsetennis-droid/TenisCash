@@ -151,6 +151,46 @@ function normalizeLabelText(value) {
     .trim();
 }
 
+function normalizeLabelColor(value) {
+  const text = Array.isArray(value) ? value.filter(Boolean).join('/') : String(value || '');
+  return text
+    .replace(/^\s*cor\s*:?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s,;|:-]+$/g, '')
+    .trim();
+}
+
+function labelProductColor(product, context = {}) {
+  const classification = context?.classification || {};
+  const classification2 = context?.classification2 || {};
+  const candidates = [
+    context?.color,
+    context?.cor,
+    context?.productColor,
+    context?.attributes?.color,
+    context?.attributes?.cor,
+    context?.specifications?.color,
+    context?.specifications?.cor,
+    classification?.color,
+    classification?.cor,
+    classification2?.color,
+    classification2?.cor,
+    product?.color,
+  ];
+  for (const candidate of candidates) {
+    const color = normalizeLabelColor(candidate);
+    if (color) return color;
+  }
+
+  // Alguns cadastros antigos guardam a cor apenas no nome, sempre depois do
+  // campo explicito "COR". O limite impede capturar tamanho, referencia ou SKU.
+  const name = String(product?.name || '');
+  const explicitColor = name.match(
+    /\bCOR\b\s*:?\s*(.+?)(?=\s+\b(?:TAM(?:ANHO)?|REF|EAN|SKU)\b\s*:?\s*|[,;|]|$)/i,
+  );
+  return normalizeLabelColor(explicitColor?.[1]) || inferLabelColorFromName(name);
+}
+
 const CLOTHING_TYPES = [
   ['short saia', 'Short Saia'],
   ['calca legging', 'Calça Legging'],
@@ -459,6 +499,46 @@ const LABEL_COLOR_WORDS = new Set([
   'milk', 'off', 'orange', 'pearl', 'pearled', 'rum', 'saxon', 'teal', 'terra',
   'turq', 'turquesa', 'white', 'yellow',
 ]);
+
+const LABEL_COLOR_NAME_ALIASES = new Map(Object.entries({
+  preto: 'PRETO', preta: 'PRETO', pt: 'PRETO', pto: 'PRETO', pta: 'PRETO', ptr: 'PRETO', black: 'PRETO',
+  branco: 'BRANCO', branca: 'BRANCO', bco: 'BRANCO', bca: 'BRANCO', white: 'BRANCO', whit: 'BRANCO',
+  azul: 'AZUL', azl: 'AZUL', blue: 'AZUL', marinho: 'MARINHO', navy: 'MARINHO', royal: 'ROYAL',
+  verde: 'VERDE', vd: 'VERDE', vrd: 'VERDE', vrdl: 'VERDE', green: 'VERDE', lima: 'LIMA',
+  rosa: 'ROSA', pink: 'ROSA', vermelho: 'VERMELHO', vermelha: 'VERMELHO', vrm: 'VERMELHO', red: 'VERMELHO',
+  amarelo: 'AMARELO', amarela: 'AMARELO', amr: 'AMARELO', yellow: 'AMARELO',
+  laranja: 'LARANJA', lrj: 'LARANJA', lrjf: 'LARANJA', orange: 'LARANJA',
+  cinza: 'CINZA', cnz: 'CINZA', cz: 'CINZA', grey: 'CINZA', gray: 'CINZA', grafite: 'GRAFITE', chumbo: 'CHUMBO',
+  bege: 'BEGE', beige: 'BEGE', marrom: 'MARROM', mrr: 'MARROM', mr: 'MARINHO', brown: 'MARROM', cafe: 'CAFE',
+  roxo: 'ROXO', purp: 'ROXO', purple: 'ROXO', lilas: 'LILAS', lilac: 'LILAS', violeta: 'VIOLETA',
+  coral: 'CORAL', dourado: 'DOURADO', gold: 'DOURADO', prata: 'PRATA', silver: 'PRATA',
+  nude: 'NUDE', gelo: 'GELO', turquesa: 'TURQUESA', turq: 'TURQUESA', aqua: 'AQUA',
+  menta: 'MENTA', oliva: 'OLIVA', bordo: 'BORDO', vinho: 'VINHO', marsala: 'MARSALA',
+  caqui: 'CAQUI', khaki: 'CAQUI', creme: 'CREME', cru: 'CRU', denim: 'DENIM',
+  cobalto: 'COBALTO', fucsia: 'FUCSIA', magenta: 'MAGENTA', mostarda: 'MOSTARDA', mustard: 'MOSTARDA',
+  caramelo: 'CARAMELO', teal: 'TEAL', sortida: 'SORTIDA', sortido: 'SORTIDA', multicolor: 'MULTICOLOR',
+}));
+
+function inferLabelColorFromName(value) {
+  const words = labelDescriptionWords(value);
+  const colors = [];
+  const seen = new Set();
+  for (let index = 0; index < words.length; index += 1) {
+    const normalized = normalizeLabelText(words[index]);
+    if (normalized === 'off' && normalizeLabelText(words[index + 1]) === 'white') {
+      if (!seen.has('OFF-WHITE')) colors.push('OFF-WHITE');
+      seen.add('OFF-WHITE');
+      index += 1;
+      continue;
+    }
+    const color = LABEL_COLOR_NAME_ALIASES.get(normalized);
+    if (color && !seen.has(color)) {
+      colors.push(color);
+      seen.add(color);
+    }
+  }
+  return colors.join('/');
+}
 
 function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
   const source = stripLabelSizeSuffix(product?.name || fallback)
@@ -969,6 +1049,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       )].join(' | ');
       const categoryLabel = labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
+      const color = labelProductColor(p, ctx) || 'NÃO INFORMADA';
       const productName = labelProductDescription(
         p,
         baseName,
@@ -997,6 +1078,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         description: productName,
         categoryLabel,
         reference,
+        color,
         availableSizes,
         storeName,
         storeLogoUrl,
@@ -1048,7 +1130,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'fundo-rgb-com-plano-de-corte-v5';
+    const pdfVersion = 'cor-do-produto-v6';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
@@ -1293,5 +1375,6 @@ router.labelMotivationText = labelMotivationText;
 router.labelStyle = labelStyle;
 router.productType = productType;
 router.labelProductType = labelProductType;
+router.labelProductColor = labelProductColor;
 router.normalizeLabelAvailableSize = normalizeLabelAvailableSize;
 module.exports = router;

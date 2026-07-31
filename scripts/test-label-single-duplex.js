@@ -45,6 +45,7 @@ async function main() {
       categoryLabel: 'PROTEÇÃO ESPORTIVA',
       brand: 'Umbro',
       brandLogoUrl,
+      color: 'PRETO/BRANCO',
       availableSizes: 'P | M | 38',
       price: 50.27,
       promotionalPrice: 35.19,

@@ -179,6 +179,31 @@ for (const testCase of cases) {
   assert.doesNotMatch(style, /\bcal[cç]ados?\s+esportiv[oa]s?\b/i);
 }
 
+assert.equal(
+  labels.labelProductColor({ name: 'CAMISETA TESTE' }, { color: 'Azul Marinho' }),
+  'Azul Marinho',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'CAMISETA COR GELO TAM M' }, {}),
+  'GELO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'BERMUDA COR: 077 (PRETO) TAM:' }, {}),
+  '077 (PRETO)',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'SHORT CORTADO A LASER' }, {}),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'SHORT PROGNE SPORTS - PRETO/ROSA - M' }, {}),
+  'PRETO/ROSA',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'KING STRAP PUMA BLACK-PUMA WHIT G' }, {}),
+  'PRETO/BRANCO',
+);
+
 const legacyFootwear = {
   name: ['TENIS', 'CALCADO', 'ESPORTIVO', 'MIZ.WAVE ENDEAVOR 3 ROSA46'].join(' '),
   brand: 'MIZUNO',
