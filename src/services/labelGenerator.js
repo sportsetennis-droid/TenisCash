@@ -221,6 +221,7 @@ function defaultTemplates() {
         labelDesign: 'saldo-5x7-repeated-v3',
         cutMarksOnBothSides: true,
         cutContourEachLabel: true,
+        cutContourColor: '#FF8A3D',
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
       },
@@ -1277,7 +1278,7 @@ function drawFourSideCutMarks(doc, template, geometry) {
   doc.restore();
 }
 
-function drawLabelCutContours(doc, geometry) {
+function drawLabelCutContours(doc, template, geometry) {
   const {
     labelW,
     labelH,
@@ -1303,9 +1304,10 @@ function drawLabelCutContours(doc, geometry) {
   const uniqueVerticalCuts = [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))];
   const uniqueHorizontalCuts = [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))];
 
-  // Linhas finas e escuras formam o contorno completo de cada etiqueta 5x7.
+  // Linhas finas laranja formam o contorno completo de cada etiqueta 5x7.
   // A grade aparece sobre a arte nos dois lados e indica exatamente onde cortar.
-  doc.save().strokeColor('#8A2B0A').lineWidth(mm(0.18)).lineCap('butt');
+  const contourColor = template?.layoutConfig?.cutContourColor || '#FF8A3D';
+  doc.save().strokeColor(contourColor).lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((x) => {
     doc.moveTo(x, marginY).lineTo(x, gridBottom).stroke();
   });
@@ -1581,7 +1583,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       };
       drawFourSideCutMarks(doc, t, cutGeometry);
       if (saldo && t.layoutConfig?.cutContourEachLabel === true) {
-        drawLabelCutContours(doc, cutGeometry);
+        drawLabelCutContours(doc, t, cutGeometry);
       }
     }
   }
