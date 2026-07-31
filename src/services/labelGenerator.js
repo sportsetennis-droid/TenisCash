@@ -189,6 +189,9 @@ function defaultTemplates() {
         // corte sobravam 5 mm à esquerda e 2 mm à direita. Metade da diferença
         // (1,5 mm) é antecipada à esquerda para deixar 3,5 mm em cada lado.
         backPrintOffsetXMm: -1.5,
+        // As marcas ficam apenas nas margens brancas. Cruzes sobre a arte
+        // deixam pequenos riscos laranja visíveis quando o corte varia.
+        cutMarksInsideArtwork: false,
       },
     },
     a4_16_5x7_saldo: {
@@ -1253,6 +1256,12 @@ function drawFourSideCutMarks(doc, template, geometry) {
   // Cada encontro da grade recebe uma unica cruz laranja centralizada,
   // compartilhada pelas quatro etiquetas ao redor. Nao ha linhas longas
   // sobre a arte.
+  const configuredInteriorMarks = template?.layoutConfig?.cutMarksInsideArtwork;
+  const includeInteriorMarks = configuredInteriorMarks == null
+    ? !isSingleProductDuplexTemplate(template)
+    : configuredInteriorMarks === true;
+  if (!includeInteriorMarks) return;
+
   const centeredMarkArm = mm(1.8);
   doc.save().strokeColor(orange).lineWidth(mm(0.18)).lineCap('butt');
   uniqueVerticalCuts.forEach((cutX) => {
