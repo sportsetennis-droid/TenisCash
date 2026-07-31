@@ -212,6 +212,7 @@ function defaultTemplates() {
         saldoRepeatRows: 5,
         saldoFontSize: 14,
         labelDesign: 'saldo-5x7-repeated-v3',
+        cutMarksOnBothSides: true,
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
       },
@@ -1506,9 +1507,11 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       }
       doc.restore();
     });
-    // As guias de corte pertencem somente à frente. No verso, a sangria deve
-    // permanecer lisa para não criar linhas visíveis na etiqueta.
-    if ((productDuplex || saldo) && pageSide !== 'back') {
+    // O modelo SALDO preserva as guias nos dois lados para que frente e costas
+    // possam ser cortadas pela mesma grade depois da impressão duplex.
+    const cutMarksOnThisSide = pageSide !== 'back'
+      || t.layoutConfig?.cutMarksOnBothSides === true;
+    if ((productDuplex || saldo) && cutMarksOnThisSide) {
       drawFourSideCutMarks(doc, t, {
         labelW,
         labelH,
