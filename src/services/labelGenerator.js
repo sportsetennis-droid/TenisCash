@@ -24,6 +24,13 @@ const LABEL_FONT_CLASSIC_SEMIBOLD = path.join(__dirname, '../../assets/fonts/Rob
 const LABEL_FONT_CLASSIC_BOLD = path.join(__dirname, '../../assets/fonts/RobotoSlab-Bold.ttf');
 const SPORTS_TENNIS_ICON_HIRES = path.join(__dirname, '../../assets/logos/sports-tennis-icon-white-hires.png');
 const SPORTS_TENNIS_WORDMARK_HIRES = path.join(__dirname, '../../assets/logos/sports-tennis-wordmark-white-hires.png');
+const PRODUCT_ORANGE_RGB = '#F4511E';
+// Bloco sRGB 8x8 sem transparencia. No verso ele substitui o retangulo CMYK
+// que produzia duas faixas na Epson ao iniciar a area laranja continua.
+const PRODUCT_ORANGE_RGB_TILE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR42mP4EiiHFTEMLQkA40ZYwQZmizoAAAAASUVORK5CYII=',
+  'base64',
+);
 
 function registerLabelFonts(doc) {
   let interRegistered = false;
@@ -181,7 +188,7 @@ function defaultTemplates() {
         },
         labelDesign: 'single-product-v1',
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
-        backgroundHex: FOUR_SIDE_ORANGE,
+        backgroundHex: PRODUCT_ORANGE_RGB,
         // Sangria adicional no verso absorve a tolerância mecânica do duplex
         // sem expor bordas brancas depois do corte.
         backBleedMm: 4.5,
@@ -205,6 +212,9 @@ function defaultTemplates() {
         // permanece integralmente na sobra descartada depois do corte.
         backBackgroundOverscanMm: 10,
         backBackgroundStopsInOuterBleed: true,
+        // A mesma codificacao RGB da faixa laranja da frente evita que o
+        // driver trate o verso como uma chapa CMYK separada.
+        backBackgroundRenderMode: 'rgb-image',
       },
     },
     a4_16_5x7_saldo: {
@@ -958,7 +968,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   const CREAM = '#F6F0E5';
   const CHARCOAL = '#191A18';
-  const ORANGE = '#F4511E';
+  const ORANGE = PRODUCT_ORANGE_RGB;
   const WHITE = '#FFFFFF';
   const MUTED = '#716B62';
   const FONT_MEDIUM = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
@@ -1527,15 +1537,16 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       // pequeno desvio humano não revela uma borda branca. Todos os retângulos
       // formam um único caminho para não sobrepor tinta nem criar faixas.
       const cmyk = t.layoutConfig?.backgroundCmyk || FOUR_SIDE_ORANGE_CMYK;
-      const backgroundOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+      const legacyBackgroundOrange = [Number(cmyk.c || 0), Number(cmyk.m || 80), Number(cmyk.y || 100), Number(cmyk.k || 0)];
+      const productBackgroundOrange = String(t.layoutConfig?.backgroundHex || PRODUCT_ORANGE_RGB);
       const background = singleDuplex
-        ? (pageSide === 'back' ? backgroundOrange : '#F6F0E5')
-        : backgroundOrange;
+        ? (pageSide === 'back' ? productBackgroundOrange : '#F6F0E5')
+        : legacyBackgroundOrange;
       const bleedMm = pageSide === 'back'
         ? Number(t.layoutConfig?.backBleedMm || FOUR_SIDE_BACK_BLEED_MM)
         : FOUR_SIDE_FRONT_BLEED_MM;
       const bleed = mm(bleedMm);
-      doc.save().fillColor(background);
+      doc.save();
       const fullPageBack = singleDuplex
         && pageSide === 'back'
         && t.layoutConfig?.backFullPageBackground !== false;
@@ -1550,19 +1561,31 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
         const backgroundBottom = stopInOuterBleed
           ? Math.min(doc.page.height, gridBottom + bleed)
           : doc.page.height + overscan;
-        doc.rect(
-          -overscan,
-          backgroundTop,
-          doc.page.width + overscan * 2,
-          backgroundBottom - backgroundTop,
-        );
+        const backgroundWidth = doc.page.width + overscan * 2;
+        const backgroundHeight = backgroundBottom - backgroundTop;
+        if (t.layoutConfig?.backBackgroundRenderMode !== 'vector-rgb') {
+          doc.image(
+            PRODUCT_ORANGE_RGB_TILE,
+            -overscan,
+            backgroundTop,
+            { width: backgroundWidth, height: backgroundHeight },
+          );
+        } else {
+          doc.fillColor(background).rect(
+            -overscan,
+            backgroundTop,
+            backgroundWidth,
+            backgroundHeight,
+          ).fill();
+        }
       } else {
+        doc.fillColor(background);
         pageItems.forEach((item, slot) => {
           const { x, y } = slotPosition(slot);
           doc.rect(x - bleed, y - bleed, labelW + bleed * 2, labelH + bleed * 2);
         });
+        doc.fill();
       }
-      doc.fill();
       doc.restore();
     }
 

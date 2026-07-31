@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const zlib = require('node:zlib');
 const {
   defaultTemplates,
   generateLabelsPDF,
@@ -26,6 +27,8 @@ async function main() {
   assert.equal(template.layoutConfig.backFullPageBackground, true);
   assert.equal(template.layoutConfig.backBackgroundOverscanMm, 10);
   assert.equal(template.layoutConfig.backBackgroundStopsInOuterBleed, true);
+  assert.equal(template.layoutConfig.backBackgroundRenderMode, 'rgb-image');
+  assert.equal(template.layoutConfig.backgroundHex, '#F4511E');
 
   const logoSvg = fs.readFileSync(
     path.join(__dirname, '..', 'assets', 'logos', 'brands', 'umbro.svg'),
@@ -60,6 +63,23 @@ async function main() {
   assert.equal((source.match(/\/Type\s*\/Page\b/g) || []).length, 2);
   assert.match(source, /\/Duplex \/DuplexFlipLongEdge/);
   assert.match(source, /\/PrintScaling \/None/);
+
+  const decodedStreams = [...source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .map((match) => {
+      try {
+        return zlib.inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1');
+      } catch {
+        return '';
+      }
+    });
+  const backPageStream = decodedStreams.find((stream) => (
+    stream.includes('651.972913')
+    && stream.includes('819.212599')
+    && /\/I\d+ Do/.test(stream)
+  ));
+  assert.ok(backPageStream, 'o fundo RGB rasterizado do verso deve existir');
+  assert.doesNotMatch(backPageStream, /\/DeviceCMYK cs/);
+  assert.doesNotMatch(backPageStream, /651\.972913 819\.212599 re/);
 
   const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'etiqueta-5x7-frente-verso-teste.pdf');
   fs.mkdirSync(path.dirname(output), { recursive: true });

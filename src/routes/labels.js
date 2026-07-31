@@ -1048,7 +1048,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'fundo-unico-com-margem-tecnica-v3';
+    const pdfVersion = 'fundo-laranja-rgb-sem-faixas-v4';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
