@@ -1186,7 +1186,8 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   if (item.internalBarcode) {
     const color = String(item.color || '').trim().toUpperCase();
-    const barcodeCaption = `INTERNO: ${item.internalBarcode}${color ? `  •  COR: ${color}` : ''}`;
+    const colorDetail = String(item.colorDetail || color).trim().toUpperCase();
+    const barcodeCaption = `INTERNO: ${item.internalBarcode}${colorDetail ? `  •  COR: ${colorDetail}` : ''}`;
     const captionSize = fitSingleLine(barcodeCaption, FONT_MEDIUM, 4.6, 3.6, scanW - mm(6));
     drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(53.7), scanW - mm(6), mm(9.6), {
       color: '#000000',

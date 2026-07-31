@@ -161,10 +161,10 @@ function normalizeLabelColor(value) {
     .trim();
 }
 
-function labelProductColor(product, context = {}) {
+function labelProductColorCandidates(product, context = {}) {
   const classification = context?.classification || {};
   const classification2 = context?.classification2 || {};
-  const candidates = [
+  return [
     context?.color,
     context?.cor,
     context?.productColor,
@@ -178,6 +178,10 @@ function labelProductColor(product, context = {}) {
     classification2?.cor,
     product?.color,
   ];
+}
+
+function labelProductColor(product, context = {}) {
+  const candidates = labelProductColorCandidates(product, context);
   let hadRejectedStructuredColor = false;
   for (const candidate of candidates) {
     const color = labelStructuredProductColor(product?.brand, candidate);
@@ -193,6 +197,41 @@ function labelProductColor(product, context = {}) {
   );
   const explicitValue = extractCanonicalLabelColors(explicitColor?.[1]);
   return explicitValue || inferLabelColorFromName(product, { hadRejectedStructuredColor });
+}
+
+function compactLabelColorIssueValue(value, limit = 20) {
+  const text = normalizeLabelColor(value).toUpperCase();
+  return text.length > limit ? `${text.slice(0, Math.max(1, limit - 3)).trim()}...` : text;
+}
+
+function labelProductColorIssue(product, context = {}) {
+  if (labelProductColor(product, context)) return null;
+  const raw = labelProductColorCandidates(product, context)
+    .map(normalizeLabelColor)
+    .find(Boolean);
+  if (!raw) {
+    return {
+      type: 'missing',
+      short: 'DÚVIDA: SEM CADASTRO',
+      detail: 'DÚVIDA: SEM COR NO CADASTRO',
+    };
+  }
+
+  const compact = compactLabelColorIssueValue(raw);
+  if (isObviousNonColorLabelValue(raw)) {
+    return {
+      type: 'not-color',
+      raw,
+      short: `DÚVIDA: ${compact} NÃO É COR`,
+      detail: `DÚVIDA: ${compact} NÃO É COR`,
+    };
+  }
+  return {
+    type: 'unmapped',
+    raw,
+    short: `DÚVIDA: CÓD. ${compact}`,
+    detail: `DÚVIDA: CÓDIGO ${compact} NÃO MAPEADO`,
+  };
 }
 
 const CLOTHING_TYPES = [
@@ -557,6 +596,13 @@ const INVALID_FREEFORM_LABEL_COLORS = new Set([
   'c c', 'eva borracha', 'fruit aop', 'g gg', 'm c', 'p m', 'varsity tf',
   'borracha', '250 fiba',
 ]);
+
+function isObviousNonColorLabelValue(value) {
+  const normalized = normalizeLabelText(value).replace(/[^a-z0-9]+/g, ' ').trim();
+  return INVALID_FREEFORM_LABEL_COLORS.has(normalized)
+    || /^(?:pp|p|m|g|gg|xg|xgg|eg|egg)(?:\s+(?:pp|p|m|g|gg|xg|xgg|eg|egg))*$/i.test(normalized)
+    || /\b(?:tam|tamanho|training|musculacao|borracha|bomba|polegar|varsity|fiba)\b/i.test(normalized);
+}
 
 function extractCanonicalLabelColors(value) {
   const words = labelDescriptionWords(value);
@@ -1151,7 +1197,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
       )].join(' | ');
       const categoryLabel = labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
-      const color = labelProductColor(p, ctx) || 'NÃO INFORMADA';
+      const detectedColor = labelProductColor(p, ctx);
+      const colorIssue = detectedColor ? null : labelProductColorIssue(p, ctx);
+      const color = detectedColor || colorIssue.short;
       const productName = labelProductDescription(
         p,
         baseName,
@@ -1181,6 +1229,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         categoryLabel,
         reference,
         color,
+        colorDetail: colorIssue?.detail || null,
         availableSizes,
         storeName,
         storeLogoUrl,
@@ -1232,7 +1281,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'cor-validada-por-marca-v7';
+    const pdfVersion = 'cor-com-duvida-explicada-v8';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
@@ -1478,5 +1527,6 @@ router.labelStyle = labelStyle;
 router.productType = productType;
 router.labelProductType = labelProductType;
 router.labelProductColor = labelProductColor;
+router.labelProductColorIssue = labelProductColorIssue;
 router.normalizeLabelAvailableSize = normalizeLabelAvailableSize;
 module.exports = router;

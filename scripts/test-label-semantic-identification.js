@@ -289,6 +289,40 @@ assert.equal(
   'Coral',
 );
 
+assert.deepEqual(
+  labels.labelProductColorIssue({ name: 'BLUSA MANGA CURTA', brand: "LET'S GYM" }, { color: 'M/C' }),
+  {
+    type: 'not-color',
+    raw: 'M/C',
+    short: 'DÚVIDA: M/C NÃO É COR',
+    detail: 'DÚVIDA: M/C NÃO É COR',
+  },
+);
+assert.deepEqual(
+  labels.labelProductColorIssue({ name: 'TENIS ADIDAS TESTE', brand: 'ADIDAS' }, { color: 'GUM5' }),
+  {
+    type: 'unmapped',
+    raw: 'GUM5',
+    short: 'DÚVIDA: CÓD. GUM5',
+    detail: 'DÚVIDA: CÓDIGO GUM5 NÃO MAPEADO',
+  },
+);
+assert.deepEqual(
+  labels.labelProductColorIssue({ name: 'TENIS ADIDAS TESTE', brand: 'ADIDAS' }, {}),
+  {
+    type: 'missing',
+    short: 'DÚVIDA: SEM CADASTRO',
+    detail: 'DÚVIDA: SEM COR NO CADASTRO',
+  },
+);
+assert.equal(
+  labels.labelProductColorIssue(
+    { name: 'CAMISETA M/C PUMA CLASS GRAPHIC TEE NEW NAVY GG', brand: 'PUMA' },
+    { color: 'M/C' },
+  ),
+  null,
+);
+
 const legacyFootwear = {
   name: ['TENIS', 'CALCADO', 'ESPORTIVO', 'MIZ.WAVE ENDEAVOR 3 ROSA46'].join(' '),
   brand: 'MIZUNO',
