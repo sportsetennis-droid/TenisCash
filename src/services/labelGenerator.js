@@ -1065,7 +1065,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const sizes = String(item.availableSizes || '').trim();
     const productDetails = [
       color ? `COR: ${color}` : '',
-      sizes ? `TAMANHOS: ${sizes}` : '',
+      sizes ? `TAM: ${sizes}` : '',
     ].filter(Boolean).join('  •  ');
     if (productDetails) {
       const detailsFs = fitSingleLine(productDetails, FONT_MEDIUM, 5.8, 4.2);

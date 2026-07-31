@@ -181,7 +181,7 @@ for (const testCase of cases) {
 
 assert.equal(
   labels.labelProductColor({ name: 'CAMISETA TESTE' }, { color: 'Azul Marinho' }),
-  'Azul Marinho',
+  'AZUL/MARINHO',
 );
 assert.equal(
   labels.labelProductColor({ name: 'CAMISETA COR GELO TAM M' }, {}),
@@ -189,19 +189,104 @@ assert.equal(
 );
 assert.equal(
   labels.labelProductColor({ name: 'BERMUDA COR: 077 (PRETO) TAM:' }, {}),
-  '077 (PRETO)',
+  'PRETO',
 );
 assert.equal(
   labels.labelProductColor({ name: 'SHORT CORTADO A LASER' }, {}),
   '',
 );
 assert.equal(
-  labels.labelProductColor({ name: 'SHORT PROGNE SPORTS - PRETO/ROSA - M' }, {}),
+  labels.labelProductColor({ name: 'SHORT PROGNE SPORTS - PRETO/ROSA - M', brand: 'PROGNE' }, {}),
   'PRETO/ROSA',
 );
 assert.equal(
-  labels.labelProductColor({ name: 'KING STRAP PUMA BLACK-PUMA WHIT G' }, {}),
+  labels.labelProductColor({ name: 'KING STRAP PUMA BLACK-PUMA WHIT G', brand: 'PUMA' }, {}),
   'PRETO/BRANCO',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'CAMISETA M/C PUMA CLASS GRAPHIC TEE NEW NAVY GG', brand: 'PUMA' },
+    { color: 'M/C' },
+  ),
+  'MARINHO',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'SHORT PROGNE SPORTS - PRETO/AMARELO - G', brand: 'PROGNE' },
+    { color: 'G/GG' },
+  ),
+  'PRETO/AMARELO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'BOLA TESTE', brand: 'EVERLAST' }, { color: 'EVA/BORRACHA' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'BOLA STREETBALL', brand: 'SPALDING' }, { color: 'Varsity Tf' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'REEBOK' }, { color: 'CLARO/TAMANHO' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'VOLLO' }, { color: 'Cinza C/ Bomba' }),
+  'CINZA',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'N1' }, { color: 'Cinza | Tam. G | Training' }),
+  'CINZA',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'MUNICH' }, { color: 'Azul Tam' }),
+  'AZUL',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'SKECHERS' }, { color: 'WPK' }),
+  'BRANCO/ROSA',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'CAJU BRASIL' }, { color: 'Azul Blue Jeans' }),
+  'Azul Blue Jeans',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'ROYAL ULTRA FLASH', brand: 'REEBOK' }, {}),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'TOP BASIC COLORS LATTE', brand: "LET'S GYM" }, { color: 'Latte' }),
+  'Latte',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'BLUSA MANGA CURTA', brand: "LET'S GYM" }, { color: 'M/C' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'LUVAS KICK PRETO FUCCIA AZUL CLARO/TAMANHO', brand: 'REEBOK' },
+    { color: 'CLARO/TAMANHO' },
+  ),
+  'PRETO/FUCSIA/AZUL CLARO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'POCHETE TRIATHLON PRETO G/GG', brand: 'HIDROLIGHT' }, { color: 'G/GG' }),
+  'PRETO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'BOLA REACT TF-250 FIBA - LRJ PTO', brand: 'SPALDING' }, { color: '250 Fiba' }),
+  'LARANJA/PRETO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'MOCHILA AEROTREK 30', brand: 'SALOMON' }, { color: 'ANTHRACITE/IRON/ALLOY' }),
+  'ANTHRACITE/IRON/ALLOY',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'TENIS TESTE', brand: 'SALOMON' }, { color: 'BR/PT/VM' }),
+  'BRANCO/PRETO/VERMELHO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO CORAL', brand: 'BROOKS' }, { color: 'Coral' }),
+  'Coral',
 );
 
 const legacyFootwear = {

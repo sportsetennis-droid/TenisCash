@@ -152,11 +152,12 @@ function normalizeLabelText(value) {
 }
 
 function normalizeLabelColor(value) {
+  if (value != null && typeof value === 'object' && !Array.isArray(value)) return '';
   const text = Array.isArray(value) ? value.filter(Boolean).join('/') : String(value || '');
   return text
-    .replace(/^\s*cor\s*:?\s*/i, '')
+    .replace(/^\s*cor\b\s*:?\s*/i, '')
     .replace(/\s+/g, ' ')
-    .replace(/[\s,;|:-]+$/g, '')
+    .replace(/[\s,;|:()\[\]-]+$/g, '')
     .trim();
 }
 
@@ -177,9 +178,11 @@ function labelProductColor(product, context = {}) {
     classification2?.cor,
     product?.color,
   ];
+  let hadRejectedStructuredColor = false;
   for (const candidate of candidates) {
-    const color = normalizeLabelColor(candidate);
+    const color = labelStructuredProductColor(product?.brand, candidate);
     if (color) return color;
+    if (normalizeLabelColor(candidate)) hadRejectedStructuredColor = true;
   }
 
   // Alguns cadastros antigos guardam a cor apenas no nome, sempre depois do
@@ -188,7 +191,8 @@ function labelProductColor(product, context = {}) {
   const explicitColor = name.match(
     /\bCOR\b\s*:?\s*(.+?)(?=\s+\b(?:TAM(?:ANHO)?|REF|EAN|SKU)\b\s*:?\s*|[,;|]|$)/i,
   );
-  return normalizeLabelColor(explicitColor?.[1]) || inferLabelColorFromName(name);
+  const explicitValue = extractCanonicalLabelColors(explicitColor?.[1]);
+  return explicitValue || inferLabelColorFromName(product, { hadRejectedStructuredColor });
 }
 
 const CLOTHING_TYPES = [
@@ -501,43 +505,141 @@ const LABEL_COLOR_WORDS = new Set([
 ]);
 
 const LABEL_COLOR_NAME_ALIASES = new Map(Object.entries({
-  preto: 'PRETO', preta: 'PRETO', pt: 'PRETO', pto: 'PRETO', pta: 'PRETO', ptr: 'PRETO', black: 'PRETO',
-  branco: 'BRANCO', branca: 'BRANCO', bco: 'BRANCO', bca: 'BRANCO', white: 'BRANCO', whit: 'BRANCO',
-  azul: 'AZUL', azl: 'AZUL', blue: 'AZUL', marinho: 'MARINHO', navy: 'MARINHO', royal: 'ROYAL',
-  verde: 'VERDE', vd: 'VERDE', vrd: 'VERDE', vrdl: 'VERDE', green: 'VERDE', lima: 'LIMA',
-  rosa: 'ROSA', pink: 'ROSA', vermelho: 'VERMELHO', vermelha: 'VERMELHO', vrm: 'VERMELHO', red: 'VERMELHO',
-  amarelo: 'AMARELO', amarela: 'AMARELO', amr: 'AMARELO', yellow: 'AMARELO',
-  laranja: 'LARANJA', lrj: 'LARANJA', lrjf: 'LARANJA', orange: 'LARANJA',
-  cinza: 'CINZA', cnz: 'CINZA', cz: 'CINZA', grey: 'CINZA', gray: 'CINZA', grafite: 'GRAFITE', chumbo: 'CHUMBO',
-  bege: 'BEGE', beige: 'BEGE', marrom: 'MARROM', mrr: 'MARROM', mr: 'MARINHO', brown: 'MARROM', cafe: 'CAFE',
-  roxo: 'ROXO', purp: 'ROXO', purple: 'ROXO', lilas: 'LILAS', lilac: 'LILAS', violeta: 'VIOLETA',
-  coral: 'CORAL', dourado: 'DOURADO', gold: 'DOURADO', prata: 'PRATA', silver: 'PRATA',
+  preto: 'PRETO', preta: 'PRETO', pre: 'PRETO', pt: 'PRETO', pto: 'PRETO', pta: 'PRETO', ptr: 'PRETO', blk: 'PRETO', black: 'PRETO',
+  branco: 'BRANCO', branca: 'BRANCO', bc: 'BRANCO', bco: 'BRANCO', bca: 'BRANCO', br: 'BRANCO', blanc: 'BRANCO', white: 'BRANCO', whit: 'BRANCO',
+  azul: 'AZUL', az: 'AZUL', azl: 'AZUL', azlc: 'AZUL CLARO', blue: 'AZUL', mar: 'MARINHO', marinho: 'MARINHO', mr: 'MARINHO', mrn: 'MARINHO', navy: 'MARINHO', nvy: 'MARINHO', royal: 'ROYAL',
+  verde: 'VERDE', ve: 'VERDE', verd: 'VERDE', vd: 'VERDE', vdc: 'VERDE', vrd: 'VERDE', vrdl: 'VERDE LIMA', green: 'VERDE', lima: 'LIMA', lime: 'LIMA',
+  rosa: 'ROSA', rose: 'ROSA', rs: 'ROSA', rsa: 'ROSA', rsaf: 'ROSA FLUORESCENTE', pk: 'ROSA', pink: 'ROSA', vermelho: 'VERMELHO', vermelha: 'VERMELHO', verm: 'VERMELHO', vm: 'VERMELHO', vml: 'VERMELHO', vrm: 'VERMELHO', red: 'VERMELHO',
+  amarelo: 'AMARELO', amarela: 'AMARELO', am: 'AMARELO', aml: 'AMARELO', amr: 'AMARELO', yellow: 'AMARELO',
+  laranja: 'LARANJA', lj: 'LARANJA', larj: 'LARANJA', lrj: 'LARANJA', lrja: 'LARANJA', lrjf: 'LARANJA FLUORESCENTE', orange: 'LARANJA',
+  cinza: 'CINZA', cnz: 'CINZA', cz: 'CINZA', cza: 'CINZA', grey: 'CINZA', gray: 'CINZA', gry: 'CINZA', grafite: 'GRAFITE', grf: 'GRAFITE', grft: 'GRAFITE', ch: 'CHUMBO', chumbo: 'CHUMBO',
+  bege: 'BEGE', beige: 'BEGE', marrom: 'MARROM', mrr: 'MARROM', brown: 'MARROM', cafe: 'CAFE', cast: 'CASTANHO', castanho: 'CASTANHO', ca: 'CASTANHO',
+  roxo: 'ROXO', rx: 'ROXO', pur: 'ROXO', purp: 'ROXO', purple: 'ROXO', lilas: 'LILAS', lilac: 'LILAS', lavanda: 'LAVANDA', lavender: 'LAVANDA', violeta: 'VIOLETA',
+  ciano: 'CIANO', cy: 'CIANO', coral: 'CORAL', co: 'CORAL', dourado: 'DOURADO', ddo: 'DOURADO', dord: 'DOURADO', dr: 'DOURADO', gold: 'DOURADO', prata: 'PRATA', silver: 'PRATA',
   nude: 'NUDE', gelo: 'GELO', turquesa: 'TURQUESA', turq: 'TURQUESA', aqua: 'AQUA',
-  menta: 'MENTA', oliva: 'OLIVA', bordo: 'BORDO', vinho: 'VINHO', marsala: 'MARSALA',
-  caqui: 'CAQUI', khaki: 'CAQUI', creme: 'CREME', cru: 'CRU', denim: 'DENIM',
+  menta: 'MENTA', mint: 'MENTA', oliva: 'OLIVA', olv: 'OLIVA', bordo: 'BORDO', vinho: 'VINHO', vi: 'VINHO', marsala: 'MARSALA',
+  caqui: 'CAQUI', khaki: 'CAQUI', creme: 'CREME', crm: 'CREME', cru: 'CRU', denim: 'DENIM',
   cobalto: 'COBALTO', fucsia: 'FUCSIA', magenta: 'MAGENTA', mostarda: 'MOSTARDA', mustard: 'MOSTARDA',
-  caramelo: 'CARAMELO', teal: 'TEAL', sortida: 'SORTIDA', sortido: 'SORTIDA', multicolor: 'MULTICOLOR',
+  caramelo: 'CARAMELO', teal: 'TEAL', uva: 'UVA', transparente: 'TRANSPARENTE', trans: 'TRANSPARENTE', trsp: 'TRANSPARENTE', fume: 'FUME',
+  sortida: 'SORTIDA', sortidas: 'SORTIDA', sortido: 'SORTIDA', sortidos: 'SORTIDA', mcmt: 'MULTICOLOR', multi: 'MULTICOLOR', multicolor: 'MULTICOLOR',
+  fluorescente: 'FLUORESCENTE', fl: 'FLUORESCENTE', ltus: 'LOTUS', azurite: 'AZUL',
+  fuccia: 'FUCSIA', acq: 'AQUA', ro: 'ROSA', larnaja: 'LARANJA', lazuli: 'AZUL', azuli: 'AZUL',
+  vrdclr: 'VERDE CLARO', rsacla: 'ROSA CLARO', blucur: 'AZUL', ofwh: 'OFF-WHITE',
 }));
 
-function inferLabelColorFromName(value) {
+const FREEFORM_LABEL_COLOR_BRANDS = new Set([
+  'alto-giro', 'asics', 'body-for-sure', 'brooks', 'caju-brasil', 'converse',
+  'hoka', 'hope-resort', 'kappa', 'let-s-gym', 'mormaii', 'nike', 'salomon',
+  'sports-and-tennis', 'topper', 'under-armour', 'vistho',
+]);
+
+const BRAND_NAME_COLOR_RULES = new Map(Object.entries({
+  'a-definir': 7, actvitta: 8, asics: 9, bel: 9, botafogo: 8, brooks: 8,
+  converse: 12, diadora: 8, everlast: 8, fiber: 7, fila: 7, hurley: 7,
+  hidrolight: 7, joma: 8, kappa: 7, kenner: 7, kolosh: 6, leader: 5, mikasa: 10,
+  mizuno: 6, mormaii: 8, munich: 6, n1: 7, 'new-balance': 7, oakley: 8,
+  olympikus: 7, ous: 9, oxn: 9, paterson: 7, penalty: 7, poker: 7,
+  progne: 8, puma: 7, rainha: 7, realtex: 7, reebok: 9, salomon: 9, siker: 6,
+  skechers: 6, spalding: 8, speedo: 8, stanley: 7, thigoline: 7, uhlsport: 8,
+  umbro: 7, vollo: 7,
+}));
+
+const SKECHERS_LABEL_COLORS = new Map(Object.entries({
+  WPK: 'BRANCO/ROSA', NVY: 'MARINHO', ORG: 'LARANJA', LIME: 'LIMA',
+  LBNV: 'AZUL CLARO/MARINHO', OLV: 'OLIVA', WGY: 'BRANCO/CINZA',
+  BBK: 'PRETO', BLMT: 'AZUL/MULTICOLOR', CCLM: 'CHUMBO/LIMA', PUR: 'ROXO',
+  MVE: 'MALVA', LBPK: 'AZUL CLARO/ROSA', BLK: 'PRETO', BKPR: 'PRETO/ROXO',
+  WMLT: 'BRANCO/MULTICOLOR', BKW: 'PRETO/BRANCO', BKOR: 'PRETO/LARANJA',
+  GRY: 'CINZA', HPPR: 'ROSA/ROXO',
+}));
+
+const INVALID_FREEFORM_LABEL_COLORS = new Set([
+  'c c', 'eva borracha', 'fruit aop', 'g gg', 'm c', 'p m', 'varsity tf',
+  'borracha', '250 fiba',
+]);
+
+function extractCanonicalLabelColors(value) {
   const words = labelDescriptionWords(value);
   const colors = [];
-  const seen = new Set();
   for (let index = 0; index < words.length; index += 1) {
     const normalized = normalizeLabelText(words[index]);
     if (normalized === 'off' && normalizeLabelText(words[index + 1]) === 'white') {
-      if (!seen.has('OFF-WHITE')) colors.push('OFF-WHITE');
-      seen.add('OFF-WHITE');
+      colors.push('OFF-WHITE');
       index += 1;
       continue;
     }
-    const color = LABEL_COLOR_NAME_ALIASES.get(normalized);
-    if (color && !seen.has(color)) {
+    const color = LABEL_COLOR_NAME_ALIASES.get(normalized)
+      || LABEL_COLOR_NAME_ALIASES.get(normalized.replace(/\d+$/g, ''));
+    if (color) {
       colors.push(color);
-      seen.add(color);
+      continue;
+    }
+    const modifier = { claro: 'CLARO', clara: 'CLARO', escuro: 'ESCURO', escura: 'ESCURO', quartzo: 'QUARTZO' }[normalized];
+    if (modifier && colors.length) {
+      colors[colors.length - 1] = `${colors[colors.length - 1]} ${modifier}`;
     }
   }
   return colors.join('/');
+}
+
+function cleanFreeformLabelColor(value) {
+  const color = normalizeLabelColor(value)
+    .replace(/\s*\|\s*TAM(?:ANHO)?\b.*$/i, '')
+    .replace(/\s+C\/\s+.*$/i, '')
+    .replace(/\s+\bTAM(?:ANHO)?\b\.?\s*:?.*$/i, '')
+    .replace(/\s+\bUNI(?:CO|CA)?\b.*$/i, '')
+    .replace(/\s+E$/i, '')
+    .trim();
+  const normalized = normalizeLabelText(color).replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!color || INVALID_FREEFORM_LABEL_COLORS.has(normalized)) return '';
+  if (/^(?:pp|p|m|g|gg|xg|xgg|eg|egg|\d+(?:[.,]\d+)?)$/i.test(color)) return '';
+  return color;
+}
+
+function labelStructuredProductColor(brand, value) {
+  const color = normalizeLabelColor(value);
+  if (!color) return '';
+  const key = brandSlug(brand);
+  if (key === 'skechers') return SKECHERS_LABEL_COLORS.get(color.toUpperCase()) || '';
+  if (FREEFORM_LABEL_COLOR_BRANDS.has(key)) {
+    const freeform = cleanFreeformLabelColor(color);
+    const codeParts = freeform.split(/[\s/-]+/).filter(Boolean);
+    const looksLikeShortCodes = codeParts.length > 0
+      && codeParts.every((part) => part.length <= 4 && part === part.toUpperCase());
+    return looksLikeShortCodes ? extractCanonicalLabelColors(freeform) : freeform;
+  }
+  return extractCanonicalLabelColors(color);
+}
+
+function labelColorNameScope(product, options = {}) {
+  const name = String(product?.name || '');
+  const key = brandSlug(product?.brand);
+  if (!BRAND_NAME_COLOR_RULES.has(key)) return '';
+  if (key === 'reebok' && !options.hadRejectedStructuredColor) return '';
+
+  if (key === 'thigoline') return name.match(/["“”]([^"“”]+)["“”]/)?.[1] || '';
+  if (key === 'n1') return name.split('|')[1] || '';
+  if (key === 'leader') return [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1] || '';
+  if (key === 'joma' || key === 'uhlsport') {
+    const parenthesized = [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1];
+    if (parenthesized) return parenthesized;
+  }
+  if (key === 'umbro' || key === 'fila' || key === 'new-balance') {
+    const delimited = name.match(/-([^-]+)-[A-Z0-9.]+-Tam\b/i)?.[1];
+    if (delimited) return delimited;
+  }
+
+  const withoutSize = name
+    .replace(/\s+-\s*(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|UNI|\d{1,3}(?:[/-]\d{1,3})*)\s*$/i, '')
+    .replace(/\s+Tam(?:anho)?\.?\s*:?\s*\S*\s*$/i, '')
+    .replace(/\s+(?:PP|P|M|G|GG|XG|XGG|EG|EGG|UNI)\s*$/i, '')
+    .trim();
+  const words = labelDescriptionWords(withoutSize);
+  return words.slice(-BRAND_NAME_COLOR_RULES.get(key)).join(' ');
+}
+
+function inferLabelColorFromName(product, options = {}) {
+  return extractCanonicalLabelColors(labelColorNameScope(product, options));
 }
 
 function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
@@ -1130,7 +1232,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'cor-do-produto-v6';
+    const pdfVersion = 'cor-validada-por-marca-v7';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
