@@ -10100,7 +10100,7 @@ async function initLabelsTab() {
   if (sel) {
     const opts = [...sel.options];
     const stOpt = opts.find(o => _lblTemplates[o.value]?.isDefault)
-              || opts.find(o => /5x7|5 × 7|16 etiquetas/i.test(o.textContent) && _lblTemplates[o.value]?.layoutConfig?.labelDesign !== 'saldo-5x7-v1')
+              || opts.find(o => /5x7|5 × 7|16 etiquetas/i.test(o.textContent) && !String(_lblTemplates[o.value]?.layoutConfig?.labelDesign || '').startsWith('saldo-5x7'))
               || opts.find(o => /S&T.*14,5x2,5|14,5x2,5/i.test(o.textContent))
               || opts.find(o => /S&T.*15x3|15x3/i.test(o.textContent))
               || opts.find(o => /S&T.*2cm|13x2/i.test(o.textContent))
@@ -10446,14 +10446,14 @@ function _lblSyncTemplateControls() {
   const promo = document.getElementById('labels-use-promo');
   const hint = document.getElementById('labels-template-hint');
   const template = _lblTemplates[sel?.value];
-  const saldo = template?.layoutConfig?.labelDesign === 'saldo-5x7-v1';
+  const saldo = String(template?.layoutConfig?.labelDesign || '').startsWith('saldo-5x7');
   if (promo) {
     if (saldo) promo.checked = false;
     promo.disabled = !!saldo;
   }
   if (hint) {
     hint.textContent = saldo
-      ? 'SALDO: 5 × 7 cm · frente e costas · fundo laranja e a palavra SALDO repetida em toda a etiqueta nos dois lados'
+      ? 'SALDO REPETIDO: 5 × 7 cm · frente e costas · 30 vezes por etiqueta em cada lado · fundo laranja e texto branco'
       : 'Padrão aprovado: 5 × 7 cm · 1 etiqueta por produto · frente e verso · logo da marca na frente · logo da loja, código de barras e QR Code atrás';
   }
 }

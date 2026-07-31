@@ -90,7 +90,7 @@ function isProductDuplexTemplate(template) {
 }
 
 function isSaldoTemplate(template) {
-  return template?.layoutConfig?.labelDesign === 'saldo-5x7-v1';
+  return String(template?.layoutConfig?.labelDesign || '').startsWith('saldo-5x7');
 }
 
 const FOUR_SIDE_ORANGE = '#FF3300'; // aproximaÃ§Ã£o RGB de CMYK C0 M80 Y100 K0
@@ -189,7 +189,8 @@ function defaultTemplates() {
     },
     a4_16_5x7_saldo: {
       type: 'PROMOTIONAL',
-      name: 'SALDO — A4 16 etiquetas (5x7 cm)',
+      name: 'SALDO REPETIDO — A4 16 etiquetas (5x7 cm) — frente e costas',
+      legacyNames: ['SALDO — A4 16 etiquetas (5x7 cm)'],
       paperSize: 'A4',
       widthMm: 50,
       heightMm: 70,
@@ -207,9 +208,10 @@ function defaultTemplates() {
           front: 'saldo',
           back: 'saldo',
         },
-        saldoRepeatColumns: 2,
-        saldoRepeatRows: 5,
-        labelDesign: 'saldo-5x7-v1',
+        saldoRepeatColumns: 3,
+        saldoRepeatRows: 10,
+        saldoFontSize: 8.5,
+        labelDesign: 'saldo-5x7-repeated-v2',
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
       },
@@ -1156,11 +1158,11 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
 function drawSaldoLabel(doc, item, template, x, y, w, h) {
   const orange = template?.layoutConfig?.backgroundHex || '#E5571E';
   const font = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
-  const columns = Math.max(1, Number(template?.layoutConfig?.saldoRepeatColumns || 2));
-  const rows = Math.max(1, Number(template?.layoutConfig?.saldoRepeatRows || 5));
+  const columns = Math.max(1, Number(template?.layoutConfig?.saldoRepeatColumns || 3));
+  const rows = Math.max(1, Number(template?.layoutConfig?.saldoRepeatRows || 10));
   const cellW = w / columns;
   const cellH = h / rows;
-  const fontSize = 14;
+  const fontSize = Number(template?.layoutConfig?.saldoFontSize || 8.5);
   doc.rect(x, y, w, h).fillColor(orange).fill();
   doc.font(font).fontSize(fontSize).fillColor('#FFFFFF');
   for (let row = 0; row < rows; row += 1) {

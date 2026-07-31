@@ -12,7 +12,8 @@ async function main() {
   const template = defaultTemplates().a4_16_5x7_saldo;
 
   assert.ok(template, 'Template SALDO 5x7 não encontrado');
-  assert.equal(template.name, 'SALDO — A4 16 etiquetas (5x7 cm)');
+  assert.equal(template.name, 'SALDO REPETIDO — A4 16 etiquetas (5x7 cm) — frente e costas');
+  assert.deepEqual(template.legacyNames, ['SALDO — A4 16 etiquetas (5x7 cm)']);
   assert.equal(template.type, 'PROMOTIONAL');
   assert.equal(template.widthMm, 50);
   assert.equal(template.heightMm, 70);
@@ -24,8 +25,10 @@ async function main() {
   assert.equal(template.layoutConfig.duplexBinding, 'long-edge');
   assert.equal(template.layoutConfig.labelsPerProduct, 1);
   assert.deepEqual(template.layoutConfig.sides, { front: 'saldo', back: 'saldo' });
-  assert.equal(template.layoutConfig.saldoRepeatColumns, 2);
-  assert.equal(template.layoutConfig.saldoRepeatRows, 5);
+  assert.equal(template.layoutConfig.saldoRepeatColumns, 3);
+  assert.equal(template.layoutConfig.saldoRepeatRows, 10);
+  assert.equal(template.layoutConfig.saldoFontSize, 8.5);
+  assert.equal(template.layoutConfig.labelDesign, 'saldo-5x7-repeated-v2');
   assert.equal(isSaldoTemplate(template), true);
 
   const items = Array.from({ length: 16 }, () => ({ quantity: 1 }));
