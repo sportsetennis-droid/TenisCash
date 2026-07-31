@@ -195,12 +195,16 @@ function defaultTemplates() {
         // Mantem os indicadores externos longe da borda da etiqueta para que
         // nao sobrem dois riscos nos cantos superiores depois do corte.
         cutMarkSafeGapMm: 4,
-        // O verso usa um unico fundo A4, sem emendas entre as 16 etiquetas.
+        // O verso usa um unico fundo, sem emendas entre as 16 etiquetas.
         // Isso evita que o driver revele bordas de retangulos sobrepostos.
         backFullPageBackground: true,
-        // A borda real do retangulo fica fora da pagina e e recortada pelo PDF.
-        // Assim nenhum limite vetorial coincide com o topo impresso.
+        // Nas laterais, a borda real do retangulo fica fora da pagina. No topo
+        // e na base, o fundo comeca dentro da sangria externa (4 mm e 293 mm),
+        // antes das linhas de corte (8,5 mm e 288,5 mm). Assim a Epson nao
+        // inicia a carga de tinta na borda fisica da folha e qualquer transicao
+        // permanece integralmente na sobra descartada depois do corte.
         backBackgroundOverscanMm: 10,
+        backBackgroundStopsInOuterBleed: true,
       },
     },
     a4_16_5x7_saldo: {
@@ -1538,11 +1542,19 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       if (fullPageBack) {
         const configuredOverscanMm = Number(t.layoutConfig?.backBackgroundOverscanMm);
         const overscan = mm(Number.isFinite(configuredOverscanMm) ? configuredOverscanMm : 10);
+        const stopInOuterBleed = t.layoutConfig?.backBackgroundStopsInOuterBleed !== false;
+        const gridBottom = marginY + rows * labelH + Math.max(0, rows - 1) * gapY;
+        const backgroundTop = stopInOuterBleed
+          ? Math.max(0, marginY - bleed)
+          : -overscan;
+        const backgroundBottom = stopInOuterBleed
+          ? Math.min(doc.page.height, gridBottom + bleed)
+          : doc.page.height + overscan;
         doc.rect(
           -overscan,
-          -overscan,
+          backgroundTop,
           doc.page.width + overscan * 2,
-          doc.page.height + overscan * 2,
+          backgroundBottom - backgroundTop,
         );
       } else {
         pageItems.forEach((item, slot) => {
