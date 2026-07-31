@@ -20,6 +20,7 @@ async function main() {
   assert.equal(template.layoutConfig.sides.front, 'brand-product-price-warranty');
   assert.equal(template.layoutConfig.sides.back, 'store-barcode-qr');
   assert.equal(template.layoutConfig.backBleedMm, 4.5);
+  assert.equal(template.layoutConfig.backPrintOffsetXMm, -1.5);
 
   const logoSvg = fs.readFileSync(
     path.join(__dirname, '..', 'assets', 'logos', 'brands', 'umbro.svg'),

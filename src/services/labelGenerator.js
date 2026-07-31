@@ -185,6 +185,10 @@ function defaultTemplates() {
         // Sangria adicional no verso absorve a tolerância mecânica do duplex
         // sem expor bordas brancas depois do corte.
         backBleedMm: 4.5,
+        // Compensa o registro horizontal medido na Epson L4360: depois do
+        // corte sobravam 5 mm à esquerda e 2 mm à direita. Metade da diferença
+        // (1,5 mm) é antecipada à esquerda para deixar 3,5 mm em cada lado.
+        backPrintOffsetXMm: -1.5,
       },
     },
     a4_16_5x7_saldo: {
@@ -1441,7 +1445,12 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
       const flipLongEdge = t.layoutConfig?.duplexBinding !== 'short-edge';
       const col = flipBack && flipLongEdge ? cols - 1 - rawCol : rawCol;
       const row = flipBack && !flipLongEdge ? rows - 1 - rawRow : rawRow;
-      const x = marginX + col * (labelW + gapX);
+      const configuredBackOffsetX = Number(t.layoutConfig?.backPrintOffsetXMm);
+      const backPrintOffsetXMm = Number.isFinite(configuredBackOffsetX)
+        ? configuredBackOffsetX
+        : (singleDuplex ? -1.5 : 0);
+      const x = marginX + col * (labelW + gapX)
+        + (flipBack && singleDuplex ? mm(backPrintOffsetXMm) : 0);
       const y = marginY + row * (labelH + gapY);
       return { x, y };
     };
