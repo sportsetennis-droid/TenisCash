@@ -945,15 +945,9 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const brandTop = y + mm(10.8);
     const brandBottom = y + mm(22.4);
     doc.save();
-    doc.fillColor(ORANGE)
-      .polygon(
-        [x, brandTop],
-        [x + w, brandTop],
-        [x + w, brandBottom - mm(2.2)],
-        [x + w - mm(8), brandBottom],
-        [x, brandBottom],
-      )
-      .fill();
+    // Faixa reta de ponta a ponta. O recorte diagonal anterior parecia uma
+    // falha de impressão quando duas etiquetas ficavam lado a lado.
+    doc.fillColor(ORANGE).rect(x, brandTop, w, brandBottom - brandTop).fill();
     doc.restore();
 
     if (item._brandLogoBuffer) {
@@ -1043,9 +1037,9 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     if (Number.isFinite(value)) {
       if (usePromo && Number.isFinite(Number(item.price))) {
         const oldPrice = `PREÇO NORMAL ${fmtBRL(item.price)}`;
-        const oldFs = fitSingleLine(oldPrice, FONT_BOLD, 7.2, 5.6);
-        const oldY = y + mm(41.8);
-        doc.font(FONT_BOLD).fontSize(oldFs).fillColor(MUTED)
+        const oldFs = fitSingleLine(oldPrice, FONT_BOLD, 8.8, 6.8);
+        const oldY = y + mm(42);
+        doc.font(FONT_BOLD).fontSize(oldFs).fillColor(CHARCOAL)
           .text(oldPrice, x + pad, oldY, {
             width: innerW,
             align: 'left',
