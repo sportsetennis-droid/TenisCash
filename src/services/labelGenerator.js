@@ -1114,11 +1114,15 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
 
   // Verso: os 10 mm superiores continuam livres para o mesmo furo.
   const storeTop = y + mm(10.6);
+  // Os recortes oficiais (ícone + wordmark) têm pesos visuais diferentes.
+  // O pequeno ajuste óptico coloca a composição no mesmo eixo da logo frontal,
+  // do QR Code e do cartão de leitura depois que a etiqueta é cortada.
+  const storeLogoOpticalOffsetX = mm(0.6);
   if (item._storeLogoIconBuffer || item._storeLogoWordmarkBuffer || item._storeLogoBuffer) {
     try {
       if (item._storeLogoIconBuffer && item._storeLogoWordmarkBuffer) {
-        drawImageContain(doc, item._storeLogoIconBuffer, x + mm(4), storeTop, mm(11), mm(12.2));
-        drawImageContain(doc, item._storeLogoWordmarkBuffer, x + mm(16), storeTop + mm(2.1), mm(30), mm(8));
+        drawImageContain(doc, item._storeLogoIconBuffer, x + mm(4) + storeLogoOpticalOffsetX, storeTop, mm(11), mm(12.2));
+        drawImageContain(doc, item._storeLogoWordmarkBuffer, x + mm(16) + storeLogoOpticalOffsetX, storeTop + mm(2.1), mm(30), mm(8));
       } else if (item._storeLogoBuffer) {
         drawImageContain(doc, item._storeLogoBuffer, x + mm(5), storeTop, w - mm(10), mm(12));
       }
