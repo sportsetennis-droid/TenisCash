@@ -1048,9 +1048,14 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
+    const pdfVersion = 'fundo-a4-unico-v1';
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="etiquetas-${batch.id}.pdf"`,
+      'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'X-Label-PDF-Version': pdfVersion,
     });
     res.send(pdfBuffer);
   } catch (err) {
