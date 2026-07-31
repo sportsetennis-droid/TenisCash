@@ -142,15 +142,40 @@
         || voices.find((v) => /^pt[-_]br$/i.test(v.lang))
         || voices.find((v) => /^pt/i.test(v.lang)) || voices[0] || null;
     }
+    function playClip(url) {
+      return new Promise((resolve) => {
+        try {
+          const a = new Audio(url);
+          a.volume = Math.max(0, Math.min(1, curVolume));
+          a.onended = () => resolve(true);
+          a.onerror = () => resolve(false);
+          a.play().catch(() => resolve(false));
+        } catch (e) { resolve(false); }
+      });
+    }
+    function speakBrowser(msg) {
+      return new Promise((resolve) => {
+        try {
+          const u = new SpeechSynthesisUtterance(msg);
+          u.lang = curLang || 'pt-BR'; u.volume = Math.max(0, Math.min(1, curVolume)); u.rate = 0.98; u.pitch = 1;
+          const v = chooseVoice(); if (v) u.voice = v;
+          u.onend = resolve; u.onerror = resolve;
+          try { speechSynthesis.cancel(); } catch (e) {}
+          speechSynthesis.speak(u);
+        } catch (e) { resolve(); }
+      });
+    }
     async function speak(ann) {
       busy = true; $('last').textContent = ann.message; setStatus('📣 Anunciando…');
       duckMusic();
+      let ok = false;
+      // 1) voz NEURAL (fal ElevenLabs) — com emoção/entusiasmo
       try {
-        const u = new SpeechSynthesisUtterance(ann.message);
-        u.lang = curLang || 'pt-BR'; u.volume = Math.max(0, Math.min(1, curVolume)); u.rate = 0.98; u.pitch = 1;
-        const v = chooseVoice(); if (v) u.voice = v;
-        await new Promise((resolve) => { u.onend = resolve; u.onerror = resolve; try { speechSynthesis.cancel(); } catch (e) {} speechSynthesis.speak(u); });
+        const d = await api('/tts?text=' + encodeURIComponent(ann.message));
+        if (d && d.url) ok = await playClip(d.url);
       } catch (e) {}
+      // 2) fallback: voz do navegador (se a neural falhar/demorar)
+      if (!ok) await speakBrowser(ann.message);
       try { await api('/' + encodeURIComponent(ann.id) + '/complete', { method: 'POST', body: '{}' }); } catch (e) {}
       resumeMusic();
       busy = false;

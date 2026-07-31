@@ -2,6 +2,30 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const radio = require('../services/storeRadio');
 
+// Voz NEURAL (fal.ai ElevenLabs multilingual) — muito mais expressiva/emotiva que a voz do navegador.
+let _fal = null;
+async function getFal() {
+  if (_fal) return _fal;
+  const mod = await import('@fal-ai/client');
+  _fal = mod.fal;
+  if (process.env.FAL_KEY) _fal.config({ credentials: process.env.FAL_KEY });
+  return _fal;
+}
+async function neuralTtsUrl(text, voice) {
+  const fal = await getFal();
+  const r = await fal.subscribe('fal-ai/elevenlabs/tts/multilingual-v2', {
+    input: {
+      text: String(text || '').slice(0, 900),
+      voice: voice || 'Aria',
+      stability: 0.3,          // baixo = mais expressivo/emotivo
+      similarity_boost: 0.75,
+      style: 0.7,              // alto = mais entusiasmo
+      speed: 1.06,             // um tiquinho acelerado = mais animado
+    },
+  });
+  return (r && r.data && ((r.data.audio && r.data.audio.url) || r.data.url)) || null;
+}
+
 const router = express.Router();
 
 // Resolve lojas-alvo: 'all' | array de ids | id único → lista de ids de lojas ATIVAS
@@ -64,6 +88,23 @@ router.post('/:id/complete', playerAuth, async (req, res) => {
 router.post('/:id/fail', playerAuth, async (req, res) => {
   try { const r = await radio.fail(req.params.id, req.body?.error); res.json({ ok: true, updated: r.count > 0 }); }
   catch { res.status(500).json({ error: 'Não foi possível registrar a falha.' }); }
+});
+
+// Voz NEURAL do anúncio: o player pede aqui e toca o áudio (com emoção) em vez da voz robótica do navegador.
+router.get('/tts', playerAuth, async (req, res) => {
+  try {
+    const text = String(req.query.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'sem texto' });
+    if (!process.env.FAL_KEY) return res.status(503).json({ error: 'voz neural indisponível' });
+    const voice = req.radioConfig && req.radioConfig.voiceName ? req.radioConfig.voiceName : undefined;
+    const url = await neuralTtsUrl(text, voice);
+    if (!url) return res.status(502).json({ error: 'não gerou a voz' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, url });
+  } catch (e) {
+    console.error('[store-radio] tts:', e && e.message);
+    res.status(502).json({ error: 'falha na voz neural' });
+  }
 });
 
 // ======================================================================
