@@ -269,8 +269,33 @@ assert.equal(
   '',
 );
 assert.equal(
+  labels.labelProductColor(
+    { name: 'TENIS CT30140002 CHUCK TAYLOR ALL STAR LAVANDA 02/LILAS VIOLETA/BRANCO 35', brand: 'CONVERSE' },
+    {},
+  ),
+  '',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'CHUTEIRA OXN TRACK 4 FIT SOCIETY - GELO/VERDE MENTA/MARINHO', brand: 'OXN' },
+    {},
+  ),
+  'GELO/VERDE MENTA/MARINHO',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'DIADORA PLAYMAKER AREIA/PRETO', brand: 'DIADORA' }, {}),
+  'AREIA/PRETO',
+);
+assert.equal(
   labels.labelProductColor({ name: 'SPO01 CHINELO SLIDE BRANCO/PRETO', brand: 'SPEEDO' }, {}),
   'BRANCO/PRETO',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'U01FB00168-CHUTEIRA SOCIETY UMBRO TECHNO-PRE/LIMA/CNZ-168', brand: 'UMBRO' },
+    {},
+  ),
+  'PRETO/LIMA/CINZA',
 );
 assert.equal(
   labels.labelProductColor({ name: 'TOP BASIC COLORS LATTE', brand: "LET'S GYM" }, { color: 'Latte' }),

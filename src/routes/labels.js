@@ -3,6 +3,7 @@
 // =====================================================================
 
 const express = require('express');
+const crypto = require('node:crypto');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const {
   generateLabelsPDF,
@@ -14,6 +15,7 @@ const {
 } = require('../services/labelGenerator');
 const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brandLogoResolver');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
+const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -193,7 +195,7 @@ function distinctStructuredLabelColors(product, context = {}) {
   return colors;
 }
 
-function labelProductColor(product, context = {}) {
+function inferLabelProductColor(product, context = {}) {
   const candidates = labelProductColorCandidates(product, context);
   const structuredColors = distinctStructuredLabelColors(product, context);
   if (structuredColors.length === 1) return structuredColors[0];
@@ -223,8 +225,8 @@ function compactLabelColorIssueValue(value, limit = 20) {
   return text.length > limit ? `${text.slice(0, Math.max(1, limit - 3)).trim()}...` : text;
 }
 
-function labelProductColorIssue(product, context = {}) {
-  if (labelProductColor(product, context)) return null;
+function inferLabelProductColorIssue(product, context = {}) {
+  if (inferLabelProductColor(product, context)) return null;
   const structuredColors = distinctStructuredLabelColors(product, context);
   if (structuredColors.length > 1) {
     const detail = structuredColors
@@ -265,6 +267,77 @@ function labelProductColorIssue(product, context = {}) {
     short: `DÚVIDA: CÓD. ${compact}`,
     detail: `DÚVIDA: CÓDIGO ${compact} NÃO MAPEADO`,
   };
+}
+
+function labelProductColorReviewFingerprintInput(product, context = {}) {
+  return [
+    String(product?.id || ''),
+    String(product?.sku || ''),
+    String(product?.brand || ''),
+    String(product?.name || ''),
+    ...labelProductColorCandidates(product, context).map((value) => normalizeLabelColor(value)),
+  ];
+}
+
+function labelProductColorReviewFingerprint(product, context = {}) {
+  const payload = labelProductColorReviewFingerprintInput(product, context);
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function reviewedLabelProductColorDecision(product, context = {}) {
+  // Objetos sem id existem apenas nos testes unitários e em chamadas internas.
+  // Produtos reais sempre precisam passar pela revisão individual registrada.
+  if (!product?.id) {
+    const color = inferLabelProductColor(product, context);
+    return { color, issue: color ? null : inferLabelProductColorIssue(product, context), review: null };
+  }
+
+  const review = labelColorReviewLedger.products?.[product.id];
+  if (!review) {
+    return {
+      color: '',
+      issue: {
+        type: 'not-reviewed',
+        short: 'DÚVIDA: NÃO REVISADA',
+        detail: 'DÚVIDA: PRODUTO AINDA NÃO PASSOU PELA REVISÃO INDIVIDUAL DE COR',
+      },
+      review: null,
+    };
+  }
+
+  const fingerprint = labelProductColorReviewFingerprint(product, context);
+  if (review.fingerprint !== fingerprint) {
+    return {
+      color: '',
+      issue: {
+        type: 'review-stale',
+        short: 'DÚVIDA: PRODUTO ALTERADO',
+        detail: 'DÚVIDA: PRODUTO ALTERADO DEPOIS DA REVISÃO DE COR',
+      },
+      review,
+    };
+  }
+
+  if (review.status === 'confirmed' && review.color) {
+    return { color: review.color, issue: null, review };
+  }
+  return {
+    color: '',
+    issue: review.issue || {
+      type: 'unconfirmed',
+      short: 'DÚVIDA: COR NÃO CONFIRMADA',
+      detail: 'DÚVIDA: COR SEM EVIDÊNCIA SUFICIENTE PARA CONFIRMAÇÃO',
+    },
+    review,
+  };
+}
+
+function labelProductColor(product, context = {}) {
+  return reviewedLabelProductColorDecision(product, context).color;
+}
+
+function labelProductColorIssue(product, context = {}) {
+  return reviewedLabelProductColorDecision(product, context).issue;
 }
 
 const CLOTHING_TYPES = [
@@ -593,6 +666,9 @@ const LABEL_COLOR_NAME_ALIASES = new Map(Object.entries({
   caqui: 'CAQUI', khaki: 'CAQUI', creme: 'CREME', crm: 'CREME', cru: 'CRU', denim: 'DENIM',
   cobalto: 'COBALTO', fucsia: 'FUCSIA', magenta: 'MAGENTA', mostarda: 'MOSTARDA', mustard: 'MOSTARDA',
   caramelo: 'CARAMELO', teal: 'TEAL', uva: 'UVA', transparente: 'TRANSPARENTE', trans: 'TRANSPARENTE', trsp: 'TRANSPARENTE', fume: 'FUME',
+  areia: 'AREIA', petroleo: 'PETRÓLEO', marfim: 'MARFIM', malva: 'MALVA', ouro: 'DOURADO',
+  celeste: 'CELESTE', amendoa: 'AMÊNDOA', almond: 'AMÊNDOA', perola: 'PÉROLA', pearl: 'PÉROLA',
+  limao: 'LIMÃO', milk: 'LEITE', rum: 'RUM', saxon: 'SAXON',
   sortida: 'SORTIDA', sortidas: 'SORTIDA', sortido: 'SORTIDA', sortidos: 'SORTIDA', mcmt: 'MULTICOLOR', multi: 'MULTICOLOR', multicolor: 'MULTICOLOR',
   fluorescente: 'FLUORESCENTE', fl: 'FLUORESCENTE', ltus: 'LOTUS', azurite: 'AZUL',
   fuccia: 'FUCSIA', acq: 'AQUA', ro: 'ROSA', larnaja: 'LARANJA', lazuli: 'AZUL', azuli: 'AZUL',
@@ -684,6 +760,62 @@ function extractCertainLabelColors(value, options = {}) {
   return lastKind === 'color' ? colors.join('/') : '';
 }
 
+// Quando a fonte já separa a combinação com barras, cada trecho entre barras
+// é uma unidade de cor. Assim, "VERDE MENTA" não vira duas cores diferentes.
+function extractCertainSlashLabelColors(value, options = {}) {
+  const raw = String(value || '').trim();
+  if (!raw.includes('/')) return '';
+  const parts = raw.split('/').map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return '';
+  const parsed = [];
+  for (const part of parts) {
+    const words = labelDescriptionWords(part);
+    if (!words.length) return '';
+    const colorWords = [];
+    for (let index = 0; index < words.length; index += 1) {
+      const normalized = normalizeLabelText(words[index]);
+      if (normalized === 'off' && normalizeLabelText(words[index + 1]) === 'white') {
+        colorWords.push('OFF-WHITE');
+        index += 1;
+        continue;
+      }
+      const withoutAttachedSize = options.allowAttachedSize && /\d{2,3}$/.test(normalized)
+        ? normalized.replace(/\d{2,3}$/g, '')
+        : normalized;
+      const color = LABEL_COLOR_NAME_ALIASES.get(normalized)
+        || LABEL_COLOR_NAME_ALIASES.get(withoutAttachedSize);
+      if (color) {
+        colorWords.push(color);
+        continue;
+      }
+      const modifier = LABEL_COLOR_MODIFIERS.get(normalized);
+      if (modifier && colorWords.length) {
+        colorWords[colorWords.length - 1] = `${colorWords[colorWords.length - 1]} ${modifier}`;
+        continue;
+      }
+      return '';
+    }
+    parsed.push(colorWords.join(' '));
+  }
+  return parsed.join('/');
+}
+
+function extractTrailingCertainSlashLabelColors(value) {
+  const raw = String(value || '');
+  const matches = [...raw.matchAll(/[\p{L}\p{N}]+/gu)];
+  for (const match of matches) {
+    const prefix = raw.slice(0, match.index);
+    const before = prefix.trimEnd().slice(-1);
+    if (before === '/') continue;
+    const lastSlash = prefix.lastIndexOf('/');
+    if (lastSlash >= 0 && /[\p{L}\p{N}]/u.test(prefix.slice(lastSlash + 1))) continue;
+    const candidate = raw.slice(match.index).trim();
+    const color = extractCertainSlashLabelColors(candidate, { allowAttachedSize: true });
+    if (color) return color;
+  }
+  return '';
+}
+
 function extractTrailingCertainLabelColors(value) {
   const words = labelDescriptionWords(value);
   if (!words.length) return '';
@@ -750,6 +882,7 @@ function labelStructuredProductColor(brand, value) {
       && codeParts.every((part) => part.length <= 4 && part === part.toUpperCase());
     return looksLikeShortCodes ? extractCertainLabelColors(freeform) : freeform;
   }
+  if (color.includes('/')) return extractCertainSlashLabelColors(color);
   return extractCertainLabelColors(color);
 }
 
@@ -763,7 +896,7 @@ function exactLabelColorNameScope(product) {
     return [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1] || null;
   }
   if (key === 'umbro' || key === 'fila' || key === 'new-balance') {
-    return name.match(/-([^-]+)-[A-Z0-9.]+-Tam\b/i)?.[1] || null;
+    return name.match(/-([^-]+)-[A-Z0-9.]+(?:-Tam\b.*)?$/i)?.[1] || null;
   }
   return null;
 }
@@ -812,13 +945,14 @@ function inferLabelColorFromName(product, options = {}) {
     .filter((word) => !brandWords.has(normalizeLabelText(word)))
     .join(' ');
   if (exactLabelColorNameScope(product)) {
-    return extractCertainLabelColors(withoutBrand, { allowAttachedSize: true });
+    return scope.includes('/')
+      ? extractCertainSlashLabelColors(scope, { allowAttachedSize: true })
+      : extractCertainLabelColors(withoutBrand, { allowAttachedSize: true });
   }
   const cleanedName = labelColorNameWithoutNoise(product);
   const rawScope = rawLabelWordTail(cleanedName, BRAND_NAME_COLOR_RULES.get(brandSlug(product?.brand)));
   if (rawScope.includes('/')) {
-    const slashBlock = rawScope.match(/(?:^|[\s-])([\p{L}\d]+(?:\/[\p{L}\d]+)+)\s*$/u)?.[1] || '';
-    return extractCertainLabelColors(slashBlock, { allowAttachedSize: true });
+    return extractTrailingCertainSlashLabelColors(rawScope);
   }
   return extractTrailingCertainLabelColors(withoutBrand);
 }
@@ -1416,7 +1550,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'cor-somente-com-certeza-v9';
+    const pdfVersion = 'auditoria-individual-cor-v10';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
@@ -1663,5 +1797,10 @@ router.productType = productType;
 router.labelProductType = labelProductType;
 router.labelProductColor = labelProductColor;
 router.labelProductColorIssue = labelProductColorIssue;
+router.inferLabelProductColor = inferLabelProductColor;
+router.inferLabelProductColorIssue = inferLabelProductColorIssue;
+router.labelProductColorReviewFingerprintInput = labelProductColorReviewFingerprintInput;
+router.labelProductColorReviewFingerprint = labelProductColorReviewFingerprint;
+router.reviewedLabelProductColorDecision = reviewedLabelProductColorDecision;
 router.normalizeLabelAvailableSize = normalizeLabelAvailableSize;
 module.exports = router;
