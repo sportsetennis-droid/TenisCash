@@ -11,6 +11,7 @@ const production = require('../services/sellerProduction');
 const evidenceStore = require('../services/productionEvidenceStore');
 const { ensureScheduledProductionDays } = require('../services/sellerProductionCron');
 const equipeReports = require('../services/equipeReports');
+const requestInvestigator = require('../services/sellerRequestInvestigator');
 
 const router = express.Router();
 router.use(authMiddleware, storeScope);
@@ -33,7 +34,7 @@ const privateUpload = upload.array('attachments', 6);
 const REVIEWER_ROLES = new Set(['store', 'manager', 'admin', 'superadmin']);
 const SELLER_ROLES = new Set(['seller', ...REVIEWER_ROLES]);
 const CONDUCT_REVIEWER_ROLES = new Set(['admin', 'superadmin']);
-const REQUEST_CATEGORIES = new Set(['SUPPLIES', 'MAINTENANCE', 'PRODUCT', 'EQUIPMENT', 'OTHER']);
+const REQUEST_CATEGORIES = new Set(['SUPPLIES', 'MAINTENANCE', 'PRODUCT', 'EQUIPMENT', 'PROBLEM', 'OTHER']);
 const REQUEST_URGENCIES = new Set(['NORMAL', 'HIGH', 'URGENT']);
 const REQUEST_STATUSES = new Set(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'REJECTED']);
 const CONDUCT_CATEGORIES = new Set(['OFFENSE', 'HARASSMENT', 'DISCRIMINATION', 'THREAT', 'MISCONDUCT', 'OTHER']);
@@ -154,6 +155,34 @@ function attachmentSummary(entry) {
     sha256: entry.sha256 || null,
     createdAt: entry.createdAt,
   };
+}
+
+function requestSummary(row, includeInternal = false) {
+  const payload = {
+    id: row.id,
+    sellerId: row.sellerId,
+    seller: row.seller,
+    storeId: row.storeId,
+    store: row.store,
+    category: row.category,
+    title: row.title,
+    description: row.description,
+    urgency: row.urgency,
+    status: row.status,
+    companyResponse: row.companyResponse || null,
+    sellerResponse: row.sellerResponse || null,
+    investigationStatus: row.investigationStatus || 'PENDING',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    reviewedAt: row.reviewedAt,
+    attachments: (row.attachments || []).map(attachmentSummary),
+  };
+  if (includeInternal) {
+    payload.investigationSummary = row.investigationSummary || null;
+    payload.investigatedAt = row.investigatedAt || null;
+    payload.sellerNotifiedAt = row.sellerNotifiedAt || null;
+  }
+  return payload;
 }
 
 async function savePrivateAttachments(files, parent) {
@@ -842,7 +871,7 @@ router.get('/requests', requireSellerScope, async (req, res) => {
       },
     });
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ requests: requests.map((row) => ({ ...row, attachments: row.attachments.map(attachmentSummary) })) });
+    res.json({ requests: requests.map((row) => requestSummary(row, req.userRole !== 'seller')) });
   } catch (err) {
     console.error('[seller-production/requests]', err);
     res.status(500).json({ error: 'Erro ao carregar solicitações internas.' });
@@ -863,7 +892,16 @@ router.post('/requests', requireSellerScope, privateUpload, async (req, res) => 
     if (!title || !description) return res.status(400).json({ error: 'Informe o título e descreva claramente o que precisa.' });
     const resolved = await resolveSellerAndStore(req.userId, req.body.storeId || undefined);
     created = await prisma.sellerInternalRequest.create({
-      data: { sellerId: req.userId, storeId: resolved.storeId, category, urgency, title, description },
+      data: {
+        sellerId: req.userId,
+        storeId: resolved.storeId,
+        category,
+        urgency,
+        title,
+        description,
+        sellerResponse: requestInvestigator.GENERIC_ACK,
+        investigationStatus: 'PENDING',
+      },
     });
     savedAttachments = await savePrivateAttachments(req.files, { requestId: created.id });
     await notifyCompany({
@@ -874,7 +912,10 @@ router.post('/requests', requireSellerScope, privateUpload, async (req, res) => 
       priority: urgency === 'URGENT' ? 'urgent' : (urgency === 'HIGH' ? 'high' : 'normal'),
     }).catch((notifyError) => console.error('[seller-production/request-notify]', notifyError.message));
     const request = await prisma.sellerInternalRequest.findUnique({ where: { id: created.id }, include: { attachments: true, store: { select: { id: true, name: true, code: true } } } });
-    res.status(201).json({ ok: true, request: { ...request, attachments: request.attachments.map(attachmentSummary) } });
+    // A resposta ao vendedor permanece simples; a investigação segue no servidor
+    // e seus detalhes não são incluídos no payload pessoal.
+    setImmediate(() => requestInvestigator.investigate(created.id).catch((error) => console.error('[seller-request-investigator]', error.message)));
+    res.status(201).json({ ok: true, message: requestInvestigator.GENERIC_ACK, request: requestSummary(request, false) });
   } catch (err) {
     if (created) await prisma.sellerInternalRequest.delete({ where: { id: created.id } }).catch(() => {});
     for (const file of savedAttachments) evidenceStore.remove(file.storedName);
@@ -893,7 +934,17 @@ router.patch('/requests/:requestId', requireReviewer, async (req, res) => {
     if (!request || !canReviewStore(req, request.storeId)) return res.status(403).json({ error: 'Sem acesso a esta solicitação.' });
     const updated = await prisma.sellerInternalRequest.update({
       where: { id: request.id },
-      data: { status, companyResponse, reviewedById: req.userId, reviewedAt: new Date() },
+      data: {
+        status,
+        companyResponse,
+        sellerResponse: companyResponse,
+        investigationStatus: status === 'RESOLVED' ? 'RESOLVED' : status === 'IN_PROGRESS' ? 'INVESTIGATING' : 'NEEDS_DOUGLAS',
+        investigationSummary: `Resposta registrada manualmente por ${req.userRole}.`,
+        investigatedAt: new Date(),
+        sellerNotifiedAt: new Date(),
+        reviewedById: req.userId,
+        reviewedAt: new Date(),
+      },
     });
     await prisma.message.create({
       data: {

@@ -1005,12 +1005,18 @@ model SellerInternalRequest {
   seller          User      @relation("internalRequestSeller", fields: [sellerId], references: [id])
   storeId         String
   store           Store     @relation(fields: [storeId], references: [id])
-  category        String // SUPPLIES | MAINTENANCE | PRODUCT | EQUIPMENT | OTHER
+  category        String // SUPPLIES | MAINTENANCE | PRODUCT | EQUIPMENT | PROBLEM | OTHER
   title           String
   description     String    @db.Text
   urgency         String    @default("NORMAL") // NORMAL | HIGH | URGENT
   status          String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | REJECTED
   companyResponse String?   @db.Text
+  // Retorno seguro exibido ao vendedor. A apuração técnica fica somente nos campos internos abaixo.
+  sellerResponse       String?   @db.Text
+  investigationStatus  String    @default("PENDING") // PENDING | INVESTIGATING | RESOLVED | NEEDS_DOUGLAS
+  investigationSummary String?   @db.Text
+  investigatedAt      DateTime?
+  sellerNotifiedAt    DateTime?
   reviewedById    String?
   reviewedBy      User?     @relation("internalRequestReviewer", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
