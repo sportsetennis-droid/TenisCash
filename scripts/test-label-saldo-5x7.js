@@ -25,10 +25,10 @@ async function main() {
   assert.equal(template.layoutConfig.duplexBinding, 'long-edge');
   assert.equal(template.layoutConfig.labelsPerProduct, 1);
   assert.deepEqual(template.layoutConfig.sides, { front: 'saldo', back: 'saldo' });
-  assert.equal(template.layoutConfig.saldoRepeatColumns, 3);
-  assert.equal(template.layoutConfig.saldoRepeatRows, 10);
-  assert.equal(template.layoutConfig.saldoFontSize, 8.5);
-  assert.equal(template.layoutConfig.labelDesign, 'saldo-5x7-repeated-v2');
+  assert.equal(template.layoutConfig.saldoRepeatColumns, 2);
+  assert.equal(template.layoutConfig.saldoRepeatRows, 5);
+  assert.equal(template.layoutConfig.saldoFontSize, 14);
+  assert.equal(template.layoutConfig.labelDesign, 'saldo-5x7-repeated-v3');
   assert.equal(isSaldoTemplate(template), true);
 
   const items = Array.from({ length: 16 }, () => ({ quantity: 1 }));

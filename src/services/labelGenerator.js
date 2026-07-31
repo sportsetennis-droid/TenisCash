@@ -208,10 +208,10 @@ function defaultTemplates() {
           front: 'saldo',
           back: 'saldo',
         },
-        saldoRepeatColumns: 3,
-        saldoRepeatRows: 10,
-        saldoFontSize: 8.5,
-        labelDesign: 'saldo-5x7-repeated-v2',
+        saldoRepeatColumns: 2,
+        saldoRepeatRows: 5,
+        saldoFontSize: 14,
+        labelDesign: 'saldo-5x7-repeated-v3',
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
       },
@@ -1158,11 +1158,11 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
 function drawSaldoLabel(doc, item, template, x, y, w, h) {
   const orange = template?.layoutConfig?.backgroundHex || '#E5571E';
   const font = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
-  const columns = Math.max(1, Number(template?.layoutConfig?.saldoRepeatColumns || 3));
-  const rows = Math.max(1, Number(template?.layoutConfig?.saldoRepeatRows || 10));
+  const columns = Math.max(1, Number(template?.layoutConfig?.saldoRepeatColumns || 2));
+  const rows = Math.max(1, Number(template?.layoutConfig?.saldoRepeatRows || 5));
   const cellW = w / columns;
   const cellH = h / rows;
-  const fontSize = Number(template?.layoutConfig?.saldoFontSize || 8.5);
+  const fontSize = Number(template?.layoutConfig?.saldoFontSize || 14);
   doc.rect(x, y, w, h).fillColor(orange).fill();
   doc.font(font).fontSize(fontSize).fillColor('#FFFFFF');
   for (let row = 0; row < rows; row += 1) {
