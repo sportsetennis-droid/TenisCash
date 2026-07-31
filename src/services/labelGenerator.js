@@ -217,6 +217,7 @@ function defaultTemplates() {
         saldoFontSize: 14,
         labelDesign: 'saldo-5x7-repeated-v3',
         cutMarksOnBothSides: true,
+        cutContourEachLabel: true,
         backgroundCmyk: { c: 0, m: 80, y: 100, k: 0 },
         backgroundHex: '#E5571E',
       },
@@ -1267,6 +1268,44 @@ function drawFourSideCutMarks(doc, template, geometry) {
   doc.restore();
 }
 
+function drawLabelCutContours(doc, geometry) {
+  const {
+    labelW,
+    labelH,
+    gapX,
+    gapY,
+    marginX,
+    marginY,
+    cols,
+    rows,
+  } = geometry;
+  const gridRight = marginX + cols * labelW + Math.max(0, cols - 1) * gapX;
+  const gridBottom = marginY + rows * labelH + Math.max(0, rows - 1) * gapY;
+  const verticalCuts = [];
+  const horizontalCuts = [];
+  for (let col = 0; col < cols; col += 1) {
+    verticalCuts.push(marginX + col * (labelW + gapX));
+    verticalCuts.push(marginX + col * (labelW + gapX) + labelW);
+  }
+  for (let row = 0; row < rows; row += 1) {
+    horizontalCuts.push(marginY + row * (labelH + gapY));
+    horizontalCuts.push(marginY + row * (labelH + gapY) + labelH);
+  }
+  const uniqueVerticalCuts = [...new Set(verticalCuts.map((value) => Number(value.toFixed(3))))];
+  const uniqueHorizontalCuts = [...new Set(horizontalCuts.map((value) => Number(value.toFixed(3))))];
+
+  // Linhas finas e escuras formam o contorno completo de cada etiqueta 5x7.
+  // A grade aparece sobre a arte nos dois lados e indica exatamente onde cortar.
+  doc.save().strokeColor('#8A2B0A').lineWidth(mm(0.18)).lineCap('butt');
+  uniqueVerticalCuts.forEach((x) => {
+    doc.moveTo(x, marginY).lineTo(x, gridBottom).stroke();
+  });
+  uniqueHorizontalCuts.forEach((y) => {
+    doc.moveTo(marginX, y).lineTo(gridRight, y).stroke();
+  });
+  doc.restore();
+}
+
 function drawLabelContent(doc, item, template, x, y, w, h) {
   const t = template;
   // Detecta o layout horizontal S&T atual e os formatos legados para PDFs antigos.
@@ -1521,7 +1560,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
     const cutMarksOnThisSide = pageSide !== 'back'
       || t.layoutConfig?.cutMarksOnBothSides === true;
     if ((productDuplex || saldo) && cutMarksOnThisSide) {
-      drawFourSideCutMarks(doc, t, {
+      const cutGeometry = {
         labelW,
         labelH,
         gapX,
@@ -1530,7 +1569,11 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
         marginY,
         cols,
         rows,
-      });
+      };
+      drawFourSideCutMarks(doc, t, cutGeometry);
+      if (saldo && t.layoutConfig?.cutContourEachLabel === true) {
+        drawLabelCutContours(doc, cutGeometry);
+      }
     }
   }
 

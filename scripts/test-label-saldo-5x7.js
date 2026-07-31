@@ -30,6 +30,7 @@ async function main() {
   assert.equal(template.layoutConfig.saldoFontSize, 14);
   assert.equal(template.layoutConfig.labelDesign, 'saldo-5x7-repeated-v3');
   assert.equal(template.layoutConfig.cutMarksOnBothSides, true);
+  assert.equal(template.layoutConfig.cutContourEachLabel, true);
   assert.equal(isSaldoTemplate(template), true);
 
   const items = Array.from({ length: 16 }, () => ({ quantity: 1 }));
