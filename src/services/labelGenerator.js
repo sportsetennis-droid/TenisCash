@@ -176,13 +176,15 @@ function defaultTemplates() {
         backLayout: 'store-and-codes',
         labelsPerProduct: 1,
         sides: {
-          front: 'brand-product-price-payment-warranty',
+          front: 'brand-product-price-warranty',
           back: 'store-barcode-qr',
         },
         labelDesign: 'single-product-v1',
         backgroundCmyk: FOUR_SIDE_ORANGE_CMYK,
         backgroundHex: FOUR_SIDE_ORANGE,
-        backBleedMm: FOUR_SIDE_BACK_BLEED_MM,
+        // Sangria adicional no verso absorve a tolerância mecânica do duplex
+        // sem expor bordas brancas depois do corte.
+        backBleedMm: 4.5,
       },
     },
     a4_16_5x7_saldo: {
@@ -917,7 +919,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 }
 
 // Etiqueta 5x7 em uma unica peca fisica por produto.
-// Frente: marca, descricao, preco, pagamento e garantia.
+// Frente: marca, descricao, preco e garantia.
 // Verso: loja, codigo de barras e QR Code.
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   const CREAM = '#F6F0E5';
@@ -943,21 +945,13 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const brandTop = y + mm(10.8);
     const brandBottom = y + mm(22.4);
     doc.save();
-    doc.fillColor(CHARCOAL)
+    doc.fillColor(ORANGE)
       .polygon(
         [x, brandTop],
         [x + w, brandTop],
         [x + w, brandBottom - mm(2.2)],
         [x + w - mm(8), brandBottom],
         [x, brandBottom],
-      )
-      .fill();
-    doc.fillColor(ORANGE)
-      .polygon(
-        [x + w - mm(7.5), brandTop],
-        [x + w, brandTop],
-        [x + w, brandBottom - mm(2.2)],
-        [x + w - mm(3.4), brandBottom - mm(1.25)],
       )
       .fill();
     doc.restore();
@@ -989,8 +983,12 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const descriptionH = mm(12.4);
     const descriptionFitH = descriptionH - mm(0.8);
     const productWords = productName.split(/\s+/).filter(Boolean);
+    const requiredPrefixWords = Math.min(
+      productWords.length,
+      1 + String(item.brand || '').trim().split(/\s+/).filter(Boolean).length,
+    );
     doc.font(FONT_BOLD).fontSize(8);
-    while (productWords.length > 2 && doc.heightOfString(productWords.join(' '), {
+    while (productWords.length > Math.max(2, requiredPrefixWords) && doc.heightOfString(productWords.join(' '), {
       width: innerW,
       align: 'left',
       lineGap: -0.4,
@@ -1090,27 +1088,18 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       }
     }
 
-    const paymentText = String(item.paymentTerms || 'PIX, DINHEIRO OU CARTÃO').toUpperCase();
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
-      .moveTo(x + pad, y + mm(59.8))
-      .lineTo(x + w - pad, y + mm(59.8))
+      .moveTo(x + pad, y + mm(60.8))
+      .lineTo(x + w - pad, y + mm(60.8))
       .stroke().restore();
 
-    const paymentFs = fitSingleLine(paymentText, FONT_BOLD, 6.4, 5.2);
-    doc.font(FONT_BOLD).fontSize(paymentFs).fillColor(CHARCOAL)
-      .text(paymentText, x + pad, y + mm(61), {
-        width: innerW,
-        height: mm(3.8),
-        lineBreak: false,
-      });
-
     doc.save().fillColor(ORANGE)
-      .rect(x + pad, y + mm(65.4), mm(0.75), mm(3.1))
+      .rect(x + pad, y + mm(63.2), mm(0.75), mm(3.1))
       .fill().restore();
     const warrantyFs = fitSingleLine(warrantyText, FONT_BOLD, 6.4, 5.1, innerW - mm(2.2));
     doc.font(FONT_BOLD).fontSize(warrantyFs).fillColor(CHARCOAL)
-      .text(warrantyText, x + pad + mm(2.2), y + mm(65.25), {
+      .text(warrantyText, x + pad + mm(2.2), y + mm(63.05), {
         width: innerW - mm(2.2),
         height: mm(3.8),
         lineBreak: false,

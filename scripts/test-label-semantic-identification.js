@@ -61,7 +61,7 @@ const cases = [
       classification: { type: 'Outro', modality: 'Meia', tier: 'Básica' },
     },
     reference: '5650',
-    description: 'MEIA DE USO COMUM CANO CURTO',
+    description: 'MEIA ACTVITTA DE USO COMUM CANO CURTO',
     style: 'ACESSÓRIO ESPORTIVO',
   },
   {
@@ -77,7 +77,7 @@ const cases = [
       classification: { modality: 'Bermuda', tier: 'Texturizada Leopard' },
     },
     reference: '04843',
-    description: 'BERMUDA',
+    description: 'BERMUDA BODY FOR SURE',
     style: 'ROUPA ESPORTIVA',
   },
   {
@@ -92,7 +92,7 @@ const cases = [
       classification: { modality: 'Camiseta', tier: 'Básica' },
     },
     reference: '2442',
-    description: 'CAMISETA BIG LOG',
+    description: 'CAMISETA ADIDAS BIG LOG',
     style: 'ROUPA ESPORTIVA',
   },
   {
@@ -106,8 +106,8 @@ const cases = [
       classification: { modality: 'Estilo de Vida', tier: 'Casual' },
     },
     reference: '',
-    description: 'DIADORA PLAYMAKER',
-    style: 'CALÇADO ESPORTIVO',
+    description: 'TÊNIS DIADORA PLAYMAKER',
+    style: 'TÊNIS',
   },
   {
     product: {
@@ -121,8 +121,8 @@ const cases = [
       classification: { type: 'Outro', modality: 'Sandália', tier: 'Básica' },
     },
     reference: 'HU0001C0009',
-    description: 'SANDALIA HURLEY ONE E ONLY DENIM',
-    style: 'CALÇADO ESPORTIVO',
+    description: 'SANDÁLIA HURLEY ONE E ONLY DENIM',
+    style: 'SANDÁLIA',
   },
   {
     product: {
@@ -135,8 +135,8 @@ const cases = [
       classification: {},
     },
     reference: 'GW1988',
-    description: 'ADIDAS TENIS TENSAUR SPORT 2.0',
-    style: 'CALÇADO ESPORTIVO',
+    description: 'TÊNIS ADIDAS TENSAUR SPORT 2.0',
+    style: 'TÊNIS',
   },
   {
     product: {
@@ -167,8 +167,26 @@ for (const testCase of cases) {
 
   assert.equal(description, testCase.description);
   assert.equal(style, testCase.style);
+  const requiredPrefix = `${labels.labelProductType(testCase.product, testCase.product.name)} ${testCase.product.brand}`
+    .toLocaleUpperCase('pt-BR');
+  assert.ok(description.startsWith(requiredPrefix), `${description} deve começar com ${requiredPrefix}`);
+  assert.ok(
+    labels.labelProductName(testCase.product, testCase.product.name).startsWith(requiredPrefix),
+    `labelProductName também deve começar com ${requiredPrefix}`,
+  );
   assert.doesNotMatch(description, /\b(?:tam|tamanho)\b/i);
+  assert.doesNotMatch(description, /\bcal[cç]ados?\s+esportiv[oa]s?\b/i);
+  assert.doesNotMatch(style, /\bcal[cç]ados?\s+esportiv[oa]s?\b/i);
 }
+
+const legacyFootwear = {
+  name: ['TENIS', 'CALCADO', 'ESPORTIVO', 'MIZ.WAVE ENDEAVOR 3 ROSA46'].join(' '),
+  brand: 'MIZUNO',
+  category: 'Tênis',
+};
+const legacyDescription = labels.labelProductDescription(legacyFootwear, legacyFootwear.name);
+assert.match(legacyDescription, /^TÊNIS MIZUNO\b/);
+assert.doesNotMatch(legacyDescription, /\bcal[cç]ados?\s+esportiv[oa]s?\b/i);
 
 assert.deepEqual(
   [

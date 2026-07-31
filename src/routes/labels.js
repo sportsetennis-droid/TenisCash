@@ -21,7 +21,6 @@ router.use(adminMiddleware);
 
 const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
 const LABEL_PROMOTION_FACTOR = 0.70;
-const LABEL_PAYMENT_TERMS = 'PIX, DINHEIRO OU CARTÃO';
 const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL E GARANTIA.';
 const INVALID_LABEL_BRAND = 'A DEFINIR';
 const UMBRO_MOTIVATION_PHRASES = {
@@ -87,7 +86,7 @@ function isConverseBrand(value) {
 // classificados como "TÃªnis". O nome do item tem prioridade para impedir
 // que a etiqueta chame uma joelheira, luva ou outro acessÃ³rio de tÃªnis.
 const NON_FOOTWEAR_NAME_PATTERN = /\b(?:joelheira|cotoveleira|munhequeira|tornozeleira|caneleira|protetor(?:es)?|meia(?:s)?|luva(?:s)?|bola(?:s)?|mochila(?:s)?|bolsa(?:s)?|garrafa(?:s)?|squeeze|faixa(?:s)?|bandagem(?:s)?|chaveiro(?:s)?|bone|viseira(?:s)?|carteira(?:s)?|necessaire(?:s)?|sacola(?:s)?|acessorio(?:s)?)\b/;
-const FOOTWEAR_NAME_PATTERN = /\b(?:tenis|sapat[eê]nis|chuteira(?:s)?|sapatilha(?:s)?|sandalia(?:s)?|bota(?:s)?|calcado(?:s)?)\b/;
+const FOOTWEAR_NAME_PATTERN = /\b(?:tenis|sapatenis|sapato(?:s)?|chuteira(?:s)?|sapatilha(?:s)?|sandalia(?:s)?|bota(?:s)?|chinelo(?:s)?|slide(?:s)?|tamanco(?:s)?|mule(?:s)?|calcado(?:s)?)\b/;
 const FOOTWEAR_CATEGORY_PATTERN = /\b(?:tenis|chuteiras?|calcados?|footwear|shoes?)\b/;
 
 function isTennisProduct(product) {
@@ -116,10 +115,14 @@ function footwearType(product) {
   const fields = [product?.name, product?.category, product?.subcategory, productClassification(product).type, productClassification(product).modality]
     .map(normalizeLabelText)
     .filter(Boolean);
-  if (fields.some((value) => /\bchuteira\b/.test(value))) return 'Chuteira';
-  if (fields.some((value) => /\bsapatilha\b/.test(value))) return 'Sapatilha';
-  if (fields.some((value) => /\bsandalia\b/.test(value))) return 'Sandália';
-  if (fields.some((value) => /\bbota\b/.test(value))) return 'Bota';
+  if (fields.some((value) => /\bchuteiras?\b/.test(value))) return 'Chuteira';
+  if (fields.some((value) => /\bsapatilhas?\b/.test(value))) return 'Sapatilha';
+  if (fields.some((value) => /\bsandalias?\b/.test(value))) return 'Sandália';
+  if (fields.some((value) => /\bchinelos?\b|\bslides?\b/.test(value))) return 'Chinelo';
+  if (fields.some((value) => /\bsapatos?\b|\bsapatenis\b/.test(value))) return 'Sapato';
+  if (fields.some((value) => /\btamancos?\b/.test(value))) return 'Tamanco';
+  if (fields.some((value) => /\bmules?\b/.test(value))) return 'Mule';
+  if (fields.some((value) => /\bbotas?\b/.test(value))) return 'Bota';
   return 'Tênis';
 }
 
@@ -160,6 +163,7 @@ const CLOTHING_TYPES = [
   ['macaquinho', 'Macaquinho'],
   ['macacao', 'Macacão'],
   ['conjunto', 'Conjunto'],
+  ['conj', 'Conjunto'],
   ['cropped', 'Cropped'],
   ['vestido', 'Vestido'],
   ['short', 'Short'],
@@ -200,10 +204,13 @@ const NON_FOOTWEAR_TYPE_RULES = [
   ['viseira', 'Viseira'],
   ['touca', 'Touca'],
   ['oculos', 'Óculos'],
+  ['oc', 'Óculos'],
   ['carteira', 'Carteira'],
   ['necessaire', 'Nécessaire'],
   ['sacola', 'Sacola'],
   ['pochete', 'Pochete'],
+  ['palmilha', 'Palmilha'],
+  ['kit', 'Kit'],
   ['corda', 'Corda'],
   ['halter', 'Halter'],
   ['kettlebell', 'Kettlebell'],
@@ -222,6 +229,12 @@ function typeFieldMatches(field, needle) {
   return new RegExp(`\\b${escaped}${plural}\\b`).test(field);
 }
 
+function typeFieldIndex(field, needle) {
+  const escaped = String(needle || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const plural = String(needle || '').includes(' ') ? '' : 's?';
+  return String(field || '').search(new RegExp(`\\b${escaped}${plural}\\b`));
+}
+
 function clothingType(product, source) {
   const fields = [source, product?.category, product?.subcategory].map(normalizeLabelText).filter(Boolean);
   for (const [needle, label] of CLOTHING_TYPES) {
@@ -231,19 +244,38 @@ function clothingType(product, source) {
 }
 
 function productType(product, source = '') {
+  const classification = productClassification(product);
   const fields = [
     source,
     product?.name,
     product?.subcategory,
     product?.category,
-    productClassification(product).modality,
+    classification.type,
+    classification.modality,
   ].map(normalizeLabelText).filter(Boolean);
-  const clothing = clothingType(product, source || product?.name || '');
-  if (clothing) return clothing;
-  for (const [needle, label] of NON_FOOTWEAR_TYPE_RULES) {
-    if (fields.some((field) => typeFieldMatches(field, needle))) return { needle, label };
+  const rules = [...CLOTHING_TYPES, ...NON_FOOTWEAR_TYPE_RULES];
+  for (const field of fields) {
+    const matches = rules
+      .map(([needle, label]) => ({ needle, label, index: typeFieldIndex(field, needle) }))
+      .filter((match) => match.index >= 0)
+      .sort((left, right) => left.index - right.index || right.needle.length - left.needle.length);
+    if (matches.length) {
+      const { needle, label } = matches[0];
+      return { needle, label };
+    }
   }
   return null;
+}
+
+function labelProductType(product, source = '') {
+  if (isTennisProduct(product)) return footwearType(product);
+  const typed = productType(product, source || product?.name || '');
+  if (typed?.label) return typed.label;
+
+  const category = normalizeLabelText(product?.category);
+  if (/\b(?:roupas?|vestuario|apparel)\b/.test(category)) return 'Roupa';
+  if (/\b(?:acessorios?|accessories)\b/.test(category)) return 'Acessório';
+  return 'Produto';
 }
 
 function stripLeadingCatalogGender(value) {
@@ -299,43 +331,7 @@ function labelClothingName(product, source) {
 }
 
 function labelProductName(product, fallback = '') {
-  const source = String(product?.name || fallback || '').trim();
-  const brand = String(product?.brand || '').trim();
-  const clothingName = labelClothingName(product, source);
-  const typedName = productType(product, source);
-  const converseTennis = isConverseBrand(product?.brand)
-    && (isTennisProduct(product) || /all[\s-]*star|chuck[\s-]*taylor|star[\s-]*player/i.test(source));
-  if (clothingName && !converseTennis) return clothingName;
-  if (typedName && !converseTennis) return labelTypedNonFootwearName(product, source, typedName);
-  if (!isConverseBrand(product?.brand) && !isTennisProduct(product)) {
-    return typedName ? labelTypedNonFootwearName(product, source, typedName) : source;
-  }
-  if (!isConverseBrand(product?.brand)) {
-    const typeLabel = footwearType(product);
-    const modality = typeLabel === 'Chuteira' ? footwearModality(product, source) : '';
-    // A etiqueta começa com o tipo correto e a marca. Removemos
-    // prefixos que já possam existir no cadastro para não duplicá-los.
-    let description = source
-      .replace(/^(?:t[eê]nis|chuteira|sapatilha|sand[aá]lia|bota)\s+/i, '')
-      .trim();
-    if (brand) {
-      const brandPattern = new RegExp(`^${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s-]*`, 'i');
-      description = description.replace(brandPattern, '').trim();
-    }
-    if (modality) {
-      const modalityPattern = new RegExp(`\\b${modality}\\b`, 'i');
-      description = description.replace(modalityPattern, '').replace(/\s+/g, ' ').trim();
-    }
-    return [typeLabel, brand, modality, description].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  }
-  const normalized = source
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  if (/all[\s-]*star|chuck[\s-]*taylor/.test(normalized)) {
-    return 'TÊNIS ALL STAR CHUCK TAYLOR CONVERSE';
-  }
-  return 'TÊNIS CONVERSE STAR PLAYER';
+  return labelProductDescription(product, fallback);
 }
 
 function labelDescriptionWords(value) {
@@ -352,6 +348,55 @@ function dedupeLabelWords(words) {
     seen.add(normalized);
     return true;
   });
+}
+
+function removeLabelPhrase(words, phrase) {
+  const phraseWords = labelDescriptionWords(phrase).map(normalizeLabelText).filter(Boolean);
+  if (!phraseWords.length) return words;
+  const result = [];
+  for (let index = 0; index < words.length;) {
+    const candidate = words
+      .slice(index, index + phraseWords.length)
+      .map(normalizeLabelText);
+    if (candidate.length === phraseWords.length
+      && candidate.every((word, offset) => word === phraseWords[offset])) {
+      index += phraseWords.length;
+    } else {
+      result.push(words[index]);
+      index += 1;
+    }
+  }
+  return result;
+}
+
+function orderedLabelDescription(product, sourceWords) {
+  const brand = String(product?.brand || '').trim();
+  const type = labelProductType(product, product?.name || sourceWords.join(' '));
+  const detectedType = isTennisProduct(product)
+    ? null
+    : productType(product, product?.name || sourceWords.join(' '));
+  let detailWords = [...sourceWords];
+
+  // O cabeçalho textual tem uma ordem única: tipo, marca e detalhes do modelo.
+  // Qualquer ocorrência antiga desses prefixos é retirada antes da remontagem.
+  for (const phrase of [type, detectedType?.needle, brand]) {
+    detailWords = removeLabelPhrase(detailWords, phrase);
+  }
+  detailWords = detailWords.filter((word) => {
+    const normalized = normalizeLabelText(word);
+    return !/^(?:calcado|calcados|esportivo|esportiva|esportivos|esportivas)$/.test(normalized);
+  });
+  if (normalizeLabelText(type) === 'oculos') {
+    detailWords = detailWords.filter((word) => !/^oc$/i.test(normalizeLabelText(word)));
+  }
+
+  return [type, brand, ...detailWords]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b(\d)\s+(\d)\b/g, '$1.$2')
+    .trim()
+    .toLocaleUpperCase('pt-BR');
 }
 
 function stripLabelSizeSuffix(value) {
@@ -460,11 +505,12 @@ function labelProductDescription(product, fallback = '', reference = '', categor
     return !/^(?:unissex|unisex|feminino|feminina|fem|masculino|masculina|masc|homem|mulher|men|women|infantil|inf)$/i.test(normalized);
   }));
 
-  const description = cleanedWords.join(' ')
+  const cleanedDescription = cleanedWords.join(' ')
     // Preserva números comerciais como 2.0, sem deixá-los parecer uma grade.
     .replace(/\b(\d)\s+(\d)\b/g, '$1.$2')
     .trim();
-  if (!description) return 'MODELO ESPORTIVO';
+  const description = orderedLabelDescription(product, labelDescriptionWords(cleanedDescription));
+  if (!description) return 'PRODUTO';
   if (description.length <= 60) return description;
   const compact = [];
   for (const word of description.split(/\s+/)) {
@@ -566,14 +612,14 @@ function labelStyle(product, classification = {}) {
     const footwear = normalizeLabelText(footwearType(product));
     const modality = footwearModality(product, product?.name || '');
     if (footwear === 'chuteira' && modality) return modality.toUpperCase();
-    return 'CALÇADO ESPORTIVO';
+    return footwearType(product).toUpperCase();
   }
   if (clothing) return 'ROUPA ESPORTIVA';
   if (type) {
     if (/^(?:joelheira|cotoveleira|munhequeira|tornozeleira|caneleira|protetor)$/i.test(type.needle)) {
       return 'PROTEÇÃO ESPORTIVA';
     }
-    if (/^(?:bola|raquete|rede|cone|halter|kettlebell|colchonete)$/i.test(type.needle)) {
+    if (/^(?:bola|raquete|rede|cone|bomba|halter|kettlebell|colchonete)$/i.test(type.needle)) {
       return 'EQUIPAMENTO ESPORTIVO';
     }
     return 'ACESSÓRIO ESPORTIVO';
@@ -966,7 +1012,6 @@ router.get('/batches/:id/pdf', async (req, res) => {
         price,
         promotionalPrice,
         promotionText: LABEL_PROMOTION_TEXT,
-        paymentTerms: LABEL_PAYMENT_TERMS,
         guaranteeText: LABEL_GUARANTEE_TEXT,
         motivationText,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
@@ -1239,5 +1284,6 @@ router.labelProductDescription = labelProductDescription;
 router.labelMotivationText = labelMotivationText;
 router.labelStyle = labelStyle;
 router.productType = productType;
+router.labelProductType = labelProductType;
 router.normalizeLabelAvailableSize = normalizeLabelAvailableSize;
 module.exports = router;

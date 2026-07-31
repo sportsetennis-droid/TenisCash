@@ -25,7 +25,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, v, i, a) => {
 }, []));
 const DRY = args.dry || (!args.apply);
 
-// Marcas cujo catálogo é dominantemente CALÇADO esportivo → default categoria Tênis
+// Marcas cujo catálogo é dominantemente de tênis → default categoria Tênis
 const FOOTWEAR_BRANDS = new Set([
   'SKECHERS', 'DIADORA', 'REEBOK', 'SALOMON', 'ASICS', 'MIZUNO', 'OLYMPIKUS',
   'OAKLEY', 'NIKE', 'PUMA', 'ADIDAS', 'NEW BALANCE', 'UNDER ARMOUR', 'FILA',

@@ -17,8 +17,9 @@ async function main() {
   assert.equal(isProductDuplexTemplate(template), true);
   assert.equal(isSingleProductDuplexTemplate(template), true);
   assert.equal(template.layoutConfig.labelsPerProduct, 1);
-  assert.equal(template.layoutConfig.sides.front, 'brand-product-price-payment-warranty');
+  assert.equal(template.layoutConfig.sides.front, 'brand-product-price-warranty');
   assert.equal(template.layoutConfig.sides.back, 'store-barcode-qr');
+  assert.equal(template.layoutConfig.backBleedMm, 4.5);
 
   const logoSvg = fs.readFileSync(
     path.join(__dirname, '..', 'assets', 'logos', 'brands', 'umbro.svg'),
@@ -39,7 +40,6 @@ async function main() {
       price: 50.27,
       promotionalPrice: 35.19,
       promotionText: 'Garanta 30% de Desconto levando três produtos da loja.',
-      paymentTerms: 'PIX, DINHEIRO OU CARTÃO',
       guaranteeText: 'PRODUTO ORIGINAL E GARANTIA.',
       internalBarcode: '2066231773937',
       qrCodeValue: 'https://www.teniscash.com.br/p/teste',

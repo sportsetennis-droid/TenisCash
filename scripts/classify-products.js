@@ -75,7 +75,7 @@ Você RECEBE um produto e DEVOLVE um JSON com a classificação na árvore abaix
 ${TREE}
 
 REGRAS:
-1. Se for tênis ou calçado esportivo NÃO chuteira → type="Tênis"
+1. Se for tênis e NÃO for chuteira → type="Tênis"
 2. Se for chuteira (futebol/futsal/society/campo) → type="Chuteira"
 3. Se for outra coisa (camiseta, bermuda, meia, bone, mochila, bola etc) → type="Outro" e gender/modality/tier=null
 4. Pra Tênis: SEMPRE preencher gender. Se for adulto e indistinto, usar "Masculino" como default mais conservador, MAS prefira identificar por palavras-chave (femin, masc, infantil, kids)
