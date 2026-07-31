@@ -195,9 +195,9 @@ function defaultTemplates() {
         // Mantem os indicadores externos longe da borda da etiqueta para que
         // nao sobrem dois riscos nos cantos superiores depois do corte.
         cutMarkSafeGapMm: 4,
-        // O laranja do verso chega ate a borda superior da folha. Isso elimina
-        // a transicao de tinta que a impressora reproduzia como duas linhas.
-        backTopBleedToPageEdge: true,
+        // O verso usa um unico fundo A4, sem emendas entre as 16 etiquetas.
+        // Isso evita que o driver revele bordas de retangulos sobrepostos.
+        backFullPageBackground: true,
       },
     },
     a4_16_5x7_saldo: {
@@ -1529,17 +1529,17 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
         : FOUR_SIDE_FRONT_BLEED_MM;
       const bleed = mm(bleedMm);
       doc.save().fillColor(background);
-      pageItems.forEach((item, slot) => {
-        const { x, y } = slotPosition(slot);
-        const rawRow = Math.floor(slot / cols);
-        const extendBackToTopEdge = singleDuplex
-          && pageSide === 'back'
-          && rawRow === 0
-          && t.layoutConfig?.backTopBleedToPageEdge !== false;
-        const backgroundTop = extendBackToTopEdge ? 0 : y - bleed;
-        const backgroundBottom = y + labelH + bleed;
-        doc.rect(x - bleed, backgroundTop, labelW + bleed * 2, backgroundBottom - backgroundTop);
-      });
+      const fullPageBack = singleDuplex
+        && pageSide === 'back'
+        && t.layoutConfig?.backFullPageBackground !== false;
+      if (fullPageBack) {
+        doc.rect(0, 0, doc.page.width, doc.page.height);
+      } else {
+        pageItems.forEach((item, slot) => {
+          const { x, y } = slotPosition(slot);
+          doc.rect(x - bleed, y - bleed, labelW + bleed * 2, labelH + bleed * 2);
+        });
+      }
       doc.fill();
       doc.restore();
     }
