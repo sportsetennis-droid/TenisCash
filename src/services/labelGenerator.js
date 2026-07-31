@@ -192,6 +192,9 @@ function defaultTemplates() {
         // As marcas ficam apenas nas margens brancas. Cruzes sobre a arte
         // deixam pequenos riscos laranja visíveis quando o corte varia.
         cutMarksInsideArtwork: false,
+        // Mantem os indicadores externos longe da borda da etiqueta para que
+        // nao sobrem dois riscos nos cantos superiores depois do corte.
+        cutMarkSafeGapMm: 4,
       },
     },
     a4_16_5x7_saldo: {
@@ -1209,7 +1212,11 @@ function drawFourSideCutMarks(doc, template, geometry) {
   // Os traços ficam visíveis somente no papel branco, fora das etiquetas.
   // O comprimento maior facilita alinhar a régua/navalha pelos dois lados.
   const markLength = mm(5);
-  const edgeGap = mm(0.35);
+  const configuredSafeGapMm = Number(template?.layoutConfig?.cutMarkSafeGapMm);
+  const safeGapMm = Number.isFinite(configuredSafeGapMm)
+    ? configuredSafeGapMm
+    : (isSingleProductDuplexTemplate(template) ? 4 : 0.35);
+  const edgeGap = mm(safeGapMm);
   const pageW = doc.page.width;
   const pageH = doc.page.height;
 
