@@ -196,12 +196,10 @@ function defaultTemplates() {
         // corte sobravam 5 mm à esquerda e 2 mm à direita. Metade da diferença
         // (1,5 mm) é antecipada à esquerda para deixar 3,5 mm em cada lado.
         backPrintOffsetXMm: -1.5,
-        // As marcas ficam apenas nas margens brancas. Cruzes sobre a arte
-        // deixam pequenos riscos laranja visíveis quando o corte varia.
-        cutMarksInsideArtwork: false,
-        // Mantem os indicadores externos longe da borda da etiqueta para que
-        // nao sobrem dois riscos nos cantos superiores depois do corte.
-        cutMarkSafeGapMm: 4,
+        // Restaura o plano de corte implantado: cada encontro da grade recebe
+        // uma cruz, permitindo identificar os limites das 16 etiquetas.
+        cutMarksInsideArtwork: true,
+        cutMarkSafeGapMm: 0.35,
         // O verso usa um unico fundo, sem emendas entre as 16 etiquetas.
         // Isso evita que o driver revele bordas de retangulos sobrepostos.
         backFullPageBackground: true,
@@ -1232,10 +1230,13 @@ function drawFourSideCutMarks(doc, template, geometry) {
   // Os traços ficam visíveis somente no papel branco, fora das etiquetas.
   // O comprimento maior facilita alinhar a régua/navalha pelos dois lados.
   const markLength = mm(5);
+  const fixedSingleDuplexCutPlan = isSingleProductDuplexTemplate(template);
   const configuredSafeGapMm = Number(template?.layoutConfig?.cutMarkSafeGapMm);
-  const safeGapMm = Number.isFinite(configuredSafeGapMm)
+  const safeGapMm = fixedSingleDuplexCutPlan
+    ? 0.35
+    : Number.isFinite(configuredSafeGapMm)
     ? configuredSafeGapMm
-    : (isSingleProductDuplexTemplate(template) ? 4 : 0.35);
+    : 0.35;
   const edgeGap = mm(safeGapMm);
   const pageW = doc.page.width;
   const pageH = doc.page.height;
@@ -1285,7 +1286,9 @@ function drawFourSideCutMarks(doc, template, geometry) {
   // compartilhada pelas quatro etiquetas ao redor. Nao ha linhas longas
   // sobre a arte.
   const configuredInteriorMarks = template?.layoutConfig?.cutMarksInsideArtwork;
-  const includeInteriorMarks = configuredInteriorMarks == null
+  const includeInteriorMarks = fixedSingleDuplexCutPlan
+    ? true
+    : configuredInteriorMarks == null
     ? !isSingleProductDuplexTemplate(template)
     : configuredInteriorMarks === true;
   if (!includeInteriorMarks) return;

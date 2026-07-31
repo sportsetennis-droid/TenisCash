@@ -22,8 +22,8 @@ async function main() {
   assert.equal(template.layoutConfig.sides.back, 'store-barcode-qr');
   assert.equal(template.layoutConfig.backBleedMm, 4.5);
   assert.equal(template.layoutConfig.backPrintOffsetXMm, -1.5);
-  assert.equal(template.layoutConfig.cutMarksInsideArtwork, false);
-  assert.equal(template.layoutConfig.cutMarkSafeGapMm, 4);
+  assert.equal(template.layoutConfig.cutMarksInsideArtwork, true);
+  assert.equal(template.layoutConfig.cutMarkSafeGapMm, 0.35);
   assert.equal(template.layoutConfig.backFullPageBackground, true);
   assert.equal(template.layoutConfig.backBackgroundOverscanMm, 10);
   assert.equal(template.layoutConfig.backBackgroundStopsInOuterBleed, true);
@@ -80,6 +80,15 @@ async function main() {
   assert.ok(backPageStream, 'o fundo RGB rasterizado do verso deve existir');
   assert.doesNotMatch(backPageStream, /\/DeviceCMYK cs/);
   assert.doesNotMatch(backPageStream, /651\.972913 819\.212599 re/);
+
+  const frontPageStream = decodedStreams.find((stream) => stream.includes('0.510236 w'));
+  assert.ok(frontPageStream, 'o plano de corte da frente deve existir');
+  const cutMarkBlocks = [...frontPageStream.matchAll(/0\.510236 w([\s\S]*?)Q/g)];
+  const interiorCutStrokes = Math.max(
+    0,
+    ...cutMarkBlocks.map((match) => (match[1].match(/\nS\n/g) || []).length),
+  );
+  assert.equal(interiorCutStrokes, 50, 'as 25 intersecoes devem ter duas hastes cada');
 
   const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'etiqueta-5x7-frente-verso-teste.pdf');
   fs.mkdirSync(path.dirname(output), { recursive: true });
