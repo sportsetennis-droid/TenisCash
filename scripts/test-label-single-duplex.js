@@ -24,6 +24,7 @@ async function main() {
   assert.equal(template.layoutConfig.cutMarksInsideArtwork, false);
   assert.equal(template.layoutConfig.cutMarkSafeGapMm, 4);
   assert.equal(template.layoutConfig.backFullPageBackground, true);
+  assert.equal(template.layoutConfig.backBackgroundOverscanMm, 10);
 
   const logoSvg = fs.readFileSync(
     path.join(__dirname, '..', 'assets', 'logos', 'brands', 'umbro.svg'),

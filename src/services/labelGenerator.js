@@ -198,6 +198,9 @@ function defaultTemplates() {
         // O verso usa um unico fundo A4, sem emendas entre as 16 etiquetas.
         // Isso evita que o driver revele bordas de retangulos sobrepostos.
         backFullPageBackground: true,
+        // A borda real do retangulo fica fora da pagina e e recortada pelo PDF.
+        // Assim nenhum limite vetorial coincide com o topo impresso.
+        backBackgroundOverscanMm: 10,
       },
     },
     a4_16_5x7_saldo: {
@@ -1533,7 +1536,14 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
         && pageSide === 'back'
         && t.layoutConfig?.backFullPageBackground !== false;
       if (fullPageBack) {
-        doc.rect(0, 0, doc.page.width, doc.page.height);
+        const configuredOverscanMm = Number(t.layoutConfig?.backBackgroundOverscanMm);
+        const overscan = mm(Number.isFinite(configuredOverscanMm) ? configuredOverscanMm : 10);
+        doc.rect(
+          -overscan,
+          -overscan,
+          doc.page.width + overscan * 2,
+          doc.page.height + overscan * 2,
+        );
       } else {
         pageItems.forEach((item, slot) => {
           const { x, y } = slotPosition(slot);
