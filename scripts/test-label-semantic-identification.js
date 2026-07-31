@@ -231,15 +231,19 @@ assert.equal(
 );
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'VOLLO' }, { color: 'Cinza C/ Bomba' }),
-  'CINZA',
+  '',
 );
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'N1' }, { color: 'Cinza | Tam. G | Training' }),
-  'CINZA',
+  '',
 );
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'MUNICH' }, { color: 'Azul Tam' }),
-  'AZUL',
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'PENALTY' }, { color: 'Pt T' }),
+  '',
 );
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'SKECHERS' }, { color: 'WPK' }),
@@ -254,11 +258,42 @@ assert.equal(
   '',
 );
 assert.equal(
+  labels.labelProductColor({ name: 'Gel-Cumulus 27 Blue Fade/White', brand: 'ASICS' }, {}),
+  '',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'TENIS CK12510001 CHUCK TAYLOR LILAS VIOLETA/MENTA EXTRA/BRANCO 27', brand: 'CONVERSE' },
+    {},
+  ),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'SPO01 CHINELO SLIDE BRANCO/PRETO', brand: 'SPEEDO' }, {}),
+  'BRANCO/PRETO',
+);
+assert.equal(
   labels.labelProductColor({ name: 'TOP BASIC COLORS LATTE', brand: "LET'S GYM" }, { color: 'Latte' }),
   'Latte',
 );
 assert.equal(
   labels.labelProductColor({ name: 'BLUSA MANGA CURTA', brand: "LET'S GYM" }, { color: 'M/C' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'HOPE RESORT' }, { color: 'Bicolor Preto E' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'KAPPA' }, { color: 'Marinho M.' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'VISTHO' }, { color: 'Pvc' }),
+  '',
+);
+assert.equal(
+  labels.labelProductColor({ name: 'PRODUTO TESTE', brand: 'MORMAII' }, { color: 'NAVY/LIGHT' }),
   '',
 );
 assert.equal(
@@ -271,6 +306,20 @@ assert.equal(
 assert.equal(
   labels.labelProductColor({ name: 'POCHETE TRIATHLON PRETO G/GG', brand: 'HIDROLIGHT' }, { color: 'G/GG' }),
   'PRETO',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'CAMISETA PENALTY X PRETO T', brand: 'PENALTY' },
+    { color: 'Pt T' },
+  ),
+  'PRETO',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'CAMISETA EVERLAST BASIC PRETO/VERMELHO 38 REF 991', brand: 'EVERLAST' },
+    {},
+  ),
+  'PRETO/VERMELHO',
 );
 assert.equal(
   labels.labelProductColor({ name: 'BOLA REACT TF-250 FIBA - LRJ PTO', brand: 'SPALDING' }, { color: '250 Fiba' }),
@@ -287,6 +336,13 @@ assert.equal(
 assert.equal(
   labels.labelProductColor({ name: 'PRODUTO CORAL', brand: 'BROOKS' }, { color: 'Coral' }),
   'Coral',
+);
+assert.equal(
+  labels.labelProductColor(
+    { name: 'CAMISETA TESTE', brand: 'PUMA' },
+    { color: 'Azul', cor: 'Preto' },
+  ),
+  '',
 );
 
 assert.deepEqual(
@@ -313,6 +369,42 @@ assert.deepEqual(
     type: 'missing',
     short: 'DÚVIDA: SEM CADASTRO',
     detail: 'DÚVIDA: SEM COR NO CADASTRO',
+  },
+);
+assert.deepEqual(
+  labels.labelProductColorIssue(
+    { name: 'CAMISETA TESTE', brand: 'PUMA' },
+    { color: 'Azul', cor: 'Preto' },
+  ),
+  {
+    type: 'conflict',
+    colors: ['AZUL', 'PRETO'],
+    short: 'DÚVIDA: CORES DIVERGEM',
+    detail: 'DÚVIDA: CORES DIVERGENTES: AZUL / PRETO',
+  },
+);
+assert.deepEqual(
+  labels.labelProductColorIssue(
+    { name: 'PRODUTO TESTE', brand: 'HOPE RESORT' },
+    { color: 'Bicolor Preto E' },
+  ),
+  {
+    type: 'incomplete',
+    raw: 'Bicolor Preto E',
+    short: 'DÚVIDA: COR INCOMPLETA',
+    detail: 'DÚVIDA: COR INCOMPLETA: BICOLOR PRETO E',
+  },
+);
+assert.deepEqual(
+  labels.labelProductColorIssue(
+    { name: 'PRODUTO TESTE', brand: 'KAPPA' },
+    { color: 'Marinho M.' },
+  ),
+  {
+    type: 'mixed-size',
+    raw: 'Marinho M.',
+    short: 'DÚVIDA: COR COM TAMANHO',
+    detail: 'DÚVIDA: COR MISTURADA COM TAMANHO: MARINHO M.',
   },
 );
 assert.equal(

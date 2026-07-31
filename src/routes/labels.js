@@ -180,14 +180,27 @@ function labelProductColorCandidates(product, context = {}) {
   ];
 }
 
+function distinctStructuredLabelColors(product, context = {}) {
+  const colors = [];
+  const seen = new Set();
+  for (const candidate of labelProductColorCandidates(product, context)) {
+    const color = labelStructuredProductColor(product?.brand, candidate);
+    const key = normalizeLabelText(color).replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!color || seen.has(key)) continue;
+    seen.add(key);
+    colors.push(color);
+  }
+  return colors;
+}
+
 function labelProductColor(product, context = {}) {
   const candidates = labelProductColorCandidates(product, context);
-  let hadRejectedStructuredColor = false;
-  for (const candidate of candidates) {
-    const color = labelStructuredProductColor(product?.brand, candidate);
-    if (color) return color;
-    if (normalizeLabelColor(candidate)) hadRejectedStructuredColor = true;
-  }
+  const structuredColors = distinctStructuredLabelColors(product, context);
+  if (structuredColors.length === 1) return structuredColors[0];
+  // Duas fontes estruturadas divergentes formam uma dúvida real. O nome não
+  // pode ser usado para escolher silenciosamente uma delas.
+  if (structuredColors.length > 1) return '';
+  const hadRejectedStructuredColor = candidates.some((candidate) => normalizeLabelColor(candidate));
 
   // Alguns cadastros antigos guardam a cor apenas no nome, sempre depois do
   // campo explicito "COR". O limite impede capturar tamanho, referencia ou SKU.
@@ -195,7 +208,13 @@ function labelProductColor(product, context = {}) {
   const explicitColor = name.match(
     /\bCOR\b\s*:?\s*(.+?)(?=\s+\b(?:TAM(?:ANHO)?|REF|EAN|SKU)\b\s*:?\s*|[,;|]|$)/i,
   );
-  const explicitValue = extractCanonicalLabelColors(explicitColor?.[1]);
+  const explicitScope = explicitColor?.[1] || '';
+  const explicitParentheses = [...explicitScope.matchAll(/\(([^)]+)\)/g)]
+    .map((match) => extractCertainLabelColors(match[1]))
+    .filter(Boolean);
+  const explicitValue = explicitParentheses.length === 1
+    ? explicitParentheses[0]
+    : extractCertainLabelColors(explicitScope);
   return explicitValue || inferLabelColorFromName(product, { hadRejectedStructuredColor });
 }
 
@@ -206,6 +225,18 @@ function compactLabelColorIssueValue(value, limit = 20) {
 
 function labelProductColorIssue(product, context = {}) {
   if (labelProductColor(product, context)) return null;
+  const structuredColors = distinctStructuredLabelColors(product, context);
+  if (structuredColors.length > 1) {
+    const detail = structuredColors
+      .map((color) => compactLabelColorIssueValue(color, 16))
+      .join(' / ');
+    return {
+      type: 'conflict',
+      colors: structuredColors,
+      short: 'DÚVIDA: CORES DIVERGEM',
+      detail: `DÚVIDA: CORES DIVERGENTES: ${detail}`,
+    };
+  }
   const raw = labelProductColorCandidates(product, context)
     .map(normalizeLabelColor)
     .find(Boolean);
@@ -226,6 +257,8 @@ function labelProductColorIssue(product, context = {}) {
       detail: `DÚVIDA: ${compact} NÃO É COR`,
     };
   }
+  const specificDoubt = labelColorValueSpecificDoubt(raw, compact);
+  if (specificDoubt) return specificDoubt;
   return {
     type: 'unmapped',
     raw,
@@ -594,52 +627,114 @@ const SKECHERS_LABEL_COLORS = new Map(Object.entries({
 
 const INVALID_FREEFORM_LABEL_COLORS = new Set([
   'c c', 'eva borracha', 'fruit aop', 'g gg', 'm c', 'p m', 'varsity tf',
-  'borracha', '250 fiba',
+  'borracha', '250 fiba', 'pvc',
 ]);
 
 function isObviousNonColorLabelValue(value) {
   const normalized = normalizeLabelText(value).replace(/[^a-z0-9]+/g, ' ').trim();
   return INVALID_FREEFORM_LABEL_COLORS.has(normalized)
     || /^(?:pp|p|m|g|gg|xg|xgg|eg|egg)(?:\s+(?:pp|p|m|g|gg|xg|xgg|eg|egg))*$/i.test(normalized)
-    || /\b(?:tam|tamanho|training|musculacao|borracha|bomba|polegar|varsity|fiba)\b/i.test(normalized);
+    || /\b(?:tam|tamanho|training|musculacao|borracha|bomba|polegar|varsity|fiba|pvc)\b/i.test(normalized);
 }
 
-function extractCanonicalLabelColors(value) {
+const LABEL_COLOR_MODIFIERS = new Map(Object.entries({
+  claro: 'CLARO', clara: 'CLARO', light: 'CLARO',
+  escuro: 'ESCURO', escura: 'ESCURO', dark: 'ESCURO',
+  quartzo: 'QUARTZO',
+}));
+const LABEL_COLOR_CONNECTORS = new Set(['e', 'and', 'com', 'c']);
+
+// Uma leitura certa exige que todo o trecho seja composto por cores,
+// modificadores ou conectores. Nenhuma palavra desconhecida é ignorada.
+function extractCertainLabelColors(value, options = {}) {
   const words = labelDescriptionWords(value);
+  if (!words.length) return '';
   const colors = [];
+  let lastKind = 'start';
   for (let index = 0; index < words.length; index += 1) {
     const normalized = normalizeLabelText(words[index]);
     if (normalized === 'off' && normalizeLabelText(words[index + 1]) === 'white') {
       colors.push('OFF-WHITE');
+      lastKind = 'color';
       index += 1;
       continue;
     }
+    const withoutAttachedSize = options.allowAttachedSize && /\d{2,3}$/.test(normalized)
+      ? normalized.replace(/\d{2,3}$/g, '')
+      : normalized;
     const color = LABEL_COLOR_NAME_ALIASES.get(normalized)
-      || LABEL_COLOR_NAME_ALIASES.get(normalized.replace(/\d+$/g, ''));
+      || LABEL_COLOR_NAME_ALIASES.get(withoutAttachedSize);
     if (color) {
       colors.push(color);
+      lastKind = 'color';
       continue;
     }
-    const modifier = { claro: 'CLARO', clara: 'CLARO', escuro: 'ESCURO', escura: 'ESCURO', quartzo: 'QUARTZO' }[normalized];
-    if (modifier && colors.length) {
+    const modifier = LABEL_COLOR_MODIFIERS.get(normalized);
+    if (modifier && lastKind === 'color' && colors.length) {
       colors[colors.length - 1] = `${colors[colors.length - 1]} ${modifier}`;
+      lastKind = 'color';
+      continue;
     }
+    if (LABEL_COLOR_CONNECTORS.has(normalized) && lastKind === 'color' && index < words.length - 1) {
+      lastKind = 'connector';
+      continue;
+    }
+    return '';
   }
-  return colors.join('/');
+  return lastKind === 'color' ? colors.join('/') : '';
+}
+
+function extractTrailingCertainLabelColors(value) {
+  const words = labelDescriptionWords(value);
+  if (!words.length) return '';
+  let longest = '';
+  for (let start = words.length - 1; start >= 0; start -= 1) {
+    const candidate = extractCertainLabelColors(words.slice(start).join(' '), { allowAttachedSize: true });
+    if (candidate) longest = candidate;
+  }
+  return longest;
 }
 
 function cleanFreeformLabelColor(value) {
-  const color = normalizeLabelColor(value)
-    .replace(/\s*\|\s*TAM(?:ANHO)?\b.*$/i, '')
-    .replace(/\s+C\/\s+.*$/i, '')
-    .replace(/\s+\bTAM(?:ANHO)?\b\.?\s*:?.*$/i, '')
-    .replace(/\s+\bUNI(?:CO|CA)?\b.*$/i, '')
-    .replace(/\s+E$/i, '')
-    .trim();
+  const color = normalizeLabelColor(value);
   const normalized = normalizeLabelText(color).replace(/[^a-z0-9]+/g, ' ').trim();
-  if (!color || INVALID_FREEFORM_LABEL_COLORS.has(normalized)) return '';
+  if (!color || INVALID_FREEFORM_LABEL_COLORS.has(normalized) || isObviousNonColorLabelValue(color)) return '';
   if (/^(?:pp|p|m|g|gg|xg|xgg|eg|egg|\d+(?:[.,]\d+)?)$/i.test(color)) return '';
+  if (/\b(?:e|and|com|c|da|de|do)\s*$/i.test(normalized)) return '';
+  if (/\b(?:pp|p|m|g|gg|xg|xgg|eg|egg|u|uni)\.?\s*$/i.test(color)) return '';
+  if (color.split('/').some((part) => /^(?:light|dark|claro|clara|escuro|escura)$/i.test(part.trim()))) return '';
   return color;
+}
+
+function labelColorValueSpecificDoubt(value, compact = compactLabelColorIssueValue(value)) {
+  const color = normalizeLabelColor(value);
+  const normalized = normalizeLabelText(color).replace(/[^a-z0-9]+/g, ' ').trim();
+  if (/\b(?:e|and|com|c|da|de|do)\s*$/i.test(normalized)) {
+    return {
+      type: 'incomplete',
+      raw: color,
+      short: 'DÚVIDA: COR INCOMPLETA',
+      detail: `DÚVIDA: COR INCOMPLETA: ${compact}`,
+    };
+  }
+  if (/\b(?:pp|p|m|g|gg|xg|xgg|eg|egg|u|uni)\.?\s*$/i.test(color)
+    && labelDescriptionWords(color).length > 1) {
+    return {
+      type: 'mixed-size',
+      raw: color,
+      short: 'DÚVIDA: COR COM TAMANHO',
+      detail: `DÚVIDA: COR MISTURADA COM TAMANHO: ${compact}`,
+    };
+  }
+  if (color.split('/').some((part) => /^(?:light|dark|claro|clara|escuro|escura)$/i.test(part.trim()))) {
+    return {
+      type: 'orphan-modifier',
+      raw: color,
+      short: 'DÚVIDA: MODIFICADOR SEM COR',
+      detail: `DÚVIDA: MODIFICADOR SEM COR DEFINIDA: ${compact}`,
+    };
+  }
+  return null;
 }
 
 function labelStructuredProductColor(brand, value) {
@@ -649,43 +744,83 @@ function labelStructuredProductColor(brand, value) {
   if (key === 'skechers') return SKECHERS_LABEL_COLORS.get(color.toUpperCase()) || '';
   if (FREEFORM_LABEL_COLOR_BRANDS.has(key)) {
     const freeform = cleanFreeformLabelColor(color);
+    if (!freeform) return '';
     const codeParts = freeform.split(/[\s/-]+/).filter(Boolean);
     const looksLikeShortCodes = codeParts.length > 0
       && codeParts.every((part) => part.length <= 4 && part === part.toUpperCase());
-    return looksLikeShortCodes ? extractCanonicalLabelColors(freeform) : freeform;
+    return looksLikeShortCodes ? extractCertainLabelColors(freeform) : freeform;
   }
-  return extractCanonicalLabelColors(color);
+  return extractCertainLabelColors(color);
+}
+
+function exactLabelColorNameScope(product) {
+  const name = String(product?.name || '');
+  const key = brandSlug(product?.brand);
+  if (key === 'thigoline') return name.match(/["“”]([^"“”]+)["“”]/)?.[1] || null;
+  if (key === 'n1') return name.includes('|') ? (name.split('|')[1] || null) : null;
+  if (key === 'leader') return [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1] || null;
+  if (key === 'joma' || key === 'uhlsport') {
+    return [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1] || null;
+  }
+  if (key === 'umbro' || key === 'fila' || key === 'new-balance') {
+    return name.match(/-([^-]+)-[A-Z0-9.]+-Tam\b/i)?.[1] || null;
+  }
+  return null;
+}
+
+function labelColorNameWithoutNoise(product) {
+  const name = String(product?.name || '');
+  const key = brandSlug(product?.brand);
+  let cleaned = name
+    .replace(/\s+\d{1,3}\s+REF\.?\b.*$/i, '')
+    .replace(/\s+REF\.?\b.*$/i, '')
+    .replace(/(?:\s*[/|]\s*|\s+)TAM(?:ANHO)?\.?\s*:?\s*(?:\S+)?\s*$/i, '')
+    .replace(/\s+-\s*(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|UNI|\d{1,3}(?:[/-]\d{1,3})*)\s*$/i, '')
+    .replace(/\s+Tam(?:anho)?\.?\s*:?\s*\S*\s*$/i, '')
+    .replace(/\s+(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|UNI)(?:\s*[/|-]\s*(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|UNI))*\s*$/i, '')
+    .replace(/\s+\d{1,3}(?:[/-]\d{1,3})*\s*$/i, '')
+    .replace(/\s*-\s*$/, '')
+    .trim();
+  if (key === 'penalty') cleaned = cleaned.replace(/\s+T\s*$/i, '').trim();
+  return cleaned;
+}
+
+function rawLabelWordTail(value, count) {
+  const matches = [...String(value || '').matchAll(/[\p{L}\p{N}]+/gu)];
+  if (!matches.length) return '';
+  const start = matches[Math.max(0, matches.length - count)].index;
+  return String(value).slice(start);
 }
 
 function labelColorNameScope(product, options = {}) {
-  const name = String(product?.name || '');
   const key = brandSlug(product?.brand);
   if (!BRAND_NAME_COLOR_RULES.has(key)) return '';
   if (key === 'reebok' && !options.hadRejectedStructuredColor) return '';
 
-  if (key === 'thigoline') return name.match(/["“”]([^"“”]+)["“”]/)?.[1] || '';
-  if (key === 'n1') return name.split('|')[1] || '';
-  if (key === 'leader') return [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1] || '';
-  if (key === 'joma' || key === 'uhlsport') {
-    const parenthesized = [...name.matchAll(/\(([^)]+)\)/g)].at(-1)?.[1];
-    if (parenthesized) return parenthesized;
-  }
-  if (key === 'umbro' || key === 'fila' || key === 'new-balance') {
-    const delimited = name.match(/-([^-]+)-[A-Z0-9.]+-Tam\b/i)?.[1];
-    if (delimited) return delimited;
-  }
+  const exactScope = exactLabelColorNameScope(product);
+  if (exactScope) return exactScope;
 
-  const withoutSize = name
-    .replace(/\s+-\s*(?:PP|P|M|G|GG|XG|XGG|EG|EGG|U|UNI|\d{1,3}(?:[/-]\d{1,3})*)\s*$/i, '')
-    .replace(/\s+Tam(?:anho)?\.?\s*:?\s*\S*\s*$/i, '')
-    .replace(/\s+(?:PP|P|M|G|GG|XG|XGG|EG|EGG|UNI)\s*$/i, '')
-    .trim();
-  const words = labelDescriptionWords(withoutSize);
+  const words = labelDescriptionWords(labelColorNameWithoutNoise(product));
   return words.slice(-BRAND_NAME_COLOR_RULES.get(key)).join(' ');
 }
 
 function inferLabelColorFromName(product, options = {}) {
-  return extractCanonicalLabelColors(labelColorNameScope(product, options));
+  const scope = labelColorNameScope(product, options);
+  if (!scope) return '';
+  const brandWords = new Set(labelDescriptionWords(product?.brand).map(normalizeLabelText));
+  const withoutBrand = labelDescriptionWords(scope)
+    .filter((word) => !brandWords.has(normalizeLabelText(word)))
+    .join(' ');
+  if (exactLabelColorNameScope(product)) {
+    return extractCertainLabelColors(withoutBrand, { allowAttachedSize: true });
+  }
+  const cleanedName = labelColorNameWithoutNoise(product);
+  const rawScope = rawLabelWordTail(cleanedName, BRAND_NAME_COLOR_RULES.get(brandSlug(product?.brand)));
+  if (rawScope.includes('/')) {
+    const slashBlock = rawScope.match(/(?:^|[\s-])([\p{L}\d]+(?:\/[\p{L}\d]+)+)\s*$/u)?.[1] || '';
+    return extractCertainLabelColors(slashBlock, { allowAttachedSize: true });
+  }
+  return extractTrailingCertainLabelColors(withoutBrand);
 }
 
 function labelProductDescription(product, fallback = '', reference = '', categoryLabel = '', context = {}) {
@@ -1281,7 +1416,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       data: { status: 'GENERATED' },
     });
 
-    const pdfVersion = 'cor-com-duvida-explicada-v8';
+    const pdfVersion = 'cor-somente-com-certeza-v9';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,
