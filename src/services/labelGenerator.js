@@ -964,17 +964,17 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
         drawImageContain(
           doc,
           item._brandLogoBuffer,
-          x + mm(7),
+          x + mm(5),
           brandTop + mm(1.1),
-          w - mm(18),
+          w - mm(10),
           mm(8.8),
         );
       } catch {
         const brandText = String(item.brand || 'MARCA').toUpperCase();
-        const brandFs = fitSingleLine(brandText, FONT_BOLD, 12, 7.5, w - mm(18));
+        const brandFs = fitSingleLine(brandText, FONT_BOLD, 12, 7.5, w - mm(10));
         doc.font(FONT_BOLD).fontSize(brandFs).fillColor(WHITE)
-          .text(brandText, x + mm(7), brandTop + mm(3.1), {
-            width: w - mm(18),
+          .text(brandText, x + mm(5), brandTop + mm(3.1), {
+            width: w - mm(10),
             align: 'center',
             lineBreak: false,
           });
