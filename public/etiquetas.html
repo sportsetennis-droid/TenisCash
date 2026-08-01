@@ -285,6 +285,10 @@
       +   '<div class="sm-name">'+esc(p.name)+'</div>'
       +   '<div class="sm-meta">REF '+esc(refOf(p))+'  ·  '+price+'</div>'
       +   '<div class="sm-code">▮▏ '+esc(code)+'</div>'
+      +   '<div style="display:flex;gap:8px;margin-top:16px">'
+      +     '<button onclick="event.stopPropagation();addFromScan(\''+p.id+'\')" style="flex:1;padding:13px;border-radius:11px;border:1.6px solid var(--primary);background:#fff;color:var(--primary);font-weight:800;font-size:14px;cursor:pointer">➕ Adicionar à lista</button>'
+      +     '<button id="smGenBtn" onclick="event.stopPropagation();generateOne(\''+p.id+'\')" style="flex:1;padding:13px;border-radius:11px;border:none;background:var(--gradient);color:#fff;font-weight:800;font-size:14px;cursor:pointer">🏷️ Gerar etiqueta</button>'
+      +   '</div>'
       +   '<div class="sm-hint">bipe outra etiqueta ou toque para fechar</div>'
       + '</div>';
     $('smCard').classList.remove('notfound');
@@ -374,20 +378,47 @@
     sum.textContent = `${physical} etiqueta${physical>1?'s':''} · ${prods} produto${prods>1?'s':''} · ${sheets} folha${sheets>1?'s':''} A4${duplex?' (frente e verso)':''}`;
   }
 
-  async function generate(){
+  // Cria o lote e abre o PDF. Usado tanto pela lista (GERAR PDF A4) quanto
+  // pelo bipe (gerar 1 etiqueta na hora).
+  async function createBatch(selections){
     const templateId = $('tpl').value;
-    if (!templateId){ alert('Escolha um modelo de etiqueta.'); return; }
-    const selections = Object.entries(sel).filter(([,q]) => q>0).map(([productId,quantity]) => ({ productId, quantity }));
-    if (!selections.length){ alert('Selecione pelo menos 1 produto e a quantidade de etiquetas.'); return; }
-    const btn = $('genBtn'); const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Gerando…';
+    if (!templateId){ alert('Escolha um modelo de etiqueta.'); return false; }
+    if (!selections.length){ alert('Nada para gerar.'); return false; }
     const d = await api(LBL + '/batches/quick', { method:'POST', body: JSON.stringify({ templateId, selections, usePromo: $('promo').checked }) });
-    btn.disabled = false; btn.textContent = old;
     if (d.error){
       const miss = Array.isArray(d.missingLogos) && d.missingLogos.length ? '\n\nLogos faltantes:\n- ' + d.missingLogos.join('\n- ') : '';
-      alert('Erro: ' + d.error + miss); return;
+      alert('Erro: ' + d.error + miss); return false;
     }
     openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
-    sel = {}; updateCart(); search(); loadBatches(); $('q').focus();
+    loadBatches();
+    return true;
+  }
+
+  async function generate(){
+    const selections = Object.entries(sel).filter(([,q]) => q>0).map(([productId,quantity]) => ({ productId, quantity }));
+    if (!selections.length){ alert('Selecione ou bipe pelo menos 1 produto.'); return; }
+    const btn = $('genBtn'); const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Gerando…';
+    const ok = await createBatch(selections);
+    btn.disabled = false; btn.textContent = old;
+    if (ok){ sel = {}; updateCart(); search(); $('q').focus(); }
+  }
+
+  // Bipe → gerar a etiqueta desse produto na hora (1 etiqueta).
+  async function generateOne(pid){
+    const btn = document.getElementById('smGenBtn');
+    if (btn){ btn.disabled = true; btn.textContent = '⏳ Gerando…'; }
+    const ok = await createBatch([{ productId: pid, quantity: 1 }]);
+    if (ok) closeScanModal();
+    else if (btn){ btn.disabled = false; btn.textContent = '🏷️ Gerar etiqueta'; }
+  }
+
+  // Bipe → juntar na lista pra imprimir a folha A4 com vários.
+  function addFromScan(pid){
+    setQty(pid, (sel[pid] || 0) + 1);
+    const total = Object.values(sel).reduce((a, q) => a + q, 0);
+    const h = document.querySelector('#smContent .sm-hint');
+    if (h){ h.innerHTML = '✅ Na lista — <b>' + total + '</b> etiqueta(s). Bipe outra ou use <b>GERAR PDF A4</b>.'; h.style.color = '#0a843d'; }
+    $('q').focus();
   }
 
   async function loadBatches(){
