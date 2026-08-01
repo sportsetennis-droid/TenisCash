@@ -19,7 +19,16 @@ const labelColorReviewLedger = require('../data/label-color-review-ledger.json')
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+// Etiquetas ficam disponíveis pro balcão: além de admin/gerente, vendedores
+// (role=seller) e contas institucionais da loja (role=store) imprimem etiquetas.
+// A geração/impressão é inofensiva; só a EXCLUSÃO de lote continua restrita a admin
+// (aplicada inline na rota DELETE abaixo).
+function labelAccess(req, res, next) {
+  const role = req.userRole;
+  if (['admin', 'superadmin', 'manager', 'store', 'seller'].includes(role)) return next();
+  return res.status(403).json({ error: 'Acesso restrito' });
+}
+router.use(labelAccess);
 
 const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
 const LABEL_PROMOTION_FACTOR = 0.70;
@@ -1590,7 +1599,7 @@ router.post('/batches/:id/print', async (req, res) => {
   }
 });
 
-router.delete('/batches/:id', async (req, res) => {
+router.delete('/batches/:id', adminMiddleware, async (req, res) => {
   try {
     await prisma.labelBatch.delete({ where: { id: req.params.id } });
     res.json({ success: true });

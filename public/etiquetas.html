@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="0">
+<title>Etiquetas — Sports & Tennis</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+  :root{
+    --primary:#E5571E; --primary-dark:#e55f00; --primary-light:#FCDAC4;
+    --bg:#FFEBDC; --surface:#fff; --text:#1d1d1f; --text2:#6e6e73; --text3:#8e8e93;
+    --border:#e5e5ea; --gradient:linear-gradient(135deg,#E5571E 0%,#EE7240 100%);
+    --radius:14px; --shadow:0 4px 12px rgba(0,0,0,.06),0 2px 4px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  .topbar{background:#fff;border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,.04);flex-wrap:wrap;gap:8px}
+  .tb-left{display:flex;align-items:center;gap:12px}
+  .tb-back{color:var(--text2);text-decoration:none;font-size:14px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
+  .tb-back:hover{background:var(--bg)}
+  .tb-logo{font-weight:800;color:var(--primary);font-size:18px;letter-spacing:-.3px}
+  .tb-store{font-size:13px;color:var(--text2);font-weight:600}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  select,input[type=text]{padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;background:#fff;color:var(--text);width:100%}
+  select:focus,input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+  .tpl-sel{min-width:260px;flex:1}
+  .chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);white-space:nowrap}
+  .hint{font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5}
+  .search-box{width:100%;font-size:16px;padding:13px 15px}
+  .cart{position:sticky;top:64px;z-index:20;margin-bottom:14px;padding:14px;background:var(--gradient);border-radius:var(--radius);color:#fff;display:flex;gap:14px;align-items:center;flex-wrap:wrap;box-shadow:0 6px 18px rgba(255,109,0,.28)}
+  .cart-label{font-size:11px;letter-spacing:2px;opacity:.9;font-weight:700}
+  .cart-sum{font-size:15px;font-weight:700;margin-top:3px}
+  .cart-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .btn{padding:10px 16px;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;border:none}
+  .btn-white{background:#fff;color:var(--primary)}
+  .btn-ghost{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .btn-primary{background:var(--primary);color:#fff}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .p-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s,box-shadow .15s}
+  .p-card.on{border-color:var(--primary);box-shadow:0 6px 18px rgba(255,109,0,.15)}
+  .p-top{display:flex;gap:10px;align-items:flex-start}
+  .p-img{width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px}
+  .p-name{font-size:13px;font-weight:700;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .p-ref{font-size:10px;color:var(--text3);margin-top:3px;font-family:monospace}
+  .p-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+  .tag{padding:2px 7px;border-radius:5px;font-size:9px;font-weight:700;background:#f5f5f7;color:var(--text)}
+  .tag.b{background:#e3f2fd;color:#0066cc}
+  .tag.o{background:var(--primary-light);color:var(--primary)}
+  .p-price{font-size:18px;font-weight:800;color:var(--primary);margin-top:6px}
+  .p-foot{border-top:1px dashed var(--border);padding-top:8px}
+  .p-sizes{font-size:11px;color:var(--text2);margin-bottom:9px}
+  .qty{display:flex;gap:7px;align-items:center}
+  .qty button{width:34px;height:34px;border-radius:8px;font-size:18px;font-weight:800;cursor:pointer;border:1px solid var(--border)}
+  .qty .minus{background:#f5f5f7;color:var(--text)}
+  .qty input{width:66px;height:34px;text-align:center;font-size:15px;font-weight:700;border:1px solid var(--border);border-radius:8px}
+  .qty .add{flex:1;background:var(--primary);color:#fff;border:none;height:34px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer}
+  .p-total{font-size:11px;color:var(--primary);font-weight:700;text-align:right}
+  h3{font-size:13px;letter-spacing:1px;margin:18px 0 8px;color:var(--text2);text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);font-size:13px}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
+  th{background:#faf7f5;font-size:11px;letter-spacing:.5px;color:var(--text2);text-transform:uppercase}
+  .muted{padding:26px;text-align:center;color:var(--text3)}
+  .err{padding:14px;background:#fff1f0;color:#d70015;border-radius:10px;border-left:3px solid #d70015}
+  @media(max-width:520px){.cart-actions{margin-left:0;width:100%}.cart-actions .btn{flex:1}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="tb-left">
+      <a class="tb-back" href="/loja">← Loja</a>
+      <span class="tb-logo">🏷️ Etiquetas</span>
+    </div>
+    <span class="tb-store" id="storeName">—</span>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <select class="tpl-sel" id="tpl"><option>Carregando modelos…</option></select>
+        <label class="chk"><input type="checkbox" id="promo"> Usar preço promocional</label>
+      </div>
+      <div class="hint" id="hint">Padrão aprovado: 5 × 7 cm · 1 etiqueta por produto · frente e verso · logo da marca na frente · código de barras e QR Code atrás.</div>
+    </div>
+
+    <div class="card" style="padding:10px">
+      <input class="search-box" id="q" type="text" placeholder="🔎 Buscar produto por nome, marca ou código…">
+    </div>
+
+    <div class="cart">
+      <div style="flex:1;min-width:180px">
+        <div class="cart-label">🛒 ETIQUETAS SELECIONADAS</div>
+        <div class="cart-sum" id="cartSum">Nenhuma etiqueta selecionada</div>
+      </div>
+      <div class="cart-actions">
+        <button class="btn btn-ghost" id="clearBtn">Limpar</button>
+        <button class="btn btn-white" id="genBtn">📄 GERAR PDF A4</button>
+      </div>
+    </div>
+
+    <div id="products"><div class="muted">Digite acima para buscar, ou aguarde os produtos carregarem…</div></div>
+
+    <h3>Lotes gerados</h3>
+    <div id="batches"><div class="muted">—</div></div>
+  </div>
+
+<script>
+  const LBL = '/api/labels';
+  let token = localStorage.getItem('loja_token');
+  let activeStore = null;
+  try { activeStore = JSON.parse(localStorage.getItem('loja_activeStore') || 'null'); } catch(_) {}
+  if (!token) { location.href = '/loja'; }
+
+  const $ = (id) => document.getElementById(id);
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function money(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
+
+  async function api(path, opts){
+    opts = opts || {};
+    const headers = Object.assign({ 'Content-Type':'application/json' }, opts.headers||{});
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    let r;
+    try { r = await fetch(path, Object.assign({}, opts, { headers, cache:'no-store' })); }
+    catch(e){ return { error: 'Sem conexão' }; }
+    if (r.status === 401 || r.status === 403) {
+      if (r.status === 401) { localStorage.removeItem('loja_token'); location.href='/loja'; }
+      return { error: r.status === 403 ? 'Sem permissão para etiquetas' : 'Sessão expirada' };
+    }
+    return r.json().catch(()=>({ error:'Resposta inválida' }));
+  }
+
+  // window.open() não envia Authorization — busca o PDF autenticado e abre via blob.
+  async function openPdf(path){
+    try{
+      const r = await fetch(path, { headers: token ? { Authorization:'Bearer '+token } : {}, cache:'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank');
+      if (!w) location.href = url;
+      setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    }catch(e){ alert('Falha ao abrir o PDF: ' + e.message); }
+  }
+
+  // ---------- Templates ----------
+  let templates = {};
+  async function loadTemplates(){
+    const d = await api(LBL + '/templates');
+    const sel = $('tpl');
+    if (d.error){ sel.innerHTML = '<option>Erro: '+esc(d.error)+'</option>'; return; }
+    const list = d.templates || [];
+    templates = Object.fromEntries(list.map(t => [t.id, t]));
+    sel.innerHTML = list.map(t => `<option value="${t.id}">${esc(t.name)} — ${esc(t.type)}${t.isDefault?' — PADRÃO':''}</option>`).join('');
+    const opts = [...sel.options];
+    const def = list.find(t => t.isDefault);
+    const chosen = (def && def.id)
+      || (opts.find(o => /5x7|5 × 7|16 etiquetas/i.test(o.textContent)) || {}).value
+      || (opts[0] || {}).value;
+    if (chosen) sel.value = chosen;
+    syncHint();
+    sel.onchange = () => { syncHint(); updateCart(); };
+  }
+  function syncHint(){
+    const t = templates[$('tpl').value];
+    const saldo = String(t && t.layoutConfig && t.layoutConfig.labelDesign || '').startsWith('saldo-5x7');
+    const promo = $('promo');
+    if (saldo){ promo.checked = false; promo.disabled = true; }
+    else promo.disabled = false;
+    $('hint').textContent = saldo
+      ? 'SALDO REPETIDO: 5 × 7 cm · frente e costas · contorno de corte nas duas faces.'
+      : 'Padrão aprovado: 5 × 7 cm · 1 etiqueta por produto · frente e verso · logo da marca na frente · código de barras e QR Code atrás.';
+  }
+
+  // ---------- Busca de produtos ----------
+  let sel = {};      // { productId: quantity }
+  let cache = {};    // { productId: product }
+  let searchTimer = null;
+
+  async function search(){
+    const wrap = $('products');
+    const q = $('q').value.trim();
+    wrap.innerHTML = '<div class="muted">Buscando…</div>';
+    const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&pageSize=60');
+    if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
+    const products = d.products || [];
+    products.forEach(p => cache[p.id] = p);
+    if (!products.length){ wrap.innerHTML = '<div class="muted">Nenhum produto encontrado.</div>'; return; }
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">'+products.length+' produtos · toque em <b>+1 etiqueta</b>. Não precisa escolher tamanho.</div><div class="grid">' + products.map(cardHtml).join('') + '</div>';
+    bindCards(wrap);
+  }
+
+  function refOf(p){
+    let r = '';
+    try { const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext||{}); r = (ctx.supplierRef||'').trim(); } catch(_){}
+    return r || p.sku || '';
+  }
+
+  function cardHtml(p){
+    const qty = sel[p.id] || 0;
+    const cls = (() => { try { const c = typeof p.aiContext==='string'?JSON.parse(p.aiContext):(p.aiContext||{}); return c.classification||{}; } catch(_){ return {}; } })();
+    const sizes = (p.sizes||[]).map(s => s.size).filter(Boolean);
+    const price = money(p.promoPrice || p.price || 0);
+    return `<div class="p-card ${qty>0?'on':''}" data-pid="${esc(p.id)}">
+      <div class="p-top">
+        ${p.imageUrl ? `<img class="p-img" src="${esc(p.imageUrl)}" alt="">` : '<div class="p-img">📦</div>'}
+        <div style="flex:1;min-width:0">
+          <div class="p-name">${esc(p.name)}</div>
+          <div class="p-ref">REF ${esc(refOf(p)||'não cadastrada')}</div>
+          <div class="p-tags">
+            ${cls.gender?`<span class="tag b">${esc(cls.gender)}</span>`:''}
+            ${p.category?`<span class="tag">${esc(p.category)}</span>`:''}
+            ${cls.modality?`<span class="tag o">${esc(cls.modality)}</span>`:''}
+          </div>
+          <div class="p-price">${price}</div>
+        </div>
+      </div>
+      <div class="p-foot">
+        <div class="p-sizes">Tamanhos: ${sizes.length?esc(sizes.join(' | ')):'não cadastrados'}</div>
+        <div class="qty">
+          <button type="button" class="minus" data-pid="${esc(p.id)}">−</button>
+          <input type="number" min="0" max="200" value="${qty}" data-pid="${esc(p.id)}" aria-label="Quantidade">
+          <button type="button" class="add" data-pid="${esc(p.id)}">+1 etiqueta</button>
+        </div>
+        <div class="p-total" style="${qty>0?'':'display:none'}">${qty} etiqueta${qty===1?'':'s'} neste produto</div>
+      </div>
+    </div>`;
+  }
+
+  function setQty(pid, val){
+    const n = Math.max(0, Math.min(200, parseInt(val,10)||0));
+    if (n>0) sel[pid] = n; else delete sel[pid];
+    const card = document.querySelector('.p-card[data-pid="'+CSS.escape(pid)+'"]');
+    if (card){
+      card.classList.toggle('on', n>0);
+      const inp = card.querySelector('input'); if (inp) inp.value = n;
+      const tot = card.querySelector('.p-total');
+      if (tot){ tot.textContent = n + ' etiqueta' + (n===1?'':'s') + ' neste produto'; tot.style.display = n>0?'':'none'; }
+    }
+    updateCart();
+  }
+
+  function bindCards(wrap){
+    wrap.querySelectorAll('.add').forEach(b => b.onclick = () => { const pid=b.dataset.pid; setQty(pid,(sel[pid]||0)+1); });
+    wrap.querySelectorAll('.minus').forEach(b => b.onclick = () => { const pid=b.dataset.pid; setQty(pid,(sel[pid]||0)-1); });
+    wrap.querySelectorAll('.qty input').forEach(i => i.oninput = i.onchange = () => setQty(i.dataset.pid, i.value));
+  }
+
+  function updateCart(){
+    const sum = $('cartSum');
+    let labels=0, prods=0;
+    Object.values(sel).forEach(q => { if (q>0){ prods++; labels+=q; } });
+    if (!labels){ sum.textContent = 'Nenhuma etiqueta selecionada'; return; }
+    const t = templates[$('tpl').value] || {};
+    const perSheet = Math.max(1, Number(t.columns||4) * Number(t.rows||4));
+    const perProduct = Math.max(1, Number(t.layoutConfig && t.layoutConfig.labelsPerProduct || 1));
+    const physical = labels * perProduct;
+    const sheets = Math.ceil(physical / perSheet);
+    const duplex = t.layoutConfig && t.layoutConfig.duplex === true;
+    sum.textContent = `${physical} etiqueta${physical>1?'s':''} · ${prods} produto${prods>1?'s':''} · ${sheets} folha${sheets>1?'s':''} A4${duplex?' (frente e verso)':''}`;
+  }
+
+  async function generate(){
+    const templateId = $('tpl').value;
+    if (!templateId){ alert('Escolha um modelo de etiqueta.'); return; }
+    const selections = Object.entries(sel).filter(([,q]) => q>0).map(([productId,quantity]) => ({ productId, quantity }));
+    if (!selections.length){ alert('Selecione pelo menos 1 produto e a quantidade de etiquetas.'); return; }
+    const btn = $('genBtn'); const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Gerando…';
+    const d = await api(LBL + '/batches/quick', { method:'POST', body: JSON.stringify({ templateId, selections, usePromo: $('promo').checked }) });
+    btn.disabled = false; btn.textContent = old;
+    if (d.error){
+      const miss = Array.isArray(d.missingLogos) && d.missingLogos.length ? '\n\nLogos faltantes:\n- ' + d.missingLogos.join('\n- ') : '';
+      alert('Erro: ' + d.error + miss); return;
+    }
+    openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
+    sel = {}; updateCart(); search(); loadBatches();
+  }
+
+  async function loadBatches(){
+    const wrap = $('batches');
+    const d = await api(LBL + '/batches?limit=15');
+    if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
+    const list = d.batches || [];
+    if (!list.length){ wrap.innerHTML = '<div class="muted">Nenhum lote ainda.</div>'; return; }
+    wrap.innerHTML = '<table><thead><tr><th>Nome</th><th>Modelo</th><th>Etiquetas</th><th>Quando</th><th></th></tr></thead><tbody>' +
+      list.map(b => `<tr>
+        <td>${esc(b.name)}</td>
+        <td>${esc(b.template && b.template.name || '')}</td>
+        <td>${b.totalLabels}</td>
+        <td style="color:var(--text2);font-size:12px">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
+        <td><button class="btn btn-primary" data-pdf="${esc(b.id)}">Ver PDF</button></td>
+      </tr>`).join('') + '</tbody></table>';
+    wrap.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => openPdf(LBL + '/batches/' + b.dataset.pdf + '/pdf'));
+  }
+
+  // ---------- init ----------
+  $('storeName').textContent = (activeStore && (activeStore.name || activeStore.code)) ? ((activeStore.code?activeStore.code+' — ':'') + (activeStore.name||'')) : '';
+  $('q').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 350); };
+  $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); };
+  $('genBtn').onclick = generate;
+  loadTemplates().then(() => { search(); });
+  loadBatches();
+</script>
+</body>
+</html>

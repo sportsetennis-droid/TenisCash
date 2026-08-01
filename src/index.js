@@ -156,6 +156,7 @@ const limiter = rateLimit({
     return (
       /^\/(?:api\/)?admin\//.test(path)
       || /^\/(?:api\/)?radio\//.test(path)
+      || /^\/(?:api\/)?labels\//.test(path)
       || /^\/(?:api\/)?auth\/agent-camera-live(?:\/|$)/.test(path)
       || isCameraAssetPath(path)
     );
@@ -366,6 +367,10 @@ app.use('/api/admin/leads', leadsRoutes);
 app.use('/api/admin/ai', adminAIRoutes);
 app.use('/api/life', lifeRoutes);
 app.use('/api/admin/labels', labelsRoutes);
+// Etiquetas no balcão: MESMO router, mas FORA de /api/admin (que bloqueia não-admin).
+// Aqui vendedores (seller) e contas de loja (store) acessam — o gate labelAccess
+// dentro do router faz o controle. Usado pela página /etiquetas do portal das lojas.
+app.use('/api/labels', labelsRoutes);
 app.use('/api/admin/fiscal', fiscalRoutes);
 app.use('/api/admin/curation', curationRoutes);
 app.use('/api/seller/portfolio', sellerPortfolioRoutes);
@@ -555,6 +560,12 @@ app.use(express.static(path.join(__dirname, '../public'), {
 app.get('/loja', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(__dirname, '../public/loja.html'), { cacheControl: false });
+});
+
+// Rota amigável: teniscash.com.br/etiquetas → impressão de etiquetas no balcão
+app.get('/etiquetas', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/etiquetas.html'), { cacheControl: false });
 });
 
 // Rota amigável: teniscash.com.br/barber → marketplace de barbearias/salões + agendamento
