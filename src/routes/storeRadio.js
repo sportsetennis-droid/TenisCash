@@ -2,7 +2,7 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const radio = require('../services/storeRadio');
 const WebSocket = require('ws');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 // Voz NEURAL pt-BR via Microsoft edge-tts (GRÁTIS, sem chave). Ritmo/pitch acelerados = mais animado.
 const EDGE_TRUSTED = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
