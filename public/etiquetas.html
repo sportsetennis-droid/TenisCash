@@ -43,6 +43,8 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
   .p-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s,box-shadow .15s}
   .p-card.on{border-color:var(--primary);box-shadow:0 6px 18px rgba(255,109,0,.15)}
+  .p-card.scanned{border-color:#0a843d!important;box-shadow:0 0 0 3px rgba(10,132,61,.3)!important}
+  .p-bc{font-size:10px;color:#8e8e93;font-family:monospace;margin-top:2px;letter-spacing:.5px}
   .p-top{display:flex;gap:10px;align-items:flex-start}
   .p-img{width:60px;height:60px;object-fit:contain;background:#f5f5f7;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px}
   .p-name{font-size:13px;font-weight:700;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -88,7 +90,8 @@
     </div>
 
     <div class="card" style="padding:10px">
-      <input class="search-box" id="q" type="text" placeholder="🔎 Buscar produto por nome, marca ou código…">
+      <input class="search-box" id="q" type="text" autocomplete="off" placeholder="🔫 Bipe o código da etiqueta — ou digite nome / marca / código">
+      <div id="scanBanner" style="display:none;margin-top:10px"></div>
     </div>
 
     <div class="cart">
@@ -180,17 +183,77 @@
   let cache = {};    // { productId: product }
   let searchTimer = null;
 
-  async function search(){
+  function gridHtml(products){
+    return '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">'+products.length+' produto(s) · toque em <b>+1 etiqueta</b> para imprimir, ou <b>bipe o código</b> da etiqueta para saber de qual é.</div><div class="grid">' + products.map(cardHtml).join('') + '</div>';
+  }
+
+  function matchesCode(p, code){
+    return String(p.internalBarcode||'') === code || String(p.sku||'') === code || (p.sizes||[]).some(s => String(s.barcode||'') === code);
+  }
+
+  async function search(opts){
+    opts = opts || {};
     const wrap = $('products');
     const q = $('q').value.trim();
+    if (!opts.scan) $('scanBanner').style.display = 'none';
     wrap.innerHTML = '<div class="muted">Buscando…</div>';
     const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&pageSize=60');
     if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
     const products = d.products || [];
     products.forEach(p => cache[p.id] = p);
+    const isScan = opts.scan && /^[0-9]{6,}$/.test(q.replace(/\s/g,''));
+    if (isScan){
+      const exact = products.filter(p => matchesCode(p, q));
+      if (exact.length){
+        wrap.innerHTML = gridHtml(exact.length === products.length ? products : exact);
+        bindCards(wrap);
+        showScanBanner(exact[0], q); beep(true); highlightCard(exact[0].id);
+      } else {
+        wrap.innerHTML = products.length ? gridHtml(products) : '<div class="muted">Nada com esse código.</div>';
+        if (products.length) bindCards(wrap);
+        showScanNotFound(q); beep(false);
+      }
+      $('q').select();
+      return;
+    }
     if (!products.length){ wrap.innerHTML = '<div class="muted">Nenhum produto encontrado.</div>'; return; }
-    wrap.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">'+products.length+' produtos · toque em <b>+1 etiqueta</b>. Não precisa escolher tamanho.</div><div class="grid">' + products.map(cardHtml).join('') + '</div>';
+    wrap.innerHTML = gridHtml(products);
     bindCards(wrap);
+  }
+
+  // ---------- Bipe: identificar de qual tênis é a etiqueta ----------
+  function showScanBanner(p, code){
+    const b = $('scanBanner');
+    const price = money(p.promoPrice || p.price || 0);
+    b.style.display = 'block';
+    b.innerHTML = '<div style="display:flex;gap:12px;align-items:center;background:#e8f7ee;border:2px solid #0a843d;border-radius:12px;padding:12px">'
+      + (p.imageUrl ? '<img src="'+esc(p.imageUrl)+'" style="width:58px;height:58px;object-fit:contain;background:#fff;border-radius:8px;flex-shrink:0">' : '<div style="width:58px;height:58px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">📦</div>')
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="font-size:11px;font-weight:800;color:#0a843d;letter-spacing:1px">✅ ETIQUETA BIPADA</div>'
+      +   '<div style="font-size:16px;font-weight:800;color:#1d1d1f;line-height:1.25">'+esc(p.name)+'</div>'
+      +   '<div style="font-size:12px;color:#6e6e73;margin-top:2px">REF '+esc(refOf(p))+' · '+price+' · <span style="font-family:monospace">'+esc(code)+'</span></div>'
+      + '</div>'
+      + '<button onclick="document.getElementById(\'scanBanner\').style.display=\'none\'" style="background:none;border:none;font-size:20px;color:#0a843d;cursor:pointer;flex-shrink:0">✕</button>'
+      + '</div>';
+  }
+  function showScanNotFound(code){
+    const b = $('scanBanner');
+    b.style.display = 'block';
+    b.innerHTML = '<div style="background:#fff1f0;border:2px solid #d70015;border-radius:12px;padding:12px;color:#d70015;font-weight:700">❌ Código <span style="font-family:monospace">'+esc(code)+'</span> não encontrado — a etiqueta pode ser de um produto sem cadastro ou sem estoque.</div>';
+  }
+  function highlightCard(pid){
+    const c = document.querySelector('.p-card[data-pid="'+CSS.escape(pid)+'"]');
+    if (c){ c.classList.add('scanned'); c.scrollIntoView({ behavior:'smooth', block:'center' }); setTimeout(()=>c.classList.remove('scanned'), 2500); }
+  }
+  let _ac;
+  function beep(ok){
+    try{
+      _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = _ac.createOscillator(), g = _ac.createGain();
+      o.connect(g); g.connect(_ac.destination);
+      o.type = 'square'; o.frequency.value = ok ? 880 : 200; g.gain.value = 0.05;
+      o.start(); o.stop(_ac.currentTime + (ok ? 0.09 : 0.22));
+    }catch(_){}
   }
 
   function refOf(p){
@@ -210,6 +273,7 @@
         <div style="flex:1;min-width:0">
           <div class="p-name">${esc(p.name)}</div>
           <div class="p-ref">REF ${esc(refOf(p)||'não cadastrada')}</div>
+          ${p.internalBarcode ? `<div class="p-bc">▮▏ ${esc(p.internalBarcode)}</div>` : ''}
           <div class="p-tags">
             ${cls.gender?`<span class="tag b">${esc(cls.gender)}</span>`:''}
             ${p.category?`<span class="tag">${esc(p.category)}</span>`:''}
@@ -276,7 +340,7 @@
       alert('Erro: ' + d.error + miss); return;
     }
     openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
-    sel = {}; updateCart(); search(); loadBatches();
+    sel = {}; updateCart(); search(); loadBatches(); $('q').focus();
   }
 
   async function loadBatches(){
@@ -298,10 +362,12 @@
 
   // ---------- init ----------
   $('storeName').textContent = (activeStore && (activeStore.name || activeStore.code)) ? ((activeStore.code?activeStore.code+' — ':'') + (activeStore.name||'')) : '';
-  $('q').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 350); };
-  $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); };
+  $('q').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(), 400); };
+  // O leitor de código de barras digita o número e manda Enter — aí busca na hora (modo bipe).
+  $('q').onkeydown = (e) => { if (e.key === 'Enter'){ e.preventDefault(); clearTimeout(searchTimer); search({ scan: true }); } };
+  $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); $('q').focus(); };
   $('genBtn').onclick = generate;
-  loadTemplates().then(() => { search(); });
+  loadTemplates().then(() => { search(); $('q').focus(); });
   loadBatches();
 </script>
 </body>
