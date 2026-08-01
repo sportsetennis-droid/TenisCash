@@ -69,6 +69,19 @@
   .muted{padding:26px;text-align:center;color:var(--text3)}
   .err{padding:14px;background:#fff1f0;color:#d70015;border-radius:10px;border-left:3px solid #d70015}
   @media(max-width:520px){.cart-actions{margin-left:0;width:100%}.cart-actions .btn{flex:1}}
+  /* Modal grande do bipe — foto do tênis em destaque */
+  #scanModal{position:fixed;inset:0;z-index:1000;background:rgba(20,10,4,.85);display:none;align-items:center;justify-content:center;padding:14px}
+  #scanModal.show{display:flex}
+  .sm-card{background:#fff;border-radius:18px;max-width:min(720px,95vw);width:100%;max-height:95vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.45);text-align:center;position:relative;cursor:pointer}
+  .sm-card.notfound{outline:4px solid #d70015}
+  .sm-img{width:100%;max-height:66vh;object-fit:contain;background:#f5f5f7;border-radius:18px 18px 0 0;display:block}
+  .sm-body{padding:16px 18px 20px}
+  .sm-badge{display:inline-block;font-size:12px;font-weight:800;letter-spacing:1px;color:#0a843d;background:#e8f7ee;padding:5px 14px;border-radius:20px;margin-bottom:10px}
+  .sm-name{font-size:23px;font-weight:800;line-height:1.2;color:#1d1d1f}
+  .sm-meta{font-size:15px;color:#6e6e73;margin-top:8px}
+  .sm-code{font-family:monospace;font-size:16px;font-weight:700;color:#1d1d1f;margin-top:8px}
+  .sm-hint{font-size:12px;color:#8e8e93;margin-top:14px}
+  .sm-close{position:absolute;top:10px;right:12px;width:42px;height:42px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:22px;cursor:pointer;z-index:2}
 </style>
 </head>
 <body>
@@ -109,6 +122,14 @@
 
     <h3>Lotes gerados</h3>
     <div id="batches"><div class="muted">—</div></div>
+  </div>
+
+  <!-- Modal grande: foto do tênis ao bipar a etiqueta -->
+  <div id="scanModal" onclick="closeScanModal()">
+    <div class="sm-card" id="smCard">
+      <button class="sm-close" onclick="closeScanModal()">✕</button>
+      <div id="smContent"></div>
+    </div>
   </div>
 
 <script>
@@ -207,11 +228,11 @@
       if (exact.length){
         wrap.innerHTML = gridHtml(exact.length === products.length ? products : exact);
         bindCards(wrap);
-        showScanBanner(exact[0], q); beep(true); highlightCard(exact[0].id);
+        showScanBanner(exact[0], q); showScanModal(exact[0], q); beep(true); highlightCard(exact[0].id);
       } else {
         wrap.innerHTML = products.length ? gridHtml(products) : '<div class="muted">Nada com esse código.</div>';
         if (products.length) bindCards(wrap);
-        showScanNotFound(q); beep(false);
+        showScanNotFound(q); showNotFoundModal(q); beep(false);
       }
       $('q').select();
       return;
@@ -255,6 +276,32 @@
       o.start(); o.stop(_ac.currentTime + (ok ? 0.09 : 0.22));
     }catch(_){}
   }
+  function showScanModal(p, code){
+    const price = money(p.promoPrice || p.price || 0);
+    $('smContent').innerHTML =
+      (p.imageUrl ? '<img class="sm-img" src="'+esc(p.imageUrl)+'" alt="">' : '<div class="sm-img" style="height:44vh;display:flex;align-items:center;justify-content:center;font-size:90px">📦</div>')
+      + '<div class="sm-body">'
+      +   '<div class="sm-badge">✅ ETIQUETA BIPADA</div>'
+      +   '<div class="sm-name">'+esc(p.name)+'</div>'
+      +   '<div class="sm-meta">REF '+esc(refOf(p))+'  ·  '+price+'</div>'
+      +   '<div class="sm-code">▮▏ '+esc(code)+'</div>'
+      +   '<div class="sm-hint">bipe outra etiqueta ou toque para fechar</div>'
+      + '</div>';
+    $('smCard').classList.remove('notfound');
+    $('scanModal').classList.add('show');
+  }
+  function showNotFoundModal(code){
+    $('smContent').innerHTML =
+      '<div class="sm-body" style="padding:44px 22px">'
+      + '<div style="font-size:66px">❌</div>'
+      + '<div class="sm-name" style="color:#d70015;margin-top:8px">Não encontrado</div>'
+      + '<div class="sm-meta">O código <span style="font-family:monospace">'+esc(code)+'</span> não bateu com nenhum produto com cadastro/estoque.</div>'
+      + '<div class="sm-hint">bipe outra etiqueta ou toque para fechar</div>'
+      + '</div>';
+    $('smCard').classList.add('notfound');
+    $('scanModal').classList.add('show');
+  }
+  function closeScanModal(){ $('scanModal').classList.remove('show'); $('q').focus(); }
 
   function refOf(p){
     let r = '';
