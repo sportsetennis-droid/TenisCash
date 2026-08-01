@@ -115,7 +115,18 @@ router.get('/tts', playerAuth, async (req, res) => {
     const text = String(req.query.text || '').trim();
     if (!text) return res.status(400).json({ error: 'sem texto' });
     const voice = (req.radioConfig && req.radioConfig.voiceName) || 'pt-BR-ThalitaMultilingualNeural';
-    const mp3 = await edgeTtsMp3(text, voice);
+    let mp3 = null;
+    // A nuvem (Railway) é bloqueada pelo edge-tts (IP de datacenter). Então a voz é gerada
+    // num relay em IP residencial e chega aqui por túnel (RADIO_TTS_RELAY_URL).
+    const relay = process.env.RADIO_TTS_RELAY_URL;
+    if (relay) {
+      try {
+        const rr = await fetch(relay.replace(/\/+$/, '') + '/tts?s=' + encodeURIComponent(process.env.RADIO_TTS_RELAY_SECRET || '')
+          + '&voice=' + encodeURIComponent(voice) + '&text=' + encodeURIComponent(text));
+        if (rr.ok) { const ab = await rr.arrayBuffer(); mp3 = Buffer.from(ab); }
+      } catch (e) { /* cai pro edge direto */ }
+    }
+    if (!mp3 || mp3.length < 500) { try { mp3 = await edgeTtsMp3(text, voice); } catch (e) {} }
     if (!mp3 || mp3.length < 500) return res.status(502).json({ error: 'voz vazia' });
     res.set('Content-Type', 'audio/mpeg');
     res.set('Cache-Control', 'no-store');
