@@ -82,6 +82,29 @@
   .sm-code{font-family:monospace;font-size:16px;font-weight:700;color:#1d1d1f;margin-top:8px}
   .sm-hint{font-size:12px;color:#8e8e93;margin-top:14px}
   .sm-close{position:absolute;top:10px;right:12px;width:42px;height:42px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:22px;cursor:pointer;z-index:2}
+  /* Botão de entrada + modo bipe contínuo */
+  .biper-enter{width:100%;padding:16px;margin-bottom:14px;border:none;border-radius:14px;background:var(--gradient);color:#fff;font-size:16px;font-weight:800;letter-spacing:.3px;cursor:pointer;box-shadow:0 6px 18px rgba(255,109,0,.28)}
+  #biper{position:fixed;inset:0;z-index:1100;background:var(--bg);display:none;flex-direction:column}
+  #biper.show{display:flex}
+  .biper-head{background:var(--gradient);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .biper-title{font-size:15px;font-weight:800;letter-spacing:.5px;flex:1;min-width:110px}
+  .biper-total{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.5);border-radius:20px;padding:5px 12px;font-weight:800;font-size:13px;white-space:nowrap}
+  .biper-head button{padding:10px 14px;border-radius:9px;border:none;font-weight:800;font-size:13px;cursor:pointer}
+  .biper-gen{background:#fff;color:var(--primary)}
+  .biper-exit{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.5)!important}
+  .biper-scan{padding:14px 16px;background:#fff;border-bottom:1px solid var(--border)}
+  #biperInput{width:100%;font-size:22px;padding:16px;border:2px solid var(--primary);border-radius:12px;text-align:center;font-weight:800;letter-spacing:1px}
+  .biper-flash{min-height:22px;text-align:center;font-weight:800;font-size:15px;margin-top:8px}
+  .biper-list{flex:1;overflow:auto;padding:12px 14px}
+  .biper-row{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px}
+  .biper-row.flash{animation:bflash .7s ease-out}
+  @keyframes bflash{0%{background:#d7f5e1;transform:scale(1.01)}100%{background:#fff;transform:scale(1)}}
+  .biper-row img,.biper-row .ph{width:54px;height:54px;border-radius:8px;object-fit:contain;background:#f5f5f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px}
+  .biper-row .bi-name{font-size:14px;font-weight:700;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .biper-row .bi-code{font-size:11px;color:var(--text3);font-family:monospace;margin-top:2px}
+  .biper-qty{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .biper-qty button{width:34px;height:34px;border-radius:7px;border:1px solid var(--border);background:#f5f5f7;font-size:17px;font-weight:800;cursor:pointer}
+  .biper-qty b{min-width:22px;text-align:center;font-size:15px}
 </style>
 </head>
 <body>
@@ -94,6 +117,7 @@
   </div>
 
   <div class="wrap">
+    <button id="biperBtn" class="biper-enter">🔫 MODO BIPE CONTÍNUO — clique e vá bipando um atrás do outro</button>
     <div class="card">
       <div class="row">
         <select class="tpl-sel" id="tpl"><option>Carregando modelos…</option></select>
@@ -122,6 +146,21 @@
 
     <h3>Lotes gerados</h3>
     <div id="batches"><div class="muted">—</div></div>
+  </div>
+
+  <!-- Modo bipe contínuo: bipa um atrás do outro, entra na lista sozinho -->
+  <div id="biper">
+    <div class="biper-head">
+      <span class="biper-title">🔫 BIPE CONTÍNUO</span>
+      <span class="biper-total"><b id="biperTotal">0</b> etiqueta(s)</span>
+      <button class="biper-gen" onclick="biperGenerate()">📄 GERAR PDF A4</button>
+      <button class="biper-exit" onclick="exitBiper()">✕ Sair</button>
+    </div>
+    <div class="biper-scan">
+      <input id="biperInput" type="text" autocomplete="off" inputmode="none" placeholder="Bipe o código aqui…">
+      <div class="biper-flash" id="biperFlash"></div>
+    </div>
+    <div class="biper-list" id="biperList"></div>
   </div>
 
   <!-- Modal grande: foto do tênis ao bipar a etiqueta -->
@@ -307,6 +346,72 @@
   }
   function closeScanModal(){ $('scanModal').classList.remove('show'); $('q').focus(); }
 
+  // ============ MODO BIPE CONTÍNUO ============
+  // Clica pra entrar; aí é só bipar um atrás do outro. Cada bipe entra na
+  // lista sozinho e o campo já fica pronto pro próximo. GERAR PDF A4 no fim.
+  let biperOrder = [];
+  function enterBiper(){
+    $('biper').classList.add('show');
+    $('biperFlash').textContent = '';
+    renderBiperList();
+    setTimeout(() => $('biperInput').focus(), 60);
+  }
+  function exitBiper(){
+    $('biper').classList.remove('show');
+    updateCart(); search(); // reflete o que foi bipado na tela normal
+  }
+  function flashBiper(msg, ok){
+    const f = $('biperFlash');
+    f.textContent = msg; f.style.color = ok ? '#0a843d' : '#d70015';
+    clearTimeout(f._t); f._t = setTimeout(() => { f.textContent = ''; }, 2600);
+  }
+  async function biperScan(){
+    const code = $('biperInput').value.trim();
+    $('biperInput').value = '';
+    if (!code) return;
+    const d = await api('/api/catalog/products?q=' + encodeURIComponent(code) + '&pageSize=10');
+    const products = d.products || [];
+    products.forEach(p => cache[p.id] = p);
+    const p = products.find(x => matchesCode(x, code));
+    if (p){
+      setQty(p.id, (sel[p.id] || 0) + 1);
+      biperOrder = [p.id, ...biperOrder.filter(id => id !== p.id)];
+      renderBiperList(p.id);
+      flashBiper('✅ ' + (p.name || '').slice(0, 40), true); beep(true);
+    } else {
+      flashBiper('❌ ' + code + ' — não encontrado', false); beep(false);
+    }
+    $('biperInput').focus();
+  }
+  function renderBiperList(flashPid){
+    const box = $('biperList');
+    const total = Object.values(sel).reduce((a, q) => a + q, 0);
+    $('biperTotal').textContent = total;
+    const ids = biperOrder.filter(id => (sel[id] || 0) > 0);
+    if (!ids.length){ box.innerHTML = '<div class="muted" style="padding:34px;text-align:center">Bipe o primeiro produto — ele entra aqui e o campo já fica pronto pro próximo.</div>'; return; }
+    box.innerHTML = ids.map(pid => {
+      const p = cache[pid] || {}; const q = sel[pid] || 0;
+      return '<div class="biper-row' + (pid === flashPid ? ' flash' : '') + '" data-pid="' + esc(pid) + '">'
+        + (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" alt="">' : '<div class="ph">📦</div>')
+        + '<div style="flex:1;min-width:0"><div class="bi-name">' + esc(p.name || pid) + '</div><div class="bi-code">▮▏ ' + esc(p.internalBarcode || '') + '</div></div>'
+        + '<div class="biper-qty"><button onclick="biperAdj(\'' + esc(pid) + '\',-1)">−</button><b>' + q + '</b><button onclick="biperAdj(\'' + esc(pid) + '\',1)">+</button><button onclick="biperAdj(\'' + esc(pid) + '\',0)" title="remover">🗑</button></div>'
+        + '</div>';
+    }).join('');
+  }
+  function biperAdj(pid, delta){
+    if (delta === 0){ delete sel[pid]; updateCart(); }
+    else setQty(pid, (sel[pid] || 0) + delta);
+    renderBiperList();
+    $('biperInput').focus();
+  }
+  async function biperGenerate(){
+    const selections = Object.entries(sel).filter(([,q]) => q > 0).map(([productId, quantity]) => ({ productId, quantity }));
+    if (!selections.length){ flashBiper('Bipe pelo menos 1 antes de gerar', false); return; }
+    const ok = await createBatch(selections);
+    if (ok){ sel = {}; biperOrder = []; renderBiperList(); flashBiper('✅ PDF gerado — pode continuar bipando', true); }
+    $('biperInput').focus();
+  }
+
   function refOf(p){
     let r = '';
     try { const ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext||{}); r = (ctx.supplierRef||'').trim(); } catch(_){}
@@ -443,6 +548,8 @@
   $('q').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(), 400); };
   // O leitor de código de barras digita o número e manda Enter — aí busca na hora (modo bipe).
   $('q').onkeydown = (e) => { if (e.key === 'Enter'){ e.preventDefault(); clearTimeout(searchTimer); search({ scan: true }); } };
+  $('biperBtn').onclick = enterBiper;
+  $('biperInput').onkeydown = (e) => { if (e.key === 'Enter'){ e.preventDefault(); biperScan(); } };
   $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); $('q').focus(); };
   $('genBtn').onclick = generate;
   loadTemplates().then(() => { search(); $('q').focus(); });
