@@ -153,6 +153,7 @@
     <div class="biper-head">
       <span class="biper-title">🔫 BIPE CONTÍNUO</span>
       <span class="biper-total"><b id="biperTotal">0</b> etiqueta(s)</span>
+      <span class="biper-total" id="biperPend" style="display:none;cursor:pointer;background:rgba(215,0,21,.9)" onclick="alert('Pendentes (na NF sem modelo, ou fora da base):\n\n'+biperPend.join('\n'))"></span>
       <button class="biper-gen" onclick="biperGenerate()">📄 GERAR PDF A4</button>
       <button class="biper-exit" onclick="exitBiper()">✕ Sair</button>
     </div>
@@ -350,9 +351,17 @@
   // Clica pra entrar; aí é só bipar um atrás do outro. Cada bipe entra na
   // lista sozinho e o campo já fica pronto pro próximo. GERAR PDF A4 no fim.
   let biperOrder = [];
+  let biperPend = [];
+  function updateBiperPend(){
+    const el = $('biperPend'); if (!el) return;
+    if (!biperPend.length){ el.style.display = 'none'; return; }
+    el.style.display = 'inline-block';
+    el.textContent = '⚠ ' + biperPend.length + ' p/ revisar';
+  }
   function enterBiper(){
     $('biper').classList.add('show');
     $('biperFlash').textContent = '';
+    biperPend = []; updateBiperPend();
     renderBiperList();
     setTimeout(() => $('biperInput').focus(), 60);
   }
@@ -369,18 +378,27 @@
     const code = $('biperInput').value.trim();
     $('biperInput').value = '';
     if (!code) return;
+    let p = null, novo = false;
     const d = await api('/api/catalog/products?q=' + encodeURIComponent(code) + '&pageSize=10');
-    const products = d.products || [];
-    products.forEach(p => cache[p.id] = p);
-    const p = products.find(x => matchesCode(x, code));
-    if (p){
-      setQty(p.id, (sel[p.id] || 0) + 1);
-      biperOrder = [p.id, ...biperOrder.filter(id => id !== p.id)];
-      renderBiperList(p.id);
-      flashBiper('✅ ' + (p.name || '').slice(0, 40), true); beep(true);
-    } else {
-      flashBiper('❌ ' + code + ' — não encontrado', false); beep(false);
+    (d.products || []).forEach(x => cache[x.id] = x);
+    p = (d.products || []).find(x => matchesCode(x, code));
+    if (!p){
+      // Não achou no catálogo → tenta cadastrar direto da NF-e (bipe vai cadastrando).
+      flashBiper('⏳ ' + code + ' — buscando na NF…', true);
+      const r = await api('/api/labels/bipe-cadastra', { method: 'POST', body: JSON.stringify({ barcode: code }) });
+      if ((r.status === 'cadastrado' || r.status === 'reativado') && r.product){ p = r.product; novo = true; }
+      else {
+        biperPend.push(code); updateBiperPend();
+        if (r.status === 'em_nfe_sem_produto') flashBiper('⚠ ' + String(r.description || code).slice(0, 42) + ' — na NF, sem modelo', false);
+        else flashBiper('❌ ' + code + ' — não existe na base', false);
+        beep(false); $('biperInput').focus(); return;
+      }
     }
+    cache[p.id] = p;
+    setQty(p.id, (sel[p.id] || 0) + 1);
+    biperOrder = [p.id, ...biperOrder.filter(id => id !== p.id)];
+    renderBiperList(p.id);
+    flashBiper((novo ? '🆕 Cadastrado agora: ' : '✅ ') + String(p.name || '').slice(0, 36), true); beep(true);
     $('biperInput').focus();
   }
   function renderBiperList(flashPid){

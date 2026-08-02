@@ -1670,6 +1670,62 @@ router.post('/batches/quick', async (req, res) => {
   }
 });
 
+// POST /bipe-cadastra { barcode } — modo bipe contínuo:
+// Se o código de barras (EAN do fabricante) ainda NÃO está vinculado mas o
+// produto FOI COMPRADO (existe numa NF-e), puxa o dado da nota, acha o produto
+// do MESMO MODELO (código do modelo na descrição, ex CK00020004) e vincula o
+// tamanho + o EAN nele. O preço já vem do produto (markup do fornecedor).
+// NUNCA cria modelo do zero sem preço (isso vira "lixo do scanner") — se não
+// achar o modelo/tamanho, devolve status 'em_nfe_sem_produto' pra revisão.
+router.post('/bipe-cadastra', async (req, res) => {
+  try {
+    const barcode = String((req.body && req.body.barcode) || '').trim();
+    if (!barcode) return res.status(400).json({ error: 'barcode obrigatório' });
+    const pick = { id: true, name: true, brand: true, price: true, promoPrice: true, imageUrl: true, internalBarcode: true, active: true };
+
+    // 1) já vinculado a algum tamanho?
+    const ps = await prisma.productSize.findFirst({ where: { barcode }, select: { size: true, product: { select: pick } } });
+    if (ps && ps.product) {
+      if (!ps.product.active) {
+        await prisma.product.update({ where: { id: ps.product.id }, data: { active: true } });
+        return res.json({ status: 'reativado', product: { ...ps.product, active: true }, size: ps.size });
+      }
+      return res.json({ status: 'ja_existe', product: ps.product, size: ps.size });
+    }
+
+    // 2) está numa NF-e de compra?
+    const fi = await prisma.xmlFiscalItem.findFirst({ where: { ean: barcode }, select: { description: true, ncm: true }, orderBy: { createdAt: 'desc' } });
+    if (!fi) return res.json({ status: 'nao_existe' });
+    const desc = String(fi.description || '');
+    const model = (desc.match(/\b([A-Z]{2}\d{5,9})\b/) || [])[1] || null;      // ex CK00020004
+    const size = ((desc.match(/(\d{1,3}(?:[.,]\d)?)\s*$/) || [])[1] || '').replace(',', '.') || null; // tamanho no fim
+    if (!model || !size) return res.json({ status: 'em_nfe_sem_produto', description: desc, ncm: fi.ncm, size });
+
+    // 3) achar o produto do mesmo modelo (ativo primeiro; senão maior preço)
+    const prods = await prisma.product.findMany({
+      where: { OR: [{ sku: { contains: model, mode: 'insensitive' } }, { name: { contains: model, mode: 'insensitive' } }] },
+      select: pick, orderBy: [{ active: 'desc' }, { price: 'desc' }], take: 5,
+    });
+    const target = prods.find((p) => p.active) || prods.find((p) => p.price > 0) || prods[0] || null;
+    if (!target || !(target.price > 0)) return res.json({ status: 'em_nfe_sem_produto', description: desc, ncm: fi.ncm, size, model });
+
+    // 4) vincular: reativa se preciso, grava tamanho + EAN
+    if (!target.active) await prisma.product.update({ where: { id: target.id }, data: { active: true } });
+    const jaTem = await prisma.productSize.findFirst({ where: { productId: target.id, size } });
+    if (jaTem) {
+      await prisma.productSize.update({ where: { id: jaTem.id }, data: { barcode, sizeConfirmedAt: new Date() } });
+    } else {
+      await prisma.productSize.create({ data: { id: crypto.randomUUID(), productId: target.id, size, stock: 0, barcode, sizeConfirmedAt: new Date() } });
+    }
+    let internal = target.internalBarcode;
+    if (!internal) { try { internal = await ensureProductInternalBarcode(prisma, target); } catch (_) {} }
+    return res.json({ status: 'cadastrado', product: { ...target, internalBarcode: internal, active: true }, size });
+  } catch (e) {
+    console.error('[labels/bipe-cadastra] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Gera lotes automaticamente usando o estoque físico por loja.
 // A unidade da etiqueta e o modelo/produto: uma selecao cria uma unica peca
 // 5x7 com frente e verso, independentemente da quantidade de tamanhos.
