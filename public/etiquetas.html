@@ -279,12 +279,20 @@
     $('scanBanner').style.display = 'none';
     $('q').value = '';
     wrap.innerHTML = '<div class="muted">Carregando o estoque de ' + esc(storeName) + '…</div>';
-    const d = await api('/api/catalog/products?storeId=' + encodeURIComponent(storeId) + '&pageSize=1000');
-    if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
-    const products = d.products || [];
+    // Lê TODOS os produtos da loja, paginando — algumas passam de 1000 (ex LOJA02 = 1247).
+    let products = [], total = 0;
+    for (let page = 1; page <= 30; page++){
+      const d = await api('/api/catalog/products?storeId=' + encodeURIComponent(storeId) + '&pageSize=500&page=' + page);
+      if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
+      const batch = d.products || [];
+      products = products.concat(batch);
+      total = (d.total != null) ? d.total : products.length;
+      if (!batch.length || products.length >= total) break;
+      wrap.innerHTML = '<div class="muted">Carregando ' + products.length + ' de ' + total + '…</div>';
+    }
     products.forEach(p => cache[p.id] = p);
     if (!products.length){ wrap.innerHTML = '<div class="muted">Nada em estoque nesta loja.</div>'; return; }
-    const capped = (d.total && d.total > products.length) ? (' (mostrando ' + products.length + ' de ' + d.total + ' — refine se precisar)') : '';
+    const capped = '';
     wrap.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">🏬 <b>' + products.length + '</b> produtos com estoque em <b>' + esc(storeName) + '</b>' + capped + ' · use <b>➕ +1 em todos</b> e depois <b>GERAR PDF A4</b>.</div><div class="grid">' + products.map(cardHtml).join('') + '</div>';
     bindCards(wrap);
   }
