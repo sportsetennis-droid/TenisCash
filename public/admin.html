@@ -12216,8 +12216,13 @@ async function initCategoriesTab() {
     document.getElementById('cat-tree-modal').onclick = (e) => {
       if (e.target.id === 'cat-tree-modal') document.getElementById('cat-tree-modal').style.display = 'none';
     };
-    // Filtros (mesmos do card Estoque)
-    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory','cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-search','cat-classify-comprado'].forEach(id => {
+    // Filtros que o SERVIDOR aplica → recarrega só o que casa (antes puxava 80MB de TODOS e travava o navegador).
+    ['cat-classify-brand','cat-classify-category','cat-classify-supplier','cat-classify-store','cat-classify-subcategory'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', loadCategoriesClassify);
+    });
+    // Filtros aplicados NO NAVEGADOR sobre o conjunto já carregado.
+    ['cat-classify-modality','cat-classify-tier','cat-classify-status','cat-classify-comprado'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', renderCatClassifyGrid);
     });
@@ -12249,7 +12254,7 @@ async function initCategoriesTab() {
         renderCatClassifyGrid();
       });
     }
-    document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(renderCatClassifyGrid, 250); });
+    document.getElementById('cat-classify-search').addEventListener('input', () => { clearTimeout(window._catSearchT); window._catSearchT = setTimeout(loadCategoriesClassify, 350); });
     const compExactEl = document.getElementById('cat-classify-comprado-exact');
     if (compExactEl) compExactEl.addEventListener('input', () => { clearTimeout(window._catCompT); window._catCompT = setTimeout(renderCatClassifyGrid, 250); });
     // Modalidade + Especialidade vêm DA ÁRVORE (dinâmico). Resetar é safe.
@@ -12324,40 +12329,49 @@ async function initCategoriesTab() {
 }
 
 async function loadCategoriesClassify() {
-  // Carrega árvore + produtos + form-options em paralelo
   const grid = document.getElementById('cat-classify-grid');
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const fBrand = g('cat-classify-brand'), fCat = g('cat-classify-category'), fSub = g('cat-classify-subcategory'),
+        fStore = g('cat-classify-store'), fSearch = g('cat-classify-search'), fSup = g('cat-classify-supplier');
+  const hasServerFilter = !!(fBrand || fCat || fSub || fStore || fSearch || fSup);
   grid.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   _catClassifySelected.clear();
+  // Produtos SÓ com filtro — antes puxava TODOS (~80MB) de uma vez e travava o navegador.
+  const qs = new URLSearchParams();
+  if (fBrand) qs.set('brand', fBrand);
+  if (fCat) qs.set('category', fCat);
+  if (fSub) qs.set('subcategory', fSub);
+  if (fStore) qs.set('storeId', fStore);
+  if (fSearch) qs.set('search', fSearch);
+  if (fSup) qs.set('supplier', fSup);
+  const needMeta = !window._catClassifyMetaReady; // árvore + selects: carrega 1x só
   const [tree, fopts, prods] = await Promise.all([
-    api('/admin/categories/tree'),
-    api('/admin/catalog/form-options'),
-    api('/admin/inventory/products'),
+    needMeta ? api('/admin/categories/tree') : Promise.resolve(null),
+    needMeta ? api('/admin/catalog/form-options') : Promise.resolve(null),
+    hasServerFilter ? api('/admin/inventory/products?' + qs.toString()) : Promise.resolve({ products: [] }),
   ]);
-  if (tree.error || fopts.error || prods.error) {
-    grid.innerHTML = `<div style="color:#d70015;padding:20px;">${tree.error || fopts.error || prods.error}</div>`;
+  if ((tree && tree.error) || (fopts && fopts.error) || (prods && prods.error)) {
+    grid.innerHTML = `<div style="color:#d70015;padding:20px;">${(tree && tree.error) || (fopts && fopts.error) || (prods && prods.error)}</div>`;
     return;
   }
-  _catTreeData = tree.tree || [];
-  _catTreeFlat = [];
-  function walkFlat(nodes, parent) {
-    nodes.forEach(n => { _catTreeFlat.push({ ...n, parent }); walkFlat(n.children || [], n); });
+  if (needMeta) {
+    _catTreeData = tree.tree || [];
+    _catTreeFlat = [];
+    (function walkFlat(nodes, parent) { nodes.forEach(n => { _catTreeFlat.push({ ...n, parent }); walkFlat(n.children || [], n); }); })(_catTreeData, null);
+    _catPopulateSelect(document.getElementById('cat-classify-brand'), fopts.brands || []);
+    _catPopulateSelect(document.getElementById('cat-classify-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
+    _catPopulateSelect(document.getElementById('cat-classify-store'), fopts.stores || [], s => s.id, s => (s.code || '') + ' — ' + (s.name || ''));
+    const catSelect = document.getElementById('cat-apply-category');
+    catSelect.innerHTML = '<option value="">—</option>';
+    _catTreeData.forEach(n => { const opt = document.createElement('option'); opt.value = n.id; opt.textContent = n.name; catSelect.appendChild(opt); });
+    window._catClassifyMetaReady = true;
   }
-  walkFlat(_catTreeData, null);
-
-  // Popula filtros
-  _catPopulateSelect(document.getElementById('cat-classify-brand'), fopts.brands || []);
-  _catPopulateSelect(document.getElementById('cat-classify-supplier'), fopts.suppliers || [], s => s.cnpj || s.id, s => s.companyName);
-  _catPopulateSelect(document.getElementById('cat-classify-store'), fopts.stores || [], s => s.id, s => (s.code || '') + ' — ' + (s.name || ''));
-
-  // Popula select de categoria
-  const catSelect = document.getElementById('cat-apply-category');
-  catSelect.innerHTML = '<option value="">—</option>';
-  _catTreeData.forEach(n => {
-    const opt = document.createElement('option');
-    opt.value = n.id; opt.textContent = n.name;
-    catSelect.appendChild(opt);
-  });
-
+  if (!hasServerFilter) {
+    _catClassifyProducts = [];
+    grid.innerHTML = '<div style="text-align:center;padding:44px 24px;background:linear-gradient(135deg,#fff7eb,#fff);border:2px dashed #ffd093;border-radius:14px;"><div style="font-size:44px;margin-bottom:10px;">🔎</div><div style="font-size:17px;font-weight:800;color:#1d1d1f;margin-bottom:6px;">Aplique pelo menos 1 filtro</div><div style="font-size:13px;color:#8e8e93;max-width:470px;margin:0 auto;">São milhares de produtos. Escolha <b>Categoria, Marca, Loja, Subcategoria</b> ou <b>busque por nome/SKU</b> — a lista carrega só o que casar.</div></div>';
+    _catClassifyUpdateStats();
+    return;
+  }
   _catClassifyProducts = (prods.products || []).map(p => ({
     id: p.id, sku: p.sku, name: p.name, brand: p.brand, category: p.category, subcategory: p.subcategory,
     imageUrl: p.imageUrl, imageUrls: p.imageUrls,
