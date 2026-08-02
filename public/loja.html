@@ -2945,9 +2945,10 @@ async function onCatalogSearch() {
 }
 
 function onInventorySearchFromTree() {
-  // Modo A: dispara busca via query da árvore
+  // Modo A: dispara busca via query da árvore. O TAMANHO (_filterSize) NÃO entra
+  // no texto — vai como filtro size= dentro da onInventorySearch — então busca
+  // mesmo quando só a numeração está marcada.
   const tree = buildFilterQuery();
-  if (!tree) return;
   document.getElementById('invSearchInput').value = tree;
   onInventorySearch();
 }
@@ -3033,7 +3034,10 @@ async function onInventorySearch() {
   // Permite carregar sem texto (mostra produtos mais recentes)
   invSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/catalog/products?' + (q ? 'q=' + encodeURIComponent(q) + '&' : '') + 'limit=24');
+      const params = ['limit=24'];
+      if (q) params.push('q=' + encodeURIComponent(q));
+      if (_filterSize) params.push('size=' + encodeURIComponent(_filterSize)); // respeita a numeração escolhida
+      const d = await api('/api/catalog/products?' + params.join('&'));
       const products = d.products || d.items || [];
       const el = document.getElementById('invResults');
       if (window.PCard) {
