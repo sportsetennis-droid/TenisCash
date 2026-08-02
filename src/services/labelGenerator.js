@@ -1110,20 +1110,21 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const percent = percentMatch ? percentMatch[1] : null;
       const conditionMatch = offer.match(/LEVANDO\s+(.+?)(?:\.|$)/i);
       const offerHeadline = percent ? `PREÇO COM ${percent}% OFF` : 'PREÇO PROMOCIONAL';
-      const offerFs = fitSingleLine(offerHeadline, FONT_BOLD, 6.4, 5.2);
+      const offerFs = fitSingleLine(offerHeadline, FONT_BOLD, 6.0, 5.0);
       doc.font(FONT_BOLD).fontSize(offerFs).fillColor(ORANGE)
-        .text(offerHeadline, x + pad, y + mm(54.7), {
+        .text(offerHeadline, x + pad, y + mm(54.3), {
           width: innerW,
-          height: mm(2.7),
+          height: mm(2.6),
           lineBreak: false,
         });
       if (conditionMatch) {
         const conditionText = `LEVANDO ${conditionMatch[1]}`;
-        const conditionFs = fitSingleLine(conditionText, FONT_BOLD, 5.9, 4.8);
+        const conditionFs = fitSingleLine(conditionText, FONT_BOLD, 5.4, 4.6);
+        // Mais respiro entre as duas linhas (antes 54.7→57 = ~2.3mm, coladas). Agora ~3.5mm.
         doc.font(FONT_BOLD).fontSize(conditionFs).fillColor(CHARCOAL)
-          .text(conditionText, x + pad, y + mm(57), {
+          .text(conditionText, x + pad, y + mm(57.8), {
             width: innerW,
-            height: mm(2.6),
+            height: mm(2.5),
             lineBreak: false,
           });
       }

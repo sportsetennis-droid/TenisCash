@@ -128,6 +128,10 @@
 
     <div class="card" style="padding:10px">
       <input class="search-box" id="q" type="text" autocomplete="off" placeholder="🔫 Bipe o código da etiqueta — ou digite nome / marca / código">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="storeAllBtn" style="flex:1;min-width:200px;padding:11px;border-radius:10px;border:none;background:var(--gradient);color:#fff;font-weight:800;font-size:13px;cursor:pointer">🏬 Etiquetas da loja toda</button>
+        <button id="addAllBtn" style="padding:11px 14px;border-radius:10px;border:1.5px solid var(--primary);background:#fff;color:var(--primary);font-weight:800;font-size:13px;cursor:pointer">➕ +1 em todos da lista</button>
+      </div>
       <div id="scanBanner" style="display:none;margin-top:10px"></div>
     </div>
 
@@ -250,6 +254,29 @@
 
   function matchesCode(p, code){
     return String(p.internalBarcode||'') === code || String(p.sku||'') === code || (p.sizes||[]).some(s => String(s.barcode||'') === code);
+  }
+
+  // 🏬 Lista TUDO que tem estoque na loja atual — pra imprimir etiqueta da loja toda.
+  async function loadStoreAll(){
+    if (!activeStore || !activeStore.id){ alert('Loja não identificada. Entre pelo portal da loja.'); return; }
+    const wrap = $('products');
+    $('scanBanner').style.display = 'none';
+    $('q').value = '';
+    wrap.innerHTML = '<div class="muted">Carregando o estoque de ' + esc(activeStore.code||'') + '…</div>';
+    const d = await api('/api/catalog/products?storeId=' + encodeURIComponent(activeStore.id) + '&pageSize=1000');
+    if (d.error){ wrap.innerHTML = '<div class="err">'+esc(d.error)+'</div>'; return; }
+    const products = d.products || [];
+    products.forEach(p => cache[p.id] = p);
+    if (!products.length){ wrap.innerHTML = '<div class="muted">Nada em estoque nesta loja.</div>'; return; }
+    const capped = (d.total && d.total > products.length) ? (' (mostrando ' + products.length + ' de ' + d.total + ' — refine se precisar)') : '';
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">🏬 <b>' + products.length + '</b> produtos com estoque em <b>' + esc(activeStore.code||activeStore.name||'') + '</b>' + capped + ' · use <b>➕ +1 em todos</b> e depois <b>GERAR PDF A4</b>.</div><div class="grid">' + products.map(cardHtml).join('') + '</div>';
+    bindCards(wrap);
+  }
+  // ➕ Põe 1 etiqueta em cada produto que está na lista atual (busca ou loja toda).
+  function addOneToAll(){
+    const cards = document.querySelectorAll('#products .p-card[data-pid]');
+    if (!cards.length){ alert('Nenhum produto na lista. Busque, bipe ou use "Etiquetas da loja toda".'); return; }
+    cards.forEach(c => { const pid = c.dataset.pid; setQty(pid, (sel[pid] || 0) + 1); });
   }
 
   async function search(opts){
@@ -570,6 +597,8 @@
   $('biperInput').onkeydown = (e) => { if (e.key === 'Enter'){ e.preventDefault(); biperScan(); } };
   $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); $('q').focus(); };
   $('genBtn').onclick = generate;
+  $('storeAllBtn').onclick = loadStoreAll;
+  $('addAllBtn').onclick = addOneToAll;
   // /etiquetas?bipe=1 (ou #bipe) já abre direto no modo bipe contínuo.
   const abreBipe = new URLSearchParams(location.search).has('bipe') || location.hash === '#bipe';
   loadTemplates().then(() => {
