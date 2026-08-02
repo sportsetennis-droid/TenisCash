@@ -552,7 +552,12 @@
   $('biperInput').onkeydown = (e) => { if (e.key === 'Enter'){ e.preventDefault(); biperScan(); } };
   $('clearBtn').onclick = () => { sel = {}; updateCart(); search(); $('q').focus(); };
   $('genBtn').onclick = generate;
-  loadTemplates().then(() => { search(); $('q').focus(); });
+  // /etiquetas?bipe=1 (ou #bipe) já abre direto no modo bipe contínuo.
+  const abreBipe = new URLSearchParams(location.search).has('bipe') || location.hash === '#bipe';
+  loadTemplates().then(() => {
+    if (abreBipe) enterBiper();
+    else { search(); $('q').focus(); }
+  });
   loadBatches();
 </script>
 </body>
