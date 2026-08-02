@@ -260,9 +260,11 @@
   // 🏬 Lista TUDO que tem estoque na loja atual — pra imprimir etiqueta da loja toda.
   async function loadStoresList(){
     const sel = $('storeSel');
-    let d = await api('/api/seller/stores');
+    // /api/stores traz TODAS as lojas (6) pra qualquer papel; /api/seller/stores
+    // limita o vendedor à dele. Como aqui a ideia é escolher qualquer loja, usa /api/stores.
+    let d = await api('/api/stores');
     let stores = (d && d.stores) || (Array.isArray(d) ? d : []);
-    if (!stores.length){ const d2 = await api('/api/stores'); stores = (d2 && d2.stores) || (Array.isArray(d2) ? d2 : []); }
+    if (!stores.length){ const d2 = await api('/api/seller/stores'); stores = (d2 && d2.stores) || (Array.isArray(d2) ? d2 : []); }
     if (stores.length){
       sel.innerHTML = '<option value="">Escolha a loja…</option>' + stores.map(s => '<option value="' + esc(s.id) + '">' + esc((s.code ? s.code + ' — ' : '') + (s.name || '')) + '</option>').join('');
       if (activeStore && activeStore.id) sel.value = activeStore.id;
