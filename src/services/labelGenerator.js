@@ -992,26 +992,22 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     doc.fillColor(ORANGE).rect(x, brandTop, w, brandBottom - brandTop).fill();
     doc.restore();
 
+    const _drawBrandText = () => {
+      const brandText = String(item.brand || 'MARCA').toUpperCase();
+      const brandFs = fitSingleLine(brandText, FONT_BOLD, 12, 7.5, w - mm(10));
+      doc.font(FONT_BOLD).fontSize(brandFs).fillColor(WHITE)
+        .text(brandText, x + mm(5), brandTop + mm(3.1), {
+          width: w - mm(10),
+          align: 'center',
+          lineBreak: false,
+        });
+    };
     if (item._brandLogoBuffer) {
       try {
-        drawImageContain(
-          doc,
-          item._brandLogoBuffer,
-          x + mm(5),
-          brandTop + mm(1.1),
-          w - mm(10),
-          mm(8.8),
-        );
-      } catch {
-        const brandText = String(item.brand || 'MARCA').toUpperCase();
-        const brandFs = fitSingleLine(brandText, FONT_BOLD, 12, 7.5, w - mm(10));
-        doc.font(FONT_BOLD).fontSize(brandFs).fillColor(WHITE)
-          .text(brandText, x + mm(5), brandTop + mm(3.1), {
-            width: w - mm(10),
-            align: 'center',
-            lineBreak: false,
-          });
-      }
+        drawImageContain(doc, item._brandLogoBuffer, x + mm(5), brandTop + mm(1.1), w - mm(10), mm(8.8));
+      } catch { _drawBrandText(); }
+    } else {
+      _drawBrandText(); // marca sem logo cadastrada → nome da marca em texto (ex: Detony)
     }
 
     let productName = String(item.productName || item.name || '').trim().toUpperCase();
@@ -1440,7 +1436,7 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
  * @param {Array}  opts.items - [{name, brand, sku, size, color, price, promotionalPrice, barcode, qrCodeValue, quantity}]
  * @returns {Promise<Buffer>}
  */
-async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
+async function generateLabelsPDF({ template, items, storeName, storeLogoUrl, offsetX = 0, offsetY = 0 }) {
   const t = template;
   const paperSize = t.paperSize || 'A4';
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
@@ -1515,8 +1511,12 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl }) {
   const labelH = mm(t.heightMm);
   const gapX = mm(t.gapHorizontalMm || 0);
   const gapY = mm(t.gapVerticalMm || 0);
-  const marginX = mm(t.marginLeftMm || 0);
-  const marginY = mm(t.marginTopMm || 0);
+  // offsetX/offsetY (mm) = ajuste de alinhamento na impressora: desloca a GRADE toda
+  // (conteúdo + QR + marcas de corte juntos, pois tudo deriva daqui). Limite ±15mm.
+  const _ox = Math.max(-15, Math.min(15, Number(offsetX) || 0));
+  const _oy = Math.max(-15, Math.min(15, Number(offsetY) || 0));
+  const marginX = mm((t.marginLeftMm || 0) + _ox);
+  const marginY = mm((t.marginTopMm || 0) + _oy);
   const cols = t.columns || 1;
   const rows = t.rows || 1;
   const perPage = cols * rows;

@@ -1536,9 +1536,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
     if (isProductDuplexTemplate(batch.template)) {
       const missingLogos = [];
       if (!storeLogoUrl) missingLogos.push(`loja: ${storeName}`);
-      [...new Set(items.map((item) => item.brand).filter(Boolean))].forEach((brand) => {
-        if (!items.some((item) => item.brand === brand && item.brandLogoUrl)) missingLogos.push(`marca: ${brand}`);
-      });
+      // Marca SEM logo não bloqueia mais — a etiqueta sai com o NOME da marca em
+      // texto (fallback no labelGenerator). Só a logo da loja (verso) ainda é exigida.
       if (missingLogos.length) {
         return res.status(409).json({
           error: 'Não foi encontrada uma logo confiável para todos os lados da etiqueta. Cadastre a logo faltante no painel de Marcas.',
