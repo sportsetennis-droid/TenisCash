@@ -202,17 +202,35 @@
     return r.json().catch(()=>({ error:'Resposta inválida' }));
   }
 
-  // window.open() não envia Authorization — busca o PDF autenticado e abre via blob.
+  // toast simples
+  function _ptoast(msg, ms){
+    let t = document.getElementById('_ptoast');
+    if(!t){ t=document.createElement('div'); t.id='_ptoast'; t.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111;color:#fff;padding:13px 20px;border-radius:12px;font-weight:800;font-size:15px;z-index:99999;box-shadow:0 8px 30px rgba(0,0,0,.4);max-width:90%;text-align:center'; document.body.appendChild(t); }
+    t.textContent = msg; t.style.opacity='1';
+    clearTimeout(t._h); if(ms){ t._h=setTimeout(()=>{ t.style.transition='opacity .4s'; t.style.opacity='0'; }, ms); }
+  }
+  // Impressão: 1) tenta a impressora da CENTRAL (agente IPP local); 2) se não houver, abre o PDF pra imprimir manual.
   async function openPdf(path){
+    let blob;
     try{
       const r = await fetch(path, { headers: token ? { Authorization:'Bearer '+token } : {}, cache:'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, '_blank');
-      if (!w) location.href = url;
-      setTimeout(()=>URL.revokeObjectURL(url), 60000);
-    }catch(e){ alert('Falha ao abrir o PDF: ' + e.message); }
+      blob = await r.blob();
+    }catch(e){ alert('Falha ao obter o PDF: ' + e.message); return; }
+    // 1) impressora da central (agente local em http://localhost:8790)
+    try{
+      _ptoast('🖨️ Enviando pra impressora…');
+      const ctrl = new AbortController();
+      const to = setTimeout(()=>ctrl.abort(), 120000);
+      const pr = await fetch('http://localhost:8790/print', { method:'POST', body: blob, headers:{'Content-Type':'application/pdf'}, signal: ctrl.signal });
+      clearTimeout(to);
+      if (pr.ok){ const j = await pr.json().catch(()=>({})); if (j.ok){ _ptoast('✅ Etiqueta enviada pra impressora!', 4000); return; } _ptoast('⚠️ A impressora recusou — abrindo pra imprimir manual', 5000); }
+    }catch(e){ /* agente offline (máquina sem o serviço) -> modo manual */ }
+    // 2) fallback: abre o PDF pra imprimir pelo navegador
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) location.href = url;
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
   }
 
   // ---------- Templates ----------
