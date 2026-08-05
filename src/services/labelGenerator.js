@@ -408,9 +408,21 @@ async function drawQR(doc, value, x, y, size) {
 // imagens com orientação EXIF podem chegar com caixas transparentes diferentes.
 // Calculamos explicitamente o maior retângulo proporcional para nunca deformar
 // o desenho, centralizando-o dentro da área reservada da etiqueta.
+// Abre a imagem UMA vez por documento e reusa o mesmo objeto nas demais etiquetas.
+// Sem isso o PDFKit embute uma cópia inteira da logo em CADA etiqueta — era o que
+// fazia o PDF da loja passar de 600 MB e estourar o timeout (erro 524).
+function openImageCached(doc, source) {
+  if (!doc._tcImageCache) doc._tcImageCache = new Map();
+  const cache = doc._tcImageCache;
+  if (cache.has(source)) return cache.get(source);
+  const opened = doc.openImage(source);
+  cache.set(source, opened);
+  return opened;
+}
+
 function drawImageContain(doc, source, x, y, boxW, boxH) {
   if (!source || boxW <= 0 || boxH <= 0) return;
-  const image = doc.openImage(source);
+  const image = openImageCached(doc, source);
   const imageW = Number(image.width);
   const imageH = Number(image.height);
   if (!Number.isFinite(imageW) || !Number.isFinite(imageH) || imageW <= 0 || imageH <= 0) return;
@@ -1578,7 +1590,7 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl, off
         const backgroundHeight = backgroundBottom - backgroundTop;
         if (t.layoutConfig?.backBackgroundRenderMode !== 'vector-rgb') {
           doc.image(
-            PRODUCT_ORANGE_RGB_TILE,
+            openImageCached(doc, PRODUCT_ORANGE_RGB_TILE),
             -overscan,
             backgroundTop,
             { width: backgroundWidth, height: backgroundHeight },
