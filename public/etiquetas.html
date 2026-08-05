@@ -226,11 +226,8 @@
       clearTimeout(to);
       if (pr.ok){ const j = await pr.json().catch(()=>({})); if (j.ok){ _ptoast('✅ Etiqueta enviada pra impressora!', 4000); return; } _ptoast('⚠️ A impressora recusou — abrindo pra imprimir manual', 5000); }
     }catch(e){ /* agente offline (máquina sem o serviço) -> modo manual */ }
-    // 2) fallback: abre o PDF pra imprimir pelo navegador
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, '_blank');
-    if (!w) location.href = url;
-    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    alert('A impressora nao aceitou o trabalho. Verifique papel A4, tampa e conexao.');
+    return false;
   }
 
   // ---------- Templates ----------
@@ -581,7 +578,7 @@
       const miss = Array.isArray(d.missingLogos) && d.missingLogos.length ? '\n\nLogos faltantes:\n- ' + d.missingLogos.join('\n- ') : '';
       alert('Erro: ' + d.error + miss); return false;
     }
-    openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
+    await openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
     loadBatches();
     return true;
   }
