@@ -193,6 +193,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
 <script src="/_product-card.js?v=20260602-comprado"></script>
 <script src="/_webauthn.js?v=20260611"></script>
+  <script src="/pdf-browser-viewer.js"></script>
 </head>
 <body>
 
@@ -4670,6 +4671,9 @@ async function openAuthedFile(path, options = {}) {
         t.textContent = '⚠️ Impressora recusou — abrindo o PDF';
         setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 4000);
       } catch (e) { /* agente offline -> abre o PDF normalmente */ }
+    }
+    if (options.skipPrint && typeof window.openPdfInBrowser === 'function') {
+      return window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
     }
     const blobUrl = URL.createObjectURL(blob);
     // Alguns navegadores bloqueiam window.open depois do fetch assíncrono.

@@ -106,6 +106,7 @@
   .biper-qty button{width:34px;height:34px;border-radius:7px;border:1px solid var(--border);background:#f5f5f7;font-size:17px;font-weight:800;cursor:pointer}
   .biper-qty b{min-width:22px;text-align:center;font-size:15px}
 </style>
+  <script src="/pdf-browser-viewer.js"></script>
 </head>
 <body>
   <div class="topbar">
@@ -239,12 +240,12 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       blob = await r.blob();
     }catch(e){ alert('Falha ao obter o PDF: ' + e.message); return false; }
-    const blobUrl = URL.createObjectURL(blob);
-    const popup = window.open(blobUrl, '_blank');
-    if (!popup) window.location.href = blobUrl;
-    _ptoast('PDF aberto no navegador. Use o icone de imprimir.', 6000);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
-    return true;
+    if (typeof window.openPdfInBrowser === 'function') {
+      const opened = window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
+      if (opened) _ptoast('PDF aberto no visualizador web.', 6000);
+      return opened;
+    }
+    return false;
   }
 
   // ---------- Templates ----------
