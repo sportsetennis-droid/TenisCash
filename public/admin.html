@@ -10189,7 +10189,7 @@ async function labelsGenerateAutomatic() {
     await loadLabelBatches();
     // Baixa o primeiro lote automaticamente. Os demais ficam disponíveis na
     // tabela LOTES GERADOS, separados por loja.
-    const opened = await downloadAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf', `etiquetas-${batches[0].id}.pdf`);
+    const opened = await openAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf', { skipPrint: true });
     if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
