@@ -143,7 +143,7 @@
       </div>
       <div class="cart-actions">
         <button class="btn btn-ghost" id="clearBtn">Limpar</button>
-        <button class="btn btn-white" id="genBtn">📄 GERAR PDF A4</button>
+        <button class="btn btn-white" id="genBtn">📄 ABRIR PDF NO NAVEGADOR</button>
       </div>
     </div>
 
@@ -228,6 +228,23 @@
     }catch(e){ /* agente offline (máquina sem o serviço) -> modo manual */ }
     alert('A impressora nao aceitou o trabalho. Verifique papel A4, tampa e conexao.');
     return false;
+  }
+
+  // Visualiza o PDF como uma aba do navegador, sem Acrobat, agente local ou
+  // envio automatico para a impressora.
+  async function openPdfBrowser(path){
+    let blob;
+    try{
+      const r = await fetch(path, { headers: token ? { Authorization:'Bearer '+token } : {}, cache:'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      blob = await r.blob();
+    }catch(e){ alert('Falha ao obter o PDF: ' + e.message); return false; }
+    const blobUrl = URL.createObjectURL(blob);
+    const popup = window.open(blobUrl, '_blank');
+    if (!popup) window.location.href = blobUrl;
+    _ptoast('PDF aberto no navegador. Use o icone de imprimir.', 6000);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+    return true;
   }
 
   // ---------- Templates ----------
@@ -578,7 +595,7 @@
       const miss = Array.isArray(d.missingLogos) && d.missingLogos.length ? '\n\nLogos faltantes:\n- ' + d.missingLogos.join('\n- ') : '';
       alert('Erro: ' + d.error + miss); return false;
     }
-    await openPdf(LBL + '/batches/' + d.batch.id + '/pdf');
+    await openPdfBrowser(LBL + '/batches/' + d.batch.id + '/pdf');
     loadBatches();
     return true;
   }
@@ -624,7 +641,7 @@
         <td style="color:var(--text2);font-size:12px">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
         <td><button class="btn btn-primary" data-pdf="${esc(b.id)}">Ver PDF</button></td>
       </tr>`).join('') + '</tbody></table>';
-    wrap.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => openPdf(LBL + '/batches/' + b.dataset.pdf + '/pdf'));
+    wrap.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => openPdfBrowser(LBL + '/batches/' + b.dataset.pdf + '/pdf'));
   }
 
   // ---------- init ----------
