@@ -1111,7 +1111,7 @@ function cleanLabelCategory(value) {
 }
 
 function labelStyle(product, classification = {}) {
-  if (isConverseBrand(product?.brand)) return 'NÃO É TÊNIS. É DESIGN QUE ATRAVESSA GERAÇÕES.';
+  if (isConverseBrand(product?.brand)) return 'NÃO É TÊNIS.\nÉ DESIGN QUE ATRAVESSA GERAÇÕES.';
   const type = productType(product, product?.name || '');
   const clothing = clothingType(product, product?.name || '');
   if (isTennisProduct(product)) {

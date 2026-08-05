@@ -805,20 +805,22 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     if (categoryLabel) {
       // A categoria/estilo nunca deve receber reticÃªncias. Ajustamos a
       // fonte atÃ© a frase inteira caber na largura da etiqueta.
-      const categoryText = categoryLabel.toUpperCase();
+      const categoryLines = categoryLabel.toUpperCase().split(/\r?\n/).filter(Boolean);
       let categoryFs = 6.5;
       for (; categoryFs >= 4; categoryFs -= 0.25) {
         doc.font(FONT_CLASSIC_BOLD).fontSize(categoryFs);
-        if (doc.widthOfString(categoryText) <= innerW) break;
+        if (categoryLines.every((line) => doc.widthOfString(line) <= innerW)) break;
       }
-      doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(4, categoryFs)).fillColor(WHITE)
-        .text(categoryText, x + pad, y + mm(22), {
-          width: innerW,
-          height: mm(4),
-          align: 'center',
-          ellipsis: false,
-          lineBreak: false,
-        });
+      categoryLines.forEach((line, index) => {
+        doc.font(FONT_CLASSIC_BOLD).fontSize(Math.max(4, categoryFs)).fillColor(WHITE)
+          .text(line, x + pad, y + mm(22 + (index * 2.7)), {
+            width: innerW,
+            height: mm(2.5),
+            align: 'center',
+            ellipsis: false,
+            lineBreak: false,
+          });
+      });
     }
     if (reference) {
       doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
@@ -1049,13 +1051,18 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
 
     const category = String(item.categoryLabel || item.category || '').trim().toUpperCase();
     if (category) {
-      const categoryFs = fitSingleLine(category, FONT_BOLD, 6.8, 4.8);
-      doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
-        .text(category, x + pad, y + mm(37.2), {
-          width: innerW,
-          height: mm(3.2),
-          lineBreak: false,
-        });
+      const categoryLines = category.split(/\r?\n/).filter(Boolean);
+      const categoryFs = Math.min(
+        ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, 6.8, 4.8)),
+      );
+      categoryLines.forEach((line, index) => {
+        doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
+          .text(line, x + pad, y + mm(37.2 + (index * 2.7)), {
+            width: innerW,
+            height: mm(2.5),
+            lineBreak: false,
+          });
+      });
     }
 
     const usePromo = item.promotionalPrice != null
