@@ -4727,6 +4727,63 @@ async function downloadAuthedFile(path, filename) {
 }
 window.downloadAuthedFile = downloadAuthedFile;
 
+// Envia uma etiqueta já gerada para o agente local, sem depender do diálogo
+// de impressão do Chrome. O PDF continua disponível para download/conferência.
+async function printAuthedFile(path) {
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const baseUrl = path.startsWith('http') ? path : (API + path);
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const url = baseUrl + separator + '_fresh=' + Date.now();
+    const r = await fetch(url, { headers, cache: 'no-store' });
+    if (!r.ok) {
+      let msg = 'Erro ' + r.status;
+      try {
+        const j = await r.json();
+        if (j.error) msg = j.error;
+        if (Array.isArray(j.missingLogos) && j.missingLogos.length) {
+          msg += '\n\nLogos faltantes:\n- ' + j.missingLogos.join('\n- ');
+        }
+      } catch {}
+      alert('Não foi possível preparar a impressão: ' + msg);
+      return false;
+    }
+    const blob = await r.blob();
+    let t = document.getElementById('_ptoast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = '_ptoast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111;color:#fff;padding:13px 20px;border-radius:12px;font-weight:800;font-size:15px;z-index:99999;box-shadow:0 8px 30px rgba(0,0,0,.4)';
+      document.body.appendChild(t);
+    }
+    t.textContent = '🖨️ Enviando para a impressora...';
+    t.style.opacity = '1';
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 180000);
+    let response;
+    try {
+      response = await fetch('http://localhost:8790/print', {
+        method: 'POST',
+        body: blob,
+        headers: { 'Content-Type': 'application/pdf' },
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    const result = response.ok ? await response.json().catch(() => ({})) : {};
+    if (!response.ok || !result.ok) throw new Error('agente de impressão não confirmou o envio');
+    t.textContent = '✅ Etiquetas enviadas para a impressora!';
+    setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 4000);
+    return true;
+  } catch (e) {
+    alert('Não foi possível imprimir pelas etiquetas: verifique se o agente de impressão está ativo.\n\n' + e.message);
+    return false;
+  }
+}
+window.printAuthedFile = printAuthedFile;
+
 // LOGIN
 async function doAdminLogin() {
   const input = document.getElementById('admin-phone').value.trim();
@@ -10822,7 +10879,7 @@ async function loadLabelBatches() {
       <td>${b.totalLabels}</td>
       <td>${escapeHtml(b.status)}</td>
       <td style="font-size:11px;color:var(--text2)">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
-      <td><button type="button" class="btn" onclick="downloadAuthedFile('/admin/labels/batches/${b.id}/pdf','etiquetas-${b.id}.pdf')">Baixar PDF</button></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn" onclick="downloadAuthedFile('/admin/labels/batches/${b.id}/pdf','etiquetas-${b.id}.pdf')">Baixar PDF</button><button type="button" class="btn" onclick="printAuthedFile('/admin/labels/batches/${b.id}/pdf')">🖨️ Imprimir</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
