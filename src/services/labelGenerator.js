@@ -782,7 +782,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     const categoryLabel = String(item.categoryLabel || item.category || '').trim();
     const promotionText = String(item.promotionText || '').trim();
     const motivationText = String(item.motivationText || '').trim().toUpperCase();
-    const sizes = item.availableSizes ? `DISPONÍVEIS: ${item.availableSizes}` : '';
     // Reserva física para o furo: nenhum texto da face de descrição pode
     // ocupar os primeiros 10 mm da etiqueta.
     const punchClearance = mm(10);
@@ -824,16 +823,6 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
     if (reference) {
       doc.font(FONT_CLASSIC).fontSize(6.1).fillColor(WHITE)
         .text(`REF.: ${reference}`, x + pad, y + mm(26.2), {
-          width: innerW,
-          height: mm(3.8),
-          align: 'center',
-          ellipsis: true,
-          lineBreak: false,
-        });
-    }
-    if (sizes) {
-      doc.font(FONT_CLASSIC).fontSize(5.9).fillColor(WHITE)
-        .text(sizes, x + pad, y + mm(30.1), {
           width: innerW,
           height: mm(3.8),
           align: 'center',
@@ -1066,21 +1055,6 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
           width: innerW,
           height: mm(3.2),
           lineBreak: false,
-        });
-    }
-
-    const sizes = String(item.availableSizes || '').trim();
-    const productDetails = [
-      sizes ? `TAM: ${sizes}` : '',
-    ].filter(Boolean).join('  •  ');
-    if (productDetails) {
-      const detailsFs = fitSingleLine(productDetails, FONT_MEDIUM, 5.8, 4.2);
-      doc.font(FONT_MEDIUM).fontSize(detailsFs).fillColor(MUTED)
-        .text(productDetails, x + pad, y + mm(39.1), {
-          width: innerW,
-          height: mm(2.8),
-          lineBreak: false,
-          ellipsis: true,
         });
     }
 
@@ -1381,10 +1355,8 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
       .text(String(item.name), padX, cursor, { width: innerW, height: 22, ellipsis: true });
     cursor += t.paperSize === 'THERMAL' ? 18 : 22;
   }
-  if (t.showSize && item.size) {
-    doc.fontSize(7).fillColor('#444').text('Tam: ' + item.size, padX, cursor, { width: innerW });
-    cursor += 8;
-  }
+  // Tamanho não é exibido nas etiquetas. Continua disponível no cadastro
+  // e nos filtros internos para seleção e conferência.
   // Cor não é exibida nas etiquetas. O dado continua disponível no cadastro
   // para revisão, mas nunca deve aparecer como informação não confirmada.
   if (t.showSku !== false && item.sku) {
