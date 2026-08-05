@@ -4686,6 +4686,47 @@ async function openAuthedFile(path) {
 }
 window.openAuthedFile = openAuthedFile;
 
+// Baixa um arquivo autenticado sem abrir o visualizador/impressora do navegador.
+// As etiquetas precisam ficar disponíveis como PDF para conferência e impressão
+// manual, principalmente em computadores configurados com impressão silenciosa.
+async function downloadAuthedFile(path, filename) {
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const baseUrl = path.startsWith('http') ? path : (API + path);
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const url = baseUrl + separator + '_fresh=' + Date.now();
+    const r = await fetch(url, { headers, cache: 'no-store' });
+    if (!r.ok) {
+      let msg = 'Erro ' + r.status;
+      try {
+        const j = await r.json();
+        if (j.error) msg = j.error;
+        if (Array.isArray(j.missingLogos) && j.missingLogos.length) {
+          msg += '\n\nLogos faltantes:\n- ' + j.missingLogos.join('\n- ');
+        }
+      } catch {}
+      alert('Não foi possível gerar o PDF: ' + msg);
+      return false;
+    }
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'etiquetas.pdf';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    return true;
+  } catch (e) {
+    alert('Erro ao gerar o PDF: ' + e.message);
+    return false;
+  }
+}
+window.downloadAuthedFile = downloadAuthedFile;
+
 // LOGIN
 async function doAdminLogin() {
   const input = document.getElementById('admin-phone').value.trim();
@@ -10078,9 +10119,9 @@ async function labelsGenerateAutomatic() {
       return;
     }
     await loadLabelBatches();
-    // Abre o primeiro lote automaticamente. Os demais ficam disponíveis na
+    // Baixa o primeiro lote automaticamente. Os demais ficam disponíveis na
     // tabela LOTES GERADOS, separados por loja.
-    const opened = await openAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf');
+    const opened = await downloadAuthedFile('/admin/labels/batches/' + batches[0].id + '/pdf', `etiquetas-${batches[0].id}.pdf`);
     if (!opened) return;
     const skipped = (data.emptyStores || []).map(s => s.code || s.name).join(', ');
     const suffix = skipped ? `\nSem estoque: ${skipped}.` : '';
@@ -10758,8 +10799,8 @@ async function labelsCreateBatch() {
     alert('Erro: ' + data.error + missing);
     return;
   }
-  // Abre PDF
-  openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf');
+  // Baixa o PDF sem acionar a impressora
+  downloadAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', `etiquetas-${data.batch.id}.pdf`);
   // Limpa carrinho
   _lblSel = {};
   _labelsSelected = {};
@@ -10781,7 +10822,7 @@ async function loadLabelBatches() {
       <td>${b.totalLabels}</td>
       <td>${escapeHtml(b.status)}</td>
       <td style="font-size:11px;color:var(--text2)">${new Date(b.createdAt).toLocaleString('pt-BR')}</td>
-      <td><button type="button" class="btn" onclick="openAuthedFile('/admin/labels/batches/${b.id}/pdf')">Ver PDF</button></td>
+      <td><button type="button" class="btn" onclick="downloadAuthedFile('/admin/labels/batches/${b.id}/pdf','etiquetas-${b.id}.pdf')">Baixar PDF</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
