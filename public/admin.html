@@ -4650,6 +4650,27 @@ async function openAuthedFile(path) {
       return false;
     }
     const blob = await r.blob();
+    // Etiquetas: manda direto pra impressora da central (agente local, frente e verso
+    // na mesma folha). Se o agente não estiver de pé, cai no fluxo normal de abrir o PDF.
+    if (/\/labels\/batches\/[^/]+\/pdf/.test(path)) {
+      try {
+        let t = document.getElementById('_ptoast');
+        if (!t) { t = document.createElement('div'); t.id = '_ptoast'; t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111;color:#fff;padding:13px 20px;border-radius:12px;font-weight:800;font-size:15px;z-index:99999;box-shadow:0 8px 30px rgba(0,0,0,.4)'; document.body.appendChild(t); }
+        t.textContent = '🖨️ Enviando pra impressora…'; t.style.opacity = '1';
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 180000);
+        const pr = await fetch('http://localhost:8790/print', { method: 'POST', body: blob, headers: { 'Content-Type': 'application/pdf' }, signal: ctrl.signal });
+        clearTimeout(to);
+        const j = pr.ok ? await pr.json().catch(() => ({})) : {};
+        if (j.ok) {
+          t.textContent = '✅ Etiquetas enviadas pra impressora!';
+          setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 4000);
+          return true;
+        }
+        t.textContent = '⚠️ Impressora recusou — abrindo o PDF';
+        setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; }, 4000);
+      } catch (e) { /* agente offline -> abre o PDF normalmente */ }
+    }
     const blobUrl = URL.createObjectURL(blob);
     // Alguns navegadores bloqueiam window.open depois do fetch assíncrono.
     // Nesse caso, abre o PDF na própria aba para que o arquivo não desapareça.
