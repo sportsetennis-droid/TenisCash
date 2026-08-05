@@ -4629,7 +4629,7 @@ async function sendTaskReportNow() {
 
 // Abre URL autenticada (binária: PDF/imagem) em nova aba via blob.
 // Necessário porque window.open() não envia Authorization header.
-async function openAuthedFile(path) {
+async function openAuthedFile(path, options = {}) {
   try {
     const headers = {};
     if (token) headers['Authorization'] = 'Bearer ' + token;
@@ -4652,7 +4652,7 @@ async function openAuthedFile(path) {
     const blob = await r.blob();
     // Etiquetas: manda direto pra impressora da central (agente local, frente e verso
     // na mesma folha). Se o agente não estiver de pé, cai no fluxo normal de abrir o PDF.
-    if (/\/labels\/batches\/[^/]+\/pdf/.test(path)) {
+    if (!options.skipPrint && /\/labels\/batches\/[^/]+\/pdf/.test(path)) {
       try {
         let t = document.getElementById('_ptoast');
         if (!t) { t = document.createElement('div'); t.id = '_ptoast'; t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111;color:#fff;padding:13px 20px;border-radius:12px;font-weight:800;font-size:15px;z-index:99999;box-shadow:0 8px 30px rgba(0,0,0,.4)'; document.body.appendChild(t); }
@@ -10856,8 +10856,8 @@ async function labelsCreateBatch() {
     alert('Erro: ' + data.error + missing);
     return;
   }
-  // Baixa o PDF sem acionar a impressora
-  downloadAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', `etiquetas-${data.batch.id}.pdf`);
+  // Abre o PDF no navegador sem acionar Acrobat, agente ou impressora.
+  await openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', { skipPrint: true });
   // Limpa carrinho
   _lblSel = {};
   _labelsSelected = {};
