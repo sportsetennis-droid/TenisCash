@@ -1546,18 +1546,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
     }
 
-    const pdfBuffer = await generateLabelsPDF({
-      template: batch.template,
-      items,
-      storeName,
-      storeLogoUrl,
-    });
-
-    await prisma.labelBatch.update({
-      where: { id: batch.id },
-      data: { status: 'GENERATED' },
-    });
-
+    // Envia os cabeçalhos ANTES de gerar e transmite o PDF enquanto ele é montado.
+    // Lotes grandes (loja inteira) levam minutos; sem streaming o Cloudflare
+    // derrubava a requisição em 100s com erro 524.
     const pdfVersion = 'auditoria-individual-cor-v10';
     res.set({
       'Content-Type': 'application/pdf',
@@ -1567,9 +1558,23 @@ router.get('/batches/:id/pdf', async (req, res) => {
       Expires: '0',
       'X-Label-PDF-Version': pdfVersion,
     });
-    res.send(pdfBuffer);
+    res.flushHeaders?.();
+
+    await generateLabelsPDF({
+      template: batch.template,
+      items,
+      storeName,
+      storeLogoUrl,
+      outStream: res,
+    });
+
+    await prisma.labelBatch.update({
+      where: { id: batch.id },
+      data: { status: 'GENERATED' },
+    }).catch(() => {});
   } catch (err) {
     console.error('[labels/batches/:id/pdf] erro:', err);
+    if (res.headersSent) { try { res.end(); } catch { /* conexão já encerrada */ } return; }
     res.status(500).json({ error: 'Erro ao gerar PDF', detail: err.message });
   }
 });

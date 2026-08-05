@@ -1448,7 +1448,9 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
  * @param {Array}  opts.items - [{name, brand, sku, size, color, price, promotionalPrice, barcode, qrCodeValue, quantity}]
  * @returns {Promise<Buffer>}
  */
-async function generateLabelsPDF({ template, items, storeName, storeLogoUrl, offsetX = 0, offsetY = 0 }) {
+async function generateLabelsPDF({
+  template, items, storeName, storeLogoUrl, offsetX = 0, offsetY = 0, outStream = null,
+}) {
   const t = template;
   const paperSize = t.paperSize || 'A4';
   const layoutW = paperSize === 'A4' ? 'A4' : [mm(t.widthMm), mm(t.heightMm)];
@@ -1475,12 +1477,24 @@ async function generateLabelsPDF({ template, items, storeName, storeLogoUrl, off
       : 'DuplexFlipLongEdge';
   }
   doc._root.data.ViewerPreferences = viewerPreferences;
-  const chunks = [];
-  doc.on('data', (c) => chunks.push(c));
-  const done = new Promise((res, rej) => {
-    doc.on('end', () => res(Buffer.concat(chunks)));
-    doc.on('error', rej);
-  });
+  // Com outStream o PDF vai saindo enquanto é gerado (primeiro byte em ms).
+  // Sem isso o lote da loja inteira ficava minutos montando na memória e o
+  // Cloudflare cortava a requisição em 100s (erro 524).
+  let done;
+  if (outStream) {
+    doc.pipe(outStream);
+    done = new Promise((res, rej) => {
+      doc.on('end', () => res(null));
+      doc.on('error', rej);
+    });
+  } else {
+    const chunks = [];
+    doc.on('data', (c) => chunks.push(c));
+    done = new Promise((res, rej) => {
+      doc.on('end', () => res(Buffer.concat(chunks)));
+      doc.on('error', rej);
+    });
+  }
 
   // Expande quantidades em lista plana
   const flat = [];
