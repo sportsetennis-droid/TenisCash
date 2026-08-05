@@ -1051,7 +1051,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     if (category) {
       const categoryFs = fitSingleLine(category, FONT_BOLD, 6.8, 4.8);
       doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
-        .text(category, x + pad, y + mm(36.9), {
+        .text(category, x + pad, y + mm(37.2), {
           width: innerW,
           height: mm(3.2),
           lineBreak: false,
@@ -1065,7 +1065,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       if (usePromo && Number.isFinite(Number(item.price))) {
         const oldPrice = `PREÇO NORMAL ${fmtBRL(item.price)}`;
         const oldFs = fitSingleLine(oldPrice, FONT_BOLD, 8.8, 6.8);
-        const oldY = y + mm(43);
+        const oldY = y + mm(43.5);
         doc.font(FONT_BOLD).fontSize(oldFs).fillColor(CHARCOAL)
           .text(oldPrice, x + pad, oldY, {
             width: innerW,
@@ -1076,7 +1076,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const priceText = fmtBRL(value);
       const priceFs = fitSingleLine(priceText, FONT_BOLD, 22, 15.5);
       doc.font(FONT_BOLD).fontSize(priceFs).fillColor(ORANGE)
-        .text(priceText, x + pad, y + mm(46.3), {
+        .text(priceText, x + pad, y + mm(47), {
           width: innerW,
           height: mm(8.5),
           align: 'left',
@@ -1092,7 +1092,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const offerHeadline = percent ? `PREÇO COM ${percent}% OFF` : 'PREÇO PROMOCIONAL';
       const offerFs = fitSingleLine(offerHeadline, FONT_BOLD, 6.0, 5.0);
       doc.font(FONT_BOLD).fontSize(offerFs).fillColor(ORANGE)
-        .text(offerHeadline, x + pad, y + mm(55.5), {
+        .text(offerHeadline, x + pad, y + mm(55.8), {
           width: innerW,
           height: mm(2.6),
           lineBreak: false,
@@ -1102,7 +1102,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
         const conditionFs = fitSingleLine(conditionText, FONT_BOLD, 5.4, 4.6);
         // Mais respiro entre as duas linhas (antes 54.7→57 = ~2.3mm, coladas). Agora ~3.5mm.
         doc.font(FONT_BOLD).fontSize(conditionFs).fillColor(CHARCOAL)
-          .text(conditionText, x + pad, y + mm(59), {
+          .text(conditionText, x + pad, y + mm(59.6), {
             width: innerW,
             height: mm(2.5),
             lineBreak: false,
@@ -1112,16 +1112,16 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
 
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
-      .moveTo(x + pad, y + mm(62))
-      .lineTo(x + w - pad, y + mm(62))
+      .moveTo(x + pad, y + mm(62.5))
+      .lineTo(x + w - pad, y + mm(62.5))
       .stroke().restore();
 
     doc.save().fillColor(ORANGE)
-      .rect(x + pad, y + mm(64.3), mm(0.75), mm(3.1))
+      .rect(x + pad, y + mm(65), mm(0.75), mm(3.1))
       .fill().restore();
     const warrantyFs = fitSingleLine(warrantyText, FONT_BOLD, 6.4, 5.1, innerW - mm(2.2));
     doc.font(FONT_BOLD).fontSize(warrantyFs).fillColor(CHARCOAL)
-      .text(warrantyText, x + pad + mm(2.2), y + mm(64.15), {
+      .text(warrantyText, x + pad + mm(2.2), y + mm(64.85), {
         width: innerW - mm(2.2),
         height: mm(3.8),
         lineBreak: false,
