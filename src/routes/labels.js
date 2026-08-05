@@ -1549,7 +1549,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
     // Envia os cabeçalhos ANTES de gerar e transmite o PDF enquanto ele é montado.
     // Lotes grandes (loja inteira) levam minutos; sem streaming o Cloudflare
     // derrubava a requisição em 100s com erro 524.
-    const pdfVersion = 'auditoria-individual-cor-v10';
+    const pdfVersion = 'auditoria-individual-sem-cor-v1';
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="etiquetas-${batch.id}-${pdfVersion}.pdf"`,

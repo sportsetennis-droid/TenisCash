@@ -1069,10 +1069,8 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
         });
     }
 
-    const color = String(item.color || '').trim().toUpperCase();
     const sizes = String(item.availableSizes || '').trim();
     const productDetails = [
-      color ? `COR: ${color}` : '',
       sizes ? `TAM: ${sizes}` : '',
     ].filter(Boolean).join('  •  ');
     if (productDetails) {
@@ -1194,9 +1192,8 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
   const qrY = y + mm(26.4);
   if (item.qrCodeValue) item._qrPos = { x: qrX, y: qrY, size: qrSize };
   if (item.internalBarcode) {
-    const color = String(item.color || '').trim().toUpperCase();
-    const colorDetail = String(item.colorDetail || color).trim().toUpperCase();
-    const barcodeCaption = `INTERNO: ${item.internalBarcode}${colorDetail ? `  •  COR: ${colorDetail}` : ''}`;
+    // A cor fica disponível apenas para a revisão interna e nunca é impressa.
+    const barcodeCaption = `INTERNO: ${item.internalBarcode}`;
     const captionSize = fitSingleLine(barcodeCaption, FONT_MEDIUM, 4.6, 3.6, scanW - mm(6));
     drawBarcode128(doc, item.internalBarcode, scanX + mm(3), y + mm(53.7), scanW - mm(6), mm(9.6), {
       color: '#000000',
@@ -1388,10 +1385,8 @@ function drawLabelContent(doc, item, template, x, y, w, h) {
     doc.fontSize(7).fillColor('#444').text('Tam: ' + item.size, padX, cursor, { width: innerW });
     cursor += 8;
   }
-  if (t.showColor && item.color) {
-    doc.fontSize(7).fillColor('#444').text('Cor: ' + item.color, padX, cursor, { width: innerW });
-    cursor += 8;
-  }
+  // Cor não é exibida nas etiquetas. O dado continua disponível no cadastro
+  // para revisão, mas nunca deve aparecer como informação não confirmada.
   if (t.showSku !== false && item.sku) {
     doc.fontSize(6).fillColor('#888').text('SKU ' + item.sku, padX, cursor, { width: innerW });
     cursor += 8;
