@@ -27,6 +27,13 @@ const FRASES_POR_MARCA = {
   // a categoria de calçado de aeróbica/academia. Pioneirismo é fato e é só dela —
   // por isso a frase afirma o que ela INVENTOU, não o tamanho que ela tem.
   reebok: 'INVENTOU O TÊNIS DE ACADEMIA\nA MARCA DO FITNESS',
+
+  // Puma × Jil Sander (1998) foi a primeira parceria entre marca esportiva e
+  // estilista de alta-costura — abriu a porta que Nike e adidas atravessaram
+  // depois. Some o Clyde (1973) virando moda de rua e o Fenty da Rihanna (2015).
+  // No estoque da loja a Puma é 50% vestuário: a frase cobre a marca inteira,
+  // não só as 6 chuteiras.
+  puma: 'CRIOU O ESTILO DE VIDA\nESPORTIVO NA MODA',
 };
 
 function normalizarMarca(marca) {
