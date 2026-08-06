@@ -43,7 +43,7 @@
   </style>
 </head>
 <body>
-  <div id="toolbar"><strong>Visualização web — TenisCash</strong><button id="print">Imprimir</button><a id="download" download="etiquetas.pdf">Baixar PDF</a></div>
+  <div id="toolbar"><strong>Visualização web — TenisCash</strong><button id="robot" style="background:#0a843d">🖨️ Imprimir na impressora da loja</button><button id="print" style="background:#5f6368">Imprimir pelo navegador</button><a id="download" download="etiquetas.pdf">Baixar PDF</a></div>
   <div id="status">Carregando páginas…</div>
   <main id="pages"></main>
   <script type="module">
@@ -55,6 +55,35 @@
     document.title = ${safeTitle};
     document.getElementById('download').href = pdfUrl;
     document.getElementById('print').onclick = () => window.print();
+    // Envia o PDF pro robô de impressão da central (localhost:8790), que manda direto
+    // pra impressora por IPP — frente e verso na mesma folha, sem passar pelo Windows.
+    const robotBtn = document.getElementById('robot');
+    robotBtn.onclick = async () => {
+      const original = robotBtn.textContent;
+      robotBtn.disabled = true;
+      robotBtn.style.opacity = '.7';
+      robotBtn.textContent = 'Enviando pra impressora…';
+      try {
+        const blob = await (await fetch(pdfUrl)).blob();
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 300000);
+        const resp = await fetch('http://localhost:8790/print', {
+          method: 'POST', body: blob,
+          headers: { 'Content-Type': 'application/pdf' },
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        const data = resp.ok ? await resp.json().catch(() => ({})) : {};
+        robotBtn.textContent = data.ok ? '✅ Enviado! Saindo na impressora' : '⚠️ A impressora recusou';
+      } catch (err) {
+        robotBtn.textContent = '⚠️ Robô de impressão offline';
+      }
+      setTimeout(() => {
+        robotBtn.textContent = original;
+        robotBtn.disabled = false;
+        robotBtn.style.opacity = '1';
+      }, 6000);
+    };
     async function renderPdf() {
       const pdf = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
       status.textContent = 'Renderizando ' + pdf.numPages + ' página(s)…';
