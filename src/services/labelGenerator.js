@@ -1055,10 +1055,12 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       // Frase em 2+ linhas (frase de marca) ocupa a faixa inteira entre o nome
       // do produto (termina em 35,8mm) e o preço (começa em 43,5mm): letra maior,
       // que é o objetivo — ser lida de longe na prateleira.
-      const multiLinha = categoryLines.length > 1;
-      const passo = mm(multiLinha ? 3.2 : 2.7);
-      const fsMax = multiLinha ? 8.4 : 6.8;
-      const alturaLinha = mm(multiLinha ? 3.2 : 2.5);
+      // Mesmo tratamento para TODAS as linhas daqui — frase de marca (Fila,
+      // Skechers, Reebok) ou classificação do produto (ex.: ESTILO DE VIDA
+      // CLÁSSICO, na Converse): letra grande e centralizada no espaço livre.
+      const passo = mm(3.2);
+      const fsMax = 8.4;
+      const alturaLinha = mm(3.2);
       const categoryFs = Math.min(
         ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, fsMax, 4.8)),
       );
