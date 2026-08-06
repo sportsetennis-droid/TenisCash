@@ -16,6 +16,12 @@ const FRASES_POR_MARCA = {
   // Duas linhas de propósito: linha curta = fonte maior = lê de longe.
   // Sem vírgula: a quebra de linha já faz a pausa, a vírgula vira sujeira.
   fila: 'ORIGEM ITALIANA\nCONFORTO BRASILEIRO',
+
+  // 3ª maior empresa de calçados do mundo em receita (2024: US$ 8,97 bi — só
+  // Nike e adidas vendem mais). Escolhida pelo dono: a marca sofre de "não
+  // existe na cabeça do cliente", então a frase cria legitimidade antes de
+  // descrever produto. ATENÇÃO: é dado de ranking — se mudar, trocar a frase.
+  skechers: '3ª MAIOR DO MUNDO\nCONFORTO O DIA TODO',
 };
 
 function normalizarMarca(marca) {
