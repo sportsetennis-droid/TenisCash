@@ -14,6 +14,7 @@ const {
   isSaldoTemplate,
 } = require('../services/labelGenerator');
 const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brandLogoResolver');
+const { fraseDaMarca } = require('../config/frases-marcas');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
 
@@ -1473,7 +1474,9 @@ router.get('/batches/:id/pdf', async (req, res) => {
         .map((s) => normalizeLabelAvailableSize(s.size))
         .filter(Boolean)
       )].join(' | ');
-      const categoryLabel = labelStyle(p, cls);
+      // Marca com frase própria manda na linha abaixo do nome; sem frase,
+      // segue mostrando a classificação do produto como sempre.
+      const categoryLabel = fraseDaMarca(p?.brand) || labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
       const detectedColor = labelProductColor(p, ctx);
       const colorIssue = detectedColor ? null : labelProductColorIssue(p, ctx);
