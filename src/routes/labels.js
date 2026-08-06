@@ -1112,7 +1112,9 @@ function cleanLabelCategory(value) {
 }
 
 function labelStyle(product, classification = {}) {
-  if (isConverseBrand(product?.brand)) return 'NÃO É TÊNIS.\nÉ DESIGN QUE ATRAVESSA GERAÇÕES.';
+  // Três linhas curtas em vez de duas longas: a fonte da etiqueta encolhe até a
+  // MAIOR linha caber, então linha de 32 caracteres deixava a frase inteira miúda.
+  if (isConverseBrand(product?.brand)) return 'NÃO É TÊNIS\nÉ DESIGN QUE\nATRAVESSA GERAÇÕES';
   const type = productType(product, product?.name || '');
   const clothing = clothingType(product, product?.name || '');
   if (isTennisProduct(product)) {

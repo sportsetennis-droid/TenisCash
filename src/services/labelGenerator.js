@@ -1056,17 +1056,10 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       // do produto (termina em 35,8mm) e o preço (começa em 43,5mm): letra maior,
       // que é o objetivo — ser lida de longe na prateleira.
       // Mesmo tratamento para TODAS as linhas daqui — frase de marca (Fila,
-      // Skechers, Reebok) ou classificação do produto (ex.: ESTILO DE VIDA
-      // CLÁSSICO, na Converse): letra grande e centralizada no espaço livre.
-      const passo = mm(3.2);
-      const fsMax = 8.4;
-      const alturaLinha = mm(3.2);
-      const categoryFs = Math.min(
-        ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, fsMax, 4.8)),
-      );
-      // Centraliza no espaço REAL: mede onde o nome do produto de fato terminou
-      // (a reserva de 12,4mm quase nunca é usada inteira) e distribui a sobra
-      // igualmente acima e abaixo da frase, até onde o preço começa.
+      // Skechers, Reebok) ou a linha da Converse/classificação: letra grande,
+      // centralizada no espaço livre e SEM NUNCA invadir o preço.
+      // Mede onde o nome do produto de fato terminou (a reserva de 12,4mm
+      // quase nunca é usada inteira) — é daí que nasce o espaço disponível.
       doc.font(FONT_BOLD).fontSize(Math.max(8, descriptionFs));
       const alturaNome = Math.min(
         doc.heightOfString(productName, { width: innerW, align: 'left', lineGap: -0.4 }),
@@ -1074,8 +1067,24 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       );
       const faixaTopo = Math.max(descriptionY + alturaNome + mm(1.2), y + mm(33));
       const faixaBase = y + mm(43.2);
+      const disponivel = Math.max(mm(2.5), faixaBase - faixaTopo);
+      let passo = mm(3.2);
+      let alturaLinha = mm(3.2);
+      let fsMax = 8.4;
+      // Se a frase tiver linhas demais pro espaço, encolhe proporcionalmente
+      // em vez de estourar por cima do preço.
+      const blocoCheio = ((categoryLines.length - 1) * passo) + alturaLinha;
+      if (blocoCheio > disponivel) {
+        const fator = disponivel / blocoCheio;
+        passo *= fator;
+        alturaLinha *= fator;
+        fsMax = Math.max(4.8, fsMax * fator);
+      }
+      const categoryFs = Math.min(
+        ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, fsMax, 4.8)),
+      );
       const alturaBloco = ((categoryLines.length - 1) * passo) + alturaLinha;
-      const sobra = Math.max(0, (faixaBase - faixaTopo) - alturaBloco);
+      const sobra = Math.max(0, disponivel - alturaBloco);
       const topo = faixaTopo + (sobra / 2);
       categoryLines.forEach((line, index) => {
         doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
