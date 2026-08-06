@@ -22,6 +22,11 @@ const FRASES_POR_MARCA = {
   // existe na cabeça do cliente", então a frase cria legitimidade antes de
   // descrever produto. ATENÇÃO: é dado de ranking — se mudar, trocar a frase.
   skechers: '3ª MAIOR DO MUNDO\nCONFORTO O DIA TODO',
+
+  // O Freestyle (1982) foi o primeiro tênis esportivo feito para mulher e criou
+  // a categoria de calçado de aeróbica/academia. Pioneirismo é fato e é só dela —
+  // por isso a frase afirma o que ela INVENTOU, não o tamanho que ela tem.
+  reebok: 'INVENTOU O TÊNIS DE ACADEMIA\nA MARCA DO FITNESS',
 };
 
 function normalizarMarca(marca) {
