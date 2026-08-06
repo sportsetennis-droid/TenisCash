@@ -1056,16 +1056,28 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       // do produto (termina em 35,8mm) e o preço (começa em 43,5mm): letra maior,
       // que é o objetivo — ser lida de longe na prateleira.
       const multiLinha = categoryLines.length > 1;
-      const topo = multiLinha ? 36.4 : 37.2;
-      const passo = multiLinha ? 3.2 : 2.7;
+      const passo = mm(multiLinha ? 3.2 : 2.7);
       const fsMax = multiLinha ? 8.4 : 6.8;
-      const alturaLinha = multiLinha ? mm(3.2) : mm(2.5);
+      const alturaLinha = mm(multiLinha ? 3.2 : 2.5);
       const categoryFs = Math.min(
         ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, fsMax, 4.8)),
       );
+      // Centraliza no espaço REAL: mede onde o nome do produto de fato terminou
+      // (a reserva de 12,4mm quase nunca é usada inteira) e distribui a sobra
+      // igualmente acima e abaixo da frase, até onde o preço começa.
+      doc.font(FONT_BOLD).fontSize(Math.max(8, descriptionFs));
+      const alturaNome = Math.min(
+        doc.heightOfString(productName, { width: innerW, align: 'left', lineGap: -0.4 }),
+        descriptionH,
+      );
+      const faixaTopo = Math.max(descriptionY + alturaNome + mm(1.2), y + mm(33));
+      const faixaBase = y + mm(43.2);
+      const alturaBloco = ((categoryLines.length - 1) * passo) + alturaLinha;
+      const sobra = Math.max(0, (faixaBase - faixaTopo) - alturaBloco);
+      const topo = faixaTopo + (sobra / 2);
       categoryLines.forEach((line, index) => {
         doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
-          .text(line, x + pad, y + mm(topo + (index * passo)), {
+          .text(line, x + pad, topo + (index * passo), {
             width: innerW,
             height: alturaLinha,
             lineBreak: false,
