@@ -13,8 +13,9 @@
 const FRASES_POR_MARCA = {
   // Marca italiana (1911); os 661 produtos Fila do catálogo têm origem fiscal
   // 0 = NACIONAL, ou seja, fabricados no Brasil. A frase é fato, não retórica.
-  // Quebrada em duas linhas de propósito: linha curta = fonte maior = lê de longe.
-  fila: 'ORIGEM ITALIANA,\nCONFORTO BRASILEIRO',
+  // Duas linhas de propósito: linha curta = fonte maior = lê de longe.
+  // Sem vírgula: a quebra de linha já faz a pausa, a vírgula vira sujeira.
+  fila: 'ORIGEM ITALIANA\nCONFORTO BRASILEIRO',
 };
 
 function normalizarMarca(marca) {

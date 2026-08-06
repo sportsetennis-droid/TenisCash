@@ -1052,14 +1052,22 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
     const category = String(item.categoryLabel || item.category || '').trim().toUpperCase();
     if (category) {
       const categoryLines = category.split(/\r?\n/).filter(Boolean);
+      // Frase em 2+ linhas (frase de marca) ocupa a faixa inteira entre o nome
+      // do produto (termina em 35,8mm) e o preço (começa em 43,5mm): letra maior,
+      // que é o objetivo — ser lida de longe na prateleira.
+      const multiLinha = categoryLines.length > 1;
+      const topo = multiLinha ? 36.4 : 37.2;
+      const passo = multiLinha ? 3.2 : 2.7;
+      const fsMax = multiLinha ? 8.4 : 6.8;
+      const alturaLinha = multiLinha ? mm(3.2) : mm(2.5);
       const categoryFs = Math.min(
-        ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, 6.8, 4.8)),
+        ...categoryLines.map((line) => fitSingleLine(line, FONT_BOLD, fsMax, 4.8)),
       );
       categoryLines.forEach((line, index) => {
         doc.font(FONT_BOLD).fontSize(categoryFs).fillColor(ORANGE)
-          .text(line, x + pad, y + mm(37.2 + (index * 2.7)), {
+          .text(line, x + pad, y + mm(topo + (index * passo)), {
             width: innerW,
-            height: mm(2.5),
+            height: alturaLinha,
             lineBreak: false,
           });
       });
