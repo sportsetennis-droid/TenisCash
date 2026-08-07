@@ -17,17 +17,24 @@ jobs:
     steps:
       - name: health (o deploy novo esta no ar?)
         run: curl -sS -m 30 https://teniscash.com.br/api/health || echo "HEALTH FALHOU"
-      - name: relatorio /api/_fiscaldiag
+      - name: espera deploy v3 + atualiza agentes + relatorio
         run: |
-          # Espera o deploy novo do Railway ficar no ar (relatorio v2 tem o marcador
-          # [diag v2]); tenta por ate ~10 min e imprime o que conseguir.
+          # 1) espera o deploy novo do Railway (marcador [diag v3])
           R=""
           for i in $(seq 1 40); do
             R=$(curl -sS -m 120 "https://teniscash.com.br/api/_fiscaldiag?g=stxdiag2026" || true)
-            echo "$R" | grep -q "\[diag v2\]" && break
-            echo "(tentativa $i: deploy v2 ainda nao esta no ar — aguardando 15s)"
+            echo "$R" | grep -q "\[diag v3\]" && break
+            echo "(tentativa $i: deploy v3 ainda nao esta no ar — aguardando 15s)"
             sleep 15
           done
+          # 2) manda TODOS os agentes das lojas se atualizarem pro v2.4-certinfo
+          echo "==================== AGENTPUSH ===================="
+          curl -sS -m 300 -X POST "https://teniscash.com.br/api/_agentpush?g=stxdiag2026"
+          echo ""
+          # 3) espera os agentes reiniciarem com a versao nova
+          sleep 75
+          # 4) relatorio final (agora com a validade do certificado por loja)
+          R=$(curl -sS -m 300 "https://teniscash.com.br/api/_fiscaldiag?g=stxdiag2026" || true)
           echo "==================== RELATORIO ===================="
           echo "$R"
           echo "==================== FIM =========================="

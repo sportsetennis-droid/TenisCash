@@ -19,7 +19,7 @@ async function buildFiscalDiagnoseReport(prisma) {
   });
 
   // ---------- A) CONFIG + SAÚDE DOS AGENTES (pings em paralelo, 10s timeout cada) ----------
-  log('[diag v2]');
+  log('[diag v3]');
   log('===== A) CONFIG + AGENTES (por loja) =====');
   const pings = await Promise.all(stores.map((s) => agentClient.ping(s).catch((e) => ({ ok: false, error: e.message }))));
   stores.forEach((s, idx) => {
@@ -33,14 +33,18 @@ async function buildFiscalDiagnoseReport(prisma) {
     if (!i.csc) flags.push('SEM CSC');
     if (i.environment !== 'production') flags.push('AMBIENTE=' + i.environment);
     if (s.fiscalAgentUrl && !h.ok) flags.push('AGENTE FORA DO AR' + (h.error ? ' (' + String(h.error).slice(0, 60) + ')' : ''));
+    if (h.cert && h.cert.expired) flags.push('CERTIFICADO VENCIDO desde ' + String(h.cert.notAfter).slice(0, 10));
+    if (h.cert && !h.cert.expired && typeof h.cert.daysLeft === 'number' && h.cert.daysLeft <= 15) flags.push('CERTIFICADO VENCE EM ' + h.cert.daysLeft + ' DIAS');
     if (flags.length) achados.push('[' + s.code + '] ' + flags.join(' + '));
     log(
       s.code + ' | agente ' + (s.fiscalAgentUrl ? (h.ok ? 'OK v' + (h.version || '?') : 'FORA DO AR') : '(sem URL)') +
       ' | issuer ' + (i.active ? 'ativo' : 'INATIVO') +
       ' | amb ' + i.environment +
       ' | CSC ' + (i.csc ? 'sim' : 'NAO') +
-      ' | NFC-e s' + i.nfceSerie + ' prox ' + i.nfceNextNumber
+      ' | NFC-e s' + i.nfceSerie + ' prox ' + i.nfceNextNumber +
+      ' | cert ' + (h.cert ? (h.cert.error ? ('ERRO: ' + h.cert.error) : ((h.cert.expired ? 'VENCIDO em ' : 'ok ate ') + String(h.cert.notAfter).slice(0, 10) + ' (' + h.cert.daysLeft + 'd) CN=' + h.cert.cn)) : '(agente antigo, sem info)')
     );
+    if (Array.isArray(h.pfxDir) && h.pfxDir.length) log('       .pfx na pasta: ' + h.pfxDir.map((f) => f.name + (f.mtime ? ' (' + String(f.mtime).slice(0, 10) + ')' : '')).join(' | '));
   });
 
   // ---------- B) ÚLTIMO CUPOM AUTORIZADO POR LOJA ----------
