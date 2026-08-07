@@ -19,6 +19,7 @@ async function buildFiscalDiagnoseReport(prisma) {
   });
 
   // ---------- A) CONFIG + SAÚDE DOS AGENTES (pings em paralelo, 10s timeout cada) ----------
+  log('[diag v2]');
   log('===== A) CONFIG + AGENTES (por loja) =====');
   const pings = await Promise.all(stores.map((s) => agentClient.ping(s).catch((e) => ({ ok: false, error: e.message }))));
   stores.forEach((s, idx) => {
@@ -71,12 +72,25 @@ async function buildFiscalDiagnoseReport(prisma) {
   const motivos = {};
   for (const d of ruins) {
     const travado = d.status === 'processing' && (Date.now() - new Date(d.createdAt).getTime()) > 5 * 6e4;
-    const motivo = d.rejectReason || (d.response && (d.response.motivo || d.response.error)) || (travado ? 'TRAVADO em processing' : d.status);
+    const resp = d.response || {};
+    // O motivo REAL da SEFAZ (cStat + xMotivo) mora no response; rejectReason
+    // costuma ser o fallback generico 'Rejeitada' — nunca deixar ele mascarar.
+    const rawStr = typeof resp.raw === 'string' ? resp.raw : '';
+    const xMotivo = (rawStr.match(/<xMotivo>([^<]{1,200})<\/xMotivo>/) || [])[1] || null;
+    const cStat = resp.status || (rawStr.match(/<cStat>(\d+)<\/cStat>/) || [])[1] || null;
+    const motivo = [cStat, resp.motivo || xMotivo || resp.error || d.rejectReason || (travado ? 'TRAVADO em processing' : d.status)].filter(Boolean).join(' ');
     motivos[motivo] = (motivos[motivo] || 0) + 1;
-    log(fmtDt(d.createdAt) + ' | ' + (d.issuer.fantasyName || d.issuer.cnpj) + ' | ' + d.docType + ' #' + d.number + ' | ' + d.status.toUpperCase() + ' | ' + String(motivo).slice(0, 90));
+    log(fmtDt(d.createdAt) + ' | ' + (d.issuer.fantasyName || d.issuer.cnpj) + ' | ' + d.docType + ' #' + d.number + ' | ' + d.status.toUpperCase() + ' | ' + String(motivo).slice(0, 140));
+  }
+  if (ruins.length) {
+    // Dump integral do response do doc ruim mais recente — garante ver o erro
+    // literal mesmo quando o regex nao casa (erro de transporte/agente, JSON, etc).
+    log('');
+    log('--- DETALHE COMPLETO do mais recente (' + ruins[0].docType + ' #' + ruins[0].number + ') ---');
+    log(JSON.stringify(ruins[0].response || { rejectReason: ruins[0].rejectReason }).slice(0, 900));
   }
   for (const [m, n] of Object.entries(motivos).sort((a, b) => b[1] - a[1])) {
-    if (n >= 2) achados.push('Motivo repetido (' + n + 'x): "' + String(m).slice(0, 80) + '"');
+    if (n >= 2) achados.push('Motivo repetido (' + n + 'x): "' + String(m).slice(0, 120) + '"');
   }
 
   // ---------- D) VENDAS SEM CUPOM ----------
@@ -84,7 +98,7 @@ async function buildFiscalDiagnoseReport(prisma) {
   log('');
   log('===== D) VENDAS SEM NENHUM CUPOM — ULTIMAS ' + HORAS_VENDAS + 'H =====');
   const vendas = await prisma.sale.findMany({
-    where: { createdAt: { gte: desdeVendas }, storeId: { not: null }, status: { not: 'cancelled' } },
+    where: { createdAt: { gte: desdeVendas }, storeId: { not: null }, status: { notIn: ['cancelled', 'canceled'] } },
     select: { id: true, storeId: true, totalAmount: true, paymentMethod: true, status: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
   });
