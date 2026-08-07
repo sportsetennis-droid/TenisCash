@@ -34,6 +34,12 @@ const FRASES_POR_MARCA = {
   // No estoque da loja a Puma é 50% vestuário: a frase cobre a marca inteira,
   // não só as 6 chuteiras.
   puma: 'CRIOU O ESTILO DE VIDA\nESPORTIVO NA MODA',
+
+  // Inglesa de 1924 (Manchester) — nasceu fazendo uniforme de futebol, antes da
+  // adidas (1949) e da Nike (1964). E os 770 produtos Umbro do catálogo têm
+  // origem fiscal 0 = NACIONAL: o "futebol brasileiro" é fato, não figura.
+  // Três linhas curtas de propósito: linha curta = fonte no máximo.
+  umbro: 'NASCEU NA INGLATERRA\nTECNOLOGIA PARA O\nFUTEBOL BRASILEIRO',
 };
 
 function normalizarMarca(marca) {
