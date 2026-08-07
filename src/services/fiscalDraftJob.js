@@ -53,10 +53,10 @@ async function processFiscalDrafts() {
         createdAt: { lt: cutoff },
         recipientCnpjCpf: { not: null }, // só drafts com destinatário válido
       },
-      include: {
-        issuer: true,
-        sale: { include: { items: { include: { product: true } } } },
-      },
+      // FiscalDocument NÃO tem relação `sale` no schema (só o campo saleId) —
+      // include: { sale } derruba o job inteiro com PrismaClientValidationError.
+      // A venda é buscada por saleId dentro do loop.
+      include: { issuer: true },
       orderBy: { createdAt: 'asc' },
       take: MAX_PER_RUN,
     });
@@ -77,7 +77,13 @@ async function processFiscalDrafts() {
           });
           failed++; continue;
         }
-        if (!doc.sale?.items?.length) {
+        const sale = doc.saleId
+          ? await prisma.sale.findUnique({
+              where: { id: doc.saleId },
+              include: { items: { include: { product: true } } },
+            })
+          : null;
+        if (!sale?.items?.length) {
           await prisma.fiscalDocument.update({
             where: { id: doc.id },
             data: { status: 'error', rejectReason: 'Sale sem items' },
@@ -121,7 +127,7 @@ async function processFiscalDrafts() {
           }
         }
 
-        const items = doc.sale.items.map((si) => ({
+        const items = sale.items.map((si) => ({
           sku: si.product?.sku || si.productId,
           name: si.product?.name || 'Produto',
           ncm: si.product?.ncm || '64041100',
