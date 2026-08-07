@@ -3,7 +3,12 @@
 # fica legível no log do job (a sessão Claude lê via MCP; o sandbox dela
 # não alcança teniscash.com.br). Disparo manual (workflow_dispatch).
 name: fiscal-diag
-on: workflow_dispatch
+# push na branch de trabalho = dispara (o dispatch por API deu 403 pro app);
+# workflow_dispatch continua pra disparo manual pela UI do GitHub.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/teniscash-invoice-exchange-r4dtdb]
 
 jobs:
   diag:
@@ -14,7 +19,15 @@ jobs:
         run: curl -sS -m 30 https://teniscash.com.br/api/health || echo "HEALTH FALHOU"
       - name: relatorio /api/_fiscaldiag
         run: |
+          # Espera o deploy novo do Railway ficar no ar (relatorio v2 tem o marcador
+          # [diag v2]); tenta por ate ~10 min e imprime o que conseguir.
+          R=""
+          for i in $(seq 1 40); do
+            R=$(curl -sS -m 120 "https://teniscash.com.br/api/_fiscaldiag?g=stxdiag2026" || true)
+            echo "$R" | grep -q "\[diag v2\]" && break
+            echo "(tentativa $i: deploy v2 ainda nao esta no ar — aguardando 15s)"
+            sleep 15
+          done
           echo "==================== RELATORIO ===================="
-          curl -sS -m 300 "https://teniscash.com.br/api/_fiscaldiag?g=stxdiag2026"
-          echo ""
+          echo "$R"
           echo "==================== FIM =========================="
