@@ -202,6 +202,19 @@ app.get('/api/_loopview', async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
+// roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
+app.get('/api/_fiscaldiag', async (req, res) => {
+  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const { buildFiscalDiagnoseReport } = require('./services/fiscalDiagnose');
+    const report = await buildFiscalDiagnoseReport(prisma);
+    res.set('Content-Type', 'text/plain; charset=utf-8').send(report);
+  } catch (e) {
+    res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
+  }
+});
 // TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
 app.post('/api/_loopbrain', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
