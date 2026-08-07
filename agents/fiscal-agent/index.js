@@ -28,7 +28,7 @@ const TOKEN = process.env.AGENT_TOKEN;
 const PFX_PATH = process.env.PFX_PATH;
 const PFX_SENHA = process.env.PFX_SENHA;
 const STORE_LABEL = process.env.STORE_LABEL || 'unknown';
-const VERSION = '2.3.1-auto';
+const VERSION = '2.4.0-certinfo';
 
 function fatal(msg) { console.error('FATAL:', msg); process.exit(1); }
 if (!TOKEN || TOKEN.length < 16) fatal('AGENT_TOKEN ausente ou curto (>=16 chars)');
@@ -67,6 +67,41 @@ app.use((req, res, next) => {
 let _inFlight = 0;
 app.use((req, res, next) => { _inFlight++; res.on('close', () => { _inFlight = Math.max(0, _inFlight - 1); }); next(); });
 
+// v2.4: validade do certificado no /health — diagnostico remoto de cert
+// vencido (rejeicoes 403 da SVRS em todas as lojas, 2026-08). Parse do PFX
+// UMA vez no boot (node-forge ja e dependencia do agente).
+let _certInfo = null;
+function readCertInfo() {
+  try {
+    const forge = require('node-forge');
+    const der = fs.readFileSync(PFX_PATH).toString('binary');
+    const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), PFX_SENHA);
+    let cert = null;
+    for (const safe of p12.safeContents) { for (const bag of safe.safeBags) { if (bag.cert && bag.cert.validity) { cert = bag.cert; break; } } if (cert) break; }
+    if (!cert) return { error: 'PFX sem certificado legivel' };
+    const notAfter = cert.validity.notAfter;
+    return {
+      cn: ((cert.subject.getField('CN') || {}).value || '?').slice(0, 80),
+      notBefore: cert.validity.notBefore.toISOString(),
+      notAfter: notAfter.toISOString(),
+      daysLeft: Math.floor((notAfter.getTime() - Date.now()) / 864e5),
+      expired: notAfter.getTime() < Date.now(),
+    };
+  } catch (e) { return { error: String(e.message || e).slice(0, 120) }; }
+}
+_certInfo = readCertInfo();
+// Lista os .pfx na MESMA pasta do certificado — se o contador ja deixou um
+// PFX renovado na maquina, aparece aqui (dai o conserto e so apontar pra ele).
+function scanPfxDir() {
+  try {
+    const dir = path.dirname(PFX_PATH);
+    return fs.readdirSync(dir).filter(f => /\.pfx$/i.test(f)).slice(0, 10).map(f => {
+      try { const st = fs.statSync(path.join(dir, f)); return { name: f, size: st.size, mtime: st.mtime.toISOString() }; }
+      catch { return { name: f }; }
+    });
+  } catch (e) { return [{ error: String(e.message || e).slice(0, 80) }]; }
+}
+
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
@@ -75,6 +110,8 @@ app.get('/health', (req, res) => {
     pfxExists: fs.existsSync(PFX_PATH),
     pfxSize: fs.existsSync(PFX_PATH) ? fs.statSync(PFX_PATH).size : 0,
     version: VERSION,
+    cert: _certInfo,
+    pfxDir: scanPfxDir(),
     timestamp: new Date().toISOString(),
   });
 });

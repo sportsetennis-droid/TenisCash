@@ -215,6 +215,33 @@ app.get('/api/_fiscaldiag', async (req, res) => {
     res.status(500).set('Content-Type', 'text/plain; charset=utf-8').send('ERRO: ' + e.message);
   }
 });
+// TEMPORÁRIO (remover junto com /api/_fiscaldiag): manda TODOS os agentes
+// fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
+// Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
+app.post('/api/_agentpush', async (req, res) => {
+  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
+  try {
+    const { prisma } = require('./middleware');
+    const stores = await prisma.store.findMany({
+      where: { fiscalAgentUrl: { not: null }, fiscalAgentToken: { not: null } },
+      select: { code: true, fiscalAgentUrl: true, fiscalAgentToken: true },
+      orderBy: { code: 'asc' },
+    });
+    const results = {};
+    await Promise.all(stores.map(async (s) => {
+      try {
+        const r = await fetch(s.fiscalAgentUrl.replace(/\/$/, '') + '/selfupdate', {
+          method: 'POST',
+          headers: { 'X-Agent-Token': s.fiscalAgentToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: req.query.force === '1' }),
+          signal: AbortSignal.timeout(45000),
+        });
+        results[s.code] = await r.json();
+      } catch (e) { results[s.code] = { ok: false, error: e.message }; }
+    }));
+    res.json({ ok: true, results });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
 app.post('/api/_loopbrain', async (req, res) => {
   if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
