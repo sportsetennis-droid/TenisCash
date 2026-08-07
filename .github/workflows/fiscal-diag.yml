@@ -3,7 +3,12 @@
 # fica legível no log do job (a sessão Claude lê via MCP; o sandbox dela
 # não alcança teniscash.com.br). Disparo manual (workflow_dispatch).
 name: fiscal-diag
-on: workflow_dispatch
+# push na branch de trabalho = dispara (o dispatch por API deu 403 pro app);
+# workflow_dispatch continua pra disparo manual pela UI do GitHub.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/teniscash-invoice-exchange-r4dtdb]
 
 jobs:
   diag:
