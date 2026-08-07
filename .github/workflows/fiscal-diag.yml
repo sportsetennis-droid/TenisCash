@@ -1,0 +1,20 @@
+# TEMPORÁRIO (remover junto com /api/_fiscaldiag): o runner do GitHub tem
+# internet livre — ele abre o diagnóstico fiscal em produção e o relatório
+# fica legível no log do job (a sessão Claude lê via MCP; o sandbox dela
+# não alcança teniscash.com.br). Disparo manual (workflow_dispatch).
+name: fiscal-diag
+on: workflow_dispatch
+
+jobs:
+  diag:
+    name: relatorio fiscal de producao
+    runs-on: ubuntu-latest
+    steps:
+      - name: health (o deploy novo esta no ar?)
+        run: curl -sS -m 30 https://teniscash.com.br/api/health || echo "HEALTH FALHOU"
+      - name: relatorio /api/_fiscaldiag
+        run: |
+          echo "==================== RELATORIO ===================="
+          curl -sS -m 300 "https://teniscash.com.br/api/_fiscaldiag?g=stxdiag2026"
+          echo ""
+          echo "==================== FIM =========================="
