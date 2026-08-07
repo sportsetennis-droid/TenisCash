@@ -40,6 +40,12 @@ const FRASES_POR_MARCA = {
   // origem fiscal 0 = NACIONAL: o "futebol brasileiro" é fato, não figura.
   // Três linhas curtas de propósito: linha curta = fonte no máximo.
   umbro: 'NASCEU NA INGLATERRA\nTECNOLOGIA PARA O\nFUTEBOL BRASILEIRO',
+
+  // Topper nasceu argentina (1975, grupo Alpargatas) e vestiu a Seleção
+  // Brasileira nas Copas de 86 e 90 — os 159 produtos do catálogo são
+  // fabricados no Brasil. A frase assume a origem como TRAJETÓRIA
+  // ("da Argentina PARA o futebol brasileiro"), não como concessão.
+  topper: 'DA ARGENTINA PARA O\nFUTEBOL BRASILEIRO',
 };
 
 function normalizarMarca(marca) {
