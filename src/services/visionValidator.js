@@ -9,20 +9,26 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const MODEL = process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
 const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL || process.env.CAMERA_SECURITY_OPENAI_MODEL || 'gpt-5.6-luna';
+const GROQ_MODEL = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b';
 let anthropicUnavailableUntil = 0;
+let openaiUnavailableUntil = 0;
+let groqUnavailableUntil = 0;
 
 let la = null;
 try { la = require('./locateAnything'); } catch (_) {}
 
 function isConfigured() {
-  return !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY);
 }
 
 function providerStatus() {
   return {
     anthropic: !!process.env.ANTHROPIC_API_KEY,
     openai: !!process.env.OPENAI_API_KEY,
+    groq: !!process.env.GROQ_API_KEY,
     anthropicCoolingDown: Date.now() < anthropicUnavailableUntil,
+    openaiCoolingDown: Date.now() < openaiUnavailableUntil,
+    groqCoolingDown: Date.now() < groqUnavailableUntil,
   };
 }
 
@@ -168,6 +174,90 @@ async function scoreImageMatchOpenAI(imageUrl, product) {
   }
 }
 
+async function scoreImageMatchGroq(imageUrl, product) {
+  if (!process.env.GROQ_API_KEY) return { ok: false, error: 'GROQ_API_KEY nao configurada' };
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: CACHED_SYSTEM },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: productPrompt(product) },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_completion_tokens: 300,
+        stream: false,
+      }),
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      let detail = raw.slice(0, 500);
+      try { detail = JSON.parse(raw)?.error?.message || detail; } catch (_) {}
+      return { ok: false, error: `Groq ${response.status}: ${detail}` };
+    }
+    const payload = JSON.parse(raw);
+    const text = String(payload.choices?.[0]?.message?.content || '').trim();
+    let json = null;
+    try { json = JSON.parse(text); }
+    catch (_) {
+      const first = text.indexOf('{');
+      const last = text.lastIndexOf('}');
+      if (first >= 0 && last > first) json = JSON.parse(text.slice(first, last + 1));
+    }
+    if (!json) return { ok: false, error: 'Groq nao devolveu JSON valido' };
+    const inputTokens = payload.usage?.prompt_tokens || 0;
+    const outputTokens = payload.usage?.completion_tokens || 0;
+    const inputPrice = Number(process.env.GROQ_VISION_PRICE_INPUT_PER_1M || 0);
+    const outputPrice = Number(process.env.GROQ_VISION_PRICE_OUTPUT_PER_1M || 0);
+    const brl = Number(process.env.BRL_PER_USD || 5.5);
+    const usd = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice;
+    return {
+      ok: true,
+      provider: 'groq',
+      score: Number(json.score) || 0,
+      isCorrectProduct: json.is_correct_product === true,
+      colorMatches: json.color_matches === true,
+      reason: String(json.reason || ''),
+      cost: { usd, brl: usd * brl, inT: inputTokens, outT: outputTokens },
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+function providerBlocked(error) {
+  return /credit balance|no credits|billing|insufficient|quota|rate limit|429/i.test(error || '');
+}
+
+async function scoreImageMatchFallback(imageUrl, product, priorErrors = []) {
+  const errors = [...priorErrors];
+  if (process.env.OPENAI_API_KEY && Date.now() >= openaiUnavailableUntil) {
+    const openai = await scoreImageMatchOpenAI(imageUrl, product);
+    if (openai.ok) return openai;
+    errors.push(openai.error);
+    if (providerBlocked(openai.error)) openaiUnavailableUntil = Date.now() + 30 * 60 * 1000;
+  }
+  if (process.env.GROQ_API_KEY && Date.now() >= groqUnavailableUntil) {
+    const groq = await scoreImageMatchGroq(imageUrl, product);
+    if (groq.ok) return groq;
+    errors.push(groq.error);
+    if (providerBlocked(groq.error)) groqUnavailableUntil = Date.now() + 30 * 60 * 1000;
+  }
+  return { ok: false, error: errors.filter(Boolean).join(' | ') || 'nenhum provedor visual disponivel' };
+}
+
 async function scoreImageMatch(imageUrl, product) {
   if (!isConfigured()) {
     return { ok: false, error: 'nenhum provedor visual configurado' };
@@ -175,7 +265,7 @@ async function scoreImageMatch(imageUrl, product) {
   if (!imageUrl) return { ok: false, error: 'imageUrl obrigatório' };
 
   if (!process.env.ANTHROPIC_API_KEY || Date.now() < anthropicUnavailableUntil) {
-    return scoreImageMatchOpenAI(imageUrl, product);
+    return scoreImageMatchFallback(imageUrl, product);
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -234,8 +324,7 @@ async function scoreImageMatch(imageUrl, product) {
     if (/credit balance|billing|insufficient|quota/i.test(err.message || '')) {
       anthropicUnavailableUntil = Date.now() + 30 * 60 * 1000;
     }
-    if (process.env.OPENAI_API_KEY) return scoreImageMatchOpenAI(imageUrl, product);
-    return { ok: false, error: err.message };
+    return scoreImageMatchFallback(imageUrl, product, [err.message]);
   }
 }
 
