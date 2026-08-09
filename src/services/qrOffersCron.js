@@ -21,6 +21,7 @@ async function tick() {
     state.lastResult = result;
     if (result.activated || result.scheduled || result.expired
       || result.staleCategoriesDeleted || result.staleCouponsDisabled
+      || result.stalePagesDeleted
       || result.errors.length) {
       console.log('[qrOffersCron]', JSON.stringify(result));
     }

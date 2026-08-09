@@ -218,6 +218,11 @@ async function publishOffer(offer) {
   const code = savedCode || `QR${String(offer.board.number).padStart(2, '0')}${new Date(offer.startsAt).toISOString().slice(0, 10).replace(/-/g, '')}${suffix}`;
   const preparedOffer = { ...offer, couponCode: code, status: state };
 
+  // A primeira versao das placas usava paginas customizadas com o mesmo
+  // handle da categoria. Elas prevalecem no storefront e precisam sair antes
+  // que uma oferta nova possa ser publicada nesse endereco.
+  await deleteOfferPages(preparedOffer, conn);
+
   // Prepara a categoria escondida e CONFIRMA a lista exata antes de ativar o
   // cupom. A versão anterior respondia sucesso e deixava esta sincronização
   // rodando em background, o que gerava categorias parcialmente atualizadas.
@@ -307,6 +312,37 @@ async function findOfferCategory(offer, conn) {
   const marker = `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}:`;
   category = (Array.isArray(all) ? all : []).find((item) => localizedValue(item.description).includes(marker));
   return category || null;
+}
+
+function pagesFromResponse(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.pages?.results)) return payload.pages.results;
+  if (Array.isArray(payload?.pages)) return payload.pages;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
+async function findOfferPages(offer, conn) {
+  const handle = offerCategoryHandle(plateCode(offer.board.number));
+  const matches = [];
+  for (let page = 1; page <= 50; page++) {
+    const payload = await ns.nuvemshopApi(conn, 'GET', `/pages?page=${page}&per_page=100`);
+    const rows = pagesFromResponse(payload);
+    for (const item of rows) {
+      if (localizedValue(item.handle) === handle) matches.push(item);
+    }
+    const lastPage = Number(payload?.pages?.lastPage || payload?.lastPage || 1);
+    if (!rows.length || page >= lastPage) break;
+  }
+  return matches;
+}
+
+async function deleteOfferPages(offer, conn) {
+  const pages = await findOfferPages(offer, conn);
+  for (const page of pages) {
+    await ns.nuvemshopApi(conn, 'DELETE', `/pages/${page.id}`);
+  }
+  return { deleted: pages.length, ids: pages.map((page) => page.id) };
 }
 
 async function setOfferCategoryVisibility(offer, conn, categoryId, visible) {
@@ -439,6 +475,11 @@ async function retireOfferExternalState(offer, conn) {
   } catch (error) {
     errors.push(`categoria: ${error.message}`);
   }
+  try {
+    await deleteOfferPages(offer, conn);
+  } catch (error) {
+    errors.push(`pagina: ${error.message}`);
+  }
   if (errors.length) throw new Error(errors.join(' | '));
 }
 
@@ -452,7 +493,10 @@ async function scheduleOffer(offer, conn) {
   try { await disableNuvemshopCoupon(offer, conn, { strict: true }); }
   catch (error) { errors.push(`cupom: ${error.message}`); }
   let category = null;
-  try { category = await syncOfferCategory(offer, conn, { visible: false }); }
+  try {
+    await deleteOfferPages(offer, conn);
+    category = await syncOfferCategory(offer, conn, { visible: false });
+  }
   catch (error) { errors.push(`categoria: ${error.message}`); }
   if (errors.length) throw new Error(errors.join(' | '));
   if (offer.nsCouponId) {
@@ -469,6 +513,7 @@ async function scheduleOffer(offer, conn) {
 }
 
 async function activateOffer(offer, conn) {
+  await deleteOfferPages(offer, conn);
   const category = await syncOfferCategory(offer, conn, { visible: false });
   const opts = {
     code: offer.couponCode,
@@ -510,6 +555,7 @@ async function reconcileQROffers(now = new Date()) {
     scheduled: 0,
     expired: 0,
     staleCategoriesDeleted: 0,
+    stalePagesDeleted: 0,
     staleCouponsDisabled: 0,
     errors: [],
   };
@@ -563,6 +609,8 @@ async function reconcileQROffers(now = new Date()) {
       };
       const deleted = await deleteOfferCategory(placeholder, conn);
       if (deleted.deleted) result.staleCategoriesDeleted++;
+      const deletedPages = await deleteOfferPages(placeholder, conn);
+      result.stalePagesDeleted += deletedPages.deleted;
       staleBoardsReconciled.add(number);
     } catch (err) {
       result.errors.push({ plate: number, phase: 'stale-cleanup', error: err.message });
@@ -796,5 +844,5 @@ module.exports = {
   publicRouter,
   ensureBoards,
   reconcileQROffers,
-  _test: { plateNumber, plateCode, normalizeProductIds, offerState, categoryMembershipDiff },
+  _test: { plateNumber, plateCode, normalizeProductIds, offerState, categoryMembershipDiff, pagesFromResponse },
 };
