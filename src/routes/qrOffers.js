@@ -15,6 +15,8 @@ const STORE_BASE = (process.env.NUVEMSHOP_STORE_URL || 'https://www.sportsetenni
 const PLATE_COUNT = 12;
 const DEFAULT_DURATION_HOURS = 24;
 const handleCache = new Map();
+const REMOTE_PUBLISHED_CACHE_MS = 10 * 60 * 1000;
+let remotePublishedCache = { expiresAt: 0, ids: new Set() };
 // Saída para gráfica: H recupera até ~30% de dano e SVG não perde resolução.
 const QR_PRINT_OPTIONS = { errorCorrectionLevel: 'H', margin: 4 };
 const QR_PRINT_PNG_WIDTH = 2400;
@@ -675,11 +677,33 @@ async function eligibleOfferProductPool() {
   if (!products.length) return [];
   const mappings = await prisma.nuvemshopProductMapping.findMany({
     where: { localProductId: { in: products.map((product) => product.id) } },
-    select: { localProductId: true },
+    select: { localProductId: true, nuvemshopProductId: true },
   });
-  const published = new Set(mappings.map((mapping) => mapping.localProductId));
+  if (Date.now() >= remotePublishedCache.expiresAt) {
+    const conn = await activeConnection();
+    if (!conn) throw new Error('Nuvemshop não está conectada para validar produtos publicados');
+    const remoteProducts = await ns.fetchAllPages(
+      conn,
+      '/products?published=true&fields=id,handle,published',
+      { perPage: 100, max: 10000 },
+    );
+    const ids = new Set();
+    for (const remote of remoteProducts) {
+      if (remote?.published === false || remote?.id == null) continue;
+      const remoteId = String(remote.id);
+      ids.add(remoteId);
+      const handle = typeof remote.handle === 'object' ? (remote.handle.pt || Object.values(remote.handle)[0]) : remote.handle;
+      if (handle) handleCache.set(remoteId, String(handle));
+    }
+    remotePublishedCache = { expiresAt: Date.now() + REMOTE_PUBLISHED_CACHE_MS, ids };
+  }
+  const published = new Set(
+    mappings
+      .filter((mapping) => remotePublishedCache.ids.has(String(mapping.nuvemshopProductId)))
+      .map((mapping) => String(mapping.localProductId)),
+  );
   return products
-    .filter((product) => published.has(product.id))
+    .filter((product) => published.has(String(product.id)))
     .sort((a, b) => physicalStockUnits(b) - physicalStockUnits(a)
       || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -693,6 +717,7 @@ async function restoreExclusiveOffers(now = new Date()) {
     skippedActive: 0,
     skippedCancelled: 0,
     skippedDraft: 0,
+    replacedInvalid: 0,
     errors: [],
   };
   if (process.env.DISABLE_QR_AUTO_RESTORE === '1') return { ...result, disabled: true };
@@ -719,16 +744,37 @@ async function restoreExclusiveOffers(now = new Date()) {
     states.push({ board, current, latest });
   }
 
-  const usedIds = new Set();
-  for (const state of states) {
-    for (const row of state.current?.products || []) usedIds.add(String(row.productId));
-  }
   const pool = await eligibleOfferProductPool();
   result.eligibleProducts = pool.length;
   const poolIds = pool.map((product) => product.id);
   const eligibleIds = new Set(poolIds);
 
-  for (const { board, current, latest } of states) {
+  for (const state of states) {
+    if (!state.current || !String(state.current.notes || '').includes(AUTO_RESTORE_MARKER)) continue;
+    const currentIds = (state.current.products || []).map((row) => String(row.productId));
+    const valid = currentIds.length === 24 && currentIds.every((id) => eligibleIds.has(id));
+    if (valid) continue;
+    try {
+      const conn = await activeConnection();
+      if (!conn) throw new Error('Nuvemshop não está conectada');
+      await retireOfferExternalState(state.current, conn);
+      await prisma.qROffer.update({ where: { id: state.current.id }, data: { status: 'EXPIRED' } });
+      state.current = null;
+      result.replacedInvalid++;
+    } catch (error) {
+      state.blocked = true;
+      result.errors.push({ plate: state.board.number, phase: 'replace-invalid', error: error.message });
+    }
+  }
+
+  const usedIds = new Set();
+  for (const state of states) {
+    if (state.blocked) continue;
+    for (const row of state.current?.products || []) usedIds.add(String(row.productId));
+  }
+
+  for (const { board, current, latest, blocked } of states) {
+    if (blocked) continue;
     if (current) {
       result.skippedActive++;
       continue;
