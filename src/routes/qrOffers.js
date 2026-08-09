@@ -15,6 +15,7 @@ const STORE_BASE = (process.env.NUVEMSHOP_STORE_URL || 'https://www.sportsetenni
 const PLATE_COUNT = 12;
 const DEFAULT_DURATION_HOURS = 24;
 const QR_OFFER_DISCOUNT_PCT = 30;
+const QR_DISCOUNT_PROMOTION_NAME = 'TenisCash QR exclusivo 30%';
 const handleCache = new Map();
 const remoteImageCache = new Map();
 const REMOTE_PUBLISHED_CACHE_MS = 10 * 60 * 1000;
@@ -24,6 +25,10 @@ const QR_PRINT_OPTIONS = { errorCorrectionLevel: 'H', margin: 4 };
 const QR_PRINT_PNG_WIDTH = 2400;
 const staleBoardsReconciled = new Set();
 let storefrontPromotionsReconciled = false;
+let qrDiscountPromotionReconciled = false;
+let qrDiscountPromotionId = null;
+let qrDiscountStoreId = null;
+let qrDiscountEligibility = new Map();
 
 function plateNumber(raw) {
   const m = String(raw || '').toLowerCase().match(/(?:placa[-_ ]*)?(\d{1,2})/);
@@ -63,8 +68,25 @@ function brl(value) {
   return Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function quickBuyMarkup(product) {
+  const quick = product?.quickBuy;
+  const variants = Array.isArray(quick?.variants) ? quick.variants : [];
+  if (!quick?.action || !quick?.productId || !variants.length) {
+    return `<a class="buy-fallback" href="${escapeHtml(product.storeUrl)}">Escolher tamanho e comprar agora</a>`;
+  }
+  const options = variants.map((variant) => (
+    `<option value="${escapeHtml(variant.variantId)}" data-size="${escapeHtml(variant.size)}">${escapeHtml(variant.size)}</option>`
+  )).join('');
+  return `<form class="quick-buy" action="${escapeHtml(quick.action)}" method="post" style="display:grid;gap:8px"><label style="font-size:13px;font-weight:900">Escolha o tamanho</label><select name="variant_id" data-size-picker aria-label="Tamanho" onchange="this.form.querySelector('[data-size-value]').value=this.options[this.selectedIndex].dataset.size" style="width:100%;padding:11px;border:1px solid #d9c8bd;border-radius:10px;background:#fff;font-size:16px">${options}</select><input type="hidden" name="variation[0]" value="${escapeHtml(variants[0].size)}" data-size-value><input type="hidden" name="add_to_cart" value="${escapeHtml(quick.productId)}"><input type="hidden" name="quantity" value="1"><button type="submit" style="border:0;border-radius:12px;padding:14px 10px;background:#f4511e;color:#fff;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 6px 14px #f4511e35">Comprar agora com 30% OFF</button></form>`;
+}
+
+function offerProductCard(product) {
+  return `<article class="product"><img src="${escapeHtml(product.imageUrl || '')}" alt="${escapeHtml(product.name)}"><div><small>${escapeHtml(product.brand || '')}</small><h2>${escapeHtml(product.name)}</h2><div class="pricing"><span class="original">De R$ ${brl(product.originalPrice)}</span><strong class="exclusive">Por R$ ${brl(product.exclusivePrice)}</strong><span class="saving">30% OFF exclusivo desta placa</span></div>${quickBuyMarkup(product)}</div></article>`;
+}
+
 function promotionRows(payload) {
   if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.result)) return payload.result;
   if (Array.isArray(payload?.results)) return payload.results;
   return [];
@@ -72,11 +94,129 @@ function promotionRows(payload) {
 
 async function disableStorefrontPromotions(conn) {
   const payload = await ns.nuvemshopApi(conn, 'GET', '/promotions?per_page=100&page=1');
-  const active = promotionRows(payload).filter((promotion) => promotion?.active !== false && promotion?.id != null);
+  const active = promotionRows(payload).filter((promotion) => (
+    promotion?.active !== false
+    && promotion?.id != null
+    && promotion?.name !== QR_DISCOUNT_PROMOTION_NAME
+  ));
   for (const promotion of active) {
     await ns.nuvemshopApi(conn, 'PATCH', `/promotions/${encodeURIComponent(promotion.id)}`, { active: false });
   }
   return active.length;
+}
+
+async function ensureQrDiscountPromotion(conn) {
+  const callbackUrl = `${PUBLIC_BASE}/api/nuvemshop/discounts/qr-offers`;
+  await ns.nuvemshopApi(conn, 'PUT', '/discounts/callbacks', { url: callbackUrl });
+
+  const listed = promotionRows(await ns.nuvemshopApi(conn, 'GET', '/promotions?per_page=100&page=1'));
+  let promotion = listed.find((row) => row?.name === QR_DISCOUNT_PROMOTION_NAME && row?.id != null);
+  const settings = {
+    active: true,
+    combines_with_quantity_discounts: false,
+    combines_with_free_shipping: true,
+    combines_with_cart_amount_discounts: false,
+    combines_with_app_discounts: false,
+    combines_with_price_discounts: false,
+  };
+  let created = false;
+  if (!promotion) {
+    const response = await ns.nuvemshopApi(conn, 'POST', '/promotions', {
+      name: QR_DISCOUNT_PROMOTION_NAME,
+      description: '30% OFF exclusivo para compras iniciadas pelas placas QR da Sports & Tennis',
+      disclaimer: 'Valido somente para os produtos e durante o prazo da placa acessada',
+      allocation_type: 'line_item',
+      ...settings,
+    });
+    promotion = response?.data || response;
+    created = true;
+  } else {
+    await ns.nuvemshopApi(conn, 'PATCH', `/promotions/${encodeURIComponent(promotion.id)}`, settings);
+  }
+  if (!promotion?.id) throw new Error('A Nuvemshop nao confirmou a promocao exclusiva dos QR Codes');
+  qrDiscountPromotionId = String(promotion.id);
+  qrDiscountStoreId = String(conn.nuvemshopUserId || conn.storeId || '');
+  return { ready: true, created, callbackConfigured: true };
+}
+
+function qrMarkerFromCart(payload) {
+  const rows = Array.isArray(payload?.utm) ? payload.utm : [];
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index] || {};
+    const source = String(row.utm_source || row.source || '').toLowerCase();
+    const medium = String(row.utm_medium || row.medium || '').toLowerCase();
+    const campaign = String(row.utm_campaign || row.campaign || '').toLowerCase();
+    const content = String(row.utm_content || row.content || '');
+    const number = plateNumber(campaign);
+    if (source === 'teniscash' && medium === 'qr' && number) {
+      return { plate: plateCode(number), offerId: content };
+    }
+  }
+  return null;
+}
+
+function qrPromotionInCart(payload, promotionId) {
+  return (Array.isArray(payload?.promotions) ? payload.promotions : [])
+    .find((promotion) => String(promotion?.id || '') === String(promotionId || '')) || null;
+}
+
+function buildQrDiscountCommands(payload, promotionId, eligibleRemoteIds) {
+  const eligible = eligibleRemoteIds instanceof Set ? eligibleRemoteIds : new Set(eligibleRemoteIds || []);
+  const lineItems = (Array.isArray(payload?.products) ? payload.products : [])
+    .filter((product) => eligible.has(String(product?.product_id || '')) && product?.id != null)
+    .map((product) => ({
+      line_item: String(product.id),
+      discount_specs: { type: 'percentage', amount: `${QR_OFFER_DISCOUNT_PCT.toFixed(2)}` },
+    }));
+  if (lineItems.length) {
+    return [{
+      command: 'create_or_update_discount',
+      specs: {
+        promotion_id: String(promotionId),
+        currency: String(payload?.currency || 'BRL'),
+        display_text: { 'pt-br': '30% OFF exclusivo da placa' },
+        line_items: lineItems,
+      },
+    }];
+  }
+
+  const applied = qrPromotionInCart(payload, promotionId);
+  const appliedItems = Array.isArray(applied?.line_items) ? applied.line_items.map(String) : [];
+  if (!appliedItems.length) return [];
+  return [{
+    command: 'remove_discount',
+    specs: {
+      scope: 'line_item',
+      promotion_id: String(promotionId),
+      line_items: appliedItems,
+    },
+  }];
+}
+
+async function refreshQrDiscountEligibility(offers, now = new Date()) {
+  const active = (offers || []).filter((offer) => offerState(offer, now) === 'ACTIVE');
+  const localIds = Array.from(new Set(active.flatMap((offer) => (
+    (offer.products || []).map((row) => String(row.productId || row.product?.id || '')).filter(Boolean)
+  ))));
+  const mappings = localIds.length ? await prisma.nuvemshopProductMapping.findMany({
+    where: { localProductId: { in: localIds } },
+    select: { localProductId: true, nuvemshopProductId: true },
+  }) : [];
+  const byLocalId = new Map(mappings.map((row) => [String(row.localProductId), String(row.nuvemshopProductId)]));
+  const next = new Map();
+  for (const offer of active) {
+    const ids = new Set((offer.products || [])
+      .map((row) => byLocalId.get(String(row.productId || row.product?.id || '')))
+      .filter(Boolean));
+    next.set(plateCode(offer.board.number), {
+      offerId: String(offer.id),
+      startsAt: new Date(offer.startsAt).getTime(),
+      endsAt: new Date(offer.endsAt).getTime(),
+      remoteProductIds: ids,
+    });
+  }
+  qrDiscountEligibility = next;
+  return next.size;
 }
 
 async function qrSvg(code) {
@@ -131,12 +271,27 @@ async function activeConnection() {
 }
 
 async function productViews(products, offer) {
-  const couponCode = offer?.couponCode;
   const mappings = await prisma.nuvemshopProductMapping.findMany({
     where: { localProductId: { in: products.map((product) => product.id) } },
     select: { localProductId: true, nuvemshopProductId: true },
   });
   const byLocalId = new Map(mappings.map((mapping) => [String(mapping.localProductId), String(mapping.nuvemshopProductId)]));
+  if (offer?.board?.code && offerState(offer) === 'ACTIVE') {
+    qrDiscountEligibility.set(offer.board.code, {
+      offerId: String(offer.id),
+      startsAt: new Date(offer.startsAt).getTime(),
+      endsAt: new Date(offer.endsAt).getTime(),
+      remoteProductIds: new Set(byLocalId.values()),
+    });
+  }
+  const localSizeIds = products.flatMap((product) => (product.sizes || []).map((size) => String(size.id)));
+  const variantMappings = localSizeIds.length ? await prisma.nuvemshopVariantMapping.findMany({
+    where: { localInventoryId: { in: localSizeIds } },
+    select: { localInventoryId: true, nuvemshopVariantId: true },
+  }) : [];
+  const byLocalSizeId = new Map(variantMappings.map((mapping) => (
+    [String(mapping.localInventoryId), String(mapping.nuvemshopVariantId)]
+  )));
   const missingRemoteIds = Array.from(new Set(
     mappings
       .map((mapping) => String(mapping.nuvemshopProductId))
@@ -167,12 +322,23 @@ async function productViews(products, offer) {
     const handle = remoteId ? handleCache.get(remoteId) : null;
     const direct = handle ? `${STORE_BASE}/produtos/${encodeURIComponent(handle)}/` : `${STORE_BASE}/search/?q=${encodeURIComponent(product.name)}`;
     const params = new URLSearchParams();
-    // O desconto e aplicado automaticamente ao abrir a compra da placa. O
-    // cliente nunca precisa ver, copiar ou digitar o identificador tecnico.
-    if (couponCode) params.set('coupon', couponCode);
-    if (offer?.board?.code) params.set('qr_offer', offer.board.code);
+    // A origem QR segue como UTM no carrinho. A promocao privada do app usa
+    // essa marca para aplicar 30% sem expor nem exigir cupom do cliente.
+    if (offer?.board?.code) {
+      params.set('utm_source', 'teniscash');
+      params.set('utm_medium', 'qr');
+      params.set('utm_campaign', offer.board.code);
+      params.set('utm_content', String(offer.id || ''));
+      params.set('qr_offer', offer.board.code);
+    }
     if (offer?.endsAt) params.set('qr_expires', new Date(offer.endsAt).toISOString());
     const query = params.toString();
+    const variants = (product.sizes || []).map((size) => ({
+      size: String(size.size),
+      variantId: byLocalSizeId.get(String(size.id)),
+    })).filter((variant) => variant.variantId);
+    const trackedUrl = query ? `${direct}${direct.includes('?') ? '&' : '?'}${query}` : direct;
+    const quickBuyAction = query ? `${STORE_BASE}/comprar/?${query}` : `${STORE_BASE}/comprar/`;
     return {
       id: product.id,
       name: product.name,
@@ -183,7 +349,12 @@ async function productViews(products, offer) {
       originalPrice: offerBasePrice(product),
       exclusivePrice: offerDiscountedPrice(product, QR_OFFER_DISCOUNT_PCT),
       discountPct: QR_OFFER_DISCOUNT_PCT,
-      storeUrl: query ? `${direct}${direct.includes('?') ? '&' : '?'}${query}` : direct,
+      storeUrl: trackedUrl,
+      quickBuy: remoteId && variants.length ? {
+        action: quickBuyAction,
+        productId: remoteId,
+        variants,
+      } : null,
     };
   });
 }
@@ -198,7 +369,22 @@ async function findOfferByPlate(n) {
         where: { status: { in: ['ACTIVE', 'SCHEDULED'] } },
         orderBy: { startsAt: 'desc' },
         take: 1,
-        include: { products: { orderBy: { position: 'asc' }, include: { product: true } } },
+        include: {
+          products: {
+            orderBy: { position: 'asc' },
+            include: {
+              product: {
+                include: {
+                  sizes: {
+                    where: { storeStocks: { some: { stock: { gt: 0 } } } },
+                    orderBy: { size: 'asc' },
+                    select: { id: true, size: true },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -663,6 +849,11 @@ async function reconcileQROffers(now = new Date()) {
     normalizedDiscounts: 0,
     storefrontPromotionsDisabled: 0,
     storefrontPromotionCleanupError: null,
+    qrDiscountPromotionReady: !!qrDiscountPromotionId,
+    qrDiscountPromotionCreated: false,
+    qrDiscountCallbackConfigured: !!qrDiscountPromotionId,
+    qrDiscountPromotionError: null,
+    qrDiscountEligiblePlates: 0,
     errors: [],
   };
 
@@ -677,6 +868,17 @@ async function reconcileQROffers(now = new Date()) {
       // Algumas instalacoes antigas nao receberam o escopo de Promotions.
       // Mantemos o QR operacional e deixamos o diagnostico explicito no health.
       result.storefrontPromotionCleanupError = error.message;
+    }
+  }
+  if (!qrDiscountPromotionReconciled) {
+    try {
+      const promotion = await ensureQrDiscountPromotion(conn);
+      result.qrDiscountPromotionReady = promotion.ready;
+      result.qrDiscountPromotionCreated = promotion.created;
+      result.qrDiscountCallbackConfigured = promotion.callbackConfigured;
+      qrDiscountPromotionReconciled = true;
+    } catch (error) {
+      result.qrDiscountPromotionError = error.message;
     }
   }
   for (const offer of offers) {
@@ -702,6 +904,11 @@ async function reconcileQROffers(now = new Date()) {
     } catch (err) {
       result.errors.push({ offerId: offer.id, plate: offer.board && offer.board.number, error: err.message });
     }
+  }
+  try {
+    result.qrDiscountEligiblePlates = await refreshQrDiscountEligibility(offers, now);
+  } catch (error) {
+    result.errors.push({ offerId: null, plate: null, error: `cache promocao QR: ${error.message}` });
   }
 
   // A deployment of the legacy code may have marked the database offer as
@@ -1100,6 +1307,41 @@ adminRouter.post('/offers/:id/cancel', async (req, res) => {
 });
 
 // ---------------- PUBLIC ----------------
+// Callback da Discounts API da Nuvemshop. A origem e a oferta ficam marcadas
+// como UTM no clique/POST da placa, sem campo de cupom para o consumidor.
+publicRouter.post('/api/nuvemshop/discounts/qr-offers', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    if (!qrDiscountPromotionId || !qrDiscountStoreId) return res.sendStatus(204);
+    if (String(payload.store_id || '') !== qrDiscountStoreId) return res.sendStatus(204);
+    if (payload.execution_tier && payload.execution_tier !== 'line_item') return res.sendStatus(204);
+
+    const marker = qrMarkerFromCart(payload);
+    const eligibility = marker ? qrDiscountEligibility.get(marker.plate) : null;
+    const now = Date.now();
+    const valid = !!(
+      eligibility
+      && marker.offerId
+      && marker.offerId === eligibility.offerId
+      && now >= eligibility.startsAt
+      && now < eligibility.endsAt
+    );
+    const commands = buildQrDiscountCommands(
+      payload,
+      qrDiscountPromotionId,
+      valid ? eligibility.remoteProductIds : new Set(),
+    );
+    if (!commands.length) return res.sendStatus(204);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ commands });
+  } catch (error) {
+    // O contrato tem limite curto. Em qualquer falha, nao aplicar desconto e
+    // deixar a proxima alteracao do carrinho tentar novamente e mais seguro.
+    console.error('[qr-offers/discount-callback]', error.message);
+    return res.sendStatus(204);
+  }
+});
+
 publicRouter.get('/api/qr-offers/plates/:plate', async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
@@ -1192,7 +1434,9 @@ publicRouter.get([
     const { offer } = await findOfferByPlate(n);
     // A vitrine mora na URL fixa gravada no QR. O cliente ve o valor final
     // antes de abrir a loja e nao precisa copiar nem informar codigo algum.
-    const productCards = offer && offer.products.length ? offer.products.map((p) => `<article class="product"><img src="${escapeHtml(p.imageUrl || '')}" alt="${escapeHtml(p.name)}"><div><small>${escapeHtml(p.brand || '')}</small><h2>${escapeHtml(p.name)}</h2><div class="pricing"><span class="original">De R$ ${brl(p.originalPrice)}</span><strong class="exclusive">Por R$ ${brl(p.exclusivePrice)}</strong><span class="saving">30% OFF exclusivo desta placa</span></div><a href="${escapeHtml(p.storeUrl)}">Escolher tamanho e comprar agora</a></div></article>`).join('') : '<div class="empty">Esta placa está entre uma oferta e outra. Volte mais tarde.</div>';
+    const productCards = offer && offer.products.length
+      ? offer.products.map(offerProductCard).join('')
+      : '<div class="empty">Esta placa está entre uma oferta e outra. Volte mais tarde.</div>';
     const end = offer ? new Date(offer.endsAt).toISOString() : '';
     res.set('Cache-Control', 'no-store');
     res.type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(offer ? offer.title : 'Oferta exclusiva')} — Sports & Tennis</title><style>body{margin:0;background:#fff5ee;color:#21150f;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:960px;margin:auto;padding:18px 16px 48px}.brand{color:#f4511e;font-weight:900;letter-spacing:.5px}.hero{background:linear-gradient(135deg,#f4511e,#ff7b45);color:white;border-radius:22px;padding:26px 24px;margin:12px 0 16px;box-shadow:0 12px 30px #6b3b1c24}.hero h1{font-size:clamp(26px,5vw,46px);line-height:1.05;margin:10px 0}.hero p{font-size:17px;line-height:1.45;margin:8px 0}.badge{display:inline-block;background:white;color:#df3e12;border-radius:999px;padding:7px 12px;font-weight:900}.count{display:inline-block;background:#822500;color:#fff;border-radius:10px;padding:10px 12px;font-size:18px;font-weight:900;margin-top:14px}.fast{background:#fff;border-left:5px solid #f4511e;border-radius:14px;padding:14px 16px;margin:0 0 18px;font-weight:800}.products{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.product{background:white;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px #6b3b1c16}.product img{display:block;width:100%;aspect-ratio:1/1;object-fit:contain;background:#fafafa}.product>div{padding:16px}.product small{color:#7d6f68;font-weight:800}.product h2{font-size:17px;min-height:44px;margin:8px 0}.pricing{display:flex;flex-direction:column;gap:3px;margin:12px 0}.original{font-size:14px;color:#74665f;text-decoration:line-through}.exclusive{font-size:25px;line-height:1.05;color:#df3e12}.saving{font-size:12px;color:#08783e;font-weight:900}.product a{display:block;text-align:center;background:#f4511e;color:white;text-decoration:none;border-radius:12px;padding:14px 10px;font-size:15px;font-weight:900;box-shadow:0 6px 14px #f4511e35}.empty{text-align:center;background:white;border-radius:18px;padding:40px 18px}.exchange{margin:14px 0;padding:12px 16px;background:#fff;border-radius:14px;font-weight:700}@media(max-width:600px){.wrap{padding:12px 10px 32px}.hero{padding:22px 17px;border-radius:16px}.products{grid-template-columns:1fr;gap:12px}.product{display:grid;grid-template-columns:42% 58%;align-items:stretch}.product img{height:100%;min-height:210px}.product>div{padding:13px}.product h2{font-size:15px;min-height:0}.exclusive{font-size:23px}.product a{padding:13px 8px}}</style></head><body><main class="wrap"><div class="brand">SPORTS &amp; TENNIS · OFERTA QR ${String(n).padStart(2, '0')}</div>${offer ? `<section class="hero"><span class="badge">PREÇO EXCLUSIVO DA PLACA</span><h1>${escapeHtml(offer.title)}</h1><p>O valor com 30% OFF já aparece em cada produto. Escolha o tamanho e compre antes do contador zerar.</p><div class="count" id="count">Calculando o tempo restante…</div></section><div class="fast">Compra rápida: toque no produto, escolha o tamanho e finalize. O desconto é aplicado automaticamente.</div>${offer.freeExchange ? '<div class="exchange">↺ Troca grátis garantida pela Sports &amp; Tennis.</div>' : ''}` : `<section class="hero"><span class="badge">PLACA ${String(n).padStart(2, '0')}</span><h1>Oferta exclusiva em breve</h1><p>Esta placa recebe uma seleção nova todos os dias. Aponte a câmera novamente mais tarde.</p></section>`}<section class="products">${productCards}</section></main>${offer ? `<script>const end=${JSON.stringify(end)};function tick(){const d=Math.max(0,new Date(end)-new Date()),h=Math.floor(d/36e5),m=Math.floor(d%36e5/6e4),s=Math.floor(d%6e4/1e3);document.getElementById('count').textContent=d?'Oferta termina em '+h+'h '+m+'min '+s+'s':'Oferta encerrada';}tick();setInterval(tick,1000)</script>` : ''}</body></html>`);
@@ -1207,12 +1451,16 @@ module.exports = {
   restoreExclusiveOffers,
   _test: {
     QR_OFFER_DISCOUNT_PCT,
+    QR_DISCOUNT_PROMOTION_NAME,
     plateNumber,
     plateCode,
     qrOfferTitle,
     offerBasePrice,
     offerDiscountedPrice,
     promotionRows,
+    qrMarkerFromCart,
+    buildQrDiscountCommands,
+    quickBuyMarkup,
     normalizeProductIds,
     offerState,
     categoryMembershipDiff,

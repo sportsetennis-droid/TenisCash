@@ -26,6 +26,8 @@ async function tick() {
       || result.normalizedDiscounts
       || result.storefrontPromotionsDisabled
       || result.storefrontPromotionCleanupError
+      || result.qrDiscountPromotionCreated
+      || result.qrDiscountPromotionError
       || result.restoration.published || result.restoration.retried
       || result.restoration.errors.length
       || result.errors.length) {
