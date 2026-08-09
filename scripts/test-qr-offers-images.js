@@ -3,6 +3,11 @@ const { buildCouponPayload } = require('../src/services/nuvemshop');
 const { _test: qr } = require('../src/routes/qrOffers');
 const { usableImageUrls } = require('../src/services/nuvemshopImageBackfill');
 const { isAcceptableImageCandidate } = require('../src/services/curationAgent');
+const {
+  reviewState,
+  shouldAttemptImage,
+  stockUnits,
+} = require('../src/services/imageRepairCron');
 
 function run() {
   const now = new Date('2026-08-08T12:00:00.000Z');
@@ -63,6 +68,23 @@ function run() {
   assert.equal(isAcceptableImageCandidate({ _score: 10, _isCorrectProduct: false }, 8), false);
   assert.equal(isAcceptableImageCandidate({ _score: 7, _isCorrectProduct: true }, 7), false);
   assert.equal(isAcceptableImageCandidate({ _score: 8, _isCorrectProduct: true }, 8), true);
+
+  assert.equal(shouldAttemptImage({}, now), true);
+  assert.equal(shouldAttemptImage({ imageAutoReview: {
+    state: 'rejected', attemptedAt: '2026-08-08T11:00:00.000Z',
+  } }, now), false);
+  assert.equal(shouldAttemptImage({ imageAutoReview: {
+    state: 'error', attemptedAt: '2026-08-08T05:59:59.000Z',
+  } }, now), true);
+  assert.deepEqual(reviewState({ steps: { image: {
+    ok: true, url: 'https://cdn.example/product.jpg', score: 9, reason: 'produto exato',
+  } } }), { state: 'accepted', reason: 'produto exato', score: 9 });
+  assert.equal(reviewState({ steps: { image: { ok: false, reason: 'produto parecido, mas diferente' } } }).state, 'rejected');
+  assert.equal(reviewState({ steps: { image: { ok: false, reason: 'Vision falhou' } } }).state, 'error');
+  assert.equal(stockUnits({ sizes: [
+    { storeStocks: [{ stock: 2 }, { stock: 3 }] },
+    { storeStocks: [{ stock: -1 }, { stock: 4 }] },
+  ] }), 9);
 
   console.log('QR offers and image quality tests passed');
 }
