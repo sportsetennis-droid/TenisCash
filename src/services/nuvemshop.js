@@ -152,8 +152,22 @@ async function updateVariantStock(connection, productId, variantId, stock) {
 // =====================================================================
 
 // Monta o payload de cupom percentual padrão de um Creation.
-function buildCouponPayload({ code, discountPct, valid = true, minPrice = 0 }) {
-  return {
+function normalizeIdList(values) {
+  if (!Array.isArray(values)) return undefined;
+  return Array.from(new Set(values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
+}
+
+function buildCouponPayload({
+  code,
+  discountPct,
+  valid = true,
+  minPrice = 0,
+  startDate,
+  endDate,
+  categories,
+  products,
+}) {
+  const payload = {
     code: String(code),
     type: 'percentage',
     value: String(Number(discountPct).toFixed(2)),
@@ -163,6 +177,13 @@ function buildCouponPayload({ code, discountPct, valid = true, minPrice = 0 }) {
     includes_shipping: false,
     combines_with_other_discounts: false,
   };
+  if (startDate != null) payload.start_date = new Date(startDate).toISOString();
+  if (endDate != null) payload.end_date = new Date(endDate).toISOString();
+  const categoryIds = normalizeIdList(categories);
+  const productIds = normalizeIdList(products);
+  if (categoryIds) payload.categories = categoryIds;
+  if (productIds) payload.products = productIds;
+  return payload;
 }
 
 async function createCoupon(connection, opts) {
@@ -176,6 +197,12 @@ async function updateCoupon(connection, couponId, opts) {
   if (opts.discountPct != null) { payload.type = 'percentage'; payload.value = String(Number(opts.discountPct).toFixed(2)); }
   if (opts.valid != null) payload.valid = !!opts.valid;
   if (opts.minPrice != null) payload.min_price = Number(opts.minPrice) || 0;
+  if (opts.startDate != null) payload.start_date = new Date(opts.startDate).toISOString();
+  if (opts.endDate != null) payload.end_date = new Date(opts.endDate).toISOString();
+  const categoryIds = normalizeIdList(opts.categories);
+  const productIds = normalizeIdList(opts.products);
+  if (categoryIds) payload.categories = categoryIds;
+  if (productIds) payload.products = productIds;
   return nuvemshopApi(connection, 'PUT', `/coupons/${couponId}`, payload);
 }
 

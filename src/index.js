@@ -95,6 +95,7 @@ const { startNuvemshopStockCron } = require('./services/nuvemshopStockCron');
 const { startServicesCron } = require('./services/servicesCron');
 const { startEquipeReportsCron } = require('./services/equipeReports');
 const { startSellerProductionCron } = require('./services/sellerProductionCron');
+const { startQROffersCron } = require('./services/qrOffersCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1595,6 +1596,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Estoque, gate e limpeza reversivel da Nuvemshop nao dependem dos crons de IA.
   try { startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
+  try { startQROffersCron(); } catch (e) { console.error('[qrOffersCron] falha ao iniciar:', e.message); }
 
   // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
   if (process.env.DISABLE_MESSAGES_CRON !== '1') {

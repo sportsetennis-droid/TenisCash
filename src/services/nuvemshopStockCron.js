@@ -8,6 +8,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const ns = require('./nuvemshop');
 const nsHandlers = require('./nuvemshopHandlers');
+const { backfillLocalImagesFromNuvemshop } = require('./nuvemshopImageBackfill');
 const {
   assessRemoteProductForNuvemshop,
   hasRemoteUsableImage,
@@ -109,6 +110,13 @@ async function runNuvemshopStockSync({
         .filter((remote) => remote && remote.id != null)
         .map((remote) => [String(remote.id), remote]),
     );
+    // Restaura primeiro no cadastro local qualquer foto confiável já presente
+    // no produto mapeado da Nuvemshop.
+    const imageBackfill = await backfillLocalImagesFromNuvemshop({
+      connection,
+      remoteProducts,
+      limit: 10000,
+    });
     const cleanupLimit = Math.max(1, Number(process.env.NS_CATALOG_CLEANUP_BATCH || 500));
     const imagelessDeleteLimit = Math.max(1, Number(process.env.NS_IMAGELESS_DELETE_BATCH || 200));
     const stockLimit = Math.max(1, Number(process.env.NS_STOCK_RECONCILE_BATCH || 500));
@@ -139,6 +147,7 @@ async function runNuvemshopStockSync({
       deletedImageless: 0,
       imagelessDeleteLimit,
       imagelessPending,
+      imagesRecovered: imageBackfill.recovered,
     };
 
     // Regra explicita do dono: produto sem foto nao pode permanecer nem no
@@ -411,6 +420,8 @@ async function runNuvemshopStockSync({
       imagelessDeleteErrors,
       imagelessDeleteLimit,
       imagelessPending,
+      imagesRecovered: imageBackfill.recovered,
+      imageRecoveryErrors: imageBackfill.errors.length,
     };
     cronState.phase = 'complete';
   } catch (error) {
