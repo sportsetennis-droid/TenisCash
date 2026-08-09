@@ -134,6 +134,7 @@ async function runImageRepairBatch(options = {}) {
       rejected: 0,
       errors: 0,
       costBRL: 0,
+      recentIssues: [],
     };
     state.progress = progress;
     state.phase = candidates.length ? 'curating' : 'complete';
@@ -164,6 +165,10 @@ async function runImageRepairBatch(options = {}) {
       progress.processed++;
       progress[review.state === 'accepted' ? 'accepted' : review.state === 'rejected' ? 'rejected' : 'errors']++;
       progress.costBRL = Number((progress.costBRL + (Number(report?.costBRL) || 0)).toFixed(4));
+      if (review.state !== 'accepted') {
+        progress.recentIssues.push({ state: review.state, reason: String(review.reason || '').slice(0, 240) });
+        if (progress.recentIssues.length > 8) progress.recentIssues.shift();
+      }
     }
 
     const remainingMissing = await prisma.product.count({

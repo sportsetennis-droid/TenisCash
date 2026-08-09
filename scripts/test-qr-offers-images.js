@@ -36,6 +36,9 @@ function run() {
     qr.categoryMembershipDiff(['1', '2', '4'], ['2', '3']),
     { add: ['3'], remove: ['1', '4'] },
   );
+  assert.deepEqual(qr.pagesFromResponse({ pages: { results: [{ id: 1 }], lastPage: 1 } }), [{ id: 1 }]);
+  assert.deepEqual(qr.pagesFromResponse({ results: [{ id: 2 }] }), [{ id: 2 }]);
+  assert.deepEqual(qr.pagesFromResponse(null), []);
 
   assert.deepEqual(buildCouponPayload({
     code: 'QR0120260808ABCD',
