@@ -5,6 +5,7 @@ const express = require('express');
 const QRCode = require('qrcode');
 const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
 const ns = require('../services/nuvemshop');
+const nsHandlers = require('../services/nuvemshopHandlers');
 
 const adminRouter = express.Router();
 const publicRouter = express.Router();
@@ -17,6 +18,7 @@ const handleCache = new Map();
 // Saída para gráfica: H recupera até ~30% de dano e SVG não perde resolução.
 const QR_PRINT_OPTIONS = { errorCorrectionLevel: 'H', margin: 4 };
 const QR_PRINT_PNG_WIDTH = 2400;
+const staleBoardsReconciled = new Set();
 
 function plateNumber(raw) {
   const m = String(raw || '').toLowerCase().match(/(?:placa[-_ ]*)?(\d{1,2})/);
@@ -83,7 +85,9 @@ async function ensureBoards() {
 }
 
 async function activeConnection() {
-  return prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } });
+  // Keep every QR operation bound to the same Sports & Tennis storefront used
+  // by the catalog sync. An arbitrary old active connection is unsafe here.
+  return nsHandlers.getConnection();
 }
 
 async function resolveHandle(nuvemshopProductId) {
@@ -197,6 +201,8 @@ async function selectedProducts(ids) {
 async function deactivateBoardOffers(boardId, exceptId, conn) {
   const old = await prisma.qROffer.findMany({ where: { boardId, status: { in: ['ACTIVE', 'SCHEDULED'] }, ...(exceptId ? { id: { not: exceptId } } : {}) } });
   for (const offer of old) {
+    // The category belongs to the board and may already contain the new offer;
+    // only the superseded coupon is retired during an atomic replacement.
     await disableNuvemshopCoupon(offer, conn, { strict: true });
     await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'EXPIRED' } });
   }
@@ -287,6 +293,22 @@ function offerCategoryDescription(offer) {
   return `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}: ${pct}. Confira o preco normal do produto no site e aplique o cupom ${coupon} no checkout. Validade de ate 24 horas. ${title}`;
 }
 
+async function findOfferCategory(offer, conn) {
+  const handle = offerCategoryHandle(plateCode(offer.board.number));
+  const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
+  const categories = Array.isArray(listed) ? listed : [];
+  let category = categories.find((item) => localizedValue(item.handle) === handle);
+  if (category) return category;
+
+  // Compatibility with categories created by the previous version without a
+  // predictable handle. The short window avoids walking the entire tree.
+  const updatedAfter = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const all = await ns.nuvemshopApi(conn, 'GET', `/categories?updated_at_min=${encodeURIComponent(updatedAfter)}&per_page=100&page=1`);
+  const marker = `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}:`;
+  category = (Array.isArray(all) ? all : []).find((item) => localizedValue(item.description).includes(marker));
+  return category || null;
+}
+
 async function setOfferCategoryVisibility(offer, conn, categoryId, visible) {
   const visibility = visible ? 'visible' : 'hidden';
   return ns.nuvemshopApi(conn, 'PUT', `/categories/${categoryId}`, {
@@ -320,19 +342,7 @@ async function syncOfferCategory(offer, conn, opts = {}) {
   const name = offerCategoryName(offer);
   const visible = opts.visible !== false;
   const visibility = visible ? 'visible' : 'hidden';
-  const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
-  const categories = Array.isArray(listed) ? listed : [];
-  let category = categories.find((item) => localizedValue(item.handle) === handle);
-
-  // Recupera uma categoria criada pela versao antiga sem handle/nome, evitando duplicatas.
-  if (!category) {
-    // Limita a consulta a categorias recentes: buscar a arvore inteira da loja
-    // pode atravessar o rate limit da Nuvemshop e impedir a publicacao.
-    const updatedAfter = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-    const all = await ns.nuvemshopApi(conn, 'GET', `/categories?updated_at_min=${encodeURIComponent(updatedAfter)}&per_page=100&page=1`);
-    const marker = `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}:`;
-    category = (Array.isArray(all) ? all : []).find((item) => localizedValue(item.description).includes(marker));
-  }
+  let category = await findOfferCategory(offer, conn);
 
   if (!category) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
@@ -395,15 +405,56 @@ async function syncOfferCategory(offer, conn, opts = {}) {
   return { id: category.id, handle, url: storeOfferUrl(code), products: verifiedIds.size };
 }
 
+async function deleteOfferCategory(offer, conn) {
+  const category = await findOfferCategory(offer, conn);
+  if (!category) return { deleted: false, reason: 'category does not exist' };
+
+  // Remove all product relationships first. This prevents an intermediate
+  // storefront cache from continuing to render the old offer while the
+  // category itself is being deleted.
+  const related = await ns.fetchAllPages(conn, `/products?category_id=${encodeURIComponent(category.id)}`, { perPage: 100, max: 1000 });
+  for (const product of related) {
+    const categories = categoryIdsOf(product).filter((id) => id !== Number(category.id));
+    await ns.updateProduct(conn, product.id, { categories });
+  }
+  const remaining = await ns.fetchAllPages(conn, `/products?category_id=${encodeURIComponent(category.id)}`, { perPage: 100, max: 1000 });
+  if (remaining.length) {
+    throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} ainda tem ${remaining.length} produtos`);
+  }
+
+  await setOfferCategoryVisibility(offer, conn, category.id, false);
+  await ns.nuvemshopApi(conn, 'DELETE', `/categories/${category.id}`);
+  return { deleted: true, id: category.id, productsRemoved: related.length };
+}
+
+async function retireOfferExternalState(offer, conn) {
+  const errors = [];
+  try {
+    await disableNuvemshopCoupon(offer, conn, { strict: true });
+  } catch (error) {
+    errors.push(`cupom: ${error.message}`);
+  }
+  try {
+    await deleteOfferCategory(offer, conn);
+  } catch (error) {
+    errors.push(`categoria: ${error.message}`);
+  }
+  if (errors.length) throw new Error(errors.join(' | '));
+}
+
 async function expireOffer(offer, conn) {
-  await disableNuvemshopCoupon(offer, conn, { strict: true });
-  await syncOfferCategory(offer, conn, { visible: false, clear: true });
+  await retireOfferExternalState(offer, conn);
   return prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'EXPIRED' } });
 }
 
 async function scheduleOffer(offer, conn) {
-  await disableNuvemshopCoupon(offer, conn, { strict: true });
-  const category = await syncOfferCategory(offer, conn, { visible: false });
+  const errors = [];
+  try { await disableNuvemshopCoupon(offer, conn, { strict: true }); }
+  catch (error) { errors.push(`cupom: ${error.message}`); }
+  let category = null;
+  try { category = await syncOfferCategory(offer, conn, { visible: false }); }
+  catch (error) { errors.push(`categoria: ${error.message}`); }
+  if (errors.length) throw new Error(errors.join(' | '));
   if (offer.nsCouponId) {
     await ns.updateCoupon(conn, offer.nsCouponId, {
       code: offer.couponCode,
@@ -453,7 +504,15 @@ async function reconcileQROffers(now = new Date()) {
     orderBy: { startsAt: 'asc' },
     include: { board: true, products: { include: { product: true } } },
   });
-  const result = { processed: offers.length, activated: 0, scheduled: 0, expired: 0, errors: [] };
+  const result = {
+    processed: offers.length,
+    activated: 0,
+    scheduled: 0,
+    expired: 0,
+    staleCategoriesDeleted: 0,
+    staleCouponsDisabled: 0,
+    errors: [],
+  };
   for (const offer of offers) {
     try {
       const state = offerState(offer, now);
@@ -469,6 +528,44 @@ async function reconcileQROffers(now = new Date()) {
       }
     } catch (err) {
       result.errors.push({ offerId: offer.id, plate: offer.board && offer.board.number, error: err.message });
+    }
+  }
+
+  // A deployment of the legacy code may have marked the database offer as
+  // expired after cleaning a different connected store. Reconcile each board
+  // with no current offer once per process so those orphan storefront pages
+  // and their historical coupons are removed from the real target store too.
+  const livePlates = new Set(
+    offers.filter((offer) => offerState(offer, now) !== 'EXPIRED').map((offer) => offer.board.number),
+  );
+  for (let number = 1; number <= PLATE_COUNT; number++) {
+    if (livePlates.has(number)) {
+      staleBoardsReconciled.delete(number);
+      continue;
+    }
+    if (staleBoardsReconciled.has(number)) continue;
+    try {
+      const historical = await prisma.qROffer.findMany({
+        where: { board: { number }, nsCouponId: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: { board: true },
+      });
+      for (const old of historical) {
+        await disableNuvemshopCoupon(old, conn, { strict: true });
+        result.staleCouponsDisabled++;
+      }
+      const placeholder = {
+        board: { number },
+        title: 'Oferta encerrada',
+        discountPct: 0,
+        couponCode: '',
+      };
+      const deleted = await deleteOfferCategory(placeholder, conn);
+      if (deleted.deleted) result.staleCategoriesDeleted++;
+      staleBoardsReconciled.add(number);
+    } catch (err) {
+      result.errors.push({ plate: number, phase: 'stale-cleanup', error: err.message });
     }
   }
   return result;
@@ -581,8 +678,7 @@ adminRouter.post('/offers/:id/cancel', async (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
     const conn = await activeConnection();
     if (!conn) return res.status(502).json({ error: 'Nuvemshop não está conectada' });
-    await disableNuvemshopCoupon(offer, conn, { strict: true });
-    await syncOfferCategory(offer, conn, { visible: false, clear: true });
+    await retireOfferExternalState(offer, conn);
     const updated = await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'CANCELLED' } });
     res.json({ offer: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }

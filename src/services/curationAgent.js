@@ -52,7 +52,7 @@ async function syncToNuvemshopIfMapped(productId) {
  * @param {boolean} [opts.skipDescription=false]
  * @param {boolean} [opts.skipNuvemshop=false]
  * @param {number}  [opts.imageCandidates=8]      — quantas imagens analisar
- * @param {number}  [opts.minScore=5]            — score mínimo pra aceitar imagem
+ * @param {number}  [opts.minScore=8]            — score mínimo pra aceitar imagem
  * @returns {Promise<Object>} relatório
  */
 async function curateProduct(productId, opts = {}) {
@@ -167,7 +167,7 @@ async function curateProduct(productId, opts = {}) {
           }
         }
 
-        // Salva se: sem vision, ou vision-fail-total (usa Serper), ou score >= minScore
+        // Fail closed: only a visually confirmed exact product is persisted.
         const minScore = Math.max(8, Number(opts.minScore) || 8);
         const acceptable = !visionAllFailed && isAcceptableImageCandidate(chosen, minScore);
 
@@ -217,7 +217,12 @@ async function curateProduct(productId, opts = {}) {
           report.costBRL += visionCost;
         }
       } else {
-        report.steps.image = { ok: false, reason: 'nenhuma imagem encontrada' };
+        report.steps.image = {
+          ok: false,
+          reason: searchResult.ok
+            ? 'nenhuma imagem encontrada'
+            : `busca de imagens falhou: ${searchResult.error || 'erro desconhecido'}`,
+        };
       }
     } else if (product.imageUrl) {
       report.steps.image = { ok: true, reason: 'já tinha imagem', url: product.imageUrl };

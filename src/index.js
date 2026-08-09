@@ -96,6 +96,7 @@ const { startServicesCron } = require('./services/servicesCron');
 const { startEquipeReportsCron } = require('./services/equipeReports');
 const { startSellerProductionCron } = require('./services/sellerProductionCron');
 const { startQROffersCron } = require('./services/qrOffersCron');
+const { startImageRepairCron } = require('./services/imageRepairCron');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -482,6 +483,10 @@ app.get('/api/health', (req, res) => {
   try {
     nuvemshopCatalog = require('./services/nuvemshopStockCron').getNuvemshopCronState();
   } catch (_) {}
+  let qrOffers = null;
+  try { qrOffers = require('./services/qrOffersCron').getQROffersCronState(); } catch (_) {}
+  let imageRepair = null;
+  try { imageRepair = require('./services/imageRepairCron').getImageRepairCronState(); } catch (_) {}
   let waHealth = null;
   try { waHealth = getWhatsappHealthState(); } catch (_) {}
   res.json({
@@ -489,6 +494,8 @@ app.get('/api/health', (req, res) => {
     service: 'TenisCash API',
     version: '1.0.0',
     nuvemshopCatalog,
+    qrOffers,
+    imageRepair,
     waHealth,
   });
 });
@@ -1597,6 +1604,7 @@ app.listen(PORT, '0.0.0.0', () => {
   // Estoque, gate e limpeza reversivel da Nuvemshop nao dependem dos crons de IA.
   try { startNuvemshopStockCron(); } catch (e) { console.error('[nsStockCron] falha ao iniciar:', e.message); }
   try { startQROffersCron(); } catch (e) { console.error('[qrOffersCron] falha ao iniciar:', e.message); }
+  try { startImageRepairCron(); } catch (e) { console.error('[imageRepairCron] falha ao iniciar:', e.message); }
 
   // Cron mensagens (expira posts de timeline 00:00 America/Fortaleza)
   if (process.env.DISABLE_MESSAGES_CRON !== '1') {
