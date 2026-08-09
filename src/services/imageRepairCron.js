@@ -170,6 +170,16 @@ async function runImageRepairBatch(options = {}) {
         progress.recentIssues.push({ state: review.state, reason: String(review.reason || '').slice(0, 240) });
         if (progress.recentIssues.length > 8) progress.recentIssues.shift();
       }
+      const providers = vision.providerStatus();
+      const providerAvailable = (providers.anthropic && !providers.anthropicCoolingDown)
+        || (providers.openai && !providers.openaiCoolingDown)
+        || (providers.groq && !providers.groqCoolingDown);
+      if (review.state === 'error' && !providerAvailable) {
+        progress.providerBlocked = true;
+        progress.providerStatus = providers;
+        state.phase = 'blocked';
+        break;
+      }
     }
 
     const remainingMissing = await prisma.product.count({
@@ -178,10 +188,10 @@ async function runImageRepairBatch(options = {}) {
     const result = {
       ...progress,
       remainingMissing,
-      moreEligible: eligible.length > candidates.length,
+      moreEligible: !progress.providerBlocked && eligible.length > candidates.length,
     };
     state.lastResult = result;
-    state.phase = 'complete';
+    if (!progress.providerBlocked) state.phase = 'complete';
     return result;
   } catch (error) {
     state.lastError = error.message;
