@@ -2589,7 +2589,7 @@ model QROffer {
   id            String    @id @default(cuid())
   boardId       String
   title         String
-  status        String    @default("DRAFT") // DRAFT | ACTIVE | EXPIRED | CANCELLED
+  status        String    @default("DRAFT") // DRAFT | SCHEDULED | ACTIVE | EXPIRED | CANCELLED
   startsAt      DateTime
   endsAt        DateTime
   durationHours Int       @default(24)

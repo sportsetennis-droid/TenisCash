@@ -15,6 +15,11 @@ const serperWeb = require('../services/serperWebSearch');
 
 const router = express.Router();
 
+function validatedMinScore(raw) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(8, value) : 8;
+}
+
 // ===== TEMPORÁRIO (remover após uso): re-pull foto-only 2026 COM COR =====
 // Deriva a cor pelo REF (busca web), grava aiContext.color, limpa imageUrl e
 // re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
@@ -121,7 +126,7 @@ router.post('/product/:id', async (req, res) => {
       skipImage: !!req.body?.skipImage,
       skipDescription: !!req.body?.skipDescription,
       skipNuvemshop: !!req.body?.skipNuvemshop,
-      minScore: req.body?.minScore != null ? Number(req.body.minScore) : 5,
+      minScore: validatedMinScore(req.body?.minScore),
       imageCandidates: req.body?.imageCandidates != null ? Number(req.body.imageCandidates) : 6,
     };
     const r = await curateProduct(req.params.id, opts);
@@ -140,7 +145,7 @@ router.get('/pending-summary', async (_req, res) => {
     const pending = await prisma.product.findMany({
       where: {
         active: true,
-        OR: [{ imageUrl: null }, { longDescription: null }],
+        OR: [{ imageUrl: null }, { imageUrl: '' }, { longDescription: null }, { longDescription: '' }],
       },
       select: { id: true, aiContext: true, imageUrl: true, longDescription: true, brand: true },
     });
@@ -190,7 +195,7 @@ router.get('/queue-all', async (_req, res) => {
     const products = await prisma.product.findMany({
       where: {
         active: true,
-        OR: [{ imageUrl: null }, { longDescription: null }],
+        OR: [{ imageUrl: null }, { imageUrl: '' }, { longDescription: null }, { longDescription: '' }],
       },
       select: { id: true, sku: true, name: true, brand: true, imageUrl: true, longDescription: true, aiContext: true },
       orderBy: [{ brand: 'asc' }, { name: 'asc' }],
@@ -219,7 +224,7 @@ router.get('/queue/:cnpj', async (req, res) => {
       where: {
         active: true,
         aiContext: { path: ['supplierCnpj'], equals: cnpj },
-        OR: [{ imageUrl: null }, { longDescription: null }],
+        OR: [{ imageUrl: null }, { imageUrl: '' }, { longDescription: null }, { longDescription: '' }],
       },
       select: { id: true, sku: true, name: true, imageUrl: true, longDescription: true },
       orderBy: { name: 'asc' },
@@ -239,13 +244,13 @@ router.post('/supplier/:cnpj', async (req, res) => {
       skipImage: !!req.body?.skipImage,
       skipDescription: !!req.body?.skipDescription,
       skipNuvemshop: !!req.body?.skipNuvemshop,
-      minScore: req.body?.minScore != null ? Number(req.body.minScore) : 5,
+      minScore: validatedMinScore(req.body?.minScore),
       imageCandidates: req.body?.imageCandidates != null ? Number(req.body.imageCandidates) : 6,
     };
     const where = {
       active: true,
       aiContext: { path: ['supplierCnpj'], equals: cnpj },
-      OR: [{ imageUrl: null }, { longDescription: null }],
+      OR: [{ imageUrl: null }, { imageUrl: '' }, { longDescription: null }, { longDescription: '' }],
     };
     const products = await prisma.product.findMany({ where, take: limit });
 
@@ -276,62 +281,12 @@ router.post('/supplier/:cnpj', async (req, res) => {
   }
 });
 
-// Conserta produtos que tem imageUrl mas estao SEM imageUrls extras (efeito
-// colateral do early stop do vision). Busca rapida no Serper e adiciona ate
-// 5 fotos extras, sem rodar vision de novo.
-router.post('/fix-missing-extras', async (req, res) => {
-  try {
-    if (!serperImg.isConfigured()) return res.status(400).json({ error: 'Serper não configurado' });
-    const { supplierCnpj, limit = 500 } = req.body || {};
-    const { getSupplierMeta } = require('../services/supplierOfficialSites');
-
-    const where = {
-      active: true,
-      imageUrl: { not: null },
-      OR: [{ imageUrls: { equals: null } }, { imageUrls: { equals: [] } }],
-    };
-    if (supplierCnpj) where.aiContext = { path: ['supplierCnpj'], equals: String(supplierCnpj) };
-
-    const products = await prisma.product.findMany({ where, take: parseInt(limit, 10) || 500 });
-    let ok = 0, skipped = 0;
-    for (const product of products) {
-      const ctx = (() => {
-        try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
-        catch (_) { return {}; }
-      })();
-      const supplierMeta = getSupplierMeta(ctx.supplierCnpj);
-      const officialSite = supplierMeta?.site || null;
-      const brandToUse = supplierMeta?.brand || product.brand;
-      const cleanName = (product.name || '').replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
-
-      let query = serperImg.buildProductQuery({
-        brand: brandToUse,
-        supplierRef: ctx.supplierRef,
-        model: cleanName,
-        color: ctx.color,
-        category: product.category,
-      });
-      if (officialSite) query = `${query} site:${officialSite}`.trim();
-
-      const result = await serperImg.searchImages(query, { count: 8 });
-      if (!result.ok || !result.items?.length) { skipped++; continue; }
-
-      const extras = result.items
-        .map((it) => it.url)
-        .filter((u) => u && u !== product.imageUrl)
-        .slice(0, 5);
-      if (!extras.length) { skipped++; continue; }
-
-      await prisma.product.update({ where: { id: product.id }, data: { imageUrls: extras } });
-      ok++;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    res.json({ ok: true, total: products.length, completed: ok, skipped });
-  } catch (err) {
-    console.error('[ai-curation/fix-missing-extras] erro:', err);
-    res.status(500).json({ error: err.message });
-  }
+// O antigo preenchimento de extras sem Vision foi removido para não introduzir
+// fotos de outro modelo ou cor.
+router.post('/fix-missing-extras', (_req, res) => {
+  res.status(410).json({
+    error: 'Busca de fotos extras sem validação foi desativada por segurança.',
+  });
 });
 
 module.exports = router;

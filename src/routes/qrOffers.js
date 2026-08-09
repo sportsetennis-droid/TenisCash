@@ -61,6 +61,15 @@ function normalizeProductIds(raw) {
   return Array.from(new Set(ids.map((v) => String(v || '').trim()).filter(Boolean))).slice(0, 24);
 }
 
+function offerState(offer, now = new Date()) {
+  const at = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const starts = new Date(offer.startsAt).getTime();
+  const ends = new Date(offer.endsAt).getTime();
+  if (!Number.isFinite(at) || !Number.isFinite(starts) || !Number.isFinite(ends) || ends <= starts || ends <= at) return 'EXPIRED';
+  if (starts > at) return 'SCHEDULED';
+  return 'ACTIVE';
+}
+
 async function ensureBoards() {
   const rows = [];
   for (let n = 1; n <= PLATE_COUNT; n++) {
@@ -120,7 +129,7 @@ async function findOfferByPlate(n) {
     where: { number: n },
     include: {
       offers: {
-        where: { status: 'ACTIVE' },
+        where: { status: { in: ['ACTIVE', 'SCHEDULED'] } },
         orderBy: { startsAt: 'desc' },
         take: 1,
         include: { products: { orderBy: { position: 'asc' }, include: { product: true } } },
@@ -128,8 +137,7 @@ async function findOfferByPlate(n) {
     },
   });
   const raw = board && board.offers && board.offers[0];
-  const now = Date.now();
-  if (!raw || new Date(raw.startsAt).getTime() > now || new Date(raw.endsAt).getTime() <= now) return { board, offer: null };
+  if (!raw || offerState(raw) !== 'ACTIVE') return { board, offer: null };
   const products = [];
   for (const row of raw.products || []) {
     if (!row.product || !row.product.active) continue;
@@ -145,12 +153,17 @@ async function getOffer(id) {
   });
 }
 
-async function disableNuvemshopCoupon(offer) {
+async function disableNuvemshopCoupon(offer, connection = null, options = {}) {
   if (!offer || !offer.nsCouponId) return;
   try {
-    const conn = await activeConnection();
-    if (conn) await ns.setCouponValid(conn, offer.nsCouponId, false);
-  } catch (e) { console.warn('[qr-offers] disable coupon:', e.message); }
+    const conn = connection || await activeConnection();
+    if (!conn) throw new Error('Nuvemshop não está conectada');
+    await ns.setCouponValid(conn, offer.nsCouponId, false);
+  } catch (e) {
+    if (/\[Nuvemshop 404\]/.test(e.message || '')) return;
+    if (options.strict) throw e;
+    console.warn('[qr-offers] disable coupon:', e.message);
+  }
 }
 
 function validateBody(body) {
@@ -169,7 +182,8 @@ async function selectedProducts(ids) {
   if (!ids.length) throw new Error('Selecione ao menos um produto');
   const products = await prisma.product.findMany({
     where: {
-      id: { in: ids }, active: true, price: { gt: 0 }, imageUrl: { not: null },
+      id: { in: ids }, active: true, price: { gt: 0 },
+      AND: [{ imageUrl: { not: null } }, { imageUrl: { not: '' } }],
       sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } },
     },
     select: { id: true },
@@ -180,10 +194,10 @@ async function selectedProducts(ids) {
   return products;
 }
 
-async function deactivateBoardOffers(boardId, exceptId) {
-  const old = await prisma.qROffer.findMany({ where: { boardId, status: 'ACTIVE', ...(exceptId ? { id: { not: exceptId } } : {}) } });
+async function deactivateBoardOffers(boardId, exceptId, conn) {
+  const old = await prisma.qROffer.findMany({ where: { boardId, status: { in: ['ACTIVE', 'SCHEDULED'] }, ...(exceptId ? { id: { not: exceptId } } : {}) } });
   for (const offer of old) {
-    await disableNuvemshopCoupon(offer);
+    await disableNuvemshopCoupon(offer, conn, { strict: true });
     await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'EXPIRED' } });
   }
 }
@@ -191,18 +205,63 @@ async function deactivateBoardOffers(boardId, exceptId) {
 async function publishOffer(offer) {
   const conn = await activeConnection();
   if (!conn) throw new Error('Nuvemshop não está conectada no TenisCash');
+  const state = offerState(offer);
+  if (state === 'EXPIRED') throw new Error('A validade da oferta já terminou');
   const suffix = String(offer.id || '').replace(/[^a-z0-9]/gi, '').slice(-4).toUpperCase();
-  const code = offer.couponCode || `QR${String(offer.board.number).padStart(2, '0')}-${new Date(offer.startsAt).toISOString().slice(0, 10).replace(/-/g, '')}-${suffix}`;
+  const savedCode = String(offer.couponCode || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const code = savedCode || `QR${String(offer.board.number).padStart(2, '0')}${new Date(offer.startsAt).toISOString().slice(0, 10).replace(/-/g, '')}${suffix}`;
+  const preparedOffer = { ...offer, couponCode: code, status: state };
+
+  // Prepara a categoria escondida e CONFIRMA a lista exata antes de ativar o
+  // cupom. A versão anterior respondia sucesso e deixava esta sincronização
+  // rodando em background, o que gerava categorias parcialmente atualizadas.
+  const category = await syncOfferCategory(preparedOffer, conn, { visible: false });
+  const couponOpts = {
+    code,
+    discountPct: offer.discountPct,
+    valid: false,
+    startDate: offer.startsAt,
+    endDate: offer.endsAt,
+    categories: [category.id],
+  };
+
   let coupon;
-  if (offer.nsCouponId) {
-    coupon = await ns.updateCoupon(conn, offer.nsCouponId, { code, discountPct: offer.discountPct, valid: true });
-  } else {
-    coupon = await ns.createCoupon(conn, { code, discountPct: offer.discountPct, valid: true });
+  let couponId = offer.nsCouponId || null;
+  try {
+    coupon = offer.nsCouponId
+      ? await ns.updateCoupon(conn, offer.nsCouponId, couponOpts)
+      : await ns.createCoupon(conn, couponOpts);
+    couponId = coupon?.id != null ? String(coupon.id) : couponId;
+    if (couponId == null) throw new Error('A Nuvemshop não confirmou o ID do cupom');
+    await deactivateBoardOffers(offer.boardId, offer.id, conn);
+    if (state === 'ACTIVE') {
+      await ns.setCouponValid(conn, couponId, true);
+      await setOfferCategoryVisibility(preparedOffer, conn, category.id, true);
+    }
+  } catch (err) {
+    if (couponId != null) {
+      try { await ns.setCouponValid(conn, couponId, false); } catch (_) {}
+    }
+    throw err;
   }
-  await deactivateBoardOffers(offer.boardId, offer.id);
-  const updated = await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'ACTIVE', couponCode: code, nsCouponId: coupon && coupon.id != null ? String(coupon.id) : offer.nsCouponId, publishedAt: new Date() } });
-  syncOfferCategory({ ...offer, ...updated, couponCode: code, nsCouponId: updated.nsCouponId, status: 'ACTIVE' }, conn).catch((e) => console.error('[qr-offers/category]', e.message));
-  return updated;
+
+  try {
+    return await prisma.qROffer.update({
+      where: { id: offer.id },
+      data: {
+        status: state,
+        couponCode: code,
+        nsCouponId: couponId,
+        publishedAt: new Date(),
+      },
+    });
+  } catch (err) {
+    if (couponId != null) {
+      try { await ns.setCouponValid(conn, couponId, false); } catch (_) {}
+    }
+    try { await setOfferCategoryVisibility(preparedOffer, conn, category.id, false); } catch (_) {}
+    throw err;
+  }
 }
 
 function localizedValue(value) {
@@ -228,12 +287,39 @@ function offerCategoryDescription(offer) {
   return `Oferta exclusiva para quem leu a Placa ${String(offer.board.number).padStart(2, '0')}: ${pct}. Confira o preco normal do produto no site e aplique o cupom ${coupon} no checkout. Validade de ate 24 horas. ${title}`;
 }
 
+async function setOfferCategoryVisibility(offer, conn, categoryId, visible) {
+  const visibility = visible ? 'visible' : 'hidden';
+  return ns.nuvemshopApi(conn, 'PUT', `/categories/${categoryId}`, {
+    name: { pt: offerCategoryName(offer), es: offerCategoryName(offer), en: offerCategoryName(offer) },
+    description: { pt: offerCategoryDescription(offer) },
+    visibility,
+    parent: null,
+  });
+}
+
+function categoryIdsOf(product) {
+  return Array.isArray(product && product.categories)
+    ? product.categories.map(numericCategoryId).filter((id) => id != null)
+    : [];
+}
+
+function categoryMembershipDiff(currentIds, selectedIds) {
+  const current = new Set(Array.from(currentIds || [], String));
+  const selected = new Set(Array.from(selectedIds || [], String));
+  return {
+    add: [...selected].filter((id) => !current.has(id)),
+    remove: [...current].filter((id) => !selected.has(id)),
+  };
+}
+
 // Cria/atualiza a categoria oculta que funciona como vitrine da placa.
 // A categoria não é adicionada ao menu; o endereço só é divulgado no QR.
-async function syncOfferCategory(offer, conn) {
+async function syncOfferCategory(offer, conn, opts = {}) {
   const code = plateCode(offer.board.number);
   const handle = offerCategoryHandle(code);
   const name = offerCategoryName(offer);
+  const visible = opts.visible !== false;
+  const visibility = visible ? 'visible' : 'hidden';
   const listed = await ns.nuvemshopApi(conn, 'GET', `/categories?handle=${encodeURIComponent(handle)}&language=pt&per_page=50&page=1`);
   const categories = Array.isArray(listed) ? listed : [];
   let category = categories.find((item) => localizedValue(item.handle) === handle);
@@ -252,45 +338,140 @@ async function syncOfferCategory(offer, conn) {
     category = await ns.nuvemshopApi(conn, 'POST', '/categories', {
       name: { pt: name, es: name, en: name },
       description: { pt: offerCategoryDescription(offer) },
-      visibility: 'visible',
+      visibility,
       parent: null,
     });
   } else {
     category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
       name: { pt: name, es: name, en: name },
       description: { pt: offerCategoryDescription(offer) },
-      visibility: 'visible',
+      visibility,
       parent: null,
     });
   }
 
   // Nuvemshop renderiza categoria oculta como pagina 404 com HTTP 200.
-  if (category && (category.visibility !== 'visible' || !localizedValue(category.name))) {
-    category = await ns.nuvemshopApi(conn, 'PUT', `/categories/${category.id}`, {
-      name: { pt: name, es: name, en: name },
-      visibility: 'visible',
-      parent: null,
-    });
+  if (!category) throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} não foi criada`);
+  if (category.visibility !== visibility || !localizedValue(category.name)) {
+    category = await setOfferCategoryVisibility(offer, conn, category.id, visible);
   }
-  if (!category || category.visibility !== 'visible' || !localizedValue(category.handle)) {
-    throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} nao ficou publica na Nuvemshop`);
+  if (!category || category.visibility !== visibility || !localizedValue(category.handle)) {
+    throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} não ficou ${visibility} na Nuvemshop`);
   }
 
-  const localIds = (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
+  const localIds = opts.clear
+    ? []
+    : (offer.products || []).map((row) => row.productId || (row.product && row.product.id)).filter(Boolean);
   const mappings = await prisma.nuvemshopProductMapping.findMany({ where: { localProductId: { in: localIds } }, select: { localProductId: true, nuvemshopProductId: true } });
   const selected = new Set(mappings.map((row) => String(row.nuvemshopProductId)));
-  const current = await ns.nuvemshopApi(conn, 'GET', `/products?category_id=${encodeURIComponent(category.id)}&per_page=100&page=1`);
-  const related = Array.isArray(current) ? current : [];
-  const remoteIds = new Set([...related.map((item) => String(item.id)), ...selected]);
-  for (const remoteId of remoteIds) {
-    const product = await ns.getProduct(conn, remoteId);
-    const before = Array.isArray(product.categories) ? product.categories.map(numericCategoryId).filter((id) => id != null) : [];
+  const related = await ns.fetchAllPages(conn, `/products?category_id=${encodeURIComponent(category.id)}`, { perPage: 100, max: 1000 });
+  const currentById = new Map(related.map((item) => [String(item.id), item]));
+  const diff = categoryMembershipDiff(currentById.keys(), selected);
+
+  // Busca os selecionados que ainda não pertencem à categoria em uma única
+  // chamada (o parâmetro ids aceita até 30; uma placa aceita no máximo 24).
+  if (diff.add.length) {
+    const incoming = await ns.nuvemshopApi(conn, 'GET', `/products?ids=${diff.add.map(encodeURIComponent).join(',')}&per_page=30&page=1`);
+    for (const item of Array.isArray(incoming) ? incoming : []) currentById.set(String(item.id), item);
+  }
+
+  for (const remoteId of [...diff.remove, ...diff.add]) {
+    const product = currentById.get(String(remoteId)) || await ns.getProduct(conn, remoteId);
+    const before = categoryIdsOf(product);
     const has = before.includes(Number(category.id));
     const shouldHave = selected.has(String(remoteId));
     const after = shouldHave ? Array.from(new Set([...before, Number(category.id)])) : before.filter((id) => id !== Number(category.id));
     if (has !== shouldHave) await ns.updateProduct(conn, remoteId, { categories: after });
   }
-  return { id: category.id, handle, url: storeOfferUrl(code) };
+
+  // Verificação autoritativa: publicação só termina quando a categoria remota
+  // contém exatamente a seleção solicitada.
+  const verified = await ns.fetchAllPages(conn, `/products?category_id=${encodeURIComponent(category.id)}`, { perPage: 100, max: 1000 });
+  const verifiedIds = new Set(verified.map((item) => String(item.id)));
+  const remaining = categoryMembershipDiff(verifiedIds, selected);
+  if (remaining.add.length || remaining.remove.length) {
+    throw new Error(`Categoria da Placa ${String(offer.board.number).padStart(2, '0')} divergiu: faltam ${remaining.add.length}, sobram ${remaining.remove.length}`);
+  }
+  return { id: category.id, handle, url: storeOfferUrl(code), products: verifiedIds.size };
+}
+
+async function expireOffer(offer, conn) {
+  await disableNuvemshopCoupon(offer, conn, { strict: true });
+  await syncOfferCategory(offer, conn, { visible: false, clear: true });
+  return prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'EXPIRED' } });
+}
+
+async function scheduleOffer(offer, conn) {
+  await disableNuvemshopCoupon(offer, conn, { strict: true });
+  const category = await syncOfferCategory(offer, conn, { visible: false });
+  if (offer.nsCouponId) {
+    await ns.updateCoupon(conn, offer.nsCouponId, {
+      code: offer.couponCode,
+      discountPct: offer.discountPct,
+      valid: false,
+      startDate: offer.startsAt,
+      endDate: offer.endsAt,
+      categories: [category.id],
+    });
+  }
+  return prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'SCHEDULED' } });
+}
+
+async function activateOffer(offer, conn) {
+  const category = await syncOfferCategory(offer, conn, { visible: false });
+  const opts = {
+    code: offer.couponCode,
+    discountPct: offer.discountPct,
+    valid: false,
+    startDate: offer.startsAt,
+    endDate: offer.endsAt,
+    categories: [category.id],
+  };
+  const coupon = offer.nsCouponId
+    ? await ns.updateCoupon(conn, offer.nsCouponId, opts)
+    : await ns.createCoupon(conn, opts);
+  const couponId = coupon?.id != null ? String(coupon.id) : offer.nsCouponId;
+  if (!couponId) throw new Error('A Nuvemshop não confirmou o ID do cupom');
+  await ns.setCouponValid(conn, couponId, true);
+  try {
+    await setOfferCategoryVisibility(offer, conn, category.id, true);
+    return await prisma.qROffer.update({
+      where: { id: offer.id },
+      data: { status: 'ACTIVE', nsCouponId: couponId },
+    });
+  } catch (err) {
+    try { await ns.setCouponValid(conn, couponId, false); } catch (_) {}
+    throw err;
+  }
+}
+
+async function reconcileQROffers(now = new Date()) {
+  const conn = await activeConnection();
+  if (!conn) return { processed: 0, activated: 0, scheduled: 0, expired: 0, errors: ['Nuvemshop não conectada'] };
+  const offers = await prisma.qROffer.findMany({
+    where: { status: { in: ['ACTIVE', 'SCHEDULED'] } },
+    orderBy: { startsAt: 'asc' },
+    include: { board: true, products: { include: { product: true } } },
+  });
+  const result = { processed: offers.length, activated: 0, scheduled: 0, expired: 0, errors: [] };
+  for (const offer of offers) {
+    try {
+      const state = offerState(offer, now);
+      if (state === 'EXPIRED') {
+        await expireOffer(offer, conn);
+        result.expired++;
+      } else if (state === 'SCHEDULED' && offer.status !== 'SCHEDULED') {
+        await scheduleOffer(offer, conn);
+        result.scheduled++;
+      } else if (state === 'ACTIVE' && offer.status !== 'ACTIVE') {
+        await activateOffer(offer, conn);
+        result.activated++;
+      }
+    } catch (err) {
+      result.errors.push({ offerId: offer.id, plate: offer.board && offer.board.number, error: err.message });
+    }
+  }
+  return result;
 }
 
 // ---------------- ADMIN ----------------
@@ -302,12 +483,19 @@ adminRouter.get('/plates', async (_req, res) => {
     const now = new Date();
     const out = [];
     for (const board of boards) {
-      const current = await prisma.qROffer.findFirst({ where: { boardId: board.id, status: 'ACTIVE' }, orderBy: { startsAt: 'desc' }, include: { _count: { select: { products: true } } } });
+      const current = await prisma.qROffer.findFirst({ where: { boardId: board.id, status: { in: ['ACTIVE', 'SCHEDULED'] } }, orderBy: { startsAt: 'desc' }, include: { _count: { select: { products: true } } } });
       const qrUrl = fixedQrUrl(board.code);
-      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: qrUrl, destinationUrl: storeOfferUrl(board.code), qrSvgUrl: `/qr-ofertas/${board.code}?format=svg`, qrPngUrl: `/qr-ofertas/${board.code}?format=png`, qrDataUrl: await QRCode.toDataURL(qrUrl, { margin: 4, width: 1000, errorCorrectionLevel: 'H' }), current: current ? { id: current.id, title: current.title, status: current.startsAt <= now && current.endsAt > now ? 'ACTIVE' : 'SCHEDULED', startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
+      out.push({ number: board.number, code: board.code, label: board.label, fixedUrl: qrUrl, destinationUrl: storeOfferUrl(board.code), qrSvgUrl: `/qr-ofertas/${board.code}?format=svg`, qrPngUrl: `/qr-ofertas/${board.code}?format=png`, qrDataUrl: await QRCode.toDataURL(qrUrl, { margin: 4, width: 1000, errorCorrectionLevel: 'H' }), current: current ? { id: current.id, title: current.title, status: offerState(current, now), startsAt: current.startsAt, endsAt: current.endsAt, discountPct: current.discountPct, couponCode: current.couponCode, products: current._count.products } : null });
     }
     res.json({ boards: out, publicBase: PUBLIC_BASE, storeBase: STORE_BASE, qrDestination: 'store' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminRouter.post('/reconcile', async (_req, res) => {
+  try {
+    const result = await reconcileQROffers();
+    res.status(result.errors.length ? 207 : 200).json(result);
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 adminRouter.get('/products', async (req, res) => {
@@ -315,7 +503,8 @@ adminRouter.get('/products', async (req, res) => {
     const search = String(req.query.search || '').trim();
     const products = await prisma.product.findMany({
       where: {
-        active: true, price: { gt: 0 }, imageUrl: { not: null },
+        active: true, price: { gt: 0 },
+        AND: [{ imageUrl: { not: null } }, { imageUrl: { not: '' } }],
         ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { brand: { contains: search, mode: 'insensitive' } }, { sku: { contains: search, mode: 'insensitive' } }] } : {}),
         sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } },
       },
@@ -390,7 +579,10 @@ adminRouter.post('/offers/:id/cancel', async (req, res) => {
   try {
     const offer = await getOffer(req.params.id);
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
-    await disableNuvemshopCoupon(offer);
+    const conn = await activeConnection();
+    if (!conn) return res.status(502).json({ error: 'Nuvemshop não está conectada' });
+    await disableNuvemshopCoupon(offer, conn, { strict: true });
+    await syncOfferCategory(offer, conn, { visible: false, clear: true });
     const updated = await prisma.qROffer.update({ where: { id: offer.id }, data: { status: 'CANCELLED' } });
     res.json({ offer: updated });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -490,7 +682,9 @@ publicRouter.get([
     // impresso permanece igual; só a experiência final muda para a Nuvemshop.
     res.set('Cache-Control', 'no-store');
     const { offer } = await findOfferByPlate(n);
-    const target = offer ? storeOfferUrl(plateCode(n), offer.couponCode) : storeOfferUrl(plateCode(n));
+    // Sem oferta ativa, leva para a home da loja. A categoria da placa fica
+    // oculta e vazia, evitando exibir desconto ou produtos vencidos.
+    const target = offer ? storeOfferUrl(plateCode(n), offer.couponCode) : `${STORE_BASE}/`;
     return res.redirect(302, target);
     const { board, offer: legacyOffer } = await findOfferByPlate(n);
     const code = board ? board.code : plateCode(n);
@@ -501,4 +695,10 @@ publicRouter.get([
   } catch (e) { console.error('[qr-offers/public]', e.message); res.status(500).type('html').send('<h1>Oferta temporariamente indisponível</h1>'); }
 });
 
-module.exports = { adminRouter, publicRouter, ensureBoards };
+module.exports = {
+  adminRouter,
+  publicRouter,
+  ensureBoards,
+  reconcileQROffers,
+  _test: { plateNumber, plateCode, normalizeProductIds, offerState, categoryMembershipDiff },
+};

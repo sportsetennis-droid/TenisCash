@@ -24,6 +24,13 @@ function parseCtx(p) {
   catch (_) { return {}; }
 }
 
+function isAcceptableImageCandidate(candidate, minScore = 8) {
+  const threshold = Math.max(8, Number(minScore) || 8);
+  return !!candidate
+    && candidate._isCorrectProduct === true
+    && Number(candidate._score || 0) >= threshold;
+}
+
 async function syncToNuvemshopIfMapped(productId) {
   try {
     const mapping = await prisma.nuvemshopProductMapping.findUnique({ where: { localProductId: productId } });
@@ -134,10 +141,10 @@ async function curateProduct(productId, opts = {}) {
 
       if (searchResult.items?.length) {
         const candidates = searchResult.items;
-        let chosen = candidates[0];
-        let rankedScored = candidates.map((c, i) => ({ ...c, _score: candidates.length - i }));
+        let chosen = null;
+        let rankedScored = [];
         let visionCost = 0;
-        let visionAllFailed = false;
+        let visionAllFailed = !visionConfigured();
 
         if (visionConfigured()) {
           debugLog(`Vision analisando ${candidates.length} candidatas...`);
@@ -150,10 +157,10 @@ async function curateProduct(productId, opts = {}) {
             // Detecta caso: TODAS deram erro de análise → não confiar no score
             const scoredWithFail = rankedScored.filter((c) => c._reason && c._reason.includes('falhou ao analisar'));
             visionAllFailed = scoredWithFail.length === rankedScored.length;
-            chosen = visionAllFailed ? candidates[0] : r.ranked[0];
+            chosen = visionAllFailed ? null : r.ranked[0];
             visionCost = r.totalCostBRL || 0;
             if (visionAllFailed) {
-              debugLog('Vision falhou em todas — usando 1ª do Serper como fallback');
+              debugLog('Vision falhou em todas — nenhuma imagem será gravada');
             } else {
               debugLog(`Vision: melhor score = ${chosen._score}, motivo: ${chosen._reason}`);
             }
@@ -161,8 +168,8 @@ async function curateProduct(productId, opts = {}) {
         }
 
         // Salva se: sem vision, ou vision-fail-total (usa Serper), ou score >= minScore
-        const minScore = opts.minScore ?? 4;  // antes era 5, baixei pra 4
-        const acceptable = !visionConfigured() || visionAllFailed || (chosen._score || 0) >= minScore;
+        const minScore = Math.max(8, Number(opts.minScore) || 8);
+        const acceptable = !visionAllFailed && isAcceptableImageCandidate(chosen, minScore);
 
         if (acceptable && chosen.url) {
           // Junta as analisadas (sem a escolhida) + as não-analisadas (ordem do Serper).
@@ -170,14 +177,13 @@ async function curateProduct(productId, opts = {}) {
           const seen = new Set([chosen.url]);
           const extras = [];
           for (const c of rankedScored) {
-            if (c.url && !seen.has(c.url) && extras.length < 5) {
-              extras.push(c.url);
-              seen.add(c.url);
-            }
-          }
-          for (const c of candidates) {
-            if (extras.length >= 5) break;
-            if (c.url && !seen.has(c.url)) {
+            if (
+              c.url
+              && c._isCorrectProduct === true
+              && (c._score || 0) >= minScore
+              && !seen.has(c.url)
+              && extras.length < 5
+            ) {
               extras.push(c.url);
               seen.add(c.url);
             }
@@ -198,9 +204,15 @@ async function curateProduct(productId, opts = {}) {
         } else {
           report.steps.image = {
             ok: false,
-            reason: `melhor score (${chosen._score}) abaixo do mínimo (${minScore})`,
+            reason: !visionConfigured()
+              ? 'validação visual indisponível; nenhuma imagem foi gravada'
+              : visionAllFailed
+                ? 'a validação visual falhou; nenhuma imagem foi gravada'
+                : chosen && chosen._isCorrectProduct !== true
+                  ? 'a melhor candidata não foi confirmada como o produto correto'
+                  : `melhor score (${chosen?._score || 0}) abaixo do mínimo (${minScore})`,
             candidates: rankedScored.length,
-            topScore: chosen._score,
+            topScore: chosen?._score || 0,
           };
           report.costBRL += visionCost;
         }
@@ -278,4 +290,4 @@ async function curateProduct(productId, opts = {}) {
   }
 }
 
-module.exports = { curateProduct };
+module.exports = { curateProduct, isAcceptableImageCandidate };

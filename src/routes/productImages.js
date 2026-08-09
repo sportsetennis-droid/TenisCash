@@ -24,6 +24,7 @@ const { scrapeProductPage } = require('../services/productPageScraper');
 const nsHandlers = require('../services/nuvemshopHandlers');
 const imageStd = require('../services/imageStandardizer');
 const productVideoStore = require('../services/productVideoStore');
+const { backfillLocalImagesFromNuvemshop } = require('../services/nuvemshopImageBackfill');
 
 // Upload de VÍDEO — memory storage, até 80MB, só MP4/WebM/MOV
 const uploadVideo = multer({
@@ -69,6 +70,18 @@ router.use(adminMiddleware);
 // Status da configuração (Google ou Brave conforme env)
 router.get('/status', (_req, res) => {
   res.json({ configured: gis.isConfigured(), provider: providerName });
+});
+
+// Recupera no cadastro local as imagens oficiais que o produto mapeado já tem
+// na Nuvemshop. É o primeiro passo seguro antes de pesquisar imagens externas.
+router.post('/backfill-from-nuvemshop', async (req, res) => {
+  try {
+    const result = await backfillLocalImagesFromNuvemshop({ limit: req.body?.limit });
+    res.status(result.errors.length ? 207 : 200).json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[backfill-from-nuvemshop] erro:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Metadados de um fornecedor (site oficial, marca, etc.)
@@ -275,7 +288,9 @@ router.get('/pipeline-status', async (req, res) => {
       prisma.product.count({
         where: { ...baseWhere, sizes: { some: { stock: { gt: 0 } } } },
       }),
-      prisma.product.count({ where: { ...baseWhere, imageUrl: { not: null } } }),
+      prisma.product.count({
+        where: { ...baseWhere, AND: [{ imageUrl: { not: null } }, { imageUrl: { not: '' } }] },
+      }),
       prisma.product.count({ where: { ...baseWhere, longDescription: { not: null } } }),
       prisma.product.count({
         where: {
@@ -410,93 +425,11 @@ router.post('/import-description/:productId', async (req, res) => {
   }
 });
 
-// Bulk: AUTO-importa a 1ª imagem da busca em massa pra produtos sem imageUrl
-// Pega o 1º resultado do Serper e salva direto. Risco: imagem pode estar errada.
-// Usuário pode revisar depois clicando no produto na aba Imagens.
-router.post('/auto-image-bulk', async (req, res) => {
-  try {
-    if (!gis.isConfigured()) {
-      return res.status(400).json({ error: 'Provider de busca não configurado' });
-    }
-    const { supplierCnpj, limit = 200, picks = 5, site: siteOverride } = req.body || {};
-    if (!supplierCnpj) return res.status(400).json({ error: 'supplierCnpj obrigatório' });
-
-    // Site oficial do fornecedor (mapa centralizado), com override possível via body
-    const supplierMeta = getSupplierMeta(supplierCnpj);
-    const officialSite = (siteOverride || (supplierMeta && supplierMeta.site) || '').trim().toLowerCase();
-
-    const products = await prisma.product.findMany({
-      where: {
-        active: true,
-        imageUrl: null,
-        aiContext: { path: ['supplierCnpj'], equals: String(supplierCnpj) },
-      },
-      take: parseInt(limit, 10) || 200,
-    });
-
-    let ok = 0, failed = 0, syncedToNs = 0;
-    const errors = [];
-
-    for (const product of products) {
-      try {
-        const ctx = (() => {
-          try { return typeof product.aiContext === 'string' ? JSON.parse(product.aiContext) : (product.aiContext || {}); }
-          catch (_) { return {}; }
-        })();
-        const supplierRef = ctx.supplierRef || null;
-        // Constrói query — limpa o nome dos slashs da NF-e e usa a marca do fornecedor se a do produto for genérica
-        const cleanName = (product.name || '').replace(/\s*\/\s*/g, ' ').replace(/\s+/g, ' ').trim();
-        const brandToUse = (supplierMeta && supplierMeta.brand)
-          || (/A\s*DEFINIR|^$/i.test(product.brand || '') ? null : product.brand)
-          || product.brand;
-        let query = gis.buildProductQuery({
-          brand: brandToUse,
-          supplierRef,
-          model: cleanName || product.name,
-          color: ctx.color,
-          category: product.category,
-        });
-        if (officialSite && /^[a-z0-9.\-]+\.[a-z]{2,}$/.test(officialSite)) {
-          query = `${query} site:${officialSite}`.trim();
-        }
-        const result = await gis.searchImages(query, { count: parseInt(picks, 10) || 5 });
-        if (!result.ok || !result.items?.length) {
-          failed++;
-          errors.push({ sku: product.sku, reason: 'sem resultados', query });
-          continue;
-        }
-        const first = result.items[0];
-        const extras = result.items.slice(1, parseInt(picks, 10) || 5).map((i) => i.url).filter(Boolean);
-
-        await prisma.product.update({
-          where: { id: product.id },
-          data: {
-            imageUrl: first.url,
-            imageUrls: extras.length ? extras : undefined,
-          },
-        });
-        ok++;
-        const sync = await syncToNuvemshopIfMapped(product.id);
-        if (sync.synced) syncedToNs++;
-        await new Promise((r) => setTimeout(r, 250));
-      } catch (err) {
-        failed++;
-        errors.push({ sku: product.sku, reason: err.message });
-      }
-    }
-
-    res.json({
-      ok: true,
-      total: products.length,
-      succeeded: ok,
-      failed,
-      syncedToNuvemshop: syncedToNs,
-      errors: errors.slice(0, 20),
-    });
-  } catch (err) {
-    console.error('[auto-image-bulk] erro:', err);
-    res.status(500).json({ error: err.message });
-  }
+// Clientes antigos recebem uma resposta explícita; o fluxo inseguro foi removido.
+router.post('/auto-image-bulk', (_req, res) => {
+  res.status(410).json({
+    error: 'Autoimportação sem validação foi desativada. Use a curadoria com IA validada.',
+  });
 });
 
 // Bulk: importa descrição/imagens pra TODOS os produtos de um fornecedor
@@ -616,7 +549,7 @@ router.get('/pending', async (req, res) => {
 
     const where = {
       active: true,
-      imageUrl: null,
+      OR: [{ imageUrl: null }, { imageUrl: '' }],
       ...(brand ? { brand: { contains: String(brand), mode: 'insensitive' } } : {}),
       // Filtro por supplierCnpj usando JSON path do Prisma/Postgres
       ...(supplierCnpj
@@ -636,7 +569,9 @@ router.get('/pending', async (req, res) => {
       },
     });
 
-    const totalPending = await prisma.product.count({ where: { active: true, imageUrl: null } });
+    const totalPending = await prisma.product.count({
+      where: { active: true, OR: [{ imageUrl: null }, { imageUrl: '' }] },
+    });
     const filteredCount = await prisma.product.count({ where });
     res.json({ products, totalPending, filteredCount });
   } catch (err) {

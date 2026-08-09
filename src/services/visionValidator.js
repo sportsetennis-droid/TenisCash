@@ -153,7 +153,13 @@ async function pickBestImage(candidates, product, opts = {}) {
     const url = c.url || c;
     const r = await scoreImageMatch(url, product);
     if (r.ok) {
-      ranked.push({ ...c, _score: r.score, _reason: r.reason, _colorMatches: r.colorMatches });
+      ranked.push({
+        ...c,
+        _score: r.score,
+        _reason: r.reason,
+        _colorMatches: r.colorMatches,
+        _isCorrectProduct: r.isCorrectProduct,
+      });
       totalCostBRL += r.cost?.brl || 0;
       if (r.score >= earlyStopScore) break;
     } else {
