@@ -19,7 +19,29 @@ prisma.$use(async (params, next) => {
   return next(params);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-secret-change-in-production';
+// JWT_SECRET assina TODOS os tokens de login (inclusive admin). Um segredo
+// conhecido = qualquer um forja um token de admin e assume o sistema. Como este
+// repo é PÚBLICO, um fallback hardcoded no código é o mesmo que não ter segredo.
+// Regra: em produção (Railway) EXIGE um segredo forte e não-conhecido; sem ele,
+// o app recusa subir (o healthcheck do Railway mantém a versão anterior no ar,
+// então isso NÃO derruba a loja — só bloqueia deploy inseguro). Em dev, usa um
+// segredo efêmero por processo e avisa.
+const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
+const WEAK_JWT_SECRETS = new Set([
+  'teniscash-secret-change-in-production',
+  'teniscash-prod-secret-trocar-agora',
+]);
+const JWT_SECRET = (() => {
+  const s = process.env.JWT_SECRET;
+  const strong = s && s.length >= 16 && !WEAK_JWT_SECRETS.has(s);
+  if (strong) return s;
+  if (IS_PROD) {
+    console.error('FATAL[segurança]: JWT_SECRET ausente/fraco em produção. Com um segredo conhecido qualquer um forja token de admin. Defina JWT_SECRET (aleatório, ≥16 chars) nas variáveis do Railway. O app não sobe até isso — o healthcheck mantém a versão anterior no ar.');
+    process.exit(1);
+  }
+  console.warn('[segurança] JWT_SECRET ausente/fraco — usando segredo EFÊMERO só de DEV (as sessões caem a cada restart). Defina JWT_SECRET no seu .env.');
+  return 'dev-ephemeral-' + require('node:crypto').randomBytes(24).toString('hex');
+})();
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
