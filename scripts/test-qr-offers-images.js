@@ -41,6 +41,11 @@ function run() {
     { storeStocks: [{ stock: 2 }, { stock: -3 }] },
     { storeStocks: [{ stock: '4' }, { stock: null }] },
   ] }), 6);
+  assert.equal(qr.remoteProductImage({ images: [
+    { src: 'javascript:alert(1)' },
+    { src: ' https://cdn.nuvemshop.com.br/product.jpg ' },
+  ] }), 'https://cdn.nuvemshop.com.br/product.jpg');
+  assert.equal(qr.remoteProductImage({ images: [] }), null);
 
   assert.deepEqual(
     qr.categoryMembershipDiff(['1', '2', '4'], ['2', '3']),
