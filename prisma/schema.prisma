@@ -169,6 +169,10 @@ model User {
   monthlySchedulesCreated   SellerMonthlySchedule[]        @relation("monthlyScheduleCreator")
   monthlySchedulesPublished SellerMonthlySchedule[]        @relation("monthlySchedulePublisher")
   monthlyScheduleReceipts   SellerMonthlyScheduleReceipt[] @relation("monthlyScheduleReceiptSeller")
+
+  // Transferência de produto entre lojas
+  transfersCreated  StockTransfer[] @relation("transfersCreated")
+  transfersReceived StockTransfer[] @relation("transfersReceived")
 }
 
 // Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
@@ -333,6 +337,10 @@ model Store {
   // Rádio da loja: fila de anúncios reproduzidos no computador ligado à caixa Bluetooth.
   radioConfig        StoreRadioConfig?
   radioAnnouncements RadioAnnouncement[]
+
+  // Transferência de produto entre lojas
+  transfersFrom StockTransfer[] @relation("transfersFrom")
+  transfersTo   StockTransfer[] @relation("transfersTo")
 }
 
 // ============================================================
@@ -393,15 +401,15 @@ model SellerWallet {
 // ============================================================
 
 model Product {
-  id          String  @id @default(uuid())
-  sku         String  @unique
+  id              String  @id @default(uuid())
+  sku             String  @unique
   // Código interno exclusivo do produto (não substitui o GTIN/EAN ou SKU).
   // É compartilhado pelas numerações do mesmo card e nunca se repete entre cards.
   internalBarcode String? @unique
-  name        String
-  brand       String
-  category    String // tenis, roupa, acessorio
-  subcategory String?
+  name            String
+  brand           String
+  category        String // tenis, roupa, acessorio
+  subcategory     String?
 
   shortDescription  String?
   longDescription   String?
@@ -490,6 +498,7 @@ model ProductSize {
   storeStocks    StoreStock[]
   saleItems      SaleItem[]
   stockMovements StoreStockMovement[]
+  transferItems  StockTransferItem[]
 
   @@unique([productId, size])
 }
@@ -593,16 +602,16 @@ model Sale {
 // ============================================================
 
 model StoreRadioConfig {
-  id                   String   @id @default(cuid())
-  storeId              String   @unique
-  store                Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  enabled              Boolean  @default(false)
-  volume               Float    @default(1)
-  language             String   @default("pt-BR")
+  id                   String    @id @default(cuid())
+  storeId              String    @unique
+  store                Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  enabled              Boolean   @default(false)
+  volume               Float     @default(1)
+  language             String    @default("pt-BR")
   voiceName            String?
-  announcementTemplate String   @default("A Sports & Tennis agradece sua compra! Aproveite seu novo produto e volte sempre.")
+  announcementTemplate String    @default("A Sports & Tennis agradece sua compra! Aproveite seu novo produto e volte sempre.")
   // "Rede real" da rádio: chave fixa por loja (o player conecta com ela, sem token que expira nem login admin)
-  playerKey            String?  @unique
+  playerKey            String?   @unique
   // Mídia ambiente atual (música): kind = youtube | stream | null(parado). ref = videoId/playlistId ou URL do stream.
   mediaKind            String?
   mediaRef             String?
@@ -610,8 +619,8 @@ model StoreRadioConfig {
   mediaUpdatedAt       DateTime?
   // Status "online": última vez que o player desta loja bateu ponto
   playerSeenAt         DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model RadioAnnouncement {
@@ -682,6 +691,66 @@ model StoreStockMovement {
   @@index([storeId, createdAt])
   @@index([productSizeId, createdAt])
   @@index([saleId])
+}
+
+// ============================================================
+// TRANSFERÊNCIA DE PRODUTO ENTRE LOJAS (PDV, executada pelo vendedor)
+// ============================================================
+// Fluxo: vendedor da loja ORIGEM monta o carrinho (bipe, igual venda), escolhe
+// a loja DESTINO e confirma → sai do StoreStock da origem (transfer_out) e fica
+// "em trânsito". A loja destino CONFIRMA o recebimento → entra no StoreStock dela
+// (transfer_in). Nunca toca ProductSize.stock (comprado). A NFe 55 de
+// transferência é emitida em SEGUNDO PLANO (não bloqueia) e NUNCA é exposta ao
+// vendedor (tem o custo). Campos fiscais aqui são só de controle/admin.
+model StockTransfer {
+  id           String  @id @default(uuid())
+  code         Int     @unique // número sequencial legível (calculado na criação)
+  fromStoreId  String
+  fromStore    Store   @relation("transfersFrom", fields: [fromStoreId], references: [id])
+  toStoreId    String
+  toStore      Store   @relation("transfersTo", fields: [toStoreId], references: [id])
+  status       String  @default("in_transit") // in_transit | received | cancelled
+  createdById  String
+  createdBy    User    @relation("transfersCreated", fields: [createdById], references: [id])
+  receivedById String?
+  receivedBy   User?   @relation("transfersReceived", fields: [receivedById], references: [id])
+  note         String?
+  itemsCount   Int     @default(0)
+  qtyTotal     Int     @default(0)
+
+  // Fiscal — controle interno, NUNCA vai pro front do vendedor.
+  fiscalDocId  String? // FiscalDocument.id da NFe 55 de transferência
+  fiscalStatus String? // pending | authorized | rejected | error | skipped
+  fiscalError  String?
+
+  createdAt   DateTime  @default(now())
+  receivedAt  DateTime?
+  cancelledAt DateTime?
+
+  items StockTransferItem[]
+
+  @@index([fromStoreId, status])
+  @@index([toStoreId, status])
+  @@index([createdAt])
+}
+
+model StockTransferItem {
+  id            String        @id @default(uuid())
+  transferId    String
+  transfer      StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productSizeId String
+  productSize   ProductSize   @relation(fields: [productSizeId], references: [id])
+  quantity      Int
+  // snapshot leve pra exibir sem join (custo/ncm só pra nota, nunca ao vendedor)
+  productName   String?
+  brand         String?
+  size          String?
+  barcode       String?
+  unitCost      Float?
+  ncm           String?
+  createdAt     DateTime      @default(now())
+
+  @@index([transferId])
 }
 
 // ============================================================
@@ -1009,28 +1078,28 @@ model SellerProductionReminder {
 }
 
 model SellerInternalRequest {
-  id              String    @id @default(cuid())
-  sellerId        String
-  seller          User      @relation("internalRequestSeller", fields: [sellerId], references: [id])
-  storeId         String
-  store           Store     @relation(fields: [storeId], references: [id])
-  category        String // SUPPLIES | MAINTENANCE | PRODUCT | EQUIPMENT | PROBLEM | OTHER
-  title           String
-  description     String    @db.Text
-  urgency         String    @default("NORMAL") // NORMAL | HIGH | URGENT
-  status          String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | REJECTED
-  companyResponse String?   @db.Text
+  id                   String    @id @default(cuid())
+  sellerId             String
+  seller               User      @relation("internalRequestSeller", fields: [sellerId], references: [id])
+  storeId              String
+  store                Store     @relation(fields: [storeId], references: [id])
+  category             String // SUPPLIES | MAINTENANCE | PRODUCT | EQUIPMENT | PROBLEM | OTHER
+  title                String
+  description          String    @db.Text
+  urgency              String    @default("NORMAL") // NORMAL | HIGH | URGENT
+  status               String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | REJECTED
+  companyResponse      String?   @db.Text
   // Retorno seguro exibido ao vendedor. A apuração técnica fica somente nos campos internos abaixo.
   sellerResponse       String?   @db.Text
   investigationStatus  String    @default("PENDING") // PENDING | INVESTIGATING | RESOLVED | NEEDS_DOUGLAS
   investigationSummary String?   @db.Text
-  investigatedAt      DateTime?
-  sellerNotifiedAt    DateTime?
-  reviewedById    String?
-  reviewedBy      User?     @relation("internalRequestReviewer", fields: [reviewedById], references: [id])
-  reviewedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  investigatedAt       DateTime?
+  sellerNotifiedAt     DateTime?
+  reviewedById         String?
+  reviewedBy           User?     @relation("internalRequestReviewer", fields: [reviewedById], references: [id])
+  reviewedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   attachments SellerPrivateAttachment[]
 

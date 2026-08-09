@@ -450,6 +450,7 @@ app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
+app.use('/api/stock-transfer', require('./routes/stockTransfer'));
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
