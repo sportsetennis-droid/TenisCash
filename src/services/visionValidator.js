@@ -15,6 +15,7 @@ let anthropicUnavailableUntil = 0;
 let openaiUnavailableUntil = 0;
 let groqUnavailableUntil = 0;
 let geminiUnavailableUntil = 0;
+const lastProviderErrors = {};
 
 let la = null;
 try { la = require('./locateAnything'); } catch (_) {}
@@ -33,6 +34,7 @@ function providerStatus() {
     openaiCoolingDown: Date.now() < openaiUnavailableUntil,
     groqCoolingDown: Date.now() < groqUnavailableUntil,
     geminiCoolingDown: Date.now() < geminiUnavailableUntil,
+    lastErrors: { ...lastProviderErrors },
   };
 }
 
@@ -319,19 +321,31 @@ async function scoreImageMatchFallback(imageUrl, product, priorErrors = []) {
   const errors = [...priorErrors];
   if (process.env.OPENAI_API_KEY && Date.now() >= openaiUnavailableUntil) {
     const openai = await scoreImageMatchOpenAI(imageUrl, product);
-    if (openai.ok) return openai;
+    if (openai.ok) {
+      delete lastProviderErrors.openai;
+      return openai;
+    }
+    lastProviderErrors.openai = String(openai.error || '').slice(0, 500);
     errors.push(openai.error);
     if (providerBlocked(openai.error)) openaiUnavailableUntil = Date.now() + 30 * 60 * 1000;
   }
   if (process.env.GROQ_API_KEY && Date.now() >= groqUnavailableUntil) {
     const groq = await scoreImageMatchGroq(imageUrl, product);
-    if (groq.ok) return groq;
+    if (groq.ok) {
+      delete lastProviderErrors.groq;
+      return groq;
+    }
+    lastProviderErrors.groq = String(groq.error || '').slice(0, 500);
     errors.push(groq.error);
     if (providerBlocked(groq.error)) groqUnavailableUntil = Date.now() + 30 * 60 * 1000;
   }
   if (process.env.GOOGLE_API_KEY && Date.now() >= geminiUnavailableUntil) {
     const gemini = await scoreImageMatchGemini(imageUrl, product);
-    if (gemini.ok) return gemini;
+    if (gemini.ok) {
+      delete lastProviderErrors.gemini;
+      return gemini;
+    }
+    lastProviderErrors.gemini = String(gemini.error || '').slice(0, 500);
     errors.push(gemini.error);
     if (providerBlocked(gemini.error) || /API key|permission|not found|not supported|403|404/i.test(gemini.error || '')) {
       geminiUnavailableUntil = Date.now() + 30 * 60 * 1000;
@@ -393,6 +407,7 @@ async function scoreImageMatch(imageUrl, product) {
     const outT = resp.usage?.output_tokens || 0;
     const usd = (inT / 1e6) * inM + (outT / 1e6) * outM;
 
+    delete lastProviderErrors.anthropic;
     return {
       ok: true,
       provider: 'anthropic',
@@ -403,6 +418,7 @@ async function scoreImageMatch(imageUrl, product) {
       cost: { usd, brl: usd * brl, inT, outT },
     };
   } catch (err) {
+    lastProviderErrors.anthropic = String(err.message || '').slice(0, 500);
     if (/credit balance|billing|insufficient|quota/i.test(err.message || '')) {
       anthropicUnavailableUntil = Date.now() + 30 * 60 * 1000;
     }
