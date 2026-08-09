@@ -19,7 +19,58 @@ function run() {
   assert.equal(qr.offerDiscountedPrice({ price: 100, promoPrice: 80 }), 70);
   assert.deepEqual(qr.promotionRows({ result: [{ id: 1 }] }), [{ id: 1 }]);
   assert.deepEqual(qr.promotionRows({ results: [{ id: 2 }] }), [{ id: 2 }]);
+  assert.deepEqual(qr.promotionRows({ data: [{ id: 3 }] }), [{ id: 3 }]);
   assert.deepEqual(qr.promotionRows(null), []);
+
+  assert.deepEqual(qr.qrMarkerFromCart({ utm: [{
+    utm_source: 'teniscash',
+    utm_medium: 'qr',
+    utm_campaign: 'placa-07',
+    utm_content: 'offer-7',
+  }] }), { plate: 'placa-07', offerId: 'offer-7' });
+  assert.equal(qr.qrMarkerFromCart({ utm: [{ utm_source: 'instagram', utm_campaign: 'placa-07' }] }), null);
+
+  assert.deepEqual(qr.buildQrDiscountCommands({
+    currency: 'BRL',
+    products: [
+      { id: 101, product_id: 9001 },
+      { id: 102, product_id: 9002 },
+    ],
+  }, 'promotion-1', new Set(['9001'])), [{
+    command: 'create_or_update_discount',
+    specs: {
+      promotion_id: 'promotion-1',
+      currency: 'BRL',
+      display_text: { 'pt-br': '30% OFF exclusivo da placa' },
+      line_items: [{
+        line_item: '101',
+        discount_specs: { type: 'percentage', amount: '30.00' },
+      }],
+    },
+  }]);
+  assert.deepEqual(qr.buildQrDiscountCommands({
+    promotions: [{ id: 'promotion-1', line_items: ['101'] }],
+  }, 'promotion-1', new Set()), [{
+    command: 'remove_discount',
+    specs: {
+      scope: 'line_item',
+      promotion_id: 'promotion-1',
+      line_items: ['101'],
+    },
+  }]);
+
+  const quickBuy = qr.quickBuyMarkup({
+    storeUrl: 'https://store.example/product',
+    quickBuy: {
+      action: 'https://store.example/comprar/?utm_source=teniscash',
+      productId: '9001',
+      variants: [{ size: '39', variantId: '7001' }],
+    },
+  });
+  assert.match(quickBuy, /name="add_to_cart" value="9001"/);
+  assert.match(quickBuy, /name="variant_id"/);
+  assert.match(quickBuy, /Comprar agora com 30% OFF/);
+  assert.doesNotMatch(quickBuy, /coupon/i);
 
   const now = new Date('2026-08-08T12:00:00.000Z');
   assert.equal(qr.offerState({
