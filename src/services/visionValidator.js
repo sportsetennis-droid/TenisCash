@@ -10,15 +10,17 @@ const Anthropic = require('@anthropic-ai/sdk');
 const MODEL = process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
 const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL || process.env.CAMERA_SECURITY_OPENAI_MODEL || 'gpt-5.6-luna';
 const GROQ_MODEL = process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b';
+const GEMINI_MODEL = process.env.GEMINI_VISION_MODEL || 'gemini-3.6-flash';
 let anthropicUnavailableUntil = 0;
 let openaiUnavailableUntil = 0;
 let groqUnavailableUntil = 0;
+let geminiUnavailableUntil = 0;
 
 let la = null;
 try { la = require('./locateAnything'); } catch (_) {}
 
 function isConfigured() {
-  return !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY);
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.GOOGLE_API_KEY);
 }
 
 function providerStatus() {
@@ -26,9 +28,11 @@ function providerStatus() {
     anthropic: !!process.env.ANTHROPIC_API_KEY,
     openai: !!process.env.OPENAI_API_KEY,
     groq: !!process.env.GROQ_API_KEY,
+    gemini: !!process.env.GOOGLE_API_KEY,
     anthropicCoolingDown: Date.now() < anthropicUnavailableUntil,
     openaiCoolingDown: Date.now() < openaiUnavailableUntil,
     groqCoolingDown: Date.now() < groqUnavailableUntil,
+    geminiCoolingDown: Date.now() < geminiUnavailableUntil,
   };
 }
 
@@ -237,6 +241,76 @@ async function scoreImageMatchGroq(imageUrl, product) {
   }
 }
 
+async function scoreImageMatchGemini(imageUrl, product) {
+  if (!process.env.GOOGLE_API_KEY) return { ok: false, error: 'GOOGLE_API_KEY nao configurada' };
+  try {
+    // Gemini's REST image input uses inline bytes. Download only bounded image
+    // responses and never forward HTML/error bodies as visual evidence.
+    const imageResponse = await fetch(imageUrl, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': 'Mozilla/5.0 TenisCashImageReview/1.0', Accept: 'image/*' },
+    });
+    if (!imageResponse.ok) return { ok: false, error: `Gemini image download ${imageResponse.status}` };
+    const mimeType = String(imageResponse.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    if (!/^image\/(jpeg|jpg|png|webp|gif)$/.test(mimeType)) {
+      return { ok: false, error: `Gemini image type unsupported: ${mimeType || 'unknown'}` };
+    }
+    const contentLength = Number(imageResponse.headers.get('content-length') || 0);
+    if (contentLength > 15 * 1024 * 1024) return { ok: false, error: 'Gemini image exceeds 15MB' };
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    if (!imageBuffer.length || imageBuffer.length > 15 * 1024 * 1024) {
+      return { ok: false, error: 'Gemini image is empty or exceeds 15MB' };
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': process.env.GOOGLE_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: CACHED_SYSTEM }] },
+        contents: [{
+          role: 'user',
+          parts: [
+            { inline_data: { mime_type: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType, data: imageBuffer.toString('base64') } },
+            { text: productPrompt(product) },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 300,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      let detail = raw.slice(0, 500);
+      try { detail = JSON.parse(raw)?.error?.message || detail; } catch (_) {}
+      return { ok: false, error: `Gemini ${response.status}: ${detail}` };
+    }
+    const payload = JSON.parse(raw);
+    const text = (payload.candidates?.[0]?.content?.parts || []).map((part) => part?.text || '').join('\n').trim();
+    const json = JSON.parse(text);
+    const inputTokens = payload.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = payload.usageMetadata?.candidatesTokenCount || 0;
+    const inputPrice = Number(process.env.GEMINI_VISION_PRICE_INPUT_PER_1M || 0);
+    const outputPrice = Number(process.env.GEMINI_VISION_PRICE_OUTPUT_PER_1M || 0);
+    const brl = Number(process.env.BRL_PER_USD || 5.5);
+    const usd = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice;
+    return {
+      ok: true,
+      provider: 'gemini',
+      score: Number(json.score) || 0,
+      isCorrectProduct: json.is_correct_product === true,
+      colorMatches: json.color_matches === true,
+      reason: String(json.reason || ''),
+      cost: { usd, brl: usd * brl, inT: inputTokens, outT: outputTokens },
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
 function providerBlocked(error) {
   return /credit balance|no credits|billing|insufficient|quota|rate limit|429/i.test(error || '');
 }
@@ -254,6 +328,14 @@ async function scoreImageMatchFallback(imageUrl, product, priorErrors = []) {
     if (groq.ok) return groq;
     errors.push(groq.error);
     if (providerBlocked(groq.error)) groqUnavailableUntil = Date.now() + 30 * 60 * 1000;
+  }
+  if (process.env.GOOGLE_API_KEY && Date.now() >= geminiUnavailableUntil) {
+    const gemini = await scoreImageMatchGemini(imageUrl, product);
+    if (gemini.ok) return gemini;
+    errors.push(gemini.error);
+    if (providerBlocked(gemini.error) || /API key|permission|not found|not supported|403|404/i.test(gemini.error || '')) {
+      geminiUnavailableUntil = Date.now() + 30 * 60 * 1000;
+    }
   }
   return { ok: false, error: errors.filter(Boolean).join(' | ') || 'nenhum provedor visual disponivel' };
 }
