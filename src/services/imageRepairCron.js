@@ -173,7 +173,8 @@ async function runImageRepairBatch(options = {}) {
       const providers = vision.providerStatus();
       const providerAvailable = (providers.anthropic && !providers.anthropicCoolingDown)
         || (providers.openai && !providers.openaiCoolingDown)
-        || (providers.groq && !providers.groqCoolingDown);
+        || (providers.groq && !providers.groqCoolingDown)
+        || (providers.gemini && !providers.geminiCoolingDown);
       if (review.state === 'error' && !providerAvailable) {
         progress.providerBlocked = true;
         progress.providerStatus = providers;
