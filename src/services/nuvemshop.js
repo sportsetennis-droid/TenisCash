@@ -16,6 +16,7 @@ const CLIENT_ID = process.env.NUVEMSHOP_CLIENT_ID;
 const CLIENT_SECRET = process.env.NUVEMSHOP_CLIENT_SECRET;
 const REDIRECT_URI = process.env.NUVEMSHOP_REDIRECT_URI;
 const API_BASE = process.env.NUVEMSHOP_API_BASE_URL || 'https://api.tiendanube.com/v1';
+const VERSIONED_API_BASE = process.env.NUVEMSHOP_VERSIONED_API_BASE_URL || 'https://api.tiendanube.com/2025-03';
 
 function isConfigured() {
   return !!(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
@@ -74,6 +75,36 @@ async function nuvemshopApi(connection, method, path, body = null) {
   if (!res.ok) {
     throw new Error('[Nuvemshop ' + res.status + '] ' + JSON.stringify(data));
   }
+  return data;
+}
+
+// New content resources such as Pages are available only on the dated API,
+// while the rest of this integration still uses v1. Keep the transport
+// explicit so a page request can never silently hit the legacy base URL.
+async function nuvemshopVersionedApi(connection, method, path, body = null) {
+  if (!connection?.accessToken || !connection?.nuvemshopUserId) {
+    throw new Error('ConexÃ£o Nuvemshop invÃ¡lida');
+  }
+  const url = `${VERSIONED_API_BASE}/${connection.nuvemshopUserId}${path}`;
+  const opts = {
+    method,
+    headers: {
+      Authentication: `bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'TenisCash/1.0',
+    },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  let res;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    res = await fetch(url, opts);
+    if (res.status !== 429 && res.status !== 503) break;
+    const retryAfter = Number(res.headers.get('Retry-After')) || 0;
+    const waitMs = retryAfter > 0 ? retryAfter * 1000 : 600 * (attempt + 1);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  const data = res.status === 204 ? null : await res.json();
+  if (!res.ok) throw new Error('[Nuvemshop ' + res.status + '] ' + JSON.stringify(data));
   return data;
 }
 
@@ -243,6 +274,7 @@ module.exports = {
   buildAuthUrl,
   exchangeCode,
   nuvemshopApi,
+  nuvemshopVersionedApi,
   fetchAllPages,
   listProducts,
   listOrders,
