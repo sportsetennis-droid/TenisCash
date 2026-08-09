@@ -197,6 +197,7 @@ async function curateProduct(productId, opts = {}) {
             url: chosen.url,
             score: chosen._score,
             reason: chosen._reason || null,
+            provider: chosen._provider || null,
             candidates: rankedScored.length,
             extras: extras.length,
           };

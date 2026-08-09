@@ -8,12 +8,22 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 const MODEL = process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
+const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL || process.env.CAMERA_SECURITY_OPENAI_MODEL || 'gpt-5.6-luna';
+let anthropicUnavailableUntil = 0;
 
 let la = null;
 try { la = require('./locateAnything'); } catch (_) {}
 
 function isConfigured() {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+function providerStatus() {
+  return {
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+    openai: !!process.env.OPENAI_API_KEY,
+    anthropicCoolingDown: Date.now() < anthropicUnavailableUntil,
+  };
 }
 
 /**
@@ -72,21 +82,106 @@ async function locateProductInImage(imageUrl, product) {
   return la.locate(imageUrl, query);
 }
 
-async function scoreImageMatch(imageUrl, product) {
-  if (!isConfigured()) {
-    return { ok: false, error: 'ANTHROPIC_API_KEY não configurada' };
-  }
-  if (!imageUrl) return { ok: false, error: 'imageUrl obrigatório' };
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  // Só o trecho específico do produto vai variar — o resto é cacheado.
-  const userPrompt = `Produto: ${product.name || '(sem nome)'}
+function productPrompt(product) {
+  return `Produto: ${product.name || '(sem nome)'}
 Marca: ${product.brand || '(sem marca)'}
 Cor declarada: ${product.color || '(qualquer)'}
 Categoria: ${product.category || '(qualquer)'}
 
 Analise a imagem acima e devolva o JSON.`;
+}
+
+async function scoreImageMatchOpenAI(imageUrl, product) {
+  if (!process.env.OPENAI_API_KEY) return { ok: false, error: 'OPENAI_API_KEY nao configurada' };
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        instructions: CACHED_SYSTEM,
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_image', image_url: imageUrl, detail: 'low' },
+            { type: 'input_text', text: productPrompt(product) },
+          ],
+        }],
+        max_output_tokens: 300,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'product_image_validation',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                score: { type: 'number', minimum: 0, maximum: 10 },
+                is_correct_product: { type: 'boolean' },
+                color_matches: { type: 'boolean' },
+                reason: { type: 'string' },
+              },
+              required: ['score', 'is_correct_product', 'color_matches', 'reason'],
+            },
+          },
+          verbosity: 'low',
+        },
+        store: false,
+      }),
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      let detail = raw.slice(0, 500);
+      try { detail = JSON.parse(raw)?.error?.message || detail; } catch (_) {}
+      return { ok: false, error: `OpenAI ${response.status}: ${detail}` };
+    }
+    const payload = JSON.parse(raw);
+    const text = typeof payload.output_text === 'string'
+      ? payload.output_text
+      : (payload.output || [])
+        .flatMap((item) => item?.content || [])
+        .map((item) => item?.text || item?.output_text || '')
+        .filter(Boolean)
+        .join('\n');
+    const json = JSON.parse(text);
+    const inputTokens = payload.usage?.input_tokens || 0;
+    const outputTokens = payload.usage?.output_tokens || 0;
+    const inputPrice = Number(process.env.OPENAI_VISION_PRICE_INPUT_PER_1M || process.env.AI_PRICE_INPUT_PER_1M || 1);
+    const outputPrice = Number(process.env.OPENAI_VISION_PRICE_OUTPUT_PER_1M || process.env.AI_PRICE_OUTPUT_PER_1M || 5);
+    const brl = Number(process.env.BRL_PER_USD || 5.5);
+    const usd = (inputTokens / 1e6) * inputPrice + (outputTokens / 1e6) * outputPrice;
+    return {
+      ok: true,
+      provider: 'openai',
+      score: Number(json.score) || 0,
+      isCorrectProduct: json.is_correct_product === true,
+      colorMatches: json.color_matches === true,
+      reason: String(json.reason || ''),
+      cost: { usd, brl: usd * brl, inT: inputTokens, outT: outputTokens },
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+async function scoreImageMatch(imageUrl, product) {
+  if (!isConfigured()) {
+    return { ok: false, error: 'nenhum provedor visual configurado' };
+  }
+  if (!imageUrl) return { ok: false, error: 'imageUrl obrigatório' };
+
+  if (!process.env.ANTHROPIC_API_KEY || Date.now() < anthropicUnavailableUntil) {
+    return scoreImageMatchOpenAI(imageUrl, product);
+  }
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Só o trecho específico do produto vai variar — o resto é cacheado.
+  const userPrompt = productPrompt(product);
 
   try {
     const resp = await client.messages.create({
@@ -128,6 +223,7 @@ Analise a imagem acima e devolva o JSON.`;
 
     return {
       ok: true,
+      provider: 'anthropic',
       score: Number(json.score) || 0,
       isCorrectProduct: !!json.is_correct_product,
       colorMatches: !!json.color_matches,
@@ -135,6 +231,10 @@ Analise a imagem acima e devolva o JSON.`;
       cost: { usd, brl: usd * brl, inT, outT },
     };
   } catch (err) {
+    if (/credit balance|billing|insufficient|quota/i.test(err.message || '')) {
+      anthropicUnavailableUntil = Date.now() + 30 * 60 * 1000;
+    }
+    if (process.env.OPENAI_API_KEY) return scoreImageMatchOpenAI(imageUrl, product);
     return { ok: false, error: err.message };
   }
 }
@@ -159,6 +259,7 @@ async function pickBestImage(candidates, product, opts = {}) {
         _reason: r.reason,
         _colorMatches: r.colorMatches,
         _isCorrectProduct: r.isCorrectProduct,
+        _provider: r.provider || null,
       });
       totalCostBRL += r.cost?.brl || 0;
       if (r.score >= earlyStopScore) break;
@@ -170,4 +271,4 @@ async function pickBestImage(candidates, product, opts = {}) {
   return { ranked, totalCostBRL };
 }
 
-module.exports = { isConfigured, scoreImageMatch, pickBestImage, productExistsInImage, locateProductInImage };
+module.exports = { isConfigured, providerStatus, scoreImageMatch, pickBestImage, productExistsInImage, locateProductInImage };
