@@ -15,6 +15,7 @@ const STORE_BASE = (process.env.NUVEMSHOP_STORE_URL || 'https://www.sportsetenni
 const PLATE_COUNT = 12;
 const DEFAULT_DURATION_HOURS = 24;
 const handleCache = new Map();
+const remoteImageCache = new Map();
 const REMOTE_PUBLISHED_CACHE_MS = 10 * 60 * 1000;
 let remotePublishedCache = { expiresAt: 0, ids: new Set() };
 // Saída para gráfica: H recupera até ~30% de dano e SVG não perde resolução.
@@ -99,7 +100,9 @@ async function productViews(products, couponCode) {
   });
   const byLocalId = new Map(mappings.map((mapping) => [String(mapping.localProductId), String(mapping.nuvemshopProductId)]));
   const missingRemoteIds = Array.from(new Set(
-    mappings.map((mapping) => String(mapping.nuvemshopProductId)).filter((id) => id && !handleCache.has(id)),
+    mappings
+      .map((mapping) => String(mapping.nuvemshopProductId))
+      .filter((id) => id && (!handleCache.has(id) || !remoteImageCache.has(id))),
   ));
   if (missingRemoteIds.length) {
     try {
@@ -108,11 +111,13 @@ async function productViews(products, couponCode) {
         const remote = await ns.nuvemshopApi(
           conn,
           'GET',
-          `/products?ids=${missingRemoteIds.map(encodeURIComponent).join(',')}&fields=id,handle&per_page=30&page=1`,
+          `/products?ids=${missingRemoteIds.map(encodeURIComponent).join(',')}&published=true&fields=id,handle,images,published&per_page=30&page=1`,
         );
         for (const item of Array.isArray(remote) ? remote : []) {
           const handle = typeof item.handle === 'object' ? (item.handle.pt || Object.values(item.handle)[0]) : item.handle;
           if (handle) handleCache.set(String(item.id), String(handle));
+          const image = remoteProductImage(item);
+          if (image) remoteImageCache.set(String(item.id), image);
         }
       }
     } catch (error) {
@@ -127,7 +132,7 @@ async function productViews(products, couponCode) {
       id: product.id,
       name: product.name,
       brand: product.brand,
-      imageUrl: product.imageUrl,
+      imageUrl: (remoteId && remoteImageCache.get(remoteId)) || product.imageUrl,
       price: product.price,
       promoPrice: product.promoPrice,
       storeUrl: couponCode ? `${direct}${direct.includes('?') ? '&' : '?'}coupon=${encodeURIComponent(couponCode)}` : direct,
@@ -649,6 +654,15 @@ function physicalStockUnits(product) {
   );
 }
 
+function remoteProductImage(remote) {
+  const images = Array.isArray(remote?.images) ? remote.images : [];
+  for (const image of images) {
+    const src = String(image?.src || '').trim();
+    if (/^https:\/\//i.test(src)) return src;
+  }
+  return null;
+}
+
 function allocateExclusiveProductIds(preferredIds, poolIds, usedIds, limit = 24) {
   const selected = [];
   for (const id of [...(preferredIds || []), ...(poolIds || [])]) {
@@ -684,16 +698,19 @@ async function eligibleOfferProductPool() {
     if (!conn) throw new Error('Nuvemshop não está conectada para validar produtos publicados');
     const remoteProducts = await ns.fetchAllPages(
       conn,
-      '/products?published=true&fields=id,handle,published',
+      '/products?published=true&fields=id,handle,images,published',
       { perPage: 100, max: 10000 },
     );
     const ids = new Set();
     for (const remote of remoteProducts) {
       if (remote?.published === false || remote?.id == null) continue;
       const remoteId = String(remote.id);
+      const image = remoteProductImage(remote);
+      if (!image) continue;
       ids.add(remoteId);
       const handle = typeof remote.handle === 'object' ? (remote.handle.pt || Object.values(remote.handle)[0]) : remote.handle;
       if (handle) handleCache.set(remoteId, String(handle));
+      remoteImageCache.set(remoteId, image);
     }
     remotePublishedCache = { expiresAt: Date.now() + REMOTE_PUBLISHED_CACHE_MS, ids };
   }
@@ -1092,6 +1109,7 @@ module.exports = {
     categoryMembershipDiff,
     pagesFromResponse,
     physicalStockUnits,
+    remoteProductImage,
     allocateExclusiveProductIds,
   },
 };
