@@ -787,6 +787,16 @@
         </div>
         <div id="trfBipeMsg" style="font-size:12px;margin-top:6px;min-height:16px;color:var(--text-muted);"></div>
         <div style="border-top:1px dashed var(--border);margin:14px 0;"></div>
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔎</span>Buscar produto por nome</h3>
+        <div class="search-bar" style="margin-bottom:0;">
+          <span style="font-size:18px;">🔍</span>
+          <input type="text" id="trfSearchInput" placeholder="Nome, marca, código…" oninput="onTrfSearch()">
+        </div>
+        <div id="trfSearchResults" class="grid grid-2" style="margin-top:14px;"></div>
+        <div style="border-top:1px dashed var(--border);margin:14px 0;"></div>
+        <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Quem está transferindo</label>
+        <div id="trfSellerCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px;"></div>
+        <select id="trfSeller" style="display:none;"></select>
         <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Loja de destino</label>
         <select id="trfDestStore" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;background:#fff;">
           <option value="">Carregando lojas…</option>
@@ -1709,13 +1719,20 @@ function initPrecos() {
 
 // ===================== TRANSFERÊNCIA ENTRE LOJAS =====================
 let _trfCart = [];
+let _trfSellers = [];
+let _trfSellerId = '';
+let _trfSearchAll = [];
+let trfSearchTimer = null;
 
-function initTransfer() {
+async function initTransfer() {
   if (!activeStore?.id) { alert('Entre na loja primeiro.'); return; }
-  _trfCart = [];
+  _trfCart = []; _trfSellerId = ''; _trfSearchAll = [];
   renderTrfCart();
   const note = document.getElementById('trfNote'); if (note) note.value = '';
+  const si = document.getElementById('trfSearchInput'); if (si) si.value = '';
+  const sr = document.getElementById('trfSearchResults'); if (sr) sr.innerHTML = '';
   loadTrfStores();
+  await loadTrfSellers();     // antes das listas: os cards de recebimento usam a lista de vendedores
   loadTrfIncoming();
   loadTrfOutgoing();
   setTimeout(() => document.getElementById('trfBipeInput')?.focus(), 100);
@@ -1731,6 +1748,36 @@ async function loadTrfStores() {
   } catch (e) { sel.innerHTML = '<option value="">Erro ao carregar lojas</option>'; }
 }
 
+// Vendedores da loja (quem transfere / quem recebe) — mesmo endpoint da venda.
+async function loadTrfSellers() {
+  try {
+    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    _trfSellers = d.sellers || [];
+  } catch (e) { _trfSellers = []; }
+  const cards = document.getElementById('trfSellerCards');
+  const sel = document.getElementById('trfSeller');
+  if (sel) sel.innerHTML = '<option value="">— selecione —</option>' + _trfSellers.map(s => `<option value="${s.id}">${escPreco(s.name)}</option>`).join('');
+  if (cards) {
+    cards.innerHTML = _trfSellers.length
+      ? _trfSellers.map(s => `<div class="vendor-card" data-trf-seller="${s.id}" onclick="selectTrfSeller('${s.id}')" style="cursor:pointer;padding:10px;border:2px solid #eee;border-radius:10px;display:flex;align-items:center;gap:8px;">
+          <div class="avatar ${typeof avatarColor==='function'?avatarColor(s.name):''}">${typeof initials==='function'?initials(s.name):(s.name||'?').slice(0,2)}</div>
+          <div style="font-weight:600;font-size:13px;">${escPreco(s.name)}</div></div>`).join('')
+      : '<p style="grid-column:1/-1;color:var(--text-muted);font-size:13px;">Sem vendedores nesta loja.</p>';
+  }
+  // login pessoal de vendedor: pré-seleciona
+  if (me && me.role === 'seller' && _trfSellers.some(s => s.id === me.id)) selectTrfSeller(me.id);
+}
+function selectTrfSeller(id) {
+  _trfSellerId = id;
+  const sel = document.getElementById('trfSeller'); if (sel) sel.value = id;
+  document.querySelectorAll('#trfSellerCards .vendor-card').forEach(el => {
+    const on = el.dataset.trfSeller === id;
+    el.style.borderColor = on ? 'var(--primary,#E5571E)' : '#eee';
+    el.style.background = on ? '#fff1ea' : '#fff';
+  });
+}
+
+// --- BIPE (com tamanho manual, igual venda) ---
 async function onTrfBipe() {
   const inp = document.getElementById('trfBipeInput');
   const code = (inp.value || '').trim();
@@ -1741,29 +1788,62 @@ async function onTrfBipe() {
   try {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
     if (d.recognized && d.product && d.product.productSizeId) {
-      trfAddItem(d.product);
+      const size = _promptManualSellerSize(d.product.name, d.product.size || (d.sizeOptions || []).map(s => s.size).filter(Boolean).join(', '));
+      if (!size) { msg.style.color = '#b06b00'; msg.textContent = 'Produto não adicionado: informe o tamanho.'; return; }
+      trfAddItem({ productId: d.product.id, productSizeId: d.product.productSizeId, barcode: code, name: d.product.name || '', brand: d.product.brand || '', size });
       msg.style.color = '#0a843d';
-      msg.textContent = '✅ ' + (d.product.name || '') + (d.product.size ? ' — tam ' + d.product.size : '') + ' adicionado';
+      msg.textContent = '✅ ' + (d.product.name || '') + ' — tam ' + size + ' adicionado';
     } else {
       msg.style.color = '#b06b00';
-      msg.innerHTML = '⚠️ Código <b>' + escPreco(code) + '</b> não está cadastrado com tamanho — só dá pra transferir produto já cadastrado.';
+      msg.innerHTML = '⚠️ Código <b>' + escPreco(code) + '</b> não está cadastrado — ache o produto na busca por nome abaixo.';
+      document.getElementById('trfSearchInput')?.focus();
     }
   } catch (e) { msg.style.color = '#d70015'; msg.textContent = 'Erro: ' + (e.message || e); }
   inp.focus();
 }
 
-function trfAddItem(p) {
-  const ex = _trfCart.find(i => i.productSizeId === p.productSizeId);
+// --- BUSCA POR NOME (igual venda) ---
+function onTrfSearch() {
+  clearTimeout(trfSearchTimer);
+  const q = document.getElementById('trfSearchInput').value;
+  const el = document.getElementById('trfSearchResults');
+  if (!q || q.length < 2) { el.innerHTML = ''; _trfSearchAll = []; return; }
+  trfSearchTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=30');
+      _trfSearchAll = d.products || d.items || [];
+      renderTrfResults();
+    } catch (e) { console.error(e); }
+  }, 250);
+}
+function renderTrfResults() {
+  const el = document.getElementById('trfSearchResults');
+  if (!_trfSearchAll.length) { el.innerHTML = '<p style="grid-column:1/-1;color:var(--text-muted);font-size:13px;">Nada encontrado.</p>'; return; }
+  el.innerHTML = _trfSearchAll.slice(0, 24).map(p => {
+    const nm = (p.name || '').replace(/'/g, "\\'");
+    const br = (p.brand || '').replace(/'/g, "\\'");
+    return `<div onclick="trfAddFromSearch('${p.id}','${nm}','${br}')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:10px;">
+      <div style="font-weight:600;font-size:13px;">${escPreco(p.name || '')}</div>
+      <div style="font-size:11px;color:#6e6e73;">${escPreco(p.brand || '')}</div>
+      <div style="font-size:11px;color:var(--primary,#E5571E);font-weight:700;margin-top:4px;">+ adicionar</div>
+    </div>`;
+  }).join('');
+}
+function trfAddFromSearch(productId, name, brand) {
+  const size = _promptManualSellerSize(name, '');
+  if (!size) return;
+  trfAddItem({ productId, productSizeId: null, barcode: '', name, brand, size });
+}
+
+function trfAddItem(it) {
+  const key = it.productSizeId || (it.productId + '|' + (it.size || ''));
+  const ex = _trfCart.find(i => i._key === key);
   if (ex) ex.quantity++;
-  else _trfCart.push({ productId: p.id, productSizeId: p.productSizeId, barcode: p.barcode || '', name: p.name || '', brand: p.brand || '', size: p.size || '', quantity: 1 });
+  else _trfCart.push({ ...it, quantity: 1, _key: key });
   renderTrfCart();
 }
 function trfRemoveItem(idx) { _trfCart.splice(idx, 1); renderTrfCart(); }
-function trfQty(idx, delta) {
-  const it = _trfCart[idx]; if (!it) return;
-  it.quantity = Math.max(1, it.quantity + delta);
-  renderTrfCart();
-}
+function trfQty(idx, delta) { const it = _trfCart[idx]; if (!it) return; it.quantity = Math.max(1, it.quantity + delta); renderTrfCart(); }
 
 function renderTrfCart() {
   const list = document.getElementById('trfCartList');
@@ -1795,14 +1875,16 @@ async function submitTransfer() {
   if (!_trfCart.length) return;
   const toStoreId = document.getElementById('trfDestStore').value;
   if (!toStoreId) { alert('Escolha a loja de destino.'); return; }
+  if (!_trfSellerId) { alert('Escolha QUEM está transferindo.'); return; }
   const btn = document.getElementById('trfSubmitBtn');
   btn.disabled = true; btn.textContent = '⏳ Enviando…';
   try {
     const body = {
       fromStoreId: activeStore.id,
       toStoreId,
+      sellerId: _trfSellerId,
       note: document.getElementById('trfNote').value || '',
-      items: _trfCart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId, barcode: i.barcode, size: i.size, quantity: i.quantity })),
+      items: _trfCart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId || undefined, barcode: i.barcode || undefined, size: i.size, quantity: i.quantity })),
     };
     const r = await api('/api/stock-transfer', { method: 'POST', body: JSON.stringify(body) });
     if (r.ok) {
@@ -1810,9 +1892,7 @@ async function submitTransfer() {
       _trfCart = []; renderTrfCart();
       document.getElementById('trfNote').value = '';
       loadTrfOutgoing();
-    } else {
-      alert('Não enviou: ' + (r.error || 'erro'));
-    }
+    } else { alert('Não enviou: ' + (r.error || 'erro')); }
   } catch (e) { alert('Erro: ' + (e.message || e)); }
   btn.textContent = 'Enviar transferência';
   renderTrfCart();
@@ -1824,18 +1904,23 @@ function _trfCardHtml(t, kind) {
     : t.status === 'received' ? '<span style="color:#0a843d;font-weight:700;">recebida</span>'
     : '<span style="color:#c0392b;font-weight:700;">cancelada</span>';
   const other = kind === 'incoming' ? ('de ' + escPreco(t.fromStore?.name || '?')) : ('para ' + escPreco(t.toStore?.name || '?'));
+  const quem = [t.createdByName ? 'enviou: ' + escPreco(t.createdByName) : '', t.receivedByName ? 'recebeu: ' + escPreco(t.receivedByName) : ''].filter(Boolean).join(' · ');
   let actions = '';
   if (kind === 'incoming' && t.status === 'in_transit') {
-    actions = `<div style="display:flex;gap:6px;margin-top:8px;">
-      <button onclick="acceptTransfer('${t.id}')" style="flex:1;padding:11px;border:none;border-radius:9px;background:linear-gradient(135deg,#0a843d,#2bb678);color:#fff;font-weight:800;cursor:pointer;">✅ Confirmar recebimento</button>
-      <button onclick="cancelTransferTrf('${t.id}')" style="padding:11px 14px;border:1px solid #c0392b;border-radius:9px;background:#fff;color:#c0392b;font-weight:700;cursor:pointer;">Recusar</button>
+    const opts = '<option value="">— quem está recebendo —</option>' + _trfSellers.map(s => `<option value="${s.id}">${escPreco(s.name)}</option>`).join('');
+    actions = `<div style="margin-top:8px;">
+      <select id="trfRecv_${t.id}" style="width:100%;min-height:40px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:15px;margin-bottom:6px;">${opts}</select>
+      <div style="display:flex;gap:6px;">
+        <button onclick="acceptTransfer('${t.id}')" style="flex:1;padding:11px;border:none;border-radius:9px;background:linear-gradient(135deg,#0a843d,#2bb678);color:#fff;font-weight:800;cursor:pointer;">✅ Confirmar recebimento</button>
+        <button onclick="cancelTransferTrf('${t.id}')" style="padding:11px 14px;border:1px solid #c0392b;border-radius:9px;background:#fff;color:#c0392b;font-weight:700;cursor:pointer;">Recusar</button>
+      </div>
     </div>`;
   } else if (kind === 'outgoing' && t.status === 'in_transit') {
     actions = `<div style="margin-top:8px;"><button onclick="cancelTransferTrf('${t.id}')" style="padding:9px 14px;border:1px solid #c0392b;border-radius:9px;background:#fff;color:#c0392b;font-weight:700;cursor:pointer;font-size:13px;">Cancelar</button></div>`;
   }
   return `<div style="padding:12px 0;border-bottom:1px solid #f2f2f7;">
     <div style="display:flex;justify-content:space-between;"><b>#${t.code}</b> ${statusBadge}</div>
-    <div style="font-size:12px;color:#6e6e73;margin:2px 0;">${other} · ${t.qtyTotal} un</div>
+    <div style="font-size:12px;color:#6e6e73;margin:2px 0;">${other} · ${t.qtyTotal} un${quem ? ' · ' + quem : ''}</div>
     <div style="font-size:12px;">${itens}</div>
     ${t.note ? '<div style="font-size:11px;color:#8e8e93;margin-top:2px;">📝 ' + escPreco(t.note) + '</div>' : ''}
     ${actions}
@@ -1863,10 +1948,13 @@ async function loadTrfOutgoing() {
 }
 
 async function acceptTransfer(id) {
+  const sel = document.getElementById('trfRecv_' + id);
+  const sellerId = sel ? sel.value : '';
+  if (!sellerId) { alert('Escolha QUEM está recebendo antes de confirmar.'); return; }
   if (!confirm('Confirmar que os produtos CHEGARAM nesta loja? O estoque entra agora.')) return;
   try {
-    const r = await api('/api/stock-transfer/' + id + '/receive', { method: 'POST', body: '{}' });
-    if (r.ok) { alert('✅ Recebimento confirmado! Estoque atualizado.'); loadTrfIncoming(); }
+    const r = await api('/api/stock-transfer/' + id + '/receive', { method: 'POST', body: JSON.stringify({ sellerId }) });
+    if (r.ok) { alert('✅ Recebimento confirmado! Estoque atualizado.'); loadTrfIncoming(); loadTrfOutgoing(); }
     else alert('Não deu: ' + (r.error || 'erro'));
   } catch (e) { alert('Erro: ' + (e.message || e)); }
 }

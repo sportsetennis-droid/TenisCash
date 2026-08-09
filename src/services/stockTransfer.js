@@ -44,7 +44,8 @@ async function loadItemsPlan(items) {
       snapshot: {
         productName: product.name || null,
         brand: product.brand || null,
-        size: productSize.size || null,
+        // tamanho INFORMADO pelo vendedor (igual venda) vence o do cadastro pra exibição
+        size: (raw.size && String(raw.size).trim()) ? String(raw.size).trim() : (productSize.size || null),
         barcode: productSize.barcode || null,
         unitCost: product.costPrice ?? null,
         ncm: (product.ncm && /^\d{8}$/.test(product.ncm)) ? product.ncm : null,
