@@ -10,6 +10,17 @@ const {
 } = require('../src/services/imageRepairCron');
 
 function run() {
+  assert.equal(qr.QR_OFFER_DISCOUNT_PCT, 30);
+  assert.equal(qr.qrOfferTitle(1), 'Oferta exclusiva da Placa 01 — 30% OFF');
+  assert.equal(qr.offerBasePrice({ price: 100, promoPrice: null }), 100);
+  assert.equal(qr.offerBasePrice({ price: 100, promoPrice: 80 }), 100);
+  assert.equal(qr.offerDiscountedPrice({ price: 100, promoPrice: null }), 70);
+  assert.equal(qr.offerDiscountedPrice({ price: 99.99, promoPrice: null }), 69.99);
+  assert.equal(qr.offerDiscountedPrice({ price: 100, promoPrice: 80 }), 70);
+  assert.deepEqual(qr.promotionRows({ result: [{ id: 1 }] }), [{ id: 1 }]);
+  assert.deepEqual(qr.promotionRows({ results: [{ id: 2 }] }), [{ id: 2 }]);
+  assert.deepEqual(qr.promotionRows(null), []);
+
   const now = new Date('2026-08-08T12:00:00.000Z');
   assert.equal(qr.offerState({
     startsAt: '2026-08-08T11:00:00.000Z',

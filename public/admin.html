@@ -2742,8 +2742,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <label style="font-size:11px;font-weight:700;color:#555">Título da oferta
         <input id="qro-title" class="form-input" style="margin-top:4px;background:white" maxlength="140" placeholder="Ex.: Oferta relâmpago da placa 01">
       </label>
-      <label style="font-size:11px;font-weight:700;color:#555">Desconto extra (%)
-        <input id="qro-discount" class="form-input" type="number" min="0" max="80" step="0.5" value="10" style="margin-top:4px;background:white">
+      <label style="font-size:11px;font-weight:700;color:#555">Desconto exclusivo fixo (%)
+        <input id="qro-discount" class="form-input" type="number" value="30" readonly aria-readonly="true" style="margin-top:4px;background:#f5f5f7;color:#555">
       </label>
       <label style="font-size:11px;font-weight:700;color:#555">Começa em
         <input id="qro-starts" class="form-input" type="datetime-local" style="margin-top:4px;background:white">
@@ -13369,7 +13369,7 @@ function qroOpenNew(plate) {
   document.getElementById('qro-editor-title').textContent = 'Nova oferta QR';
   document.getElementById('qro-plate').value = String(plate || 1);
   document.getElementById('qro-title').value = '';
-  document.getElementById('qro-discount').value = 10;
+  document.getElementById('qro-discount').value = 30;
   document.getElementById('qro-starts').value = qroLocalDateTime();
   document.getElementById('qro-duration').value = 24;
   document.getElementById('qro-exchange').checked = true;
