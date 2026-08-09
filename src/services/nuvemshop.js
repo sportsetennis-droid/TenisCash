@@ -188,6 +188,18 @@ function normalizeIdList(values) {
   return Array.from(new Set(values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
 }
 
+function couponDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error('Data inválida para o cupom da Nuvemshop');
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Fortaleza',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date).reduce((out, part) => ({ ...out, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function buildCouponPayload({
   code,
   discountPct,
@@ -208,8 +220,8 @@ function buildCouponPayload({
     includes_shipping: false,
     combines_with_other_discounts: false,
   };
-  if (startDate != null) payload.start_date = new Date(startDate).toISOString();
-  if (endDate != null) payload.end_date = new Date(endDate).toISOString();
+  if (startDate != null) payload.start_date = couponDate(startDate);
+  if (endDate != null) payload.end_date = couponDate(endDate);
   const categoryIds = normalizeIdList(categories);
   const productIds = normalizeIdList(products);
   if (categoryIds) payload.categories = categoryIds;
@@ -228,8 +240,8 @@ async function updateCoupon(connection, couponId, opts) {
   if (opts.discountPct != null) { payload.type = 'percentage'; payload.value = String(Number(opts.discountPct).toFixed(2)); }
   if (opts.valid != null) payload.valid = !!opts.valid;
   if (opts.minPrice != null) payload.min_price = Number(opts.minPrice) || 0;
-  if (opts.startDate != null) payload.start_date = new Date(opts.startDate).toISOString();
-  if (opts.endDate != null) payload.end_date = new Date(opts.endDate).toISOString();
+  if (opts.startDate != null) payload.start_date = couponDate(opts.startDate);
+  if (opts.endDate != null) payload.end_date = couponDate(opts.endDate);
   const categoryIds = normalizeIdList(opts.categories);
   const productIds = normalizeIdList(opts.products);
   if (categoryIds) payload.categories = categoryIds;

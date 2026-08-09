@@ -66,16 +66,28 @@ function run() {
     min_price: 0,
     includes_shipping: false,
     combines_with_other_discounts: false,
-    start_date: '2026-08-08T11:00:00.000Z',
-    end_date: '2026-08-09T11:00:00.000Z',
+    start_date: '2026-08-08',
+    end_date: '2026-08-09',
     categories: [123],
   });
 
   assert.deepEqual(buildCouponPayload({
     code: 'QR02PRODUCTS',
     discountPct: 20,
+    startDate: '2026-08-09T01:00:00.000Z',
     products: ['10', 10, 11, 0, 'invalid'],
-  }).products, [10, 11]);
+  }), {
+    code: 'QR02PRODUCTS',
+    type: 'percentage',
+    value: '20.00',
+    valid: true,
+    max_uses: null,
+    min_price: 0,
+    includes_shipping: false,
+    combines_with_other_discounts: false,
+    start_date: '2026-08-08',
+    products: [10, 11],
+  });
 
   assert.deepEqual(usableImageUrls({ images: [
     { src: 'https://cdn.example/a.jpg' },
