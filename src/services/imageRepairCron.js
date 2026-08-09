@@ -88,10 +88,11 @@ async function runImageRepairBatch(options = {}) {
     const configured = {
       search: serperImages.isConfigured(),
       vision: vision.isConfigured(),
+      providers: vision.providerStatus(),
     };
     state.configured = configured;
     if (!configured.search || !configured.vision) {
-      const missing = [!configured.search && 'SERPER_API_KEY', !configured.vision && 'ANTHROPIC_API_KEY'].filter(Boolean);
+      const missing = [!configured.search && 'SERPER_API_KEY', !configured.vision && 'provedor visual'].filter(Boolean);
       const result = { blocked: true, reason: `configuracao ausente: ${missing.join(', ')}` };
       state.phase = 'blocked';
       state.lastResult = result;

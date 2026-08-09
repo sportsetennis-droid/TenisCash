@@ -326,7 +326,8 @@ async function findOfferPages(offer, conn) {
   const handle = offerCategoryHandle(plateCode(offer.board.number));
   const matches = [];
   for (let page = 1; page <= 50; page++) {
-    const payload = await ns.nuvemshopVersionedApi(conn, 'GET', `/pages?page=${page}&per_page=100`);
+    // Pages has a stricter limit than v1 resources: per_page must be < 20.
+    const payload = await ns.nuvemshopVersionedApi(conn, 'GET', `/pages?page=${page}&per_page=19`);
     const rows = pagesFromResponse(payload);
     for (const item of rows) {
       if (localizedValue(item.handle) === handle) matches.push(item);
