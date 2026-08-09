@@ -16,6 +16,7 @@ function run() {
   assert.equal(qr.offerBasePrice({ price: 100, promoPrice: 80 }), 100);
   assert.equal(qr.offerDiscountedPrice({ price: 100, promoPrice: null }), 70);
   assert.equal(qr.offerDiscountedPrice({ price: 99.99, promoPrice: null }), 69.99);
+  assert.equal(qr.offerDiscountedPrice({ price: 120.65, promoPrice: null }), 84.45);
   assert.equal(qr.offerDiscountedPrice({ price: 100, promoPrice: 80 }), 70);
   assert.deepEqual(qr.promotionRows({ result: [{ id: 1 }] }), [{ id: 1 }]);
   assert.deepEqual(qr.promotionRows({ results: [{ id: 2 }] }), [{ id: 2 }]);
@@ -78,6 +79,21 @@ function run() {
   ] }), [
     { size: '39', variantId: '10' },
     { size: 'UNICO', variantId: '12' },
+  ]);
+  assert.deepEqual(qr.selectQuickBuyVariants([
+    { size: 'UNICO', variantId: 'old-id' },
+  ], [
+    { size: 'Unico', variantId: 'current-id' },
+  ]), [
+    { size: 'Unico', variantId: 'current-id' },
+  ]);
+  assert.deepEqual(qr.selectQuickBuyVariants([
+    { size: '39', variantId: 'current-id' },
+  ], [
+    { size: '39', variantId: 'current-id' },
+    { size: '40', variantId: 'other-id' },
+  ]), [
+    { size: '39', variantId: 'current-id' },
   ]);
 
   const now = new Date('2026-08-08T12:00:00.000Z');

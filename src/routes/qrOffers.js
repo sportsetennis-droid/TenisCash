@@ -62,7 +62,10 @@ function offerBasePrice(product) {
 function offerDiscountedPrice(product, discountPct = QR_OFFER_DISCOUNT_PCT) {
   const base = offerBasePrice(product);
   const pct = Math.min(Math.max(Number(discountPct) || 0, 0), 100);
-  return Math.round((base * (1 - pct / 100) + Number.EPSILON) * 100) / 100;
+  // Nuvemshop rounds the discount amount to cents before subtracting it.
+  // Mirroring that order keeps the advertised QR price identical to checkout.
+  const discount = Math.round((base * pct / 100 + Number.EPSILON) * 100) / 100;
+  return Math.round((base - discount + Number.EPSILON) * 100) / 100;
 }
 
 function brl(value) {
@@ -95,6 +98,15 @@ function remoteProductVariants(product) {
         variantId: String(variant.id),
       };
     });
+}
+
+function selectQuickBuyVariants(mappedVariants, publishedVariants) {
+  const remote = Array.isArray(publishedVariants) ? publishedVariants : [];
+  if (!remote.length) return [];
+  const availableIds = new Set(remote.map((variant) => String(variant.variantId)));
+  const currentMappings = (Array.isArray(mappedVariants) ? mappedVariants : [])
+    .filter((variant) => availableIds.has(String(variant.variantId)));
+  return currentMappings.length ? currentMappings : remote;
 }
 
 function promotionRows(payload) {
@@ -351,7 +363,9 @@ async function productViews(products, offer) {
       size: String(size.size),
       variantId: byLocalSizeId.get(String(size.id)),
     })).filter((variant) => variant.variantId);
-    const variants = mappedVariants.length ? mappedVariants : (remoteVariantsCache.get(remoteId) || []);
+    // Inventory mappings can outlive a deleted/recreated Nuvemshop variant.
+    // Only publish mapped IDs that are still buyable in the live storefront.
+    const variants = selectQuickBuyVariants(mappedVariants, remoteVariantsCache.get(remoteId));
     const trackedUrl = query ? `${direct}${direct.includes('?') ? '&' : '?'}${query}` : direct;
     const quickBuyAction = query ? `${STORE_BASE}/comprar/?${query}` : `${STORE_BASE}/comprar/`;
     return {
@@ -1477,6 +1491,7 @@ module.exports = {
     buildQrDiscountCommands,
     quickBuyMarkup,
     remoteProductVariants,
+    selectQuickBuyVariants,
     normalizeProductIds,
     offerState,
     categoryMembershipDiff,
