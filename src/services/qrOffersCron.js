@@ -23,6 +23,9 @@ async function tick() {
     if (result.activated || result.scheduled || result.expired
       || result.staleCategoriesDeleted || result.staleCouponsDisabled
       || result.stalePagesDeleted
+      || result.normalizedDiscounts
+      || result.storefrontPromotionsDisabled
+      || result.storefrontPromotionCleanupError
       || result.restoration.published || result.restoration.retried
       || result.restoration.errors.length
       || result.errors.length) {

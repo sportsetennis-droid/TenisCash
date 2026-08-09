@@ -22,8 +22,76 @@
     }
   }
 
+  function removeQuantityDiscountMessaging() {
+    var selectors = [
+      '[data-promotion-type="quantity-discounts"]',
+      '.js-product-promo-container[data-promotion-type="quantity-discounts"]',
+      '.js-product-promotion-label[data-promotion-type="quantity-discounts"]'
+    ];
+    document.querySelectorAll(selectors.join(',')).forEach(function (element) {
+      element.style.setProperty('display', 'none', 'important');
+      element.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  function money(value) {
+    return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  function enhanceQrProductPage() {
+    if (window.__sportsTennisQrProductEnhanced) return;
+    var params = new URLSearchParams(window.location.search);
+    var plate = params.get('qr_offer');
+    if (!/^placa-\d{2}$/i.test(plate || '')) return;
+    window.__sportsTennisQrProductEnhanced = true;
+
+    fetch('https://teniscash.com.br/api/qr-offers/plates/' + encodeURIComponent(plate), { credentials: 'omit' })
+      .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+      .then(function (data) {
+        var products = data && data.offer && Array.isArray(data.offer.products) ? data.offer.products : [];
+        var pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
+        var product = products.find(function (item) {
+          try { return new URL(item.storeUrl).pathname.replace(/\/+$/, '/') === pathname; }
+          catch (_) { return false; }
+        });
+        if (!product) return;
+        var form = document.querySelector('#product_form, [data-store^="product-form-"]');
+        if (!form || document.getElementById('sports-tennis-qr-price')) return;
+        var panel = document.createElement('section');
+        panel.id = 'sports-tennis-qr-price';
+        panel.style.cssText = 'margin:14px 0;padding:16px;border:2px solid #f4511e;border-radius:14px;background:#fff5ee;color:#21150f;font-family:system-ui,-apple-system,Segoe UI,sans-serif';
+        panel.innerHTML = '<div style="font-size:12px;font-weight:900;color:#08783e">PREÇO EXCLUSIVO DA PLACA · 30% OFF</div>' +
+          '<div style="margin-top:5px;color:#74665f;text-decoration:line-through">De ' + money(product.originalPrice) + '</div>' +
+          '<div style="font-size:28px;line-height:1.1;font-weight:950;color:#df3e12">Por ' + money(product.exclusivePrice) + '</div>' +
+          '<div data-qr-count style="margin-top:8px;font-weight:900">Oferta por tempo limitado</div>' +
+          '<div style="margin-top:5px;font-size:12px">Escolha o tamanho e finalize. O desconto entra automaticamente.</div>';
+        form.parentNode.insertBefore(panel, form);
+        var buyButton = form.querySelector('button[type="submit"], .js-addtocart, [data-store="product-buy-button"]');
+        if (buyButton) buyButton.textContent = 'COMPRAR AGORA COM 30% OFF';
+        var count = panel.querySelector('[data-qr-count]');
+        var end = data.offer && data.offer.endsAt ? new Date(data.offer.endsAt).getTime() : 0;
+        function tick() {
+          var remaining = Math.max(0, end - Date.now());
+          var h = Math.floor(remaining / 3600000);
+          var m = Math.floor((remaining % 3600000) / 60000);
+          var s = Math.floor((remaining % 60000) / 1000);
+          count.textContent = remaining ? 'Termina em ' + h + 'h ' + m + 'min ' + s + 's' : 'Oferta encerrada';
+        }
+        tick();
+        window.setInterval(tick, 1000);
+        window.setTimeout(function () {
+          var clean = new URL(window.location.href);
+          clean.searchParams.delete('coupon');
+          window.history.replaceState({}, '', clean.pathname + (clean.searchParams.toString() ? '?' + clean.searchParams.toString() : ''));
+        }, 3000);
+      })
+      .catch(function () { window.__sportsTennisQrProductEnhanced = false; });
+  }
+
   function run() {
     try { replaceTamanhoInHeader(); } catch (_) {}
+    try { removeQuantityDiscountMessaging(); } catch (_) {}
+    try { enhanceQrProductPage(); } catch (_) {}
   }
 
   // Roda assim que possível
@@ -80,8 +148,6 @@
       '#sports-tennis-qr-offer .tcq-hero p{font-size:17px;line-height:1.45;margin:8px 0}' +
       '#sports-tennis-qr-offer .tcq-badge{display:inline-block;background:#fff;color:#df3e12;border-radius:999px;padding:7px 12px;font-weight:900}' +
       '#sports-tennis-qr-offer .tcq-count{font-weight:900;margin-top:16px}' +
-      '#sports-tennis-qr-offer .tcq-coupon{background:#fff;border:2px dashed #f4511e;border-radius:14px;padding:14px;margin-top:18px;font-weight:800}' +
-      '#sports-tennis-qr-offer .tcq-coupon code{font-size:22px;letter-spacing:2px;color:#df3e12}' +
       '#sports-tennis-qr-offer .tcq-exchange{margin:18px 0;padding:14px 16px;background:#fff;border-radius:14px;font-weight:750}' +
       '#sports-tennis-qr-offer .tcq-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:16px}' +
       '#sports-tennis-qr-offer .tcq-product{background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px #6b3b1c16}' +
@@ -89,7 +155,10 @@
       '#sports-tennis-qr-offer .tcq-product>div{padding:16px}' +
       '#sports-tennis-qr-offer .tcq-product small{color:#7d6f68;font-weight:800}' +
       '#sports-tennis-qr-offer .tcq-product h2{font-size:17px;min-height:44px;margin:8px 0}' +
-      '#sports-tennis-qr-offer .tcq-price{font-size:22px;font-weight:900;color:#df3e12}' +
+      '#sports-tennis-qr-offer .tcq-price{display:flex;flex-direction:column;gap:3px;margin:12px 0}' +
+      '#sports-tennis-qr-offer .tcq-price s{font-size:14px;color:#74665f;font-weight:500}' +
+      '#sports-tennis-qr-offer .tcq-price strong{font-size:25px;color:#df3e12}' +
+      '#sports-tennis-qr-offer .tcq-price em{font-size:12px;color:#08783e;font-style:normal;font-weight:900}' +
       '#sports-tennis-qr-offer .tcq-buy{display:block;text-align:center;background:#f4511e;color:#fff;text-decoration:none;border-radius:10px;padding:12px;font-weight:900}' +
       '#sports-tennis-qr-offer .tcq-empty{text-align:center;background:#fff;border-radius:18px;padding:40px 18px;font-size:18px}' +
       '@media(max-width:600px){#sports-tennis-qr-offer .tcq-wrap{padding:12px 12px 32px}#sports-tennis-qr-offer .tcq-hero{padding:22px 18px;border-radius:16px}}' +
@@ -119,11 +188,11 @@
       }
       var products = Array.isArray(offer.products) ? offer.products : [];
       var cards = products.map(function (p) {
-        return '<article class="tcq-product"><img src="' + escapeHtml(p.imageUrl || '') + '" alt="' + escapeHtml(p.name) + '"><div><small>' + escapeHtml(p.brand || '') + '</small><h2>' + escapeHtml(p.name) + '</h2><p class="tcq-price">' + money(p.promoPrice || p.price) + '</p><a class="tcq-buy" href="' + escapeHtml(p.storeUrl || '#') + '">Comprar com desconto</a></div></article>';
+        return '<article class="tcq-product"><img src="' + escapeHtml(p.imageUrl || '') + '" alt="' + escapeHtml(p.name) + '"><div><small>' + escapeHtml(p.brand || '') + '</small><h2>' + escapeHtml(p.name) + '</h2><div class="tcq-price"><s>De ' + money(p.originalPrice) + '</s><strong>Por ' + money(p.exclusivePrice) + '</strong><em>30% OFF exclusivo desta placa</em></div><a class="tcq-buy" href="' + escapeHtml(p.storeUrl || '#') + '">Escolher tamanho e comprar agora</a></div></article>';
       }).join('');
       var end = offer.endsAt ? new Date(offer.endsAt).toISOString() : '';
       content.className = '';
-      content.innerHTML = '<section class="tcq-hero"><span class="tcq-badge">EXCLUSIVA PARA QUEM LEU A PLACA</span><h1>' + escapeHtml(offer.title) + '</h1><p>Escolha seu produto e finalize na loja oficial com o desconto desta placa.</p><div class="tcq-count" data-count>Válida por 24 horas</div><div class="tcq-coupon">Cupom da oferta: <code>' + escapeHtml(offer.couponCode || '') + '</code><br><small>O desconto será aplicado no checkout da Nuvemshop.</small></div></section>' + (offer.freeExchange ? '<div class="tcq-exchange">↔ Troca grátis garantida pela Sports &amp; Tennis.</div>' : '') + '<section class="tcq-products">' + (cards || '<div class="tcq-empty">Nenhum produto disponível nesta oferta.</div>') + '</section>';
+      content.innerHTML = '<section class="tcq-hero"><span class="tcq-badge">PREÇO EXCLUSIVO DA PLACA</span><h1>' + escapeHtml(offer.title) + '</h1><p>O valor com 30% OFF já aparece em cada produto. Escolha o tamanho e finalize antes do contador zerar.</p><div class="tcq-count" data-count>Calculando o tempo restante…</div></section>' + (offer.freeExchange ? '<div class="tcq-exchange">↔ Troca grátis garantida pela Sports &amp; Tennis.</div>' : '') + '<section class="tcq-products">' + (cards || '<div class="tcq-empty">Nenhum produto disponível nesta oferta.</div>') + '</section>';
       if (!end) return;
       var count = content.querySelector('[data-count]');
       function tick() {
