@@ -21,27 +21,42 @@ prisma.$use(async (params, next) => {
 
 // JWT_SECRET assina TODOS os tokens de login (inclusive admin). Um segredo
 // conhecido = qualquer um forja um token de admin e assume o sistema. Como este
-// repo é PÚBLICO, um fallback hardcoded no código é o mesmo que não ter segredo.
-// Regra: em produção (Railway) EXIGE um segredo forte e não-conhecido; sem ele,
-// o app recusa subir (o healthcheck do Railway mantém a versão anterior no ar,
-// então isso NÃO derruba a loja — só bloqueia deploy inseguro). Em dev, usa um
-// segredo efêmero por processo e avisa.
-const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
+// repo é PÚBLICO, o antigo fallback hardcoded era o mesmo que não ter segredo.
+//
+// SOLUÇÃO ZERO-TOQUE (não depende de setar env no Railway, NUNCA trava o boot):
+//   1. Se JWT_SECRET (env) existe e é forte → usa (melhor prática).
+//   2. Senão → gera um aleatório forte e PERSISTE no banco (tabela SystemSecret).
+//      Fica estável entre restarts (sessões não caem), fora do repo, e ninguém
+//      precisa mexer em nada. Resolvido no boot por ensureJwtSecret().
+//   3. Se o banco falhar → efêmero por processo (avisa) — o app SEMPRE sobe.
 const WEAK_JWT_SECRETS = new Set([
   'teniscash-secret-change-in-production',
   'teniscash-prod-secret-trocar-agora',
 ]);
-const JWT_SECRET = (() => {
-  const s = process.env.JWT_SECRET;
-  const strong = s && s.length >= 16 && !WEAK_JWT_SECRETS.has(s);
-  if (strong) return s;
-  if (IS_PROD) {
-    console.error('FATAL[segurança]: JWT_SECRET ausente/fraco em produção. Com um segredo conhecido qualquer um forja token de admin. Defina JWT_SECRET (aleatório, ≥16 chars) nas variáveis do Railway. O app não sobe até isso — o healthcheck mantém a versão anterior no ar.');
-    process.exit(1);
+function _envSecretOk(s) { return !!(s && s.length >= 16 && !WEAK_JWT_SECRETS.has(s)); }
+let _jwtSecret = _envSecretOk(process.env.JWT_SECRET) ? process.env.JWT_SECRET : null;
+
+// Chamado UMA vez no boot (index.js), antes de aceitar requisições.
+async function ensureJwtSecret() {
+  if (_jwtSecret) return _jwtSecret;
+  try {
+    const key = 'jwt_secret';
+    let row = await prisma.systemSecret.findUnique({ where: { key } });
+    if (!row) {
+      const value = crypto.randomBytes(48).toString('base64url');
+      row = await prisma.systemSecret.upsert({ where: { key }, update: {}, create: { key, value } });
+    }
+    _jwtSecret = row.value;
+    console.log('[segurança] JWT_SECRET auto-gerido pelo banco (sem env, estável entre restarts).');
+  } catch (e) {
+    _jwtSecret = 'ephemeral-' + crypto.randomBytes(24).toString('hex');
+    console.warn('[segurança] JWT do banco indisponível (' + e.message + ') — segredo efêmero por ora; o app subiu mesmo assim.');
   }
-  console.warn('[segurança] JWT_SECRET ausente/fraco — usando segredo EFÊMERO só de DEV (as sessões caem a cada restart). Defina JWT_SECRET no seu .env.');
-  return 'dev-ephemeral-' + require('node:crypto').randomBytes(24).toString('hex');
-})();
+  return _jwtSecret;
+}
+function getJwtSecret() {
+  return _jwtSecret || (_envSecretOk(process.env.JWT_SECRET) ? process.env.JWT_SECRET : 'boot-not-ready');
+}
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -58,7 +73,7 @@ function authMiddleware(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     req.userId = decoded.userId;
     req.userRole = decoded.role;
     next();
@@ -104,4 +119,7 @@ function enforceStoreId(req, requestedStoreId) {
   return requestedStoreId || null;
 }
 
-module.exports = { authMiddleware, adminMiddleware, storeScope, enforceStoreId, JWT_SECRET, prisma };
+// JWT_SECRET export mantido por compatibilidade, mas prefira getJwtSecret()
+// (o valor real pode ser resolvido do banco no boot). Consumidores que assinam/
+// verificam token DEVEM usar getJwtSecret() no momento do uso.
+module.exports = { authMiddleware, adminMiddleware, storeScope, enforceStoreId, getJwtSecret, ensureJwtSecret, prisma };

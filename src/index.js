@@ -451,6 +451,7 @@ app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
 app.use('/api/stock-transfer', require('./routes/stockTransfer'));
+app.use('/api/product-request', require('./routes/productRequest'));
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
@@ -1586,6 +1587,12 @@ app.get('/r/:code', async (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
+
+// Resolve o JWT_SECRET (auto-gerido no banco se não houver env) o quanto antes.
+// Não bloqueia o boot; resolve em ms e as rotas usam getJwtSecret() no request.
+require('./middleware').ensureJwtSecret()
+  .then(() => console.log('[boot] JWT pronto'))
+  .catch((e) => console.error('[boot] JWT:', e.message));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);

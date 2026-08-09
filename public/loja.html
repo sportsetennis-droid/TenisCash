@@ -357,6 +357,7 @@
     <button class="nav-item" data-page="catalog" onclick="goPage('catalog')">Curadoria</button>
     <button class="nav-item" data-page="inventory" onclick="goPage('inventory')">Estoque</button>
     <button class="nav-item" data-page="transfer" onclick="goPage('transfer')">Transferência</button>
+    <button class="nav-item" data-page="cadastro" onclick="goPage('cadastro')">Cadastrar produto</button>
     <button class="nav-item" data-page="precos" onclick="goPage('precos')">Preços</button>
     <button class="nav-item" onclick="location.href='/etiquetas'">🏷️ Etiquetas</button>
     <button class="nav-item" data-page="crm" onclick="goPage('crm')">CRM</button>
@@ -818,6 +819,44 @@
 
     <h3 class="section-title" style="margin-top:18px;"><span class="section-title-icon">📤</span>Enviadas por esta loja</h3>
     <div id="trfOutgoingList" class="card"><div style="color:var(--text-muted);font-size:14px;text-align:center;padding:16px;">—</div></div>
+  </div>
+
+  <!-- CADASTRAR PRODUTO (produto que não existe / não é achado) -->
+  <div class="page" id="page-cadastro">
+    <h2 class="page-title">Cadastrar produto</h2>
+    <p class="page-subtitle">Produto que não existe ou o sistema não acha? Cadastre aqui. Fica registrado e é resolvido depois.</p>
+
+    <div class="sell-row" style="margin-bottom:14px;">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">🔫</span>Código de barras (se tiver)</h3>
+        <div class="search-bar" style="margin-bottom:0;">
+          <span style="font-size:18px;">🔫</span>
+          <input type="text" id="cadBipeInput" placeholder="Bipe ou digite o código…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();onCadBipe();}">
+        </div>
+        <div id="cadBipeMsg" style="font-size:12px;margin-top:6px;min-height:16px;color:var(--text-muted);"></div>
+        <div style="border-top:1px dashed var(--border);margin:14px 0;"></div>
+        <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Nome do produto</label>
+        <input type="text" id="cadName" maxlength="200" placeholder="Ex.: Tênis Nike Revolution 7 preto" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;box-sizing:border-box;margin-bottom:10px;">
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;"><label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Marca</label>
+            <input type="text" id="cadBrand" maxlength="100" placeholder="Nike…" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;box-sizing:border-box;"></div>
+          <div style="width:110px;"><label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Tamanho</label>
+            <input type="text" id="cadSize" maxlength="30" placeholder="40 / M" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;box-sizing:border-box;"></div>
+          <div style="width:80px;"><label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;">Qtd</label>
+            <input type="number" id="cadQty" value="1" min="1" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;box-sizing:border-box;"></div>
+        </div>
+        <label style="display:block;font-size:13px;font-weight:700;margin:12px 0 6px;">Observação (opcional)</label>
+        <input type="text" id="cadNote" maxlength="400" placeholder="Ex.: chegou na caixa sem etiqueta" style="width:100%;min-height:44px;padding:11px;border:1px solid var(--border);border-radius:8px;font-size:16px;box-sizing:border-box;">
+        <label style="display:block;font-size:13px;font-weight:700;margin:12px 0 6px;">Quem está cadastrando</label>
+        <div id="cadSellerCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;"></div>
+        <button onclick="submitCadastro()" id="cadSubmitBtn" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:12px;background:linear-gradient(135deg,#E5571E,#f08a3c);color:#fff;font-weight:800;font-size:16px;cursor:pointer;">Cadastrar produto</button>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">📋</span>Cadastrados por esta loja</h3>
+        <div id="cadMineList"><div style="color:var(--text-muted);font-size:14px;text-align:center;padding:16px;">—</div></div>
+      </div>
+    </div>
   </div>
 
   <!-- PONTO -->
@@ -1968,6 +2007,115 @@ async function cancelTransferTrf(id) {
   } catch (e) { alert('Erro: ' + (e.message || e)); }
 }
 
+// ===================== CADASTRAR PRODUTO (nao achado) =====================
+let _cadSellers = [];
+let _cadSellerId = '';
+let _cadBarcode = '';
+
+async function initCadastro() {
+  if (!activeStore?.id) { alert('Entre na loja primeiro.'); return; }
+  _cadSellerId = ''; _cadBarcode = '';
+  ['cadBipeInput','cadName','cadBrand','cadSize','cadNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const q = document.getElementById('cadQty'); if (q) q.value = '1';
+  const msg = document.getElementById('cadBipeMsg'); if (msg) msg.textContent = '';
+  await loadCadSellers();
+  loadCadMine();
+  setTimeout(() => document.getElementById('cadName')?.focus(), 100);
+}
+
+async function loadCadSellers() {
+  try { const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id); _cadSellers = d.sellers || []; }
+  catch (e) { _cadSellers = []; }
+  const cards = document.getElementById('cadSellerCards');
+  if (cards) {
+    cards.innerHTML = _cadSellers.length
+      ? _cadSellers.map(s => `<div class="vendor-card" data-cad-seller="${s.id}" onclick="selectCadSeller('${s.id}')" style="cursor:pointer;padding:10px;border:2px solid #eee;border-radius:10px;display:flex;align-items:center;gap:8px;">
+          <div class="avatar ${typeof avatarColor==='function'?avatarColor(s.name):''}">${typeof initials==='function'?initials(s.name):(s.name||'?').slice(0,2)}</div>
+          <div style="font-weight:600;font-size:13px;">${escPreco(s.name)}</div></div>`).join('')
+      : '<p style="grid-column:1/-1;color:var(--text-muted);font-size:13px;">Sem vendedores nesta loja.</p>';
+  }
+  if (me && me.role === 'seller' && _cadSellers.some(s => s.id === me.id)) selectCadSeller(me.id);
+}
+function selectCadSeller(id) {
+  _cadSellerId = id;
+  document.querySelectorAll('#cadSellerCards .vendor-card').forEach(el => {
+    const on = el.dataset.cadSeller === id;
+    el.style.borderColor = on ? 'var(--primary,#E5571E)' : '#eee';
+    el.style.background = on ? '#fff1ea' : '#fff';
+  });
+}
+
+async function onCadBipe() {
+  const inp = document.getElementById('cadBipeInput');
+  const code = (inp.value || '').trim();
+  const msg = document.getElementById('cadBipeMsg');
+  if (!code) return;
+  _cadBarcode = code;
+  msg.style.color = '#6e6e73'; msg.textContent = 'Conferindo ' + code + '…';
+  try {
+    const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
+    if (d.recognized && d.product) {
+      msg.style.color = '#b06b00';
+      msg.innerHTML = '⚠️ Esse código JÁ está cadastrado: <b>' + escPreco(d.product.name || '') + '</b>. Se ainda quiser reportar algo, escreva na observação.';
+      if (!document.getElementById('cadName').value) document.getElementById('cadName').value = d.product.name || '';
+    } else {
+      msg.style.color = '#0a843d';
+      msg.textContent = '✅ Código ' + code + ' guardado. Preencha o nome e cadastre.';
+    }
+  } catch (e) { msg.style.color = '#0a843d'; msg.textContent = '✅ Código ' + code + ' guardado.'; }
+  document.getElementById('cadName')?.focus();
+}
+
+async function submitCadastro() {
+  const name = (document.getElementById('cadName').value || '').trim();
+  if (!_cadBarcode && !name) { alert('Bipe o código OU escreva o nome do produto.'); return; }
+  if (!_cadSellerId) { alert('Escolha QUEM está cadastrando.'); return; }
+  const btn = document.getElementById('cadSubmitBtn');
+  btn.disabled = true; btn.textContent = '⏳ Cadastrando…';
+  try {
+    const body = {
+      storeId: activeStore.id,
+      sellerId: _cadSellerId,
+      barcode: _cadBarcode || undefined,
+      name: name || undefined,
+      brand: (document.getElementById('cadBrand').value || '').trim() || undefined,
+      size: (document.getElementById('cadSize').value || '').trim() || undefined,
+      quantity: Math.max(1, Number(document.getElementById('cadQty').value) || 1),
+      note: (document.getElementById('cadNote').value || '').trim() || undefined,
+    };
+    const r = await api('/api/product-request', { method: 'POST', body: JSON.stringify(body) });
+    if (r.ok) {
+      alert('✅ Produto cadastrado (#' + r.request.code + ')! Vai ser conferido e resolvido.');
+      _cadBarcode = '';
+      ['cadBipeInput','cadName','cadBrand','cadSize','cadNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      document.getElementById('cadQty').value = '1';
+      document.getElementById('cadBipeMsg').textContent = '';
+      loadCadMine();
+    } else { alert('Não cadastrou: ' + (r.error || 'erro')); }
+  } catch (e) { alert('Erro: ' + (e.message || e)); }
+  btn.disabled = false; btn.textContent = 'Cadastrar produto';
+}
+
+async function loadCadMine() {
+  const box = document.getElementById('cadMineList');
+  try {
+    const d = await api('/api/product-request/mine?storeId=' + activeStore.id);
+    const rows = d.requests || [];
+    if (!rows.length) { box.innerHTML = '<div style="color:var(--text-muted);font-size:14px;text-align:center;padding:16px;">Nenhum cadastro ainda.</div>'; return; }
+    box.innerHTML = rows.map(r => {
+      const badge = r.statusLabel === 'em análise' ? '<span style="color:#b06b00;font-weight:700;">em análise</span>'
+        : r.statusLabel === 'resolvido' ? '<span style="color:#0a843d;font-weight:700;">resolvido</span>'
+        : '<span style="color:#8e8e93;font-weight:700;">encerrado</span>';
+      return `<div style="padding:11px 0;border-bottom:1px solid #f2f2f7;">
+        <div style="display:flex;justify-content:space-between;"><b>#${r.code}</b> ${badge}</div>
+        <div style="font-size:13px;font-weight:600;">${escPreco(r.name || r.barcode || 'produto')}</div>
+        <div style="font-size:11px;color:#6e6e73;">${[r.brand, r.size ? 'tam ' + r.size : '', r.quantity ? r.quantity + ' un' : '', r.barcode ? 'cod ' + r.barcode : ''].filter(Boolean).map(escPreco).join(' · ')}</div>
+        ${r.createdByName ? '<div style="font-size:11px;color:#8e8e93;">por ' + escPreco(r.createdByName) + '</div>' : ''}
+      </div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = '<div style="color:#d70015;font-size:13px;padding:12px;">Erro: ' + escPreco(e.message || '') + '</div>'; }
+}
+
 function goPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1992,6 +2140,7 @@ function goPage(pageId) {
   }
   if (pageId === 'requests') loadSellerRequests();
   if (pageId === 'transfer') initTransfer();
+  if (pageId === 'cadastro') initCadastro();
   if (pageId === 'clockin') loadClockin();
   if (pageId === 'ranking') initRanking();
   if (pageId === 'messages') loadMessages();

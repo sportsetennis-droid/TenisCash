@@ -1,7 +1,7 @@
 const express = require('express');
 const QRCode = require('qrcode');
 const jwt = require('jsonwebtoken');
-const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
+const { authMiddleware, getJwtSecret, prisma } = require('../middleware');
 
 const router = express.Router();
 
@@ -20,7 +20,7 @@ router.get('/generate', authMiddleware, async (req, res) => {
     // Gera token temporário pro QR (expira em 5 min)
     const qrToken = jwt.sign(
       { userId: user.id, purpose: 'checkout', balance: user.balance },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '5m' }
     );
 
@@ -59,7 +59,7 @@ router.post('/validate', authMiddleware, async (req, res) => {
     }
 
     const token = qrCode.replace('TC:', '');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
 
     if (decoded.purpose !== 'checkout') {
       return res.status(400).json({ error: 'QR Code não é de checkout' });

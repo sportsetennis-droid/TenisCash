@@ -173,6 +173,10 @@ model User {
   // Transferência de produto entre lojas
   transfersCreated  StockTransfer[] @relation("transfersCreated")
   transfersReceived StockTransfer[] @relation("transfersReceived")
+
+  // Cadastro de produto pela loja
+  productRegCreated  ProductRegistrationRequest[] @relation("regReqCreatedBy")
+  productRegResolved ProductRegistrationRequest[] @relation("regReqResolvedBy")
 }
 
 // Passkeys/biometria do aparelho (FIDO2). O sistema NÃO guarda biometria — só a
@@ -341,6 +345,9 @@ model Store {
   // Transferência de produto entre lojas
   transfersFrom StockTransfer[] @relation("transfersFrom")
   transfersTo   StockTransfer[] @relation("transfersTo")
+
+  // Cadastro de produto pela loja
+  productRegRequests ProductRegistrationRequest[] @relation("regReqStore")
 }
 
 // ============================================================
@@ -751,6 +758,50 @@ model StockTransferItem {
   createdAt     DateTime      @default(now())
 
   @@index([transferId])
+}
+
+// ============================================================
+// CADASTRO DE PRODUTO PELA LOJA (produto que não existe / não é achado)
+// ============================================================
+// O vendedor registra um produto que o sistema não achou (bipe sem cadastro,
+// ou não aparece na busca). Fica gravado pro DONO revisar e resolver depois
+// (fim do dia). O vendedor SÓ cadastra — não vê o que será feito.
+model ProductRegistrationRequest {
+  id          String  @id @default(uuid())
+  code        Int     @unique // número sequencial legível (calculado na criação)
+  storeId     String
+  store       Store   @relation("regReqStore", fields: [storeId], references: [id])
+  createdById String
+  createdBy   User    @relation("regReqCreatedBy", fields: [createdById], references: [id])
+
+  barcode  String?
+  name     String?
+  brand    String?
+  size     String?
+  quantity Int     @default(1)
+  note     String?
+  photoUrl String? // opcional (base64/URL) se a loja anexar foto
+
+  status       String  @default("pending") // pending | resolved | dismissed
+  resolvedById String?
+  resolvedBy   User?   @relation("regReqResolvedBy", fields: [resolvedById], references: [id])
+  resolvedNote String? // interno — NUNCA exposto ao vendedor
+  productId    String? // se virou/casou com um Product na resolução
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([storeId, status])
+  @@index([status, createdAt])
+}
+
+// Segredos auto-geridos pelo app (ex.: JWT_SECRET) — gerado e persistido no
+// boot quando não há env, pra não depender de configurar variável no Railway.
+model SystemSecret {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ============================================================
