@@ -18,6 +18,7 @@ const QR_OFFER_DISCOUNT_PCT = 30;
 const QR_DISCOUNT_PROMOTION_NAME = 'TenisCash QR exclusivo 30%';
 const handleCache = new Map();
 const remoteImageCache = new Map();
+const remoteVariantsCache = new Map();
 const REMOTE_PUBLISHED_CACHE_MS = 10 * 60 * 1000;
 let remotePublishedCache = { expiresAt: 0, ids: new Set() };
 // Saída para gráfica: H recupera até ~30% de dano e SVG não perde resolução.
@@ -82,6 +83,18 @@ function quickBuyMarkup(product) {
 
 function offerProductCard(product) {
   return `<article class="product"><img src="${escapeHtml(product.imageUrl || '')}" alt="${escapeHtml(product.name)}"><div><small>${escapeHtml(product.brand || '')}</small><h2>${escapeHtml(product.name)}</h2><div class="pricing"><span class="original">De R$ ${brl(product.originalPrice)}</span><strong class="exclusive">Por R$ ${brl(product.exclusivePrice)}</strong><span class="saving">30% OFF exclusivo desta placa</span></div>${quickBuyMarkup(product)}</div></article>`;
+}
+
+function remoteProductVariants(product) {
+  return (Array.isArray(product?.variants) ? product.variants : [])
+    .filter((variant) => variant?.id != null && (variant.stock == null || Number(variant.stock) > 0))
+    .map((variant) => {
+      const values = Array.isArray(variant.values) ? variant.values.map(String).filter(Boolean) : [];
+      return {
+        size: values.join(' / ') || String(variant.sku || 'Unico'),
+        variantId: String(variant.id),
+      };
+    });
 }
 
 function promotionRows(payload) {
@@ -295,7 +308,7 @@ async function productViews(products, offer) {
   const missingRemoteIds = Array.from(new Set(
     mappings
       .map((mapping) => String(mapping.nuvemshopProductId))
-      .filter((id) => id && (!handleCache.has(id) || !remoteImageCache.has(id))),
+      .filter((id) => id && (!handleCache.has(id) || !remoteImageCache.has(id) || !remoteVariantsCache.has(id))),
   ));
   if (missingRemoteIds.length) {
     try {
@@ -304,13 +317,14 @@ async function productViews(products, offer) {
         const remote = await ns.nuvemshopApi(
           conn,
           'GET',
-          `/products?ids=${missingRemoteIds.map(encodeURIComponent).join(',')}&published=true&fields=id,handle,images,published&per_page=30&page=1`,
+          `/products?ids=${missingRemoteIds.map(encodeURIComponent).join(',')}&published=true&fields=id,handle,images,variants,published&per_page=30&page=1`,
         );
         for (const item of Array.isArray(remote) ? remote : []) {
           const handle = typeof item.handle === 'object' ? (item.handle.pt || Object.values(item.handle)[0]) : item.handle;
           if (handle) handleCache.set(String(item.id), String(handle));
           const image = remoteProductImage(item);
           if (image) remoteImageCache.set(String(item.id), image);
+          remoteVariantsCache.set(String(item.id), remoteProductVariants(item));
         }
       }
     } catch (error) {
@@ -333,10 +347,11 @@ async function productViews(products, offer) {
     }
     if (offer?.endsAt) params.set('qr_expires', new Date(offer.endsAt).toISOString());
     const query = params.toString();
-    const variants = (product.sizes || []).map((size) => ({
+    const mappedVariants = (product.sizes || []).map((size) => ({
       size: String(size.size),
       variantId: byLocalSizeId.get(String(size.id)),
     })).filter((variant) => variant.variantId);
+    const variants = mappedVariants.length ? mappedVariants : (remoteVariantsCache.get(remoteId) || []);
     const trackedUrl = query ? `${direct}${direct.includes('?') ? '&' : '?'}${query}` : direct;
     const quickBuyAction = query ? `${STORE_BASE}/comprar/?${query}` : `${STORE_BASE}/comprar/`;
     return {
@@ -1461,6 +1476,7 @@ module.exports = {
     qrMarkerFromCart,
     buildQrDiscountCommands,
     quickBuyMarkup,
+    remoteProductVariants,
     normalizeProductIds,
     offerState,
     categoryMembershipDiff,

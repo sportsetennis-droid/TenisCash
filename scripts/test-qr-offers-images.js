@@ -71,6 +71,14 @@ function run() {
   assert.match(quickBuy, /name="variant_id"/);
   assert.match(quickBuy, /Comprar agora com 30% OFF/);
   assert.doesNotMatch(quickBuy, /coupon/i);
+  assert.deepEqual(qr.remoteProductVariants({ variants: [
+    { id: 10, values: ['39'], stock: 2 },
+    { id: 11, values: ['40'], stock: 0 },
+    { id: 12, values: [], sku: 'UNICO', stock: null },
+  ] }), [
+    { size: '39', variantId: '10' },
+    { size: 'UNICO', variantId: '12' },
+  ]);
 
   const now = new Date('2026-08-08T12:00:00.000Z');
   assert.equal(qr.offerState({
