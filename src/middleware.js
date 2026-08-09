@@ -19,7 +19,44 @@ prisma.$use(async (params, next) => {
   return next(params);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-secret-change-in-production';
+// JWT_SECRET assina TODOS os tokens de login (inclusive admin). Um segredo
+// conhecido = qualquer um forja um token de admin e assume o sistema. Como este
+// repo é PÚBLICO, o antigo fallback hardcoded era o mesmo que não ter segredo.
+//
+// SOLUÇÃO ZERO-TOQUE (não depende de setar env no Railway, NUNCA trava o boot):
+//   1. Se JWT_SECRET (env) existe e é forte → usa (melhor prática).
+//   2. Senão → gera um aleatório forte e PERSISTE no banco (tabela SystemSecret).
+//      Fica estável entre restarts (sessões não caem), fora do repo, e ninguém
+//      precisa mexer em nada. Resolvido no boot por ensureJwtSecret().
+//   3. Se o banco falhar → efêmero por processo (avisa) — o app SEMPRE sobe.
+const WEAK_JWT_SECRETS = new Set([
+  'teniscash-secret-change-in-production',
+  'teniscash-prod-secret-trocar-agora',
+]);
+function _envSecretOk(s) { return !!(s && s.length >= 16 && !WEAK_JWT_SECRETS.has(s)); }
+let _jwtSecret = _envSecretOk(process.env.JWT_SECRET) ? process.env.JWT_SECRET : null;
+
+// Chamado UMA vez no boot (index.js), antes de aceitar requisições.
+async function ensureJwtSecret() {
+  if (_jwtSecret) return _jwtSecret;
+  try {
+    const key = 'jwt_secret';
+    let row = await prisma.systemSecret.findUnique({ where: { key } });
+    if (!row) {
+      const value = crypto.randomBytes(48).toString('base64url');
+      row = await prisma.systemSecret.upsert({ where: { key }, update: {}, create: { key, value } });
+    }
+    _jwtSecret = row.value;
+    console.log('[segurança] JWT_SECRET auto-gerido pelo banco (sem env, estável entre restarts).');
+  } catch (e) {
+    _jwtSecret = 'ephemeral-' + crypto.randomBytes(24).toString('hex');
+    console.warn('[segurança] JWT do banco indisponível (' + e.message + ') — segredo efêmero por ora; o app subiu mesmo assim.');
+  }
+  return _jwtSecret;
+}
+function getJwtSecret() {
+  return _jwtSecret || (_envSecretOk(process.env.JWT_SECRET) ? process.env.JWT_SECRET : 'boot-not-ready');
+}
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -36,7 +73,7 @@ function authMiddleware(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     req.userId = decoded.userId;
     req.userRole = decoded.role;
     next();
@@ -82,4 +119,7 @@ function enforceStoreId(req, requestedStoreId) {
   return requestedStoreId || null;
 }
 
-module.exports = { authMiddleware, adminMiddleware, storeScope, enforceStoreId, JWT_SECRET, prisma };
+// JWT_SECRET export mantido por compatibilidade, mas prefira getJwtSecret()
+// (o valor real pode ser resolvido do banco no boot). Consumidores que assinam/
+// verificam token DEVEM usar getJwtSecret() no momento do uso.
+module.exports = { authMiddleware, adminMiddleware, storeScope, enforceStoreId, getJwtSecret, ensureJwtSecret, prisma };

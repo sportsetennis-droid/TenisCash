@@ -53,7 +53,8 @@ router.get('/plans', async (req, res) => {
     const status = req.query.status || null;
     let where = `pr.active=true AND pr."aiContext"->'catalogPlan' IS NOT NULL`;
     if (onlyReady) where += ` AND pr."aiContext"->'catalogPlan'->>'ready'='true'`;
-    if (status) where += ` AND pr."aiContext"->'catalogPlan'->>'status'='${String(status).replace(/'/g, '')}'`;
+    // status entra em SQL cru — allowlist estrita (só letras/_/-), rejeita injeção
+    if (status && /^[a-zA-Z_-]{1,30}$/.test(String(status))) where += ` AND pr."aiContext"->'catalogPlan'->>'status'='${status}'`;
     const rows = await prisma.$queryRawUnsafe(`
       SELECT pr.id, pr.name, pr.brand, pr.price,
         (pr."aiContext"->'catalogPlan'->>'score')::int score,

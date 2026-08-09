@@ -3,7 +3,7 @@
 // Senha continua como fallback (este módulo só ADICIONA o caminho biométrico).
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
+const { authMiddleware, getJwtSecret, prisma } = require('../middleware');
 const {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -26,7 +26,7 @@ const includeRich = {
   partner: { select: { id: true, couponCode: true, discountPct: true, commissionPct: true, tier: true, status: true, type: true, totalSales: true, totalCommission: true } },
 };
 function loginPayload(user) {
-  const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+  const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), { expiresIn: '30d' });
   return { token, user: { id: user.id, name: user.name, phone: user.phone, storeId: user.storeId, store: user.store || null, balance: user.balance, partnerBalance: user.partnerBalance || 0, role: user.role, profileComplete: user.profileComplete, createdAt: user.createdAt, partner: user.partner || null } };
 }
 

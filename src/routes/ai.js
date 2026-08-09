@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
-const { prisma, JWT_SECRET } = require('../middleware');
+const { prisma, getJwtSecret } = require('../middleware');
 const { searchProductsForAI, getProductBySkuForAI, listCatalogSummary } = require('../services/catalogSearch');
 
 const router = express.Router();
@@ -79,7 +79,7 @@ function optionalAuth(req, res, next) {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     req.userId = decoded.userId;
     req.userRole = decoded.role;
   } catch {
