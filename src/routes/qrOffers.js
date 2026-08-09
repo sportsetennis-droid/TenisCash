@@ -326,7 +326,7 @@ async function findOfferPages(offer, conn) {
   const handle = offerCategoryHandle(plateCode(offer.board.number));
   const matches = [];
   for (let page = 1; page <= 50; page++) {
-    const payload = await ns.nuvemshopApi(conn, 'GET', `/pages?page=${page}&per_page=100`);
+    const payload = await ns.nuvemshopVersionedApi(conn, 'GET', `/pages?page=${page}&per_page=100`);
     const rows = pagesFromResponse(payload);
     for (const item of rows) {
       if (localizedValue(item.handle) === handle) matches.push(item);
@@ -340,7 +340,7 @@ async function findOfferPages(offer, conn) {
 async function deleteOfferPages(offer, conn) {
   const pages = await findOfferPages(offer, conn);
   for (const page of pages) {
-    await ns.nuvemshopApi(conn, 'DELETE', `/pages/${page.id}`);
+    await ns.nuvemshopVersionedApi(conn, 'DELETE', `/pages/${page.id}`);
   }
   return { deleted: pages.length, ids: pages.map((page) => page.id) };
 }

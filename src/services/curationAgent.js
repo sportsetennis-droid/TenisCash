@@ -207,7 +207,7 @@ async function curateProduct(productId, opts = {}) {
             reason: !visionConfigured()
               ? 'validação visual indisponível; nenhuma imagem foi gravada'
               : visionAllFailed
-                ? 'a validação visual falhou; nenhuma imagem foi gravada'
+                ? `a validação visual falhou; ${rankedScored[0]?._reason || 'nenhuma imagem foi gravada'}`
                 : chosen && chosen._isCorrectProduct !== true
                   ? 'a melhor candidata não foi confirmada como o produto correto'
                   : `melhor score (${chosen?._score || 0}) abaixo do mínimo (${minScore})`,
