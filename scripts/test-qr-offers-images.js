@@ -32,6 +32,16 @@ function run() {
   assert.equal(ids[0], 'a');
   assert.equal(ids.length, 24);
 
+  const usedIds = new Set(['used']);
+  assert.deepEqual(
+    qr.allocateExclusiveProductIds(['used', 'a', 'a'], ['b', 'used', 'c'], usedIds, 3),
+    ['a', 'b', 'c'],
+  );
+  assert.equal(qr.physicalStockUnits({ sizes: [
+    { storeStocks: [{ stock: 2 }, { stock: -3 }] },
+    { storeStocks: [{ stock: '4' }, { stock: null }] },
+  ] }), 6);
+
   assert.deepEqual(
     qr.categoryMembershipDiff(['1', '2', '4'], ['2', '3']),
     { add: ['3'], remove: ['1', '4'] },

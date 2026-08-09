@@ -244,6 +244,13 @@ async function publishOffer(offer) {
       : await ns.createCoupon(conn, couponOpts);
     couponId = coupon?.id != null ? String(coupon.id) : couponId;
     if (couponId == null) throw new Error('A Nuvemshop não confirmou o ID do cupom');
+    // Persist the prepared remote identity before the activation steps. If a
+    // later API call fails, the next reconciliation updates the same coupon
+    // instead of creating a duplicate with the same code.
+    await prisma.qROffer.update({
+      where: { id: offer.id },
+      data: { couponCode: code, nsCouponId: couponId },
+    });
     await deactivateBoardOffers(offer.boardId, offer.id, conn);
     if (state === 'ACTIVE') {
       await ns.setCouponValid(conn, couponId, true);
@@ -620,6 +627,181 @@ async function reconcileQROffers(now = new Date()) {
   return result;
 }
 
+const AUTO_RESTORE_MARKER = '[qr-auto-restore:v1]';
+
+function physicalStockUnits(product) {
+  return (product.sizes || []).reduce(
+    (total, size) => total + (size.storeStocks || []).reduce(
+      (sum, stock) => sum + Math.max(0, Number(stock.stock) || 0),
+      0,
+    ),
+    0,
+  );
+}
+
+function allocateExclusiveProductIds(preferredIds, poolIds, usedIds, limit = 24) {
+  const selected = [];
+  for (const id of [...(preferredIds || []), ...(poolIds || [])]) {
+    const normalized = String(id || '');
+    if (!normalized || usedIds.has(normalized) || selected.includes(normalized)) continue;
+    selected.push(normalized);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
+async function eligibleOfferProductPool() {
+  const products = await prisma.product.findMany({
+    where: {
+      active: true,
+      price: { gt: 0 },
+      AND: [{ imageUrl: { not: null } }, { imageUrl: { not: '' } }],
+      sizes: { some: { storeStocks: { some: { stock: { gt: 0 } } } } },
+    },
+    select: {
+      id: true,
+      updatedAt: true,
+      sizes: { select: { storeStocks: { select: { stock: true } } } },
+    },
+  });
+  if (!products.length) return [];
+  const mappings = await prisma.nuvemshopProductMapping.findMany({
+    where: { localProductId: { in: products.map((product) => product.id) } },
+    select: { localProductId: true },
+  });
+  const published = new Set(mappings.map((mapping) => mapping.localProductId));
+  return products
+    .filter((product) => published.has(product.id))
+    .sort((a, b) => physicalStockUnits(b) - physicalStockUnits(a)
+      || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+async function restoreExclusiveOffers(now = new Date()) {
+  const result = {
+    checked: PLATE_COUNT,
+    eligibleProducts: 0,
+    published: 0,
+    retried: 0,
+    skippedActive: 0,
+    skippedCancelled: 0,
+    skippedDraft: 0,
+    errors: [],
+  };
+  if (process.env.DISABLE_QR_AUTO_RESTORE === '1') return { ...result, disabled: true };
+
+  const boards = await ensureBoards();
+  const states = [];
+  for (const board of boards) {
+    const [current, latest] = await Promise.all([
+      prisma.qROffer.findFirst({
+        where: {
+          boardId: board.id,
+          status: { in: ['ACTIVE', 'SCHEDULED'] },
+          endsAt: { gt: now },
+        },
+        orderBy: { startsAt: 'desc' },
+        include: { board: true, products: { include: { product: true } } },
+      }),
+      prisma.qROffer.findFirst({
+        where: { boardId: board.id },
+        orderBy: { createdAt: 'desc' },
+        include: { board: true, products: { orderBy: { position: 'asc' }, include: { product: true } } },
+      }),
+    ]);
+    states.push({ board, current, latest });
+  }
+
+  const usedIds = new Set();
+  for (const state of states) {
+    for (const row of state.current?.products || []) usedIds.add(String(row.productId));
+  }
+  const pool = await eligibleOfferProductPool();
+  result.eligibleProducts = pool.length;
+  const poolIds = pool.map((product) => product.id);
+  const eligibleIds = new Set(poolIds);
+
+  for (const { board, current, latest } of states) {
+    if (current) {
+      result.skippedActive++;
+      continue;
+    }
+    if (!latest) {
+      result.errors.push({ plate: board.number, error: 'placa sem oferta historica para restaurar' });
+      continue;
+    }
+    if (latest.status === 'CANCELLED') {
+      // An explicit cancellation is a business decision and must never be
+      // undone by the automatic continuity repair.
+      result.skippedCancelled++;
+      continue;
+    }
+    if (latest.status === 'DRAFT' && !String(latest.notes || '').includes(AUTO_RESTORE_MARKER)) {
+      result.skippedDraft++;
+      continue;
+    }
+
+    try {
+      if (latest.status === 'DRAFT' && String(latest.notes || '').includes(AUTO_RESTORE_MARKER)) {
+        const draftIds = (latest.products || []).map((row) => String(row.productId));
+        const reusable = offerState(latest, now) !== 'EXPIRED'
+          && draftIds.length === 24
+          && draftIds.every((id) => eligibleIds.has(id) && !usedIds.has(id));
+        if (reusable) {
+          await selectedProducts(draftIds);
+          await publishOffer(latest);
+          for (const productId of draftIds) usedIds.add(productId);
+          result.retried++;
+          result.published++;
+          continue;
+        }
+        // A partially published draft can outlive its stock or its 24-hour
+        // window. Retire only this internal recovery draft and build a fresh
+        // one from the current eligible catalog below.
+        await prisma.qROffer.update({ where: { id: latest.id }, data: { status: 'EXPIRED' } });
+      }
+
+      const preferred = (latest.products || [])
+        .map((row) => String(row.productId))
+        .filter((id) => eligibleIds.has(id));
+      const productIds = allocateExclusiveProductIds(preferred, poolIds, usedIds, 24);
+      if (productIds.length < 24) {
+        throw new Error(`somente ${productIds.length} produtos exclusivos elegiveis; minimo 24`);
+      }
+      await selectedProducts(productIds);
+
+      const durationHours = Math.min(Math.max(Number(latest.durationHours) || DEFAULT_DURATION_HOURS, 1), 24);
+      const discountPct = Math.min(Math.max(Number(latest.discountPct) || 0, 0), 80);
+      const startsAt = new Date(now);
+      const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
+      const title = `Oferta exclusiva da Placa ${String(board.number).padStart(2, '0')} — ${discountPct}% OFF`;
+      const notes = `${AUTO_RESTORE_MARKER} source=${latest.id}`;
+      const offer = await prisma.qROffer.create({
+        data: {
+          boardId: board.id,
+          title,
+          status: 'DRAFT',
+          startsAt,
+          endsAt,
+          durationHours,
+          discountPct,
+          freeExchange: latest.freeExchange !== false,
+          notes,
+          products: {
+            create: productIds.map((productId, position) => ({ productId, position })),
+          },
+        },
+        include: { board: true, products: { orderBy: { position: 'asc' }, include: { product: true } } },
+      });
+      await publishOffer(offer);
+      for (const productId of productIds) usedIds.add(productId);
+      result.published++;
+    } catch (error) {
+      result.errors.push({ plate: board.number, error: error.message });
+    }
+  }
+  return result;
+}
+
 // ---------------- ADMIN ----------------
 adminRouter.use(authMiddleware, adminMiddleware);
 
@@ -845,5 +1027,15 @@ module.exports = {
   publicRouter,
   ensureBoards,
   reconcileQROffers,
-  _test: { plateNumber, plateCode, normalizeProductIds, offerState, categoryMembershipDiff, pagesFromResponse },
+  restoreExclusiveOffers,
+  _test: {
+    plateNumber,
+    plateCode,
+    normalizeProductIds,
+    offerState,
+    categoryMembershipDiff,
+    pagesFromResponse,
+    physicalStockUnits,
+    allocateExclusiveProductIds,
+  },
 };

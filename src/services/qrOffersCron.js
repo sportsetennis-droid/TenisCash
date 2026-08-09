@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { reconcileQROffers } = require('../routes/qrOffers');
+const { reconcileQROffers, restoreExclusiveOffers } = require('../routes/qrOffers');
 
 let running = false;
 const state = {
@@ -18,10 +18,13 @@ async function tick() {
   state.lastError = null;
   try {
     const result = await reconcileQROffers();
+    result.restoration = await restoreExclusiveOffers();
     state.lastResult = result;
     if (result.activated || result.scheduled || result.expired
       || result.staleCategoriesDeleted || result.staleCouponsDisabled
       || result.stalePagesDeleted
+      || result.restoration.published || result.restoration.retried
+      || result.restoration.errors.length
       || result.errors.length) {
       console.log('[qrOffersCron]', JSON.stringify(result));
     }
