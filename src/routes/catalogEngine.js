@@ -4,13 +4,14 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const engine = require('../services/catalogEngine');
+const { opsKeyOk } = require('../opsGuard');
 
 const router = express.Router();
 
 // --- Disparo GUARDADO (fora de /api/admin) — só pra testar/rodar por curl/cron externo.
 const CATENGINE_GUARD = 'cateng_4b1f9a2e7c';
 async function catEngineRunHandler(req, res) {
-  if (req.query.g !== CATENGINE_GUARD) return res.status(404).json({ error: 'not found' });
+  if (!opsKeyOk(req, CATENGINE_GUARD)) return res.status(404).json({ error: 'not found' });
   try {
     if (!engine) return res.status(500).json({ error: 'engine off' });
     const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 6));

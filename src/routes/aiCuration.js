@@ -25,6 +25,7 @@ function validatedMinScore(raw) {
 // re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
 // Fora de /api/admin (auth blanket); protegido por ?g=. Registrado em index.js.
 const PX2026COL_GUARD = 'px2026col_7d2b9e4a1f';
+const { opsKeyOk } = require('../opsGuard');
 const COLOR_DICT = [
   [/\b(pret[oa]|negr[oa]|black)\b/i, 'Preto'],
   [/\b(branc[oa]|blanc[oa]|white)\b/i, 'Branco'],
@@ -55,7 +56,7 @@ function refFromProduct(name, ctx) {
   return m ? m[1] : null;
 }
 async function pull2026ColHandler(req, res) {
-  if (req.query.g !== PX2026COL_GUARD) return res.status(404).json({ error: 'not found' });
+  if (!opsKeyOk(req, PX2026COL_GUARD)) return res.status(404).json({ error: 'not found' });
   try {
     if (!serperImg.isConfigured() || !visionConfigured() || !serperWeb.isConfigured()) {
       return res.json({ ready: false, serperImg: serperImg.isConfigured(), serperWeb: serperWeb.isConfigured(), vision: visionConfigured() });
