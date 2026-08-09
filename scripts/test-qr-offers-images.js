@@ -71,6 +71,12 @@ function run() {
     categories: [123],
   });
 
+  assert.deepEqual(buildCouponPayload({
+    code: 'QR02PRODUCTS',
+    discountPct: 20,
+    products: ['10', 10, 11, 0, 'invalid'],
+  }).products, [10, 11]);
+
   assert.deepEqual(usableImageUrls({ images: [
     { src: 'https://cdn.example/a.jpg' },
     { src: 'https://cdn.example/a.jpg' },
