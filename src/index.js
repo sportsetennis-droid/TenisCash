@@ -3,7 +3,6 @@ const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { opsKeyOk } = require('./opsGuard');
 
 const authRoutes = require('./routes/auth');
 const webauthnRoutes = require('./routes/webauthn');
@@ -188,7 +187,7 @@ app.post('/api/_catengine', catalogEngineRoutes.catEngineRunHandler); // motor d
 // Leitura PÚBLICA (read-only, sem login) da pauta do loop — pro dono ver no /loop.html.
 // Token próprio 'stloop2026' (≠ reinado2026) — NÃO destrava nada que gera custo.
 app.get('/api/_loopview', async (req, res) => {
-  if (!opsKeyOk(req, 'stloop2026')) return res.status(403).json({ error: 'forbidden' });
+  if (req.query.g !== 'stloop2026') return res.status(403).json({ error: 'forbidden' });
   try {
     const loop = require('./services/marketingLoop');
     const state = await loop.getLoopState();
@@ -208,7 +207,7 @@ app.get('/api/_loopview', async (req, res) => {
 // TEMPORÁRIO (remover após uso): diagnóstico "por que o cupom não sai" — READ-ONLY,
 // roda NO SERVIDOR (tem banco + enxerga os agentes das lojas). O dono abre no navegador.
 app.get('/api/_fiscaldiag', async (req, res) => {
-  if (!opsKeyOk(req, 'stxdiag2026')) return res.status(403).json({ error: 'forbidden' });
+  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
   try {
     const { prisma } = require('./middleware');
     const { buildFiscalDiagnoseReport } = require('./services/fiscalDiagnose');
@@ -222,7 +221,7 @@ app.get('/api/_fiscaldiag', async (req, res) => {
 // fiscais se auto-atualizarem AGORA (POST /selfupdate com o token do banco).
 // Usado pra subir o agente v2.4-certinfo sem ninguém ir nas lojas.
 app.post('/api/_agentpush', async (req, res) => {
-  if (!opsKeyOk(req, 'stxdiag2026')) return res.status(403).json({ error: 'forbidden' });
+  if (req.query.g !== 'stxdiag2026') return res.status(403).json({ error: 'forbidden' });
   try {
     const { prisma } = require('./middleware');
     const stores = await prisma.store.findMany({
@@ -247,7 +246,7 @@ app.post('/api/_agentpush', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): roda o cérebro do loop de marketing em prod + retorna resumo. Guard ?g=.
 app.post('/api/_loopbrain', async (req, res) => {
-  if (!opsKeyOk(req, 'reinado2026')) return res.status(403).json({ error: 'forbidden' });
+  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
   try {
     const loop = require('./services/marketingLoop');
     const slate = await loop.runBrain({ ctx: req.query.ctx || undefined });
@@ -258,7 +257,7 @@ app.post('/api/_loopbrain', async (req, res) => {
 });
 // TEMPORÁRIO (remover após uso): gera 1 foto editorial premium server-side (Railway tem FAL_KEY). Guard ?g=.
 app.post('/api/_falgen', async (req, res) => {
-  if (!opsKeyOk(req, 'reinado2026')) return res.status(403).json({ error: 'forbidden' });
+  if (req.query.g !== 'reinado2026') return res.status(403).json({ error: 'forbidden' });
   const keys = { falKey: !!process.env.FAL_KEY, openaiKey: !!process.env.OPENAI_API_KEY };
   try {
     const { prisma } = require('./middleware');
@@ -451,8 +450,6 @@ app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
-app.use('/api/stock-transfer', require('./routes/stockTransfer'));
-app.use('/api/product-request', require('./routes/productRequest'));
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
@@ -1594,12 +1591,6 @@ app.get('/r/:code', async (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
-
-// Resolve o JWT_SECRET (auto-gerido no banco se não houver env) o quanto antes.
-// Não bloqueia o boot; resolve em ms e as rotas usam getJwtSecret() no request.
-require('./middleware').ensureJwtSecret()
-  .then(() => console.log('[boot] JWT pronto'))
-  .catch((e) => console.error('[boot] JWT:', e.message));
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`TenisCash API rodando na porta ${PORT}`);

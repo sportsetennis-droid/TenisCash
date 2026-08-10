@@ -4,14 +4,13 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const engine = require('../services/catalogEngine');
-const { opsKeyOk } = require('../opsGuard');
 
 const router = express.Router();
 
 // --- Disparo GUARDADO (fora de /api/admin) — só pra testar/rodar por curl/cron externo.
 const CATENGINE_GUARD = 'cateng_4b1f9a2e7c';
 async function catEngineRunHandler(req, res) {
-  if (!opsKeyOk(req, CATENGINE_GUARD)) return res.status(404).json({ error: 'not found' });
+  if (req.query.g !== CATENGINE_GUARD) return res.status(404).json({ error: 'not found' });
   try {
     if (!engine) return res.status(500).json({ error: 'engine off' });
     const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 6));
@@ -53,8 +52,7 @@ router.get('/plans', async (req, res) => {
     const status = req.query.status || null;
     let where = `pr.active=true AND pr."aiContext"->'catalogPlan' IS NOT NULL`;
     if (onlyReady) where += ` AND pr."aiContext"->'catalogPlan'->>'ready'='true'`;
-    // status entra em SQL cru — allowlist estrita (só letras/_/-), rejeita injeção
-    if (status && /^[a-zA-Z_-]{1,30}$/.test(String(status))) where += ` AND pr."aiContext"->'catalogPlan'->>'status'='${status}'`;
+    if (status) where += ` AND pr."aiContext"->'catalogPlan'->>'status'='${String(status).replace(/'/g, '')}'`;
     const rows = await prisma.$queryRawUnsafe(`
       SELECT pr.id, pr.name, pr.brand, pr.price,
         (pr."aiContext"->'catalogPlan'->>'score')::int score,

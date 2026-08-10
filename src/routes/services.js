@@ -18,7 +18,7 @@
 
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { prisma, authMiddleware, adminMiddleware, getJwtSecret } = require('../middleware');
+const { prisma, authMiddleware, adminMiddleware, JWT_SECRET } = require('../middleware');
 const { generatePublicToken, sanitize } = require('../services/pix');
 
 const router = express.Router();
@@ -47,7 +47,7 @@ function optionalAuth(req, _res, next) {
   else if (req.query && req.query.token) token = String(req.query.token);
   if (token) {
     try {
-      const d = jwt.verify(token, getJwtSecret());
+      const d = jwt.verify(token, JWT_SECRET);
       req.userId = d.userId;
       req.userRole = d.role;
     } catch (_) {

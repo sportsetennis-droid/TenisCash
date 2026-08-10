@@ -25,7 +25,6 @@ function validatedMinScore(raw) {
 // re-puxa a imagem COM cor + Vision exigindo score>=8 (rejeita cor errada).
 // Fora de /api/admin (auth blanket); protegido por ?g=. Registrado em index.js.
 const PX2026COL_GUARD = 'px2026col_7d2b9e4a1f';
-const { opsKeyOk } = require('../opsGuard');
 const COLOR_DICT = [
   [/\b(pret[oa]|negr[oa]|black)\b/i, 'Preto'],
   [/\b(branc[oa]|blanc[oa]|white)\b/i, 'Branco'],
@@ -56,16 +55,15 @@ function refFromProduct(name, ctx) {
   return m ? m[1] : null;
 }
 async function pull2026ColHandler(req, res) {
-  if (!opsKeyOk(req, PX2026COL_GUARD)) return res.status(404).json({ error: 'not found' });
+  if (req.query.g !== PX2026COL_GUARD) return res.status(404).json({ error: 'not found' });
   try {
     if (!serperImg.isConfigured() || !visionConfigured() || !serperWeb.isConfigured()) {
       return res.json({ ready: false, serperImg: serperImg.isConfigured(), serperWeb: serperWeb.isConfigured(), vision: visionConfigured() });
     }
     const limit = Math.min(12, Math.max(1, Number(req.query.limit) || 6));
-    // ids entram em SQL cru — allowlist estrita (formato de id), descarta o resto
-    const onlyIds = String(req.query.ids || '').split(',').map((s) => s.trim()).filter((id) => /^[a-zA-Z0-9_-]{1,40}$/.test(id));
+    const onlyIds = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
     let whereExtra = '';
-    if (onlyIds.length) whereExtra = ` AND pr.id IN (${onlyIds.map((id) => `'${id}'`).join(',')})`;
+    if (onlyIds.length) whereExtra = ` AND pr.id IN (${onlyIds.map((id) => `'${id.replace(/'/g, '')}'`).join(',')})`;
     // quando não passa ids, pula os já processados (colorChecked) pra o runner andar até o fim
     const notDone = onlyIds.length ? '' : ` AND (pr."aiContext"->>'colorChecked') IS NULL`;
     const remainingBefore = onlyIds.length ? null : Number((await prisma.$queryRawUnsafe(

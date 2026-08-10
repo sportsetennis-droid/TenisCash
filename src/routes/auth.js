@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { authMiddleware, getJwtSecret, prisma } = require('../middleware');
+const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 const { sendVerificationCode, verifyCode, isPhoneVerified, clearVerified } = require('../whatsapp');
 const { sendEmailCode, verifyEmailCode } = require('../email');
 
@@ -175,7 +175,7 @@ router.post('/register', async (req, res) => {
       clearVerified(cleanPhone);
     }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), { expiresIn: '30d' });
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
     res.status(201).json({
       token,
@@ -376,7 +376,7 @@ router.post('/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.pin);
     if (!validPassword) return res.status(401).json({ error: 'Credenciais incorretas' });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), { expiresIn: '30d' });
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
     console.log('[auth/login] userId=' + user.id + ' role=' + user.role + ' isPartner=' + !!user.partner);
 
@@ -423,7 +423,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     res.json({
       // Renova o papel no JWT quando um cliente foi promovido a vendedor
       // enquanto ainda tinha uma sessao antiga aberta.
-      token: jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), { expiresIn: '30d' }),
+      token: jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' }),
       user: {
         id: user.id,
         name: user.name,

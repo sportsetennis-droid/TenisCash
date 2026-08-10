@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const fs = require('node:fs');
 const path = require('node:path');
-const { authMiddleware, getJwtSecret, prisma } = require('../middleware');
+const { authMiddleware, JWT_SECRET, prisma } = require('../middleware');
 const bus = require('../services/liveBus');
 const pushSvc = require('../services/pushNotifications');
 const cameraLiveCache = require('../services/cameraLiveCache');
@@ -56,7 +56,7 @@ function authFlexible(req, res, next) {
   else if (req.query && req.query.token) token = String(req.query.token);
   if (!token) return res.status(401).json({ error: 'Token não fornecido' });
   try {
-    const d = jwt.verify(token, getJwtSecret());
+    const d = jwt.verify(token, JWT_SECRET);
     req.userId = d.userId;
     req.userRole = d.role;
     next();
