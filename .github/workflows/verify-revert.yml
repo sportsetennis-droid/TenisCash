@@ -1,0 +1,28 @@
+name: verify-revert
+on:
+  push:
+    branches: [claude/teniscash-invoice-exchange-r4dtdb]
+jobs:
+  chk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: espera a reversao aplicar
+        run: |
+          BASE="https://teniscash.com.br"
+          echo "Esperando a reversao (rota /api/stock-transfer voltar a 404)…"
+          OK=""
+          for i in $(seq 1 40); do
+            st=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" "$BASE/api/stock-transfer/stores" || echo 000)
+            he=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" "$BASE/api/health" || echo 000)
+            if [ "$st" = "404" ] && [ "$he" = "200" ]; then OK=1; echo "  aplicado na tentativa $i (transfer=404, health=200)"; break; fi
+            echo "  tentativa $i: transfer=$st health=$he (aguardando)"
+            sleep 15
+          done
+          echo "==================== RESULTADO ===================="
+          echo "health:"; curl -sS -m 20 "$BASE/api/health" | head -c 120; echo ""
+          echo "/api/stock-transfer/stores (espera 404 = revertido): $(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$BASE/api/stock-transfer/stores")"
+          echo "/api/product-request/mine (espera 404 = revertido): $(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$BASE/api/product-request/mine?storeId=x")"
+          html=$(curl -sS -m 30 "$BASE/loja.html")
+          echo "$html" | grep -q "goPage('transfer')" && echo "aba Transferencia: AINDA PRESENTE" || echo "aba Transferencia: REMOVIDA ok"
+          echo "$html" | grep -q "goPage('cadastro')" && echo "aba Cadastrar: AINDA PRESENTE" || echo "aba Cadastrar: REMOVIDA ok"
+          [ -n "$OK" ] && echo "✅ REVERSAO NO AR" || echo "⚠️ ainda nao aplicou em ~10min"
