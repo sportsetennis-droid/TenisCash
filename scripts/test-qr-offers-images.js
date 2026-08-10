@@ -61,6 +61,7 @@ function run() {
   }]);
 
   const quickBuy = qr.quickBuyMarkup({
+    id: 'local-product-1',
     storeUrl: 'https://store.example/product',
     quickBuy: {
       action: 'https://store.example/comprar/?utm_source=teniscash',
@@ -71,6 +72,8 @@ function run() {
   assert.match(quickBuy, /name="add_to_cart" value="9001"/);
   assert.match(quickBuy, /name="variant_id"/);
   assert.match(quickBuy, /Comprar agora com 30% OFF/);
+  assert.match(quickBuy, /data-product-id="local-product-1"/);
+  assert.match(quickBuy, /sendBeacon\('\/api\/qr-offers\/track'/);
   assert.doesNotMatch(quickBuy, /coupon/i);
   assert.deepEqual(qr.remoteProductVariants({ variants: [
     { id: 10, values: ['39'], stock: 2 },
@@ -95,6 +98,13 @@ function run() {
   ]), [
     { size: '39', variantId: 'current-id' },
   ]);
+  assert.equal(qr.qrCookieValue({ headers: { cookie: 'a=1; tc_qr_vid=visitor-123456789; b=2' } }, 'tc_qr_vid'), 'visitor-123456789');
+  assert.equal(qr.isQrBot('Mozilla/5.0 Chrome/128 Safari/537.36'), false);
+  assert.equal(qr.isQrBot('Googlebot/2.1'), true);
+  assert.equal(qr.qrDeviceType('Mozilla/5.0 (iPhone; Mobile) Safari/604.1'), 'mobile');
+  assert.equal(qr.qrDeviceType('Mozilla/5.0 (Windows NT 10.0) Chrome/128'), 'desktop');
+  assert.equal(qr.qrBrowserFamily('Mozilla/5.0 Edg/128.0'), 'Edge');
+  assert.equal(qr.qrReferrerHost({ get: () => 'https://instagram.com/sports-tennis?campaign=qr' }), 'instagram.com');
 
   const now = new Date('2026-08-08T12:00:00.000Z');
   assert.equal(qr.offerState({

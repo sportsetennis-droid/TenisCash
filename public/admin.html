@@ -2730,8 +2730,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
     <button type="button" class="btn btn-primary" id="qro-new">+ Nova oferta QR</button>
     <a class="btn" href="/qr-ofertas-folha" target="_blank" rel="noopener">🖨️ Abrir folha dos 12 QR</a>
+    <label style="font-size:11px;font-weight:700;color:#555">Período
+      <select id="qro-analytics-days" class="form-input" style="width:auto;display:inline-block;margin-left:5px;background:white;padding:6px 28px 6px 8px"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option><option value="365">1 ano</option></select>
+    </label>
     <span id="qro-status" style="font-size:12px;color:#8e8e93"></span>
   </div>
+  <div id="qro-analytics-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px"></div>
   <div id="qro-boards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px"></div>
   <div id="qro-editor" style="display:none;margin-top:18px;background:white;border:1px solid #e5e5ea;border-radius:16px;padding:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px"><strong id="qro-editor-title" style="font-size:17px">Nova oferta</strong><button type="button" class="btn" id="qro-close">Fechar</button></div>
@@ -13379,17 +13383,47 @@ function qroOpenNew(plate) {
   qroLoadProducts();
   document.getElementById('qro-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+function qroRenderAnalytics(data) {
+  const wrap = document.getElementById('qro-analytics-summary'); if (!wrap) return;
+  if (!data || data.error) {
+    wrap.innerHTML = '<div style="color:#c0392b;font-size:12px">Métricas indisponíveis.</div>';
+    return;
+  }
+  const t = data.totals || {};
+  const cards = [
+    ['Acessos', t.views || 0],
+    ['Visitantes únicos', t.uniqueVisitors || 0],
+    ['Últimas 24h', t.views24h || 0],
+    ['Cliques em comprar', t.quickBuys || 0],
+    ['Avanço para compra', Number(t.quickBuyRate || 0).toFixed(1).replace('.', ',') + '%'],
+  ];
+  wrap.innerHTML = cards.map(function (card) {
+    return '<div style="background:#fff;border:1px solid #e5e5ea;border-radius:12px;padding:11px"><div style="font-size:10px;color:#8e8e93;text-transform:uppercase;font-weight:800">'+qroEsc(card[0])+'</div><strong style="display:block;font-size:22px;margin-top:3px">'+qroEsc(card[1])+'</strong></div>';
+  }).join('');
+}
 async function qroLoadBoards() {
   const wrap = document.getElementById('qro-boards'); if (!wrap) return;
   wrap.innerHTML = '<div class="loading-spinner">Carregando placas...</div>';
-  const data = await qroApi('/admin/qr-offers/plates');
+  const daysEl = document.getElementById('qro-analytics-days');
+  const days = daysEl ? Number(daysEl.value || 30) : 30;
+  const responses = await Promise.all([
+    qroApi('/admin/qr-offers/plates'),
+    qroApi('/admin/qr-offers/access-stats?days=' + encodeURIComponent(days)),
+  ]);
+  const data = responses[0];
+  const analytics = responses[1];
+  qroRenderAnalytics(analytics);
   if (data.error) { wrap.innerHTML = '<div style="color:#c0392b">'+qroEsc(data.error)+'</div>'; return; }
+  const metrics = new Map((analytics.plates || []).map(function (row) { return [row.code, row]; }));
   wrap.innerHTML = (data.boards || []).map(function (b) {
     const c = b.current;
+    const m = metrics.get(b.code) || { views: 0, uniqueVisitors: 0, views24h: 0, quickBuys: 0, lastAccessAt: null };
     const state = c ? ('<strong style="color:#0a843d">'+qroEsc(c.status)+'</strong><br>'+qroEsc(c.title)+'<br><small>'+Number(c.discountPct||0).toFixed(0)+'% · '+(c.products||0)+' produtos · termina '+new Date(c.endsAt).toLocaleString('pt-BR')+'</small>') : '<span style="color:#8e8e93">Sem oferta publicada</span>';
+    const last = m.lastAccessAt ? new Date(m.lastAccessAt).toLocaleString('pt-BR') : 'nenhum ainda';
+    const access = '<div style="font-size:11px;line-height:1.45;margin:6px 0;padding:6px 7px;border-radius:8px;background:#fff5ee"><strong>👁 '+Number(m.views||0)+' acessos</strong> · '+Number(m.uniqueVisitors||0)+' únicos<br>'+Number(m.views24h||0)+' nas últimas 24h · '+Number(m.quickBuys||0)+' cliques em comprar<br><span style="color:#8e8e93">Último: '+qroEsc(last)+'</span></div>';
     return '<article style="background:white;border:1px solid #e5e5ea;border-radius:14px;padding:12px;display:grid;grid-template-columns:70px 1fr;gap:10px;align-items:center">'+
       '<img src="'+qroEsc(b.qrDataUrl)+'" alt="QR '+qroPad(b.number)+'" style="width:70px;height:70px;background:white">'+
-      '<div><div style="font-size:13px;font-weight:800">Placa '+qroPad(b.number)+'</div><div style="font-size:11px;line-height:1.4;margin:5px 0">'+state+'</div><div style="display:flex;gap:5px;flex-wrap:wrap"><button type="button" class="btn" data-qro-new="'+b.number+'" style="font-size:11px;padding:5px 8px">Nova oferta</button><a class="btn" href="'+qroEsc(b.destinationUrl || b.fixedUrl)+'" target="_blank" rel="noopener" style="font-size:11px;padding:5px 8px">Abrir oferta</a><a class="btn" href="'+qroEsc(b.qrSvgUrl || '')+'" download style="font-size:11px;padding:5px 8px">Baixar SVG</a><a class="btn" href="'+qroEsc(b.qrPngUrl || '')+'" download style="font-size:11px;padding:5px 8px">PNG 2400px</a></div></div></article>';
+      '<div><div style="font-size:13px;font-weight:800">Placa '+qroPad(b.number)+'</div><div style="font-size:11px;line-height:1.4;margin:5px 0">'+state+'</div>'+access+'<div style="display:flex;gap:5px;flex-wrap:wrap"><button type="button" class="btn" data-qro-new="'+b.number+'" style="font-size:11px;padding:5px 8px">Nova oferta</button><a class="btn" href="'+qroEsc(b.destinationUrl || b.fixedUrl)+'" target="_blank" rel="noopener" style="font-size:11px;padding:5px 8px">Abrir oferta</a><a class="btn" href="'+qroEsc(b.qrSvgUrl || '')+'" download style="font-size:11px;padding:5px 8px">Baixar SVG</a><a class="btn" href="'+qroEsc(b.qrPngUrl || '')+'" download style="font-size:11px;padding:5px 8px">PNG 2400px</a></div></div></article>';
   }).join('');
   wrap.querySelectorAll('[data-qro-new]').forEach(function (btn) { btn.addEventListener('click', function () { qroOpenNew(Number(btn.dataset.qroNew)); }); });
 }
@@ -13424,6 +13458,7 @@ function initQROffersTab() {
   if (!_qroInit) {
     _qroInit = true;
     document.getElementById('qro-refresh').onclick = qroLoadBoards;
+    document.getElementById('qro-analytics-days').onchange = qroLoadBoards;
     document.getElementById('qro-new').onclick = function () { qroOpenNew(1); };
     document.getElementById('qro-close').onclick = function () { document.getElementById('qro-editor').style.display = 'none'; };
     document.getElementById('qro-product-search-btn').onclick = qroLoadProducts;

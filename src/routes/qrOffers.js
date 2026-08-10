@@ -2,6 +2,7 @@
 // O QR impresso aponta sempre para /oferta/placa-XX; somente a oferta ativa muda.
 
 const express = require('express');
+const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
 const ns = require('../services/nuvemshop');
@@ -30,6 +31,97 @@ let qrDiscountPromotionReconciled = false;
 let qrDiscountPromotionId = null;
 let qrDiscountStoreId = null;
 let qrDiscountEligibility = new Map();
+let qrAnalyticsSalt = null;
+
+function qrCookieValue(req, name) {
+  const header = String(req?.headers?.cookie || '');
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index < 1 || part.slice(0, index).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(index + 1).trim()); } catch (_) { return ''; }
+  }
+  return '';
+}
+
+function isQrBot(userAgent) {
+  return /bot|crawler|spider|headless|lighthouse|pagespeed|curl|wget|python|node\.js|\bnode\b|undici|postman|insomnia|zxing|uptime|monitor/i.test(String(userAgent || ''));
+}
+
+function qrDeviceType(userAgent) {
+  const value = String(userAgent || '');
+  if (/ipad|tablet/i.test(value)) return 'tablet';
+  if (/mobile|iphone|ipod|android/i.test(value)) return 'mobile';
+  return 'desktop';
+}
+
+function qrBrowserFamily(userAgent) {
+  const value = String(userAgent || '');
+  if (/edg\//i.test(value)) return 'Edge';
+  if (/opr\//i.test(value)) return 'Opera';
+  if (/chrome\//i.test(value)) return 'Chrome';
+  if (/firefox\//i.test(value)) return 'Firefox';
+  if (/safari\//i.test(value) && !/chrome\//i.test(value)) return 'Safari';
+  return 'Outro';
+}
+
+function qrReferrerHost(req) {
+  const value = String(req?.get?.('referer') || req?.get?.('referrer') || '').trim();
+  if (!value) return null;
+  try { return new URL(value).hostname.toLowerCase().slice(0, 180) || null; } catch (_) { return null; }
+}
+
+async function getQrAnalyticsSalt() {
+  if (qrAnalyticsSalt) return qrAnalyticsSalt;
+  const key = 'qr_analytics_salt';
+  const generated = crypto.randomBytes(32).toString('hex');
+  const row = await prisma.systemSecret.upsert({
+    where: { key },
+    update: {},
+    create: { key, value: generated },
+    select: { value: true },
+  });
+  qrAnalyticsSalt = row.value;
+  return qrAnalyticsSalt;
+}
+
+async function recordQrAccess(req, res, { board, offer = null, eventType = 'VIEW', localProductId = null }) {
+  if (!board?.id) return;
+  const userAgent = String(req?.get?.('user-agent') || '').slice(0, 500);
+  const bot = isQrBot(userAgent);
+  let visitorId = qrCookieValue(req, 'tc_qr_vid');
+  if (!/^[a-f0-9-]{16,80}$/i.test(visitorId)) {
+    visitorId = crypto.randomUUID();
+    if (!bot && res?.cookie) {
+      res.cookie('tc_qr_vid', visitorId, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: true,
+        maxAge: 365 * 24 * 60 * 60 * 1000,
+      });
+    }
+  }
+  const salt = await getQrAnalyticsSalt();
+  const fallback = `${String(req?.ip || '')}|${userAgent}`;
+  const visitorHash = crypto.createHash('sha256')
+    .update(`${salt}|${bot ? fallback : visitorId}`)
+    .digest('hex');
+  await prisma.qRAccessEvent.create({
+    data: {
+      boardId: board.id,
+      offerId: offer?.id || null,
+      eventType: eventType === 'QUICK_BUY' ? 'QUICK_BUY' : 'VIEW',
+      visitorHash,
+      sourcePath: String(req?.path || '').slice(0, 180) || null,
+      referrerHost: qrReferrerHost(req),
+      deviceType: qrDeviceType(userAgent),
+      browserFamily: qrBrowserFamily(userAgent),
+      localProductId: localProductId ? String(localProductId).slice(0, 100) : null,
+      isBot: bot,
+      isTest: String(req?.query?.tc_test || req?.body?.tc_test || '') === '1',
+    },
+  });
+  if (res?.set) res.set('X-TenisCash-QR-Recorded', '1');
+}
 
 function plateNumber(raw) {
   const m = String(raw || '').toLowerCase().match(/(?:placa[-_ ]*)?(\d{1,2})/);
@@ -81,7 +173,7 @@ function quickBuyMarkup(product) {
   const options = variants.map((variant) => (
     `<option value="${escapeHtml(variant.variantId)}" data-size="${escapeHtml(variant.size)}">${escapeHtml(variant.size)}</option>`
   )).join('');
-  return `<form class="quick-buy" action="${escapeHtml(quick.action)}" method="post" style="display:grid;gap:8px"><label style="font-size:13px;font-weight:900">Escolha o tamanho</label><select name="variant_id" data-size-picker aria-label="Tamanho" onchange="this.form.querySelector('[data-size-value]').value=this.options[this.selectedIndex].dataset.size" style="width:100%;padding:11px;border:1px solid #d9c8bd;border-radius:10px;background:#fff;font-size:16px">${options}</select><input type="hidden" name="variation[0]" value="${escapeHtml(variants[0].size)}" data-size-value><input type="hidden" name="add_to_cart" value="${escapeHtml(quick.productId)}"><input type="hidden" name="quantity" value="1"><button type="submit" style="border:0;border-radius:12px;padding:14px 10px;background:#f4511e;color:#fff;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 6px 14px #f4511e35">Comprar agora com 30% OFF</button></form>`;
+  return `<form class="quick-buy" action="${escapeHtml(quick.action)}" method="post" data-product-id="${escapeHtml(product.id || '')}" onsubmit="try{const u=new URL(this.action);const p=JSON.stringify({plate:u.searchParams.get('utm_campaign'),offerId:u.searchParams.get('utm_content'),productId:this.dataset.productId});navigator.sendBeacon('/api/qr-offers/track',new Blob([p],{type:'application/json'}));}catch(e){}" style="display:grid;gap:8px"><label style="font-size:13px;font-weight:900">Escolha o tamanho</label><select name="variant_id" data-size-picker aria-label="Tamanho" onchange="this.form.querySelector('[data-size-value]').value=this.options[this.selectedIndex].dataset.size" style="width:100%;padding:11px;border:1px solid #d9c8bd;border-radius:10px;background:#fff;font-size:16px">${options}</select><input type="hidden" name="variation[0]" value="${escapeHtml(variants[0].size)}" data-size-value><input type="hidden" name="add_to_cart" value="${escapeHtml(quick.productId)}"><input type="hidden" name="quantity" value="1"><button type="submit" style="border:0;border-radius:12px;padding:14px 10px;background:#f4511e;color:#fff;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 6px 14px #f4511e35">Comprar agora com 30% OFF</button></form>`;
 }
 
 function offerProductCard(product) {
@@ -1230,6 +1322,94 @@ adminRouter.get('/plates', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+adminRouter.get('/access-stats', async (req, res) => {
+  try {
+    const periodDays = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+    const now = new Date();
+    const since = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+    const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const boards = await ensureBoards();
+    const cleanWhere = { occurredAt: { gte: since }, isBot: false, isTest: false };
+    const [eventGroups, uniqueGroups, globalUniqueGroups, views24hGroups, recent] = await Promise.all([
+      prisma.qRAccessEvent.groupBy({
+        by: ['boardId', 'eventType'],
+        where: cleanWhere,
+        _count: { _all: true },
+        _max: { occurredAt: true },
+      }),
+      prisma.qRAccessEvent.groupBy({
+        by: ['boardId', 'visitorHash'],
+        where: { ...cleanWhere, eventType: 'VIEW' },
+        _count: { _all: true },
+      }),
+      prisma.qRAccessEvent.groupBy({
+        by: ['visitorHash'],
+        where: { ...cleanWhere, eventType: 'VIEW' },
+        _count: { _all: true },
+      }),
+      prisma.qRAccessEvent.groupBy({
+        by: ['boardId'],
+        where: { occurredAt: { gte: since24h }, eventType: 'VIEW', isBot: false, isTest: false },
+        _count: { _all: true },
+      }),
+      prisma.qRAccessEvent.findMany({
+        where: { ...cleanWhere, eventType: 'VIEW' },
+        orderBy: { occurredAt: 'desc' },
+        take: 30,
+        select: {
+          eventType: true,
+          occurredAt: true,
+          referrerHost: true,
+          deviceType: true,
+          browserFamily: true,
+          board: { select: { number: true, code: true } },
+        },
+      }),
+    ]);
+    const uniquesByBoard = new Map();
+    for (const row of uniqueGroups) {
+      uniquesByBoard.set(row.boardId, (uniquesByBoard.get(row.boardId) || 0) + 1);
+    }
+    const views24hByBoard = new Map(views24hGroups.map((row) => [row.boardId, row._count._all]));
+    const metricsByBoard = new Map();
+    for (const row of eventGroups) {
+      const current = metricsByBoard.get(row.boardId) || { views: 0, quickBuys: 0, lastAccessAt: null };
+      if (row.eventType === 'VIEW') {
+        current.views = row._count._all;
+        current.lastAccessAt = row._max.occurredAt || null;
+      } else if (row.eventType === 'QUICK_BUY') {
+        current.quickBuys = row._count._all;
+      }
+      metricsByBoard.set(row.boardId, current);
+    }
+    const plates = boards.map((board) => {
+      const metric = metricsByBoard.get(board.id) || { views: 0, quickBuys: 0, lastAccessAt: null };
+      return {
+        number: board.number,
+        code: board.code,
+        views: metric.views,
+        uniqueVisitors: uniquesByBoard.get(board.id) || 0,
+        views24h: views24hByBoard.get(board.id) || 0,
+        quickBuys: metric.quickBuys,
+        quickBuyRate: metric.views ? Math.round((metric.quickBuys / metric.views) * 1000) / 10 : 0,
+        lastAccessAt: metric.lastAccessAt,
+      };
+    });
+    const totals = plates.reduce((sum, plate) => ({
+      views: sum.views + plate.views,
+      uniqueVisitors: sum.uniqueVisitors + plate.uniqueVisitors,
+      views24h: sum.views24h + plate.views24h,
+      quickBuys: sum.quickBuys + plate.quickBuys,
+    }), { views: 0, uniqueVisitors: 0, views24h: 0, quickBuys: 0 });
+    totals.uniqueVisitors = globalUniqueGroups.length;
+    totals.quickBuyRate = totals.views ? Math.round((totals.quickBuys / totals.views) * 1000) / 10 : 0;
+    res.set('Cache-Control', 'no-store');
+    res.json({ periodDays, from: since, to: now, totals, plates, recent });
+  } catch (e) {
+    res.status(500).json({ error: 'Nao foi possivel carregar os acessos dos QR codes', detail: e.message });
+  }
+});
+
 adminRouter.post('/reconcile', async (_req, res) => {
   try {
     const result = await reconcileQROffers();
@@ -1371,6 +1551,29 @@ publicRouter.post('/api/nuvemshop/discounts/qr-offers', async (req, res) => {
   }
 });
 
+publicRouter.post('/api/qr-offers/track', async (req, res) => {
+  try {
+    const n = plateNumber(req.body?.plate);
+    if (!n) return res.status(400).json({ error: 'Placa invalida' });
+    const board = await prisma.qRBoard.findUnique({ where: { number: n } });
+    if (!board) return res.status(404).json({ error: 'Placa nao encontrada' });
+    const offerId = String(req.body?.offerId || '').trim();
+    const offer = offerId ? await prisma.qROffer.findFirst({ where: { id: offerId, boardId: board.id } }) : null;
+    if (!offer) return res.status(404).json({ error: 'Oferta nao encontrada' });
+    await recordQrAccess(req, res, {
+      board,
+      offer,
+      eventType: 'QUICK_BUY',
+      localProductId: req.body?.productId,
+    });
+    res.set('Cache-Control', 'no-store');
+    return res.sendStatus(204);
+  } catch (e) {
+    console.error('[qr-offers/track]', e.message);
+    return res.sendStatus(204);
+  }
+});
+
 publicRouter.get('/api/qr-offers/plates/:plate', async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
@@ -1460,7 +1663,12 @@ publicRouter.get([
   try {
     const n = plateNumber(req.params.plate);
     if (!n) return res.status(404).type('html').send('<h1>Placa inválida</h1>');
-    const { offer } = await findOfferByPlate(n);
+    const { board, offer } = await findOfferByPlate(n);
+    try {
+      await recordQrAccess(req, res, { board, offer, eventType: 'VIEW' });
+    } catch (analyticsError) {
+      console.error('[qr-offers/access]', analyticsError.message);
+    }
     // A vitrine mora na URL fixa gravada no QR. O cliente ve o valor final
     // antes de abrir a loja e nao precisa copiar nem informar codigo algum.
     const productCards = offer && offer.products.length
@@ -1492,6 +1700,11 @@ module.exports = {
     quickBuyMarkup,
     remoteProductVariants,
     selectQuickBuyVariants,
+    qrCookieValue,
+    isQrBot,
+    qrDeviceType,
+    qrBrowserFamily,
+    qrReferrerHost,
     normalizeProductIds,
     offerState,
     categoryMembershipDiff,

@@ -2702,7 +2702,8 @@ model QRBoard {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  offers QROffer[]
+  offers       QROffer[]
+  accessEvents QRAccessEvent[]
 }
 
 model QROffer {
@@ -2722,11 +2723,36 @@ model QROffer {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  board    QRBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  products QROfferProduct[]
+  board        QRBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  products     QROfferProduct[]
+  accessEvents QRAccessEvent[]
 
   @@index([boardId, status, startsAt, endsAt])
   @@index([status, endsAt])
+}
+
+model QRAccessEvent {
+  id             String   @id @default(cuid())
+  boardId        String
+  offerId        String?
+  eventType      String   @default("VIEW") // VIEW | QUICK_BUY
+  visitorHash    String
+  sourcePath     String?
+  referrerHost   String?
+  deviceType     String?
+  browserFamily  String?
+  localProductId String?
+  isBot          Boolean  @default(false)
+  isTest         Boolean  @default(false)
+  occurredAt     DateTime @default(now())
+
+  board QRBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  offer QROffer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  @@index([boardId, occurredAt])
+  @@index([offerId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([visitorHash, occurredAt])
 }
 
 model QROfferProduct {
