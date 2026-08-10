@@ -4660,7 +4660,7 @@ async function openAuthedFile(path, options = {}) {
         t.textContent = '🖨️ Enviando pra impressora…'; t.style.opacity = '1';
         const ctrl = new AbortController();
         const to = setTimeout(() => ctrl.abort(), 180000);
-        const pr = await fetch('http://localhost:8790/print?duplex=long-edge&sides=two-sided-long-edge', { method: 'POST', body: blob, headers: { 'Content-Type': 'application/pdf' }, signal: ctrl.signal });
+        const pr = await fetch('http://localhost:8790/print', { method: 'POST', body: blob, headers: { 'Content-Type': 'application/pdf' }, signal: ctrl.signal });
         clearTimeout(to);
         const j = pr.ok ? await pr.json().catch(() => ({})) : {};
         if (j.ok) {
@@ -4774,7 +4774,7 @@ async function printAuthedFile(path) {
     const timeout = setTimeout(() => ctrl.abort(), 180000);
     let response;
     try {
-      response = await fetch('http://localhost:8790/print?duplex=long-edge&sides=two-sided-long-edge', {
+      response = await fetch('http://localhost:8790/print', {
         method: 'POST',
         body: blob,
         headers: { 'Content-Type': 'application/pdf' },
