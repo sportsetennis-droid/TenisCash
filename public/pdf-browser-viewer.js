@@ -67,7 +67,7 @@
         const blob = await (await fetch(pdfUrl)).blob();
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 300000);
-        const resp = await fetch('http://localhost:8790/print', {
+        const resp = await fetch('http://localhost:8790/print?duplex=long-edge&sides=two-sided-long-edge', {
           method: 'POST', body: blob,
           headers: { 'Content-Type': 'application/pdf' },
           signal: ctrl.signal,
