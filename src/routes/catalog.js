@@ -46,10 +46,10 @@ function optionalCatalogAuth(req, res, next) {
     return next();
   }
   const jwt = require('jsonwebtoken');
-  const { getJwtSecret } = require('../middleware');
+  const { JWT_SECRET } = require('../middleware');
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, getJwtSecret());
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
     req.userRole = decoded.role;
   } catch {

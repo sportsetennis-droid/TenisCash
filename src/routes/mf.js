@@ -7,17 +7,17 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { prisma, getJwtSecret } = require('../middleware');
+const { prisma } = require('../middleware');
 
 const router = express.Router();
-// segredo compartilhado com o app (auto-gerido no banco) — sem fallback fraco
+const JWT_SECRET = process.env.JWT_SECRET || 'teniscash-dev-secret';
 const TZ = 'America/Fortaleza';
 
 // ---------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------
 function signToken(emp) {
-  return jwt.sign({ mf: true, id: emp.id, role: emp.role, name: emp.name }, getJwtSecret(), { expiresIn: '30d' });
+  return jwt.sign({ mf: true, id: emp.id, role: emp.role, name: emp.name }, JWT_SECRET, { expiresIn: '30d' });
 }
 
 function dayStr(d = new Date()) {
@@ -30,7 +30,7 @@ async function mfAuth(req, res, next) {
     const h = req.headers.authorization || '';
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Nao autenticado' });
-    const payload = jwt.verify(token, getJwtSecret());
+    const payload = jwt.verify(token, JWT_SECRET);
     if (!payload || !payload.mf || !payload.id) return res.status(401).json({ error: 'Token invalido' });
     const emp = await prisma.mfEmployee.findUnique({ where: { id: payload.id } });
     if (!emp || !emp.active) return res.status(401).json({ error: 'Funcionario inativo' });

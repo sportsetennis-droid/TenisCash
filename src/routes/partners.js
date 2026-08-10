@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { prisma, authMiddleware, getJwtSecret } = require('../middleware');
+const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const ns = require('../services/nuvemshop');
 
 const router = express.Router();
@@ -85,7 +85,7 @@ function optionalAuth(req, res, next) {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, getJwtSecret());
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
     req.userRole = decoded.role;
   } catch {
