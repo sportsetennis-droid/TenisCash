@@ -223,7 +223,7 @@
       _ptoast('🖨️ Enviando pra impressora…');
       const ctrl = new AbortController();
       const to = setTimeout(()=>ctrl.abort(), 120000);
-      const pr = await fetch('http://localhost:8790/print', { method:'POST', body: blob, headers:{'Content-Type':'application/pdf'}, signal: ctrl.signal });
+      const pr = await fetch('http://localhost:8790/print?duplex=long-edge&sides=two-sided-long-edge', { method:'POST', body: blob, headers:{'Content-Type':'application/pdf'}, signal: ctrl.signal });
       clearTimeout(to);
       if (pr.ok){ const j = await pr.json().catch(()=>({})); if (j.ok){ _ptoast('✅ Etiqueta enviada pra impressora!', 4000); return; } _ptoast('⚠️ A impressora recusou — abrindo pra imprimir manual', 5000); }
     }catch(e){ /* agente offline (máquina sem o serviço) -> modo manual */ }
