@@ -31,8 +31,7 @@ function labelAccess(req, res, next) {
 }
 router.use(labelAccess);
 
-const LABEL_PROMOTION_TEXT = 'Garanta 30% de Desconto levando três produtos da loja.';
-const LABEL_PROMOTION_FACTOR = 0.70;
+const LABEL_PROMOTION_TEXT = 'Preço promocional.';
 const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL E GARANTIA.';
 const INVALID_LABEL_BRAND = 'A DEFINIR';
 const UMBRO_MOTIVATION_PHRASES = {
@@ -1139,11 +1138,6 @@ function labelStyle(product, classification = {}) {
     : (modality || 'PRODUTO ESPORTIVO').toUpperCase();
 }
 
-function roundLabelPrice(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
-}
-
 function extractLabelReference(product, context, item) {
   const candidates = [context?.supplierRef, item?.supplierRef, item?.customText, product?.name]
     .map((value) => String(value || '').trim())
@@ -1496,15 +1490,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
         [p?.id, baseName, reference, categoryLabel].filter(Boolean).join('|'),
       );
       const price = it.price != null ? Number(it.price) : (p ? Number(p.price) : null);
-      const configuredPromo = it.promotionalPrice != null
+      // Promoção é opt-in no momento da criação do lote. Não recupere o
+      // promoPrice do produto nem aplique desconto automático quando o lote
+      // foi criado com "Usar preço promocional" desmarcado.
+      const promotionalPrice = it.promotionalPrice != null
         ? Number(it.promotionalPrice)
-        : (p?.promoPrice != null ? Number(p.promoPrice) : null);
-      // A etiqueta 5x7 anuncia exatamente 30% OFF levando três produtos.
-      // O valor grande precisa, portanto, ser sempre 70% do preço normal.
-      const promotionalPrice = isProductDuplexTemplate(batch.template)
-        && Number.isFinite(price) && price > 0
-        ? roundLabelPrice(price * LABEL_PROMOTION_FACTOR)
-        : configuredPromo;
+        : null;
       return {
         name: productName,
         productName,
@@ -1527,7 +1518,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         size: sizeStr,
         price,
         promotionalPrice,
-        promotionText: LABEL_PROMOTION_TEXT,
+        promotionText: promotionalPrice != null ? LABEL_PROMOTION_TEXT : null,
         guaranteeText: LABEL_GUARANTEE_TEXT,
         motivationText,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
