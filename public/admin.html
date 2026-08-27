@@ -4677,7 +4677,10 @@ async function openAuthedFile(path, options = {}) {
       } catch (e) { /* agente offline -> abre o PDF normalmente */ }
     }
     if (options.skipPrint && typeof window.openPdfInBrowser === 'function') {
-      return window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
+      return window.openPdfInBrowser(blob, {
+        title: 'Etiquetas — TenisCash',
+        popupWindow: options.popupWindow,
+      });
     }
     const blobUrl = URL.createObjectURL(blob);
     // Alguns navegadores bloqueiam window.open depois do fetch assíncrono.
@@ -10861,24 +10864,46 @@ async function labelsCreateBatch() {
   }
   if (!selections.length) { alert('Selecione pelo menos 1 produto e informe a quantidade de etiquetas.'); return; }
   if (!templateId) { alert('Escolha um template (recomendado: "A4 16 etiquetas (5x7 cm) — frente e verso")'); return; }
-  const data = await api('/admin/labels/batches/quick', 'POST', {
-    templateId, selections, usePromo,
-  });
-  if (data.error) {
-    const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
-      ? '\n\nLogos faltantes:\n- ' + data.missingLogos.join('\n- ')
-      : '';
-    alert('Erro: ' + data.error + missing);
+  // Reserva a nova aba durante o clique do usuário. Se ela for aberta somente
+  // depois dos awaits abaixo, Chrome/Safari tratam como pop-up e bloqueiam.
+  const popupWindow = window.open('', '_blank');
+  if (!popupWindow) {
+    alert('O navegador bloqueou a nova aba. Permita pop-ups para o TenisCash e tente novamente.');
     return;
   }
-  // Abre o PDF no navegador sem acionar Acrobat, agente ou impressora.
-  await openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', { skipPrint: true });
-  // Limpa carrinho
-  _lblSel = {};
-  _labelsSelected = {};
-  _lblUpdateCart();
-  loadLabelBatches();
-  labelsSearchProducts();
+  popupWindow.document.write('<!doctype html><title>Gerando etiquetas…</title><p style="font:16px Arial;padding:24px">Gerando etiquetas…</p>');
+  popupWindow.document.close();
+  try {
+    const data = await api('/admin/labels/batches/quick', 'POST', {
+      templateId, selections, usePromo,
+    });
+    if (data.error) {
+      const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
+        ? '\n\nLogos faltantes:\n- ' + data.missingLogos.join('\n- ')
+        : '';
+      popupWindow.close();
+      alert('Erro: ' + data.error + missing);
+      return;
+    }
+    // Abre o PDF na aba reservada, sem acionar Acrobat, agente ou impressora.
+    const opened = await openAuthedFile('/admin/labels/batches/' + data.batch.id + '/pdf', {
+      skipPrint: true,
+      popupWindow,
+    });
+    if (!opened) {
+      popupWindow.close();
+      return;
+    }
+    // Limpa carrinho somente depois de confirmar que o PDF foi aberto.
+    _lblSel = {};
+    _labelsSelected = {};
+    _lblUpdateCart();
+    loadLabelBatches();
+    labelsSearchProducts();
+  } catch (error) {
+    popupWindow.close();
+    alert('Erro ao gerar etiquetas: ' + error.message);
+  }
 }
 async function loadLabelBatches() {
   const wrap = document.getElementById('labels-batches-wrap');

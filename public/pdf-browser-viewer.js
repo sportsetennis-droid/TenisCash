@@ -4,7 +4,7 @@
 
   window.openPdfInBrowser = function openPdfInBrowser(blob, options) {
     const opts = options || {};
-    const popup = window.open('', '_blank');
+    const popup = opts.popupWindow || window.open('', '_blank');
     if (!popup) {
       alert('O navegador bloqueou a nova aba. Permita pop-ups para o TenisCash e tente novamente.');
       return false;
