@@ -33,7 +33,6 @@ const PRODUCT_ORANGE_RGB_TILE = Buffer.from(
 );
 
 function registerLabelFonts(doc) {
-  doc.registerFont('TenisAnton', path.join(__dirname, '../../assets/fonts/Anton-Regular.ttf'));
   let interRegistered = false;
   if (fs.existsSync(LABEL_FONT_REGULAR) && fs.existsSync(LABEL_FONT_MEDIUM) && fs.existsSync(LABEL_FONT_BOLD)) {
     try {
@@ -967,52 +966,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 // Etiqueta 5x7 em uma unica peca fisica por produto.
 // Frente: marca, descricao, preco e garantia.
 // Verso: loja, codigo de barras e QR Code.
-function drawEverlastPromotion(doc, item, x, y, w, h) {
-  // A própria arte aprovada preserva o laranja, a marca e a composição originais.
-  const artwork = path.join(__dirname, '../../assets/logos/everlast-approved-label.png');
-  const img = openImageCached(doc, artwork);
-  doc.image(img, x, y, { width: w, height: h });
-  const sx = w / 1060, sy = h / 1484;
-  const regular = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
-  const source = String(item.productName || item.name || '').toUpperCase();
-  const model = source.replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
-    .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
-  // Reutiliza trechos sem texto da mesma arte para os campos variáveis do PDF.
-  const patch = (dx, dy, dw, dh, px, py, pw, ph) => {
-    doc.save().rect(x + dx * sx, y + dy * sy, dw * sx, dh * sy).clip();
-    const scaleX = dw * sx / pw, scaleY = dh * sy / ph;
-    doc.image(img, x + dx * sx - px * scaleX, y + dy * sy - py * scaleY,
-      { width: 1060 * scaleX, height: 1484 * scaleY });
-    doc.restore();
-  };
-  const fitted = (value, dx, baseline, dw, capHeight, font, color) => {
-    doc.font(font);
-    const size = capHeight * sy * 1000 / (doc._font.capHeight || 700);
-    doc.fontSize(size);
-    const naturalW = doc.widthOfString(value);
-    const scaleX = Math.min(1.35, dw * sx / naturalW);
-    doc.save().translate(x + dx * sx + (dw * sx - naturalW * scaleX) / 2, y + baseline * sy)
-      .scale(scaleX, 1).fillColor(color).text(value, 0, 0, { lineBreak: false, baseline: 'alphabetic' }).restore();
-  };
-  if (model !== 'CLIMBER RUN') {
-    patch(100, 800, 860, 48, 12, 800, 50, 48);
-    fitted(model, 110, 838, 840, 38, regular, '#FFFFFF');
-  }
-  if (Math.round(item.paymentOffer.basePrice * 100) !== 29999) {
-    patch(305, 905, 455, 74, 70, 905, 100, 70);
-    fitted(`DE ${fmtBRL(item.paymentOffer.basePrice)}`, 310, 962, 440, 45, regular, '#F56001');
-  }
-  if (Math.round(item.paymentOffer.finalPrice * 100) !== 20999) {
-    patch(241, 984, 735, 247, 70, 905, 100, 70);
-    const amount = fmtBRL(item.paymentOffer.finalPrice).replace(/^R\$\s*/, '');
-    fitted(amount, 250, 1204, 710, 211, 'TenisAnton', '#F56001');
-  }
-}
-
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
-  if (side === 'front' && item.paymentOffer?.discountPercent === 30) {
-    return drawEverlastPromotion(doc, item, x, y, w, h);
-  }
   const CREAM = '#F6F0E5';
   const CHARCOAL = '#191A18';
   const ORANGE = PRODUCT_ORANGE_RGB;
@@ -1568,8 +1522,6 @@ async function generateLabelsPDF({
     if (logoParts.full) flat.forEach((item) => { item._storeLogoBuffer = logoParts.full; });
   }
   if (productDuplex) {
-    const everlastLogo = 'data:image/svg+xml;base64,' + fs.readFileSync(path.join(__dirname, '../../assets/logos/brands/everlast.svg')).toString('base64');
-    flat.forEach(item => { if (item.paymentOffer?.discountPercent === 30) item.brandLogoUrl = everlastLogo; });
     const brandUrls = [...new Set(flat.map((item) => String(item.brandLogoUrl || '').trim()).filter(Boolean))];
     const brandBuffers = await Promise.all(brandUrls.map(async (url) => [url, await loadLogoBuffer(url)]));
     const byUrl = new Map(brandBuffers.filter(([, buffer]) => buffer));

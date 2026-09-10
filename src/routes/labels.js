@@ -1508,7 +1508,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
       // Promoção é opt-in no momento da criação do lote. Não recupere o
       // promoPrice do produto nem aplique desconto automático quando o lote
       // foi criado com "Usar preço promocional" desmarcado.
-      const promotionalPrice = it.promotionalPrice != null
+      const promotionalPrice = paymentOffer ? paymentOffer.finalPrice : it.promotionalPrice != null
         ? Number(it.promotionalPrice)
         : null;
       return {
@@ -1534,7 +1534,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         price,
         promotionalPrice,
         paymentOffer,
-        promotionText: promotionalPrice != null ? LABEL_PROMOTION_TEXT : null,
+        promotionText: paymentOffer ? null : promotionalPrice != null ? LABEL_PROMOTION_TEXT : null,
         guaranteeText: LABEL_GUARANTEE_TEXT,
         motivationText,
         // Mantém o código original (EAN/SKU) e acrescenta o interno do card.
