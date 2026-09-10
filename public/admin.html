@@ -10214,7 +10214,7 @@ async function labelsGenerateAutomatic() {
 }
 async function initLabelsTab() {
   api('/admin/labels/everlast-payment-offer').then(result => {
-    if (!result.error && result.configured) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta na etiqueta 5×7: 25% no Pix ou 20% em 5x sem juros.`;
+    if (!result.error) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta na etiqueta 5×7: 25% no Pix ou 20% em 5x sem juros.` + (result.withoutPrice?.length ? ` Sem preço normal (${result.withoutPrice.length}): ${result.withoutPrice.map(p => p.name).join('; ')}` : '');
   }).catch(() => {});
   if (!_labelsInit) {
     _labelsInit = true;
@@ -10227,6 +10227,7 @@ async function initLabelsTab() {
         const result = await api('/admin/labels/everlast-payment-offer', 'POST', {});
         if (result.error) throw new Error(result.error);
         status.textContent = `${result.updated} produtos atualizados. Etiqueta 5×7: 25% no Pix ou 20% em 5x sem juros, parcela em destaque.`;
+        if (result.skipped?.length) status.textContent += ` Sem preço normal (${result.skipped.length}): ${result.skipped.map(p => p.name).join('; ')}`;
         await labelsSearchProducts();
       } catch (e) { status.textContent = 'Oferta não aplicada: ' + e.message; }
       finally { button.disabled = false; }

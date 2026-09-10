@@ -36,14 +36,18 @@ async function applyOffer(prisma) {
   return prisma.$transaction(async tx => {
     const products = await tx.product.findMany({ where: { brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
     if (!products.length) throw new Error('Nenhum produto Everlast encontrado');
-    const planned = products.map(p => ({ p, offer: calculateOffer(p.price) }));
+    const skipped = [];
+    const planned = products.flatMap(p => {
+      try { return [{ p, offer: calculateOffer(p.price) }]; }
+      catch { skipped.push({ productId:p.id, name:p.name, price:p.price }); return []; }
+    });
     for (const { p, offer } of planned) {
       await tx.product.update({ where: { id: p.id }, data: {
         promoPrice: offer.cardPrice,
         aiContext: { ...contextOf(p), paymentOffer: offer },
       } });
     }
-    return { updated: planned.length, offerId: OFFER_ID, products: planned.map(({p,offer}) => ({ ...offer, productId:p.id, name:p.name })) };
+    return { updated: planned.length, total: products.length, skipped, offerId: OFFER_ID, products: planned.map(({p,offer}) => ({ ...offer, productId:p.id, name:p.name })) };
   }, { timeout: 30000 });
 }
 

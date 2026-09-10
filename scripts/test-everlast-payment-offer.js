@@ -42,8 +42,10 @@ async function main() {
   assert.equal(productOffer(original), null, 'unconfigured products must not get an automatic offer');
   rows.push({ ...original, id: 'bad', price: 0 });
   const before = structuredClone(rows);
-  await assert.rejects(() => applyOffer(prisma));
-  assert.deepEqual(rows, before, 'validate all prices before any writes');
+  const partial = await applyOffer(prisma);
+  assert.equal(partial.updated, 1);
+  assert.deepEqual(partial.skipped, [{ productId:'bad', name:'Solo', price:0 }]);
+  assert.deepEqual(rows, before, 'unpriced products must stay unchanged');
 
   const pdf = await generateLabelsPDF({
     template: defaultTemplates().a4_16_5x7_duplex,
