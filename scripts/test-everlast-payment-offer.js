@@ -47,6 +47,19 @@ async function main() {
   assert.deepEqual(partial.skipped, [{ productId:'bad', name:'Solo', price:0 }]);
   assert.deepEqual(rows, before, 'unpriced products must stay unchanged');
 
+  rows = [
+    { ...original, id:'parent', name:'TENIS SOLO EVERLAST PRETO/ROXO', price:0 },
+    { ...original, id:'size38', name:'TENIS SOLO EVERLAST PRETO/ROXO 38 REF SEFA199.199A.38' },
+    { ...original, id:'size39', name:'TENIS SOLO EVERLAST PRETO/ROXO 39 REF SEFA199.199A.39' },
+  ];
+  assert.equal((await applyOffer(prisma)).updated, 3);
+  assert.equal(rows[0].price, 229.89);
+  assert.deepEqual(rows[0].aiContext.paymentOffer.recoveredPriceFrom, ['size38','size39']);
+  rows[0].price = 0;
+  rows[2].price = 250;
+  assert.equal((await applyOffer(prisma)).skipped.length, 1, 'conflicting sibling prices need review');
+  assert.equal(rows[0].price, 0);
+
   const pdf = await generateLabelsPDF({
     template: defaultTemplates().a4_16_5x7_duplex,
     storeName: 'Sports & Tennis',

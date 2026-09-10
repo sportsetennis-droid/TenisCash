@@ -39,12 +39,25 @@ async function applyOffer(prisma) {
     const skipped = [];
     const planned = products.flatMap(p => {
       try { return [{ p, offer: calculateOffer(p.price) }]; }
-      catch { skipped.push({ productId:p.id, name:p.name, price:p.price }); return []; }
+      catch {
+        // Cadastros gerais importados podem estar zerados embora as numerações
+        // do MESMO nome/modelo/cor já tenham um preço normal uniforme.
+        const name = String(p.name || '').trim().toUpperCase();
+        const siblings = products.filter(other => {
+          const otherName = String(other.name || '').trim().toUpperCase();
+          return name.length > 0 && Number(other.price) > 0 && otherName.startsWith(name + ' ')
+            && /^\d{2}(?:\s+REF\s+.+)?$/.test(otherName.slice(name.length + 1));
+        });
+        const prices = [...new Set(siblings.map(other => Math.round(Number(other.price) * 100)))];
+        if (prices.length === 1) return [{ p, offer: calculateOffer(prices[0] / 100), recoveredFrom: siblings.map(other => other.id) }];
+        skipped.push({ productId:p.id, name:p.name, price:p.price }); return [];
+      }
     });
-    for (const { p, offer } of planned) {
+    for (const { p, offer, recoveredFrom } of planned) {
       await tx.product.update({ where: { id: p.id }, data: {
+        ...(recoveredFrom ? { price: offer.basePrice } : {}),
         promoPrice: offer.cardPrice,
-        aiContext: { ...contextOf(p), paymentOffer: offer },
+        aiContext: { ...contextOf(p), paymentOffer: { ...contextOf(p).paymentOffer, ...offer, ...(recoveredFrom ? { recoveredPriceFrom: recoveredFrom } : {}) } },
       } });
     }
     return { updated: planned.length, total: products.length, skipped, offerId: OFFER_ID, products: planned.map(({p,offer}) => ({ ...offer, productId:p.id, name:p.name })) };
