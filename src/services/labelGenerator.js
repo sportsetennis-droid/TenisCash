@@ -968,44 +968,45 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 // Frente: marca, descricao, preco e garantia.
 // Verso: loja, codigo de barras e QR Code.
 function drawEverlastPromotion(doc, item, x, y, w, h) {
-  const orange = '#FF6900';
-  const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  // A própria arte aprovada preserva o laranja, a marca e a composição originais.
+  const artwork = path.join(__dirname, '../../assets/logos/everlast-approved-label.png');
+  const img = openImageCached(doc, artwork);
+  doc.image(img, x, y, { width: w, height: h });
+  const sx = w / 1060, sy = h / 1484;
   const regular = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
-  const text = (value, top, size, font = bold, color = '#FFFFFF', left = 3, width = 44) => {
-    doc.font(font).fontSize(size);
-    while (doc.widthOfString(value) > mm(width) && size > 3) {
-      size -= 0.1;
-      doc.fontSize(size);
-    }
-    doc.fillColor(color).text(value, x + mm(left), y + mm(top), {
-      width: mm(width), align: 'center', lineBreak: false,
-    });
-  };
-  doc.fillColor(orange).rect(x, y, w, h).fill();
-  text('BAIXOU 30%', 2.2, 32, 'TenisAnton');
-  text('APROVEITE ANTES QUE ACABE', 16.5, 6.3, regular);
-  for (const top of [20.8, 40.5]) {
-    doc.strokeColor('#FFFFFF').lineWidth(0.5)
-      .moveTo(x + mm(3), y + mm(top)).lineTo(x + w - mm(3), y + mm(top)).stroke();
-  }
-  if (item._brandLogoBuffer) {
-    doc.image(openImageCached(doc, item._brandLogoBuffer), x + mm(4), y + mm(23), {
-      width: w - mm(8), height: mm(13.5),
-    });
-  } else text('EVERLAST', 23.5, 31, 'TenisAnton');
   const source = String(item.productName || item.name || '').toUpperCase();
   const model = source.replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
-  text(model, 37.1, 7.5, regular);
-  doc.fillColor('#FFFFFF').rect(x + mm(2.4), y + mm(42), w - mm(4.8), mm(19)).fill();
-  text(`DE ${fmtBRL(item.paymentOffer.basePrice)}`, 42.7, 8, regular, orange);
-  text('POR', 47, 8, bold, orange, 4, 7);
-  text('R$', 50.4, 12, bold, orange, 4, 7);
-  const amount = fmtBRL(item.paymentOffer.finalPrice).replace(/^R\$\s*/, '');
-  text(amount, 46.0, 27, 'TenisAnton', orange, 11.5, 34);
-  text('PAGUE NO DINHEIRO, PIX OU CARTÃO', 57.9, 5.1, bold, orange, 3.6, 42.8);
-  text('VEM PARA', 62.2, 6.8, regular);
-  text('SPORTS & TENNIS', 65.2, 11.2);
+  // Reutiliza trechos sem texto da mesma arte para os campos variáveis do PDF.
+  const patch = (dx, dy, dw, dh, px, py, pw, ph) => {
+    doc.save().rect(x + dx * sx, y + dy * sy, dw * sx, dh * sy).clip();
+    const scaleX = dw * sx / pw, scaleY = dh * sy / ph;
+    doc.image(img, x + dx * sx - px * scaleX, y + dy * sy - py * scaleY,
+      { width: 1060 * scaleX, height: 1484 * scaleY });
+    doc.restore();
+  };
+  const fitted = (value, dx, baseline, dw, capHeight, font, color) => {
+    doc.font(font);
+    const size = capHeight * sy * 1000 / (doc._font.capHeight || 700);
+    doc.fontSize(size);
+    const naturalW = doc.widthOfString(value);
+    const scaleX = Math.min(1.35, dw * sx / naturalW);
+    doc.save().translate(x + dx * sx + (dw * sx - naturalW * scaleX) / 2, y + baseline * sy)
+      .scale(scaleX, 1).fillColor(color).text(value, 0, 0, { lineBreak: false, baseline: 'alphabetic' }).restore();
+  };
+  if (model !== 'CLIMBER RUN') {
+    patch(100, 800, 860, 48, 12, 800, 50, 48);
+    fitted(model, 110, 838, 840, 38, regular, '#FFFFFF');
+  }
+  if (Math.round(item.paymentOffer.basePrice * 100) !== 29999) {
+    patch(305, 905, 455, 74, 70, 905, 100, 70);
+    fitted(`DE ${fmtBRL(item.paymentOffer.basePrice)}`, 310, 962, 440, 45, regular, '#F56001');
+  }
+  if (Math.round(item.paymentOffer.finalPrice * 100) !== 20999) {
+    patch(241, 984, 735, 247, 70, 905, 100, 70);
+    const amount = fmtBRL(item.paymentOffer.finalPrice).replace(/^R\$\s*/, '');
+    fitted(amount, 250, 1204, 710, 211, 'TenisAnton', '#F56001');
+  }
 }
 
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
