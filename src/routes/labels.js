@@ -17,6 +17,7 @@ const { resolveBrandLogoUrl, validateBrandLogoUrl } = require('../services/brand
 const { fraseDaMarca } = require('../config/frases-marcas');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
+const { applyOffer, productOffer } = require('../services/everlastPaymentOffer');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -30,6 +31,18 @@ function labelAccess(req, res, next) {
   return res.status(403).json({ error: 'Acesso restrito' });
 }
 router.use(labelAccess);
+
+router.post('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
+  try { res.json(await applyOffer(prisma)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+router.get('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany({ where: { brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
+    res.json({ total: products.length, configured: products.filter(p => productOffer(p)).length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 const LABEL_PROMOTION_TEXT = 'Preço promocional.';
 const LABEL_GUARANTEE_TEXT = 'PRODUTO ORIGINAL E GARANTIA.';
@@ -1489,7 +1502,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
         cls,
         [p?.id, baseName, reference, categoryLabel].filter(Boolean).join('|'),
       );
-      const price = it.price != null ? Number(it.price) : (p ? Number(p.price) : null);
+      const paymentOffer = p ? productOffer(p) : null;
+      const price = paymentOffer ? paymentOffer.basePrice : (it.price != null ? Number(it.price) : (p ? Number(p.price) : null));
       // Promoção é opt-in no momento da criação do lote. Não recupere o
       // promoPrice do produto nem aplique desconto automático quando o lote
       // foi criado com "Usar preço promocional" desmarcado.
@@ -1518,6 +1532,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         size: sizeStr,
         price,
         promotionalPrice,
+        paymentOffer,
         promotionText: promotionalPrice != null ? LABEL_PROMOTION_TEXT : null,
         guaranteeText: LABEL_GUARANTEE_TEXT,
         motivationText,

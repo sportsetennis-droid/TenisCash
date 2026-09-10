@@ -1096,6 +1096,21 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       });
     }
 
+    if (item.paymentOffer) {
+      const offer = item.paymentOffer;
+      const adjusted = Math.round(offer.installmentPrice * 100) !== Math.round(offer.lastInstallmentPrice * 100);
+      const line = (text, top, max, min, color = CHARCOAL) => {
+        const fs = fitSingleLine(text, FONT_BOLD, max, min);
+        doc.font(FONT_BOLD).fontSize(fs).fillColor(color)
+          .text(text, x + pad, y + mm(top), { width: innerW, lineBreak: false });
+      };
+      line(`DE ${fmtBRL(offer.basePrice)}`, 43.4, 7, 6);
+      line(`5x ${fmtBRL(offer.installmentPrice)}${adjusted ? '*' : ''}`, 46.1, 20, 16, ORANGE);
+      line('SEM JUROS · 20% DE DESCONTO', 53.1, 6.2, 5.4, ORANGE);
+      line(`TOTAL NO CARTÃO ${fmtBRL(offer.cardPrice)}`, 55.5, 5.8, 5.3);
+      line(`OU PIX ${fmtBRL(offer.pixPrice)} · 25% OFF`, 58, 6.5, 5.8, ORANGE);
+      if (adjusted) line(`*ÚLTIMA PARCELA ${fmtBRL(offer.lastInstallmentPrice)}`, 60.6, 4.3, 3.8);
+    } else {
     const usePromo = item.promotionalPrice != null
       && Number(item.promotionalPrice) < Number(item.price || Infinity);
     const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
@@ -1148,6 +1163,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       }
     }
 
+    }
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
       .moveTo(x + pad, y + mm(62.5))

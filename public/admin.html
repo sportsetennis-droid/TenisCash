@@ -1984,6 +1984,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div class="section-head">
     <span class="section-title">Etiquetas</span>
     <button type="button" class="refresh-btn" id="labels-refresh">↻</button>
+    <button type="button" class="btn" id="labels-everlast-offer">Aplicar oferta Everlast: 25% Pix ou 20% em 5x</button>
+    <span id="labels-everlast-status" role="status" style="font-size:12px"></span>
   </div>
   <!-- Barra de busca padrão -->
   <div id="psbar-lbl"></div>
@@ -10211,8 +10213,24 @@ async function labelsGenerateAutomatic() {
   }
 }
 async function initLabelsTab() {
+  api('/admin/labels/everlast-payment-offer').then(result => {
+    if (!result.error && result.configured) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta na etiqueta 5×7: 25% no Pix ou 20% em 5x sem juros.`;
+  }).catch(() => {});
   if (!_labelsInit) {
     _labelsInit = true;
+    document.getElementById('labels-everlast-offer').onclick = async () => {
+      const button = document.getElementById('labels-everlast-offer');
+      const status = document.getElementById('labels-everlast-status');
+      button.disabled = true;
+      status.textContent = 'Aplicando a oferta em todos os produtos Everlast...';
+      try {
+        const result = await api('/admin/labels/everlast-payment-offer', 'POST', {});
+        if (result.error) throw new Error(result.error);
+        status.textContent = `${result.updated} produtos atualizados. Etiqueta 5×7: 25% no Pix ou 20% em 5x sem juros, parcela em destaque.`;
+        await labelsSearchProducts();
+      } catch (e) { status.textContent = 'Oferta não aplicada: ' + e.message; }
+      finally { button.disabled = false; }
+    };
     document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelAutoOptions(); loadLabelBatches(); labelsSearchProducts(); };
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
     document.getElementById('labels-generate-auto').onclick = labelsGenerateAutomatic;
