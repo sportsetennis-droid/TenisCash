@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { ensureAllProductInternalBarcodes } = require('./services/internalBarcode');
+const { restoreOwnerAccess } = require('./services/restoreOwnerAccess20260910');
 const prisma = new PrismaClient();
 
 async function seed() {
@@ -20,6 +21,7 @@ async function seed() {
     update: {}
   });
   console.log('Admin criado:', admin.name);
+  await restoreOwnerAccess(prisma);
 
   // Configura bônus de boas-vindas
   await prisma.config.upsert({

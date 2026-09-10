@@ -1,5 +1,6 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { roleAfterStoreAssignment } = require('../services/sellerRole');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -691,7 +692,7 @@ router.post('/seller/assign-store', async (req, res) => {
 
     const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { role: 'seller', storeId: uniq[0].id, storeIds: uniq.map((s) => s.id) },
+      data: { role: roleAfterStoreAssignment(user.role), storeId: uniq[0].id, storeIds: uniq.map((s) => s.id) },
       select: { id: true, name: true, role: true, storeId: true, storeIds: true },
     });
 
@@ -701,7 +702,7 @@ router.post('/seller/assign-store', async (req, res) => {
         action: 'seller_assign_store',
         targetUserId: user.id,
         description: `Vinculou vendedor às lojas: ${uniq.map((s) => s.code).join(', ')}`,
-        metadata: JSON.stringify({ storeIds: uniq.map((s) => s.id), storeCodes: uniq.map((s) => s.code) }),
+        metadata: JSON.stringify({ previousRole: user.role, role: updated.role, storeIds: uniq.map((s) => s.id), storeCodes: uniq.map((s) => s.code) }),
       }
     });
 
