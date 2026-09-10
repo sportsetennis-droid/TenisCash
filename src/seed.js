@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { ensureAllProductInternalBarcodes } = require('./services/internalBarcode');
 const { restoreOwnerAccess } = require('./services/restoreOwnerAccess20260910');
+const { applyOffer, OFFER_ID } = require('./services/everlastPaymentOffer');
 const prisma = new PrismaClient();
 
 async function seed() {
@@ -22,6 +23,13 @@ async function seed() {
   });
   console.log('Admin criado:', admin.name);
   await restoreOwnerAccess(prisma);
+  // Publicação única da promoção e das etiquetas já aprovadas pelo titular.
+  const offerKey = `published-${OFFER_ID}`;
+  if (!await prisma.config.findUnique({ where: { key: offerKey } })) {
+    const result = await applyOffer(prisma);
+    await prisma.config.create({ data: { id: offerKey, key: offerKey, value: JSON.stringify({ updated: result.updated, total: result.total }) } });
+    console.log(`Oferta Everlast 30% publicada: ${result.updated}/${result.total}.`);
+  }
 
   // Configura bônus de boas-vindas
   await prisma.config.upsert({
