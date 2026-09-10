@@ -33,6 +33,7 @@ const PRODUCT_ORANGE_RGB_TILE = Buffer.from(
 );
 
 function registerLabelFonts(doc) {
+  doc.registerFont('TenisAnton', path.join(__dirname, '../../assets/fonts/Anton-Regular.ttf'));
   let interRegistered = false;
   if (fs.existsSync(LABEL_FONT_REGULAR) && fs.existsSync(LABEL_FONT_MEDIUM) && fs.existsSync(LABEL_FONT_BOLD)) {
     try {
@@ -966,7 +967,51 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 // Etiqueta 5x7 em uma unica peca fisica por produto.
 // Frente: marca, descricao, preco e garantia.
 // Verso: loja, codigo de barras e QR Code.
+function drawEverlastPromotion(doc, item, x, y, w, h) {
+  const orange = '#FF6900';
+  const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  const regular = doc._tenisLabelFonts ? 'TenisInterMedium' : 'Helvetica';
+  const text = (value, top, size, font = bold, color = '#FFFFFF', left = 3, width = 44) => {
+    doc.font(font).fontSize(size);
+    while (doc.widthOfString(value) > mm(width) && size > 3) {
+      size -= 0.1;
+      doc.fontSize(size);
+    }
+    doc.fillColor(color).text(value, x + mm(left), y + mm(top), {
+      width: mm(width), align: 'center', lineBreak: false,
+    });
+  };
+  doc.fillColor(orange).rect(x, y, w, h).fill();
+  text('BAIXOU 30%', 2.2, 32, 'TenisAnton');
+  text('APROVEITE ANTES QUE ACABE', 16.5, 6.3, regular);
+  for (const top of [20.8, 40.5]) {
+    doc.strokeColor('#FFFFFF').lineWidth(0.5)
+      .moveTo(x + mm(3), y + mm(top)).lineTo(x + w - mm(3), y + mm(top)).stroke();
+  }
+  if (item._brandLogoBuffer) {
+    doc.image(openImageCached(doc, item._brandLogoBuffer), x + mm(4), y + mm(23), {
+      width: w - mm(8), height: mm(13.5),
+    });
+  } else text('EVERLAST', 23.5, 31, 'TenisAnton');
+  const source = String(item.productName || item.name || '').toUpperCase();
+  const model = source.replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
+    .split(/\s+SE[FMU]A\d|\s+EVERLAST\b|\s+REF\b/)[0].trim();
+  text(model, 37.1, 7.5, regular);
+  doc.fillColor('#FFFFFF').rect(x + mm(2.4), y + mm(42), w - mm(4.8), mm(19)).fill();
+  text(`DE ${fmtBRL(item.paymentOffer.basePrice)}`, 42.7, 8, regular, orange);
+  text('POR', 47, 8, bold, orange, 4, 7);
+  text('R$', 50.4, 12, bold, orange, 4, 7);
+  const amount = fmtBRL(item.paymentOffer.finalPrice).replace(/^R\$\s*/, '');
+  text(amount, 46.0, 27, 'TenisAnton', orange, 11.5, 34);
+  text('PAGUE NO DINHEIRO, PIX OU CARTÃO', 57.9, 5.1, bold, orange, 3.6, 42.8);
+  text('VEM PARA', 62.2, 6.8, regular);
+  text('SPORTS & TENNIS', 65.2, 11.2);
+}
+
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
+  if (side === 'front' && item.paymentOffer?.discountPercent === 30) {
+    return drawEverlastPromotion(doc, item, x, y, w, h);
+  }
   const CREAM = '#F6F0E5';
   const CHARCOAL = '#191A18';
   const ORANGE = PRODUCT_ORANGE_RGB;
@@ -1096,21 +1141,6 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       });
     }
 
-    if (item.paymentOffer) {
-      const offer = item.paymentOffer;
-      const adjusted = Math.round(offer.installmentPrice * 100) !== Math.round(offer.lastInstallmentPrice * 100);
-      const line = (text, top, max, min, color = CHARCOAL) => {
-        const fs = fitSingleLine(text, FONT_BOLD, max, min);
-        doc.font(FONT_BOLD).fontSize(fs).fillColor(color)
-          .text(text, x + pad, y + mm(top), { width: innerW, lineBreak: false });
-      };
-      line(`DE ${fmtBRL(offer.basePrice)}`, 43.4, 7, 6);
-      line(`5x ${fmtBRL(offer.installmentPrice)}${adjusted ? '*' : ''}`, 46.1, 20, 16, ORANGE);
-      line('SEM JUROS · 20% DE DESCONTO', 53.1, 6.2, 5.4, ORANGE);
-      line(`TOTAL NO CARTÃO ${fmtBRL(offer.cardPrice)}`, 55.5, 5.8, 5.3);
-      line(`OU PIX ${fmtBRL(offer.pixPrice)} · 25% OFF`, 58, 6.5, 5.8, ORANGE);
-      if (adjusted) line(`*ÚLTIMA PARCELA ${fmtBRL(offer.lastInstallmentPrice)}`, 60.6, 4.3, 3.8);
-    } else {
     const usePromo = item.promotionalPrice != null
       && Number(item.promotionalPrice) < Number(item.price || Infinity);
     const value = usePromo ? Number(item.promotionalPrice) : Number(item.price);
@@ -1163,7 +1193,6 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       }
     }
 
-    }
     const warrantyText = String(item.guaranteeText || 'PRODUTO ORIGINAL E GARANTIA.').toUpperCase();
     doc.save().strokeColor(ORANGE).lineWidth(mm(0.45))
       .moveTo(x + pad, y + mm(62.5))
@@ -1538,6 +1567,8 @@ async function generateLabelsPDF({
     if (logoParts.full) flat.forEach((item) => { item._storeLogoBuffer = logoParts.full; });
   }
   if (productDuplex) {
+    const everlastLogo = 'data:image/svg+xml;base64,' + fs.readFileSync(path.join(__dirname, '../../assets/logos/brands/everlast.svg')).toString('base64');
+    flat.forEach(item => { if (item.paymentOffer?.discountPercent === 30) item.brandLogoUrl = everlastLogo; });
     const brandUrls = [...new Set(flat.map((item) => String(item.brandLogoUrl || '').trim()).filter(Boolean))];
     const brandBuffers = await Promise.all(brandUrls.map(async (url) => [url, await loadLogoBuffer(url)]));
     const byUrl = new Map(brandBuffers.filter(([, buffer]) => buffer));

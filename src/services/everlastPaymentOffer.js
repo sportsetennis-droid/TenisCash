@@ -1,5 +1,5 @@
 // Oferta aprovada: descontos alternativos sobre o preço normal, sem acumular.
-const OFFER_ID = 'everlast-pix25-card20-5x-20260910';
+const OFFER_ID = 'everlast-off30-20260910';
 
 function contextOf(product) {
   try {
@@ -11,15 +11,11 @@ function contextOf(product) {
 function calculateOffer(price) {
   const baseCents = Math.round(Number(price) * 100);
   if (!Number.isSafeInteger(baseCents) || baseCents <= 0) throw new Error('Preço normal inválido');
-  const cardCents = Math.round(baseCents * 80 / 100);
-  const pixCents = Math.round(baseCents * 75 / 100);
-  const installmentCents = Math.round(cardCents / 5);
+  const finalCents = Math.round(baseCents * 70 / 100);
   return {
     id: OFFER_ID, active: true, basePrice: baseCents / 100,
-    cardDiscountPercent: 20, pixDiscountPercent: 25, installments: 5,
-    cardPrice: cardCents / 100, pixPrice: pixCents / 100,
-    installmentPrice: installmentCents / 100,
-    lastInstallmentPrice: (cardCents - installmentCents * 4) / 100,
+    discountPercent: 30, finalPrice: finalCents / 100,
+    paymentMethods: ['DINHEIRO', 'PIX', 'CARTÃO'],
   };
 }
 
@@ -45,7 +41,7 @@ async function applyOffer(prisma) {
     });
     for (const { p, offer } of planned) {
       await tx.product.update({ where: { id: p.id }, data: {
-        promoPrice: offer.cardPrice,
+        promoPrice: offer.finalPrice,
         aiContext: { ...contextOf(p), paymentOffer: offer },
       } });
     }
