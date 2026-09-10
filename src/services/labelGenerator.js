@@ -995,7 +995,7 @@ function drawEverlastPromotion(doc, item, x, y, w, h) {
   } else text('EVERLAST', 23.5, 31, 'TenisAnton');
   const source = String(item.productName || item.name || '').toUpperCase();
   const model = source.replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
-    .split(/\s+SE[FMU]A\d|\s+EVERLAST\b|\s+REF\b/)[0].trim();
+    .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
   text(model, 37.1, 7.5, regular);
   doc.fillColor('#FFFFFF').rect(x + mm(2.4), y + mm(42), w - mm(4.8), mm(19)).fill();
   text(`DE ${fmtBRL(item.paymentOffer.basePrice)}`, 42.7, 8, regular, orange);
