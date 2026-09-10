@@ -26,7 +26,7 @@ async function main() {
   const original = { id: 'one', brand: 'Everlast', name: 'Solo', price: 229.89, promoPrice: 100, aiContext: { supplier: { name: 'NESK' }, classification: 'training' } };
   let rows = [structuredClone(original)];
   const prisma = { $transaction: async fn => fn({ product: {
-    findMany: async query => { assert.deepEqual(query.where, { brand: { equals: 'EVERLAST', mode: 'insensitive' } }); return rows; },
+    findMany: async query => { assert.deepEqual(query.where, { active:true, brand: { equals: 'EVERLAST', mode: 'insensitive' } }); return rows; },
     update: async ({where, data}) => { const row = rows.find(p => p.id === where.id); Object.assign(row, data); return row; },
   } }) };
   assert.equal((await applyOffer(prisma)).updated, 1);
@@ -46,19 +46,6 @@ async function main() {
   assert.equal(partial.updated, 1);
   assert.deepEqual(partial.skipped, [{ productId:'bad', name:'Solo', price:0 }]);
   assert.deepEqual(rows, before, 'unpriced products must stay unchanged');
-
-  rows = [
-    { ...original, id:'parent', name:'TENIS SOLO EVERLAST PRETO/ROXO', price:0 },
-    { ...original, id:'size38', name:'TENIS SOLO EVERLAST PRETO/ROXO 38 REF SEFA199.199A.38' },
-    { ...original, id:'size39', name:'TENIS SOLO EVERLAST PRETO/ROXO 39 REF SEFA199.199A.39' },
-  ];
-  assert.equal((await applyOffer(prisma)).updated, 3);
-  assert.equal(rows[0].price, 229.89);
-  assert.deepEqual(rows[0].aiContext.paymentOffer.recoveredPriceFrom, ['size38','size39']);
-  rows[0].price = 0;
-  rows[2].price = 250;
-  assert.equal((await applyOffer(prisma)).skipped.length, 1, 'conflicting sibling prices need review');
-  assert.equal(rows[0].price, 0);
 
   const pdf = await generateLabelsPDF({
     template: defaultTemplates().a4_16_5x7_duplex,

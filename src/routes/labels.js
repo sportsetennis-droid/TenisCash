@@ -39,7 +39,7 @@ router.post('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
 
 router.get('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
   try {
-    const products = await prisma.product.findMany({ where: { brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
+    const products = await prisma.product.findMany({ where: { active: true, brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
     res.json({ total: products.length, configured: products.filter(p => productOffer(p)).length,
       withoutPrice: products.filter(p => !(Number(p.price) > 0)).map(p => ({ productId:p.id, name:p.name })) });
   } catch (err) { res.status(500).json({ error: err.message }); }
