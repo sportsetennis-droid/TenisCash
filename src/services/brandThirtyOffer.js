@@ -3,6 +3,7 @@ const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300
 function isFootwear(p) {
   const name = normalize(p.name);
   if (/\b(VESTUARIO|CAMISETA|CAMISA|BERMUDA|SHORT|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
+  if (normalize(p.brand) === 'REEBOK' && /\bSTREET\s*RIDE\b/.test(name)) return true;
   return /\b(TENIS|CHUTEIRA|CHINELO|CHINELOS|SANDALIA|SAPATILHA|SAPATO|CALCADO|CALCADOS)\b/.test(name)
     || /^(TENIS|CALCADO|CALCADOS|CHUTEIRA|CHUTEIRAS|SANDALIA|SANDALIAS|CHINELO|CHINELOS)$/.test(normalize(p.category));
 }
