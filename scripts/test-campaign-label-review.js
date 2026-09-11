@@ -24,3 +24,6 @@ assert.equal(pending.pending.length,1);
 const modalities=campaignLabelReview(['FUTSAL','SOCIETY'].map(m=>({brand:'JOMA',name:'MAXIMA',price:200,labelUsage:[m,'PARA TREINO']})),describe);
 assert.equal(modalities.products.length,2);assert.equal(modalities.pending.length,0);
 console.log('Campanha: duplicatas removidas, preços/modalidades distintos preservados, aprovações e pendências verificadas.');
+
+assert.deepEqual(labelUsage({name:'CHUTEIRA KAPPA SORANO II REF. K115',brand:'KAPPA'}),['FUTEBOL DE CAMPO','PARA TREINO']);
+assert.deepEqual(labelUsage({name:'TENIS OLYMPIKUS CORRE TRILHA2',brand:'OLYMPIKUS'}),['CORRIDA EM TRILHAS','TREINO']);

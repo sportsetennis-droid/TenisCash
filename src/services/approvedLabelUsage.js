@@ -6,7 +6,7 @@ module.exports = function approvedUsage(name, brand, modality) {
     // References verified against model listings; training level approved by owner.
     if (/\bK(102|111)\b/.test(name)) return ['FUTSAL', 'PARA TREINO'];
     if (/\bK(101|110|116|119)\b/.test(name)) return ['SOCIETY', 'PARA TREINO'];
-    if (/\bK(100|109|118)\b/.test(name)) return ['FUTEBOL DE CAMPO', 'PARA TREINO'];
+    if (/\bK(100|109|115|118)\b/.test(name)) return ['FUTEBOL DE CAMPO', 'PARA TREINO'];
   }
   if (brand === 'FILA') {
     if (/SKY\s*TRAIL|SKT\s*TRAIL/.test(name)) return ['CORRIDA EM TRILHAS', 'ATÉ 21 KM'];
@@ -35,7 +35,7 @@ module.exports = function approvedUsage(name, brand, modality) {
     if (/STATION|FORCEKNIT|RING\s*(4|IV)|CLIMBER\s*(PRO|ULTRA)/.test(name)) return ['TREINO DE FORÇA E ACADEMIA', 'CROSS E FUNCIONAL'];
   }
   if (brand === 'OLYMPIKUS') {
-    if (/CORRE.*TRILHA/.test(name)) return ['CORRIDA EM TRILHAS', 'LONGAS DISTÂNCIAS'];
+    if (/CORRE.*TRILHA/.test(name)) return ['CORRIDA EM TRILHAS', 'TREINO'];
     if (/JOGGING/.test(name)) return casual;
     if (/VENUM/.test(name)) return ['DIA A DIA', 'E BRINCADEIRAS'];
     // Owner's wording for sporting use; stable across imported colour variants.

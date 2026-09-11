@@ -10290,7 +10290,18 @@ async function initLabelsTab() {
         }
         const note = document.createElement('p');
         note.textContent = `${data.originalCount} cadastros → ${data.products.length} grupos por modelo, preço e modalidade. ${(data.pending || []).length} pendências excluídas da seleção. Duas etiquetas por grupo conferido.`;
-        review.replaceChildren(note, list);
+        const downloadReview = document.createElement('button');
+        downloadReview.type = 'button';
+        downloadReview.textContent = 'Baixar conferência dos modelos';
+        downloadReview.onclick = () => {
+          const rows = [['Marca','Modelo','Atividade','Preço original','Preço atual','Situação','Cadastros agrupados'], ...Array.from(list.rows, row => Array.from(row.cells, cell => cell.textContent))];
+          const csv = '\uFEFF' + rows.map(row => row.map(value => '"' + String(value).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+          const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+          const link = document.createElement('a');
+          link.href = url; link.download = 'conferencia-etiquetas-campanha.csv'; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+        review.replaceChildren(note, downloadReview, list);
         _lblUpdateCart();
       } catch (e) { review.textContent = 'Erro: ' + e.message; }
     };

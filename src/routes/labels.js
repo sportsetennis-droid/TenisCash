@@ -1511,13 +1511,16 @@ router.get('/batches/:id/pdf', async (req, res) => {
       const detectedColor = labelProductColor(p, ctx);
       const colorIssue = detectedColor ? null : labelProductColorIssue(p, ctx);
       const color = detectedColor || colorIssue.short;
-      const productName = labelProductDescription(
+      let productName = labelProductDescription(
         p,
         baseName,
         reference,
         categoryLabel,
         ctx,
       );
+      if (p && ['EVERLAST','REEBOK','CONVERSE','ALLSTAR','ALL STAR','FILA','DIADORA','OLYMPIKUS','OUS','SPEEDO','JOMA','KAPPA','MIZUNO','MUNICH','TOPPER','UMBRO'].includes(String(p.brand || '').toUpperCase()) && isTennisProduct(p)) {
+        productName = require('../services/campaignLabelModel').campaignLabelModel({ ...p, originalProductName: baseName, productName });
+      }
       const motivationText = labelMotivationText(
         p,
         cls,
