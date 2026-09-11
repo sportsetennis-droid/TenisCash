@@ -241,12 +241,19 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       blob = await r.blob();
     }catch(e){ alert('Falha ao obter o PDF: ' + e.message); return false; }
-    if (typeof window.openPdfInBrowser === 'function') {
-      const opened = window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
-      if (opened) _ptoast('PDF aberto no visualizador web.', 6000);
-      return opened;
-    }
-    return false;
+    // Keep the finished PDF accessible even when pop-ups are blocked after a long fetch.
+    let ready = $('pdfReady');
+    if (!ready) { ready = document.createElement('div'); ready.id = 'pdfReady'; $('genBtn').parentElement.appendChild(ready); }
+    if (ready.dataset.url) URL.revokeObjectURL(ready.dataset.url);
+    const url = URL.createObjectURL(blob); ready.dataset.url = url;
+    ready.style.cssText = 'padding:12px;background:#fff;border-radius:10px;color:#c43b0c;display:flex;gap:12px;align-items:center;flex-wrap:wrap';
+    ready.replaceChildren();
+    const download = document.createElement('a'); download.id = 'lastPdfDownload'; download.href = url; download.download = 'etiquetas-calcados.pdf'; download.textContent = 'Baixar PDF pronto';
+    const view = document.createElement('button'); view.type = 'button'; view.textContent = 'Visualizar PDF pronto';
+    view.onclick = () => window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
+    ready.append(download, view);
+    _ptoast('PDF pronto. Baixe ou visualize pelos botões acima.', 6000);
+    return true;
   }
 
   // ---------- Templates ----------
