@@ -77,9 +77,16 @@ async function run(query, role = 'admin') {
   assert.equal((await run({storeId: 'a'}, 'seller')).result.canViewRevenueTotals, true);
   const all = (await run({})).result;
   assert.equal(all.period, 'today');
-  assert.equal(all.canViewRevenueTotals, false);
-  assert.equal(all.totals.salesAmount, null);
-  assert.equal(all.totals.commissionAmount, null);
+  assert.equal(all.canViewRevenueTotals, true);
+  assert.equal(typeof all.totals.salesAmount, 'number');
+  assert.equal(typeof all.totals.commissionAmount, 'number');
+  for (const role of ['seller', 'store', 'manager']) {
+    const restricted = (await run({storeId: 'all'}, role)).result;
+    assert.equal(restricted.canViewRevenueTotals, false, role);
+    assert.equal(restricted.totals.salesAmount, null, role);
+    assert.equal(restricted.totals.commissionAmount, null, role);
+  }
+  assert.equal((await run({storeId: 'all'}, 'superadmin')).result.canViewRevenueTotals, true);
   assert.equal(all.ranking.find(r => r.sellerId === '8').store.id, 'b');
   const other = (await run({ period: 'today', storeId: 'b' })).result;
   assert.deepEqual(Array.from(other.ranking, r => r.sellerId), ['8']);

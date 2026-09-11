@@ -1568,7 +1568,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       sellersCount: ranking.length,
     };
 
-    const canViewRevenueTotals = !!storeId;
+    const canViewRevenueTotals = !!storeId || ['admin', 'superadmin'].includes(visibility.role);
     if (!canViewRevenueTotals) {
       totals.salesAmount = null; totals.cashbackGiven = null; totals.commissionAmount = null;
     }
