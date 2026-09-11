@@ -1,9 +1,10 @@
 const { labelUsage } = require('./labelUsage');
 const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+const campaignDiscount = brand => ['TOPPER', 'MUNICH'].includes(normalize(brand)) ? 20 : 30;
 function isFootwear(p) {
   const name = normalize(p.name);
-  if (/\b(VESTUARIO|CAMISETA|CAMISA|BERMUDA|SHORTS?|CASACO|JAQUETA|COTOVELEIRA|JOELHEIRA|TORNOZELEIRA|MEIAO|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
+  if (/\b(VESTUARIO|CAM|CALCAO|CAMISETA|CAMISA|BERMUDA|SHORTS?|CASACO|JAQUETA|COTOVELEIRA|JOELHEIRA|TORNOZELEIRA|MEIAO|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
   if (normalize(p.brand) === 'REEBOK' && /\bSTREET\s*RIDE\b/.test(name)) return true;
   return /\b(TENIS|CHUTEIRA|CHINELO|CHINELOS|SANDALIA|SAPATILHA|SAPATO|CALCADO|CALCADOS)\b/.test(name)
     || /^(TENIS|CALCADO|CALCADOS|CHUTEIRA|CHUTEIRAS|SANDALIA|SANDALIAS|CHINELO|CHINELOS)$/.test(normalize(p.category));
@@ -27,7 +28,7 @@ async function campaignFootwear(prisma) {
     && (!/CONVERSE|ALL ?STAR/.test(normalize(p.brand)) || isAllStar(p))
     && (!['JOMA','UMBRO'].includes(normalize(p.brand)) || isBoot(p))
     && Number(p.price) > 0 && (normalize(p.brand) === 'UMBRO' ? p.promoPrice == null
-      : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * 70 / 100)))
+      : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * (100 - campaignDiscount(p.brand)) / 100)))
     .map(p => { let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext || {}; } catch {}
       return { id:p.id, name:p.name, brand:p.brand, category:p.category, price:p.price, promoPrice:p.promoPrice,
         labelUsage:labelUsage(p, ctx.classification || {}), sku:p.sku, supplierRef:p.supplierRef, internalBarcode:p.internalBarcode,
@@ -48,7 +49,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
     const changes = selected.map(p => {
       const cents = Math.round(Number(p.price) * 100);
       if (!Number.isSafeInteger(cents) || cents <= 0) throw new Error(`Preço original inválido: ${p.name}`);
-      return { id: p.id, name: p.name, price: Number(p.price), promoPrice: brand === 'UMBRO' ? null : Math.round(cents * 70 / 100) / 100 };
+      return { id: p.id, name: p.name, price: Number(p.price), promoPrice: brand === 'UMBRO' ? null : Math.round(cents * (100 - campaignDiscount(brand)) / 100) / 100 };
     });
     for (const p of changes) {
       const result = await tx.product.updateMany({ where: { id: p.id, price: p.price, active: true },
@@ -57,7 +58,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
     }
     let removed = 0;
     // The owner narrowed the Olympikus campaign to footwear after its first application.
-    if (['OLYMPIKUS', 'FILA'].includes(brand)) {
+    if (['OLYMPIKUS', 'FILA', 'TOPPER'].includes(brand)) {
       for (const p of products.filter(p => !isFootwear(p))) {
         const expected = Math.round(Math.round(Number(p.price) * 100) * 70 / 100);
         if (p.promoPrice != null && Math.round(Number(p.promoPrice) * 100) === expected) {
@@ -66,7 +67,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
         }
       }
     }
-    return { brand, discountPercent: brand === 'UMBRO' ? 0 : 30, updated: changes.length, removed, excluded: products.length - changes.length, products: changes };
+    return { brand, discountPercent: brand === 'UMBRO' ? 0 : campaignDiscount(brand), updated: changes.length, removed, excluded: products.length - changes.length, products: changes };
   }, { timeout: 30000 });
 }
 module.exports = { applyBrandThirtyOffer, campaignFootwear, isFootwear, isAllStar, isBoot };

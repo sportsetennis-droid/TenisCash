@@ -1755,8 +1755,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn" id="cat-off30-olympikus">Aplicar 30% OFF em Olympikus</button>
         <button type="button" class="btn" id="cat-off30-fila">Aplicar 30% OFF em Fila</button>
         <button type="button" class="btn" id="cat-off30-speedo">Aplicar 30% OFF em Speedo</button>
-        <button type="button" class="btn" id="cat-off30-topper">Aplicar 30% OFF em Topper</button>
-        <button type="button" class="btn" id="cat-off30-munich">Aplicar 30% OFF em Munich</button>
+        <button type="button" class="btn" id="cat-off30-topper">Aplicar 20% OFF em Topper</button>
+        <button type="button" class="btn" id="cat-off30-munich">Aplicar 20% OFF em Munich</button>
         <button type="button" class="btn" id="cat-off30-allstar">Aplicar 30% OFF em All Star</button>
         <button type="button" class="btn" id="cat-off30-joma">Chuteiras Joma: 30% OFF</button>
         <button type="button" class="btn" id="cat-off30-umbro">Chuteiras Umbro: preço normal</button>
@@ -4932,7 +4932,7 @@ function initAdminCatalogTab() {
         try {
           const result = await api('/admin/labels/brand-thirty-offer', 'POST', { brand });
           if (result.error) throw new Error(result.error);
-          status.textContent = result.updated + ' calçados ' + result.brand + (result.discountPercent === 0 ? ' com preço normal, sem desconto. ' : ' com 30% OFF. ') + 'Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
+          status.textContent = result.updated + ' calçados ' + result.brand + (result.discountPercent === 0 ? ' com preço normal, sem desconto. ' : ' com ' + result.discountPercent + '% OFF. ') + 'Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
           await loadCatalogProductsAdmin();
         } catch (error) { status.textContent = 'Não aplicado: ' + error.message; }
         finally { button.disabled = false; }

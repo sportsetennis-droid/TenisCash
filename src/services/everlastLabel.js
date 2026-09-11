@@ -4,15 +4,16 @@ const path = require('path');
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const brand = String(item.brand || '').trim().toUpperCase();
   const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
-  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA'].includes(brand);
+  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA','TOPPER','MUNICH'].includes(brand);
   const promoCents = Math.round(Number(item.promotionalPrice) * 100);
   const baseCents = Math.round(Number(item.price) * 100);
-  // Only an explicitly selected, saved 30% promotion enables this label.
-  const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * 0.70)
-    ? { active: true, discountPercent: 30, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
+  // Only the saved campaign promotion enables this label.
+  const discount = ['TOPPER','MUNICH'].includes(brand) ? 20 : 30;
+  const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * (100 - discount) / 100)
+    ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
   const offer = campaignBrand ? reebokOffer : item.paymentOffer;
   if ((!campaignBrand && brand !== 'EVERLAST')
-      || !offer?.active || offer.discountPercent !== 30
+      || !offer?.active || ![20,30].includes(offer.discountPercent)
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
   let model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
@@ -94,7 +95,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.fillColor(color).text(text, left, top, { width, height: 400, lineBreak: false, align });
   }
   line('BAIXOU', 45, -10, 970, 290, 'EverlastAnton', '#FFFFFF', 'center');
-  line('30% OFF', 45, 320, 970, 185, 'EverlastAnton', '#FFFFFF', 'center');
+  line(offer.discountPercent + '% OFF', 45, 320, 970, 185, 'EverlastAnton', '#FFFFFF', 'center');
   doc.translate(0, contentShift);
   doc.fillColor('#FFFFF5').rect(0, 770, 1060, 70).fill();
   line(model, 55, 770, 950, 64, bold, '#EA3F0A', 'center');
