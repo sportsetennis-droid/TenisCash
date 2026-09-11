@@ -4,18 +4,25 @@ const path = require('path');
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const brand = String(item.brand || '').trim().toUpperCase();
   const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
+  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR'].includes(brand);
   const promoCents = Math.round(Number(item.promotionalPrice) * 100);
   const baseCents = Math.round(Number(item.price) * 100);
   // Only an explicitly selected, saved 30% promotion enables this label.
-  const reebokOffer = streetRide && baseCents > 0 && promoCents === Math.round(baseCents * 0.70)
+  const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * 0.70)
     ? { active: true, discountPercent: 30, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
-  const offer = streetRide ? reebokOffer : item.paymentOffer;
-  if ((!streetRide && brand !== 'EVERLAST')
+  const offer = campaignBrand ? reebokOffer : item.paymentOffer;
+  if ((!campaignBrand && brand !== 'EVERLAST')
       || !offer?.active || offer.discountPercent !== 30
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
-  const model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
+  let model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
+  if (campaignBrand && !streetRide) {
+    const known = ['IMIGRANTE SERIE X','IMIGRANTE MEGA','CHUCK TAYLOR ALL STAR','CHUCK TAYLOR','ARQUITETONICO','FLUENTE GTX','NACCARATO V','PHIBO 1123','IMIGRANTE','EMERGENTE','HEVEA','UENO','2K'];
+    const match = brand === 'OUS' || /CONVERSE|ALL ?STAR/.test(brand) ? known.find(k => model.includes(k)) : null;
+    model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '')
+      .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
+  }
   const usageByModel = {
     'STREET RIDE': ['USO CASUAL', 'E DIA A DIA'],
     'CLIMBER RUN': ['CAMINHADA', 'E CORRIDA LEVE'],
@@ -33,7 +40,11 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     'BLAZER': ['USO CASUAL', 'E DIA A DIA'],
     'NEW YORK': ['DIA A DIA', 'E LAZER'],
   };
-  const usage = usageByModel[model];
+  const modality = String(item.modality || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const usage = usageByModel[model] || (/ESTILO DE VIDA|LIFESTYLE|CASUAL|STREET/.test(modality) ? ['USO CASUAL','E DIA A DIA']
+    : /CORRIDA|RUNNING/.test(modality) ? ['PARA CORRIDA','']
+    : /CAMINHADA/.test(modality) ? ['PARA CAMINHADA','']
+    : /TREINO|MUSCULACAO|CROSS/.test(modality) ? ['PARA TREINO',''] : null);
   const assets = path.join(__dirname, '../../assets');
   doc.save();
   const canvasHeight = Math.round(1060 * h / w);
@@ -50,11 +61,18 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.restore();
   }
   band(0, 330, 0, headlineHeight);
-  if (streetRide) {
+  if (campaignBrand) {
     band(0, 330, headlineHeight, 820 + contentShift - headlineHeight);
+    if (streetRide) {
     doc.image(path.join(assets, 'logos/brands/reebok-white.png'), 80, headlineHeight + 40, { width: 200 });
     doc.font('Helvetica-BoldOblique').fontSize(138).fillColor('#FFFFFF')
       .text('Reebok', 300, headlineHeight + 12, { width: 690, height: 170, lineBreak: false });
+    } else if (item._brandLogoBuffer) {
+      doc.image(item._brandLogoBuffer, 150, headlineHeight + 12, { fit:[760,130], align:'center', valign:'center' });
+    } else {
+      doc.font('Helvetica-Bold').fontSize(110).fillColor('#FFFFFF').text(brand, 40, headlineHeight + 24,
+        { width:980, height:150, align:'center', lineBreak:false });
+    }
   } else {
     band(330, 350, headlineHeight, 820 + contentShift - headlineHeight);
   }
