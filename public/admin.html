@@ -2026,6 +2026,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div id="labels-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Nenhuma etiqueta selecionada</div>
     </div>
     <button type="button" id="labels-campaign-two" class="btn">Campanha: 2 de cada calçado</button>
+    <label><input type="checkbox" id="labels-exclude-allstar"> Excluir All Star deste lote</label>
     <div id="labels-campaign-review" data-revision="usage-campaign-v4" style="width:100%;max-height:300px;overflow:auto"></div>
     <button type="button" id="labels-cart-add-all" style="padding:8px 14px;background:rgba(255,255,255,0.25);color:white;border:1px solid rgba(255,255,255,0.5);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">+1 em todos produtos visíveis</button>
     <button type="button" id="labels-cart-show" style="padding:8px 14px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">📋 Ver lista</button>
@@ -4738,13 +4739,6 @@ async function downloadAuthedFile(path, filename) {
       return false;
     }
     const blob = await r.blob();
-    if (/\/labels\/batches\/[^/]+\/pdf/.test(path)) {
-      if (typeof window.openPdfInBrowser === 'function') {
-        return window.openPdfInBrowser(blob, { title: 'Etiquetas — TenisCash' });
-      }
-      alert('Atualize o painel para abrir o visualizador web das etiquetas.');
-      return false;
-    }
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -10274,6 +10268,11 @@ async function initLabelsTab() {
         const data = await api('/admin/labels/campaign-footwear');
         if (data.error) throw new Error(data.error);
         if (!data.products?.length) throw new Error('Nenhum calçado com oferta encontrada');
+        if (document.getElementById('labels-exclude-allstar').checked) {
+          data.products = data.products.filter(p => !/CONVERSE|ALL\s*STAR/i.test(p.brand || '') && !/ALL\s*STAR/i.test(p.name || ''));
+          data.pending = data.products.filter(p => p.labelIssue);
+          data.originalCount = data.products.reduce((total, p) => total + Number(p.variantCount || 1), 0);
+        }
         _lblSel = {}; _labelsSelected = {};
         document.getElementById('labels-use-promo').checked = true;
         const list = document.createElement('table');

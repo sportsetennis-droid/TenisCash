@@ -13,6 +13,10 @@ function campaignLabelModel(item) {
       .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
   }
   const rawModelSource = String(item.originalProductName || item.name || '').toUpperCase();
+  if (brand === 'DIADORA') {
+    const match = rawModelSource.match(/STRATUS\s*II|VULCANO\s*II|GIOVE|LEGGENDA|ILLUSIONE|SAGA|MONZA|MODENA|MARINO|ESSENZIALE|SFORZA|CENTRALE|PLAYMAKER/);
+    if (match) model = match[0];
+  }
   if (brand === 'OLYMPIKUS') {
     const match = rawModelSource.match(/CORRE\s*TRILHA\s*2|CHALLENGER\s*5|REVERSO\s*2|FLIT\s*4|ZEX\s*2|JOGGING(?:\s+\d+)?(?:\s+SE)?|COSMO|VIRTUOSE|GIRO|MESCLA|ORBITA|PURPURA|RITMO|VENUM/);
     if (match) model = match[0].replace(/JOGGING\s+\d+/, 'JOGGING').replace(/TRILHA2/, 'TRILHA 2');
