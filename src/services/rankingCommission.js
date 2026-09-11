@@ -76,6 +76,8 @@ function calculateRankingCommissions(sales, { start, end, storeId = null }) {
     }
     result.set(sellerId, { baseAmount: money(total / 100 * 0.01), at50kAmount: money(total / 100 * 0.02),
       clothingSalesAmount: clothing / 100, clothingBaseAmount: money(clothing / 100 * 0.01), at20kClothingAmount: money(clothing / 100 * 0.04),
+      totalAt1Percent: money(total / 100 * 0.01),
+      totalAt2And4Percent: Math.round((total - clothing) * 0.02 + clothing * 0.04) / 100,
       earnedAmount: earned / 100, clothingItems: (clothingItems.get(sellerId) || []).sort((a, b) => new Date(b.date) - new Date(a.date)),
       months: targets.sort((a, b) => a.month.localeCompare(b.month)) });
   }

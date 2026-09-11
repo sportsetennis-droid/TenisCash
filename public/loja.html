@@ -283,7 +283,7 @@
     --primary: #b83d0a;
   }
   .ranking-scroll { overflow-x: auto; border-radius: var(--radius); }
-  #rankingTable .ranking-scroll table { min-width: 1120px; }
+  #rankingTable .ranking-scroll table { min-width: 1400px; }
   .rank-commission-note { display: block; margin-top: 5px; font-size: 11px; font-weight: 400; color: #595959; line-height: 1.4; }
   .rank-target-ok { color: #146c36; font-weight: 600; }
 
@@ -3417,6 +3417,8 @@ async function loadRanking() {
           <th style="text-align:right;">Batendo 50k<br>Geral 2%</th>
           <th style="text-align:right;">Vestuário Sports &amp; Tennis<br>1%</th>
           <th style="text-align:right;">Vestuário Sports &amp; Tennis<br>Batendo 20k · 4%</th>
+          <th style="text-align:right;">Valor total<br>1%</th>
+          <th style="text-align:right;">Valor total<br>2% + 4%</th>
         </tr></thead>
         <tbody>
           ${rest.map(r => `
@@ -3438,6 +3440,8 @@ async function loadRanking() {
               <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at50kAmount)}${targetText(r.commission)}</td>
               <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}<span class="rank-commission-note">Roupas no período: ${fmt(r.commission.clothingSalesAmount)}</span>${clothingDetails(r.commission)}</td>
               <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at20kClothingAmount)}${targetText(r.commission, true)}</td>
+              <td style="text-align:right;font-weight:800;background:#fff0e5;">${fmt(r.commission.totalAt1Percent)}<span class="rank-commission-note">1% de todas as vendas</span></td>
+              <td style="text-align:right;font-weight:800;background:#edf7ef;color:#146c36;">${fmt(r.commission.totalAt2And4Percent)}<span class="rank-commission-note">Com as duas metas atingidas: 2% dos demais produtos + 4% do vestuário S&amp;T</span></td>
             </tr>
           `).join('')}
         </tbody>

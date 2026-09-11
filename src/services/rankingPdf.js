@@ -13,8 +13,8 @@ async function createRankingPdf(data, { storeName = 'Todas as lojas', generatedA
   const date = d => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
   const periods = { today: 'Hoje', yesterday: 'Ontem', month: 'Mês atual', last_month: 'Mês anterior', custom: 'Personalizado' };
   const x = 28, width = doc.page.width - 56;
-  const widths = [27, 172, 42, 80, 78, 83, 87, width - 569];
-  const headings = ['Pos.', 'Vendedor / loja', 'Vendas', 'Valor vendido', 'Geral\n1%', 'Batendo 50k\nGeral 2%', 'Vestuário S&T\n1%', 'Vestuário S&T\nBatendo 20k - 4%'];
+  const widths = [25, 135, 42, 70, 62, 82, 82, 94, 65, width - 657];
+  const headings = ['Pos.', 'Vendedor / loja', 'Vendas', 'Valor vendido', 'Geral\n1%', 'Batendo 50k\nGeral 2%', 'Vestuário S&T\n1%', 'Vestuário S&T\n20k - 4%', 'Total\n1%', 'Total\n2% + 4%'];
   let y;
   function text(value, left, top, w, size = 8, bold = false) {
     doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor('#242424')
@@ -24,7 +24,7 @@ async function createRankingPdf(data, { storeName = 'Todas as lojas', generatedA
     text('SPORTS & TENNIS | Ranking de vendas', x, 26, width, 17, true);
     text(`${storeName} | ${periods[data.period] || data.period} | ${date(data.from)} a ${date(new Date(new Date(data.to).getTime() - 1))}`, x, 52, width, 10);
     text(`Gerado em ${generatedAt.toLocaleString('pt-BR', { timeZone: 'America/Recife' })} | ${data.ranking.length} vendedores | Vendas: ${fmt(data.totals.salesAmount)} | Comissão calculada: ${fmt(data.totals.commissionAmount)}`, x, 69, width, 9);
-    text('Colunas são comparações, não devem ser somadas. A base geral inclui vestuário. Metas mensais por vendedor em todas as lojas: R$ 50 mil libera 2% no geral; R$ 20 mil em roupas Sports & Tennis libera 4% somente nessas roupas, substituindo a taxa geral. Valores referentes ao período selecionado.', x, 88, width, 8);
+    text('Colunas são comparações. Total 1%: todas as vendas. Total 2% + 4%: projeção com ambas as metas atingidas, 2% dos demais produtos + 4% das roupas Sports & Tennis, sem duplicação. Metas mensais por vendedor: R$ 50 mil no geral e R$ 20 mil nessas roupas, somando todas as lojas. Valores do período selecionado.', x, 88, width, 8);
     y = 124;
     doc.rect(x, y, width, 34).fill('#fff0e5');
     let left = x;
@@ -38,7 +38,8 @@ async function createRankingPdf(data, { storeName = 'Todas as lojas', generatedA
   for (const r of data.ranking) {
     const c = r.commission;
     const cells = [String(r.position), `${r.name}\n${r.store?.name || '-'}\nComissão calculada: ${fmt(r.commissionAmount)}`, String(r.salesCount), fmt(r.salesAmount), fmt(c.baseAmount),
-      `${fmt(c.at50kAmount)}\n${target(c, false)}`, `${fmt(c.clothingBaseAmount)}\nRoupas: ${fmt(c.clothingSalesAmount)}`, `${fmt(c.at20kClothingAmount)}\n${target(c, true)}`];
+      `${fmt(c.at50kAmount)}\n${target(c, false)}`, `${fmt(c.clothingBaseAmount)}\nRoupas: ${fmt(c.clothingSalesAmount)}`, `${fmt(c.at20kClothingAmount)}\n${target(c, true)}`,
+      fmt(c.totalAt1Percent), fmt(c.totalAt2And4Percent)];
     doc.font('Helvetica').fontSize(8);
     const height = Math.max(52, ...cells.map((v, i) => doc.heightOfString(v, { width: widths[i] - 10, lineGap: 2 }) + 14));
     if (y + height > doc.page.height - 42) { doc.addPage(); header(); }
