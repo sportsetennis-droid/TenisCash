@@ -27,10 +27,19 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     const source = String(item.productName || item.name || '').toUpperCase();
     color = source.match(/EVERLAST\s+((?:BRANCO|PRETO|VERDE|AZUL|ROSA|BEGE|CINZA|AMARELO|VERMELHO|LILAS|LILÁS|ROXO|DOURADO|MARROM)[A-ZÀ-Ú/ -]*?)(?:\s+\d{2}\b|\s+REF\b|$)/)?.[1]?.trim() || '';
   }
-  const detail = climberRun ? 'CAMINHADA E CORRIDA LEVE' : color;
-  line(detail, 55, 718, 950, 66, 'EverlastAnton', '#EA3F0A', 'center');
+  if (climberRun) {
+    // A dedicated two-line band keeps the use case readable at actual 5 x 7 cm size.
+    doc.fillColor('#FFFFF5').rect(0, 687, 1060, 215).fill();
+    doc.strokeColor('#EA3F0A').lineWidth(5)
+      .moveTo(0, 687).lineTo(1060, 687)
+      .moveTo(0, 902).lineTo(1060, 902).stroke();
+    line('CAMINHADA', 55, 660, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    line('E CORRIDA LEVE', 55, 765, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+  } else {
+    line(color, 55, 718, 950, 66, 'EverlastAnton', '#EA3F0A', 'center');
+  }
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  line('DE R$ ' + money(offer.basePrice), 68, 866, 925, 68, bold, '#E93E09');
+  line('DE R$ ' + money(offer.basePrice), 68, climberRun ? 908 : 866, 925, 68, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
   line('POR', 65, 1007, 155, 65, 'EverlastAnton', '#E93E09');
   line('R$', 65, 1090, 155, 65, 'EverlastAnton', '#E93E09');
