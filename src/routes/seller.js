@@ -1553,14 +1553,18 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       sellersCount: ranking.length,
     };
 
-    res.json({
-      period,
-      from: startUtc.toISOString(),
-      to: endUtc.toISOString(),
-      storeId: storeId || 'all',
-      ranking,
-      totals,
-    });
+    const result = { period, from: startUtc.toISOString(), to: endUtc.toISOString(),
+      storeId: storeId || 'all', ranking, totals };
+    if (req.query.format === 'pdf') {
+      const { createRankingPdf } = require('../services/rankingPdf');
+      const store = storeId ? await prisma.store.findUnique({ where: { id: storeId }, select: { name: true } }) : null;
+      const pdf = await createRankingPdf(result, { storeName: storeId ? (store?.name || 'Loja selecionada') : 'Todas as lojas', generatedAt: now });
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', `attachment; filename="ranking-${period}-${result.from.slice(0, 10)}.pdf"`);
+      res.set('Cache-Control', 'private, no-store');
+      return res.send(pdf);
+    }
+    res.json(result);
   } catch (err) {
     console.error('Erro rankings:', err);
     res.status(500).json({ error: err.message });
