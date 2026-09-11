@@ -66,10 +66,10 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   }
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1135).lineTo(1060, 1135).stroke();
-  line('DE R$ ' + money(offer.basePrice), 68, 1145, 925, 60, bold, '#E93E09');
+  line('DE R$ ' + money(offer.basePrice), 68, 1140, 925, 84, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  line('POR', 65, 1195, 155, 60, 'EverlastAnton', '#E93E09');
-  line('R$', 65, 1270, 155, 60, 'EverlastAnton', '#E93E09');
+  line('POR', 65, 1225, 155, 60, 'EverlastAnton', '#E93E09');
+  line('R$', 65, 1300, 155, 60, 'EverlastAnton', '#E93E09');
   doc.save().translate(232, 1175).scale(1.95, 1);
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
