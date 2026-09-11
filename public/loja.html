@@ -282,8 +282,20 @@
     --text-muted: #595959;
     --primary: #b83d0a;
   }
-  .ranking-scroll { overflow-x: auto; border-radius: var(--radius); }
-  #rankingTable .ranking-scroll table { min-width: 1400px; }
+  .ranking-scroll { width: 100%; border-radius: var(--radius); }
+  #rankingTable .ranking-scroll table { width: 100%; min-width: 0; table-layout: fixed; }
+  #rankingTable .ranking-scroll th, #rankingTable .ranking-scroll td {
+    padding: 10px 6px; white-space: normal; overflow-wrap: anywhere;
+  }
+  #rankingTable .ranking-scroll th { font-size: 10px; letter-spacing: 0; }
+  #rankingTable .ranking-scroll td { font-size: 12px; }
+  #rankingTable .ranking-scroll .row { gap: 6px; }
+  #rankingTable .ranking-scroll .row > div { min-width: 0; }
+  #rankingTable .ranking-scroll .avatar { flex-shrink: 0; }
+  @media (max-width: 900px) {
+    #rankingTable .ranking-scroll .avatar { display: none; }
+    #rankingTable .ranking-scroll th, #rankingTable .ranking-scroll td { padding: 8px 3px; font-size: 10px; }
+  }
   .rank-commission-note { display: block; margin-top: 5px; font-size: 11px; font-weight: 400; color: #595959; line-height: 1.4; }
   .rank-target-ok { color: #146c36; font-weight: 600; }
 
@@ -3338,7 +3350,7 @@ async function loadRanking() {
       const items = commission.clothingItems || [];
       if (!items.length) return '';
       const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-      return `<details style="text-align:left;margin-top:8px;font-size:11px;font-weight:400;min-width:150px;">
+      return `<details style="text-align:left;margin-top:8px;font-size:11px;font-weight:400;min-width:0;">
         <summary style="cursor:pointer;color:#b83d0a;">Conferir ${quantity} peça(s) vendida(s)</summary>
         ${items.map(item => `<div style="border-top:1px solid #ddd;margin-top:6px;padding-top:6px;line-height:1.5;">
           ${new Date(item.date).toLocaleDateString('pt-BR', {timeZone:'America/Recife'})} · ${item.quantity}x ${escPreco(item.productName)}<br>
@@ -3403,8 +3415,9 @@ async function loadRanking() {
       <h3 class="section-title"><span class="section-title-icon">📊</span>Classificação completa · ${rest.length} vendedores</h3>
       <div class="ranking-scroll">
       <table class="modern">
+        <colgroup><col style="width:4%"><col style="width:20%"><col style="width:5%"><col style="width:11%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:9%"><col style="width:11%"></colgroup>
         <thead><tr>
-          <th style="width:50px;text-align:center;">Pos.</th>
+          <th style="text-align:center;">Pos.</th>
           <th>Vendedor</th>
           <th style="text-align:center;">Vendas</th>
           <th style="text-align:right;">Valor total</th>
