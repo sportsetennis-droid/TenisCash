@@ -3039,7 +3039,7 @@ async function populateInvStoreSelect() {
     if (!sel) return;
     sel.innerHTML = '<option value="">— escolha a loja —</option>' +
       (d.stores || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    if (activeStore?.id) sel.value = activeStore.id;
+    sel.value = 'all';
   } catch (e) { console.error(e); }
 }
 
@@ -3336,7 +3336,7 @@ async function loadRanking() {
     const d = await api('/api/seller/rankings?' + qs);
     const clothingDetails = commission => {
       const items = commission.clothingItems || [];
-      if (!items.length) return '<span class="rank-commission-note">Nenhuma roupa Sports &amp; Tennis identificada no período.</span>';
+      if (!items.length) return '';
       const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
       return `<details style="text-align:left;margin-top:8px;font-size:11px;font-weight:400;min-width:150px;">
         <summary style="cursor:pointer;color:#b83d0a;">Conferir ${quantity} peça(s) vendida(s)</summary>
@@ -3346,14 +3346,6 @@ async function loadRanking() {
         <div style="margin-top:8px;">Soma dos itens: <strong>${fmt(commission.clothingSalesAmount)}</strong></div>
       </details>`;
     };
-    const targetText = (commission, clothing = false) => (commission.months || []).map(m => {
-      const reached = clothing ? m.clothingReached : m.generalReached;
-      const remaining = clothing ? m.remainingClothing : m.remainingGeneral;
-      const amount = clothing ? m.clothingAmount : m.salesAmount;
-      const label = m.month.split('-').reverse().join('/');
-      return `<span class="rank-commission-note ${reached ? 'rank-target-ok' : ''}">${label}: ${fmt(amount)} · ${reached ? 'Meta atingida' : 'Faltam ' + fmt(remaining)}</span>`;
-    }).join('') || '<span class="rank-commission-note">Meta ainda não atingida</span>';
-
     // Totais (4 KPI cards)
     document.getElementById('rankingTotals').innerHTML = `
       <div class="kpi-card">
@@ -3373,6 +3365,10 @@ async function loadRanking() {
         <div class="kpi-content"><div class="kpi-title">Comissão calculada</div><div class="kpi-value">${fmt(d.totals.commissionAmount)}</div></div>
       </div>
     `;
+
+    if (d.canViewRevenueTotals === false) {
+      document.querySelectorAll('#rankingTotals .kpi-card').forEach((card, index) => { if (index >= 2) card.remove(); });
+    }
 
     if (!d.ranking.length) {
       document.getElementById('rankingTable').innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:24px;">${period === 'today' ? 'Nenhum vendedor com ponto aberto e apto a vender nesta seleção.' : 'Sem vendas no período.'}</p>`;
@@ -3405,7 +3401,6 @@ async function loadRanking() {
 
     const restHtml = rest.length ? `
       <h3 class="section-title"><span class="section-title-icon">📊</span>Classificação completa · ${rest.length} vendedores</h3>
-      <div class="card" style="margin-bottom:12px;font-size:13px;line-height:1.5;">As quatro colunas comparam as faixas sobre as vendas do período. A base geral inclui o vestuário; <strong>não some as colunas</strong>. Metas mensais por vendedor, somando todas as lojas: R$ 50 mil libera 2% no geral; R$ 20 mil em vestuário Sports & Tennis libera 4% somente nessas roupas, substituindo a taxa geral nelas. A comissão calculada aplica as metas atingidas a todas as vendas do respectivo mês.</div>
       <div class="ranking-scroll">
       <table class="modern">
         <thead><tr>
@@ -3436,12 +3431,12 @@ async function loadRanking() {
               </td>
               <td style="text-align:center;">${r.salesCount}</td>
               <td style="text-align:right;font-weight:700;">${fmt(r.salesAmount)}</td>
-              <td style="text-align:right;font-weight:700;">${fmt(r.commission.baseAmount)}<span class="rank-commission-note">Base: ${fmt(r.salesAmount)}</span></td>
-              <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at50kAmount)}${targetText(r.commission)}</td>
-              <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}<span class="rank-commission-note">Roupas no período: ${fmt(r.commission.clothingSalesAmount)}</span>${clothingDetails(r.commission)}</td>
-              <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at20kClothingAmount)}${targetText(r.commission, true)}</td>
-              <td style="text-align:right;font-weight:800;background:#fff0e5;">${fmt(r.commission.totalAt1Percent)}<span class="rank-commission-note">1% de todas as vendas</span></td>
-              <td style="text-align:right;font-weight:800;background:#edf7ef;color:#146c36;">${fmt(r.commission.totalAt2And4Percent)}<span class="rank-commission-note">Com as duas metas atingidas: 2% dos demais produtos + 4% do vestuário S&amp;T</span></td>
+              <td style="text-align:right;font-weight:700;">${fmt(r.commission.baseAmount)}</td>
+              <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at50kAmount)}</td>
+              <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}${clothingDetails(r.commission)}</td>
+              <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at20kClothingAmount)}</td>
+              <td style="text-align:right;font-weight:800;background:#fff0e5;">${fmt(r.commission.totalAt1Percent)}</td>
+              <td style="text-align:right;font-weight:800;background:#edf7ef;color:#146c36;">${fmt(r.commission.totalAt2And4Percent)}</td>
             </tr>
           `).join('')}
         </tbody>

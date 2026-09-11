@@ -23,15 +23,17 @@ clock(4, 'break_start'); clock(4, 'break_end');
 clock(5, 'break_start'); clock(6, 'exit', 'b');
 clock(8, 'break_start'); clock(8, 'break_end', 'b');
 
-async function run(query) {
+async function run(query, role = 'admin') {
   let handler;
   let result;
   let clockQueries = 0;
+  let statusCode = 200;
   class FixedDate extends Date {
     constructor(...args) { super(...(args.length ? args : ['2026-09-11T18:00:00Z'])); }
   }
   const context = {
     ...require('../src/services/rankingCommission'),
+    ...require('../src/services/salesVisibility'),
     Date: FixedDate, console, sellerOnly() {},
     router: { get(_url, _middleware, fn) { handler = fn; } },
     prisma: {
@@ -40,7 +42,7 @@ async function run(query) {
         .map(s => ({sellerId:s.sellerId, storeId:'a', totalAmount:s._sum.totalAmount,
           createdAt:'2026-09-11T15:00:00Z', items:[{productName:'Camiseta teste',quantity:1,brand:'Sports & Tennis',category:'roupa',totalPrice:s._sum.totalAmount}]})) },
       saleCommission: { groupBy: async () => [] },
-      user: { findMany: async ({ where }) => sellers.filter(s => where.id.in.includes(s.id)) },
+      user: { findUnique: async () => ({role, active: true, storeId: 'a', storeIds: []}), findMany: async ({ where }) => sellers.filter(s => where.id.in.includes(s.id)) },
       clockIn: { findMany: async ({ where }) => {
         clockQueries++;
         assert.equal(where.user.active, true);
@@ -52,8 +54,8 @@ async function run(query) {
     },
   };
   vm.runInNewContext(dayBounds + summarize + route, context);
-  await handler({ query }, { json(value) { result = value; }, status(code) { throw new Error(`HTTP ${code}`); } });
-  return { result, clockQueries };
+  await handler({ query }, { json(value) { result = value; }, status(code) { statusCode = code; return this; } });
+  return { result, clockQueries, statusCode };
 }
 
 (async () => {
@@ -66,6 +68,13 @@ async function run(query) {
   assert.equal(result.ranking[0].commission.at50kAmount, 10);
   assert.equal(result.ranking[5].salesAmount, 0);
   assert.equal(result.ranking[5].position, 6);
+  assert.equal((await run({storeId: 'b'}, 'seller')).statusCode, 403);
+  assert.equal((await run({storeId: 'b', format: 'pdf'}, 'seller')).statusCode, 403);
+  const sellerAll = (await run({storeId: 'all'}, 'seller')).result;
+  assert.equal(sellerAll.canViewRevenueTotals, false);
+  assert.equal(sellerAll.totals.salesAmount, null);
+  assert.ok(sellerAll.ranking.length > 3);
+  assert.equal((await run({storeId: 'a'}, 'seller')).result.canViewRevenueTotals, true);
   const all = (await run({})).result;
   assert.equal(all.period, 'today');
   assert.equal(all.ranking.find(r => r.sellerId === '8').store.id, 'b');

@@ -11,6 +11,8 @@ const commissionEvidenceStore = require('../services/commissionEvidenceStore');
 const storeRadio = require('../services/storeRadio');
 const { commissionWindow, calculateRankingCommissions } = require('../services/rankingCommission');
 
+const { salesVisibility } = require('../services/salesVisibility');
+
 const router = express.Router();
 
 function normalizeSellerReportedSize(value) {
@@ -642,6 +644,11 @@ router.get('/clockin/me', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 router.get('/store-sellers', sellerOnly, async (req, res) => {
   try {
+    const visibility = await salesVisibility(prisma, req.userId);
+    const requestedStore = req.query.storeId;
+    if (!visibility || (requestedStore && requestedStore !== 'all' && visibility.storeIds && !visibility.storeIds.includes(requestedStore))) {
+      return res.status(403).json({ error: 'Você só pode consultar vendas das lojas em que trabalha.' });
+    }
     const storeId = req.query.storeId;
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
 
@@ -663,13 +670,9 @@ router.get('/store-sellers', sellerOnly, async (req, res) => {
 router.get('/stores', sellerOnly, async (req, res) => {
   try {
     const where = { active: true };
-    // VENDEDOR (role=seller) só acessa as lojas vinculadas ao cadastro dele (storeId + storeIds).
-    // Admin/gerente/conta-de-loja continuam vendo todas.
-    if (req.userRole === 'seller') {
-      const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { storeId: true, storeIds: true } });
-      const ids = [...new Set([...((me && me.storeIds) || []), ...(me && me.storeId ? [me.storeId] : [])])];
-      where.id = { in: ids.length ? ids : ['__none__'] };
-    }
+    const visibility = await salesVisibility(prisma, req.userId);
+    if (!visibility) return res.status(403).json({ error: 'Usuário sem acesso.' });
+    if (visibility.storeIds) where.id = { in: visibility.storeIds };
     const stores = await prisma.store.findMany({
       where,
       orderBy: { code: 'asc' },
@@ -1329,6 +1332,11 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 // =====================================================================
 router.get('/sales', sellerOnly, async (req, res) => {
   try {
+    const visibility = await salesVisibility(prisma, req.userId);
+    const requestedStore = req.query.storeId;
+    if (!visibility || (requestedStore && requestedStore !== 'all' && visibility.storeIds && !visibility.storeIds.includes(requestedStore))) {
+      return res.status(403).json({ error: 'Você só pode consultar vendas das lojas em que trabalha.' });
+    }
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const { sellerId, from, to, q } = req.query;
 
@@ -1338,7 +1346,8 @@ router.get('/sales', sellerOnly, async (req, res) => {
     else if (req.query.storeId) where.storeId = req.query.storeId;
 
     if (sellerId) where.sellerId = sellerId;
-    if (req.scope?.isSellerLocked) where.sellerId = req.userId; // vendedor pessoal só vê próprias
+    if (visibility.role === 'seller') where.sellerId = req.userId; // vendedor pessoal só vê próprias
+    if (visibility.storeIds) where.storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : { in: visibility.storeIds };
 
     if (from || to) {
       where.createdAt = {};
@@ -1428,6 +1437,11 @@ router.get('/sales', sellerOnly, async (req, res) => {
 // =====================================================================
 router.get('/rankings', sellerOnly, async (req, res) => {
   try {
+    const visibility = await salesVisibility(prisma, req.userId);
+    const requestedStore = req.query.storeId;
+    if (!visibility || (requestedStore && requestedStore !== 'all' && visibility.storeIds && !visibility.storeIds.includes(requestedStore))) {
+      return res.status(403).json({ error: 'Você só pode consultar vendas das lojas em que trabalha.' });
+    }
     const storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
     const period = req.query.period || 'today';
 
@@ -1554,8 +1568,12 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       sellersCount: ranking.length,
     };
 
+    const canViewRevenueTotals = !visibility.storeIds || !!storeId;
+    if (!canViewRevenueTotals) {
+      totals.salesAmount = null; totals.cashbackGiven = null; totals.commissionAmount = null;
+    }
     const result = { period, from: startUtc.toISOString(), to: endUtc.toISOString(),
-      storeId: storeId || 'all', ranking, totals };
+      storeId: storeId || 'all', ranking, totals, canViewRevenueTotals };
     if (req.query.format === 'pdf') {
       const { createRankingPdf } = require('../services/rankingPdf');
       const store = storeId ? await prisma.store.findUnique({ where: { id: storeId }, select: { name: true } }) : null;
