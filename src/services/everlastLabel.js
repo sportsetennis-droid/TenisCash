@@ -70,7 +70,8 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
   line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
-  // Keep the bottom band free of text to allow room for cutting.
+  // Smaller invitation leaves clearance from the bottom cutting line.
+  line('VEM PARA SPORTS & TENNIS', 55, 1406, 950, 38, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
 }
