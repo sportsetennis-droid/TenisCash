@@ -4,7 +4,7 @@ const path = require('path');
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const brand = String(item.brand || '').trim().toUpperCase();
   const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
-  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR'].includes(brand);
+  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA'].includes(brand);
   const promoCents = Math.round(Number(item.promotionalPrice) * 100);
   const baseCents = Math.round(Number(item.price) * 100);
   // Only an explicitly selected, saved 30% promotion enables this label.
@@ -20,7 +20,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   if (campaignBrand && !streetRide) {
     const known = ['IMIGRANTE SERIE X','IMIGRANTE MEGA','CHUCK TAYLOR ALL STAR','CHUCK TAYLOR','ARQUITETONICO','FLUENTE GTX','NACCARATO V','PHIBO 1123','IMIGRANTE','EMERGENTE','HEVEA','UENO','2K'];
     const match = brand === 'OUS' || /CONVERSE|ALL ?STAR/.test(brand) ? known.find(k => model.includes(k)) : null;
-    model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '')
+    model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '').split(/\s*\(|\s+-\s+/)[0]
       .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
   }
   const usageByModel = {
@@ -44,6 +44,9 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const usage = usageByModel[model] || (/ESTILO DE VIDA|LIFESTYLE|CASUAL|STREET/.test(modality) ? ['USO CASUAL','E DIA A DIA']
     : /CORRIDA|RUNNING/.test(modality) ? ['PARA CORRIDA','']
     : /CAMINHADA/.test(modality) ? ['PARA CAMINHADA','']
+    : /FUTSAL/.test(modality) ? ['PARA FUTSAL','']
+    : /SOCIETY/.test(modality) ? ['PARA SOCIETY','']
+    : /CAMPO/.test(modality) ? ['FUTEBOL DE CAMPO','']
     : /TREINO|MUSCULACAO|CROSS/.test(modality) ? ['PARA TREINO',''] : null);
   const assets = path.join(__dirname, '../../assets');
   doc.save();

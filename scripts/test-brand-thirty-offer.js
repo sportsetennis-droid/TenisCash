@@ -45,6 +45,18 @@ async function main() {
   assert.equal(rows.find(p => p.id === 'oly-shirt').promoPrice, null);
   assert.equal(rows.find(p => p.id === 'oly-other-offer').promoPrice, 80);
   assert.equal((await applyBrandThirtyOffer(prisma, 'OLYMPIKUS')).removed, 0);
+  rows.push(
+    {id:'joma-boot', brand:'JOMA', active:true, name:'CHUTEIRA FUTSAL JOMA TOP FLEX', price:599.98},
+    {id:'joma-ball', brand:'JOMA', active:true, name:'BOLA FUTSAL JOMA TOP-5', category:'tenis', price:429},
+    {id:'umbro-boot', brand:'UMBRO', active:true, name:'CHUTEIRA UMBRO', price:200, promoPrice:140},
+    {id:'umbro-shoe', brand:'UMBRO', active:true, name:'TENIS UMBRO CASUAL', price:100, promoPrice:80}
+  );
+  assert.equal((await applyBrandThirtyOffer(prisma, 'JOMA')).updated, 1);
+  assert.equal(rows.find(p => p.id === 'joma-boot').promoPrice, 419.99);
+  assert.equal(rows.find(p => p.id === 'joma-ball').promoPrice, undefined);
+  assert.equal((await applyBrandThirtyOffer(prisma, 'UMBRO')).updated, 1);
+  assert.equal(rows.find(p => p.id === 'umbro-boot').promoPrice, null);
+  assert.equal(rows.find(p => p.id === 'umbro-shoe').promoPrice, 80);
   rows[0].price = 0;
   await assert.rejects(applyBrandThirtyOffer(prisma, 'OUS'));
   console.log('Brand discount: scope, rounding, idempotence and original prices verified.');

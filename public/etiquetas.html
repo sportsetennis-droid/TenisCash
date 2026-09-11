@@ -133,7 +133,7 @@
         <select id="storeSel" style="padding:11px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;background:#fff;color:var(--text);min-width:150px;flex:1"><option value="">Escolha a loja…</option></select>
         <button id="storeAllBtn" style="flex:1;min-width:200px;padding:11px;border-radius:10px;border:none;background:var(--gradient);color:#fff;font-weight:800;font-size:13px;cursor:pointer">🏬 Etiquetas da loja toda</button>
         <button id="addAllBtn" style="padding:11px 14px;border-radius:10px;border:1.5px solid var(--primary);background:#fff;color:var(--primary);font-weight:800;font-size:13px;cursor:pointer">➕ +1 em todos da lista</button>
-        <button id="campaignFootwearBtn" class="btn btn-primary">Calçados 30% OFF — 2 de cada</button>
+        <button id="campaignFootwearBtn" class="btn btn-primary">Lote de calçados — 2 de cada</button>
       </div>
       <div id="scanBanner" style="display:none;margin-top:10px"></div>
     </div>
@@ -665,7 +665,7 @@
       sel = {}; const products = d.products || [];
       products.forEach(p => { sel[p.id] = 2; });
       $('promo').checked = true;
-      $('products').innerHTML = '<p>' + products.length + ' calçados promocionais · 2 etiquetas por produto · todas as marcas no mesmo lote</p><div class="grid">' + products.map(cardHtml).join('') + '</div>';
+      $('products').innerHTML = '<p>' + products.length + ' calçados · 2 etiquetas por produto · todas as marcas no mesmo lote</p><div class="grid">' + products.map(cardHtml).join('') + '</div>';
       bindCards($('products')); updateCart();
     } catch (e) { alert(e.message); }
     finally { btn.disabled = false; }

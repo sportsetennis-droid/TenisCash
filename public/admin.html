@@ -1756,6 +1756,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn" id="cat-off30-fila">Aplicar 30% OFF em Fila</button>
         <button type="button" class="btn" id="cat-off30-speedo">Aplicar 30% OFF em Speedo</button>
         <button type="button" class="btn" id="cat-off30-allstar">Aplicar 30% OFF em All Star</button>
+        <button type="button" class="btn" id="cat-off30-joma">Chuteiras Joma: 30% OFF</button>
+        <button type="button" class="btn" id="cat-off30-umbro">Chuteiras Umbro: preço normal</button>
       </div>
       <p id="cat-off30-result" role="status" aria-live="polite"></p>
       <div id="enrich-progress-wrap" style="display:none;margin-bottom:16px"></div>
@@ -4919,16 +4921,16 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
-    ['ous', 'diadora', 'olympikus', 'fila', 'speedo', 'allstar'].forEach(brand => {
+    ['ous', 'diadora', 'olympikus', 'fila', 'speedo', 'allstar', 'joma', 'umbro'].forEach(brand => {
       const button = document.getElementById('cat-off30-' + brand);
       button.addEventListener('click', async () => {
         const status = document.getElementById('cat-off30-result');
         button.disabled = true;
-        status.textContent = 'Aplicando 30% sobre o preço original de todos os produtos ativos de ' + brand.toUpperCase() + '…';
+        status.textContent = 'Atualizando preços dos calçados selecionados de ' + brand.toUpperCase() + '…';
         try {
           const result = await api('/admin/labels/brand-thirty-offer', 'POST', { brand });
           if (result.error) throw new Error(result.error);
-          status.textContent = result.updated + ' calçados ' + result.brand + ' com 30% OFF. Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
+          status.textContent = result.updated + ' calçados ' + result.brand + (result.discountPercent === 0 ? ' com preço normal, sem desconto. ' : ' com 30% OFF. ') + 'Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
           await loadCatalogProductsAdmin();
         } catch (error) { status.textContent = 'Não aplicado: ' + error.message; }
         finally { button.disabled = false; }
