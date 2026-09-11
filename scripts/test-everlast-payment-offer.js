@@ -59,6 +59,22 @@ async function main() {
   const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'everlast-oferta-teste.pdf');
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, pdf);
+  const larger = defaultTemplates().a4_12_5x8_everlast;
+  assert.equal(larger.widthMm, 50);
+  assert.equal(larger.heightMm, 80);
+  assert.equal(larger.rows * larger.columns, 12);
+  assert.ok(larger.marginTopMm * 2 + larger.rows * larger.heightMm <= 297);
+  const largePdf = await generateLabelsPDF({
+    template: larger, storeName: 'Sports & Tennis',
+    items: Array.from({ length: 15 }, (_, i) => {
+      const [price, , model] = cases[i % cases.length];
+      return { productName: `TÊNIS EVERLAST ${model}`, brand: 'EVERLAST',
+        paymentOffer: calculateOffer(price), quantity: 1 };
+    }),
+  });
+  assert.equal((largePdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 4,
+    '15 large labels require two duplex sheets');
+  fs.writeFileSync(path.join(path.dirname(output), 'everlast-5x8-teste.pdf'), largePdf);
   console.log(`Oferta Everlast validada; amostra: ${output}`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

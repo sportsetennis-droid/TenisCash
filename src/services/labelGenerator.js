@@ -88,7 +88,7 @@ function isSingleProductDuplexTemplate(template) {
   const config = template?.layoutConfig;
   return isDuplexTemplate(template)
     && Number(template?.widthMm) === 50
-    && Number(template?.heightMm) === 70
+    && [70, 80].includes(Number(template?.heightMm))
     && Number(config?.labelsPerProduct || 1) === 1
     && config?.backLayout === 'store-and-codes';
 }
@@ -107,7 +107,7 @@ const FOUR_SIDE_FRONT_BLEED_MM = 2;
 const FOUR_SIDE_BACK_BLEED_MM = 2;
 
 function defaultTemplates() {
-  return {
+  const templates = {
     st_145x25: {
       type: 'PRODUCT',
       name: 'S&T Etiqueta 14,5x2,5cm (11 por A4)',
@@ -266,6 +266,15 @@ function defaultTemplates() {
     thermal_60x40: { type: 'PRODUCT', name: 'Térmica 60x40mm', paperSize: 'THERMAL', widthMm: 60, heightMm: 40, columns: 1, rows: 1 },
     thermal_100x50: { type: 'SHIPPING', name: 'Térmica 100x50mm', paperSize: 'THERMAL', widthMm: 100, heightMm: 50, columns: 1, rows: 1 },
   };
+  templates.a4_12_5x8_everlast = {
+    ...templates.a4_16_5x7_duplex,
+    name: 'Everlast — A4 12 etiquetas (5x8 cm) — frente e verso',
+    heightMm: 80,
+    rows: 3,
+    marginTopMm: 28.5,
+    layoutConfig: { ...templates.a4_16_5x7_duplex.layoutConfig, labelDesign: 'everlast-5x8-v1' },
+  };
+  return templates;
 }
 
 function fmtBRL(n) {

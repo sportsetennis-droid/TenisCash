@@ -1,6 +1,6 @@
 const path = require('path');
 
-// Artwork approved for 5 x 7 cm labels. Product data remains specific to each item.
+// The 5 x 8 cm format adds cutting clearance without shrinking approved type.
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const offer = item.paymentOffer;
   if (String(item.brand || '').trim().toUpperCase() !== 'EVERLAST'
@@ -28,10 +28,13 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const usage = usageByModel[model];
   const assets = path.join(__dirname, '../../assets');
   doc.save();
-  doc.translate(x, y).scale(w / 1060, h / 1484);
+  const canvasHeight = h / w >= 1.59 ? 1696 : 1484;
+  const addedHeight = canvasHeight - 1484;
+  const contentShift = addedHeight * 0.40;
+  doc.translate(x, y).scale(w / 1060, h / canvasHeight);
   const artwork = path.join(assets, 'logos/everlast-headline30-template.png');
   // Each section has a fixed physical allocation. The headline owns exactly 40%.
-  const headlineHeight = 1484 * 0.40;
+  const headlineHeight = canvasHeight * 0.40;
   function band(sourceTop, sourceHeight, top, height) {
     const scale = height / sourceHeight;
     doc.save().rect(0, top, 1060, height).clip();
@@ -39,10 +42,10 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.restore();
   }
   band(0, 330, 0, headlineHeight);
-  band(330, 350, headlineHeight, 820 - headlineHeight);
-  band(640, 215, 820, 315);
-  band(865, 370, 1135, 270);
-  band(1245, 239, 1405, 79);
+  band(330, 350, headlineHeight, 820 + contentShift - headlineHeight);
+  band(640, 215, 820 + contentShift, 315);
+  band(865, 370, 1135 + contentShift, 270);
+  band(1245, 239, 1405 + contentShift, 79 + addedHeight - contentShift);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   function line(text, left, top, width, size, font, color, align = 'left') {
@@ -52,6 +55,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   }
   line('BAIXOU', 45, -10, 970, 290, 'EverlastAnton', '#FFFFFF', 'center');
   line('30% OFF', 45, 320, 970, 185, 'EverlastAnton', '#FFFFFF', 'center');
+  doc.translate(0, contentShift);
   doc.fillColor('#FFFFF5').rect(0, 770, 1060, 70).fill();
   line(model, 55, 770, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
@@ -70,8 +74,8 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
   line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
-  // Smaller invitation leaves clearance from the bottom cutting line.
-  line('VEM PARA SPORTS & TENNIS', 55, 1406, 950, 38, 'EverlastAnton', '#FFFFFF', 'center');
+  // Restore the original size; the extended footer provides bottom clearance.
+  line('VEM PARA SPORTS & TENNIS', 45, addedHeight ? 1430 : 1400, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
 }

@@ -1558,6 +1558,20 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
     }
 
+    // Existing Everlast-only batches follow the approved larger cutting format.
+    if (isProductDuplexTemplate(batch.template) && Number(batch.template.heightMm) === 70
+        && items.length && items.every(item => String(item.brand || '').trim().toUpperCase() === 'EVERLAST'
+          && item.paymentOffer?.active && item.paymentOffer.discountPercent === 30)) {
+      await ensureDefaultTemplates();
+      const largerTemplate = await prisma.labelTemplate.findFirst({
+        where: { name: defaultTemplates().a4_12_5x8_everlast.name },
+      });
+      if (largerTemplate) {
+        await prisma.labelBatch.update({ where: { id: batch.id }, data: { templateId: largerTemplate.id } });
+        batch.template = largerTemplate;
+      }
+    }
+
     // Envia os cabeçalhos ANTES de gerar e transmite o PDF enquanto ele é montado.
     // Lotes grandes (loja inteira) levam minutos; sem streaming o Cloudflare
     // derrubava a requisição em 100s com erro 524.
