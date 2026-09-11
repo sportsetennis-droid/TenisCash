@@ -2,6 +2,12 @@
 module.exports = function approvedUsage(name, brand, modality) {
   const casual = ['USO CASUAL', 'E DIA A DIA'];
   if (/^(CONVERSE|ALL ?STAR)$/.test(brand)) return ['O TÊNIS MAIS DESEJADO', 'DO MUNDO.'];
+  if (brand === 'KAPPA') {
+    // References verified against model listings; training level approved by owner.
+    if (/\bK(102|111)\b/.test(name)) return ['FUTSAL', 'PARA TREINO'];
+    if (/\bK(101|110|116|119)\b/.test(name)) return ['SOCIETY', 'PARA TREINO'];
+    if (/\bK(100|109|118)\b/.test(name)) return ['FUTEBOL DE CAMPO', 'PARA TREINO'];
+  }
   if (brand === 'FILA') {
     if (/SKY\s*TRAIL|SKT\s*TRAIL/.test(name)) return ['CORRIDA EM TRILHAS', 'ATÉ 21 KM'];
     if (/SPEEDZONE|XTREME|MAXXI.*PRO/.test(name)) return ['CORRIDA', 'ATÉ 21 KM'];
