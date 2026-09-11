@@ -1752,6 +1752,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
         <button type="button" class="btn" id="cat-off30-ous">Aplicar 30% OFF em OUS</button>
         <button type="button" class="btn" id="cat-off30-diadora">Aplicar 30% OFF em Diadora</button>
+        <button type="button" class="btn" id="cat-off30-olympikus">Aplicar 30% OFF em Olympikus</button>
       </div>
       <p id="cat-off30-result" role="status" aria-live="polite"></p>
       <div id="enrich-progress-wrap" style="display:none;margin-bottom:16px"></div>
@@ -4915,7 +4916,7 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
-    ['ous', 'diadora'].forEach(brand => {
+    ['ous', 'diadora', 'olympikus'].forEach(brand => {
       const button = document.getElementById('cat-off30-' + brand);
       button.addEventListener('click', async () => {
         const status = document.getElementById('cat-off30-result');

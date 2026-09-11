@@ -1,4 +1,4 @@
-const BRANDS = new Set(['OUS', 'DIADORA']);
+const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS']);
 
 async function applyBrandThirtyOffer(prisma, inputBrand) {
   const brand = String(inputBrand || '').trim().toUpperCase();
