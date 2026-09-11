@@ -13,6 +13,7 @@ const QRCode = require('qrcode');
 const { Buffer } = require('buffer');
 const fs = require('fs');
 const path = require('path');
+const { drawEverlastLabel } = require('./everlastLabel');
 
 // A etiqueta usa famílias locais para manter o mesmo resultado no PDF e na
 // impressão. Roboto Slab é a tipografia principal, com peso e desenho clássico.
@@ -967,6 +968,7 @@ function drawProductFourSide(doc, item, template, x, y, w, h, side) {
 // Frente: marca, descricao, preco e garantia.
 // Verso: loja, codigo de barras e QR Code.
 function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
+  if (side === 'front' && drawEverlastLabel(doc, item, x, y, w, h)) return;
   const CREAM = '#F6F0E5';
   const CHARCOAL = '#191A18';
   const ORANGE = PRODUCT_ORANGE_RGB;

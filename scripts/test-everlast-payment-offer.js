@@ -54,6 +54,8 @@ async function main() {
     })),
   });
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 2,
+    'eight offers must fit on one front sheet and one mirrored back, without text overflow pages');
   const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'everlast-oferta-teste.pdf');
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, pdf);
