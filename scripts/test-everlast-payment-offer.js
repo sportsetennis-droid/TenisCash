@@ -75,6 +75,17 @@ async function main() {
   assert.equal((largePdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 2,
     '15 labels must fit on one duplex A4 sheet');
   fs.writeFileSync(path.join(path.dirname(output), 'everlast-16-por-folha.pdf'), largePdf);
+  const { drawEverlastLabel } = require('../src/services/everlastLabel');
+  for (const item of [
+    { brand: 'REEBOK', name: 'Hammer Street', price: 199.99, promotionalPrice: 139.99 },
+    { brand: 'REEBOK', name: 'Street Ride', price: 199.99 },
+    { brand: 'REEBOK', name: 'Street Ride', price: 199.99, promotionalPrice: 159.99 },
+    { brand: 'NIKE', name: 'Street Ride', price: 199.99, promotionalPrice: 139.99 },
+  ]) assert.equal(drawEverlastLabel(null, item), false, 'only Street Ride with a selected 30% promotion uses the offer artwork');
+  const reebokPdf = await generateLabelsPDF({ template: larger, storeName: 'Sports & Tennis',
+    items: ['Cinza', 'Marrom', 'Preto'].map(color => ({ brand: 'REEBOK',
+      productName: `Street Ride Unissex ${color}`, price: 199.99, promotionalPrice: 139.99, quantity: 1 })) });
+  assert.equal((reebokPdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 2);
   console.log(`Oferta Everlast validada; amostra: ${output}`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

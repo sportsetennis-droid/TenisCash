@@ -2,14 +2,22 @@ const path = require('path');
 
 // Keep 16 labels per A4; reserve footer clearance within the 5 x 7 cm format.
 function drawEverlastLabel(doc, item, x, y, w, h) {
-  const offer = item.paymentOffer;
-  if (String(item.brand || '').trim().toUpperCase() !== 'EVERLAST'
+  const brand = String(item.brand || '').trim().toUpperCase();
+  const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
+  const promoCents = Math.round(Number(item.promotionalPrice) * 100);
+  const baseCents = Math.round(Number(item.price) * 100);
+  // Only an explicitly selected, saved 30% promotion enables this label.
+  const reebokOffer = streetRide && baseCents > 0 && promoCents === Math.round(baseCents * 0.70)
+    ? { active: true, discountPercent: 30, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
+  const offer = streetRide ? reebokOffer : item.paymentOffer;
+  if ((!streetRide && brand !== 'EVERLAST')
       || !offer?.active || offer.discountPercent !== 30
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
-  const model = String(item.productName || item.name || 'EVERLAST').toUpperCase()
+  const model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
   const usageByModel = {
+    'STREET RIDE': ['USO CASUAL', 'E DIA A DIA'],
     'CLIMBER RUN': ['CAMINHADA', 'E CORRIDA LEVE'],
     'CLIMBER PRO 3': ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'],
     'CLIMBER PRO': ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'],
@@ -42,7 +50,14 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.restore();
   }
   band(0, 330, 0, headlineHeight);
-  band(330, 350, headlineHeight, 820 + contentShift - headlineHeight);
+  if (streetRide) {
+    band(0, 330, headlineHeight, 820 + contentShift - headlineHeight);
+    doc.image(path.join(assets, 'logos/brands/reebok-white.png'), 80, headlineHeight + 40, { width: 200 });
+    doc.font('Helvetica-BoldOblique').fontSize(138).fillColor('#FFFFFF')
+      .text('Reebok', 300, headlineHeight + 12, { width: 690, height: 170, lineBreak: false });
+  } else {
+    band(330, 350, headlineHeight, 820 + contentShift - headlineHeight);
+  }
   band(640, 215, 820 + contentShift, 285);
   band(865, 370, 1105 + contentShift, 325);
   band(1245, 239, 1430 + contentShift, 54 + addedHeight - contentShift);
