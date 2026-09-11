@@ -27,3 +27,13 @@ console.log('Campanha: duplicatas removidas, preços/modalidades distintos prese
 
 assert.deepEqual(labelUsage({name:'CHUTEIRA KAPPA SORANO II REF. K115',brand:'KAPPA'}),['FUTEBOL DE CAMPO','PARA TREINO']);
 assert.deepEqual(labelUsage({name:'TENIS OLYMPIKUS CORRE TRILHA2',brand:'OLYMPIKUS'}),['CORRIDA EM TRILHAS','TREINO']);
+
+for (const name of ['CHROME','TECHNO','TECHNO II RB','SPECIALI CLASSIC','GRAVITY','CLASS NEO','ATTAK III','PRO 5 JR','ULTIMATE JR DLM']) {
+  for (const modality of ['FUTSAL','SOCIETY','CAMPO']) {
+    assert.deepEqual(labelUsage({name:'CHUTEIRA '+modality+' UMBRO '+name,brand:'UMBRO'},{tier:'Iniciante'}),[modality==='CAMPO'?'FUTEBOL DE CAMPO':modality,'PARA TREINO']);
+  }
+}
+assert.deepEqual(labelUsage({name:'CHUTEIRA FUTSAL UMBRO PRO 5 BUMP',brand:'UMBRO'}),['FUTSAL','PROFISSIONAL']);
+assert.deepEqual(labelUsage({name:'CHUTEIRA FUTSAL UMBRO PRO 5 BUMP CLUB',brand:'UMBRO'}),['FUTSAL','PARA TREINO']);
+assert.deepEqual(labelUsage({name:'CHUTEIRA SOCIETY JOMA FS REACTIVE',brand:'JOMA'}),['SOCIETY','PROFISSIONAL']);
+assert.deepEqual(labelUsage({name:'CHUTEIRA FUTSAL JOMA TOP FLEX JR VELCRO',brand:'JOMA'}),['FUTSAL','PARA TREINO']);

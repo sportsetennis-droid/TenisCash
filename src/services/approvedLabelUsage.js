@@ -50,6 +50,10 @@ module.exports = function approvedUsage(name, brand, modality) {
     if (activity && /MAESTRO|LETRA|FURIA/.test(name)) return [activity, 'PARA TREINO'];
   }
   if (brand === 'UMBRO' && activity) {
+    // Store owner confirmed the remaining model levels after reviewing the proposal.
+    if (/PRO\s*5\s*BUMP/.test(name) && !/CLUB/.test(name)) return [activity, 'PROFISSIONAL'];
+    if (/MUTANT|X[ -]?DIAMOND/.test(name)) return [activity, 'PARA INICIANTES'];
+    if (/CHROME|TECHNO|SPECIALI\s*CLASSIC|GRAVITY|CLASS\s*NEO|ATTAK\s*III|PRO\s*5\s*JR|ULTIMATE.*JR/.test(name)) return [activity, 'PARA TREINO'];
     if (/CLUB|ADAMANT/.test(name) && !/ADAMANT.*\bPRO\b/.test(name)) return [activity, 'PARA TREINO'];
     if (/ADAMANT.*\bPRO\b/.test(name)) return [activity, 'PROFISSIONAL'];
     if (/ACTION|FORCE|ORBIT|CANNON/.test(name)) return [activity, 'PARA INICIANTES'];
@@ -57,9 +61,9 @@ module.exports = function approvedUsage(name, brand, modality) {
     if (/VELOCITA.*PREMIER/.test(name)) return [activity, 'PARA TREINO'];
   }
   if (brand === 'JOMA' && activity) {
-    if (/TOP\s*FLEX.*(JR|JUNIOR)|EVOLUTION/.test(name)) return [activity, /TOP\s*FLEX/.test(name) ? 'TREINOS E JOGOS' : 'PARA TREINO'];
+    if (/TOP\s*FLEX.*(JR|JUNIOR)|EVOLUTION/.test(name)) return [activity, 'PARA TREINO'];
     if (/AGUILA.*CUP|REGATE|TOP\s*FLEX/.test(name)) return [activity, 'PROFISSIONAL'];
-    if (/FS.*REACTIVE/.test(name)) return [activity, 'JOGOS INTENSOS'];
+    if (/FS.*REACTIVE/.test(name)) return [activity, 'PROFISSIONAL'];
     if (/DRIBLING|MAXIMA|CANCHA|AGUILA/.test(name)) return [activity, 'PARA TREINO'];
   }
   return null;
