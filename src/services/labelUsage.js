@@ -6,6 +6,8 @@ function labelUsage(product, classification = {}) {
   const name = norm(product?.name || product?.originalProductName || product?.productName);
   const brand = norm(product?.brand);
   const modality = norm(classification.modality || product?.modality);
+  const approved = require('./approvedLabelUsage')(name, brand, modality);
+  if (approved) return approved;
   if (brand === 'MIZUNO') {
     if (/MORELIA\s*SALA\s*PRO/.test(name)) return ['FUTSAL', 'PROFISSIONAL'];
     if (/MORELIA\s*II\s*PRO/.test(name)) return ['FUTEBOL DE CAMPO', 'PROFISSIONAL'];

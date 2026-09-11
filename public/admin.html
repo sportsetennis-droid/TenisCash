@@ -2025,6 +2025,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <div style="font-family:Orbitron;font-size:11px;letter-spacing:2px;opacity:0.9;">🛒 CARRINHO DE ETIQUETAS</div>
       <div id="labels-cart-summary" style="font-size:14px;font-weight:600;margin-top:4px;">Nenhuma etiqueta selecionada</div>
     </div>
+    <button type="button" id="labels-campaign-two" class="btn">Campanha: 2 de cada calçado</button>
+    <div id="labels-campaign-review" style="width:100%;max-height:300px;overflow:auto"></div>
     <button type="button" id="labels-cart-add-all" style="padding:8px 14px;background:rgba(255,255,255,0.25);color:white;border:1px solid rgba(255,255,255,0.5);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">+1 em todos produtos visíveis</button>
     <button type="button" id="labels-cart-show" style="padding:8px 14px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">📋 Ver lista</button>
     <button type="button" id="labels-cart-clear" style="padding:8px 14px;background:transparent;color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;font-size:12px;cursor:pointer;">Limpar</button>
@@ -10265,6 +10267,27 @@ async function initLabelsTab() {
     document.getElementById('labels-generate-auto').onclick = labelsGenerateAutomatic;
     document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
+    document.getElementById('labels-campaign-two').onclick = async () => {
+      const review = document.getElementById('labels-campaign-review');
+      review.textContent = 'Carregando calçados da campanha...';
+      try {
+        const data = await api('/admin/labels/campaign-footwear');
+        if (data.error) throw new Error(data.error);
+        if (!data.products?.length) throw new Error('Nenhum calçado com oferta encontrada');
+        _lblSel = {}; _labelsSelected = {};
+        document.getElementById('labels-use-promo').checked = true;
+        const list = document.createElement('table');
+        for (const p of data.products) {
+          _lblCacheProducts[p.id] = p;
+          _lblSel[p.id] = { quantity: 2 };
+          const row = list.insertRow();
+          for (const value of [p.brand, p.name, (p.labelUsage || []).filter(Boolean).join(' — ') || 'USO NÃO DEFINIDO', Number(p.price).toFixed(2), p.promoPrice == null ? 'Preço normal' : Number(p.promoPrice).toFixed(2), '2 etiquetas']) row.insertCell().textContent = value;
+        }
+        review.replaceChildren(list);
+        _lblUpdateCart();
+      } catch (e) { review.textContent = 'Erro: ' + e.message; }
+    };
+
     document.getElementById('labels-cart-add-all').onclick = () => {
       // Clica em "+1 de tudo" pra cada card visível
       document.querySelectorAll('#labels-products-wrap .js-lbl-product-add').forEach(btn => btn.click());
