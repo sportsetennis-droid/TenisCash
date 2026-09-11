@@ -9,7 +9,23 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const model = String(item.productName || item.name || 'EVERLAST').toUpperCase()
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
-  const climberRun = /^CLIMBER RUN$/.test(model);
+  const usageByModel = {
+    'CLIMBER RUN': ['CAMINHADA', 'E CORRIDA LEVE'],
+    'CLIMBER PRO 3': ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'],
+    'CLIMBER PRO': ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'],
+    'CLIMBER ULTRA': ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'],
+    'STATION 3': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'STATION': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'FORCEKNIT LOW': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'FORCEKNIT LW': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'FORCEKNIT': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'RING 4': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'RING IV': ['ACADEMIA', 'E TREINO DE FORÇA'],
+    'SOLO': ['CAMINHADA', 'E DIA A DIA'],
+    'BLAZER': ['USO CASUAL', 'E DIA A DIA'],
+    'NEW YORK': ['DIA A DIA', 'E LAZER'],
+  };
+  const usage = usageByModel[model];
   const assets = path.join(__dirname, '../../assets');
   doc.save();
   doc.translate(x, y).scale(w / 1060, h / 1484);
@@ -38,17 +54,11 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line('30% OFF', 45, 320, 970, 185, 'EverlastAnton', '#FFFFFF', 'center');
   doc.fillColor('#FFFFF5').rect(0, 770, 1060, 70).fill();
   line(model, 55, 770, 950, 64, bold, '#EA3F0A', 'center');
-  let color = String(item.color || '').toUpperCase();
-  if (/D[ÚU]VIDA|N[ÃA]O [ÉE] COR|REVIS/.test(color)) {
-    const source = String(item.productName || item.name || '').toUpperCase();
-    color = source.match(/EVERLAST\s+((?:BRANCO|PRETO|VERDE|AZUL|ROSA|BEGE|CINZA|AMARELO|VERMELHO|LILAS|LILÁS|ROXO|DOURADO|MARROM)[A-ZÀ-Ú/ -]*?)(?:\s+\d{2}\b|\s+REF\b|$)/)?.[1]?.trim() || '';
-  }
-  if (climberRun) {
+  if (usage) {
     // A dedicated two-line band keeps the use case readable at actual 5 x 7 cm size.
-    line('CAMINHADA', 55, 815, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
-    line('E CORRIDA LEVE', 55, 920, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
-  } else {
-    line(color, 55, 890, 950, 80, 'EverlastAnton', '#EA3F0A', 'center');
+    line(usage[0], 55, 815, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    // Leave room for the cedilla above the price divider.
+    line(usage[1], 55, usage[1].includes('FORÇA') ? 908 : 920, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
   }
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1050).lineTo(1060, 1050).stroke();
