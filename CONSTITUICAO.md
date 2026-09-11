@@ -53,3 +53,7 @@
 ---
 
 *Regra 3 = **modo A (independência total), CONFIRMADO pelo dono em 2026-06-25**: cada loja emite SÓ pela própria máquina — **nem matriz, nem outra loja**, sem exceção. Se o agente cai, o Supervisor religa; se a máquina está desligada, não emite.*
+
+## Serviço de etiquetas — 11/09/2026
+Para campanha, conferência e impressão, cumprir também [CONSTITUICAO-ETIQUETAS.md](CONSTITUICAO-ETIQUETAS.md). Cota de duas por modelo no total; reenvios bloqueados até conciliação e aprovação do lote final.
+

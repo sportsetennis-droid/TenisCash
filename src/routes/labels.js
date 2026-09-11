@@ -1673,6 +1673,22 @@ router.post('/batches/quick', async (req, res) => {
     const { templateId, name, storeId, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
 
+    if (req.body.campaignModelQuota === 2) {
+      const products = await campaignFootwear(prisma);
+      const review = require('../services/campaignLabelReview').campaignLabelReview(products, p =>
+        labelProductDescription(p, p.name, p.supplierRef || '', '', p.aiContext || {}));
+      const byProduct = new Map(review.products.flatMap(p => p.labelVariants.map(v => [v.productId, p])));
+      const seenModels = new Set();
+      if (!Array.isArray(selections) || !selections.length) return res.status(400).json({ error: 'Campanha exige seleção conferida por modelo' });
+      for (const selection of selections) {
+        const model = byProduct.get(selection.productId);
+        if (!model || model.labelIssue || Number(selection.quantity) !== 2 || seenModels.has(model)) {
+          return res.status(400).json({ error: 'Lote bloqueado: são duas etiquetas por modelo, sem repetições ou divergências de preço e funcionalidade.' });
+        }
+        seenModels.add(model);
+      }
+    }
+
     let items = [];
     if (Array.isArray(selections) && selections.length) {
       // Formato novo: lista de seleções por produto/modelo; tamanho é opcional
@@ -1705,6 +1721,7 @@ router.post('/batches/quick', async (req, res) => {
     }
     if (!items.length) return res.status(400).json({ error: 'Nenhum item gerado' });
     const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
+    if (req.body.campaignModelQuota === 2 && labelsPerProduct(templateMeta) !== 1) return res.status(400).json({ error: 'Template multiplica etiquetas: campanha exige duas físicas por modelo no total.' });
     const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0) * labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {

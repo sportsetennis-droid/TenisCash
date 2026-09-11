@@ -10150,6 +10150,7 @@ let _labelsSelected = {}; // legacy
 // A etiqueta representa o produto/modelo; tamanho é apenas informação
 // disponível no verso e nunca é usado para selecionar a etiqueta.
 let _lblSel = {};
+let _lblCampaignQuota = false;
 let _lblCacheProducts = {};
 let _lblTemplates = {};
 let _lblAutoOptionsLoaded = false;
@@ -10259,7 +10260,7 @@ async function initLabelsTab() {
     document.getElementById('labels-refresh').onclick = () => { loadLabelTemplates(); loadLabelAutoOptions(); loadLabelBatches(); labelsSearchProducts(); };
     document.getElementById('labels-create-batch').onclick = labelsCreateBatch;
     document.getElementById('labels-generate-auto').onclick = labelsGenerateAutomatic;
-    document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblUpdateCart(); labelsSearchProducts(); };
+    document.getElementById('labels-cart-clear').onclick = () => { _lblSel = {}; _labelsSelected = {}; _lblCampaignQuota = false; _lblUpdateCart(); labelsSearchProducts(); };
     document.getElementById('labels-cart-show').onclick = _lblShowCart;
     document.getElementById('labels-campaign-two').onclick = async () => {
       const review = document.getElementById('labels-campaign-review');
@@ -10274,6 +10275,7 @@ async function initLabelsTab() {
           data.originalCount = data.products.reduce((total, p) => total + Number(p.variantCount || 1), 0);
         }
         _lblSel = {}; _labelsSelected = {};
+        _lblCampaignQuota = true;
         document.getElementById('labels-use-promo').checked = true;
         const list = document.createElement('table');
         const seen = new Set();
@@ -10285,10 +10287,10 @@ async function initLabelsTab() {
           _lblCacheProducts[p.id] = p;
           if (!p.labelIssue) _lblSel[p.id] = { quantity: 2 };
           const row = list.insertRow();
-          for (const value of [p.brand, modelName, (p.labelUsage || []).filter(Boolean).join(' — ') || 'USO NÃO DEFINIDO', Number(p.price).toFixed(2), p.promoPrice == null ? 'Preço normal' : Number(p.promoPrice).toFixed(2), p.labelIssue ? 'PENDENTE: ' + p.labelIssue : '2 etiquetas', p.variantCount + ' cadastros agrupados']) row.insertCell().textContent = value;
+          for (const value of [p.brand, modelName, (p.labelUsage || []).filter(Boolean).join(' — ') || 'USO NÃO DEFINIDO', Number(p.price).toFixed(2), p.promoPrice == null ? 'Preço normal' : Number(p.promoPrice).toFixed(2), p.labelIssue ? 'PENDENTE: ' + p.labelIssue : '2 etiquetas', p.variantCount + ' cadastros agrupados' + (p.labelIssue ? ' | Opções: ' + (p.labelVariants || []).map(v => Number(v.price).toFixed(2) + ' / ' + (v.promoPrice == null ? 'normal' : Number(v.promoPrice).toFixed(2)) + ' / ' + (v.labelUsage || []).join(' — ')).filter((v,i,a) => a.indexOf(v) === i).join(' ; ') : '')]) row.insertCell().textContent = value;
         }
         const note = document.createElement('p');
-        note.textContent = `${data.originalCount} cadastros → ${data.products.length} grupos por modelo, preço e modalidade. ${(data.pending || []).length} pendências excluídas da seleção. Duas etiquetas por grupo conferido.`;
+        note.textContent = `${data.originalCount} cadastros → ${data.products.length} modelos únicos. Preço, cor, tamanho e modalidade não multiplicam etiquetas. ${(data.pending || []).length} pendências excluídas da seleção. Duas etiquetas por modelo sem divergências. Impressões anteriores precisam ser conciliadas antes de novo envio.`;
         const downloadReview = document.createElement('button');
         downloadReview.type = 'button';
         downloadReview.textContent = 'Baixar conferência dos modelos';
@@ -10962,7 +10964,7 @@ async function labelsCreateBatch() {
   popupWindow.document.close();
   try {
     const data = await api('/admin/labels/batches/quick', 'POST', {
-      templateId, selections, usePromo,
+      templateId, selections, usePromo, campaignModelQuota: _lblCampaignQuota ? 2 : undefined,
     });
     if (data.error) {
       const missing = Array.isArray(data.missingLogos) && data.missingLogos.length
@@ -10982,6 +10984,7 @@ async function labelsCreateBatch() {
       return;
     }
     // Limpa carrinho somente depois de confirmar que o PDF foi aberto.
+    _lblCampaignQuota = false;
     _lblSel = {};
     _labelsSelected = {};
     _lblUpdateCart();
