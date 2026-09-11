@@ -6,6 +6,10 @@ function labelUsage(product, classification = {}) {
   const name = norm(product?.name || product?.originalProductName || product?.productName);
   const brand = norm(product?.brand);
   const modality = norm(classification.modality || product?.modality);
+  if (brand === 'MIZUNO') {
+    if (/MORELIA\s*SALA\s*PRO/.test(name)) return ['FUTSAL', 'PROFISSIONAL'];
+    if (/MORELIA\s*II\s*PRO/.test(name)) return ['FUTEBOL DE CAMPO', 'PROFISSIONAL'];
+  }
   const casual = ['USO CASUAL', 'E DIA A DIA'];
   // Store-approved classification for the Munich futsal models in the catalog.
   if (brand === 'MUNICH' && (/GRESCA\s*2[.,]0|CONTINENTAL\s*V2/.test(name) || /FUTSAL/.test(modality))) {

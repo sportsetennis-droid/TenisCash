@@ -4,16 +4,16 @@ const path = require('path');
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const brand = String(item.brand || '').trim().toUpperCase();
   const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
-  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA','TOPPER','MUNICH'].includes(brand);
+  const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA','TOPPER','MUNICH','MIZUNO','KAPPA'].includes(brand);
   const promoCents = Math.round(Number(item.promotionalPrice) * 100);
   const baseCents = Math.round(Number(item.price) * 100);
   // Only the saved campaign promotion enables this label.
-  const discount = ['TOPPER','MUNICH'].includes(brand) ? 20 : 30;
+  const discount = brand === 'MIZUNO' ? 40 : ['TOPPER','MUNICH'].includes(brand) ? 20 : 30;
   const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * (100 - discount) / 100)
     ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
   const offer = campaignBrand ? reebokOffer : item.paymentOffer;
   if ((!campaignBrand && brand !== 'EVERLAST')
-      || !offer?.active || ![20,30].includes(offer.discountPercent)
+      || !offer?.active || ![20,30,40].includes(offer.discountPercent)
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
   let model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')

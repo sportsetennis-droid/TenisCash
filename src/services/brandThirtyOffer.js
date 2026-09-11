@@ -1,10 +1,12 @@
 const { labelUsage } = require('./labelUsage');
-const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH']);
+const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH', 'MIZUNO', 'KAPPA']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-const campaignDiscount = brand => ['TOPPER', 'MUNICH'].includes(normalize(brand)) ? 20 : 30;
+const campaignDiscount = brand => normalize(brand) === 'MIZUNO' ? 40 : ['TOPPER', 'MUNICH'].includes(normalize(brand)) ? 20 : 30;
+const isMizunoMorelia = p => normalize(p.brand) === 'MIZUNO' && /\bMORELIA\s+(SALA\s+PRO|II\s+PRO)\b/.test(normalize(p.name));
 function isFootwear(p) {
   const name = normalize(p.name);
   if (/\b(VESTUARIO|CAM|CALCAO|CAMISETA|CAMISA|BERMUDA|SHORTS?|CASACO|JAQUETA|COTOVELEIRA|JOELHEIRA|TORNOZELEIRA|MEIAO|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
+  if (isMizunoMorelia(p)) return true;
   if (normalize(p.brand) === 'REEBOK' && /\bSTREET\s*RIDE\b/.test(name)) return true;
   return /\b(TENIS|CHUTEIRA|CHINELO|CHINELOS|SANDALIA|SAPATILHA|SAPATO|CALCADO|CALCADOS)\b/.test(name)
     || /^(TENIS|CALCADO|CALCADOS|CHUTEIRA|CHUTEIRAS|SANDALIA|SANDALIAS|CHINELO|CHINELOS)$/.test(normalize(p.category));
@@ -13,7 +15,7 @@ function isAllStar(p) {
   return /^(CONVERSE|ALL ?STAR)$/.test(normalize(p.brand)) && /ALL\s*STAR|CHUCK\s*TAYLOR/.test(normalize(p.name));
 }
 function isBoot(p) {
-  return isFootwear(p) && /\bCHUTEIRAS?\b/.test(normalize([p.name, p.category].join(' ')));
+  return isFootwear(p) && (isMizunoMorelia(p) || /\bCHUTEIRAS?\b/.test(normalize([p.name, p.category].join(' '))));
 }
 function brandWhere(brand) {
   return brand === 'ALLSTAR' ? { OR: ['CONVERSE', 'ALLSTAR', 'ALL STAR'].map(b => ({ brand: { equals: b, mode: 'insensitive' } })) }
@@ -26,7 +28,7 @@ async function campaignFootwear(prisma) {
   ]) }, orderBy: [{ brand: 'asc' }, { name: 'asc' }] });
   return rows.filter(p => isFootwear(p) && (normalize(p.brand) !== 'REEBOK' || /STREET\s*RIDE/.test(normalize(p.name)))
     && (!/CONVERSE|ALL ?STAR/.test(normalize(p.brand)) || isAllStar(p))
-    && (!['JOMA','UMBRO'].includes(normalize(p.brand)) || isBoot(p))
+    && (!['JOMA','UMBRO','MIZUNO','KAPPA'].includes(normalize(p.brand)) || isBoot(p))
     && Number(p.price) > 0 && (normalize(p.brand) === 'UMBRO' ? p.promoPrice == null
       : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * (100 - campaignDiscount(p.brand)) / 100)))
     .map(p => { let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext || {}; } catch {}
@@ -45,7 +47,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
     });
     if (!products.length) throw new Error('Nenhum produto ativo encontrado');
     const selected = products.filter(p => isFootwear(p) && (brand !== 'ALLSTAR' || isAllStar(p))
-      && (!['JOMA','UMBRO'].includes(brand) || isBoot(p)));
+      && (!['JOMA','UMBRO','MIZUNO','KAPPA'].includes(brand) || isBoot(p)));
     const changes = selected.map(p => {
       const cents = Math.round(Number(p.price) * 100);
       if (!Number.isSafeInteger(cents) || cents <= 0) throw new Error(`Preço original inválido: ${p.name}`);

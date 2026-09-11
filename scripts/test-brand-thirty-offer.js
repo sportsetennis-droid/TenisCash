@@ -33,7 +33,7 @@ async function main() {
   await applyBrandThirtyOffer(prisma, 'DIADORA');
   assert.equal(rows[1].promoPrice, 132.20);
   assert.deepEqual(rows.slice(2), untouched);
-  await assert.rejects(applyBrandThirtyOffer(prisma, 'KAPPA'));
+  await assert.rejects(applyBrandThirtyOffer(prisma, 'NIKE'));
   rows.push(
     { id:'oly-shoe', brand:'OLYMPIKUS', active:true, name:'TENIS OLYMPIKUS', price:100, promoPrice:70 },
     { id:'oly-shirt', brand:'OLYMPIKUS', active:true, name:'VESTUARIO CAMISETA', category:'tenis', price:100, promoPrice:70 },
@@ -57,6 +57,24 @@ async function main() {
   assert.equal((await applyBrandThirtyOffer(prisma, 'UMBRO')).updated, 1);
   assert.equal(rows.find(p => p.id === 'umbro-boot').promoPrice, null);
   assert.equal(rows.find(p => p.id === 'umbro-shoe').promoPrice, 80);
+  rows.push(
+    {id:'mizuno-sala',brand:'MIZUNO',active:true,name:'FOOTBALL MORELIA SALA PRO IN PRADOU',category:'A CLASSIFICAR',price:599.99},
+    {id:'mizuno-campo',brand:'MIZUNO',active:true,name:'CHUTEIRA MIZUNO MORELIA II PRO M PRADOU',price:799.90},
+    {id:'mizuno-running',brand:'MIZUNO',active:true,name:'TENIS MIZUNO WAVE',price:499.90},
+    {id:'kappa-boot',brand:'KAPPA',active:true,name:'CHUTEIRA KAPPA MAESTRO',price:199.99},
+    {id:'kappa-shirt',brand:'KAPPA',active:true,name:'CAMISA KAPPA',category:'tenis',price:99.90}
+  );
+  assert.equal((await applyBrandThirtyOffer(prisma,'MIZUNO')).updated,2);
+  assert.equal(rows.find(p=>p.id==='mizuno-sala').promoPrice,359.99);
+  assert.equal(rows.find(p=>p.id==='mizuno-campo').promoPrice,479.94);
+  assert.equal(rows.find(p=>p.id==='mizuno-running').promoPrice,undefined);
+  assert.equal((await applyBrandThirtyOffer(prisma,'KAPPA')).updated,1);
+  assert.equal(rows.find(p=>p.id==='kappa-boot').promoPrice,139.99);
+  assert.equal(rows.find(p=>p.id==='kappa-shirt').promoPrice,undefined);
+  const beforeRepeat=structuredClone(rows);
+  await applyBrandThirtyOffer(prisma,'MIZUNO');
+  await applyBrandThirtyOffer(prisma,'KAPPA');
+  assert.deepEqual(rows,beforeRepeat);
   rows[0].price = 0;
   await assert.rejects(applyBrandThirtyOffer(prisma, 'OUS'));
   console.log('Brand discount: scope, rounding, idempotence and original prices verified.');
