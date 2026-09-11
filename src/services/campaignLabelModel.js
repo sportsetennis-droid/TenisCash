@@ -12,6 +12,19 @@ function campaignLabelModel(item) {
     model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '').split(/\s*\(|\s+-\s+/)[0]
       .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
   }
+  const rawModelSource = String(item.originalProductName || item.name || '').toUpperCase();
+  if (brand === 'OLYMPIKUS') {
+    const match = rawModelSource.match(/CORRE\s*TRILHA\s*2|CHALLENGER\s*5|REVERSO\s*2|FLIT\s*4|ZEX\s*2|JOGGING(?:\s+\d+)?(?:\s+SE)?|COSMO|VIRTUOSE|GIRO|MESCLA|ORBITA|PURPURA|RITMO|VENUM/);
+    if (match) model = match[0].replace(/JOGGING\s+\d+/, 'JOGGING').replace(/TRILHA2/, 'TRILHA 2');
+  }
+  if (brand === 'KAPPA') {
+    const match = rawModelSource.match(/MAESTRO|MILAN\s*II|NAPOLI|SORANO\s*II/);
+    if (match) model = match[0];
+  }
+  if (brand === 'UMBRO') {
+    const match = rawModelSource.match(/UMBRO\s+(.+?)(?:-(?=[A-Z ]+\/)|-TAM:|$)/);
+    if (match) model = match[1].trim();
+  }
   if (brand === 'FILA') {
     const raw = String(item.originalProductName || item.name || '').toUpperCase();
     const match = raw.match(/(?:TENIS|TÊNIS|CHINELO)\s+FILA\s+(.+?)\s+(?:MASCULINO|FEMININO|INFANTIL)(?:[-\s]|$)/);
