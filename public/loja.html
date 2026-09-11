@@ -1056,7 +1056,7 @@
     </div>
     <div class="card" id="rankWhatsappBox" hidden style="margin-bottom:16px;">
       <label for="rankWhatsappText" style="display:block;font-weight:600;margin-bottom:8px;">Mensagem para WhatsApp</label>
-      <textarea id="rankWhatsappText" readonly rows="12" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;white-space:pre-wrap;"></textarea>
+      <textarea id="rankWhatsappText" readonly rows="12" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;white-space:pre;overflow-x:auto;font-family:monospace;"></textarea>
       <button class="btn btn-small" onclick="copyRankingWhatsapp()" style="margin-top:8px;">Copiar mensagem</button>
       <span id="rankWhatsappStatus" role="status" style="font-size:13px;"></span>
     </div>
@@ -3301,20 +3301,26 @@ function rankingWhatsappText(data, storeName) {
   const periods = { today: 'Hoje', yesterday: 'Ontem', month: 'Mês atual', last_month: 'Mês anterior', custom: 'Personalizado' };
   const date = value => new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
   const clean = value => String(value || '').replace(/[\r\n*_~\x60]/g, ' ').trim();
+  const money = value => Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const name = value => {
+    const words = clean(value).split(/\s+/);
+    const short = words.length > 1 ? words[0] + ' ' + words[words.length - 1] : words[0];
+    return short.length > 14 ? short.slice(0, 13) + '…' : short;
+  };
   const lines = ['*SPORTS & TENNIS — RANKING*', clean(storeName),
-    (periods[data.period] || 'Período') + ': ' + date(data.from) + ' a ' + date(new Date(new Date(data.to).getTime() - 1)), ''];
-  for (const r of data.ranking) {
-    const c = r.commission;
-    lines.push('*' + r.position + '. ' + clean(r.name) + '*', clean(r.store?.name),
-      'Vendas: ' + r.salesCount + ' | Valor vendido: ' + fmt(r.salesAmount),
-      'Comissão geral 1%: ' + fmt(c.baseAmount),
-      'Batendo 50k — Geral 2%: ' + fmt(c.at50kAmount),
-      'Vestuário S&T 1%: ' + fmt(c.clothingBaseAmount),
-      'Vestuário S&T batendo 20k — 4%: ' + fmt(c.at20kClothingAmount),
-      '*Total 1%: ' + fmt(c.totalAt1Percent) + '*',
-      '*Total 2% + 4%: ' + fmt(c.totalAt2And4Percent) + '*', '');
-  }
-  if (!data.ranking.length) lines.push('Nenhum vendedor encontrado no período.');
+    (periods[data.period] || 'Período') + ': ' + date(data.from) + ' a ' + date(new Date(new Date(data.to).getTime() - 1)), 'Valores em R$', ''];
+  if (!data.ranking.length) return lines.concat('Nenhum vendedor encontrado no período.').join('\n');
+  const fence = String.fromCharCode(96).repeat(3);
+  const table = (title, headings, values) => {
+    const rows = data.ranking.map(r => [String(r.position), name(r.name), ...values(r)]);
+    const widths = headings.map((h, i) => Math.max(h.length, ...rows.map(row => row[i].length)));
+    const format = row => row.map((cell, i) => i === 1 ? cell.padEnd(widths[i]) : cell.padStart(widths[i])).join(' | ');
+    lines.push('*' + title + '*', fence, format(headings), widths.map(w => '-'.repeat(w)).join('-+-'), ...rows.map(format), fence, '');
+  };
+  table('VENDAS', ['Pos', 'Vendedor', 'Qtd', 'Vendido'], r => [String(r.salesCount), money(r.salesAmount)]);
+  table('COMISSÃO GERAL · 2% BATENDO 50K', ['Pos', 'Vendedor', '1%', '2%'], r => [money(r.commission.baseAmount), money(r.commission.at50kAmount)]);
+  table('VESTUÁRIO S&T · 4% BATENDO 20K', ['Pos', 'Vendedor', '1%', '4%'], r => [money(r.commission.clothingBaseAmount), money(r.commission.at20kClothingAmount)]);
+  table('TOTAIS POR VENDEDOR', ['Pos', 'Vendedor', '1%', '2% + 4%'], r => [money(r.commission.totalAt1Percent), money(r.commission.totalAt2And4Percent)]);
   return lines.join('\n').trim();
 }
 
