@@ -35,7 +35,11 @@ function labelAccess(req, res, next) {
 router.use(labelAccess);
 
 router.get('/campaign-footwear', async (_req, res) => {
-  try { res.json({ products: await campaignFootwear(prisma) }); }
+  try {
+    const products = await campaignFootwear(prisma);
+    res.json(require('../services/campaignLabelReview').campaignLabelReview(products, p =>
+      labelProductDescription(p, p.name, p.supplierRef || '', '', p.aiContext || {})));
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 

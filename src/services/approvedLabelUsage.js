@@ -32,19 +32,13 @@ module.exports = function approvedUsage(name, brand, modality) {
   }
   if (brand === 'EVERLAST') {
     if (/SOLO|BLAZER|NEW\s*YORK/.test(name)) return casual;
-    if (/STATION/.test(name)) return ['ACADEMIA', 'E TREINO'];
-    if (/FORCEKNIT/.test(name)) return ['ACADEMIA', 'E FUNCIONAL'];
-    if (/RING\s*(4|IV)/.test(name)) return ['ACADEMIA', 'E MUSCULAÇÃO'];
+    if (/STATION|FORCEKNIT|RING\s*(4|IV)|CLIMBER\s*(PRO|ULTRA)/.test(name)) return ['TREINO DE FORÇA E ACADEMIA', 'CROSS E FUNCIONAL'];
   }
   if (brand === 'OLYMPIKUS') {
-    if (/CORRE.*TRILHA/.test(name)) return ['CORRIDA EM TRILHAS', 'LONGAS DISTÂNCIAS'];
-    if (/CHALLENGER/.test(name)) return ['CORRIDA LEVE', ''];
-    if (/REVERSO/.test(name)) return ['CORRIDA LEVE', 'E DIA A DIA'];
-    if (/COSMO/.test(name)) return ['CAMINHADA', ''];
-    if (/VIRTUOSE/.test(name)) return ['CAMINHADA', 'E DIA A DIA'];
-    if (/FLIT/.test(name)) return ['DIA A DIA', ''];
     if (/JOGGING/.test(name)) return casual;
     if (/VENUM/.test(name)) return ['DIA A DIA', 'E BRINCADEIRAS'];
+    // Owner's wording for sporting use; stable across imported colour variants.
+    if (/CHALLENGER|REVERSO|COSMO|VIRTUOSE|FLIT|GIRO|MESCLA|ORBITA|PURPURA|RITMO|ZEX/.test(name)) return ['CORRIDA', 'E TREINO LEVE'];
   }
   let activity = /FUTSAL|FSAL|INDOOR/.test(name) ? 'FUTSAL' : /SOCIETY|SCTY/.test(name) ? 'SOCIETY' : /CAMPO/.test(name) ? 'FUTEBOL DE CAMPO'
     : /FUTSAL/.test(modality) ? 'FUTSAL' : /SOCIETY/.test(modality) ? 'SOCIETY' : /CAMPO/.test(modality) ? 'FUTEBOL DE CAMPO' : null;
@@ -65,7 +59,7 @@ module.exports = function approvedUsage(name, brand, modality) {
     if (/TOP\s*FLEX.*(JR|JUNIOR)|EVOLUTION/.test(name)) return [activity, /TOP\s*FLEX/.test(name) ? 'TREINOS E JOGOS' : 'PARA TREINO'];
     if (/AGUILA.*CUP|REGATE|TOP\s*FLEX/.test(name)) return [activity, 'PROFISSIONAL'];
     if (/FS.*REACTIVE/.test(name)) return [activity, 'JOGOS INTENSOS'];
-    if (/DRIBLING|MAXIMA|CANCHA/.test(name)) return [activity, 'PARA TREINO'];
+    if (/DRIBLING|MAXIMA|CANCHA|AGUILA/.test(name)) return [activity, 'PARA TREINO'];
   }
   return null;
 };

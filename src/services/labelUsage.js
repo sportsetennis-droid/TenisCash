@@ -38,14 +38,20 @@ function labelUsage(product, classification = {}) {
     if (/ACD\s*CLASSIC|RENNO|COURT\s*80|DAILY|CORDA/.test(name)) return casual;
   }
   const surface = name + ' ' + modality;
+  const activity = /FUTSAL|\bINDOOR\b/.test(surface) ? 'FUTSAL' : /SOCIETY/.test(surface) ? 'SOCIETY' : /\bCAMPO\b/.test(surface) ? 'FUTEBOL DE CAMPO' : null;
+  const tier = norm(classification.tier);
+  if (activity && /^(TREINO|INTERMEDIARIO)$/.test(tier)) return [activity, 'PARA TREINO'];
+  if (activity && tier === 'PROFISSIONAL') return [activity, 'PROFISSIONAL'];
+  if (activity && tier === 'INICIANTE' && brand !== 'JOMA') return [activity, 'PARA INICIANTES'];
   if (/FUTSAL|\bINDOOR\b/.test(surface)) return ['PARA FUTSAL', ''];
   if (/SOCIETY/.test(surface)) return ['PARA SOCIETY', ''];
   if (/\bCAMPO\b/.test(surface)) return ['FUTEBOL DE CAMPO', ''];
   if (/CHINELO|SANDALIA|DRIFTER/.test(name + ' ' + modality)) return ['DIA A DIA', 'E LAZER'];
   if (brand === 'OLYMPIKUS' && /PURPURA/.test(name)) return ['DIA A DIA', 'E CAMINHADA'];
-  if (/CORRIDA|RUNNING/.test(modality)) return ['PARA CORRIDA', ''];
+  if (/CORRIDA|RUNNING/.test(modality)) return ['CORRIDA', 'E TREINO LEVE'];
   if (/CAMINHADA/.test(modality)) return ['PARA CAMINHADA', ''];
-  if (/TREINO|MUSCULACAO|CROSS/.test(modality)) return ['ACADEMIA', 'E TREINO'];
+  if (/TREINO/.test(modality)) return ['CORRIDA', 'E TREINO LEVE'];
+  if (/MUSCULACAO|CROSS/.test(modality)) return ['ACADEMIA', 'E TREINO'];
   if (/CASUAL|ESTILO DE VIDA|LIFESTYLE|LIFE STYLE/.test(modality)) return casual;
   if (['SPEEDO','OUS','CONVERSE','ALLSTAR','ALL STAR'].includes(brand) || (brand === 'REEBOK' && /STREET\s*RIDE/.test(name))) return casual;
   return null;

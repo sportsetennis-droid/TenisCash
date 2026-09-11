@@ -15,19 +15,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   if ((!campaignBrand && brand !== 'EVERLAST')
       || !offer?.active || ![20,30,40].includes(offer.discountPercent)
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
-  let model = streetRide ? 'STREET RIDE' : String(item.productName || item.name || 'EVERLAST').toUpperCase()
-    .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
-    .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
-  if (campaignBrand && !streetRide) {
-    const known = ['IMIGRANTE SERIE X','IMIGRANTE MEGA','CHUCK TAYLOR ALL STAR','CHUCK TAYLOR','ARQUITETONICO','FLUENTE GTX','NACCARATO V','PHIBO 1123','IMIGRANTE','EMERGENTE','HEVEA','UENO','2K'];
-    const match = brand === 'OUS' || /CONVERSE|ALL ?STAR/.test(brand) ? known.find(k => model.includes(k)) : null;
-    model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '').split(/\s*\(|\s+-\s+/)[0]
-      .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
-  }
-  if (brand === 'SPEEDO') {
-    const code = String(item.originalProductName || '').toUpperCase().match(/SPO[ -]?\d+[FM]?/);
-    if (code) model = code[0].replace(/[ -]/g, '');
-  }
+  const model = require('./campaignLabelModel').campaignLabelModel(item);
   const usageByModel = {
     'STREET RIDE': ['USO CASUAL', 'E DIA A DIA'],
     'CLIMBER RUN': ['CAMINHADA', 'E CORRIDA LEVE'],
