@@ -9,6 +9,7 @@ const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('.
 const relationshipCommission = require('../services/relationshipCommission');
 const commissionEvidenceStore = require('../services/commissionEvidenceStore');
 const storeRadio = require('../services/storeRadio');
+const { commissionWindow, calculateRankingCommissions } = require('../services/rankingCommission');
 
 const router = express.Router();
 
@@ -1439,15 +1440,16 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       const r = recifeDayBounds(new Date(now.getTime() - 24 * 60 * 60 * 1000));
       startUtc = r.startUtc; endUtc = r.endUtc;
     } else if (period === 'month') {
-      startUtc = new Date(now.getFullYear(), now.getMonth(), 1);
-      endUtc = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const r = commissionWindow(now, new Date(now.getTime() + 1));
+      startUtc = r.start; endUtc = r.end;
     } else if (period === 'last_month') {
-      startUtc = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endUtc = new Date(now.getFullYear(), now.getMonth(), 1);
+      const current = commissionWindow(now, new Date(now.getTime() + 1));
+      const r = commissionWindow(new Date(current.start.getTime() - 1), current.start);
+      startUtc = r.start; endUtc = r.end;
     } else if (period === 'custom') {
       if (!req.query.from || !req.query.to) return res.status(400).json({ error: 'Informe from e to no formato YYYY-MM-DD' });
       startUtc = new Date(req.query.from + 'T00:00:00-03:00');
-      endUtc = new Date(req.query.to + 'T23:59:59-03:00');
+      endUtc = new Date(new Date(req.query.to + 'T00:00:00-03:00').getTime() + 86400000);
     } else {
       return res.status(400).json({ error: 'period inválido' });
     }
@@ -1464,20 +1466,6 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       where: saleWhere,
       orderBy: { _sum: { totalAmount: 'desc' } },
     });
-
-    // Agrega comissões por vendedor (mesmo periodo)
-    const commWhere = { createdAt: { gte: startUtc, lt: endUtc } };
-    if (storeId) {
-      // Comissões não têm storeId, mas todas vêm de Sales — filtra via saleId in sales of store
-      const saleIds = (await prisma.sale.findMany({ where: { storeId }, select: { id: true } })).map(s => s.id);
-      commWhere.saleId = { in: saleIds.length ? saleIds : ['__none__'] };
-    }
-    const commAgg = await prisma.saleCommission.groupBy({
-      by: ['sellerId'],
-      _sum: { amount: true },
-      where: commWhere,
-    });
-    const commBySeller = new Map(commAgg.map(c => [c.sellerId, c._sum.amount || 0]));
 
     // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
     // Leia todos os pontos antes de filtrar a loja: uma saída em outra loja
@@ -1517,6 +1505,17 @@ router.get('/rankings', sellerOnly, async (req, res) => {
 
     // Nomes + loja dos vendedores
     const sellerIds = salesAgg.map(s => s.sellerId);
+    // Metas mensais por vendedor somam todas as lojas. O valor exibido respeita
+    // o período e a loja selecionados. Intervalos de vários meses não somam metas.
+    const window = commissionWindow(startUtc, endUtc);
+    const commissionSales = sellerIds.length ? await prisma.sale.findMany({
+      where: { sellerId: { in: sellerIds }, status: { not: 'canceled' },
+        createdAt: { gte: window.start, lt: window.end, lte: now } },
+      select: { sellerId: true, storeId: true, createdAt: true, totalAmount: true,
+        items: { select: { brand: true, category: true, totalPrice: true,
+          product: { select: { brand: true, category: true } } } } },
+    }) : [];
+    const commissionBySeller = calculateRankingCommissions(commissionSales, { start: startUtc, end: endUtc, storeId });
     const sellers = await prisma.user.findMany({
       where: { id: { in: sellerIds } },
       select: { id: true, name: true, employeeCode: true, store: { select: { id: true, name: true, code: true } } },
@@ -1529,6 +1528,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     const ranking = salesAgg.map((s, i) => {
       const u = sellerMap.get(s.sellerId);
       const store = attendanceStoreBySeller.get(s.sellerId) || u?.store;
+      const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
+        clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, earnedAmount: 0, months: [] };
       return {
         position: i + 1,
         sellerId: s.sellerId,
@@ -1538,7 +1539,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         salesCount: s._count._all || 0,
         salesAmount: Math.round((s._sum.totalAmount || 0) * 100) / 100,
         cashbackGiven: Math.round((s._sum.tcEarned || 0) * 100) / 100,
-        commissionAmount: Math.round((commBySeller.get(s.sellerId) || 0) * 100) / 100,
+        commissionAmount: commission.earnedAmount,
+        commission,
       };
     });
 
