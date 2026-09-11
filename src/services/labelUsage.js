@@ -10,6 +10,13 @@ function labelUsage(product, classification = {}) {
     if (/MORELIA\s*SALA\s*PRO/.test(name)) return ['FUTSAL', 'PROFISSIONAL'];
     if (/MORELIA\s*II\s*PRO/.test(name)) return ['FUTEBOL DE CAMPO', 'PROFISSIONAL'];
   }
+  if (brand === 'KAPPA' && /CHUTEIRAS?/.test(name + ' ' + norm(product?.category))) {
+    const surface = name + ' ' + modality;
+    const activity = /FUTSAL|\bINDOOR\b/.test(surface) ? 'FUTSAL'
+      : /SOCIETY/.test(surface) ? 'SOCIETY'
+      : /\bCAMPO\b/.test(surface) ? 'FUTEBOL DE CAMPO' : 'CHUTEIRA';
+    return [activity, 'PARA TREINO'];
+  }
   const casual = ['USO CASUAL', 'E DIA A DIA'];
   // Store-approved classification for the Munich futsal models in the catalog.
   if (brand === 'MUNICH' && (/GRESCA\s*2[.,]0|CONTINENTAL\s*V2/.test(name) || /FUTSAL/.test(modality))) {
