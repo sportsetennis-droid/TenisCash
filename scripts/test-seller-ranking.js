@@ -54,11 +54,11 @@ async function run(query) {
 
 (async () => {
   const { result } = await run({ period: 'today', storeId: 'a' });
-  assert.deepEqual(Array.from(result.ranking, r => r.sellerId), ['1', '0', '2', '3', '4']);
-  assert.equal(result.totals.sellersCount, 5);
-  assert.equal(result.totals.salesAmount, 300);
-  assert.equal(result.ranking[4].salesAmount, 0);
-  assert.equal(result.ranking[4].position, 5);
+  assert.deepEqual(Array.from(result.ranking, r => r.sellerId), ['5', '1', '0', '2', '3', '4']);
+  assert.equal(result.totals.sellersCount, 6);
+  assert.equal(result.totals.salesAmount, 800);
+  assert.equal(result.ranking[5].salesAmount, 0);
+  assert.equal(result.ranking[5].position, 6);
   const all = (await run({})).result;
   assert.equal(all.period, 'today');
   assert.equal(all.ranking.find(r => r.sellerId === '8').store.id, 'b');
@@ -78,7 +78,7 @@ async function run(query) {
   vm.createContext(ui);
   vm.runInContext(html.slice(renderStart, renderEnd), ui);
   await ui.loadRanking();
-  assert.match(elements.rankingTable.innerHTML, /Classificação completa · 5 vendedores/);
+  assert.match(elements.rankingTable.innerHTML, /Classificação completa · 6 vendedores/);
   assert.match(elements.rankingTable.innerHTML, /Vendedor 4/);
   assert.match(elements.rankingTable.innerHTML, /#5/);
   result.ranking = [];

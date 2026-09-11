@@ -1480,8 +1480,8 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     const commBySeller = new Map(commAgg.map(c => [c.sellerId, c._sum.amount || 0]));
 
     // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
-    // Leia todos os pontos do vendedor antes de filtrar a loja: uma saída ou
-    // intervalo registrado em outra loja também encerra a disponibilidade.
+    // Leia todos os pontos antes de filtrar a loja: uma saída em outra loja
+    // também encerra a disponibilidade. O intervalo mantém o vendedor no ranking.
     const attendanceStoreBySeller = new Map();
     if (period === 'today') {
       const clocks = await prisma.clockIn.findMany({
@@ -1504,7 +1504,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         const { summary } = summarizeToday(points, now);
         const last = points[points.length - 1];
         const assignedStores = [last.user.storeId, ...(last.user.storeIds || [])];
-        if (summary.hasEntry && !summary.hasExit && !summary.inBreak
+        if (summary.hasEntry && !summary.hasExit
           && assignedStores.includes(last.storeId) && (!storeId || last.storeId === storeId)) {
           attendanceStoreBySeller.set(sellerId, last.store);
         }
