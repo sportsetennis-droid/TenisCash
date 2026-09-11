@@ -26,7 +26,12 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.fillColor(color).text(text, left, top, { width, height: 400, lineBreak: false, align });
   }
   line(model, 65, 575, 930, 43, bold, '#FFFFFF', 'center');
-  const detail = climberRun ? 'CAMINHADA E CORRIDA LEVE' : String(item.color || '').toUpperCase();
+  let color = String(item.color || '').toUpperCase();
+  if (/D[ÚU]VIDA|N[ÃA]O [ÉE] COR|REVIS/.test(color)) {
+    const source = String(item.productName || item.name || '').toUpperCase();
+    color = source.match(/EVERLAST\s+((?:BRANCO|PRETO|VERDE|AZUL|ROSA|BEGE|CINZA|AMARELO|VERMELHO|LILAS|LILÁS|ROXO|DOURADO|MARROM)[A-ZÀ-Ú/ -]*?)(?:\s+\d{2}\b|\s+REF\b|$)/)?.[1]?.trim() || '';
+  }
+  const detail = climberRun ? 'CAMINHADA E CORRIDA LEVE' : color;
   line(detail, 65, 742, 930, 42, bold, '#EA3F0A', 'center');
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   line('DE R$ ' + money(offer.basePrice), 68, 898, 925, 53, bold, '#594B3D');
