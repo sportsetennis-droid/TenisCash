@@ -52,7 +52,7 @@ async function main() {
     {id:'umbro-shoe', brand:'UMBRO', active:true, name:'TENIS UMBRO CASUAL', price:100, promoPrice:80}
   );
   assert.equal((await applyBrandThirtyOffer(prisma, 'JOMA')).updated, 1);
-  assert.equal(rows.find(p => p.id === 'joma-boot').promoPrice, 419.99);
+  assert.equal(rows.find(p => p.id === 'joma-boot').promoPrice, 479.98);
   assert.equal(rows.find(p => p.id === 'joma-ball').promoPrice, undefined);
   assert.equal((await applyBrandThirtyOffer(prisma, 'UMBRO')).updated, 1);
   assert.equal(rows.find(p => p.id === 'umbro-boot').promoPrice, null);

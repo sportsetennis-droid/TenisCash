@@ -21,7 +21,7 @@ Instituída por ordem de Douglas em 11/09/2026, após desperdício causado por c
 - Usar os textos aprovados por modelo. Não substituir funcionalidade por cor ou classificação genérica.
 - Preservar laranja, tipografia, dimensão, posição do preço original sem traço, preço atual, destaque de BAIXOU e convite aprovados.
 - Preservar 16 posições por folha A4. Não aumentar a etiqueta ou alterar a paginação para corrigir espaçamento sem mostrar a proposta.
-- Manter os descontos autorizados: 30% para marcas da campanha, Topper/Munich 20%, duas chuteiras Mizuno 40%, chuteiras Umbro sem desconto. Preços diferentes do mesmo modelo exigem decisão explícita; não alterar cadastro para fazê-los coincidir.
+- Manter os descontos autorizados: 30% para marcas da campanha, Joma/Topper/Munich 20%, duas chuteiras Mizuno 40%, chuteiras Umbro sem desconto. Preços diferentes do mesmo modelo exigem decisão explícita; não alterar cadastro para fazê-los coincidir.
 
 ## 4. Conferência antes de impressão
 

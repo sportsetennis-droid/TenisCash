@@ -8,7 +8,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const promoCents = Math.round(Number(item.promotionalPrice) * 100);
   const baseCents = Math.round(Number(item.price) * 100);
   // Only the saved campaign promotion enables this label.
-  const discount = brand === 'MIZUNO' ? 40 : ['TOPPER','MUNICH'].includes(brand) ? 20 : 30;
+  const discount = brand === 'MIZUNO' ? 40 : ['TOPPER','MUNICH','JOMA'].includes(brand) ? 20 : 30;
   const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * (100 - discount) / 100)
     ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
   const offer = campaignBrand ? reebokOffer : item.paymentOffer;
