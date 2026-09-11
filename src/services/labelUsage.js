@@ -7,6 +7,10 @@ function labelUsage(product, classification = {}) {
   const brand = norm(product?.brand);
   const modality = norm(classification.modality || product?.modality);
   const casual = ['USO CASUAL', 'E DIA A DIA'];
+  // Store-approved classification for the Munich futsal models in the catalog.
+  if (brand === 'MUNICH' && (/GRESCA\s*2[.,]0|CONTINENTAL\s*V2/.test(name) || /FUTSAL/.test(modality))) {
+    return ['FUTSAL', 'PROFISSIONAL'];
+  }
   if (brand === 'EVERLAST') {
     if (/CLIMBER\s*RUN/.test(name)) return ['CAMINHADA', 'E CORRIDA LEVE'];
     if (/CLIMBER\s*(PRO|ULTRA)/.test(name)) return ['TREINO DE FORÇA', 'CROSS E FUNCIONAL'];

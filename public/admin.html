@@ -1756,6 +1756,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn" id="cat-off30-fila">Aplicar 30% OFF em Fila</button>
         <button type="button" class="btn" id="cat-off30-speedo">Aplicar 30% OFF em Speedo</button>
         <button type="button" class="btn" id="cat-off30-topper">Aplicar 30% OFF em Topper</button>
+        <button type="button" class="btn" id="cat-off30-munich">Aplicar 30% OFF em Munich</button>
         <button type="button" class="btn" id="cat-off30-allstar">Aplicar 30% OFF em All Star</button>
         <button type="button" class="btn" id="cat-off30-joma">Chuteiras Joma: 30% OFF</button>
         <button type="button" class="btn" id="cat-off30-umbro">Chuteiras Umbro: preço normal</button>
@@ -4922,7 +4923,7 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
-    ['ous', 'diadora', 'olympikus', 'fila', 'speedo', 'allstar', 'joma', 'umbro', 'topper'].forEach(brand => {
+    ['ous', 'diadora', 'olympikus', 'fila', 'speedo', 'allstar', 'joma', 'umbro', 'topper', 'munich'].forEach(brand => {
       const button = document.getElementById('cat-off30-' + brand);
       button.addEventListener('click', async () => {
         const status = document.getElementById('cat-off30-result');
