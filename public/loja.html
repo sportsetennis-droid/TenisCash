@@ -276,6 +276,13 @@
   table.modern tbody tr:hover { background: var(--bg-soft); }
   table.modern tbody tr.clickable { cursor: pointer; }
 
+  /* A tabela branca do ranking não deve herdar o texto branco da página. */
+  #rankingTable table.modern {
+    color: #1d1d1f;
+    --text-muted: #595959;
+    --primary: #b83d0a;
+  }
+
   /* Mobile adjustments */
   @media (max-width: 600px) {
     .topbar { padding: 10px 14px; }
@@ -994,7 +1001,7 @@
   <!-- RANKING -->
   <div class="page" id="page-ranking">
     <h2 class="page-title">Ranking de vendas</h2>
-    <p class="page-subtitle">Ordenado por valor de vendas. Mostra comissão gerada no período.</p>
+    <p class="page-subtitle">Ordenado por valor de vendas. Hoje inclui todos os vendedores ativos com ponto aberto e fora do intervalo, mesmo sem vendas.</p>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -1007,9 +1014,9 @@
         <div>
           <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Período</label>
           <select id="rankPeriod" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;" onchange="onRankPeriodChange()">
-            <option value="today">Hoje</option>
+            <option value="today" selected>Hoje</option>
             <option value="yesterday">Ontem</option>
-            <option value="month" selected>Mês atual</option>
+            <option value="month">Mês atual</option>
             <option value="last_month">Mês passado</option>
             <option value="custom">Personalizado</option>
           </select>
@@ -3297,13 +3304,13 @@ async function loadRanking() {
     `;
 
     if (!d.ranking.length) {
-      document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:24px;">Sem vendas no período.</p>';
+      document.getElementById('rankingTable').innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:24px;">${period === 'today' ? 'Nenhum vendedor com ponto aberto e apto a vender nesta seleção.' : 'Sem vendas no período.'}</p>`;
       return;
     }
 
-    // Top 3 destaque + resto em grid
-    const top3 = d.ranking.slice(0, 3);
-    const rest = d.ranking.slice(3);
+    // Rankings mensais usam apenas a classificação completa numerada.
+    const top3 = ['month', 'last_month'].includes(period) ? [] : d.ranking.slice(0, 3);
+    const rest = d.ranking;
     const top3Html = top3.length ? `
       <h3 class="section-title"><span class="section-title-icon">🏆</span>Top 3 do período</h3>
       <div class="grid grid-3">
@@ -3326,7 +3333,7 @@ async function loadRanking() {
     ` : '';
 
     const restHtml = rest.length ? `
-      <h3 class="section-title"><span class="section-title-icon">📊</span>Restante</h3>
+      <h3 class="section-title"><span class="section-title-icon">📊</span>Classificação completa · ${rest.length} vendedores</h3>
       <table class="modern">
         <thead><tr>
           <th style="width:50px;text-align:center;">Pos.</th>

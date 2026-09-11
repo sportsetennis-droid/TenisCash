@@ -1428,7 +1428,7 @@ router.get('/sales', sellerOnly, async (req, res) => {
 router.get('/rankings', sellerOnly, async (req, res) => {
   try {
     const storeId = req.query.storeId && req.query.storeId !== 'all' ? req.query.storeId : null;
-    const period = req.query.period || 'month';
+    const period = req.query.period || 'today';
 
     // Resolve range de datas
     const now = new Date();
@@ -1457,7 +1457,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     if (storeId) saleWhere.storeId = storeId;
 
     // Agrega vendas por vendedor
-    const salesAgg = await prisma.sale.groupBy({
+    let salesAgg = await prisma.sale.groupBy({
       by: ['sellerId'],
       _sum: { totalAmount: true, tcEarned: true, tcUsed: true },
       _count: { _all: true },
@@ -1479,6 +1479,42 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     });
     const commBySeller = new Map(commAgg.map(c => [c.sellerId, c._sum.amount || 0]));
 
+    // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
+    // Leia todos os pontos do vendedor antes de filtrar a loja: uma saída ou
+    // intervalo registrado em outra loja também encerra a disponibilidade.
+    const attendanceStoreBySeller = new Map();
+    if (period === 'today') {
+      const clocks = await prisma.clockIn.findMany({
+        where: {
+          timestamp: { gte: startUtc, lt: endUtc, lte: now },
+          user: { role: 'seller', active: true },
+        },
+        orderBy: { timestamp: 'asc' },
+        include: {
+          store: { select: { id: true, name: true, code: true } },
+          user: { select: { storeId: true, storeIds: true } },
+        },
+      });
+      const clocksBySeller = new Map();
+      for (const clock of clocks) {
+        if (!clocksBySeller.has(clock.userId)) clocksBySeller.set(clock.userId, []);
+        clocksBySeller.get(clock.userId).push(clock);
+      }
+      for (const [sellerId, points] of clocksBySeller) {
+        const { summary } = summarizeToday(points, now);
+        const last = points[points.length - 1];
+        const assignedStores = [last.user.storeId, ...(last.user.storeIds || [])];
+        if (summary.hasEntry && !summary.hasExit && !summary.inBreak
+          && assignedStores.includes(last.storeId) && (!storeId || last.storeId === storeId)) {
+          attendanceStoreBySeller.set(sellerId, last.store);
+        }
+      }
+      const salesBySeller = new Map(salesAgg.map(s => [s.sellerId, s]));
+      salesAgg = [...attendanceStoreBySeller.keys()].map(sellerId => salesBySeller.get(sellerId) || {
+        sellerId, _count: { _all: 0 }, _sum: { totalAmount: 0, tcEarned: 0, tcUsed: 0 },
+      });
+    }
+
     // Nomes + loja dos vendedores
     const sellerIds = salesAgg.map(s => s.sellerId);
     const sellers = await prisma.user.findMany({
@@ -1486,15 +1522,19 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       select: { id: true, name: true, employeeCode: true, store: { select: { id: true, name: true, code: true } } },
     });
     const sellerMap = new Map(sellers.map(s => [s.id, s]));
+    salesAgg.sort((a, b) => (b._sum.totalAmount || 0) - (a._sum.totalAmount || 0)
+      || (sellerMap.get(a.sellerId)?.name || '').localeCompare(sellerMap.get(b.sellerId)?.name || '', 'pt-BR')
+      || String(a.sellerId).localeCompare(String(b.sellerId)));
 
     const ranking = salesAgg.map((s, i) => {
       const u = sellerMap.get(s.sellerId);
+      const store = attendanceStoreBySeller.get(s.sellerId) || u?.store;
       return {
         position: i + 1,
         sellerId: s.sellerId,
         name: u?.name || '(removido)',
         employeeCode: u?.employeeCode || null,
-        store: u?.store ? { id: u.store.id, name: u.store.name, code: u.store.code } : null,
+        store: store ? { id: store.id, name: store.name, code: store.code } : null,
         salesCount: s._count._all || 0,
         salesAmount: Math.round((s._sum.totalAmount || 0) * 100) / 100,
         cashbackGiven: Math.round((s._sum.tcEarned || 0) * 100) / 100,
