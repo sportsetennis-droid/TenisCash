@@ -40,9 +40,9 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   }
   band(0, 330, 0, headlineHeight);
   band(330, 350, headlineHeight, 820 - headlineHeight);
-  band(640, 215, 820, 230);
-  band(865, 370, 1050, 270);
-  band(1245, 239, 1320, 164);
+  band(640, 215, 820, 315);
+  band(865, 370, 1135, 270);
+  band(1245, 239, 1405, 79);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   function line(text, left, top, width, size, font, color, align = 'left') {
@@ -56,21 +56,20 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(model, 55, 770, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
     // A dedicated two-line band keeps the use case readable at actual 5 x 7 cm size.
-    line(usage[0], 55, 815, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
-    // Leave room for the cedilla above the price divider.
-    line(usage[1], 55, usage[1].includes('FORÇA') ? 908 : 920, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    line(usage[0], 55, 850, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    // Keep clear space between the use case, model name and price.
+    line(usage[1], 55, 970, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
   }
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1050).lineTo(1060, 1050).stroke();
-  line('DE R$ ' + money(offer.basePrice), 68, 1060, 925, 60, bold, '#E93E09');
+  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1135).lineTo(1060, 1135).stroke();
+  line('DE R$ ' + money(offer.basePrice), 68, 1145, 925, 60, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  line('POR', 65, 1110, 155, 60, 'EverlastAnton', '#E93E09');
-  line('R$', 65, 1185, 155, 60, 'EverlastAnton', '#E93E09');
-  doc.save().translate(232, 1090).scale(1.95, 1);
+  line('POR', 65, 1195, 155, 60, 'EverlastAnton', '#E93E09');
+  line('R$', 65, 1270, 155, 60, 'EverlastAnton', '#E93E09');
+  doc.save().translate(232, 1175).scale(1.95, 1);
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
-  line(',' + cents, 783, 1108, 220, 125, 'EverlastAnton', '#E93E09');
-  line('PAGUE NO DINHEIRO, PIX OU CARTÃO', 45, 1315, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
+  line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
   line('VEM PARA SPORTS & TENNIS', 45, 1400, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
