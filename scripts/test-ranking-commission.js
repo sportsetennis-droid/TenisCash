@@ -37,6 +37,12 @@ assert.equal(row.months.every(m => !m.generalReached && !m.clothingReached), tru
 const discounted = sale(1000, 400); discounted.totalAmount = 800;
 assert.equal(clothingCents(discounted), 32000);
 assert.equal(calc([discounted]).clothingBaseAmount, 3.2);
+assert.equal(calc([discounted]).clothingItems[0].amount, 320);
+const multipleItems = sale(10, 10, {items:[1,1,1].map((n,i)=>({id:String(i),productName:'Camiseta '+i,quantity:1,totalPrice:n,brand:'Sports & Tennis',category:'roupa'}))});
+row = calc([multipleItems]);
+assert.equal(row.clothingItems.reduce((sum,i)=>sum+Math.round(i.amount*100),0), 1000);
+assert.equal(row.clothingItems.length, 3);
+assert.equal(calc([sale(10,10),sale(30,30,{status:'canceled'})]).clothingItems.length,1);
 assert.equal(isSportsClothing({brand:'Sports & Tennis', category:'tênis'}), false);
 assert.equal(isSportsClothing({brand:'Nike', category:'roupa'}), false);
 assert.equal(isSportsClothing({brand:'Sports e Tennis', category:'Roupas'}), true);

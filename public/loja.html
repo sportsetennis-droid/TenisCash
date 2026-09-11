@@ -3334,6 +3334,18 @@ async function loadRanking() {
   document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
   try {
     const d = await api('/api/seller/rankings?' + qs);
+    const clothingDetails = commission => {
+      const items = commission.clothingItems || [];
+      if (!items.length) return '<span class="rank-commission-note">Nenhuma roupa Sports &amp; Tennis identificada no período.</span>';
+      const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+      return `<details style="text-align:left;margin-top:8px;font-size:11px;font-weight:400;min-width:150px;">
+        <summary style="cursor:pointer;color:#b83d0a;">Conferir ${quantity} peça(s) vendida(s)</summary>
+        ${items.map(item => `<div style="border-top:1px solid #ddd;margin-top:6px;padding-top:6px;line-height:1.5;">
+          ${new Date(item.date).toLocaleDateString('pt-BR', {timeZone:'America/Recife'})} · ${item.quantity}x ${escPreco(item.productName)}<br>
+          <strong>${fmt(item.amount)}</strong> após descontos</div>`).join('')}
+        <div style="margin-top:8px;">Soma dos itens: <strong>${fmt(commission.clothingSalesAmount)}</strong></div>
+      </details>`;
+    };
     const targetText = (commission, clothing = false) => (commission.months || []).map(m => {
       const reached = clothing ? m.clothingReached : m.generalReached;
       const remaining = clothing ? m.remainingClothing : m.remainingGeneral;
@@ -3424,7 +3436,7 @@ async function loadRanking() {
               <td style="text-align:right;font-weight:700;">${fmt(r.salesAmount)}</td>
               <td style="text-align:right;font-weight:700;">${fmt(r.commission.baseAmount)}<span class="rank-commission-note">Base: ${fmt(r.salesAmount)}</span></td>
               <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at50kAmount)}${targetText(r.commission)}</td>
-              <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}<span class="rank-commission-note">Roupas no período: ${fmt(r.commission.clothingSalesAmount)}</span></td>
+              <td style="text-align:right;font-weight:700;">${fmt(r.commission.clothingBaseAmount)}<span class="rank-commission-note">Roupas no período: ${fmt(r.commission.clothingSalesAmount)}</span>${clothingDetails(r.commission)}</td>
               <td style="text-align:right;color:var(--primary);font-weight:700;">${fmt(r.commission.at20kClothingAmount)}${targetText(r.commission, true)}</td>
             </tr>
           `).join('')}

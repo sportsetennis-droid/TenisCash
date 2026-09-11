@@ -1511,9 +1511,9 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     const commissionSales = sellerIds.length ? await prisma.sale.findMany({
       where: { sellerId: { in: sellerIds }, status: { not: 'canceled' },
         createdAt: { gte: window.start, lt: window.end, lte: now } },
-      select: { sellerId: true, storeId: true, createdAt: true, totalAmount: true,
-        items: { select: { brand: true, category: true, totalPrice: true,
-          product: { select: { brand: true, category: true } } } } },
+      select: { id: true, sellerId: true, storeId: true, createdAt: true, totalAmount: true,
+        items: { select: { id: true, productName: true, quantity: true, brand: true, category: true, totalPrice: true,
+          product: { select: { name: true, brand: true, category: true } } } } },
     }) : [];
     const commissionBySeller = calculateRankingCommissions(commissionSales, { start: startUtc, end: endUtc, storeId });
     const sellers = await prisma.user.findMany({
@@ -1529,7 +1529,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       const u = sellerMap.get(s.sellerId);
       const store = attendanceStoreBySeller.get(s.sellerId) || u?.store;
       const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
-        clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, earnedAmount: 0, months: [] };
+        clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, earnedAmount: 0, clothingItems: [], months: [] };
       return {
         position: i + 1,
         sellerId: s.sellerId,

@@ -28,6 +28,7 @@ function commissionWindow(start, end) {
 
 function calculateRankingCommissions(sales, { start, end, storeId = null }) {
   const sellers = new Map();
+  const clothingItems = new Map();
   for (const sale of sales) {
     if (sale.status === 'canceled') continue;
     const key = monthKey(sale.createdAt);
@@ -42,6 +43,18 @@ function calculateRankingCommissions(sales, { start, end, storeId = null }) {
     if (new Date(sale.createdAt) >= start && new Date(sale.createdAt) < end && (!storeId || sale.storeId === storeId)) {
       row.selected += total;
       row.selectedClothing += clothing;
+      const selectedItems = (sale.items || []).filter(isSportsClothing);
+      const grossClothing = selectedItems.reduce((sum, item) => sum + Math.max(0, cents(item.totalPrice)), 0);
+      let cumulative = 0, allocated = 0;
+      if (!clothingItems.has(sale.sellerId)) clothingItems.set(sale.sellerId, []);
+      for (const item of selectedItems) {
+        cumulative += Math.max(0, cents(item.totalPrice));
+        const nextAllocated = grossClothing ? Math.round(clothing * cumulative / grossClothing) : 0;
+        clothingItems.get(sale.sellerId).push({ saleId: sale.id, itemId: item.id,
+          date: sale.createdAt, productName: item.productName || item.product?.name || 'Vestuário Sports & Tennis',
+          quantity: item.quantity || 1, amount: (nextAllocated - allocated) / 100 });
+        allocated = nextAllocated;
+      }
     }
   }
   const result = new Map();
@@ -63,7 +76,8 @@ function calculateRankingCommissions(sales, { start, end, storeId = null }) {
     }
     result.set(sellerId, { baseAmount: money(total / 100 * 0.01), at50kAmount: money(total / 100 * 0.02),
       clothingSalesAmount: clothing / 100, clothingBaseAmount: money(clothing / 100 * 0.01), at20kClothingAmount: money(clothing / 100 * 0.04),
-      earnedAmount: earned / 100, months: targets.sort((a, b) => a.month.localeCompare(b.month)) });
+      earnedAmount: earned / 100, clothingItems: (clothingItems.get(sellerId) || []).sort((a, b) => new Date(b.date) - new Date(a.date)),
+      months: targets.sort((a, b) => a.month.localeCompare(b.month)) });
   }
   return result;
 }

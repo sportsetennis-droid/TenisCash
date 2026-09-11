@@ -38,7 +38,7 @@ async function run(query) {
       sale: { groupBy: async () => sales, findMany: async ({where}) => sales
         .filter(s => where.sellerId.in.includes(s.sellerId))
         .map(s => ({sellerId:s.sellerId, storeId:'a', totalAmount:s._sum.totalAmount,
-          createdAt:'2026-09-11T15:00:00Z', items:[]})) },
+          createdAt:'2026-09-11T15:00:00Z', items:[{productName:'Camiseta teste',quantity:1,brand:'Sports & Tennis',category:'roupa',totalPrice:s._sum.totalAmount}]})) },
       saleCommission: { groupBy: async () => [] },
       user: { findMany: async ({ where }) => sellers.filter(s => where.id.in.includes(s.id)) },
       clockIn: { findMany: async ({ where }) => {
@@ -81,7 +81,7 @@ async function run(query) {
   const renderEnd = html.indexOf('\n}', renderStart) + 2;
   const elements = { rankStore: { value: 'a' }, rankPeriod: { value: 'today' }, rankingTable: {}, rankingTotals: {} };
   const ui = { document: { getElementById: id => elements[id] }, api: async () => result,
-    fmt: n => String(n), avatarColor: () => '', initials: name => name, console };
+    fmt: n => String(n), escPreco: value => String(value), avatarColor: () => '', initials: name => name, console };
   vm.createContext(ui);
   vm.runInContext(html.slice(renderStart, renderEnd), ui);
   await ui.loadRanking();
@@ -92,6 +92,8 @@ async function run(query) {
   assert.match(elements.rankingTable.innerHTML, /Batendo 50k/);
   assert.match(elements.rankingTable.innerHTML, /Vestuário Sports &amp; Tennis<br>1%/);
   assert.match(elements.rankingTable.innerHTML, /Batendo 20k · 4%/);
+  assert.match(elements.rankingTable.innerHTML, /Camiseta teste/);
+  assert.match(elements.rankingTable.innerHTML, /Conferir 1 peça/);
   result.ranking = [];
   await ui.loadRanking();
   assert.match(elements.rankingTable.innerHTML, /Nenhum vendedor com ponto aberto/);
