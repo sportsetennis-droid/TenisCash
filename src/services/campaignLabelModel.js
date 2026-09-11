@@ -17,6 +17,15 @@ function campaignLabelModel(item) {
     const match = rawModelSource.match(/STRATUS\s*II|VULCANO\s*II|GIOVE|LEGGENDA|ILLUSIONE|SAGA|MONZA|MODENA|MARINO|ESSENZIALE|SFORZA|CENTRALE|PLAYMAKER/);
     if (match) model = match[0];
   }
+  if (brand === 'TOPPER') {
+    const match = model.match(/^(.+?\b(?:FSAL|SCTY))\b/);
+    if (match) model = match[1];
+  }
+  if (brand === 'JOMA') model = model.replace(/\s+PETROLEO\s+PRATA$/, '');
+  if (brand === 'MIZUNO') {
+    const match = rawModelSource.match(/MORELIA\s+SALA\s+PRO\s+IN|MORELIA\s+II\s+PRO/);
+    if (match) model = match[0];
+  }
   if (brand === 'OLYMPIKUS') {
     const match = rawModelSource.match(/CORRE\s*TRILHA\s*2|CHALLENGER\s*5|REVERSO\s*2|FLIT\s*4|ZEX\s*2|JOGGING(?:\s+\d+)?(?:\s+SE)?|COSMO|VIRTUOSE|GIRO|MESCLA|ORBITA|PURPURA|RITMO|VENUM/);
     if (match) model = match[0].replace(/JOGGING\s+\d+/, 'JOGGING').replace(/TRILHA2/, 'TRILHA 2');
