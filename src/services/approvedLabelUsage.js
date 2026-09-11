@@ -35,6 +35,7 @@ module.exports = function approvedUsage(name, brand, modality) {
     if (/STATION|FORCEKNIT|RING\s*(4|IV)|CLIMBER\s*(PRO|ULTRA)/.test(name)) return ['TREINO DE FORÇA E ACADEMIA', 'CROSS E FUNCIONAL'];
   }
   if (brand === 'OLYMPIKUS') {
+    if (/CORRE.*TRILHA/.test(name)) return ['CORRIDA EM TRILHAS', 'LONGAS DISTÂNCIAS'];
     if (/JOGGING/.test(name)) return casual;
     if (/VENUM/.test(name)) return ['DIA A DIA', 'E BRINCADEIRAS'];
     // Owner's wording for sporting use; stable across imported colour variants.

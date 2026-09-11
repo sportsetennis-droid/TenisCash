@@ -7,10 +7,19 @@ function campaignLabelModel(item) {
     .replace(/^T[ÊE]NIS\s+/, '').replace(/^EVERLAST\s+/, '')
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
   if (campaignBrand && !streetRide) {
-    const known = ['IMIGRANTE SERIE X','IMIGRANTE MEGA','CHUCK TAYLOR ALL STAR HIGH STREET','CHUCK TAYLOR ALL STAR LIFT','CHUCK TAYLOR ALL STAR MOVE','CHUCK TAYLOR ALL STAR','CHUCK TAYLOR','ARQUITETONICO','FLUENTE GTX','NACCARATO V','PHIBO 1123','IMIGRANTE','EMERGENTE','HEVEA','UENO','2K'];
+    const known = ['IMIGRANTE SERIE X','IMIGRANTE MEGA','CHUCK TAYLOR ALL STAR SIDE ZIP','CHUCK TAYLOR ALL STAR 1V','CHUCK TAYLOR ALL STAR HIGH STREET','CHUCK TAYLOR ALL STAR LIFT','CHUCK TAYLOR ALL STAR MOVE','CHUCK TAYLOR ALL STAR','CHUCK TAYLOR','ARQUITETONICO','FLUENTE GTX','NACCARATO V','PHIBO 1123','IMIGRANTE','EMERGENTE','HEVEA','UENO','2K'];
     const match = brand === 'OUS' || /CONVERSE|ALL ?STAR/.test(brand) ? known.find(k => model.includes(k)) : null;
     model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '').split(/\s*\(|\s+-\s+/)[0]
       .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
+  }
+  if (brand === 'FILA') {
+    const raw = String(item.originalProductName || item.name || '').toUpperCase();
+    const match = raw.match(/(?:TENIS|TÊNIS|CHINELO)\s+FILA\s+(.+?)\s+(?:MASCULINO|FEMININO|INFANTIL)(?:[-\s]|$)/);
+    if (match) model = match[1];
+  }
+  if (brand === 'MUNICH') {
+    const match = model.match(/GRESCA\s+2[.,]0|CONTINENTAL\s+V2/);
+    if (match) model = match[0];
   }
   if (brand === 'SPEEDO') {
     const code = String(item.originalProductName || item.name || '').toUpperCase().match(/SPO[ -]?\d+[FM]?/);
