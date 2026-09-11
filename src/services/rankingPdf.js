@@ -23,7 +23,7 @@ async function createRankingPdf(data, { storeName = 'Todas as lojas', generatedA
   function header() {
     text('SPORTS & TENNIS | Ranking de vendas', x, 26, width, 17, true);
     text(`${storeName} | ${periods[data.period] || data.period} | ${date(data.from)} a ${date(new Date(new Date(data.to).getTime() - 1))}`, x, 52, width, 10);
-    text(`Gerado em ${generatedAt.toLocaleString('pt-BR', { timeZone: 'America/Recife' })} | ${data.ranking.length} vendedores ${data.canViewRevenueTotals === false ? '' : '| Vendas: ' + fmt(data.totals.salesAmount) + ' | Comissão calculada: ' + fmt(data.totals.commissionAmount)}`, x, 69, width, 9);
+    text(`Gerado em ${generatedAt.toLocaleString('pt-BR', { timeZone: 'America/Recife' })} | ${data.ranking.length} vendedores`, x, 69, width, 9);
     y = 90;
     doc.rect(x, y, width, 34).fill('#fff0e5');
     let left = x;

@@ -77,6 +77,9 @@ async function run(query, role = 'admin') {
   assert.equal((await run({storeId: 'a'}, 'seller')).result.canViewRevenueTotals, true);
   const all = (await run({})).result;
   assert.equal(all.period, 'today');
+  assert.equal(all.canViewRevenueTotals, false);
+  assert.equal(all.totals.salesAmount, null);
+  assert.equal(all.totals.commissionAmount, null);
   assert.equal(all.ranking.find(r => r.sellerId === '8').store.id, 'b');
   const other = (await run({ period: 'today', storeId: 'b' })).result;
   assert.deepEqual(Array.from(other.ranking, r => r.sellerId), ['8']);

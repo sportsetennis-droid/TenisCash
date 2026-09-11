@@ -1568,7 +1568,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       sellersCount: ranking.length,
     };
 
-    const canViewRevenueTotals = !visibility.storeIds || !!storeId;
+    const canViewRevenueTotals = !!storeId;
     if (!canViewRevenueTotals) {
       totals.salesAmount = null; totals.cashbackGiven = null; totals.commissionAmount = null;
     }
