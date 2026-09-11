@@ -23,6 +23,10 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     model = match || model.replace(new RegExp('^.*?'+brand+'\\s+'), '').replace(/^DF[A-Z]+\d+-\d+\s+/, '').split(/\s*\(|\s+-\s+/)[0]
       .split(/\s+(?:MASCULINO|FEMININO|UNISSEX|PRETO|BRANCO|MARINHO|AREIA|CHUMBO|CINZA|AZUL|ROXO|LILAS|VINHO|MRHO|GRAFIT|PTO|PTR|MRN|CASTOR|MARFIM)\b|\s+REF\b/)[0].trim();
   }
+  if (brand === 'SPEEDO') {
+    const code = String(item.originalProductName || '').toUpperCase().match(/SPO[ -]?\d+[FM]?/);
+    if (code) model = code[0].replace(/[ -]/g, '');
+  }
   const usageByModel = {
     'STREET RIDE': ['USO CASUAL', 'E DIA A DIA'],
     'CLIMBER RUN': ['CAMINHADA', 'E CORRIDA LEVE'],
@@ -41,7 +45,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     'NEW YORK': ['DIA A DIA', 'E LAZER'],
   };
   const modality = String(item.modality || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  const usage = usageByModel[model] || (/ESTILO DE VIDA|LIFESTYLE|CASUAL|STREET/.test(modality) ? ['USO CASUAL','E DIA A DIA']
+  const usage = item.labelUsage || usageByModel[model] || (/ESTILO DE VIDA|LIFESTYLE|CASUAL|STREET/.test(modality) ? ['USO CASUAL','E DIA A DIA']
     : /CORRIDA|RUNNING/.test(modality) ? ['PARA CORRIDA','']
     : /CAMINHADA/.test(modality) ? ['PARA CAMINHADA','']
     : /FUTSAL/.test(modality) ? ['PARA FUTSAL','']

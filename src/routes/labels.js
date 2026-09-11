@@ -1,3 +1,4 @@
+const { labelUsage } = require('../services/labelUsage');
 // =====================================================================
 // Routes: /api/admin/labels — gestão de templates, lotes, geração de PDF
 // =====================================================================
@@ -1500,7 +1501,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
       )].join(' | ');
       // Marca com frase própria manda na linha abaixo do nome; sem frase,
       // segue mostrando a classificação do produto como sempre.
-      const categoryLabel = fraseDaMarca(p?.brand) || labelStyle(p, cls);
+      const usage = p ? labelUsage(p, cls) : null;
+      const categoryLabel = usage ? usage.filter(Boolean).join(' ') : fraseDaMarca(p?.brand) || labelStyle(p, cls);
       const reference = extractLabelReference(p, ctx, it);
       const detectedColor = labelProductColor(p, ctx);
       const colorIssue = detectedColor ? null : labelProductColorIssue(p, ctx);
@@ -1527,6 +1529,8 @@ router.get('/batches/:id/pdf', async (req, res) => {
         : null;
       return {
         name: productName,
+        labelUsage: usage,
+        originalProductName: baseName,
         productName,
         description: productName,
         categoryLabel,

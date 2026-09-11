@@ -1,8 +1,9 @@
+const { labelUsage } = require('./labelUsage');
 const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 function isFootwear(p) {
   const name = normalize(p.name);
-  if (/\b(VESTUARIO|CAMISETA|CAMISA|BERMUDA|SHORT|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
+  if (/\b(VESTUARIO|CAMISETA|CAMISA|BERMUDA|SHORTS?|CASACO|JAQUETA|COTOVELEIRA|JOELHEIRA|TORNOZELEIRA|MEIAO|CALCA|LEGGING|REGATA|MEIA|MEIAS|TRIPK|TRIPACK|MOCHILA|BOLSA|BOLA|GYM BAG|GYM SACK|OCULOS|TOUCA|ACESSORIO|PDVS|TOTEM)\b/.test(name) || /^TOP\b/.test(name)) return false;
   if (normalize(p.brand) === 'REEBOK' && /\bSTREET\s*RIDE\b/.test(name)) return true;
   return /\b(TENIS|CHUTEIRA|CHINELO|CHINELOS|SANDALIA|SAPATILHA|SAPATO|CALCADO|CALCADOS)\b/.test(name)
     || /^(TENIS|CALCADO|CALCADOS|CHUTEIRA|CHUTEIRAS|SANDALIA|SANDALIAS|CHINELO|CHINELOS)$/.test(normalize(p.category));
@@ -29,7 +30,7 @@ async function campaignFootwear(prisma) {
       : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * 70 / 100)))
     .map(p => { let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext || {}; } catch {}
       return { id:p.id, name:p.name, brand:p.brand, category:p.category, price:p.price, promoPrice:p.promoPrice,
-        sku:p.sku, supplierRef:p.supplierRef, internalBarcode:p.internalBarcode,
+        labelUsage:labelUsage(p, ctx.classification || {}), sku:p.sku, supplierRef:p.supplierRef, internalBarcode:p.internalBarcode,
         aiContext:{ classification:ctx.classification || {} } }; });
 }
 
@@ -56,7 +57,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
     }
     let removed = 0;
     // The owner narrowed the Olympikus campaign to footwear after its first application.
-    if (brand === 'OLYMPIKUS') {
+    if (['OLYMPIKUS', 'FILA'].includes(brand)) {
       for (const p of products.filter(p => !isFootwear(p))) {
         const expected = Math.round(Math.round(Number(p.price) * 100) * 70 / 100);
         if (p.promoPrice != null && Math.round(Number(p.promoPrice) * 100) === expected) {
