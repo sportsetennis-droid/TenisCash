@@ -70,7 +70,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
   line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
-  line('VEM PARA SPORTS & TENNIS', 45, 1400, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
+  // Keep the bottom band free of text to allow room for cutting.
   doc.restore();
   return true;
 }
