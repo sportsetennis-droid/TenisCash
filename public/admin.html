@@ -1750,7 +1750,10 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn" id="cat-btn-clear-filter" title="Limpar filtros">✕</button>
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
         <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
+        <button type="button" class="btn" id="cat-off30-ous">Aplicar 30% OFF em OUS</button>
+        <button type="button" class="btn" id="cat-off30-diadora">Aplicar 30% OFF em Diadora</button>
       </div>
+      <p id="cat-off30-result" role="status" aria-live="polite"></p>
       <div id="enrich-progress-wrap" style="display:none;margin-bottom:16px"></div>
       <div id="cat-products-wrap"><div class="loading-spinner">Carregando catálogo...</div></div>
     </div>
@@ -4912,6 +4915,21 @@ function initAdminCatalogTab() {
       loadAdminAiConversationsPanel();
     });
     document.getElementById('cat-btn-filter').addEventListener('click', loadCatalogProductsAdmin);
+    ['ous', 'diadora'].forEach(brand => {
+      const button = document.getElementById('cat-off30-' + brand);
+      button.addEventListener('click', async () => {
+        const status = document.getElementById('cat-off30-result');
+        button.disabled = true;
+        status.textContent = 'Aplicando 30% sobre o preço original de todos os produtos ativos de ' + brand.toUpperCase() + '…';
+        try {
+          const result = await api('/admin/labels/brand-thirty-offer', 'POST', { brand });
+          if (result.error) throw new Error(result.error);
+          status.textContent = result.updated + ' produtos ' + result.brand + ' com 30% OFF. Preços originais preservados.';
+          await loadCatalogProductsAdmin();
+        } catch (error) { status.textContent = 'Não aplicado: ' + error.message; }
+        finally { button.disabled = false; }
+      });
+    });
     // Filtro Nuvemshop aplica na hora ao mudar
     const nsFilterSel = document.getElementById('cat-filter-nuvemshop');
     if (nsFilterSel) nsFilterSel.addEventListener('change', loadCatalogProductsAdmin);

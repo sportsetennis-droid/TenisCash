@@ -18,6 +18,7 @@ const { fraseDaMarca } = require('../config/frases-marcas');
 const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
 const { applyOffer, productOffer } = require('../services/everlastPaymentOffer');
+const { applyBrandThirtyOffer } = require('../services/brandThirtyOffer');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -31,6 +32,11 @@ function labelAccess(req, res, next) {
   return res.status(403).json({ error: 'Acesso restrito' });
 }
 router.use(labelAccess);
+
+router.post('/brand-thirty-offer', adminMiddleware, async (req, res) => {
+  try { res.json(await applyBrandThirtyOffer(prisma, req.body.brand)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 router.post('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
   try { res.json(await applyOffer(prisma)); }
