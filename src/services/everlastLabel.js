@@ -43,9 +43,9 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   }
   band(0, 330, 0, headlineHeight);
   band(330, 350, headlineHeight, 820 + contentShift - headlineHeight);
-  band(640, 215, 820 + contentShift, 315);
-  band(865, 370, 1135 + contentShift, 270);
-  band(1245, 239, 1405 + contentShift, 79 + addedHeight - contentShift);
+  band(640, 215, 820 + contentShift, 285);
+  band(865, 370, 1105 + contentShift, 325);
+  band(1245, 239, 1430 + contentShift, 54 + addedHeight - contentShift);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   function line(text, left, top, width, size, font, color, align = 'left') {
@@ -60,22 +60,22 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(model, 55, 770, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
     // A dedicated two-line band keeps the use case readable at actual 5 x 7 cm size.
-    line(usage[0], 55, 850, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    line(usage[0], 55, 835, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
     // Keep clear space between the use case, model name and price.
-    line(usage[1], 55, 970, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    line(usage[1], 55, 940, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
   }
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1135).lineTo(1060, 1135).stroke();
-  line('DE R$ ' + money(offer.basePrice), 68, 1140, 925, 84, bold, '#E93E09');
+  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0, 1105).lineTo(1060, 1105).stroke();
+  line('DE R$ ' + money(offer.basePrice), 68, 1120, 925, 84, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  line('POR', 65, 1225, 155, 60, 'EverlastAnton', '#E93E09');
-  line('R$', 65, 1300, 155, 60, 'EverlastAnton', '#E93E09');
-  doc.save().translate(232, 1175).scale(1.95, 1);
+  line('POR', 65, 1255, 155, 60, 'EverlastAnton', '#E93E09');
+  line('R$', 65, 1330, 155, 60, 'EverlastAnton', '#E93E09');
+  doc.save().translate(232, 1205).scale(1.95, 1);
   line(whole, 0, 0, 276, 185, 'EverlastAnton', '#E93E09');
   doc.restore();
-  line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
+  line(',' + cents, 783, 1223, 220, 125, 'EverlastAnton', '#E93E09');
   // Restore the original size; the extended footer provides bottom clearance.
-  const invitationTop = 1405 + (79 + addedHeight - contentShift - 60) / 2 - 15;
+  const invitationTop = 1430 + (54 + addedHeight - contentShift - 60) / 2 - 15;
   line('VEM PARA SPORTS & TENNIS', 45, invitationTop, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
