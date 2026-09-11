@@ -68,7 +68,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     doc.font('Helvetica-BoldOblique').fontSize(138).fillColor('#FFFFFF')
       .text('Reebok', 300, headlineHeight + 12, { width: 690, height: 170, lineBreak: false });
     } else if (item._brandLogoBuffer) {
-      doc.image(item._brandLogoBuffer, 150, headlineHeight + 12, { fit:[760,130], align:'center', valign:'center' });
+      doc.image(item._brandLogoBuffer, 150, headlineHeight + 6, { fit:[760,110], align:'center', valign:'center' });
     } else {
       doc.font('Helvetica-Bold').fontSize(110).fillColor('#FFFFFF').text(brand, 40, headlineHeight + 24,
         { width:980, height:150, align:'center', lineBreak:false });
