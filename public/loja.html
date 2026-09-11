@@ -3317,8 +3317,8 @@ function rankingWhatsappText(data, storeName) {
     const format = row => row.map((cell, i) => i === 1 ? cell.padEnd(widths[i]) : cell.padStart(widths[i])).join(' | ');
     lines.push('*' + title + '*', fence, format(headings), widths.map(w => '-'.repeat(w)).join('-+-'), ...rows.map(format), fence, '');
   };
-  table('VENDAS E COMISSÃO DE 1%', ['Pos', 'Vendedor', 'Vendido', 'Com. 1%'], r => [money(r.salesAmount), money(r.commission.totalAt1Percent)]);
-  table('COMISSÃO GERAL · 2% BATENDO 50K', ['Pos', 'Vendedor', '1%', '2%'], r => [money(r.commission.baseAmount), money(r.commission.at50kAmount)]);
+  table('VENDAS', ['Pos', 'Vendedor', 'Qtd', 'Vendido'], r => [String(r.salesCount), money(r.salesAmount)]);
+  table('COMISSÃO GERAL · 2% BATENDO 50K', ['Pos', 'Vendedor', 'Com. 1%', 'Com. 2%'], r => [money(r.commission.baseAmount), money(r.commission.at50kAmount)]);
   table('VESTUÁRIO S&T · 4% BATENDO 20K', ['Pos', 'Vendedor', '1%', '4%'], r => [money(r.commission.clothingBaseAmount), money(r.commission.at20kClothingAmount)]);
   table('TOTAIS POR VENDEDOR', ['Pos', 'Vendedor', 'Total 1%', '2% + 4%'], r => [money(r.commission.totalAt1Percent), money(r.commission.totalAt2And4Percent)]);
   return lines.join('\n').trim();
