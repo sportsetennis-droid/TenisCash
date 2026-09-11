@@ -1800,7 +1800,15 @@ function setSalesRange(range) {
 }
 
 let _salesLoadTimer;
+let _salesRequestId = 0;
+function refreshVisibleSales() {
+  if (token && activeStore?.id && !document.hidden && document.getElementById('page-dashboard')?.classList.contains('show') && !document.getElementById('saleModalOverlay')) loadSalesList();
+}
+setInterval(refreshVisibleSales, 30000);
+window.addEventListener('focus', refreshVisibleSales);
+document.addEventListener('visibilitychange', refreshVisibleSales);
 async function loadSalesList() {
+  const requestId = ++_salesRequestId;
   clearTimeout(_salesLoadTimer);
   _salesLoadTimer = setTimeout(async () => {
     const params = [];
@@ -1817,6 +1825,8 @@ async function loadSalesList() {
 
     try {
       const d = await api('/api/seller/sales?' + params.join('&'));
+      if (requestId !== _salesRequestId) return;
+      d.sales = (d.sales || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.id).localeCompare(String(a.id)));
       window._salesById = {}; (d.sales || []).forEach(s => { window._salesById[s.id] = s; });
       // KPIs
       document.getElementById('salesTotals').innerHTML = `
@@ -1872,6 +1882,7 @@ async function loadSalesList() {
         </table>
       `;
     } catch (e) {
+      if (requestId !== _salesRequestId) return;
       document.getElementById('salesList').innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">Erro: ${e.message}</p>`;
     }
   }, 200);

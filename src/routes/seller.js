@@ -1358,7 +1358,7 @@ router.get('/sales', sellerOnly, async (req, res) => {
     const sales = await prisma.sale.findMany({
       where,
       include: { items: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
 
@@ -1417,6 +1417,7 @@ router.get('/sales', sellerOnly, async (req, res) => {
       tcUsed: _ativas.reduce((sum, s) => sum + (s.tcUsed || 0), 0),
     };
 
+    res.set('Cache-Control', 'private, no-store');
     res.json({ sales: enriched, totals });
   } catch (err) {
     console.error('Erro /sales:', err);
