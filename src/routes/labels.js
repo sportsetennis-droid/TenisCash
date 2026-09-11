@@ -1239,7 +1239,10 @@ router.get('/templates', async (_req, res) => {
   try {
     await ensureDefaultTemplates();
     const deprecatedNames = Object.values(defaultTemplates())
-      .flatMap((template) => template.legacyNames || []);
+      .flatMap((template) => template.legacyNames || []).concat([
+        'Everlast — A4 12 etiquetas (5x8 cm) — frente e verso',
+        'Everlast — A4 12 etiquetas (5x7,5 cm) — frente e verso',
+      ]);
     const templates = await prisma.labelTemplate.findMany({
       where: deprecatedNames.length ? { name: { notIn: deprecatedNames } } : undefined,
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -1558,17 +1561,17 @@ router.get('/batches/:id/pdf', async (req, res) => {
       }
     }
 
-    // Existing Everlast-only batches follow the approved larger cutting format.
-    if (isProductDuplexTemplate(batch.template) && [70, 80].includes(Number(batch.template.heightMm))
+    // Restore Everlast batches to the required 16-per-A4 format.
+    if (isProductDuplexTemplate(batch.template) && [75, 80].includes(Number(batch.template.heightMm))
         && items.length && items.every(item => String(item.brand || '').trim().toUpperCase() === 'EVERLAST'
           && item.paymentOffer?.active && item.paymentOffer.discountPercent === 30)) {
       await ensureDefaultTemplates();
-      const largerTemplate = await prisma.labelTemplate.findFirst({
-        where: { name: defaultTemplates().a4_12_5x75_everlast.name },
+      const standardTemplate = await prisma.labelTemplate.findFirst({
+        where: { name: defaultTemplates().a4_16_5x7_duplex.name },
       });
-      if (largerTemplate) {
-        await prisma.labelBatch.update({ where: { id: batch.id }, data: { templateId: largerTemplate.id } });
-        batch.template = largerTemplate;
+      if (standardTemplate) {
+        await prisma.labelBatch.update({ where: { id: batch.id }, data: { templateId: standardTemplate.id } });
+        batch.template = standardTemplate;
       }
     }
 

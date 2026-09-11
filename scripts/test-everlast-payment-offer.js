@@ -59,10 +59,10 @@ async function main() {
   const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'everlast-oferta-teste.pdf');
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, pdf);
-  const larger = defaultTemplates().a4_12_5x75_everlast;
+  const larger = defaultTemplates().a4_16_5x7_duplex;
   assert.equal(larger.widthMm, 50);
-  assert.equal(larger.heightMm, 75);
-  assert.equal(larger.rows * larger.columns, 12);
+  assert.equal(larger.heightMm, 70);
+  assert.equal(larger.rows * larger.columns, 16);
   assert.ok(larger.marginTopMm * 2 + larger.rows * larger.heightMm <= 297);
   const largePdf = await generateLabelsPDF({
     template: larger, storeName: 'Sports & Tennis',
@@ -72,9 +72,9 @@ async function main() {
         paymentOffer: calculateOffer(price), quantity: 1 };
     }),
   });
-  assert.equal((largePdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 4,
-    '15 large labels require two duplex sheets');
-  fs.writeFileSync(path.join(path.dirname(output), 'everlast-5x75-teste.pdf'), largePdf);
+  assert.equal((largePdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 2,
+    '15 labels must fit on one duplex A4 sheet');
+  fs.writeFileSync(path.join(path.dirname(output), 'everlast-16-por-folha.pdf'), largePdf);
   console.log(`Oferta Everlast validada; amostra: ${output}`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

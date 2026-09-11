@@ -1,6 +1,6 @@
 const path = require('path');
 
-// The 5 x 7.5 cm format adds cutting clearance without shrinking approved type.
+// Keep 16 labels per A4; reserve footer clearance within the 5 x 7 cm format.
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const offer = item.paymentOffer;
   if (String(item.brand || '').trim().toUpperCase() !== 'EVERLAST'
@@ -30,7 +30,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   doc.save();
   const canvasHeight = Math.round(1060 * h / w);
   const addedHeight = canvasHeight - 1484;
-  const contentShift = addedHeight * 0.40;
+  const contentShift = addedHeight * 0.40 - 50;
   doc.translate(x, y).scale(w / 1060, h / canvasHeight);
   const artwork = path.join(assets, 'logos/everlast-headline30-template.png');
   // Each section has a fixed physical allocation. The headline owns exactly 40%.
