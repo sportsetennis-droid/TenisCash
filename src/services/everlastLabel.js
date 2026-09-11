@@ -11,13 +11,9 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     .split(/\s+SE[FMU]A\d|\s+ADT\b|\s+EVERLAST\b|\s+REF\b/)[0].trim();
   const climberRun = /^CLIMBER RUN$/.test(model);
   const assets = path.join(__dirname, '../../assets');
-  if (climberRun && offer.basePrice === 299.99 && offer.finalPrice === 209.99) {
-    doc.image(path.join(assets, 'logos/everlast-approved-label.png'), x, y, { width: w, height: h });
-    return true;
-  }
   doc.save();
   doc.translate(x, y).scale(w / 1060, h / 1484);
-  doc.image(path.join(assets, 'logos/everlast-approved-label-template.png'), 0, 0, { width: 1060, height: 1484 });
+  doc.image(path.join(assets, 'logos/everlast-readable-template.png'), 0, 0, { width: 1060, height: 1484 });
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   function line(text, left, top, width, size, font, color, align = 'left') {
@@ -25,16 +21,16 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     while (doc.widthOfString(text) > width && size > 12) doc.fontSize(--size);
     doc.fillColor(color).text(text, left, top, { width, height: 400, lineBreak: false, align });
   }
-  line(model, 65, 575, 930, 43, bold, '#FFFFFF', 'center');
+  line(model, 55, 568, 950, 68, bold, '#FFFFFF', 'center');
   let color = String(item.color || '').toUpperCase();
   if (/D[ÚU]VIDA|N[ÃA]O [ÉE] COR|REVIS/.test(color)) {
     const source = String(item.productName || item.name || '').toUpperCase();
     color = source.match(/EVERLAST\s+((?:BRANCO|PRETO|VERDE|AZUL|ROSA|BEGE|CINZA|AMARELO|VERMELHO|LILAS|LILÁS|ROXO|DOURADO|MARROM)[A-ZÀ-Ú/ -]*?)(?:\s+\d{2}\b|\s+REF\b|$)/)?.[1]?.trim() || '';
   }
   const detail = climberRun ? 'CAMINHADA E CORRIDA LEVE' : color;
-  line(detail, 65, 742, 930, 42, bold, '#EA3F0A', 'center');
+  line(detail, 55, 718, 950, 66, 'EverlastAnton', '#EA3F0A', 'center');
   const money = value => Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  line('DE R$ ' + money(offer.basePrice), 68, 898, 925, 53, bold, '#594B3D');
+  line('DE R$ ' + money(offer.basePrice), 68, 866, 925, 68, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
   line('POR', 65, 1007, 155, 65, 'EverlastAnton', '#E93E09');
   line('R$', 65, 1090, 155, 65, 'EverlastAnton', '#E93E09');
@@ -42,11 +38,14 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   line(whole, 0, 0, 432, 300, 'EverlastAnton', '#E93E09');
   doc.restore();
   line(',' + cents, 783, 923, 220, 146, 'EverlastAnton', '#E93E09');
+  line('PAGUE NO DINHEIRO, PIX OU CARTÃO', 45, 1260, 970, 70, 'EverlastAnton', '#E93E09', 'center');
+  line('VEM PARA SPORTS & TENNIS', 45, 1380, 970, 78, 'EverlastAnton', '#E93E09', 'center');
   doc.restore();
   return true;
 }
 
 module.exports = { drawEverlastLabel };
+
 
 
 
