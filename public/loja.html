@@ -276,11 +276,13 @@
   table.modern tbody tr:hover { background: var(--bg-soft); }
   table.modern tbody tr.clickable { cursor: pointer; }
 
-  /* A tabela branca do ranking não deve herdar o texto branco da página. */
-  #rankingTable table.modern {
+  /* Superfícies brancas precisam de texto escuro, independente do fundo da página. */
+  #rankingTable table.modern, #salesList table.modern, #saleModalOverlay {
     color: #1d1d1f;
+    --text: #1d1d1f;
     --text-muted: #595959;
     --primary: #b83d0a;
+    --success: #087738;
   }
   .ranking-scroll { width: 100%; border-radius: var(--radius); }
   #rankingTable .ranking-scroll table { width: 100%; min-width: 0; table-layout: fixed; }
