@@ -1559,12 +1559,12 @@ router.get('/batches/:id/pdf', async (req, res) => {
     }
 
     // Existing Everlast-only batches follow the approved larger cutting format.
-    if (isProductDuplexTemplate(batch.template) && Number(batch.template.heightMm) === 70
+    if (isProductDuplexTemplate(batch.template) && [70, 80].includes(Number(batch.template.heightMm))
         && items.length && items.every(item => String(item.brand || '').trim().toUpperCase() === 'EVERLAST'
           && item.paymentOffer?.active && item.paymentOffer.discountPercent === 30)) {
       await ensureDefaultTemplates();
       const largerTemplate = await prisma.labelTemplate.findFirst({
-        where: { name: defaultTemplates().a4_12_5x8_everlast.name },
+        where: { name: defaultTemplates().a4_12_5x75_everlast.name },
       });
       if (largerTemplate) {
         await prisma.labelBatch.update({ where: { id: batch.id }, data: { templateId: largerTemplate.id } });

@@ -1,6 +1,6 @@
 const path = require('path');
 
-// The 5 x 8 cm format adds cutting clearance without shrinking approved type.
+// The 5 x 7.5 cm format adds cutting clearance without shrinking approved type.
 function drawEverlastLabel(doc, item, x, y, w, h) {
   const offer = item.paymentOffer;
   if (String(item.brand || '').trim().toUpperCase() !== 'EVERLAST'
@@ -28,7 +28,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const usage = usageByModel[model];
   const assets = path.join(__dirname, '../../assets');
   doc.save();
-  const canvasHeight = h / w >= 1.59 ? 1696 : 1484;
+  const canvasHeight = Math.round(1060 * h / w);
   const addedHeight = canvasHeight - 1484;
   const contentShift = addedHeight * 0.40;
   doc.translate(x, y).scale(w / 1060, h / canvasHeight);
@@ -75,7 +75,8 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   doc.restore();
   line(',' + cents, 783, 1193, 220, 125, 'EverlastAnton', '#E93E09');
   // Restore the original size; the extended footer provides bottom clearance.
-  line('VEM PARA SPORTS & TENNIS', 45, addedHeight ? 1430 : 1400, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
+  const invitationTop = 1405 + (79 + addedHeight - contentShift - 60) / 2 - 15;
+  line('VEM PARA SPORTS & TENNIS', 45, invitationTop, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
 }
