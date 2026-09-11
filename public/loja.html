@@ -1051,7 +1051,14 @@
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
       <button class="btn btn-small" id="rankPdfDownload" onclick="exportRankingPdf(false)">Baixar PDF</button>
       <button class="btn btn-small btn-secondary" id="rankPdfShare" onclick="exportRankingPdf(true)">Gerar e compartilhar PDF</button>
+      <button class="btn btn-small btn-secondary" id="rankWhatsappGenerate" onclick="generateRankingWhatsapp()">Gerar texto para WhatsApp</button>
       <span id="rankPdfStatus" role="status" style="align-self:center;font-size:13px;"></span>
+    </div>
+    <div class="card" id="rankWhatsappBox" hidden style="margin-bottom:16px;">
+      <label for="rankWhatsappText" style="display:block;font-weight:600;margin-bottom:8px;">Mensagem para WhatsApp</label>
+      <textarea id="rankWhatsappText" readonly rows="12" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;white-space:pre-wrap;"></textarea>
+      <button class="btn btn-small" onclick="copyRankingWhatsapp()" style="margin-top:8px;">Copiar mensagem</button>
+      <span id="rankWhatsappStatus" role="status" style="font-size:13px;"></span>
     </div>
     <div class="grid grid-4" id="rankingTotals" style="margin-bottom:16px;"></div>
     <div id="rankingTable"></div>
@@ -3288,6 +3295,66 @@ function onRankPeriodChange() {
   const period = document.getElementById('rankPeriod').value;
   document.getElementById('rankCustomGroup').style.display = period === 'custom' ? 'block' : 'none';
   if (period !== 'custom') loadRanking();
+}
+
+function rankingWhatsappText(data, storeName) {
+  const periods = { today: 'Hoje', yesterday: 'Ontem', month: 'Mês atual', last_month: 'Mês anterior', custom: 'Personalizado' };
+  const date = value => new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Recife' });
+  const clean = value => String(value || '').replace(/[\r\n*_~\x60]/g, ' ').trim();
+  const lines = ['*SPORTS & TENNIS — RANKING*', clean(storeName),
+    (periods[data.period] || 'Período') + ': ' + date(data.from) + ' a ' + date(new Date(new Date(data.to).getTime() - 1)), ''];
+  for (const r of data.ranking) {
+    const c = r.commission;
+    lines.push('*' + r.position + '. ' + clean(r.name) + '*', clean(r.store?.name),
+      'Vendas: ' + r.salesCount + ' | Valor vendido: ' + fmt(r.salesAmount),
+      'Comissão geral 1%: ' + fmt(c.baseAmount),
+      'Batendo 50k — Geral 2%: ' + fmt(c.at50kAmount),
+      'Vestuário S&T 1%: ' + fmt(c.clothingBaseAmount),
+      'Vestuário S&T batendo 20k — 4%: ' + fmt(c.at20kClothingAmount),
+      '*Total 1%: ' + fmt(c.totalAt1Percent) + '*',
+      '*Total 2% + 4%: ' + fmt(c.totalAt2And4Percent) + '*', '');
+  }
+  if (!data.ranking.length) lines.push('Nenhum vendedor encontrado no período.');
+  return lines.join('\n').trim();
+}
+
+async function generateRankingWhatsapp() {
+  const button = document.getElementById('rankWhatsappGenerate');
+  const status = document.getElementById('rankPdfStatus');
+  const box = document.getElementById('rankWhatsappBox');
+  const store = document.getElementById('rankStore');
+  const period = document.getElementById('rankPeriod').value;
+  const query = new URLSearchParams({ period, storeId: store.value });
+  const storeName = store.options[store.selectedIndex]?.text || 'Todas as lojas';
+  box.hidden = true;
+  if (period === 'custom') {
+    const from = document.getElementById('rankFrom').value;
+    const to = document.getElementById('rankTo').value;
+    if (!from || !to || from > to) { status.textContent = 'Informe um intervalo de datas válido.'; return; }
+    query.set('from', from); query.set('to', to);
+  }
+  button.disabled = true;
+  status.textContent = 'Gerando mensagem...';
+  try {
+    const data = await api('/api/seller/rankings?' + query);
+    document.getElementById('rankWhatsappText').value = rankingWhatsappText(data, storeName);
+    document.getElementById('rankWhatsappStatus').textContent = '';
+    box.hidden = false;
+    status.textContent = 'Mensagem pronta para copiar.';
+  } catch (error) { status.textContent = error.message; }
+  finally { button.disabled = false; }
+}
+
+async function copyRankingWhatsapp() {
+  const input = document.getElementById('rankWhatsappText');
+  const status = document.getElementById('rankWhatsappStatus');
+  try {
+    await navigator.clipboard.writeText(input.value);
+    status.textContent = 'Copiado! Cole na conversa do WhatsApp.';
+  } catch (_) {
+    input.focus(); input.select();
+    status.textContent = 'Texto selecionado. Use Copiar e cole no WhatsApp.';
+  }
 }
 
 async function exportRankingPdf(share) {
