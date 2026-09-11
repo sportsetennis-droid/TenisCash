@@ -1335,6 +1335,17 @@ async function showStoreSelector() {
 }
 
 function selectStore(store) {
+  if (activeStore?.id !== store.id) {
+    ++_salesRequestId;
+    clearTimeout(_salesLoadTimer);
+    const vendors = document.getElementById('salesFilterVendor');
+    vendors.innerHTML = '<option value="">Todos vendedores</option>';
+    delete vendors.dataset.storeId;
+    document.getElementById('salesFilterQ').value = '';
+    document.getElementById('salesList').innerHTML = '';
+    document.getElementById('salesTotals').innerHTML = '';
+    window._salesById = {};
+  }
   activeStore = store;
   localStorage.setItem('loja_activeStore', JSON.stringify(store));
   showApp();
@@ -1772,8 +1783,11 @@ function fmt(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', cur
 async function loadSalesVendors() {
   if (!activeStore?.id) return;
   try {
-    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    const storeId = activeStore.id;
+    const d = await api('/api/seller/store-sellers?storeId=' + storeId);
+    if (activeStore?.id !== storeId) return;
     const sel = document.getElementById('salesFilterVendor');
+    sel.dataset.storeId = storeId;
     sel.innerHTML = '<option value="">Todos vendedores</option>' + (d.sellers || []).map(s =>
       `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
     ).join('');
@@ -2238,7 +2252,7 @@ async function loadDashboard() {
     document.getElementById('kpiCashbackMonth').textContent = fmt(d.month.cashbackGiven);
 
     // Carrega filtros de vendas + lista (default = mês atual)
-    if (!document.getElementById('salesFilterVendor').options.length || document.getElementById('salesFilterVendor').options.length === 1) {
+    if (document.getElementById('salesFilterVendor').dataset.storeId !== activeStore?.id) {
       await loadSalesVendors();
     }
     if (!document.getElementById('salesFilterFrom').value && !document.getElementById('salesFilterTo').value) {
