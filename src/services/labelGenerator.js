@@ -1130,7 +1130,7 @@ function drawProductSingleDuplex(doc, item, template, x, y, w, h, side) {
       const percentMatch = offer.match(/(\d+)\s*%/);
       const percent = percentMatch ? percentMatch[1] : null;
       const conditionMatch = offer.match(/LEVANDO\s+(.+?)(?:\.|$)/i);
-      const offerHeadline = percent ? `PREÇO COM ${percent}% OFF` : 'PREÇO PROMOCIONAL';
+      const offerHeadline = 'BAIXOU';
       const offerFs = fitSingleLine(offerHeadline, FONT_BOLD, 6.0, 5.0);
       doc.font(FONT_BOLD).fontSize(offerFs).fillColor(ORANGE)
         .text(offerHeadline, x + pad, y + mm(55.8), {
