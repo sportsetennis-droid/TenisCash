@@ -95,15 +95,27 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   }
   doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0,730).lineTo(1060,730).stroke();
   const money = value => Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  text('DE R$ ' + money(offer.basePrice), 60, 340, 940, 100, bold, '#E93E09');
+  text('DE R$ ' + money(offer.basePrice), 60, 340, 940, 100, bold, '#E93E09', 'center');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  text('POR', 45, 520, 120, 60, 'EverlastAnton', '#E93E09');
-  text('R$', 45, 600, 120, 60, 'EverlastAnton', '#E93E09');
-  doc.save().translate(170,400).scale(1.5,1);
-  text(whole, 0, 0, 470, 260, 'EverlastAnton', '#E93E09');
+  doc.font('EverlastAnton').fontSize(260);
+  let wholeSize = 260;
+  while (doc.widthOfString(whole) > 470 && wholeSize > 12) doc.fontSize(--wholeSize);
   const wholeWidth = doc.widthOfString(whole) * 1.5;
+  doc.fontSize(150);
+  let centsSize = 150;
+  while (doc.widthOfString(',' + cents) > 215 && centsSize > 12) doc.fontSize(--centsSize);
+  const centsWidth = doc.widthOfString(',' + cents);
+  doc.fontSize(60);
+  const prefixWidth = Math.max(doc.widthOfString('POR'), doc.widthOfString('R$'));
+  const gap = 30;
+  const priceLeft = (1060 - prefixWidth - gap - wholeWidth - centsWidth) / 2;
+  const numberLeft = priceLeft + prefixWidth + gap;
+  text('POR', priceLeft, 520, prefixWidth + 1, 60, 'EverlastAnton', '#E93E09');
+  text('R$', priceLeft, 600, prefixWidth + 1, 60, 'EverlastAnton', '#E93E09');
+  doc.save().translate(numberLeft,400).scale(1.5,1);
+  text(whole, 0, 0, 470, wholeSize, 'EverlastAnton', '#E93E09');
   doc.restore();
-  text(',' + cents, 170 + wholeWidth, 440, 215, 150, 'EverlastAnton', '#E93E09');
+  text(',' + cents, numberLeft + wholeWidth, 440, 215, centsSize, 'EverlastAnton', '#E93E09');
   // Keep the full footer text at least 2 mm above the physical cut boundary.
   doc.font('EverlastAnton').fontSize(64);
   const footerTop = 1300 + (184 - doc.currentLineHeight()) / 2;
