@@ -29,7 +29,8 @@
 ## IV. Mudança segura
 
 11. **Diagnosticar a causa raiz antes de consertar** — e dizer a verdade, mesmo quando for "fui eu".
-12. Verificar **ponta a ponta** (tela consumindo, caminho logado) antes de dizer "funciona".
+12. **Toda alteração precisa de conferência real no sistema publicado**, na conta, permissões, filtros e fluxo pedidos pelo dono, antes de dizer "pronto", "funciona" ou "resolvido". Conferir os valores exibidos com a fonte dos dados. **Teste local, commit, push e deploy não substituem essa conferência.**
+12-A. Se não for possível conferir o resultado publicado, informar **NÃO CONFERIDO**, explicar o impedimento e o que falta verificar. **Nunca declarar a solicitação resolvida sem essa comprovação.** *(Ratificado pelo dono em 11/09/2026.)*
 13. Deploy: revisar o que está subindo (ainda mais se **acumulou** dias de código); **nunca** `--accept-data-loss`; **nunca** commitar `.env` / segredo.
 
 ## V. Autonomia

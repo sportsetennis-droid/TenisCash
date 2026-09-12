@@ -397,7 +397,7 @@
   <!-- DASHBOARD -->
   <div class="page show" id="page-dashboard">
     <h2 class="page-title" id="dashboardTitle">Hoje na loja</h2>
-    <p class="page-subtitle">Visão geral em tempo real</p>
+    <p class="page-subtitle" id="dashboardScopeLabel">Visão geral em tempo real</p>
 
     <!-- AÇÕES RÁPIDAS — destaque no topo -->
     <div class="quick-actions">
@@ -2256,7 +2256,9 @@ async function loadDashboard() {
     const d = await api('/api/seller/dashboard' + storeQ);
     if (activeStore) document.getElementById('topStoreName').textContent = activeStore.name;
     const dailyTotalCard = document.getElementById('dailyStoreTotalCard');
-    if (d.dailyStoreTotal) {
+    document.getElementById('dashboardTitle').textContent = d.scope === 'all' ? 'Todas as lojas' : d.scope === 'store' ? 'Hoje na loja' : 'Seu dia';
+    document.getElementById('dashboardScopeLabel').textContent = d.scope === 'all' ? 'Vendas de todas as lojas da rede' : 'Visão geral em tempo real';
+    if (d.dailyStoreTotal && d.scope !== 'all') {
       document.getElementById('dailyStoreTotalLabel').textContent = d.dailyStoreTotal.scope === 'all'
         ? 'Total de vendas do dia — Todas as lojas' : 'Total de vendas do dia — Esta loja';
       document.getElementById('dailyStoreTotalAmount').textContent = fmt(d.dailyStoreTotal.salesAmount);
@@ -3492,7 +3494,7 @@ async function loadRanking() {
       </div>
       <div class="kpi-card">
         <div class="kpi-icon yellow">💎</div>
-        <div class="kpi-content"><div class="kpi-title">Comissão calculada</div><div class="kpi-value">${fmt(d.totals.commissionAmount)}</div></div>
+        <div class="kpi-content"><div class="kpi-title">Comissões do ranking</div><div class="kpi-value">${fmt(d.totals.commissionAmount)}</div></div>
       </div>
     `;
 

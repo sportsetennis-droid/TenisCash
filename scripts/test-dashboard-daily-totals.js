@@ -7,12 +7,16 @@ const routeStart = source.indexOf("router.get('/dashboard'");
 const route = source.slice(routeStart, source.indexOf('\n// =====================================================================', routeStart));
 const dayStart = new Date('2026-09-11T03:00:00Z');
 const dayEnd = new Date('2026-09-12T03:00:00Z');
+class FixedDate extends Date {
+  constructor(...args) { super(...(args.length ? args : ['2026-09-11T18:00:00Z'])); }
+}
 const sales = [
   { storeId: 'a', sellerId: 'someone', status: 'completed', totalAmount: 100, createdAt: dayStart },
   { storeId: 'b', sellerId: 'other', status: 'completed', totalAmount: 200, createdAt: new Date('2026-09-12T02:59:59Z') },
   { storeId: 'a', sellerId: 'u', status: 'canceled', totalAmount: 900, createdAt: dayStart },
   { storeId: 'a', sellerId: 'u', status: 'completed', totalAmount: 800, createdAt: dayEnd },
   { storeId: 'a', sellerId: 'u', status: 'completed', totalAmount: 700, createdAt: new Date(dayStart.getTime() - 1) },
+  { storeId: 'b', sellerId: 'u', status: 'completed', totalAmount: 5000, createdAt: new Date('2026-08-15T15:00:00Z') },
 ];
 async function run(role, storeId, overrides = {}) {
   const user = { id: 'u', role, active: true, storeId: 'a', storeIds: ['a', 'b'], ...overrides };
@@ -30,7 +34,7 @@ async function run(role, storeId, overrides = {}) {
       },
     },
   };
-  vm.runInNewContext(route, { prisma, salesVisibility, console, sellerOnly() {},
+  vm.runInNewContext(route, { prisma, salesVisibility, console, Date: FixedDate, sellerOnly() {},
     recifeDayBounds: () => ({ startUtc: dayStart, endUtc: dayEnd }),
     router: { get(_path, _middleware, fn) { handler = fn; } } });
   await handler({ userId: 'u', query: storeId === undefined ? {} : { storeId } }, {
@@ -41,6 +45,11 @@ async function run(role, storeId, overrides = {}) {
 (async () => {
   for (const role of ['admin', 'superadmin']) {
     const { result } = await run(role, 'a');
+    assert.equal(result.scope, 'all');
+    assert.equal(result.today.salesAmount, 300);
+    assert.equal(result.today.salesCount, 2);
+    assert.equal(result.month.salesAmount, 1800);
+    assert.equal(result.month.salesCount, 4);
     assert.equal(result.dailyStoreTotal.scope, 'all');
     assert.equal(result.dailyStoreTotal.salesAmount, 300);
     assert.equal(result.dailyStoreTotal.salesCount, 2);
@@ -52,6 +61,14 @@ async function run(role, storeId, overrides = {}) {
   }
   assert.equal((await run('seller', 'b')).result.dailyStoreTotal.salesAmount, 200);
   assert.equal((await run('seller')).result.dailyStoreTotal.salesAmount, 100);
+  for (const selectedStoreId of ['a', 'b']) {
+    const { result } = await run('seller', selectedStoreId);
+    assert.equal(result.scope, 'seller');
+    assert.equal(result.today.salesAmount, 0);
+    assert.equal(result.today.salesCount, 0);
+    assert.equal(result.month.salesAmount, 1500);
+    assert.equal(result.month.salesCount, 2);
+  }
   for (const [role, storeId, overrides] of [
     ['seller', 'foreign', {}], ['seller', 'all', {}], ['store', 'b', {}],
     ['seller', 'a', { active: false }], ['seller', undefined, { storeId: null, storeIds: [] }],
@@ -60,5 +77,5 @@ async function run(role, storeId, overrides = {}) {
     assert.equal(response.status, 403);
     assert.equal(response.aggregateCalls, 0);
   }
-  console.log('PASS: daily totals by role, assigned stores, canceled sales, day boundaries and denied access');
+  console.log('PASS: daily/monthly admin totals, personal seller KPIs, assigned stores, canceled sales, day boundaries and denied access');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -62,7 +62,10 @@ async function run(query, role = 'admin') {
   const { result } = await run({ period: 'today', storeId: 'a' });
   assert.deepEqual(Array.from(result.ranking, r => r.sellerId), ['5', '1', '0', '2', '3', '4']);
   assert.equal(result.totals.sellersCount, 6);
-  assert.equal(result.totals.salesAmount, 800);
+  assert.equal(result.totals.salesAmount, 2100);
+  assert.equal(result.totals.salesCount, 5);
+  // Vendas de quem saiu e de quem não bateu ponto continuam no faturamento.
+  assert.equal(result.ranking.some(r => ['6', '7'].includes(r.sellerId)), false);
   assert.equal(result.totals.commissionAmount, 8);
   assert.equal(result.ranking[0].commission.baseAmount, 5);
   assert.equal(result.ranking[0].commission.at50kAmount, 10);

@@ -703,12 +703,13 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Escopo: se logado é STORE (PDV), agrega VENDAS da PRÓPRIA loja.
+    const canSeeAllStores = ['admin', 'superadmin'].includes(visibility.role);
+    // Administrador acompanha a rede; o caixa acompanha a própria loja.
     const isStoreAccount = operator?.role === 'store';
     // VENDAS: forçamos sempre a loja do operador (cada loja vê só as suas vendas)
     const storeId = isStoreAccount ? operator.storeId : (req.query.storeId || operator?.storeId);
 
-    const baseWhere = isStoreAccount
+    const baseWhere = canSeeAllStores ? { status: { not: 'canceled' } } : isStoreAccount
       ? { storeId, status: { not: 'canceled' } } // dados da loja inteira (sem canceladas)
       : { sellerId: operator.id, status: { not: 'canceled' } }; // dados do vendedor pessoal (sem canceladas)
 
@@ -733,7 +734,6 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
       }) : Promise.resolve([]),
     ]);
 
-    const canSeeAllStores = ['admin', 'superadmin'].includes(visibility.role);
     const dailyStoreTotal = canSeeAllStores || selectedStoreId ? await prisma.sale.aggregate({
       _sum: { totalAmount: true },
       _count: { _all: true },
@@ -762,7 +762,7 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
         role: operator?.role,
         store: operator?.store ? { id: operator.store.id, name: operator.store.name, code: operator.store.code } : null,
       },
-      scope: isStoreAccount ? 'store' : 'seller',
+      scope: canSeeAllStores ? 'all' : isStoreAccount ? 'store' : 'seller',
       dailyStoreTotal: dailyStoreTotal ? {
         scope: canSeeAllStores ? 'all' : 'store',
         salesAmount: dailyStoreTotal._sum.totalAmount || 0,
@@ -1501,6 +1501,13 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       orderBy: { _sum: { totalAmount: 'desc' } },
     });
 
+    // O faturamento considera todas as vendas, mesmo de quem já encerrou o ponto.
+    const salesTotals = {
+      salesCount: salesAgg.reduce((sum, row) => sum + (row._count._all || 0), 0),
+      salesAmount: Math.round(salesAgg.reduce((sum, row) => sum + (row._sum.totalAmount || 0), 0) * 100) / 100,
+      cashbackGiven: Math.round(salesAgg.reduce((sum, row) => sum + (row._sum.tcEarned || 0), 0) * 100) / 100,
+    };
+
     // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
     // Leia todos os pontos antes de filtrar a loja: uma saída em outra loja
     // também encerra a disponibilidade. O intervalo mantém o vendedor no ranking.
@@ -1581,9 +1588,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
 
     // Totais
     const totals = {
-      salesCount: ranking.reduce((sum, r) => sum + r.salesCount, 0),
-      salesAmount: Math.round(ranking.reduce((sum, r) => sum + r.salesAmount, 0) * 100) / 100,
-      cashbackGiven: Math.round(ranking.reduce((sum, r) => sum + r.cashbackGiven, 0) * 100) / 100,
+      ...salesTotals,
       commissionAmount: Math.round(ranking.reduce((sum, r) => sum + r.commissionAmount, 0) * 100) / 100,
       sellersCount: ranking.length,
     };
