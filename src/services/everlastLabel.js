@@ -11,9 +11,11 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
   const discount = brand === 'MIZUNO' ? 40 : ['TOPPER','MUNICH','JOMA'].includes(brand) ? 20 : 30;
   const reebokOffer = campaignBrand && baseCents > 0 && promoCents === Math.round(baseCents * (100 - discount) / 100)
     ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
-  const offer = campaignBrand ? reebokOffer : item.paymentOffer;
+  const streetFixedOffer = streetRide && baseCents === 19999 && promoCents === 14999
+    ? { active:true, fixedPrice:true, basePrice:199.99, finalPrice:149.99 } : null;
+  const offer = streetFixedOffer || (campaignBrand ? reebokOffer : item.paymentOffer);
   if ((!campaignBrand && brand !== 'EVERLAST')
-      || !offer?.active || (!(brand === 'EVERLAST' && offer.fixedPrice) && ![20,30,40].includes(offer.discountPercent))
+      || !offer?.active || (!((brand === 'EVERLAST' || streetRide) && offer.fixedPrice) && ![20,30,40].includes(offer.discountPercent))
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
   const model = require('./campaignLabelModel').campaignLabelModel(item);
   const usageByModel = {
@@ -42,7 +44,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     : /CAMPO/.test(modality) ? ['FUTEBOL DE CAMPO','']
     : /TREINO|MUSCULACAO|CROSS/.test(modality) ? ['PARA TREINO',''] : null);
   const assets = path.join(__dirname, '../../assets');
-  if (brand === 'EVERLAST' && (offer.discountPercent === 20 || offer.fixedPrice)) {
+  if (streetFixedOffer || (brand === 'EVERLAST' && (offer.discountPercent === 20 || offer.fixedPrice))) {
     return drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h);
   }
   doc.save();
@@ -126,7 +128,14 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
     doc.restore();
   }
   band(0, 330, 0, 330);
-  band(330, 350, 330, 230);
+  if (String(item.brand).toUpperCase() === 'REEBOK') {
+    band(0, 330, 330, 230);
+    doc.image(path.join(assets, 'logos/brands/reebok-white.png'), 145, 395, { width:180 });
+    doc.font('Helvetica-BoldOblique').fontSize(125).fillColor('#FFFFFF')
+      .text('Reebok', 350, 390, { width:610, height:160, lineBreak:false });
+  } else {
+    band(330, 350, 330, 230);
+  }
   doc.fillColor('#FFFFF5').rect(0, 560, 1060, 740).fill();
   band(1245, 239, 1300, 184);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
