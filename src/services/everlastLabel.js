@@ -13,9 +13,14 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
   const streetFixedOffer = streetRide && baseCents === 19999 && promoCents === 14999
     ? { active:true, fixedPrice:true, basePrice:199.99, finalPrice:149.99 } : null;
-  const offer = streetFixedOffer || (campaignBrand ? reebokOffer : item.paymentOffer);
+  const mizunoName = String(item.productName || item.name || '').toUpperCase();
+  const mizunoFixed = brand === 'MIZUNO' && (
+    (/MORELIA\s+II\s+PRO/.test(mizunoName) && baseCents === 80000 && promoCents === 54900) ||
+    (/MORELIA\s+SALA\s+PRO/.test(mizunoName) && baseCents === 60000 && promoCents === 49900));
+  const mizunoFixedOffer = mizunoFixed ? {active:true, fixedPrice:true, basePrice:baseCents/100, finalPrice:promoCents/100} : null;
+  const offer = mizunoFixedOffer || streetFixedOffer || (campaignBrand ? reebokOffer : item.paymentOffer);
   if ((!campaignBrand && brand !== 'EVERLAST')
-      || !offer?.active || (!((brand === 'EVERLAST' || streetRide) && offer.fixedPrice) && ![20,30,40].includes(offer.discountPercent))
+      || !offer?.active || (!((brand === 'EVERLAST' || streetRide || mizunoFixed) && offer.fixedPrice) && ![20,30,40].includes(offer.discountPercent))
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
   const model = require('./campaignLabelModel').campaignLabelModel(item);
   const usageByModel = {
