@@ -147,15 +147,15 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   }
   doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0,900).lineTo(1060,900).stroke();
   const money = value => Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  text('DE R$ ' + money(offer.basePrice), 60, 930, 940, 125, bold, '#E93E09');
+  text('DE R$ ' + money(offer.basePrice), 60, 910, 940, 100, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  text('POR', 60, 1105, 145, 65, 'EverlastAnton', '#E93E09');
-  text('R$', 60, 1185, 145, 65, 'EverlastAnton', '#E93E09');
-  doc.save().translate(215,1035).scale(1.2,1);
-  text(whole, 0, 0, 470, 215, 'EverlastAnton', '#E93E09');
-  const wholeWidth = doc.widthOfString(whole) * 1.2;
+  text('POR', 45, 1090, 120, 60, 'EverlastAnton', '#E93E09');
+  text('R$', 45, 1170, 120, 60, 'EverlastAnton', '#E93E09');
+  doc.save().translate(170,970).scale(1.5,1);
+  text(whole, 0, 0, 470, 260, 'EverlastAnton', '#E93E09');
+  const wholeWidth = doc.widthOfString(whole) * 1.5;
   doc.restore();
-  text(',' + cents, 215 + wholeWidth, 1070, 215, 135, 'EverlastAnton', '#E93E09');
+  text(',' + cents, 170 + wholeWidth, 1010, 215, 150, 'EverlastAnton', '#E93E09');
   // Keep the full footer text at least 2 mm above the physical cut boundary.
   doc.font('EverlastAnton').fontSize(64);
   const footerTop = 1300 + (184 - doc.currentLineHeight()) / 2;
