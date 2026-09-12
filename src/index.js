@@ -482,6 +482,11 @@ app.get('/api/health', (req, res) => {
   let nuvemshopCatalog = null;
   try {
     nuvemshopCatalog = require('./services/nuvemshopStockCron').getNuvemshopCronState();
+    if (nuvemshopCatalog.automation) {
+      const automation = nuvemshopCatalog.automation;
+      nuvemshopCatalog.automation = { version: automation.version, lastCheckedAt: automation.lastCheckedAt,
+        ordersChecked: automation.orders.length, errors: automation.errors.length, webhooks: !!automation.webhooks };
+    }
   } catch (_) {}
   let qrOffers = null;
   try { qrOffers = require('./services/qrOffersCron').getQROffersCronState(); } catch (_) {}

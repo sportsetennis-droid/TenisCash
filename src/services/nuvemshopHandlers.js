@@ -14,6 +14,7 @@ const { prisma } = require('../middleware');
 const ns = require('./nuvemshop');
 const { assessProductForNuvemshop } = require('./nuvemshopEligibility');
 const storeRadio = require('./storeRadio');
+const { applyOrderStock } = require('./nuvemshopStockSafety');
 
 // Storefront currently bound to www.sportsetennis.com.br (LS.store.id).
 // An env override keeps migrations possible without ever falling back to an
@@ -354,39 +355,6 @@ async function handleCustomerEvent(eventType, resourceId, connection) {
 // ORDER HANDLERS
 // =====================================================================
 
-// Baixa o estoque FÍSICO (StoreStock) dos itens de um pedido Nuvemshop.
-// Regra do dono: baixa de onde o produto ESTÁ — prioridade LOJA04, senão qualquer outra loja.
-// Mexe só no StoreStock (localizado); não toca no comprado. Nunca deixa negativo.
-async function decrementPhysicalStockForOrder(nsOrder) {
-  const items = Array.isArray(nsOrder.products) ? nsOrder.products : [];
-  const loja04 = await prisma.store.findFirst({ where: { code: 'LOJA04' }, select: { id: true } });
-  const loja04Id = loja04?.id || null;
-  for (const it of items) {
-    const code = String(it.sku || it.barcode || '').trim();
-    const qty = Number(it.quantity) || 1;
-    if (!code || qty <= 0) continue;
-    const ps = await prisma.productSize.findFirst({ where: { barcode: code }, select: { id: true } });
-    if (!ps) continue;
-    const stocks = await prisma.storeStock.findMany({
-      where: { productSizeId: ps.id, stock: { gt: 0 } },
-      select: { id: true, storeId: true, stock: true },
-    });
-    // LOJA04 primeiro; depois loja com maior estoque
-    stocks.sort((a, b) => {
-      const a4 = loja04Id && a.storeId === loja04Id ? 0 : 1;
-      const b4 = loja04Id && b.storeId === loja04Id ? 0 : 1;
-      return a4 - b4 || b.stock - a.stock;
-    });
-    let remaining = qty;
-    for (const s of stocks) {
-      if (remaining <= 0) break;
-      const dec = Math.min(remaining, s.stock);
-      await prisma.storeStock.update({ where: { id: s.id }, data: { stock: { decrement: dec } } });
-      remaining -= dec;
-    }
-  }
-}
-
 async function upsertSaleFromOrder(nsOrder) {
   // 1. Resolve cliente (cria se necessário)
   let user = null;
@@ -443,33 +411,9 @@ async function upsertSaleFromOrder(nsOrder) {
     sale = await prisma.sale.update({ where: { id: sale.id }, data: { status: 'completed' } });
   }
 
-  // Mapping
-  if (existing) {
-    await prisma.nuvemshopOrderMapping.update({
-      where: { id: existing.id },
-      data: { saleId: sale.id, payload: nsOrder },
-    });
-  } else {
-    await prisma.nuvemshopOrderMapping.create({
-      data: {
-        saleId: sale.id,
-        nuvemshopOrderId: String(nsOrder.id),
-        payload: nsOrder,
-      },
-    });
-  }
-
-  // 3a. Baixa estoque FÍSICO (StoreStock) na venda online — prioridade LOJA04, senão qualquer loja.
-  // Idempotente por pedido (flag _stockDecremented no payload do mapping). O cron espelha o físico → Nuvemshop.
-  if (nsOrder.payment_status === 'paid' && !(existing && existing.payload && existing.payload._stockDecremented)) {
-    try {
-      await decrementPhysicalStockForOrder(nsOrder);
-      await prisma.nuvemshopOrderMapping.updateMany({
-        where: { nuvemshopOrderId: String(nsOrder.id) },
-        data: { payload: { ...nsOrder, _stockDecremented: true } },
-      });
-    } catch (e) { await logSync('order', 'error', `Baixa estoque pedido ${nsOrder.id}: ${e.message}`); }
-  }
+  // Persist the stock movement and its receipt atomically. Repeated events
+  // retain the receipt instead of wiping it out with the remote payload.
+  await applyOrderStock(prisma, nsOrder, { saleId: sale.id, allowLegacy: !existing });
 
   // 3. Se pago → credita TenisCash pro cliente (idempotente)
   if (nsOrder.payment_status === 'paid' && user) {
@@ -853,6 +797,7 @@ async function reverseCashbackRedemption(nsOrderId) {
 async function handleOrderEvent(eventType, resourceId, connection) {
   const order = await ns.getOrder(connection, resourceId);
   if (eventType === 'order/cancelled') {
+    await applyOrderStock(prisma, order);
     // Cancela Sale + estorna TenisCash se já tinha sido creditado
     const mapping = await prisma.nuvemshopOrderMapping.findUnique({
       where: { nuvemshopOrderId: String(resourceId) },

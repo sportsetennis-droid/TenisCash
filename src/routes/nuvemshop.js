@@ -15,6 +15,17 @@ const adminRouter = express.Router();
 adminRouter.use(authMiddleware);
 adminRouter.use(adminMiddleware);
 
+adminRouter.get('/stock-status', (_req, res) => {
+  res.json(require('../services/nuvemshopStockCron').getNuvemshopCronState());
+});
+adminRouter.post('/reconcile-stock', (_req, res) => {
+  const service = require('../services/nuvemshopStockCron');
+  if (service.getNuvemshopCronState().running) return res.status(409).json({ error: 'Sincronização já em execução' });
+  service.runNuvemshopStockSync({ uploadConfirmed: false, cleanupOnly: true, reconcileStock: true })
+    .catch(error => console.error('[ns-stock]', error.message));
+  res.status(202).json({ started: true });
+});
+
 adminRouter.get('/status', async (_req, res) => {
   try {
     const configured = ns.isConfigured();

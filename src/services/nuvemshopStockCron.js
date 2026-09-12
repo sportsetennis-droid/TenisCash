@@ -14,6 +14,8 @@ const {
   hasRemoteUsableImage,
 } = require('./nuvemshopEligibility');
 const TZ = 'America/Fortaleza';
+const { remoteStockDiffers } = require('./nuvemshopStockSafety');
+const { reconcileOrders, getStockAutomationState } = require('./nuvemshopStockAutomation');
 
 function physicalSig(product) {
   return (product.sizes || [])
@@ -85,6 +87,9 @@ async function runNuvemshopStockSync({
   try {
     const connection = await nsHandlers.getConnection();
     if (!connection) return;
+
+    cronState.phase = 'reconciling-orders';
+    const blockedProducts = await reconcileOrders(connection);
 
     const mappings = await prisma.nuvemshopProductMapping.findMany({
       select: {
@@ -204,12 +209,14 @@ async function runNuvemshopStockSync({
     let unpublishedInvalid = 0;
     for (const mapping of mappings) {
       try {
+        if (blockedProducts.has(String(mapping.nuvemshopProductId))) continue;
         const product = await prisma.product.findUnique({
           where: { id: mapping.localProductId },
           select: {
             id: true,
             active: true,
             name: true,
+            sku: true,
             brand: true,
             longDescription: true,
             shortDescription: true,
@@ -289,7 +296,7 @@ async function runNuvemshopStockSync({
                 : product.aiContext) || {};
             } catch (_) {}
             const stockSignature = `physical-v1|${physicalSig(product)}`;
-            if (ctx.nsPhysicalStockVerifiedSig !== stockSignature) {
+            if (ctx.nsPhysicalStockVerifiedSig !== stockSignature || remoteStockDiffers(product, remote)) {
               if (stockProductsProcessed >= stockLimit) {
                 stockPending = true;
               } else {
@@ -436,7 +443,7 @@ async function runNuvemshopStockSync({
 }
 
 function getNuvemshopCronState() {
-  return JSON.parse(JSON.stringify(cronState));
+  return JSON.parse(JSON.stringify({ ...cronState, automation: getStockAutomationState() }));
 }
 
 function startNuvemshopStockCron() {
@@ -486,6 +493,7 @@ function startNuvemshopStockCron() {
 
 module.exports = {
   cardSig,
+  remoteStockDiffers,
   getNuvemshopCronState,
   runNuvemshopStockSync,
   startNuvemshopStockCron,

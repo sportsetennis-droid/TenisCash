@@ -2258,6 +2258,13 @@ tr:hover td{background:rgba(0,0,0,0.02)}
     <button type="button" class="refresh-btn" id="ns-refresh">↻</button>
   </div>
   <div id="ns-status-wrap"></div>
+  <div style="margin:16px 0;padding:16px;border:1px solid #ddd;border-radius:10px">
+    <strong>Estoque automático · a cada 5 minutos</strong>
+    <p>Vendas online e estoque físico por tamanho conferidos antes da atualização.</p>
+    <button type="button" class="btn btn-primary" id="ns-stock-run">Sincronizar estoque agora</button>
+    <button type="button" class="btn" id="ns-stock-refresh">Consultar resultado</button>
+    <div id="ns-stock-status" role="status" style="margin-top:12px;white-space:pre-wrap"></div>
+  </div>
 
   <h4 style="font-family:Orbitron;font-size:12px;letter-spacing:2px;margin:18px 0 8px">IMPORTAR (Nuvemshop → TenisCash)</h4>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
@@ -11382,6 +11389,12 @@ async function initNsTab() {
   if (!_nsInit) {
     _nsInit = true;
     document.getElementById('ns-refresh').onclick = loadNsAll;
+    document.getElementById('ns-stock-refresh').onclick = loadNsStockStatus;
+    document.getElementById('ns-stock-run').onclick = async () => {
+      const result = await api('/admin/nuvemshop/reconcile-stock', 'POST', {});
+      if (result.error) document.getElementById('ns-stock-status').textContent = result.error;
+      else await loadNsStockStatus();
+    };
     document.getElementById('ns-import-products').onclick = () => nsImport('products');
     document.getElementById('ns-import-customers').onclick = () => nsImport('customers');
     document.getElementById('ns-import-orders').onclick = () => nsImport('orders');
@@ -11453,8 +11466,23 @@ async function nsLoadMappings(kind) {
   html += '</tbody></table>';
   wrap.innerHTML = html;
 }
+async function loadNsStockStatus() {
+  const data = await api('/admin/nuvemshop/stock-status');
+  const result = data.lastResult || {};
+  const automation = data.automation || {};
+  const lines = [data.error || (data.running ? 'Em execução: ' + data.phase : 'Última execução: ' + (data.lastFinishedAt || 'aguardando')),
+    'Produtos conferidos: ' + (data.progress?.mappedProcessed || result.mappedProducts || 0),
+    'Variantes atualizadas: ' + (result.stockVariantsUpdated || 0),
+    'Pedidos conferidos: ' + (automation.orders?.length || 0)];
+  if (automation.webhooks) lines.push('Notificações de pedidos verificadas: ' + automation.webhooks.checkedAt);
+  for (const order of automation.orders || []) lines.push('Pedido #' + order.number + ': ' + (order.error || (order.deducted ? 'baixa registrada' : order.payment)));
+  if (data.lastError) lines.push('Erro: ' + data.lastError);
+  for (const error of automation.errors || []) if (error.startsWith('Webhooks:')) lines.push(error);
+  document.getElementById('ns-stock-status').textContent = lines.join('\n');
+}
+
 async function loadNsAll() {
-  await Promise.all([loadNsStatus(), loadNsEvents(), loadNsLogs()]);
+  await Promise.all([loadNsStatus(), loadNsEvents(), loadNsLogs(), loadNsStockStatus()]);
 }
 async function loadNsStatus() {
   const wrap = document.getElementById('ns-status-wrap');
