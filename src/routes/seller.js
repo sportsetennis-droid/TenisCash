@@ -693,6 +693,12 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
       where: { id: req.userId },
       include: { store: true },
     });
+    const visibility = await salesVisibility(prisma, req.userId);
+    if (!visibility) return res.status(403).json({ error: 'Usuário sem acesso.' });
+    const selectedStoreId = req.query.storeId || operator.storeId;
+    if (visibility.storeIds && (!selectedStoreId || !visibility.storeIds.includes(selectedStoreId))) {
+      return res.status(403).json({ error: 'Você só pode consultar vendas das lojas em que trabalha.' });
+    }
     const { startUtc: todayStart, endUtc: todayEnd } = recifeDayBounds(new Date());
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -727,6 +733,14 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
       }) : Promise.resolve([]),
     ]);
 
+    const canSeeAllStores = ['admin', 'superadmin'].includes(visibility.role);
+    const dailyStoreTotal = canSeeAllStores || selectedStoreId ? await prisma.sale.aggregate({
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+      where: { status: { not: 'canceled' }, createdAt: { gte: todayStart, lt: todayEnd },
+        ...(canSeeAllStores ? {} : { storeId: selectedStoreId }) },
+    }) : null;
+
     // Resolve nomes dos top vendedores do dia
     let topSellers = [];
     if (topSellersToday.length) {
@@ -749,6 +763,11 @@ router.get('/dashboard', sellerOnly, async (req, res) => {
         store: operator?.store ? { id: operator.store.id, name: operator.store.name, code: operator.store.code } : null,
       },
       scope: isStoreAccount ? 'store' : 'seller',
+      dailyStoreTotal: dailyStoreTotal ? {
+        scope: canSeeAllStores ? 'all' : 'store',
+        salesAmount: dailyStoreTotal._sum.totalAmount || 0,
+        salesCount: dailyStoreTotal._count._all || 0,
+      } : null,
       today: {
         salesCount: salesToday._count._all || 0,
         salesAmount: salesToday._sum.totalAmount || 0,

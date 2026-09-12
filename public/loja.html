@@ -266,6 +266,8 @@
   /* Avatar helper text */
   .row { display: flex; align-items: center; gap: 12px; }
 
+  #dailyStoreTotalCard[hidden] { display: none; }
+
   /* Table polidas */
   table.modern { width: 100%; border-collapse: separate; border-spacing: 0; background: white; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); }
   table.modern thead tr { background: var(--bg-soft); }
@@ -471,6 +473,14 @@
           <div class="kpi-title">Cashback dado</div>
           <div class="kpi-value" id="kpiCashbackToday">—</div>
         </div>
+      </div>
+    </div>
+
+    <div class="kpi-card" id="dailyStoreTotalCard" hidden style="margin-top:16px;">
+      <div class="kpi-icon green">💰</div>
+      <div class="kpi-content">
+        <div class="kpi-title" id="dailyStoreTotalLabel">Total de vendas do dia</div>
+        <div class="kpi-value" id="dailyStoreTotalAmount">—</div>
       </div>
     </div>
 
@@ -2240,10 +2250,18 @@ async function emitTroca() {
 }
 
 async function loadDashboard() {
+  document.getElementById('dailyStoreTotalCard').hidden = true;
   try {
     const storeQ = activeStore?.id ? '?storeId=' + activeStore.id : '';
     const d = await api('/api/seller/dashboard' + storeQ);
     if (activeStore) document.getElementById('topStoreName').textContent = activeStore.name;
+    const dailyTotalCard = document.getElementById('dailyStoreTotalCard');
+    if (d.dailyStoreTotal) {
+      document.getElementById('dailyStoreTotalLabel').textContent = d.dailyStoreTotal.scope === 'all'
+        ? 'Total de vendas do dia — Todas as lojas' : 'Total de vendas do dia — Esta loja';
+      document.getElementById('dailyStoreTotalAmount').textContent = fmt(d.dailyStoreTotal.salesAmount);
+      dailyTotalCard.hidden = false;
+    }
     document.getElementById('kpiSalesToday').textContent = d.today.salesCount;
     document.getElementById('kpiAmountToday').textContent = fmt(d.today.salesAmount);
     document.getElementById('kpiCashbackToday').textContent = fmt(d.today.cashbackGiven);
