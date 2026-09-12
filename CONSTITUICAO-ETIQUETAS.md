@@ -59,3 +59,5 @@ Atualização expressa de Douglas — Everlast: apenas BAIXOU no destaque, sem p
 ## Padrão geral aprovado por Douglas — 12/09/2026
 
 Todas as etiquetas promocionais desta campanha devem mostrar apenas **BAIXOU**, **preço original (DE)** e **preço promocional (POR)**, sem porcentagem e sem “% OFF”. O preço promocional deve ser muito grande, com separação clara do original. Preservar marca, funcionalidade aprovada, laranja, convite centralizado, 5 × 7 cm e 16 posições por A4. Os percentuais continuam apenas no cálculo interno; preços fixos aprovados prevalecem. Esta regra vale para todas as marcas, inclusive Mizuno. Não modifica preços nem autoriza reimpressões. PDFs já enviados permanecem imutáveis.
+
+Atualização de ordem visual aprovada por Douglas — 12/09/2026: BAIXOU → preços DE e POR (promocional muito grande) → marca → modelo → funcionalidade → convite. Preços imediatamente abaixo de BAIXOU. Preservar 5 × 7 cm, 16 posições e espaçamento entre os valores.

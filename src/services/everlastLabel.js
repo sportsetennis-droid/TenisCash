@@ -61,20 +61,21 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   }
   band(0, 330, 0, 330);
   if (String(item.brand).toUpperCase() === 'REEBOK') {
-    band(0, 330, 330, 230);
-    doc.image(path.join(assets, 'logos/brands/reebok-official-white.png'), 330, 345, { width:400 });
+    band(0, 330, 730, 230);
+    doc.image(path.join(assets, 'logos/brands/reebok-official-white.png'), 330, 745, { width:400 });
   } else if (String(item.brand).toUpperCase() === 'EVERLAST') {
-    band(330, 350, 330, 230);
+    band(330, 350, 730, 230);
   } else {
-    band(0, 330, 330, 230);
+    band(0, 330, 730, 230);
     if (item._brandLogoBuffer) {
-      doc.image(item._brandLogoBuffer, 150, 375, {fit:[760,150], align:'center', valign:'center'});
+      doc.image(item._brandLogoBuffer, 150, 775, {fit:[760,150], align:'center', valign:'center'});
     } else {
       doc.font('Helvetica-Bold').fontSize(110).fillColor('#FFFFFF')
-        .text(String(item.brand).toUpperCase(), 40, 385, {width:980,height:160,align:'center',lineBreak:false});
+        .text(String(item.brand).toUpperCase(), 40, 785, {width:980,height:160,align:'center',lineBreak:false});
     }
   }
-  doc.fillColor('#FFFFF5').rect(0, 560, 1060, 740).fill();
+  doc.fillColor('#FFFFF5').rect(0, 330, 1060, 400).fill();
+  doc.fillColor('#FFFFF5').rect(0, 960, 1060, 340).fill();
   band(1245, 239, 1300, 184);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
@@ -87,22 +88,22 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   doc.save().translate(0,20).scale(1,0.82);
   text('BAIXOU', 45, -55, 970, 340, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
-  text(model, 55, 575, 950, 64, bold, '#EA3F0A', 'center');
+  text(model, 55, 975, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
-    text(usage[0], 55, 655, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
-    text(usage[1], 55, 765, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    text(usage[0], 55, 1055, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    text(usage[1], 55, 1165, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
   }
-  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0,900).lineTo(1060,900).stroke();
+  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0,730).lineTo(1060,730).stroke();
   const money = value => Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  text('DE R$ ' + money(offer.basePrice), 60, 910, 940, 100, bold, '#E93E09');
+  text('DE R$ ' + money(offer.basePrice), 60, 340, 940, 100, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  text('POR', 45, 1090, 120, 60, 'EverlastAnton', '#E93E09');
-  text('R$', 45, 1170, 120, 60, 'EverlastAnton', '#E93E09');
-  doc.save().translate(170,970).scale(1.5,1);
+  text('POR', 45, 520, 120, 60, 'EverlastAnton', '#E93E09');
+  text('R$', 45, 600, 120, 60, 'EverlastAnton', '#E93E09');
+  doc.save().translate(170,400).scale(1.5,1);
   text(whole, 0, 0, 470, 260, 'EverlastAnton', '#E93E09');
   const wholeWidth = doc.widthOfString(whole) * 1.5;
   doc.restore();
-  text(',' + cents, 170 + wholeWidth, 1010, 215, 150, 'EverlastAnton', '#E93E09');
+  text(',' + cents, 170 + wholeWidth, 440, 215, 150, 'EverlastAnton', '#E93E09');
   // Keep the full footer text at least 2 mm above the physical cut boundary.
   doc.font('EverlastAnton').fontSize(64);
   const footerTop = 1300 + (184 - doc.currentLineHeight()) / 2;
