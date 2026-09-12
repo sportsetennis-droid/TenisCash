@@ -75,3 +75,12 @@ Aprovado expressamente por Douglas em 12/09/2026. Sempre que ele pedir “etique
 - Referência visual aprovada: `output/reebok-precos-centralizados.png` na raiz desta área de trabalho. Implementação aprovada: commit `99fda4f`, `src/services/everlastLabel.js`.
 - Mudar apenas os dados próprios do produto e sua marca. Aplicar os preços expressamente autorizados; o modelo visual não autoriza criar descontos.
 - A aprovação do padrão não autoriza reimprimir material anterior. Conservar os arquivos dos lotes já enviados e reconciliar o saldo antes de nova impressão.
+
+## Falha de fundo laranja — 12/09/2026
+
+A captura de Douglas mostrou fundos laranja ausentes no leitor Adobe, embora outro renderizador os exibisse. Uma prévia em apenas um renderizador não valida compatibilidade. O lote cmtya2wcv000d5xzdqfan8qvn foi bloqueado para envio. Em correções deste problema, preservar o original, gerar uma nova versão com aparência consolidada em RGB a 600 dpi e conferir todas as faixas de fundo e as duas faces. Não afirmar validação no Adobe sem inspecioná-lo. Arquivo de correção atual: output/reebok-mizuno-cor-preservada-600dpi.pdf. Nenhuma impressão nova autorizada por esta correção.
+
+## Preços finais Diadora — 12/09/2026
+
+Por ordem de Douglas, em todas as cores: Centrale 199,00; Essenziale 199,00; Giove 189,00; Illusione 129,00; Leggenda 199,00; Marino 119,00; Modena 129,00; Monza 139,00; Playmaker 199,00; Saga 129,00; Sforza 239,00; Stratus II 199,00; Vulcano II 199,00. Preservar os preços originais DE. Não aplicar mais 30% sobre esses preços finais. Não autoriza impressão.
+

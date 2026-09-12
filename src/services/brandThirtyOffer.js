@@ -1,4 +1,5 @@
 const { labelUsage } = require('./labelUsage');
+const { diadoraFixedPrice } = require('./diadoraFixedOffer');
 const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH', 'MIZUNO', 'KAPPA']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 const campaignDiscount = brand => normalize(brand) === 'MIZUNO' ? 40 : ['TOPPER', 'MUNICH', 'JOMA', 'EVERLAST'].includes(normalize(brand)) ? 20 : 30;
@@ -30,7 +31,9 @@ async function campaignFootwear(prisma) {
     && (!/CONVERSE|ALL ?STAR/.test(normalize(p.brand)) || isAllStar(p))
     && (!['JOMA','UMBRO','MIZUNO','KAPPA'].includes(normalize(p.brand)) || isBoot(p))
     && Number(p.price) > 0 && (normalize(p.brand) === 'UMBRO' ? p.promoPrice == null
-      : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * (100 - campaignDiscount(p.brand)) / 100)))
+      : (normalize(p.brand) === 'DIADORA' && diadoraFixedPrice(p) != null
+        ? Number(p.promoPrice) === diadoraFixedPrice(p)
+        : Math.round(Number(p.promoPrice) * 100) === Math.round(Math.round(Number(p.price) * 100) * (100 - campaignDiscount(p.brand)) / 100))))
     .map(p => { let ctx = {}; try { ctx = typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : p.aiContext || {}; } catch {}
       return { id:p.id, name:p.name, brand:p.brand, category:p.category, price:p.price, promoPrice:p.promoPrice,
         labelUsage:labelUsage(p, ctx.classification || {}), sku:p.sku, supplierRef:p.supplierRef, internalBarcode:p.internalBarcode,
@@ -47,11 +50,14 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
     });
     if (!products.length) throw new Error('Nenhum produto ativo encontrado');
     const selected = products.filter(p => isFootwear(p) && (brand !== 'ALLSTAR' || isAllStar(p))
+      && (brand !== 'DIADORA' || diadoraFixedPrice(p) != null)
       && (!['JOMA','UMBRO','MIZUNO','KAPPA'].includes(brand) || isBoot(p)));
     const changes = selected.map(p => {
       const cents = Math.round(Number(p.price) * 100);
       if (!Number.isSafeInteger(cents) || cents <= 0) throw new Error(`Preço original inválido: ${p.name}`);
-      return { id: p.id, name: p.name, price: Number(p.price), promoPrice: brand === 'UMBRO' ? null : Math.round(cents * (100 - campaignDiscount(brand)) / 100) / 100 };
+      const promoPrice = brand === 'DIADORA' ? diadoraFixedPrice(p) : brand === 'UMBRO' ? null : Math.round(cents * (100 - campaignDiscount(brand)) / 100) / 100;
+      if (brand === 'DIADORA' && promoPrice * 100 >= cents) throw new Error(`Preço aprovado não é inferior ao original: ${p.name}`);
+      return { id: p.id, name: p.name, price: Number(p.price), promoPrice };
     });
     for (const p of changes) {
       const result = await tx.product.updateMany({ where: { id: p.id, price: p.price, active: true },
@@ -69,7 +75,7 @@ async function applyBrandThirtyOffer(prisma, inputBrand) {
         }
       }
     }
-    return { brand, discountPercent: brand === 'UMBRO' ? 0 : campaignDiscount(brand), updated: changes.length, removed, excluded: products.length - changes.length, products: changes };
+    return { brand, fixedPrices: brand === 'DIADORA', discountPercent: brand === 'DIADORA' ? null : brand === 'UMBRO' ? 0 : campaignDiscount(brand), updated: changes.length, removed, excluded: products.length - changes.length, products: changes };
   }, { timeout: 30000 });
 }
 module.exports = { applyBrandThirtyOffer, campaignFootwear, isFootwear, isAllStar, isBoot };

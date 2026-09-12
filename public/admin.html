@@ -1751,7 +1751,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
         <button type="button" class="btn btn-primary" id="cat-btn-new">+ Novo produto</button>
         <button type="button" class="btn" id="cat-btn-autofill">Auto IA (SKU)</button>
         <button type="button" class="btn" id="cat-off30-ous">Aplicar 30% OFF em OUS</button>
-        <button type="button" class="btn" id="cat-off30-diadora">Aplicar 30% OFF em Diadora</button>
+        <button type="button" class="btn" id="cat-off30-diadora">Aplicar preços aprovados Diadora</button>
         <button type="button" class="btn" id="cat-off30-olympikus">Aplicar 30% OFF em Olympikus</button>
         <button type="button" class="btn" id="cat-off30-fila">Aplicar 30% OFF em Fila</button>
         <button type="button" class="btn" id="cat-off30-speedo">Aplicar 30% OFF em Speedo</button>
@@ -4937,7 +4937,7 @@ function initAdminCatalogTab() {
         try {
           const result = await api('/admin/labels/brand-thirty-offer', 'POST', { brand });
           if (result.error) throw new Error(result.error);
-          status.textContent = result.updated + ' calçados ' + result.brand + (result.discountPercent === 0 ? ' com preço normal, sem desconto. ' : ' com ' + result.discountPercent + '% OFF. ') + 'Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
+          status.textContent = result.updated + ' calçados ' + result.brand + (result.fixedPrices ? ' com preços finais aprovados. ' : result.discountPercent === 0 ? ' com preço normal, sem desconto. ' : ' com ' + result.discountPercent + '% OFF. ') + 'Preços originais preservados. ' + (result.removed ? result.removed + ' promoções removidas de itens que não são calçados.' : '');
           await loadCatalogProductsAdmin();
         } catch (error) { status.textContent = 'Não aplicado: ' + error.message; }
         finally { button.disabled = false; }
