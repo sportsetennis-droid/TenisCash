@@ -1,5 +1,5 @@
 // Oferta aprovada: descontos alternativos sobre o preço normal, sem acumular.
-const OFFER_ID = 'everlast-off30-20260910';
+const OFFER_ID = 'everlast-off20-baixou-20260912';
 
 function contextOf(product) {
   try {
@@ -11,10 +11,10 @@ function contextOf(product) {
 function calculateOffer(price) {
   const baseCents = Math.round(Number(price) * 100);
   if (!Number.isSafeInteger(baseCents) || baseCents <= 0) throw new Error('Preço normal inválido');
-  const finalCents = Math.round(baseCents * 70 / 100);
+  const finalCents = Math.round(baseCents * 80 / 100);
   return {
     id: OFFER_ID, active: true, basePrice: baseCents / 100,
-    discountPercent: 30, finalPrice: finalCents / 100,
+    discountPercent: 20, finalPrice: finalCents / 100,
     paymentMethods: ['DINHEIRO', 'PIX', 'CARTÃO'],
   };
 }
@@ -33,7 +33,7 @@ async function applyOffer(prisma) {
     const products = await tx.product.findMany({ where: { active: true, brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
     if (!products.length) throw new Error('Nenhum produto Everlast encontrado');
     const skipped = [];
-    const planned = products.flatMap(p => {
+    const planned = products.filter(require('./brandThirtyOffer').isFootwear).flatMap(p => {
       try { return [{ p, offer: calculateOffer(p.price) }]; }
       catch {
         skipped.push({ productId:p.id, name:p.name, price:p.price }); return [];

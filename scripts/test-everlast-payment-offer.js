@@ -6,20 +6,20 @@ const { generateLabelsPDF, defaultTemplates } = require('../src/services/labelGe
 
 async function main() {
   const cases = [
-    [229.89, 160.92, 'SOLO'], [249.90, 174.93, 'STATION 3'],
-    [259.90, 181.93, 'NEW YORK'], [279.99, 195.99, 'RING 4'],
-    [299.99, 209.99, 'CLIMBER RUN'], [300.01, 210.01, 'FORCEKNIT LOW'],
-    [399.99, 279.99, 'CLIMBER PRO 3'], [499.99, 349.99, 'CLIMBER ULTRA'],
+    [229.89, 183.91, 'SOLO'], [249.90, 199.92, 'STATION 3'],
+    [259.90, 207.92, 'NEW YORK'], [279.99, 223.99, 'RING 4'],
+    [299.99, 239.99, 'CLIMBER RUN'], [300.01, 240.01, 'FORCEKNIT LOW'],
+    [399.99, 319.99, 'CLIMBER PRO 3'], [499.99, 399.99, 'CLIMBER ULTRA'],
   ];
   for (const [base, final] of cases) {
     const offer = calculateOffer(base);
     assert.equal(offer.finalPrice, final);
-    assert.equal(offer.discountPercent, 30);
+    assert.equal(offer.discountPercent, 20);
     assert.deepEqual(offer.paymentMethods, ['DINHEIRO', 'PIX', 'CARTÃO']);
     assert.equal(offer.installments, undefined);
   }
   for (const bad of [0, -1, NaN, Infinity, undefined]) assert.throws(() => calculateOffer(bad));
-  const original = { id: 'one', brand: 'Everlast', name: 'Solo', price: 229.89, promoPrice: 100, aiContext: { supplier: { name: 'NESK' }, classification: 'training' } };
+  const original = { id: 'one', brand: 'Everlast', name: 'TENIS EVERLAST SOLO', price: 229.89, promoPrice: 100, aiContext: { supplier: { name: 'NESK' }, classification: 'training' } };
   let rows = [structuredClone(original)];
   const prisma = { $transaction: async fn => fn({ product: {
     findMany: async query => { assert.deepEqual(query.where, { active:true, brand: { equals: 'EVERLAST', mode: 'insensitive' } }); return rows; },
@@ -29,7 +29,7 @@ async function main() {
   assert.equal(rows[0].price, original.price);
   assert.deepEqual(rows[0].aiContext.supplier, original.aiContext.supplier);
   assert.equal(rows[0].aiContext.classification, 'training');
-  assert.equal(productOffer(rows[0]).finalPrice, 160.92);
+  assert.equal(productOffer(rows[0]).finalPrice, 183.91);
   const first = structuredClone(rows);
   await applyOffer(prisma);
   assert.deepEqual(rows, first, 'reapplying must not compound discounts');
@@ -40,7 +40,7 @@ async function main() {
   const before = structuredClone(rows);
   const partial = await applyOffer(prisma);
   assert.equal(partial.updated, 1);
-  assert.deepEqual(partial.skipped, [{ productId:'bad', name:'Solo', price:0 }]);
+  assert.deepEqual(partial.skipped, [{ productId:'bad', name:'TENIS EVERLAST SOLO', price:0 }]);
   assert.deepEqual(rows, before, 'unpriced products must stay unchanged');
 
   const pdf = await generateLabelsPDF({

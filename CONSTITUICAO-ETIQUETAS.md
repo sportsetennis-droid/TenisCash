@@ -5,8 +5,8 @@ Instituída por ordem de Douglas em 11/09/2026, após desperdício causado por c
 ## 1. Quantidade contratada
 
 - São **duas etiquetas por modelo no total**, considerando todos os envios da campanha.
-- Marca + modelo comercial identificam a cota. Cor, tamanho, cadastro, SKU, preço, loja e modalidade não criam cotas adicionais.
-- Mesmo modelo com preços ou funcionalidades diferentes: **pendente de decisão**, nunca duplicado e nunca com preço escolhido por suposição.
+- Correção expressa de Douglas: cores diferentes contam como modelos diferentes. Marca + modelo comercial + cor identificam a cota de duas etiquetas. Tamanho, cadastro duplicado, SKU, preço e loja não criam cotas adicionais. Preservar a modalidade do produto; divergências dentro da mesma versão continuam pendentes.
+- Mesma versão de modelo e cor com preços ou funcionalidades diferentes: **pendente de decisão**, nunca duplicado e nunca com preço escolhido por suposição.
 - All Star está excluído da impressão até nova ordem. Vestuário está fora desta campanha.
 
 ## 2. Controle do que já saiu
@@ -21,7 +21,9 @@ Instituída por ordem de Douglas em 11/09/2026, após desperdício causado por c
 - Usar os textos aprovados por modelo. Não substituir funcionalidade por cor ou classificação genérica.
 - Preservar laranja, tipografia, dimensão, posição do preço original sem traço, preço atual, destaque de BAIXOU e convite aprovados.
 - Preservar 16 posições por folha A4. Não aumentar a etiqueta ou alterar a paginação para corrigir espaçamento sem mostrar a proposta.
-- Manter os descontos autorizados: 30% para marcas da campanha, Joma/Topper/Munich 20%, duas chuteiras Mizuno 40%, chuteiras Umbro sem desconto. Preços diferentes do mesmo modelo exigem decisão explícita; não alterar cadastro para fazê-los coincidir.
+- Manter os descontos autorizados: 30% para marcas da campanha, Everlast/Joma/Topper/Munich 20%, duas chuteiras Mizuno 40%, chuteiras Umbro sem desconto. Preços diferentes do mesmo modelo exigem decisão explícita; não alterar cadastro para fazê-los coincidir.
+
+Atualização expressa de Douglas — Everlast: apenas BAIXOU no destaque, sem percentual impresso; preços DE e POR maiores; desconto calculado de 20%. Preservar o formato 5 × 7 cm e 16 posições por folha.
 
 ## 4. Conferência antes de impressão
 

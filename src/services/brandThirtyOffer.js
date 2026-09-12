@@ -1,7 +1,7 @@
 const { labelUsage } = require('./labelUsage');
 const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH', 'MIZUNO', 'KAPPA']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-const campaignDiscount = brand => normalize(brand) === 'MIZUNO' ? 40 : ['TOPPER', 'MUNICH', 'JOMA'].includes(normalize(brand)) ? 20 : 30;
+const campaignDiscount = brand => normalize(brand) === 'MIZUNO' ? 40 : ['TOPPER', 'MUNICH', 'JOMA', 'EVERLAST'].includes(normalize(brand)) ? 20 : 30;
 const isMizunoMorelia = p => normalize(p.brand) === 'MIZUNO' && /\bMORELIA\s+(SALA\s+PRO|II\s+PRO)\b/.test(normalize(p.name));
 function isFootwear(p) {
   const name = normalize(p.name);

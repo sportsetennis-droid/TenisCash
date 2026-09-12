@@ -42,6 +42,9 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     : /CAMPO/.test(modality) ? ['FUTEBOL DE CAMPO','']
     : /TREINO|MUSCULACAO|CROSS/.test(modality) ? ['PARA TREINO',''] : null);
   const assets = path.join(__dirname, '../../assets');
+  if (brand === 'EVERLAST' && offer.discountPercent === 20) {
+    return drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h);
+  }
   doc.save();
   const canvasHeight = Math.round(1060 * h / w);
   const addedHeight = canvasHeight - 1484;
@@ -111,3 +114,45 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
 }
 
 module.exports = { drawEverlastLabel };
+
+// Owner-approved Everlast revision: no percentage headline; larger old/new prices.
+function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) {
+  doc.save().translate(x, y).scale(w / 1060, h / 1484);
+  const artwork = path.join(assets, 'logos/everlast-headline30-template.png');
+  function band(sourceTop, sourceHeight, top, height) {
+    const scale = height / sourceHeight;
+    doc.save().rect(0, top, 1060, height).clip();
+    doc.image(artwork, 0, top - sourceTop * scale, { width: 1060, height: 1484 * scale });
+    doc.restore();
+  }
+  band(0, 330, 0, 330);
+  band(330, 350, 330, 230);
+  doc.fillColor('#FFFFF5').rect(0, 560, 1060, 840).fill();
+  band(1245, 239, 1400, 84);
+  doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
+  const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
+  function text(value, left, top, width, size, font, color, align = 'left') {
+    doc.font(font).fontSize(size);
+    while (doc.widthOfString(value) > width && size > 12) doc.fontSize(--size);
+    doc.fillColor(color).text(value, left, top, {width, height:400, lineBreak:false, align});
+  }
+  text('BAIXOU', 45, -10, 970, 290, 'EverlastAnton', '#FFFFFF', 'center');
+  text(model, 55, 575, 950, 64, bold, '#EA3F0A', 'center');
+  if (usage) {
+    text(usage[0], 55, 655, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+    text(usage[1], 55, 765, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
+  }
+  doc.strokeColor('#EA3F0A').lineWidth(4).moveTo(0,900).lineTo(1060,900).stroke();
+  const money = value => Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  text('DE R$ ' + money(offer.basePrice), 60, 930, 940, 125, bold, '#E93E09');
+  const [whole, cents] = money(offer.finalPrice).split(',');
+  text('POR', 60, 1130, 145, 65, 'EverlastAnton', '#E93E09');
+  text('R$', 60, 1230, 145, 65, 'EverlastAnton', '#E93E09');
+  doc.save().translate(215,1070).scale(1.2,1);
+  text(whole, 0, 0, 470, 260, 'EverlastAnton', '#E93E09');
+  doc.restore();
+  text(',' + cents, 795, 1110, 215, 150, 'EverlastAnton', '#E93E09');
+  text('VEM PARA SPORTS & TENNIS', 45, 1410, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
+  doc.restore();
+  return true;
+}
