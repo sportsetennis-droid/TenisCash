@@ -13,7 +13,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     ? { active: true, discountPercent: discount, basePrice: baseCents / 100, finalPrice: promoCents / 100 } : null;
   const offer = campaignBrand ? reebokOffer : item.paymentOffer;
   if ((!campaignBrand && brand !== 'EVERLAST')
-      || !offer?.active || ![20,30,40].includes(offer.discountPercent)
+      || !offer?.active || (!(brand === 'EVERLAST' && offer.fixedPrice) && ![20,30,40].includes(offer.discountPercent))
       || !(offer.basePrice > 0) || !(offer.finalPrice > 0)) return false;
   const model = require('./campaignLabelModel').campaignLabelModel(item);
   const usageByModel = {
@@ -42,7 +42,7 @@ function drawEverlastLabel(doc, item, x, y, w, h) {
     : /CAMPO/.test(modality) ? ['FUTEBOL DE CAMPO','']
     : /TREINO|MUSCULACAO|CROSS/.test(modality) ? ['PARA TREINO',''] : null);
   const assets = path.join(__dirname, '../../assets');
-  if (brand === 'EVERLAST' && offer.discountPercent === 20) {
+  if (brand === 'EVERLAST' && (offer.discountPercent === 20 || offer.fixedPrice)) {
     return drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h);
   }
   doc.save();

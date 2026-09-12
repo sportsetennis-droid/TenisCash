@@ -19,6 +19,9 @@ async function main() {
     assert.equal(offer.installments, undefined);
   }
   for (const bad of [0, -1, NaN, Infinity, undefined]) assert.throws(() => calculateOffer(bad));
+  for (const [name, expected] of [['CLIMBER PRO 3',299.99],['NEW YORK',199.99],['SOLO',179.99],['FORCEKNIT LOW',239.99]]) {
+    assert.equal(calculateOffer(399.99, 'TENIS '+name+' PRETO').finalPrice, expected);
+  }
   const original = { id: 'one', brand: 'Everlast', name: 'TENIS EVERLAST SOLO', price: 229.89, promoPrice: 100, aiContext: { supplier: { name: 'NESK' }, classification: 'training' } };
   let rows = [structuredClone(original)];
   const prisma = { $transaction: async fn => fn({ product: {
@@ -29,7 +32,7 @@ async function main() {
   assert.equal(rows[0].price, original.price);
   assert.deepEqual(rows[0].aiContext.supplier, original.aiContext.supplier);
   assert.equal(rows[0].aiContext.classification, 'training');
-  assert.equal(productOffer(rows[0]).finalPrice, 183.91);
+  assert.equal(productOffer(rows[0]).finalPrice, 179.99);
   const first = structuredClone(rows);
   await applyOffer(prisma);
   assert.deepEqual(rows, first, 'reapplying must not compound discounts');
