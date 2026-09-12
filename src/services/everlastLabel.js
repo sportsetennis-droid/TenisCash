@@ -127,8 +127,8 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   }
   band(0, 330, 0, 330);
   band(330, 350, 330, 230);
-  doc.fillColor('#FFFFF5').rect(0, 560, 1060, 780).fill();
-  band(1245, 239, 1340, 144);
+  doc.fillColor('#FFFFF5').rect(0, 560, 1060, 740).fill();
+  band(1245, 239, 1300, 184);
   doc.registerFont('EverlastAnton', path.join(assets, 'fonts/Anton-Regular.ttf'));
   const bold = doc._tenisLabelFonts ? 'TenisInterBold' : 'Helvetica-Bold';
   function text(value, left, top, width, size, font, color, align = 'left') {
@@ -136,7 +136,7 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
     while (doc.widthOfString(value) > width && size > 12) doc.fontSize(--size);
     doc.fillColor(color).text(value, left, top, {width, height:400, lineBreak:false, align});
   }
-  text('BAIXOU', 45, -10, 970, 290, 'EverlastAnton', '#FFFFFF', 'center');
+  text('BAIXOU', 45, -55, 970, 340, 'EverlastAnton', '#FFFFFF', 'center');
   text(model, 55, 575, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
     text(usage[0], 55, 655, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
@@ -146,15 +146,17 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   const money = value => Number(value).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
   text('DE R$ ' + money(offer.basePrice), 60, 930, 940, 125, bold, '#E93E09');
   const [whole, cents] = money(offer.finalPrice).split(',');
-  text('POR', 60, 1070, 145, 65, 'EverlastAnton', '#E93E09');
-  text('R$', 60, 1170, 145, 65, 'EverlastAnton', '#E93E09');
-  doc.save().translate(215,1010).scale(1.2,1);
+  text('POR', 60, 1030, 145, 65, 'EverlastAnton', '#E93E09');
+  text('R$', 60, 1130, 145, 65, 'EverlastAnton', '#E93E09');
+  doc.save().translate(215,970).scale(1.2,1);
   text(whole, 0, 0, 470, 260, 'EverlastAnton', '#E93E09');
   const wholeWidth = doc.widthOfString(whole) * 1.2;
   doc.restore();
-  text(',' + cents, 215 + wholeWidth, 1050, 215, 150, 'EverlastAnton', '#E93E09');
+  text(',' + cents, 215 + wholeWidth, 1010, 215, 150, 'EverlastAnton', '#E93E09');
   // Keep the full footer text at least 2 mm above the physical cut boundary.
-  text('VEM PARA SPORTS & TENNIS', 45, 1340, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
+  doc.font('EverlastAnton').fontSize(64);
+  const footerTop = 1300 + (184 - doc.currentLineHeight()) / 2;
+  text('VEM PARA SPORTS & TENNIS', 45, footerTop, 970, 64, 'EverlastAnton', '#FFFFFF', 'center');
   doc.restore();
   return true;
 }
