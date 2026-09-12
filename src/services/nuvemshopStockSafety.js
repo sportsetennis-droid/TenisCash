@@ -49,11 +49,25 @@ async function applyOrderStock(prisma, order, { saleId, allowLegacy = false } = 
         const code = String(item.sku || item.barcode || '').trim();
         const quantity = Number(item.quantity);
         if (!Number.isInteger(quantity) || quantity <= 0) throw new Error(`Quantidade inválida no pedido ${id}`);
-        const variantMapping = item.variant_id ? await tx.nuvemshopVariantMapping.findFirst({
+        const variantMappings = item.variant_id ? await tx.nuvemshopVariantMapping.findMany({
           where: { nuvemshopVariantId: String(item.variant_id) },
-        }) : null;
-        const matches = variantMapping ? await tx.productSize.findMany({ where: { id: variantMapping.localInventoryId } })
-          : code ? await tx.productSize.findMany({ where: { barcode: code } }) : [];
+        }) : [];
+        let matches = variantMappings.length ? await tx.productSize.findMany({
+          where: { id: { in: [...new Set(variantMappings.map(mapping => mapping.localInventoryId))] } },
+        }) : code ? await tx.productSize.findMany({ where: { barcode: code } }) : [];
+        // Older storefront variants use reference-size instead of an EAN.
+        // Resolve only inside the exact mapped product; never infer a size by
+        // splitting arbitrary codes or by matching a similar product name.
+        if (!matches.length && item.product_id) {
+          const mappings = await tx.nuvemshopProductMapping.findMany({
+            where: { nuvemshopProductId: String(item.product_id) },
+          });
+          const products = await tx.product.findMany({
+            where: { id: { in: mappings.map(mapping => mapping.localProductId) } }, include: { sizes: true },
+          });
+          matches = products.flatMap(product => (product.sizes || []).filter(size =>
+            code && (code === `${product.sku}-${size.size}` || code === size.barcode)));
+        }
         if (matches.length !== 1) throw new Error(`Pedido ${order.number || id}: SKU ${code || item.variant_id} sem tamanho único confirmado`);
         const rows = await tx.storeStock.findMany({ where: { productSizeId: matches[0].id, stock: { gt: 0 } } });
         rows.sort((a, b) => Number(b.storeId === preferred?.id) - Number(a.storeId === preferred?.id) || b.stock - a.stock);

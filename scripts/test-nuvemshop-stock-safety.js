@@ -16,7 +16,9 @@ function database(initialStock = 5, mapping = null) {
             upsert: async ({ update, create }) => { draft.mapping = draft.mapping ? { ...draft.mapping, ...update } : create; },
           },
           store: { findFirst: async () => ({ id: 'store' }) },
-          nuvemshopVariantMapping: { findFirst: async () => null },
+          nuvemshopVariantMapping: { findMany: async () => [] },
+          nuvemshopProductMapping: { findMany: async () => [{ localProductId: 'product' }] },
+          product: { findMany: async () => [{ sku: 'REF', sizes: [{ id: 'size', size: '41' }] }] },
           productSize: { findMany: async ({ where }) => where.barcode === 'EAN' ? [{ id: 'size' }] : [] },
           storeStock: {
             findMany: async () => [{ id: 'stock', storeId: 'store', stock: draft.stock }],
@@ -62,6 +64,9 @@ function database(initialStock = 5, mapping = null) {
   const unmapped = database();
   await assert.rejects(applyOrderStock(unmapped, { ...order, products: [{ sku: 'UNKNOWN', quantity: 1 }] }), /confirmado/);
   assert.equal(unmapped.data.stock, 5);
+  const reference = database();
+  await applyOrderStock(reference, { ...order, products: [{ sku: 'REF-41', quantity: 1, product_id: 123 }] });
+  assert.equal(reference.data.stock, 4, 'reference-size resolves only within mapped product');
   const pending = database();
   await applyOrderStock(pending, { ...order, payment_status: 'pending' });
   await applyOrderStock(pending, order);
