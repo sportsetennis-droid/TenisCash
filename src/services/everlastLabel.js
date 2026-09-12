@@ -136,7 +136,10 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
     while (doc.widthOfString(value) > width && size > 12) doc.fontSize(--size);
     doc.fillColor(color).text(value, left, top, {width, height:400, lineBreak:false, align});
   }
+  // Preserve the large headline width while reserving clear space above the logo.
+  doc.save().translate(0,20).scale(1,0.82);
   text('BAIXOU', 45, -55, 970, 340, 'EverlastAnton', '#FFFFFF', 'center');
+  doc.restore();
   text(model, 55, 575, 950, 64, bold, '#EA3F0A', 'center');
   if (usage) {
     text(usage[0], 55, 655, 950, 104, 'EverlastAnton', '#EA3F0A', 'center');
