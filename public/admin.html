@@ -1997,7 +1997,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   <div class="section-head">
     <span class="section-title">Etiquetas</span>
     <button type="button" class="refresh-btn" id="labels-refresh">↻</button>
-    <button type="button" class="btn" id="labels-everlast-offer">Aplicar oferta Everlast: 20% — etiqueta BAIXOU</button>
+    <button type="button" class="btn" id="labels-everlast-offer">Aplicar preços aprovados Everlast — etiqueta BAIXOU</button>
     <span id="labels-everlast-status" role="status" style="font-size:12px"></span>
   </div>
   <!-- Barra de busca padrão -->
@@ -10239,7 +10239,7 @@ async function labelsGenerateAutomatic() {
 }
 async function initLabelsTab() {
   api('/admin/labels/everlast-payment-offer').then(result => {
-    if (!result.error) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta de 20% na etiqueta 5×7: BAIXOU.` + (result.withoutPrice?.length ? ` Sem preço normal (${result.withoutPrice.length}): ${result.withoutPrice.map(p => p.name).join('; ')}` : '');
+    if (!result.error) document.getElementById('labels-everlast-status').textContent = `${result.configured}/${result.total} Everlast com oferta configurada na etiqueta 5×7: BAIXOU.` + (result.withoutPrice?.length ? ` Sem preço normal (${result.withoutPrice.length}): ${result.withoutPrice.map(p => p.name).join('; ')}` : '');
   }).catch(() => {});
   if (!_labelsInit) {
     _labelsInit = true;
@@ -10251,7 +10251,7 @@ async function initLabelsTab() {
       try {
         const result = await api('/admin/labels/everlast-payment-offer', 'POST', {});
         if (result.error) throw new Error(result.error);
-        status.textContent = `${result.updated} produtos atualizados. Etiqueta 5×7: BAIXOU, preços maiores e desconto de 20%.`;
+        status.textContent = `${result.updated} produtos atualizados. Etiqueta 5×7: BAIXOU, preços maiores e valores aprovados por modelo.`;
         if (result.skipped?.length) status.textContent += ` Sem preço normal (${result.skipped.length}): ${result.skipped.map(p => p.name).join('; ')}`;
         await labelsSearchProducts();
       } catch (e) { status.textContent = 'Oferta não aplicada: ' + e.message; }

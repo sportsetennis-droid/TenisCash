@@ -16,7 +16,7 @@ function calculateOffer(price, name = "") {
     : /\bSOLO\b/i.test(name) ? 17999
     : /\bFORCEKNIT\b/i.test(name) ? 23999 : null;
   const finalCents = fixed ?? Math.round(baseCents * 80 / 100);
-  if (finalCents >= baseCents) throw new Error('Oferta deve ser menor que o preÁo normal');
+  if (finalCents >= baseCents) throw new Error('Oferta deve ser menor que o pre√ßo normal');
   return {
     id: OFFER_ID, active: true, basePrice: baseCents / 100,
     fixedPrice: fixed !== null, discountPercent: fixed === null ? 20 : Math.round((1 - finalCents / baseCents) * 10000) / 100, finalPrice: finalCents / 100,
