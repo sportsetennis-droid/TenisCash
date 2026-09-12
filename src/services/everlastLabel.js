@@ -130,9 +130,8 @@ function drawEverlastBaixou(doc, item, offer, model, usage, assets, x, y, w, h) 
   band(0, 330, 0, 330);
   if (String(item.brand).toUpperCase() === 'REEBOK') {
     band(0, 330, 330, 230);
-    doc.image(path.join(assets, 'logos/brands/reebok-white.png'), 145, 395, { width:180 });
-    doc.font('Helvetica-BoldOblique').fontSize(125).fillColor('#FFFFFF')
-      .text('Reebok', 350, 390, { width:610, height:160, lineBreak:false });
+    doc.image(path.join(assets, 'logos/brands/reebok-white.png'), 80, 410, { width:185 });
+    doc.image(path.join(assets, 'logos/brands/reebok-wordmark-white.png'), 300, 390, { width:680 });
   } else {
     band(330, 350, 330, 230);
   }
