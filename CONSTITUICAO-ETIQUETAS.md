@@ -63,3 +63,15 @@ Todas as etiquetas promocionais desta campanha devem mostrar apenas **BAIXOU**, 
 Atualização de ordem visual aprovada por Douglas — 12/09/2026: BAIXOU → preços DE e POR (promocional muito grande) → marca → modelo → funcionalidade → convite. Preços imediatamente abaixo de BAIXOU. Preservar 5 × 7 cm, 16 posições e espaçamento entre os valores.
 
 Preços centralizados: linha DE centralizada; conjunto POR/R$ + valor promocional + centavos centralizado pela largura total, sem espaço antes da vírgula.
+
+## Modelo oficial: Etiqueta padrão de desconto
+
+Aprovado expressamente por Douglas em 12/09/2026. Sempre que ele pedir “etiqueta padrão de desconto”, “etiqueta de desconto” ou etiquetas promocionais, usar este modelo aprovado para todas as marcas, sem redesenhar:
+
+- Ordem: BAIXOU → preço original DE centralizado e sem traço → preço promocional POR/R$ muito grande e conjunto centralizado → logo oficial da marca → modelo → funcionalidade aprovada → VEM PARA SPORTS & TENNIS centralizado.
+- Não mostrar porcentagem. Manter separação clara entre os preços e centavos unidos à vírgula.
+- Fundo predominantemente laranja, área dos preços clara, texto branco no laranja, conforme a referência aprovada.
+- Dimensão 5 × 7 cm; 16 posições por A4; duas etiquetas por modelo e cor, sem multiplicar por tamanho ou cadastro.
+- Referência visual aprovada: `output/reebok-precos-centralizados.png` na raiz desta área de trabalho. Implementação aprovada: commit `99fda4f`, `src/services/everlastLabel.js`.
+- Mudar apenas os dados próprios do produto e sua marca. Aplicar os preços expressamente autorizados; o modelo visual não autoriza criar descontos.
+- A aprovação do padrão não autoriza reimprimir material anterior. Conservar os arquivos dos lotes já enviados e reconciliar o saldo antes de nova impressão.
