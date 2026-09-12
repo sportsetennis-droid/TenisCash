@@ -84,3 +84,8 @@ A captura de Douglas mostrou fundos laranja ausentes no leitor Adobe, embora out
 
 Por ordem de Douglas, em todas as cores: Centrale 199,00; Essenziale 199,00; Giove 189,00; Illusione 129,00; Leggenda 199,00; Marino 119,00; Modena 129,00; Monza 139,00; Playmaker 199,00; Saga 129,00; Sforza 239,00; Stratus II 199,00; Vulcano II 199,00. Preservar os preços originais DE. Não aplicar mais 30% sobre esses preços finais. Não autoriza impressão.
 
+
+## Everlast com centavos 00 — 12/09/2026
+
+Douglas determinou zerar somente os centavos dos preços finais: Blazer 199,00; Climber Pro 3 299,00; Climber Run 239,00; Climber Ultra 399,00; Forceknit Low 239,00; New York 199,00; Ring 4 223,00; Solo 179,00; Station 3 199,00. Preservar preços originais DE e o padrão oficial. Não autoriza reimpressão.
+

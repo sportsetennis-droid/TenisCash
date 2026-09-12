@@ -11,10 +11,15 @@ function contextOf(product) {
 function calculateOffer(price, name = "") {
   const baseCents = Math.round(Number(price) * 100);
   if (!Number.isSafeInteger(baseCents) || baseCents <= 0) throw new Error('Preço normal inválido');
-  const fixed = /\bCLIMBER\s+PRO\b/i.test(name) ? 29999
-    : /\bNEW\s+YORK\b/i.test(name) ? 19999
-    : /\bSOLO\b/i.test(name) ? 17999
-    : /\bFORCEKNIT\b/i.test(name) ? 23999 : null;
+  // Douglas: keep the approved integer amount and set final-price cents to 00.
+  const fixed = /\bCLIMBER\s+PRO\b/i.test(name) ? 29900
+    : /\bNEW\s+YORK\b/i.test(name) ? 19900
+    : /\bSOLO\b/i.test(name) ? 17900
+    : /\bFORCEKNIT\b/i.test(name) ? 23900
+    : /\b(?:STATION|BLAZER)\b/i.test(name) ? 19900
+    : /\bCLIMBER\s+RUN\b/i.test(name) ? 23900
+    : /\bCLIMBER\s+ULTRA\b/i.test(name) ? 39900
+    : /\bRING\s+(?:4|IV)\b/i.test(name) ? 22300 : null;
   const finalCents = fixed ?? Math.round(baseCents * 80 / 100);
   if (finalCents >= baseCents) throw new Error('Oferta deve ser menor que o preço normal');
   return {
