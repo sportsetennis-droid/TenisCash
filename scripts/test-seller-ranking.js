@@ -34,9 +34,11 @@ async function run(query, role = 'admin') {
   const context = {
     ...require('../src/services/rankingCommission'),
     ...require('../src/services/salesVisibility'),
+    ...require('../src/services/rankingOwner'),
     Date: FixedDate, console, sellerOnly() {},
     router: { get(_url, _middleware, fn) { handler = fn; } },
     prisma: {
+      config: { findUnique: async () => null },
       sale: { groupBy: async () => sales, findMany: async ({where}) => sales
         .filter(s => where.sellerId.in.includes(s.sellerId))
         .map(s => ({sellerId:s.sellerId, storeId:'a', totalAmount:s._sum.totalAmount,

@@ -1029,7 +1029,7 @@
   <!-- RANKING -->
   <div class="page" id="page-ranking">
     <h2 class="page-title">Ranking de vendas</h2>
-    <p class="page-subtitle">Ordenado por valor de vendas. Hoje inclui todos os vendedores ativos que bateram entrada e ainda não registraram saída, inclusive no intervalo e mesmo sem vendas.</p>
+    <p class="page-subtitle">Ordenado por valor de vendas. Hoje inclui o proprietário e os vendedores ativos que bateram entrada e ainda não registraram saída, inclusive no intervalo e mesmo sem vendas.</p>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -1274,6 +1274,11 @@ async function _bioRevealButtons() {
 }
 
 function logout() {
+  _canCorrectSales = false;
+  ++_salesRequestId;
+  clearTimeout(_salesLoadTimer);
+  window._salesById = {};
+  closeSaleModal();
   localStorage.removeItem('loja_token');
   localStorage.removeItem('loja_activeStore');
   token = null; me = null; activeStore = null;
@@ -1825,6 +1830,7 @@ function setSalesRange(range) {
 
 let _salesLoadTimer;
 let _salesRequestId = 0;
+let _canCorrectSales = false;
 function refreshVisibleSales() {
   if (token && activeStore?.id && !document.hidden && document.getElementById('page-dashboard')?.classList.contains('show') && !document.getElementById('saleModalOverlay')) loadSalesList();
 }
@@ -1833,6 +1839,7 @@ window.addEventListener('focus', refreshVisibleSales);
 document.addEventListener('visibilitychange', refreshVisibleSales);
 async function loadSalesList() {
   const requestId = ++_salesRequestId;
+  _canCorrectSales = false;
   clearTimeout(_salesLoadTimer);
   _salesLoadTimer = setTimeout(async () => {
     const params = [];
@@ -1850,6 +1857,7 @@ async function loadSalesList() {
     try {
       const d = await api('/api/seller/sales?' + params.join('&'));
       if (requestId !== _salesRequestId) return;
+      _canCorrectSales = d.canCorrectSales === true;
       d.sales = (d.sales || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.id).localeCompare(String(a.id)));
       window._salesById = {}; (d.sales || []).forEach(s => { window._salesById[s.id] = s; });
       // KPIs
@@ -1891,7 +1899,7 @@ async function loadSalesList() {
                   <td>
                     <div class="row">
                       <div class="avatar avatar-sm ${avatarColor(s.sellerName)}">${initials(s.sellerName)}</div>
-                      <div><div style="font-weight:600;font-size:13px;">${s.sellerName}</div></div>
+                      <div><div style="font-weight:600;font-size:13px;">${s.sellerName}</div>${_canCorrectSales && s.status === 'completed' ? `<button type="button" onclick="event.stopPropagation();openSaleSellerCorrection('${s.id}')" style="margin-top:5px;padding:5px 8px;background:#fff;color:#9e350d;border:1px solid #c96c43;border-radius:6px;font-size:12px;cursor:pointer;">Corrigir vendedor</button>` : ''}</div>
                     </div>
                   </td>
                   <td style="font-size:12px;">${itemsLabel || '—'}</td>
@@ -1923,6 +1931,8 @@ function showSaleDetail(saleId) {
   const quando = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const itensHtml = (s.items || []).map(i => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;"><span>${i.quantity}x ${i.productName}</span><span>${fmt(i.unitPrice * i.quantity)}</span></div>`).join('');
   const pay = PAY[s.paymentMethod] || s.paymentMethod || '—';
+  const sellerCorrectionBlock = _canCorrectSales && s.status === 'completed'
+    ? `<div id="saleSellerCorrection" style="margin-top:12px;color:#1d1d1f;"><button type="button" onclick="openSaleSellerCorrection('${s.id}')" style="width:100%;padding:12px;background:#fff;color:#9e350d;border:1px solid #c96c43;border-radius:8px;font-weight:700;cursor:pointer;">Corrigir vendedor</button></div>` : '';
   const f = s.fiscal;
   const isCardPix = ['credit_card', 'debit_card', 'pix'].includes(s.paymentMethod);
   let fiscalBlock;
@@ -1939,11 +1949,78 @@ function showSaleDetail(saleId) {
   }
   const ov = document.createElement('div');
   ov.id = 'saleModalOverlay';
+  ov.dataset.saleId = s.id;
   const _center = window.innerWidth >= 900; // PC do caixa = centro da tela; celular = gaveta embaixo
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;display:flex;align-items:' + (_center ? 'center' : 'flex-end') + ';justify-content:center;' + (_center ? 'padding:24px;' : '');
   ov.onclick = (e) => { if (e.target === ov) closeSaleModal(); };
   ov.innerHTML = `<div style="background:#fff;border-radius:${_center ? '18px' : '18px 18px 0 0'};max-width:480px;width:100%;max-height:88vh;overflow:auto;padding:18px;${_center ? 'box-shadow:0 18px 60px rgba(0,0,0,.35);' : ''}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-weight:800;font-size:17px;">Venda #${s.id.slice(0, 8)}</div><button onclick="closeSaleModal()" style="background:#eee;border:none;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;">×</button></div><div style="font-size:12px;color:#6e6e73;margin-bottom:8px;">${quando} · ${s.sellerName || ''} · ${pay}</div><div style="border-top:1px solid #eee;border-bottom:1px solid #eee;padding:8px 0;">${itensHtml || '<span style="color:#999">sem itens</span>'}</div><div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;padding:10px 0;"><span>Total</span><span style="color:#E5571E;">${fmt(s.totalAmount)}</span></div>${fiscalBlock}</div>`;
+  if (sellerCorrectionBlock) ov.firstElementChild.insertAdjacentHTML('beforeend', sellerCorrectionBlock);
+  ov.firstElementChild.style.color = '#1d1d1f';
   document.body.appendChild(ov);
+}
+
+async function openSaleSellerCorrection(saleId) {
+  if (!_canCorrectSales) return;
+  if (document.getElementById('saleModalOverlay')?.dataset.saleId !== saleId) showSaleDetail(saleId);
+  const area = document.getElementById('saleSellerCorrection');
+  if (!area) return;
+  area.textContent = 'Carregando vendedores…';
+  try {
+    const data = await api('/api/seller/sale/' + encodeURIComponent(saleId) + '/seller-correction');
+    if (!area.isConnected) return;
+    area.innerHTML = `<form id="saleSellerCorrectionForm" style="border:1px solid #ddd;border-radius:10px;padding:12px;color:#1d1d1f;background:#fff;">
+      <div style="font-weight:800;margin-bottom:8px;">Corrigir vendedor</div>
+      <div style="font-size:13px;margin-bottom:10px;">Vendedor atual: <strong>${escPreco(data.sale.sellerName)}</strong></div>
+      <label for="saleCorrectSeller" style="display:block;font-size:13px;margin-bottom:4px;">Vendedor correto</label>
+      <select id="saleCorrectSeller" required style="width:100%;padding:10px;color:#1d1d1f;background:#fff;border:1px solid #999;border-radius:8px;">
+        <option value="">Escolha o vendedor</option>
+        ${data.sellers.filter(seller => seller.id !== data.sale.sellerId).map(seller => `<option value="${escPreco(seller.id)}">${escPreco(seller.name)}</option>`).join('')}
+      </select>
+      <label for="saleCorrectionReason" style="display:block;font-size:13px;margin:10px 0 4px;">Motivo da correção</label>
+      <textarea id="saleCorrectionReason" required minlength="3" maxlength="500" rows="2" placeholder="Ex.: vendedor selecionado por engano" style="width:100%;padding:10px;color:#1d1d1f;background:#fff;border:1px solid #999;border-radius:8px;resize:vertical;"></textarea>
+      <div id="saleCorrectionMessage" role="status" aria-live="polite" style="font-size:13px;margin-top:8px;"></div>
+      <button id="saleCorrectionSave" type="submit" style="width:100%;margin-top:10px;padding:12px;background:#a83a11;color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer;">Salvar correção</button>
+    </form>`;
+    area.querySelector('form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const sellerSelect = area.querySelector('#saleCorrectSeller');
+      const reasonInput = area.querySelector('#saleCorrectionReason');
+      const button = area.querySelector('#saleCorrectionSave');
+      const message = area.querySelector('#saleCorrectionMessage');
+      const reason = reasonInput.value.trim();
+      if (!sellerSelect.value || reason.length < 3) {
+        message.style.color = '#a61b1b';
+        message.textContent = 'Escolha o vendedor e informe o motivo da correção.';
+        return;
+      }
+      const selectedName = sellerSelect.options[sellerSelect.selectedIndex].textContent;
+      button.disabled = sellerSelect.disabled = reasonInput.disabled = true;
+      button.textContent = 'Salvando…';
+      message.textContent = '';
+      try {
+        await api('/api/seller/sale/' + encodeURIComponent(saleId) + '/seller-correction', {
+          method: 'POST', body: JSON.stringify({ sellerId: sellerSelect.value, expectedSellerId: data.sale.sellerId, reason }),
+        });
+        if (area.isConnected) {
+          area.innerHTML = '<div role="status" style="padding:12px;border:1px solid #0a843d;border-radius:8px;color:#086c32;background:#effaf3;">Vendedor corrigido para <strong>' + escPreco(selectedName) + '</strong>.</div>';
+          const summary = document.getElementById('saleModalOverlay')?.firstElementChild?.children[1];
+          if (summary) summary.textContent = summary.textContent.replace(data.sale.sellerName, selectedName);
+        }
+        loadDashboard();
+        // A tela do ranking consulta novamente as vendas ao abrir.
+      } catch (error) {
+        if (!area.isConnected) return;
+        message.style.color = '#a61b1b';
+        message.textContent = error.message;
+        button.disabled = sellerSelect.disabled = reasonInput.disabled = false;
+        button.textContent = 'Salvar correção';
+      }
+    });
+    area.scrollIntoView({ block: 'nearest' });
+    area.querySelector('#saleCorrectSeller').focus();
+  } catch (error) {
+    if (area.isConnected) { area.style.color = '#a61b1b'; area.textContent = error.message; }
+  }
 }
 
 function reprintSale(documentId) {

@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { roleAfterStoreAssignment } = require('../services/sellerRole');
+const { OWNER_RECORD_KEY } = require('../services/rankingOwner');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -587,6 +588,10 @@ router.get('/brands', async (req, res) => {
 router.post('/config', async (req, res) => {
   try {
     const { key, value } = req.body;
+    // A identidade auditada do titular não é uma preferência editável.
+    if (key === OWNER_RECORD_KEY) {
+      return res.status(403).json({ error: 'O registro interno do proprietário não pode ser alterado por configurações.' });
+    }
     const config = await prisma.config.upsert({
       where: { key },
       create: { key, value: String(value) },

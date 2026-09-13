@@ -12,6 +12,8 @@ const storeRadio = require('../services/storeRadio');
 const { commissionWindow, calculateRankingCommissions } = require('../services/rankingCommission');
 
 const { salesVisibility } = require('../services/salesVisibility');
+const { getRankingOwner } = require('../services/rankingOwner');
+const { correctSaleSeller } = require('../services/saleSellerCorrection');
 
 const router = express.Router();
 
@@ -1440,10 +1442,68 @@ router.get('/sales', sellerOnly, async (req, res) => {
     };
 
     res.set('Cache-Control', 'private, no-store');
-    res.json({ sales: enriched, totals });
+    const owner = await getRankingOwner(prisma);
+    res.json({ sales: enriched, totals, canCorrectSales: owner?.id === req.userId });
   } catch (err) {
     console.error('Erro /sales:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================================
+// CORREÇÃO DO VENDEDOR — exclusiva do titular identificado no servidor
+// =====================================================================
+router.get('/sale/:id/seller-correction', sellerOnly, async (req, res) => {
+  try {
+    const owner = await getRankingOwner(prisma);
+    if (!owner || owner.id !== req.userId) {
+      return res.status(403).json({ error: 'Somente o proprietário pode corrigir o vendedor de uma venda.' });
+    }
+    const sale = await prisma.sale.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, sellerId: true, storeId: true, status: true,
+        seller: { select: { name: true } } },
+    });
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
+    if (sale.status !== 'completed' || !sale.storeId) {
+      return res.status(409).json({ error: 'A correção exige uma venda concluída e vinculada a uma loja.' });
+    }
+    const sellers = await prisma.user.findMany({
+      where: { active: true, OR: [
+        { role: 'seller', OR: [{ storeId: sale.storeId }, { storeIds: { has: sale.storeId } }] },
+        { id: owner.id },
+      ] },
+      select: { id: true, name: true }, orderBy: { name: 'asc' },
+    });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ sale: { id: sale.id, sellerId: sale.sellerId, sellerName: sale.seller.name }, sellers });
+  } catch (err) {
+    console.error('Erro carregar correção de vendedor:', err);
+    return res.status(500).json({ error: 'Não foi possível carregar os vendedores. Tente novamente.' });
+  }
+});
+
+router.post('/sale/:id/seller-correction', sellerOnly, async (req, res) => {
+  try {
+    const owner = await getRankingOwner(prisma);
+    if (!owner || owner.id !== req.userId) {
+      return res.status(403).json({ error: 'Somente o proprietário pode corrigir o vendedor de uma venda.' });
+    }
+    const body = req.body || {};
+    if (Object.keys(body).some(key => !['sellerId', 'expectedSellerId', 'reason'].includes(key))) {
+      return res.status(400).json({ error: 'Esta opção corrige somente o vendedor responsável.' });
+    }
+    const result = await correctSaleSeller(prisma, {
+      ownerId: req.userId, saleId: req.params.id,
+      sellerId: body.sellerId, expectedSellerId: body.expectedSellerId, reason: body.reason,
+    });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json(result);
+  } catch (err) {
+    console.error('Erro corrigir vendedor:', err);
+    return res.status(err.statusCode || 500).json({
+      error: err.statusCode ? err.message : 'Não foi possível salvar a correção. Recarregue a venda e tente novamente.',
+    });
   }
 });
 
@@ -1511,6 +1571,14 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       cashbackGiven: Math.round(salesAgg.reduce((sum, row) => sum + (row._sum.tcEarned || 0), 0) * 100) / 100,
     };
 
+    // O titular participa em qualquer período, sem depender de ponto de funcionário.
+    const owner = await getRankingOwner(prisma);
+    const ownerSales = owner && salesAgg.find(row => row.sellerId === owner.id);
+    const ownerStore = owner && storeId ? await prisma.store.findUnique({
+      where: { id: storeId }, select: { id: true, name: true, code: true },
+    }) : null;
+    if (owner && storeId && !ownerStore) return res.status(400).json({ error: 'Loja não encontrada.' });
+
     // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
     // Leia todos os pontos antes de filtrar a loja: uma saída em outra loja
     // também encerra a disponibilidade. O intervalo mantém o vendedor no ranking.
@@ -1547,6 +1615,12 @@ router.get('/rankings', sellerOnly, async (req, res) => {
       });
     }
 
+    if (owner && !salesAgg.some(row => row.sellerId === owner.id)) {
+      salesAgg.push(ownerSales || {
+        sellerId: owner.id, _count: { _all: 0 }, _sum: { totalAmount: 0, tcEarned: 0, tcUsed: 0 },
+      });
+    }
+
     // Nomes + loja dos vendedores
     const sellerIds = salesAgg.map(s => s.sellerId);
     // Metas mensais por vendedor somam todas as lojas. O valor exibido respeita
@@ -1571,7 +1645,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
 
     const ranking = salesAgg.map((s, i) => {
       const u = sellerMap.get(s.sellerId);
-      const store = attendanceStoreBySeller.get(s.sellerId) || u?.store;
+      const store = (s.sellerId === owner?.id && ownerStore) || attendanceStoreBySeller.get(s.sellerId) || u?.store;
       const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
         clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, totalAt1Percent: 0,
         totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [] };
