@@ -11,7 +11,11 @@ function validateSimpleJourney(journey, sale) {
   if ([journey.createdAt, journey.startedAt].some(value => !value || !Number.isFinite(new Date(value).getTime()))) {
     fail(409, 'As datas deste ciclo estão inválidas e precisam ser conferidas antes da troca.');
   }
-  if (journey.status !== 'ACTIVE' || Number(journey.reversedAmount || 0) !== 0
+  const expectedStatus = sale.status === 'pending_payment' ? 'PENDING_PAYMENT' : 'ACTIVE';
+  if (journey.status !== expectedStatus) {
+    fail(409, 'A situação do ciclo não corresponde à situação do pagamento da venda. Atualize a lista antes de corrigir.');
+  }
+  if (Number(journey.reversedAmount || 0) !== 0
     || journey.completedAt || journey.canceledAt || journey.cancellationReason) {
     fail(409, 'O ciclo desta venda já foi encerrado ou estornado e precisa de correção específica.');
   }
@@ -46,7 +50,13 @@ function validateSimpleJourney(journey, sale) {
 }
 
 function saleInfo(sale, sellerId = sale.sellerId) {
-  return { id: sale.id, sellerId, storeId: sale.storeId, totalAmount: sale.totalAmount };
+  return { id: sale.id, sellerId, storeId: sale.storeId, totalAmount: sale.totalAmount, status: sale.status };
+}
+
+function attributionSnapshot(sale, sellerId = sale.sellerId) {
+  return { sellerId, status: sale.status, totalAmount: sale.totalAmount, discount: sale.discount,
+    paymentMethod: sale.paymentMethod, pagbankOrderId: sale.pagbankOrderId,
+    tcUsed: sale.tcUsed, tcEarned: sale.tcEarned };
 }
 
 async function correctSaleSeller(prisma, { ownerId, saleId, sellerId, expectedSellerId, reason } = {}) {
@@ -74,7 +84,9 @@ async function correctSaleSeller(prisma, { ownerId, saleId, sellerId, expectedSe
       });
       if (!sale) fail(404, 'Venda não encontrada.');
       if (sale.sellerId !== expectedSellerId) fail(409, 'O vendedor desta venda mudou. Atualize a lista antes de corrigir.');
-      if (sale.status !== 'completed') fail(409, 'A troca de vendedor está disponível apenas para vendas concluídas.');
+      if (!['completed', 'pending_payment'].includes(sale.status)) {
+        fail(409, 'A troca de vendedor está disponível apenas para vendas concluídas ou com pagamento pendente.');
+      }
       if (!sale.storeId) fail(409, 'Esta venda não tem loja vinculada. Confira a loja antes de trocar o vendedor.');
       if (!sale.createdAt || !Number.isFinite(new Date(sale.createdAt).getTime())) {
         fail(409, 'A data desta venda está inválida e precisa ser conferida antes da troca.');
@@ -124,7 +136,7 @@ async function correctSaleSeller(prisma, { ownerId, saleId, sellerId, expectedSe
       }
 
       const changed = await tx.sale.updateMany({
-        where: { id: sale.id, sellerId: expectedSellerId, status: 'completed' },
+        where: { id: sale.id, sellerId: expectedSellerId, status: sale.status },
         data: { sellerId: target.id },
       });
       if (changed.count !== 1) fail(409, 'A venda mudou durante a correção. Atualize a lista e tente novamente.');
@@ -147,9 +159,11 @@ async function correctSaleSeller(prisma, { ownerId, saleId, sellerId, expectedSe
           sale: { ...sale, sellerId: target.id }, sellerId: target.id, storeId: sale.storeId,
           customer: { id: journey.customerUserId, name: journey.customerName, phone: journey.customerPhone },
         });
-        await tx.sellerCommissionJourney.update({
+        // Reassignment never activates a payment-pending cycle. The payment
+        // confirmation webhook remains responsible for that transition.
+        replacement = await tx.sellerCommissionJourney.update({
           where: { id: replacement.id },
-          data: { startedAt: journey.startedAt || sale.createdAt, createdAt: journey.createdAt || sale.createdAt },
+          data: { status: journey.status, startedAt: journey.startedAt || sale.createdAt, createdAt: journey.createdAt || sale.createdAt },
         });
       }
 
@@ -159,19 +173,19 @@ async function correctSaleSeller(prisma, { ownerId, saleId, sellerId, expectedSe
           description: `Vendedor responsável corrigido: ${correctionReason}`,
           metadata: JSON.stringify({
             saleId: sale.id, storeId: sale.storeId, reason: correctionReason,
-            before: { sellerId: sale.sellerId }, after: { sellerId: target.id },
+            before: attributionSnapshot(sale), after: attributionSnapshot(sale, target.id),
             commissions: commissions.map(item => ({ id: item.id, sellerId: item.sellerId, amount: item.amount, pct: item.pct, status: item.status })),
             relationshipBefore: journey ? {
               id: journey.id, sellerId: journey.sellerId, cycleNumber: journey.cycleNumber,
               purchasePosition: journey.purchasePosition, basePct: journey.basePct,
-              currentPct: journey.currentPct, earnedAmount: journey.earnedAmount,
+              currentPct: journey.currentPct, earnedAmount: journey.earnedAmount, status: journey.status,
               startedAt: journey.startedAt, createdAt: journey.createdAt,
               stages: journey.stages.map(stage => ({ id: stage.id, key: stage.key, status: stage.status,
                 targetPct: stage.targetPct, amount: stage.amount, completedById: stage.completedById, completedAt: stage.completedAt })),
             } : null,
             relationshipAfter: replacement ? { id: replacement.id, sellerId: replacement.sellerId,
               cycleNumber: replacement.cycleNumber, purchasePosition: replacement.purchasePosition,
-              basePct: replacement.basePct, earnedAmount: replacement.earnedAmount } : null,
+              basePct: replacement.basePct, earnedAmount: replacement.earnedAmount, status: replacement.status } : null,
           }),
         },
       });

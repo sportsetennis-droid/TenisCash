@@ -1465,8 +1465,8 @@ router.get('/sale/:id/seller-correction', sellerOnly, async (req, res) => {
         seller: { select: { name: true } } },
     });
     if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
-    if (sale.status !== 'completed' || !sale.storeId) {
-      return res.status(409).json({ error: 'A correção exige uma venda concluída e vinculada a uma loja.' });
+    if (!['completed', 'pending_payment'].includes(sale.status) || !sale.storeId) {
+      return res.status(409).json({ error: 'A correção exige uma venda concluída ou aguardando pagamento, vinculada a uma loja.' });
     }
     const sellers = await prisma.user.findMany({
       where: { active: true, OR: [
@@ -1476,7 +1476,7 @@ router.get('/sale/:id/seller-correction', sellerOnly, async (req, res) => {
       select: { id: true, name: true }, orderBy: { name: 'asc' },
     });
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ sale: { id: sale.id, sellerId: sale.sellerId, sellerName: sale.seller.name }, sellers });
+    return res.json({ sale: { id: sale.id, sellerId: sale.sellerId, sellerName: sale.seller.name, status: sale.status }, sellers });
   } catch (err) {
     console.error('Erro carregar correção de vendedor:', err);
     return res.status(500).json({ error: 'Não foi possível carregar os vendedores. Tente novamente.' });

@@ -91,6 +91,12 @@ function database(initial = fixture(), behavior = {}) {
           updateMany: async ({ where, data }) => {
             assert.deepEqual(Object.keys(data), ['sellerId']);
             if (behavior.saleConflict) return { count: 0 };
+            if (behavior.paymentCompletes) {
+              // Model a real payment confirmation committed after the service
+              // read the pending sale. Its status must not be overwritten.
+              state.sales.find(row => row.id === where.id).status = 'completed';
+              next.sales.find(row => row.id === where.id).status = 'completed';
+            }
             const rows = next.sales.filter(row => matches(row, where));
             for (const row of rows) Object.assign(row, copy(data));
             return { count: rows.length };
@@ -173,6 +179,31 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
   assert.equal(metadata.before.sellerId, 'old');
   assert.equal(metadata.after.sellerId, 'new');
   assert.equal(metadata.reason, input.reason);
+  for (const key of ['status', 'totalAmount', 'discount', 'paymentMethod', 'pagbankOrderId', 'tcUsed', 'tcEarned']) {
+    assert.equal(metadata.before[key], initial.sales[0][key]);
+    assert.equal(metadata.after[key], initial.sales[0][key]);
+  }
+  assert.equal(result.sale.status, 'completed');
+
+  // A pending PIX sale can be reassigned without creating an order, charging,
+  // confirming payment, changing amounts or issuing a fiscal document.
+  for (const pagbankOrderId of [null, 'existing-order']) {
+    const pending = fixture();
+    pending.sales[0].status = 'pending_payment';
+    pending.sales[0].pagbankOrderId = pagbankOrderId;
+    pending.fiscal = [];
+    const pendingDb = database(pending);
+    const pendingResult = await correctSaleSeller(pendingDb, { ...input, sellerId: 'owner' });
+    assert.equal(pendingResult.sale.status, 'pending_payment');
+    assert.deepEqual(pendingDb.state.sales, pending.sales.map(sale => ({ ...sale, sellerId: 'owner' })));
+    assert.deepEqual(pendingDb.state.commissions, pending.commissions.map(item => ({ ...item, sellerId: 'owner' })));
+    for (const key of ['stock', 'fiscal', 'wallets', 'transactions', 'clients', 'users']) assert.deepEqual(pendingDb.state[key], pending[key]);
+    const pendingAudit = JSON.parse(pendingDb.state.audits[0].metadata);
+    for (const key of ['status', 'totalAmount', 'discount', 'paymentMethod', 'pagbankOrderId', 'tcUsed', 'tcEarned']) {
+      assert.equal(pendingAudit.before[key], pending.sales[0][key]);
+      assert.equal(pendingAudit.after[key], pending.sales[0][key]);
+    }
+  }
 
   const ownerTarget = database();
   await correctSaleSeller(ownerTarget, { ...input, sellerId: 'owner' });
@@ -193,7 +224,7 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
   await rejected(400, undefined, { sellerId: 'missing' });
   await rejected(404, undefined, { saleId: 'missing' });
   await rejected(409, undefined, { expectedSellerId: 'someone-else' });
-  for (const status of ['canceled', 'pending_payment']) await rejected(409, state => { state.sales[0].status = status; });
+  for (const status of ['canceled', 'refunded', 'draft']) await rejected(409, state => { state.sales[0].status = status; });
   await rejected(409, state => { state.sales[0].storeId = null; }, { sellerId: 'owner' });
   await rejected(409, state => { state.sales[0].createdAt = 'invalid date'; });
   for (const status of ['paid', 'approved', 'canceled']) await rejected(409, state => { state.commissions[0].status = status; });
@@ -202,6 +233,11 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
   await rejected(409, undefined, {}, { saleConflict: true });
   await rejected(409, undefined, {}, { commissionConflict: true });
   await rejected(409, undefined, {}, { serializationFailure: true });
+  const pendingRace = fixture(); pendingRace.sales[0].status = 'pending_payment';
+  const pendingRaceDb = database(pendingRace, { paymentCompletes: true });
+  await assert.rejects(correctSaleSeller(pendingRaceDb, input), error => error.statusCode === 409);
+  const paymentConfirmed = copy(pendingRace); paymentConfirmed.sales[0].status = 'completed';
+  assert.deepEqual(pendingRaceDb.state, paymentConfirmed, 'Keep concurrent payment confirmation, with attribution/commissions/audit rolled back');
   for (const overrides of [{ reason: ' ' }, { reason: 'a'.repeat(501) }, { expectedSellerId: '' }, { saleId: [] }]) {
     await rejected(400, undefined, overrides);
   }
@@ -235,6 +271,39 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
   assert.equal(cycleAudit.relationshipBefore.id, oldJourney.id);
   assert.equal(cycleAudit.relationshipBefore.stages.length, oldJourney.purchasePosition === 1 ? relationship.RULES[1].length : 0);
   assert.equal(cycleAudit.relationshipAfter.id, rebuilt.id);
+  assert.equal(cycleAudit.relationshipBefore.status, 'ACTIVE');
+  assert.equal(cycleAudit.relationshipAfter.status, 'ACTIVE');
+  // Rebuilding a pristine pending journey preserves its payment gate and dates.
+  const pendingCycle = fixture();
+  pendingCycle.sales[0].status = 'pending_payment';
+  pendingCycle.sales[0].pagbankOrderId = null;
+  const oldPendingJourney = copy(addJourney(pendingCycle, { status: 'PENDING_PAYMENT' }));
+  addJourney(pendingCycle, { id: 'prior-pending-target', saleId: 'older-sale', sellerId: 'new', createdAt: new Date('2026-09-10T12:00:00Z') });
+  const pendingCycleDb = database(pendingCycle);
+  const pendingCycleResult = await correctSaleSeller(pendingCycleDb, input);
+  const rebuiltPending = pendingCycleDb.state.journeys.find(journey => journey.saleId === 'sale');
+  assert.equal(pendingCycleResult.sale.status, 'pending_payment');
+  assert.equal(rebuiltPending.status, 'PENDING_PAYMENT');
+  assert.equal(rebuiltPending.sellerId, 'new');
+  assert.equal(rebuiltPending.purchasePosition, 2);
+  assert.equal(rebuiltPending.earnedAmount, 13.5);
+  assert.deepEqual(rebuiltPending.createdAt, oldPendingJourney.createdAt);
+  assert.deepEqual(rebuiltPending.startedAt, oldPendingJourney.startedAt);
+  assert.deepEqual(pendingCycleDb.state.sales, pendingCycle.sales.map(sale => ({ ...sale, sellerId: 'new' })));
+  const pendingCycleAudit = JSON.parse(pendingCycleDb.state.audits[0].metadata);
+  assert.equal(pendingCycleAudit.relationshipBefore.status, 'PENDING_PAYMENT');
+  assert.equal(pendingCycleAudit.relationshipAfter.status, 'PENDING_PAYMENT');
+  // The existing webhook helper still finds the replacement by the unchanged
+  // sale ID; only a subsequent, separately verified payment may activate it.
+  const webhookCopy = copy(pendingCycleDb.state);
+  await relationship.activateJourneyAfterPayment({ sellerCommissionJourney: { updateMany: async ({ where, data }) => {
+    const rows = webhookCopy.journeys.filter(row => matches(row, where));
+    rows.forEach(row => Object.assign(row, data));
+    return { count: rows.length };
+  } } }, 'sale');
+  assert.equal(webhookCopy.journeys.find(journey => journey.saleId === 'sale').status, 'ACTIVE');
+  assert.equal(webhookCopy.journeys.find(journey => journey.saleId === 'sale').sellerId, 'new');
+  assert.equal(pendingCycleDb.state.journeys.find(journey => journey.saleId === 'sale').status, 'PENDING_PAYMENT');
   const firstAgain = fixture(); addJourney(firstAgain, { purchasePosition: 2 });
   const firstAgainDb = database(firstAgain);
   await correctSaleSeller(firstAgainDb, input);
@@ -247,6 +316,8 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
     state => { state.sales[0].referralCommissionStage = { id: 'incoming-stage' }; },
     state => { addJourney(state).referralCode = { id: 'origin-code' }; },
     state => { addJourney(state).status = 'COMPLETED'; },
+    state => { addJourney(state).status = 'PENDING_PAYMENT'; },
+    state => { state.sales[0].status = 'pending_payment'; addJourney(state); },
     state => { addJourney(state).reversedAmount = 1; },
     state => { addJourney(state).earnedAmount = 11; },
     state => { addJourney(state).baseAmount = 1000; },
@@ -267,6 +338,14 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
       { reviewedAt: saleDate }, { submittedAt: saleDate }, { completedById: 'old' }, { customerInteracted: true }]
       .map(fields => state => { addJourney(state); Object.assign(state.stages[1], fields); }),
   ]) await rejected(409, change);
+  for (const change of [
+    state => { state.commissions[0].status = 'paid'; },
+    state => { state.commissions[0].paidAt = saleDate; },
+    state => { state.sales[0].referralCode = 'PENDING-REFERRAL'; },
+    state => { addJourney(state, { status: 'PENDING_PAYMENT' }).referralCode = { id: 'pending-origin' }; },
+    state => { addJourney(state, { status: 'PENDING_PAYMENT' }); state.stages[1].evidence = [{ id: 'proof' }]; },
+    state => { addJourney(state, { status: 'PENDING_PAYMENT' }); state.stages[1].status = 'SUBMITTED'; },
+  ]) await rejected(409, state => { state.sales[0].status = 'pending_payment'; change(state); });
   for (const sellerId of ['old', 'new']) {
     for (const status of ['ACTIVE', 'COMPLETED', 'PENDING_PAYMENT']) {
       await rejected(409, state => {
@@ -274,10 +353,21 @@ async function rejected(statusCode, change = () => {}, overrides = {}, behavior 
         addJourney(state, { id: 'later', saleId: 'later-sale', sellerId, status, createdAt: new Date('2026-09-12T12:00:00Z') });
       });
     }
+    await rejected(409, state => {
+      state.sales[0].status = 'pending_payment';
+      addJourney(state, { status: 'PENDING_PAYMENT' });
+      addJourney(state, { id: 'later-pending', saleId: 'later-sale', sellerId, status: 'PENDING_PAYMENT',
+        createdAt: new Date('2026-09-12T12:00:00Z') });
+    });
   }
   const journeyRollback = fixture(); addJourney(journeyRollback);
   const journeyRollbackDb = database(journeyRollback, { auditFailure: true });
   await assert.rejects(correctSaleSeller(journeyRollbackDb, input), /Audit failed/);
   assert.deepEqual(journeyRollbackDb.state, journeyRollback);
-  console.log('PASS: owner-only correction, targets, immutable sale values, pending commissions, audit/rollback, concurrency and pristine relationship cycles; paid/manual/referral dependencies blocked');
+  journeyRollback.sales[0].status = 'pending_payment';
+  journeyRollback.journeys[0].status = 'PENDING_PAYMENT';
+  const pendingRollbackDb = database(journeyRollback, { auditFailure: true });
+  await assert.rejects(correctSaleSeller(pendingRollbackDb, input), /Audit failed/);
+  assert.deepEqual(pendingRollbackDb.state, journeyRollback);
+  console.log('PASS: owner-only correction of completed/pending sales, unchanged payment/fiscal/stock, status-aware concurrency, pending cycle preservation, audit/rollback and blocked paid/manual/referral dependencies');
 })().catch(error => { console.error(error); process.exitCode = 1; });

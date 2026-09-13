@@ -145,31 +145,59 @@ async function checkFrontend() {
   const grants = [...html.matchAll(/_canCorrectSales\s*=(?!=)([^;]+);/g)].map(match => match[1].trim());
   assert.ok(grants.includes('d.canCorrectSales === true'));
   assert.ok(grants.every(value => ['false', 'd.canCorrectSales === true'].includes(value)), 'Only a server boolean may grant correction access');
-  assert.match(listSource, /_canCorrectSales && s\.status === 'completed'/);
-  assert.match(detailSource, /_canCorrectSales && s\.status === 'completed'/);
+  const detailPermission = detailSource.match(/const sellerCorrectionBlock = ([^\n]+)\n/)?.[1];
+  assert.ok(detailPermission, 'Missing correction permission in sale details');
+  for (const allowed of [false, true]) {
+    for (const status of ['completed', 'pending_payment', 'canceled', 'unknown']) {
+      const expected = allowed && ['completed', 'pending_payment'].includes(status);
+      assert.equal(vm.runInNewContext(detailPermission, { _canCorrectSales: allowed, s: { status } }), expected,
+        'Sale detail button: ' + allowed + '/' + status);
+      let pendingLoad;
+      const elements = Object.fromEntries(['salesFilterVendor', 'salesFilterFrom', 'salesFilterTo', 'salesFilterQ', 'salesTotals', 'salesList']
+        .map(id => [id, { value: '', innerHTML: '' }]));
+      const renderedSale = { ...fixtureSale, status, sellerName: 'Ana', fiscal: null };
+      const listSandbox = {
+        _salesRequestId: 0, _canCorrectSales: false, _salesLoadTimer: null, activeStore: { id: 'a' }, window: {},
+        clearTimeout() {}, setTimeout(callback) { pendingLoad = Promise.resolve().then(callback); return 1; },
+        document: { getElementById(id) { return elements[id]; } },
+        fmt: value => String(value), initials: () => 'A', avatarColor: () => '',
+        api: async () => ({ canCorrectSales: allowed, sales: [renderedSale], totals: { count: 1, totalAmount: 100, tcEarned: 0 } }),
+      };
+      vm.createContext(listSandbox);
+      vm.runInContext(listSource, listSandbox);
+      await listSandbox.loadSalesList();
+      await pendingLoad;
+      assert.doesNotMatch(elements.salesList.innerHTML, /Erro:/, 'Sale list must render');
+      assert.equal(elements.salesList.innerHTML.includes('Corrigir vendedor'), expected,
+        'Sale list button: ' + allowed + '/' + status);
+      if (status === 'pending_payment') assert.match(elements.salesList.innerHTML, /[Pp]agamento pendente/);
+      assert.equal(renderedSale.status, status, 'Rendering must not confirm a pending payment');
+    }
+  }
   assert.match(correctionSource, /if \(!_canCorrectSales\) return;/);
   assert.doesNotMatch(correctionSource, /me\.role|userRole|superadmin/);
 
-  for (const allowed of [false, true]) {
+  for (const [allowed, status] of [[false, 'completed'], [false, 'pending_payment'], [true, 'completed'], [true, 'pending_payment']]) {
     let submit, dashboardReloads = 0;
     const apiCalls = [];
     const selectedName = 'Bia <img src=x onerror=alert(1)> & "Loja"';
     const currentName = 'Ana <script>alert(1)</script>';
     const targetId = 'additional" onfocus="alert(1)';
     const fields = {
-      '#saleCorrectSeller': { value: targetId, options: [{ textContent: selectedName }], selectedIndex: 0 },
+      '#saleCorrectSeller': { value: targetId, options: [{ textContent: selectedName }], selectedIndex: 0, focus() {} },
       '#saleCorrectionReason': { value: '  Vendedor selecionado por engano  ' },
       '#saleCorrectionSave': { style: {} }, '#saleCorrectionMessage': { style: {}, textContent: '' },
     };
     const summary = { textContent: currentName + ' · Dinheiro' };
     const area = {
-      isConnected: true, innerHTML: '', textContent: '', style: {},
+      isConnected: true, innerHTML: '', textContent: '', style: {}, scrollIntoView() {},
       querySelector(selector) {
         if (selector === 'form') return { addEventListener(event, handler) { assert.equal(event, 'submit'); submit = handler; } };
         return fields[selector];
       },
     };
     const overlay = { dataset: { saleId: 'sale/a' }, firstElementChild: { children: [null, summary] } };
+    const currentSale = { sellerId: 'primary', sellerName: currentName, status };
     const sandbox = {
       _canCorrectSales: allowed,
       document: { getElementById(id) { return id === 'saleModalOverlay' ? overlay : id === 'saleSellerCorrection' ? area : null; } },
@@ -178,7 +206,7 @@ async function checkFrontend() {
       api: async (url, options) => {
         apiCalls.push({ url, options });
         if (options) return { ok: true };
-        return { sale: { sellerId: 'primary', sellerName: currentName }, sellers: [
+        return { sale: currentSale, sellers: [
           { id: 'primary', name: currentName }, { id: targetId, name: selectedName },
         ] };
       },
@@ -192,6 +220,8 @@ async function checkFrontend() {
       continue;
     }
     assert.equal(apiCalls[0].url, '/api/seller/sale/sale%2Fa/seller-correction');
+    assert.equal(area.innerHTML.includes('Pagamento pendente'), status === 'pending_payment',
+      'Correction form must identify a pending payment');
     assert.ok(area.innerHTML.includes('Ana &lt;script&gt;alert(1)&lt;/script&gt;'));
     assert.ok(area.innerHTML.includes('Bia &lt;img src=x onerror=alert(1)&gt; &amp; &quot;Loja&quot;'));
     assert.ok(area.innerHTML.includes('value="additional&quot; onfocus=&quot;alert(1)"'));
@@ -203,6 +233,8 @@ async function checkFrontend() {
     assert.deepEqual(JSON.parse(apiCalls[1].options.body), {
       sellerId: targetId, expectedSellerId: 'primary', reason: 'Vendedor selecionado por engano',
     });
+    assert.equal(apiCalls.length, 2, 'Correction must not call a payment or fiscal endpoint');
+    assert.equal(currentSale.status, status, 'Correction UI must preserve the payment state');
     assert.doesNotMatch(area.innerHTML, /<img /);
     assert.ok(area.innerHTML.includes('&lt;img'));
     assert.equal(dashboardReloads, 1);
@@ -274,12 +306,15 @@ async function checkOwnerRecordImmutability() {
     assert.equal(list.result.canCorrectSales, false, 'Invalid identity must never grant UI permission');
   }
 
-  const options = await request('GET', correctionRoute, 'owner');
-  assert.equal(options.status, 200);
-  assert.deepEqual(Array.from(options.result.sellers, seller => seller.id).sort(), ['additional', 'owner', 'primary']);
-  assert.deepEqual(JSON.parse(JSON.stringify(options.result.sale)), { id: 'sale-a', sellerId: 'primary', sellerName: 'Ana' });
-  assert.equal(options.headers['Cache-Control'], 'private, no-store');
-  for (const [sale, expectedStatus] of [[null, 404], [{ status: 'canceled' }, 409], [{ status: 'pending_payment' }, 409], [{ storeId: null }, 409]]) {
+  for (const status of ['completed', 'pending_payment']) {
+    const options = await request('GET', correctionRoute, 'owner', { sale: { status } });
+    assert.equal(options.status, 200, status);
+    assert.deepEqual(Array.from(options.result.sellers, seller => seller.id).sort(), ['additional', 'owner', 'primary']);
+    assert.deepEqual(JSON.parse(JSON.stringify(options.result.sale)), { id: 'sale-a', sellerId: 'primary', sellerName: 'Ana', status });
+    assert.equal(options.headers['Cache-Control'], 'private, no-store');
+    for (const user of fixtureUsers.filter(user => user.id !== 'owner')) await assertDenied(user.id, { sale: { status } });
+  }
+  for (const [sale, expectedStatus] of [[null, 404], [{ status: 'canceled' }, 409], [{ status: 'unknown' }, 409], [{ storeId: null }, 409]]) {
     const response = await request('GET', correctionRoute, 'owner', { sale });
     assert.equal(response.status, expectedStatus);
     assert.equal(response.calls.userLists, 0, 'Invalid sale must not enumerate replacement sellers');
@@ -317,5 +352,5 @@ async function checkOwnerRecordImmutability() {
   assert.doesNotMatch(unexpected.result.error, /internal database secret/);
   await checkFrontend();
   await checkOwnerRecordImmutability();
-  console.log('PASS: canonical owner correction routes, denied identities before sale/service access, store-linked options, request whitelist, server-only UI permission, escaped correction form and immutable owner record; no real sale modified');
+  console.log('PASS: canonical owner correction routes, completed/pending status and UI eligibility, payment state preserved, denied identities before sale/service access, store-linked options, request whitelist, escaped form and immutable owner record; no real sale modified');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1899,7 +1899,7 @@ async function loadSalesList() {
                   <td>
                     <div class="row">
                       <div class="avatar avatar-sm ${avatarColor(s.sellerName)}">${initials(s.sellerName)}</div>
-                      <div><div style="font-weight:600;font-size:13px;">${s.sellerName}</div>${_canCorrectSales && s.status === 'completed' ? `<button type="button" onclick="event.stopPropagation();openSaleSellerCorrection('${s.id}')" style="margin-top:5px;padding:5px 8px;background:#fff;color:#9e350d;border:1px solid #c96c43;border-radius:6px;font-size:12px;cursor:pointer;">Corrigir vendedor</button>` : ''}</div>
+                      <div><div style="font-weight:600;font-size:13px;">${s.sellerName}</div>${s.status === 'pending_payment' ? '<div style="margin-top:4px;font-size:12px;color:#805000;">Pagamento pendente</div>' : ''}${_canCorrectSales && ['completed', 'pending_payment'].includes(s.status) ? `<button type="button" onclick="event.stopPropagation();openSaleSellerCorrection('${s.id}')" style="margin-top:5px;padding:5px 8px;background:#fff;color:#9e350d;border:1px solid #c96c43;border-radius:6px;font-size:12px;cursor:pointer;">Corrigir vendedor</button>` : ''}</div>
                     </div>
                   </td>
                   <td style="font-size:12px;">${itemsLabel || '—'}</td>
@@ -1931,7 +1931,7 @@ function showSaleDetail(saleId) {
   const quando = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const itensHtml = (s.items || []).map(i => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;"><span>${i.quantity}x ${i.productName}</span><span>${fmt(i.unitPrice * i.quantity)}</span></div>`).join('');
   const pay = PAY[s.paymentMethod] || s.paymentMethod || '—';
-  const sellerCorrectionBlock = _canCorrectSales && s.status === 'completed'
+  const sellerCorrectionBlock = _canCorrectSales && ['completed', 'pending_payment'].includes(s.status)
     ? `<div id="saleSellerCorrection" style="margin-top:12px;color:#1d1d1f;"><button type="button" onclick="openSaleSellerCorrection('${s.id}')" style="width:100%;padding:12px;background:#fff;color:#9e350d;border:1px solid #c96c43;border-radius:8px;font-weight:700;cursor:pointer;">Corrigir vendedor</button></div>` : '';
   const f = s.fiscal;
   const isCardPix = ['credit_card', 'debit_card', 'pix'].includes(s.paymentMethod);
@@ -1970,6 +1970,7 @@ async function openSaleSellerCorrection(saleId) {
     if (!area.isConnected) return;
     area.innerHTML = `<form id="saleSellerCorrectionForm" style="border:1px solid #ddd;border-radius:10px;padding:12px;color:#1d1d1f;background:#fff;">
       <div style="font-weight:800;margin-bottom:8px;">Corrigir vendedor</div>
+      ${data.sale.status === 'pending_payment' ? '<div style="font-size:13px;color:#805000;margin-bottom:10px;">Pagamento pendente</div>' : ''}
       <div style="font-size:13px;margin-bottom:10px;">Vendedor atual: <strong>${escPreco(data.sale.sellerName)}</strong></div>
       <label for="saleCorrectSeller" style="display:block;font-size:13px;margin-bottom:4px;">Vendedor correto</label>
       <select id="saleCorrectSeller" required style="width:100%;padding:10px;color:#1d1d1f;background:#fff;border:1px solid #999;border-radius:8px;">
