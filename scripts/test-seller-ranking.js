@@ -101,10 +101,12 @@ async function run(query, role = 'admin') {
 
   // Exercise actual rendering: the fifth seller with zero sales must appear.
   const html = fs.readFileSync(path.join(root, 'public/loja.html'), 'utf8');
-  const renderStart = html.indexOf('async function loadRanking()');
-  const renderEnd = html.indexOf('\n}', renderStart) + 2;
-  const elements = { rankStore: { value: 'a' }, rankPeriod: { value: 'today' }, rankingTable: {}, rankingTotals: {} };
-  const ui = { document: { getElementById: id => elements[id] }, api: async () => result,
+  const renderStart = html.indexOf('// ============== RANKING ==============');
+  const renderEnd = html.indexOf('// ============== CRM ==============', renderStart);
+  assert.ok(renderStart > 0 && renderEnd > renderStart, 'Actual ranking script must be extracted');
+  const elements = { rankStore: { value: 'a' }, rankPeriod: { value: 'today' }, rankingTable: {}, rankingTotals: {}, rankRefresh: {}, rankRefreshStatus: {} };
+  const ui = { document: { getElementById: id => elements[id], addEventListener() {} }, api: async () => result,
+    window: { addEventListener() {} }, setInterval() {}, token: 'seller-ranking-fixture',
     fmt: n => String(n), escPreco: value => String(value), avatarColor: () => '', initials: name => name, console };
   vm.createContext(ui);
   vm.runInContext(html.slice(renderStart, renderEnd), ui);

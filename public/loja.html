@@ -70,7 +70,7 @@
   .err.show { display: block; }
 
   /* Top bar */
-  .topbar { background: white; border-bottom: 1px solid var(--border-soft); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+  .topbar { background: white; color: var(--text); border-bottom: 1px solid var(--border-soft); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
   .topbar-left { display: flex; align-items: center; gap: 14px; }
   .topbar-logo { font-weight: 800; color: var(--primary); font-size: 20px; letter-spacing: -0.5px; }
   .topbar-store { font-size: 12px; color: var(--text-muted); }
@@ -1061,11 +1061,13 @@
     </div>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="btn btn-small btn-secondary" id="rankRefresh" onclick="loadRanking()">Atualizar</button>
       <button class="btn btn-small" id="rankPdfDownload" onclick="exportRankingPdf(false)">Baixar PDF</button>
       <button class="btn btn-small btn-secondary" id="rankPdfShare" onclick="exportRankingPdf(true)">Gerar e compartilhar PDF</button>
       <button class="btn btn-small btn-secondary" id="rankWhatsappGenerate" onclick="generateRankingWhatsapp()">Gerar texto para WhatsApp</button>
       <span id="rankPdfStatus" role="status" style="align-self:center;font-size:13px;"></span>
     </div>
+    <div id="rankRefreshStatus" role="status" aria-live="polite" style="font-size:13px;margin-bottom:12px;"></div>
     <div class="card" id="rankWhatsappBox" hidden style="margin-bottom:16px;">
       <label for="rankWhatsappText" style="display:block;font-weight:600;margin-bottom:8px;">Mensagem para WhatsApp</label>
       <textarea id="rankWhatsappText" readonly rows="12" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:8px;white-space:pre;overflow-x:auto;font-family:monospace;"></textarea>
@@ -1274,6 +1276,7 @@ async function _bioRevealButtons() {
 }
 
 function logout() {
+  resetRankingSession();
   _canCorrectSales = false;
   ++_salesRequestId;
   clearTimeout(_salesLoadTimer);
@@ -3396,16 +3399,62 @@ async function doClockIn(type) {
 
 // ============== RANKING ==============
 let rankInited = false;
+let rankRequestId = 0;
+let rankInFlight = null;
+let rankRenderedKey = null;
+
+function resetRankingSession() {
+  ++rankRequestId;
+  rankInFlight = null;
+  rankRenderedKey = null;
+  rankInited = false;
+  ['rankingTable', 'rankingTotals', 'rankRefreshStatus', 'rankPdfStatus', 'rankWhatsappStatus'].forEach(id => {
+    document.getElementById(id).textContent = '';
+  });
+  document.getElementById('rankWhatsappText').value = '';
+  document.getElementById('rankWhatsappBox').hidden = true;
+  document.getElementById('rankRefresh').disabled = false;
+}
+
+function rankingSelection() {
+  const storeId = document.getElementById('rankStore').value;
+  const period = document.getElementById('rankPeriod').value;
+  const from = period === 'custom' ? document.getElementById('rankFrom').value : '';
+  const to = period === 'custom' ? document.getElementById('rankTo').value : '';
+  const valid = period !== 'custom' || (!!from && !!to && from <= to);
+  const key = JSON.stringify([storeId, period, from, to]);
+  let query = `storeId=${encodeURIComponent(storeId)}&period=${encodeURIComponent(period)}`;
+  if (period === 'custom') query += `&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  return { period, key, query, valid };
+}
+
+function canRefreshVisibleRanking() {
+  return !!token && !document.hidden && document.getElementById('page-ranking')?.classList.contains('show')
+    && !document.querySelector('#rankingTable details[open], .modal-bg.show, #saleModalOverlay')
+    && document.getElementById('rankWhatsappBox').hidden
+    && !['rankPdfDownload', 'rankPdfShare', 'rankWhatsappGenerate'].some(id => document.getElementById(id).disabled);
+}
+
+function refreshVisibleRanking() {
+  if (canRefreshVisibleRanking()) return loadRanking({ silent: true });
+}
+setInterval(refreshVisibleRanking, 30000);
+window.addEventListener('focus', refreshVisibleRanking);
+document.addEventListener('visibilitychange', refreshVisibleRanking);
+
 async function initRanking() {
+  const sessionToken = token;
   if (!rankInited) {
     try {
       const d = await api('/api/seller/stores');
+      if (token !== sessionToken) return;
       const sel = document.getElementById('rankStore');
       const opts = ['<option value="all">Todas as lojas</option>'];
       (d.stores || []).forEach(s => opts.push(`<option value="${s.id}">${s.name}</option>`));
       sel.innerHTML = opts.join('');
       if (activeStore?.id) sel.value = activeStore.id;
     } catch (e) { console.error(e); }
+    if (token !== sessionToken) return;
     // Datas custom: defaults úteis
     const today = new Date();
     const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -3531,19 +3580,44 @@ async function exportRankingPdf(share) {
   finally { buttons.forEach(btn => btn.disabled = false); }
 }
 
-async function loadRanking() {
-  const storeId = document.getElementById('rankStore').value;
-  const period = document.getElementById('rankPeriod').value;
-  let qs = `storeId=${storeId}&period=${period}`;
-  if (period === 'custom') {
-    const from = document.getElementById('rankFrom').value;
-    const to = document.getElementById('rankTo').value;
-    if (!from || !to) { alert('Informe as duas datas'); return; }
-    qs += `&from=${from}&to=${to}`;
+async function loadRanking({ silent = false } = {}) {
+  if (silent && (rankInFlight || !canRefreshVisibleRanking())) return;
+  const sessionToken = token;
+  const selection = rankingSelection();
+  const requestId = ++rankRequestId;
+  const status = document.getElementById('rankRefreshStatus');
+  const button = document.getElementById('rankRefresh');
+  if (!selection.valid) {
+    if (!silent) status.textContent = 'Informe um intervalo de datas válido.';
+    return;
   }
-  document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
+  const cleared = !silent && selection.key !== rankRenderedKey;
+  if (cleared) {
+    document.getElementById('rankingTotals').innerHTML = '';
+    document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando…</p>';
+  }
+  if (!silent) status.textContent = 'Atualizando ranking…';
+  // Mudanças rápidas de filtro aguardam a consulta atual; apenas a última segue.
+  if (rankInFlight) {
+    await rankInFlight.catch(() => {});
+    if (sessionToken !== token || requestId !== rankRequestId || selection.key !== rankingSelection().key) {
+      if (requestId === rankRequestId && status.textContent === 'Atualizando ranking…') {
+        status.textContent = '';
+        if (cleared) document.getElementById('rankingTable').innerHTML = '';
+      }
+      return;
+    }
+  }
+  const { period } = selection;
+  if (!silent) button.disabled = true;
+  let request = null;
   try {
-    const d = await api('/api/seller/rankings?' + qs);
+    request = api('/api/seller/rankings?' + selection.query);
+    rankInFlight = request;
+    const d = await request;
+    if (sessionToken !== token || requestId !== rankRequestId || selection.key !== rankingSelection().key || (silent && !canRefreshVisibleRanking())) return;
+    rankRenderedKey = selection.key;
+    status.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const clothingDetails = commission => {
       const items = commission.clothingItems || [];
       if (!items.length) return '';
@@ -3657,7 +3731,19 @@ async function loadRanking() {
 
     document.getElementById('rankingTable').innerHTML = top3Html + restHtml;
   } catch (e) {
-    document.getElementById('rankingTable').innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
+    if (!silent && sessionToken === token && requestId === rankRequestId && selection.key === rankingSelection().key) {
+      status.textContent = 'Não foi possível atualizar o ranking: ' + e.message;
+      if (cleared) document.getElementById('rankingTable').innerHTML = '';
+    }
+  } finally {
+    if (rankInFlight === request) {
+      rankInFlight = null;
+      button.disabled = false;
+    }
+    if (requestId === rankRequestId && status.textContent === 'Atualizando ranking…') {
+      status.textContent = '';
+      if (cleared) document.getElementById('rankingTable').innerHTML = '';
+    }
   }
 }
 
