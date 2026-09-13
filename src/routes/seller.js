@@ -652,9 +652,11 @@ router.get('/store-sellers', sellerOnly, async (req, res) => {
     const storeId = req.query.storeId;
     if (!storeId) return res.status(400).json({ error: 'storeId é obrigatório' });
 
-    // Inclui o vendedor multi-loja: aparece na loja PRINCIPAL (storeId) E nas adicionais (storeIds).
+    // O titular pode atender em toda a rede. A lista de ponto continua só com vendedores.
+    const eligibleSellers = [{ role: 'seller', OR: [{ storeId }, { storeIds: { has: storeId } }] }];
+    if (req.query.purpose === 'sale') eligibleSellers.push({ role: 'superadmin' });
     const sellers = await prisma.user.findMany({
-      where: { role: 'seller', active: true, OR: [{ storeId }, { storeIds: { has: storeId } }] },
+      where: { active: true, OR: eligibleSellers },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, employeeCode: true },
     });
@@ -832,7 +834,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
     const seller = await prisma.user.findUnique({ where: { id: sellerId } });
     if (!seller || !seller.active) return res.status(400).json({ error: 'Operador inválido' });
     // valida perfil de vendedor só quando um vendedor foi EXPLICITAMENTE escolhido
-    if (vendorId && seller.role !== 'seller' && seller.role !== 'admin') return res.status(400).json({ error: 'Vendedor deve ter perfil de seller' });
+    if (vendorId && !['seller', 'admin', 'superadmin'].includes(seller.role)) return res.status(400).json({ error: 'Perfil inválido para atender uma venda' });
 
     // Loja ativa: enviada pelo frontend. Fallback: loja do operador.
     // Lock: conta institucional sempre vende NA PRÓPRIA loja
@@ -843,8 +845,9 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const exists = await prisma.store.findUnique({ where: { id: activeStoreId } });
       if (!exists || !exists.active) return res.status(400).json({ error: 'Loja inválida ou inativa' });
     }
-    // Vendedor escolhido precisa ser DA loja ativa (anti tunneling)
-    if (vendorId && req.scope?.isStoreLocked && seller.storeId && seller.storeId !== activeStoreId) {
+    // O titular atende em qualquer loja; demais vendedores precisam de vínculo com o caixa.
+    if (vendorId && req.scope?.isStoreLocked && seller.role !== 'superadmin'
+      && seller.storeId !== activeStoreId && !(seller.storeIds || []).includes(activeStoreId)) {
       return res.status(403).json({ error: 'Vendedor escolhido não pertence a esta loja' });
     }
 

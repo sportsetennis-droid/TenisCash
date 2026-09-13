@@ -1396,7 +1396,7 @@ function showApp() {
 async function loadVendors() {
   if (!activeStore?.id) return;
   try {
-    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
+    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id + '&purpose=sale');
     const sellers = d.sellers || [];
 
     // Select escondido (pra manter compat)
@@ -1794,7 +1794,7 @@ async function loadSalesVendors() {
   if (!activeStore?.id) return;
   try {
     const storeId = activeStore.id;
-    const d = await api('/api/seller/store-sellers?storeId=' + storeId);
+    const d = await api('/api/seller/store-sellers?storeId=' + storeId + '&purpose=sale');
     if (activeStore?.id !== storeId) return;
     const sel = document.getElementById('salesFilterVendor');
     sel.dataset.storeId = storeId;
