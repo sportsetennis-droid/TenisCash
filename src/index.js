@@ -450,6 +450,7 @@ app.use('/api/tournaments', tournamentsRoutes);
 app.use('/api/copa', copaRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/stocktake', stocktakeRoutes);
+app.use('/api/scan-transfers', require('./routes/scanTransfers'));
 app.use('/api/classification', classificationRoutes);
 app.use('/api/messages-v2', messagesV2Routes);
 app.use('/api/marketing', marketingRoutes);
@@ -592,6 +593,7 @@ app.get('/', (req, res, next) => {
   return res.sendFile(path.join(__dirname, '../public/praiadetambau.html'), { cacheControl: false });
 });
 
+app.get(['/transferencia','/transferencia/'], (_req,res)=>{res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'../public/transferencia.html'),{cacheControl:false});});
 app.use(express.static(path.join(__dirname, '../public'), {
   // ETag pro browser revalidar; imagens estáticas cacheiam normal,
   // arquivos com ?v=NNN são cacheados forever (immutable).
