@@ -38,4 +38,16 @@ function parseScannerText(value) {
     tamanho: [...sizes][0] || null, marca: brands[0] || null, source: 'tesseract-local' };
 }
 
-module.exports = { parseScannerText };
+function scannerPendingMessage(text, read, reason) {
+  if (!read) return String(text || '').trim()
+    ? 'Li texto, mas os códigos ou tamanhos ficaram ambíguos. Foto salva para conferência.'
+    : 'Não consegui extrair a referência da foto. Foto salva para conferência.';
+  const label = read.sku || read.ean || 'código';
+  const reasons = { reference_not_found: 'referência não encontrada no cadastro/NF-e',
+    size_required: 'falta confirmar o tamanho', reference_conflict: 'mais de um produto corresponde à referência',
+    barcode_conflict: 'código de barras em conflito', size_conflict: 'tamanho diferente do cadastro',
+    size_barcode_conflict: 'o tamanho já possui outro código de barras', brand_conflict: 'marca diferente do cadastro',
+    invalid_barcode: 'código de barras não validado', inactive_product: 'produto inativo', matched: 'contagem aguardando conclusão' };
+  return 'Li ' + label + (read.tamanho ? ' / ' + read.tamanho : '') + ' — ' + (reasons[reason] || 'aguardando conferência');
+}
+module.exports = { parseScannerText, scannerPendingMessage };

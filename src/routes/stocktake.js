@@ -18,7 +18,7 @@ const sharp = require('sharp');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
 const { learnScannerBarcode, validGtin } = require('../services/scannerReference');
-const { parseScannerText } = require('../services/scannerText');
+const { parseScannerText, scannerPendingMessage } = require('../services/scannerText');
 const router = express.Router();
 
 // Upload em memória pra foto de conferência (máx 12MB), comprimida com sharp -> webp base64.
@@ -834,12 +834,12 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
   }
   const mensagem = vinculado
     ? '✓ ' + (cardNome || '').slice(0, 60) + (bipesCasados ? ' — ' + bipesCasados + ' bipe(s) casaram' : ' — vinculado')
-    : (eanVisaoRejeitado
-        ? '⚠ Li "' + ((lido && (lido.nome || lido.sku)) || '?') + '" mas o código saiu duvidoso — refotografa focando o código de barras GRANDE'
-        : (lido && (lido.sku || lido.ean || lido.nome) ? '📥 Li "' + (lido.sku || lido.nome || lido.ean) + '" — guardada pra vincular' : '📥 Foto guardada — não li a etiqueta, vai pra conferência'));
+    : scannerPendingMessage(meta?.ocrText, lido, match.reason);
+  const savedRead = lido || { ocrStatus: meta?.ocrText ? 'validation_rejected' : 'no_text',
+    preview: String(meta?.ocrText || '').slice(0, 120) };
   await prisma.productCapture.update({ where: { id: capId }, data: {
     barcode: ean || null,
-    note: ('etiqueta ' + mensagem + ' ' + JSON.stringify(lido || {})).slice(0, 480),
+    note: ('etiqueta ' + mensagem + ' ' + JSON.stringify(savedRead)).slice(0, 480),
     status: vinculado ? 'vinculado' : 'pendente',
     matchedProductId: matchedProductId || null,
     resolvedAt: new Date(),

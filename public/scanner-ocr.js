@@ -38,6 +38,33 @@
     worker = null; workerPromise = null;
     if (old) await old.terminate();
   }
+  async function imageCanvas(image) {
+    if (image && typeof image.getContext === 'function') return image;
+    const img = new Image();
+    const blobURL = typeof image === 'string' ? null : URL.createObjectURL(image);
+    try {
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = blobURL || image; });
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+      canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } finally { if (blobURL) URL.revokeObjectURL(blobURL); }
+  }
+  function textCrop(canvas, region) {
+    const crop = document.createElement('canvas');
+    const scale = Math.min(region.kind === 'size' ? 4 : 2, 2000 / region.width);
+    crop.width = Math.round(region.width * scale); crop.height = Math.round(region.height * scale);
+    const ctx = crop.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(canvas, region.x, region.y, region.width, region.height, 0, 0, crop.width, crop.height);
+    const pixels = ctx.getImageData(0, 0, crop.width, crop.height);
+    window.ScannerRegions.normalizePixels(pixels.data); ctx.putImageData(pixels, 0, 0);
+    return crop;
+  }
+  function usefulReference(text) {
+    return /\b[A-Z]{2}\d{4}[- ]?\d{3}\b/i.test(text) || /\b[A-Z]{3,}-[A-Z0-9-]{3,}\b/i.test(text);
+  }
   async function recognize(image, progress) {
     clearTimeout(idleTimer);
     let deadline, expired = false;
@@ -46,7 +73,33 @@
       const work = (async () => {
         const ready = await getWorker();
         if (expired) throw new Error('Leitura local demorou demais');
-        const result = await ready.recognize(image);
+        const canvas = await imageCanvas(image);
+        const pixels = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
+        const regions = window.ScannerRegions.findRegions(pixels);
+        let best = '';
+        // Read the reference strip apart from the barcode and packaging text.
+        for (const region of regions) {
+          if (expired) throw new Error('Leitura local demorou demais');
+          const { data } = await ready.recognize(textCrop(canvas, region));
+          let text = String(data.text || '').slice(0, 3500);
+          if (data.confidence >= 40 && usefulReference(text)) {
+            if (region.kind === 'header-text') {
+              // Read the size in the same label separately; never convert AL to XL.
+              const sizeRegion = { kind: 'size', x: region.x + Math.round(region.width * .80),
+                y: region.y + Math.round(region.height * .52), width: Math.round(region.width * .20),
+                height: Math.round(region.height * .42) };
+              await ready.setParameters({ tessedit_pageseg_mode: '7' });
+              const sizeResult = await ready.recognize(textCrop(canvas, sizeRegion));
+              await ready.setParameters({ tessedit_pageseg_mode: '11' });
+              const size = String(sizeResult.data.text || '').trim().toUpperCase();
+              if (sizeResult.data.confidence >= 60 && /^(XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)$/.test(size)) text += '\n' + size;
+            }
+            if (/^\s*(?:SIZE\s+)?(?:XL|XXL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text) || /\bBR\s*\d{2}/i.test(text)) return text;
+            if (!best) best = text;
+          }
+        }
+        if (best) return best;
+        const result = await ready.recognize(canvas);
         return (result.data.confidence >= 45 ? result.data.text : '').slice(0, 4000);
       })();
       return await Promise.race([work, new Promise((_, reject) => {
@@ -73,3 +126,4 @@
   }
   window.ScannerOCR = { readForScan, recognize, stop };
 })();
+
