@@ -164,7 +164,7 @@
     </div>
   </div>
 
-<script src="/scanner-round.js?v=20260914-round-1"></script>
+<script src="/scanner-view.js?v=20260914-1"></script><script src="/scanner-round.js?v=20260914-round-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260914-worker-1"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -591,25 +591,7 @@
     const ov = document.createElement('div');
     ov.id = 'etiq-overlay';
     ov.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99998;display:flex;flex-direction:column';
-    ov.innerHTML =
-      '<div style="position:relative;flex:1;min-height:0">' +
-        '<video id="etiq-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>' +
-        '<div id="etiq-flash" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(37,211,102,.35);color:#fff;font-size:20px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.6);text-align:center;padding:20px;pointer-events:none"></div>' +
-        '<div id="etiq-hint" style="position:absolute;top:12px;left:12px;right:12px;color:#fff;font-size:14px;font-weight:800;text-shadow:0 1px 4px #000;text-align:center;pointer-events:none">Leitura automática ativa — centralize a etiqueta e mantenha parada.</div>' +
-        '<div id="etiq-confirm" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.78);padding:24px;text-align:center">' +
-          '<div id="etiq-confirm-status" style="color:#fff;font-size:26px;font-weight:900;margin-bottom:8px">⏳ Salvando…</div>' +
-          '<div id="etiq-confirm-det" style="color:#bbb;font-size:14px;font-weight:600;margin-bottom:24px;min-height:20px"></div>' +
-          '<button id="etiq-confirm-btn" data-click="next" disabled style="width:100%;max-width:340px;min-height:58px;font-size:19px;font-weight:900;background:#555;color:#fff;border:none;border-radius:14px">AGUARDE…</button>' +
-        '</div>' +
-      '</div>' +
-      '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
-        '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
-        '<div id="etiq-lista" style="max-height:90px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
-        '<div style="display:flex;gap:8px;margin-top:8px">' +
-          '<button id="etiq-capturar" data-click="capture" style="flex:2;min-height:54px;font-size:16px;font-weight:900;background:#0a84ff;color:#fff;border:none;border-radius:12px">📸 CAPTURAR MANUALMENTE</button>' +
-          '<button data-click="close" style="flex:1;min-height:54px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:12px">✕ FECHAR</button>' +
-        '</div>' +
-      '</div>';
+    ov.innerHTML = window.ScannerView.markup();
     document.body.appendChild(ov);
     renderEtiqLista();
     try {
