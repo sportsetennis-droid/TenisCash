@@ -1,9 +1,7 @@
 const path = require('path');
-const { DISCOUNTS_ENABLED } = require('./discountPolicy');
 
 // Keep 16 labels per A4; reserve footer clearance within the 5 x 7 cm format.
 function drawEverlastLabel(doc, item, x, y, w, h) {
-  if (!DISCOUNTS_ENABLED) return false;
   const brand = String(item.brand || '').trim().toUpperCase();
   const streetRide = brand === 'REEBOK' && /\bSTREET\s*RIDE\b/i.test(item.productName || item.name || '');
   const campaignBrand = streetRide || ['OUS','DIADORA','OLYMPIKUS','FILA','SPEEDO','CONVERSE','ALLSTAR','ALL STAR','JOMA','TOPPER','MUNICH','MIZUNO','KAPPA'].includes(brand);

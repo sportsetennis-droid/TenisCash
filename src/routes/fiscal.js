@@ -10,7 +10,6 @@ const path = require('node:path');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const fiscal = require('../services/fiscalApi');
 const { applyStoreStockDelta } = require('../services/storeStockLedger');
-const { normalSalePrice } = require('../services/discountPolicy');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -317,33 +316,6 @@ router.post('/troca', async (req, res) => {
     const origSale = await prisma.sale.findUnique({ where: { id: origDoc.saleId }, include: { items: true } });
     if (!origSale) return res.status(400).json({ error: 'Venda do cupom original não encontrada' });
 
-    // Retry de uma troca já gravada: validar o vínculo antes de qualquer emissão
-    // e conservar os preços históricos, mesmo após uma mudança no catálogo.
-    let devDoc = devolucaoDocId ? await prisma.fiscalDocument.findUnique({ where: { id: devolucaoDocId } }) : null;
-    if (devolucaoDocId && (!devDoc || devDoc.docType !== 'NFE' || devDoc.issuerId !== issuer.id || devDoc.status !== 'authorized'
-      || devDoc.response?.troca?.originalDocId !== originalDocId || devDoc.response?.troca?.originalSaleId !== origSale.id)) {
-      return res.status(409).json({ error: 'Devolução informada não pertence a esta troca autorizada.' });
-    }
-    let newSale = saleId ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true, stockMovements: true } }) : null;
-    if (saleId && (!devDoc || !newSale || newSale.id === origSale.id || newSale.storeId !== store.id
-      || newSale.status !== 'completed' || !newSale.items?.length || !newSale.items.every(item =>
-        newSale.stockMovements?.some(movement => movement.type === 'exchange_sale' && movement.source === 'fiscal_exchange_api'
-          && movement.storeId === store.id && movement.saleId === newSale.id && movement.saleItemId === item.id
-          && movement.productSizeId === item.productSizeId && movement.quantity === -item.quantity
-          && movement.metadata?.originalDocId === originalDocId && movement.metadata?.originalSaleId === origSale.id
-          && (!movement.metadata.devolucaoDocId || movement.metadata.devolucaoDocId === devDoc.id))))) {
-      return res.status(409).json({ error: 'Venda informada não pertence a esta troca. Nenhum valor foi alterado.' });
-    }
-    const returnedById = new Map();
-    for (const item of returned) {
-      if (returnedById.has(item.saleItemId)) return res.status(400).json({ error: 'Item devolvido repetido' });
-      returnedById.set(item.saleItemId, Number(item.qty));
-    }
-    if (devDoc && (devDoc.response.troca.returned?.length !== returnedById.size
-      || !devDoc.response.troca.returned.every(item => returnedById.get(item.saleItemId) === item.qty))) {
-      return res.status(409).json({ error: 'Os itens devolvidos diferem da devolução já autorizada.' });
-    }
-
     // ---- DEVOLVIDOS: validar contra a venda original (preço NUNCA vem do cliente) ----
     // Cap anti-dupla-troca: o já devolvido em trocas anteriores deste cupom sai do saldo.
     const prevDevs = await prisma.fiscalDocument.findMany({
@@ -351,10 +323,7 @@ router.post('/troca', async (req, res) => {
       select: { id: true, response: true },
     });
     const prevQty = {};
-    for (const d of prevDevs) {
-      if (d.id === devDoc?.id) continue;
-      for (const it of (d.response?.troca?.returned || [])) prevQty[it.saleItemId] = (prevQty[it.saleItemId] || 0) + (it.qty || 0);
-    }
+    for (const d of prevDevs) for (const it of (d.response?.troca?.returned || [])) prevQty[it.saleItemId] = (prevQty[it.saleItemId] || 0) + (it.qty || 0);
 
     const retItems = [];
     for (const r of returned) {
@@ -390,33 +359,11 @@ router.post('/troca', async (req, res) => {
         }
       }
       if (!ps?.product) return res.status(400).json({ error: 'Código ' + (n.barcode || '?') + ' não cadastrado — bipe um produto do catálogo' });
-      const price = newSale ? null : normalSalePrice(ps.product);
+      const price = (ps.product.promoPrice > 0 ? ps.product.promoPrice : ps.product.price) || 0;
+      if (price <= 0) return res.status(400).json({ error: ps.product.name + ' sem preço de venda — ajuste o preço antes de vender' });
       newResolved.push({ ps, product: ps.product, qty, price: r2(price) });
     }
-    if (newSale) {
-      const selectedBySize = new Map();
-      for (const item of newResolved) selectedBySize.set(item.ps.id, (selectedBySize.get(item.ps.id) || 0) + item.qty);
-      for (const item of newSale.items) {
-        if (!Number.isInteger(item.quantity) || item.quantity < 1 || !Number.isFinite(item.unitPrice) || item.unitPrice <= 0
-          || !Number.isFinite(item.totalPrice) || r2(item.quantity * item.unitPrice) !== r2(item.totalPrice)) {
-          return res.status(409).json({ error: 'Valores históricos da troca incompletos ou inconsistentes. Confira a venda registrada.' });
-        }
-        const selected = newResolved.find(n => n.ps.id === item.productSizeId && n.product.id === item.productId);
-        if (!selected) return res.status(409).json({ error: 'Os produtos diferem da venda já registrada nesta troca.' });
-        selectedBySize.set(item.productSizeId, selectedBySize.get(item.productSizeId) - item.quantity);
-      }
-      if ([...selectedBySize.values()].some(qty => qty !== 0)) return res.status(409).json({ error: 'As quantidades diferem da venda já registrada nesta troca.' });
-      const historicalItems = newSale.items.map(item => {
-        const selected = newResolved.find(n => n.ps.id === item.productSizeId);
-        return { ps: { ...selected.ps, size: item.size }, product: { ...selected.product, name: item.productName, brand: item.brand }, qty: item.quantity, price: item.unitPrice };
-      });
-      newResolved.splice(0, newResolved.length, ...historicalItems);
-      if (!Number.isFinite(newSale.totalAmount) || newSale.totalAmount <= 0
-        || r2(newSale.totalAmount) !== r2(newSale.items.reduce((sum, item) => sum + item.totalPrice, 0))) {
-        return res.status(409).json({ error: 'Total histórico da troca inconsistente. Confira a venda registrada.' });
-      }
-    }
-    const newTotal = newSale ? newSale.totalAmount : r2(newResolved.reduce((s, n) => s + n.qty * n.price, 0));
+    const newTotal = r2(newResolved.reduce((s, n) => s + n.qty * n.price, 0));
     const diff = r2(newTotal - returnedTotal);
     const credit = Math.min(returnedTotal, newTotal);
     const vale = diff < 0 ? r2(-diff) : 0;
@@ -446,6 +393,8 @@ router.post('/troca', async (req, res) => {
     const agentClient = require('../services/fiscalAgentClient');
 
     // ============ PASSO 1 — NFe de DEVOLUÇÃO (entrada, referencia o cupom) ============
+    let devDoc = devolucaoDocId ? await prisma.fiscalDocument.findUnique({ where: { id: devolucaoDocId } }) : null;
+    if (devDoc && (devDoc.issuerId !== issuer.id || devDoc.status !== 'authorized')) devDoc = null;
     if (!devDoc) {
       const retProdIds = retItems.map(r => r.saleItem.productId).filter(Boolean);
       const retProds = retProdIds.length ? await prisma.product.findMany({ where: { id: { in: retProdIds } } }) : [];
@@ -525,6 +474,7 @@ router.post('/troca', async (req, res) => {
     }
 
     // ============ PASSO 2 — venda nova + cupom novo (valor cheio, Crédito Loja + diferença) ============
+    let newSale = saleId ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } }) : null;
     if (!newSale) {
       newSale = await prisma.$transaction(async (tx) => {
         const created = await tx.sale.create({
@@ -546,7 +496,7 @@ router.post('/troca', async (req, res) => {
             quantity: -item.quantity,
             type: 'exchange_sale',
             source: 'fiscal_exchange_api',
-            metadata: { originalSaleId: origSale.id, originalDocId, devolucaoDocId: devDoc.id },
+            metadata: { originalSaleId: origSale.id, originalDocId },
           });
         }
         return created;
@@ -607,7 +557,7 @@ router.post('/troca', async (req, res) => {
     });
   } catch (err) {
     console.error('[fiscal/troca]', err);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 

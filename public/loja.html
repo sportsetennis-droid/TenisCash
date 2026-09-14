@@ -730,6 +730,18 @@
 
       <div class="card" style="background:linear-gradient(135deg,#fff 0%,#FFEBDC 100%);border:2px solid var(--primary-light);">
         <h3 class="section-title" style="margin-top:0;"><span class="section-title-icon">✅</span>Resumo</h3>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">🏷️ Desconto na venda</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:none;">
+              <button type="button" id="discModeRs" onclick="setDiscMode('rs')" style="padding:0 13px;height:40px;border:none;background:var(--primary);color:#fff;font-weight:800;font-size:15px;cursor:pointer;">R$</button>
+              <button type="button" id="discModePct" onclick="setDiscMode('pct')" style="padding:0 13px;height:40px;border:none;background:#fff;color:var(--text);font-weight:800;font-size:15px;cursor:pointer;">%</button>
+            </div>
+            <input type="number" id="sellDiscount" step="0.01" value="0" min="0" oninput="updateSummary()" placeholder="ex: 5,00  (R$)" style="font-size:16px;flex:1;">
+            <button type="button" onclick="limparDesc()" style="padding:0 10px;height:40px;border:1px solid var(--border);background:#fff;border-radius:8px;font-size:13px;cursor:pointer;">limpar</button>
+          </div>
+          <div id="discHelper" style="font-size:12px;color:var(--text-muted);margin-top:4px;"></div>
+        </div>
         <div id="sellSummary" style="margin-bottom:16px;"></div>
         <button class="btn" id="sellFinalize" onclick="finalizeSale()" disabled style="font-size:16px;padding:16px;">Finalizar venda</button>
       </div>
@@ -1601,9 +1613,11 @@ function fmtPrecoBRL(n) {
 function escPreco(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function precoItemHtml(p) {
+  const temPromo = p.promoPrice != null && p.price != null && p.promoPrice < p.price;
   let priceHtml;
-  if (p.price == null) priceHtml = '<div style="font-size:13px;color:#c00;font-weight:600;">sem preço</div>';
-  else priceHtml = '<div style="font-size:20px;font-weight:800;color:#1d8348;">' + fmtPrecoBRL(p.price) + '</div>';
+  if (p.price == null && p.promoPrice == null) priceHtml = '<div style="font-size:13px;color:#c00;font-weight:600;">sem preço</div>';
+  else if (temPromo) priceHtml = '<div style="font-size:12px;color:#aaa;text-decoration:line-through;">' + fmtPrecoBRL(p.price) + '</div><div style="font-size:20px;font-weight:800;color:#d70015;">' + fmtPrecoBRL(p.promoPrice) + '</div>';
+  else priceHtml = '<div style="font-size:20px;font-weight:800;color:#1d8348;">' + fmtPrecoBRL(p.price ?? p.promoPrice) + '</div>';
   const meta = [];
   if (p.brand && p.brand !== 'A DEFINIR') meta.push(escPreco(p.brand));
   if (p.ref) meta.push('REF ' + escPreco(p.ref));
@@ -1659,7 +1673,7 @@ async function carregarPrecos(reset) {
     }
 
     // PCard public: mostra preço + estoque comprado + por loja. NUNCA custo, NUNCA editar. Clique = detalhe.
-    const cardsHtml = prods.map(p => PCard.render({ ...p, promoPrice: null }, { actions: 'public', showStock: true, onClick: "showProduct('%id%')" })).join('');
+    const cardsHtml = prods.map(p => PCard.render(p, { actions: 'public', showStock: true, onClick: "showProduct('%id%')" })).join('');
     if (reset) {
       results.innerHTML = '<div id="precoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">' + cardsHtml + '</div>';
     } else {
@@ -2178,7 +2192,7 @@ async function trocaBipe() {
   try {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
     if (!(d.recognized && d.product)) { alert('Código ' + code + ' não cadastrado — produto precisa estar no catálogo.'); return; }
-    const price = d.product.price || 0;
+    const price = d.product.promoPrice || d.product.price || 0;
     if (price <= 0) { alert((d.product.name || 'Produto') + ' sem preço de venda — ajuste o preço antes.'); return; }
     let size = d.product.size || '';
     if (d.needsSize || !size) {
@@ -2408,7 +2422,7 @@ function renderSellResults() {
 
   // MESMO card da Curadoria/Preços, MAS só o estoque da loja que está vendendo (onlyStoreId).
   // Na venda não pode aparecer numeração de outra loja. Demais telas mostram todas.
-  const cards = visible.map(p => PCard.render({ ...p, promoPrice: null }, { actions: 'public', showStock: true, onlyStoreId: activeStore?.id, onClick: "addToCartById('%id%')" })).join('');
+  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onlyStoreId: activeStore?.id, onClick: "addToCartById('%id%')" })).join('');
 
   const moreBtn = remaining > 0 ? `
     <div style="grid-column:1/-1;text-align:center;padding:8px 0;">
@@ -2463,7 +2477,7 @@ async function onSellBipe() {
   try {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
     if (d.recognized && d.product) {
-      const price = d.product.price || 0;
+      const price = d.product.promoPrice || d.product.price || 0;
       const sellerSize = _promptManualSellerSize(d.product.name, d.product.size);
       if (!sellerSize) {
         msg.style.color = '#b06b00';
@@ -2531,7 +2545,7 @@ function _chooseSaleSize(p) {
 function addToCartById(productId) {
   const p = _sellSearchAll.find(x => x.id === productId);
   if (!p) return;
-  const price = p.price;
+  const price = (p.promoPrice || p.price);
   if (_pendingBarcode) {
     // vincular o código órfão bipado a este produto + tamanho
     const variant = _askSizeForBipe(p);
@@ -2626,7 +2640,10 @@ function maskCpfCnpj(el) {
 function updateSummary() {
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
-  const base = Math.round(subtotal * 100) / 100;
+  const discount = getDiscountRS();
+  const helper = document.getElementById('discHelper');
+  if (helper) helper.textContent = discount > 0 ? ('Desconto: ' + fmt(discount) + (subtotal > 0 ? ' (' + (Math.round(discount / subtotal * 1000) / 10) + '%)' : '')) : '';
+  const base = Math.round((subtotal - discount) * 100) / 100;
   const maxTc = customer ? Math.round(Math.min(customer.balance || 0, subtotal * 0.10) * 100) / 100 : 0;
   let tcUsed = parseFloat(document.getElementById('sellTcUsed')?.value || 0);
   if (tcUsed > maxTc) { tcUsed = maxTc; const _tc = document.getElementById('sellTcUsed'); if (_tc) _tc.value = maxTc.toFixed(2); }
@@ -2653,12 +2670,35 @@ function updateSummary() {
   document.getElementById('sellSummary').innerHTML = `
     <div class="summary-row"><span class="label">Itens</span><span class="value">${itemCount}</span></div>
     <div class="summary-row"><span class="label">Subtotal</span><span class="value">${fmt(subtotal)}</span></div>
+    ${discount > 0 ? `<div class="summary-row"><span class="label">🏷️ Desconto</span><span class="value" style="color:var(--danger);">− ${fmt(discount)}</span></div>` : ''}
     ${customer ? `
       <div class="summary-row"><span class="label">TenisCash usado</span><span class="value" style="color:var(--danger);">− ${fmt(tcUsed)}</span></div>
       <div class="summary-row"><span class="label">🎁 Cashback que cliente ganha</span><span class="value" style="color:var(--success);">+ ${fmt(tcEarned)}</span></div>
     ` : '<div class="summary-row" style="color:var(--text-muted);font-size:12px;"><em>Sem cliente — venda não gera cashback</em></div>'}
     <div class="summary-row total"><span class="label">Total a pagar</span><span class="value">${fmt(liquido)}</span></div>
   `;
+}
+let _discMode = 'rs'; // 'rs' = valor em R$ | 'pct' = porcentagem
+function setDiscMode(m) {
+  _discMode = m;
+  const rs = document.getElementById('discModeRs'), pct = document.getElementById('discModePct');
+  if (rs && pct) {
+    rs.style.background = m === 'rs' ? 'var(--primary)' : '#fff'; rs.style.color = m === 'rs' ? '#fff' : 'var(--text)';
+    pct.style.background = m === 'pct' ? 'var(--primary)' : '#fff'; pct.style.color = m === 'pct' ? '#fff' : 'var(--text)';
+  }
+  const inp = document.getElementById('sellDiscount');
+  if (inp) inp.placeholder = m === 'pct' ? 'ex: 10  (= 10%)' : 'ex: 5,00  (R$)';
+  updateSummary();
+}
+function limparDesc() { const i = document.getElementById('sellDiscount'); if (i) i.value = 0; updateSummary(); }
+// Converte o que o operador digitou (R$ ou %) no desconto EM REAIS, limitado ao subtotal.
+function getDiscountRS() {
+  const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const raw = parseFloat(document.getElementById('sellDiscount')?.value || 0);
+  if (!(raw > 0) || subtotal <= 0) return 0;
+  let rs = _discMode === 'pct' ? (subtotal * raw / 100) : raw;
+  rs = Math.round(rs * 100) / 100;
+  return Math.min(rs, Math.round(subtotal * 100) / 100);
 }
 function usarTodoTc() {
   if (!customer) return;
@@ -2797,7 +2837,7 @@ async function finalizeSale() {
   }
   // SEFAZ-PB: venda >= R$500 exige CPF/CNPJ do cliente na nota (senão a SEFAZ rejeita o cupom)
   const _cpfNota = (document.getElementById('sellCustomerCpf')?.value || '').replace(/\D/g, '');
-  const _liquido = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+  const _liquido = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0) - getDiscountRS();
   if (_liquido >= 500 && !(_cpfNota.length === 11 || _cpfNota.length === 14)) {
     alert('Venda de ' + fmt(_liquido) + ': a SEFAZ exige CPF ou CNPJ do cliente na nota a partir de R$ 500.\nPeça o documento e preencha o campo "CPF/CNPJ NA NOTA".');
     document.getElementById('sellCustomerCpf').focus();
@@ -2820,6 +2860,7 @@ async function finalizeSale() {
         items: cart.map(i => ({ productId: i.productId, productSizeId: i.productSizeId || null, quantity: i.quantity, unitPrice: i.unitPrice, size: i.size || null, sellerSize: i.sellerSize || null, barcode: i.barcode || null, isNewBarcode: !!i.isNewBarcode, isNewSize: !!i.isNewSize })),
         paymentMethod,
         tcUsed: parseFloat(document.getElementById('sellTcUsed').value || 0),
+        discount: getDiscountRS(),
         storeId: activeStore?.id,
         vendorId,
         idemKey: _saleIdemKey,
@@ -2853,6 +2894,7 @@ async function finalizeSale() {
       document.getElementById('sellCustomerNome').value = '';
       document.getElementById('sellReferralCode').value = '';
       document.getElementById('sellTcUsed').value = 0;
+      document.getElementById('sellDiscount').value = 0;
       document.getElementById('sellSearchInput').value = '';
       document.getElementById('sellSearchResults').innerHTML = '';
       renderCart(); loadDashboard();
@@ -2890,6 +2932,7 @@ async function finalizeSale() {
     document.getElementById('sellCustomerNome').value = '';
     document.getElementById('sellReferralCode').value = '';
     document.getElementById('sellTcUsed').value = 0;
+    document.getElementById('sellDiscount').value = 0;
     document.getElementById('sellSearchInput').value = '';
     document.getElementById('sellSearchResults').innerHTML = '';
     renderCart();
@@ -3078,7 +3121,7 @@ function renderCatalog(products) {
   if (!products.length) { el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado</div>'; return; }
   if (window.PCard) {
     // el já tem class="grid grid-3" — injeta cada card como célula direto (não usa renderGrid pra evitar grid dentro de grid)
-    el.innerHTML = products.map(p => PCard.render({ ...p, promoPrice: null }, {
+    el.innerHTML = products.map(p => PCard.render(p, {
       actions: 'public',
       onClick: "showProduct('%id%')",
     })).join('');
@@ -3086,13 +3129,15 @@ function renderCatalog(products) {
   }
   // Fallback simples se PCard não carregar
   el.innerHTML = products.map(p => {
+    const hasPromo = p.promoPrice && p.promoPrice < p.price;
     return `
       <div class="product-card" onclick="showProduct('${p.id}')">
         <img class="product-img" src="${p.imageUrl || ''}" onerror="this.style.background='#f5f5f7'">
         <div class="product-info">
           <div class="product-brand">${p.brand || ''}</div>
           <div class="product-name">${p.name || ''}</div>
-          <div class="product-price">${fmt(p.price)}</div>
+          <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
+          ${hasPromo ? `<div style="font-size:11px;color:var(--text-muted);text-decoration:line-through;">${fmt(p.price)}</div>` : ''}
         </div>
       </div>
     `;
@@ -3108,7 +3153,7 @@ async function showProduct(id) {
       <h3 class="modal-title">${p.name}</h3>
       <img src="${p.imageUrl || ''}" style="width:100%;max-height:280px;object-fit:contain;background:#f5f5f7;border-radius:8px;margin-bottom:12px;" onerror="this.style.display='none'">
       <div style="font-size:13px;color:#8e8e93;">${p.brand || ''} · ${p.category || ''}</div>
-      <div style="font-size:22px;font-weight:700;color:#E5571E;margin:8px 0;">${fmt(p.price)}</div>
+      <div style="font-size:22px;font-weight:700;color:#E5571E;margin:8px 0;">${fmt(p.promoPrice || p.price)}</div>
       <div style="font-size:13px;">${p.shortDescription || p.longDescription || ''}</div>
       ${sizes ? `<h4 style="margin-top:12px;margin-bottom:6px;">Tamanhos</h4><ul style="padding-left:20px;">${sizes}</ul>` : ''}
     `;
@@ -3160,7 +3205,7 @@ async function onInventorySearch() {
       const el = document.getElementById('invResults');
       if (window.PCard) {
         // el já é grid grid-3 — injeta cards direto como células
-        el.innerHTML = products.map(p => PCard.render({ ...p, promoPrice: null }, {
+        el.innerHTML = products.map(p => PCard.render(p, {
           actions: 'public',
           onClick: "checkInventory('%id%','')",
         })).join('');
@@ -3243,7 +3288,7 @@ async function loadStoreInventory() {
             <div class="product-info">
               <div class="product-brand">${p.brand || ''}</div>
               <div class="product-name">${p.name || ''}</div>
-              <div class="product-price">${fmt(p.price)}</div>
+              <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
               <span class="product-badge">📦 ${p.totalStock} un.</span>
             </div>
           </div>

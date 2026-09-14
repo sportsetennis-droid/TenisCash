@@ -15,7 +15,6 @@ const ns = require('./nuvemshop');
 const { assessProductForNuvemshop } = require('./nuvemshopEligibility');
 const storeRadio = require('./storeRadio');
 const { applyOrderStock } = require('./nuvemshopStockSafety');
-const { DISCOUNTS_ENABLED } = require('./discountPolicy');
 
 // Storefront currently bound to www.sportsetennis.com.br (LS.store.id).
 // An env override keeps migrations possible without ever falling back to an
@@ -112,7 +111,7 @@ async function upsertLocalProduct(nsProduct) {
   const variants = Array.isArray(nsProduct.variants) ? nsProduct.variants : [];
   const firstVariant = variants[0] || {};
   const price = parseFloat(firstVariant.price || 0) || 0;
-  const promoPrice = DISCOUNTS_ENABLED && firstVariant.promotional_price ? parseFloat(firstVariant.promotional_price) : null;
+  const promoPrice = firstVariant.promotional_price ? parseFloat(firstVariant.promotional_price) : null;
   const sku = firstVariant.sku || `NS-${nsProduct.id}`;
   const imageUrl = nsProduct.images?.[0]?.src || null;
 
@@ -1134,7 +1133,7 @@ function buildNuvemshopProductPayload(localProduct, sizes, opts = {}) {
   const variants = (hasSizes ? sizes : [{ size: null, stock: 0, barcode: null }]).map((s) => {
     const v = {
       price: String(Number(localProduct.price || 0).toFixed(2)),
-      promotional_price: DISCOUNTS_ENABLED && localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
+      promotional_price: localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null,
       stock_management: true,
       stock: parseInt(s.stock || 0, 10),
       sku: s.barcode || (hasSizes ? `${localProduct.sku}-${s.size}` : localProduct.sku),
@@ -1263,7 +1262,7 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
 
   const result = { updated: 0, created: 0, deleted: 0, unchanged: 0, errors: [] };
   const price = String(Number(localProduct.price || 0).toFixed(2));
-  const promo = DISCOUNTS_ENABLED && localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null;
+  const promo = localProduct.promoPrice != null ? String(Number(localProduct.promoPrice).toFixed(2)) : null;
   const sizeOf = (v) => (Array.isArray(v.values) && v.values[0]) ? String(v.values[0].pt || v.values[0].name || '').trim() : '';
   const matchVar = (sz) => nsVariants.find((v) =>
     v.sku === `${localProduct.sku}-${sz.size}` ||
@@ -1293,7 +1292,7 @@ async function updateNuvemshopVariants(connection, nsProductId, localProduct, si
     const payload = { stock_management: true, stock: desiredStock };
     if (!stockOnly || !nsVar) {
       payload.price = price;
-      payload.promotional_price = promo;
+      if (promo != null) payload.promotional_price = promo;
     }
     try {
       if (nsVar) {

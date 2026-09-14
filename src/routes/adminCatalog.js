@@ -4,7 +4,6 @@ const Papa = require('papaparse');
 const Anthropic = require('@anthropic-ai/sdk');
 const { prisma, authMiddleware } = require('../middleware');
 const nsHandlers = require('../services/nuvemshopHandlers');
-const { assertNoPromotionalProduct } = require('../services/discountPolicy');
 
 // Sync com Nuvemshop se produto tem mapping. Fire-and-forget para nao
 // travar HTTP response em operações de classificação em lote.
@@ -715,7 +714,6 @@ router.post('/products/:id/remove-nuvemshop', adminOnly, async (req, res) => {
 router.post('/products', adminOnly, async (req, res) => {
   try {
     const b = req.body || {};
-    assertNoPromotionalProduct(b);
     const sku = String(b.sku || '').trim();
     const name = String(b.name || '').trim();
     const brand = String(b.brand || '').trim();
@@ -768,7 +766,6 @@ router.post('/products', adminOnly, async (req, res) => {
     res.json({ product });
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'SKU já cadastrado' });
-    if (err.statusCode === 409) return res.status(409).json({ error: err.message });
     console.error('admin catalog create', err);
     res.status(500).json({ error: 'Erro ao criar produto' });
   }
@@ -778,7 +775,6 @@ router.put('/products/:id', adminOnly, async (req, res) => {
   try {
     const id = req.params.id;
     const b = req.body || {};
-    assertNoPromotionalProduct(b);
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Produto não encontrado' });
 
@@ -883,7 +879,7 @@ router.put('/products/:id', adminOnly, async (req, res) => {
   } catch (err) {
     if (err.code === 'P2002') return res.status(400).json({ error: 'SKU já cadastrado' });
     console.error('admin catalog update', err);
-    res.status(err.statusCode || 500).json({ error: err.statusCode === 409 ? err.message : 'Erro ao atualizar produto' });
+    res.status(500).json({ error: 'Erro ao atualizar produto' });
   }
 });
 

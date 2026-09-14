@@ -1,10 +1,8 @@
 const cron = require('node-cron');
 const { reconcileQROffers, restoreExclusiveOffers } = require('../routes/qrOffers');
-const { DISCOUNTS_ENABLED } = require('./discountPolicy');
 
 let running = false;
 const state = {
-  disabled: !DISCOUNTS_ENABLED,
   running: false,
   lastStartedAt: null,
   lastFinishedAt: null,
@@ -13,10 +11,6 @@ const state = {
 };
 
 async function tick() {
-  if (!DISCOUNTS_ENABLED) {
-    state.lastResult = { disabled: true };
-    return state.lastResult;
-  }
   if (running) return;
   running = true;
   state.running = true;
@@ -54,7 +48,6 @@ function getQROffersCronState() {
 }
 
 function startQROffersCron() {
-  if (!DISCOUNTS_ENABLED) return;
   // Repara ofertas antigas logo após o deploy e mantém a janela de validade
   // alinhada a cada minuto. O cupom também carrega start_date/end_date como
   // proteção independente caso o processo fique temporariamente indisponível.

@@ -373,7 +373,6 @@ app.use('/api/face', faceRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/transfer', transferRoutes);
 app.use('/api/promos', promoRoutes);
-app.use('/api/discounts', require('./routes/discounts'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/qr', qrRoutes);
 app.use('/api/seller', sellerRoutes);

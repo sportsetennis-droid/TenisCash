@@ -7,13 +7,6 @@ const QRCode = require('qrcode');
 const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
 const ns = require('../services/nuvemshop');
 const nsHandlers = require('../services/nuvemshopHandlers');
-const { DISCOUNTS_ENABLED } = require('../services/discountPolicy');
-
-const DISCOUNTS_DISABLED_MESSAGE = 'Descontos e promoções estão desativados para novas vendas.';
-function requireDiscounts(_req, res, next) {
-  if (!DISCOUNTS_ENABLED) return res.status(409).json({ error: DISCOUNTS_DISABLED_MESSAGE, code: 'DISCOUNTS_DISABLED' });
-  return next();
-}
 
 const adminRouter = express.Router();
 const publicRouter = express.Router();
@@ -285,7 +278,7 @@ function qrPromotionInCart(payload, promotionId) {
 }
 
 function buildQrDiscountCommands(payload, promotionId, eligibleRemoteIds) {
-  const eligible = !DISCOUNTS_ENABLED ? new Set() : eligibleRemoteIds instanceof Set ? eligibleRemoteIds : new Set(eligibleRemoteIds || []);
+  const eligible = eligibleRemoteIds instanceof Set ? eligibleRemoteIds : new Set(eligibleRemoteIds || []);
   const lineItems = (Array.isArray(payload?.products) ? payload.products : [])
     .filter((product) => eligible.has(String(product?.product_id || '')) && product?.id != null)
     .map((product) => ({
@@ -488,7 +481,6 @@ async function productViews(products, offer) {
 }
 
 async function findOfferByPlate(n) {
-  if (!DISCOUNTS_ENABLED) return { board: { number: n, code: plateCode(n) }, offer: null };
   const exists = await prisma.qRBoard.findUnique({ where: { number: n }, select: { id: true } });
   if (!exists) await ensureBoards();
   const board = await prisma.qRBoard.findUnique({
@@ -611,7 +603,6 @@ async function deactivateBoardOffers(boardId, exceptId, conn) {
 }
 
 async function publishOffer(offer) {
-  if (!DISCOUNTS_ENABLED) throw new Error(DISCOUNTS_DISABLED_MESSAGE);
   const conn = await activeConnection();
   if (!conn) throw new Error('Nuvemshop não está conectada no TenisCash');
   const state = offerState(offer);
@@ -961,7 +952,6 @@ async function activateOffer(offer, conn) {
 }
 
 async function reconcileQROffers(now = new Date()) {
-  if (!DISCOUNTS_ENABLED) return { disabled: true, processed: 0, activated: 0, scheduled: 0, expired: 0, errors: [] };
   const conn = await activeConnection();
   if (!conn) return { processed: 0, activated: 0, scheduled: 0, expired: 0, errors: ['Nuvemshop não conectada'] };
   const offers = await prisma.qROffer.findMany({
@@ -1179,7 +1169,7 @@ async function restoreExclusiveOffers(now = new Date()) {
     replacedInvalid: 0,
     errors: [],
   };
-  if (!DISCOUNTS_ENABLED || process.env.DISABLE_QR_AUTO_RESTORE === '1') return { ...result, checked: 0, disabled: true };
+  if (process.env.DISABLE_QR_AUTO_RESTORE === '1') return { ...result, disabled: true };
 
   const boards = await ensureBoards();
   const states = [];
@@ -1420,7 +1410,7 @@ adminRouter.get('/access-stats', async (req, res) => {
   }
 });
 
-adminRouter.post('/reconcile', requireDiscounts, async (_req, res) => {
+adminRouter.post('/reconcile', async (_req, res) => {
   try {
     const result = await reconcileQROffers();
     res.status(result.errors.length ? 207 : 200).json(result);
@@ -1454,7 +1444,7 @@ adminRouter.get('/offers', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-adminRouter.post('/plates/:plate/sync-category', requireDiscounts, async (req, res) => {
+adminRouter.post('/plates/:plate/sync-category', async (req, res) => {
   try {
     const n = plateNumber(req.params.plate);
     if (!n) return res.status(400).json({ error: 'Placa deve ser entre 01 e 12' });
@@ -1476,7 +1466,7 @@ adminRouter.post('/plates/:plate/sync-category', requireDiscounts, async (req, r
   } catch (e) { res.status(502).json({ error: 'Não foi possível sincronizar a oferta da placa', detail: e.message }); }
 });
 
-adminRouter.post('/offers', requireDiscounts, async (req, res) => {
+adminRouter.post('/offers', async (req, res) => {
   try {
     const n = plateNumber(req.body.plate);
     if (!n) return res.status(400).json({ error: 'Placa deve ser entre 01 e 12' });
@@ -1489,7 +1479,7 @@ adminRouter.post('/offers', requireDiscounts, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-adminRouter.put('/offers/:id', requireDiscounts, async (req, res) => {
+adminRouter.put('/offers/:id', async (req, res) => {
   try {
     const existing = await getOffer(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Oferta não encontrada' });
@@ -1503,7 +1493,7 @@ adminRouter.put('/offers/:id', requireDiscounts, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-adminRouter.post('/offers/:id/publish', requireDiscounts, async (req, res) => {
+adminRouter.post('/offers/:id/publish', async (req, res) => {
   try {
     const offer = await getOffer(req.params.id);
     if (!offer) return res.status(404).json({ error: 'Oferta não encontrada' });
@@ -1531,20 +1521,6 @@ adminRouter.post('/offers/:id/cancel', async (req, res) => {
 publicRouter.post('/api/nuvemshop/discounts/qr-offers', async (req, res) => {
   try {
     const payload = req.body || {};
-    if (!DISCOUNTS_ENABLED) {
-      // Carrinhos já abertos também devem perder descontos. Apenas a loja
-      // vinculada pode receber comandos; este ramo nunca cria desconto nem
-      // altera pedido, pagamento ou documento fiscal.
-      const promotions = promotionRows(payload.promotions);
-      if (!promotions.length || (payload.execution_tier && payload.execution_tier !== 'line_item')) return res.sendStatus(204);
-      const conn = await activeConnection();
-      if (!conn || String(payload.store_id || '') !== String(conn.nuvemshopUserId || '')) return res.sendStatus(204);
-      const commands = promotions.filter(promotion => promotion?.id != null)
-        .flatMap(promotion => buildQrDiscountCommands(payload, promotion.id, new Set()));
-      if (!commands.length) return res.sendStatus(204);
-      res.set('Cache-Control', 'no-store');
-      return res.json({ commands });
-    }
     if (!qrDiscountPromotionId || !qrDiscountStoreId) return res.sendStatus(204);
     if (String(payload.store_id || '') !== qrDiscountStoreId) return res.sendStatus(204);
     if (payload.execution_tier && payload.execution_tier !== 'line_item') return res.sendStatus(204);
@@ -1608,7 +1584,7 @@ publicRouter.get('/api/qr-offers/plates/:plate', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Não foi possível carregar a oferta' }); }
 });
 
-publicRouter.get('/qr-ofertas-folha', requireDiscounts, async (_req, res) => {
+publicRouter.get('/qr-ofertas-folha', async (_req, res) => {
   try {
     const boards = await ensureBoards();
     const cards = boards.map((board) => {
@@ -1624,7 +1600,7 @@ publicRouter.get('/qr-ofertas-folha', requireDiscounts, async (_req, res) => {
 
 // Compatibilidade: a versão anterior continua acessível, mas a folha acima
 // agora usa SVG vetorial e links individuais para PNG de alta resolução.
-publicRouter.get('/qr-ofertas-folha-legacy', requireDiscounts, async (_req, res) => {
+publicRouter.get('/qr-ofertas-folha-legacy', async (_req, res) => {
   try {
     const boards = await ensureBoards();
     const cards = [];
@@ -1687,10 +1663,6 @@ publicRouter.get([
   try {
     const n = plateNumber(req.params.plate);
     if (!n) return res.status(404).type('html').send('<h1>Placa inválida</h1>');
-    if (!DISCOUNTS_ENABLED) {
-      res.set('Cache-Control', 'no-store');
-      return res.type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sports &amp; Tennis</title><style>body{margin:0;background:#fff5ee;color:#21150f;font-family:system-ui,sans-serif}main{max-width:640px;margin:60px auto;padding:24px}a{display:inline-block;background:#f4511e;color:#fff;padding:14px 20px;border-radius:12px;text-decoration:none;font-weight:700}</style></head><body><main><h1>Sports &amp; Tennis</h1><p>Veja os produtos e preços atuais na nossa loja.</p><a href="${escapeHtml(STORE_BASE)}">Ver produtos</a></main></body></html>`);
-    }
     const { board, offer } = await findOfferByPlate(n);
     try {
       await recordQrAccess(req, res, { board, offer, eventType: 'VIEW' });

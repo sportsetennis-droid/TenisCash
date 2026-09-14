@@ -1,12 +1,10 @@
 const express = require('express');
 const { authMiddleware, prisma } = require('../middleware');
-const { DISCOUNTS_ENABLED } = require('../services/discountPolicy');
 
 const router = express.Router();
 
 // LISTAR PROMOS ATIVAS
 router.get('/', authMiddleware, async (req, res) => {
-  if (!DISCOUNTS_ENABLED) return res.json({ promos: [], discountsEnabled: false });
   try {
     const promos = await prisma.promo.findMany({
       orderBy: { createdAt: 'desc' },
@@ -33,7 +31,6 @@ router.get('/', authMiddleware, async (req, res) => {
 
 // REGRAS DE ABATIMENTO POR MARCA
 router.get('/brands', authMiddleware, async (req, res) => {
-  if (!DISCOUNTS_ENABLED) return res.json({ brands: [], discountsEnabled: false });
   try {
     const rules = await prisma.brandRule.findMany({
       where: { active: true },

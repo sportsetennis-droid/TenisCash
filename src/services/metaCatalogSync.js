@@ -14,7 +14,6 @@
 // =====================================================================
 const { prisma } = require('../middleware');
 const meta = require('./meta');
-const { DISCOUNTS_ENABLED } = require('./discountPolicy');
 
 const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://teniscash.com.br').replace(/\/+$/, '');
 
@@ -97,7 +96,7 @@ function buildItemsForProduct(p, baratoId) {
   title = title.trim().slice(0, 200);
   const description = String(p.longDescription || p.shortDescription || title).replace(/\s+/g, ' ').trim().slice(0, 9999);
   const link = `${PUBLIC_BASE}/p/${p.id}`;
-  const promo = DISCOUNTS_ENABLED ? Number(p.promoPrice || 0) : 0;
+  const promo = Number(p.promoPrice || 0);
 
   return sizes.map((s) => {
     const gtin = isValidGtin(s.barcode) ? String(s.barcode).replace(/\D/g, '') : '';

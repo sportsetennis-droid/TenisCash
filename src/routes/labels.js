@@ -20,20 +20,6 @@ const { ensureProductInternalBarcode } = require('../services/internalBarcode');
 const labelColorReviewLedger = require('../data/label-color-review-ledger.json');
 const { applyOffer, productOffer } = require('../services/everlastPaymentOffer');
 const { applyBrandThirtyOffer, campaignFootwear } = require('../services/brandThirtyOffer');
-const { DISCOUNTS_ENABLED } = require('../services/discountPolicy');
-
-function discountsDisabled(res) {
-  return res.status(409).json({ error: 'Descontos e promoções estão desativados para novas vendas.', code: 'DISCOUNTS_DISABLED' });
-}
-
-function promotionalLabelRequest(body) {
-  return !!(body?.usePromo || body?.campaignModelQuota || (Array.isArray(body?.items)
-    && body.items.some(item => item?.promotionalPrice != null)));
-}
-
-function promotionalLabelTemplate(template) {
-  return template?.type === 'PROMOTIONAL' || isSaldoTemplate(template);
-}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -49,7 +35,6 @@ function labelAccess(req, res, next) {
 router.use(labelAccess);
 
 router.get('/campaign-footwear', async (_req, res) => {
-  if (!DISCOUNTS_ENABLED) return discountsDisabled(res);
   try {
     const products = await campaignFootwear(prisma);
     res.json(require('../services/campaignLabelReview').campaignLabelReview(products, p =>
@@ -59,19 +44,16 @@ router.get('/campaign-footwear', async (_req, res) => {
 });
 
 router.post('/brand-thirty-offer', adminMiddleware, async (req, res) => {
-  if (!DISCOUNTS_ENABLED) return discountsDisabled(res);
   try { res.json(await applyBrandThirtyOffer(prisma, req.body.brand)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 router.post('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
-  if (!DISCOUNTS_ENABLED) return discountsDisabled(res);
   try { res.json(await applyOffer(prisma)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 router.get('/everlast-payment-offer', adminMiddleware, async (_req, res) => {
-  if (!DISCOUNTS_ENABLED) return res.json({ total: 0, configured: 0, withoutPrice: [], discountsEnabled: false });
   try {
     const products = await prisma.product.findMany({ where: { active: true, brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
     res.json({ total: products.length, configured: products.filter(p => productOffer(p)).length,
@@ -1320,14 +1302,12 @@ router.get('/options', async (_req, res) => {
 });
 
 router.post('/batches', async (req, res) => {
-  if (!DISCOUNTS_ENABLED && promotionalLabelRequest(req.body)) return discountsDisabled(res);
   try {
     const { name, templateId, storeId, items } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'items é obrigatório' });
 
     const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
-    if (!DISCOUNTS_ENABLED && promotionalLabelTemplate(templateMeta)) return discountsDisabled(res);
     const physicalPerProduct = labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
       data: {
@@ -1546,9 +1526,7 @@ router.get('/batches/:id/pdf', async (req, res) => {
         cls,
         [p?.id, baseName, reference, categoryLabel].filter(Boolean).join('|'),
       );
-      // Lotes históricos conservam o preço promocional gravado no item;
-      // não se calcula uma nova oferta a partir do catálogo atual.
-      const paymentOffer = DISCOUNTS_ENABLED && p ? productOffer(p) : null;
+      const paymentOffer = p ? productOffer(p) : null;
       const price = paymentOffer ? paymentOffer.basePrice : (it.price != null ? Number(it.price) : (p ? Number(p.price) : null));
       // Promoção é opt-in no momento da criação do lote. Não recupere o
       // promoPrice do produto nem aplique desconto automático quando o lote
@@ -1691,12 +1669,9 @@ router.delete('/batches/:id', adminMiddleware, async (req, res) => {
 //   1) { productIds: [...], quantityPerProduct: N }  (legado)
 //   2) { selections: [{ productId, quantity }] } (novo — por produto/modelo)
 router.post('/batches/quick', async (req, res) => {
-  if (!DISCOUNTS_ENABLED && promotionalLabelRequest(req.body)) return discountsDisabled(res);
   try {
     const { templateId, name, storeId, productIds, quantityPerProduct, usePromo, selections } = req.body || {};
     if (!templateId) return res.status(400).json({ error: 'templateId é obrigatório' });
-    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
-    if (!DISCOUNTS_ENABLED && promotionalLabelTemplate(templateMeta)) return discountsDisabled(res);
 
     if (req.body.campaignModelQuota === 2) {
       const products = await campaignFootwear(prisma);
@@ -1745,6 +1720,7 @@ router.post('/batches/quick', async (req, res) => {
       return res.status(400).json({ error: 'Envie productIds ou selections' });
     }
     if (!items.length) return res.status(400).json({ error: 'Nenhum item gerado' });
+    const templateMeta = await prisma.labelTemplate.findUnique({ where: { id: templateId } });
     if (req.body.campaignModelQuota === 2 && labelsPerProduct(templateMeta) !== 1) return res.status(400).json({ error: 'Template multiplica etiquetas: campanha exige duas físicas por modelo no total.' });
     const totalLabels = items.reduce((s, x) => s + (x.quantity || 1), 0) * labelsPerProduct(templateMeta);
     const batch = await prisma.labelBatch.create({
@@ -1826,7 +1802,6 @@ router.post('/bipe-cadastra', async (req, res) => {
 // A unidade da etiqueta e o modelo/produto: uma selecao cria uma unica peca
 // 5x7 com frente e verso, independentemente da quantidade de tamanhos.
 router.post('/batches/auto', async (req, res) => {
-  if (!DISCOUNTS_ENABLED && promotionalLabelRequest(req.body)) return discountsDisabled(res);
   try {
     const {
       name,
@@ -1839,14 +1814,13 @@ router.post('/batches/auto', async (req, res) => {
     } = req.body || {};
     // Respeita o modelo escolhido no painel. O fallback para o padrão mantém
     // compatibilidade com clientes antigos que ainda não enviam templateId.
-    if (!templateId) await ensureDefaultTemplates();
+    await ensureDefaultTemplates();
     const templateMeta = templateId
       ? await prisma.labelTemplate.findUnique({ where: { id: templateId } })
       : await prisma.labelTemplate.findFirst({ where: { isDefault: true } });
     if (!templateMeta) {
       return res.status(404).json({ error: 'Modelo de etiqueta não encontrado' });
     }
-    if (!DISCOUNTS_ENABLED && promotionalLabelTemplate(templateMeta)) return discountsDisabled(res);
     if (!isProductDuplexTemplate(templateMeta) && !isSaldoTemplate(templateMeta)) {
       return res.status(400).json({ error: 'A geração automática aceita apenas os modelos 5x7 frente e verso ou SALDO' });
     }
