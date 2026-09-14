@@ -12,7 +12,7 @@ function database({products=[p1],sizes=[],nfe=[]}={}) {
       const sql=strings.join('?');
       if(!sql.includes('WITH codes')) return [];
       assert.ok(sql.includes('d."docType" = \'entrada\''));
-      assert.ok(sql.includes('regexp_replace')); assert.ok(sql.includes('LIMIT 3'));
+      assert.ok(sql.includes('regexp_replace')); assert.ok(sql.includes('LIMIT 12'));
       const codes=JSON.parse(values[0]);
       return state.products.filter(p=>p.active && [p.sku,p.aiContext?.supplierRef,...(p.aiContext?.scannerReferences||[]),
         ...state.sizes.filter(s=>s.productId===p.id).map(s=>s.barcode),
@@ -51,6 +51,7 @@ function routeFunctions(db){
   if(name==='express')return{Router:()=>router}; if(name==='multer')return upload;if(name==='sharp')return()=>{};
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
   if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
+  if(name==='../services/scannerCatalog')return require('../src/services/scannerCatalog');
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
   if(name==='../services/scannerText')return require('../src/services/scannerText');
   throw Error('Unexpected require '+name);
@@ -114,5 +115,8 @@ function routeFunctions(db){
  assert.equal(state.captures[0].status,'pendente');assert.equal(state.sizes.length,0);
  const html=fs.readFileSync(require.resolve('../public/identificar.html'),'utf8');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(m[1].trim())new vm.Script(m[1]);
+ ({db,state}=database({sizes:[{id:'s-existing',productId:'nike',size:'L',barcode:'196153346321',stock:6}]}));
+ r=await learnScannerBarcode(db,{barcode:'7909538652084',read:{sku:'192974'},size:'L'});assert.equal(r.reason,'matched');assert.equal(state.sizes[0].barcode,'196153346321');assert.equal(state.products[0].aiContext.scannerBarcodeAliases['7909538652084'].size,'L');
+ const byRef=await require('../src/services/scannerReference').matchScannerReference(db,{sku:'192974'},'L');assert.equal(byRef.productSizeId,'s-existing');assert.equal((await require('../src/services/scannerReference').matchScannerReference(db,{sku:'192974'},null)).reason,'size_required');
  console.log('PASS: exact reference and NF-e lookup; confirmed Nike alias; GTIN checksum and leading zero; size/brand/owner ambiguity; preserving existing barcode and purchased stock; repeated and concurrent capture linking preserves historical stock; authenticated review route; HTML syntax.');
 })().catch(e=>{console.error(e);process.exitCode=1});

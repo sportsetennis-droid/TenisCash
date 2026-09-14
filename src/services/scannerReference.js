@@ -1,4 +1,5 @@
 'use strict';
+const {canonicalProduct,resolveBarcodeRows,aliasRows}=require('./scannerCatalog');
 
 // Exact identifiers only. Punctuation is insignificant; colour suffixes are not.
 function normalizeReference(value) {
@@ -21,20 +22,24 @@ function variants(code) {
 async function referenceCandidates(db, codes) {
   if (!codes.length) return [];
   // Values are bound, never interpolated into SQL. No substring/name matching.
-  return db.$queryRaw`
+  const found = await db.$queryRaw`
     WITH codes AS (SELECT jsonb_array_elements_text(${JSON.stringify(codes)}::jsonb) AS code),
     refs AS (
-      SELECT p.id, p.sku AS ref FROM "Product" p WHERE p.active = true
-      UNION ALL SELECT p.id, p."aiContext"->>'supplierRef' FROM "Product" p WHERE p.active = true
+      SELECT p.id, p.sku AS ref FROM "Product" p WHERE (p.active = true OR p."aiContext" ? 'consolidatedInto')
+      UNION ALL SELECT p.id, p."aiContext"->>'supplierRef' FROM "Product" p WHERE (p.active = true OR p."aiContext" ? 'consolidatedInto')
       UNION ALL SELECT p.id, r.value FROM "Product" p,
         jsonb_array_elements_text(CASE WHEN jsonb_typeof(p."aiContext"->'scannerReferences') = 'array'
-          THEN p."aiContext"->'scannerReferences' ELSE '[]'::jsonb END) r WHERE p.active = true
-      UNION ALL SELECT p.id, s.barcode FROM "ProductSize" s JOIN "Product" p ON p.id = s."productId" WHERE p.active = true
+          THEN p."aiContext"->'scannerReferences' ELSE '[]'::jsonb END) r WHERE (p.active = true OR p."aiContext" ? 'consolidatedInto')
+      UNION ALL SELECT p.id, s.barcode FROM "ProductSize" s JOIN "Product" p ON p.id = s."productId" WHERE (p.active = true OR p."aiContext" ? 'consolidatedInto')
       UNION ALL SELECT p.id, i."supplierCode" FROM "XmlFiscalItem" i
         JOIN "XmlFiscalDocument" d ON d.id = i."fiscalDocumentId"
-        JOIN "Product" p ON p.id = i."productId" WHERE p.active = true AND d."docType" = 'entrada'
+        JOIN "Product" p ON p.id = i."productId" WHERE (p.active = true OR p."aiContext" ? 'consolidatedInto') AND d."docType" = 'entrada'
+      UNION ALL SELECT p.id, regexp_replace(p.sku, '^[A-Z]{1,3}-', '') FROM "Product" p WHERE upper(p.brand)='SKECHERS'
     ) SELECT DISTINCT refs.id FROM refs JOIN codes ON
-      regexp_replace(upper(refs.ref), '[^A-Z0-9]', '', 'g') = codes.code LIMIT 3`;
+      regexp_replace(upper(refs.ref), '[^A-Z0-9]', '', 'g') = codes.code LIMIT 12`;
+  if(found.length>=12)return [{id:null},{id:null}]; // bounded search must not hide a conflict
+  const resolved=[];for(const row of found){const p=await canonicalProduct(db,await db.product.findUnique({where:{id:row.id},include:{sizes:true}}));if(p)resolved.push({id:p.id});}
+  return [...new Map(resolved.map(r=>[r.id,r])).values()];
 }
 
 // Learns a barcode only after one exact target is established. The optional
@@ -46,7 +51,9 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
   return db.$transaction(async tx => {
     // Serialize competing scans of the same UPC/GTIN (including leading zero).
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${barcode.replace(/^0+/, '')}))::text AS locked`;
-    const owners = await tx.productSize.findMany({ where: { barcode: { in: variants(barcode) } }, include: { product: true } });
+    const rawOwners = await tx.productSize.findMany({ where: { barcode: { in: variants(barcode) } }, include: { product: true } });
+    const owners=await resolveBarcodeRows(tx,rawOwners);
+    if(!owners.length)owners.push(...await aliasRows(tx,barcode));
     if (owners.length > 1) return { reason: 'barcode_conflict' };
     const candidates = await referenceCandidates(tx, codes);
     if (!confirmedProductId && candidates.length > 1) return { reason: 'reference_conflict' };
@@ -69,7 +76,14 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     if (!ps) {
       if (!size) return { reason: 'size_required' };
       ps = product.sizes.find(s => s.size === size);
-      if (ps?.barcode && validGtin(ps.barcode) && !variants(barcode).includes(ps.barcode)) return { reason: 'size_barcode_conflict' };
+      if (ps?.barcode && validGtin(ps.barcode) && !variants(barcode).includes(ps.barcode)) {
+        if(candidates.length!==1 && !confirmedProductId)return {reason:'size_barcode_conflict'};
+        // A printed reference and exact size can have another GTIN after catalogue
+        // consolidation. Keep the existing GTIN and record a separate alias.
+        const ctx=product.aiContext||{};
+        await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcode.replace(/^0+/,'')]:{size,reference:codes[0],source:'exact-reference-and-size',at:new Date().toISOString()}}}}});
+        return {productId:pid,productSizeId:ps.id,name:product.name,barcode,reason:'matched'};
+      }
       if (ps) {
         // Preserve the prior supplier identifier for future reference searches.
         const previous = normalizeReference(ps.barcode);
@@ -92,4 +106,15 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
   }, { isolationLevel: 'Serializable', timeout: 15000 });
 }
 
-module.exports = { normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };
+async function matchScannerReference(db,read,size){
+  const refs=await referenceCandidates(db,referencesFrom(read));
+  if(refs.length!==1)return {reason:refs.length?'reference_conflict':'reference_not_found'};
+  if(!size)return {reason:'size_required'};
+  const p=await db.product.findUnique({where:{id:refs[0].id},include:{sizes:true}});
+  if(!p?.active)return {reason:'inactive_product'};
+  if(read?.marca&&normalizeReference(read.marca)!==normalizeReference(p.brand))return {reason:'brand_conflict'};
+  const ps=p.sizes.find(s=>s.size===size);
+  if(!ps)return {reason:'size_required'};
+  return {reason:'matched',productId:p.id,productSizeId:ps.id,name:p.name};
+}
+module.exports = { matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };

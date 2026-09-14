@@ -17,8 +17,9 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
-const { learnScannerBarcode, validGtin } = require('../services/scannerReference');
+const { learnScannerBarcode, validGtin, matchScannerReference } = require('../services/scannerReference');
 const { parseScannerText, scannerPendingMessage } = require('../services/scannerText');
+const {resolveBarcodeRows,aliasRows}=require('../services/scannerCatalog');
 const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
 router.use('/rounds', require('./stocktakeRounds'));
@@ -385,6 +386,7 @@ router.post('/bipe', async (req, res) => {
       console.warn('[bipe] BIPE_ETAPA_SECUNDARIA_FALHOU', JSON.stringify({ bipeId: bipe.id, etapa: 'lookup_productSize', error: e.message }));
     }
 
+    if(!matched.length)matched=await aliasRows(prisma,code);
     // FALLBACK NFe — regra CLAUDE.md ativa.
     if (matched.length === 0) {
       try {
@@ -432,6 +434,7 @@ router.post('/bipe', async (req, res) => {
       }
     }
 
+    matched=await resolveBarcodeRows(prisma,matched);
     const resolution = chooseUniqueBarcodeCandidate(matched);
     const found = resolution.found || Boolean(internalProduct);
     const duplicate = resolution.duplicate;
@@ -644,10 +647,12 @@ router.get('/lookup/:barcode', async (req, res) => {
   try {
     const code = String(req.params.barcode || '').trim();
     if (!code) return res.status(400).json({ error: 'barcode vazio' });
-    const sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, price: true, promoPrice: true } } }, take: 5 });
+    let sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, price: true, promoPrice: true } } }, take: 5 });
+    if(!sizes.length)sizes=await aliasRows(prisma,code);
+    sizes=await resolveBarcodeRows(prisma,sizes);
     const active = sizes.filter((s) => s.product && s.product.active);
     if (active.length) {
-      if (active.length > 1) return res.json({ recognized: true, ambiguous: true, product: null });
+      if (sizes.length > 1) return res.json({ recognized: true, ambiguous: true, product: null });
       const s = active[0];
       return res.json({ recognized: true, ambiguous: false, product: { id: s.product.id, productSizeId: s.id, name: s.product.name, brand: s.product.brand, size: s.size, sizeConfirmedAt: s.sizeConfirmedAt, price: s.product.price, promoPrice: s.product.promoPrice, internalBarcode: s.product.internalBarcode || null } });
     }
@@ -790,8 +795,8 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     else eanVisaoRejeitado = true;
   }
   const sku = lido?.sku ? String(lido.sku).trim().toUpperCase() : null;
-  const match = await learnScannerBarcode(prisma, { barcode: ean, read: lido,
-    size: normalizeScannedSize(lido?.tamanho) });
+  const match = ean ? await learnScannerBarcode(prisma, { barcode: ean, read: lido,
+    size: normalizeScannedSize(lido?.tamanho) }) : await matchScannerReference(prisma,lido,normalizeScannedSize(lido?.tamanho));
   let vinculado = match.reason === 'matched';
   let bipesCasados = 0;
   const cardNome = match.name, matchedProductId = match.productId, psId = match.productSizeId;
@@ -846,7 +851,8 @@ router.post('/etiqueta',
               include: { product: { select: { name: true, brand: true, active: true } } },
               take: 3,
             });
-            resolution = chooseUniqueBarcodeCandidate(rows);
+            if(!rows.length)rows.push(...await aliasRows(prisma,eanCam));
+            resolution = chooseUniqueBarcodeCandidate(await resolveBarcodeRows(prisma,rows));
             ps = resolution.chosen;
             bipe = await rounds.createRoundBipe(prisma, { roundId,scanKey:key,
               barcode: eanCam, storeId: storeId || null, sellerId: sellerId || null,

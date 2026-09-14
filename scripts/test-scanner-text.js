@@ -25,6 +25,8 @@ assert.equal(realPhoto.tamanho, 'XL');
 assert.equal(parseScannerText('DD5860-690\nAL').tamanho, null, 'Never guess AL means XL');
 assert.match(scannerPendingMessage('DD5860-690\nXL', realPhoto, 'reference_not_found'), /DD5860-690 \/ XL.*NF-e/);
 assert.match(scannerPendingMessage('', null), /extrair a referência/);
+assert.ok(parseScannerText('220509 / SLT\nBRA 40').codigos.includes('220509-SLT'));
+assert.equal(parseScannerText('220509 / SLT\nBRA 40').tamanho,'BR 40');
 const route = fs.readFileSync(require.resolve('../src/routes/stocktake'), 'utf8');
 assert.ok(!/Anthropic|anthropic-ai|messages\.create|OPENAI_API_KEY|ANTHROPIC_API_KEY/.test(route), 'Scanner must never use a paid provider');
 for (const file of ['../public/bipar.html', '../public/identificar.html']) {
@@ -33,7 +35,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
 }
 (async () => {
   let created = 0, known = true;
-  const canvas = { width: 10, height: 10, getContext: () => ({ drawImage() {}, putImageData() {},
+  const canvas = { width: 10, height: 10, getContext: () => ({ translate(){},rotate(){}, drawImage() {}, putImageData() {},
     getImageData: () => ({ width: 10, height: 10, data: new Uint8ClampedArray(400).fill(255) }) }) };
   const browser = { window: {}, setTimeout: () => 0, clearTimeout: () => {}, AbortController,
     document: { createElement: () => canvas },

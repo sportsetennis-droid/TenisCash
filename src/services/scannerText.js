@@ -16,6 +16,7 @@ function parseScannerText(value) {
     const clean = line.trim();
     if (/HTTPS?:|WWW\.|@/.test(clean)) continue;
     for (const match of clean.matchAll(/\b[A-Z]{2}\d{4}[ -]?\d{3}\b/g)) add(match[0].replace(/ /g, '-'));
+    for(const m of clean.matchAll(/\b\d{5,6}(?:BR)?\s*[/\-]\s*[A-Z]{2,5}\b/g)) add(m[0].replace(/\s/g,'').replace('/','-'));
     for (const token of clean.match(/[A-Z0-9]+(?:[-_.][A-Z0-9]+)*/g) || []) {
       if (validGtin(token)) gtins.add(token);
       else if (/^\d{5,9}$/.test(token) || (token.length >= 5 && /[A-Z]/.test(token) && /\d/.test(token)) || /^[A-Z]{3,}-[A-Z]{3,}(?:-[A-Z0-9]+)*$/.test(token)) add(token);
@@ -27,9 +28,9 @@ function parseScannerText(value) {
     }
     const clothing = clean.match(/^(?:(?:SIZE|TAM(?:ANHO)?\.?)[ :]+)?(XXXL|XXL|XL|XS|PP|GGG|GG|P|M|G|S|L|U)$/);
     if (clothing) sizes.add(clothing[1]);
-    for (const match of clean.matchAll(/\bBR\s*[:\-]?\s*(\d{2}(?:[.,]5)?)(?!\d)/g)) sizes.add('BR ' + match[1].replace(',', '.'));
+    for (const match of clean.matchAll(/\bBRA?\s*[:\-]?\s*(\d{2}(?:[.,]5)?)(?!\d)/g)) sizes.add('BR ' + match[1].replace(',', '.'));
   }
-  const brands = [...text.matchAll(/\b(NIKE|ADIDAS|FIBER|TOPPER|MIZUNO|ASICS|PUMA|FILA|REEBOK|OLYMPIKUS|UMBRO|EVERLAST|NEW BALANCE|UNDER ARMOUR)\b/g)].map(m => m[1]);
+  const brands = [...text.matchAll(/\b(SKECHERS|NIKE|ADIDAS|FIBER|TOPPER|MIZUNO|ASICS|PUMA|FILA|REEBOK|OLYMPIKUS|UMBRO|EVERLAST|NEW BALANCE|UNDER ARMOUR)\b/g)].map(m => m[1]);
   // Several sizes/barcodes/brands can mean several labels: require review.
   if (gtins.size > 1 || sizes.size > 1 || new Set(brands).size > 1) return null;
   const codigos = [...codes].slice(0, 12);
@@ -39,6 +40,9 @@ function parseScannerText(value) {
 }
 
 function scannerPendingMessage(text, read, reason) {
+  if(!read&&reason==='inactive_product')return 'Código encontrado em cadastro inativo sem vínculo válido de consolidação. Precisa de revisão.';
+  if(!read&&reason==='barcode_conflict')return 'Código encontrado em mais de um produto. Precisa de revisão para evitar contar no produto errado.';
+  if(!read&&reason==='reference_not_found')return 'Código lido, mas não localizado no cadastro. A referência da foto ainda precisa ser identificada.';
   if (!read) return String(text || '').trim()
     ? 'Li texto, mas os códigos ou tamanhos ficaram ambíguos. Foto salva para conferência.'
     : 'Não consegui extrair a referência da foto. Foto salva para conferência.';

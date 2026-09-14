@@ -62,8 +62,11 @@
     window.ScannerRegions.normalizePixels(pixels.data); ctx.putImageData(pixels, 0, 0);
     return crop;
   }
+  function rotatedCanvas(source,angle){
+    if(!angle)return source;const c=document.createElement('canvas');c.width=angle%180?source.height:source.width;c.height=angle%180?source.width:source.height;const ctx=c.getContext('2d');ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);ctx.drawImage(source,-source.width/2,-source.height/2);return c;
+  }
   function usefulReference(text) {
-    return /\b[A-Z]{2}\d{4}[- ]?\d{3}\b/i.test(text) || /\b[A-Z]{3,}-[A-Z0-9-]{3,}\b/i.test(text);
+    return /\b[A-Z]{2}\d{4}(?:[- ]?\d{3})?\b/i.test(text) || /\b\d{5,6}(?:BR)?\s*[/\-]\s*[A-Z]{2,5}\b/i.test(text) || /\b[A-Z]{3,}-[A-Z0-9-]{3,}\b/i.test(text);
   }
   async function recognize(image, progress) {
     clearTimeout(idleTimer);
@@ -96,6 +99,24 @@
             }
             if (/^\s*(?:SIZE\s+)?(?:XL|XXL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text) || /\bBR\s*\d{2}/i.test(text)) return text;
             if (!best) best = text;
+          }
+        }
+        // Shoe labels may be sideways. Read each orientation independently; do
+        // not combine conflicting sizes or unrelated labels across attempts.
+        for(const angle of [270,90,180,0]){
+          if(expired)throw new Error('Leitura local demorou demais');
+          const turned=rotatedCanvas(canvas,angle);
+          const whole=await ready.recognize(turned);
+          const wholeText=String(whole.data.text||'').slice(0,3500);
+          if(whole.data.confidence>=40&&usefulReference(wholeText)){if(/\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(wholeText))return wholeText;if(!best)best=wholeText;}
+          const region={x:Math.round(turned.width*.12),y:Math.round(turned.height*.12),width:Math.round(turned.width*.78),height:Math.round(turned.height*.76),kind:'label'};
+          await ready.setParameters({tessedit_pageseg_mode:'6'});
+          const result=await ready.recognize(textCrop(turned,region));
+          await ready.setParameters({tessedit_pageseg_mode:'11'});
+          const text=String(result.data.text||'').slice(0,3500);
+          if(result.data.confidence>=40&&usefulReference(text)){
+            if(/\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(text))return text;
+            if(!best)best=text;
           }
         }
         if (best) return best;
