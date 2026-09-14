@@ -162,6 +162,8 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 .detail-row .label{color:var(--text3);font-size:11px;letter-spacing:1px}
 .detail-row .value{text-align:right}
 
+.admin-mobile-nav{display:none}
+
 @media(max-width:768px){
   .stats-grid{grid-template-columns:1fr 1fr}
   .cc-grid-2{grid-template-columns:1fr!important}
@@ -174,6 +176,35 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 @media(max-width:480px){
   .stats-grid{grid-template-columns:1fr}
+}
+/* No celular, uma navegação compacta substitui a parede de abas fixas. */
+@media(max-width:768px){
+  .dashboard{padding:12px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  .dashboard .top-bar{padding:6px 0 16px;gap:10px}
+  .dashboard .top-right{width:100%;flex-wrap:wrap;gap:8px}
+  .dashboard .top-user{flex-basis:100%;color:#fff;overflow-wrap:anywhere}
+  .dashboard .top-title{color:#fff;font-size:12px;letter-spacing:1px}
+  .dashboard .top-logo{border-color:#fff}
+  .dashboard .top-logo span{color:#fff}
+  .dashboard .top-right button{min-height:44px;background:#fff;color:#1d1d1f}
+  .dashboard.has-mobile-navigation .admin-main-tabs{display:none!important}
+  .admin-mobile-nav:not([hidden]){display:block;position:sticky;top:0;z-index:200;background:#fff;color:#1d1d1f;padding:12px;border:1px solid #FCDAC4;border-radius:12px;margin-bottom:16px;box-shadow:0 3px 10px rgba(0,0,0,.08)}
+  .admin-mobile-nav label{display:block;font-size:12px;font-weight:700;color:#45454b;margin-bottom:6px}
+  .admin-mobile-nav select{display:block;width:100%;min-width:0;min-height:48px;padding:10px 12px;font:600 16px 'Chakra Petch',sans-serif;background:#fff;color:#1d1d1f;border:1px solid #b9b9bf;border-radius:8px}
+  .admin-mobile-nav select:focus-visible{outline:3px solid #0066cc;outline-offset:2px}
+  #admin-bio-enroll:not(:empty){margin-bottom:14px}
+  #admin-bio-enroll #tcBioChip{position:static!important;transform:none!important;z-index:auto!important;display:block;width:100%;max-width:100%!important;min-height:44px;margin:0;font-size:14px!important;border-radius:12px!important;box-shadow:none!important}
+  .dashboard>.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:16px}
+  .dashboard>.stats-grid .stat-card{min-width:0;padding:14px;color:var(--text)}
+  .dashboard>.stats-grid .stat-value{font-size:clamp(18px,4.6vw,24px);overflow-wrap:anywhere}
+  .dashboard>.stats-grid .stat-label{font-size:10px;letter-spacing:.5px;color:#55555c}
+  .dashboard>.section{padding:16px;color:var(--text)}
+  .dashboard>.section>.section-head,.dashboard>.section>.section-head>.section-title{color:var(--text)}
+  #tab-home .hub-header{padding:18px}
+  #tab-home .hub-header h1{font-size:24px}
+  #tab-home .hub-stats,#tab-home .hub-grid{grid-template-columns:minmax(0,1fr)}
+  #tab-home .hub-stat{backdrop-filter:none}
+  .login-input{color:var(--text);font-size:16px}
 }
 /* ===== Agenda da equipe — alvo de toque + mobile ===== */
 .ag-actbtn{border:0;background:transparent;cursor:pointer;font-size:15px;line-height:1;padding:6px 8px;border-radius:8px;color:inherit}
@@ -328,6 +359,12 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       <button class="logout-btn" onclick="doLogout()">Sair</button>
     </div>
   </div>
+
+  <div id="admin-bio-enroll"></div>
+  <nav class="admin-mobile-nav" id="admin-mobile-nav" aria-label="Navegação do painel" hidden>
+    <label for="admin-mobile-section">Área do painel</label>
+    <select id="admin-mobile-section"></select>
+  </nav>
 
   <!-- STATS -->
   <div class="stats-grid">
@@ -4867,10 +4904,44 @@ function doLogout() {
   document.getElementById('login-screen').style.display = 'flex';
 }
 
+function initAdminMobileNavigation() {
+  const nav = document.getElementById('admin-mobile-nav');
+  const select = document.getElementById('admin-mobile-section');
+  if (!nav || !select || select.options.length) return;
+  const buttons = new Map();
+  const placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = 'Escolha uma área'; placeholder.disabled = true;
+  select.appendChild(placeholder);
+  document.querySelectorAll('.admin-main-tabs > .tab').forEach(button => {
+    const match = (button.getAttribute('onclick') || '').match(/switchTab\('([^']+)'/);
+    if (!match || button.hidden || button.style.display === 'none') return;
+    const option = document.createElement('option');
+    option.value = match[1]; option.textContent = button.textContent.trim(); option.disabled = button.disabled;
+    select.appendChild(option);
+    buttons.set(match[1], button);
+    if (button.classList.contains('active')) select.value = match[1];
+  });
+  select.addEventListener('change', () => {
+    const button = buttons.get(select.value);
+    if (button && !button.disabled) button.click();
+  });
+  nav.hidden = false;
+  document.getElementById('dashboard').classList.add('has-mobile-navigation');
+}
+
+async function mountAdminBiometricEntry() {
+  if (!window.TCBio) return;
+  await TCBio.mountEnrollChip(token);
+  const chip = document.getElementById('tcBioChip');
+  const host = document.getElementById('admin-bio-enroll');
+  if (chip && host) host.appendChild(chip);
+}
+
 async function showDashboard() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
-  if (window.TCBio) TCBio.mountEnrollChip(token); // oferece ativar "entrar com o rosto"
+  initAdminMobileNavigation();
+  mountAdminBiometricEntry().catch(() => {});
   if (!adminUser) {
     const me = await api('/auth/me');
     if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin' && me.user.role !== 'manager')) { doLogout(); return; }
@@ -8269,6 +8340,8 @@ async function vitSave(){
 }
 
 function switchTab(tab, btn) {
+  const mobileSection = document.getElementById('admin-mobile-section');
+  if (mobileSection) mobileSection.value = tab;
   document.querySelectorAll('.tabs > .tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
   const homeEl = document.getElementById('tab-home');
