@@ -322,6 +322,17 @@ function renderGrid() {
     ${isDiscard ? '<span class="status-badge badge-descartado">descartado</span>' : ''}
   </div>
   <div class="cap-actions">
+    <details class="barcode-review" style="margin-bottom:12px">
+      <summary>Vincular produto e aprender código</summary>
+      <p style="font-size:12px;margin:8px 0">Confirme o produto e o tamanho da foto. A contagem original será reaproveitada.</p>
+      <input class="id-input product-query" aria-label="Buscar produto por nome ou SKU" placeholder="Nome ou SKU do produto">
+      <button class="btn-save" type="button" data-action="find-product">Buscar produto</button>
+      <select class="product-choice" aria-label="Produto encontrado" style="width:100%;margin:8px 0"><option value="">Selecione o produto</option></select>
+      <input class="id-input label-reference" aria-label="Referência impressa na etiqueta" placeholder="Referência da etiqueta (ex.: DQ5471-113)">
+      <input class="id-input label-size" aria-label="Tamanho impresso na etiqueta" placeholder="Tamanho da etiqueta (ex.: L ou BR 40)">
+      <button class="btn-save" type="button" data-action="learn-barcode">Vincular e salvar código de barras</button>
+      <p class="barcode-result" role="status" style="font-size:12px;margin-top:8px"></p>
+    </details>
     <input class="id-input" type="text" placeholder="O que voce ve nessa etiqueta?" maxlength="280" data-id="${esc(c.id)}">
     <div class="action-row">
       <button class="btn-save" data-id="${esc(c.id)}" data-action="save">Salvar</button>
@@ -386,6 +397,39 @@ function attachImageLoaders() {
 
 // ── card event listeners ──────────────────────────────────────────────────────
 function attachCardListeners() {
+  document.querySelectorAll('[data-action="find-product"]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = btn.closest('.cap-card'), box = card.querySelector('.barcode-result');
+    const query = card.querySelector('.product-query').value.trim();
+    if (!query) { box.textContent = 'Informe nome ou SKU.'; return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/admin/catalog/products?search=' + encodeURIComponent(query), { headers: H });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Falha na busca');
+      const select = card.querySelector('.product-choice');
+      select.replaceChildren(new Option('Selecione o produto', ''));
+      for (const p of (d.products || []).filter(p => p.active)) {
+        const option = new Option(p.brand + ' · ' + p.name + ' · SKU ' + p.sku, p.id);
+        option.dataset.brand = p.brand; select.appendChild(option);
+      }
+      box.textContent = (select.options.length - 1) + ' produto(s) encontrado(s).';
+    } catch (e) { box.textContent = e.message; } finally { btn.disabled = false; }
+  }));
+  document.querySelectorAll('[data-action="learn-barcode"]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = btn.closest('.cap-card'), box = card.querySelector('.barcode-result');
+    const select = card.querySelector('.product-choice');
+    const body = { productId: select.value, brand: select.selectedOptions[0]?.dataset.brand,
+      reference: card.querySelector('.label-reference').value.trim(), size: card.querySelector('.label-size').value.trim() };
+    if (!body.productId || !body.size) { box.textContent = 'Selecione o produto e informe o tamanho da foto.'; return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/stocktake/captures/' + encodeURIComponent(card.dataset.id) + '/learn-barcode',
+        { method: 'POST', headers: H, body: JSON.stringify(body) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Falha no vínculo');
+      box.textContent = 'Código cadastrado: ' + d.product.barcode + ' — ' + d.product.name +
+        (d.applied ? '. Contagem original confirmada, sem duplicação.' : '. Contagem pendente: ' + (d.blockedReason || 'conferência'));
+      card.classList.add('identified');
+    } catch (e) { box.textContent = e.message; } finally { btn.disabled = false; }
+  }));
   // zoom on photo click
   document.querySelectorAll('.photo-wrap').forEach(wrap => {
     wrap.addEventListener('click', () => {
