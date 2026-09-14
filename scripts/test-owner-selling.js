@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { salesVisibility } = require('../src/services/salesVisibility');
+const { assertNoSaleDiscount } = require('../src/services/discountPolicy');
 
 const root = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'src/routes/seller.js'), 'utf8');
@@ -60,7 +61,7 @@ async function run(route, operatorId, query = {}, body = {}) {
     },
     store: { findUnique: async ({ where }) => stores.find(store => store.id === where.id) || null },
   };
-  vm.runInNewContext(route, { prisma, salesVisibility, console, _recentSaleKeys: new Map(),
+  vm.runInNewContext(route, { prisma, salesVisibility, assertNoSaleDiscount, console, _recentSaleKeys: new Map(),
     authMiddleware() {}, sellerOnly() {},
     router: {
       get(...args) { handler = args.at(-1); },

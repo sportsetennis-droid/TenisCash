@@ -2,6 +2,7 @@ const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { roleAfterStoreAssignment } = require('../services/sellerRole');
 const { OWNER_RECORD_KEY } = require('../services/rankingOwner');
+const { DISCOUNTS_ENABLED } = require('../services/discountPolicy');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -509,6 +510,7 @@ router.post('/use', async (req, res) => {
 // ==================== PROMOS ====================
 
 router.post('/promos', async (req, res) => {
+  if (!DISCOUNTS_ENABLED) return res.status(409).json({ error: 'Descontos e promoções estão desativados para novas vendas.', code: 'DISCOUNTS_DISABLED' });
   try {
     const { title, description, percentage, scope, scopeValue, endsAt } = req.body;
 
@@ -538,14 +540,15 @@ router.post('/promos', async (req, res) => {
 });
 
 router.put('/promos/:id', async (req, res) => {
+  if (!DISCOUNTS_ENABLED && req.body?.active !== false) return res.status(409).json({ error: 'Descontos e promoções estão desativados para novas vendas.', code: 'DISCOUNTS_DISABLED' });
   try {
     const { active, percentage, endsAt } = req.body;
     const promo = await prisma.promo.update({
       where: { id: req.params.id },
       data: {
         ...(active !== undefined && { active }),
-        ...(percentage && { percentage: parseFloat(percentage) }),
-        ...(endsAt && { endsAt: new Date(endsAt) }),
+        ...(DISCOUNTS_ENABLED && percentage && { percentage: parseFloat(percentage) }),
+        ...(DISCOUNTS_ENABLED && endsAt && { endsAt: new Date(endsAt) }),
       }
     });
 

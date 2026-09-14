@@ -14,6 +14,7 @@ const { commissionWindow, calculateRankingCommissions } = require('../services/r
 const { salesVisibility } = require('../services/salesVisibility');
 const { getRankingOwner } = require('../services/rankingOwner');
 const { correctSaleSeller } = require('../services/saleSellerCorrection');
+const { assertNoSaleDiscount, normalSalePrice } = require('../services/discountPolicy');
 
 const router = express.Router();
 
@@ -853,6 +854,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       return res.status(403).json({ error: 'Vendedor escolhido não pertence a esta loja' });
     }
 
+    assertNoSaleDiscount(req.body.discount);
     // Busca produtos pra montar SaleItems
     const productIds = items.map(i => i.productId).filter(Boolean);
     const products = await prisma.product.findMany({
@@ -866,7 +868,7 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const p = productMap.get(item.productId);
       if (!p) throw new SaleStockError(`Produto ${item.productId} não encontrado`);
       const qty = parseInt(item.quantity || 1, 10);
-      const unit = parseFloat(item.unitPrice || p.promoPrice || p.price);
+      const unit = normalSalePrice(p, item.unitPrice);
       if (!Number.isInteger(qty) || qty < 1) throw new SaleStockError(`Quantidade inválida para ${p.name}.`);
       if (!Number.isFinite(unit) || unit < 0) throw new SaleStockError(`Preço inválido para ${p.name}.`);
       const sellerReportedSize = normalizeSellerReportedSize(item.sellerSize);
@@ -876,8 +878,8 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       const sizePlan = planSaleProductSize(p, item);
       const productSize = sizePlan.productSize;
       const needsNewProductSize = sizePlan.needsNewProductSize;
-      const total = unit * qty;
-      totalAmount += total;
+      const total = Math.round(unit * 100) * qty / 100;
+      totalAmount = Math.round((totalAmount + total) * 100) / 100;
       return {
         productId: p.id,
         productSizeId: productSize?.id || null,
@@ -901,24 +903,10 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
       .filter((i) => i.isNewBarcode && i.barcode && i.size && i.productId)
       .map((i) => ({ productId: i.productId, size: String(i.size).trim(), barcode: String(i.barcode).trim() }));
 
-    // Desconto em R$ na venda (sem limite). Reduz os itens proporcionalmente pro cupom bater
-    // (vProd = soma dos itens, vDesc=0 no agente). Só roda se desconto>0 — venda sem desconto = idêntica a hoje.
+    // Novas vendas usam o preço normal do catálogo, sem desconto promocional.
     const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const originalSubtotal = round2(totalAmount); // subtotal ANTES do desconto — base do teto de 10% do TenisCash
-    let discountApplied = 0;
-    const rawDiscount = round2(req.body.discount);
-    if (rawDiscount > 0 && totalAmount > 0) {
-      discountApplied = Math.min(rawDiscount, round2(totalAmount));
-      const target = round2(totalAmount - discountApplied);
-      const factor = target / totalAmount;
-      let acc = 0;
-      saleItemsData.forEach((it, idx) => {
-        if (idx < saleItemsData.length - 1) { it.totalPrice = round2(it.totalPrice * factor); acc = round2(acc + it.totalPrice); }
-        else { it.totalPrice = round2(target - acc); } // último item absorve o arredondamento
-        it.unitPrice = it.quantity ? it.totalPrice / it.quantity : it.totalPrice; // vUnCom aceita mais decimais
-      });
-      totalAmount = target;
-    }
+    const discountApplied = 0;
 
     // Cliente (opcional): busca por telefone
     let customer = null;

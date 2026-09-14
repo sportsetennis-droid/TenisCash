@@ -37,18 +37,7 @@ function run() {
       { id: 101, product_id: 9001 },
       { id: 102, product_id: 9002 },
     ],
-  }, 'promotion-1', new Set(['9001'])), [{
-    command: 'create_or_update_discount',
-    specs: {
-      promotion_id: 'promotion-1',
-      currency: 'BRL',
-      display_text: { 'pt-br': '30% OFF exclusivo da placa' },
-      line_items: [{
-        line_item: '101',
-        discount_specs: { type: 'percentage', amount: '30.00' },
-      }],
-    },
-  }]);
+  }, 'promotion-1', new Set(['9001'])), []);
   assert.deepEqual(qr.buildQrDiscountCommands({
     promotions: [{ id: 'promotion-1', line_items: ['101'] }],
   }, 'promotion-1', new Set()), [{

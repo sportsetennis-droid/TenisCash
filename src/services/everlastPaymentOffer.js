@@ -1,5 +1,6 @@
 // Oferta aprovada: descontos alternativos sobre o preço normal, sem acumular.
 const OFFER_ID = 'everlast-off20-baixou-20260912';
+const { DISCOUNTS_ENABLED, assertDiscountsEnabled } = require('./discountPolicy');
 
 function contextOf(product) {
   try {
@@ -30,6 +31,7 @@ function calculateOffer(price, name = "") {
 }
 
 function productOffer(product) {
+  if (!DISCOUNTS_ENABLED) return null;
   if (String(product?.brand || '').trim().toUpperCase() !== 'EVERLAST') return null;
   const offer = contextOf(product).paymentOffer;
   if (offer?.id !== OFFER_ID || offer.active !== true) return null;
@@ -39,6 +41,7 @@ function productOffer(product) {
 }
 
 async function applyOffer(prisma) {
+  assertDiscountsEnabled();
   return prisma.$transaction(async tx => {
     const products = await tx.product.findMany({ where: { active: true, brand: { equals: 'EVERLAST', mode: 'insensitive' } } });
     if (!products.length) throw new Error('Nenhum produto Everlast encontrado');

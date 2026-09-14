@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
 const ns = require('../services/nuvemshop');
+const { DISCOUNTS_ENABLED } = require('../services/discountPolicy');
 
 const router = express.Router();
 
@@ -18,12 +19,16 @@ const DEFAULT_COMMISSION_PCT = 5;
 // Resiliente: se a NS falhar, NÃO derruba a operação local (loga e segue).
 // ----------------------------------------------------------------------
 async function getNsConnection() {
-  try { return await prisma.nuvemshopConnection.findFirst({ where: { status: 'active' } }); }
+  try { return await require('../services/nuvemshopHandlers').getConnection(); }
   catch { return null; }
 }
 
 // Cria (ou recria) o cupom na NS e devolve o nsCouponId, ou null se falhar.
 async function nsCreateOrUpdateCoupon(partner, { valid } = {}) {
+  if (!DISCOUNTS_ENABLED) {
+    await nsSetCouponValid(partner, false);
+    return partner.nsCouponId || null;
+  }
   const conn = await getNsConnection();
   if (!conn) { console.warn('[creation] sem conexão NS — cupom não espelhado:', partner.couponCode); return null; }
   const isValid = valid != null ? valid : (partner.status === 'active');
@@ -45,7 +50,7 @@ async function nsSetCouponValid(partner, valid) {
   if (!partner?.nsCouponId) return;
   const conn = await getNsConnection();
   if (!conn) return;
-  try { await ns.setCouponValid(conn, partner.nsCouponId, valid); }
+  try { await ns.setCouponValid(conn, partner.nsCouponId, DISCOUNTS_ENABLED && valid); }
   catch (err) { console.warn('[creation] falha valid=' + valid + ' cupom NS:', partner.couponCode, err.message); }
 }
 const TIER_THRESHOLDS = [
@@ -163,6 +168,7 @@ function monthKeyBrazil(date) {
    ====================================================================== */
 
 router.post('/coupon/validate', optionalAuth, async (req, res) => {
+  if (!DISCOUNTS_ENABLED) return res.json({ valid: false, error: 'Cupons de desconto estão desativados para novas vendas.' });
   try {
     const code = normalizeCoupon(req.body?.code);
     if (!code) return res.json({ valid: false, error: 'Cupom obrigatório' });
@@ -659,6 +665,7 @@ router.delete('/admin/partners/:id', authMiddleware, adminOnly, async (req, res)
    ====================================================================== */
 
 router.post('/admin/sale-with-coupon', authMiddleware, sellerOrAdmin, async (req, res) => {
+  if (!DISCOUNTS_ENABLED) return res.status(409).json({ error: 'Cupons de desconto estão desativados para novas vendas.', code: 'DISCOUNTS_DISABLED' });
   try {
     const b = req.body || {};
     const couponCode = normalizeCoupon(b.couponCode);

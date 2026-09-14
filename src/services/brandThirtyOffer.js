@@ -1,5 +1,6 @@
 const { labelUsage } = require('./labelUsage');
 const { diadoraFixedPrice } = require('./diadoraFixedOffer');
+const { assertDiscountsEnabled } = require('./discountPolicy');
 const BRANDS = new Set(['OUS', 'DIADORA', 'OLYMPIKUS', 'FILA', 'SPEEDO', 'ALLSTAR', 'JOMA', 'UMBRO', 'TOPPER', 'MUNICH', 'MIZUNO', 'KAPPA']);
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 const campaignDiscount = brand => normalize(brand) === 'MIZUNO' ? 40 : ['TOPPER', 'MUNICH', 'JOMA', 'EVERLAST'].includes(normalize(brand)) ? 20 : 30;
@@ -41,6 +42,7 @@ async function campaignFootwear(prisma) {
 }
 
 async function applyBrandThirtyOffer(prisma, inputBrand) {
+  assertDiscountsEnabled();
   const brand = String(inputBrand || '').trim().toUpperCase();
   if (!BRANDS.has(brand)) throw new Error('Marca não habilitada para esta promoção');
   return prisma.$transaction(async tx => {

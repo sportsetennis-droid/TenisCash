@@ -17,6 +17,7 @@ const CLIENT_SECRET = process.env.NUVEMSHOP_CLIENT_SECRET;
 const REDIRECT_URI = process.env.NUVEMSHOP_REDIRECT_URI;
 const API_BASE = process.env.NUVEMSHOP_API_BASE_URL || 'https://api.tiendanube.com/v1';
 const VERSIONED_API_BASE = process.env.NUVEMSHOP_VERSIONED_API_BASE_URL || 'https://api.tiendanube.com/2025-03';
+const { DISCOUNTS_ENABLED, assertDiscountsEnabled } = require('./discountPolicy');
 
 function isConfigured() {
   return !!(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
@@ -230,10 +231,12 @@ function buildCouponPayload({
 }
 
 async function createCoupon(connection, opts) {
+  assertDiscountsEnabled();
   return nuvemshopApi(connection, 'POST', '/coupons', buildCouponPayload(opts));
 }
 
 async function updateCoupon(connection, couponId, opts) {
+  if (!DISCOUNTS_ENABLED) opts = { ...opts, valid: false };
   // PUT aceita os mesmos campos; só manda o que veio
   const payload = {};
   if (opts.code != null) payload.code = String(opts.code);
@@ -250,6 +253,7 @@ async function updateCoupon(connection, couponId, opts) {
 }
 
 async function setCouponValid(connection, couponId, valid) {
+  if (valid) assertDiscountsEnabled();
   return nuvemshopApi(connection, 'PUT', `/coupons/${couponId}`, { valid: !!valid });
 }
 
