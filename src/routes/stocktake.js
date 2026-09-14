@@ -18,6 +18,7 @@ const sharp = require('sharp');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 
 const { learnScannerBarcode, validGtin } = require('../services/scannerReference');
+const { parseScannerText } = require('../services/scannerText');
 const router = express.Router();
 
 // Upload em memória pra foto de conferência (máx 12MB), comprimida com sharp -> webp base64.
@@ -793,7 +794,7 @@ function parseJsonSeguro(t) {
 }
 
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
-  let lido = null;
+  const lido = parseScannerText(meta?.ocrText);
   let ean = eanLocal || null;
 
   // ZXING-FIRST (grátis): se a câmera não trouxe o código, decodifica da própria foto (sem API paga).
@@ -812,25 +813,7 @@ async function processarEtiqueta(capId, photo, eanLocal, meta) {
     } catch (e) { console.warn('[etiqueta] zxing falhou:', e.message); }
   }
 
-  // O código já casa um PRODUTO? Então NÃO gasta a visão paga (economia + sem o erro de parse).
-  let temProdutoPorCodigo = false;
-  if (ean) {
-    const v = [ean, ean.replace(/^0+/, ''), '0' + ean];
-    temProdutoPorCodigo = (await prisma.productSize.count({ where: { barcode: { in: v } } })) > 0;
-  }
-
-  // VISÃO PAGA (fallback) só quando o código não resolve (Nike sem GTIN na nota, foto sem código legível).
-  if (!temProdutoPorCodigo) try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const b64 = photo.split(',')[1];
-    const r = await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 600, messages: [{ role: 'user', content: [
-      { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: b64 } },
-      { type: 'text', text: 'Etiqueta/caixa de produto esportivo. REGRA: se houver MAIS DE UMA etiqueta/produto na foto, considere SOMENTE a mais CENTRALIZADA/em destaque — ignore as de canto/fundo. Extraia SÓ JSON: {"ean":"dígitos impressos no código de barras (12-14) ou null","codigos":["TODOS os códigos/referências alfanuméricos impressos na etiqueta central, copiando o sufixo de cor; nunca URLs nem códigos de outras etiquetas"],"marca":"marca impressa ou null","sku":"código/SKU em texto (ex PABFBR-BLACK, CALBFBR-ALLBLACK-M, MEIAIIF-BLACK-P, DH3162 101) ou null","nome":"nome do produto ou null","tamanho":"o tamanho BRASILEIRO. ATENÇÃO caixa de tênis: o número GRANDE no centro é US — IGNORE. Em volta vêm UK / cm / BR / EUR pequenos; pegue SÓ o número logo depois de \\"BR\\" e devolva prefixado (ex \\"BR 40\\", \\"BR 39.5\\"). Roupa = copie a letra impressa PP/P/M/G/GG/XS/S/L/XL/XXL, sem converter L para G. Sem BR visível = null."}. Copie LITERAL, não invente.' },
-    ] }] });
-    const t = (r.content.find((c) => c.type === 'text') || {}).text || '';
-    lido = parseJsonSeguro(t);
-  } catch (e) { console.warn('[etiqueta] visão falhou:', e.message); }
+  // Text was read locally in the browser. Never call a paid vision provider.
 
   let eanVisaoRejeitado = false;
   if (!ean && lido?.ean) {
@@ -869,7 +852,7 @@ router.post('/etiqueta',
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
-      const { storeId, sellerId, sellerName, eanLocal, clientScanId } = req.body || {};
+      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText } = req.body || {};
       const photo = await shrinkPhoto(req.file.buffer);
       const eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
       // O SCANNER TAMBÉM É CONTAGEM (dono 2026-06-11: equipe usa o scanner no lugar do bipe).
@@ -952,7 +935,7 @@ router.post('/etiqueta',
         product: scanResult?.product || undefined,
         alerta: alertaDup || undefined,
       });
-      setImmediate(() => processarEtiqueta(cap.id, photo, eanLocal ? String(eanLocal).replace(/\D/g, '') : null, {})
+      setImmediate(() => processarEtiqueta(cap.id, photo, eanLocal ? String(eanLocal).replace(/\D/g, '') : null, { ocrText: typeof ocrText === 'string' ? ocrText.slice(0, 4000) : '' })
         .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'pendente', note: 'etiqueta erro-processamento' } }).catch(() => {}); }));
     } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(500).json({ error: e.message }); }
   }

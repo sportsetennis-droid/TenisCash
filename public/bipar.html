@@ -121,6 +121,7 @@
     <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Aguardando loja/vendedor..." disabled>
     <button type="button" onclick="window.abrirDigitacaoManual && window.abrirDigitacaoManual()" style="margin-top:8px;width:100%;min-height:44px;font-size:14px;font-weight:800;background:#f0f0f3;color:#1d1d1f;border:1.5px solid #d2d2d7;border-radius:10px;cursor:pointer">⌨️ DIGITAR CÓDIGO MANUALMENTE</button>
     <button type="button" id="btn-etiqueta" onclick="window.fotografarEtiqueta && window.fotografarEtiqueta()" style="margin-top:8px;width:100%;min-height:48px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#25d366,#1faf52);color:#fff;border:none;border-radius:10px;cursor:pointer">📷 SCANNER DE ETIQUETAS (Nike/Fiber)</button>
+    <p style="font-size:12px;color:#666;margin-top:6px">Leitura no aparelho, sem créditos de API. Enquadre uma etiqueta inteira por vez.</p>
     <div id="etiqueta-result" style="display:none;margin-top:8px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700"></div>
   </div>
 
@@ -156,6 +157,7 @@
     </div>
   </div>
 
+<script src="/scanner-ocr.js?v=20260914-free-1"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
   const STORAGE_VEND = 'sports_tennis_bipar_vendedor';
@@ -663,7 +665,7 @@
     const btn = document.getElementById('etiq-confirm-btn');
     pane.style.display = 'flex';
     st.textContent = '⏳ Salvando…';
-    det.textContent = ean ? 'código ' + ean : 'sem código lido — o servidor vai ler pela foto';
+    det.textContent = ean ? 'código ' + ean : 'sem código lido — vamos ler a referência no aparelho';
     btn.disabled = true; btn.textContent = 'AGUARDE…'; btn.style.background = '#555';
     clearInterval(etiqWatch);
     etiqWatch = setInterval(() => {
@@ -707,9 +709,13 @@
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
     const lid = 'e' + Date.now();
-    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId() };
+    const selectedSeller = document.getElementById('vendedor').value;
+    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(),
+      storeId: document.getElementById('loja').value || '',
+      sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
+      sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
     etiqFila.push(item); renderEtiqLista();
-    const k = Math.min(1, 1000 / Math.max(video.videoWidth, video.videoHeight));
+    const k = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
     const c = document.createElement('canvas');
     c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k);
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
@@ -717,7 +723,7 @@
       const fr = new FileReader();
       fr.onload = () => { item.b64 = fr.result; etiqSave(); enviarFila(); };
       fr.readAsDataURL(b);
-    }, 'image/jpeg', 0.62);
+    }, 'image/jpeg', 0.85);
     etiqBeep();
     return lid;
   }
@@ -727,14 +733,26 @@
     try {
       const item = etiqFila.find((x) => x.st === 'fila' && x.b64);
       if (item) {
+        // Store association belongs to this capture, even during a slow OCR pass.
+        const storeId = item.storeId ?? (document.getElementById('loja').value || '');
+        const sellerValue = document.getElementById('vendedor').value;
+        const sellerId = item.sellerId ?? (sellerValue === '__manual__' ? '' : (sellerValue || ''));
+        const sellerName = item.sellerName ?? (localStorage.getItem(STORAGE_VENDNAME) || '');
+        if (!item.ocrDone) {
+          item.ocrText = window.ScannerOCR ? await window.ScannerOCR.readForScan(item.b64, item.ean, message => {
+            const detail = document.getElementById('etiq-confirm-det');
+            if (detail) detail.textContent = message;
+          }) : '';
+          item.ocrDone = true;
+        }
         const blob = await (await fetch(item.b64)).blob();
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
         fd.append('eanLocal', item.ean || '');
-        fd.append('storeId', document.getElementById('loja').value || '');
-        const vsel = document.getElementById('vendedor').value;
-        fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
-        fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
+        fd.append('ocrText', item.ocrText || '');
+        fd.append('storeId', storeId);
+        fd.append('sellerId', sellerId);
+        fd.append('sellerName', sellerName);
         fd.append('clientScanId', item.clientScanId);
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
         const d = await r.json().catch(() => ({}));

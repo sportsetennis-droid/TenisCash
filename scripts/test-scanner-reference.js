@@ -50,9 +50,11 @@ function routeFunctions(db){
  const ctx={require:name=>{
   if(name==='express')return{Router:()=>router}; if(name==='multer')return upload;if(name==='sharp')return()=>{};
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
-  if(name==='../services/scannerReference')return require('../src/services/scannerReference');throw Error('Unexpected require '+name);
+  if(name==='../services/scannerReference')return require('../src/services/scannerReference');
+  if(name==='../services/scannerText')return require('../src/services/scannerText');
+  throw Error('Unexpected require '+name);
  },module:{exports:{}},console,setInterval:()=>0,setTimeout:()=>0,Buffer};
- vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../src/routes/stocktake'),'utf8')+'\nmodule.exports.test={garantirBipeDaCaptura,normalizeScannedSize,parseJsonSeguro};',ctx);
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../src/routes/stocktake'),'utf8')+'\nmodule.exports.test={garantirBipeDaCaptura,normalizeScannedSize,parseJsonSeguro,processarEtiqueta};',ctx);
  return {...ctx.module.exports.test,routes};
 }
 (async()=>{
@@ -96,6 +98,19 @@ function routeFunctions(db){
  for(const [read,size,expected] of [[{sku:'192974',marca:'ADIDAS'},'L','brand_conflict'],[{sku:'192974'},null,'size_required']]) {
   ({db,state}=database());r=await learnScannerBarcode(db,{barcode:'196153346321',read,size});assert.equal(r.reason,expected);assert.equal(state.sizes.length,0);
  }
+ // Browser OCR text goes through the real scanner route and exact-reference
+ // learner, with no paid-provider require permitted by this VM.
+ ({db,state}=database({products:[{...p1,aiContext:{scannerReferences:['DQ5471113']}}]}));
+ state.captures.push({id:'free-cap',barcode:'196153346321',storeId:'LOJA04',createdAt:new Date(),bipeId:null});
+ const freeRoute=routeFunctions(db);
+ await freeRoute.processarEtiqueta('free-cap','unused-image','196153346321',{ocrText:'NIKE\nDQ5471-113\nL\n196153346321'});
+ assert.equal(state.captures[0].status,'vinculado');assert.equal(state.sizes[0].barcode,'196153346321');
+ assert.equal(state.stocks[0].stock,1);assert.equal(state.movements.length,1);
+ await freeRoute.processarEtiqueta('free-cap','unused-image','196153346321',{ocrText:''});
+ assert.equal(state.stocks[0].stock,1);assert.equal(state.movements.length,1);
+ ({db,state}=database());state.captures.push({id:'unreadable',barcode:'196153346321',storeId:'LOJA04',createdAt:new Date(),bipeId:null});
+ await routeFunctions(db).processarEtiqueta('unreadable','unused-image','196153346321',{ocrText:''});
+ assert.equal(state.captures[0].status,'pendente');assert.equal(state.sizes.length,0);
  const html=fs.readFileSync(require.resolve('../public/identificar.html'),'utf8');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(m[1].trim())new vm.Script(m[1]);
  console.log('PASS: exact reference and NF-e lookup; confirmed Nike alias; GTIN checksum and leading zero; size/brand/owner ambiguity; preserving existing barcode and purchased stock; repeated and concurrent capture linking applies once per store; authenticated review route; HTML syntax.');
