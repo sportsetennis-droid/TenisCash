@@ -363,21 +363,34 @@ router.post('/login', async (req, res) => {
     };
 
     let user;
+    let passwordVerified = false;
     if (normalizedEmail) {
-      // E-mail não é único no cadastro legado. Nunca escolher a primeira conta
-      // quando mais de um cadastro corresponde ao mesmo endereço.
+      // Cadastros legados podem compartilhar e-mail. A combinação com a senha
+      // precisa identificar uma única conta, sem preferência por ordem ou cargo.
       // Prisma/PostgreSQL usa ILIKE neste filtro: caracteres do endereço
       // precisam ser literais, inclusive %, _ e a própria barra de escape.
       const literalEmail = normalizedEmail.replace(/[_%\\]/g, char => '\\' + char);
+      const maxEmailAccounts = 10;
       const matches = await prisma.user.findMany({
         where: { email: { equals: literalEmail, mode: 'insensitive' } },
         include: includeRich,
-        take: 2,
+        take: maxEmailAccounts + 1,
       });
-      if (matches.length !== 1 || typeof matches[0].email !== 'string' || matches[0].email.toLowerCase() !== normalizedEmail) {
+      // Buscar uma conta além do limite evita escolher entre resultados truncados
+      // e limita o custo das verificações de senha por tentativa.
+      if (!matches.length || matches.length > maxEmailAccounts || matches.some(candidate =>
+        typeof candidate.email !== 'string' || candidate.email.toLowerCase() !== normalizedEmail)) {
         return res.status(401).json({ error: 'Credenciais incorretas' });
       }
-      user = matches[0];
+      let matchingPasswords = 0;
+      for (const candidate of matches) {
+        if (await bcrypt.compare(password, candidate.pin)) {
+          matchingPasswords++;
+          user = candidate;
+        }
+      }
+      if (matchingPasswords !== 1) return res.status(401).json({ error: 'Credenciais incorretas' });
+      passwordVerified = true;
     } else if (typeof phone === 'string' && phone.trim()) {
       const cleanPhone = phone.replace(/\D/g, '');
       if (!cleanPhone) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
@@ -389,7 +402,7 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Credenciais incorretas' });
     if (!user.active) return res.status(403).json({ error: 'Conta desativada. Entre em contato com a loja.' });
 
-    const validPassword = await bcrypt.compare(password, user.pin);
+    const validPassword = passwordVerified || await bcrypt.compare(password, user.pin);
     if (!validPassword) return res.status(401).json({ error: 'Credenciais incorretas' });
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });

@@ -52,7 +52,7 @@ async function request(body, users = [account], databaseError = null, forcedMatc
     findMany: async query => {
       recordQuery('findMany', query);
       assert.equal(query.where.email.mode, 'insensitive');
-      assert.equal(query.take, 2, 'Duplicate detection needs at most two accounts');
+      assert.equal(query.take, 11, 'Read one account beyond the ten-comparison limit to detect overflow');
       assert.ok(query.include.store.select.id);
       assert.ok(query.include.partner.select.id);
       return forcedMatches || users.filter(user => matchesILike(user.email, query.where.email.equals)).slice(0, query.take);
@@ -92,12 +92,12 @@ async function request(body, users = [account], databaseError = null, forcedMatc
   return { status, result, calls };
 }
 
-function authenticated(response, expected = account) {
+function authenticated(response, expected = account, expectedPassword = password, expectedComparisons = 1) {
   assert.equal(response.status, 200);
   assert.equal(response.result.user.id, expected.id);
   assert.equal(response.result.user.storeId, expected.storeId);
   assert.equal(response.result.user.store.id, expected.store.id);
-  assert.equal(response.result.user.role, 'seller');
+  assert.equal(response.result.user.role, expected.role);
   assert.equal(response.result.user.profileComplete, false, 'Login must not require completion of a customer profile');
   assert.ok(!Object.hasOwn(response.result.user, 'pin'));
   assert.ok(!Object.hasOwn(response.result.user, 'password'));
@@ -105,8 +105,10 @@ function authenticated(response, expected = account) {
   assert.equal(claims.userId, expected.id);
   assert.equal(claims.role, expected.role);
   assert.equal(claims.exp - claims.iat, 30 * 24 * 60 * 60);
-  assert.equal(response.calls.comparisons.length, 1);
-  assert.equal(response.calls.comparisons[0].plain, password, 'Password spaces and case must remain literal');
+  assert.equal(response.calls.comparisons.length, expectedComparisons);
+  for (const comparison of response.calls.comparisons) {
+    assert.equal(comparison.plain, expectedPassword, 'Password spaces and case must remain literal');
+  }
 }
 
 (async () => {
@@ -158,22 +160,63 @@ function authenticated(response, expected = account) {
     const inactive = await request({ ...login, password }, [{ ...account, active: false }]);
     assert.equal(inactive.status, 403);
     assert.match(inactive.result.error, /Conta desativada/);
-    assert.equal(inactive.calls.comparisons.length, 0);
+    assert.equal(inactive.calls.comparisons.length, login.email ? 1 : 0);
     assert.ok(!inactive.result.token);
   }
 
-  for (const extra of [
-    { ...account, id: 'duplicate', email: account.email.toLowerCase() },
-    { ...account, id: 'duplicate', email: account.email.toLowerCase(), pin: bcrypt.hashSync('different-password', 4) },
-    { ...account, id: 'duplicate', email: account.email.toLowerCase(), active: false },
-  ]) {
-    for (const users of [[account, extra], [extra, account]]) {
+  const otherPassword = 'Different-Family-Password';
+  const extra = { ...account, id: 'family-account', email: account.email.toLowerCase(),
+    role: 'user', pin: bcrypt.hashSync(otherPassword, 4) };
+  const owner = { ...account, role: 'superadmin' };
+  for (const users of [[owner, extra], [extra, owner]]) {
+    authenticated(await request({ email: account.email, password }, users), owner, password, 2);
+    authenticated(await request({ email: account.email, password: otherPassword }, users), extra, otherPassword, 2);
+    const wrongPassword = await request({ email: account.email, password: 'wrong-password' }, users);
+    assert.equal(wrongPassword.status, 401);
+    assert.equal(wrongPassword.result.error, 'Credenciais incorretas');
+    assert.equal(wrongPassword.calls.comparisons.length, 2);
+    assert.ok(!wrongPassword.result.token);
+  }
+  // Inactive accounts also count toward ambiguity. A shared password must never
+  // select the active or privileged account by role, status or result ordering.
+  for (const active of [true, false]) {
+    const samePassword = { ...extra, active, pin: hash };
+    for (const users of [[owner, samePassword], [samePassword, owner]]) {
       const ambiguous = await request({ email: account.email, password }, users);
-      assert.equal(ambiguous.status, 401, 'Ambiguous email must not pick an account, irrespective of row order or password');
+      assert.equal(ambiguous.status, 401);
       assert.equal(ambiguous.result.error, 'Credenciais incorretas');
-      assert.equal(ambiguous.calls.comparisons.length, 0);
+      assert.equal(ambiguous.calls.comparisons.length, 2);
       assert.ok(!ambiguous.result.token);
     }
+    const distinct = { ...extra, active };
+    for (const users of [[owner, distinct], [distinct, owner]]) {
+      authenticated(await request({ email: account.email, password }, users), owner, password, 2);
+      const response = await request({ email: account.email, password: otherPassword }, users);
+      if (active) authenticated(response, distinct, otherPassword, 2);
+      else {
+        assert.equal(response.status, 403, 'Only a unique correct password may identify an inactive email account');
+        assert.match(response.result.error, /Conta desativada/);
+        assert.equal(response.calls.comparisons.length, 2);
+        assert.ok(!response.result.token);
+      }
+    }
+  }
+  const inactiveWrongPassword = await request({ email: account.email, password: 'wrong-password' }, [{ ...account, active: false }]);
+  assert.equal(inactiveWrongPassword.status, 401);
+  assert.equal(inactiveWrongPassword.result.error, 'Credenciais incorretas');
+  assert.ok(!inactiveWrongPassword.result.token);
+
+  const nonmatchingAccounts = Array.from({ length: 10 }, (_, index) => ({ ...extra, id: `shared-email-${index}` }));
+  const atLimit = [owner, ...nonmatchingAccounts.slice(0, 9)];
+  for (const users of [atLimit, [...atLimit].reverse()]) {
+    authenticated(await request({ email: account.email, password }, users), owner, password, 10);
+  }
+  for (const users of [[owner, ...nonmatchingAccounts], [...nonmatchingAccounts, owner]]) {
+    const overflow = await request({ email: account.email, password }, users);
+    assert.equal(overflow.status, 401, 'Overflow must reject before comparisons, never authenticate from a truncated subset');
+    assert.equal(overflow.result.error, 'Credenciais incorretas');
+    assert.equal(overflow.calls.comparisons.length, 0);
+    assert.ok(!overflow.result.token);
   }
   for (const login of [{ email: 'missing@example.com' }, { phone: '83999990000' }]) {
     const missing = await request({ ...login, password });
@@ -196,5 +239,5 @@ function authenticated(response, expected = account) {
   assert.equal(failure.status, 500);
   assert.equal(failure.result.error, 'Erro interno no servidor');
   assert.ok(!failure.result.token);
-  console.log('PASS: literal case-insensitive email login, ILIKE metacharacters, duplicate rejection, formatted WhatsApp, literal password verification, inactive accounts, JWT identity, malformed input and credential privacy; no live account changed');
+  console.log('PASS: literal case-insensitive email login, ILIKE metacharacters, shared-email password identity, ambiguity and comparison limits, formatted WhatsApp, literal password verification, inactive accounts, JWT identity, malformed input and credential privacy; no live account changed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
