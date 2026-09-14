@@ -16,6 +16,14 @@ global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData
  const moved=auto.create({...opts,recognize:async()=>{shade=220;return '220509 / SLT\nBRA 40';}});
  await moved.tick();clock+=1500;await moved.tick();assert.equal(captures.length,3,'Moving to another piece during OCR does not capture stale result');
  assert.equal(auto.labelText('random box'),false);assert.equal(auto.labelText('220509 / SLT'),false);
- assert.equal(auto.labelText('NIKE\nDD5860-690\nXL'),true);
+  assert.equal(auto.labelText('NIKE\nDD5860-690\nXL'),true);
+ let workerInstance;
+ global.Worker=class {constructor(){workerInstance=this;}postMessage(message){this.message=message;}terminate(){this.terminated=true;}};
+ const frame={width:2,height:2,getContext:()=>({getImageData:()=>({width:2,height:2,data:new Uint8ClampedArray(16)})})};
+ const decoding=auto.decodeInWorker(frame);
+ assert.equal(await auto.decodeInWorker(frame),'','No overlapping worker frame backlog');
+ workerInstance.onmessage({data:{id:workerInstance.message.id,code:'196974865902'}});
+ assert.equal(await decoding,'196974865902');
+ const interrupted=auto.decodeInWorker(frame);auto.stopDecoder();assert.equal(await interrupted,'');assert.equal(workerInstance.terminated,true);
  console.log('PASS: automatic barcode/reference capture, explicit next-piece lock, stale OCR cancellation, motion rejection, missing-label rejection');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,12 +1,13 @@
 /* Automatic capture, entirely on-device. One capture per explicit next-piece cycle. */
 (function (root) {
   'use strict';
+  function createCanvas(){return typeof document!=='undefined'?document.createElement('canvas'):new OffscreenCanvas(1,1);}
   function labelText(text) {
     return /\b(?:[A-Z]{2}\d{4}(?:[- ]?\d{3})?|\d{5,6}(?:BR)?\s*[/\-]\s*[A-Z]{2,5})\b/i.test(text) &&
       (/\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(text) || /^\s*(?:SIZE\s+)?(?:XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text));
   }
   function signature(canvas) {
-    const c=document.createElement('canvas');c.width=24;c.height=24;
+    const c=createCanvas();c.width=24;c.height=24;
     const ctx=c.getContext('2d',{willReadFrequently:true});
     ctx.drawImage(canvas,canvas.width*.15,canvas.height*.15,canvas.width*.7,canvas.height*.7,0,0,24,24);
     const pixels=ctx.getImageData(0,0,24,24).data;
@@ -46,16 +47,38 @@
     return {tick,reset,stop};
   }
   let wasmReady;
+  let decoderWorker, decoderRequest=0, decoderPending;
+  function stopDecoder(){
+    decoderWorker?.terminate();decoderWorker=null;
+    if(decoderPending){clearTimeout(decoderPending.timer);decoderPending.resolve('');decoderPending=null;}
+  }
+  function decodeInWorker(frame){
+    if(decoderPending)return Promise.resolve('');
+    if(typeof Worker==='undefined')return Promise.resolve('');
+    try{
+      if(!decoderWorker){
+        decoderWorker=new Worker('/scanner-barcode-worker.js?v=20260914-worker-1');
+        decoderWorker.onmessage=({data})=>{if(!decoderPending||data.id!==decoderPending.id)return;const pending=decoderPending;decoderPending=null;clearTimeout(pending.timer);pending.resolve(data.code||'');};
+        decoderWorker.onerror=stopDecoder;
+      }
+      const pixels=frame.getContext('2d',{willReadFrequently:true}).getImageData(0,0,frame.width,frame.height);
+      return new Promise(resolve=>{
+        const id=++decoderRequest,timer=setTimeout(stopDecoder,10000);
+        decoderPending={id,resolve,timer};
+        try{decoderWorker.postMessage({id,width:pixels.width,height:pixels.height,buffer:pixels.data.buffer},[pixels.data.buffer]);}catch(_){stopDecoder();}
+      });
+    }catch(_){stopDecoder();return Promise.resolve('');}
+  }
   async function decodeCanvas(frame,core,ZXing){
     if(root.ZXingWASM)try{
       if(!wasmReady)wasmReady=root.ZXingWASM.prepareZXingModule({overrides:{locateFile:()=>'/vendor/barcode/zxing_reader.wasm'},fireImmediately:true});
       await wasmReady;
-      const c=document.createElement('canvas');c.width=Math.round(frame.width*.84);c.height=Math.round(frame.height*.84);
+      const c=createCanvas();c.width=Math.round(frame.width*.84);c.height=Math.round(frame.height*.84);
       const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(frame,(frame.width-c.width)/2,(frame.height-c.height)/2,c.width,c.height,0,0,c.width,c.height);
       const options={tryHarder:true,tryRotate:true,tryInvert:true,formats:['EAN13','UPCA','EAN8','Code128','ITF'],maxNumberOfSymbols:3};
       let results=await root.ZXingWASM.readBarcodes(ctx.getImageData(0,0,c.width,c.height),options);
       if(!results.length){
-        const enhanced=document.createElement('canvas'),scale=Math.min(3,2400/Math.max(c.width,c.height));
+        const enhanced=createCanvas(),scale=Math.min(2,2000/Math.max(c.width,c.height));
         enhanced.width=Math.round(c.height*scale);enhanced.height=Math.round(c.width*scale);
         const ec=enhanced.getContext('2d',{willReadFrequently:true});ec.translate(enhanced.width/2,enhanced.height/2);ec.rotate(Math.PI/2);ec.drawImage(c,-c.width*scale/2,-c.height*scale/2,c.width*scale,c.height*scale);
         const pixels=ec.getImageData(0,0,enhanced.width,enhanced.height);root.ScannerRegions?.normalizePixels(pixels.data);
@@ -65,9 +88,10 @@
       if(codes.length===1)return codes[0];
       if(codes.length>1)return '';
     }catch(_){}
+    if(!core||!ZXing)return '';
     // Central crops in both axes: never scan a product at the edge of the scene.
     for(const [fw,fh] of [[.6,.38],[.84,.84]])for(const angle of [0,90]){
-      const w=Math.round(frame.width*fw),h=Math.round(frame.height*fh),c=document.createElement('canvas');
+      const w=Math.round(frame.width*fw),h=Math.round(frame.height*fh),c=createCanvas();
       c.width=angle?h:w;c.height=angle?w:h;const ctx=c.getContext('2d');
       ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);
       ctx.drawImage(frame,(frame.width-w)/2,(frame.height-h)/2,w,h,-w/2,-h/2,w,h);
@@ -77,6 +101,6 @@
     }
     return '';
   }
-  const api={create,decodeCanvas,labelText};
+  const api={create,decodeCanvas,decodeInWorker,stopDecoder,labelText};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.ScannerAuto=api;
 })(typeof window!=='undefined'?window:globalThis);

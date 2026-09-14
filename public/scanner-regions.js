@@ -36,13 +36,13 @@
   }
   function normalizePixels(pixels) {
     let min = 255, max = 0;
-    const values = [];
     for (let i = 0; i < pixels.length; i += 4) {
       const v = Math.round(.2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2]);
-      values.push(v); min = Math.min(min, v); max = Math.max(max, v);
+      min = Math.min(min, v); max = Math.max(max, v);
     }
     for (let i = 0; i < pixels.length; i += 4) {
-      const v = max > min ? Math.round((values[i / 4] - min) * 255 / (max - min)) : values[i / 4];
+      const gray = Math.round(.2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2]);
+      const v = max > min ? Math.round((gray - min) * 255 / (max - min)) : gray;
       pixels[i] = pixels[i + 1] = pixels[i + 2] = v;
     }
     return pixels;
@@ -50,4 +50,4 @@
   const api = { findRegions, normalizePixels };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ScannerRegions = api;
-})(typeof window === 'object' ? window : {});
+})(typeof window === 'object' ? window : globalThis);
