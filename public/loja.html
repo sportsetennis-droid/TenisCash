@@ -1304,6 +1304,12 @@ async function checkSession() {
     const data = await r.json();
     me = data.user || data;
     if (!['seller', 'store', 'admin', 'superadmin', 'manager'].includes(me.role)) { logout(); return; }
+    // /me renova o papel de quem foi promovido a vendedor durante a sessão.
+    // Usar esse token antes de carregar lojas, vendas ou ponto.
+    if (data.token) {
+      token = data.token;
+      localStorage.setItem('loja_token', token);
+    }
     // Vendedor: a loja salva só vale se ainda estiver vinculada ao cadastro dele (storeId + storeIds).
     if (activeStore && me.role === 'seller') {
       const myIds = [...(me.storeIds || []), ...(me.storeId ? [me.storeId] : [])];

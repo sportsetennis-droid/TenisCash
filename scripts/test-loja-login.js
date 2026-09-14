@@ -2,14 +2,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const jwt = require('jsonwebtoken');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'loja.html'), 'utf8');
 const loginStart = html.indexOf('async function doLogin() {');
 const loginEnd = html.indexOf('// Entrar com o rosto', loginStart);
 const clockStart = html.indexOf('async function doClockIn(type) {');
 const clockEnd = html.indexOf('// ============== RANKING', clockStart);
+const sessionStart = html.indexOf('async function checkSession() {');
+const sessionEnd = html.indexOf('async function showStoreSelector()', sessionStart);
+const apiStart = html.indexOf('async function api(path, opts = {}) {');
+const apiEnd = html.indexOf('// ============== NAV', apiStart);
 assert.ok(loginStart >= 0 && loginEnd > loginStart);
 assert.ok(clockStart >= 0 && clockEnd > clockStart);
+assert.ok(sessionStart >= 0 && sessionEnd > sessionStart);
+assert.ok(apiStart >= 0 && apiEnd > apiStart);
 
 function inputAttributes(id) {
   const input = html.match(new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`));
@@ -70,6 +77,54 @@ function setup({ identifier = '', password = '', role = 'seller', error = null }
   return { context, requests, elements, storage, gpsWork, opened: () => storeSelectorOpened };
 }
 
+async function checkPromotedSession({ savedStore = 'assigned-store', role = 'seller', sessionValid = true } = {}) {
+  const secret = 'loja-session-regression-test-only';
+  const oldToken = jwt.sign({ userId: 'seller-test', role: 'user' }, secret);
+  const freshToken = jwt.sign({ userId: 'seller-test', role }, secret);
+  const storage = new Map([['loja_token', oldToken]]);
+  if (savedStore) storage.set('loja_activeStore', JSON.stringify({ id: savedStore }));
+  const requests = [];
+  const dependentWork = [];
+  let loggedOut = false;
+  let opened = null;
+  const context = {
+    API: '', token: oldToken, me: null,
+    activeStore: savedStore ? { id: savedStore } : null,
+    localStorage: {
+      setItem(key, value) { storage.set(key, value); },
+      removeItem(key) { storage.delete(key); },
+    },
+    logout() { loggedOut = true; context.token = null; storage.delete('loja_token'); },
+    showApp() {
+      opened = 'app';
+      dependentWork.push(context.api('/api/seller/clockin/today-of?vendorId=seller-test'));
+    },
+    showStoreSelector() {
+      opened = 'stores';
+      dependentWork.push(context.api('/api/seller/stores'));
+    },
+    async fetch(url, options) {
+      const authorization = options.headers.Authorization;
+      const claims = jwt.verify(authorization.replace(/^Bearer /, ''), secret);
+      requests.push({ url, role: claims.role });
+      if (url === '/api/auth/me') {
+        return { ok: sessionValid, async json() {
+          return { token: freshToken, user: { id: 'seller-test', role, storeId: 'assigned-store', storeIds: ['assigned-store'] } };
+        } };
+      }
+      const allowed = claims.role === 'seller';
+      return { ok: allowed, status: allowed ? 200 : 403, async json() {
+        return allowed ? { points: [], stores: [{ id: 'assigned-store' }] } : { error: 'Acesso restrito ao vendedor / loja' };
+      } };
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(html.slice(sessionStart, sessionEnd) + '\n' + html.slice(apiStart, apiEnd), context);
+  await context.checkSession();
+  await Promise.all(dependentWork);
+  return { context, storage, requests, freshToken, loggedOut, opened };
+}
+
 async function main() {
   assert.equal(inputAttributes('loginPhone').type, 'text', 'Identificação aceita telefone e e-mail');
   assert.equal(inputAttributes('loginPhone').autocomplete, 'username');
@@ -117,7 +172,24 @@ async function main() {
   } }], 'Ponto envia senha completa e preserva vendedor, loja, evento e localização');
   assert.equal(clock.elements.get('clockPin').value, '');
 
-  console.log('ALL_PASS loja login (e-mail, WhatsApp, senha completa, acesso restrito e senha do ponto)');
+  for (const savedStore of ['assigned-store', null, 'old-store']) {
+    const promoted = await checkPromotedSession({ savedStore });
+    assert.equal(promoted.context.token, promoted.freshToken, 'Sessão usa papel renovado pelo servidor');
+    assert.equal(promoted.storage.get('loja_token'), promoted.freshToken, 'Próxima abertura preserva o token renovado');
+    assert.equal(promoted.loggedOut, false);
+    assert.deepEqual(promoted.requests.map(request => request.role), ['user', 'seller'], 'Primeira consulta de ponto/lojas usa JWT de vendedor após a promoção');
+    assert.equal(promoted.opened, savedStore === 'assigned-store' ? 'app' : 'stores');
+    if (savedStore === 'old-store') assert.equal(promoted.storage.has('loja_activeStore'), false, 'Renovação preserva a restrição de lojas vinculadas');
+  }
+  for (const options of [{ role: 'user' }, { sessionValid: false }]) {
+    const denied = await checkPromotedSession(options);
+    assert.equal(denied.loggedOut, true);
+    assert.equal(denied.opened, null, 'Conta sem permissão ou sessão inválida não abre o painel');
+    assert.equal(denied.requests.length, 1, 'Não consulta ponto ou lojas após recusa da sessão');
+    assert.equal(denied.storage.has('loja_token'), false);
+  }
+
+  console.log('ALL_PASS loja login (e-mail, WhatsApp, senha completa, acesso restrito, ponto e renovação após promoção)');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
