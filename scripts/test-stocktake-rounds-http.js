@@ -1,0 +1,5 @@
+const assert=require('assert/strict');
+(async()=>{const root='http://127.0.0.1:55330/api/stocktake';const call=async(p,b)=>{const r=await fetch(root+p,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});return{status:r.status,...await r.json()}};
+let list=await call('/rounds');const r=list.rounds.find(r=>r.status==='counting');assert.ok(r);const before=await call('/rounds/'+r.id);const no=await call('/bipe',{barcode:'196974865902',storeId:r.storeId,clientScanId:'http-test-'+Date.now()});assert.equal(no.status,409);
+const body={barcode:'196974865902',storeId:r.storeId,roundId:r.id,clientScanId:'http-test-'+Date.now(),sellerName:'TESTE ISOLADO'};
+const a=await call('/bipe',body),b=await call('/bipe',body);assert.equal(a.status,200);assert.equal(b.status,200);const after=await call('/rounds/'+r.id);assert.equal(after.totals.total,before.totals.total+1);assert.equal(after.stockChanged,before.stockChanged);assert.equal(after.movements,before.movements);console.log('PASS HTTP real: cliente antigo409, reenvio1bipe, estoque preservado.');})().catch(e=>{console.error(e);process.exitCode=1});

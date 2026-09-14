@@ -59,7 +59,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
   const html = fs.readFileSync(require.resolve('../public/bipar.html'), 'utf8');
   const code = html.slice(html.indexOf('  async function enviarFila()'), html.indexOf('  async function consultarStatus()'));
   let posted = false;
-  const item = {st:'fila',b64:'data:image/jpeg;base64,AA==',ean:'196153346321',storeId:'LOJA04',sellerId:'douglas',sellerName:'Douglas',clientScanId:'same-scan'};
+  const item = {roundId:'round-original',st:'fila',b64:'data:image/jpeg;base64,AA==',ean:'196153346321',storeId:'LOJA04',sellerId:'douglas',sellerName:'Douglas',clientScanId:'same-scan'};
   const queue = {etiqBusy:false,etiqFila:[item],STORAGE_VENDNAME:'name',FormData,
     document:{getElementById:()=>({value:'LOJA05'})},localStorage:{getItem:()=> 'Someone else'},
     window:{ScannerOCR:{readForScan:async()=> 'NIKE\nDQ5471-113\nL'}},
@@ -67,7 +67,7 @@ for (const file of ['../public/bipar.html', '../public/identificar.html']) {
     fetch:async (url, options)=> {
       if(String(url).startsWith('data:'))return{blob:async()=>new Blob(['photo'])};
       assert.equal(url,'/api/stocktake/etiqueta');posted=true;
-      assert.equal(options.body.get('storeId'),'LOJA04'); assert.equal(options.body.get('sellerId'),'douglas');
+      assert.equal(options.body.get('roundId'),'round-original'); assert.equal(options.body.get('storeId'),'LOJA04'); assert.equal(options.body.get('sellerId'),'douglas');
       assert.equal(options.body.get('clientScanId'),'same-scan'); assert.ok(options.body.get('ocrText').includes('DQ5471-113'));
       return {ok:true,json:async()=>({capId:'saved',appliedToStock:true})};
     }};

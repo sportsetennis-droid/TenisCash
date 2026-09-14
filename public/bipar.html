@@ -116,11 +116,18 @@
     <div id="setup-status" class="setup-status status-warn">⚠️ Selecione loja e vendedor antes de bipar</div>
   </div>
 
+  <section id="round-box" aria-live="polite" style="border:3px solid #FF6D00;background:#fff3e8;border-radius:12px;padding:16px;margin-bottom:16px">
+    <strong id="round-title">VERIFICANDO RODADA</strong>
+    <p id="round-detail" style="margin:8px 0">Selecione a loja.</p>
+    <p><b>Contagem separada. O estoque anterior só muda após conferir e fechar esta rodada.</b></p>
+    <button type="button" id="refresh-round" class="btn">Atualizar rodada</button>
+    <a href="/inventario.html">Gerenciar inventário</a> · <a href="/bipes.html">Histórico anterior</a>
+  </section>
   <div class="bipe-box locked" id="bipe-box">
     <label for="codigo">CÓDIGO DE BARRAS</label>
     <input type="text" id="codigo" autocomplete="off" inputmode="numeric" placeholder="Aguardando loja/vendedor..." disabled>
-    <button type="button" onclick="window.abrirDigitacaoManual && window.abrirDigitacaoManual()" style="margin-top:8px;width:100%;min-height:44px;font-size:14px;font-weight:800;background:#f0f0f3;color:#1d1d1f;border:1.5px solid #d2d2d7;border-radius:10px;cursor:pointer">⌨️ DIGITAR CÓDIGO MANUALMENTE</button>
-    <button type="button" id="btn-etiqueta" onclick="window.fotografarEtiqueta && window.fotografarEtiqueta()" style="margin-top:8px;width:100%;min-height:48px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#25d366,#1faf52);color:#fff;border:none;border-radius:10px;cursor:pointer">📷 SCANNER DE ETIQUETAS (Nike/Fiber)</button>
+    <button type="button" data-click="manual" style="margin-top:8px;width:100%;min-height:44px;font-size:14px;font-weight:800;background:#f0f0f3;color:#1d1d1f;border:1.5px solid #d2d2d7;border-radius:10px;cursor:pointer">⌨️ DIGITAR CÓDIGO MANUALMENTE</button>
+    <button type="button" id="btn-etiqueta" data-click="camera" style="margin-top:8px;width:100%;min-height:48px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#25d366,#1faf52);color:#fff;border:none;border-radius:10px;cursor:pointer">📷 SCANNER DE ETIQUETAS (Nike/Fiber)</button>
     <p style="font-size:12px;color:#666;margin-top:6px">Leitura no aparelho, sem créditos de API. Enquadre uma etiqueta inteira por vez.</p>
     <div id="etiqueta-result" style="display:none;margin-top:8px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700"></div>
   </div>
@@ -143,13 +150,13 @@
   </div>
 
   <div class="actions">
-    <button class="btn btn-secondary" onclick="abrirContagem()">📋 Ver minha contagem do dia</button>
-    <button class="btn btn-danger" onclick="limparTela()">🗑 Limpar tela (não apaga do sistema)</button>
+    <button class="btn btn-secondary" data-click="report">📋 Ver inventário por rodada</button>
+    <button class="btn btn-danger" data-click="clear">🗑 Limpar tela (não apaga do sistema)</button>
   </div>
 
   <div class="lista-wrap">
     <div class="lista-head">
-      <span>Bipes desta sessão</span>
+      <span>Leituras neste aparelho • rodada atual</span>
       <span id="lista-count">0 itens</span>
     </div>
     <div class="lista" id="lista">
@@ -157,6 +164,7 @@
     </div>
   </div>
 
+<script src="/scanner-round.js?v=20260914-round-1"></script>
 <script src="/scanner-regions.js?v=20260914-roi-1"></script><script src="/scanner-ocr.js?v=20260914-roi-1"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -187,6 +195,7 @@
   }
 
   async function carregarVendedores(storeId) {
+    await window.ScannerRound.refresh();
     if (!storeId) {
       document.getElementById('vendedor').innerHTML = '<option value="">Selecione a loja primeiro</option>';
       return;
@@ -230,7 +239,7 @@
       vendNome = sellers.find(s => s.id === vend)?.name || '';
       temVendedor = true;
     }
-    if (loja && temVendedor) {
+    if (loja && temVendedor && window.ScannerRound.id()) {
       const lojaNome = stores.find(s => s.id === loja)?.name || '';
       status.className = 'setup-status status-ok';
       status.textContent = '✓ Pronto: ' + vendNome + ' em ' + lojaNome;
@@ -244,7 +253,7 @@
       }
     } else {
       status.className = 'setup-status status-warn';
-      status.textContent = vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
+      status.textContent = !window.ScannerRound.id() ? 'Abra uma rodada de inventário para esta loja.' : vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
       box.classList.add('locked');
       input.disabled = true;
       input.placeholder = 'Aguardando loja/vendedor...';
@@ -355,7 +364,7 @@
     }
     if (q.length > 0) {
       el.style.display = 'block';
-      el.textContent = '⚠ ' + q.length + ' bipes pendentes. Clique pra reenviar.';
+      el.textContent = '⚠ ' + q.filter(x=>!x.blocked).length + ' para enviar · '+q.filter(x=>x.blocked).length+' para revisão (não contados)';
     } else {
       el.style.display = 'none';
     }
@@ -368,6 +377,7 @@
       let q = loadRetryQueue();
       const remaining = [];
       for (const item of q) {
+        if(!item.roundId || item.blocked){remaining.push({...item,blocked:item.blocked||'Leitura antiga sem rodada. Revisar separadamente.'});continue;}
         // garante clientScanId em itens antigos (compat reversa)
         if (!item.clientScanId) item.clientScanId = genClientScanId();
         try {
@@ -379,12 +389,13 @@
               storeId: item.storeId,
               sellerId: item.sellerId,
               sellerName: item.sellerName,
-              clientScanId: item.clientScanId,
+              clientScanId: item.clientScanId, roundId:item.roundId,
             }),
           });
           // 4xx: cliente errou — REMOVE da fila, não fica em loop. Log BIPE_RETRY_CLIENTE.
           if (r.status >= 400 && r.status < 500) {
-            console.warn('[bipe] BIPE_RETRY_CLIENTE 4xx — removendo da fila:', r.status, item.barcode);
+            const detail=await r.json().catch(()=>({}));
+            remaining.push({...item,blocked:detail.error||'Leitura recusada. Revisar a rodada.'});
             continue;
           }
           if (!r.ok) { remaining.push(item); continue; }
@@ -427,12 +438,14 @@
     // Se navegador travar/crashar entre aqui e o fetch, o bipe SOBREVIVE
     // no localStorage e será reenviado no próximo load + processRetryQueue.
     const clientScanId = genClientScanId();
-    const payload = { barcode, storeId, sellerId, sellerName, clientScanId };
+    let roundId;
+    try { roundId=window.ScannerRound.requireRound(storeId); } catch(e) { alert(e.message);return; }
+    const payload = { barcode, storeId, sellerId, sellerName, clientScanId, roundId };
     enqueueRetry(payload);
 
     // Mostra bipe local como pendente IMEDIATAMENTE
     const ts = new Date().toISOString();
-    const localBipe = { ts, code: barcode, found: null, _pending: true, clientScanId };
+    const localBipe = { ts, code: barcode, found: null, _pending: true, clientScanId, roundId };
     bipes.push(localBipe);
     renderLast(localBipe);
     renderLista();
@@ -449,8 +462,10 @@
       // 4xx: cliente errou. Remove da fila, marca como erro definitivo no bipe local.
       if (r.status >= 400 && r.status < 500) {
         console.warn('[bipe] BIPE_RETRY_CLIENTE 4xx:', r.status, barcode);
-        removeFromQueue(clientScanId);
-        Object.assign(localBipe, { _pending: false, found: false, _error4xx: true });
+        const detail=await r.json().catch(()=>({}));
+        saveRetryQueue(loadRetryQueue().map(x=>x.clientScanId===clientScanId?{...x,blocked:detail.error||'Leitura recusada'}:x));
+        Object.assign(localBipe, { _pending: false, found: false, _error4xx: true, error:detail.error });
+        alert(detail.error||'Leitura não salva. Confira a rodada.');
         renderLast(localBipe);
         renderLista();
         renderStats();
@@ -505,7 +520,7 @@
         <div class="last-bipe-info">
           <div class="name">Produto não encontrado</div>
           <div class="meta">${bipe.code} — bipe salvo no sistema pra revisão</div>
-          <button onclick="fotoEtiqueta(this,'${bipe.bipeId || ''}','${bipe.code}')" style="margin-top:8px;width:100%;min-height:44px;font-size:15px;font-weight:800;background:#0a84ff;color:#fff;border:none;border-radius:10px;cursor:pointer">📷 FOTO DA ETIQUETA</button>
+          <button data-click="photo" data-bipe="${bipe.bipeId || ''}" data-code="${bipe.code}" style="margin-top:8px;width:100%;min-height:44px;font-size:15px;font-weight:800;background:#0a84ff;color:#fff;border:none;border-radius:10px;cursor:pointer">📷 FOTO DA ETIQUETA</button>
         </div>
       `;
     }
@@ -514,6 +529,11 @@
   // 📷 Foto da etiqueta (Nike/FIBER etc: o de-para código↔produto só existe na etiqueta física).
   // Abre a câmera, comprime no canvas e manda pro /api/stocktake/capture (vinculada ao bipe).
   window.fotoEtiqueta = function (btn, bipeId, code) {
+    const original=bipes.find(b=>b.bipeId===bipeId);
+    const storeId=document.getElementById('loja').value;
+    let roundId;try{roundId=window.ScannerRound.requireRound(storeId)}catch(e){alert(e.message);return;}
+    if(original?.roundId!==roundId){alert('Esta foto pertence a outra rodada. Abra a captura no histórico.');return;}
+    const captureScanId=genClientScanId();
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
     inp.onchange = async () => {
@@ -524,9 +544,10 @@
         const blob = await comprimirFoto(f);
         const fd = new FormData();
         fd.append('files', blob, 'etiqueta.jpg');
+        fd.append('roundId',roundId);fd.append('clientScanId',captureScanId);
         fd.append('barcode', code || '');
         if (bipeId) fd.append('bipeId', bipeId);
-        fd.append('storeId', document.getElementById('loja').value || '');
+        fd.append('storeId', storeId);
         const vsel = document.getElementById('vendedor').value;
         fd.append('sellerId', vsel === '__manual__' ? '' : (vsel || ''));
         fd.append('sellerName', localStorage.getItem(STORAGE_VENDNAME) || '');
@@ -560,6 +581,7 @@
   }
 
   window.fotografarEtiqueta = async function () {
+    try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);return;}
     if (!document.getElementById('loja').value) { alert('Selecione loja e vendedor primeiro!'); return; }
     if (!window.ZXing) {
       await new Promise((ok) => { const s = document.createElement('script'); s.src = '/vendor/zxing.min.js'; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
@@ -576,15 +598,15 @@
         '<div id="etiq-confirm" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.78);padding:24px;text-align:center">' +
           '<div id="etiq-confirm-status" style="color:#fff;font-size:26px;font-weight:900;margin-bottom:8px">⏳ Salvando…</div>' +
           '<div id="etiq-confirm-det" style="color:#bbb;font-size:14px;font-weight:600;margin-bottom:24px;min-height:20px"></div>' +
-          '<button id="etiq-confirm-btn" onclick="window.proximaEtiqueta()" disabled style="width:100%;max-width:340px;min-height:58px;font-size:19px;font-weight:900;background:#555;color:#fff;border:none;border-radius:14px">AGUARDE…</button>' +
+          '<button id="etiq-confirm-btn" data-click="next" disabled style="width:100%;max-width:340px;min-height:58px;font-size:19px;font-weight:900;background:#555;color:#fff;border:none;border-radius:14px">AGUARDE…</button>' +
         '</div>' +
       '</div>' +
       '<div style="background:#111;padding:10px 12px calc(10px + env(safe-area-inset-bottom))">' +
         '<div id="etiq-contador" style="color:#fff;font-size:13px;font-weight:800;margin-bottom:6px">fila 0 · salvas 0 · vinculadas 0</div>' +
         '<div id="etiq-lista" style="max-height:90px;overflow-y:auto;font-size:12px;color:#ddd;line-height:1.7"></div>' +
         '<div style="display:flex;gap:8px;margin-top:8px">' +
-          '<button id="etiq-capturar" onclick="window.capturaManual()" style="flex:2;min-height:54px;font-size:16px;font-weight:900;background:#0a84ff;color:#fff;border:none;border-radius:12px">📸 CAPTURAR AGORA</button>' +
-          '<button onclick="window.fecharScanner()" style="flex:1;min-height:54px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:12px">✕ FECHAR</button>' +
+          '<button id="etiq-capturar" data-click="capture" style="flex:2;min-height:54px;font-size:16px;font-weight:900;background:#0a84ff;color:#fff;border:none;border-radius:12px">📸 CAPTURAR AGORA</button>' +
+          '<button data-click="close" style="flex:1;min-height:54px;font-size:14px;font-weight:800;background:#d70015;color:#fff;border:none;border-radius:12px">✕ FECHAR</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
@@ -653,6 +675,7 @@
   // CONFIRMAÇÃO: ⏳ Salvando… → ✅ SALVO (botão PRÓXIMA só libera com o salvo confirmado pelo servidor).
   let etiqPausado = false, etiqWatch = null;
   window.capturaManual = function () {
+    try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) { alert('Câmera ainda abrindo…'); return; }
     if (etiqPausado) return;
@@ -671,10 +694,11 @@
     etiqWatch = setInterval(() => {
       const it = etiqFila.find((x) => x.lid === lid);
       if (!it) return;
+        if(it.st==='revisao'){st.textContent='LEITURA NÃO CONTADA';det.textContent=it.msg;btn.disabled=false;btn.textContent='PRÓXIMA';clearInterval(etiqWatch);return;}
         if (it.needsSize) {
           st.textContent = it.bipou ? '⚠ BIPADO — TAMANHO OPCIONAL' : '⚠ SALVO — TAMANHO OPCIONAL';
           st.style.color = '#FFB14A';
-          det.textContent = it.bipou ? 'O estoque foi somado. Informe o tamanho quando puder.' : 'O registro foi salvo. O tamanho não bloqueia a próxima leitura.';
+          det.textContent = it.bipou ? 'Leitura salva nesta rodada. Confirme o tamanho para fechar o inventário.' : 'O registro foi salvo. O tamanho não bloqueia a próxima leitura.';
           btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
           clearInterval(etiqWatch);
         } else if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
@@ -710,7 +734,7 @@
     if (!video || !video.videoWidth) return null;
     const lid = 'e' + Date.now();
     const selectedSeller = document.getElementById('vendedor').value;
-    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(),
+    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(), roundId:window.ScannerRound.requireRound(document.getElementById('loja').value),
       storeId: document.getElementById('loja').value || '',
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
@@ -733,6 +757,7 @@
     try {
       const item = etiqFila.find((x) => x.st === 'fila' && x.b64);
       if (item) {
+        if(!item.roundId){item.st='revisao';item.msg='Foto antiga sem rodada. Não transferida para o inventário novo.';etiqSave();renderEtiqLista();return;}
         // Store association belongs to this capture, even during a slow OCR pass.
         const storeId = item.storeId ?? (document.getElementById('loja').value || '');
         const sellerValue = document.getElementById('vendedor').value;
@@ -754,8 +779,10 @@
         fd.append('sellerId', sellerId);
         fd.append('sellerName', sellerName);
         fd.append('clientScanId', item.clientScanId);
+        fd.append('roundId',item.roundId);
         const r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd });
         const d = await r.json().catch(() => ({}));
+        if(r.status>=400&&r.status<500){item.st='revisao';item.msg=d.error||'Rodada encerrada. Foto preservada para revisão.';etiqSave();renderEtiqLista();}
         if (r.ok && d.capId) {
           item.st = 'salvo';
           item.capId = d.capId;
@@ -765,15 +792,14 @@
           item.b64 = '';
           if (d.needsSize && d.bipeId && !item.sizeQueued && !item.sizeDismissed) {
             item.sizeQueued = true;
-            const localBipe = { code: item.ean, bipeId: d.bipeId, found: d.found, product: d.product, sizeOptions: d.sizeOptions, needsSize: true, _scannerItem: item };
+            const localBipe = { roundId:item.roundId, code: item.ean, bipeId: d.bipeId, found: d.found, product: d.product, sizeOptions: d.sizeOptions, needsSize: true, _scannerItem: item };
             bipes.push(localBipe);
             queueSizeRequest(localBipe);
           }
           etiqSave(); renderEtiqLista(); renderLista();
         }
       }
-    } catch (_) { /* mantém na fila, tenta no próximo tick */ }
-    etiqBusy = false;
+    } catch (_) { /* mantém na fila, tenta no próximo tick */ } finally { etiqBusy = false; }
   }
 
   async function consultarStatus() {
@@ -791,7 +817,7 @@
           it.needsSize = !!row.needsSize;
           if (row.needsSize && row.bipeId && !it.sizeQueued && !it.sizeDismissed) {
             it.sizeQueued = true;
-            const localBipe = { code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
+            const localBipe = { roundId:it.roundId, code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
             bipes.push(localBipe);
             queueSizeRequest(localBipe);
           }
@@ -802,15 +828,16 @@
   }
 
   function renderEtiqLista() {
+    const currentItems=etiqFila.filter(x=>x.roundId===window.ScannerRound.id());
     const cont = document.getElementById('etiq-contador');
     const ul = document.getElementById('etiq-lista');
     if (!cont || !ul) return;
-    const nFila = etiqFila.filter((x) => x.st === 'fila').length;
-    const nSalvo = etiqFila.filter((x) => x.st === 'salvo').length;
-    const nVinc = etiqFila.filter((x) => x.st === 'vinculado').length;
-    const nPend = etiqFila.filter((x) => x.st === 'pendente').length;
+    const nFila = currentItems.filter((x) => x.st === 'fila').length;
+    const nSalvo = currentItems.filter((x) => x.st === 'salvo').length;
+    const nVinc = currentItems.filter((x) => x.st === 'vinculado').length;
+    const nPend = currentItems.filter((x) => x.st === 'pendente').length;
     cont.textContent = 'enviando ' + nFila + ' · salvas ' + nSalvo + ' · ✓ vinculadas ' + nVinc + (nPend ? ' · 📥 pra conferir ' + nPend : '');
-    ul.innerHTML = etiqFila.slice(-6).reverse().map((x) => {
+    ul.innerHTML = currentItems.slice(-6).reverse().map((x) => {
       const ic = x.st === 'fila' ? '⏳' : x.st === 'salvo' ? '✅' : x.st === 'vinculado' ? '🔗' : '📥';
       return '<div>' + ic + ' ' + (x.ean || '') + (x.msg ? ' — ' + x.msg.slice(0, 60) : (x.st === 'salvo' ? ' — SALVO, reconhecendo…' : x.st === 'fila' ? ' — enviando…' : '')) + '</div>';
     }).join('');
@@ -836,18 +863,19 @@
 
   function renderLista() {
     const lista = document.getElementById('lista');
-    document.getElementById('lista-count').textContent = bipes.length + ' itens';
-    if (bipes.length === 0) {
+    const visible=bipes.filter(b=>b.roundId===window.ScannerRound.id());
+    document.getElementById('lista-count').textContent = visible.length + ' itens';
+    if (visible.length === 0) {
       lista.innerHTML = '<div class="empty">Os bipes aparecerão aqui em tempo real</div>';
       return;
     }
-    const visiveis = bipes.slice().reverse().slice(0, 100);
+    const visiveis = visible.slice().reverse().slice(0, 100);
     lista.innerHTML = visiveis.map((b, idx) => {
-      const realIdx = bipes.length - 1 - idx;
+      const realIdx = bipes.indexOf(b);
       const hora = new Date(b.ts).toLocaleTimeString('pt-BR', { timeZone: 'America/Fortaleza', hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cls = b.found ? '' : 'not-found';
       const tamTxt = b.needsSize ? ' · 📏 SEM TAMANHO' : (b.product?.size ? ' · Tam ' + b.product.size : '');
-      const tamBtn = b.needsSize ? `<button class="needs-size" onclick="reabrirTamanho(${realIdx})">📏 TAM</button>` : '';
+      const tamBtn = b.needsSize ? `<button class="needs-size" data-click="size" data-index="${realIdx}">📏 TAM</button>` : '';
       return `<div class="item ${cls}">
         <span class="ts">${hora}</span>
         <span class="info">
@@ -855,15 +883,16 @@
           <div class="code">${b.code}${tamTxt}</div>
         </span>
         ${tamBtn}
-        <button class="del" onclick="removerBipe(${realIdx})" title="Remover da tela">✕</button>
+        <button class="del" data-click="hide" data-index="${realIdx}" title="Remover da tela">✕</button>
       </div>`;
     }).join('');
   }
 
   function renderStats() {
-    document.getElementById('stat-total').textContent = bipes.length;
-    document.getElementById('stat-found').textContent = bipes.filter(b => b.found).length;
-    document.getElementById('stat-notfound').textContent = bipes.filter(b => !b.found).length;
+    const visible=bipes.filter(b=>b.roundId===window.ScannerRound.id());
+    document.getElementById('stat-total').textContent = visible.length;
+    document.getElementById('stat-found').textContent = visible.filter(b => b.found).length;
+    document.getElementById('stat-notfound').textContent = visible.filter(b => !b.found).length;
   }
 
   function removerBipe(idx) {
@@ -884,7 +913,7 @@
   }
 
   function abrirContagem() {
-    alert('Pra ver a contagem completa do dia, peça ao admin.\nNo sistema admin: aba "Estoque" → "Bipes da Contagem".');
+    location.href='/inventario.html';
   }
 
   const input = document.getElementById('codigo');
@@ -943,7 +972,7 @@
         if (resetCount >= 3) {
           // 3+ resets seguidos = leitor TRAVADO. Oferece digitação manual.
           el.innerHTML = '⚠️ <b>Leitor com problema</b> (' + resetCount + ' tentativas). ' +
-            '<button onclick="window.abrirDigitacaoManual && window.abrirDigitacaoManual()" style="margin-left:8px;padding:6px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">⌨️ Digitar SKU manualmente</button>';
+            '<button data-click="manual" style="margin-left:8px;padding:6px 14px;background:#E5571E;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;">⌨️ Digitar SKU manualmente</button>';
         } else {
           el.textContent = '⚠️ Leitor bugado, resetei. Tente bipar de novo. (' + reason + ')';
         }
@@ -1043,8 +1072,8 @@
         '<div style="font-size:13px;color:#8e8e93;margin-bottom:16px;">Olhe o código de barras embaixo do produto e digite os números (sem espaços).</div>' +
         '<input id="manual-sku-input" type="text" inputmode="numeric" autocomplete="off" placeholder="ex: 7908341493884" style="width:100%;padding:18px;font-size:24px;font-family:monospace;border:2px solid #E5571E;border-radius:12px;letter-spacing:1px;text-align:center;">' +
         '<div style="display:flex;gap:10px;margin-top:14px;">' +
-          '<button onclick="document.getElementById(\'manual-overlay\').remove();document.getElementById(\'bipe-input\')?.focus()" style="flex:1;padding:14px;background:#f0f0f3;color:#1d1d1f;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Cancelar</button>' +
-          '<button onclick="confirmarSkuManual()" style="flex:2;padding:14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Bipar este SKU</button>' +
+          '<button data-click="cancel-manual" style="flex:1;padding:14px;background:#f0f0f3;color:#1d1d1f;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Cancelar</button>' +
+          '<button data-click="confirm-code" style="flex:2;padding:14px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">Bipar este SKU</button>' +
         '</div>' +
       '</div></div>';
     const div = document.createElement('div');
@@ -1101,9 +1130,9 @@
     // Só os tamanhos POSSÍVEIS daquele produto. Sem faixa → grade padrão + botão Único.
     const temFaixa = Array.isArray(b.sizeOptions) && b.sizeOptions.length > 0;
     const opcoes = temFaixa ? b.sizeOptions : ['34','35','36','37','38','39','40','41','42','43','44','45'];
-    const grade = opcoes.map(t => `<button type="button" onclick="confirmarTamanho('${t}')">${t}</button>`).join('');
+    const grade = opcoes.map(t => `<button type="button" data-click="confirm-size" data-size="${typeof t==='object'?t.size:t}">${t}</button>`).join('');
     const infoFaixa = temFaixa ? `<div class="ss-sub" style="margin:0 0 8px;">Tamanhos deste produto: <b>${opcoes[0]} ao ${opcoes[opcoes.length-1]}</b></div>` : '';
-    const btnUnico = temFaixa ? '' : `<button type="button" id="size-unico" onclick="confirmarTamanho('U')" style="width:100%;min-height:46px;background:#fff;border:1.5px solid #d2d2d7;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;color:#1d1d1f;margin-bottom:12px;">Único — acessório sem tamanho (bolsa, bola, boné...)</button>`;
+    const btnUnico = temFaixa ? '' : `<button type="button" id="size-unico" data-click="confirm-size" data-size="U" style="width:100%;min-height:46px;background:#fff;border:1.5px solid #d2d2d7;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;color:#1d1d1f;margin-bottom:12px;">Único — acessório sem tamanho (bolsa, bola, boné...)</button>`;
     const overlay = document.createElement('div');
     overlay.id = 'size-overlay';
     overlay.innerHTML = `
@@ -1117,11 +1146,11 @@
         <div class="size-grid">${grade}</div>
         <div class="size-other-row">
           <input id="size-other" type="text" maxlength="5" autocomplete="off" placeholder="Outro: 33, 38.5, M, 8A...">
-          <button type="button" id="size-other-ok" onclick="confirmarTamanhoOutro()">✓ OK</button>
+          <button type="button" id="size-other-ok" data-click="other-size">✓ OK</button>
         </div>
         ${btnUnico}
-        <div class="size-warn">⚠️ Aviso: o estoque já foi somado. Você pode informar agora ou deixar para depois.</div>
-        <button type="button" id="size-skip" onclick="pularTamanho()">Deixar o tamanho para depois</button>
+        <div class="size-warn">Esta leitura pertence à rodada atual. O estoque anterior permanece até o fechamento.</div>
+        <button type="button" id="size-skip" data-click="skip-size">Deixar o tamanho para depois</button>
       </div>`;
     document.body.appendChild(overlay);
     const other = document.getElementById('size-other');
@@ -1167,7 +1196,7 @@
       if (b._scannerItem) {
         b._scannerItem.needsSize = false;
         b._scannerItem.bipou = !!d.appliedToStock;
-        b._scannerItem.msg = d.appliedToStock ? 'tamanho confirmado e estoque contabilizado' : 'tamanho confirmado; estoque ainda bloqueado';
+        b._scannerItem.msg = d.appliedToStock ? 'tamanho confirmado e estoque contabilizado' : 'tamanho confirmado na rodada; estoque anterior preservado';
         etiqSave();
         renderEtiqLista();
       }
@@ -1238,6 +1267,16 @@
     if (!input.disabled) setTimeout(() => input.focus(), 0);
   });
 
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-click]');if(!b)return;
+    const actions={manual:()=>window.abrirDigitacaoManual(),camera:()=>window.fotografarEtiqueta(),report:abrirContagem,clear:limparTela,
+      next:()=>window.proximaEtiqueta(),capture:()=>window.capturaManual(),close:()=>window.fecharScanner(),
+      'confirm-code':()=>window.confirmarSkuManual(),'other-size':()=>window.confirmarTamanhoOutro(),'skip-size':()=>window.pularTamanho(),
+      photo:()=>window.fotoEtiqueta(b,b.dataset.bipe,b.dataset.code),size:()=>window.reabrirTamanho(Number(b.dataset.index)),
+      hide:()=>removerBipe(Number(b.dataset.index)),'cancel-manual':()=>document.getElementById('manual-overlay')?.remove(),
+      'confirm-size':()=>window.confirmarTamanho(b.dataset.size)};
+    actions[b.dataset.click]?.();
+  });
   carregarLojas();
   // Mostra badge inicial se há bipes pendentes da sessão anterior
   setTimeout(() => { updatePendingBadge(); if (loadRetryQueue().length > 0) processRetryQueue(); }, 500);

@@ -3258,6 +3258,12 @@ model FiscalWebhookLog {
 // com StoreStock e decidir o que fazer.
 // =====================================================================
 model StocktakeBipe {
+  roundId       String?
+  round         StocktakeRound? @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  scanKey       String? @unique
+  excludedAt    DateTime?
+  exclusionReason String?
+
   id            String   @id @default(cuid())
   barcode       String // código bipado, exato como veio do leitor
   storeId       String? // FK Store (opcional pra resiliencia)
@@ -3285,6 +3291,12 @@ model StocktakeBipe {
 // Fila de CONFERÊNCIA: produto bipado que NÃO foi reconhecido. A equipe bate
 // foto -> entra aqui -> o dono/IA busca na NFe e monta o card (ou descarta).
 model ProductCapture {
+  roundId       String?
+  round         StocktakeRound? @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  scanKey       String? @unique
+  excludedAt    DateTime?
+  exclusionReason String?
+
   id               String    @id @default(cuid())
   barcode          String? // código bipado (se houver)
   storeId          String?
@@ -5624,4 +5636,23 @@ model PvmPadrao {
   updatedAt DateTime @updatedAt
 
   @@index([categoria])
+}
+
+// Inventários físicos: null em roundId identifica exclusivamente o histórico anterior.
+model StocktakeRound {
+  id          String @id @default(uuid())
+  number      Int @unique @default(autoincrement())
+  name        String
+  storeId     String
+  activeStoreId String? @unique
+  status      String @default("counting")
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  appliedAt   DateTime?
+  createdById String?
+  baseline    Json
+  result      Json?
+  bipes       StocktakeBipe[]
+  captures    ProductCapture[]
+  @@index([storeId, startedAt])
 }

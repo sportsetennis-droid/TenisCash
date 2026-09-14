@@ -1,0 +1,3 @@
+(function(){document.title='Histórico anterior — TenisCash';const h=document.querySelector('h1');if(h)h.textContent='Histórico anterior';for(const b of document.querySelectorAll('button'))if(b.textContent.includes('Aplicar bipes')){b.hidden=true;b.disabled=true;}})();
+
+document.addEventListener('click',e=>{const b=e.target.closest('[data-history-action]');if(!b)return;e.preventDefault();switch(b.dataset.historyAction){case 'reload':loadAll();break;case 'today':setDateToday();break;case 'shift':shiftDate(Number(b.dataset.step));break;case 'status':setStatusFilter(b.dataset.status);break;case 'photo':verFotoCaptura(b);break;case 'delete':deleteBipe(b.dataset.id,b.dataset.barcode,b.dataset.seller);break;}});

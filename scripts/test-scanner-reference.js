@@ -50,6 +50,7 @@ function routeFunctions(db){
  const ctx={require:name=>{
   if(name==='express')return{Router:()=>router}; if(name==='multer')return upload;if(name==='sharp')return()=>{};
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
+  if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
   if(name==='../services/scannerText')return require('../src/services/scannerText');
   throw Error('Unexpected require '+name);
@@ -74,17 +75,17 @@ function routeFunctions(db){
  const funcs=routeFunctions(db);
  assert.equal(funcs.normalizeScannedSize('L'),'L');assert.equal(funcs.normalizeScannedSize('BR 40'),'40');assert.equal(funcs.normalizeScannedSize('US 10'),null);
  assert.equal(funcs.parseJsonSeguro('abc {"sku":"A}B","nome":"x"} extra').sku,'A}B');
- assert.ok(funcs.routes.findIndex(r=>r.use)>0);
- assert.ok(funcs.routes.findIndex(r=>r.path==='/captures/:id/learn-barcode')>funcs.routes.findIndex(r=>r.use));
+ assert.ok(funcs.routes.findIndex(r=>r.use?.includes('AUTH'))>0);
+ assert.ok(funcs.routes.findIndex(r=>r.path==='/captures/:id/learn-barcode')>funcs.routes.findIndex(r=>r.use?.includes('AUTH')));
  state.captures.push({id:'cap',barcode:'196153346321',storeId:'LOJA04',sellerId:'douglas',createdAt:new Date(),bipeId:'original'});
  state.bipes.push({id:'original',storeId:'LOJA04',barcode:'196153346321',found:false,applied:false});
  await Promise.all(Array.from({length:5},()=>funcs.garantirBipeDaCaptura('cap','nike','s0','196153346321')));
- assert.equal(state.bipes.length,1);assert.equal(state.stocks.length,1);assert.equal(state.stocks[0].stock,1);assert.equal(state.stocks[0].storeId,'LOJA04');assert.equal(state.movements.length,1);
+ assert.equal(state.bipes.length,1);assert.equal(state.stocks.length,0);assert.equal(state.movements.length,0); state.bipes[0].applied=true;
  assert.equal(await funcs.garantirBipeDaCaptura('cap','nike','s1','7909538652084'),null);assert.equal(state.bipes[0].productSizeId,'s0');
  // Missing synchronous bipe is created only once despite concurrent retries.
  state.captures.push({id:'cap2',barcode:'196153346321',storeId:'LOJA05',createdAt:new Date(),bipeId:null});
  await Promise.all(Array.from({length:4},()=>funcs.garantirBipeDaCaptura('cap2','nike','s0','196153346321')));
- assert.equal(state.bipes.length,2);assert.equal(state.stocks.find(s=>s.storeId==='LOJA05').stock,1);assert.equal(state.movements.length,2);
+ assert.equal(state.bipes.length,2);assert.equal(state.stocks.length,0);assert.equal(state.movements.length,0);
  ({db,state}=database({products:[p1,{...p1,id:'other'}]}));
  r=await learnScannerBarcode(db,{barcode:'196153346321',read:{sku:'192974'},size:'L'});assert.equal(r.reason,'reference_conflict');assert.equal(state.sizes.length,0);
  ({db,state}=database({sizes:[{id:'legacy',productId:'nike',size:'L',barcode:'REFABC',stock:6}]}));
@@ -105,13 +106,13 @@ function routeFunctions(db){
  const freeRoute=routeFunctions(db);
  await freeRoute.processarEtiqueta('free-cap','unused-image','196153346321',{ocrText:'NIKE\nDQ5471-113\nL\n196153346321'});
  assert.equal(state.captures[0].status,'vinculado');assert.equal(state.sizes[0].barcode,'196153346321');
- assert.equal(state.stocks[0].stock,1);assert.equal(state.movements.length,1);
+ assert.equal(state.stocks.length,0);assert.equal(state.movements.length,0);
  await freeRoute.processarEtiqueta('free-cap','unused-image','196153346321',{ocrText:''});
- assert.equal(state.stocks[0].stock,1);assert.equal(state.movements.length,1);
+ assert.equal(state.stocks.length,0);assert.equal(state.movements.length,0);
  ({db,state}=database());state.captures.push({id:'unreadable',barcode:'196153346321',storeId:'LOJA04',createdAt:new Date(),bipeId:null});
  await routeFunctions(db).processarEtiqueta('unreadable','unused-image','196153346321',{ocrText:''});
  assert.equal(state.captures[0].status,'pendente');assert.equal(state.sizes.length,0);
  const html=fs.readFileSync(require.resolve('../public/identificar.html'),'utf8');
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))if(m[1].trim())new vm.Script(m[1]);
- console.log('PASS: exact reference and NF-e lookup; confirmed Nike alias; GTIN checksum and leading zero; size/brand/owner ambiguity; preserving existing barcode and purchased stock; repeated and concurrent capture linking applies once per store; authenticated review route; HTML syntax.');
+ console.log('PASS: exact reference and NF-e lookup; confirmed Nike alias; GTIN checksum and leading zero; size/brand/owner ambiguity; preserving existing barcode and purchased stock; repeated and concurrent capture linking preserves historical stock; authenticated review route; HTML syntax.');
 })().catch(e=>{console.error(e);process.exitCode=1});

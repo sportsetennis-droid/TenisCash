@@ -80,7 +80,7 @@
   @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
 </style>
 </head>
-<body>
+<body><section style="padding:18px;background:#fff3e8;border-bottom:3px solid #FF6D00;color:#442400"><strong>HISTÓRICO ANTERIOR — não pertence ao novo inventário</strong><p>Consulte as novas contagens em <a href="/inventario.html">Inventário por rodada</a>. Estes registros não serão somados novamente.</p></section>
 <div class="wrap" id="root">
   <div class="top">
     <div>
@@ -88,9 +88,9 @@
       <div class="sub">Quem tá bipando agora · auto-refresh a cada 10s</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn" onclick="applyToStock()" style="background:linear-gradient(135deg,#0a843d,#19b755);box-shadow:0 4px 14px rgba(10,132,61,0.35)">📦 Aplicar bipes ao estoque</button>
+      <button class="btn" data-history-action="apply" style="background:linear-gradient(135deg,#0a843d,#19b755);box-shadow:0 4px 14px rgba(10,132,61,0.35)">📦 Aplicar bipes ao estoque</button>
       <span class="auto-refresh live" id="live-indicator"><span class="dot"></span>AO VIVO</span>
-      <button class="btn btn-secondary" onclick="loadAll()">↻</button>
+      <button class="btn btn-secondary" data-history-action="reload">↻</button>
     </div>
   </div>
 
@@ -117,13 +117,13 @@
   <div class="filters">
     <label>Data:</label>
     <input type="date" id="filter-date" onchange="onDateChange()">
-    <button class="chip" onclick="setDateToday()" title="Volta pra hoje">Hoje</button>
-    <button class="chip" onclick="shiftDate(-1)" title="Dia anterior">◀</button>
-    <button class="chip" onclick="shiftDate(1)" title="Próximo dia">▶</button>
+    <button class="chip" data-history-action="today" title="Volta pra hoje">Hoje</button>
+    <button class="chip" data-history-action="shift" data-step="-1" title="Dia anterior">◀</button>
+    <button class="chip" data-history-action="shift" data-step="1" title="Próximo dia">▶</button>
     <label>Status:</label>
-    <span class="chip active" data-status="" onclick="setStatusFilter('')">Todos</span>
-    <span class="chip" data-status="found" onclick="setStatusFilter('found')">✓ Achados</span>
-    <span class="chip" data-status="notfound" onclick="setStatusFilter('notfound')">✗ Não achados</span>
+    <span class="chip active" data-status="" data-history-action="status">Todos</span>
+    <span class="chip" data-status="found" data-history-action="status">✓ Achados</span>
+    <span class="chip" data-status="notfound" data-history-action="status">✗ Não achados</span>
     <label style="margin-left:auto">Loja:</label>
     <select id="filter-store" onchange="loadBipes();loadCapturas()"><option value="">Todas</option></select>
     <label>Vendedor:</label>
@@ -208,7 +208,7 @@ async function loadAll() {
 // 📷 Capturas do SCANNER de etiquetas (ProductCapture) — fila separada dos bipes; aqui pra acompanhar no mesmo painel
 async function loadCapturas() {
   try {
-    const d = await api('/captures?status=all');
+    const d = await api('/captures?status=all&historical=1');
     const date = STATE.date || todayFortaleza();
     const stval = document.getElementById('filter-store')?.value || '';
     const sval = document.getElementById('filter-seller')?.value || '';
@@ -233,7 +233,7 @@ async function loadCapturas() {
         : c.status === 'processando' ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">⏳ processando</span>'
         : '<span style="background:#ffe9d6;color:#b45309;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800">📥 pendente</span>';
       const lido = String(c.note || '').replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim().slice(0, 70);
-      const foto = c.photo ? '<a href="#" onclick="verFotoCaptura(this);return false" data-cap="' + c.id + '" style="color:#0a84ff;font-weight:700;text-decoration:none">👁 foto</a>' : '';
+      const foto = c.photo ? '<a href="#" data-history-action="photo" data-cap="' + c.id + '" style="color:#0a84ff;font-weight:700;text-decoration:none">👁 foto</a>' : '';
       window['_capfoto_' + c.id] = c.photo || '';
       return '<div style="display:flex;gap:10px;align-items:center;border-bottom:1px solid #f0f0f5;padding:5px 0;flex-wrap:wrap">' +
         '<span class="bipe-time">' + hora + '</span>' + badge +
@@ -357,7 +357,7 @@ async function loadBipes() {
         <div class="bipe-status">
           <span class="ok-badge ${b.found ? 'ok' : 'no'}">${b.found ? '✓' : '✗'}</span>
         </div>
-        <button class="del-btn" onclick="deleteBipe('${escH(b.id)}', '${escH(b.barcode)}', '${escH(b.sellerName || '?')}')" title="Excluir bipe">🗑️</button>
+        <button class="del-btn" data-history-action="delete" data-id="${escH(b.id)}" data-barcode="${escH(b.barcode)}" data-seller="${escH(b.sellerName || '?')}" title="Excluir bipe">🗑️</button>
       </div>
     `).join('');
   } catch (e) {
@@ -445,5 +445,5 @@ setInterval(() => {
   if (STATE.autoRefresh && !document.hidden && isToday(STATE.date)) loadAll();
 }, 10_000);
 </script>
-</body>
+<script src="/stocktake-history.js?v=20260914-round-1"></script></body>
 </html>
