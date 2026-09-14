@@ -68,7 +68,14 @@
   function usefulReference(text) {
     return /\b[A-Z]{2}\d{4}(?:[- ]?\d{3})?\b/i.test(text) || /\b\d{5,6}(?:BR)?\s*[/\-]\s*[A-Z]{2,5}\b/i.test(text) || /\b[A-Z]{3,}-[A-Z0-9-]{3,}\b/i.test(text);
   }
-  async function recognize(image, progress) {
+  function hasSize(text) { return /\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(text) || /^\s*(?:SIZE\s+)?(?:XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text); }
+  let queue = Promise.resolve();
+  function recognize(image, progress) {
+    const task = queue.then(() => recognizeNow(image, progress));
+    queue = task.catch(() => {});
+    return task;
+  }
+  async function recognizeNow(image, progress) {
     clearTimeout(idleTimer);
     let deadline, expired = false;
     try {
@@ -97,7 +104,7 @@
               const size = String(sizeResult.data.text || '').trim().toUpperCase();
               if (sizeResult.data.confidence >= 60 && /^(XXXL|XXL|XL|XS|L|M|S|P|G|GG|PP)$/.test(size)) text += '\n' + size;
             }
-            if (/^\s*(?:SIZE\s+)?(?:XL|XXL|XS|L|M|S|P|G|GG|PP)\s*$/im.test(text) || /\bBR\s*\d{2}/i.test(text)) return text;
+            if (hasSize(text)) return text;
             if (!best) best = text;
           }
         }
@@ -108,14 +115,14 @@
           const turned=rotatedCanvas(canvas,angle);
           const whole=await ready.recognize(turned);
           const wholeText=String(whole.data.text||'').slice(0,3500);
-          if(whole.data.confidence>=40&&usefulReference(wholeText)){if(/\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(wholeText))return wholeText;if(!best)best=wholeText;}
+          if(whole.data.confidence>=40&&usefulReference(wholeText)){if(hasSize(wholeText))return wholeText;if(!best)best=wholeText;}
           const region={x:Math.round(turned.width*.12),y:Math.round(turned.height*.12),width:Math.round(turned.width*.78),height:Math.round(turned.height*.76),kind:'label'};
           await ready.setParameters({tessedit_pageseg_mode:'6'});
           const result=await ready.recognize(textCrop(turned,region));
           await ready.setParameters({tessedit_pageseg_mode:'11'});
           const text=String(result.data.text||'').slice(0,3500);
           if(result.data.confidence>=40&&usefulReference(text)){
-            if(/\bBRA?\s*[:\-]?\s*\d{2}\b/i.test(text))return text;
+            if(hasSize(text))return text;
             if(!best)best=text;
           }
         }
@@ -139,7 +146,7 @@
       try {
         const response = await fetch('/api/stocktake/lookup/' + encodeURIComponent(barcode), { signal: controller.signal });
         const data = response.ok ? await response.json() : {};
-        if (data.recognized || data.ambiguous) return '';
+        if (data.recognized && !data.ambiguous && !data.needsSize) return '';
       } finally { clearTimeout(timer); }
     } catch (_) { /* Still attempt local OCR when the lookup is unavailable. */ }
     try { return await recognize(image, progress); }

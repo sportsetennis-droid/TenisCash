@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict');
+const auto=require('../public/scanner-auto');
+let shade=100;
+global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData:()=>({data:new Uint8ClampedArray(2304).fill(shade)})})})};
+(async()=>{
+ const captures=[];let code='196974865902',clock=10000,allowed=true;
+ const opts={snapshot:()=>({width:100,height:100}),decode:()=>code,recognize:async()=> '220509 / SLT\nBRA 40',canRead:()=>allowed,onCapture:x=>captures.push(x),onHint:()=>{},now:()=>clock};
+ const scanner=auto.create(opts);
+ await scanner.tick();assert.equal(captures.length,0);
+ await scanner.tick();await scanner.tick();assert.equal(captures.length,1,'One label cannot create repeated captures');
+ scanner.reset();await scanner.tick();await scanner.tick();assert.equal(captures.length,2,'Explicit next permits a second physical piece with same code');
+ scanner.reset();code='';await scanner.tick();clock+=1500;await scanner.tick();assert.equal(captures.length,3,'Reference and size trigger automatic capture without barcode');
+ let finish;const stale=auto.create({...opts,recognize:()=>new Promise(r=>finish=r)});
+ await stale.tick();clock+=1500;const pending=stale.tick();await Promise.resolve();stale.stop();finish('220509 / SLT\nBRA 40');await pending;assert.equal(captures.length,3,'Closed/manual session rejects late OCR');
+ const moved=auto.create({...opts,recognize:async()=>{shade=220;return '220509 / SLT\nBRA 40';}});
+ await moved.tick();clock+=1500;await moved.tick();assert.equal(captures.length,3,'Moving to another piece during OCR does not capture stale result');
+ assert.equal(auto.labelText('random box'),false);assert.equal(auto.labelText('220509 / SLT'),false);
+ assert.equal(auto.labelText('NIKE\nDD5860-690\nXL'),true);
+ console.log('PASS: automatic barcode/reference capture, explicit next-piece lock, stale OCR cancellation, motion rejection, missing-label rejection');
+})().catch(e=>{console.error(e);process.exitCode=1});
