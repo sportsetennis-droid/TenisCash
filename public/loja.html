@@ -3203,18 +3203,30 @@ async function populateInvStoreSelect() {
 }
 
 let invSearchTimer;
+let invSearchRequestId = 0;
 async function onInventorySearch() {
   clearTimeout(invSearchTimer);
+  const requestId = ++invSearchRequestId;
   const q = document.getElementById('invSearchInput').value;
+  const size = _filterSize;
+  const el = document.getElementById('invResults');
+  el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Buscando estoque...</p>';
+  document.getElementById('invDetails').innerHTML = '';
   // Permite carregar sem texto (mostra produtos mais recentes)
   invSearchTimer = setTimeout(async () => {
     try {
       const params = ['limit=24'];
       if (q) params.push('q=' + encodeURIComponent(q));
-      if (_filterSize) params.push('size=' + encodeURIComponent(_filterSize)); // respeita a numeração escolhida
+      // A numeração precisa ter saldo físico, não apenas existir na grade histórica.
+      if (size) params.push('size=' + encodeURIComponent(size), 'inStore=1');
       const d = await api('/api/catalog/products?' + params.join('&'));
+      if (requestId !== invSearchRequestId) return;
       const products = d.products || d.items || [];
-      const el = document.getElementById('invResults');
+      if (!products.length) {
+        el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">' +
+          (size ? 'Nenhum produto com estoque na numeração selecionada.' : 'Nenhum produto encontrado.') + '</p>';
+        return;
+      }
       if (window.PCard) {
         // el já é grid grid-3 — injeta cards direto como células
         el.innerHTML = products.map(p => PCard.render(p, {
@@ -3232,7 +3244,11 @@ async function onInventorySearch() {
           </div>
         `).join('');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      if (requestId !== invSearchRequestId) return;
+      el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Não foi possível consultar o estoque. Tente novamente.</p>';
+      console.error(e);
+    }
   }, 250);
 }
 
