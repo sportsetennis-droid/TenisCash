@@ -10,6 +10,32 @@ function rows(payload) {
   throw new Error('Resposta de promoções da Nuvemshop não reconhecida');
 }
 
+const hasPromo = variant => variant?.promotional_price != null && variant.promotional_price !== '';
+async function readVariant(connection, productId, variantId) {
+  const variant = await ns.nuvemshopApi(connection, 'GET', `/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`);
+  if (String(variant?.id) !== String(variantId) || !Object.hasOwn(variant, 'promotional_price')) {
+    throw new Error('A Nuvemshop não confirmou os campos da variação consultada');
+  }
+  return variant;
+}
+
+async function clearVariantPromotion(connection, variant) {
+  const path = `/products/${encodeURIComponent(variant.productId)}/variants/${encodeURIComponent(variant.variantId)}`;
+  await ns.nuvemshopApi(connection, 'PUT', path, { promotional_price: null });
+  let current = await readVariant(connection, variant.productId, variant.variantId);
+  if (hasPromo(current)) {
+    // The documented PATCH updates only specified existing variant fields; it
+    // never replaces the collection or changes unmentioned stock/price fields.
+    await ns.nuvemshopApi(connection, 'PATCH', `/products/${encodeURIComponent(variant.productId)}/variants`, [
+      { id: Number(variant.variantId), promotional_price: null },
+    ]);
+    current = await readVariant(connection, variant.productId, variant.variantId);
+  }
+  state.variantChecks = [...(state.variantChecks || []), { productId: variant.productId, variantId: variant.variantId,
+    promotionalPrice: current.promotional_price, price: current.price }];
+  if (hasPromo(current)) throw new Error(`Preço promocional ainda ativo na variação ${variant.variantId}`);
+}
+
 async function strictList(connection, resource) {
   const result = [];
   for (let page = 1; page <= 100; page++) {
@@ -29,9 +55,14 @@ async function scan(prisma) {
   if (!connection) return { connection: null, variants: [], promotions: [], coupons: [] };
   const products = await strictList(connection, '/products');
   if (products.length >= 10000) throw new Error('Listagem de produtos incompleta');
-  const variants = products.flatMap(product => (product.variants || [])
-    .filter(variant => variant.promotional_price != null && variant.promotional_price !== '')
+  const candidates = products.flatMap(product => (product.variants || [])
+    .filter(hasPromo)
     .map(variant => ({ productId: String(product.id), variantId: String(variant.id), promotionalPrice: variant.promotional_price })));
+  const variants = [];
+  for (const candidate of candidates) {
+    const current = await readVariant(connection, candidate.productId, candidate.variantId);
+    if (hasPromo(current)) variants.push({ ...candidate, promotionalPrice: current.promotional_price });
+  }
   const promotions = (await strictList(connection, '/promotions')).filter(p => p.active !== false && p.id != null)
     .map(p => ({ id: String(p.id), name: p.name, active: p.active }));
   const allCoupons = await strictList(connection, '/coupons');
@@ -74,7 +105,7 @@ async function runShutdown(prisma, actorId) {
   const operations = [
     ...snapshot.promotions.map(p => () => ns.nuvemshopApi(snapshot.connection, 'PATCH', `/promotions/${encodeURIComponent(p.id)}`, { active: false })),
     ...snapshot.coupons.map(c => () => ns.setCouponValid(snapshot.connection, c.id, false)),
-    ...snapshot.variants.map(v => () => ns.nuvemshopApi(snapshot.connection, 'PUT', `/products/${encodeURIComponent(v.productId)}/variants/${encodeURIComponent(v.variantId)}`, { promotional_price: null })),
+    ...snapshot.variants.map(v => () => clearVariantPromotion(snapshot.connection, v)),
   ];
   state.total = operations.length;
   for (const operation of operations) {

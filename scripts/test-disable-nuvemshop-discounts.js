@@ -22,17 +22,24 @@ const path = require('node:path');
       assert.equal(conn, connection);
       if (method === 'GET') {
         if (url.startsWith('/products?')) return badShape ? { unexpected: true } : [{ id: 10, variants }];
+        if (url === '/products/10/variants/12') return variants[0];
         if (url.startsWith('/coupons?')) return coupons;
         assert.match(url, /^\/promotions\?/); return { data: promotions };
       }
       assert.ok(events.includes('snapshot'), 'Snapshot must precede external writes');
+      if (method === 'PATCH' && url === '/products/10/variants') {
+        assert.equal(JSON.stringify(body), '[{"id":12,"promotional_price":null}]');
+        variants[0].promotional_price = null; events.push('variant'); return;
+      }
       if (method === 'PATCH') {
         assert.equal(url, '/promotions/1'); assert.equal(JSON.stringify(body), '{"active":false}');
         promotions[0].active = false; events.push('promotion'); return;
       }
       assert.equal(method, 'PUT'); assert.equal(url, '/products/10/variants/12');
       assert.equal(JSON.stringify(body), '{"promotional_price":null}');
-      variants[0].promotional_price = null; events.push('variant');
+      // Model a successful PUT that silently ignores null: only the verified
+      // collection PATCH clears it, without replacing/removing variants.
+      events.push('put-ignored');
     },
   };
   const prisma = {
