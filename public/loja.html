@@ -332,12 +332,12 @@
     </div>
     <div id="loginErr" class="err"></div>
     <div class="form-group">
-      <label>Telefone (com DDD)</label>
-      <input type="tel" id="loginPhone" placeholder="83912345678" autocomplete="tel">
+      <label for="loginPhone">WhatsApp ou e-mail</label>
+      <input type="text" id="loginPhone" placeholder="WhatsApp com DDD ou e-mail" autocomplete="username" autocapitalize="none" spellcheck="false">
     </div>
     <div class="form-group">
-      <label>SENHA (4 dígitos)</label>
-      <input type="password" id="loginPin" placeholder="••••" maxlength="6" inputmode="numeric">
+      <label for="loginPin">Senha de cadastro</label>
+      <input type="password" id="loginPin" placeholder="Sua senha" autocomplete="current-password">
     </div>
     <button class="btn" id="loginBtn" onclick="doLogin()">Entrar</button>
     <button class="btn" id="bioLoginBtn" onclick="doLoginBio()" style="display:none;margin-top:10px;background:#fff;color:#E5571E;border:1.5px solid #E5571E;font-weight:700;">👤 Entrar com o rosto</button>
@@ -822,7 +822,7 @@
       <div class="form-group" id="clockPinGroup" style="display:none;">
         <label>SENHA do vendedor</label>
         <div style="position:relative;">
-          <input type="password" id="clockPin" placeholder="••••" maxlength="6" inputmode="numeric" style="width:100%;padding:10px;padding-right:46px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;letter-spacing:6px;">
+          <input type="password" id="clockPin" placeholder="Senha de cadastro do vendedor" autocomplete="off" style="width:100%;padding:10px;padding-right:46px;border:1px solid #d2d2d7;border-radius:8px;font-size:18px;text-align:center;">
           <button type="button" id="clockPinToggle" onclick="toggleClockPin()" aria-label="Mostrar ou ocultar SENHA" title="Mostrar/ocultar SENHA" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:20px;line-height:1;padding:4px;">👁️</button>
         </div>
       </div>
@@ -1204,12 +1204,18 @@ function storeIcon(code) {
 
 // ============== AUTH ==============
 async function doLogin() {
-  const phone = document.getElementById('loginPhone').value.replace(/\D/g, '');
+  const identifier = document.getElementById('loginPhone').value.trim();
+  const isEmail = identifier.includes('@');
+  const credentials = isEmail
+    ? { email: identifier }
+    : { phone: identifier.replace(/\D/g, '') };
   const pin = document.getElementById('loginPin').value;
   const errEl = document.getElementById('loginErr');
   errEl.classList.remove('show');
 
-  if (!phone || phone.length < 10) { errEl.textContent = 'Telefone inválido'; errEl.classList.add('show'); return; }
+  if (isEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credentials.email) : credentials.phone.length < 10) {
+    errEl.textContent = 'Informe um WhatsApp com DDD ou um e-mail válido'; errEl.classList.add('show'); return;
+  }
   if (!pin) { errEl.textContent = 'Informe a SENHA'; errEl.classList.add('show'); return; }
 
   document.getElementById('loginBtn').disabled = true;
@@ -1217,7 +1223,7 @@ async function doLogin() {
     const r = await fetch(API + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, password: pin }),
+      body: JSON.stringify({ ...credentials, password: pin }),
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Erro ao entrar'; errEl.classList.add('show'); return; }

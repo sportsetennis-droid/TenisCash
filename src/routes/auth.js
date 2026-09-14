@@ -347,9 +347,11 @@ router.put('/update-profile', authMiddleware, async (req, res) => {
 // LOGIN (telefone ou email)
 router.post('/login', async (req, res) => {
   try {
-    const { phone, email, password } = req.body;
+    const { phone, email, password } = req.body || {};
 
-    if (!password) return res.status(400).json({ error: 'Senha é obrigatória' });
+    if (typeof password !== 'string' || !password) return res.status(400).json({ error: 'Senha é obrigatória' });
+    if (email != null && typeof email !== 'string') return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
     const includeRich = {
       store: {
@@ -361,10 +363,24 @@ router.post('/login', async (req, res) => {
     };
 
     let user;
-    if (email) {
-      user = await prisma.user.findFirst({ where: { email }, include: includeRich });
-    } else if (phone) {
+    if (normalizedEmail) {
+      // E-mail não é único no cadastro legado. Nunca escolher a primeira conta
+      // quando mais de um cadastro corresponde ao mesmo endereço.
+      // Prisma/PostgreSQL usa ILIKE neste filtro: caracteres do endereço
+      // precisam ser literais, inclusive %, _ e a própria barra de escape.
+      const literalEmail = normalizedEmail.replace(/[_%\\]/g, char => '\\' + char);
+      const matches = await prisma.user.findMany({
+        where: { email: { equals: literalEmail, mode: 'insensitive' } },
+        include: includeRich,
+        take: 2,
+      });
+      if (matches.length !== 1 || typeof matches[0].email !== 'string' || matches[0].email.toLowerCase() !== normalizedEmail) {
+        return res.status(401).json({ error: 'Credenciais incorretas' });
+      }
+      user = matches[0];
+    } else if (typeof phone === 'string' && phone.trim()) {
       const cleanPhone = phone.replace(/\D/g, '');
+      if (!cleanPhone) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
       user = await prisma.user.findUnique({ where: { phone: cleanPhone }, include: includeRich });
     } else {
       return res.status(400).json({ error: 'Informe telefone ou e-mail' });
@@ -397,7 +413,9 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Erro no login:', err);
+    // Erros do banco podem incluir parâmetros da consulta. Não registrar
+    // credenciais, endereços ou o conteúdo recebido no login.
+    console.error('[auth/login] Falha interna na autenticação');
     res.status(500).json({ error: 'Erro interno no servidor' });
   }
 });
