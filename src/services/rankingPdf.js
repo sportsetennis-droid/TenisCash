@@ -33,7 +33,8 @@ async function createRankingPdf(data, { storeName = 'Todas as lojas', generatedA
   header();
   for (const r of data.ranking) {
     const c = r.commission;
-    const cells = [String(r.position), `${r.name}\n${r.store?.name || '-'}\nComissão calculada: ${fmt(r.commissionAmount)}`, String(r.salesCount), fmt(r.salesAmount), fmt(c.baseAmount),
+    const storesLabel = [...new Set((r.stores?.length ? r.stores : [r.store]).filter(Boolean).map(store => store.name).filter(Boolean))].join(' / ');
+    const cells = [String(r.position), `${r.name}\n${storesLabel || '-'}\nComissão calculada: ${fmt(r.commissionAmount)}`, String(r.salesCount), fmt(r.salesAmount), fmt(c.baseAmount),
       fmt(c.at50kAmount), fmt(c.clothingBaseAmount), fmt(c.at20kClothingAmount),
       fmt(c.totalAt1Percent), fmt(c.totalAt2And4Percent)];
     doc.font('Helvetica').fontSize(8);

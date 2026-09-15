@@ -1550,9 +1550,14 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     } else {
       return res.status(400).json({ error: 'period inválido' });
     }
+    const todayBounds = recifeDayBounds(now);
+    const isTodayReport = period === 'today' || (period === 'custom'
+      && startUtc.getTime() === todayBounds.startUtc.getTime()
+      && endUtc.getTime() === todayBounds.endUtc.getTime());
 
     // Filtro de vendas (canceladas não entram no ranking)
     const saleWhere = { createdAt: { gte: startUtc, lt: endUtc }, status: { not: 'canceled' } };
+    if (isTodayReport) saleWhere.createdAt.lte = now;
     if (storeId) saleWhere.storeId = storeId;
 
     // Agrega vendas por vendedor
@@ -1574,45 +1579,44 @@ router.get('/rankings', sellerOnly, async (req, res) => {
     // O titular participa em qualquer período, sem depender de ponto de funcionário.
     const owner = await getRankingOwner(prisma);
     const ownerSales = owner && salesAgg.find(row => row.sellerId === owner.id);
-    const ownerStore = owner && storeId ? await prisma.store.findUnique({
+    const selectedStore = storeId && (owner || isTodayReport) ? await prisma.store.findUnique({
       where: { id: storeId }, select: { id: true, name: true, code: true },
     }) : null;
-    if (owner && storeId && !ownerStore) return res.status(400).json({ error: 'Loja não encontrada.' });
+    if (storeId && (owner || isTodayReport) && !selectedStore) return res.status(400).json({ error: 'Loja não encontrada.' });
 
-    // Hoje inclui todos os vendedores ativos com ponto aberto, mesmo sem vendas.
-    // Leia todos os pontos antes de filtrar a loja: uma saída em outra loja
-    // também encerra a disponibilidade. O intervalo mantém o vendedor no ranking.
-    const attendanceStoreBySeller = new Map();
-    if (period === 'today') {
+    // Regra do Douglas em 15/09/2026: relatório de hoje mostra quem trabalhou
+    // OU vendeu no dia. Saída, intervalo, zero vendas, inativação ou transferência
+    // posterior não apagam participação. A loja vem do registro, não do vínculo
+    // atual nem apenas do último ponto. Isso não altera as regras de bater ponto.
+    const dailyStoreIdsBySeller = new Map();
+    const dailyStoresById = new Map(selectedStore ? [[selectedStore.id, selectedStore]] : []);
+    const rememberDailyStore = (sellerId, evidenceStoreId) => {
+      if (!evidenceStoreId) return;
+      if (!dailyStoreIdsBySeller.has(sellerId)) dailyStoreIdsBySeller.set(sellerId, new Set());
+      dailyStoreIdsBySeller.get(sellerId).add(evidenceStoreId);
+    };
+    if (isTodayReport) {
       const clocks = await prisma.clockIn.findMany({
         where: {
           timestamp: { gte: startUtc, lt: endUtc, lte: now },
-          user: { role: 'seller', active: true },
+          type: { in: ['entry', 'break_start', 'break_end', 'exit'] },
+          ...(storeId ? { storeId } : {}),
         },
         orderBy: { timestamp: 'asc' },
-        include: {
+        select: {
+          userId: true, storeId: true,
           store: { select: { id: true, name: true, code: true } },
-          user: { select: { storeId: true, storeIds: true } },
         },
       });
-      const clocksBySeller = new Map();
-      for (const clock of clocks) {
-        if (!clocksBySeller.has(clock.userId)) clocksBySeller.set(clock.userId, []);
-        clocksBySeller.get(clock.userId).push(clock);
-      }
-      for (const [sellerId, points] of clocksBySeller) {
-        const { summary } = summarizeToday(points, now);
-        const last = points[points.length - 1];
-        const assignedStores = [last.user.storeId, ...(last.user.storeIds || [])];
-        if (summary.hasEntry && !summary.hasExit
-          && assignedStores.includes(last.storeId) && (!storeId || last.storeId === storeId)) {
-          attendanceStoreBySeller.set(sellerId, last.store);
-        }
-      }
       const salesBySeller = new Map(salesAgg.map(s => [s.sellerId, s]));
-      salesAgg = [...attendanceStoreBySeller.keys()].map(sellerId => salesBySeller.get(sellerId) || {
-        sellerId, _count: { _all: 0 }, _sum: { totalAmount: 0, tcEarned: 0, tcUsed: 0 },
-      });
+      for (const clock of clocks) {
+        rememberDailyStore(clock.userId, clock.storeId);
+        if (clock.store) dailyStoresById.set(clock.store.id, clock.store);
+        if (!salesBySeller.has(clock.userId)) salesBySeller.set(clock.userId, {
+          sellerId: clock.userId, _count: { _all: 0 }, _sum: { totalAmount: 0, tcEarned: 0, tcUsed: 0 },
+        });
+      }
+      salesAgg = [...salesBySeller.values()];
     }
 
     if (owner && !salesAgg.some(row => row.sellerId === owner.id)) {
@@ -1633,6 +1637,24 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         items: { select: { id: true, productName: true, quantity: true, brand: true, category: true, totalPrice: true,
           product: { select: { name: true, brand: true, category: true } } } } },
     }) : [];
+    if (isTodayReport) {
+      // Reaproveita a consulta das comissões; vendas de outros dias/lojas não
+      // viram evidência de participação na seleção de hoje.
+      for (const sale of commissionSales) {
+        const soldAt = new Date(sale.createdAt);
+        if (soldAt >= startUtc && soldAt < endUtc && (!storeId || sale.storeId === storeId)) {
+          rememberDailyStore(sale.sellerId, sale.storeId);
+        }
+      }
+      const missingStoreIds = [...new Set([...dailyStoreIdsBySeller.values()].flatMap(ids => [...ids]))]
+        .filter(id => !dailyStoresById.has(id));
+      if (missingStoreIds.length) {
+        const stores = await prisma.store.findMany({
+          where: { id: { in: missingStoreIds } }, select: { id: true, name: true, code: true },
+        });
+        for (const store of stores) dailyStoresById.set(store.id, store);
+      }
+    }
     const commissionBySeller = calculateRankingCommissions(commissionSales, { start: startUtc, end: endUtc, storeId });
     const sellers = await prisma.user.findMany({
       where: { id: { in: sellerIds } },
@@ -1645,7 +1667,12 @@ router.get('/rankings', sellerOnly, async (req, res) => {
 
     const ranking = salesAgg.map((s, i) => {
       const u = sellerMap.get(s.sellerId);
-      const store = (s.sellerId === owner?.id && ownerStore) || attendanceStoreBySeller.get(s.sellerId) || u?.store;
+      const stores = [...(dailyStoreIdsBySeller.get(s.sellerId) || [])]
+        .map(id => dailyStoresById.get(id)).filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id));
+      const store = isTodayReport
+        ? selectedStore || stores[0] || (s.sellerId === owner?.id ? u?.store : null)
+        : (s.sellerId === owner?.id && selectedStore) || u?.store;
       const commission = commissionBySeller.get(s.sellerId) || { baseAmount: 0, at50kAmount: 0,
         clothingSalesAmount: 0, clothingBaseAmount: 0, at20kClothingAmount: 0, totalAt1Percent: 0,
         totalAt2And4Percent: 0, earnedAmount: 0, clothingItems: [], months: [] };
@@ -1655,6 +1682,7 @@ router.get('/rankings', sellerOnly, async (req, res) => {
         name: u?.name || '(removido)',
         employeeCode: u?.employeeCode || null,
         store: store ? { id: store.id, name: store.name, code: store.code } : null,
+        ...(isTodayReport ? { stores } : {}),
         salesCount: s._count._all || 0,
         salesAmount: Math.round((s._sum.totalAmount || 0) * 100) / 100,
         cashbackGiven: Math.round((s._sum.tcEarned || 0) * 100) / 100,

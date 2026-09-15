@@ -58,7 +58,10 @@ async function run({ query = { period: 'today', storeId: 'all' }, role = 'admin'
       findUnique: async ({ where }) => users.find(user => user.id === where.id) || null,
       findMany: async ({ where }) => users.filter(user => matches(user, where)),
     },
-    store: { findUnique: async ({ where }) => stores.find(store => store.id === where.id) || null },
+    store: {
+      findUnique: async ({ where }) => stores.find(store => store.id === where.id) || null,
+      findMany: async ({ where }) => stores.filter(store => matches(store, where)),
+    },
     sale: {
       groupBy: async ({ where }) => {
         const groups = new Map();
@@ -77,8 +80,7 @@ async function run({ query = { period: 'today', storeId: 'all' }, role = 'admin'
     },
     clockIn: { findMany: async ({ where }) => {
       clockQueries++;
-      assert.equal(where.user.role, 'seller');
-      assert.equal(where.user.active, true);
+      assert.equal(where.user, undefined, 'Participation is historical, not filtered by current profile');
       return clocks.map(clock => ({ ...clock, user: users.find(user => user.id === clock.userId), store: stores[0] }))
         .filter(clock => matches(clock, where)).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     } },
@@ -138,8 +140,8 @@ const present = [clock('working', 'entry', '12'), clock('on-break', 'entry', '12
     assert.ok(result.ranking.some(row => row.sellerId === 'working'));
     assert.ok(result.ranking.some(row => row.sellerId === 'on-break'));
     if (period === 'today') {
-      assert.equal(result.ranking.some(row => row.sellerId === 'exited'), false);
-      assert.equal(result.ranking.some(row => row.sellerId === 'absent'), false);
+      assert.equal(result.ranking.some(row => row.sellerId === 'exited'), true);
+      assert.equal(result.ranking.some(row => row.sellerId === 'absent'), true);
     }
     assert.equal(result.ranking.some(row => ['printbot', 'second-admin'].includes(row.sellerId)), false);
   }

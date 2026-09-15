@@ -1031,7 +1031,7 @@
   <!-- RANKING -->
   <div class="page" id="page-ranking">
     <h2 class="page-title">Ranking de vendas</h2>
-    <p class="page-subtitle">Ordenado por valor de vendas. Hoje inclui o proprietário e os vendedores ativos que bateram entrada e ainda não registraram saída, inclusive no intervalo e mesmo sem vendas.</p>
+    <p class="page-subtitle">Ordenado por valor de vendas. Hoje inclui o proprietário e todas as pessoas com ponto ou vendas no dia, inclusive quem já saiu e quem ficou sem vendas.</p>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -3700,6 +3700,7 @@ async function loadRanking({ silent = false } = {}) {
     if (sessionToken !== token || requestId !== rankRequestId || selection.key !== rankingSelection().key || (silent && !canRefreshVisibleRanking())) return;
     rankRenderedKey = selection.key;
     status.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const storesLabel = row => [...new Set((row.stores?.length ? row.stores : [row.store]).filter(Boolean).map(store => store.name).filter(Boolean))].join(' / ');
     const clothingDetails = commission => {
       const items = commission.clothingItems || [];
       if (!items.length) return '';
@@ -3737,7 +3738,7 @@ async function loadRanking({ silent = false } = {}) {
     }
 
     if (!d.ranking.length) {
-      document.getElementById('rankingTable').innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:24px;">${period === 'today' ? 'Nenhum vendedor com ponto aberto e apto a vender nesta seleção.' : 'Sem vendas no período.'}</p>`;
+      document.getElementById('rankingTable').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:24px;">Nenhum vendedor encontrado no período e na loja selecionados.</p>';
       return;
     }
 
@@ -3754,7 +3755,7 @@ async function loadRanking({ silent = false } = {}) {
               <div style="font-size:32px;">${medal}</div>
               <div class="avatar avatar-lg ${avatarColor(r.name)}">${initials(r.name)}</div>
               <div class="person-name" style="text-align:center;margin-top:8px;">${r.name}</div>
-              <div class="person-meta" style="text-align:center;">${r.store?.name || ''}</div>
+              <div class="person-meta" style="text-align:center;">${escPreco(storesLabel(r))}</div>
               <div style="margin-top:10px;text-align:center;">
                 <div style="font-size:20px;font-weight:800;color:var(--primary);">${fmt(r.salesAmount)}</div>
                 <div style="font-size:11px;color:var(--text-muted);">${r.salesCount} vendas · ${fmt(r.commissionAmount)} comissão</div>
@@ -3791,7 +3792,7 @@ async function loadRanking({ silent = false } = {}) {
                   <div class="avatar avatar-sm ${avatarColor(r.name)}">${initials(r.name)}</div>
                   <div>
                     <div style="font-weight:600;">${r.name}</div>
-                    <div style="font-size:11px;color:var(--text-muted);">${r.store?.name || '—'}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${escPreco(storesLabel(r)) || '—'}</div>
                     <span class="rank-commission-note">Comissão calculada: <strong>${fmt(r.commissionAmount)}</strong></span>
                   </div>
                 </div>
