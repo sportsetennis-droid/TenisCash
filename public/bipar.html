@@ -658,6 +658,11 @@
     const lid=capturarFrame(prepared?.ean||current?.ean||'',prepared);
     if(!lid){etiqAuto?.reset();return;}
     etiqAtivo=lid;
+    const panel=document.getElementById('etiq-confirm');
+    Object.assign(panel.style,{display:'flex',inset:'auto 8px 8px',padding:'12px',pointerEvents:'none',background:'rgba(0,0,0,.85)'});
+    const next=document.getElementById('etiq-confirm-btn');next.disabled=true;next.textContent='PRÓXIMO — AGUARDE A LEITURA';next.style.background='#555';next.style.pointerEvents='auto';
+    document.getElementById('etiq-confirm-status').textContent='⏳ LENDO ESTA PEÇA';
+    document.getElementById('etiq-confirm-det').textContent='Mantenha a mesma etiqueta na câmera.';
     etiqAuto?.reset();
     clearInterval(etiqWatch);
     etiqWatch=setInterval(()=>{
@@ -665,13 +670,16 @@
       const h=document.getElementById('etiq-hint');if(!h)return;
       if(!it.complete){
         h.textContent=it.st==='revisao'?it.msg:it.needsSize?'Falta confirmar o tamanho. Continue com a mesma peça.':!it.ean?'Falta ler o código de barras. Aproxime a etiqueta; câmera continua ativa.':'Código lido. Confirmando produto e tamanho; mantenha a mesma etiqueta.';
+        const status=document.getElementById('etiq-confirm-status'),detail=document.getElementById('etiq-confirm-det');
+        status.textContent=it.st==='pendente'||it.st==='revisao'?'⚠ LEITURA AINDA INCOMPLETA':it.ean?'⏳ CÓDIGO LIDO — CONFERINDO':'⏳ LENDO ESTA PEÇA';
+        detail.textContent=(it.ean?'Código: '+it.ean+' · ':'')+(it.st==='pendente'&&it.msg?it.msg:h.textContent);
         return;
       }
       etiqPausado=true;etiqAuto?.stop();etiqBeep();
-      document.getElementById('etiq-confirm').style.display='flex';
+      Object.assign(document.getElementById('etiq-confirm').style,{display:'flex',inset:'0',padding:'24px',pointerEvents:'auto'});
       document.getElementById('etiq-confirm-status').textContent='✅ LEITURA COMPLETA';
       document.getElementById('etiq-confirm-det').textContent=it.msg||'Código, produto e tamanho confirmados.';
-      const btn=document.getElementById('etiq-confirm-btn');btn.disabled=false;btn.textContent='PRÓXIMA ➡';btn.style.background='#25d366';
+      const btn=document.getElementById('etiq-confirm-btn');btn.disabled=false;btn.textContent='PRÓXIMO ➡';btn.style.background='#25d366';
       clearInterval(etiqWatch);
     },350);
   };
