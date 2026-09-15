@@ -42,6 +42,24 @@ async function referenceCandidates(db, codes) {
   return [...new Map(resolved.map(r=>[r.id,r])).values()];
 }
 
+// Exact incoming NF-e GTIN plus its existing product link and literal variant.
+async function fiscalBarcodeTarget(db,barcode){
+ const rows=await db.$queryRaw`SELECT i.id, i."productId", i.description FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId" WHERE d."docType"='entrada' AND i.ean IN (SELECT jsonb_array_elements_text(${JSON.stringify(variants(barcode))}::jsonb)) AND i."productId" IS NOT NULL LIMIT 51`;
+ if(rows.length>50)return {reason:'reference_conflict'};
+ const targets=[];
+ for(const row of rows){
+  const product=await canonicalProduct(db,await db.product.findUnique({where:{id:row.productId},include:{sizes:true}}));
+  if(!product)continue;
+  const match=String(row.description||'').trim().match(/^(.*)\s+(\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG)$/i);
+  if(!match || normalizeReference(match[1])!==normalizeReference(product.name))return {reason:'size_required'};
+  const size=match[2].toUpperCase().replace(',','.');
+  if(!product.sizes.some(s=>s.size===size))return {reason:'size_required'};
+  targets.push({productId:product.id,size,itemId:row.id});
+ }
+ const unique=[...new Map(targets.map(t=>[t.productId+':'+t.size,t])).values()];
+ return unique.length>1?{reason:'barcode_conflict'}:unique[0]||null;
+}
+
 // Learns a barcode only after one exact target is established. The optional
 // confirmedProductId is used exclusively by the authenticated review endpoint.
 async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId }) {
@@ -57,7 +75,12 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     if (owners.length > 1) return { reason: 'barcode_conflict' };
     const candidates = await referenceCandidates(tx, codes);
     if (!confirmedProductId && candidates.length > 1) return { reason: 'reference_conflict' };
-    const pid = confirmedProductId || candidates[0]?.id || owners[0]?.productId;
+    const fiscal = !owners.length ? await fiscalBarcodeTarget(tx,barcode) : null;
+    if(fiscal?.reason && !confirmedProductId)return {reason:fiscal.reason};
+    if(fiscal?.productId && candidates.some(c=>c.id!==fiscal.productId))return {reason:'reference_conflict'};
+    if(fiscal?.size && size && size!==fiscal.size)return {reason:'size_conflict'};
+    if(!size && fiscal?.size)size=fiscal.size;
+    const pid = confirmedProductId || candidates[0]?.id || owners[0]?.productId || fiscal?.productId;
     if (!pid) return { reason: 'reference_not_found' };
     if (owners.length && owners[0].productId !== pid) return { reason: 'barcode_conflict' };
     await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${pid} FOR UPDATE`;
@@ -98,9 +121,9 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     // Automatic scans only retain identifiers actually present in the database;
     // an operator can explicitly confirm a new printed reference.
     const existing = Array.isArray(context.scannerReferences) ? context.scannerReferences : [];
-    if (confirmedProductId || previousReference) await tx.product.update({ where: { id: pid }, data: { aiContext: { ...context,
+    if (confirmedProductId || previousReference || fiscal?.itemId) await tx.product.update({ where: { id: pid }, data: { aiContext: { ...context,
       scannerReferences: [...new Set([...existing, ...(confirmedProductId ? codes : []), ...(previousReference ? [previousReference] : [])])],
-      scannerReferenceEvidence: { source: confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', barcode, size, confirmedAt: new Date().toISOString() },
+      scannerReferenceEvidence: { source: fiscal?.itemId ? 'exact-incoming-nfe-gtin-product-and-size' : confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', fiscalItemId:fiscal?.itemId||null, barcode, size, confirmedAt: new Date().toISOString() },
     } } });
     return { productId: pid, productSizeId: ps.id, name: product.name, barcode, reason: 'matched' };
   }, { isolationLevel: 'Serializable', timeout: 15000 });
@@ -117,4 +140,4 @@ async function matchScannerReference(db,read,size){
   if(!ps)return {reason:'size_required'};
   return {reason:'matched',productId:p.id,productSizeId:ps.id,name:p.name};
 }
-module.exports = { matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };
+module.exports = { fiscalBarcodeTarget, matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };

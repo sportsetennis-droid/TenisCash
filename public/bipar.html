@@ -671,8 +671,8 @@
       if(!it.complete){
         h.textContent=it.st==='revisao'?it.msg:it.needsSize?'Falta confirmar o tamanho. Continue com a mesma peça.':!it.ean?'Falta ler o código de barras. Aproxime a etiqueta; câmera continua ativa.':'Código lido. Confirmando produto e tamanho; mantenha a mesma etiqueta.';
         const status=document.getElementById('etiq-confirm-status'),detail=document.getElementById('etiq-confirm-det');
-        status.textContent=it.st==='pendente'||it.st==='revisao'?'⚠ LEITURA AINDA INCOMPLETA':it.ean?'⏳ CÓDIGO LIDO — CONFERINDO':'⏳ LENDO ESTA PEÇA';
-        detail.textContent=(it.ean?'Código: '+it.ean+' · ':'')+(it.st==='pendente'&&it.msg?it.msg:h.textContent);
+        status.textContent=it.msg&&!it.complete?'⚠ LEITURA AINDA INCOMPLETA':it.ean?'⏳ CÓDIGO LIDO — CONFERINDO':'⏳ LENDO ESTA PEÇA';
+        detail.textContent=(it.ean?'Código: '+it.ean+' · ':'')+(it.msg||h.textContent);
         return;
       }
       etiqPausado=true;etiqAuto?.stop();etiqBeep();
