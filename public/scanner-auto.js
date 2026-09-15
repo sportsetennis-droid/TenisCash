@@ -15,8 +15,8 @@
   }
   function distance(a,b){return a.reduce((sum,v,i)=>sum+Math.abs(v-b[i]),0)/a.length;}
   function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now}) {
-    let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0;
-    function reset(){epoch++;locked=false;lastCode='';hits=0;previous=null;stableSince=now();}
+    let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0,afterCode='',clearFrames=0;
+    function reset(options={}){epoch++;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');clearFrames=0;}
     function stop(){epoch++;locked=true;}
     async function tick(){
       if(locked||busy||!canRead())return;
@@ -25,6 +25,12 @@
       try {
         const code=await decode(frame);
         if(stamp!==epoch||locked||!canRead())return;
+        if(afterCode){
+          const normalized=String(code||'').replace(/^0+/,'');
+          if(normalized===afterCode){clearFrames=0;onHint('Afaste a etiqueta já lida antes de apresentar outro par.');return;}
+          if(!normalized && ++clearFrames<2)return;
+          afterCode='';clearFrames=0;
+        }
         if(code){hits=code===lastCode?hits+1:1;lastCode=code;
           onHint('Código reconhecido. Mantenha a etiqueta parada…');
           if(hits>=2&&stamp===epoch&&canRead()){locked=true;onCapture({ean:code,frame});}return;

@@ -15,6 +15,7 @@ global.document={createElement:()=>({getContext:()=>({drawImage(){},getImageData
  await stale.tick();clock+=1500;const pending=stale.tick();await Promise.resolve();stale.stop();finish('220509 / SLT\nBRA 40');await pending;assert.equal(captures.length,3,'Closed/manual session rejects late OCR');
  const moved=auto.create({...opts,recognize:async()=>{shade=220;return '220509 / SLT\nBRA 40';}});
  await moved.tick();clock+=1500;await moved.tick();assert.equal(captures.length,3,'Moving to another piece during OCR does not capture stale result');
+ const gated=[];code='196974865902';const gate=auto.create({...opts,onCapture:x=>gated.push(x)});gate.reset({afterCode:code});await gate.tick();await gate.tick();await gate.tick();assert.equal(gated.length,0,'Same visible label cannot count again after next');code='';await gate.tick();code='196974865902';await gate.tick();assert.equal(gated.length,0,'Single missed frame cannot rearm');code='';await gate.tick();await gate.tick();code='196974865902';await gate.tick();await gate.tick();assert.equal(gated.length,1,'Removing label rearms next physical pair');
  assert.equal(auto.labelText('random box'),false);assert.equal(auto.labelText('220509 / SLT'),false);
   assert.equal(auto.labelText('NIKE\nDD5860-690\nXL'),true);
  let workerInstance;
