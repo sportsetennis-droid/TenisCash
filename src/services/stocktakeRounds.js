@@ -41,12 +41,16 @@ async function createRoundCapture(db, data) {
     return tx.productCapture.create({ data });
   });
 }
+function barcodePending(bipe) {
+  const code=String(bipe.barcode||'').trim();
+  return !code || /^REF:/i.test(code) || /^SEM\s*GTIN$/i.test(code);
+}
 function summarize(bipes, captures) {
   const active = bipes.filter(b => !b.excludedAt);
   const valid = active.filter(b => b.found && !b.duplicate && b.productSizeId && b.productSize && b.productSize !== '?' && !/^T-/.test(b.productSize));
   const orphanPhotos = captures.filter(c => !c.excludedAt && c.status !== 'descartado' && (!c.bipeId || c.status === 'processando'));
   return { total: active.length + orphanPhotos.filter(c => !c.bipeId).length, matched: valid.length,
-    pending: active.length - valid.length + orphanPhotos.length, excluded: bipes.length - active.length };
+    barcodePending: valid.filter(barcodePending).length, pending: active.length - valid.length + orphanPhotos.length, excluded: bipes.length - active.length };
 }
 async function roundReport(db, id) {
   const round = await db.stocktakeRound.findUnique({ where: { id } });
@@ -98,6 +102,7 @@ async function finishRound(db,id,reviewToken,fullStoreConfirmed) {
     const report = await roundReport(tx,id);
     if (reviewToken !== report.reviewToken) fail('O relatório mudou. Atualize e confira novamente.');
     if (!report.totals.total || report.totals.pending) fail('Resolva as leituras pendentes antes de fechar o inventário.');
+    if (report.totals.barcodePending) fail('Há produtos identificados sem código de barras escaneado. Complete essas leituras antes de fechar o inventário.');
     if (report.movements || report.stockChanged) fail('Houve movimentação de estoque durante a coleta. É necessário reconciliar essas movimentações antes de aplicar; o estoque foi preservado.');
     if (report.lines.some(l=>!l.active)) fail('Há cadastro inativo ou removido. Revise antes de aplicar.');
     for (const line of report.lines) {
@@ -113,5 +118,5 @@ async function finishRound(db,id,reviewToken,fullStoreConfirmed) {
     return {ok:true};
   },{timeout:30000});
 }
-module.exports={fail,scanKey,roundForScan,createRoundBipe,createRoundCapture,summarize,roundReport,startRound,finishRound};
+module.exports={barcodePending,fail,scanKey,roundForScan,createRoundBipe,createRoundCapture,summarize,roundReport,startRound,finishRound};
 
