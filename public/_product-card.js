@@ -10,6 +10,7 @@
 //   PCard.render(product, opts)  → string HTML
 //   PCard.renderGrid(products, opts)  → grid completo
 //   PCard.escapeHtml(s)
+//   PCard.productDisplayName(product) → name without a legacy final size suffix
 //   PCard.crslNav(carouselId, dir)  (precisa estar window-acessível)
 //
 // opts:
@@ -17,6 +18,8 @@
 //   onClick: handler de click no card (string JS, ex: 'showProduct(\'%id%\')')
 //   storeColors: { LOJA01: '#0066cc', ... }
 //   showStock: bool   (default true)
+//   physicalStockOnly: bool (default false; never present purchased stock as available)
+//   selectedSize: exact size to display in the stock grid (default all sizes)
 //   showActions: bool (default true em admin)
 //   minWidth: '300px' (default)
 // =====================================================================
@@ -30,6 +33,14 @@
     return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
   PCard.escapeHtml = esc;
+
+  // A grade estruturada identifica os tamanhos; o nome legado pode ter vindo
+  // de uma única variante da importação. Apenas apresentação, sem mudar cadastro.
+  PCard.productDisplayName = function (p) {
+    const name = String(p?.name || '');
+    const hasVariants = Array.isArray(p?.sizes) && p.sizes.some(s => s && s.size != null);
+    return hasVariants ? name.replace(/\s*-Tam:\s*\d+(?:[.,]\d+)?\s*$/, '') : name;
+  };
 
   function fmtBRL(n) { return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ','); }
 
@@ -428,6 +439,7 @@
     const showStock = opts.showStock !== false;
     const showActions = opts.showActions !== false && actions !== 'public';
     const onClick = opts.onClick ? opts.onClick.replace(/%id%/g, p.id) : null;
+    const selectedSize = opts.selectedSize == null ? '' : String(opts.selectedSize).trim();
 
     const ctx = parseAiCtx(p);
     const cls = ctx.classification || {};
@@ -454,20 +466,23 @@
     // Tamanhos por loja
     const byStore = {};
     (p.sizes || []).forEach(sz => {
+      if (selectedSize && String(sz.size) !== selectedSize) return;
       (sz.storeStocks || []).forEach(ss => {
         // Tela VENDER (opts.onlyStoreId setado): só a loja que está vendendo.
         // Demais telas (Estoque, Curadoria, Preços): mostram todas as lojas.
         if (opts.onlyStoreId != null && ss.storeId !== opts.onlyStoreId && ss.store?.id !== opts.onlyStoreId) return;
+        const qty = Number(ss.stock) || 0;
+        if (qty <= 0) return;
         const code = ss.store?.code || ss.storeCode || '?';
         const storeName = ss.store?.name || ss.storeName || code;
         if (!byStore[code]) byStore[code] = { color: storeColors[code] || '#8e8e93', name: storeName, items: [] };
-        const qty = ss.stock || 0;
         for (let i = 0; i < qty; i++) byStore[code].items.push(sz.size);
       });
     });
-    // Fallback: sem storeStocks, só agregado de tamanhos
-    const sizesFlat = !opts.onlyStoreId && !Object.keys(byStore).length && (p.sizes || []).length
-      ? (p.sizes || []).map(s => ({ size: s.size, stock: s.stock || 0 })).filter(s => s.stock > 0)
+    // Consultas de disponibilidade física nunca usam comprado como saldo disponível.
+    const hasStoreStockRows = (p.sizes || []).some(s => Array.isArray(s.storeStocks) && s.storeStocks.length > 0);
+    const sizesFlat = !opts.physicalStockOnly && !opts.onlyStoreId && !hasStoreStockRows && (p.sizes || []).length
+      ? (p.sizes || []).filter(s => !selectedSize || String(s.size) === selectedSize).map(s => ({ size: s.size, stock: s.stock || 0 })).filter(s => s.stock > 0)
       : [];
 
     // Fotos
@@ -531,7 +546,7 @@
     html += `<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-height:18px;">${bipedSlotHtml}</div>`;
 
     // Nome
-    html += `<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">${esc(p.name || '?')}</div>`;
+    html += `<div style="font-size:14px;font-weight:700;line-height:1.3;color:#1d1d1f;">${esc((opts.physicalStockOnly ? PCard.productDisplayName(p) : p.name) || '?')}</div>`;
 
     // Identificação do card: REFERÊNCIA + COR (não é SKU — SKU é por tamanho)
     // Campo Product.sku = referência do modelo. Campo aiContext.color = cor do modelo.
@@ -580,14 +595,14 @@
       if (actions !== 'admin') {
         const compradoTotal = p.stockTotal != null ? p.stockTotal : (p.sizes || []).reduce((a, s) => a + (s.stock || 0), 0);
         const compColor = compradoTotal > 0 ? '#0066cc' : '#8e8e93';
-        html += `<div style="margin-top:8px;padding:9px 12px;background:#eef6ff;border:1.5px solid #cfe0ff;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:0.5px;font-weight:800;">📦 Estoque comprado</span><span style="font-size:16px;font-weight:800;color:${compColor};">${compradoTotal} un</span></div>`;
+        html += `<div style="margin-top:8px;padding:9px 12px;background:#eef6ff;border:1.5px solid #cfe0ff;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;"><span style="font-size:11px;color:#0066cc;text-transform:uppercase;letter-spacing:0.5px;font-weight:800;">📦 Estoque comprado${selectedSize ? ' do produto (todos os tamanhos)' : ''}</span><span style="font-size:16px;font-weight:800;color:${compColor};">${compradoTotal} un</span></div>`;
       }
       const storesArr = Object.keys(byStore).sort();
       if (storesArr.length) {
         const totalUn = storesArr.reduce((s, c) => s + byStore[c].items.length, 0);
         html += `<div style="margin-top:8px;padding:12px;background:linear-gradient(135deg,#fff,#FFEBDC);border-radius:10px;border:2px solid #FCDAC4;">`;
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">`;
-        html += `<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">🏪 Estoque físico por loja (último bipe)</div>`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">`;
+        html += `<div style="font-size:11px;color:#E5571E;text-transform:uppercase;letter-spacing:1px;font-weight:800;">🏪 Estoque físico por loja${selectedSize ? ' — tamanho ' + esc(selectedSize) : ' (último bipe)'}</div>`;
         html += `<div style="font-size:12px;color:#1d1d1f;font-weight:800;">${totalUn} un. total</div>`;
         html += '</div>';
         storesArr.forEach(code => {
@@ -595,7 +610,7 @@
           const counts = {};
           let semTam = 0;
           info.items.forEach(s => {
-            if (/^T-/.test(String(s))) semTam++;            // codigo sem tamanho definido (ex Adidas): conta, mas NAO mostra o placeholder
+            if (/^T-/.test(String(s)) || (opts.physicalStockOnly && (!String(s ?? '').trim() || String(s).trim() === '?'))) semTam++; // Pendência conta separadamente, sem inventar numeração.
             else counts[s] = (counts[s] || 0) + 1;
           });
           const sortedSizes = Object.keys(counts).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
@@ -629,6 +644,8 @@
           html += `<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:white;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;font-weight:700;color:#1d1d1f;">${esc(s.size)}${s.stock > 1 ? `<span style="background:#0a843d;color:white;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;">×${s.stock}</span>` : ''}</span>`;
         });
         html += '</div></div>';
+      } else if (opts.physicalStockOnly) {
+        html += `<div style="margin-top:8px;padding:12px;background:#fff1f0;border-radius:10px;border:1.5px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">Sem estoque físico${selectedSize ? ' no tamanho ' + esc(selectedSize) : ''}${opts.onlyStoreId ? ' nesta loja' : ''}</div>`;
       } else if (opts.onlyStoreId) {
         html += `<div style="margin-top:8px;padding:12px;background:#fff1f0;border-radius:10px;border:1.5px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">Sem estoque nesta loja</div>`;
       } else if (actions === 'admin') {
