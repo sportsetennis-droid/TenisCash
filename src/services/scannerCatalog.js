@@ -19,7 +19,10 @@ async function resolveBarcodeRows(db, rows) {
       resolved.push(row);continue;
     }
     const target=await canonicalProduct(db,row.product);
-    const size=target?.sizes?.find(s=>s.size===row.size);
+    // A reviewed alias preserves the exact GTIN identity when a legacy row
+    // still carries a placeholder size after consolidation.
+    const aliasSize=target?.aiContext?.scannerBarcodeAliases?.[String(row.barcode||'').replace(/^0+/,'')]?.size;
+    const size=target?.sizes?.find(s=>s.size===(aliasSize||row.size));
     if(target&&size)resolved.push({...size,productId:target.id,product:target,sourceProductId:row.productId});
     else resolved.push(row); // inactive, unknown, missing size or cyclic: stays blocked
   }
