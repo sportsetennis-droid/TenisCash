@@ -648,6 +648,7 @@
   window.capturaManual = function (prepared) {
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
+    if(current?.complete){etiqAuto?.stop();return;}
     if(etiqPausado || etiqBusy || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
     if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
       document.getElementById('etiq-hint').textContent='Código diferente. Continue com a mesma peça; feche para revisar se trocou de produto.';
