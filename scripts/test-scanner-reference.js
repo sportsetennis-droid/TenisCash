@@ -51,6 +51,7 @@ function routeFunctions(db){
   if(name==='express')return{Router:()=>router}; if(name==='multer')return upload;if(name==='sharp')return()=>{};
   if(name==='../middleware')return{prisma:db,authMiddleware:'AUTH',adminMiddleware:'ADMIN'};
   if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
+  if(name==='../services/scannerCompletion')return require('../src/services/scannerCompletion');
   if(name==='../services/scannerCatalog')return require('../src/services/scannerCatalog');
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
   if(name==='../services/scannerText')return require('../src/services/scannerText');

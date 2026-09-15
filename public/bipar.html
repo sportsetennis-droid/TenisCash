@@ -634,6 +634,7 @@
   };
 
   window.fecharScanner = function () {
+    etiqAtivo=null;etiqRetryAt=0;
     etiqAuto?.stop(); etiqAuto = null; window.ScannerAuto.stopDecoder(); clearInterval(etiqWatch);
     try { etiqReader && etiqReader.reset(); } catch (_) {}
     try { if (etiqStream) etiqStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -642,76 +643,57 @@
     const ov = document.getElementById('etiq-overlay'); if (ov) ov.remove();
   };
 
-  // 📸 CAPTURAR AGORA: captura o frame (com o código lido ao vivo, se houver) e abre o painel de
-  // CONFIRMAÇÃO: ⏳ Salvando… → ✅ SALVO (botão PRÓXIMA só libera com o salvo confirmado pelo servidor).
-  let etiqPausado = false, etiqWatch = null;
+  // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
+  let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0;
   window.capturaManual = function (prepared) {
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
-    const video = document.getElementById('etiq-video');
-    if (!video || !video.videoWidth) { alert('Câmera ainda abrindo…'); return; }
-    if (etiqPausado) return;
-    etiqPausado = true;
-    const ean = prepared?.ean || '';
-    etiqAuto?.stop();
-    const lid = capturarFrame(ean, prepared);
-    const pane = document.getElementById('etiq-confirm');
-    const st = document.getElementById('etiq-confirm-status');
-    const det = document.getElementById('etiq-confirm-det');
-    const btn = document.getElementById('etiq-confirm-btn');
-    pane.style.display = 'flex';
-    st.textContent = '⏳ Salvando…';
-    det.textContent = ean ? 'código ' + ean : 'sem código lido — vamos ler a referência no aparelho';
-    btn.disabled = true; btn.textContent = 'AGUARDE…'; btn.style.background = '#555';
+    const current=etiqFila.find(x=>x.lid===etiqAtivo);
+    if(etiqPausado || etiqBusy || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
+    if(current?.ean && prepared?.ean && current.ean!==prepared.ean){
+      document.getElementById('etiq-hint').textContent='Código diferente. Continue com a mesma peça; feche para revisar se trocou de produto.';
+      etiqAuto?.reset();return;
+    }
+    etiqRetryAt=Date.now()+5000;
+    const lid=capturarFrame(prepared?.ean||current?.ean||'',prepared);
+    if(!lid){etiqAuto?.reset();return;}
+    etiqAtivo=lid;
+    etiqAuto?.reset();
     clearInterval(etiqWatch);
-    etiqWatch = setInterval(() => {
-      const it = etiqFila.find((x) => x.lid === lid);
-      if (!it) return;
-        if(it.st==='revisao'){st.textContent='LEITURA NÃO CONTADA';det.textContent=it.msg;btn.disabled=false;btn.textContent='PRÓXIMA';clearInterval(etiqWatch);return;}
-        if (it.needsSize) {
-          st.textContent = it.bipou ? '⚠ BIPADO — TAMANHO OPCIONAL' : '⚠ SALVO — TAMANHO OPCIONAL';
-          st.style.color = '#FFB14A';
-          det.textContent = it.bipou ? 'Leitura salva nesta rodada. Confirme o tamanho para fechar o inventário.' : 'O registro foi salvo. O tamanho não bloqueia a próxima leitura.';
-          btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
-          clearInterval(etiqWatch);
-        } else if (it.st === 'salvo' || it.st === 'vinculado' || it.st === 'pendente') {
-        if (it.alerta) { // checagem inteligente: passou do comprado
-          st.textContent = '⚠ BIPADO — CONFERIR!';
-          st.style.color = '#FFB14A';
-          det.textContent = it.alerta;
-        } else {
-          st.textContent = it.bipou ? '✅ SALVO + BIPADO!' : '✅ SALVO!';
-          st.style.color = '#7CFFA9';
-          if (it.st === 'vinculado' && it.msg) det.textContent = it.msg;
-          else if (it.st === 'pendente' && it.msg) det.textContent = it.msg;
-          else det.textContent = it.bipou ? ('código ' + ean + ' contado nesta rodada') : (ean ? 'código ' + ean + ' — reconhecimento por trás' : 'sem código lido — salvou a foto, NÃO conta estoque até vincular');
-        }
-        btn.disabled = false; btn.textContent = 'PRÓXIMA ➡'; btn.style.background = '#25d366';
-        clearInterval(etiqWatch);
+    etiqWatch=setInterval(()=>{
+      const it=etiqFila.find(x=>x.lid===etiqAtivo);if(!it)return;
+      const h=document.getElementById('etiq-hint');if(!h)return;
+      if(!it.complete){
+        h.textContent=it.st==='revisao'?it.msg:it.needsSize?'Falta confirmar o tamanho. Continue com a mesma peça.':!it.ean?'Falta ler o código de barras. Aproxime a etiqueta; câmera continua ativa.':'Código lido. Confirmando produto e tamanho; mantenha a mesma etiqueta.';
+        return;
       }
-    }, 350);
+      etiqPausado=true;etiqAuto?.stop();etiqBeep();
+      document.getElementById('etiq-confirm').style.display='flex';
+      document.getElementById('etiq-confirm-status').textContent='✅ LEITURA COMPLETA';
+      document.getElementById('etiq-confirm-det').textContent=it.msg||'Código, produto e tamanho confirmados.';
+      const btn=document.getElementById('etiq-confirm-btn');btn.disabled=false;btn.textContent='PRÓXIMA ➡';btn.style.background='#25d366';
+      clearInterval(etiqWatch);
+    },350);
   };
-
   window.proximaEtiqueta = function () {
-    clearInterval(etiqWatch);
-    const pane = document.getElementById('etiq-confirm');
-    if (pane) pane.style.display = 'none';
-    const st = document.getElementById('etiq-confirm-status'); if (st) st.style.color = '#fff';
-    etiqUltimo = ''; etiqUltimoTs = 0; etiqPausado = false; etiqAuto?.reset();
-    const h = document.getElementById('etiq-hint');
-    if (h) { h.textContent = 'Leitura automática ativa — centralize a etiqueta e mantenha parada.'; h.style.color = '#fff'; }
+    if(!etiqFila.find(x=>x.lid===etiqAtivo)?.complete)return;
+    clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=0;
+    const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
+    etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqAuto?.reset();
   };
 
   function capturarFrame(ean, prepared) {
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
-    const lid = 'e' + Date.now();
+    const existing = etiqFila.find(x=>x.lid===etiqAtivo);
+    const lid = existing?.lid || 'e' + Date.now();
     const selectedSeller = document.getElementById('vendedor').value;
-    const item = { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(), roundId:window.ScannerRound.requireRound(document.getElementById('loja').value),
+    const item = existing || { lid, b64: null, ean, st: 'fila', clientScanId: genClientScanId(), roundId:window.ScannerRound.requireRound(document.getElementById('loja').value),
       storeId: document.getElementById('loja').value || '',
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
+    item.ean=ean;item.st='fila';item.complete=false;item.ocrDone=false;
     if (prepared?.ocrText) { item.ocrText=prepared.ocrText; item.ocrDone=true; }
-    etiqFila.push(item); renderEtiqLista();
+    if(!existing)etiqFila.push(item); renderEtiqLista();
     const source = prepared?.frame || video;
     const width = source.width || video.videoWidth, height = source.height || video.videoHeight;
     const k = Math.min(1, 1800 / Math.max(width, height));
@@ -723,7 +705,6 @@
       fr.onload = () => { item.b64 = fr.result; etiqSave(); enviarFila(); };
       fr.readAsDataURL(b);
     }, 'image/jpeg', 0.85);
-    etiqBeep();
     return lid;
   }
 
@@ -785,14 +766,16 @@
   }
 
   async function consultarStatus() {
-    const pend = etiqFila.filter((x) => x.capId && (x.st === 'salvo' || x.needsSize)).slice(-20);
+    const pend = etiqFila.filter((x) => x.capId && (x.st === 'salvo' || x.needsSize || x.lid===etiqAtivo)).slice(-20);
     if (!pend.length) return;
     try {
       const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
       const d = await r.json();
       for (const row of (d.rows || [])) {
         const it = etiqFila.find((x) => x.capId === row.id);
-        if (it && row.status !== 'processando') {
+        if (it && it.st!=='fila' && row.status !== 'processando') {
+          it.complete = row.complete===true;
+          if(row.barcode)it.ean=row.barcode;
           it.st = row.status;
           it.msg = row.mensagem;
           it.bipou = !!row.appliedToStock;
@@ -1201,6 +1184,7 @@
 
   window.pularTamanho = function () {
     const b = sizeModalBipe;
+    if(b?._scannerItem?.lid===etiqAtivo){sizeModalError("Confirme o tamanho desta peça antes de concluir a leitura.");return;}
     if (b) {
       b.needsSize = true;
       b.sizeDismissed = true;

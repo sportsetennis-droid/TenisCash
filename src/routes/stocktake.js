@@ -22,6 +22,7 @@ const { parseScannerText, scannerPendingMessage } = require('../services/scanner
 const {resolveBarcodeRows,aliasRows}=require('../services/scannerCatalog');
 const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
+const {captureComplete}=require('../services/scannerCompletion');
 router.use('/rounds', require('./stocktakeRounds'));
 
 
@@ -735,6 +736,7 @@ async function garantirBipeDaCaptura(capId, pid, psId, barcodePref) {
         const bipe = await tx.stocktakeBipe.findUnique({ where: { id: bipeId } });
         if (!bipe || bipe.excludedAt || (bipe.roundId||null)!==(cap.roundId||null) || bipe.storeId!==cap.storeId || (bipe.applied && bipe.productSizeId !== ps.id)) return null;
         if (!bipe.applied) await tx.stocktakeBipe.update({ where: { id: bipeId }, data });
+        else if (barcodePref && bipe.productSizeId === ps.id) await tx.stocktakeBipe.update({where:{id:bipeId},data:{barcode:barcodePref}});
       } else {
         const bipe = await tx.stocktakeBipe.create({ data: { ...data, roundId:cap.roundId||null, storeId: cap.storeId,
           sellerId: cap.sellerId, sellerName: cap.sellerName, applied: false,
@@ -767,7 +769,7 @@ function parseJsonSeguro(t) {
 }
 
 async function processarEtiqueta(capId, photo, eanLocal, meta) {
-  const lido = parseScannerText(meta?.ocrText);
+  const lido = parseScannerText(meta?.ocrText) || meta?.previousRead || null;
   let ean = eanLocal || null;
 
   // ZXING-FIRST (grátis): se a câmera não trouxe o código, decodifica da própria foto (sem API paga).
@@ -830,6 +832,23 @@ router.post('/etiqueta',
       const key=rounds.scanKey(roundId,clientScanId);
       const photo = await shrinkPhoto(req.file.buffer);
       const eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
+      // A retry belongs to the same physical piece: never create another capture/bipe.
+      const previousCapture = await prisma.productCapture.findUnique({where:{scanKey:key}});
+      if (previousCapture) {
+        if(previousCapture.storeId!==storeId || previousCapture.roundId!==roundId || previousCapture.excludedAt)
+          return res.status(409).json({error:'A captura não pertence a esta loja e rodada ativa.'});
+        if(eanCam && previousCapture.barcode && eanCam!==previousCapture.barcode && !barcodeVariants(eanCam).includes(previousCapture.barcode))
+          return res.status(409).json({error:'Código diferente da peça em leitura. Mantenha a mesma etiqueta ou feche o scanner para revisar.'});
+        if(previousCapture.status!=='processando') {
+          const claimed=await prisma.productCapture.updateMany({where:{id:previousCapture.id,status:previousCapture.status},data:{status:'processando'}});
+          if(claimed.count) {
+            try { await processarEtiqueta(previousCapture.id,photo,eanCam||previousCapture.barcode,{ocrText:typeof ocrText==='string'?ocrText.slice(0,4000):'',previousRead:parseJsonSeguro(previousCapture.note)}); }
+            catch(e) { await prisma.productCapture.update({where:{id:previousCapture.id},data:{status:'pendente'}}); throw e; }
+          }
+        }
+        return res.json({ok:true,salvo:true,capId:previousCapture.id});
+      }
+
       // O SCANNER TAMBÉM É CONTAGEM (dono 2026-06-11: equipe usa o scanner no lugar do bipe).
       // Código lido pela câmera => registra StocktakeBipe igual ao bipe normal: achou card -> conta no físico;
       // não achou -> órfão (casa sozinho quando a etiqueta for vinculada).
@@ -947,7 +966,7 @@ router.get('/etiqueta-status', async (req, res) => {
   try {
     const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 40);
     if (!ids.length) return res.json({ rows: [] });
-    const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, note: true, bipeId: true } });
+    const rows = await prisma.productCapture.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, note: true, bipeId: true, barcode:true, excludedAt:true } });
     const bipeIds = rows.map((row) => row.bipeId).filter(Boolean);
     const bipeRows = bipeIds.length ? await prisma.stocktakeBipe.findMany({ where: { id: { in: bipeIds } } }) : [];
     const sizeIds = bipeRows.map((row) => row.productSizeId).filter(Boolean);
@@ -963,6 +982,8 @@ router.get('/etiqueta-status', async (req, res) => {
       const needsSize = Boolean(bipe && ps && needsManualSize(ps.product.brand, ps));
       return {
         id: row.id,
+        complete: captureComplete(row,bipe,ps,needsSize),
+        barcode:row.barcode,
         status: row.status,
         mensagem: String(row.note || '').replace(/^etiqueta\s*/, '').replace(/\s*\{.*$/, '').trim(),
         bipeId: bipe?.id || null,

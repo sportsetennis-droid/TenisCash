@@ -779,3 +779,8 @@ Aplicar a regra 12 da Constituição global (C:/Users/dougl/.codex/AGENTS.md) a 
 
 ## Código escaneado obrigatório — ordem do Douglas em 15/09/2026
 Aplicar a regra 13 da Constituição global: toda bipagem precisa de código efetivamente escaneado e vinculado à variante correta. Referência/tamanho sem código é identificação intermediária, com pendência de código explícita e contagem preservada. Recuperar código das fotos existentes; se irrecuperável, exigir nova leitura física, nunca fabricar EAN ou usar o de outra variante. Não declarar conclusão total sem verificar gravação e reconhecimento. Preservar empresa, loja, rodada, quantidade, XML e comprado.
+
+
+## 14. Captura contínua até leitura completa — 15/09/2026
+
+Ordem do Douglas: o scanner não pode encerrar automaticamente a leitura nem liberar Próxima apenas porque salvou uma foto, leu uma referência ou um código isolado. Manter a câmera disponível e repetir as tentativas da mesma peça até confirmar código de barras, produto e variante/tamanho correto. Mostrar claramente o que falta; pendência não é sucesso. Reutilizar a mesma captura e o mesmo bipe nas tentativas, sem aumentar a quantidade. Não misturar dados de peças diferentes. Permitir fechar/cancelar conscientemente, preservando a pendência, sem declarar conclusão. Aplicar sem API paga, nas orientações horizontal e vertical. Verificar código, testes e publicação; escrever esta regra não substitui cumpri-la.
