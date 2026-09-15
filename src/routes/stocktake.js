@@ -939,7 +939,9 @@ router.post('/etiqueta',
 // TRATADOR CONTÍNUO (dono 2026-06-11: "todos os scanner já vá automaticamente pro card e seja tratado").
 // A cada 10min re-tenta vincular as capturas pendentes: SKU lido ↔ linha do card ↔ cProd da NFe ↔ nome único.
 // Pendente sem destino = produto sem NFe importada; quando a nota entrar, casa sozinho na próxima rodada.
+let pendingEtiquetaRunning=false;
 async function tratarPendentesEtiqueta() {
+  if(pendingEtiquetaRunning)return;pendingEtiquetaRunning=true;
   try {
     const caps = await prisma.productCapture.findMany({ where: { status: 'pendente', excludedAt:null },
       select: { id: true, note: true, barcode: true }, take: 300 });
@@ -955,10 +957,10 @@ async function tratarPendentesEtiqueta() {
         note: ('etiqueta ✓ ' + match.name + ' ' + JSON.stringify(read || {})).slice(0, 480),
       } });
     }
-  } catch (e) { console.warn('[etiqueta-cron] erro:', e.message); }
+  } catch (e) { console.warn('[etiqueta-cron] erro:', e.message); } finally {pendingEtiquetaRunning=false;}
 }
 
-setInterval(tratarPendentesEtiqueta, 10 * 60 * 1000);
+setInterval(tratarPendentesEtiqueta, 60 * 1000);
 setTimeout(tratarPendentesEtiqueta, 90 * 1000); // 1ª rodada após o boot
 
 // GET /api/stocktake/etiqueta-status?ids=a,b,c (PÚBLICO) — front consulta o resultado do reconhecimento

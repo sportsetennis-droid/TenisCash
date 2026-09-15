@@ -51,9 +51,9 @@ async function fiscalBarcodeTarget(db,barcode){
   const product=await canonicalProduct(db,await db.product.findUnique({where:{id:row.productId},include:{sizes:true}}));
   if(!product)continue;
   const match=String(row.description||'').trim().match(/^(.*)\s+(\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG)$/i);
-  if(!match || normalizeReference(match[1])!==normalizeReference(product.name))return {reason:'size_required'};
+  if(!match || normalizeReference(match[1])!==normalizeReference(String(product.name).replace(/\s+\d{2}(?:[.,]5)?$/,'')) && normalizeReference(match[1])!==normalizeReference(product.name))return {reason:'size_required'};
   const size=match[2].toUpperCase().replace(',','.');
-  if(!product.sizes.some(s=>s.size===size))return {reason:'size_required'};
+  // A missing literal fiscal size is created below with zero purchased stock.
   targets.push({productId:product.id,size,itemId:row.id});
  }
  const unique=[...new Map(targets.map(t=>[t.productId+':'+t.size,t])).values()];
@@ -75,8 +75,8 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     if (owners.length > 1) return { reason: 'barcode_conflict' };
     const candidates = await referenceCandidates(tx, codes);
     if (!confirmedProductId && candidates.length > 1) return { reason: 'reference_conflict' };
-    const fiscal = !owners.length ? await fiscalBarcodeTarget(tx,barcode) : null;
-    if(fiscal?.reason && !confirmedProductId)return {reason:fiscal.reason};
+    const fiscal = !owners.length || !owners[0].sizeConfirmedAt ? await fiscalBarcodeTarget(tx,barcode) : null;
+    if(fiscal?.reason && !owners.length && !confirmedProductId)return {reason:fiscal.reason};
     if(fiscal?.productId && candidates.some(c=>c.id!==fiscal.productId))return {reason:'reference_conflict'};
     if(fiscal?.size && size && size!==fiscal.size)return {reason:'size_conflict'};
     if(!size && fiscal?.size)size=fiscal.size;
@@ -94,6 +94,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     const internalOwner = await tx.product.findFirst({ where: { internalBarcode: { in: variants(barcode) } }, select: { id: true } });
     if (internalOwner && internalOwner.id !== pid) return { reason: 'barcode_conflict' };
     let ps = owners[0];
+    if(ps && fiscal?.itemId && fiscal.productId===ps.productId && fiscal.size===ps.size && !ps.sizeConfirmedAt)ps=await tx.productSize.update({where:{id:ps.id},data:{sizeConfirmedAt:new Date()}});
     let previousReference = null;
     if (ps && size && ps.size !== size && !/^T-|^\?$/.test(ps.size)) return { reason: 'size_conflict' };
     if (!ps) {
@@ -111,10 +112,10 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
         // Preserve the prior supplier identifier for future reference searches.
         const previous = normalizeReference(ps.barcode);
         if (previous && !validGtin(ps.barcode)) previousReference = previous;
-        ps = await tx.productSize.update({ where: { id: ps.id }, data: { barcode, ...(confirmedProductId ? { sizeConfirmedAt: new Date() } : {}) } });
+        ps = await tx.productSize.update({ where: { id: ps.id }, data: { barcode, ...((confirmedProductId || fiscal?.itemId) ? { sizeConfirmedAt: new Date() } : {}) } });
       } else {
         ps = await tx.productSize.create({ data: { productId: pid, size, barcode, stock: 0,
-          ...(confirmedProductId ? { sizeConfirmedAt: new Date() } : {}) } });
+          ...((confirmedProductId || fiscal?.itemId) ? { sizeConfirmedAt: new Date() } : {}) } });
       }
     }
     const context = product.aiContext && typeof product.aiContext === 'object' && !Array.isArray(product.aiContext) ? product.aiContext : {};

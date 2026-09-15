@@ -21,6 +21,7 @@ ctx.etiqFila[0].st='pendente';clock+=6000;ctx.window.capturaManual({ean:'7909342
 ctx.etiqFila[0].needsSize=true;timer();assert.equal(beeps,0);
 ctx.etiqFila[0].complete=true;timer();assert.equal(beeps,1);assert.equal(doc.getElementById('etiq-confirm-btn').disabled,false);
 ctx.window.proximaEtiqueta();clock+=6000;ctx.window.capturaManual({ean:cap.barcode});assert.equal(ctx.etiqFila.length,2,'Explicit next is a new piece');
+ctx.etiqFila[1].st='pendente';ctx.etiqFila[1].capId='background-cap';timer();assert.equal(doc.getElementById('etiq-confirm-btn').disabled,false);assert.equal(doc.getElementById('etiq-confirm-btn').textContent,'PRÓXIMO — PENDENTE EM SEGUNDO PLANO');ctx.window.proximaEtiqueta();clock+=6000;ctx.window.capturaManual({ean:cap.barcode});assert.equal(ctx.etiqFila.length,3);assert.equal(ctx.etiqFila[1].complete,false,'Advancing does not mark pending piece complete');
 const route=fs.readFileSync('src/routes/stocktake.js','utf8');
 const retry=route.slice(route.indexOf('      const previousCapture ='),route.indexOf('      // O SCANNER TAMBÉM',route.indexOf('      const previousCapture =')));
 const run=new Function('prisma','roundId','storeId','key','eanCam','photo','ocrText','processarEtiqueta','barcodeVariants','parseJsonSeguro','res','return (async()=>{'+retry+'})()');

@@ -673,6 +673,9 @@
         const status=document.getElementById('etiq-confirm-status'),detail=document.getElementById('etiq-confirm-det');
         status.textContent=it.msg&&!it.complete?'⚠ LEITURA AINDA INCOMPLETA':it.ean?'⏳ CÓDIGO LIDO — CONFERINDO':'⏳ LENDO ESTA PEÇA';
         detail.textContent=(it.ean?'Código: '+it.ean+' · ':'')+(it.msg||h.textContent);
+        const next=document.getElementById('etiq-confirm-btn');
+        const queued=!!it.capId && !!it.ean && it.st!=='revisao';
+        next.disabled=!queued;next.textContent=queued?'PRÓXIMO — PENDENTE EM SEGUNDO PLANO':'PRÓXIMO — AGUARDE A LEITURA';next.style.background=queued?'#a65b00':'#555';
         return;
       }
       etiqPausado=true;etiqAuto?.stop();etiqBeep();
@@ -684,7 +687,8 @@
     },350);
   };
   window.proximaEtiqueta = function () {
-    if(!etiqFila.find(x=>x.lid===etiqAtivo)?.complete)return;
+    const current=etiqFila.find(x=>x.lid===etiqAtivo);
+    if(!current?.complete && !(current?.capId && current?.ean && current.st!=='revisao'))return;
     clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=0;
     const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';
     etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;etiqAuto?.reset();
@@ -728,18 +732,27 @@
         const sellerValue = document.getElementById('vendedor').value;
         const sellerId = item.sellerId ?? (sellerValue === '__manual__' ? '' : (sellerValue || ''));
         const sellerName = item.sellerName ?? (localStorage.getItem(STORAGE_VENDNAME) || '');
-        if (!item.ocrDone) {
+        if (!item.ocrDone && !item.ean) {
           item.ocrText = window.ScannerOCR ? await window.ScannerOCR.readForScan(item.b64, item.ean, message => {
             const detail = document.getElementById('etiq-confirm-det');
             if (detail) detail.textContent = message;
           }) : '';
           item.ocrDone = true;
         }
+        // Barcode upload and fiscal matching start without waiting up to 45s for local OCR.
+        if(item.ean && !item.ocrDone && !item.ocrStarted && window.ScannerOCR){
+          item.ocrStarted=true;
+          window.ScannerOCR.readForScan(item.b64,item.ean).then(text=>{
+            item.ocrText=text||'';item.ocrDone=true;
+            if(text && item.capId && !item.complete && item.st!=='revisao'){item.st='fila';etiqSave();enviarFila();}
+          }).catch(()=>{item.ocrDone=true;});
+        }
         const blob = await (await fetch(item.b64)).blob();
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
         fd.append('eanLocal', item.ean || '');
-        fd.append('ocrText', item.ocrText || '');
+        const sentOcr=item.ocrText||'';
+        fd.append('ocrText', sentOcr);
         fd.append('storeId', storeId);
         fd.append('sellerId', sellerId);
         fd.append('sellerName', sellerName);
@@ -753,13 +766,13 @@
         const d = await r.json().catch(() => ({}));
         if(r.status>=400&&r.status<500){item.st='revisao';item.msg=d.error||'Rodada encerrada. Foto preservada para revisão.';etiqSave();renderEtiqLista();}
         if (r.ok && d.capId) {
-          item.st = 'salvo';
+          item.st = item.ocrDone && item.ocrText && item.ocrText!==sentOcr ? 'fila' : 'salvo';
           item.capId = d.capId;
           item.bipou = !!d.appliedToStock;
           item.needsSize = !!d.needsSize;
           item.alerta = d.alerta || null;
-          item.b64 = '';
-          if (d.needsSize && d.bipeId && !item.sizeQueued && !item.sizeDismissed) {
+          // Keep original photo until completion so late OCR reuses this capture.
+          if (!item.ean && d.needsSize && d.bipeId && !item.sizeQueued && !item.sizeDismissed) {
             item.sizeQueued = true;
             const localBipe = { roundId:item.roundId, code: item.ean, bipeId: d.bipeId, found: d.found, product: d.product, sizeOptions: d.sizeOptions, needsSize: true, _scannerItem: item };
             bipes.push(localBipe);
@@ -775,7 +788,7 @@
   }
 
   async function consultarStatus() {
-    const pend = etiqFila.filter((x) => x.capId && (x.st === 'salvo' || x.needsSize || x.lid===etiqAtivo)).slice(-20);
+    const pend = etiqFila.filter((x) => x.capId && (!x.complete && x.st!=='revisao')).slice(-20);
     if (!pend.length) return;
     try {
       const r = await fetch('/api/stocktake/etiqueta-status?ids=' + pend.map((x) => x.capId).join(','));
@@ -784,12 +797,13 @@
         const it = etiqFila.find((x) => x.capId === row.id);
         if (it && it.st!=='fila' && row.status !== 'processando') {
           it.complete = row.complete===true;
+          if(it.complete)it.b64='';
           if(row.barcode)it.ean=row.barcode;
           it.st = row.status;
           it.msg = row.mensagem;
           it.bipou = !!row.appliedToStock;
           it.needsSize = !!row.needsSize;
-          if (row.needsSize && row.bipeId && !it.sizeQueued && !it.sizeDismissed) {
+          if (!it.ean && row.needsSize && row.bipeId && !it.sizeQueued && !it.sizeDismissed) {
             it.sizeQueued = true;
             const localBipe = { roundId:it.roundId, code: it.ean, bipeId: row.bipeId, found: true, product: row.product, sizeOptions: row.sizeOptions, needsSize: true, _scannerItem: it };
             bipes.push(localBipe);
