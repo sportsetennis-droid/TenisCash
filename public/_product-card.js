@@ -439,7 +439,7 @@
     const showStock = opts.showStock !== false;
     const showActions = opts.showActions !== false && actions !== 'public';
     const onClick = opts.onClick ? opts.onClick.replace(/%id%/g, p.id) : null;
-    const selectedSize = opts.selectedSize == null ? '' : String(opts.selectedSize).trim();
+    const selectedSize = opts.selectedSize == null ? '' : String(opts.selectedSize);
 
     const ctx = parseAiCtx(p);
     const cls = ctx.classification || {};

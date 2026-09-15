@@ -72,6 +72,12 @@ function server(rows) {
       queries.push(query);
       return rows.filter(row => matches(row, query.where)).slice(query.skip, query.skip + query.take);
     },
+  }, productSize: {
+    async findMany({ where }) {
+      const matching = rows.flatMap(p => p.sizes.map(size => ({ ...size, product: p })))
+        .filter(row => matches(row, where));
+      return [...new Set(matching.map(row => row.size))].map(size => ({ size }));
+    },
   } };
   vm.runInNewContext(scopeSource + routeSource, {
     router: { get(_path, _middleware, callback) { handler = callback; } },
@@ -95,7 +101,7 @@ function server(rows) {
 
 function ui({ api, selectedSize = '39', query = 'tênis', cards = true, checked = false, ps = {} } = {}) {
   const elements = new Map(), timers = new Map();
-  const requests = [], cardCalls = [], alerts = [], errors = [];
+  const requests = [], cardCalls = [], sizeCalls = [], pageCalls = [], alerts = [], errors = [];
   let timerId = 0;
   const card = { render(p, opts) {
     cardCalls.push({ product: p, opts });
@@ -119,6 +125,8 @@ function ui({ api, selectedSize = '39', query = 'tênis', cards = true, checked 
     setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
     clearTimeout(id) { timers.delete(id); },
     async api(url) { requests.push(url); return api(url); },
+    renderSizeOptions(containerId, options, selectedSize, failed = false) { sizeCalls.push({ containerId, options, selectedSize, failed }); },
+    renderProductPages(containerId, page = 1, totalPages = 1) { pageCalls.push({ containerId, page, totalPages }); },
     fmt: value => Number(value).toFixed(2),
     escPreco: value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
     console: { error(...args) { errors.push(args); } },
@@ -130,12 +138,12 @@ function ui({ api, selectedSize = '39', query = 'tênis', cards = true, checked 
   vm.createContext(context);
   vm.runInContext(uiSource, context);
   return {
-    context, elements, timers, requests, cardCalls, alerts, errors, ps,
+    context, elements, timers, requests, cardCalls, sizeCalls, pageCalls, alerts, errors, ps,
     rendered: () => context.document.getElementById('catalogResults').innerHTML,
-    async search(number = context._filterSize, text = context.document.getElementById('catSearchInput').value) {
+    async search(number = context._filterSize, text = context.document.getElementById('catSearchInput').value, page = 1) {
       context._filterSize = number;
       context.document.getElementById('catSearchInput').value = text;
-      await context.onCatalogSearch();
+      await context.onCatalogSearch(page);
     },
     runTimer() {
       assert.equal(timers.size, 1, 'Only the most recent debounce remains scheduled');
@@ -156,6 +164,7 @@ async function main() {
   await view.runTimer();
   const params = paramsFor(view.requests[0]);
   assert.equal(params.get('size'), '39');
+  assert.equal(params.get('exactSize'), '1');
   assert.equal(params.get('inStore'), '1', 'Size selection requires physical stock even when checkbox is unchecked');
   assert.equal(params.has('storeId'), false, 'Network Curadoria includes another store with the selected size');
   assert.deepEqual(renderedIds(view), ['remote-39', 'local-39'], 'Only the exact variant with positive physical stock is included');
@@ -206,7 +215,7 @@ async function main() {
   snapshot.elements.get('catInStoreOnly').checked = true;
   await snapshot.runTimer();
   const snapshotParams = Object.fromEntries(paramsFor(snapshot.requests[0]));
-  assert.deepEqual(snapshotParams, { limit: '24', q: 'SKU & A', type: 'tenis', gender: 'feminino', modality: 'corrida', tier: 'premium', size: '39', brand: 'Marca & Cia', category: 'Calçados', inStore: '1' });
+  assert.deepEqual(snapshotParams, { limit: '24', includeSizeOptions: '1', page: '1', q: 'SKU & A', type: 'tenis', gender: 'feminino', modality: 'corrida', tier: 'premium', size: '39', brand: 'Marca & Cia', category: 'Calçados', exactSize: '1', inStore: '1' });
   const tree = ui({ api: url => backend.request(url), ps: { brand: 'marca a' } });
   Object.assign(tree.context, { _filterType: 'tenis', _filterGender: 'masculino', _filterCategory: 'casual', _filterTier: 'entrada' });
   await tree.search(); await tree.runTimer();
@@ -239,6 +248,7 @@ async function main() {
   await failure.search(); await failure.runTimer();
   assert.match(failure.rendered(), /não foi possível.*tente novamente/i);
   assert.equal(failure.errors.length, 1);
+  assert.equal(failure.sizeCalls.at(-1).failed, true, 'A current error ends the size-option loading state');
   const debounced = ui({ api: url => backend.request(url) });
   await debounced.search('39'); await debounced.search('40'); await debounced.runTimer();
   assert.equal(debounced.requests.length, 1);
@@ -272,4 +282,5 @@ async function main() {
   console.log('PASS Curadoria: exact size and physical stock, network scope, depletion, card options, coherent filters, stale response/error protection and per-size product details.');
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { server, product, variant, ui, paramsFor, renderedIds, section };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

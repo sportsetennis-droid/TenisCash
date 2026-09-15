@@ -74,6 +74,20 @@ const nestedStore = product('nested-store', [variant('39', 1, [['local', 1]])]);
 delete nestedStore.sizes[0].storeStocks[0].storeId;
 assert.match(plain(render(nestedStore, { selectedSize: '39', onlyStoreId: 'local' })), /1 un\. total/);
 
+const literalSizes = product('literal-variants', [
+  variant(' M ', 10, [['local', 2]]),
+  variant('M', 10, [['local', 7]]),
+]);
+html = render(literalSizes, { selectedSize: ' M ' });
+assert.match(plain(html), /2 un\. total/);
+assert.ok(hasPill(html, ' M '));
+assert.equal(hasPill(html, 'M'), false, 'A literal size with spaces never borrows the plain-size balance');
+html = render(literalSizes, { selectedSize: 'M' });
+assert.match(plain(html), /7 un\. total/);
+assert.ok(hasPill(html, 'M'));
+assert.equal(hasPill(html, ' M '), false);
+assert.match(plain(render(literalSizes)), /9 un\. total/, 'Both variants remain independently counted in the complete grid');
+
 assert.equal(JSON.stringify(available), before, 'Rendering leaves product variants and balances untouched');
 assert.doesNotMatch(render(available, { selectedSize: '39', showStock: false }), /Estoque físico|Estoque comprado|Sem estoque físico/);
 

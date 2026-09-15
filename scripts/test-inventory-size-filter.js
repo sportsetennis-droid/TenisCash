@@ -14,6 +14,10 @@ function section(text, from, to) {
   return text.slice(start, end);
 }
 const uiSource = section(html, 'let invSearchTimer;', 'async function checkInventory(');
+const querySource = section(html, 'function buildFilterQuery()', 'function resetFilters(');
+const treeChangeSource = section(html, 'function onInventorySearchFromTree()', 'function renderCatalog(');
+const pickSource = section(html, 'function pickFilter(', 'function clearFilters(');
+const navigationSource = section(html, 'function goPage(', '// Fechar modal clicando fora');
 const routeSource = section(catalog, "router.get('/products',", "router.get('/products/:id',");
 const scopeSource = section(catalog, 'async function resolveMyStoreScope(', 'function addStoreStockSummary(');
 
@@ -65,6 +69,12 @@ function server(rows) {
       queries.push(query);
       return rows.filter(row => matches(row, query.where)).slice(query.skip, query.skip + query.take);
     },
+  }, productSize: {
+    async findMany({ where }) {
+      const matching = rows.flatMap(p => p.sizes.map(size => ({ ...size, product: p })))
+        .filter(row => matches(row, where));
+      return [...new Set(matching.map(row => row.size))].map(size => ({ size }));
+    },
   } };
   vm.runInNewContext(scopeSource + routeSource, {
     router: { get(_path, _middleware, callback) { handler = callback; } },
@@ -90,32 +100,43 @@ function ui({ api, selectedSize = '45', query = 'tênis', cards = true } = {}) {
   const elements = new Map();
   const timers = new Map();
   const requests = [];
+  const sizeCalls = [];
+  const pageCalls = [];
+  const cardCalls = [];
   let timerId = 0;
-  const card = { render: p => `<article data-product="${p.id}">${p.name}</article>` };
+  const card = { render(p, opts) {
+    cardCalls.push({ product: p, opts });
+    return `<article data-product="${p.id}">${p.name}</article>`;
+  } };
   const context = {
-    _filterSize: selectedSize, activeStore: { id: 'local' },
+    _filterSize: selectedSize, _filterType: null, _filterGender: null,
+    _filterCategory: null, _filterTier: null, activeStore: { id: 'local' },
     window: cards ? { PCard: card } : {}, PCard: cards ? card : undefined,
-    document: { getElementById(id) {
-      if (!elements.has(id)) elements.set(id, { value: '', innerHTML: '', textContent: '' });
+    document: { querySelectorAll() { return []; }, querySelector() { return { classList: { add() {}, remove() {} } }; }, getElementById(id) {
+      if (!elements.has(id)) elements.set(id, { value: '', innerHTML: '', textContent: '', options: [{}, {}], classList: { add() {}, remove() {} } });
       return elements.get(id);
     } },
+    renderFilterTree(_containerId, onChange) { context[onChange](); },
+    loadMessages() {},
     setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
     clearTimeout(id) { timers.delete(id); },
     async api(url) { requests.push(url); return api(url); },
+    renderSizeOptions(containerId, options, selectedSize, failed = false) { sizeCalls.push({ containerId, options, selectedSize, failed }); },
+    renderProductPages(containerId, page = 1, totalPages = 1) { pageCalls.push({ containerId, page, totalPages }); },
     console: { error() {} },
   };
   context.document.getElementById('invSearchInput').value = query;
   context.document.getElementById('invResults').innerHTML = 'previous products';
   context.document.getElementById('invDetails').innerHTML = 'previous stock detail';
   vm.createContext(context);
-  vm.runInContext(uiSource, context);
+  vm.runInContext(querySource + treeChangeSource + pickSource + navigationSource + uiSource, context);
   return {
-    context, elements, timers, requests,
+    context, elements, timers, requests, sizeCalls, pageCalls, cardCalls,
     rendered: () => context.document.getElementById('invResults').innerHTML,
-    async search(number = context._filterSize, text = context.document.getElementById('invSearchInput').value) {
+    async search(number = context._filterSize, text = context.document.getElementById('invSearchInput').value, page = 1) {
       context._filterSize = number;
       context.document.getElementById('invSearchInput').value = text;
-      await context.onInventorySearch();
+      await context.onInventorySearch(page);
     },
     runTimer() {
       assert.equal(timers.size, 1, 'Only the most recent debounce remains scheduled');
@@ -136,8 +157,12 @@ async function main() {
   const params = new URL(view.requests[0], 'https://test.invalid').searchParams;
   assert.equal(params.get('size'), '45');
   assert.equal(params.get('inStore'), '1');
+  assert.equal(params.get('exactSize'), '1');
+  assert.equal(params.get('includeSizeOptions'), '1');
   assert.equal(params.has('storeId'), false, 'Product search covers stores across the network');
   assert.ok(view.rendered().includes('remote-45') && view.rendered().includes('local-45'));
+  assert.deepEqual(Array.from(view.sizeCalls.at(-1).options), ['45', '46']);
+  assert.ok(view.cardCalls.every(call => call.opts.physicalStockOnly && call.opts.selectedSize === '45'));
   for (const id of ['historical', 'other-size-only', 'negative', 'purchased-only', 'only-46']) {
     assert.ok(!view.rendered().includes(id), `Exclude unavailable selected size: ${id}`);
   }
@@ -185,9 +210,13 @@ async function main() {
   const fasterWork = raced.runTimer();
   pending[3].resolve({ products: [product('latest-46', [])] });
   await fasterWork;
+  const sizeCallsBeforeLate = raced.sizeCalls.length;
+  const pageCallsBeforeLate = raced.pageCalls.length;
   pending[2].resolve({ products: [product('late-45', [])] });
   await slowerWork;
   assert.ok(raced.rendered().includes('latest-46') && !raced.rendered().includes('late-45'), 'Late responses never replace newer results');
+  assert.equal(raced.sizeCalls.length, sizeCallsBeforeLate, 'Late responses do not replace newer size options');
+  assert.equal(raced.pageCalls.length, pageCallsBeforeLate, 'Late responses do not replace pagination');
 
   const debounced = ui({ api: url => backend.request(url) });
   await debounced.search('45');
@@ -195,6 +224,57 @@ async function main() {
   await debounced.runTimer();
   assert.equal(debounced.requests.length, 1);
   assert.equal(new URL(debounced.requests[0], 'https://test.invalid').searchParams.get('size'), '46');
+
+  const apparel = Array.from({ length: 25 }, (_, index) => product(`shirt-m-${index}`, [size('M', 99, [['remote', 1]])]));
+  apparel.push(product('shirt-g', [size('G', 99, [['remote', 1]])]));
+  apparel.push(product('shirt-gg', [size('GG', 99, [['remote', 1]])]));
+  const apparelServer = server(apparel);
+  const allSizes = ui({ api: url => apparelServer.request(url), selectedSize: null, query: '' });
+  await allSizes.search(); await allSizes.runTimer();
+  assert.equal(allSizes.cardCalls.length, 24);
+  assert.deepEqual(Array.from(allSizes.sizeCalls.at(-1).options), ['M', 'G', 'GG'], 'Inventory offers apparel sizes beyond the first results page');
+  allSizes.cardCalls.length = 0;
+  await allSizes.search(null, '', 2); await allSizes.runTimer();
+  assert.deepEqual(allSizes.cardCalls.map(call => call.product.id), ['shirt-m-24', 'shirt-g', 'shirt-gg']);
+  assert.equal(allSizes.pageCalls.at(-1).page, 2);
+  allSizes.cardCalls.length = 0;
+  await allSizes.search('M', ''); await allSizes.runTimer();
+  assert.equal(new URL(allSizes.requests.at(-1), 'https://test.invalid').searchParams.get('page'), '1');
+  assert.ok(allSizes.cardCalls.every(call => call.product.id.startsWith('shirt-m-')), 'M never matches G or GG in inventory');
+  await allSizes.search('M', '', 2); allSizes.cardCalls.length = 0; await allSizes.runTimer();
+  assert.deepEqual(allSizes.cardCalls.map(call => call.product.id), ['shirt-m-24'], 'The second page preserves the exact selected size');
+
+  const shirts = [
+    { ...product('shirt-m', [size('M', 20, [['local', 2]]), size(' M ', 40, [['local', 0]])]), name: 'camiseta normal' },
+    { ...product('shirt-g', [size('G', 30, [['local', 1]])]), name: 'camiseta grande' },
+    { ...product('shirt-spaced-m', [size('M', 20, [['local', 0]]), size(' M ', 40, [['local', 3]])]), name: 'camiseta literal' },
+    { ...product('shorts-m', [size('M', 50, [['local', 4]])]), name: 'bermuda normal' },
+  ];
+  const shirtsServer = server(shirts);
+  const typed = ui({ api: url => shirtsServer.request(url), selectedSize: null, query: 'camiseta' });
+  await typed.search(); await typed.runTimer();
+  typed.cardCalls.length = 0;
+  typed.context.pickFilter('size', 'M', 'inventoryTree'); await typed.runTimer();
+  assert.equal(typed.elements.get('invSearchInput').value, 'camiseta', 'Choosing a size does not overwrite the typed product search');
+  assert.deepEqual(typed.cardCalls.map(call => call.product.id), ['shirt-m'], 'Product query and the same positive M variant remain combined');
+  typed.cardCalls.length = 0;
+  typed.context.goPage('messages');
+  typed.context.goPage('inventory'); await typed.runTimer();
+  assert.equal(typed.elements.get('invSearchInput').value, 'camiseta', 'Returning to Estoque preserves the typed search');
+  assert.deepEqual(typed.cardCalls.map(call => call.product.id), ['shirt-m'], 'Returning to the screen keeps both product and size constraints');
+  typed.cardCalls.length = 0;
+  typed.context.pickFilter('size', ' M ', 'inventoryTree'); await typed.runTimer();
+  const literalParams = new URL(typed.requests.at(-1), 'https://test.invalid').searchParams;
+  assert.equal(literalParams.get('size'), ' M ');
+  assert.equal(literalParams.get('exactSize'), '1');
+  assert.equal(literalParams.get('q'), 'camiseta');
+  assert.deepEqual(typed.cardCalls.map(call => call.product.id), ['shirt-spaced-m'], 'Spaced literal M does not borrow stock from a different M variant');
+  assert.equal(typed.cardCalls[0].opts.selectedSize, ' M ', 'The card receives the same literal used by the backend');
+  typed.context._filterType = 'Tênis';
+  typed.context._filterGender = 'Feminino';
+  typed.context.onInventorySearchFromTree(); await typed.runTimer();
+  assert.equal(new URL(typed.requests.at(-1), 'https://test.invalid').searchParams.get('q'), 'tênis feminino camiseta', 'Tree terms complement rather than replace free text');
+  assert.equal(typed.elements.get('invSearchInput').value, 'camiseta');
   console.log('PASS inventory size filter: current StoreStock, exact variant, network scope, exhaustion, empty state, debounce and stale responses.');
 }
 

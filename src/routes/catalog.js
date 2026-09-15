@@ -162,7 +162,10 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     const gender = String(req.query.gender || '').trim();
     const modality = String(req.query.modality || '').trim();
     const tier = String(req.query.tier || '').trim();
-    const size = String(req.query.size || '').trim();
+    // Valores do seletor vêm diretamente de ProductSize.size, inclusive espaços.
+    const size = String(req.query.exactSize || '') === '1'
+      ? String(req.query.size || '') : String(req.query.size || '').trim();
+    const includeSizeOptions = String(req.query.includeSizeOptions || '') === '1';
     // inStore=1 → só produtos que TÊM estoque físico em alguma loja (StoreStock>0).
     // Usado pela Curadoria pra mostrar os bipados (com tamanhos por loja no card).
     let inStore = String(req.query.inStore || req.query.instore || '') === '1';
@@ -219,7 +222,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     if (brand) andConds.push({ brand: { equals: brand, mode: 'insensitive' } });
     if (category) andConds.push({ category: { equals: category, mode: 'insensitive' } });
     if (aiFilters.length) andConds.push(...aiFilters);
-    if (Object.keys(sizesSome).length) andConds.push({ sizes: { some: sizesSome } });
+    const sizeCondition = Object.keys(sizesSome).length ? { sizes: { some: sizesSome } } : null;
+    if (sizeCondition) andConds.push(sizeCondition);
     // BUSCA INTELIGENTE multi-palavra: "bola reebok" acha quem tem bola E reebok (qualquer ordem/campo).
     if (search) {
       // Busca ABRANGENTE: nome, REF (sku), marca, categoria/sub, FORN (supplierRef),
@@ -242,7 +246,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     }
     const where = { AND: andConds };
 
-    const [total, rows] = await Promise.all([
+    const [total, rows, sizeOptionRows] = await Promise.all([
       prisma.product.count({ where }),
       prisma.product.findMany({
         where,
@@ -281,6 +285,16 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
           },
         },
       }),
+      // Faceta de tamanhos: mesmo universo de produtos, sem a numeração atual
+      // e sem paginação. Disponibilidade pertence à própria variante e loja.
+      includeSizeOptions ? prisma.productSize.findMany({
+        where: {
+          product: { AND: andConds.filter(condition => condition !== sizeCondition) },
+          storeStocks: { some: { stock: { gt: 0 }, ...(storeId ? { storeId } : {}) } },
+        },
+        distinct: ['size'],
+        select: { size: true },
+      }) : Promise.resolve(null),
     ]);
 
     const products = rows.map((p) => {
@@ -288,12 +302,28 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       return myStore.wantsMyStore ? addStoreStockSummary(card, storeId, myStore.store, myStore.stockScope) : card;
     });
 
+    let sizeOptions;
+    if (includeSizeOptions) {
+      const apparelOrder = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'G1', 'G2', 'G3', 'G4', 'G5'];
+      sizeOptions = (sizeOptionRows || []).map(row => row.size).filter(value => {
+        const label = String(value || '').trim();
+        const pending = label.toUpperCase().replace(/\s+/g, '');
+        return label && !/^T-/i.test(label) && !['?', 'ADEFINIR', 'SEMTAMANHO', '—', '-'].includes(pending);
+      }).sort((a, b) => {
+        const aRank = apparelOrder.indexOf(String(a).trim().toUpperCase());
+        const bRank = apparelOrder.indexOf(String(b).trim().toUpperCase());
+        if (aRank >= 0 || bRank >= 0) return aRank < 0 ? 1 : bRank < 0 ? -1 : aRank - bRank;
+        return String(a).localeCompare(String(b), 'pt-BR', { numeric: true });
+      });
+    }
+
     res.json({
       products,
       page,
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize) || 1,
+      ...(includeSizeOptions ? { sizeOptions } : {}),
       ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}),
     });
   } catch (err) {

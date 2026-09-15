@@ -318,7 +318,7 @@
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260520k-1841"></script>
 <script src="/_product-search-bar.js?v=20260520k-1841"></script>
-<script src="/_product-card.js?v=20260915-size-stock"></script>
+<script src="/_product-card.js?v=20260915-all-sizes"></script>
 <script src="/_webauthn.js?v=20260611"></script>
 </head>
 <body>
@@ -769,6 +769,7 @@
     </div>
 
     <div id="catalogResults" class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;"></div>
+    <div id="catalogPages"></div>
   </div>
 
   <!-- ESTOQUE — busca global + busca por loja -->
@@ -789,6 +790,7 @@
           <input type="text" id="invSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onInventorySearch()">
         </div>
         <div id="invResults" class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;"></div>
+        <div id="invPages"></div>
       </div>
 
       <!-- MODO B: escolhe loja, lista produtos com estoque la -->
@@ -1159,12 +1161,12 @@ const PRODUCT_TREE = {
   },
 };
 
-// Tamanhos disponíveis (cobre infantil 26-32 + adulto 33-46)
-const SIZE_LIST = ['26','27','28','29','30','31','32','33','34','35','36','37','38','39','40','41','42','43','44','45','46'];
+// Opções literais vindas das variantes com saldo, para qualquer categoria.
+const _filterSizeOptions = { catalogTree: null, inventoryTree: null };
 
 // Estado do filtro hierárquico (compartilhado entre Curadoria e Estoque)
 let _filterType = null;     // 'Tênis' | 'Chuteira'
-let _filterSize = null;     // '33' .. '46'
+let _filterSize = null;     // Tamanho literal: 39, P, M, GG, 4, Único, 34/38 etc.
 let _filterGender = null;   // 'Feminino' | 'Masculino' | 'Inf. M' | 'Inf. F'
 let _filterCategory = null; // 'Corrida' | 'LifeStyle' | 'Futsal' | etc
 let _filterTier = null;     // 'máximo conforto' | 'premium' | etc
@@ -1782,6 +1784,7 @@ function goPage(pageId) {
         publicMode: true,
         theme: 'light',
         showSupplier: false,
+        onChange: () => onCatalogSearch(),
         onSearch: () => onCatalogSearch(),
         onClear: () => onCatalogSearch(),
       });
@@ -2971,23 +2974,15 @@ function renderFilterTree(containerId, onChange) {
   rows.push(`
     <div class="filter-row">
       <span class="filter-row-label">Produto</span>
+      <button class="chip ${!_filterType ? 'active' : ''}" onclick="pickFilter('type','','${containerId}')">Todos os produtos</button>
       ${Object.keys(PRODUCT_TREE).map(t => `
         <button class="chip ${_filterType === t ? 'active' : ''}" onclick="pickFilter('type','${t}','${containerId}')">${PRODUCT_TREE[t].icon} ${t}</button>
       `).join('')}
     </div>
   `);
 
-  // Linha 1.5: Tamanho (só aparece depois de escolher tipo)
-  if (_filterType) {
-    rows.push(`
-      <div class="filter-row">
-        <span class="filter-row-label">Tamanho</span>
-        ${SIZE_LIST.map(s => `
-          <button class="chip ${_filterSize === s ? 'active' : ''}" onclick="pickFilter('size','${s}','${containerId}')">${s}</button>
-        `).join('')}
-      </div>
-    `);
-  }
+  // A grade de roupas, acessórios e outros produtos independe da classificação.
+  rows.push(`<div class="filter-row" id="${containerId}Sizes"></div>`);
 
   // Linha 2: Gênero (só pra Tênis) ou Modalidade (Chuteira)
   if (_filterType === 'Tênis') {
@@ -3051,7 +3046,7 @@ function renderFilterTree(containerId, onChange) {
   }
 
   // Botão limpar (se há algum filtro ativo)
-  if (_filterType) {
+  if (_filterType || _filterSize || _filterGender || _filterCategory || _filterTier) {
     rows.push(`
       <div class="filter-row">
         <button class="chip chip-clear" onclick="clearFilters('${containerId}')">✕ Limpar filtros</button>
@@ -3060,16 +3055,17 @@ function renderFilterTree(containerId, onChange) {
   }
 
   c.innerHTML = `<div class="filter-tree">${rows.join('')}</div>`;
+  renderSizeOptions(containerId, _filterSizeOptions[containerId], _filterSize);
   if (typeof window[onChange] === 'function') window[onChange]();
 }
 
 function pickFilter(level, value, containerId) {
   if (level === 'type') {
     if (_filterType === value) _filterType = null;
-    else { _filterType = value; }
+    else { _filterType = value || null; }
     _filterSize = _filterGender = _filterCategory = _filterTier = null;
   } else if (level === 'size') {
-    _filterSize = _filterSize === value ? null : value;
+    _filterSize = value || null;
   } else if (level === 'gender') {
     _filterGender = _filterGender === value ? null : value;
     _filterCategory = _filterTier = null;
@@ -3089,9 +3085,37 @@ function clearFilters(containerId) {
   renderFilterTree(containerId, handler);
 }
 
+function renderSizeOptions(containerId, options, selectedSize, failed = false) {
+  _filterSizeOptions[containerId] = Array.isArray(options) ? options : null;
+  const el = document.getElementById(containerId + 'Sizes');
+  if (!el) return;
+  const values = Array.isArray(options) ? options : [];
+  const selected = selectedSize || '';
+  const pendingSelected = selected && !values.includes(selected)
+    ? `<option value="${escPreco(selected)}" selected>${escPreco(selected)}${Array.isArray(options) ? ' — sem estoque neste filtro' : ''}</option>` : '';
+  el.innerHTML = `<label class="filter-row-label" for="${containerId}SizeSelect">Tamanho</label>
+    <select id="${containerId}SizeSelect" onchange="pickFilter('size',this.value,'${containerId}')" style="flex:1;min-width:0;max-width:100%;padding:12px;border:1.5px solid #e5e5ea;border-radius:12px;background:white;color:#1d1d1f;font-size:16px;">
+      <option value=""${selected ? '' : ' selected'}>Todos os tamanhos</option>${pendingSelected}
+      ${values.map(size => `<option value="${escPreco(size)}"${size === selected ? ' selected' : ''}>${escPreco(size)}</option>`).join('')}
+    </select>
+    ${failed ? '<span style="font-size:12px;color:#6e6e73;">Não foi possível carregar os tamanhos.</span>' : Array.isArray(options) ? (!options.length ? '<span style="font-size:12px;color:#6e6e73;">Nenhum tamanho com estoque neste filtro.</span>' : '') : '<span style="font-size:12px;color:#6e6e73;">Carregando tamanhos...</span>'}`;
+}
+
+function renderProductPages(containerId, page = 1, totalPages = 1) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  const handler = containerId === 'catalogPages' ? 'onCatalogSearch' : 'onInventorySearch';
+  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin:18px 0;">
+    <button class="btn btn-secondary" type="button" onclick="${handler}(${page - 1})"${page <= 1 ? ' disabled' : ''}>Anterior</button>
+    <span style="color:white;font-weight:600;">Página ${page} de ${totalPages}</span>
+    <button class="btn btn-secondary" type="button" onclick="${handler}(${page + 1})"${page >= totalPages ? ' disabled' : ''}>Próxima</button>
+  </div>`;
+}
+
 let catSearchTimer;
 let catSearchRequestId = 0;
-async function onCatalogSearch() {
+async function onCatalogSearch(page = 1) {
   clearTimeout(catSearchTimer);
   const requestId = ++catSearchRequestId;
   const free = document.getElementById('catSearchInput').value.trim();
@@ -3111,20 +3135,26 @@ async function onCatalogSearch() {
   // Curadoria da rede: o saldo precisa pertencer à própria numeração escolhida.
   const inStore = !!size || !!document.getElementById('catInStoreOnly')?.checked;
   const el = document.getElementById('catalogResults');
+  renderSizeOptions('catalogTree', null, size);
+  renderProductPages('catalogPages');
   el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Buscando produtos...</div>';
   catSearchTimer = setTimeout(async () => {
     try {
-      const params = ['limit=24'];
+      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page];
       for (const [key, value] of Object.entries(filters)) {
         if (value) params.push(key + '=' + encodeURIComponent(value));
       }
+      if (size) params.push('exactSize=1');
       if (inStore) params.push('inStore=1');
       const d = await api('/api/catalog/products?' + params.join('&'));
       if (requestId !== catSearchRequestId) return;
+      renderSizeOptions('catalogTree', d.sizeOptions || [], size);
+      renderProductPages('catalogPages', d.page, d.totalPages);
       const products = d.products || d.items || [];
       renderCatalog(products, size);
     } catch (e) {
       if (requestId !== catSearchRequestId) return;
+      renderSizeOptions('catalogTree', null, size, true);
       el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Não foi possível consultar os produtos. Tente novamente.</div>';
       console.error(e);
     }
@@ -3132,11 +3162,7 @@ async function onCatalogSearch() {
 }
 
 function onInventorySearchFromTree() {
-  // Modo A: dispara busca via query da árvore. O TAMANHO (_filterSize) NÃO entra
-  // no texto — vai como filtro size= dentro da onInventorySearch — então busca
-  // mesmo quando só a numeração está marcada.
-  const tree = buildFilterQuery();
-  document.getElementById('invSearchInput').value = tree;
+  // A árvore complementa a busca; escolher tamanho não apaga o texto digitado.
   onInventorySearch();
 }
 
@@ -3225,23 +3251,27 @@ async function populateInvStoreSelect() {
 
 let invSearchTimer;
 let invSearchRequestId = 0;
-async function onInventorySearch() {
+async function onInventorySearch(page = 1) {
   clearTimeout(invSearchTimer);
   const requestId = ++invSearchRequestId;
-  const q = document.getElementById('invSearchInput').value;
+  const q = [buildFilterQuery(), document.getElementById('invSearchInput').value.trim()].filter(Boolean).join(' ');
   const size = _filterSize;
   const el = document.getElementById('invResults');
+  renderSizeOptions('inventoryTree', null, size);
+  renderProductPages('invPages');
   el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Buscando estoque...</p>';
   document.getElementById('invDetails').innerHTML = '';
   // Permite carregar sem texto (mostra produtos mais recentes)
   invSearchTimer = setTimeout(async () => {
     try {
-      const params = ['limit=24'];
+      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page];
       if (q) params.push('q=' + encodeURIComponent(q));
       // A numeração precisa ter saldo físico, não apenas existir na grade histórica.
-      if (size) params.push('size=' + encodeURIComponent(size), 'inStore=1');
+      if (size) params.push('size=' + encodeURIComponent(size), 'exactSize=1', 'inStore=1');
       const d = await api('/api/catalog/products?' + params.join('&'));
       if (requestId !== invSearchRequestId) return;
+      renderSizeOptions('inventoryTree', d.sizeOptions || [], size);
+      renderProductPages('invPages', d.page, d.totalPages);
       const products = d.products || d.items || [];
       if (!products.length) {
         el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">' +
@@ -3269,6 +3299,7 @@ async function onInventorySearch() {
       }
     } catch (e) {
       if (requestId !== invSearchRequestId) return;
+      renderSizeOptions('inventoryTree', null, size, true);
       el.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Não foi possível consultar o estoque. Tente novamente.</p>';
       console.error(e);
     }
