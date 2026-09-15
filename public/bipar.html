@@ -644,9 +644,11 @@
   };
 
   // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
-  let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0;
+  let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '';
   window.capturaManual = function (prepared) {
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
+    if(prepared?.ean && prepared.ean===etiqIgnoredCode){etiqAuto?.reset();return;}
+    if(prepared?.ean)etiqIgnoredCode='';
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
     if(current?.complete){etiqAuto?.stop();return;}
     if(etiqPausado || etiqBusy || (current && !['pendente','vinculado'].includes(current.st)) || Date.now()<etiqRetryAt){etiqAuto?.reset();return;}
@@ -758,12 +760,21 @@
         fd.append('sellerName', sellerName);
         fd.append('clientScanId', item.clientScanId);
         fd.append('roundId',item.roundId);
+        if(item.repeatConfirmedCount!=null)fd.append('repeatConfirmedCount',String(item.repeatConfirmedCount));
         const uploadController = new AbortController();
         const uploadTimeout = setTimeout(() => uploadController.abort(), 25000);
         let r;
         try { r = await fetch('/api/stocktake/etiqueta', { method: 'POST', body: fd, signal: uploadController.signal }); }
         finally { clearTimeout(uploadTimeout); }
         const d = await r.json().catch(() => ({}));
+        if(d.barcodeRequired){item.st='pendente';item.msg=d.error;etiqSave();renderEtiqLista();return;}
+        if(r.status===409 && d.repeat){
+          const detail=d.repeat;
+          const yes=window.confirm('⚠ CÓDIGO REPETIDO\n\n'+(detail.name||'Produto ainda em identificação')+'\nTamanho: '+(detail.size||'pendente')+'\nCódigo: '+detail.barcode+'\nJá bipado: '+detail.count+' vez(es) nesta loja e rodada.\n\nÉ OUTRO PAR físico?\nOK = contar outro par. Cancelar = não contar novamente.');
+          if(yes){item.repeatConfirmedCount=detail.count;item.st='fila';}
+          else{item.st='revisao';item.msg='Repetição cancelada — não contada';item.b64='';etiqIgnoredCode=item.ean;etiqAtivo=null;clearInterval(etiqWatch);const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';etiqPausado=false;etiqAuto?.reset();}
+          etiqSave();renderEtiqLista();return;
+        }
         if(r.status>=400&&r.status<500){item.st='revisao';item.msg=d.error||'Rodada encerrada. Foto preservada para revisão.';etiqSave();renderEtiqLista();}
         if (r.ok && d.capId) {
           item.st = item.ocrDone && item.ocrText && item.ocrText!==sentOcr ? 'fila' : 'salvo';

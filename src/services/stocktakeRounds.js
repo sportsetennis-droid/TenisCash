@@ -13,7 +13,8 @@ async function roundForScan(db, storeId, roundId, lock = false) {
   if (round.status !== 'counting') fail('A coleta desta rodada está encerrada. Esta leitura não foi transferida para outra rodada.');
   return round;
 }
-async function createRoundBipe(db, data) {
+async function createRoundBipe(db, input) {
+  const {requireRepeatConfirmation,repeatConfirmedCount,...data}=input;
   return db.$transaction(async tx => {
     await roundForScan(tx, data.storeId, data.roundId, true);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.scanKey}))::text`;
@@ -21,6 +22,16 @@ async function createRoundBipe(db, data) {
     if (existing) {
       if (existing.storeId !== data.storeId || existing.roundId !== data.roundId || existing.barcode !== data.barcode) fail('Conflito no identificador da leitura.');
       return existing;
+    }
+    if(requireRepeatConfirmation){
+      const code=String(data.barcode).replace(/^0+/,'');
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.roundId+'|'+data.storeId+'|'+code}))::text`;
+      const retry=await tx.stocktakeBipe.findUnique({where:{scanKey:data.scanKey}});
+      if(retry)return retry;
+      const previous=await tx.stocktakeBipe.findMany({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,barcode:{in:[code,code.padStart(13,'0'),code.padStart(14,'0')]}},select:{id:true,productName:true,productSize:true}});
+      if(previous.length && Number(repeatConfirmedCount)!==previous.length){
+        const e=new Error('Este código já foi bipado nesta loja e rodada. Confirme se é outro par.');e.status=409;e.repeat={count:previous.length,name:previous[0].productName,size:previous[0].productSize,barcode:data.barcode};throw e;
+      }
     }
     return tx.stocktakeBipe.create({ data });
   });

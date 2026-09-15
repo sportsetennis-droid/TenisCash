@@ -827,11 +827,13 @@ router.post('/etiqueta',
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'sem foto' });
-      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId } = req.body || {};
+      const { storeId, sellerId, sellerName, eanLocal, clientScanId, ocrText, roundId, repeatConfirmedCount } = req.body || {};
       await rounds.roundForScan(prisma,storeId,roundId);
       const key=rounds.scanKey(roundId,clientScanId);
       const photo = await shrinkPhoto(req.file.buffer);
-      const eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
+      let eanCam = eanLocal ? String(eanLocal).replace(/\D/g, '') : null;
+      if(!eanCam){const codes=await require('../services/barcodeDecoder').decodeBarcodesFromDataUri(photo);if(codes?.length===1)eanCam=codes[0];}
+      if(!eanCam)return res.status(422).json({barcodeRequired:true,error:'Falta ler o código de barras. Continue com a mesma etiqueta; ainda não foi contada.'});
       // A retry belongs to the same physical piece: never create another capture/bipe.
       const previousCapture = await prisma.productCapture.findUnique({where:{scanKey:key}});
       if (previousCapture) {
@@ -873,7 +875,7 @@ router.post('/etiqueta',
             if(!rows.length)rows.push(...await aliasRows(prisma,eanCam));
             resolution = chooseUniqueBarcodeCandidate(await resolveBarcodeRows(prisma,rows));
             ps = resolution.chosen;
-            bipe = await rounds.createRoundBipe(prisma, { roundId,scanKey:key,
+            bipe = await rounds.createRoundBipe(prisma, { requireRepeatConfirmation:true,repeatConfirmedCount,roundId,scanKey:key,
               barcode: eanCam, storeId: storeId || null, sellerId: sellerId || null,
               sellerName: sellerName ? String(sellerName).slice(0, 80) : null,
               productId: ps ? ps.productId : null, productSizeId: ps ? ps.id : null,
@@ -906,7 +908,7 @@ router.post('/etiqueta',
             const jaBipados = await prisma.stocktakeBipe.count({ where: { barcode: eanCam,roundId,storeId,excludedAt:null } });
             if (jaBipados > ps.stock) alertaDup = '⚠ Este código já tem ' + jaBipados + ' bipes e o COMPRADO é ' + ps.stock + ' — possível DUPLICADO, confira na prateleira';
           }
-        } catch (e) { console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
+        } catch (e) { if(e.repeat)throw e;console.warn('[etiqueta] bipe do scanner falhou:', e.message); }
       }
       const cap = await rounds.createRoundCapture(prisma, { roundId,scanKey:key,
         barcode: eanCam,
@@ -930,9 +932,9 @@ router.post('/etiqueta',
         product: scanResult?.product || undefined,
         alerta: alertaDup || undefined,
       });
-      setImmediate(() => processarEtiqueta(cap.id, photo, eanLocal ? String(eanLocal).replace(/\D/g, '') : null, { ocrText: typeof ocrText === 'string' ? ocrText.slice(0, 4000) : '' })
+      setImmediate(() => processarEtiqueta(cap.id, photo, eanCam, { ocrText: typeof ocrText === 'string' ? ocrText.slice(0, 4000) : '' })
         .catch((e) => { console.error('[etiqueta] processar:', e.message); prisma.productCapture.update({ where: { id: cap.id }, data: { status: 'pendente', note: 'etiqueta erro-processamento' } }).catch(() => {}); }));
-    } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(e.status || 500).json({ error: e.message }); }
+    } catch (e) { console.error('[etiqueta] erro:', e.message); res.status(e.status || 500).json({ error: e.message, repeat:e.repeat }); }
   }
 );
 
