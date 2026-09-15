@@ -16,7 +16,7 @@
   function distance(a,b){return a.reduce((sum,v,i)=>sum+Math.abs(v-b[i]),0)/a.length;}
   function create({snapshot,decode,recognize,canRead,onCapture,onHint,now=Date.now}) {
     let epoch=0,locked=false,busy=false,lastCode='',hits=0,lastOcr=0,previous=null,stableSince=0,afterCode='',clearFrames=0;
-    function reset(options={}){epoch++;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');clearFrames=0;}
+    function reset(options={}){epoch++;busy=false;locked=false;lastCode='';hits=0;previous=null;stableSince=now();afterCode=String(options.afterCode||'').replace(/^0+/,'');clearFrames=0;}
     function stop(){epoch++;locked=true;}
     async function tick(){
       if(locked||busy||!canRead())return;
@@ -48,7 +48,7 @@
           locked=true;onCapture({ean:'',frame,ocrText:text});
         } else onHint('Centralize a etiqueta inteira e mantenha parada. Leitura automática ativa.');
       } catch (_) {if(stamp===epoch&&!locked)onHint('Centralize a etiqueta inteira e mantenha parada.');}
-      finally{busy=false;}
+      finally{if(stamp===epoch)busy=false;}
     }
     return {tick,reset,stop};
   }
