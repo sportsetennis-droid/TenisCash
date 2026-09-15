@@ -770,7 +770,9 @@
         if(d.barcodeRequired){item.st='pendente';item.msg=d.error;etiqSave();renderEtiqLista();return;}
         if(r.status===409 && d.repeat){
           const detail=d.repeat;
-          const yes=window.confirm('⚠ CÓDIGO REPETIDO\n\n'+(detail.name||'Produto ainda em identificação')+'\nTamanho: '+(detail.size||'pendente')+'\nCódigo: '+detail.barcode+'\nJá bipado: '+detail.count+' vez(es) nesta loja e rodada.\n\nÉ OUTRO PAR físico?\nOK = contar outro par. Cancelar = não contar novamente.');
+          const when=detail.lastAt?new Date(detail.lastAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'horário não disponível';
+          const elapsed=Number.isFinite(detail.secondsSinceLast)?(detail.secondsSinceLast<60?detail.secondsSinceLast+' segundos':Math.floor(detail.secondsSinceLast/60)+' minutos'):'tempo não disponível';
+          const yes=window.confirm('⚠ '+(detail.consecutive?'REPETIDO EM SEGUIDA':'CÓDIGO JÁ CONTADO')+'\n\n'+(detail.name||'Produto ainda em identificação')+'\nTamanho: '+(detail.size||'pendente')+'\nCódigo: '+detail.barcode+'\n\nJá existem '+detail.count+' bipes deste código nesta loja e rodada (total, não só seguidos).\nÚltima leitura deste código: '+when+' — há '+elapsed+'.'+(detail.lastSeller?' Por: '+detail.lastSeller+'.':'')+'\n'+(detail.consecutive?'Seu último bipe registrado também foi deste código.':'Seu último bipe registrado foi de outro código, ou não há leitura anterior sua.')+'\n\nESTA TENTATIVA AINDA NÃO FOI CONTADA.\nÉ outro par físico?\nOK: acrescentar 1 (total '+(detail.count+1)+').\nCancelar: manter '+detail.count+'.');
           if(yes){item.repeatConfirmedCount=detail.count;item.st='fila';}
           else{item.st='revisao';item.msg='Repetição cancelada — não contada';item.b64='';etiqIgnoredCode=item.ean;etiqAtivo=null;clearInterval(etiqWatch);const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';etiqPausado=false;etiqAuto?.reset();}
           etiqSave();renderEtiqLista();return;

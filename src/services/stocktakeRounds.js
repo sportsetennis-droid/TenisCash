@@ -28,9 +28,11 @@ async function createRoundBipe(db, input) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${data.roundId+'|'+data.storeId+'|'+code}))::text`;
       const retry=await tx.stocktakeBipe.findUnique({where:{scanKey:data.scanKey}});
       if(retry)return retry;
-      const previous=await tx.stocktakeBipe.findMany({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,barcode:{in:[code,code.padStart(13,'0'),code.padStart(14,'0')]}},select:{id:true,productName:true,productSize:true}});
+      const previous=await tx.stocktakeBipe.findMany({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,barcode:{in:[code,code.padStart(13,'0'),code.padStart(14,'0')]}},orderBy:{bipedAt:'desc'},select:{id:true,productName:true,productSize:true,bipedAt:true,sellerName:true}});
       if(previous.length && Number(repeatConfirmedCount)!==previous.length){
-        const e=new Error('Este código já foi bipado nesta loja e rodada. Confirme se é outro par.');e.status=409;e.repeat={count:previous.length,name:previous[0].productName,size:previous[0].productSize,barcode:data.barcode};throw e;
+        const lastScan=await tx.stocktakeBipe.findFirst({where:{storeId:data.storeId,roundId:data.roundId,excludedAt:null,sellerId:data.sellerId||null,sellerName:data.sellerName||null},orderBy:{bipedAt:'desc'},select:{barcode:true,bipedAt:true}});
+        const consecutive=!!lastScan && String(lastScan.barcode).replace(/^0+/,'')===code;
+        const e=new Error('Este código já foi bipado nesta loja e rodada. Confirme se é outro par.');e.status=409;e.repeat={count:previous.length,name:previous[0].productName,size:previous[0].productSize,barcode:data.barcode,lastAt:previous[0].bipedAt,lastSeller:previous[0].sellerName,consecutive,secondsSinceLast:previous[0].bipedAt?Math.max(0,Math.floor((Date.now()-new Date(previous[0].bipedAt).getTime())/1000)):null};throw e;
       }
     }
     return tx.stocktakeBipe.create({ data });
