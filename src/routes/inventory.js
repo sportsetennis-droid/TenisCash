@@ -1,3 +1,4 @@
+const {loadVerification,attachVerification,matchesVerification}=require('../services/stockVerification');
 // =====================================================================
 // Routes: /api/admin/inventory — Estoque com ciclo de vida do produto
 // =====================================================================
@@ -98,6 +99,7 @@ router.get('/products', async (req, res) => {
     }
     if (jsonFilters.length) andConds.push(...jsonFilters);
     const where = { AND: andConds };
+    const verification = await loadVerification(prisma,req.query.storeId);
     const products = await prisma.product.findMany({
       where,
       include: {
@@ -173,12 +175,14 @@ router.get('/products', async (req, res) => {
           const hasStockInStore = (it.sizes || []).some(sz =>
             (sz.storeStocks || []).some(ss => ss.storeId === storeId && (ss.stock || 0) > 0)
           );
-          if (!hasStockInStore) return false;
+          if (!hasStockInStore && !verification.rows.some(r=>r.productId===it.id)) return false;
         }
         return true;
       });
 
-    res.json({ products: items });
+    attachVerification(items,verification);
+    res.set('Cache-Control','no-store');
+    res.json({ products: items.filter(p=>matchesVerification(p,String(req.query.verification||''))), verificationSummary:{orphanPending:verification.orphanPending,unidentifiedPending:verification.unidentifiedPending} });
   } catch (err) {
     console.error('[inventory/products] erro:', err);
     res.status(500).json({ error: 'Erro ao listar estoque' });

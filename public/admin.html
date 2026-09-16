@@ -225,6 +225,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <script src="/_product-card.js?v=20260602-comprado"></script>
 <script src="/_webauthn.js?v=20260611"></script>
   <script src="/pdf-browser-viewer.js"></script>
+<script src="/stock-verification.js?v=1"></script>
 </head>
 <body>
 
@@ -12520,6 +12521,7 @@ let _catTreeFlat = []; // árvore flatten pra populating selects
 //  'localizado' = Σ StoreStock de TODAS as lojas (o que foi BIPADO/contado fisicamente)
 //  'loja'       = Σ StoreStock só da loja storeId (estoque daquela loja)
 function _stockQtyOf(p, mode, storeId) {
+  if(mode==='conferido')return (p.verification||[]).filter(r=>r.status==='verified'&&(!storeId||r.storeId===storeId)).reduce((n,r)=>n+r.available,0);
   if (!mode || mode === 'comprado') return Number(p.totalStock || 0);
   let q = 0;
   (p.sizes || []).forEach(s => (s.storeStocks || []).forEach(ss => {
@@ -12545,7 +12547,7 @@ function _calcStockTotals(products, mode, storeId) {
 }
 function _fmtMoney(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function _fmtStockTotals(t) {
-  const baseTxt = { comprado: 'comprado', localizado: '📍 bipado/localizado', loja: '📍 estoque da loja' }[t.mode || 'comprado'];
+  const baseTxt = { conferido:'conferido nesta rodada', comprado: 'comprado', localizado: '📍 bipado/localizado', loja: '📍 estoque da loja' }[t.mode || 'comprado'];
   if (!t.n) return '<span style="color:#8e8e93;font-weight:400;">Nenhum produto' + ((t.mode && t.mode !== 'comprado') ? ' com ' + baseTxt : '') + ' no filtro</span>';
   const margem = t.compra > 0 ? ' · 📈 Margem ' + _fmtMoney(t.venda - t.compra) : '';
   const aviso = t.semCusto ? ` <span style="color:#b06b00;font-weight:400;">(${t.semCusto} sem custo cadastrado)</span>` : '';
@@ -12553,6 +12555,7 @@ function _fmtStockTotals(t) {
 }
 
 async function initCategoriesTab() {
+  if(!document.getElementById("cat-verification")){const f=document.createElement("select");f.id="cat-verification";f.className="form-input";f.setAttribute("aria-label","Situação da conferência");f.innerHTML=StockVerification.options;f.onchange=loadCategoriesClassify;document.getElementById("cat-classify-store").parentElement.appendChild(f);}
   if (!_catTreeInit) {
     _catTreeInit = true;
     document.getElementById('cat-classify-refresh').onclick = loadCategoriesClassify;
@@ -12683,7 +12686,7 @@ async function loadCategoriesClassify() {
   const g = id => (document.getElementById(id)?.value || '').trim();
   const fBrand = g('cat-classify-brand'), fCat = g('cat-classify-category'), fSub = g('cat-classify-subcategory'),
         fStore = g('cat-classify-store'), fSearch = g('cat-classify-search'), fSup = g('cat-classify-supplier');
-  const hasServerFilter = !!(fBrand || fCat || fSub || fStore || fSearch || fSup);
+  const hasServerFilter = !!(fBrand || fCat || fSub || fStore || fSearch || fSup || document.getElementById('cat-verification')?.value);
   grid.innerHTML = '<div class="loading-spinner">Carregando...</div>';
   _catClassifySelected.clear();
   // Produtos SÓ com filtro — antes puxava TODOS (~80MB) de uma vez e travava o navegador.
@@ -12692,6 +12695,7 @@ async function loadCategoriesClassify() {
   if (fCat) qs.set('category', fCat);
   if (fSub) qs.set('subcategory', fSub);
   if (fStore) qs.set('storeId', fStore);
+  qs.set('verification',document.getElementById('cat-verification')?.value||'');
   if (fSearch) qs.set('search', fSearch);
   if (fSup) qs.set('supplier', fSup);
   const needMeta = !window._catClassifyMetaReady; // árvore + selects: carrega 1x só
@@ -12791,7 +12795,7 @@ function _filteredCatProducts() {
       const hasStockInStore = (p.sizes || []).some(sz =>
         (sz.storeStocks || []).some(ss => ss.storeId === storeId && (ss.stock || 0) > 0)
       );
-      if (!hasStockInStore) return false;
+      if (!hasStockInStore && !(p.verification||[]).some(r=>r.storeId===storeId)) return false;
     }
     if (subcategory && (p.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
     if (modality && (cls.modality || '') !== modality) return false;
@@ -12868,6 +12872,7 @@ function renderCatClassifyGrid() {
     html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
       <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
       ${cardHtml}
+      ${StockVerification.render(p)}
       <div onclick="event.stopPropagation()" style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
         <div style="display:flex;gap:4px;flex-wrap:wrap;">${nsBadges(p)}</div>
         <div style="display:flex;"><button type="button" onclick="event.stopPropagation();openCatProductModal('${p.id}')" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button></div>
@@ -12911,6 +12916,7 @@ function _catStockMode() {
   const storeId = document.getElementById('cat-classify-store')?.value || '';
   const biped = document.getElementById('cat-classify-biped')?.value || '';
   const locpct = document.getElementById('cat-classify-locpct')?.value || '';
+  if(document.getElementById('cat-verification')?.value==='verified')return {mode:'conferido',storeId};
   if (storeId) return { mode: 'loja', storeId };
   if ((biped && biped !== 'never') || locpct) return { mode: 'localizado', storeId: '' };
   return { mode: 'comprado', storeId: '' };

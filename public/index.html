@@ -276,6 +276,7 @@ input::placeholder{color:rgba(255,255,255,0.35)}
 .pt-chart .pt-bar.empty{background:rgba(255,255,255,0.12)}
 .pt-chart .pt-bar-lbl{font-size:9px;letter-spacing:.5px;color:rgba(255,255,255,0.5);text-transform:uppercase}
 </style>
+<script src="/stock-verification.js?v=1"></script>
 </head>
 <body>
 
@@ -1736,6 +1737,7 @@ function setupSellerStoreStock() {
   if (catalogFab) catalogFab.textContent = 'Buscar produto';
   if (open) open.textContent = 'Busca avancada';
   if (refresh) refresh.textContent = 'Atualizar';
+  if(panel && tools && !document.getElementById('seller-verification')) {const f=document.createElement('select'); f.id='seller-verification';f.className='seller-store-stock-select';f.setAttribute('aria-label','Situação da conferência');f.innerHTML=StockVerification.options;f.onchange=()=>loadSellerStoreStock(true);panel.insertBefore(f,tools);}
   if (title) title.textContent = 'Estoque disponivel';
   if (panel && tools && !document.getElementById('seller-store-stock-tabs')) {
     const tabs = document.createElement('div');
@@ -1847,6 +1849,7 @@ function buildSellerStoreStockParams(page, queryOverride) {
     ...sellerStockScopeParams(),
     'page=' + page,
     'pageSize=20',
+    'verification='+encodeURIComponent(document.getElementById('seller-verification')?.value||''),
   ];
   const query = queryOverride != null ? queryOverride : (sellerStoreStockState.query || '');
   if (query) params.push('search=' + encodeURIComponent(query));
@@ -1895,6 +1898,7 @@ function renderSellerStoreStockCard(p) {
   info.appendChild(meta);
   info.appendChild(price);
   info.appendChild(pill);
+  const verificationBox=document.createElement("div");verificationBox.innerHTML=StockVerification.render(p);info.appendChild(verificationBox);
   row.appendChild(thumb);
   row.appendChild(info);
   return row;
@@ -2743,6 +2747,7 @@ function openProductDetailScreen(id, mode) {
       ? (sellerStoreStockState.scope === 'all' ? 'Estoque geral' : 'Estoque selecionado')
       : 'Tamanhos e estoque';
     wrap.appendChild(szTitle);
+    if(mode==='seller'){const box=document.createElement("div");box.innerHTML=StockVerification.render(p);wrap.appendChild(box);}
     const detailSizes = mode === 'seller' ? (p.storeStockBySize || []) : (p.sizes || []);
     if (!detailSizes.length) {
       const empty = document.createElement('div');

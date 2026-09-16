@@ -1,3 +1,4 @@
+const {loadVerification,attachVerification,matchesVerification}=require('../services/stockVerification');
 const express = require('express');
 const { prisma, authMiddleware } = require('../middleware');
 const { formatProductCard, searchProductsForAI } = require('../services/catalogSearch');
@@ -177,6 +178,9 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       storeId = st ? st.id : '__none__';
     }
     if (myStore.wantsMyStore && !storeId) inStore = true;
+    const verification = ['seller','store','manager','admin','superadmin'].includes(req.userRole) ? await loadVerification(prisma,storeId) : {rows:[],rounds:[]};
+    const verificationFilter = ['seller','store','manager','admin','superadmin'].includes(req.userRole) ? String(req.query.verification||'') : '';
+    const verificationSizeIds = verification.rows.filter(r=> !verificationFilter || verificationFilter==='all' || r.status===verificationFilter).map(r=>r.productSizeId);
     const aiFilters = [];
     // Casa com a 1ª OU a 2ª classificação (classification2)
     if (type) aiFilters.push({ OR: [
@@ -199,8 +203,9 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
     // Condições sobre ProductSize (tamanho e/ou estoque em loja) — merge num único some
     const sizesSome = {};
     if (size) sizesSome.size = size;
-    if (storeId) sizesSome.storeStocks = { some: { stock: { gt: 0 }, storeId } };
-    else if (inStore) sizesSome.storeStocks = { some: { stock: { gt: 0 } } };
+    if (storeId) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0},storeId}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
+    else if (inStore) sizesSome.OR = [{storeStocks:{some:{stock:{gt:0}}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}];
+    if(verificationFilter && verificationFilter!=='all') sizesSome.id = verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds};
 
     // GARANTIA (só staff logado: vendedor/admin) — mostra produto ATIVO **ou** inativo-mas-REAL
     // (tem PREÇO>0 e estoque), pra dar pra VENDER qualquer produto comprado. Cliente anônimo: só ativo.
@@ -302,6 +307,7 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       return myStore.wantsMyStore ? addStoreStockSummary(card, storeId, myStore.store, myStore.stockScope) : card;
     });
 
+    attachVerification(products,verification);
     let sizeOptions;
     if (includeSizeOptions) {
       const apparelOrder = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG', 'XXXG', 'G1', 'G2', 'G3', 'G4', 'G5'];
@@ -384,6 +390,8 @@ router.get('/products/:id', optionalCatalogAuth, async (req, res) => {
     });
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
     const product = myStore.wantsMyStore ? addStoreStockSummary(p, myStore.storeId, myStore.store, myStore.stockScope) : p;
+    if(['seller','store','manager','admin','superadmin'].includes(req.userRole)) attachVerification([product],await loadVerification(prisma,myStore.storeId));
+    res.set('Cache-Control','no-store');
     res.json({ product, ...(myStore.wantsMyStore ? { store: myStore.store, stockScope: myStore.stockScope } : {}) });
   } catch (err) {
     console.error('catalog/product id', err);
