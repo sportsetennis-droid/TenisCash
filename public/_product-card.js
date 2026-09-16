@@ -688,6 +688,7 @@
       html += '</div>';
     }
 
+    if(window.StockVerification && p.verification) html += StockVerification.render({...p,verification:p.verification.filter(r=>(!opts.onlyStoreId||r.storeId===opts.onlyStoreId)&&(!selectedSize||r.size===selectedSize))});
     html += '</div></div>';
     // Agenda varredura pra ativar IntersectionObserver nos novos containers NFe
     if ((actions === 'admin' || opts.showNfe) && PCard._scheduleObserve) PCard._scheduleObserve();

@@ -318,8 +318,9 @@
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260520k-1841"></script>
 <script src="/_product-search-bar.js?v=20260520k-1841"></script>
-<script src="/_product-card.js?v=20260915-all-sizes"></script>
+<script src="/_product-card.js?v=stock-verification-1"></script>
 <script src="/_webauthn.js?v=20260611"></script>
+<script src="/stock-verification.js?v=1"></script>
 </head>
 <body>
 
@@ -595,6 +596,7 @@
         <div class="search-bar" style="margin-bottom:0;">
           <span style="font-size:18px;">🔍</span>
           <input type="text" id="sellSearchInput" placeholder="Nome, marca, código de barras…" oninput="onSellSearch()">
+<select id="sellVerification" aria-label="Situação da conferência" onchange="onSellSearch()" style="padding:10px;border-radius:8px;max-width:100%"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select>
         </div>
         <div id="sellSearchResults" class="grid grid-2" style="margin-top:14px;"></div>
       </div>
@@ -758,6 +760,7 @@
       <div class="search-bar" style="margin:14px 0 0;">
         <span style="font-size:18px;">🔍</span>
         <input type="text" id="catSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onCatalogSearch()">
+<select id="catVerification" aria-label="Situação da conferência" onchange="onCatalogSearch()" style="padding:10px;border-radius:8px;max-width:100%"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select>
       </div>
       <!-- Toggle: só produtos com estoque físico em loja (mostra os tamanhos no card) -->
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;font-weight:600;color:#1d1d1f;cursor:pointer;">
@@ -788,6 +791,7 @@
         <div id="inventoryTree" style="margin-bottom:12px;"></div>
         <div class="search-bar">
           <input type="text" id="invSearchInput" placeholder="Ou busque livre por nome, marca ou código…" oninput="onInventorySearch()">
+<select id="invVerification" aria-label="Situação da conferência" onchange="onInventorySearch()" style="padding:10px;border-radius:8px;max-width:100%"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select>
         </div>
         <div id="invResults" class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;"></div>
         <div id="invPages"></div>
@@ -2413,7 +2417,7 @@ async function onSellSearch() {
   if (!q || q.length < 2) { el.innerHTML = ''; _sellSearchAll = []; return; }
   sellSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40');
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40&verification='+encodeURIComponent(document.getElementById('sellVerification')?.value||'')+'&stockScope=store&storeId='+encodeURIComponent(activeStore?.id||''));
       _sellSearchAll = d.products || d.items || [];
       _sellSearchShown = SELL_PAGE_SIZE;
       renderSellResults();
@@ -3140,7 +3144,7 @@ async function onCatalogSearch(page = 1) {
   el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">Buscando produtos...</div>';
   catSearchTimer = setTimeout(async () => {
     try {
-      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page];
+      const params = ['limit=24', 'includeSizeOptions=1', 'page=' + page, 'verification='+encodeURIComponent(document.getElementById('catVerification')?.value||'')];
       for (const [key, value] of Object.entries(filters)) {
         if (value) params.push(key + '=' + encodeURIComponent(value));
       }

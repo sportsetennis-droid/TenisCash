@@ -222,7 +222,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 <link rel="stylesheet" href="/_design-system.css">
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
-<script src="/_product-card.js?v=20260602-comprado"></script>
+<script src="/_product-card.js?v=stock-verification-1"></script>
 <script src="/_webauthn.js?v=20260611"></script>
   <script src="/pdf-browser-viewer.js"></script>
 <script src="/stock-verification.js?v=1"></script>
@@ -12872,7 +12872,6 @@ function renderCatClassifyGrid() {
     html += `<div data-pid="${p.id}" style="position:relative;cursor:pointer;${checked ? 'outline:3px solid #E5571E;border-radius:14px;' : ''}" class="cat-classify-card">
       <input type="checkbox" data-cid="${p.id}" ${checked?'checked':''} style="position:absolute;top:10px;left:10px;width:22px;height:22px;cursor:pointer;z-index:2;background:white;">
       ${cardHtml}
-      ${StockVerification.render(p)}
       <div onclick="event.stopPropagation()" style="padding:6px 8px;display:flex;flex-direction:column;gap:5px;">
         <div style="display:flex;gap:4px;flex-wrap:wrap;">${nsBadges(p)}</div>
         <div style="display:flex;"><button type="button" onclick="event.stopPropagation();openCatProductModal('${p.id}')" style="flex:1;padding:8px;border-radius:8px;background:linear-gradient(135deg,#E5571E,#EE7240);color:white;border:none;font-size:12px;font-weight:600;cursor:pointer;">✎ Editar</button></div>

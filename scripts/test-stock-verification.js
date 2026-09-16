@@ -14,5 +14,5 @@ assert.equal(result([b],[],size,[{...sale,quantity:-2}]).status,'pending');
 assert.equal(result([b],[],size,[{...sale,type:'transfer_in',quantity:1}]).status,'pending');
 assert.equal(result([b,{...b,id:'b2',bipedAt:'2026-09-16T12:00:00Z'}],[],size,[sale]).status,'pending');
 const products=[{id:'p',sizes:[{id:'s',stock:20}]}];attachVerification(products,{rows:[{productId:'p',productSizeId:'s',available:1}]});assert.equal(products[0].sizes[0].stock,20);
-const fs=require('fs'),vm=require('vm');for(const file of ['public/admin.html','public/index.html']){const text=fs.readFileSync(file,'utf8');for(const m of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)){if(m[1].trim())new vm.Script(m[1],{filename:file});}}
+const fs=require('fs'),vm=require('vm');for(const file of ['public/admin.html','public/index.html','public/loja.html']){const text=fs.readFileSync(file,'utf8');for(const m of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)){if(m[1].trim())new vm.Script(m[1],{filename:file});}}
 console.log('PASS verification: quantities, pending, Adidas, movements, unchanged stock and inline JS');
