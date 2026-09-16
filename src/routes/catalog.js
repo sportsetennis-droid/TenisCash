@@ -295,7 +295,8 @@ router.get('/products', optionalCatalogAuth, async (req, res) => {
       includeSizeOptions ? prisma.productSize.findMany({
         where: {
           product: { AND: andConds.filter(condition => condition !== sizeCondition) },
-          storeStocks: { some: { stock: { gt: 0 }, ...(storeId ? { storeId } : {}) } },
+          OR:[{storeStocks:{some:{stock:{gt:0},...(storeId?{storeId}:{})}}},{id:{in:verification.rows.map(r=>r.productSizeId)}}],
+          ...(verificationFilter && verificationFilter!=='all'?{id:verificationFilter==='unverified'?{notIn:verification.rows.map(r=>r.productSizeId)}:{in:verificationSizeIds}}:{}),
         },
         distinct: ['size'],
         select: { size: true },

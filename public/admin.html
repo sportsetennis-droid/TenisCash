@@ -12555,7 +12555,7 @@ function _fmtStockTotals(t) {
 }
 
 async function initCategoriesTab() {
-  if(!document.getElementById("cat-verification")){const f=document.createElement("select");f.id="cat-verification";f.className="form-input";f.setAttribute("aria-label","Situação da conferência");f.innerHTML=StockVerification.options;f.onchange=loadCategoriesClassify;document.getElementById("cat-classify-store").parentElement.appendChild(f);}
+  if(!document.getElementById("cat-verification")){const f=document.createElement("select");f.id="cat-verification";f.className="form-input";f.setAttribute("aria-label","Situação da conferência");f.innerHTML=StockVerification.options;f.onchange=()=>{if(f.value)document.getElementById("cat-classify-status").value="all";loadCategoriesClassify();};document.getElementById("cat-classify-store").parentElement.appendChild(f);}
   if (!_catTreeInit) {
     _catTreeInit = true;
     document.getElementById('cat-classify-refresh').onclick = loadCategoriesClassify;
