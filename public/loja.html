@@ -806,7 +806,7 @@
           <input type="text" id="invStoreQ" placeholder="Filtrar dentro da loja…" style="flex:1;padding:10px;border:1px solid #d2d2d7;border-radius:8px;">
           <button class="btn btn-small" onclick="loadStoreInventory()">Buscar</button>
         </div>
-        <div id="invStoreResults"></div>
+        <select id="invStoreVerification" aria-label="Situação da conferência por loja" onchange="loadStoreInventory()" style="padding:10px;margin-bottom:10px;border-radius:8px"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select><div id="invStoreResults"></div>
       </div>
     </div>
 
@@ -3353,20 +3353,20 @@ async function checkInventory(id, name) {
   } catch (e) { alert(e.message); }
 }
 
-async function loadStoreInventory() {
+async function loadStoreInventory(page=1) {
   const storeId = document.getElementById('invStoreSelect').value;
   const q = document.getElementById('invStoreQ').value;
   if (!storeId) { alert('Escolha a loja'); return; }
   const el = document.getElementById('invStoreResults');
   el.innerHTML = '<p style="text-align:center;color:#8e8e93;padding:20px;">Carregando...</p>';
   try {
-    const d = await api(`/api/seller/inventory/by-store?storeId=${storeId}&q=${encodeURIComponent(q)}&limit=50`);
+    const d = await api(`/api/catalog/products?stockScope=store&storeId=${encodeURIComponent(storeId)}&q=${encodeURIComponent(q)}&pageSize=40&page=${page}&verification=${encodeURIComponent(document.getElementById("invStoreVerification").value)}`);
     if (!d.products?.length) {
       el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Nada encontrado nessa loja.</p>';
       return;
     }
     el.innerHTML = `
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.count} produtos · ${d.totalSkus} SKUs com estoque</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">📦 Mostrando ${d.products.length} de ${d.total} produtos</p>
       <div class="grid grid-3">
         ${d.products.map(p => `
           <div class="product-card" onclick="checkInventory('${p.id}','${(p.name || '').replace(/'/g, "\\'")}')">
@@ -3375,12 +3375,14 @@ async function loadStoreInventory() {
               <div class="product-brand">${p.brand || ''}</div>
               <div class="product-name">${p.name || ''}</div>
               <div class="product-price">${fmt(p.promoPrice || p.price)}</div>
-              <span class="product-badge">📦 ${p.totalStock} un.</span>
+              <span class="product-badge">📦 ${p.storeStockTotal} un. no estoque anterior</span>
+              ${StockVerification.render(p)}
             </div>
           </div>
         `).join('')}
       </div>
     `;
+    if(d.totalPages>1)el.innerHTML+=`<div><button class="btn" onclick="loadStoreInventory(${page-1})" ${page===1?'disabled':''}>Anterior</button> Página ${page} de ${d.totalPages} <button class="btn" onclick="loadStoreInventory(${page+1})" ${page>=d.totalPages?'disabled':''}>Próxima</button></div>`;
   } catch (e) {
     el.innerHTML = `<p style="color:#d70015;text-align:center;padding:20px;">Erro: ${e.message}</p>`;
   }
