@@ -644,6 +644,8 @@
           html += `<span style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:white;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;font-weight:700;color:#1d1d1f;">${esc(s.size)}${s.stock > 1 ? `<span style="background:#0a843d;color:white;padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;">×${s.stock}</span>` : ''}</span>`;
         });
         html += '</div></div>';
+      } else if ((p.verification || []).some(r => r.status === 'verified' && r.available > 0 && (!opts.onlyStoreId || r.storeId === opts.onlyStoreId) && (!selectedSize || String(r.size) === selectedSize))) {
+        html += '<div style="margin-top:8px;padding:10px;background:#dcfce7;color:#146534;border-radius:10px;font-weight:700;">Disponível na conferência atual — veja as numerações abaixo</div>';
       } else if (opts.physicalStockOnly) {
         html += `<div style="margin-top:8px;padding:12px;background:#fff1f0;border-radius:10px;border:1.5px dashed #d70015;font-size:13px;color:#d70015;text-align:center;font-weight:700;">Sem estoque físico${selectedSize ? ' no tamanho ' + esc(selectedSize) : ''}${opts.onlyStoreId ? ' nesta loja' : ''}</div>`;
       } else if (opts.onlyStoreId) {

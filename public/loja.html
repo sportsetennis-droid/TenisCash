@@ -2542,11 +2542,16 @@ function _chooseSaleSize(p) {
     const sameStore = !activeStore?.id || ss.storeId === activeStore.id || ss.store?.id === activeStore.id;
     return sameStore && Number(ss.stock || 0) > 0;
   }));
-  const choices = availableHere.length ? availableHere : sizes;
+  const verifiedForSize = s => (p.verification || []).filter(r => r.productSizeId === s.id && r.storeId === activeStore?.id && r.status === 'verified');
+  const verifiedHere = sizes.filter(s => verifiedForSize(s).some(r => Number(r.available) > 0));
+  // Keep the partial physical count separate; never add it to the old balance.
+  const choices = verifiedHere.length ? verifiedHere : availableHere.length ? availableHere : sizes;
   const lines = choices.map((s) => {
     const row = (s.storeStocks || []).find(ss => !activeStore?.id || ss.storeId === activeStore.id || ss.store?.id === activeStore.id);
     const saldo = row ? Number(row.stock || 0) : 0;
-    return s.size + ' (saldo nesta loja: ' + saldo + ')';
+    const verified = verifiedForSize(s);
+    if (verified.length) return s.size + ' (conferido nesta rodada: ' + Math.max(...verified.map(r => Number(r.available) || 0)) + ')';
+    return s.size + ' (estoque anterior, ainda não conferido: ' + saldo + ')';
   });
   const typed = _promptManualSellerSize(p.name, lines.join(', '));
   if (!typed) return null;
@@ -2557,7 +2562,7 @@ function _chooseSaleSize(p) {
   // Se há uma única variante física possível, o tamanho digitado pelo vendedor
   // passa a identificá-la. Com várias variantes ambíguas, cria uma linha manual
   // auditável em vez de adivinhar qual placeholder deveria ser baixado.
-  if (choices.length === 1) return { ...choices[0], sellerSize: typed };
+  if (!verifiedHere.length && choices.length === 1) return { ...choices[0], sellerSize: typed };
   return { id: null, size: typed, sellerSize: typed, isNewSize: true };
 }
 
