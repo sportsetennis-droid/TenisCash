@@ -598,6 +598,7 @@
           <input type="text" id="sellSearchInput" placeholder="Nome, marca, código de barras…" oninput="onSellSearch()">
 <select id="sellVerification" aria-label="Situação da conferência" onchange="onSellSearch()" style="padding:10px;border-radius:8px;max-width:100%"><option value="">Todas as situações</option><option value="verified">✓ Conferidos nesta rodada</option><option value="pending">⚠ Com pendência</option><option value="unverified">○ Ainda não conferidos</option></select>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Produtos de todas as lojas disponíveis para seleção. Confira no card onde está o saldo físico; a venda é registrada na loja selecionada.</p>
         <div id="sellSearchResults" class="grid grid-2" style="margin-top:14px;"></div>
       </div>
 
@@ -2417,7 +2418,7 @@ async function onSellSearch() {
   if (!q || q.length < 2) { el.innerHTML = ''; _sellSearchAll = []; return; }
   sellSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40&verification='+encodeURIComponent(document.getElementById('sellVerification')?.value||'')+'&stockScope=store&storeId='+encodeURIComponent(activeStore?.id||''));
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40&verification='+encodeURIComponent(document.getElementById('sellVerification')?.value||'')+'&stockScope=all');
       _sellSearchAll = d.products || d.items || [];
       _sellSearchShown = SELL_PAGE_SIZE;
       renderSellResults();
@@ -2439,9 +2440,8 @@ function renderSellResults() {
   const visible = _sellSearchAll.slice(0, _sellSearchShown);
   const remaining = _sellSearchAll.length - _sellSearchShown;
 
-  // MESMO card da Curadoria/Preços, MAS só o estoque da loja que está vendendo (onlyStoreId).
-  // Na venda não pode aparecer numeração de outra loja. Demais telas mostram todas.
-  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onlyStoreId: activeStore?.id, onClick: "addToCartById('%id%')" })).join('');
+  // Catálogo da rede disponível em todas as lojas; o card preserva a origem do saldo.
+  const cards = visible.map(p => PCard.render(p, { actions: 'public', showStock: true, onClick: "addToCartById('%id%')" })).join('');
 
   const moreBtn = remaining > 0 ? `
     <div style="grid-column:1/-1;text-align:center;padding:8px 0;">
