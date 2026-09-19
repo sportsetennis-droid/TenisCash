@@ -77,6 +77,7 @@
     }catch(error){
       hideQr();
       if(error.status===401||error.status===403){showLogin(error.message);return;}
+      $('status').className='status';$('refresh').hidden=false;
       $('status').textContent='Aguardando atualização da conexão';$('error').textContent=error.name==='TimeoutError'?'A consulta demorou. Tentando novamente…':error.message;
     }finally{busy=false;$('refresh').disabled=false;if(signedIn)timer=setTimeout(refreshQr,15000);}
   }
