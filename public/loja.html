@@ -2418,7 +2418,7 @@ async function onSellSearch() {
   if (!q || q.length < 2) { el.innerHTML = ''; _sellSearchAll = []; return; }
   sellSearchTimer = setTimeout(async () => {
     try {
-      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40&verification='+encodeURIComponent(document.getElementById('sellVerification')?.value||'')+'&stockScope=all');
+      const d = await api('/api/catalog/products?q=' + encodeURIComponent(q) + '&limit=40&verification='+encodeURIComponent(document.getElementById('sellVerification')?.value||''));
       _sellSearchAll = d.products || d.items || [];
       _sellSearchShown = SELL_PAGE_SIZE;
       renderSellResults();
