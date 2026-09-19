@@ -200,7 +200,7 @@
 <script>
 const TOKEN = localStorage.getItem('tc_admin_token') || '';
 const H = { 'Authorization': 'Bearer ' + TOKEN };
-const COLORS = { teniscash:'#e5571e', baratao:'#2d7ff9', metafardamentos:'#0fb5a6', metaaps:'#16a34a' };
+const COLORS = { teniscash:'#e5571e', tambau:'#b85e18', baratao:'#2d7ff9', metafardamentos:'#0fb5a6', metaaps:'#16a34a' };
 const COLOR_FALLBACK = ['#e5571e','#2d7ff9','#0fb5a6','#16a34a','#8b5cf6','#ec4899'];
 const esc = s => String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const $ = id => document.getElementById(id);
@@ -285,7 +285,7 @@ function renderRows(){
       + '<span class="l2"><span class="pre">'+esc(pre)+'</span>'+tag+'</span></span></button>';
   }).join('');
 }
-function shortLabel(inst){ return ({teniscash:'S&T',baratao:'Baratão',metafardamentos:'M.Fard',metaaps:'M.APS'})[inst] || inst; }
+function shortLabel(inst){ return ({teniscash:'S&T',tambau:'Loja 05',baratao:'Baratão',metafardamentos:'M.Fard',metaaps:'M.APS'})[inst] || inst; }
 
 async function openChat(inst, jidEnc){
   const jid = decodeURIComponent(jidEnc);

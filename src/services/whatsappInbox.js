@@ -6,6 +6,7 @@
 // não guarda histórico).
 // =====================================================================
 const { prisma } = require('../middleware');
+const { STORE_ARCHIVE } = require('./whatsappStoreArchive');
 
 // instância Evolution -> nome amigável da empresa/loja
 const INSTANCE_LABELS = {
@@ -13,6 +14,7 @@ const INSTANCE_LABELS = {
   baratao: 'Baratão dos Esportes',
   metafardamentos: 'Meta Fardamentos',
   metaaps: 'Meta APS',
+  [STORE_ARCHIVE.key]: STORE_ARCHIVE.label,
 };
 
 // Extrai texto + tipo legível de uma mensagem do WhatsApp (formato Baileys/Evolution).

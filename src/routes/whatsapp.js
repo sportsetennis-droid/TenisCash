@@ -7,6 +7,7 @@ const { handleMetaWebhook, INSTANCE: METAFARD_INSTANCE } = require('../services/
 const { handleBarataoWebhook, INSTANCE: BARATAO_INSTANCE } = require('../services/barataoAttendant');
 const { handleMetaApsWebhook, INSTANCE: METAAPS_INSTANCE } = require('../services/metaApsAttendant');
 const { captureEvolutionMessages } = require('../services/whatsappInbox');
+const { STORE_ARCHIVE } = require('../services/whatsappStoreArchive');
 
 const router = express.Router();
 const DEFAULT_VERIFY_TOKEN = 'teniscash-whatsapp-webhook-2026';
@@ -88,8 +89,16 @@ router.post('/evolution', async (req, res) => {
     const instance = (body.instance || body.instanceName || '').toString();
     const _d0 = Array.isArray(body.data) ? body.data[0] : (body.data || {});
     console.log(`[whatsapp/evolution] HIT instance="${instance}" event="${event}" jid="${(_d0 && _d0.key && _d0.key.remoteJid) || '?'}"`);
-    // Evolution manda varios eventos; so queremos mensagens novas (aceita messages.upsert E MESSAGES_UPSERT)
-    if (event && !/messages[._]upsert/i.test(event)) return;
+    // Loja 05 archives both new messages and history received during pairing.
+    // It must return before every attendant: connecting it authorizes no replies.
+    const isStoreArchive = instance === STORE_ARCHIVE.key;
+    if (event && !/messages[._]upsert/i.test(event) &&
+        !(isStoreArchive && /messages[._]set/i.test(event))) return;
+    if (isStoreArchive) {
+      const archiveData = Array.isArray(body.data?.messages) ? body.data.messages : body.data;
+      await captureEvolutionMessages({ ...body, data: archiveData });
+      return;
+    }
 
     // MONITOR: grava toda mensagem (todas as instancias) pro dono acompanhar no admin.
     // Fire-and-forget + try/catch interno: NUNCA atrapalha o atendente de IA.

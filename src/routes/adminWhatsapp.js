@@ -7,6 +7,7 @@
 const express = require('express');
 const { prisma, authMiddleware, adminMiddleware } = require('../middleware');
 const { sendEvolutionRaw } = require('../whatsapp');
+const { STORE_ARCHIVE, encodeArchiveCursor, decodeArchiveCursor } = require('../services/whatsappStoreArchive');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -20,6 +21,7 @@ const INSTANCES = [
   { key: (process.env.BARATAO_EVOLUTION_INSTANCE || 'baratao').trim(), label: 'Baratão dos Esportes' },
   { key: (process.env.METAFARD_EVOLUTION_INSTANCE || 'metafardamentos').trim(), label: 'Meta Fardamentos' },
   { key: (process.env.METAAPS_EVOLUTION_INSTANCE || 'metaaps').trim(), label: 'Meta APS' },
+  STORE_ARCHIVE,
 ];
 
 // status de conexão ao vivo de cada instância (open/close/connecting) + número
@@ -65,6 +67,7 @@ router.get('/numbers', async (_req, res) => {
       numbers.push({
         instance: inst.key,
         label: inst.label,
+        ...(inst.storeId ? { storeId: inst.storeId, storeCode: inst.storeCode } : {}),
         status: l.status || 'unknown',
         number: l.number || null,
         total,
@@ -75,6 +78,45 @@ router.get('/numbers', async (_req, res) => {
     }
     res.json({ numbers });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Local backup feed, isolated to Loja 05. Order by insertion time, not WhatsApp
+// time: history arriving after pairing must remain visible to an existing cursor.
+router.get('/archive', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (String(req.query.instance || '').trim() !== STORE_ARCHIVE.key) {
+      return res.status(400).json({ error: 'Arquivo disponível somente para a instância da Loja 05' });
+    }
+    const after = decodeArchiveCursor(req.query.after);
+    const requestedLimit = req.query.limit === undefined ? 200 : Number(req.query.limit);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 1000) {
+      return res.status(400).json({ error: 'limit deve estar entre 1 e 1000' });
+    }
+    const rows = await prisma.whatsappMessage.findMany({
+      where: {
+        instance: STORE_ARCHIVE.key,
+        ...(after ? { OR: [
+          { createdAt: { gt: after.createdAt } },
+          { createdAt: after.createdAt, id: { gt: after.id } },
+        ] } : {}),
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: requestedLimit + 1,
+      select: {
+        id: true, instance: true, chatJid: true, isGroup: true, contactName: true,
+        phone: true, fromMe: true, text: true, msgType: true, messageId: true,
+        ts: true, createdAt: true,
+      },
+    });
+    const messages = rows.slice(0, requestedLimit);
+    res.json({
+      instance: STORE_ARCHIVE.key, label: STORE_ARCHIVE.label,
+      storeId: STORE_ARCHIVE.storeId, storeCode: STORE_ARCHIVE.storeCode,
+      messages, hasMore: rows.length > requestedLimit,
+      nextCursor: messages.length ? encodeArchiveCursor(messages[messages.length - 1]) : (req.query.after || null),
+    });
+  } catch (err) { res.status(err.status || 500).json({ error: err.status ? err.message : 'Erro ao ler arquivo de conversas' }); }
 });
 
 // GET /chats?instance=&groups=0 — uma linha por conversa (última mensagem)
@@ -100,7 +142,7 @@ router.get('/chats', async (req, res) => {
     // enriquece com nome do cliente no CRM da Meta (MfCustomer) via telefone
     try {
       const phones = Array.from(new Set(chats.filter((c) => !c.isGroup && c.phone).map((c) => c.phone)));
-      if (phones.length) {
+      if (instance !== STORE_ARCHIVE.key && phones.length) {
         const custs = await prisma.mfCustomer.findMany({ where: { phone: { in: phones } }, select: { id: true, phone: true, name: true } });
         const byPhone = {};
         custs.forEach((c) => { if (c.phone) byPhone[c.phone] = { id: c.id, name: c.name }; });
