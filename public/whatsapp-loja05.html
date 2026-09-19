@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Conectar WhatsApp — Loja 05 · Tênis Cash</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f4f5f7;color:#18212d;font:16px system-ui,-apple-system,Segoe UI,sans-serif}
+    header{background:#e95619;color:#fff;padding:20px 24px;font-weight:750}main{width:min(100% - 32px,580px);margin:30px auto;background:#fff;border:1px solid #e1e5ea;border-radius:20px;padding:26px}
+    h1{font-size:26px;line-height:1.2;margin:0 0 8px}.store{color:#586273;margin:0 0 24px}p{line-height:1.5}.status{padding:13px 16px;background:#fff3e7;border-radius:12px;font-weight:650}.status.connected{background:#e4f6ea;color:#176437}
+    label{display:block;font-weight:650;margin:16px 0 7px}input{width:100%;padding:13px;border:1px solid #bdc5cf;border-radius:10px;font:inherit;color:#18212d;background:#fff}button{font:inherit;font-weight:700;padding:13px 18px;border:0;border-radius:11px;background:#e95619;color:white;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+    form button{width:100%;margin-top:20px}.error{color:#a62525}#qr{display:block;width:min(100%,360px);height:auto;margin:22px auto;image-rendering:pixelated;background:white}#qr[hidden],[hidden]{display:none!important}
+    ol{padding-left:23px;line-height:1.7}small{display:block;color:#586273;line-height:1.5;margin-top:20px}.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}a{color:#a83b0b}#updated{font-size:13px;color:#586273}footer{padding-top:22px;margin-top:24px;border-top:1px solid #e1e5ea;font-size:14px;line-height:1.5}
+    @media(max-width:400px){main{padding:20px;margin:16px auto}h1{font-size:23px}}
+  </style>
+</head>
+<body>
+<header>S&amp;T · Tênis Cash</header>
+<main>
+  <h1>Conectar WhatsApp da Loja 05</h1>
+  <p class="store">Sports &amp; Tennis Praia de Tambaú</p>
+  <form id="login" hidden>
+    <p>Entre com sua conta de titular para exibir o QR Code.</p>
+    <label for="identity">WhatsApp ou e-mail</label><input id="identity" autocomplete="username" required>
+    <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required>
+    <p id="loginError" class="error" role="alert"></p><button id="loginButton" type="submit">Entrar e abrir QR Code</button>
+  </form>
+  <section id="connection" hidden>
+    <p id="status" class="status" role="status">Preparando QR Code…</p>
+    <img id="qr" alt="QR Code para conectar o WhatsApp da Loja 05" hidden>
+    <div id="instructions">
+      <ol><li>Abra o WhatsApp da <strong>Loja 05</strong> no celular.</li><li>Entre em <strong>Aparelhos conectados → Conectar um aparelho</strong>.</li><li>Aponte a câmera para o QR Code desta tela.</li></ol>
+      <p>Se você estiver usando esse mesmo celular, abra esta página em um computador ou em outra tela para escanear.</p>
+    </div>
+    <p id="error" class="error" role="alert"></p>
+    <div class="actions"><button id="refresh" type="button">Atualizar QR Code</button><span id="updated"></span></div>
+    <small>O código é atualizado automaticamente. Não compartilhe o QR Code com outras pessoas.</small>
+    <footer>As conversas desta conexão são registradas no Tênis Cash. O computador configurado copia textos e legendas quando está ligado e conectado; fotos, áudios e vídeos não são baixados nessa cópia.</footer>
+  </section>
+  <p id="initial" role="status">Verificando seu acesso…</p>
+</main>
+<script>
+  'use strict';
+  const $=id=>document.getElementById(id);
+  let token=localStorage.getItem('tc_admin_token')||localStorage.getItem('loja_token')||'';
+  let timer=null, expiryTimer=null, busy=false, signedIn=false;
+  async function api(path,body){
+    const response=await fetch('/api'+path,{method:body===undefined?'GET':'POST',cache:'no-store',headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(25000)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok){const error=new Error(data.error||'Não foi possível consultar a conexão.');error.status=response.status;throw error;}return data;
+  }
+  function hideQr(){clearTimeout(expiryTimer);$('qr').hidden=true;$('qr').removeAttribute('src');}
+  function showLogin(message=''){
+    signedIn=false;clearTimeout(timer);hideQr();$('initial').hidden=true;$('connection').hidden=true;$('login').hidden=false;$('loginError').textContent=message;
+  }
+  async function enter(data){
+    if(data.user?.role!=='superadmin'||data.user?.active===false)throw new Error('Somente a conta do titular pode conectar o WhatsApp da loja.');
+    if(data.token){token=data.token;localStorage.setItem('tc_admin_token',token);}
+    signedIn=true;$('initial').hidden=true;$('login').hidden=true;$('connection').hidden=false;await refreshQr();
+  }
+  async function refreshQr(){
+    if(busy||!signedIn)return;clearTimeout(timer);busy=true;$('refresh').disabled=true;$('error').textContent='';
+    try{
+      const data=await api('/admin/whatsapp/loja05/connect',{});
+      if(data.instance!=='tambau'||data.storeCode!=='LOJA05')throw new Error('A resposta não corresponde à Loja 05.');
+      const connected=data.state==='open';$('status').className='status'+(connected?' connected':'');
+      $('status').textContent=connected?'WhatsApp da Loja 05 conectado':'Aguardando a leitura do QR Code';
+      $('instructions').hidden=connected;$('refresh').hidden=connected;
+      hideQr();
+      if(!connected){
+        if(typeof data.qr!=='string'||!/^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(data.qr))throw new Error('O QR Code ainda não está disponível. Tentando novamente…');
+        $('qr').src=data.qr;$('qr').hidden=false;
+        expiryTimer=setTimeout(()=>{hideQr();$('status').textContent='Atualizando QR Code…';},45000);
+      }
+      $('updated').textContent='Conferido às '+new Date().toLocaleTimeString('pt-BR');
+    }catch(error){
+      hideQr();
+      if(error.status===401||error.status===403){showLogin(error.message);return;}
+      $('status').textContent='Aguardando atualização da conexão';$('error').textContent=error.name==='TimeoutError'?'A consulta demorou. Tentando novamente…':error.message;
+    }finally{busy=false;$('refresh').disabled=false;if(signedIn)timer=setTimeout(refreshQr,15000);}
+  }
+  $('refresh').addEventListener('click',refreshQr);
+  $('login').addEventListener('submit',async event=>{
+    event.preventDefault();$('loginButton').disabled=true;$('loginError').textContent='';
+    const identity=$('identity').value.trim(),password=$('password').value;
+    try{token='';const data=await api('/auth/login',{password,...(identity.includes('@')?{email:identity}:{phone:identity.replace(/\D/g,'')})});await enter(data);}
+    catch(error){showLogin(error.message);}finally{$('password').value='';$('loginButton').disabled=false;}
+  });
+  (async()=>{if(!token){showLogin();return;}try{await enter(await api('/auth/me'));}catch(error){showLogin(error.status===401?'Seu acesso expirou. Entre novamente.':error.message);}})();
+</script>
+</body>
+</html>

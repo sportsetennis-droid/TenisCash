@@ -24,6 +24,65 @@ const INSTANCES = [
   STORE_ARCHIVE,
 ];
 
+function validQrPng(value) {
+  if (typeof value !== 'string' || value.length > 2800000) return null;
+  const raw = value.trim().replace(/^data:image\/png;base64,/i, '');
+  if (!raw || raw.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) return null;
+  const bytes = Buffer.from(raw, 'base64');
+  if (bytes.length < 45 || bytes.length > 2 * 1024 * 1024 ||
+      bytes.toString('base64') !== raw ||
+      !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+      bytes.readUInt32BE(8) !== 13 || bytes.toString('ascii', 12, 16) !== 'IHDR' ||
+      !bytes.readUInt32BE(16) || bytes.readUInt32BE(16) > 4096 ||
+      !bytes.readUInt32BE(20) || bytes.readUInt32BE(20) > 4096 ||
+      bytes.readUInt32BE(bytes.length - 12) !== 0 || bytes.toString('ascii', bytes.length - 8, bytes.length - 4) !== 'IEND') return null;
+  return 'data:image/png;base64,' + raw;
+}
+
+// Pairing material is owner-only. The instance is fixed, and this endpoint never
+// creates/restarts/logs out an instance or sends a WhatsApp message.
+router.post('/loja05/connect', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let timer;
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Autenticação necessária' });
+    const operator = await prisma.user.findUnique({
+      where: { id: req.userId }, select: { role: true, active: true },
+    });
+    if (!operator?.active || operator.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Acesso restrito ao proprietário' });
+    }
+    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
+      return res.status(503).json({ error: 'Conexão do WhatsApp indisponível no momento' });
+    }
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), 20000);
+    const providerGet = async (route) => {
+      const reply = await fetch(EVOLUTION_API_URL + route, {
+        method: 'GET', headers: { apikey: EVOLUTION_API_KEY }, signal: controller.signal,
+      });
+      if (!reply.ok) throw new Error('provider unavailable');
+      return reply.json();
+    };
+    const identity = { instance: STORE_ARCHIVE.key, storeCode: STORE_ARCHIVE.storeCode };
+    const state = await providerGet('/instance/connectionState/' + STORE_ARCHIVE.key);
+    if ((state?.instance?.state || state?.state) === 'open') {
+      return res.json({ ...identity, state: 'open', qr: null, generatedAt: new Date().toISOString() });
+    }
+    const connected = await providerGet('/instance/connect/' + STORE_ARCHIVE.key);
+    if ((connected?.instance?.state || connected?.state) === 'open') {
+      return res.json({ ...identity, state: 'open', qr: null, generatedAt: new Date().toISOString() });
+    }
+    const qr = validQrPng(connected?.base64 || connected?.qrcode?.base64 || connected?.instance?.qrcode?.base64);
+    if (!qr) throw new Error('invalid QR');
+    return res.json({ ...identity, state: 'connecting', qr, generatedAt: new Date().toISOString() });
+  } catch (_) {
+    return res.status(502).json({ error: 'Não foi possível gerar o QR Code agora. Tente novamente.' });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+});
+
 // status de conexão ao vivo de cada instância (open/close/connecting) + número
 async function fetchEvolutionStatus() {
   const map = {};
