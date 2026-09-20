@@ -10,6 +10,26 @@ function clean(value) {
   return value == null ? '' : String(value).trim();
 }
 
+function usableBarcode(value) {
+  const barcode = clean(value);
+  return barcode && !/^SEM[\s_-]*GTIN$/i.test(barcode) ? barcode : '';
+}
+
+function saleSizeKey(value) {
+  const label = clean(value).toUpperCase();
+  // Mesma equivalência usada na bipagem. Não renomeia nem reúne variantes.
+  return /^(U|UNICO|ÚNICO)$/.test(label) ? 'ÚNICO' : label;
+}
+
+function uniqueVariant(matches, product) {
+  if (matches.length > 1) {
+    const err = new SaleStockError(`Mais de uma variante corresponde ao tamanho de ${product?.name || 'o produto'}. Selecione a variante antes de finalizar.`);
+    err.ambiguousVariant = true;
+    throw err;
+  }
+  return matches[0] || null;
+}
+
 function requiresPhysicalSizeConfirmation() {
   // Decisão do dono (2026-07-15): nenhuma marca pode bloquear a venda
   // por falta de confirmação prévia do tamanho da caixa.
@@ -26,8 +46,14 @@ function assertSellableSize(_product, size) {
 function resolveProductSize(product, item = {}) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   const requestedId = clean(item.productSizeId);
-  const requestedSize = clean(item.size);
-  const barcode = clean(item.barcode);
+  // Bipe por código interno reconhece o produto, mas não uma variante quando
+  // há mais de uma. Nesse caso, o tamanho manual também precisa resolvê-la.
+  const requestedSize = clean(item.size) || clean(item.sellerSize);
+  const barcode = usableBarcode(item.barcode);
+
+  if (item.isNewBarcode && clean(item.barcode) && !barcode) {
+    throw new SaleStockError('SEM GTIN não é um código de barras. Informe o código efetivamente lido.');
+  }
 
   if (requestedId) {
     const byId = sizes.find((size) => size.id === requestedId);
@@ -36,12 +62,17 @@ function resolveProductSize(product, item = {}) {
   }
 
   if (barcode) {
-    const byBarcode = sizes.find((size) => clean(size.barcode) === barcode);
+    const byBarcode = uniqueVariant(sizes.filter((size) => usableBarcode(size.barcode) === barcode), product);
     if (byBarcode) return assertSellableSize(product, byBarcode);
   }
 
   if (requestedSize) {
-    const bySize = sizes.find((size) => clean(size.size) === requestedSize);
+    // Primeiro a grafia literal, depois caixa e por fim equivalência de Único.
+    // Uma correspondência ambígua nunca cria uma terceira variante ou escolhe
+    // por saldo de outra loja; o vendedor precisa selecionar um id explícito.
+    const bySize = uniqueVariant(sizes.filter((size) => clean(size.size) === requestedSize), product)
+      || uniqueVariant(sizes.filter((size) => clean(size.size).toUpperCase() === requestedSize.toUpperCase()), product)
+      || uniqueVariant(sizes.filter((size) => saleSizeKey(size.size) === saleSizeKey(requestedSize)), product);
     if (!bySize) throw new SaleStockError(`Tamanho ${requestedSize} nao cadastrado para ${product?.name || 'o produto'}.`);
     return assertSellableSize(product, bySize);
   }
@@ -58,12 +89,13 @@ function planSaleProductSize(product, item = {}) {
       needsNewProductSize: false,
     };
   } catch (err) {
+    if (err.ambiguousVariant || (item.isNewBarcode && clean(item.barcode) && !usableBarcode(item.barcode))) throw err;
     const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
     const requestedId = clean(item.productSizeId);
     const requestedSize = clean(item.size);
-    const barcode = clean(item.barcode);
+    const barcode = usableBarcode(item.barcode);
     const sizeAlreadyExists = requestedSize
-      ? sizes.some((size) => clean(size.size).toLowerCase() === requestedSize.toLowerCase())
+      ? sizes.some((size) => saleSizeKey(size.size) === saleSizeKey(requestedSize))
       : false;
 
     // Fluxo manual do PDV: se o vendedor informou um tamanho ainda inexistente,

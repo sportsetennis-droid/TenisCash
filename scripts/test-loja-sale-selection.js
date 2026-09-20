@@ -57,7 +57,7 @@ assert.equal(localOnly.prompts.length, 1);
 
 const noLocalStock = choose(multiStore, { storeId: 'store-c', answer: '40' });
 assert.equal(noLocalStock.selected.id, 'size-40');
-assert.match(noLocalStock.prompts[0], /saldo nesta loja: 0/);
+assert.match(noLocalStock.prompts[0], /estoque anterior, ainda não conferido: 0/);
 
 const pendingSingle = choose({
   name: 'Tenis Pendente',
@@ -91,11 +91,10 @@ const sellerSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes',
 assert.match(sellerSource, /Digite manualmente o tamanho de \$\{p\.name\} ao escolher o produto/);
 
 const biparHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'bipar.html'), 'utf8');
-assert.match(biparHtml, /o estoque já foi somado\. Você pode informar agora ou deixar para depois/);
-assert.match(biparHtml, /id="size-skip" onclick="pularTamanho\(\)"/);
+assert.match(biparHtml, /O tamanho ainda não foi confirmado/);
+assert.match(biparHtml, /id="size-skip" data-click="skip-size"/);
 assert.doesNotMatch(biparHtml, /O tamanho é obrigatório/);
-
-const stocktakeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'stocktake.js'), 'utf8');
-assert.match(stocktakeSource, /function sizeConfirmationBlocksStock\(\) \{\s*return false;/);
+// A contagem por rodada é validada na suíte test-stocktake-rounds; não depende
+// da antiga baixa imediata nem do helper sizeConfirmationBlocksStock removido.
 
 console.log('ALL_PASS loja sale selection (manual size at selection, edit in cart, backend requirement, payload)');

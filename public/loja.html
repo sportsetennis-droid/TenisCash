@@ -2503,7 +2503,9 @@ async function onSellBipe() {
         msg.textContent = 'Produto não adicionado: digite o tamanho ao bipar.';
         return;
       }
-      addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { productSizeId: d.product.productSizeId, size: d.product.size, sellerSize, sizeConfirmedAt: d.product.sizeConfirmedAt, barcode: code });
+      // Código interno pode reconhecer o produto sem escolher uma variante.
+      // Nesse caso, encaminha o tamanho digitado para a resolução na venda.
+      addToCart(d.product.id, d.product.name || '', d.product.brand || '', price, '', { productSizeId: d.product.productSizeId, size: d.product.size || sellerSize, sellerSize, sizeConfirmedAt: d.product.sizeConfirmedAt, barcode: code });
       msg.style.color = '#0a843d';
       msg.textContent = '✅ ' + (d.product.name || '') + ' — tamanho manual ' + sellerSize + ' adicionado';
     } else {
