@@ -15,7 +15,7 @@
 const express = require('express');
 const multer = require('multer');
 const sharp = require('sharp');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, adminMiddleware, productAdminMiddleware, prisma } = require('../middleware');
 
 const { learnScannerBarcode, validGtin, matchScannerReference } = require('../services/scannerReference');
 const { parseScannerText, scannerPendingMessage } = require('../services/scannerText');
@@ -1004,7 +1004,10 @@ router.get('/etiqueta-status', async (req, res) => {
 
 // ============== ADMIN ==============
 
-router.use(authMiddleware, adminMiddleware);
+router.use(authMiddleware, (req, res, next) => {
+  if (['/located-product-ids', '/biped-product-ids'].includes(req.path.replace(/\/$/, ''))) return productAdminMiddleware(req, res, next);
+  return adminMiddleware(req, res, next);
+});
 
 // GET /api/stocktake/unrecognized — bipes NÃO reconhecidos agrupados por código (pra recontagem)
 router.get('/unrecognized', async (req, res) => {

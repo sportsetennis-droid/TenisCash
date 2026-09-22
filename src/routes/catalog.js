@@ -1,6 +1,7 @@
 const {loadVerification,attachVerification,matchesVerification}=require('../services/stockVerification');
 const express = require('express');
-const { prisma, authMiddleware } = require('../middleware');
+const { prisma, authMiddleware, JWT_SECRET } = require('../middleware');
+const jwt = require('jsonwebtoken');
 const { formatProductCard, searchProductsForAI } = require('../services/catalogSearch');
 
 const router = express.Router();
@@ -46,18 +47,19 @@ function optionalCatalogAuth(req, res, next) {
     req.userRole = null;
     return next();
   }
-  const jwt = require('jsonwebtoken');
-  const { JWT_SECRET } = require('../middleware');
-  const token = authHeader.split(' ')[1];
+  // Expired visitor sessions still see the public catalog, as before.
+  // Only a valid app identity proceeds to the current database-role check.
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    req.userRole = decoded.role;
-  } catch {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    if (typeof decoded?.userId !== 'string' || !decoded.userId.trim()) throw new Error('identity');
+  } catch (_) {
     req.userId = null;
     req.userRole = null;
+    return next();
   }
-  next();
+  // A valid token must use the current database role, including after an
+  // administrator is reassigned to the product-only Design role.
+  return authMiddleware(req, res, next);
 }
 
 async function resolveMyStoreScope(req) {

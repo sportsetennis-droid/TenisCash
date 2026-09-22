@@ -1535,8 +1535,7 @@ const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Está
     }
     if (!token) { showScreen('auth'); return; }
 
-    if (user) goHomeByRole();
-    else showScreen('auth');
+    showScreen('auth');
 
     try {
       const fresh = await api('/auth/me');
@@ -1549,7 +1548,7 @@ const PLACES = ['Academia','Parque','Rua','Praia','Casa','Clube','Quadra','Está
         user = fresh.user;
         localStorage.setItem('tc_user', JSON.stringify(user));
         console.log('[boot] role do servidor:', user.role, 'isPartner:', !!user.partner);
-        if (prevRole !== user.role) {
+        if (prevRole !== user.role || !document.querySelector('.screen.active:not(#auth)')) {
           console.log('[boot] role mudou (' + prevRole + ' -> ' + user.role + '), redirecionando.');
           goHomeByRole();
         }
@@ -1578,6 +1577,11 @@ function isPartner() {
 }
 
 function goHomeByRole() {
+  if (user && ['design', 'design_view'].includes(user.role)) {
+    if (token) localStorage.setItem('tc_admin_token', token);
+    window.location.replace('/admin.html');
+    return;
+  }
   if (isPartner()) showScreen('partner-home');
   else if (isSeller()) showScreen('seller-home');
   else showScreen('home');

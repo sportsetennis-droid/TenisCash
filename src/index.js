@@ -3,6 +3,7 @@ const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { designIsolationMiddleware } = require('./middleware');
 
 const authRoutes = require('./routes/auth');
 const webauthnRoutes = require('./routes/webauthn');
@@ -179,6 +180,11 @@ const authLimiter = rateLimit({
   message: { error: 'Muitas tentativas de login. Aguarde 15 minutos.' }
 });
 app.use('/api/auth/', authLimiter);
+
+// Enforce the current product-only role before legacy routers with independent
+// JWT validation. Anonymous/public traffic and service webhook keys keep their
+// original authentication flow.
+app.use('/api', designIsolationMiddleware);
 
 // Rotas
 // TEMPORÁRIO (remover após uso): re-pull foto 2026 COM COR, fora de /api/admin. Guard por ?g=.

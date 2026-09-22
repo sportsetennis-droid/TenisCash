@@ -6,7 +6,8 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 const nsHandlers = require('../services/nuvemshopHandlers');
 
 // Re-empurra pra Nuvemshop se o produto já está na loja. Mudar a classificação muda as
@@ -21,7 +22,7 @@ async function syncIfMapped(productId) {
 }
 
 const router = express.Router();
-router.use(authMiddleware, adminMiddleware);
+router.use(authMiddleware, productAdminMiddleware, designProductResponses);
 
 // Árvore oficial (espelho do frontend) — usada pra validar
 const VALID = {

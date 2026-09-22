@@ -1,15 +1,91 @@
 const express = require('express');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const { roleAfterStoreAssignment } = require('../services/sellerRole');
-const { OWNER_RECORD_KEY } = require('../services/rankingOwner');
+const { OWNER_RECORD_KEY, getRankingOwner } = require('../services/rankingOwner');
+const { isDesignRequestAllowed, isDesignRole } = require('../services/designAccess');
 
 const router = express.Router();
 router.use(authMiddleware);
 // /api/admin/fiscal tem guard PROPRIO (caixa store/seller pode emitir/imprimir cupom) —
 // nao aplica o adminMiddleware blanket aqui; deixa cair pro mount /api/admin/fiscal.
 router.use((req, res, next) => {
+  if (isDesignRequestAllowed(req)) return next();
   if (req.path === '/fiscal' || req.path.startsWith('/fiscal/')) return next();
   return adminMiddleware(req, res, next);
+});
+
+async function designAccessOwnerOnly(req, res, next) {
+  try {
+    const owner = req.userRole === 'superadmin' ? await getRankingOwner(prisma) : null;
+    if (!owner || owner.id !== req.userId) {
+      return res.status(403).json({ error: 'Somente o titular pode gerenciar o acesso Design' });
+    }
+    return next();
+  } catch (_) {
+    return res.status(503).json({ error: 'Não foi possível validar o titular' });
+  }
+}
+
+router.get('/design-access', designAccessOwnerOnly, async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: { in: ['design', 'design_view'] } },
+      select: { id: true, name: true, email: true, phone: true, role: true, active: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ users });
+  } catch (_) {
+    res.status(500).json({ error: 'Não foi possível listar os acessos Design' });
+  }
+});
+
+router.post('/design-access', designAccessOwnerOnly, async (req, res) => {
+  const { userId, mode, expectedRole } = req.body || {};
+  if (typeof userId !== 'string' || !userId.trim()
+    || !['edit', 'view', 'none'].includes(mode)
+    || typeof expectedRole !== 'string' || !expectedRole) {
+    return res.status(400).json({ error: 'Informe userId, mode (edit/view/none) e expectedRole' });
+  }
+  if (userId === req.userId) return res.status(400).json({ error: 'O titular não pode alterar o próprio acesso' });
+  const nextRole = mode === 'edit' ? 'design' : mode === 'view' ? 'design_view' : 'user';
+  const fail = (status, message) => Object.assign(new Error(message), { status });
+  try {
+    const result = await prisma.$transaction(async tx => {
+      // Recheck owner in the transaction as well, so a concurrent owner
+      // deactivation cannot authorize a later role update.
+      const owner = await getRankingOwner(tx);
+      if (!owner || owner.id !== req.userId) throw fail(403, 'O acesso do titular mudou. Entre novamente.');
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, role: true, active: true },
+      });
+      if (!target) throw fail(404, 'Usuário não encontrado');
+      if (['superadmin', 'store'].includes(target.role)) throw fail(400, 'Este perfil não pode receber acesso Design');
+      if (target.role !== expectedRole) throw fail(409, 'O perfil mudou. Atualize a lista antes de continuar.');
+      if (mode === 'none' && !isDesignRole(target.role)) throw fail(400, 'O usuário não possui acesso Design para remover');
+      if (mode !== 'none' && target.active !== true) throw fail(400, 'Ative a conta antes de atribuir acesso Design');
+      if (target.role === nextRole) return { user: target, changed: false };
+      const changed = await tx.user.updateMany({
+        where: { id: userId, role: expectedRole, active: target.active },
+        // Preserve every store affiliation and credential.
+        data: { role: nextRole },
+      });
+      if (changed.count !== 1) throw fail(409, 'O perfil mudou. Atualize a lista antes de continuar.');
+      await tx.adminAction.create({
+        data: {
+          adminId: req.userId,
+          targetUserId: userId,
+          action: 'design_access_change',
+          description: 'Alterou o acesso Design de ' + target.name,
+          metadata: JSON.stringify({ previousRole: target.role, role: nextRole, mode }),
+        },
+      });
+      return { user: { ...target, role: nextRole }, changed: true };
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Não foi possível alterar o acesso Design' });
+  }
 });
 
 function recifeDayBoundsFromDate(dateYYYYMMDD) {

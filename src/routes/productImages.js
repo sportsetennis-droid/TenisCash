@@ -5,7 +5,8 @@
 const express = require('express');
 const multer = require('multer');
 const sharp = require('sharp');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 
 // Upload memory storage — limita 15MB por arquivo
 const upload = multer({
@@ -65,7 +66,7 @@ if (serperGis.isConfigured()) {
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(productAdminMiddleware, designProductResponses);
 
 // Status da configuração (Google ou Brave conforme env)
 router.get('/status', (_req, res) => {

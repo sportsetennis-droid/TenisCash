@@ -7,11 +7,12 @@ const {loadVerification,attachVerification,matchesVerification}=require('../serv
 // idade e venda — chamado em /reclassify.
 
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(productAdminMiddleware, designProductResponses);
 
 // Dashboard de estoque
 router.get('/dashboard', async (_req, res) => {

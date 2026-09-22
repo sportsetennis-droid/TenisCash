@@ -12,10 +12,11 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 
 const router = express.Router();
-router.use(authMiddleware, adminMiddleware);
+router.use(authMiddleware, productAdminMiddleware, designProductResponses);
 
 const CONFIG_KEY = 'vitrine_selection_v1';
 

@@ -5,7 +5,14 @@ const { labelUsage } = require('../services/labelUsage');
 
 const express = require('express');
 const crypto = require('node:crypto');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, adminMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { isDesignRole } = require('../services/designAccess');
+
+function designLabelBatch(batch) {
+  if (!batch) return batch;
+  const { createdById, prints, ...productLabels } = batch;
+  return productLabels;
+}
 const {
   generateLabelsPDF,
   defaultTemplates,
@@ -29,6 +36,7 @@ router.use(authMiddleware);
 // (aplicada inline na rota DELETE abaixo).
 function labelAccess(req, res, next) {
   const role = req.userRole;
+  if (isDesignRole(role)) return productAdminMiddleware(req, res, next);
   if (['admin', 'superadmin', 'manager', 'store', 'seller'].includes(role)) return next();
   return res.status(403).json({ error: 'Acesso restrito' });
 }
@@ -1251,9 +1259,9 @@ async function ensureDefaultTemplates() {
   }
 }
 
-router.get('/templates', async (_req, res) => {
+router.get('/templates', async (req, res) => {
   try {
-    await ensureDefaultTemplates();
+    if (req.userRole !== 'design_view') await ensureDefaultTemplates();
     const deprecatedNames = Object.values(defaultTemplates())
       .flatMap((template) => template.legacyNames || []).concat([
         'Everlast — A4 12 etiquetas (5x8 cm) — frente e verso',
@@ -1347,7 +1355,7 @@ router.get('/batches', async (req, res) => {
       take: limit,
       include: { template: true },
     });
-    res.json({ batches });
+    res.json({ batches: isDesignRole(req.userRole) ? batches.map(designLabelBatch) : batches });
   } catch (err) {
     console.error('[labels/batches GET] erro:', err);
     res.status(500).json({ error: 'Erro ao listar lotes' });
@@ -1361,7 +1369,7 @@ router.get('/batches/:id', async (req, res) => {
       include: { items: true, template: true, prints: { orderBy: { printedAt: 'desc' } } },
     });
     if (!batch) return res.status(404).json({ error: 'Lote não encontrado' });
-    res.json({ batch });
+    res.json({ batch: isDesignRole(req.userRole) ? designLabelBatch(batch) : batch });
   } catch (err) {
     console.error('[labels/batches/:id] erro:', err);
     res.status(500).json({ error: 'Erro ao carregar lote' });

@@ -21,7 +21,7 @@ model User {
   pin             String // hashed
   balance         Float     @default(0) // CASHBACK do cliente — pode transferir, usar em compras
   partnerBalance  Float     @default(0) // COMISSÃO do parceiro — APENAS troca por produtos (não transfere)
-  role            String    @default("user") // user, seller, admin, superadmin, partner
+  role            String    @default("user") // user, seller, admin, superadmin, partner, design, design_view
   active          Boolean   @default(true)
   welcomeBonus    Boolean   @default(false)
   deletedCpf      String?

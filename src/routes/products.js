@@ -4,7 +4,8 @@
 // =====================================================================
 
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 const nsHandlers = require('../services/nuvemshopHandlers');
 
 // Helper: se o produto já tem espelho na Nuvemshop, re-empurra com os dados atualizados.
@@ -24,7 +25,7 @@ async function syncToNuvemshopIfMapped(productId) {
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(productAdminMiddleware, designProductResponses);
 
 // Localizações válidas — qualquer outra é rejeitada
 const VALID_LOCATIONS = new Set([

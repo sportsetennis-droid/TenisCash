@@ -2,12 +2,13 @@
 // Routes: /api/admin/categories — árvore de categorias
 // =====================================================================
 const express = require('express');
-const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
+const { authMiddleware, productAdminMiddleware, prisma } = require('../middleware');
+const { designProductResponses } = require('../services/designProductData');
 const nsHandlers = require('../services/nuvemshopHandlers');
 
 const router = express.Router();
 router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(productAdminMiddleware, designProductResponses);
 
 // Sync background pra Nuvemshop apos classificacao em lote.
 // Fire-and-forget pra nao travar resposta HTTP em batches grandes.

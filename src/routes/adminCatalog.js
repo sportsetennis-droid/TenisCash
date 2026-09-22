@@ -2,7 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const Papa = require('papaparse');
 const Anthropic = require('@anthropic-ai/sdk');
-const { prisma, authMiddleware } = require('../middleware');
+const { prisma, authMiddleware, productAdminMiddleware } = require('../middleware');
+const { isDesignRole } = require('../services/designAccess');
+const { designProductResponses, catalogWriteError } = require('../services/designProductData');
 const nsHandlers = require('../services/nuvemshopHandlers');
 
 // Sync com Nuvemshop se produto tem mapping. Fire-and-forget para nao
@@ -23,6 +25,7 @@ async function syncProductToNuvemshop(productId) {
 
 const router = express.Router();
 router.use(authMiddleware);
+router.use(designProductResponses);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -52,13 +55,11 @@ function multerErrorHandler(err, _req, res, _next) {
 }
 
 function adminOnly(req, res, next) {
-  if (req.userRole !== 'admin' && req.userRole !== 'superadmin' && req.userRole !== 'manager') {
-    return res.status(403).json({ error: 'Acesso restrito a administradores' });
-  }
-  next();
+  return productAdminMiddleware(req, res, next);
 }
 
 function sellerOrAdmin(req, res, next) {
+  if (isDesignRole(req.userRole)) return productAdminMiddleware(req, res, next);
   if (!['seller', 'admin', 'superadmin', 'manager'].includes(req.userRole)) {
     return res.status(403).json({ error: 'Acesso negado' });
   }
@@ -475,6 +476,10 @@ router.post('/products/:id/bipe-tamanhos', adminOnly, async (req, res) => {
 
 router.get('/products', adminOnly, async (req, res) => {
   try {
+    const paginated = req.query.page != null || isDesignRole(req.userRole);
+    const rawPage = Number(req.query.page), rawPageSize = Number(req.query.pageSize);
+    const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 1000000) : 1;
+    const pageSize = Number.isSafeInteger(rawPageSize) && rawPageSize > 0 ? Math.min(rawPageSize, 500) : (paginated ? 60 : 500);
     const search = String(req.query.search || '').trim();
     const brand = String(req.query.brand || '').trim();
     const category = String(req.query.category || '').trim();
@@ -545,17 +550,20 @@ router.get('/products', adminOnly, async (req, res) => {
 
     const products = await prisma.product.findMany({
       where,
-      orderBy: [{ updatedAt: 'desc' }],
-      take: 500,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: pageSize,
+      ...(paginated ? { skip: (page - 1) * pageSize } : {}),
       include: {
         sizes: {
           orderBy: { size: 'asc' },
           include: { storeStocks: { include: { store: { select: { id: true, code: true, name: true } } } } },
         },
-        createdBy: { select: { id: true, name: true } },
+        ...(!isDesignRole(req.userRole) ? { createdBy: { select: { id: true, name: true } } } : {}),
       },
     });
+    const total = paginated ? await prisma.product.count({ where }) : null;
     res.json({
+      ...(paginated ? { total, page, pageSize, pages: Math.ceil(total / pageSize) } : {}),
       products: products.map((p) => {
         const ctx = (() => { try { return typeof p.aiContext === 'string' ? JSON.parse(p.aiContext) : (p.aiContext || {}); } catch { return {}; } })();
         return { ...p, naNuvemshop: nsSet.has(p.id), naTiktok: ttSet.has(p.id), releaseToNuvemshop: ctx.releaseToNuvemshop === true, confirmedForNuvemshop: ctx.confirmedForNuvemshop === true, hideFromNuvemshop: ctx.hideFromNuvemshop === true };
@@ -714,6 +722,10 @@ router.post('/products/:id/remove-nuvemshop', adminOnly, async (req, res) => {
 router.post('/products', adminOnly, async (req, res) => {
   try {
     const b = req.body || {};
+    if (isDesignRole(req.userRole)) {
+      const error = catalogWriteError(b, { creating: true });
+      if (error) return res.status(403).json({ error });
+    }
     const sku = String(b.sku || '').trim();
     const name = String(b.name || '').trim();
     const brand = String(b.brand || '').trim();
@@ -775,8 +787,19 @@ router.put('/products/:id', adminOnly, async (req, res) => {
   try {
     const id = req.params.id;
     const b = req.body || {};
+    if (isDesignRole(req.userRole)) {
+      const error = catalogWriteError(b);
+      if (error) return res.status(403).json({ error });
+    }
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Produto não encontrado' });
+    if (isDesignRole(req.userRole) && b.aiContext != null) {
+      const before = parseJsonSafe(existing.aiContext) || {};
+      const incoming = parseJsonSafe(b.aiContext) || {};
+      b.aiContext = { ...before, ...incoming,
+        ...(incoming.classification ? { classification: { ...(before.classification || {}), ...incoming.classification } } : {}),
+      };
+    }
 
     const data = {
       ...(b.sku != null ? { sku: String(b.sku).trim() } : {}),

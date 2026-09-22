@@ -220,6 +220,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 }
 </style>
 <link rel="stylesheet" href="/_design-system.css">
+<script src="/design-access.js?v=20260922"></script>
 <script src="/_design-system.js?v=20260521M-2100"></script>
 <script src="/_product-search-bar.js?v=20260521M-2100"></script>
 <script src="/_product-card.js?v=stock-verification-1"></script>
@@ -809,11 +810,13 @@ tr:hover td{background:rgba(0,0,0,0.02)}
 
     <script>
       function switchTabByName(name) {
+        if (!DesignAccess.canNavigateLegacy()) return;
         const btn = document.querySelector(`.tab[onclick*="switchTab('${name}'"]`);
         if (btn) btn.click();
         else if (typeof switchTab === 'function') switchTab(name, null);
       }
       async function loadHubStats() {
+        if (!DesignAccess.canNavigateLegacy()) return;
         try {
           const headers = { 'Authorization': 'Bearer ' + (localStorage.getItem('tc_admin_token') || '') };
           const r = await fetch('/api/admin/classification/stats', { headers }).then(r => r.json()).catch(() => ({}));
@@ -840,6 +843,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
       (function(){
         const orig = window.switchTab;
         window.switchTab = function(name, btn) {
+          if (!DesignAccess.canNavigateLegacy()) return;
           if (typeof orig === 'function') orig(name, btn);
           if (name === 'home') loadHubStats();
         };
@@ -3702,6 +3706,7 @@ tr:hover td{background:rgba(0,0,0,0.02)}
   (function() {
     const origSwitchTab = window.switchTab;
     window.switchTab = function(name, btn) {
+    if (!DesignAccess.canNavigateLegacy()) return;
       if (typeof origSwitchTab === 'function') origSwitchTab(name, btn);
       if (name === 'whatsapp') waCoexLoadStatus();
     };
@@ -3837,6 +3842,7 @@ async function nfeGeralLoad() {
 (function(){
   const prev = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof prev === 'function') prev(name, btn);
     if (name === 'nfegeral') nfeGeralLoad();
     if (name === 'marketing') marketingLoad();
@@ -4651,6 +4657,7 @@ let adminMsgSearchTimer = null;
 
 // API helper
 async function api(path, method='GET', body=null) {
+  if (!DesignAccess.allowRequest(DesignAccess.role(), path, method)) return { error: 'Área indisponível para este acesso.' };
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body = JSON.stringify(body);
@@ -4873,8 +4880,8 @@ async function doAdminLogin() {
 
   const data = await api('/auth/login', 'POST', body);
   if (data.error) { document.getElementById('login-error').textContent = data.error; return; }
-  if (data.user.role !== 'admin' && data.user.role !== 'superadmin' && data.user.role !== 'manager') {
-    document.getElementById('login-error').textContent = 'Acesso restrito a administradores e gerentes';
+  if (!DesignAccess.accepts(data.user.role)) {
+    document.getElementById('login-error').textContent = 'Acesso restrito a contas autorizadas';
     return;
   }
   token = data.token;
@@ -4887,8 +4894,8 @@ async function doAdminLogin() {
 async function doAdminLoginBio() {
   try {
     const data = await TCBio.login();
-    if (data.user.role !== 'admin' && data.user.role !== 'superadmin' && data.user.role !== 'manager') {
-      document.getElementById('login-error').textContent = 'Acesso restrito a administradores e gerentes'; return;
+    if (!DesignAccess.accepts(data.user.role)) {
+      document.getElementById('login-error').textContent = 'Acesso restrito a contas autorizadas'; return;
     }
     token = data.token; adminUser = data.user; localStorage.setItem('tc_admin_token', token); showDashboard();
   } catch (e) {
@@ -4898,6 +4905,7 @@ async function doAdminLoginBio() {
 }
 
 function doLogout() {
+  DesignAccess.reset();
   token = null;
   adminUser = null;
   localStorage.removeItem('tc_admin_token');
@@ -4939,21 +4947,30 @@ async function mountAdminBiometricEntry() {
 }
 
 async function showDashboard() {
+  // Always resolve the current server role before exposing any dashboard content.
+  const me = await api('/auth/me');
+  if (me.error || !me.user || !DesignAccess.accepts(me.user.role)) { doLogout(); return; }
+  adminUser = me.user;
+  if (me.token) { token = me.token; localStorage.setItem('tc_admin_token', token); }
+  DesignAccess.setRole(adminUser.role);
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
+  if (DesignAccess.restricted(adminUser.role)) {
+    await DesignAccess.mount({ user: adminUser, api, token: () => token, logout: doLogout });
+    return;
+  }
+  DesignAccess.restore();
+  document.getElementById('admin-name').textContent = adminUser.name;
   initAdminMobileNavigation();
   mountAdminBiometricEntry().catch(() => {});
-  if (!adminUser) {
-    const me = await api('/auth/me');
-    if (me.error || (me.user.role !== 'admin' && me.user.role !== 'superadmin' && me.user.role !== 'manager')) { doLogout(); return; }
-    adminUser = me.user;
-  }
-  document.getElementById('admin-name').textContent = adminUser.name;
+  DesignAccess.ownerPanel(adminUser, api);
   loadDashboard();
+  loadHubStats();
 }
 
 // LOAD ALL DATA
 async function loadDashboard() {
+  if (!DesignAccess.canNavigateLegacy()) return DesignAccess.isRestricted() ? DesignAccess.navigate('home') : undefined;
   loadUsers();
   loadTransactions();
   await loadStores();
@@ -8341,6 +8358,7 @@ async function vitSave(){
 }
 
 function switchTab(tab, btn) {
+  if (!DesignAccess.canNavigateLegacy()) return;
   const mobileSection = document.getElementById('admin-mobile-section');
   if (mobileSection) mobileSection.value = tab;
   document.querySelectorAll('.tabs > .tab').forEach(t => t.classList.remove('active'));
@@ -15238,6 +15256,7 @@ async function loadCompetitiveMonitor() {
 (function () {
   const orig = window.switchTab;
   window.switchTab = function (name, btn) {
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-competitivo');
     if (el) el.style.display = name === 'competitivo' ? 'block' : 'none';
@@ -15323,6 +15342,7 @@ function waToggleGroups(cb){ waState.showGroups = cb.checked; loadWaChats(); }
 (function(){
   const orig = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-whatsapp');
     if (el) el.style.display = name === 'whatsapp' ? 'block' : 'none';
@@ -15335,6 +15355,7 @@ function waToggleGroups(cb){ waState.showGroups = cb.checked; loadWaChats(); }
 (function(){
   const orig = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-wacoex');
     if (el) el.style.display = name === 'wacoex' ? 'block' : 'none';
@@ -15546,6 +15567,7 @@ async function finDelExpense(id){
 (function(){
   const orig = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-financeiro');
     if (el) el.style.display = name === 'financeiro' ? 'block' : 'none';
@@ -15733,6 +15755,7 @@ async function agDelAct(id){ if(!confirm('Remover esta atividade?'))return; try{
 (function(){
   const orig = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-agenda');
     if (el) el.style.display = name === 'agenda' ? 'block' : 'none';
@@ -16122,6 +16145,7 @@ async function pvmDelPadrao(id){ if(!confirm('Remover este padrão do manual?'))
 (function(){
   const orig = window.switchTab;
   window.switchTab = function(name, btn){
+    if (!DesignAccess.canNavigateLegacy()) return;
     if (typeof orig === 'function') orig.call(this, name, btn);
     const el = document.getElementById('tab-pvm');
     if (el) el.style.display = name === 'pvm' ? 'block' : 'none';
@@ -16311,11 +16335,13 @@ async function mcSyncNow() {
   // Carrega status quando a aba é aberta
   const origSwitch = window.switchTab;
   window.switchTab = function(tab, el) {
+    if (!DesignAccess.canNavigateLegacy()) return;
     origSwitch && origSwitch(tab, el);
     if (tab === 'metacatalog') mcLoadStatus();
   };
   const origSwitchByName = window.switchTabByName;
   window.switchTabByName = function(name) {
+    if (!DesignAccess.canNavigateLegacy()) return;
     origSwitchByName && origSwitchByName(name);
     if (name === 'metacatalog') mcLoadStatus();
   };
