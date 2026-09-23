@@ -19,6 +19,30 @@ import forge from 'node-forge';
 import pem from 'pem';
 import { buildDetPag } from './fiscalAcquirers.js';
 
+// Cópia embarcada de src/services/fiscalText.js: o agente é distribuído sozinho.
+// Manter em paridade (ver scripts/test-fiscal-product-description.js).
+function normalizeFiscalProductName(value) {
+  const text = (typeof value === 'string' ? value : '')
+    .normalize('NFC')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/gu, ' ')
+    .replace(/ +/g, ' ')
+    .trim()
+    .slice(0, 120)
+    .trim();
+  if (!text) {
+    const error = new Error('Descrição do produto vazia ou inválida para a nota fiscal (xProd). Corrija a descrição antes de emitir.');
+    error.code = 'FISCAL_PRODUCT_DESCRIPTION_INVALID';
+    throw error;
+  }
+  return text;
+}
+
 const SVRS_URLS = {
   homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
   production:   'https://nfce.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
@@ -238,7 +262,7 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, paym
       cEAN: 'SEM GTIN',
       xProd: tpAmb === 2 && idx === 0
         ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-        : (it.name || 'Produto').slice(0, 120),
+        : normalizeFiscalProductName(it.name),
       NCM: it.ncm || '64041100',
       CFOP: parseInt(it.cfop || '5102', 10),
       uCom: it.unidade || 'UN',
@@ -685,7 +709,7 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, pay
       cEAN: it.ean || 'SEM GTIN',
       xProd: tpAmb === 2 && idx === 0
         ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-        : (it.name || 'Produto').slice(0, 120),
+        : normalizeFiscalProductName(it.name),
       NCM: it.ncm || '64041100',
       CFOP: parseInt(it.cfop || defaultCFOP, 10),
       uCom: it.unidade || 'UN',

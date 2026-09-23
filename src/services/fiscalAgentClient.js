@@ -13,6 +13,7 @@
 // (ver _sefazPost em fiscalSefazDirect.mjs). 90s aqui garante que o agente SEMPRE
 // termina e devolve {accessKey, xmlSigned, transmitError} antes do central abortar.
 const TIMEOUT_MS = 90000;
+const { normalizeFiscalProductName } = require('./fiscalText');
 
 let _prisma = null;
 function getPrisma() {
@@ -198,8 +199,17 @@ async function ping(store) {
   }
 }
 
-function emitNFCe(store, payload) { return callAgent(store, '/emit-nfce', payload); }
-function emitNFe55(store, payload) { return callAgent(store, '/emit-nfe55', payload); }
+function fiscalEmissionPayload(payload) {
+  if (!Array.isArray(payload?.items)) return payload;
+  // O agente instalado pode ser antigo: a descrição já deve chegar válida.
+  // Cópias preservam os dados da venda e do produto usados pelo chamador.
+  return { ...payload, items: payload.items.map(item => ({
+    ...item, name: normalizeFiscalProductName(item.name),
+  })) };
+}
+
+async function emitNFCe(store, payload) { return callAgent(store, '/emit-nfce', fiscalEmissionPayload(payload)); }
+async function emitNFe55(store, payload) { return callAgent(store, '/emit-nfe55', fiscalEmissionPayload(payload)); }
 function cancel(store, payload) { return callAgent(store, '/cancel', payload); }
 function correction(store, payload) { return callAgent(store, '/correction', payload); }
 

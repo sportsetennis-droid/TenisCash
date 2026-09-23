@@ -15,6 +15,7 @@ import path from 'node:path';
 import https from 'node:https';
 import { execSync } from 'node:child_process';
 import { buildDetPag } from './fiscalAcquirers.js';
+import { normalizeFiscalProductName } from './fiscalText.js';
 
 const SVRS_URLS = {
   homologation: 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx',
@@ -138,7 +139,7 @@ export async function emitNFCe({ issuer, pfxPath, pfxSenha, items, payment, cust
       cEAN: 'SEM GTIN',
       xProd: tpAmb === 2 && idx === 0
         ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-        : (it.name || 'Produto').slice(0, 120),
+        : normalizeFiscalProductName(it.name),
       NCM: it.ncm || '64041100',
       CFOP: parseInt(it.cfop || '5102', 10),
       uCom: it.unidade || 'UN',
@@ -582,7 +583,7 @@ export async function emitNFe55({ issuer, pfxPath, pfxSenha, items, payment, cus
       cEAN: it.ean || 'SEM GTIN',
       xProd: tpAmb === 2 && idx === 0
         ? 'NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-        : (it.name || 'Produto').slice(0, 120),
+        : normalizeFiscalProductName(it.name),
       NCM: it.ncm || '64041100',
       CFOP: parseInt(it.cfop || defaultCFOP, 10),
       uCom: it.unidade || 'UN',
