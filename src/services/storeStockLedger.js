@@ -1,3 +1,5 @@
+const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = require('./barcodeInput');
+
 class SaleStockError extends Error {
   constructor(message, statusCode = 400) {
     super(message);
@@ -44,6 +46,11 @@ function assertSellableSize(_product, size) {
 }
 
 function resolveProductSize(product, item = {}) {
+  if (isWebsiteBarcode(item.barcode)) {
+    const err = new SaleStockError(WEBSITE_BARCODE_ERROR);
+    err.code = WEBSITE_BARCODE_ERROR_CODE;
+    throw err;
+  }
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   const requestedId = clean(item.productSizeId);
   // Bipe por código interno reconhece o produto, mas não uma variante quando
@@ -89,7 +96,7 @@ function planSaleProductSize(product, item = {}) {
       needsNewProductSize: false,
     };
   } catch (err) {
-    if (err.ambiguousVariant || (item.isNewBarcode && clean(item.barcode) && !usableBarcode(item.barcode))) throw err;
+    if (err.code === WEBSITE_BARCODE_ERROR_CODE || err.ambiguousVariant || (item.isNewBarcode && clean(item.barcode) && !usableBarcode(item.barcode))) throw err;
     const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
     const requestedId = clean(item.productSizeId);
     const requestedSize = clean(item.size);

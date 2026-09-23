@@ -2485,17 +2485,59 @@ function _promptManualSellerSize(productName, registeredHint) {
   return typed;
 }
 
+function _isWebsiteBarcode(value) {
+  const code = String(value || '').trim();
+  return /^(?:[a-z][a-z\d+.-]*:\/\/|\/\/|www\.|qr\.nike\.com(?:[\/?#:]|$))/i.test(code)
+    || /^(?:https?|javascript|data|mailto|tel):/i.test(code);
+}
+
+let _sellBipeRequest = 0;
+let _sellBipeQueue = Promise.resolve();
+let _sellBipeQueued = 0;
+
 // Bipe na venda: identifica produto + tamanho pelo código de barras (lookup, sem mexer estoque).
 async function onSellBipe() {
   const inp = document.getElementById('sellBipeInput');
   const code = (inp.value || '').trim();
   const msg = document.getElementById('sellBipeMsg');
   if (!code) return;
+  const request = _sellBipeRequest;
+  // Uma nova leitura substitui a pendência anterior, inclusive se for um QR.
+  _pendingBarcode = null;
   inp.value = '';
+  _sellBipeQueued++;
+  // Processa na ordem recebida: uma segunda leitura não descarta um bipe válido.
+  const next = _sellBipeQueue.then(async () => {
+    if (request !== _sellBipeRequest) return;
+    _pendingBarcode = null;
+    try {
+      await _processSellBipe(code, request, inp, msg);
+    } finally {
+      if (request === _sellBipeRequest) _sellBipeQueued--;
+    }
+  });
+  _sellBipeQueue = next.catch(() => {});
+  return next;
+}
+
+async function _processSellBipe(code, request, inp, msg) {
+  if (_isWebsiteBarcode(code)) {
+    msg.style.color = '#b06b00';
+    msg.textContent = 'Foi lido um QR Code de site, não o código de barras do produto. Leia as barras da etiqueta (EAN/UPC) ou busque pela referência.';
+    inp.focus();
+    return;
+  }
   msg.style.color = '#6e6e73'; msg.textContent = 'Consultando ' + code + '…';
+  let focusSearch = false;
   try {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
-    if (d.recognized && d.product) {
+    // A seleção manual cancela consultas antigas e as leituras ainda na fila.
+    if (request !== _sellBipeRequest) return;
+    if (d.ambiguous) {
+      msg.style.color = '#b06b00';
+      msg.textContent = 'Este código está vinculado a mais de um cadastro. Busque pela referência e confira o produto e o tamanho; o código não será vinculado novamente.';
+      focusSearch = true;
+    } else if (d.recognized && d.product) {
       const price = d.product.promoPrice || d.product.price || 0;
       const sellerSize = _promptManualSellerSize(d.product.name, d.product.size);
       if (!sellerSize) {
@@ -2511,11 +2553,15 @@ async function onSellBipe() {
     } else {
       _pendingBarcode = code;
       msg.style.color = '#b06b00';
-      msg.innerHTML = '⚠️ Código <b>' + code + '</b> ainda não cadastrado. Ache o produto na busca abaixo e diga o tamanho — vou amarrar o código a ele nesta venda.';
-      document.getElementById('sellSearchInput').focus();
+      msg.textContent = '⚠️ Código ' + code + ' ainda não localizado. Busque o produto abaixo e confira o tamanho para vincular o código nesta venda.';
+      focusSearch = true;
     }
-  } catch (e) { msg.style.color = '#d70015'; msg.textContent = 'Erro: ' + (e.message || e); }
-  inp.focus();
+  } catch (e) {
+    if (request !== _sellBipeRequest) return;
+    msg.style.color = '#d70015'; msg.textContent = 'Erro: ' + (e.message || e);
+  } finally {
+    if (request === _sellBipeRequest) (focusSearch ? document.getElementById('sellSearchInput') : inp).focus();
+  }
 }
 
 function _askSizeForBipe(p) {
@@ -2572,18 +2618,27 @@ function addToCartById(productId) {
   const p = _sellSearchAll.find(x => x.id === productId);
   if (!p) return;
   const price = (p.promoPrice || p.price);
-  if (_pendingBarcode) {
-    // vincular o código órfão bipado a este produto + tamanho
-    const variant = _askSizeForBipe(p);
-    if (!variant) return; // cancelou — mantém o código pendente
-    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id || null, size: variant.size, sellerSize: variant.sellerSize, barcode: _pendingBarcode, isNewBarcode: true, isNewSize: !variant.id });
-    const msg = document.getElementById('sellBipeMsg');
-    if (msg) { msg.style.color = '#0a843d'; msg.innerHTML = '✅ Código <b>' + _pendingBarcode + '</b> amarrado a ' + (p.name || '') + ' tam ' + variant.size + ' (grava ao finalizar a venda).'; }
-    _pendingBarcode = null;
+  const barcode = _pendingBarcode;
+  const variant = barcode ? _askSizeForBipe(p) : _chooseSaleSize(p);
+  if (!variant) return; // cancelou — mantém a leitura ou o código pendente
+  const canceledReads = _sellBipeQueued > 0;
+  ++_sellBipeRequest;
+  _sellBipeQueue = Promise.resolve();
+  _sellBipeQueued = 0;
+  _pendingBarcode = null;
+  const msg = document.getElementById('sellBipeMsg');
+  if (barcode) {
+    // Vincula somente o código já consultado, antes da seleção manual.
+    addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id || null, size: variant.size, sellerSize: variant.sellerSize, barcode, isNewBarcode: true, isNewSize: !variant.id });
+    if (msg) { msg.style.color = '#0a843d'; msg.textContent = '✅ Código ' + barcode + ' amarrado a ' + (p.name || '') + ' tam ' + variant.size + ' (grava ao finalizar a venda).'; }
   } else {
-    const variant = _chooseSaleSize(p);
-    if (!variant) return;
     addToCart(p.id, p.name || '', p.brand || '', price, p.imageUrl || '', { productSizeId: variant.id, size: variant.size, sellerSize: variant.sellerSize, sizeConfirmedAt: variant.sizeConfirmedAt, isNewSize: !!variant.isNewSize });
+    if (msg && canceledReads) {
+      msg.style.color = '#b06b00';
+      msg.textContent = 'Produto adicionado manualmente. As consultas de códigos pendentes foram canceladas; bipe novamente os demais produtos.';
+    } else if (msg && /^Consultando /.test(msg.textContent || '')) {
+      msg.textContent = '';
+    }
   }
 }
 

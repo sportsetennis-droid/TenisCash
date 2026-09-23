@@ -53,6 +53,7 @@ function routeFunctions(db){
   if(name==='../services/stocktakeRounds')return require('../src/services/stocktakeRounds'); if(name==='./stocktakeRounds')return {};
   if(name==='../services/scannerCompletion')return require('../src/services/scannerCompletion');
   if(name==='../services/scannerCatalog')return require('../src/services/scannerCatalog');
+  if(name==='../services/barcodeInput')return require('../src/services/barcodeInput');
   if(name==='../services/scannerReference')return require('../src/services/scannerReference');
   if(name==='../services/scannerText')return require('../src/services/scannerText');
   throw Error('Unexpected require '+name);

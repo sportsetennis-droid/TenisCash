@@ -6,6 +6,7 @@ const { authMiddleware, storeScope, enforceStoreId, prisma } = require('../middl
 const pagbank = require('../services/pagbank');
 const equipeReports = require('../services/equipeReports');
 const { SaleStockError, planSaleProductSize, applyStoreStockDelta } = require('../services/storeStockLedger');
+const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = require('../services/barcodeInput');
 const relationshipCommission = require('../services/relationshipCommission');
 const commissionEvidenceStore = require('../services/commissionEvidenceStore');
 const storeRadio = require('../services/storeRadio');
@@ -807,6 +808,12 @@ router.post('/sale', authMiddleware, sellerOnly, async (req, res) => {
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Informe ao menos 1 item' });
+    }
+
+    // Older PDV tabs can still submit a QR URL as a barcode. Reject every item
+    // before database work, even when the tab did not mark it as a new barcode.
+    if (items.some((item) => isWebsiteBarcode(item?.barcode))) {
+      return res.status(400).json({ error: WEBSITE_BARCODE_ERROR, code: WEBSITE_BARCODE_ERROR_CODE });
     }
 
     // ANTI-DUPLICAÇÃO: se o MESMO carrinho (idemKey) já virou venda há <15min, devolve a existente

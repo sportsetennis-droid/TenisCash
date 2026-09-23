@@ -12,7 +12,7 @@
     "db:seed": "node src/seed.js",
     "agents:daily": "node scripts/run-daily-agents.js",
     "test:seller-stock": "node scripts/test-seller-stock-logic.js",
-    "test:sale-stock-ledger": "node scripts/test-sale-stock-ledger.js && node scripts/test-loja-sale-selection.js && node scripts/test-sale-manual-size-resolution.js && node scripts/test-loja-barcode-sale.js",
+    "test:sale-stock-ledger": "node scripts/test-sale-stock-ledger.js && node scripts/test-loja-sale-selection.js && node scripts/test-sale-manual-size-resolution.js && node scripts/test-loja-barcode-sale.js && node scripts/test-qr-barcode-ui.js && node scripts/test-qr-barcode-backend.js",
     "backfill:sale-stock-ledger": "node scripts/backfill-sale-stock-ledger.js",
     "test:financial": "node scripts/test-product-profit.js && node scripts/test-real-profit-tax.js && node scripts/test-xml-tax-parser.js",
     "test:labels": "node scripts/test-label-145x25.js && node scripts/test-label-semantic-identification.js && node scripts/test-label-color-review-ledger.js && node scripts/test-label-single-duplex.js && node scripts/test-label-saldo-5x7.js",

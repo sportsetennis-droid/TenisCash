@@ -20,6 +20,7 @@ const { authMiddleware, adminMiddleware, productAdminMiddleware, prisma } = requ
 const { learnScannerBarcode, validGtin, matchScannerReference } = require('../services/scannerReference');
 const { parseScannerText, scannerPendingMessage } = require('../services/scannerText');
 const {resolveBarcodeRows,aliasRows}=require('../services/scannerCatalog');
+const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = require('../services/barcodeInput');
 const router = express.Router();
 const rounds = require('../services/stocktakeRounds');
 const {captureComplete}=require('../services/scannerCompletion');
@@ -648,6 +649,7 @@ router.get('/lookup/:barcode', async (req, res) => {
   try {
     const code = String(req.params.barcode || '').trim();
     if (!code) return res.status(400).json({ error: 'barcode vazio' });
+    if (isWebsiteBarcode(code)) return res.status(400).json({ error: WEBSITE_BARCODE_ERROR, code: WEBSITE_BARCODE_ERROR_CODE });
     let sizes = await prisma.productSize.findMany({ where: { barcode: { in: barcodeVariants(code) } }, include: { product: { select: { id: true, name: true, brand: true, sku: true, internalBarcode: true, active: true, price: true, promoPrice: true } } }, take: 5 });
     if(!sizes.length)sizes=await aliasRows(prisma,code);
     sizes=await resolveBarcodeRows(prisma,sizes);
