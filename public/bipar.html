@@ -83,8 +83,35 @@
   #size-error { display: none; background: #fee; color: #d70015; font-size: 13px; font-weight: 600; padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; }
   .size-warn { font-size: 12px; color: #b06b00; background: #fff8e0; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
   .item .needs-size { background: #E5571E; color: #fff; border: none; border-radius: 6px; font-size: 11px; font-weight: 800; padding: 5px 9px; cursor: pointer; white-space: nowrap; }
+  .transfer-card { margin-top:20px; background:#fff; border:2px solid #E5571E; border-radius:12px; padding:18px; }
+  .transfer-card h2 { font-size:20px; margin-bottom:10px; }
+  .transfer-card p { font-size:14px; line-height:1.5; margin:10px 0; }
+  .transfer-card label { display:block; font-size:14px; font-weight:600; margin-top:12px; }
+  .transfer-card input:not([type=checkbox]), .transfer-card select { width:100%; min-height:46px; padding:10px; font:inherit; border:1.5px solid #bbb; border-radius:8px; margin:6px 0; }
+  .transfer-card button { min-height:46px; margin-top:10px; }
+  .transfer-card [hidden] { display:none!important; }
+  .transfer-message { padding:12px; border-radius:8px; background:#eef4ff; font-size:14px; line-height:1.5; }
+  .transfer-error { background:#fff1ed; color:#a32915; }
+  .transfer-table-wrap { overflow:auto; margin:14px 0; }
+  .transfer-card table { width:100%; border-collapse:collapse; font-size:13px; }
+  .transfer-card th,.transfer-card td { padding:10px 8px; border-bottom:1px solid #ddd; text-align:left; vertical-align:top; }
+  .transfer-card th { background:#fff3e8; }
+  .transfer-card th:not(:first-child),.transfer-card td:not(:first-child) { white-space:nowrap; }
+  .transfer-card ul { padding-left:22px; font-size:14px; line-height:1.5; }
+  .transfer-card .transfer-approval { display:flex; gap:10px; align-items:flex-start; line-height:1.5; }
+  #transfer-checked { width:22px; height:22px; flex-shrink:0; margin-top:1px; }
+  #transfer-confirm { width:100%; background:#167541; color:#fff; }
+  #transfer-result { background:#e4f5ea; padding:12px; border-radius:8px; overflow-wrap:anywhere; }
 
   @media (max-width: 600px) {
+    .transfer-card { padding:14px; }
+    .transfer-table-wrap { overflow:visible; }
+    .transfer-card table,.transfer-card tbody,.transfer-card tr,.transfer-card td { display:block; width:100%; }
+    .transfer-card thead { display:none; }
+    .transfer-card tr { border:1px solid #e5e5ea; border-radius:8px; margin-bottom:10px; overflow:hidden; }
+    .transfer-card td,.transfer-card td:not(:first-child) { white-space:normal; overflow-wrap:anywhere; display:flex; gap:12px; justify-content:space-between; }
+    .transfer-card td::before { content:attr(data-label); font-weight:700; flex:0 0 100px; }
+    .transfer-card td:last-child { border-bottom:0; }
     body { padding: 10px; }
     .setup-row { grid-template-columns: 1fr; }
     .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -119,7 +146,7 @@
   <section id="round-box" aria-live="polite" style="border:3px solid #FF6D00;background:#fff3e8;border-radius:12px;padding:16px;margin-bottom:16px">
     <strong id="round-title">VERIFICANDO RODADA</strong>
     <p id="round-detail" style="margin:8px 0">Selecione a loja.</p>
-    <p><b>Contagem separada. O estoque anterior só muda após conferir e fechar esta rodada.</b></p>
+    <p><b>Bipar registra a contagem física; não acrescenta mercadoria ao estoque.</b></p>
     <button type="button" id="refresh-round" class="btn">Atualizar rodada</button>
     <a href="/inventario.html">Gerenciar inventário</a> · <a href="/bipes.html">Histórico anterior</a>
   </section>
@@ -164,7 +191,47 @@
     </div>
   </div>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20260914-round-1"></script>
+  <section id="bipar-transfer" class="transfer-card" aria-labelledby="transfer-title">
+    <h2 id="transfer-title">Transferir mercadoria bipada</h2>
+    <p>Reúna os bipes desta sequência neste aparelho e escolha a loja de destino. A transferência será conferida contra o estoque disponível da origem.</p>
+    <p id="transfer-scope" aria-live="polite"></p>
+    <p>A sequência fica salva neste aparelho. Limpar a lista acima não apaga o lote. Bipes anteriores e de outros aparelhos não entram automaticamente; envios pendentes recuperados aqui serão incluídos.</p>
+    <p id="transfer-local-pending" class="transfer-message transfer-error" hidden></p>
+    <div id="transfer-login">
+      <p>Entre com sua conta pessoal para movimentar o estoque. O vendedor escolhido para bipar não substitui esse acesso.</p>
+      <form id="transfer-login-form">
+        <label for="transfer-identity">Telefone ou e-mail</label><input id="transfer-identity" autocomplete="username" required>
+        <label for="transfer-password">Senha</label><input id="transfer-password" type="password" autocomplete="current-password" required>
+        <button id="transfer-login-button" type="submit" class="btn btn-secondary">Entrar para transferir</button>
+      </form>
+    </div>
+    <p id="transfer-person" hidden></p>
+    <button id="transfer-change-account" type="button" class="btn btn-secondary" hidden>Trocar conta</button>
+    <label for="transfer-destination">Loja de destino</label><select id="transfer-destination"><option value="">Selecione a loja de destino</option></select>
+    <button id="transfer-preview" type="button" class="btn btn-secondary" disabled>Conferir mercadoria e estoque</button>
+    <button id="transfer-reset" type="button" class="btn btn-secondary" disabled>Começar nova sequência</button>
+    <p id="transfer-message" class="transfer-message" role="status" aria-live="polite" hidden></p>
+    <button id="transfer-storage-retry" type="button" class="btn btn-secondary" hidden>Tentar salvar sequência neste aparelho</button>
+    <div id="transfer-review" hidden>
+      <p id="transfer-review-summary"></p>
+      <div class="transfer-table-wrap" tabindex="0" role="region" aria-label="Produtos e saldo da transferência">
+        <table><thead><tr><th>Produto</th><th>Tamanho</th><th>Transferir</th><th>Saldo origem</th><th>Saldo após</th></tr></thead><tbody id="transfer-items"></tbody></table>
+      </div>
+      <ul id="transfer-blockers" class="transfer-error" hidden></ul>
+      <div id="transfer-approval" hidden>
+        <label class="transfer-approval"><input id="transfer-checked" type="checkbox">Conferi as peças, os tamanhos, as quantidades e a loja de destino. Quero transferir este lote.</label>
+        <button id="transfer-confirm" type="button" class="btn" disabled>Confirmar transferência da mercadoria bipada</button>
+      </div>
+    </div>
+    <div id="transfer-pending" hidden>
+      <p class="transfer-message transfer-error">Há uma confirmação cujo resultado precisa ser verificado. Entre com a mesma conta e consulte o envio antes de transferir outro lote.</p>
+      <button id="transfer-retry" type="button" class="btn btn-secondary">Verificar envio pendente</button>
+    </div>
+    <p id="transfer-result" role="status" hidden></p>
+    <p>A bipagem registra a contagem física. A transferência baixa o estoque da origem e acrescenta no destino, preservando os bipes para a conferência do inventário.</p>
+  </section>
+
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20260914-round-1"></script><script src="/bipar-transfer.js?v=20261002-sequence-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -248,7 +315,7 @@
       input.placeholder = 'Bipe ou digite aqui...';
       // Só dá foco no input do bipe se o usuário NÃO estiver digitando em outro campo
       const active = document.activeElement;
-      if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'SELECT') || active === input) {
+      if (!window.ScannerTransfer?.hasFocus() && (!active || (active.tagName !== 'INPUT' && active.tagName !== 'SELECT') || active === input)) {
         setTimeout(() => input.focus(), 0);
       }
     } else {
@@ -258,6 +325,7 @@
       input.disabled = true;
       input.placeholder = 'Aguardando loja/vendedor...';
     }
+    window.ScannerTransfer?.refresh();
   }
 
   document.getElementById('loja').addEventListener('change', async (e) => {
@@ -377,9 +445,11 @@
       let q = loadRetryQueue();
       const remaining = [];
       for (const item of q) {
+        window.ScannerTransfer?.start(item);
         if(!item.roundId || item.blocked){remaining.push({...item,blocked:item.blocked||'Leitura antiga sem rodada. Revisar separadamente.'});continue;}
         // garante clientScanId em itens antigos (compat reversa)
         if (!item.clientScanId) item.clientScanId = genClientScanId();
+        window.ScannerTransfer?.activity('retry:' + item.clientScanId, item);
         try {
           const r = await fetch('/api/stocktake/bipe', {
             method: 'POST',
@@ -399,11 +469,12 @@
             continue;
           }
           if (!r.ok) { remaining.push(item); continue; }
+          const d = await r.json();
+          window.ScannerTransfer?.update(item, {saved:true, bipeId:d.bipeId || null});
           // sucesso: atualiza o bipe local existente
           const local = bipes.find(b => b._pending && b.clientScanId === item.clientScanId);
           if (local) {
             try {
-              const d = await r.json();
               Object.assign(local, d);
               delete local._pending;
               // Regra Adidas: retry confirmou e o tamanho está pendente → pede o número da caixa
@@ -411,6 +482,7 @@
             } catch {}
           }
         } catch (e) { remaining.push(item); }
+        finally { window.ScannerTransfer?.activity('retry:' + item.clientScanId, null); }
       }
       saveRetryQueue(remaining);
       updatePendingBadge();
@@ -441,6 +513,7 @@
     let roundId;
     try { roundId=window.ScannerRound.requireRound(storeId); } catch(e) { alert(e.message);return; }
     const payload = { barcode, storeId, sellerId, sellerName, clientScanId, roundId };
+    window.ScannerTransfer?.start(payload);
     enqueueRetry(payload);
 
     // Mostra bipe local como pendente IMEDIATAMENTE
@@ -451,6 +524,7 @@
     renderLista();
     renderStats();
 
+    window.ScannerTransfer?.activity('bipe:' + clientScanId, payload);
     try {
       const r = await fetch('/api/stocktake/bipe', {
         method: 'POST',
@@ -476,6 +550,7 @@
 
       const d = await r.json();
       // Sucesso confirmado pelo servidor → REMOVE da fila e atualiza bipe local
+      window.ScannerTransfer?.update(payload, {saved:true, bipeId:d.bipeId || null});
       removeFromQueue(clientScanId);
       Object.assign(localBipe, d);
       delete localBipe._pending;
@@ -488,6 +563,8 @@
       // Erro de rede, timeout ou 5xx — bipe FICA na fila, retry vai pegar
       console.warn('[bipe] enviarBipe falhou, mantém na fila pra retry:', e.message);
       // localBipe permanece com _pending: true (sem mudar)
+    } finally {
+      window.ScannerTransfer?.activity('bipe:' + clientScanId, null);
     }
   }
 
@@ -539,6 +616,7 @@
     inp.onchange = async () => {
       const f = inp.files && inp.files[0];
       if (!f) return;
+      window.ScannerTransfer?.activity(captureScanId, {storeId,roundId});
       btn.disabled = true; btn.textContent = '⏳ Enviando foto…';
       try {
         const blob = await comprimirFoto(f);
@@ -560,6 +638,8 @@
         btn.disabled = false;
         btn.textContent = '✗ Falhou — tocar pra tentar de novo';
         btn.style.background = '#d70015';
+      } finally {
+        window.ScannerTransfer?.activity(captureScanId, null);
       }
     };
     inp.click();
@@ -575,7 +655,10 @@
   etiqFila.forEach((item) => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
   let etiqAuto = null;
   let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
-  function etiqSave() { try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {} }
+  function etiqSave() {
+    try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {}
+    etiqFila.forEach(item => window.ScannerTransfer?.update(item, {saved:!!item.capId, bipeId:item.bipeId || null}));
+  }
   function etiqBeep() {
     try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 1250; g.gain.value = 0.18; o.start(); setTimeout(() => { o.stop(); a.close(); }, 130); } catch (_) {}
     try { navigator.vibrate && navigator.vibrate(90); } catch (_) {}
@@ -698,6 +781,7 @@
     const current=etiqFila.find(x=>x.lid===etiqAtivo);
     if(!current || current.ean || current.capId || current.complete || etiqBusy)return;
     current.st='revisao';current.msg='Código ilegível — peça pulada, NÃO CONTADA. Separe para conferir depois.';
+    window.ScannerTransfer?.discard(current);
     etiqSave();clearInterval(etiqWatch);etiqAtivo=null;etiqRetryAt=Date.now()+1500;
     document.getElementById('etiq-confirm').style.display='none';
     etiqUltimo='';etiqUltimoTs=0;etiqPausado=false;window.ScannerAuto.stopDecoder();etiqAuto?.reset();
@@ -724,6 +808,7 @@
       storeId: document.getElementById('loja').value || '',
       sellerId: selectedSeller === '__manual__' ? '' : (selectedSeller || ''),
       sellerName: localStorage.getItem(STORAGE_VENDNAME) || '' };
+    if (!existing) window.ScannerTransfer?.start(item);
     item.ean=ean;item.st='fila';item.complete=false;item.ocrDone=false;
     if (prepared?.ocrText) { item.ocrText=prepared.ocrText; item.ocrDone=true; }
     if(!existing)etiqFila.push(item); renderEtiqLista();
@@ -743,9 +828,12 @@
 
   async function enviarFila() {
     if (etiqBusy) return; etiqBusy = true;
+    let transferActivity = null;
     try {
       const item = etiqFila.find((x) => x.st === 'fila' && x.b64);
       if (item) {
+        transferActivity = 'camera:' + item.roundId + ':' + item.clientScanId;
+        window.ScannerTransfer?.activity(transferActivity, item);
         if(!item.roundId){item.st='revisao';item.msg='Foto antiga sem rodada. Não transferida para o inventário novo.';etiqSave();renderEtiqLista();return;}
         // Store association belongs to this capture, even during a slow OCR pass.
         const storeId = item.storeId ?? (document.getElementById('loja').value || '');
@@ -791,6 +879,7 @@
           const when=detail.lastAt?new Date(detail.lastAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'horário não disponível';
           const elapsed=Number.isFinite(detail.secondsSinceLast)?(detail.secondsSinceLast<60?detail.secondsSinceLast+' segundos':Math.floor(detail.secondsSinceLast/60)+' minutos'):'tempo não disponível';
           const yes=await window.ScannerConfirm.ask('⚠ '+(detail.consecutive?'REPETIDO EM SEGUIDA':'CÓDIGO JÁ CONTADO')+'\n\n'+(detail.name||'Produto ainda em identificação')+'\nTamanho: '+(detail.size||'pendente')+'\nCódigo: '+detail.barcode+'\n\nJá existem '+detail.count+' bipes deste código nesta loja e rodada (total, não só seguidos).\nÚltima leitura deste código: '+when+' — há '+elapsed+'.'+(detail.lastSeller?' Por: '+detail.lastSeller+'.':'')+'\n'+(detail.consecutive?'Seu último bipe registrado também foi deste código.':'Seu último bipe registrado foi de outro código, ou não há leitura anterior sua.')+'\n\nESTA TENTATIVA AINDA NÃO FOI CONTADA.\nÉ outro par físico?\nOK: acrescentar 1 (total '+(detail.count+1)+').\nCancelar: manter '+detail.count+'.');
+          if (!yes) window.ScannerTransfer?.discard(item);
           if(yes){item.repeatConfirmedCount=detail.count;item.st='fila';}
           else{item.st='revisao';item.msg='Repetição cancelada — não contada';item.b64='';etiqIgnoredCode=item.ean;etiqIgnoreUntil=Date.now()+3000;etiqRetryAt=0;etiqAtivo=null;clearInterval(etiqWatch);const pane=document.getElementById('etiq-confirm');if(pane)pane.style.display='none';etiqPausado=false;window.ScannerAuto.stopDecoder();etiqAuto?.reset();const video=document.getElementById('etiq-video');if(video)video.play().catch(()=>{});const hint=document.getElementById('etiq-hint');if(hint)hint.textContent='Cancelado sem contar. Câmera ativa: aponte para o próximo produto.';}
           etiqSave();renderEtiqLista();return;
@@ -799,6 +888,7 @@
         if (r.ok && d.capId) {
           item.st = item.ocrDone && item.ocrText && item.ocrText!==sentOcr ? 'fila' : 'salvo';
           item.capId = d.capId;
+          if (d.bipeId) item.bipeId = d.bipeId;
           item.bipou = !!d.appliedToStock;
           item.needsSize = !!d.needsSize;
           item.alerta = d.alerta || null;
@@ -815,7 +905,7 @@
     } catch (_) {
       const detail=document.getElementById('etiq-confirm-det');
       if(detail)detail.textContent='Envio interrompido. Foto preservada; tentando novamente sem duplicar a leitura.';
-    } finally { etiqBusy = false; }
+    } finally { if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null); etiqBusy = false; }
   }
 
   async function consultarStatus() {
@@ -830,6 +920,7 @@
           it.complete = row.complete===true;
           if(it.complete)it.b64='';
           if(row.barcode)it.ean=row.barcode;
+          if(row.bipeId)it.bipeId=row.bipeId;
           it.st = row.status;
           it.msg = row.mensagem;
           it.bipou = !!row.appliedToStock;
@@ -1168,7 +1259,7 @@
           <button type="button" id="size-other-ok" data-click="other-size">✓ OK</button>
         </div>
         ${btnUnico}
-        <div class="size-warn">Esta leitura pertence à rodada atual. O estoque anterior permanece até o fechamento.</div>
+        <div class="size-warn">Esta leitura pertence à rodada atual. Confirmar o tamanho não acrescenta mercadoria ao estoque.</div>
         <button type="button" id="size-skip" data-click="skip-size">Deixar o tamanho para depois</button>
       </div>`;
     document.body.appendChild(overlay);
@@ -1277,6 +1368,7 @@
   // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select
   // Não rouba foco de inputs (vendedor-manual) nem dropdowns.
   document.addEventListener('click', (e) => {
+    if (e.target.closest('#bipar-transfer') || window.ScannerTransfer?.hasFocus()) return;
     if (document.getElementById('size-overlay') || document.getElementById('etiq-overlay') || document.getElementById('scanner-repeat-dialog')) return; // modal de tamanho aberto — não rouba foco
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' ||
         e.target.tagName === 'OPTION' || e.target.tagName === 'INPUT' ||
@@ -1298,6 +1390,12 @@
     actions[b.dataset.click]?.();
   });
   carregarLojas();
+  // Recover pending readings only; completed camera history is not a new transfer sequence.
+  loadRetryQueue().forEach(item => window.ScannerTransfer?.start(item));
+  etiqFila.filter(item => !item.complete && item.st !== 'revisao').forEach(item => {
+    window.ScannerTransfer?.start(item);
+    window.ScannerTransfer?.update(item, {saved:!!item.capId, bipeId:item.bipeId || null});
+  });
   // Mostra badge inicial se há bipes pendentes da sessão anterior
   setTimeout(() => { updatePendingBadge(); if (loadRetryQueue().length > 0) processRetryQueue(); }, 500);
 </script>

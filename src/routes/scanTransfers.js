@@ -2,6 +2,7 @@
 const express=require('express');
 const {authMiddleware,prisma}=require('../middleware');
 const service=require('../services/scanTransfers');
+const stocktakeTransfers=require('../services/stocktakeTransfers');
 const router=express.Router();
 router.use(authMiddleware);
 router.use(async(req,res,next)=>{try{req.transferActor=await service.operator(prisma,req.userId);next();}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Não foi possível verificar seu acesso.'});}});
@@ -9,6 +10,8 @@ function handle(fn){return async(req,res)=>{try{res.set('Cache-Control','no-stor
 router.get('/me',handle(async r=>({user:r.transferActor})));
 router.post('/lookup',handle(r=>service.lookup(prisma,r.transferActor,r.body||{})));
 router.post('/confirm',handle(r=>service.transfer(prisma,r.transferActor,r.body||{})));
+router.post('/batch-preview',handle(r=>stocktakeTransfers.preview(prisma,r.transferActor,r.body||{})));
+router.post('/batch-confirm',handle(r=>stocktakeTransfers.confirm(prisma,r.transferActor,r.body||{})));
 router.post('/:id/undo',handle(r=>service.undo(prisma,r.transferActor,r.params.id)));
 router.get('/history',handle(r=>service.history(prisma,r.transferActor,String(r.query.sessionId||''))));
 module.exports=router;

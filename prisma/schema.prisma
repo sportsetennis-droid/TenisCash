@@ -735,6 +735,7 @@ model StockTransfer {
   cancelledAt DateTime?
 
   items StockTransferItem[]
+  stocktakeScans StocktakeTransferScan[]
 
   @@index([fromStoreId, status])
   @@index([toStoreId, status])
@@ -3258,6 +3259,7 @@ model FiscalWebhookLog {
 // com StoreStock e decidir o que fazer.
 // =====================================================================
 model StocktakeBipe {
+  transferScan  StocktakeTransferScan?
   roundId       String?
   round         StocktakeRound? @relation(fields: [roundId], references: [id], onDelete: Restrict)
   scanKey       String? @unique
@@ -3286,6 +3288,24 @@ model StocktakeBipe {
   @@index([barcode])
   @@index([productId])
   @@index([applied, bipedAt])
+}
+
+// One physical count can fund only one transfer. Original store/round and scan
+// remain untouched; snapshots preserve the exact variant and barcode sent.
+model StocktakeTransferScan {
+  id            String @id @default(uuid())
+  bipeId        String @unique
+  bipe          StocktakeBipe @relation(fields: [bipeId], references: [id], onDelete: Restrict)
+  transferId    String
+  transfer      StockTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  roundId       String
+  storeId       String
+  productSizeId String
+  barcode       String
+  createdAt     DateTime @default(now())
+
+  @@index([transferId])
+  @@index([roundId])
 }
 
 // Fila de CONFERÊNCIA: produto bipado que NÃO foi reconhecido. A equipe bate
