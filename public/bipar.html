@@ -102,6 +102,15 @@
   #transfer-checked { width:22px; height:22px; flex-shrink:0; margin-top:1px; }
   #transfer-confirm { width:100%; background:#167541; color:#fff; }
   #transfer-result { background:#e4f5ea; padding:12px; border-radius:8px; overflow-wrap:anywhere; }
+  [hidden] { display:none!important; }
+  #action-setup input { width:100%;min-height:46px;padding:10px;font:inherit;border:1.5px solid #bbb;border-radius:8px;margin:6px 0 12px; }
+  #action-origin-wrap,#action-shipment-wrap { margin-top:14px; }
+  .action-reading { border:1px solid #dedee4;border-radius:10px;padding:12px;margin:10px 0;overflow-wrap:anywhere; }
+  .action-reading label { display:block;margin-top:10px; }
+  .action-reading small { display:block;line-height:1.5;color:#666; }
+  .action-reading input { width:100%;min-height:46px;font:inherit;padding:10px;border:1.5px solid #bbb;border-radius:8px;margin:6px 0; }
+  #action-setup .btn,#action-workspace .btn { min-height:44px; }
+  #action-confirm { width:100%; }
 
   @media (max-width: 600px) {
     .transfer-card { padding:14px; }
@@ -122,16 +131,20 @@
 </style>
 </head>
 <body>
-  <h1>📦 Contagem por Bipe — Sports & Tennis</h1>
-  <p class="sub">Selecione a loja + vendedor. Bipe cada produto. Tudo entra direto no sistema.</p>
+  <h1>📦 Bipar mercadoria — Sports & Tennis</h1>
+  <p class="sub">Escolha a ação e a loja antes de bipar cada produto.</p>
 
   <div class="setup">
+    <div style="margin-bottom:12px">
+      <label for="bipar-action">AÇÃO</label>
+      <select id="bipar-action"><option value="transfer">Transferência</option><option value="receipt">Recebimento</option><option value="inventory" selected>Inventário</option></select>
+    </div>
     <div class="setup-row">
       <div>
-        <label>LOJA</label>
+        <label id="bipar-store-label" for="loja">LOJA DO INVENTÁRIO</label>
         <select id="loja"><option value="">Carregando...</option></select>
       </div>
-      <div>
+      <div id="inventory-seller-wrap">
         <label>VENDEDOR</label>
         <select id="vendedor"><option value="">Selecione a loja primeiro</option></select>
         <div id="vendedor-manual-wrap" style="display:none;margin-top:6px;gap:6px">
@@ -142,6 +155,22 @@
     </div>
     <div id="setup-status" class="setup-status status-warn">⚠️ Selecione loja e vendedor antes de bipar</div>
   </div>
+
+  <section id="action-setup" class="setup" hidden>
+    <p id="action-explanation" style="font-size:14px;line-height:1.5;margin-bottom:12px"></p>
+    <form id="action-login" hidden>
+      <p style="font-size:14px;margin:8px 0">Entre com sua conta pessoal para transferir ou receber mercadoria.</p>
+      <label for="action-identity">Telefone ou e-mail</label><input id="action-identity" autocomplete="username" required>
+      <label for="action-password">Senha</label><input id="action-password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-secondary" type="submit" id="action-login-button">Entrar</button>
+    </form>
+    <p id="action-person" style="font-size:14px;margin-bottom:8px"></p>
+    <button class="btn btn-secondary" type="button" id="action-switch-user" hidden>Trocar conta</button>
+    <div id="action-origin-wrap" hidden><label for="action-origin">Loja de origem — de onde a mercadoria sai</label><select id="action-origin"><option value="">Selecione a origem</option></select></div>
+    <div id="action-shipment-wrap" hidden><label for="action-shipment">Transferência a receber</label><select id="action-shipment"><option value="">Selecione a loja que recebe</option></select><button class="btn btn-secondary" type="button" id="action-refresh-shipments">Atualizar transferências</button></div>
+    <p id="action-message" class="transfer-message" role="status" aria-live="polite" hidden></p>
+    <button id="action-storage-retry" class="btn btn-secondary" type="button" hidden>Tentar salvar lote</button>
+  </section>
 
   <section id="round-box" aria-live="polite" style="border:3px solid #FF6D00;background:#fff3e8;border-radius:12px;padding:16px;margin-bottom:16px">
     <strong id="round-title">VERIFICANDO RODADA</strong>
@@ -159,6 +188,7 @@
     <div id="etiqueta-result" style="display:none;margin-top:8px;padding:10px 12px;border-radius:10px;font-size:13px;font-weight:700"></div>
   </div>
 
+  <div id="inventory-readings">
   <div class="last-bipe idle" id="last-bipe">Aguardando primeiro bipe...</div>
 
   <div class="stats">
@@ -191,11 +221,27 @@
     </div>
   </div>
 
+  </div>
+  <section id="action-workspace" class="transfer-card" hidden>
+    <h2 id="action-title">Mercadoria desta ação</h2>
+    <p id="action-context" aria-live="polite"></p>
+    <div id="action-readings" class="action-readings"></div>
+    <div class="actions"><button id="action-preview" type="button" class="btn btn-secondary">Conferir lote</button><button id="action-clear" type="button" class="btn btn-secondary">Começar novo lote</button></div>
+    <section id="action-review" hidden>
+      <p id="action-review-summary"></p><div id="action-review-items" class="action-readings"></div><ul id="action-blockers" class="transfer-error"></ul>
+      <label class="transfer-approval"><input id="action-approved" type="checkbox">Conferi os produtos, tamanhos, quantidades e lojas deste lote.</label>
+      <button id="action-confirm" class="btn btn-primary" type="button" disabled>Confirmar</button>
+    </section>
+    <div id="action-pending" hidden><p class="transfer-message transfer-error">O resultado do envio precisa ser confirmado. Consulte a mesma operação antes de começar outro lote.</p><button id="action-retry" class="btn btn-secondary" type="button">Verificar envio pendente</button></div>
+    <p id="action-result" class="transfer-message" role="status" hidden></p>
+  </section>
+
+  <details id="legacy-inventory-transfer" style="margin-top:20px" hidden><summary>Sequência de inventário anterior</summary>
   <section id="bipar-transfer" class="transfer-card" aria-labelledby="transfer-title">
-    <h2 id="transfer-title">Transferir mercadoria bipada</h2>
-    <p>Reúna os bipes desta sequência neste aparelho e escolha a loja de destino. A transferência será conferida contra o estoque disponível da origem.</p>
+    <h2 id="transfer-title">Transferir sequência anterior do inventário</h2>
+    <p>Este lote já estava salvo neste aparelho. Para começar uma nova transferência, escolha a ação Transferência no alto da página.</p>
     <p id="transfer-scope" aria-live="polite"></p>
-    <p>A sequência fica salva neste aparelho. Limpar a lista acima não apaga o lote. Bipes anteriores e de outros aparelhos não entram automaticamente; envios pendentes recuperados aqui serão incluídos.</p>
+    <p>A sequência anterior permanece salva. Limpar a lista não apaga este lote, e os novos bipes não serão acrescentados a ele.</p>
     <p id="transfer-local-pending" class="transfer-message transfer-error" hidden></p>
     <div id="transfer-login">
       <p>Entre com sua conta pessoal para movimentar o estoque. O vendedor escolhido para bipar não substitui esse acesso.</p>
@@ -230,8 +276,9 @@
     <p id="transfer-result" role="status" hidden></p>
     <p>A bipagem registra a contagem física. A transferência baixa o estoque da origem e acrescenta no destino, preservando os bipes para a conferência do inventário.</p>
   </section>
+  </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20260914-round-1"></script><script src="/bipar-transfer.js?v=20261002-sequence-1"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261002-actions-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -243,9 +290,12 @@
   let bipes = []; // sessão local (memória)
 
   async function carregarLojas() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) { window.BiparActions.storesReady(); return; }
+    const modeVersion = window.BiparActions?.version();
     try {
       const r = await fetch('/api/stocktake/stores');
       const d = await r.json();
+      if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion)) return;
       stores = d.stores || [];
       const sel = document.getElementById('loja');
       sel.innerHTML = '<option value="">Selecione a loja</option>' + stores.map(s => `<option value="${s.id}">${s.name}${s.code ? ' (' + s.code + ')' : ''}</option>`).join('');
@@ -255,14 +305,19 @@
         sel.value = savedLoja;
         await carregarVendedores(savedLoja);
       }
+      window.BiparActions?.storesReady();
     } catch (e) {
+      if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion)) return;
       document.getElementById('loja').innerHTML = '<option>Erro ao carregar</option>';
       console.error(e);
     }
   }
 
   async function carregarVendedores(storeId) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) { window.BiparActions.refresh(); return; }
+    const modeVersion = window.BiparActions?.version();
     await window.ScannerRound.refresh();
+    if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion)) return;
     if (!storeId) {
       document.getElementById('vendedor').innerHTML = '<option value="">Selecione a loja primeiro</option>';
       return;
@@ -270,6 +325,7 @@
     try {
       const r = await fetch('/api/stocktake/sellers?storeId=' + encodeURIComponent(storeId));
       const d = await r.json();
+      if (document.getElementById('loja').value !== storeId || (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion))) return;
       sellers = d.sellers || [];
       const sel = document.getElementById('vendedor');
       sel.innerHTML = '<option value="">Selecione o vendedor</option>'
@@ -286,11 +342,13 @@
       }
       atualizarStatus();
     } catch (e) {
+      if (document.getElementById('loja').value !== storeId || (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== modeVersion))) return;
       document.getElementById('vendedor').innerHTML = '<option>Erro ao carregar</option>';
     }
   }
 
   function atualizarStatus() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) { window.BiparActions.refresh(); return; }
     const loja = document.getElementById('loja').value;
     const vend = document.getElementById('vendedor').value;
     const manualNome = document.getElementById('vendedor-manual').value.trim();
@@ -329,6 +387,8 @@
   }
 
   document.getElementById('loja').addEventListener('change', async (e) => {
+    window.BiparActions?.storeChanged();
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const v = e.target.value;
     localStorage.setItem(STORAGE_LOJA, v);
     localStorage.removeItem(STORAGE_VEND);
@@ -439,12 +499,14 @@
   }
   let _retrying = false;
   async function processRetryQueue() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     if (_retrying) return;
     _retrying = true;
     try {
       let q = loadRetryQueue();
       const remaining = [];
       for (const item of q) {
+        if (window.BiparActions && !window.BiparActions.isInventory()) { remaining.push(item); continue; }
         window.ScannerTransfer?.start(item);
         if(!item.roundId || item.blocked){remaining.push({...item,blocked:item.blocked||'Leitura antiga sem rodada. Revisar separadamente.'});continue;}
         // garante clientScanId em itens antigos (compat reversa)
@@ -496,6 +558,7 @@
   window.addEventListener('online', () => { processRetryQueue(); });
 
   async function enviarBipe(barcode) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return window.BiparActions.scan(barcode);
     const storeId = document.getElementById('loja').value;
     const sellerSel = document.getElementById('vendedor').value;
     const manualNome = document.getElementById('vendedor-manual').value.trim();
@@ -569,6 +632,7 @@
   }
 
   function renderLast(bipe) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const el = document.getElementById('last-bipe');
     if (bipe.found && bipe.product) {
       el.className = 'last-bipe';
@@ -606,11 +670,13 @@
   // 📷 Foto da etiqueta (Nike/FIBER etc: o de-para código↔produto só existe na etiqueta física).
   // Abre a câmera, comprime no canvas e manda pro /api/stocktake/capture (vinculada ao bipe).
   window.fotoEtiqueta = function (btn, bipeId, code) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const original=bipes.find(b=>b.bipeId===bipeId);
     const storeId=document.getElementById('loja').value;
     let roundId;try{roundId=window.ScannerRound.requireRound(storeId)}catch(e){alert(e.message);return;}
     if(original?.roundId!==roundId){alert('Esta foto pertence a outra rodada. Abra a captura no histórico.');return;}
     const captureScanId=genClientScanId();
+    const captureMode = window.BiparActions?.version();
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*'; inp.capture = 'environment';
     inp.onchange = async () => {
@@ -620,6 +686,7 @@
       btn.disabled = true; btn.textContent = '⏳ Enviando foto…';
       try {
         const blob = await comprimirFoto(f);
+        if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
         const fd = new FormData();
         fd.append('files', blob, 'etiqueta.jpg');
         fd.append('roundId',roundId);fd.append('clientScanId',captureScanId);
@@ -665,6 +732,8 @@
   }
 
   window.fotografarEtiqueta = async function () {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return window.BiparActions.openCamera();
+    const captureMode = window.BiparActions?.version();
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);return;}
     if (!document.getElementById('loja').value) { alert('Selecione loja e vendedor primeiro!'); return; }
     if (!window.ZXing) {
@@ -680,7 +749,9 @@
     try {
       // Decode centered labels automatically in portrait and landscape.
       const video = document.getElementById('etiq-video');
-      etiqStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      if (!document.getElementById('etiq-overlay') || (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode))) { opened.getTracks().forEach(track => track.stop()); return; }
+      etiqStream = opened;
       video.srcObject = etiqStream;
       await video.play();
       try { // zoom 2x quando o aparelho suporta (ajuda MUITO em etiqueta pequena)
@@ -730,6 +801,7 @@
   // Mesma peça até o servidor confirmar código, produto e variante. Foto salva não libera Próxima.
   let etiqPausado = false, etiqWatch = null, etiqAtivo = null, etiqRetryAt = 0, etiqIgnoredCode = '', etiqIgnoreUntil=0;
   window.capturaManual = function (prepared) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     try{window.ScannerRound.requireRound(document.getElementById('loja').value)}catch(e){alert(e.message);window.fecharScanner();return;}
     if(prepared?.ean && prepared.ean===etiqIgnoredCode && Date.now()<etiqIgnoreUntil){etiqAuto?.reset();return;}
     if(prepared?.ean)etiqIgnoredCode='';
@@ -827,6 +899,8 @@
   }
 
   async function enviarFila() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
+    const captureMode = window.BiparActions?.version();
     if (etiqBusy) return; etiqBusy = true;
     let transferActivity = null;
     try {
@@ -856,6 +930,7 @@
           }).catch(()=>{item.ocrDone=true;});
         }
         const blob = await (await fetch(item.b64)).blob();
+        if (window.BiparActions && (!window.BiparActions.isInventory() || window.BiparActions.version() !== captureMode)) return;
         const fd = new FormData();
         fd.append('file', blob, 'etiqueta.jpg');
         fd.append('eanLocal', item.ean || '');
@@ -904,11 +979,12 @@
       }
     } catch (_) {
       const detail=document.getElementById('etiq-confirm-det');
-      if(detail)detail.textContent='Envio interrompido. Foto preservada; tentando novamente sem duplicar a leitura.';
+      if(detail && (!window.BiparActions || (window.BiparActions.isInventory() && window.BiparActions.version() === captureMode)))detail.textContent='Envio interrompido. Foto preservada; tentando novamente sem duplicar a leitura.';
     } finally { if (transferActivity) window.ScannerTransfer?.activity(transferActivity, null); etiqBusy = false; }
   }
 
   async function consultarStatus() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const pend = etiqFila.filter((x) => x.capId && (!x.complete && x.st!=='revisao')).slice(-20);
     if (!pend.length) return;
     try {
@@ -938,6 +1014,7 @@
   }
 
   function renderEtiqLista() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const currentItems=etiqFila.filter(x=>x.roundId===window.ScannerRound.id());
     const cont = document.getElementById('etiq-contador');
     const ul = document.getElementById('etiq-lista');
@@ -972,6 +1049,7 @@
   }
 
   function renderLista() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const lista = document.getElementById('lista');
     const visible=bipes.filter(b=>b.roundId===window.ScannerRound.id());
     document.getElementById('lista-count').textContent = visible.length + ' itens';
@@ -999,6 +1077,7 @@
   }
 
   function renderStats() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     const visible=bipes.filter(b=>b.roundId===window.ScannerRound.id());
     document.getElementById('stat-total').textContent = visible.length;
     document.getElementById('stat-found').textContent = visible.filter(b => b.found).length;
@@ -1212,6 +1291,7 @@
   let sizeModalBipe = null; // bipe local em edição no modal
 
   function queueSizeRequest(localBipe) {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     localBipe.needsSize = true;
     if (!sizeQueue.includes(localBipe)) sizeQueue.push(localBipe);
     renderLista();
@@ -1219,6 +1299,7 @@
   }
 
   function showNextSizeModal() {
+    if (window.BiparActions && !window.BiparActions.isInventory()) return;
     document.getElementById('size-overlay')?.remove();
     sizeModalBipe = sizeQueue.shift() || null;
     if (!sizeModalBipe) {
@@ -1368,6 +1449,7 @@
   // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select
   // Não rouba foco de inputs (vendedor-manual) nem dropdowns.
   document.addEventListener('click', (e) => {
+    if (e.target.closest('#action-setup,#action-workspace,#action-camera') || window.BiparActions?.hasFocus()) return;
     if (e.target.closest('#bipar-transfer') || window.ScannerTransfer?.hasFocus()) return;
     if (document.getElementById('size-overlay') || document.getElementById('etiq-overlay') || document.getElementById('scanner-repeat-dialog')) return; // modal de tamanho aberto — não rouba foco
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' ||

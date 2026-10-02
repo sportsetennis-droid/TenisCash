@@ -8,11 +8,12 @@
     return current.id;
   }
   async function refresh(){
+    if(window.BiparActions && !window.BiparActions.isInventory())return;
     const n=++requestNumber,storeId=selected();
     try{
       const r=await fetch('/api/stocktake/rounds/current?storeId='+encodeURIComponent(storeId));
       if(!r.ok)throw Error('Não foi possível verificar a rodada.');
-      const d=await r.json();if(n!==requestNumber||storeId!==selected())return;
+      const d=await r.json();if(n!==requestNumber||storeId!==selected()||(window.BiparActions&&!window.BiparActions.isInventory()))return;
       current=d.round;
       document.getElementById('round-title').textContent=current ? 'RODADA #'+current.number+' — '+current.name : 'SEM RODADA ABERTA';
       document.getElementById('round-detail').textContent=current ? (current.status==='counting'?'EM CONTAGEM':'EM CONFERÊNCIA — coleta encerrada')+' · Início '+new Date(current.startedAt).toLocaleString('pt-BR')+' · '+(d.totals?.total||0)+' leituras nesta rodada · '+(d.totals?.pending||0)+' pendentes' : 'O administrador deve iniciar o inventário desta loja. Leituras antigas ficam no histórico.';

@@ -25,11 +25,8 @@
   }
   function change() { revision++; invalidate(); persist(); refresh(); }
   function start(item) {
-    syncRecords();
-    const scanKey = keyOf(item); if (!scanKey || !item.storeId || !item.roundId) return;
-    if (records.some(row => row.scanKey === scanKey)) return;
-    records.push({ scanKey, storeId: item.storeId, roundId: item.roundId, bipeId: item.bipeId || null, saved: false, createdAt: new Date().toISOString() });
-    change();
+    // New scans use the explicit action selected before scanning. Keep only legacy batches here.
+    syncRecords(); refresh();
   }
   function update(item, state = {}) {
     syncRecords();
@@ -57,6 +54,8 @@
     }
     if (preview && preview.signature !== signature()) invalidate();
     const pending = read(pendingKey, null);
+    const legacy = $('legacy-inventory-transfer');
+    if (legacy) legacy.hidden = (window.BiparActions && !window.BiparActions.isInventory()) || (!records.some(item => !item.archived) && !pending);
     $('transfer-pending').hidden = !pending;
     $('transfer-retry').disabled = busy || !actor || (pending && actor.id !== pending.actorId);
     $('transfer-preview').disabled = busy || !storageReady || !!pending || !actor || !current.roundId || !count || !!sending || !destination.value;
@@ -146,7 +145,7 @@
       const saved = persist(); if (saved) localStorage.removeItem(pendingKey); invalidate(); revision++;
       $('transfer-result').hidden = false;
       $('transfer-result').textContent = 'Transferência #' + transfer.code + ' concluída: ' + transfer.qtyTotal + ' peça(s), ' + transfer.fromStore.name + ' → ' + transfer.toStore.name + '. Comprovante: ' + transfer.id + '. Os bipes originais permanecem no histórico.';
-      notice(!saved ? 'Transferência concluída, mas a sequência local não pôde ser atualizada. Use “Verificar envio pendente” depois de liberar espaço; o envio não será duplicado.' : result.alreadySaved ? 'Resultado confirmado. Esta transferência já estava salva; nenhuma peça foi transferida novamente.' : 'Transferência concluída. Os próximos bipes formarão uma nova sequência.', !saved);
+      notice(!saved ? 'Transferência concluída, mas a sequência local não pôde ser atualizada. Use “Verificar envio pendente” depois de liberar espaço; o envio não será duplicado.' : result.alreadySaved ? 'Resultado confirmado. Esta transferência já estava salva; nenhuma peça foi transferida novamente.' : 'Sequência anterior concluída. Para outro lote, escolha a ação Transferência no alto da página.', !saved);
       window.ScannerRound?.refresh();
     } catch (error) {
       if ([400, 403, 404, 409, 422].includes(error.status)) { localStorage.removeItem(pendingKey); invalidate(); notice(errorMessage(error) + ' Confira a sequência novamente.', true); }
