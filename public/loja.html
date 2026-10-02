@@ -825,6 +825,8 @@
         <select id="clockVendor" style="width:100%;padding:10px;border:1px solid #d2d2d7;border-radius:8px;font-size:16px;" onchange="onClockVendorChange()">
           <option value="">— selecione —</option>
         </select>
+        <button type="button" id="clockRefresh" class="btn btn-small" onclick="loadClockin()" style="margin-top:10px;">Atualizar lista</button>
+        <div id="clockListMessage" role="status" aria-live="polite" style="font-size:13px;color:#8e8e93;margin-top:8px;">Atualize a lista se o nome do vendedor não aparecer.</div>
       </div>
       <div class="form-group" id="clockPinGroup" style="display:none;">
         <label>SENHA do vendedor</label>
@@ -1289,6 +1291,7 @@ async function _bioRevealButtons() {
 }
 
 function logout() {
+  resetClockState();
   resetRankingSession();
   _canCorrectSales = false;
   ++_salesRequestId;
@@ -1373,6 +1376,7 @@ async function showStoreSelector() {
 
 function selectStore(store) {
   if (activeStore?.id !== store.id) {
+    resetClockState();
     ++_salesRequestId;
     clearTimeout(_salesLoadTimer);
     const vendors = document.getElementById('salesFilterVendor');
@@ -3458,40 +3462,130 @@ function toggleClockPin() {
   else { i.type = 'password'; if (b) b.textContent = '👁️'; }
 }
 
-async function loadClockin() {
-  // Popula dropdown com vendedores da loja ativa
-  if (!activeStore?.id) return;
-  try {
-    const d = await api('/api/seller/store-sellers?storeId=' + activeStore.id);
-    const sel = document.getElementById('clockVendor');
-    sel.innerHTML = '<option value="">— selecione —</option>' + (d.sellers || []).map(s =>
-      `<option value="${s.id}">${s.name}${s.employeeCode ? ' (' + s.employeeCode + ')' : ''}</option>`
-    ).join('');
-  } catch (e) { console.error(e); }
+let _clockListRequestId = 0;
+let _clockVendorRequestId = 0;
+let _clockListLoading = false;
+let _clockBusy = false;
+let _clockStoreId = null;
+let _clockToken = null;
+let _clockVendorId = '';
+let _clockDay = '';
+let _clockAllowed = new Set();
+
+function clockDayBRT() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Recife' });
 }
 
-async function onClockVendorChange() {
-  const vendorId = document.getElementById('clockVendor').value;
-  const pinGroup = document.getElementById('clockPinGroup');
-  if (!vendorId) {
-    pinGroup.style.display = 'none';
-    document.getElementById('clockStatus').textContent = 'Selecione vendedor pra ver pontos do dia';
-    document.getElementById('clockButtons').innerHTML = '';
-    document.getElementById('clockToday').innerHTML = '—';
-    return;
-  }
-  pinGroup.style.display = 'block';
-  document.getElementById('clockPin').value = '';
-  document.getElementById('clockPin').focus();
+function updateClockControls() {
+  document.getElementById('clockRefresh').disabled = _clockBusy || _clockListLoading;
+  document.getElementById('clockVendor').disabled = _clockBusy || _clockListLoading;
+  document.getElementById('clockPin').disabled = _clockBusy;
+  document.getElementById('clockPinToggle').disabled = _clockBusy;
+}
 
+function clearClockActions(message = 'Selecione vendedor pra ver pontos do dia') {
+  _clockAllowed = new Set();
+  document.getElementById('clockStatus').textContent = message;
+  document.getElementById('clockButtons').innerHTML = '';
+  document.getElementById('clockToday').innerHTML = '—';
+}
+
+function resetClockState() {
+  ++_clockListRequestId;
+  ++_clockVendorRequestId;
+  _clockListLoading = false;
+  _clockStoreId = null;
+  _clockToken = null;
+  _clockVendorId = '';
+  _clockDay = '';
+  document.getElementById('clockVendor').innerHTML = '<option value="">— selecione —</option>';
+  document.getElementById('clockPin').value = '';
+  document.getElementById('clockPin').type = 'password';
+  document.getElementById('clockPinToggle').textContent = '👁️';
+  document.getElementById('clockPinGroup').style.display = 'none';
+  document.getElementById('clockListMessage').textContent = 'Atualize a lista se o nome do vendedor não aparecer.';
+  clearClockActions();
+  // Uma troca de loja não libera outro registro enquanto o anterior ainda está em andamento.
+  updateClockControls();
+}
+
+async function loadClockin({ silent = false } = {}) {
+  if (_clockBusy || !activeStore?.id || !token) return;
+  const storeId = activeStore.id, sessionToken = token;
+  if (_clockListLoading && _clockStoreId === storeId && _clockToken === sessionToken) return;
+  if (_clockStoreId !== storeId || _clockToken !== sessionToken) resetClockState();
+  _clockStoreId = storeId;
+  _clockToken = sessionToken;
+  const requestId = ++_clockListRequestId;
+  ++_clockVendorRequestId;
+  const selectedVendor = document.getElementById('clockVendor').value;
+  const requestDay = clockDayBRT();
+  const current = () => requestId === _clockListRequestId && activeStore?.id === storeId && token === sessionToken;
+  _clockListLoading = true;
+  clearClockActions(selectedVendor ? 'Atualizando os pontos do vendedor…' : 'Selecione vendedor pra ver pontos do dia');
+  document.getElementById('clockListMessage').textContent = silent ? 'Conferindo a lista de vendedores…' : 'Atualizando lista de vendedores…';
+  updateClockControls();
   try {
-    const d = await api('/api/seller/clockin/today-of?vendorId=' + vendorId);
+    const d = await api('/api/seller/store-sellers?storeId=' + encodeURIComponent(storeId));
+    if (!current()) return;
+    const sellers = Array.isArray(d.sellers) ? d.sellers : [];
+    const sel = document.getElementById('clockVendor');
+    sel.innerHTML = '<option value="">— selecione —</option>' + sellers.map(s =>
+      `<option value="${escPreco(s.id)}">${escPreco(s.name)}${s.employeeCode ? ' (' + escPreco(s.employeeCode) + ')' : ''}</option>`
+    ).join('');
+    sel.value = sellers.some(s => s.id === selectedVendor) ? selectedVendor : '';
+    _clockDay = requestDay;
+    document.getElementById('clockListMessage').textContent = sellers.length
+      ? 'Lista atualizada: ' + sellers.length + ' vendedor(es) nesta loja.'
+      : 'Nenhum vendedor disponível nesta loja. Confira a loja selecionada ou atualize a lista.';
+    await onClockVendorChange({ preservePin: !!sel.value && sel.value === selectedVendor && _clockVendorId === selectedVendor });
+  } catch (e) {
+    if (!current()) return;
+    ++_clockVendorRequestId;
+    _clockVendorId = '';
+    document.getElementById('clockVendor').innerHTML = '<option value="">— atualize a lista —</option>';
+    document.getElementById('clockPin').value = '';
+    document.getElementById('clockPinGroup').style.display = 'none';
+    clearClockActions('Não foi possível verificar os vendedores. Atualize a lista antes de bater ponto.');
+    document.getElementById('clockListMessage').textContent = 'Erro ao atualizar a lista: ' + e.message;
+  } finally {
+    if (current()) { _clockListLoading = false; updateClockControls(); }
+  }
+}
+
+async function onClockVendorChange({ preservePin = false } = {}) {
+  if (_clockBusy) return;
+  const storeId = activeStore?.id, sessionToken = token;
+  if (!storeId || !sessionToken) { resetClockState(); return; }
+  if (_clockStoreId !== storeId || _clockToken !== sessionToken) { resetClockState(); return loadClockin(); }
+  const vendorId = document.getElementById('clockVendor').value;
+  const keepPin = preservePin && _clockVendorId === vendorId;
+  _clockVendorId = vendorId;
+  const requestId = ++_clockVendorRequestId;
+  const requestDay = clockDayBRT();
+  const current = () => requestId === _clockVendorRequestId && activeStore?.id === storeId && token === sessionToken && document.getElementById('clockVendor').value === vendorId;
+  const pinGroup = document.getElementById('clockPinGroup');
+  if (!keepPin) {
+    document.getElementById('clockPin').value = '';
+    document.getElementById('clockPin').type = 'password';
+    document.getElementById('clockPinToggle').textContent = '👁️';
+  }
+  clearClockActions(vendorId ? 'Conferindo os pontos de hoje…' : undefined);
+  pinGroup.style.display = vendorId ? 'block' : 'none';
+  if (!vendorId) return;
+  if (!preservePin) document.getElementById('clockPin').focus();
+  try {
+    const d = await api('/api/seller/clockin/today-of?vendorId=' + encodeURIComponent(vendorId));
+    if (!current()) return;
+    if (requestDay !== clockDayBRT()) return onClockVendorChange({ preservePin: true });
     const s = d.summary;
+    if (!s || !Array.isArray(s.allowedNext) || !Array.isArray(d.points)) throw new Error('Resposta de ponto inválida. Atualize a lista.');
+    _clockDay = requestDay;
+    _clockAllowed = new Set(s.allowedNext);
     document.getElementById('clockStatus').innerHTML = `
       Trabalhado: <strong>${Math.floor(s.workedMinutes / 60)}h ${s.workedMinutes % 60}min</strong> ·
       Intervalo: <strong>${Math.floor(s.breakMinutes / 60)}h ${s.breakMinutes % 60}min</strong>
     `;
-    const allowed = new Set(s.allowedNext);
     const types = [
       { type: 'entry', label: '🟢 Entrada' },
       { type: 'break_start', label: '☕ Início intervalo' },
@@ -3499,52 +3593,69 @@ async function onClockVendorChange() {
       { type: 'exit', label: '🔴 Saída' },
     ];
     document.getElementById('clockButtons').innerHTML = types.map(t =>
-      `<button class="clock-btn" ${allowed.has(t.type) ? '' : 'disabled'} onclick="doClockIn('${t.type}')">${t.label}</button>`
+      `<button class="clock-btn" ${_clockAllowed.has(t.type) ? '' : 'disabled'} onclick="doClockIn('${t.type}')">${t.label}</button>`
     ).join('');
     const typeLabels = { entry: '🟢 Entrada', break_start: '☕ Início intervalo', break_end: '✓ Fim intervalo', exit: '🔴 Saída' };
     document.getElementById('clockToday').innerHTML = d.points.length
       ? d.points.map(p => {
           const dt = new Date(p.timestamp);
-          const data = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-          const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          const data = dt.toLocaleDateString('pt-BR', { timeZone: 'America/Recife', day: '2-digit', month: '2-digit', year: 'numeric' });
+          const hora = dt.toLocaleTimeString('pt-BR', { timeZone: 'America/Recife', hour: '2-digit', minute: '2-digit' });
           return `<div style="padding:8px 0;border-bottom:1px solid #f5f5f7;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
             <span><strong>${data}</strong> · ${hora}</span>
-            <span>${typeLabels[p.type] || p.type}</span>
+            <span>${typeLabels[p.type] || escPreco(p.type)}</span>
           </div>`;
         }).join('')
       : '<p style="color:#8e8e93;">Nenhum ponto batido hoje.</p>';
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    if (current()) clearClockActions('Não foi possível verificar os pontos: ' + e.message + '. Atualize a lista antes de bater ponto.');
+  }
 }
 
+function refreshVisibleClock() {
+  if (token && activeStore?.id && !document.hidden && document.getElementById('page-clockin')?.classList.contains('show') && !_clockBusy && !_clockListLoading) return loadClockin({ silent: true });
+}
+setInterval(() => { if (_clockDay !== clockDayBRT()) refreshVisibleClock(); }, 30000);
+window.addEventListener('focus', refreshVisibleClock);
+document.addEventListener('visibilitychange', refreshVisibleClock);
+
 async function doClockIn(type) {
+  if (_clockBusy || _clockListLoading) return;
   const vendorId = document.getElementById('clockVendor').value;
   const pin = document.getElementById('clockPin').value;
+  const storeId = activeStore?.id, sessionToken = token, requestId = _clockVendorRequestId, requestDay = clockDayBRT();
   if (!vendorId) { alert('Selecione o vendedor.'); return; }
+  if (!storeId || !sessionToken || _clockStoreId !== storeId || _clockToken !== sessionToken || _clockVendorId !== vendorId || _clockDay !== requestDay || !_clockAllowed.has(type)) {
+    clearClockActions('Atualize os pontos deste vendedor antes de registrar.');
+    return loadClockin({ silent: true });
+  }
   if (!pin) { alert('Digite a SENHA do vendedor.'); document.getElementById('clockPin').focus(); return; }
   if (!navigator.geolocation) { alert('Seu navegador não tem GPS'); return; }
   if (!confirm('Confirmar bater ponto: ' + type + '?')) return;
 
-  navigator.geolocation.getCurrentPosition(async pos => {
-    try {
-      const r = await api('/api/seller/clockin-as', {
-        method: 'POST',
-        body: JSON.stringify({
-          vendorId,
-          pin,
-          type,
-          storeId: activeStore?.id,
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        }),
-      });
-      alert(`✓ Ponto registrado: ${r.vendor.name} — ${type}`);
-      document.getElementById('clockPin').value = '';
-      // Recarrega histórico
-      onClockVendorChange();
-    } catch (e) {
-      alert('Erro: ' + e.message);
-    }
-  }, err => { alert('Não conseguimos pegar GPS: ' + err.message); });
+  const current = () => requestId === _clockVendorRequestId && activeStore?.id === storeId && token === sessionToken && document.getElementById('clockVendor').value === vendorId;
+  _clockBusy = true;
+  clearClockActions('Obtendo a localização para registrar o ponto…');
+  updateClockControls();
+  try {
+    const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, maximumAge: 0 }));
+    if (!current() || requestDay !== clockDayBRT()) return;
+    document.getElementById('clockStatus').textContent = 'Registrando o ponto…';
+    const r = await api('/api/seller/clockin-as', {
+      method: 'POST',
+      body: JSON.stringify({ vendorId, pin, type, storeId, latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+    });
+    if (!current()) return;
+    alert(`✓ Ponto registrado: ${r.vendor.name} — ${type}`);
+    document.getElementById('clockPin').value = '';
+  } catch (e) {
+    if (current()) alert('Não foi possível confirmar o ponto: ' + e.message + '. Confira os pontos de hoje antes de tentar novamente.');
+  } finally {
+    _clockBusy = false;
+    updateClockControls();
+    if (current()) await onClockVendorChange({ preservePin: true });
+    else refreshVisibleClock();
+  }
 }
 
 // ============== RANKING ==============

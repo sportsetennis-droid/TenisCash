@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { salesVisibility } = require('../src/services/salesVisibility');
+const { isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE } = require('../src/services/barcodeInput');
 
 const root = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'src/routes/seller.js'), 'utf8');
@@ -60,7 +61,7 @@ async function run(route, operatorId, query = {}, body = {}) {
     },
     store: { findUnique: async ({ where }) => stores.find(store => store.id === where.id) || null },
   };
-  vm.runInNewContext(route, { prisma, salesVisibility, console, _recentSaleKeys: new Map(),
+  vm.runInNewContext(route, { prisma, salesVisibility, isWebsiteBarcode, WEBSITE_BARCODE_ERROR, WEBSITE_BARCODE_ERROR_CODE, console, _recentSaleKeys: new Map(),
     authMiddleware() {}, sellerOnly() {},
     router: {
       get(...args) { handler = args.at(-1); },
@@ -136,10 +137,10 @@ const ids = response => Array.from(response.result.sellers, user => user.id);
   };
   const vendors = section('async function loadVendors()', 'function selectVendor(');
   const salesVendors = section('async function loadSalesVendors()', 'function setSalesRange(');
-  const clock = section('async function loadClockin()', 'async function onClockVendorChange()');
+  const clock = section('async function loadClockin(', 'async function onClockVendorChange(');
   assert.match(vendors, /\/api\/seller\/store-sellers[^\n]+purpose=sale/);
   assert.match(salesVendors, /\/api\/seller\/store-sellers[^\n]+purpose=sale/);
-  assert.match(clock, /api\('\/api\/seller\/store-sellers\?storeId='\s*\+\s*activeStore\.id\)/);
+  assert.match(clock, /\/api\/seller\/store-sellers\?storeId=/);
   assert.match(clock, /getElementById\('clockVendor'\)/);
   assert.doesNotMatch(clock, /purpose=sale/);
   assert.equal(users.find(user => user.id === 'owner').role, 'superadmin');

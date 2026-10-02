@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'loja.html'), 'utf8');
 const loginStart = html.indexOf('async function doLogin() {');
 const loginEnd = html.indexOf('// Entrar com o rosto', loginStart);
-const clockStart = html.indexOf('async function doClockIn(type) {');
+const clockStart = html.indexOf('// ============== PONTO ==============');
 const clockEnd = html.indexOf('// ============== RANKING', clockStart);
 const sessionStart = html.indexOf('async function checkSession() {');
 const sessionEnd = html.indexOf('async function showStoreSelector()', sessionStart);
@@ -43,12 +43,17 @@ function setup({ identifier = '', password = '', role = 'seller', error = null }
     document: {
       getElementById(id) {
         if (!elements.has(id)) elements.set(id, {
-          value: '', disabled: false, textContent: '', focus() {},
-          classList: { add() {}, remove() {} },
+          value: '', disabled: false, textContent: '', innerHTML: '', style: {}, dataset: {}, focus() {},
+          classList: { add() {}, remove() {}, contains() { return false; } },
         });
         return elements.get(id);
       },
+      hidden: false,
+      addEventListener() {},
     },
+    window: { addEventListener() {} },
+    setInterval() { return 1; },
+    clearInterval() {},
     localStorage: { setItem(key, value) { storage.set(key, value); } },
     showStoreSelector() { storeSelectorOpened = true; },
     async fetch(url, options) {
@@ -74,6 +79,9 @@ function setup({ identifier = '', password = '', role = 'seller', error = null }
   context.document.getElementById('clockVendor').value = 'seller-id';
   vm.createContext(context);
   vm.runInContext(html.slice(loginStart, loginEnd) + '\n' + html.slice(clockStart, clockEnd), context);
+  // This suite verifies login/password payloads. The separate clock-refresh
+  // regression executes real refresh behavior; don't add unrelated GETs here.
+  context.onClockVendorChange = async () => {};
   return { context, requests, elements, storage, gpsWork, opened: () => storeSelectorOpened };
 }
 
@@ -165,6 +173,11 @@ async function main() {
   assert.equal(customer.storage.has('loja_token'), false);
 
   const clock = setup({ password });
+  clock.context.token = 'test-clock-session';
+  clock.context.me = { id: 'operator', role: 'superadmin' };
+  // Valid status has already been loaded in this credential-payload fixture.
+  // The dedicated clock-refresh suite exercises the actual load/status guards.
+  vm.runInContext("_clockStoreId=activeStore.id; _clockToken=token; _clockVendorId='seller-id'; _clockDay=clockDayBRT(); _clockAllowed=new Set(['entry']);", clock.context);
   await clock.context.doClockIn('entry');
   await Promise.all(clock.gpsWork);
   assert.deepEqual(clock.requests, [{ url: '/api/seller/clockin-as', body: {
