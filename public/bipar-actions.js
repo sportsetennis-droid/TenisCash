@@ -21,7 +21,9 @@
     const selected = $('loja').value;
     return { actorId: actor?.id || '', mode: action, fromStoreId: action === 'transfer' ? $('action-origin').value : '', toStoreId: selected, transferId: action === 'receipt' ? $('action-shipment').value : '' };
   }
-  function contextKey(value = context()) { return JSON.stringify([value.actorId, value.mode, value.fromStoreId, value.toStoreId, value.transferId]); }
+  // Receiving starts at a store before a shipment is necessarily available.
+  // Selecting or refreshing the shipment must not replace the physical lot.
+  function contextKey(value = context()) { return JSON.stringify([value.actorId, value.mode, value.fromStoreId, value.toStoreId, value.mode === 'receipt' ? '' : value.transferId]); }
   function draftKey(key) { return 'tc_bipar_action_draft_v1:' + key; }
   function activeReads(draft = currentDraft) { return (draft?.scans || []).filter(item => !item.removed); }
   function newDraft(key) { return { key, sessionId: crypto.randomUUID(), scans: [], context: context() }; }
@@ -42,12 +44,13 @@
   function validContext() {
     if (isInventory() || !actor || !store($('loja').value)) return false;
     if (action === 'transfer') return !!store($('action-origin').value) && allowed.includes($('action-origin').value) && $('action-origin').value !== $('loja').value;
-    return allowed.includes($('loja').value) && shipments.some(item => item.id === $('action-shipment').value);
+    return allowed.includes($('loja').value);
   }
+  function hasShipment() { return action !== 'receipt' || shipments.some(item => item.id === $('action-shipment').value); }
   function scansPayload(draft = currentDraft) {
     return activeReads(draft).map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, productSizeId: item.product?.productSizeId, confirmedSize: item.confirmedSize || '', ...(item.duplicateConfirmed ? { duplicateConfirmed: true } : {}) }));
   }
-  function signature() { return JSON.stringify([contextKey(), currentDraft?.sessionId, scansPayload()]); }
+  function signature() { return JSON.stringify([contextKey(), context().transferId, currentDraft?.sessionId, scansPayload()]); }
   function localPending() { return activeReads().some(item => inflight.has(item.clientScanId) || !item.product || !item.confirmedSize || normalizedSize(item.confirmedSize) !== normalizedSize(item.product.size)); }
   function setOptions(select, options, placeholder, selected) {
     select.replaceChildren(new Option(placeholder, ''));
@@ -65,18 +68,18 @@
     $('action-origin-wrap').hidden = action !== 'transfer'; $('action-shipment-wrap').hidden = action !== 'receipt';
     $('action-explanation').textContent = action === 'transfer'
       ? 'Escolha a origem e o destino. Bipe cada peça, confira o tamanho na etiqueta e envie o lote. O destino confirma a chegada ao receber.'
-      : 'Escolha a loja que recebe e a transferência esperada. Bipe as peças que chegaram e confira o lote antes de confirmar o recebimento.';
+      : 'Escolha a loja e bipe as peças que chegaram. Você pode começar antes de a transferência aparecer. Depois, selecione a remessa para conferir e confirmar o recebimento.';
     const ready = validContext(), pending = read(pendingKey, null);
     $('bipe-box').classList.toggle('locked', !ready || busy || !!pending);
     $('codigo').disabled = !ready || busy || !!pending;
     $('codigo').placeholder = ready ? 'Bipe ou digite o código de barras…' : 'Selecione o contexto desta ação…';
     $('setup-status').className = 'setup-status ' + (ready ? 'status-ok' : 'status-warn');
-    $('setup-status').textContent = ready ? (action === 'transfer' ? 'Transferência: ' + storeName($('action-origin').value) + ' → ' : 'Recebimento: ') + storeName($('loja').value) : !actor ? 'Entre com sua conta pessoal para continuar.' : 'Escolha as lojas e, no recebimento, a transferência esperada.';
+    $('setup-status').textContent = ready ? (action === 'transfer' ? 'Transferência: ' + storeName($('action-origin').value) + ' → ' : 'Pronto para bipar o recebimento: ') + storeName($('loja').value) : !actor ? 'Entre com sua conta pessoal para continuar.' : action === 'receipt' ? 'Escolha uma loja vinculada à sua conta para bipar.' : 'Escolha a loja de origem e a loja de destino.';
     $('action-title').textContent = action === 'transfer' ? 'Lote para transferência' : 'Conferência do recebimento';
     $('action-context').textContent = ready ? activeReads().length + ' peça(s) neste lote · ' + (action === 'transfer' ? storeName($('action-origin').value) + ' → ' : '') + storeName($('loja').value) : 'Cada ação mantém seu próprio lote neste aparelho.';
     $('action-preview').disabled = busy || !ready || storageFailed || !!pending || (action === 'transfer' && !activeReads().length) || activeReads().some(item => inflight.has(item.clientScanId));
     $('action-clear').disabled = busy || !!pending || activeReads().some(item => inflight.has(item.clientScanId));
-    $('action-confirm').disabled = busy || storageFailed || !!pending || !preview?.allowed || !preview || preview.signature !== signature() || !$('action-approved').checked || localPending();
+    $('action-confirm').disabled = busy || !hasShipment() || storageFailed || !!pending || !preview?.allowed || !preview || preview.signature !== signature() || !$('action-approved').checked || localPending();
     $('action-confirm').textContent = action === 'transfer' ? 'Enviar mercadoria para a loja de destino' : 'Confirmar mercadoria recebida';
     $('action-pending').hidden = !pending; $('action-retry').disabled = busy || !actor || (pending && pending.actorId !== actor.id);
     $('action-refresh-shipments').disabled = busy || !actor;
@@ -137,22 +140,23 @@
   }
   async function loadShipments() {
     const request = ++shipmentRequest, selectedStore = $('loja').value, authToken = token, selectedShipment = $('action-shipment').value || settings.shipment;
-    shipments = []; setOptions($('action-shipment'), [], 'Consultando transferências…', ''); contextChanged();
+    shipments = []; setOptions($('action-shipment'), [], 'Consultando transferências…', ''); invalidate(); refresh();
     if (!actor || action !== 'receipt' || !selectedStore) { setOptions($('action-shipment'), [], 'Selecione a loja que recebe', ''); refresh(); return; }
     try {
       const data = await api('/pending?storeId=' + encodeURIComponent(selectedStore), undefined, authToken);
       if (request !== shipmentRequest || action !== 'receipt' || $('loja').value !== selectedStore || token !== authToken) return;
       shipments = data.transfers || [];
-      setOptions($('action-shipment'), shipments.map(item => ({ id: item.id, label: '#' + item.code + ' · ' + (item.fromStore?.name || 'Origem') + ' · ' + item.qtyTotal + ' peça(s)' })), shipments.length ? 'Selecione a transferência esperada' : 'Nenhuma transferência aguardando recebimento', selectedShipment);
-      contextChanged();
-    } catch (error) { if (request === shipmentRequest) { setOptions($('action-shipment'), [], 'Falha na consulta — atualize', ''); message(error.message, true); refresh(); } }
+      setOptions($('action-shipment'), shipments.map(item => ({ id: item.id, label: '#' + item.code + ' · ' + (item.fromStore?.name || 'Origem') + ' · ' + item.qtyTotal + ' peça(s)' })), shipments.length ? 'Selecione a transferência para conferir o lote' : 'Nenhuma pendente — você já pode bipar', selectedShipment);
+      invalidate(); renderReadings(); refresh();
+    } catch (error) { if (request === shipmentRequest && action === 'receipt' && $('loja').value === selectedStore && token === authToken) { setOptions($('action-shipment'), [], 'Falha na consulta — atualize', ''); message(error.message + ' Você pode continuar bipando; atualize a lista antes de confirmar.', true); refresh(); } }
   }
   async function resolveRead(draft, item, ocrText = '') {
     if (inflight.has(item.clientScanId) || item.removed) return;
     const authToken = token, owner = actor?.id;
     inflight.add(item.clientScanId); item.error = ''; invalidate(); refresh();
     try {
-      const body = { barcode: item.barcode, ...(draft.context.mode === 'receipt' ? { transferId: draft.context.transferId, storeId: draft.context.toStoreId } : {}) };
+      const transferId = draft.context.mode === 'receipt' && currentDraft === draft && action === 'receipt' && hasShipment() ? context().transferId : '';
+      const body = { barcode: item.barcode, ...(transferId ? { transferId, storeId: draft.context.toStoreId } : {}) };
       const data = await api('/lookup', body, authToken);
       if (owner !== draft.context.actorId || token !== authToken || actor?.id !== owner) { item.error = 'A conta mudou. Entre novamente e confira esta leitura.'; return; }
       item.product = data.product;
@@ -181,6 +185,7 @@
   }
   async function prepare() {
     if (!validContext() || busy || storageFailed || read(pendingKey, null)) return;
+    if (!hasShipment()) { message('Os bipes estão salvos neste aparelho. Selecione a transferência para conferir o lote. Se ela ainda não apareceu, a loja de origem precisa confirmar o envio; depois toque em “Atualizar transferências”.', true); return; }
     if (localPending()) { message('Confirme o código, o produto e o tamanho literal de cada peça antes de conferir o lote.', true); return; }
     const snapshot = signature(), gen = generation, body = previewBody(), path = action === 'transfer' ? '/send-preview' : '/' + encodeURIComponent(context().transferId) + '/receive-preview';
     busy = true; invalidate(); refresh(); message('Conferindo o lote e o estoque…');
@@ -207,7 +212,7 @@
     if (busy || !actor) return;
     let pending = read(pendingKey, null);
     if (!retry) {
-      if (pending || !preview?.allowed || preview.signature !== signature() || !$('action-approved').checked || localPending()) return;
+      if (pending || !validContext() || !hasShipment() || !preview?.allowed || preview.signature !== signature() || !$('action-approved').checked || localPending()) return;
       pending = { actorId: actor.id, mode: action, draftKey: currentDraft.key, sessionId: currentDraft.sessionId, path: preview.path, body: { ...preview.body, requestId: crypto.randomUUID(), reviewToken: preview.data.reviewToken } };
       try { localStorage.setItem(pendingKey, JSON.stringify(pending)); } catch (_) { message('Não foi possível salvar a confirmação. Nenhuma movimentação foi enviada.', true); return; }
     }

@@ -12,6 +12,8 @@ const settingsKey = 'tc_bipar_actions_settings_v1', pendingKey = 'tc_bipar_actio
 const stores = [1, 2, 3].map(n => ({ id: '00000000-0000-4000-8000-00000000000' + n, name: 'Store ' + n, code: '0' + n, active: true }));
 const person = { id: '10000000-0000-4000-8000-000000000001', name: 'Isolated operator', role: 'seller', storeId: stores[0].id };
 const product = { productSizeId: '20000000-0000-4000-8000-000000000001', name: 'Test shoe', brand: 'Adidas', size: '40', barcode: '7891234567895' };
+const receipts = [1, 2].map(n => ({ id: '30000000-0000-4000-8000-00000000000' + n, code: 100 + n, fromStore: stores[0], toStore: stores[1], qtyTotal: 1, status: 'in_transit' }));
+function receiptStorage(storeId = stores[1].id) { return storage({ [settingsKey]: JSON.stringify({ mode: 'receipt', stores: { receipt: storeId }, origin: stores[0].id }) }); }
 function deferred() { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; }
 function response(data, status = 200) { return { ok: status >= 200 && status < 300, status, json: async () => data }; }
 function storage(initial = {}) {
@@ -73,9 +75,10 @@ function harness(shared) {
       if (url.endsWith('/context')) return response({ user: person, stores, allowedStoreIds: [stores[0].id, stores[1].id] });
       if (h.handler) return h.handler(request);
       if (url.endsWith('/lookup')) return response({ product, requiresSizeConfirmation: true });
+      if (url.includes('/pending?')) return response({ transfers: [] });
       throw Error('Unexpected isolated request: ' + url);
     } });
-  const exportCode = 'window.__test = { authenticate, openCamera, closeCamera, capture, resolveRead, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, state:()=>({actor,currentDraft,preview,cameraRead,busy,stream,scanner,generation}) };';
+  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, state:()=>({actor,currentDraft,preview,cameraRead,busy,stream,scanner,generation}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
@@ -155,5 +158,79 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(h.api.state().preview, null); assert.equal(h.get('action-confirm').disabled, true);
     assert.equal(h.requests.filter(request => request.url.endsWith('/send-confirm')).length, 0);
   });
-  console.log('PASS: 7 action UI regression groups; isolated mocks only.');
+  await test('receipt with no pending shipment unlocks manual scans and camera, but cannot preview or confirm stock', async () => {
+    const h = harness(receiptStorage()); await h.boot();
+    assert.equal(h.get('loja').value, stores[1].id); assert.equal(h.get('action-shipment').value, '');
+    assert.equal(h.get('codigo').disabled, false, 'A receiving store is sufficient to begin scanning');
+    await h.api.openCamera(); assert.ok(h.get('action-camera')); assert.equal(h.scannerInstances.length, 1);
+    const pendingList = deferred(), camera = h.get('action-camera'), scanner = h.api.state().scanner;
+    h.handler = request => request.url.includes('/pending?') ? pendingList.promise : response({ product });
+    const refreshing = h.api.loadShipments();
+    assert.equal(h.get('action-camera'), camera); assert.equal(h.get('codigo').disabled, false);
+    await h.api.capture({ ean: product.barcode }); assert.equal(h.api.activeReads().length, 1);
+    const scanId = h.api.activeReads()[0].clientScanId;
+    pendingList.resolve(response({ transfers: [] })); await refreshing;
+    assert.equal(h.get('action-camera'), camera, 'Refreshing the shipment list must not close an active camera');
+    assert.equal(h.api.state().scanner, scanner); assert.equal(h.api.activeReads()[0].clientScanId, scanId);
+    assert.ok(h.tracks.every(track => !track.stopped), 'Camera tracks stay available while refreshing shipments');
+    const lookup = h.requests.find(request => request.url.endsWith('/lookup'));
+    assert.ok(lookup); assert.ok(!lookup.body.transferId, 'Unbound draft cannot guess an incoming transfer');
+    h.api.closeCamera(); await h.size('40');
+    const before = h.requests.length;
+    await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+    assert.equal(h.requests.length, before, 'No preview or stock write may be sent without a transfer');
+    assert.equal(h.get('action-confirm').disabled, true); assert.equal(h.localStorage.getItem(pendingKey), null);
+    assert.equal(h.api.activeReads().length, 1, 'Scanning without a shipment remains a saved draft');
+  });
+  await test('receipt draft survives reload, shipment binding and refreshing pending shipments without losing scan IDs', async () => {
+    const h = harness(receiptStorage()); await h.boot(); await h.scan(product.barcode); await h.size('40');
+    const original = JSON.stringify(h.api.scansPayload()), sessionId = h.api.state().currentDraft.sessionId;
+    const reloaded = harness(h.localStorage); await reloaded.boot();
+    assert.equal(JSON.stringify(reloaded.api.scansPayload()), original); assert.equal(reloaded.api.state().currentDraft.sessionId, sessionId);
+    reloaded.handler = request => request.url.includes('/pending?') ? response({ transfers: receipts }) : response({ product });
+    await reloaded.api.loadShipments(); const unboundSignature = reloaded.api.signature();
+    reloaded.get('action-shipment').value = receipts[0].id; await reloaded.get('action-shipment').emit('change');
+    assert.notEqual(reloaded.api.signature(), unboundSignature, 'The selected shipment must be part of the review signature');
+    assert.equal(JSON.stringify(reloaded.api.scansPayload()), original); assert.equal(reloaded.api.state().currentDraft.sessionId, sessionId);
+    const boundSignature = reloaded.api.signature(); await reloaded.api.loadShipments();
+    assert.equal(reloaded.get('action-shipment').value, receipts[0].id); assert.equal(reloaded.api.signature(), boundSignature);
+    assert.equal(JSON.stringify(reloaded.api.scansPayload()), original); assert.equal(reloaded.api.state().currentDraft.sessionId, sessionId);
+    reloaded.get('action-shipment').value = receipts[1].id; await reloaded.get('action-shipment').emit('change');
+    assert.notEqual(reloaded.api.signature(), boundSignature); assert.equal(JSON.stringify(reloaded.api.scansPayload()), original);
+    const again = harness(reloaded.localStorage); again.handler = request => request.url.includes('/pending?') ? response({ transfers: receipts }) : response({ product }); await again.boot();
+    assert.equal(again.get('action-shipment').value, receipts[1].id); assert.equal(JSON.stringify(again.api.scansPayload()), original);
+    assert.equal(again.api.state().currentDraft.sessionId, sessionId);
+  });
+  await test('late receipt lookup is retained when a shipment appears; refreshed or changed shipment invalidates previous review', async () => {
+    const h = harness(receiptStorage()); await h.boot(); const lookup = deferred();
+    h.handler = request => request.url.endsWith('/lookup') ? lookup.promise : response({ transfers: receipts });
+    const scanning = h.scan(product.barcode), draft = h.api.state().currentDraft, id = draft.scans[0].clientScanId;
+    await h.api.loadShipments(); h.get('action-shipment').value = receipts[0].id; await h.get('action-shipment').emit('change');
+    lookup.resolve(response({ product })); await scanning;
+    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].clientScanId, id);
+    assert.equal(h.api.activeReads()[0].product.productSizeId, product.productSizeId);
+    await h.api.resolveRead(h.api.state().currentDraft, h.api.activeReads()[0]);
+    const reboundLookup = h.requests.filter(request => request.url.endsWith('/lookup')).at(-1);
+    assert.equal(reboundLookup.body.transferId, receipts[0].id, 'Retries after binding use the selected shipment, including variants disabled after dispatch');
+    assert.equal(h.api.activeReads().length, 1); await h.size('40');
+    h.handler = request => request.url.endsWith('/receive-preview') ? response({ canReceive: true, reviewToken: 'c'.repeat(64), transfer: receipts[0], scanCount: 1, items: [], blockers: [] }) : response({ transfers: receipts });
+    await h.api.prepare(); assert.ok(h.api.state().preview?.allowed);
+    h.get('action-approved').checked = true;
+    const before = h.requests.length; h.get('action-shipment').value = receipts[1].id;
+    await h.api.confirmAction(); assert.equal(h.requests.length, before, 'Different shipment cannot reuse the previous signed review');
+    await h.get('action-shipment').emit('change'); assert.equal(h.api.state().preview, null); assert.equal(h.get('action-confirm').disabled, true);
+    await h.api.prepare(); assert.ok(h.api.state().preview?.allowed); await h.api.loadShipments();
+    assert.equal(h.api.state().preview, null); assert.equal(h.api.activeReads()[0].clientScanId, id);
+  });
+  await test('missing, unauthorized and unknown receiving stores keep scanning and camera blocked', async () => {
+    for (const id of ['', stores[2].id, '99999999-9999-4999-8999-999999999999']) {
+      const h = harness(receiptStorage(id)); await h.boot(); const before = h.requests.length;
+      assert.equal(h.get('codigo').disabled, true);
+      assert.equal(await h.scan(product.barcode), null); await h.api.openCamera(); await h.api.prepare();
+      h.get('action-approved').checked = true; await h.api.confirmAction();
+      assert.equal(h.api.activeReads().length, 0); assert.equal(h.scannerInstances.length, 0); assert.equal(h.get('action-camera'), undefined);
+      assert.equal(h.requests.length, before, 'Invalid destination must not trigger lookup, review or stock confirmation');
+    }
+  });
+  console.log('PASS: 11 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
