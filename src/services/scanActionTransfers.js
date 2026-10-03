@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const { Prisma } = require('@prisma/client');
 const { operator, canSend } = require('./scanTransfers');
 const { resolveBarcodeRows, aliasRows } = require('./scannerCatalog');
+const { fiscalBarcodeTarget, learnScannerBarcode, validGtin } = require('./scannerReference');
 const { applyStoreStockDelta } = require('./storeStockLedger');
 
 const SOURCE = 'bipar-actions-v1';
@@ -98,8 +99,29 @@ async function lookup(db, actor, input = {}) {
     if (!transfer.fromStore.active || !transfer.toStore.active) fail('Origem ou destino não está disponível.');
     expectedSizes = await db.productSize.findMany({ where: { id: { in: transfer.items.map(item => item.productSizeId) } }, include: { product: true } });
   }
-  const matches = (await resolveCodes(db, [{ barcode }], expectedSizes)).get(barcodeKey(barcode)) || [];
-  if (!matches.length) fail('Código não identificado. Confira o cadastro antes de continuar.', 404);
+  let matches = (await resolveCodes(db, [{ barcode }], expectedSizes)).get(barcodeKey(barcode)) || [];
+  let fiscalReason = '';
+  // A scanned GTIN may already be linked to a purchased item without having a
+  // catalog variant yet. Reuse only exact incoming-invoice evidence. Never
+  // infer product/size from unreviewed OCR or client-supplied identifiers here.
+  if (!matches.length && validGtin(barcode)) {
+    const fiscal = await fiscalBarcodeTarget(db, barcode);
+    fiscalReason = fiscal?.reason || '';
+    if (fiscal?.productId && fiscal.size) {
+      if (transfer && !expectedSizes.some(size => size.productId === fiscal.productId && sizeKey(size.size) === sizeKey(fiscal.size))) fail('Esta peça não pertence à transferência selecionada.');
+      const learned = await learnScannerBarcode(db, { barcode });
+      fiscalReason = learned.reason;
+      // Recheck both direct identifiers and aliases after the serialized learn;
+      // an ambiguous or inactive result must still be refused below.
+      matches = (await resolveCodes(db, [{ barcode }], expectedSizes)).get(barcodeKey(barcode)) || [];
+    }
+  }
+  if (!matches.length) {
+    const detail = fiscalReason === 'size_required' ? 'Código encontrado na nota, mas o tamanho ainda precisa ser confirmado no cadastro.'
+      : /conflict/.test(fiscalReason) ? 'Há informações divergentes para este código. Confira o cadastro.'
+      : 'Código não identificado. Releia a etiqueta inteira ou mantenha a peça pendente para conferir o cadastro.';
+    fail(detail, 404);
+  }
   if (matches.length !== 1) fail('Código associado a mais de uma variante. Confira o cadastro.');
   const ps = matches[0], expected = transfer?.items.find(item => item.productSizeId === ps.id);
   if (transfer && !expected) fail('Esta peça não pertence à transferência selecionada.');

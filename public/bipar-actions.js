@@ -8,7 +8,7 @@
   let action = ['inventory', 'transfer', 'receipt'].includes(settings.mode) ? settings.mode : 'inventory';
   let token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') || localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
   let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, preview = null, interaction = false;
-  let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraRead = null;
+  let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraAttempt = 0, cameraRead = null, cameraRetry = null;
   const inflight = new Set(), drafts = new Map();
   $('bipar-action').value = action;
   function isInventory() { return action === 'inventory'; }
@@ -93,7 +93,7 @@
     if (!activeReads().length) { const empty = document.createElement('p'); empty.textContent = action === 'receipt' ? 'Bipe as peças recebidas. “Conferir lote” mostra também o que ainda falta.' : 'Os bipes desta transferência aparecerão aqui.'; area.append(empty); }
     for (const item of activeReads()) {
       const card = document.createElement('div'); card.className = 'action-reading';
-      const title = document.createElement('strong'); title.textContent = item.product ? item.product.name + ' · ' + item.product.brand : 'Identificando o produto';
+      const title = document.createElement('strong'); title.textContent = item.product ? item.product.name + ' · ' + item.product.brand : inflight.has(item.clientScanId) ? 'Identificando o produto' : 'Leitura pendente — produto não identificado';
       const detail = document.createElement('p'); detail.textContent = 'Código: ' + item.barcode + (item.product ? ' · Cadastro: tamanho ' + item.product.size : '');
       card.append(title, detail);
       if (item.error) { const error = document.createElement('p'); error.className = 'transfer-error'; error.textContent = item.error; card.append(error); }
@@ -104,7 +104,7 @@
         const hint = document.createElement('small'); hint.textContent = 'Em calçados, use BR. Se a etiqueta divergir do cadastro, separe a peça para corrigir antes de enviar.';
         label.append(size); card.append(label, hint);
       } else {
-        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-secondary'; retry.textContent = inflight.has(item.clientScanId) ? 'Identificando…' : 'Tentar identificar novamente'; retry.disabled = inflight.has(item.clientScanId); retry.onclick = () => resolveRead(currentDraft, item); card.append(retry);
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-secondary'; retry.textContent = inflight.has(item.clientScanId) ? 'Identificando…' : 'Ler novamente esta peça'; retry.disabled = inflight.has(item.clientScanId); retry.onclick = () => openCamera(item); card.append(retry);
       }
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-danger'; remove.textContent = 'Retirar esta leitura do lote'; remove.disabled = busy || inflight.has(item.clientScanId); remove.onclick = () => { if (busy || inflight.has(item.clientScanId) || !confirm('Retirar somente esta leitura deste lote? Nenhum estoque será alterado.')) return; item.removed = true; invalidate(); persist(); renderReadings(); refresh(); }; card.append(remove); area.append(card);
     }
@@ -152,15 +152,16 @@
   }
   async function resolveRead(draft, item, ocrText = '') {
     if (inflight.has(item.clientScanId) || item.removed) return;
+    if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, 12000);
     const authToken = token, owner = actor?.id;
     inflight.add(item.clientScanId); item.error = ''; invalidate(); refresh();
     try {
       const transferId = draft.context.mode === 'receipt' && currentDraft === draft && action === 'receipt' && hasShipment() ? context().transferId : '';
-      const body = { barcode: item.barcode, ...(transferId ? { transferId, storeId: draft.context.toStoreId } : {}) };
+      const body = { barcode: item.barcode, ...(item.ocrText ? { ocrText: item.ocrText } : {}), ...(transferId ? { transferId, storeId: draft.context.toStoreId } : {}) };
       const data = await api('/lookup', body, authToken);
       if (owner !== draft.context.actorId || token !== authToken || actor?.id !== owner) { item.error = 'A conta mudou. Entre novamente e confira esta leitura.'; return; }
       item.product = data.product;
-      const br = String(ocrText).match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
+      const br = String(item.ocrText || '').match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
       if (br && normalizedSize(br[1]) === normalizedSize(data.product.size)) item.ocrSize = br[1];
     } catch (error) { item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.'; }
     finally { inflight.delete(item.clientScanId); persist(draft); if (currentDraft?.key === draft.key) { renderReadings(); refresh(); } }
@@ -175,7 +176,7 @@
       duplicateConfirmed = await window.ScannerConfirm.ask('CÓDIGO JÁ BIPADO NESTE LOTE\n\nCódigo: ' + barcode + '\nQuantidade anterior: ' + count + '\n\nÉ outra peça física? Confirmar acrescenta 1. Cancelar não conta novamente.');
       if (!duplicateConfirmed || key !== contextKey() || gen !== generation) return null;
     }
-    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, createdAt: new Date().toISOString() };
+    const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
     renderReadings(); refresh(); await resolveRead(draft, item, ocrText); return item;
   }
@@ -235,7 +236,7 @@
     } finally { busy = false; refresh(); }
   }
   function closeCamera() {
-    cameraGeneration++; clearInterval(cameraTimer); scanner?.stop(); scanner = null; window.ScannerAuto?.stopDecoder(); stream?.getTracks().forEach(track => track.stop()); stream = null; cameraRead = null; $('action-camera')?.remove();
+    cameraGeneration++; clearInterval(cameraTimer); scanner?.stop(); scanner = null; window.ScannerAuto?.stopDecoder(); stream?.getTracks().forEach(track => track.stop()); stream = null; cameraRead = null; cameraRetry = null; $('action-camera')?.remove();
   }
   function frame() {
     const video = $('etiq-video'); if (!video?.videoWidth) return null;
@@ -243,38 +244,115 @@
   }
   async function capture(read) {
     if (cameraRead || !stream) return;
-    const cameraId = cameraGeneration;
+    const cameraId = cameraGeneration, attempt = ++cameraAttempt, draft = currentDraft, retry = cameraRetry;
     if (!read.ean) { $('etiq-hint').textContent = 'Falta ler o código de barras. Aproxime a etiqueta inteira e mantenha parada.'; scanner?.reset(); return; }
     cameraRead = { working: true }; scanner?.stop();
+    $('action-camera-size')?.remove(); $('action-camera-pending')?.remove();
     $('etiq-confirm').style.display = 'flex'; $('etiq-confirm-status').textContent = 'Identificando a peça…'; $('etiq-confirm-btn').disabled = true;
-    const item = await scan(read.ean, read.ocrText || '');
+    $('etiq-confirm-det').textContent = 'Código lido: ' + read.ean;
+    // Query the exact barcode immediately, while OCR reads this same captured frame.
+    const textPromise = read.ocrText ? Promise.resolve(read.ocrText) : read.frame ? Promise.resolve().then(() => window.ScannerOCR.recognize(read.frame)).catch(() => '') : Promise.resolve('');
+    const item = retry ? await retryRead(draft, retry, read.ean, read.ocrText || '', cameraId) : await scan(read.ean, read.ocrText || '');
     if (cameraId !== cameraGeneration || !$('action-camera')) return;
-    if (!item) { cameraRead = null; $('etiq-confirm').style.display = 'none'; scanner?.reset({ afterCode: read.ean }); return; }
+    if (!item) {
+      if (retry && !retry.removed && currentDraft === draft) showCameraRead(retry);
+      else { cameraRead = null; $('etiq-confirm').style.display = 'none'; scanner?.reset({ afterCode: read.ean }); }
+      return;
+    }
+    cameraRetry = null;
     showCameraRead(item);
+    // A known barcode is ready for physical size confirmation without waiting for OCR.
+    // A late frame must never replace text/size or reopen the overlay of a later piece.
+    const sameRead = () => cameraId === cameraGeneration && attempt === cameraAttempt && currentDraft === draft && cameraRead === item && !item.removed && !!$('action-camera');
+    void textPromise.then(async value => {
+      const text = String(value || '').trim().slice(0, 12000);
+      if (!text || !sameRead() || text === item.ocrText) return;
+      if (!item.product) {
+        await resolveRead(draft, item, text);
+        if (sameRead()) showCameraRead(item);
+      } else {
+        item.ocrText = text;
+        const br = text.match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
+        if (br && normalizedSize(br[1]) === normalizedSize(item.product.size)) item.ocrSize = br[1];
+        persist(draft); cameraDetails(item); // Do not replace a size the operator is typing.
+      }
+    }).catch(() => {});
+  }
+  async function retryRead(draft, item, barcode, ocrText, cameraId) {
+    barcode = String(barcode || '').trim();
+    if (!/^\d{8}$|^\d{12,14}$/.test(barcode) || item.removed || !activeReads(draft).includes(item)) return null;
+    const unchanged = () => cameraId === cameraGeneration && currentDraft === draft && validContext() && !item.removed;
+    if (!unchanged()) return null;
+    if (barcode !== item.barcode) {
+      const correction = await window.ScannerConfirm.ask('CÓDIGO DIFERENTE NA NOVA LEITURA\n\nAnterior: ' + item.barcode + '\nLido agora: ' + barcode + '\n\nÉ a MESMA peça física, com o código anterior lido incorretamente? Confirmar corrige esta leitura, sem acrescentar outra peça. Se trocou a peça, cancele e use “Próxima peça — manter pendente”.');
+      if (!correction || !unchanged()) return null;
+      const count = activeReads(draft).filter(other => other !== item && other.barcode.replace(/^0+/, '') === barcode.replace(/^0+/, '')).length;
+      let duplicateConfirmed = false;
+      if (count) {
+        duplicateConfirmed = await window.ScannerConfirm.ask('CÓDIGO JÁ BIPADO NESTE LOTE\n\nCódigo: ' + barcode + '\nQuantidade anterior: ' + count + '\n\nA peça desta leitura pendente é OUTRA peça física, diferente das já contadas? Confirmar mantém esta peça no lote com o código corrigido. Cancelar mantém a pendência anterior.');
+        if (!duplicateConfirmed || !unchanged()) return null;
+      }
+      (item.barcodeCorrections ||= []).push({ previous: item.barcode, barcode, correctedAt: new Date().toISOString() });
+      item.barcode = barcode; item.duplicateConfirmed = duplicateConfirmed; item.confirmedSize = ''; delete item.product; delete item.ocrSize; item.ocrText = '';
+      invalidate(); if (!persist(draft)) return null;
+    }
+    await resolveRead(draft, item, ocrText); return item;
+  }
+  function retryCameraRead(item) {
+    if (!item || item.removed || !activeReads().includes(item) || inflight.has(item.clientScanId)) return;
+    cameraRetry = item; cameraRead = null;
+    $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
+    $('etiq-hint').textContent = 'Releia a etiqueta inteira da MESMA peça. Código anterior: ' + item.barcode + '. Esta tentativa não acrescenta outra peça.';
+    scanner?.reset(); // No afterCode: this is the same physical piece, not the next one.
+  }
+  function nextCameraRead(pending = false) {
+    const item = cameraRead;
+    if (!item || item.working || !item.barcode || inflight.has(item.clientScanId)) return;
+    if (pending) {
+      item.pendingAcknowledgedAt = new Date().toISOString();
+      message('Leitura ' + item.barcode + ' mantida como pendente. O lote só poderá ser confirmado depois de identificar o produto e conferir o tamanho.', true);
+    }
+    if (!persist()) return;
+    invalidate(); cameraRead = null; cameraRetry = null; $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); $('etiq-confirm').style.display = 'none';
+    renderReadings(); refresh(); $('etiq-contador').textContent = 'Lote desta ação · ' + activeReads().length + ' peça(s)';
+    scanner?.reset({ afterCode: item.barcode });
   }
   function showCameraRead(item) {
-    $('action-camera-size')?.remove(); cameraRead = item;
-    $('etiq-confirm-status').textContent = item.product ? 'Confira o tamanho na etiqueta' : 'Peça ainda não identificada';
-    $('etiq-confirm-det').textContent = item.product ? item.product.name + ' · Código ' + item.barcode + ' · Cadastro: ' + item.product.size : item.error;
-    if (item.product && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
+    $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); cameraRead = item;
+    $('etiq-confirm').style.display = 'flex';
+    cameraDetails(item);
     const size = document.createElement('input'); size.id = 'action-camera-size'; size.type = 'text'; size.maxLength = 20; size.placeholder = /ADIDAS/i.test(item.product?.brand) ? 'Digite o BR desta caixa' : 'Digite o tamanho da etiqueta'; size.value = item.ocrSize || ''; size.setAttribute('aria-label', size.placeholder); size.style.cssText = 'display:block;min-height:48px;width:100%;max-width:320px;padding:10px;font-size:20px;margin:8px auto;color:#111;background:white;border-radius:8px';
     if (item.product) $('etiq-confirm-det').after(size);
-    const button = $('etiq-confirm-btn'); button.textContent = item.product ? 'TAMANHO CONFERIDO — PRÓXIMA PEÇA' : 'TENTAR IDENTIFICAR NOVAMENTE'; button.disabled = !item.product || normalizedSize(size.value) !== normalizedSize(item.product.size); button.style.background = '#167541';
+    const button = $('etiq-confirm-btn'); button.textContent = item.product ? 'TAMANHO CONFERIDO — PRÓXIMA PEÇA' : 'RELER A MESMA PEÇA'; button.disabled = !item.product || normalizedSize(size.value) !== normalizedSize(item.product.size); button.style.background = item.product ? '#167541' : '#925400';
     size.addEventListener('input', () => { button.disabled = !size.value.trim() || normalizedSize(size.value) !== normalizedSize(item.product?.size); });
     if (!item.product) button.disabled = false;
+    const pending = document.createElement('button'); pending.id = 'action-camera-pending'; pending.type = 'button'; pending.dataset.click = 'next-pending'; pending.textContent = 'PRÓXIMA PEÇA — MANTER PENDENTE'; pending.style.cssText = 'width:100%;max-width:340px;min-height:48px;margin-top:12px;padding:10px;font-size:15px;font-weight:800;color:white;background:#555;border:1px solid #aaa;border-radius:12px'; button.after(pending);
+    $('etiq-contador').textContent = 'Lote desta ação · ' + activeReads().length + ' peça(s)';
   }
-  async function openCamera() {
+  function cameraDetails(item) {
+    $('etiq-confirm-status').textContent = item.product ? 'Confira o tamanho na etiqueta' : 'Peça ainda não identificada';
+    $('etiq-confirm-det').textContent = 'Código lido: ' + item.barcode + ' · ' + (item.product ? item.product.name + ' · Cadastro: ' + item.product.size : (item.error || 'Identificação pendente. Releia a etiqueta inteira desta peça.'));
+    $('etiq-confirm-det').style.setProperty('display', 'block', 'important');
+    if (item.product && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
+  }
+  async function openCamera(retryItem = null) {
     if (!validContext() || busy || read(pendingKey, null)) { message('Selecione o contexto desta ação antes de abrir a câmera.', true); return; }
+    if (retryItem && (!activeReads().includes(retryItem) || inflight.has(retryItem.clientScanId))) return;
     window.fecharScanner?.(); closeCamera(); const cameraId = cameraGeneration;
     const overlay = document.createElement('div'); overlay.id = 'action-camera'; overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99998;display:flex;flex-direction:column'; overlay.innerHTML = window.ScannerView.markup(); document.body.append(overlay);
     overlay.addEventListener('click', async event => {
       event.stopPropagation(); const command = event.target.closest('[data-click]')?.dataset.click;
       if (command === 'close') return closeCamera();
-      if (command === 'capture' && !cameraRead) { const captured = frame(); if (captured) { const ean = await window.ScannerAuto.decodeInWorker(captured); await capture({ ean: typeof ean === 'string' ? ean : ean?.text || '', frame: captured }); } }
+      if (command === 'capture') {
+        if (cameraRead && !cameraRead.working && !cameraRead.product) retryCameraRead(cameraRead);
+        if (!cameraRead) { const captured = frame(); if (captured) { const ean = await window.ScannerAuto.decodeInWorker(captured); if (cameraId === cameraGeneration && $('action-camera')) await capture({ ean: typeof ean === 'string' ? ean : ean?.text || '', frame: captured }); } }
+        return;
+      }
+      if (command === 'next-pending') return nextCameraRead(true);
       if (command !== 'next' || !cameraRead || cameraRead.working) return;
-      if (!cameraRead.product) { const item = cameraRead, cameraId = cameraGeneration; await resolveRead(currentDraft, item); if (cameraId === cameraGeneration && $('action-camera')) showCameraRead(item); return; }
+      if (!cameraRead.product) { retryCameraRead(cameraRead); return; }
       const size = $('action-camera-size')?.value.trim() || ''; if (!size || normalizedSize(size) !== normalizedSize(cameraRead.product.size)) return;
-      cameraRead.confirmedSize = size; persist(); invalidate(); const code = cameraRead.barcode; cameraRead = null; $('action-camera-size')?.remove(); $('etiq-confirm').style.display = 'none'; renderReadings(); refresh(); scanner?.reset({ afterCode: code });
+      cameraRead.confirmedSize = size; nextCameraRead();
     });
     try {
       const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
@@ -283,6 +361,7 @@
       if (cameraId !== cameraGeneration || !$('action-camera')) { opened.getTracks().forEach(track => track.stop()); return; }
       $('etiq-contador').textContent = 'Lote desta ação · ' + activeReads().length + ' peça(s)'; $('etiq-lista').textContent = 'O estoque só muda depois da conferência e confirmação do lote.';
       scanner = window.ScannerAuto.create({ snapshot: frame, decode: canvas => window.ScannerAuto.decodeInWorker(canvas), recognize: canvas => window.ScannerOCR.recognize(canvas), canRead: () => !!stream && !cameraRead && cameraId === cameraGeneration, onHint: text => { if ($('action-camera')) $('etiq-hint').textContent = text; }, onCapture: capture });
+      if (retryItem) retryCameraRead(retryItem);
       cameraTimer = setInterval(() => scanner?.tick(), 350);
     } catch (error) { closeCamera(); message('Não foi possível abrir a câmera: ' + error.message, true); }
   }
