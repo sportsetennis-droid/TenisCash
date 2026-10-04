@@ -42,19 +42,92 @@ async function referenceCandidates(db, codes) {
   return [...new Map(resolved.map(r=>[r.id,r])).values()];
 }
 
-// Exact incoming NF-e GTIN plus its existing product link and literal variant.
+function gtinKey(value) { return validGtin(value) ? String(value).trim().replace(/^0+/, '') : ''; }
+function evidenceText(value) { return typeof value === 'string' ? value.trim().normalize('NFKC').replace(/\s+/g, ' ') : ''; }
+function literalSize(value) {
+ const size=evidenceText(value);
+ // A range is allowed only as an explicitly documented literal, never from a
+ // supplier-code suffix or an unlabelled number in a product description.
+ const footwearRange=size.match(/^(?:PP|P|M|G|GG|XG|XGG) \(Calçados (\d{2} a \d{2})\)$/i);
+ if(footwearRange)return footwearRange[1];
+ return /^(?:\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|U|ÚNICO|\d{2} a \d{2})$/i.test(size)?size.replace(',','.'):'';
+}
+function textKey(value) { return evidenceText(value).toUpperCase(); }
+function singleLiteral(value) { return Array.isArray(value)&&value.length===1?value[0]:typeof value==='string'?value:''; }
+function officialLupoUrl(value) {
+ try { const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['www.lsport.com.br','lsport.com.br','luposport.vtexcommercestable.com.br'].includes(u.hostname); }
+ catch (_) { return false; }
+}
+function officialLupoCatalogUrl(value) { return officialLupoUrl(value)&&new URL(value).hostname==='luposport.vtexcommercestable.com.br'; }
+function datedEvidence(value) { return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value)&&Number.isFinite(Date.parse(value)); }
+
+// This persisted import contract is deliberately narrow. It does not accept
+// OCR/client data, an AI status alone, a model-only SKU or a size-code mapping.
+// The stored exact official record corroborates every component of the variant;
+// when a second official source was saved, it must agree as well.
+function documentedFiscalVariant(product,row,barcode) {
+ const list=product?.aiContext?.invoicePricing20260925?.variants;
+ if(!Array.isArray(list))return null;
+ const key=gtinKey(barcode);
+ if(!key)return null;
+ const records=list.filter(v=>v&&v.status==='confirmed_official'&&[v.ean,v.source?.ean,v.source?.corroboration?.ean].some(e=>gtinKey(e)===key));
+ if(!records.length)return null;
+ if(normalizeReference(product.brand)!=='LUPO')return {reason:'reference_conflict'};
+ const confirmed=[];
+ for(const v of records){
+  const source=v.source,other=source?.corroboration;
+  const fullSKU=normalizeReference(v.supplierCode),size=literalSize(v.size);
+  const color=evidenceText(v.color),colorWithCode=evidenceText(v.colorLiteralWithCode);
+  // All variants in this Lupo import use the complete 15-digit supplier SKU.
+  // Model references alone (five/eight digits) cannot identify a colour/size.
+  if(!source||source.type!=='official_exact_ean_and_full_supplier_sku'||!size||!/^\d{15}$/.test(fullSKU)||!color||!colorWithCode
+    ||!officialLupoUrl(source.sourceUrl)||!datedEvidence(source.consultedAt)
+    ||(!other&&!officialLupoCatalogUrl(source.sourceUrl)))return {reason:'size_required'};
+  if([v.ean,source.ean,row.ean].some(e=>gtinKey(e)!==key)
+    ||[source.fullSKU,row.supplierCode].some(s=>normalizeReference(s)!==fullSKU))return {reason:'reference_conflict'};
+  if(source.modelReference&&(!/^\d{8}$/.test(normalizeReference(source.modelReference))||!fullSKU.startsWith(normalizeReference(source.modelReference))))return {reason:'reference_conflict'};
+  if(textKey(literalSize(source.sizeLiteral))!==textKey(size))return {reason:'size_conflict'};
+  // Some Lupo sources spell colour with its explicit code ("Coral - 0510").
+  // Compare that documented suffix as well; never derive it from the SKU.
+  const colorName=value=>textKey(value).replace(/\s+-\s+\d+$/,'');
+  if(!evidenceText(source.colorLiteral)||colorName(source.colorLiteral)!==colorName(color)
+    ||colorName(colorWithCode)!==colorName(color)
+    ||[color,source.colorLiteral].some(c=>/\s+-\s+\d+$/.test(c)&&textKey(c)!==textKey(colorWithCode))
+    ||textKey(source.colorLiteralWithCode)!==textKey(colorWithCode))return {reason:'reference_conflict'};
+  if(other){
+   if(!officialLupoCatalogUrl(other.sourceUrl)||!datedEvidence(other.at))return {reason:'size_required'};
+   if(gtinKey(other.ean)!==key||normalizeReference(other.fullSKU)!==fullSKU)return {reason:'reference_conflict'};
+   if(textKey(literalSize(singleLiteral(other.sizeLiteral)))!==textKey(size))return {reason:'size_conflict'};
+   if(textKey(singleLiteral(other.colorLiteral))!==textKey(colorWithCode))return {reason:'reference_conflict'};
+  }
+  confirmed.push({size,color,colorLiteralWithCode:colorWithCode,supplierCode:v.supplierCode,sourceUrl:source.sourceUrl,...(other?{corroborationUrl:other.sourceUrl}:{}),consultedAt:source.consultedAt});
+ }
+ if(new Set(confirmed.map(v=>textKey(v.size)+'|'+textKey(v.colorLiteralWithCode)+'|'+normalizeReference(v.supplierCode))).size!==1)return {reason:'reference_conflict'};
+ return confirmed[0];
+}
+
+// Exact incoming NF-e GTIN plus its canonical product link and either the
+// existing literal-size rule or the persisted, corroborated official variant.
 async function fiscalBarcodeTarget(db,barcode){
- const rows=await db.$queryRaw`SELECT i.id, i."productId", i.description FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId" WHERE d."docType"='entrada' AND i.ean IN (SELECT jsonb_array_elements_text(${JSON.stringify(variants(barcode))}::jsonb)) AND i."productId" IS NOT NULL LIMIT 51`;
+ const rows=await db.$queryRaw`SELECT i.id, i."productId", i.description, i.ean, i."supplierCode" FROM "XmlFiscalItem" i JOIN "XmlFiscalDocument" d ON d.id=i."fiscalDocumentId" WHERE d."docType"='entrada' AND i.ean IN (SELECT jsonb_array_elements_text(${JSON.stringify(variants(barcode))}::jsonb)) AND i."productId" IS NOT NULL LIMIT 51`;
  if(rows.length>50)return {reason:'reference_conflict'};
  const targets=[];
  for(const row of rows){
   const product=await canonicalProduct(db,await db.product.findUnique({where:{id:row.productId},include:{sizes:true}}));
   if(!product)continue;
-  const match=String(row.description||'').trim().match(/^(.*)\s+(\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG)$/i);
-  if(!match || normalizeReference(match[1])!==normalizeReference(String(product.name).replace(/\s+\d{2}(?:[.,]5)?$/,'')) && normalizeReference(match[1])!==normalizeReference(product.name))return {reason:'size_required'};
-  const size=match[2].toUpperCase().replace(',','.');
+  const description=String(row.description||'').trim(),match=description.match(/^(.*)\s+(\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG)$/i);
+  const names=[normalizeReference(product.name),normalizeReference(String(product.name).replace(/\s+\d{2}(?:[.,]5)?$/,''))];
+  const literal=match&&names.includes(normalizeReference(match[1]))?match[2].toUpperCase().replace(',','.'):null;
+  const documented=documentedFiscalVariant(product,row,barcode);
+  if(documented?.reason)return documented;
+  const officialTail=evidenceText(row.description).match(/(?:^|\s)(\d{2} a \d{2}|\d{2}(?:[.,]5)?|PP|P|M|G|GG|XG|XGG|U|ÚNICO)$/i);
+  if(officialTail&&documented&&textKey(officialTail[1].replace(',','.'))!==textKey(documented.size))return {reason:'size_conflict'};
+  // Importers may rename a catalog product. For official evidence, the exact
+  // fiscal EAN/full SKU and explicit canonical product link establish identity.
+  if(!literal&&!documented)return {reason:'size_required'};
+  const size=literal||documented.size;
   // A missing literal fiscal size is created below with zero purchased stock.
-  targets.push({productId:product.id,size,itemId:row.id});
+  targets.push({productId:product.id,size,itemId:row.id,...(documented?{officialEvidence:documented}:{})});
  }
  const unique=[...new Map(targets.map(t=>[t.productId+':'+t.size,t])).values()];
  return unique.length>1?{reason:'barcode_conflict'}:unique[0]||null;
@@ -66,7 +139,11 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
   barcode = String(barcode || '').trim();
   if (!validGtin(barcode)) return { reason: 'invalid_barcode' };
   const codes = referencesFrom(read);
-  return db.$transaction(async tx => {
+  const requestedSize=size;
+  // Concurrent first scans may wait on the same advisory lock with an older
+  // Serializable snapshot. Retry only a rolled-back serialization conflict.
+  for(let attempt=0;;attempt++)try { return await db.$transaction(async tx => {
+    let size=requestedSize;
     // Serialize competing scans of the same UPC/GTIN (including leading zero).
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${barcode.replace(/^0+/, '')}))::text AS locked`;
     const rawOwners = await tx.productSize.findMany({ where: { barcode: { in: variants(barcode) } }, include: { product: true } });
@@ -82,6 +159,7 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     if(!size && fiscal?.size)size=fiscal.size;
     const pid = confirmedProductId || candidates[0]?.id || owners[0]?.productId || fiscal?.productId;
     if (!pid) return { reason: 'reference_not_found' };
+    if(fiscal?.officialEvidence&&fiscal.productId!==pid)return {reason:'reference_conflict'};
     if (owners.length && owners[0].productId !== pid) return { reason: 'barcode_conflict' };
     await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${pid} FOR UPDATE`;
     const product = await tx.product.findUnique({ where: { id: pid }, include: { sizes: true } });
@@ -101,6 +179,19 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
       if (!size) return { reason: 'size_required' };
       ps = product.sizes.find(s => s.size === size);
       if (ps?.barcode && validGtin(ps.barcode) && !variants(barcode).includes(ps.barcode)) {
+        // An occupied size is reusable only when both GTINs independently have
+        // exact incoming invoices and official evidence for this same colour.
+        if(fiscal?.officialEvidence){
+          const prior=await fiscalBarcodeTarget(tx,ps.barcode);
+          if(!prior?.officialEvidence||prior.productId!==pid||textKey(prior.size)!==textKey(size)
+            ||textKey(prior.officialEvidence.colorLiteralWithCode)!==textKey(fiscal.officialEvidence.colorLiteralWithCode))return {reason:'size_barcode_conflict'};
+          const ctx=product.aiContext||{};
+          await tx.product.update({where:{id:pid},data:{aiContext:{...ctx,scannerBarcodeAliases:{...(ctx.scannerBarcodeAliases||{}),[barcode.replace(/^0+/,'')]:{
+            size,reference:fiscal.officialEvidence.supplierCode,source:'exact-incoming-nfe-and-confirmed-official-variant',fiscalItemId:fiscal.itemId,
+            matchingBarcode:ps.barcode,matchingFiscalItemId:prior.itemId,officialVariant:fiscal.officialEvidence,matchingOfficialVariant:prior.officialEvidence,at:new Date().toISOString()
+          }}}}});
+          return {productId:pid,productSizeId:ps.id,name:product.name,barcode,reason:'matched'};
+        }
         if(candidates.length!==1 && !confirmedProductId)return {reason:'size_barcode_conflict'};
         // A printed reference and exact size can have another GTIN after catalogue
         // consolidation. Keep the existing GTIN and record a separate alias.
@@ -124,10 +215,14 @@ async function learnScannerBarcode(db, { barcode, read, size, confirmedProductId
     const existing = Array.isArray(context.scannerReferences) ? context.scannerReferences : [];
     if (confirmedProductId || previousReference || fiscal?.itemId) await tx.product.update({ where: { id: pid }, data: { aiContext: { ...context,
       scannerReferences: [...new Set([...existing, ...(confirmedProductId ? codes : []), ...(previousReference ? [previousReference] : [])])],
-      scannerReferenceEvidence: { source: fiscal?.itemId ? 'exact-incoming-nfe-gtin-product-and-size' : confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', fiscalItemId:fiscal?.itemId||null, barcode, size, confirmedAt: new Date().toISOString() },
+      scannerReferenceEvidence: { source: fiscal?.officialEvidence ? 'exact-incoming-nfe-and-confirmed-official-variant' : fiscal?.itemId ? 'exact-incoming-nfe-gtin-product-and-size' : confirmedProductId ? 'operator-confirmed-label' : 'existing-variant-reference', fiscalItemId:fiscal?.itemId||null, barcode, size, ...(fiscal?.officialEvidence?{officialVariant:fiscal.officialEvidence}:{}), confirmedAt: new Date().toISOString() },
     } } });
     return { productId: pid, productSizeId: ps.id, name: product.name, barcode, reason: 'matched' };
   }, { isolationLevel: 'Serializable', timeout: 15000 });
+  } catch(error) {
+    const rolledBack=error.code==='P2034'||(error.code==='P2010'&&['40001','40P01'].includes(error.meta?.code));
+    if(!rolledBack||attempt>=3)throw error;
+  }
 }
 
 async function matchScannerReference(db,read,size){
@@ -141,4 +236,4 @@ async function matchScannerReference(db,read,size){
   if(!ps)return {reason:'size_required'};
   return {reason:'matched',productId:p.id,productSizeId:ps.id,name:p.name};
 }
-module.exports = { fiscalBarcodeTarget, matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };
+module.exports = { documentedFiscalVariant, fiscalBarcodeTarget, matchScannerReference, normalizeReference, referencesFrom, validGtin, referenceCandidates, learnScannerBarcode };

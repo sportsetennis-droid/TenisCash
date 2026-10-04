@@ -16,7 +16,7 @@ if (!target || !['postgres:', 'postgresql:'].includes(target.protocol)
 process.env.DATABASE_URL = url;
 const { PrismaClient } = require('@prisma/client');
 const service = require('../src/services/scanActionTransfers');
-const { validGtin } = require('../src/services/scannerReference');
+const { validGtin, learnScannerBarcode } = require('../src/services/scannerReference');
 const db = new PrismaClient({ datasources: { db: { url } } });
 const tests = [];
 const began = new Date().toISOString();
@@ -52,8 +52,33 @@ async function fiscal(f, p, barcode, description = p.name + ' 40', options = {})
   const doc = await db.xmlFiscalDocument.create({ data: { docType: options.docType || 'entrada', status: 'matched',
     number: 'LOOKUP-' + randomUUID(), issuerName: 'Isolated fiscal supplier', totalValue: 123,
     rawXmlUrl: 'data:application/xml,<isolated-test/>', items: { create: { productId: options.unlinked ? null : p.id,
-      supplierCode: 'TEST-REF-' + randomUUID(), description, ean: barcode, quantity: 5, unitValue: 24.6, totalValue: 123, matchStatus: 'matched' } } }, include: { items: true } });
+      supplierCode: options.supplierCode || 'TEST-REF-' + randomUUID(), description, ean: barcode, quantity: 5, unitValue: 24.6, totalValue: 123, matchStatus: 'matched' } } }, include: { items: true } });
   f.documentIds.push(doc.id); return doc;
+}
+function officialVariant(barcode, supplierCode, size = 'P') {
+  // Synthetic identifiers with the same documented shape as the reviewed Lupo
+  // records. The lookup consumes saved evidence; these tests make no HTTP calls.
+  return { ean: barcode, supplierCode, size, color: 'Coral', colorLiteralWithCode: 'Coral - 0510', status: 'confirmed_official',
+    source: { ean: barcode, type: 'official_exact_ean_and_full_supplier_sku', fullSKU: supplierCode,
+      sourceUrl: 'https://www.lsport.com.br/products/manguito-uv-unissex.json', consultedAt: '2026-09-25T11:56:17.733828Z',
+      sizeLiteral: size, colorLiteral: 'Coral', colorLiteralWithCode: 'Coral - 0510',
+      corroboration: { at: '2026-09-25T11:56:54.8903821Z', ean: barcode, fullSKU: supplierCode,
+        sourceUrl: 'https://luposport.vtexcommercestable.com.br/api/catalog_system/pub/products/search?fq=alternateIds_Ean:' + barcode,
+        sizeLiteral: [size], colorLiteral: ['Coral - 0510'] } } };
+}
+async function saveOfficialVariants(p, variants) {
+  const current = await db.product.findUnique({ where: { id: p.id } });
+  return db.product.update({ where: { id: p.id }, data: { aiContext: { ...(current.aiContext || {}),
+    invoicePricing20260925: { preservedReviewNote: 'isolated documented source fixture', variants } } } });
+}
+async function documentedFiscal(f, size = 'P', options = {}) {
+  const p = options.product || f.product, barcode = options.barcode || ean();
+  const supplierCode = options.supplierCode || ('15002-001' + String(randomInt(0, 10000000)).padStart(7, '0'));
+  const variant = officialVariant(barcode, supplierCode, size);
+  await db.product.update({ where: { id: p.id }, data: { brand: 'LUPO' } });
+  await saveOfficialVariants(p, [variant]);
+  const doc = await fiscal(f, p, barcode, options.description || p.name, { ...options, supplierCode });
+  return { p, barcode, supplierCode, variant, doc };
 }
 async function shipment(f, chosen = f.size, p = f.product) {
   // Creates only an isolated manifest; the lookup under test must not move stock.
@@ -212,6 +237,230 @@ async function test(name, run) {
     await rejectedUnchanged(f, { barcode }, /conta pessoal/, 403, {});
     await db.user.update({ where: { id: f.actor.id }, data: { active: false } });
     await rejectedUnchanged(f, { barcode }, /conta pessoal/, 403, { ...f.actor, role: 'superadmin', active: true });
+  });
+
+  await test('documented exact official EAN and full supplier SKU recover P and 37 a 40 without an invoice size suffix', async () => {
+    for (const size of ['P', '37 a 40']) {
+      const f = await fixture(), evidence = await documentedFiscal(f, size);
+      if (size === '37 a 40') {
+        evidence.variant.source.sizeLiteral = 'M (Calçados 37 a 40)';
+        evidence.variant.source.corroboration.sizeLiteral = ['M (Calçados 37 a 40)'];
+        await saveOfficialVariants(f.product, [evidence.variant]);
+      }
+      const before = await snapshot(f);
+      const result = await service.lookup(db, f.actor, { barcode: evidence.barcode }), after = await snapshot(f); publicOnly(result);
+      assert.equal(result.product.size, size); assert.equal(result.product.barcode, evidence.barcode);
+      const added = after.sizes.filter(s => !before.sizes.some(old => old.id === s.id));
+      assert.equal(added.length, 1); assert.equal(added[0].id, result.product.productSizeId);
+      assert.equal(added[0].productId, f.product.id); assert.equal(added[0].stock, 0); assert.ok(added[0].sizeConfirmedAt);
+      assert.deepEqual(after.sizes.find(s => s.id === f.size.id), f.size, 'Previously linked sizes remain intact');
+      const priorContext = before.products.find(p => p.id === f.product.id).aiContext;
+      const context = after.products.find(p => p.id === f.product.id).aiContext;
+      assert.deepEqual(context.invoicePricing20260925, priorContext.invoicePricing20260925, 'Preserve the reviewed source record');
+      assert.equal(context.scannerReferenceEvidence.fiscalItemId, evidence.doc.items[0].id);
+      assert.equal(context.scannerReferenceEvidence.barcode, evidence.barcode); assert.equal(context.scannerReferenceEvidence.size, size);
+      operationalUnchanged(before, after);
+      for (const code of [evidence.barcode, '0' + evidence.barcode]) {
+        const again = await service.lookup(db, f.actor, { barcode: code }); publicOnly(again);
+        assert.equal(again.product.productSizeId, result.product.productSizeId);
+        assert.deepEqual(await snapshot(f), after, 'Reviewed evidence lookup is idempotent across normalized GTINs');
+      }
+    }
+  });
+
+  await test('documented evidence follows the explicit canonical product link and preserves the legacy invoice item', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f);
+    const legacy = await product(f, 'LEGACY FISCAL LUPO');
+    await db.product.update({ where: { id: legacy.id }, data: { active: false, aiContext: { consolidatedInto: f.product.id } } });
+    await db.xmlFiscalItem.update({ where: { id: evidence.doc.items[0].id }, data: { productId: legacy.id } });
+    const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: evidence.barcode }), after = await snapshot(f);
+    publicOnly(result); assert.equal(result.product.size, 'P');
+    assert.equal(after.sizes.find(s => s.id === result.product.productSizeId).productId, f.product.id);
+    assert.deepEqual(after.products.find(p => p.id === legacy.id), before.products.find(p => p.id === legacy.id));
+    operationalUnchanged(before, after);
+  });
+
+  await test('documented evidence cannot be borrowed from another EAN, SKU, product, status or uncorroborated source', async () => {
+    const cases = [
+      ['variant-ean', v => { v.ean = ean(); }],
+      ['variant-sku', v => { v.supplierCode += '9'; }],
+      ['unreviewed-status', v => { v.status = 'pending'; }],
+      ['source-type', v => { v.source.type = 'supplier_reference_guess'; }],
+      ['source-ean', v => { v.source.ean = ean(); }],
+      ['source-sku', v => { v.source.fullSKU += '9'; }],
+      ['source-model-reference', v => { v.source.modelReference = '99999-999'; }],
+      ['truncated-model-reference', v => { v.source.modelReference = '15002'; }],
+      ['source-size', v => { v.source.sizeLiteral = 'M'; }],
+      ['source-color', v => { v.source.colorLiteral = 'Preto'; }],
+      ['source-url', v => { v.source.sourceUrl = 'https://unrelated.example/products/manguito.json'; }],
+      ['source-date', v => { v.source.consultedAt = 'not-a-date'; }],
+      ['shopify-without-corroboration', v => { delete v.source.corroboration; }],
+      ['corroboration-ean', v => { v.source.corroboration.ean = ean(); }],
+      ['corroboration-sku', v => { v.source.corroboration.fullSKU += '9'; }],
+      ['corroboration-size', v => { v.source.corroboration.sizeLiteral = ['M']; }],
+      ['ambiguous-corroboration-size', v => { v.source.corroboration.sizeLiteral = ['P', 'M']; }],
+      ['corroboration-color', v => { v.source.corroboration.colorLiteral = ['Preto - 9999']; }],
+      ['corroboration-url', v => { v.source.corroboration.sourceUrl = 'https://unrelated.example/products'; }],
+      ['corroboration-date', v => { v.source.corroboration.at = 'not-a-date'; }],
+    ];
+    for (const [kind, mutate] of cases) {
+      const f = await fixture(), evidence = await documentedFiscal(f); mutate(evidence.variant);
+      await saveOfficialVariants(f.product, [evidence.variant]);
+      try { await rejectedUnchanged(f, { barcode: evidence.barcode }); }
+      catch (error) { error.message = kind + ': ' + error.message; throw error; }
+    }
+    const f = await fixture(), evidence = await documentedFiscal(f), unrelated = await product(f, 'UNRELATED REVIEWED PRODUCT');
+    await saveOfficialVariants(unrelated, [evidence.variant]); await saveOfficialVariants(f.product, []);
+    await rejectedUnchanged(f, { barcode: evidence.barcode }, /tamanho/);
+    const modelOnly = await fixture(), modelEvidence = await documentedFiscal(modelOnly);
+    modelEvidence.variant.supplierCode = modelEvidence.variant.source.fullSKU = modelEvidence.variant.source.corroboration.fullSKU = '03350';
+    await saveOfficialVariants(modelOnly.product, [modelEvidence.variant]);
+    await db.xmlFiscalItem.update({ where: { id: modelEvidence.doc.items[0].id }, data: { supplierCode: '03350' } });
+    await rejectedUnchanged(modelOnly, { barcode: modelEvidence.barcode });
+  });
+
+  await test('literal fiscal size and conflicting official records block resolution before any catalog write', async () => {
+    for (const kind of ['fiscal-size', 'official-size', 'official-product', 'invoice-sku']) {
+      const f = await fixture(), evidence = await documentedFiscal(f);
+      if (kind === 'fiscal-size') {
+        await db.xmlFiscalItem.update({ where: { id: evidence.doc.items[0].id }, data: { description: f.product.name + ' M' } });
+      } else if (kind === 'official-size') {
+        await saveOfficialVariants(f.product, [evidence.variant, officialVariant(evidence.barcode, evidence.supplierCode, 'M')]);
+      } else if (kind === 'official-product') {
+        const other = await product(f, 'ANOTHER OFFICIAL PRODUCT');
+        await documentedFiscal(f, 'P', { product: other, barcode: evidence.barcode, supplierCode: evidence.supplierCode });
+      } else {
+        await fiscal(f, f.product, evidence.barcode, f.product.name, { supplierCode: evidence.supplierCode + '9' });
+      }
+      await rejectedUnchanged(f, { barcode: evidence.barcode });
+    }
+  });
+
+  await test('a manual product override cannot transfer official fiscal evidence to a different product', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f), unrelated = await product(f, 'UNRELATED MANUAL OVERRIDE');
+    const before = await snapshot(f);
+    const result = await learnScannerBarcode(db, { barcode: evidence.barcode, confirmedProductId: unrelated.id });
+    assert.match(result.reason, /conflict/, 'A product override cannot inherit another canonical product official evidence');
+    assert.deepEqual(await snapshot(f), before, 'Rejected manual override must not create or learn any variant');
+  });
+
+  await test('a single exact official source resolves renamed invoice products and documented size ranges', async () => {
+    const f = await fixture();
+    f.product = await db.product.update({ where: { id: f.product.id }, data: { name: 'Meia Lupo AU Dry Fit ' + f.suffix } });
+    const evidence = await documentedFiscal(f, '33 a 36', { description: 'Meia LSport AU Inv.Rio Movimento' });
+    evidence.variant.source.sourceUrl = evidence.variant.source.corroboration.sourceUrl;
+    delete evidence.variant.source.corroboration;
+    await saveOfficialVariants(f.product, [evidence.variant]);
+    const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: evidence.barcode }), after = await snapshot(f);
+    publicOnly(result); assert.equal(result.product.size, '33 a 36'); assert.equal(result.product.name, f.product.name);
+    const added = after.sizes.filter(s => !before.sizes.some(old => old.id === s.id));
+    assert.equal(added.length, 1); assert.equal(added[0].stock, 0); assert.equal(added[0].productId, f.product.id);
+    operationalUnchanged(before, after);
+  });
+
+  await test('an invoice range is compared as a complete literal instead of its final number', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f, '37 a 40', { description: 'RENAMED SOCK MODEL 37 a 40' });
+    const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: evidence.barcode }), after = await snapshot(f);
+    publicOnly(result); assert.equal(result.product.size, '37 a 40'); operationalUnchanged(before, after);
+    const conflict = await fixture(), otherEvidence = await documentedFiscal(conflict, '33 a 36', { description: 'RENAMED SOCK MODEL 37 a 40' });
+    await rejectedUnchanged(conflict, { barcode: otherEvidence.barcode }, /divergentes/);
+    const wrappedConflict = await fixture(), wrappedEvidence = await documentedFiscal(wrappedConflict, '33 a 36');
+    wrappedEvidence.variant.source.sizeLiteral = 'M (Calçados 37 a 40)';
+    wrappedEvidence.variant.source.corroboration.sizeLiteral = ['M (Calçados 37 a 40)'];
+    await saveOfficialVariants(wrappedConflict.product, [wrappedEvidence.variant]);
+    await rejectedUnchanged(wrappedConflict, { barcode: wrappedEvidence.barcode }, /divergentes/);
+  });
+
+  await test('official review does not authorize a transfer invoice, unlinked item or inactive product', async () => {
+    for (const kind of ['transfer-invoice', 'unlinked-item', 'inactive-product']) {
+      const f = await fixture(), evidence = await documentedFiscal(f, 'P', { docType: kind === 'transfer-invoice' ? 'transferencia' : 'entrada',
+        unlinked: kind === 'unlinked-item' });
+      if (kind === 'inactive-product') await db.product.update({ where: { id: f.product.id }, data: { active: false } });
+      await rejectedUnchanged(f, { barcode: evidence.barcode });
+    }
+  });
+
+  await test('official evidence never silently aliases another GTIN already occupying the documented size', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f);
+    const occupied = await db.productSize.create({ data: { productId: f.product.id, size: 'P', barcode: ean(), stock: 23, sizeConfirmedAt: new Date() } });
+    await rejectedUnchanged(f, { barcode: evidence.barcode, confirmedProductId: f.product.id, size: 'P', read: { sku: f.product.sku, tamanho: 'P' } }, /divergentes/);
+    const before = await snapshot(f);
+    const learned = await learnScannerBarcode(db, { barcode: evidence.barcode, size: 'P', read: { sku: f.product.sku, marca: 'LUPO' } });
+    assert.equal(learned.reason, 'size_barcode_conflict', 'Even an exact OCR reference cannot silently alias a different size GTIN');
+    assert.deepEqual(await snapshot(f), before, 'Direct scanner learning also preserves the occupied size and evidence');
+    const p = await db.product.findUnique({ where: { id: f.product.id } });
+    assert.equal(p.aiContext.scannerBarcodeAliases?.[evidence.barcode], undefined);
+    assert.deepEqual(await db.productSize.findUnique({ where: { id: occupied.id } }), occupied);
+  });
+
+  await test('an occupied variant accepts an alias only when both exact GTINs have matching official and incoming invoice evidence', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f), oldBarcode = ean();
+    const occupied = await db.productSize.create({ data: { productId: f.product.id, size: 'P', barcode: oldBarcode, stock: 23, sizeConfirmedAt: new Date() } });
+    await saveOfficialVariants(f.product, [evidence.variant, officialVariant(oldBarcode, evidence.supplierCode, 'P')]);
+    await fiscal(f, f.product, oldBarcode, f.product.name, { supplierCode: evidence.supplierCode });
+    const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: evidence.barcode }), after = await snapshot(f);
+    publicOnly(result); assert.equal(result.product.productSizeId, occupied.id); assert.equal(result.product.barcode, evidence.barcode);
+    assert.deepEqual(after.sizes, before.sizes, 'The primary GTIN and purchased stock remain intact');
+    const context = after.products.find(p => p.id === f.product.id).aiContext;
+    assert.equal(context.scannerBarcodeAliases[evidence.barcode].size, 'P');
+    assert.deepEqual(context.invoicePricing20260925, before.products.find(p => p.id === f.product.id).aiContext.invoicePricing20260925);
+    operationalUnchanged(before, after);
+    for (const barcode of [evidence.barcode, '0' + evidence.barcode, oldBarcode]) {
+      const again = await service.lookup(db, f.actor, { barcode }); publicOnly(again);
+      assert.equal(again.product.productSizeId, occupied.id);
+      assert.deepEqual(await snapshot(f), after, 'Both documented identifiers remain idempotent');
+    }
+  });
+
+  await test('alias learning refuses incomplete old-GTIN proof, incompatible color and different documented size', async () => {
+    for (const kind of ['no-old-invoice', 'no-old-official', 'different-color', 'different-size']) {
+      const f = await fixture(), evidence = await documentedFiscal(f), oldBarcode = ean();
+      await db.productSize.create({ data: { productId: f.product.id, size: 'P', barcode: oldBarcode, stock: 23, sizeConfirmedAt: new Date() } });
+      const oldEvidence = officialVariant(oldBarcode, evidence.supplierCode, kind === 'different-size' ? 'M' : 'P');
+      if (kind === 'different-color') {
+        oldEvidence.color = oldEvidence.source.colorLiteral = 'Preto';
+        oldEvidence.colorLiteralWithCode = oldEvidence.source.colorLiteralWithCode = 'Preto - 9999';
+        oldEvidence.source.corroboration.colorLiteral = ['Preto - 9999'];
+      }
+      if (kind !== 'no-old-official') await saveOfficialVariants(f.product, [evidence.variant, oldEvidence]);
+      if (kind !== 'no-old-invoice') await fiscal(f, f.product, oldBarcode, f.product.name, { supplierCode: evidence.supplierCode });
+      await rejectedUnchanged(f, { barcode: evidence.barcode }, /divergentes/);
+    }
+  });
+
+  await test('incompatible selected shipments reject official fallback before learning a barcode or creating its size', async () => {
+    for (const kind of ['other-size', 'other-product']) {
+      const f = await fixture(), sent = await shipment(f);
+      const p = kind === 'other-product' ? await product(f, 'UNRELATED OFFICIAL MANIFEST ITEM') : f.product;
+      const evidence = await documentedFiscal(f, 'P', { product: p });
+      await rejectedUnchanged(f, { barcode: evidence.barcode, transferId: sent.id, storeId: f.to.id }, /não pertence/, 409);
+    }
+  });
+
+  await test('a compatible shipment recovers its existing documented variant while retaining stock and pending receipt', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f, '37 a 40');
+    const existing = await db.productSize.create({ data: { productId: f.product.id, size: '37 a 40', stock: 17 } });
+    const sent = await shipment(f, existing), before = await snapshot(f);
+    const result = await service.lookup(db, f.actor, { barcode: evidence.barcode, transferId: sent.id, storeId: f.to.id }), after = await snapshot(f);
+    publicOnly(result); assert.equal(result.product.productSizeId, existing.id); assert.equal(result.product.size, '37 a 40');
+    assert.equal(after.sizes.length, before.sizes.length); assert.equal(after.sizes.find(s => s.id === existing.id).stock, 17);
+    assert.equal(after.transfers[0].status, 'in_transit'); assert.equal(after.transfers[0].receivedAt, null);
+    operationalUnchanged(before, after);
+  });
+
+  await test('concurrent lookups of normalized officially documented GTINs return one variant and leave operations untouched', async () => {
+    const f = await fixture(), evidence = await documentedFiscal(f, 'P'), before = await snapshot(f);
+    const attempts = await Promise.allSettled([evidence.barcode, '0' + evidence.barcode, evidence.barcode, '0' + evidence.barcode]
+      .map(barcode => service.lookup(db, f.actor, { barcode })));
+    const rejected = attempts.filter(result => result.status === 'rejected');
+    assert.equal(rejected.length, 0, 'Every concurrent lookup must resolve: ' + rejected.map(result => result.reason?.message).join('; '));
+    const results = attempts.map(result => result.value);
+    for (const result of results) { publicOnly(result); assert.equal(result.product.size, 'P'); }
+    assert.equal(new Set(results.map(result => result.product.productSizeId)).size, 1);
+    const after = await snapshot(f), added = after.sizes.filter(s => !before.sizes.some(old => old.id === s.id));
+    assert.equal(added.length, 1); assert.equal(added[0].stock, 0); assert.equal(added[0].id, results[0].product.productSizeId);
+    assert.equal(added[0].barcode.replace(/^0+/, ''), evidence.barcode);
+    operationalUnchanged(before, after);
   });
   console.log('PASS PostgreSQL: ' + tests.length + ' fiscal action lookup groups; no production operations.');
 })().catch(error => { failure = error.stack || String(error); console.error(failure); process.exitCode = 1; }).finally(async () => {
