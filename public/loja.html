@@ -2133,7 +2133,7 @@ function _fiscalSheet(innerHtml) {
   ov.id = 'fiscalModalOverlay';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;display:flex;align-items:' + (center ? 'center' : 'flex-end') + ';justify-content:center;' + (center ? 'padding:24px;' : '');
   ov.onclick = (e) => { if (e.target === ov) closeFiscalModal(); };
-  ov.innerHTML = '<div style="background:#fff;border-radius:' + (center ? '18px' : '18px 18px 0 0') + ';max-width:480px;width:100%;max-height:' + (center ? '85vh' : '90vh') + ';overflow:auto;padding:18px;' + (center ? 'box-shadow:0 18px 60px rgba(0,0,0,.35);' : '') + '">' + innerHtml + '</div>';
+  ov.innerHTML = '<div style="background:#fff;color:#1d1d1f;border-radius:' + (center ? '18px' : '18px 18px 0 0') + ';max-width:480px;width:100%;max-height:' + (center ? '85vh' : '90vh') + ';overflow:auto;padding:18px;' + (center ? 'box-shadow:0 18px 60px rgba(0,0,0,.35);' : '') + '">' + innerHtml + '</div>';
   document.body.appendChild(ov);
 }
 
@@ -2202,6 +2202,7 @@ async function pickCupom(mode, docId) {
 function openTrocaFlow() { openCupomPicker('troca'); }
 
 function trocaRetQty(saleItemId, delta, max) {
+  if (!_troca || _troca.busy || _troca.retryIds || _troca.pendingConfirmation) return;
   const cur = _troca.returned[saleItemId] || 0;
   const next = Math.max(0, Math.min(max, cur + delta));
   if (next === 0) delete _troca.returned[saleItemId]; else _troca.returned[saleItemId] = next;
@@ -2209,12 +2210,18 @@ function trocaRetQty(saleItemId, delta, max) {
 }
 
 async function trocaBipe() {
+  if (!_troca || _troca.busy || _troca.retryIds || _troca.pendingConfirmation || _troca.scanning) return;
+  const state = _troca;
   const inp = document.getElementById('trocaBipeInput');
   const code = (inp?.value || '').trim();
   if (!code) return;
   inp.value = '';
+  state.scanning = true;
+  const emitBtn = document.getElementById('trocaEmitBtn');
+  if (emitBtn) emitBtn.disabled = true;
   try {
     const d = await api('/api/stocktake/lookup/' + encodeURIComponent(code));
+    if (_troca !== state) return;
     if (!(d.recognized && d.product)) { alert('Código ' + code + ' não cadastrado — produto precisa estar no catálogo.'); return; }
     const price = d.product.promoPrice || d.product.price || 0;
     if (price <= 0) { alert((d.product.name || 'Produto') + ' sem preço de venda — ajuste o preço antes.'); return; }
@@ -2223,61 +2230,116 @@ async function trocaBipe() {
       size = _promptManualSellerSize(d.product.name, (d.sizeOptions || []).map((s) => s.size).filter(Boolean).join(', '));
       if (!size) return;
     }
-    const ex = _troca.novos.find(n => n.barcode === code);
+    const ex = _troca.novos.find(n => n.barcode === code && n.size === size);
     if (ex) ex.qty++;
     else _troca.novos.push({ barcode: code, qty: 1, name: d.product.name || '', size, price });
-    renderTrocaModal();
   } catch (e) { alert('Erro no bipe: ' + e.message); }
+  finally {
+    state.scanning = false;
+    if (_troca === state && document.getElementById('fiscalModalOverlay')) renderTrocaModal();
+  }
 }
 
-function trocaRmNovo(idx) { _troca.novos.splice(idx, 1); renderTrocaModal(); }
-function trocaSetPay(tPag) { _troca.pay.tPag = tPag; renderTrocaModal(); }
+function trocaRmNovo(idx) { if (!_troca || _troca.busy || _troca.retryIds || _troca.pendingConfirmation) return; _troca.novos.splice(idx, 1); renderTrocaModal(); }
+function trocaSetPay(tPag) {
+  if (!_troca || _troca.busy || _troca.pendingConfirmation) return;
+  if (_troca.pay.tPag !== tPag) _troca.pay.cardAuthCode = '';
+  _troca.pay.tPag = tPag;
+  renderTrocaModal();
+}
+
+function trocaParseDifference(value) {
+  const s = String(value ?? '').trim();
+  if (!/^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(s) && !/^-?\d+\.\d{1,2}$/.test(s)) return NaN;
+  const normalized = s.includes(',') || /^-?\d{1,3}(?:\.\d{3})+$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && Math.abs(amount) < 100000000 ? Math.round(amount * 100) / 100 : NaN;
+}
+
+function trocaSetDifference(value) {
+  if (!_troca || _troca.busy || _troca.retryIds || _troca.pendingConfirmation) return;
+  _troca.diffInput = value;
+  trocaUpdateAmounts();
+}
+
+function trocaResetDifference() {
+  if (!_troca || _troca.busy || _troca.retryIds || _troca.pendingConfirmation) return;
+  delete _troca.diffInput;
+  renderTrocaModal();
+}
 
 function _trocaTotais() {
-  const dev = (_troca.orig.items || []).reduce((s, i) => s + (_troca.returned[i.saleItemId] || 0) * i.unitPrice, 0);
-  const nov = _troca.novos.reduce((s, n) => s + n.qty * n.price, 0);
-  return { dev: Math.round(dev * 100) / 100, nov: Math.round(nov * 100) / 100, diff: Math.round((nov - dev) * 100) / 100 };
+  const devCents = (_troca.orig.items || []).reduce((s, i) => {
+    const previous = i.returnedQuantity || 0;
+    const qty = _troca.returned[i.saleItemId] || 0;
+    return s + Math.round((previous + qty) * i.unitPrice * 100) - Math.round(previous * i.unitPrice * 100);
+  }, 0);
+  const catalogCents = _troca.novos.reduce((s, n) => s + n.qty * Math.round(n.price * 100), 0);
+  const suggested = (catalogCents - devCents) / 100;
+  const manual = _troca.diffInput !== undefined;
+  const diff = manual ? trocaParseDifference(_troca.diffInput) : suggested;
+  const nov = (devCents + Math.round(diff * 100)) / 100;
+  return { dev: devCents / 100, catalog: catalogCents / 100, suggested, manual, nov, diff, valid: Number.isFinite(diff) && nov > 0 };
+}
+
+function trocaUpdateAmounts() {
+  if (!_troca) return;
+  const t = _trocaTotais();
+  const locked = _troca.busy || _troca.pendingConfirmation ? 'disabled' : '';
+  const ready = Object.keys(_troca.returned).length && _troca.novos.length;
+  document.getElementById('trocaTotalNovo').textContent = t.valid ? fmt(t.nov) : '—';
+  document.getElementById('trocaDifferenceHelp').textContent = !t.valid && t.manual
+    ? 'Informe um valor válido. O total dos produtos novos deve ser maior que zero.'
+    : 'Calculada pelos produtos: ' + fmt(t.suggested) + '. Valor negativo indica crédito para o cliente.';
+  const btn = document.getElementById('trocaEmitBtn');
+  const enabled = !!(ready && t.valid && !_troca.busy && !_troca.scanning && !_troca.pendingConfirmation);
+  btn.disabled = !enabled;
+  btn.style.background = enabled ? 'linear-gradient(135deg,#0a843d,#2bb678)' : '#ccc';
+  btn.style.cursor = enabled ? 'pointer' : 'default';
+  const payment = document.getElementById('trocaPaymentDetails');
+  if (!t.valid || !ready) payment.innerHTML = '';
+  else if (t.diff > 0) {
+    const PAYS = [['01', '💵 Dinheiro'], ['17', '◈ PIX'], ['03', '💳 Crédito'], ['04', '💳 Débito']];
+    const showAuth = ['03', '04', '17'].includes(_troca.pay.tPag);
+    payment.innerHTML = `<div style="background:#fff8e6;border:2px solid #b06b00;border-radius:12px;padding:12px;margin-top:10px;">
+      <div style="font-weight:800;color:#895200;">Cliente paga a diferença: ${fmt(t.diff)}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:10px 0;">
+        ${PAYS.map(([v, l]) => `<button ${locked} onclick="trocaSetPay('${v}')" style="padding:10px 4px;color:#1d1d1f;border-radius:9px;border:2px solid ${_troca.pay.tPag === v ? '#E5571E' : '#ddd'};background:${_troca.pay.tPag === v ? '#fff1ea' : '#fff'};font-size:13px;font-weight:700;cursor:pointer;">${l}</button>`).join('')}
+      </div>
+      ${showAuth ? `<label for="trocaAuthCode" style="display:block;font-size:13px;margin-bottom:5px;">Código do comprovante (Auth/NSU) — opcional</label><input id="trocaAuthCode" ${locked} placeholder="Pode deixar em branco" value="${escPreco(_troca.pay.cardAuthCode || '')}" oninput="_troca.pay.cardAuthCode=this.value" style="width:100%;box-sizing:border-box;padding:11px;color:#1d1d1f;background:#fff;border:1px solid #ddd;border-radius:9px;font-size:16px;">` : ''}
+    </div>`;
+  } else if (t.diff < 0) {
+    payment.innerHTML = `<div style="background:#fde8e8;border:2px solid #c0392b;border-radius:12px;padding:12px;margin-top:10px;font-size:13px;"><b style="color:#c0392b;">Sobram ${fmt(-t.diff)} a favor do cliente.</b><br>O cupom novo sai todo no Crédito Loja e a sobra vira VALE — registre o vale pro cliente usar depois.</div>`;
+  } else {
+    payment.innerHTML = '<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:12px;padding:12px;margin-top:10px;font-weight:700;color:#0a843d;">Troca exata — sem diferença a pagar.</div>';
+  }
+  document.getElementById('trocaCpfWrap').innerHTML = t.valid && t.nov >= 500
+    ? `<input id="trocaCpfNota" ${locked} inputmode="numeric" maxlength="18" placeholder="CPF/CNPJ na nota — OBRIGATÓRIO (cupom R$ 500+)" value="${escPreco(_troca.cpf || '')}" oninput="_troca.cpf=this.value" style="width:100%;box-sizing:border-box;padding:11px;color:#1d1d1f;background:#fff;border:1px solid #b06b00;border-radius:9px;font-size:16px;margin-top:10px;">` : '';
 }
 
 function renderTrocaModal() {
   const c = _troca.orig;
   const t = _trocaTotais();
+  const locked = _troca.busy || _troca.retryIds || _troca.pendingConfirmation ? 'disabled' : '';
   const retHtml = (c.items || []).map(i => {
     const q = _troca.returned[i.saleItemId] || 0;
+    const available = i.availableQuantity ?? i.quantity;
     return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f2f2f7;">
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${i.productName}</div><div style="font-size:11px;color:#6e6e73;">${i.size ? 'tam ' + i.size + ' · ' : ''}${fmt(i.unitPrice)} · vendido ${i.quantity}x</div></div>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;color:#1d1d1f;">${escPreco(i.productName)}</div><div style="font-size:11px;color:#6e6e73;">${i.size ? 'tam ' + escPreco(i.size) + ' · ' : ''}${fmt(i.unitPrice)} · vendido ${i.quantity}x${i.returnedQuantity ? ' · disponível para devolver: ' + available : ''}</div></div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <button onclick="trocaRetQty('${i.saleItemId}',-1,${i.quantity})" style="width:36px;height:36px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:17px;cursor:pointer;">−</button>
+        <button ${locked || (q === 0 ? 'disabled' : '')} onclick="trocaRetQty('${i.saleItemId}',-1,${available})" style="width:36px;height:36px;color:#1d1d1f;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:17px;cursor:pointer;">−</button>
         <span style="min-width:20px;text-align:center;font-weight:800;${q ? 'color:#E5571E;' : 'color:#bbb;'}">${q}</span>
-        <button onclick="trocaRetQty('${i.saleItemId}',1,${i.quantity})" style="width:36px;height:36px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:17px;cursor:pointer;">+</button>
+        <button ${locked || (q >= available ? 'disabled' : '')} onclick="trocaRetQty('${i.saleItemId}',1,${available})" style="width:36px;height:36px;color:#1d1d1f;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:17px;cursor:pointer;">+</button>
       </div>
     </div>`;
   }).join('');
   const novosHtml = _troca.novos.length ? _troca.novos.map((n, idx) => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f2f2f7;">
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${n.qty}x ${n.name}</div><div style="font-size:11px;color:#6e6e73;">${n.size ? 'tam ' + n.size + ' · ' : ''}${fmt(n.price)} cada</div></div>
-      <button onclick="trocaRmNovo(${idx})" style="width:36px;height:36px;border-radius:8px;border:none;background:#fde8e8;color:#c0392b;font-size:15px;cursor:pointer;">✕</button>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;color:#1d1d1f;">${n.qty}x ${escPreco(n.name)}</div><div style="font-size:11px;color:#6e6e73;">${n.size ? 'tam ' + escPreco(n.size) + ' · ' : ''}${fmt(n.price)} cada no catálogo</div></div>
+      <button ${locked} onclick="trocaRmNovo(${idx})" style="width:36px;height:36px;border-radius:8px;border:none;background:#fde8e8;color:#c0392b;font-size:15px;cursor:pointer;">✕</button>
     </div>`).join('') : '<div style="color:#999;font-size:13px;padding:8px 0;">Nada bipado ainda.</div>';
 
-  let diffHtml;
-  if (t.diff > 0) {
-    const PAYS = [['01', '💵 Dinheiro'], ['17', '◈ PIX'], ['03', '💳 Crédito'], ['04', '💳 Débito']];
-    const needAuth = ['03', '04', '17'].includes(_troca.pay.tPag);
-    diffHtml = `<div style="background:#fff8e6;border:2px solid #b06b00;border-radius:12px;padding:12px;margin-top:10px;">
-      <div style="font-weight:800;color:#b06b00;">Cliente paga a diferença: ${fmt(t.diff)}</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;">
-        ${PAYS.map(([v, l]) => `<button onclick="trocaSetPay('${v}')" style="padding:10px 4px;border-radius:9px;border:2px solid ${_troca.pay.tPag === v ? '#E5571E' : '#ddd'};background:${_troca.pay.tPag === v ? '#fff1ea' : '#fff'};font-size:12px;font-weight:700;cursor:pointer;">${l}</button>`).join('')}
-      </div>
-      ${needAuth ? `<input id="trocaAuthCode" placeholder="Código do comprovante (Auth/NSU)${_troca.pay.tPag === '17' ? ' — opcional no PIX' : ''}" value="${_troca.pay.cardAuthCode || ''}" onchange="_troca.pay.cardAuthCode=this.value" style="width:100%;padding:11px;border:1px solid #ddd;border-radius:9px;font-size:14px;">` : ''}
-    </div>`;
-  } else if (t.diff < 0) {
-    diffHtml = `<div style="background:#fde8e8;border:2px solid #c0392b;border-radius:12px;padding:12px;margin-top:10px;font-size:13px;"><b style="color:#c0392b;">Sobram ${fmt(-t.diff)} a favor do cliente.</b><br>O cupom novo sai todo no Crédito Loja e a sobra vira VALE — registre o vale pro cliente usar depois.</div>`;
-  } else {
-    diffHtml = `<div style="background:#e8f7ee;border:2px solid #0a843d;border-radius:12px;padding:12px;margin-top:10px;font-weight:700;color:#0a843d;">Troca exata — sem diferença a pagar.</div>`;
-  }
-
-  const podeEmitir = Object.keys(_troca.returned).length && _troca.novos.length && !_troca.busy;
-  const btnLabel = _troca.retryIds ? '🔁 TENTAR EMITIR O CUPOM DE NOVO' : '✅ EMITIR TROCA';
+  const btnLabel = _troca.pendingConfirmation ? 'AGUARDANDO CONFIRMAÇÃO DA EMISSÃO' : (_troca.retryIds ? '🔁 TENTAR EMITIR O CUPOM DE NOVO' : '✅ EMITIR TROCA');
   _fiscalSheet(`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <div style="font-weight:800;font-size:16px;">🔄 Troca — cupom #${c.number}</div>
@@ -2286,44 +2348,58 @@ function renderTrocaModal() {
     <div style="font-size:12px;color:#6e6e73;margin-bottom:8px;">Compra original de ${fmt(c.totalValue || 0)} · ${new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
     <div style="font-weight:800;font-size:13px;margin:10px 0 2px;">1) O que o cliente DEVOLVEU</div>
     ${retHtml}
+    ${Object.keys(_troca.returned).length ? '' : '<div role="status" style="padding:8px;background:#fff8e6;color:#895200;border-radius:8px;font-size:13px;">Selecione no botão + a quantidade que o cliente devolveu.</div>'}
     <div style="font-weight:800;font-size:13px;margin:14px 0 6px;">2) O que o cliente LEVOU (bipe)</div>
     <div style="display:flex;gap:6px;">
-      <input id="trocaBipeInput" placeholder="Bipe / digite o código de barras" style="flex:1;padding:11px;border:1px solid #ddd;border-radius:9px;font-size:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();trocaBipe();}">
-      <button onclick="trocaBipe()" style="padding:0 16px;border:none;border-radius:9px;background:#1455b8;color:#fff;font-weight:800;cursor:pointer;">OK</button>
+      <input id="trocaBipeInput" ${locked} placeholder="Bipe / digite o código de barras" style="flex:1;min-width:0;padding:11px;color:#1d1d1f;background:#fff;border:1px solid #ddd;border-radius:9px;font-size:16px;" onkeydown="if(event.key==='Enter'){event.preventDefault();trocaBipe();}">
+      <button ${locked} onclick="trocaBipe()" style="padding:0 16px;border:none;border-radius:9px;background:#1455b8;color:#fff;font-weight:800;cursor:pointer;">OK</button>
     </div>
     ${novosHtml}
     <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;margin-top:10px;"><span>Devolvido</span><b>${fmt(t.dev)}</b></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;"><span>Produtos novos</span><b>${fmt(t.nov)}</b></div>
-    ${diffHtml}
-    ${t.nov >= 500 ? `<input id="trocaCpfNota" inputmode="numeric" maxlength="18" placeholder="CPF/CNPJ na nota — OBRIGATÓRIO (cupom R$ 500+)" value="${_troca.cpf || ''}" onchange="_troca.cpf=this.value" style="width:100%;padding:11px;border:1px solid #b06b00;border-radius:9px;font-size:14px;font-family:monospace;font-weight:700;margin-top:10px;">` : ''}
-    <button id="trocaEmitBtn" ${podeEmitir ? '' : 'disabled'} onclick="emitTroca()" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:12px;background:${podeEmitir ? 'linear-gradient(135deg,#0a843d,#2bb678)' : '#ccc'};color:#fff;font-weight:800;font-size:16px;cursor:${podeEmitir ? 'pointer' : 'default'};">${btnLabel}</button>
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;"><span>Total do novo cupom</span><b id="trocaTotalNovo">—</b></div>
+    <label for="trocaDifference" style="display:block;font-weight:800;font-size:14px;margin:14px 0 6px;">3) Diferença a receber (R$)</label>
+    <input id="trocaDifference" ${locked} type="text" inputmode="decimal" autocomplete="off" value="${escPreco(t.manual ? _troca.diffInput : t.suggested.toFixed(2).replace('.', ','))}" oninput="trocaSetDifference(this.value)" style="width:100%;box-sizing:border-box;padding:12px;color:#1d1d1f;background:#fff;border:2px solid #E5571E;border-radius:9px;font-size:20px;font-weight:700;">
+    <div id="trocaDifferenceHelp" style="font-size:12px;color:#515154;margin-top:5px;"></div>
+    <button ${locked} onclick="trocaResetDifference()" style="border:0;background:transparent;color:#1455b8;padding:8px 0;font-size:13px;text-decoration:underline;cursor:pointer;">Usar diferença calculada</button>
+    ${_troca.retryIds ? '<div style="font-size:13px;color:#895200;">Devolução já autorizada. Produtos e valor preservados para tentar o mesmo cupom novamente.</div>' : ''}
+    ${_troca.pendingConfirmation ? '<div role="status" style="font-size:13px;color:#895200;background:#fff8e6;padding:10px;border-radius:8px;">Emissão aguardando confirmação. Consulte o documento fiscal antes de emitir novamente.</div>' : ''}
+    <div id="trocaPaymentDetails"></div>
+    <div id="trocaCpfWrap"></div>
+    <button id="trocaEmitBtn" disabled onclick="emitTroca()" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:12px;background:#ccc;color:#fff;font-weight:800;font-size:16px;">${btnLabel}</button>
     <div style="font-size:11px;color:#8e8e93;margin-top:8px;text-align:center;">Sai a nota de devolução do que voltou + o cupom novo do que levou (a diferença entra na forma de pagamento).</div>
   `);
+  trocaUpdateAmounts();
 }
 
 async function emitTroca() {
-  if (!_troca || _troca.busy) return;
+  if (!_troca || _troca.busy || _troca.scanning || _troca.pendingConfirmation) return;
   const t = _trocaTotais();
+  if (!Object.keys(_troca.returned).length) { alert('Selecione a quantidade do produto que o cliente devolveu.'); return; }
+  if (!_troca.novos.length) { alert('Bipe o produto que o cliente vai levar.'); return; }
+  if (!t.valid) { alert('Informe uma diferença válida. O total do novo cupom deve ser maior que zero.'); document.getElementById('trocaDifference')?.focus(); return; }
   if (t.diff > 0) {
-    const auth = (document.getElementById('trocaAuthCode')?.value || _troca.pay.cardAuthCode || '').trim();
+    const auth = ['03', '04', '17'].includes(_troca.pay.tPag) ? (document.getElementById('trocaAuthCode')?.value ?? _troca.pay.cardAuthCode ?? '').trim() : '';
     _troca.pay.cardAuthCode = (auth && auth !== '000000') ? auth : ''; // Auth/NSU opcional: emite sem cAut se não tiver
   }
   // SEFAZ-PB: cupom novo >= R$500 exige CPF/CNPJ do cliente
-  const _cpfTroca = ((document.getElementById('trocaCpfNota')?.value || _troca.cpf || '')).replace(/\D/g, '');
+  const _cpfTroca = (document.getElementById('trocaCpfNota')?.value ?? _troca.cpf ?? '').replace(/\D/g, '');
   if (t.nov >= 500 && !(_cpfTroca.length === 11 || _cpfTroca.length === 14)) {
     alert('Cupom novo de ' + fmt(t.nov) + ': a SEFAZ exige CPF/CNPJ do cliente na nota a partir de R$ 500. Preencha o campo.');
     document.getElementById('trocaCpfNota')?.focus();
     return;
   }
+  _troca.cpf = _cpfTroca;
   _troca.busy = true;
+  renderTrocaModal();
   const btn = document.getElementById('trocaEmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Emitindo devolução + cupom na SEFAZ…'; }
   const body = {
     storeId: activeStore.id,
     originalDocId: _troca.orig.docId,
     returned: Object.entries(_troca.returned).map(([saleItemId, qty]) => ({ saleItemId, qty })),
-    newItems: _troca.novos.map(n => ({ barcode: n.barcode, qty: n.qty })),
+    newItems: _troca.novos.map(n => ({ barcode: n.barcode, qty: n.qty, size: n.size })),
   };
+  if (t.manual) body.diffAmount = t.diff;
   if (_cpfTroca.length === 11 || _cpfTroca.length === 14) body.customerCpf = _cpfTroca;
   if (t.diff > 0) body.diffPayment = { tPag: _troca.pay.tPag, cardAuthCode: _troca.pay.cardAuthCode || undefined, acquirerKey: ['03', '04'].includes(_troca.pay.tPag) ? 'PAGSEGURO' : undefined };
   if (_troca.retryIds) { body.devolucaoDocId = _troca.retryIds.devolucaoDocId; body.saleId = _troca.retryIds.saleId; }
@@ -2335,6 +2411,14 @@ async function emitTroca() {
       reprintSale(r.cupom.docId);
       loadSalesList();
       _troca = null;
+      return;
+    }
+    if (r.pendingConfirmation) {
+      _troca.pendingConfirmation = r.documentId || true;
+      if (r.devolucaoDocId) _troca.retryIds = { devolucaoDocId: r.devolucaoDocId, saleId: r.saleId };
+      _troca.busy = false;
+      alert(r.error || 'Emissão aguardando confirmação. Consulte o documento fiscal antes de emitir novamente.');
+      renderTrocaModal();
       return;
     }
     if (r.step === 'cupom' && r.devolucaoDocId) {

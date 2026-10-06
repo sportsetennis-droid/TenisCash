@@ -10,6 +10,7 @@ const path = require('node:path');
 const { authMiddleware, adminMiddleware, prisma } = require('../middleware');
 const fiscal = require('../services/fiscalApi');
 const { applyStoreStockDelta } = require('../services/storeStockLedger');
+const { ExchangeValidationError, normalizeAuthCode, sameSnapshot, exchangeRequest, priceExchange } = require('../services/exchangePricing');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -71,7 +72,7 @@ async function emitNfceFromSaleHandler(req, res) {
     // cAut é opcional no padrão NFC-e — se o vendedor digitar, entra na nota; se não,
     // o cupom emite sem cAut (buildDetPag OMITE o campo, nunca manda o placeholder
     // '000000' inválido). Assim a venda NUNCA trava por falta do código digitado.
-    const _auth = (cardAuthCode && String(cardAuthCode).trim() !== '000000') ? String(cardAuthCode).trim() : null;
+    const _auth = normalizeAuthCode(cardAuthCode);
     if (isCardPay && !acquirerKey) {
       // DEFAULT da adquirente = PagBank/PagSeguro (pinpad físico das lojas). CNPJ 08561701000101.
       acquirerKey = 'PAGSEGURO';
@@ -263,8 +264,8 @@ router.post('/emit-nfce-from-sale', emitNfceFromSaleHandler);
 
 // ============================================================
 // TROCA (PDV) — devolução NFe55 referenciada + cupom novo com
-// Crédito Loja + diferença. Regra fiscal: cupom novo sai pelo
-// VALOR CHEIO dos produtos novos; a "diferença" vive no detPag.
+// Crédito Loja + diferença. A diferença negociada ajusta os preços apenas
+// desta venda; o cupom e os pagamentos sempre refletem o mesmo total.
 // ============================================================
 const r2 = (v) => Math.round(Number(v) * 100) / 100;
 const TPAG_TO_SALEPAY = { '01': 'cash', '03': 'credit_card', '04': 'debit_card', '17': 'pix' };
@@ -282,11 +283,19 @@ router.get('/troca/cupons', async (req, res) => {
     const saleIds = docs.map(d => d.saleId).filter(Boolean);
     const sales = saleIds.length ? await prisma.sale.findMany({ where: { id: { in: saleIds } }, include: { items: true } }) : [];
     const byId = Object.fromEntries(sales.map(s => [s.id, s]));
+    const previousReturns = docs.length ? await prisma.fiscalDocument.findMany({
+      where: { issuerId: store.fiscalIssuer.id, docType: 'NFE', status: { in: ['authorized', 'processing'] }, OR: docs.map(d => ({ response: { path: ['troca', 'originalDocId'], equals: d.id } })) },
+      select: { response: true },
+    }) : [];
+    const returnedByItem = {};
+    for (const d of previousReturns) for (const item of d.response?.troca?.returned || []) {
+      returnedByItem[item.saleItemId] = (returnedByItem[item.saleItemId] || 0) + item.qty;
+    }
     res.json({
-      cupons: docs.map(d => ({
+      cupons: docs.filter(d => byId[d.saleId]?.storeId === store.id).map(d => ({
         docId: d.id, number: d.number, serie: d.serie, accessKey: d.accessKey,
         totalValue: d.totalValue, createdAt: d.createdAt, saleId: d.saleId, paymentMethod: d.paymentMethod,
-        items: (byId[d.saleId]?.items || []).map(i => ({ saleItemId: i.id, productId: i.productId, productName: i.productName, size: i.size, quantity: i.quantity, unitPrice: i.unitPrice })),
+        items: (byId[d.saleId]?.items || []).map(i => ({ saleItemId: i.id, productId: i.productId, productName: i.productName, size: i.size, quantity: i.quantity, unitPrice: i.unitPrice, returnedQuantity: returnedByItem[i.id] || 0, availableQuantity: Math.max(0, i.quantity - (returnedByItem[i.id] || 0)) })),
       })),
     });
   } catch (err) {
@@ -296,16 +305,23 @@ router.get('/troca/cupons', async (req, res) => {
 });
 
 router.post('/troca', async (req, res) => {
+  const retryState = {};
+  let pendingReturnId = null;
   try {
-    const { storeId, originalDocId, returned, newItems, diffPayment, devolucaoDocId, saleId, customerCpf, customerName } = req.body || {};
+    const { storeId, originalDocId, returned, newItems, diffAmount, diffPayment, devolucaoDocId, saleId, customerCpf, customerName } = req.body || {};
     if (!storeId || !originalDocId) return res.status(400).json({ error: 'storeId e originalDocId obrigatórios' });
     if (!Array.isArray(returned) || !returned.length) return res.status(400).json({ error: 'Marque o que o cliente devolveu' });
     if (!Array.isArray(newItems) || !newItems.length) return res.status(400).json({ error: 'Bipe o que o cliente levou' });
+    const requestSnapshot = exchangeRequest({ returned, newItems, diffAmount });
+    if (['seller', 'store'].includes(req.userRole)) {
+      const allowedStores = [req.authUser?.storeId, ...(req.authUser?.storeIds || [])].filter(Boolean);
+      if (!allowedStores.includes(storeId)) return res.status(403).json({ error: 'Loja não autorizada para este operador' });
+    }
 
     const store = await prisma.store.findUnique({ where: { id: storeId }, include: { fiscalIssuer: true } });
     const issuer = store?.fiscalIssuer;
     if (!issuer?.active) return res.status(400).json({ error: 'Loja sem emissor fiscal ativo' });
-    if (!store.fiscalAgentEnabled || !store.fiscalAgentUrl) return res.status(400).json({ error: 'Loja sem agente fiscal' });
+    if (!store.fiscalAgentEnabled || !store.fiscalAgentUrl || !store.fiscalAgentToken) return res.status(400).json({ error: 'Loja sem agente fiscal configurado' });
 
     const origDoc = await prisma.fiscalDocument.findUnique({ where: { id: originalDocId } });
     if (!origDoc || origDoc.docType !== 'NFCE' || origDoc.status !== 'authorized' || !origDoc.accessKey) {
@@ -315,31 +331,62 @@ router.post('/troca', async (req, res) => {
     if (!origDoc.saleId) return res.status(400).json({ error: 'Cupom original sem venda vinculada — troca manual só pelo admin' });
     const origSale = await prisma.sale.findUnique({ where: { id: origDoc.saleId }, include: { items: true } });
     if (!origSale) return res.status(400).json({ error: 'Venda do cupom original não encontrada' });
+    if (origSale.storeId !== store.id) return res.status(403).json({ error: 'Venda original é de outra loja' });
+
+    // Uma retomada só pode usar a própria devolução e o mesmo acordo já emitido.
+    let devDoc = devolucaoDocId ? await prisma.fiscalDocument.findUnique({ where: { id: devolucaoDocId } }) : null;
+    if (devolucaoDocId && (!devDoc || devDoc.issuerId !== issuer.id || devDoc.docType !== 'NFE' || devDoc.status !== 'authorized'
+      || devDoc.response?.troca?.originalDocId !== originalDocId)) {
+      return res.status(409).json({ error: 'A devolução informada não pertence a esta troca autorizada' });
+    }
+    if (saleId && !devDoc) return res.status(409).json({ error: 'Informe a devolução autorizada para retomar a venda da troca' });
+    if (devDoc) retryState.devolucaoDocId = devDoc.id;
+    const savedExchange = devDoc?.response?.troca;
+    if (savedExchange) {
+      const savedReturned = [...(savedExchange.returned || [])].sort((a, b) => a.saleItemId.localeCompare(b.saleItemId));
+      if (!sameSnapshot(savedReturned, requestSnapshot.returned)
+        || (savedExchange.request && !sameSnapshot(savedExchange.request, requestSnapshot))) {
+        return res.status(409).json({ error: 'A devolução já foi autorizada. Retome com os mesmos produtos, quantidades e diferença' });
+      }
+      if (!savedExchange.request && diffAmount != null) return res.status(409).json({ error: 'Esta devolução antiga não permite alterar a diferença na retomada' });
+    }
+    const exchangeSaleKey = devDoc ? 'exchange:' + devDoc.id : null;
+    let newSale = saleId
+      ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } })
+      : (exchangeSaleKey ? await prisma.sale.findUnique({ where: { idemKey: exchangeSaleKey }, include: { items: true } }) : null);
+    if (saleId && (!newSale || newSale.storeId !== store.id || (newSale.idemKey !== exchangeSaleKey && savedExchange?.saleId !== newSale.id))) {
+      return res.status(409).json({ error: 'A venda informada não pertence a esta troca e loja' });
+    }
+    if (newSale) retryState.saleId = newSale.id;
 
     // ---- DEVOLVIDOS: validar contra a venda original (preço NUNCA vem do cliente) ----
     // Cap anti-dupla-troca: o já devolvido em trocas anteriores deste cupom sai do saldo.
     const prevDevs = await prisma.fiscalDocument.findMany({
-      where: { docType: 'NFE', status: { in: ['authorized', 'processing'] }, response: { path: ['troca', 'originalDocId'], equals: originalDocId } },
+      where: { issuerId: issuer.id, docType: 'NFE', status: { in: ['authorized', 'processing'] }, ...(devDoc ? { id: { not: devDoc.id } } : {}), response: { path: ['troca', 'originalDocId'], equals: originalDocId } },
       select: { id: true, response: true },
     });
     const prevQty = {};
     for (const d of prevDevs) for (const it of (d.response?.troca?.returned || [])) prevQty[it.saleItemId] = (prevQty[it.saleItemId] || 0) + (it.qty || 0);
 
     const retItems = [];
-    for (const r of returned) {
+    for (const r of requestSnapshot.returned) {
       const si = origSale.items.find(i => i.id === r.saleItemId);
-      const qty = parseInt(r.qty, 10) || 0;
+      const qty = r.qty;
       if (!si || qty < 1) return res.status(400).json({ error: 'Item devolvido inválido' });
       const restante = si.quantity - (prevQty[si.id] || 0);
       if (qty > restante) return res.status(400).json({ error: si.productName + ': só ' + restante + ' un disponível pra devolver (vendido ' + si.quantity + ', já devolvido ' + (prevQty[si.id] || 0) + ')' });
-      retItems.push({ saleItem: si, qty });
+      // SaleItem já contém o preço líquido. Uma devolução parcial absorve
+      // somente o centavo restante da quantidade efetivamente devolvida.
+      const savedReturn = savedExchange?.returnPrices?.find(item => item.saleItemId === si.id);
+      const returnedValue = savedReturn ? savedReturn.total : r2(r2(((prevQty[si.id] || 0) + qty) * si.unitPrice) - r2((prevQty[si.id] || 0) * si.unitPrice));
+      retItems.push({ saleItem: si, qty, unitPrice: returnedValue / qty, total: returnedValue });
     }
-    const returnedTotal = r2(retItems.reduce((s, r) => s + r.qty * r.saleItem.unitPrice, 0));
+    const returnedTotal = r2(retItems.reduce((s, r) => s + r.total, 0));
 
     // ---- NOVOS: resolver pelo código de barras; preço = preço de VENDA do card ----
-    const newResolved = [];
-    for (const n of newItems) {
-      const qty = parseInt(n.qty, 10) || 1;
+    let newResolved = [];
+    for (const n of requestSnapshot.newItems) {
+      const qty = n.qty;
       const code = n.barcode ? String(n.barcode).trim() : '';
       let ps = code ? await prisma.productSize.findFirst({ where: { barcode: code }, include: { product: true } }) : null;
       if (!ps && code) {
@@ -359,14 +406,43 @@ router.post('/troca', async (req, res) => {
         }
       }
       if (!ps?.product) return res.status(400).json({ error: 'Código ' + (n.barcode || '?') + ' não cadastrado — bipe um produto do catálogo' });
-      const price = (ps.product.promoPrice > 0 ? ps.product.promoPrice : ps.product.price) || 0;
+      const savedItem = savedExchange?.catalogItems?.find(item => item.productSizeId === ps.id);
+      if (savedExchange?.catalogItems && !savedItem) return res.status(409).json({ error: 'O código agora aponta para outra variante. A retomada da troca foi bloqueada' });
+      const price = savedItem ? savedItem.price : ((ps.product.promoPrice > 0 ? ps.product.promoPrice : ps.product.price) || 0);
       if (price <= 0) return res.status(400).json({ error: ps.product.name + ' sem preço de venda — ajuste o preço antes de vender' });
       newResolved.push({ ps, product: ps.product, qty, price: r2(price) });
     }
-    const newTotal = r2(newResolved.reduce((s, n) => s + n.qty * n.price, 0));
-    const diff = r2(newTotal - returnedTotal);
-    const credit = Math.min(returnedTotal, newTotal);
-    const vale = diff < 0 ? r2(-diff) : 0;
+    const catalogItems = newResolved.map(n => ({ productId: n.product.id, productSizeId: n.ps.id, qty: n.qty, price: n.price }));
+    const pricing = priceExchange(newResolved, returnedTotal, requestSnapshot.diffAmount);
+    newResolved = pricing.items;
+    const { newTotal, diff, credit, vale, ...pricingAudit } = pricing;
+    delete pricingAudit.items;
+    const exchangeAudit = {
+      originalDocId, originalSaleId: origSale.id, storeId: store.id,
+      returned: requestSnapshot.returned, request: requestSnapshot, catalogItems,
+      returnPrices: retItems.map(r => ({ saleItemId: r.saleItem.id, qty: r.qty, total: r.total, unitPrice: r.unitPrice })),
+      pricing: { ...pricingAudit, newTotal, diff, credit, vale },
+      agreedById: savedExchange?.agreedById || req.userId,
+    };
+    if (savedExchange?.pricing && !sameSnapshot(savedExchange.pricing, exchangeAudit.pricing)) {
+      return res.status(409).json({ error: 'Os valores da troca divergiram da devolução autorizada. A retomada foi bloqueada' });
+    }
+    if (newSale) {
+      const key = item => [item.productSizeId, item.quantity, r2(item.unitPrice), r2(item.totalPrice)].join('|');
+      const expected = newResolved.map(n => key({ productSizeId: n.ps.id, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price) })).sort();
+      if (newSale.storeId !== store.id || newSale.status !== 'completed' || r2(newSale.totalAmount) !== newTotal
+        || JSON.stringify(newSale.items.map(key).sort()) !== JSON.stringify(expected)) {
+        return res.status(409).json({ error: 'Produtos ou valores diferentes da venda de troca já registrada' });
+      }
+      const existingCupom = await prisma.fiscalDocument.findFirst({ where: { saleId: newSale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } }, orderBy: { createdAt: 'desc' } });
+      if (existingCupom?.status === 'authorized') return res.json({
+        ok: true, alreadyEmitted: true,
+        devolucao: { docId: devDoc.id, number: devDoc.number, accessKey: devDoc.accessKey },
+        cupom: { docId: existingCupom.id, number: existingCupom.number, accessKey: existingCupom.accessKey },
+        saleId: newSale.id, valores: { devolvido: returnedTotal, novos: newTotal, diferenca: Math.max(0, diff), vale },
+      });
+      if (existingCupom) return res.status(409).json({ error: 'O cupom desta troca está em processamento. Consulte o documento antes de reenviar', documentId: existingCupom.id });
+    }
 
     // SEFAZ-PB: cupom (mesmo de troca) >= R$500 exige CPF/CNPJ do consumidor.
     const _docCli = String(customerCpf || '').replace(/\D/g, '');
@@ -377,14 +453,16 @@ router.post('/troca', async (req, res) => {
 
     // ---- pagamentos do cupom novo: Crédito Loja (05) + diferença ----
     const payments = [{ tPag: '05', valor: credit }];
+    const dp = diffPayment || {};
+    const paymentAuthCode = diff > 0 ? normalizeAuthCode(dp.cardAuthCode) : null;
     if (diff > 0) {
-      const dp = diffPayment || {};
       if (!dp.tPag) return res.status(400).json({ error: 'Diferença de ' + diff.toFixed(2) + ' — informe a forma de pagamento' });
+      if (!TPAG_TO_SALEPAY[dp.tPag]) return res.status(400).json({ error: 'Forma de pagamento da diferença inválida' });
       const isCard = ['03', '04', '17'].includes(dp.tPag);
       // Auth/NSU opcional (igual ao cupom normal): se vier entra na nota, senão emite sem cAut.
-      const _dpAuth = (dp.cardAuthCode && String(dp.cardAuthCode).trim() !== '000000') ? String(dp.cardAuthCode).trim() : null;
+      const _dpAuth = paymentAuthCode;
       if (_dpAuth) {
-        const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _dpAuth, docType: 'NFCE', status: { in: ['authorized', 'processing'] } } });
+        const _nsuDup = await prisma.fiscalDocument.findFirst({ where: { issuerId: issuer.id, paymentAuthCode: _dpAuth, docType: 'NFCE', status: { in: ['authorized', 'processing'] }, ...(newSale ? { OR: [{ saleId: null }, { saleId: { not: newSale.id } }] } : {}) } });
         if (_nsuDup) return res.status(409).json({ error: 'NSU/código ' + _dpAuth + ' já foi usado no cupom #' + _nsuDup.number });
       }
       payments.push({ tPag: dp.tPag, valor: diff, tBand: dp.cardBrand, cAut: _dpAuth || undefined, acquirerKey: isCard ? (dp.acquirerKey || 'PAGSEGURO') : dp.acquirerKey, tpIntegra: 2 });
@@ -393,24 +471,33 @@ router.post('/troca', async (req, res) => {
     const agentClient = require('../services/fiscalAgentClient');
 
     // ============ PASSO 1 — NFe de DEVOLUÇÃO (entrada, referencia o cupom) ============
-    let devDoc = devolucaoDocId ? await prisma.fiscalDocument.findUnique({ where: { id: devolucaoDocId } }) : null;
-    if (devDoc && (devDoc.issuerId !== issuer.id || devDoc.status !== 'authorized')) devDoc = null;
     if (!devDoc) {
       const retProdIds = retItems.map(r => r.saleItem.productId).filter(Boolean);
       const retProds = retProdIds.length ? await prisma.product.findMany({ where: { id: { in: retProdIds } } }) : [];
       const prodById = Object.fromEntries(retProds.map(p => [p.id, p]));
-      const maxNfe = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1 }, _max: { number: true } });
-      const nNF55 = Math.max(issuer.nfeNextNumber || 1, (maxNfe._max.number || 0) + 1);
-
-      devDoc = await prisma.fiscalDocument.create({
+      devDoc = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${origSale.id} FOR UPDATE`;
+        const reserved = await tx.fiscalDocument.findMany({ where: { issuerId: issuer.id, docType: 'NFE', status: { in: ['authorized', 'processing'] }, response: { path: ['troca', 'originalDocId'], equals: originalDocId } }, select: { response: true } });
+        const reservedQty = {};
+        for (const doc of reserved) for (const item of doc.response?.troca?.returned || []) reservedQty[item.saleItemId] = (reservedQty[item.saleItemId] || 0) + item.qty;
+        for (const item of retItems) {
+          if ((reservedQty[item.saleItem.id] || 0) !== (prevQty[item.saleItem.id] || 0)) throw new ExchangeValidationError('Outra troca alterou o saldo do cupom. Atualize os produtos devolvidos antes de emitir', 409);
+        }
+        const maxNfe = await tx.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1 }, _max: { number: true } });
+        const nextNumber = Math.max(issuer.nfeNextNumber || 1, (maxNfe._max.number || 0) + 1);
+        return tx.fiscalDocument.create({
         data: {
-          issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1, number: nNF55,
+          issuerId: issuer.id, docType: 'NFE', serie: issuer.nfeSerie || 1, number: nextNumber,
           status: 'processing', totalValue: returnedTotal,
           recipientName: issuer.companyName, recipientCnpjCpf: issuer.cnpj,
           emittedById: req.userId, paymentMethod: '90',
           productIds: retItems.map(r => r.saleItem.productId || r.saleItem.productName),
+          response: { troca: { ...exchangeAudit, stockApplied: false } },
         },
+        });
       });
+      const nNF55 = devDoc.number;
+      pendingReturnId = devDoc.id;
 
       const devResult = await agentClient.emitNFe55(store, {
         issuer, nNF: nNF55, finNFe: 4, tpNF: 0, refNFe: origDoc.accessKey, natOp: 'DEVOLUCAO DE VENDA',
@@ -423,15 +510,19 @@ router.post('/troca', async (req, res) => {
           return {
             sku: p?.sku || r.saleItem.productId || 'DEV', name: ('DEVOLUCAO ' + r.saleItem.productName).slice(0, 110),
             ncm: (p?.ncm && /^\d{8}$/.test(p.ncm)) ? p.ncm : '64041100',
-            cfop: '1202', unidade: 'UN', qty: r.qty, unitPrice: r.saleItem.unitPrice,
+            cfop: '1202', unidade: 'UN', qty: r.qty, unitPrice: r.unitPrice,
           };
         }),
         payment: { tPag: '90', valor: 0 },
       });
 
       if (!(devResult.ok && String(devResult.status) === '100')) {
+        if (devResult.transmitError || devResult.error === 'agent timeout') {
+          await prisma.fiscalDocument.update({ where: { id: devDoc.id }, data: { ...(devResult.accessKey ? { accessKey: devResult.accessKey } : {}), response: { ...devDoc.response, error: devResult.error || devResult.motivo || 'Resultado fiscal desconhecido' } } });
+          return res.json({ ok: false, step: 'devolucao', pendingConfirmation: true, documentId: devDoc.id, error: 'Não foi possível confirmar a autorização da devolução. Consulte este documento antes de reenviar' });
+        }
         if (devResult.accessKey) {
-          await prisma.fiscalDocument.update({ where: { id: devDoc.id }, data: { status: 'rejected', accessKey: devResult.accessKey, rejectReason: devResult.motivo || devResult.error || 'Rejeitada', response: { status: devResult.status, motivo: devResult.motivo } } });
+          await prisma.fiscalDocument.update({ where: { id: devDoc.id }, data: { status: 'rejected', accessKey: devResult.accessKey, rejectReason: devResult.motivo || devResult.error || 'Rejeitada', response: { status: devResult.status, motivo: devResult.motivo, troca: { ...exchangeAudit, stockApplied: false } } } });
         } else {
           await prisma.fiscalDocument.delete({ where: { id: devDoc.id } }).catch(() => {});
         }
@@ -445,14 +536,25 @@ router.post('/troca', async (req, res) => {
           status: 'authorized', accessKey: devResult.accessKey, protocol: devResult.protocol, xmlContent: devResult.xmlSigned,
           response: {
             status: devResult.status, motivo: devResult.motivo,
-            troca: { originalDocId, originalSaleId: origSale.id, returned: retItems.map(r => ({ saleItemId: r.saleItem.id, qty: r.qty })), stockApplied: true },
+            troca: { ...exchangeAudit, stockApplied: false },
           },
         },
       });
+      pendingReturnId = null;
+      retryState.devolucaoDocId = devDoc.id;
       await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfeNextNumber: nNF55 + 1 } });
+    }
 
-      // Estoque: devolvido volta pra LOCALIZAÇÃO da loja (StoreStock). Comprado intocado (regra do dono).
+    // Estoque: devolvido volta pra LOCALIZAÇÃO da loja (StoreStock). Comprado intocado (regra do dono).
+    if (!devDoc.response?.troca?.stockApplied) {
       await prisma.$transaction(async (tx) => {
+        // A condição é reavaliada pelo banco depois do lock da linha. Dois
+        // retries simultâneos não podem devolver a mesma unidade duas vezes.
+        const claimed = await tx.fiscalDocument.updateMany({
+          where: { id: devDoc.id, status: 'authorized', response: { path: ['troca', 'stockApplied'], equals: false } },
+          data: { response: { ...devDoc.response, troca: { ...devDoc.response.troca, stockApplied: true } } },
+        });
+        if (!claimed.count) return;
         for (const r of retItems) {
           let productSizeId = r.saleItem.productSizeId;
           if (!productSizeId && r.saleItem.productId && r.saleItem.size) {
@@ -473,16 +575,17 @@ router.post('/troca', async (req, res) => {
       });
     }
 
-    // ============ PASSO 2 — venda nova + cupom novo (valor cheio, Crédito Loja + diferença) ============
-    let newSale = saleId ? await prisma.sale.findUnique({ where: { id: saleId }, include: { items: true } }) : null;
+    // ============ PASSO 2 — venda nova + cupom novo (preços acordados, Crédito Loja + diferença) ============
     if (!newSale) {
       newSale = await prisma.$transaction(async (tx) => {
         const created = await tx.sale.create({
           data: {
             sellerId: req.userId, storeId: store.id, totalAmount: newTotal,
+            idemKey: 'exchange:' + devDoc.id,
             paymentMethod: diff > 0 ? (TPAG_TO_SALEPAY[diffPayment.tPag] || 'other') : 'troca',
             status: 'completed', tcUsed: 0, tcEarned: 0,
-            note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : ''),
+            note: 'TROCA do cupom #' + origDoc.number + ' — devolvido R$' + returnedTotal.toFixed(2) + (vale ? (' (vale R$' + vale.toFixed(2) + ')') : '')
+              + (pricing.overridden ? ('; diferença informada R$' + diff.toFixed(2) + '; ajuste local R$' + pricing.adjustment.toFixed(2)) : ''),
             items: { create: newResolved.map(n => ({ productId: n.product.id, productSizeId: n.ps.id, productName: n.product.name, brand: n.product.brand || '', size: n.ps.size || null, quantity: n.qty, unitPrice: n.price, totalPrice: r2(n.qty * n.price), unitCost: n.product.costPrice > 0 ? n.product.costPrice : null })) },
           },
           include: { items: true },
@@ -496,30 +599,51 @@ router.post('/troca', async (req, res) => {
             quantity: -item.quantity,
             type: 'exchange_sale',
             source: 'fiscal_exchange_api',
-            metadata: { originalSaleId: origSale.id, originalDocId },
+            metadata: { originalSaleId: origSale.id, originalDocId, devolucaoDocId: devDoc.id },
           });
         }
+        await tx.fiscalDocument.update({ where: { id: devDoc.id }, data: { response: { ...devDoc.response, troca: { ...exchangeAudit, stockApplied: true, saleId: created.id } } } });
         return created;
       });
     }
+    retryState.saleId = newSale.id;
 
-    const maxNfce = await prisma.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
-    const nNF = Math.max(issuer.nfceNextNumber || 1, (maxNfce._max.number || 0) + 1);
-    const cupomDoc = await prisma.fiscalDocument.create({
+    const cupomReservation = await prisma.$transaction(async (tx) => {
+      // A venda é o lock durável da emissão. A chamada ao agente só ocorre
+      // depois de confirmar a reserva; nenhuma transação segura a rede aberta.
+      await tx.$queryRaw`SELECT id FROM "Sale" WHERE id = ${newSale.id} FOR UPDATE`;
+      const existing = await tx.fiscalDocument.findFirst({ where: { saleId: newSale.id, docType: 'NFCE', status: { in: ['authorized', 'processing'] } }, orderBy: { createdAt: 'desc' } });
+      if (existing) return { existing };
+      const agreedPayment = diff > 0 ? TPAG_TO_SALEPAY[dp.tPag] : 'troca';
+      if (newSale.paymentMethod !== agreedPayment) await tx.sale.update({ where: { id: newSale.id }, data: { paymentMethod: agreedPayment } });
+      const maxNfce = await tx.fiscalDocument.aggregate({ where: { issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1 }, _max: { number: true } });
+      const nextNumber = Math.max(issuer.nfceNextNumber || 1, (maxNfce._max.number || 0) + 1);
+      const doc = await tx.fiscalDocument.create({
       data: {
-        issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1, number: nNF,
+        issuerId: issuer.id, docType: 'NFCE', serie: issuer.nfceSerie || 1, number: nextNumber,
         status: 'processing', totalValue: newTotal, saleId: newSale.id,
         productIds: newResolved.map(n => n.product.sku || n.product.id),
         emittedById: req.userId,
         paymentMethod: diff > 0 ? diffPayment.tPag : '05',
         paymentBrand: diff > 0 ? (diffPayment.cardBrand || null) : null,
         paymentAcquirer: diff > 0 ? (diffPayment.acquirerKey || null) : null,
-        paymentAuthCode: diff > 0 ? (diffPayment.cardAuthCode || null) : null,
+        paymentAuthCode,
         paymentTpIntegra: diff > 0 ? 2 : null,
         recipientCnpjCpf: _docCliOk ? _docCli : null,
         recipientName: _docCliOk && customerName ? String(customerName).slice(0, 60) : null,
+        response: { troca: { ...exchangeAudit, devolucaoDocId: devDoc.id, saleId: newSale.id } },
       },
+      });
+      return { doc };
     });
+    if (cupomReservation.existing) {
+      const existing = cupomReservation.existing;
+      if (existing.status !== 'authorized') return res.status(409).json({ error: 'O cupom desta troca está em processamento. Consulte o documento antes de reenviar', documentId: existing.id });
+      return res.json({ ok: true, alreadyEmitted: true, devolucao: { docId: devDoc.id, number: devDoc.number, accessKey: devDoc.accessKey }, cupom: { docId: existing.id, number: existing.number, accessKey: existing.accessKey }, saleId: newSale.id, valores: { devolvido: returnedTotal, novos: newTotal, diferenca: Math.max(0, diff), vale } });
+    }
+    const cupomDoc = cupomReservation.doc;
+    const nNF = cupomDoc.number;
+    retryState.documentId = cupomDoc.id;
 
     const cupomResult = await agentClient.emitNFCe(store, {
       issuer, nNF,
@@ -529,8 +653,12 @@ router.post('/troca', async (req, res) => {
     });
 
     if (!(cupomResult.ok && String(cupomResult.status) === '100')) {
+      if (cupomResult.transmitError || cupomResult.error === 'agent timeout') {
+        await prisma.fiscalDocument.update({ where: { id: cupomDoc.id }, data: { ...(cupomResult.accessKey ? { accessKey: cupomResult.accessKey } : {}), response: { ...cupomDoc.response, error: cupomResult.error || cupomResult.motivo || 'Resultado fiscal desconhecido' } } });
+        return res.json({ ok: false, step: 'cupom', ...retryState, pendingConfirmation: true, error: 'Não foi possível confirmar a autorização do cupom da troca. Consulte este documento antes de reenviar' });
+      }
       if (cupomResult.accessKey) {
-        await prisma.fiscalDocument.update({ where: { id: cupomDoc.id }, data: { status: 'rejected', accessKey: cupomResult.accessKey, rejectReason: cupomResult.motivo || cupomResult.error || 'Rejeitada', response: { status: cupomResult.status, motivo: cupomResult.motivo } } });
+        await prisma.fiscalDocument.update({ where: { id: cupomDoc.id }, data: { status: 'rejected', accessKey: cupomResult.accessKey, rejectReason: cupomResult.motivo || cupomResult.error || 'Rejeitada', response: { status: cupomResult.status, motivo: cupomResult.motivo, troca: { ...exchangeAudit, devolucaoDocId: devDoc.id, saleId: newSale.id } } } });
       } else {
         await prisma.fiscalDocument.delete({ where: { id: cupomDoc.id } }).catch(() => {});
       }
@@ -543,7 +671,7 @@ router.post('/troca', async (req, res) => {
       where: { id: cupomDoc.id },
       data: {
         status: 'authorized', accessKey: cupomResult.accessKey, protocol: cupomResult.protocol, xmlContent: cupomResult.xmlSigned,
-        response: { status: cupomResult.status, motivo: cupomResult.motivo, troca: { originalDocId, devolucaoDocId: devDoc.id, credit, diff } },
+        response: { status: cupomResult.status, motivo: cupomResult.motivo, troca: { ...exchangeAudit, devolucaoDocId: devDoc.id, saleId: newSale.id, credit, diff } },
       },
     });
     await prisma.fiscalIssuer.update({ where: { id: issuer.id }, data: { nfceNextNumber: nNF + 1 } });
@@ -557,7 +685,9 @@ router.post('/troca', async (req, res) => {
     });
   } catch (err) {
     console.error('[fiscal/troca]', err);
-    res.status(500).json({ error: err.message });
+    if (pendingReturnId) return res.json({ ok: false, step: 'devolucao', pendingConfirmation: true, documentId: pendingReturnId, error: 'Não foi possível confirmar a autorização da devolução. Consulte este documento antes de reenviar. ' + err.message });
+    if (retryState.devolucaoDocId && !(err instanceof ExchangeValidationError)) return res.json({ ok: false, step: 'cupom', ...retryState, pendingConfirmation: Boolean(retryState.documentId), error: 'A devolução já foi autorizada e a troca ficou pendente. ' + (retryState.documentId ? 'Consulte o cupom antes de reenviar. ' : 'Retome a mesma troca. ') + err.message });
+    res.status(err instanceof ExchangeValidationError ? err.statusCode : 500).json({ error: err.message });
   }
 });
 
