@@ -22,6 +22,9 @@ function sizeKey(value) {
   return /^(U|UNICO)$/.test(size) ? 'UNICO' : (/^\d+,\d+$/.test(size) ? size.replace(',', '.') : size);
 }
 function validSize(value) { return !!sizeKey(value) && !/^(?:\?|T-|REF:|UNICO-|SEM TAMANHO|DESCONHECIDO|N\/A)/i.test(sizeKey(value)); }
+// Exact, unambiguous catalog variants do not need a second manual size entry.
+// Adidas retains the owner's separate requirement to check BR on each box.
+function requiresSizeConfirmation(size, expected) { return /adidas/i.test(String(size?.product?.brand || '') + ' ' + String(expected?.brand || '')); }
 function noteOf(transfer) { try { return JSON.parse(transfer.note || '{}'); } catch (_) { return {}; } }
 function publicTransfer(t) {
   return { id: t.id, code: t.code, status: t.status, createdAt: t.createdAt, receivedAt: t.receivedAt,
@@ -40,9 +43,13 @@ function scansInput(input, allowEmpty = false) {
     if (!scan || !uuid(scan.clientScanId) || !uuid(scan.productSizeId)) fail('Identificador de leitura inválido. Leia a peça novamente.', 400);
     const barcode = String(scan.barcode || '').trim();
     const confirmedSize = String(scan.confirmedSize || '').trim();
+    const resolvedSize = String(scan.resolvedSize || '').trim();
     if (!/^\d{8}$|^\d{12,14}$/.test(barcode) || !barcodeKey(barcode)) fail('Leia o código de barras EAN/UPC da própria peça.', 400);
-    if (!confirmedSize || confirmedSize.length > 40) fail('Confirme o tamanho da etiqueta de cada peça.', 400);
-    return { clientScanId: scan.clientScanId.toLowerCase(), barcode, productSizeId: scan.productSizeId.toLowerCase(), confirmedSize, duplicateConfirmed: scan.duplicateConfirmed === true };
+    if (confirmedSize.length > 40 || resolvedSize.length > 40) fail('Tamanho informado inválido.', 400);
+    // Keep legacy request hashes unchanged when no catalog snapshot is supplied.
+    // resolvedSize records lookup data, never a claimed physical confirmation.
+    return { clientScanId: scan.clientScanId.toLowerCase(), barcode, productSizeId: scan.productSizeId.toLowerCase(), confirmedSize,
+      ...(resolvedSize ? { resolvedSize } : {}), duplicateConfirmed: scan.duplicateConfirmed === true };
   }).sort((a, b) => a.clientScanId.localeCompare(b.clientScanId));
   if (new Set(scans.map(scan => scan.clientScanId)).size !== scans.length) fail('A mesma leitura está repetida na sequência. Nenhuma quantidade foi acrescentada.', 400);
   return scans;
@@ -128,7 +135,7 @@ async function lookup(db, actor, input = {}) {
   if (!transfer && !ps.product.active) fail('Cadastro inativo. Confira o produto antes de enviar.');
   if (!validSize(ps.size) || (expected && sizeKey(expected.size) !== sizeKey(ps.size))) fail('O tamanho deste código está pendente ou mudou após o envio. Confira o cadastro.');
   return { product: { productSizeId: ps.id, name: expected?.productName || ps.product.name, brand: expected?.brand || ps.product.brand,
-    size: ps.size, barcode, imageUrl: ps.product.imageUrl || null }, requiresSizeConfirmation: true };
+    size: ps.size, barcode, imageUrl: ps.product.imageUrl || null }, requiresSizeConfirmation: requiresSizeConfirmation(ps, expected) };
 }
 function block(list, code, message, extra = {}) { list.push({ code, message, ...extra }); }
 async function inspectScans(db, scans, blockers, expected = null) {
@@ -147,9 +154,16 @@ async function inspectScans(db, scans, blockers, expected = null) {
     const resolved = matches.get(barcodeKey(scan.barcode)) || [];
     if (!size || (!expected && !size.product.active)) block(blockers, 'unavailable_product', 'Há produto indisponível na sequência.', details);
     if (resolved.length !== 1 || resolved[0].id !== scan.productSizeId) block(blockers, 'barcode_conflict', 'O código lido não confirma uma única variante selecionada.', details);
-    if (!size || !validSize(size.size) || !validSize(scan.confirmedSize) || sizeKey(size.size) !== sizeKey(scan.confirmedSize)) block(blockers, 'pending_size', 'O tamanho informado precisa corresponder à etiqueta e à variante cadastrada.', details);
+    const sent = expected?.find(item => item.productSizeId === scan.productSizeId);
+    const observedSize = scan.confirmedSize || scan.resolvedSize;
+    if (!size || !validSize(size.size) || !validSize(observedSize) || sizeKey(size.size) !== sizeKey(observedSize)
+      || (scan.resolvedSize && sizeKey(scan.resolvedSize) !== sizeKey(size.size))
+      || (requiresSizeConfirmation(size, sent) && !validSize(scan.confirmedSize))) {
+      block(blockers, 'pending_size', requiresSizeConfirmation(size, sent)
+        ? 'Confira o tamanho BR na etiqueta desta caixa Adidas.'
+        : 'O tamanho deste código está pendente ou mudou. Leia a peça novamente para conferir o cadastro.', details);
+    }
     if (expected) {
-      const sent = expected.find(item => item.productSizeId === scan.productSizeId);
       if (!sent) block(blockers, 'unexpected_item', 'Foi lida uma peça que não pertence à transferência.', details);
       else if (!size || sizeKey(sent.size) !== sizeKey(size.size)) block(blockers, 'changed_variant', 'O tamanho da variante mudou após o envio. Confira o cadastro antes de receber.', details);
     }

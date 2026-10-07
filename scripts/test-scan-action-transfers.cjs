@@ -114,6 +114,50 @@ async function test(name, work) {
 }
 
 (async () => {
+  await test('recognized Lupo size sends and receives without a manual confirmation, with idempotent stock movements', async () => {
+    const f = await fixture();
+    await db.product.update({ where: { id: f.product.id }, data: { brand: 'LUPO' } });
+    await db.productSize.update({ where: { id: f.size.id }, data: { size: 'P' } });
+    const lookup = await service.lookup(db, f.sender, { barcode: f.size.barcode });
+    assert.equal(lookup.requiresSizeConfirmation, false); assert.equal(lookup.product.size, 'P');
+    const makeScan = () => f.scan(f.size, { confirmedSize: '', resolvedSize: lookup.product.size });
+    const before = await snapshot(f), scans = [makeScan(), { ...makeScan(), duplicateConfirmed: true }];
+    const { transfer, request } = await sendOne(f, scans);
+    assert.equal((await service.sendConfirm(db, f.sender, request)).alreadySaved, true);
+    const inTransit = await snapshot(f);
+    assert.equal(stock(inTransit, f.from.id, f.size.id), 4); assert.equal(stock(inTransit, f.to.id, f.size.id), 1);
+    const savedScans = JSON.parse(inTransit.transfers[0].note).send.scans;
+    assert.ok(savedScans.every(scan => scan.confirmedSize === '' && scan.resolvedSize === 'P'), 'Catalog evidence must not masquerade as a physical confirmation');
+    const receipt = f.receive([makeScan(), { ...makeScan(), duplicateConfirmed: true }]);
+    const review = await receiveReview(f, transfer.id, receipt);
+    const receiveRequest = { ...receipt, requestId: randomUUID(), reviewToken: review.reviewToken };
+    await service.receiveConfirm(db, f.receiver, transfer.id, receiveRequest);
+    assert.equal((await service.receiveConfirm(db, f.receiver, transfer.id, receiveRequest)).alreadySaved, true);
+    const after = await snapshot(f);
+    assert.equal(stock(after, f.from.id, f.size.id), 4); assert.equal(stock(after, f.to.id, f.size.id), 3);
+    assert.equal(after.movements.length, 2); untouchedInventory(before, after);
+  });
+
+  await test('automatic size lookup cannot bypass catalog drift, ambiguous codes, duplicate pieces or Adidas box checks', async () => {
+    const f = await fixture(), auto = overrides => f.scan(f.size, { confirmedSize: '', resolvedSize: f.size.size, ...overrides });
+    await blocked(f, 'send', f.send([auto({ resolvedSize: '41' })]), 'Stale catalog snapshot');
+    await blocked(f, 'send', f.send([auto({ confirmedSize: '41' })]), 'An explicit conflicting size is never discarded');
+    await blocked(f, 'send', f.send([auto(), auto()]), 'Repeated physical piece still requires consent');
+    await db.product.update({ where: { id: f.product.id }, data: { brand: 'ADIDAS' } });
+    assert.equal((await service.lookup(db, f.sender, { barcode: f.size.barcode })).requiresSizeConfirmation, true);
+    await blocked(f, 'send', f.send([auto({ requiresSizeConfirmation: false })]), 'Client flag cannot bypass Adidas BR verification');
+    const sent = await sendOne(f);
+    // Preserve the Adidas condition stored on the shipment even if catalog brand changes.
+    await db.product.update({ where: { id: f.product.id }, data: { brand: 'TEST' } });
+    const lookup = await service.lookup(db, f.receiver, { barcode: f.size.barcode, transferId: sent.transfer.id, storeId: f.to.id });
+    assert.equal(lookup.requiresSizeConfirmation, true);
+    await blocked(f, 'receive', f.receive([auto()]), 'Adidas shipment requires box check', { transferId: sent.transfer.id });
+    await receiveReview(f, sent.transfer.id, f.receive([f.scan()]));
+    await db.product.create({ data: { name: 'Conflicting automatic lookup', sku: 'AUTO-CONFLICT-' + randomUUID(), brand: 'OTHER', category: 'tenis', price: 1,
+      sizes: { create: { size: f.size.size, barcode: f.size.barcode } } } });
+    await blocked(f, 'send', f.send([auto()]), 'Automatic snapshot cannot disambiguate a shared barcode');
+  });
+
   await test('send stays in transit until complete receipt; six concurrent retries create each stock movement once', async () => {
     const f = await fixture(), before = await snapshot(f);
     const scans = [f.scan(), f.scan(f.size, { duplicateConfirmed: true }), f.scan(f.secondSize)];

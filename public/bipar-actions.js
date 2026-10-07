@@ -15,6 +15,8 @@
   function store(id) { return stores.find(item => item.id === id); }
   function storeName(id) { const item = store(id); return item ? item.name + (item.code ? ' (' + item.code + ')' : '') : 'Loja não selecionada'; }
   function normalizedSize(value) { const size = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/^BR\s*/, '').replace(',', '.').trim(); return ['U', 'UNICO'].includes(size) ? 'UNICO' : size; }
+  function sizeConflict(item) { return !!item.confirmedSize && normalizedSize(item.confirmedSize) !== normalizedSize(item.product?.size); }
+  function requiresSizeInput(item) { return item.requiresSizeConfirmation !== false || /ADIDAS/i.test(item.product?.brand || '') || sizeConflict(item); }
   function message(text, error = false) { $('action-message').textContent = text; $('action-message').hidden = !text; $('action-message').className = 'transfer-message' + (error ? ' transfer-error' : ''); }
   function saveSettings() { try { localStorage.setItem(settingsKey, JSON.stringify(settings)); } catch (_) {} }
   function context() {
@@ -48,10 +50,16 @@
   }
   function hasShipment() { return action !== 'receipt' || shipments.some(item => item.id === $('action-shipment').value); }
   function scansPayload(draft = currentDraft) {
-    return activeReads(draft).map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, productSizeId: item.product?.productSizeId, confirmedSize: item.confirmedSize || '', ...(item.duplicateConfirmed ? { duplicateConfirmed: true } : {}) }));
+    return activeReads(draft).map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, productSizeId: item.product?.productSizeId, confirmedSize: item.confirmedSize || '', ...(item.requiresSizeConfirmation === false ? { resolvedSize: item.product?.size || '' } : {}), ...(item.duplicateConfirmed ? { duplicateConfirmed: true } : {}) }));
   }
   function signature() { return JSON.stringify([contextKey(), context().transferId, currentDraft?.sessionId, scansPayload()]); }
-  function localPending() { return activeReads().some(item => inflight.has(item.clientScanId) || !item.product || !item.confirmedSize || normalizedSize(item.confirmedSize) !== normalizedSize(item.product.size)); }
+  function localPending() { return activeReads().some(item => inflight.has(item.clientScanId) || !item.product || (requiresSizeInput(item) && (!item.confirmedSize || sizeConflict(item)))); }
+  function refreshLegacyReads() {
+    if (!validContext() || busy || read(pendingKey, null)) return;
+    const draft = currentDraft;
+    // Reuse the saved scan: updating the lookup policy must never count a piece again.
+    for (const item of activeReads(draft)) if (item.product && typeof item.requiresSizeConfirmation !== 'boolean') void resolveRead(draft, item);
+  }
   function setOptions(select, options, placeholder, selected) {
     select.replaceChildren(new Option(placeholder, ''));
     for (const item of options) select.add(new Option(item.label, item.id));
@@ -67,7 +75,7 @@
     $('action-person').textContent = actor ? 'Operador: ' + actor.name : '';
     $('action-origin-wrap').hidden = action !== 'transfer'; $('action-shipment-wrap').hidden = action !== 'receipt';
     $('action-explanation').textContent = action === 'transfer'
-      ? 'Escolha a origem e o destino. Bipe cada peça, confira o tamanho na etiqueta e envie o lote. O destino confirma a chegada ao receber.'
+      ? 'Escolha a origem e o destino. Bipe cada peça, confira o lote e envie. O destino confirma a chegada ao receber.'
       : 'Escolha a loja e bipe as peças que chegaram. Você pode começar antes de a transferência aparecer. Depois, selecione a remessa para conferir e confirmar o recebimento.';
     const ready = validContext(), pending = read(pendingKey, null);
     $('bipe-box').classList.toggle('locked', !ready || busy || !!pending);
@@ -97,13 +105,13 @@
       const detail = document.createElement('p'); detail.textContent = 'Código: ' + item.barcode + (item.product ? ' · Cadastro: tamanho ' + item.product.size : '');
       card.append(title, detail);
       if (item.error) { const error = document.createElement('p'); error.className = 'transfer-error'; error.textContent = item.error; card.append(error); }
-      if (item.product) {
+      if (item.product && requiresSizeInput(item)) {
         const label = document.createElement('label'); label.textContent = /ADIDAS/i.test(item.product.brand) ? 'Tamanho BR na etiqueta desta caixa' : 'Tamanho escrito na etiqueta desta peça';
         const size = document.createElement('input'); size.type = 'text'; size.maxLength = 20; size.autocomplete = 'off'; size.dataset.scanSize = item.clientScanId; size.value = item.confirmedSize || ''; size.placeholder = 'Leia na etiqueta e digite aqui'; size.setAttribute('aria-label', label.textContent + ' · ' + item.barcode);
         size.addEventListener('input', () => { item.confirmedSize = size.value.trim(); invalidate(); persist(); refresh(); });
         const hint = document.createElement('small'); hint.textContent = 'Em calçados, use BR. Se a etiqueta divergir do cadastro, separe a peça para corrigir antes de enviar.';
         label.append(size); card.append(label, hint);
-      } else {
+      } else if (!item.product) {
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-secondary'; retry.textContent = inflight.has(item.clientScanId) ? 'Identificando…' : 'Ler novamente esta peça'; retry.disabled = inflight.has(item.clientScanId); retry.onclick = () => openCamera(item); card.append(retry);
       }
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-danger'; remove.textContent = 'Retirar esta leitura do lote'; remove.disabled = busy || inflight.has(item.clientScanId); remove.onclick = () => { if (busy || inflight.has(item.clientScanId) || !confirm('Retirar somente esta leitura deste lote? Nenhum estoque será alterado.')) return; item.removed = true; invalidate(); persist(); renderReadings(); refresh(); }; card.append(remove); area.append(card);
@@ -114,7 +122,7 @@
     generation++; invalidate(); closeCamera(); clearTimeout(window._bipeAutoSubmitTimer); $('codigo').value = '';
     $('action-result').hidden = true;
     message('');
-    currentDraft = getDraft(); renderReadings(); refresh();
+    currentDraft = getDraft(); renderReadings(); refresh(); refreshLegacyReads();
   }
   async function api(path, body, authToken = token) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30000);
@@ -161,9 +169,10 @@
       const data = await api('/lookup', body, authToken);
       if (owner !== draft.context.actorId || token !== authToken || actor?.id !== owner) { item.error = 'A conta mudou. Entre novamente e confira esta leitura.'; return; }
       item.product = data.product;
+      item.requiresSizeConfirmation = data.requiresSizeConfirmation !== false || /ADIDAS/i.test(data.product?.brand || '');
       const br = String(item.ocrText || '').match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
       if (br && normalizedSize(br[1]) === normalizedSize(data.product.size)) item.ocrSize = br[1];
-    } catch (error) { item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.'; }
+    } catch (error) { delete item.product; delete item.requiresSizeConfirmation; item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.'; }
     finally { inflight.delete(item.clientScanId); persist(draft); if (currentDraft?.key === draft.key) { renderReadings(); refresh(); } }
   }
   async function scan(barcode, ocrText = '') {
@@ -187,7 +196,7 @@
   async function prepare() {
     if (!validContext() || busy || storageFailed || read(pendingKey, null)) return;
     if (!hasShipment()) { message('Os bipes estão salvos neste aparelho. Selecione a transferência para conferir o lote. Se ela ainda não apareceu, a loja de origem precisa confirmar o envio; depois toque em “Atualizar transferências”.', true); return; }
-    if (localPending()) { message('Confirme o código, o produto e o tamanho literal de cada peça antes de conferir o lote.', true); return; }
+    if (localPending()) { message('Resolva as leituras pendentes antes de conferir o lote.', true); return; }
     const snapshot = signature(), gen = generation, body = previewBody(), path = action === 'transfer' ? '/send-preview' : '/' + encodeURIComponent(context().transferId) + '/receive-preview';
     busy = true; invalidate(); refresh(); message('Conferindo o lote e o estoque…');
     try {
@@ -261,7 +270,7 @@
     }
     cameraRetry = null;
     showCameraRead(item);
-    // A known barcode is ready for physical size confirmation without waiting for OCR.
+    // A known barcode is ready for the next step without waiting for OCR.
     // A late frame must never replace text/size or reopen the overlay of a later piece.
     const sameRead = () => cameraId === cameraGeneration && attempt === cameraAttempt && currentDraft === draft && cameraRead === item && !item.removed && !!$('action-camera');
     void textPromise.then(async value => {
@@ -293,7 +302,7 @@
         if (!duplicateConfirmed || !unchanged()) return null;
       }
       (item.barcodeCorrections ||= []).push({ previous: item.barcode, barcode, correctedAt: new Date().toISOString() });
-      item.barcode = barcode; item.duplicateConfirmed = duplicateConfirmed; item.confirmedSize = ''; delete item.product; delete item.ocrSize; item.ocrText = '';
+      item.barcode = barcode; item.duplicateConfirmed = duplicateConfirmed; item.confirmedSize = ''; delete item.product; delete item.requiresSizeConfirmation; delete item.ocrSize; item.ocrText = '';
       invalidate(); if (!persist(draft)) return null;
     }
     await resolveRead(draft, item, ocrText); return item;
@@ -321,19 +330,22 @@
     $('action-camera-size')?.remove(); $('action-camera-pending')?.remove(); cameraRead = item;
     $('etiq-confirm').style.display = 'flex';
     cameraDetails(item);
+    const needsSize = item.product && requiresSizeInput(item);
     const size = document.createElement('input'); size.id = 'action-camera-size'; size.type = 'text'; size.maxLength = 20; size.placeholder = /ADIDAS/i.test(item.product?.brand) ? 'Digite o BR desta caixa' : 'Digite o tamanho da etiqueta'; size.value = item.ocrSize || ''; size.setAttribute('aria-label', size.placeholder); size.style.cssText = 'display:block;min-height:48px;width:100%;max-width:320px;padding:10px;font-size:20px;margin:8px auto;color:#111;background:white;border-radius:8px';
-    if (item.product) $('etiq-confirm-det').after(size);
-    const button = $('etiq-confirm-btn'); button.textContent = item.product ? 'TAMANHO CONFERIDO — PRÓXIMA PEÇA' : 'RELER A MESMA PEÇA'; button.disabled = !item.product || normalizedSize(size.value) !== normalizedSize(item.product.size); button.style.background = item.product ? '#167541' : '#925400';
+    if (needsSize) $('etiq-confirm-det').after(size);
+    const button = $('etiq-confirm-btn'); button.textContent = item.product ? needsSize ? 'TAMANHO CONFERIDO — PRÓXIMA PEÇA' : 'PRÓXIMA PEÇA' : 'RELER A MESMA PEÇA'; button.disabled = !item.product || (needsSize && normalizedSize(size.value) !== normalizedSize(item.product.size)); button.style.background = item.product ? '#167541' : '#925400';
     size.addEventListener('input', () => { button.disabled = !size.value.trim() || normalizedSize(size.value) !== normalizedSize(item.product?.size); });
     if (!item.product) button.disabled = false;
-    const pending = document.createElement('button'); pending.id = 'action-camera-pending'; pending.type = 'button'; pending.dataset.click = 'next-pending'; pending.textContent = 'PRÓXIMA PEÇA — MANTER PENDENTE'; pending.style.cssText = 'width:100%;max-width:340px;min-height:48px;margin-top:12px;padding:10px;font-size:15px;font-weight:800;color:white;background:#555;border:1px solid #aaa;border-radius:12px'; button.after(pending);
+    if (!item.product || needsSize) {
+      const pending = document.createElement('button'); pending.id = 'action-camera-pending'; pending.type = 'button'; pending.dataset.click = 'next-pending'; pending.textContent = 'PRÓXIMA PEÇA — MANTER PENDENTE'; pending.style.cssText = 'width:100%;max-width:340px;min-height:48px;margin-top:12px;padding:10px;font-size:15px;font-weight:800;color:white;background:#555;border:1px solid #aaa;border-radius:12px'; button.after(pending);
+    }
     $('etiq-contador').textContent = 'Lote desta ação · ' + activeReads().length + ' peça(s)';
   }
   function cameraDetails(item) {
-    $('etiq-confirm-status').textContent = item.product ? 'Confira o tamanho na etiqueta' : 'Peça ainda não identificada';
+    $('etiq-confirm-status').textContent = item.product ? requiresSizeInput(item) ? 'Confira o tamanho na etiqueta' : 'Peça identificada' : 'Peça ainda não identificada';
     $('etiq-confirm-det').textContent = 'Código lido: ' + item.barcode + ' · ' + (item.product ? item.product.name + ' · Cadastro: ' + item.product.size : (item.error || 'Identificação pendente. Releia a etiqueta inteira desta peça.'));
     $('etiq-confirm-det').style.setProperty('display', 'block', 'important');
-    if (item.product && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
+    if (item.product && requiresSizeInput(item) && item.ocrSize) $('etiq-confirm-det').textContent += ' · OCR sugeriu BR ' + item.ocrSize + '; confira na caixa.';
   }
   async function openCamera(retryItem = null) {
     if (!validContext() || busy || read(pendingKey, null)) { message('Selecione o contexto desta ação antes de abrir a câmera.', true); return; }
@@ -351,8 +363,11 @@
       if (command === 'next-pending') return nextCameraRead(true);
       if (command !== 'next' || !cameraRead || cameraRead.working) return;
       if (!cameraRead.product) { retryCameraRead(cameraRead); return; }
-      const size = $('action-camera-size')?.value.trim() || ''; if (!size || normalizedSize(size) !== normalizedSize(cameraRead.product.size)) return;
-      cameraRead.confirmedSize = size; nextCameraRead();
+      if (requiresSizeInput(cameraRead)) {
+        const size = $('action-camera-size')?.value.trim() || ''; if (!size || normalizedSize(size) !== normalizedSize(cameraRead.product.size)) return;
+        cameraRead.confirmedSize = size;
+      }
+      nextCameraRead();
     });
     try {
       const opened = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
@@ -391,12 +406,12 @@
     event.preventDefault(); if (busy) return; busy = true; $('action-login-button').disabled = true;
     try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate(); }
     catch (error) { message(error.message, true); }
-    finally { busy = false; $('action-login-button').disabled = false; refresh(); }
+    finally { busy = false; $('action-login-button').disabled = false; refresh(); refreshLegacyReads(); }
   });
   document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); });
-  window.addEventListener('storage', event => { if (event.key === pendingKey) refresh(); if (currentDraft && event.key === draftKey(currentDraft.key) && !busy && !inflight.size) { drafts.delete(currentDraft.key); currentDraft = getDraft(); invalidate(); renderReadings(); refresh(); } });
+  window.addEventListener('storage', event => { if (event.key === pendingKey) refresh(); if (currentDraft && event.key === draftKey(currentDraft.key) && !busy && !inflight.size) { drafts.delete(currentDraft.key); currentDraft = getDraft(); invalidate(); renderReadings(); refresh(); refreshLegacyReads(); } });
   window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, hasFocus: () => interaction };
   refresh();
 })();

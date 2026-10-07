@@ -111,7 +111,7 @@ function operationalUnchanged(before, after) {
   for (const prior of before.sizes) assert.equal(after.sizes.find(s => s.id === prior.id)?.stock, prior.stock, 'Purchased stock must remain unchanged');
 }
 function publicOnly(result) {
-  assert.equal(result.requiresSizeConfirmation, true, 'This piece still requires explicit size confirmation');
+  assert.equal(result.requiresSizeConfirmation, /adidas/i.test(result.product.brand), 'Only Adidas requires the separate physical box size check');
   assert.ok(!/"(?:costPrice|unitCost|rawXmlUrl|pin|aiContext)"/.test(JSON.stringify(result)), 'Do not expose internal or fiscal evidence fields');
 }
 async function rejectedUnchanged(f, input, message, expectedStatus = 404, actor = f.actor) {
@@ -144,10 +144,19 @@ async function test(name, run) {
     }
   });
 
-  await test('existing correctly linked barcode bypasses fiscal learning and still requires the physical piece size', async () => {
+  await test('existing correctly linked barcode bypasses fiscal learning and redundant manual size entry', async () => {
     const f = await fixture(); await fiscal(f, f.product, f.size.barcode, 'UNRELATED FISCAL DESCRIPTION 38');
     const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: f.size.barcode });
     publicOnly(result); assert.equal(result.product.productSizeId, f.size.id); assert.equal(result.product.size, '42');
+    assert.deepEqual(await snapshot(f), before);
+  });
+
+  await test('Adidas still requires the physical BR check even with a confirmed exact barcode', async () => {
+    const f = await fixture();
+    await db.product.update({ where: { id: f.product.id }, data: { brand: 'Adidas' } });
+    const before = await snapshot(f), result = await service.lookup(db, f.actor, { barcode: f.size.barcode });
+    publicOnly(result); assert.equal(result.requiresSizeConfirmation, true);
+    assert.equal(result.product.productSizeId, f.size.id);
     assert.deepEqual(await snapshot(f), before);
   });
 
