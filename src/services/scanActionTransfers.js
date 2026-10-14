@@ -21,7 +21,16 @@ function sizeKey(value) {
   const size = String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/^BR\s*/, '').replace(/\s+/g, ' ');
   return /^(U|UNICO)$/.test(size) ? 'UNICO' : (/^\d+,\d+$/.test(size) ? size.replace(',', '.') : size);
 }
-function validSize(value) { return !!sizeKey(value) && !/^(?:\?|T-|REF:|UNICO-|SEM TAMANHO|DESCONHECIDO|N\/A)/i.test(sizeKey(value)); }
+function validSize(value) {
+  const size = sizeKey(value);
+  if (!size || /^(?:\?|T-|REF:|UNICO-|SEM TAMANHO|DESCONHECIDO|N\/A)/i.test(size)) return false;
+  // Some legacy variants use the scanned EAN itself as a missing-size
+  // placeholder. Matching that value in a catalog snapshot or manifest is not
+  // size evidence, even when the variant has stock. Do not depend on a valid
+  // GTIN checksum: malformed identifiers are not sizes either.
+  if (/^(?:EAN|UPC|GTIN|BARCODE|CODIGO)(?:\b|\d)/.test(size)) return false;
+  return !/^\d{8,}$/.test(size.replace(/\s/g, ''));
+}
 // Exact, unambiguous catalog variants do not need a second manual size entry.
 // Adidas retains the owner's separate requirement to check BR on each box.
 function requiresSizeConfirmation(size, expected) { return /adidas/i.test(String(size?.product?.brand || '') + ' ' + String(expected?.brand || '')); }

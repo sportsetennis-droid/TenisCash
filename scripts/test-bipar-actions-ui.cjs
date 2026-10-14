@@ -39,7 +39,7 @@ function harness(shared) {
     setAttribute(name, value) { this[name] = value; }
     addEventListener(name, listener) { (this.events[name] ||= []).push(listener); }
     async emit(name, event = {}) { event.target ||= this; event.preventDefault ||= () => {}; event.stopPropagation ||= () => {}; for (const fn of this.events[name] || []) await fn(event); if (this['on' + name]) await this['on' + name](event); }
-    querySelectorAll(selector) { const all = this.children.flatMap(child => [child, ...child.querySelectorAll('*')]); return all.filter(child => selector === '*' || selector === 'input' && child.tagName === 'INPUT' || selector === '[data-scan-size]' && child.dataset.scanSize); }
+    querySelectorAll(selector) { const all = this.children.flatMap(child => [child, ...child.querySelectorAll('*')]); return all.filter(child => selector === '*' || selector === 'input' && child.tagName === 'INPUT' || selector === 'button' && child.tagName === 'BUTTON' || selector === '[data-scan-size]' && child.dataset.scanSize); }
     focus() { document.activeElement = this; }
     setSelectionRange() {}
     getContext() { return { drawImage() {} }; }
@@ -81,7 +81,7 @@ function harness(shared) {
       if (url.includes('/pending?')) return response({ transfers: [] });
       throw Error('Unexpected isolated request: ' + url);
     } });
-  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation}) };';
+  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
@@ -142,7 +142,8 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
       assert.ok(h.get('action-camera-size')); assert.equal(h.get('etiq-confirm-btn').disabled, true);
       assert.equal(h.get('etiq-confirm-status').textContent, 'Confira o tamanho na etiqueta');
       await h.cameraClick('next'); assert.ok(h.api.state().cameraRead); assert.equal(h.api.activeReads()[0].confirmedSize, '');
-      const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before);
+      const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before + 1);
+      assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.api.state().preview, null);
       h.api.closeCamera();
     }
   });
@@ -153,7 +154,8 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
       if (request.url.includes('/pending?')) return response({ transfers: receipts });
       if (request.url.endsWith('/receive-preview')) return response({ canReceive: true, reviewToken: 'd'.repeat(64), transfer: receipts[0], scanCount: 1, items: [], blockers: [] });
       if (request.url.endsWith('/receive-confirm')) return response({ transfer: { ...receipts[0], status: 'received' } });
-      throw Error('Resolved saved variant does not need a new lookup: ' + request.url);
+      if (request.url.endsWith('/lookup')) return response({ product: lupo, requiresSizeConfirmation: false });
+      throw Error('Unexpected request: ' + request.url);
     };
     await reloaded.boot(); assert.equal(reloaded.api.activeReads()[0].clientScanId, scanId); assert.equal(reloaded.api.state().currentDraft.sessionId, sessionId);
     assert.equal(reloaded.get('action-readings').querySelectorAll('[data-scan-size]').length, 0);
@@ -201,14 +203,16 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     const reloaded = harness(h.localStorage); reloaded.handler = () => response({ error: 'Conflicting variant' }, 409); await reloaded.boot(); await flush();
     assert.equal(reloaded.api.activeReads().length, 1); assert.equal(reloaded.api.activeReads()[0].clientScanId, item.clientScanId);
     assert.equal(reloaded.api.activeReads()[0].product, undefined); assert.match(reloaded.api.activeReads()[0].error, /Conflicting variant/);
-    const before = reloaded.requests.length; await reloaded.api.prepare(); assert.equal(reloaded.requests.length, before);
+    const before = reloaded.requests.length; await reloaded.api.prepare(); assert.equal(reloaded.requests.length, before + 1);
+    assert.ok(reloaded.requests.at(-1).url.endsWith('/lookup')); assert.equal(reloaded.api.state().preview, null);
     assert.equal(reloaded.get('action-confirm').disabled, true);
   });
   await test('an existing physical-size discrepancy is not erased by a catalog-resolved variant', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: true }); await h.scan(lupo.barcode); await h.size('G');
     h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.api.resolveRead(h.api.state().currentDraft, h.api.activeReads()[0]);
     assert.equal(h.api.activeReads()[0].confirmedSize, 'G'); assert.equal(h.get('action-readings').querySelectorAll('[data-scan-size]').length, 1);
-    const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before);
+    const before = h.requests.length; await h.api.prepare(); assert.equal(h.requests.length, before + 1);
+    assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.api.state().preview, null);
     assert.equal(h.api.scansPayload()[0].confirmedSize, 'G'); assert.equal(h.api.scansPayload()[0].resolvedSize, 'P');
   });
   await test('camera retry actually rescans the same piece, preserving one scan ID and still requiring its size', async () => {
@@ -315,15 +319,16 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.ok(h.tracks.every(track => !track.stopped)); assert.equal(h.scannerInstances[0].stopped, false);
     assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, product.barcode);
     const before = h.requests.length; await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
-    assert.equal(h.requests.length, before); assert.equal(h.get('action-confirm').disabled, true);
+    assert.equal(h.requests.length, before + 1); assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.get('action-confirm').disabled, true);
     await h.api.capture({ ean: '7891234567888' }); assert.equal(h.api.activeReads().length, 2, 'Only the deliberate next piece adds another scan');
     h.api.closeCamera();
   });
   await test('saved pending card can reopen the camera to decode a fresh frame for that same scan', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404); await h.scan(product.barcode);
-    const item = h.api.activeReads()[0]; const reloaded = harness(h.localStorage); await reloaded.boot();
+    const item = h.api.activeReads()[0]; const reloaded = harness(h.localStorage); reloaded.handler = () => response({ error: 'Unknown code' }, 404); await reloaded.boot(); await flush();
     const retry = reloaded.get('action-readings').querySelectorAll('*').find(node => node.textContent === 'Ler novamente esta peça');
     assert.ok(retry); await retry.onclick(); assert.equal(reloaded.api.state().cameraRetry.clientScanId, item.clientScanId);
+    reloaded.handler = () => response({ product });
     let decoded = 0, recognized = 0; reloaded.decode = async () => { decoded++; return product.barcode; }; reloaded.recognize = async () => { recognized++; return 'ADIDAS BR 40'; };
     await reloaded.cameraClick('capture');
     assert.equal(decoded, 1); assert.equal(recognized, 1); assert.equal(reloaded.api.activeReads().length, 1);
@@ -353,17 +358,17 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(original.scans.length, 1); assert.equal(original.scans[0].barcode, wrong); assert.equal(h.api.activeReads().length, 0);
     assert.equal(h.get('action-camera'), undefined); assert.ok(h.tracks.every(track => track.stopped));
   });
-  await test('late lookup stays in its original store draft and account changes reject stale lookup data', async () => {
+  await test('store and account changes reject stale lookup data without editing either draft', async () => {
     const h = harness(); await h.boot(); const pending = deferred(); h.handler = () => pending.promise;
     const read = h.scan(product.barcode), original = h.api.state().currentDraft;
     h.get('loja').value = stores[2].id; h.api.storeChanged();
     pending.resolve(response({ product })); await read;
-    assert.equal(h.api.activeReads().length, 0); assert.equal(original.scans.length, 1); assert.equal(original.scans[0].product.productSizeId, product.productSizeId);
-    h.get('loja').value = stores[1].id; h.api.storeChanged(); assert.equal(h.api.activeReads().length, 1);
+    assert.equal(h.api.activeReads().length, 0); assert.equal(original.scans.length, 1); assert.equal(original.scans[0].product, undefined);
+    h.get('loja').value = stores[1].id; h.api.storeChanged(); await flush(); assert.equal(h.api.activeReads().length, 1);
     const late = deferred(); h.handler = () => late.promise; const second = h.scan('7891234567888'), oldDraft = h.api.state().currentDraft;
     h.get('action-switch-user').onclick(); late.resolve(response({ product })); await second;
     assert.equal(h.api.activeReads().length, 0); assert.equal(oldDraft.scans[1].product, undefined);
-    assert.match(oldDraft.scans[1].error, /conta mudou/); assert.equal(h.api.state().actor, null);
+    assert.equal(oldDraft.scans[1].error, ''); assert.equal(h.api.state().actor, null);
   });
   await test('closing camera during video.play prevents a late scanner or timer from being installed', async () => {
     const h = harness(); await h.boot(); const play = deferred(); h.play = () => play.promise;
@@ -376,7 +381,7 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     for (const chosen of [product, lupo]) {
       const h = harness(); await h.boot(); h.handler = () => response({ product: chosen, requiresSizeConfirmation: chosen === product });
       await h.scan(chosen.barcode); if (chosen === product) await h.size('40');
-      h.handler = request => request.url.endsWith('/send-preview') ? response({ canTransfer: true, reviewToken: 'a'.repeat(64), scanCount: 1, items: [], blockers: [] }) : Promise.reject(Error('Network interrupted'));
+      h.handler = request => request.url.endsWith('/lookup') ? response({ product: chosen, requiresSizeConfirmation: chosen === product }) : request.url.endsWith('/send-preview') ? response({ canTransfer: true, reviewToken: 'a'.repeat(64), scanCount: 1, items: [], blockers: [] }) : Promise.reject(Error('Network interrupted'));
       await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
       const pending = JSON.parse(h.localStorage.getItem(pendingKey)); assert.ok(pending?.body.requestId);
       assert.equal(h.api.activeReads().length, 1); const firstRequest = h.requests.find(request => request.url.endsWith('/send-confirm'));
@@ -447,14 +452,14 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     h.handler = request => request.url.endsWith('/lookup') ? lookup.promise : response({ transfers: receipts });
     const scanning = h.scan(product.barcode), draft = h.api.state().currentDraft, id = draft.scans[0].clientScanId;
     await h.api.loadShipments(); h.get('action-shipment').value = receipts[0].id; await h.get('action-shipment').emit('change');
-    lookup.resolve(response({ product })); await scanning;
+    lookup.resolve(response({ product })); await scanning; await flush();
     assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].clientScanId, id);
     assert.equal(h.api.activeReads()[0].product.productSizeId, product.productSizeId);
     await h.api.resolveRead(h.api.state().currentDraft, h.api.activeReads()[0]);
     const reboundLookup = h.requests.filter(request => request.url.endsWith('/lookup')).at(-1);
     assert.equal(reboundLookup.body.transferId, receipts[0].id, 'Retries after binding use the selected shipment, including variants disabled after dispatch');
     assert.equal(h.api.activeReads().length, 1); await h.size('40');
-    h.handler = request => request.url.endsWith('/receive-preview') ? response({ canReceive: true, reviewToken: 'c'.repeat(64), transfer: receipts[0], scanCount: 1, items: [], blockers: [] }) : response({ transfers: receipts });
+    h.handler = request => request.url.endsWith('/lookup') ? response({ product }) : request.url.endsWith('/receive-preview') ? response({ canReceive: true, reviewToken: 'c'.repeat(64), transfer: receipts[0], scanCount: 1, items: [], blockers: [] }) : response({ transfers: receipts });
     await h.api.prepare(); assert.ok(h.api.state().preview?.allowed);
     h.get('action-approved').checked = true;
     const before = h.requests.length; h.get('action-shipment').value = receipts[1].id;
@@ -473,5 +478,121 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
       assert.equal(h.requests.length, before, 'Invalid destination must not trigger lookup, review or stock confirmation');
     }
   });
-  console.log('PASS: 29 action UI regression groups; isolated mocks only.');
+  await test('reloading repaired pending codes preserves the exact two physical readings, session and duplicate consent', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Há informações divergentes para este código.' }, 404);
+    await h.scan(lupo.barcode); await h.scan(lupo.barcode);
+    const original = h.api.activeReads().map(item => ({ id: item.clientScanId, duplicate: item.duplicateConfirmed, barcode: item.barcode, createdAt: item.createdAt }));
+    const session = h.api.state().currentDraft.sessionId;
+    const reloaded = harness(h.localStorage); reloaded.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await reloaded.boot(); await flush(); await flush();
+    assert.equal(reloaded.requests.filter(request => request.url.endsWith('/lookup')).length, 2);
+    assert.equal(reloaded.api.activeReads().length, 2); assert.equal(reloaded.api.state().currentDraft.sessionId, session);
+    assert.equal(JSON.stringify(reloaded.api.activeReads().map(item => ({ id: item.clientScanId, duplicate: item.duplicateConfirmed, barcode: item.barcode, createdAt: item.createdAt }))), JSON.stringify(original));
+    assert.ok(reloaded.api.activeReads().every(item => item.product.productSizeId === lupo.productSizeId && item.error === '' && item.confirmedSize === '' && item.requiresSizeConfirmation === false));
+    assert.equal(reloaded.scannerInstances.length, 0); assert.equal(reloaded.requests.filter(request => request.url.includes('-confirm')).length, 0);
+  });
+  await test('updating identification reuses the barcode and reading without camera access or another piece', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0], session = h.api.state().currentDraft.sessionId;
+    h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    const button = h.get('action-readings').querySelectorAll('button').find(node => node.textContent === 'Atualizar identificação');
+    assert.ok(button); await button.onclick();
+    assert.equal(h.api.activeReads()[0], item); assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.state().currentDraft.sessionId, session);
+    assert.equal(item.product.productSizeId, lupo.productSizeId); assert.equal(item.confirmedSize, ''); assert.equal(h.scannerInstances.length, 0);
+    assert.equal(h.requests.at(-1).body.barcode, lupo.barcode); assert.equal(h.requests.filter(request => request.url.endsWith('/lookup')).length, 2);
+  });
+  await test('review refreshes every saved product snapshot and identification updates invalidate earlier approval', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0], originalId = item.clientScanId;
+    const corrected = { ...lupo, productSizeId: '20000000-0000-4000-8000-000000000003', name: 'Corrected canonical variant', size: 'M' };
+    h.handler = request => request.url.endsWith('/lookup') ? response({ product: corrected, requiresSizeConfirmation: false }) : response({ canTransfer: true, reviewToken: 'e'.repeat(64), scanCount: 1, items: [], blockers: [] });
+    await h.api.prepare();
+    const reviewed = h.requests.find(request => request.url.endsWith('/send-preview'));
+    assert.ok(reviewed); assert.equal(reviewed.body.scans[0].productSizeId, corrected.productSizeId); assert.equal(reviewed.body.scans[0].resolvedSize, 'M');
+    assert.equal(reviewed.body.scans[0].confirmedSize, ''); assert.equal(reviewed.body.scans[0].clientScanId, originalId); assert.equal(item.product.productSizeId, corrected.productSizeId);
+    assert.ok(h.api.state().preview?.allowed); h.get('action-approved').checked = true;
+    await h.get('action-readings').querySelectorAll('button').find(node => node.textContent === 'Atualizar identificação').onclick();
+    assert.equal(h.api.state().preview, null); assert.equal(h.get('action-approved').checked, false); assert.equal(h.get('action-confirm').disabled, true);
+  });
+  await test('automatic recovery limits lookup concurrency to three and skips removed reads', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404);
+    for (let i = 0; i < 9; i++) await h.scan(lupo.barcode);
+    h.api.activeReads()[8].removed = true; h.api.persist();
+    const ids = h.api.activeReads().map(item => item.clientScanId), session = h.api.state().currentDraft.sessionId;
+    const reloaded = harness(h.localStorage), waiting = []; let active = 0, maxActive = 0;
+    reloaded.handler = request => { assert.ok(request.url.endsWith('/lookup')); active++; maxActive = Math.max(maxActive, active); const done = deferred(); waiting.push(() => { active--; done.resolve(response({ product: lupo, requiresSizeConfirmation: false })); }); return done.promise; };
+    await reloaded.boot(); await flush(); assert.equal(active, 3);
+    for (let i = 0; i < 8; i++) { assert.ok(waiting.length); waiting.shift()(); await flush(); await flush(); }
+    assert.equal(maxActive, 3); assert.equal(active, 0); assert.equal(waiting.length, 0);
+    assert.equal(reloaded.requests.filter(request => request.url.endsWith('/lookup')).length, 8);
+    assert.equal(JSON.stringify(reloaded.api.activeReads().map(item => item.clientScanId)), JSON.stringify(ids)); assert.equal(reloaded.api.state().currentDraft.sessionId, session);
+    assert.ok(reloaded.api.activeReads().every(item => item.product?.productSizeId === lupo.productSizeId));
+    assert.equal(reloaded.api.state().currentDraft.scans.length, 9); assert.equal(reloaded.api.state().currentDraft.scans[8].removed, true);
+  });
+  await test('context change stops queued recovery and discards all responses from the previous store', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404);
+    for (let i = 0; i < 7; i++) await h.scan(lupo.barcode);
+    const reloaded = harness(h.localStorage), waiting = [];
+    reloaded.handler = () => { const done = deferred(); waiting.push(done); return done.promise; };
+    await reloaded.boot(); await flush(); const original = reloaded.api.state().currentDraft;
+    assert.equal(waiting.length, 3); reloaded.get('loja').value = stores[2].id; reloaded.api.storeChanged();
+    for (const done of waiting) done.resolve(response({ product: lupo, requiresSizeConfirmation: false })); await flush(); await flush();
+    assert.equal(reloaded.requests.filter(request => request.url.endsWith('/lookup')).length, 3); assert.equal(reloaded.api.activeReads().length, 0);
+    assert.ok(original.scans.every(item => !item.product)); assert.equal(original.scans.length, 7);
+  });
+  await test('a late response for a corrected barcode cannot overwrite the same reading with the old product', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0], oldResponse = deferred(), newCode = '7900373353679';
+    h.handler = request => request.body.barcode === lupo.barcode ? oldResponse.promise : response({ product: { ...lupo, barcode: newCode, size: 'M' }, requiresSizeConfirmation: false });
+    const oldLookup = h.api.resolveRead(h.api.state().currentDraft, item); await flush();
+    item.barcode = newCode; delete item.product; const newLookup = h.api.resolveRead(h.api.state().currentDraft, item);
+    oldResponse.resolve(response({ product: lupo, requiresSizeConfirmation: false })); await oldLookup; await newLookup;
+    assert.equal(item.barcode, newCode); assert.equal(item.product.barcode, newCode); assert.equal(item.product.size, 'M'); assert.equal(h.api.activeReads().length, 1);
+    assert.equal(item.confirmedSize, ''); assert.equal(h.requests.at(-1).body.barcode, newCode);
+  });
+  await test('an uncertain confirmation blocks recovery, update buttons and preview without changing saved data', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404); await h.scan(lupo.barcode);
+    const draftBefore = JSON.stringify(h.api.state().currentDraft), pending = JSON.stringify({ actorId: person.id, mode: 'transfer', body: { requestId: randomUUID(), scans: [{ original: 'frozen request' }] } });
+    h.localStorage.setItem(pendingKey, pending);
+    const reloaded = harness(h.localStorage); reloaded.handler = () => { throw Error('Uncertain confirmation must not be reinterpreted'); }; await reloaded.boot(); await flush();
+    const button = reloaded.get('action-readings').querySelectorAll('button').find(node => node.textContent === 'Atualizar identificação');
+    assert.equal(button.disabled, true); await button.onclick(); await reloaded.api.prepare(); await reloaded.api.refreshIdentifications(true);
+    assert.equal(reloaded.requests.filter(request => request.url.endsWith('/lookup')).length, 0); assert.equal(reloaded.requests.filter(request => request.url.includes('-preview')).length, 0);
+    assert.equal(reloaded.localStorage.getItem(pendingKey), pending); assert.equal(JSON.stringify(reloaded.api.state().currentDraft), draftBefore);
+  });
+  await test('a confirmation appearing while lookup is pending prevents new identification and review', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0], late = deferred(), pending = JSON.stringify({ actorId: person.id, body: { requestId: randomUUID() } }); h.handler = () => late.promise;
+    const preparing = h.api.prepare(); await flush(); h.localStorage.setItem(pendingKey, pending);
+    late.resolve(response({ product: { ...lupo, size: 'G' }, requiresSizeConfirmation: false })); await preparing;
+    assert.equal(item.product.size, 'P'); assert.equal(h.api.state().preview, null); assert.equal(h.localStorage.getItem(pendingKey), pending);
+    assert.equal(h.requests.filter(request => request.url.endsWith('/send-preview')).length, 0);
+  });
+  await test('receipt review rechecks the selected manifest and does not bypass a server rejection', async () => {
+    const h = harness(receiptStorage()); h.handler = request => request.url.includes('/pending?') ? response({ transfers: receipts }) : response({ product: lupo, requiresSizeConfirmation: false }); await h.boot(); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0]; h.get('action-shipment').value = receipts[0].id; await h.get('action-shipment').emit('change');
+    h.handler = request => { assert.equal(request.body.transferId, receipts[0].id); assert.equal(request.body.storeId, stores[1].id); return response({ error: 'Esta peça não pertence à transferência selecionada.' }, 409); };
+    await h.api.prepare(); assert.equal(item.product, undefined); assert.match(item.error, /não pertence/);
+    assert.equal(h.requests.filter(request => request.url.endsWith('/receive-preview')).length, 0); assert.equal(h.get('action-confirm').disabled, true); assert.equal(h.api.activeReads().length, 1);
+  });
+  await test('successful identification keeps a real stock blocker and never confirms the transfer', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    h.handler = request => request.url.endsWith('/lookup') ? response({ product: lupo, requiresSizeConfirmation: false }) : response({ canTransfer: false, reviewToken: 'f'.repeat(64), scanCount: 1, items: [{ productName: lupo.name, size: 'P', quantity: 1, available: 0, remaining: -1 }], blockers: [{ code: 'insufficient_stock', message: 'Somente 0 no estoque da origem.' }] });
+    await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
+    assert.equal(h.api.state().preview.allowed, false); assert.equal(h.get('action-confirm').disabled, true);
+    assert.equal(h.requests.filter(request => request.url.endsWith('/send-confirm')).length, 0); assert.equal(h.api.activeReads().length, 1);
+  });
+  await test('expired authentication during revalidation cannot authorize a stale preview', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
+    h.handler = () => response({ error: 'Entre novamente.' }, 401); await h.api.prepare();
+    assert.equal(h.api.state().actor, null); assert.equal(h.api.state().preview, null); assert.equal(h.get('action-confirm').disabled, true);
+    assert.equal(h.requests.filter(request => request.url.endsWith('/send-preview')).length, 0); assert.equal(h.api.activeReads().length, 1);
+  });
+  await test('returning to the page recovers a pending code using its original reading', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404); await h.scan(lupo.barcode);
+    const item = h.api.activeReads()[0]; h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    h.document.hidden = false; for (const fn of h.document.events.visibilitychange) fn(); await flush(); await flush();
+    assert.equal(h.api.activeReads()[0], item); assert.equal(item.product?.productSizeId, lupo.productSizeId); assert.equal(h.api.activeReads().length, 1);
+  });
+  console.log('PASS: 41 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

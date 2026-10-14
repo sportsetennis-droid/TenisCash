@@ -9,7 +9,19 @@
   let token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') || localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
   let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, preview = null, interaction = false;
   let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraAttempt = 0, cameraRead = null, cameraRetry = null;
-  const inflight = new Set(), drafts = new Map();
+  const inflight = new Set(), drafts = new Map(), lookups = new Map();
+  const lookupConcurrency = 3;
+  const lookupQueue = [];
+  let runningLookups = 0;
+  function lookupSlot() {
+    return new Promise(resolve => {
+      const start = () => {
+        runningLookups++;
+        resolve(() => { runningLookups--; lookupQueue.shift()?.(); });
+      };
+      if (runningLookups < lookupConcurrency) start(); else lookupQueue.push(start);
+    });
+  }
   $('bipar-action').value = action;
   function isInventory() { return action === 'inventory'; }
   function store(id) { return stores.find(item => item.id === id); }
@@ -56,9 +68,20 @@
   function localPending() { return activeReads().some(item => inflight.has(item.clientScanId) || !item.product || (requiresSizeInput(item) && (!item.confirmedSize || sizeConflict(item)))); }
   function refreshLegacyReads() {
     if (!validContext() || busy || read(pendingKey, null)) return;
-    const draft = currentDraft;
-    // Reuse the saved scan: updating the lookup policy must never count a piece again.
-    for (const item of activeReads(draft)) if (item.product && typeof item.requiresSizeConfirmation !== 'boolean') void resolveRead(draft, item);
+    // Failed lookups are saved too. A repaired catalog must recover those same
+    // readings instead of forcing a new physical scan or keeping an old error.
+    void refreshIdentifications(false);
+  }
+  async function refreshIdentifications(all) {
+    if (!validContext() || read(pendingKey, null)) return false;
+    const draft = currentDraft, gen = generation, selected = JSON.stringify(context());
+    const reads = activeReads(draft).filter(item => all || !item.product || typeof item.requiresSizeConfirmation !== 'boolean');
+    const current = () => currentDraft === draft && generation === gen && selected === JSON.stringify(context()) && validContext() && !read(pendingKey, null);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(lookupConcurrency, reads.length) }, async () => {
+      while (current() && next < reads.length) await resolveRead(draft, reads[next++]);
+    }));
+    return current();
   }
   function setOptions(select, options, placeholder, selected) {
     select.replaceChildren(new Option(placeholder, ''));
@@ -92,7 +115,8 @@
     $('action-pending').hidden = !pending; $('action-retry').disabled = busy || !actor || (pending && pending.actorId !== actor.id);
     $('action-refresh-shipments').disabled = busy || !actor;
     $('action-origin').disabled = busy; $('action-shipment').disabled = busy; $('bipar-action').disabled = busy; $('loja').disabled = busy;
-    for (const input of $('action-readings').querySelectorAll('input')) input.disabled = busy;
+    for (const input of $('action-readings').querySelectorAll('input')) input.disabled = busy || !!pending || inflight.has(input.dataset.scanSize);
+    for (const button of $('action-readings').querySelectorAll('button')) button.disabled = busy || !!pending || inflight.has(button.dataset.scanId);
     $('action-storage-retry').hidden = !storageFailed;
   }
   function renderReadings() {
@@ -108,13 +132,14 @@
       if (item.product && requiresSizeInput(item)) {
         const label = document.createElement('label'); label.textContent = /ADIDAS/i.test(item.product.brand) ? 'Tamanho BR na etiqueta desta caixa' : 'Tamanho escrito na etiqueta desta peça';
         const size = document.createElement('input'); size.type = 'text'; size.maxLength = 20; size.autocomplete = 'off'; size.dataset.scanSize = item.clientScanId; size.value = item.confirmedSize || ''; size.placeholder = 'Leia na etiqueta e digite aqui'; size.setAttribute('aria-label', label.textContent + ' · ' + item.barcode);
-        size.addEventListener('input', () => { item.confirmedSize = size.value.trim(); invalidate(); persist(); refresh(); });
+        size.addEventListener('input', () => { if (busy || read(pendingKey, null) || inflight.has(item.clientScanId)) return; item.confirmedSize = size.value.trim(); invalidate(); persist(); refresh(); });
         const hint = document.createElement('small'); hint.textContent = 'Em calçados, use BR. Se a etiqueta divergir do cadastro, separe a peça para corrigir antes de enviar.';
         label.append(size); card.append(label, hint);
       } else if (!item.product) {
-        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-secondary'; retry.textContent = inflight.has(item.clientScanId) ? 'Identificando…' : 'Ler novamente esta peça'; retry.disabled = inflight.has(item.clientScanId); retry.onclick = () => openCamera(item); card.append(retry);
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-secondary'; retry.textContent = 'Ler novamente esta peça'; retry.dataset.scanId = item.clientScanId; retry.disabled = busy || inflight.has(item.clientScanId) || !!read(pendingKey, null); retry.onclick = () => openCamera(item); card.append(retry);
       }
-      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-danger'; remove.textContent = 'Retirar esta leitura do lote'; remove.disabled = busy || inflight.has(item.clientScanId); remove.onclick = () => { if (busy || inflight.has(item.clientScanId) || !confirm('Retirar somente esta leitura deste lote? Nenhum estoque será alterado.')) return; item.removed = true; invalidate(); persist(); renderReadings(); refresh(); }; card.append(remove); area.append(card);
+      const update = document.createElement('button'); update.type = 'button'; update.className = 'btn btn-secondary'; update.textContent = inflight.has(item.clientScanId) ? 'Atualizando identificação…' : 'Atualizar identificação'; update.dataset.scanId = item.clientScanId; update.disabled = busy || inflight.has(item.clientScanId) || !!read(pendingKey, null); update.onclick = async () => { if (busy || read(pendingKey, null)) return; await resolveRead(currentDraft, item); }; card.append(update);
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn btn-danger'; remove.textContent = 'Retirar esta leitura do lote'; remove.dataset.scanId = item.clientScanId; remove.disabled = busy || inflight.has(item.clientScanId) || !!read(pendingKey, null); remove.onclick = () => { if (busy || read(pendingKey, null) || inflight.has(item.clientScanId) || !confirm('Retirar somente esta leitura deste lote? Nenhum estoque será alterado.')) return; item.removed = true; invalidate(); persist(); renderReadings(); refresh(); }; card.append(remove); area.append(card);
     }
     if (focusId) { const input = [...area.querySelectorAll('[data-scan-size]')].find(item => item.dataset.scanSize === focusId); if (input) { input.focus({ preventScroll: true }); if (selection) input.setSelectionRange(...selection); } }
   }
@@ -155,25 +180,42 @@
       if (request !== shipmentRequest || action !== 'receipt' || $('loja').value !== selectedStore || token !== authToken) return;
       shipments = data.transfers || [];
       setOptions($('action-shipment'), shipments.map(item => ({ id: item.id, label: '#' + item.code + ' · ' + (item.fromStore?.name || 'Origem') + ' · ' + item.qtyTotal + ' peça(s)' })), shipments.length ? 'Selecione a transferência para conferir o lote' : 'Nenhuma pendente — você já pode bipar', selectedShipment);
-      invalidate(); renderReadings(); refresh();
+      invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     } catch (error) { if (request === shipmentRequest && action === 'receipt' && $('loja').value === selectedStore && token === authToken) { setOptions($('action-shipment'), [], 'Falha na consulta — atualize', ''); message(error.message + ' Você pode continuar bipando; atualize a lista antes de confirmar.', true); refresh(); } }
   }
   async function resolveRead(draft, item, ocrText = '') {
-    if (inflight.has(item.clientScanId) || item.removed) return;
+    if (!draft || currentDraft !== draft || item.removed || !activeReads(draft).includes(item) || !validContext() || read(pendingKey, null)) return false;
+    const authToken = token, owner = actor?.id, gen = generation, barcode = item.barcode, selected = JSON.stringify(context());
+    const current = () => currentDraft === draft && generation === gen && selected === JSON.stringify(context()) && owner === draft.context.actorId && token === authToken && actor?.id === owner && item.barcode === barcode && !item.removed && activeReads(draft).includes(item) && validContext() && !read(pendingKey, null);
+    const existing = lookups.get(item.clientScanId);
+    if (existing) {
+      if (existing.gen === gen && existing.selected === selected && existing.barcode === barcode && existing.authToken === authToken && !String(ocrText).trim()) return existing.promise;
+      await existing.promise;
+      if (!current()) return false;
+      return resolveRead(draft, item, ocrText);
+    }
     if (String(ocrText).trim()) item.ocrText = String(ocrText).trim().slice(0, 12000);
-    const authToken = token, owner = actor?.id;
     inflight.add(item.clientScanId); item.error = ''; invalidate(); refresh();
-    try {
+    const job = { gen, selected, barcode, authToken };
+    job.promise = (async () => { const release = await lookupSlot(); try {
+      if (!current()) return false;
       const transferId = draft.context.mode === 'receipt' && currentDraft === draft && action === 'receipt' && hasShipment() ? context().transferId : '';
-      const body = { barcode: item.barcode, ...(item.ocrText ? { ocrText: item.ocrText } : {}), ...(transferId ? { transferId, storeId: draft.context.toStoreId } : {}) };
+      const body = { barcode, ...(item.ocrText ? { ocrText: item.ocrText } : {}), ...(transferId ? { transferId, storeId: draft.context.toStoreId } : {}) };
       const data = await api('/lookup', body, authToken);
-      if (owner !== draft.context.actorId || token !== authToken || actor?.id !== owner) { item.error = 'A conta mudou. Entre novamente e confira esta leitura.'; return; }
+      if (!current()) return false;
       item.product = data.product;
       item.requiresSizeConfirmation = data.requiresSizeConfirmation !== false || /ADIDAS/i.test(data.product?.brand || '');
+      delete item.ocrSize;
       const br = String(item.ocrText || '').match(/\bBR\s*0*(\d{2}(?:[.,]5)?)\b/i);
       if (br && normalizedSize(br[1]) === normalizedSize(data.product.size)) item.ocrSize = br[1];
-    } catch (error) { delete item.product; delete item.requiresSizeConfirmation; item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.'; }
-    finally { inflight.delete(item.clientScanId); persist(draft); if (currentDraft?.key === draft.key) { renderReadings(); refresh(); } }
+      persist(draft); return true;
+    } catch (error) {
+      if (!current()) return false;
+      delete item.product; delete item.requiresSizeConfirmation; delete item.ocrSize; item.error = error.message || 'Identificação interrompida. Tente novamente com esta mesma leitura.';
+      persist(draft); return false;
+    } finally { release(); inflight.delete(item.clientScanId); if (lookups.get(item.clientScanId) === job) lookups.delete(item.clientScanId); if (currentDraft === draft) { renderReadings(); refresh(); } } })();
+    lookups.set(item.clientScanId, job);
+    return job.promise;
   }
   async function scan(barcode, ocrText = '') {
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
@@ -196,12 +238,15 @@
   async function prepare() {
     if (!validContext() || busy || storageFailed || read(pendingKey, null)) return;
     if (!hasShipment()) { message('Os bipes estão salvos neste aparelho. Selecione a transferência para conferir o lote. Se ela ainda não apareceu, a loja de origem precisa confirmar o envio; depois toque em “Atualizar transferências”.', true); return; }
-    if (localPending()) { message('Resolva as leituras pendentes antes de conferir o lote.', true); return; }
-    const snapshot = signature(), gen = generation, body = previewBody(), path = action === 'transfer' ? '/send-preview' : '/' + encodeURIComponent(context().transferId) + '/receive-preview';
-    busy = true; invalidate(); refresh(); message('Conferindo o lote e o estoque…');
+    const draft = currentDraft, gen = generation, selected = JSON.stringify(context());
+    busy = true; invalidate(); refresh(); message('Atualizando a identificação das peças…');
     try {
+      if (!await refreshIdentifications(true) || currentDraft !== draft || gen !== generation || selected !== JSON.stringify(context()) || read(pendingKey, null)) return;
+      if (localPending()) { message('Ainda há leituras pendentes. Confira a informação indicada em cada peça.', true); return; }
+      const snapshot = signature(), body = previewBody(), path = action === 'transfer' ? '/send-preview' : '/' + encodeURIComponent(context().transferId) + '/receive-preview';
+      message('Conferindo o lote e o estoque…');
       const data = await api(path, body);
-      if (snapshot !== signature() || gen !== generation) { message('O contexto mudou. Confira novamente antes de confirmar.', true); return; }
+      if (snapshot !== signature() || gen !== generation || read(pendingKey, null)) { message('O contexto mudou. Confira novamente antes de confirmar.', true); return; }
       preview = { data, body, signature: snapshot, path: path.replace(/-preview$/, '-confirm'), allowed: action === 'transfer' ? data.canTransfer : data.canReceive };
       $('action-review').hidden = false; $('action-approved').checked = false;
       $('action-review-summary').textContent = action === 'transfer' ? data.scanCount + ' peça(s): ' + storeName(context().fromStoreId) + ' → ' + storeName(context().toStoreId) : 'Conferência da transferência #' + (data.transfer?.code || '');
@@ -410,7 +455,7 @@
   });
   document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else refreshLegacyReads(); });
   window.addEventListener('storage', event => { if (event.key === pendingKey) refresh(); if (currentDraft && event.key === draftKey(currentDraft.key) && !busy && !inflight.size) { drafts.delete(currentDraft.key); currentDraft = getDraft(); invalidate(); renderReadings(); refresh(); refreshLegacyReads(); } });
   window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, hasFocus: () => interaction };
   refresh();

@@ -138,6 +138,71 @@ async function test(name, work) {
     assert.equal(after.movements.length, 2); untouchedInventory(before, after);
   });
 
+  await test('barcode placeholders are never sizes, even with positive stock and matching client confirmation', async () => {
+    const f = await fixture();
+    const placeholders = [f.size.barcode, '0' + f.size.barcode, '12345678', '123456789012',
+      'BR ' + f.size.barcode, 'EAN: ' + f.size.barcode, 'GTIN-14: 0' + f.size.barcode,
+      'UPC: 123456789012', 'Código de barras: ' + f.size.barcode];
+    for (const size of placeholders) {
+      await db.productSize.update({ where: { id: f.size.id }, data: { size } });
+      const before = await snapshot(f);
+      assert.ok(stock(before, f.from.id, f.size.id) > 0, 'Regression must exercise a stocked variant');
+      await assert.rejects(() => service.lookup(db, f.sender, { barcode: f.size.barcode }),
+        error => error.status === 409 && /tamanho/i.test(error.message), 'Lookup must reject placeholder ' + size);
+      for (const sizeEvidence of [{ confirmedSize: '', resolvedSize: size }, { confirmedSize: size }]) {
+        const input = f.send([f.scan(f.size, sizeEvidence)]);
+        const report = await service.sendPreview(db, f.sender, input);
+        assert.equal(report.canTransfer, false, 'Stock and an echoed placeholder cannot authorize transfer');
+        assert.ok(report.blockers.some(blocker => blocker.code === 'pending_size'));
+        assert.ok(!report.blockers.some(blocker => blocker.code === 'insufficient_stock'));
+        await assert.rejects(() => service.sendConfirm(db, f.sender, {
+          ...input, requestId: randomUUID(), reviewToken: report.reviewToken,
+        }), error => error.status === 409 && /tamanho/i.test(error.message));
+      }
+      assert.deepEqual(await snapshot(f), before, 'Rejection preserves stock, variants, scans and transfers');
+    }
+  });
+
+  await test('real numeric, clothing, accessory and range sizes still resolve and pass a stocked transfer preview', async () => {
+    const f = await fixture();
+    for (const size of ['34', '42,5', '42.5', 'BR 40', '2', '5', '110', 'M000', 'PP', 'P', 'M', 'GG', 'XG',
+      'Único', '37 a 40', '33/36', '41-44', '10 a 12 anos', '70 cm']) {
+      await db.productSize.update({ where: { id: f.size.id }, data: { size } });
+      const before = await snapshot(f), result = await service.lookup(db, f.sender, { barcode: f.size.barcode });
+      assert.equal(result.product.size, size); assert.equal(result.requiresSizeConfirmation, false);
+      const report = await service.sendPreview(db, f.sender, f.send([
+        f.scan(f.size, { confirmedSize: '', resolvedSize: result.product.size }),
+      ]));
+      assert.equal(report.canTransfer, true, size + ': ' + JSON.stringify(report.blockers));
+      assert.deepEqual(await snapshot(f), before, 'Successful lookup and preview remain read-only');
+    }
+  });
+
+  await test('a legacy shipment with a barcode in its size cannot be accepted by receiving', async () => {
+    const f = await fixture(), size = f.size.barcode;
+    // A legacy malformed manifest must not gain validity merely because the
+    // manifest, catalog and client all repeat the same barcode as the size.
+    await db.productSize.update({ where: { id: f.size.id }, data: { size } });
+    const transfer = await db.stockTransfer.create({ data: {
+      code: 1000000000 + randomInt(0, 1000000000), fromStoreId: f.from.id, toStoreId: f.to.id,
+      status: 'in_transit', createdById: f.sender.id, qtyTotal: 1, itemsCount: 1,
+      note: JSON.stringify({ source: service.SOURCE, sessionId: f.sessionId }),
+      items: { create: { productSizeId: f.size.id, productName: f.product.name, brand: f.product.brand,
+        size, barcode: f.size.barcode, quantity: 1 } },
+    } });
+    const before = await snapshot(f);
+    await assert.rejects(() => service.lookup(db, f.receiver, { barcode: f.size.barcode,
+      transferId: transfer.id, storeId: f.to.id }), error => error.status === 409 && /tamanho/i.test(error.message));
+    const input = f.receive([f.scan(f.size, { confirmedSize: '', resolvedSize: size })]);
+    const report = await service.receivePreview(db, f.receiver, transfer.id, input);
+    assert.equal(report.canReceive, false);
+    assert.ok(report.blockers.some(blocker => blocker.code === 'pending_size'));
+    await assert.rejects(() => service.receiveConfirm(db, f.receiver, transfer.id, {
+      ...input, requestId: randomUUID(), reviewToken: report.reviewToken,
+    }), error => error.status === 409 && /tamanho/i.test(error.message));
+    assert.deepEqual(await snapshot(f), before, 'Malformed receipt cannot change stock or shipment');
+  });
+
   await test('automatic size lookup cannot bypass catalog drift, ambiguous codes, duplicate pieces or Adidas box checks', async () => {
     const f = await fixture(), auto = overrides => f.scan(f.size, { confirmedSize: '', resolvedSize: f.size.size, ...overrides });
     await blocked(f, 'send', f.send([auto({ resolvedSize: '41' })]), 'Stale catalog snapshot');
