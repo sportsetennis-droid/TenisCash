@@ -221,8 +221,9 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     await h.api.openCamera(); await h.api.capture({ ean: product.barcode });
     const firstId = h.api.activeReads()[0].clientScanId;
     assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].product, undefined);
-    assert.match(h.get('etiq-confirm-det').textContent, new RegExp(product.barcode));
-    await h.cameraClick('next');
+    assert.match(h.get('action-camera-notice-text').textContent, new RegExp(product.barcode));
+    assert.equal(h.get('etiq-confirm').style.display, 'none');
+    await h.cameraClick('retry-pending');
     assert.equal(lookups, 1, 'Retry must resume camera, not repeat the failed query without a fresh frame');
     assert.equal(h.api.state().cameraRead, null); assert.equal(h.api.state().cameraRetry.clientScanId, firstId);
     assert.equal(h.scannerInstances[0].stopped, false); assert.equal(h.scannerInstances[0].resets.at(-1), undefined, 'Same piece may retain the same code');
@@ -288,11 +289,11 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     await h.api.openCamera(); await h.api.capture({ ean: wrong, ocrText: 'OLD LABEL TEXT' });
     const item = h.api.activeReads()[0], session = h.api.state().currentDraft.sessionId;
     h.confirmDuplicate = async text => { questions.push(text); return false; };
-    await h.cameraClick('next'); await h.api.capture({ ean: product.barcode });
+    await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
     assert.equal(item.barcode, wrong); assert.equal(h.api.activeReads().length, 1); assert.equal(item.ocrText, 'OLD LABEL TEXT');
     assert.match(questions[0], /MESMA peça física/); assert.ok(questions[0].includes(wrong) && questions[0].includes(product.barcode));
     h.confirmDuplicate = async text => { questions.push(text); return true; };
-    await h.cameraClick('next'); await h.api.capture({ ean: product.barcode });
+    await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
     assert.equal(h.api.activeReads()[0], item); assert.equal(item.barcode, product.barcode); assert.equal(item.ocrText, '');
     assert.equal(item.barcodeCorrections[0].previous, wrong); assert.equal(item.confirmedSize, '');
     assert.equal(h.api.state().currentDraft.sessionId, session); assert.equal(h.api.activeReads().length, 1); h.api.closeCamera();
@@ -302,25 +303,27 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     h.handler = request => request.body.barcode === wrong ? response({ error: 'Unknown code' }, 404) : response({ product });
     await h.api.openCamera(); await h.api.capture({ ean: wrong }); const item = h.api.activeReads()[1]; let questions = [];
     h.confirmDuplicate = async text => { questions.push(text); return questions.length === 1; };
-    await h.cameraClick('next'); await h.api.capture({ ean: product.barcode });
+    await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
     assert.equal(item.barcode, wrong); assert.equal(h.api.activeReads().length, 2); assert.match(questions[1], /OUTRA peça física/);
     questions = []; h.confirmDuplicate = async text => { questions.push(text); return true; };
-    await h.cameraClick('next'); await h.api.capture({ ean: product.barcode });
+    await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
     assert.equal(item.barcode, product.barcode); assert.equal(item.duplicateConfirmed, true); assert.equal(h.api.activeReads().length, 2);
     assert.equal(questions.length, 2); h.api.closeCamera();
   });
-  await test('explicit pending-next keeps the unresolved piece and camera available, but prevents final review and stock writes', async () => {
+  await test('unresolved EAN advances automatically with a small pending notice, but prevents final review and stock writes', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404);
     await h.api.openCamera(); await h.api.capture({ ean: product.barcode });
-    assert.match(h.get('action-camera-pending').textContent, /MANTER PENDENTE/); const item = h.api.activeReads()[0];
-    await h.cameraClick('next-pending');
-    assert.equal(h.api.activeReads().length, 1); assert.ok(item.pendingAcknowledgedAt); assert.equal(h.api.state().cameraRead, null);
-    assert.match(h.get('action-message').textContent, /mantida como pendente/);
+    assert.equal(h.get('action-camera-pending'), undefined); const item = h.api.activeReads()[0];
+    assert.equal(h.get('etiq-confirm').style.display, 'none');
+    assert.equal(h.api.activeReads().length, 1); assert.ok(item.pendingAutoContinuedAt); assert.equal(item.pendingAcknowledgedAt, undefined); assert.equal(h.api.state().cameraRead, null);
+    assert.match(h.get('action-camera-notice-text').textContent, /guardado como pendente/);
     assert.ok(h.tracks.every(track => !track.stopped)); assert.equal(h.scannerInstances[0].stopped, false);
     assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, product.barcode);
     const before = h.requests.length; await h.api.prepare(); h.get('action-approved').checked = true; await h.api.confirmAction();
     assert.equal(h.requests.length, before + 1); assert.ok(h.requests.at(-1).url.endsWith('/lookup')); assert.equal(h.get('action-confirm').disabled, true);
-    await h.api.capture({ ean: '7891234567888' }); assert.equal(h.api.activeReads().length, 2, 'Only the deliberate next piece adds another scan');
+    await h.api.capture({ ean: '7891234567888' }); assert.equal(h.api.activeReads().length, 2, 'The next physical label can be read without an extra next button');
+    assert.equal(h.get('etiq-confirm').style.display, 'none'); assert.equal(h.api.state().cameraRead, null);
+    assert.equal(h.scannerInstances[0].resets.at(-1).afterCode, '7891234567888');
     h.api.closeCamera();
   });
   await test('saved pending card can reopen the camera to decode a fresh frame for that same scan', async () => {
@@ -334,11 +337,11 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(decoded, 1); assert.equal(recognized, 1); assert.equal(reloaded.api.activeReads().length, 1);
     assert.equal(reloaded.api.activeReads()[0].clientScanId, item.clientScanId); assert.equal(reloaded.api.activeReads()[0].confirmedSize, ''); reloaded.api.closeCamera();
   });
-  await test('manual capture directly retries an unresolved camera piece without needing a separate retry click', async () => {
+  await test('explicit pending retry then manual capture uses the same physical scan ID', async () => {
     const h = harness(); await h.boot(); let lookups = 0;
     h.handler = () => ++lookups === 1 ? response({ error: 'Unknown code' }, 404) : response({ product });
     await h.api.openCamera(); await h.api.capture({ ean: product.barcode }); const id = h.api.activeReads()[0].clientScanId;
-    h.decode = async () => product.barcode; await h.cameraClick('capture');
+    await h.cameraClick('retry-pending'); h.decode = async () => product.barcode; await h.cameraClick('capture');
     assert.equal(lookups, 2); assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.activeReads()[0].clientScanId, id);
     assert.equal(h.api.state().cameraRead.product.productSizeId, product.productSizeId); h.api.closeCamera();
   });
@@ -353,7 +356,7 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
   await test('switching store while a barcode correction awaits confirmation never edits either store draft', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404); const wrong = '7891234567888';
     await h.api.openCamera(); await h.api.capture({ ean: wrong }); const original = h.api.state().currentDraft, question = deferred();
-    h.confirmDuplicate = () => question.promise; await h.cameraClick('next'); const recapturing = h.api.capture({ ean: product.barcode });
+    h.confirmDuplicate = () => question.promise; await h.cameraClick('retry-pending'); const recapturing = h.api.capture({ ean: product.barcode });
     await flush(); h.get('loja').value = stores[2].id; h.api.storeChanged(); question.resolve(true); await recapturing;
     assert.equal(original.scans.length, 1); assert.equal(original.scans[0].barcode, wrong); assert.equal(h.api.activeReads().length, 0);
     assert.equal(h.get('action-camera'), undefined); assert.ok(h.tracks.every(track => track.stopped));
@@ -594,5 +597,57 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     h.document.hidden = false; for (const fn of h.document.events.visibilitychange) fn(); await flush(); await flush();
     assert.equal(h.api.activeReads()[0], item); assert.equal(item.product?.productSizeId, lupo.productSizeId); assert.equal(h.api.activeReads().length, 1);
   });
-  console.log('PASS: 41 action UI regression groups; isolated mocks only.');
+  await test('continuous pending reads preserve all 106 existing physical scans, session, store and duplicate consent', async () => {
+    const h = harness(); await h.boot();
+    const draft = h.api.state().currentDraft;
+    for (let n = 0; n < 106; n++) draft.scans.push({ clientScanId: randomUUID(), barcode: String(7900000000000 + n), confirmedSize: '', duplicateConfirmed: n % 2 === 0, createdAt: '2026-10-14T19:20:00.000Z' });
+    h.api.persist(); const before = JSON.stringify(draft.scans), session = draft.sessionId, context = JSON.stringify(draft.context);
+    h.handler = () => response({ error: 'Código encontrado na nota, mas o tamanho ainda precisa ser confirmado no cadastro.' }, 422);
+    await h.api.openCamera(); await h.api.capture({ ean: '7909392206157' });
+    assert.equal(h.api.activeReads().length, 107); assert.equal(JSON.stringify(draft.scans.slice(0, 106)), before);
+    assert.equal(draft.sessionId, session); assert.equal(JSON.stringify(draft.context), context);
+    assert.match(h.get('etiq-contador').textContent, /107 peça\(s\).*107 pendente/); assert.equal(h.get('etiq-confirm').style.display, 'none');
+    const saved = JSON.parse(h.localStorage.getItem('tc_bipar_action_draft_v1:' + draft.key));
+    assert.equal(saved.scans.length, 107); assert.equal(JSON.stringify(saved.scans.slice(0, 106)), before); h.api.closeCamera();
+  });
+  await test('pending same-frame OCR can resolve in the background without changing the next Adidas confirmation', async () => {
+    const h = harness(); await h.boot(); const ocr = deferred(); h.recognize = () => ocr.promise;
+    h.handler = request => request.body?.barcode === product.barcode ? response({ product }) : request.body?.ocrText ? response({ product: lupo, requiresSizeConfirmation: false }) : response({ error: 'Size pending' }, 422);
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode, frame: {} }); const first = h.api.activeReads()[0];
+    assert.equal(h.api.state().cameraRead, null); assert.equal(h.get('etiq-confirm').style.display, 'none');
+    await h.api.capture({ ean: product.barcode }); const second = h.api.activeReads()[1], size = h.get('action-camera-size'); size.value = '4'; await size.emit('input');
+    ocr.resolve('LUPO TAM P'); await flush(); await flush();
+    assert.equal(first.product?.productSizeId, lupo.productSizeId); assert.equal(first.ocrText, 'LUPO TAM P'); assert.equal(first.confirmedSize, '');
+    assert.equal(h.api.state().cameraRead, second); assert.equal(h.get('action-camera-size'), size); assert.equal(size.value, '4');
+    assert.equal(second.ocrText, ''); assert.equal(second.confirmedSize, ''); assert.equal(h.get('etiq-confirm-btn').disabled, true);
+    assert.equal(h.api.activeReads().length, 2); assert.equal(h.get('action-confirm').disabled, true); h.api.closeCamera();
+  });
+  await test('a new physical piece with the same unresolved code still requires duplicate consent', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ error: 'Size pending' }, 422);
+    await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode }); const firstId = h.api.activeReads()[0].clientScanId, questions = [];
+    h.confirmDuplicate = async text => { questions.push(text); return false; }; await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.state().cameraRead, null);
+    h.confirmDuplicate = async text => { questions.push(text); return true; }; await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.activeReads().length, 2); assert.equal(h.api.activeReads()[0].clientScanId, firstId); assert.equal(h.api.activeReads()[1].duplicateConfirmed, true);
+    assert.notEqual(h.api.activeReads()[1].clientScanId, firstId); assert.ok(questions.every(text => /outra peça física/.test(text)));
+    assert.equal(h.get('etiq-confirm').style.display, 'none'); h.api.closeCamera();
+  });
+  await test('failure to save a newly captured EAN pauses scanning and never claims the reading was stored', async () => {
+    const h = harness(); await h.boot(); await h.api.openCamera(); const before = h.requests.length;
+    h.localStorage.setItem = () => { throw Error('Quota exceeded'); };
+    await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.requests.length, before); assert.equal(h.api.state().scanner.stopped, true); assert.equal(h.api.state().scanner.options.canRead(), false);
+    assert.equal(h.api.state().cameraRead.storageError, true); assert.match(h.get('etiq-confirm-status').textContent, /Não foi possível guardar/);
+    assert.equal(h.get('action-camera-notice').hidden, true); assert.equal(h.get('etiq-confirm-btn').disabled, true);
+    await h.api.capture({ ean: product.barcode }); assert.equal(h.api.activeReads().length, 1); assert.equal(h.get('action-confirm').disabled, true); h.api.closeCamera();
+  });
+  await test('a storage failure after pending lookup cannot silently resume the camera', async () => {
+    const h = harness(); await h.boot(); await h.api.openCamera(); const originalSet = h.localStorage.setItem.bind(h.localStorage); let saves = 0;
+    h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_bipar_action_draft_v1:') && ++saves > 1) throw Error('Quota exceeded'); originalSet(key, value); };
+    h.handler = () => response({ error: 'Size pending' }, 422); await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.state().cameraRead.storageError, true); assert.equal(h.api.state().scanner.stopped, true);
+    assert.equal(h.api.state().scanner.options.canRead(), false); assert.equal(h.api.activeReads()[0].pendingAutoContinuedAt, undefined);
+    assert.equal(h.get('etiq-confirm-btn').disabled, true); assert.equal(h.get('action-camera-notice').hidden, true); h.api.closeCamera();
+  });
+  console.log('PASS: 46 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
