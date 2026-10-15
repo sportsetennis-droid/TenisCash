@@ -8,6 +8,8 @@
   let action = ['inventory', 'transfer', 'receipt'].includes(settings.mode) ? settings.mode : 'inventory';
   let token = sessionStorage.getItem('tc_transfer_token') || localStorage.getItem('loja_token') || localStorage.getItem('tc_token') || localStorage.getItem('tc_admin_token') || '';
   let actor = null, stores = [], allowed = [], shipments = [], generation = 0, shipmentRequest = 0, busy = false, storageFailed = false, preview = null, interaction = false;
+  let expiredActor = null, authenticationRecoveryTimer = null, authenticationRecovery = null;
+  const automaticAuthenticationAttempts = new Set();
   let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraAttempt = 0, cameraRead = null, cameraRetry = null, cameraPendingRead = null;
   const cameraOcrReads = new Map();
   const inflight = new Set(), drafts = new Map(), lookups = new Map();
@@ -99,16 +101,17 @@
   function canRecoverDraft(draft) { return !!actor && !!draft?.context?.actorId && (draft.context.actorId === actor.id || canRecoverOthers()); }
   function canSyncDraft(draft) { return canRecoverDraft(draft) && !recoveryConflicts.has(draft.sessionId); }
   function syncStatus() {
-    const own = [...syncJobs.values()].filter(job => canSyncDraft(job.draft) && job.draft.status !== 'confirmed');
+    const visibleOwner = actor || expiredActor;
+    const own = [...syncJobs.values()].filter(job => job.draft.status !== 'confirmed' && (canSyncDraft(job.draft) || !actor && visibleOwner && (job.draft.context.actorId === visibleOwner.id || ['admin', 'superadmin'].includes(visibleOwner.role))));
     const pending = own.filter(job => Number(job.draft.syncedRevision || 0) < Number(job.draft.revision || 1));
     const status = $('action-sync-status');
-    status.hidden = !actor || isInventory();
-    status.textContent = !pending.length ? 'Bipes salvos no sistema.' : pending.some(job => job.needsReview) ? 'Sincronização pendente: ' + pending.find(job => job.needsReview).error : pending.some(job => job.error) ? 'Sincronização pendente. Os bipes estão guardados e serão enviados ao sistema quando a conexão voltar.' : 'Salvando os bipes no sistema…';
+    status.hidden = !visibleOwner || isInventory();
+    status.textContent = !actor && expiredActor ? (pending.length ? 'Sincronização pendente: sessão expirada. Os bipes estão guardados; entre novamente para salvá-los no sistema.' : 'Sessão expirada. Entre novamente para continuar.') : !pending.length ? 'Bipes salvos no sistema.' : pending.some(job => job.needsReview) ? 'Sincronização pendente: ' + pending.find(job => job.needsReview).error : pending.some(job => job.error) ? 'Sincronização pendente. Os bipes estão guardados e serão enviados ao sistema quando a conexão voltar.' : 'Salvando os bipes no sistema…';
     const conflicts = [...recoveryConflicts.values()].filter(item => item.operatorId === actor?.id || canRecoverOthers());
     if (conflicts.length) status.textContent = 'Recuperação pendente: ' + conflicts.length + ' lote(s) têm cópias divergentes. Todas as cópias foram preservadas para conferir as leituras; não foi escolhido um lote incompleto.';
     if (canRecoverOthers() && legacyRecoveryInventory.length) status.textContent += ' Há ' + legacyRecoveryInventory.length + ' fonte(s) antiga(s) preservada(s) para conferência; nenhuma movimentação foi reenviada.';
-    status.className = 'transfer-message' + (conflicts.length || pending.some(job => job.error) ? ' transfer-error' : '');
-    $('action-sync-retry').hidden = !conflicts.length && !pending.some(job => job.error);
+    status.className = 'transfer-message' + (expiredActor || conflicts.length || pending.some(job => job.error) ? ' transfer-error' : '');
+    $('action-sync-retry').hidden = !expiredActor && !conflicts.length && !pending.some(job => job.error);
   }
   function queueSync(draft, immediate = false) {
     if (!draft?.scans?.length || !['transfer', 'receipt'].includes(draft.context?.mode) || draft.status === 'confirmed') return;
@@ -184,10 +187,12 @@
     const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
     for (let index = 0; index < localStorage.length; index++) {
       const key = localStorage.key(index);
-      if (canRecoverOthers() && ['tc_bipar_transfer_sequence_v1', 'tc_bipar_transfer_pending_v1', pendingKey].includes(key)) {
+      if (canRecoverOthers() && (['tc_bipar_transfer_sequence_v1', 'tc_bipar_transfer_pending_v1', pendingKey, 'tc_bipe_retry_queue', 'etiqFila'].includes(key) || key?.startsWith('tc_transfer_pending_'))) {
         const value = read(key, null);
         const entries = Array.isArray(value) ? value : value ? [value] : [];
-        if (entries.length) legacyRecoveryInventory.push({ key, type: key === 'tc_bipar_transfer_sequence_v1' ? 'inventory_sequence' : 'pending_confirmation', recordCount: Array.isArray(value) ? value.length : (value.body?.scans || value.payload?.scanKeys || []).length, operatorId: value.actorId || null, sessionId: value.sessionId || null, requestId: value.body?.requestId || value.payload?.requestId || null, needsReview: true });
+        const type = key === 'tc_bipar_transfer_sequence_v1' ? 'inventory_sequence' : key === 'tc_bipe_retry_queue' ? 'inventory_retry_queue' : key === 'etiqFila' ? 'inventory_photo_queue' : key.startsWith('tc_transfer_pending_') ? 'pending_single_transfer' : 'pending_confirmation';
+        // Counts describe stored records only, never confirmed physical pieces.
+        if (entries.length) legacyRecoveryInventory.push({ key, type, recordCount: Array.isArray(value) ? value.length : type === 'pending_single_transfer' ? 1 : (value.body?.scans || value.payload?.scanKeys || []).length, operatorId: value.actorId || null, sessionId: value.sessionId || null, requestId: value.body?.requestId || value.payload?.requestId || value.requestId || null, needsReview: true });
         continue;
       }
       if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
@@ -349,15 +354,34 @@
     try {
       const response = await fetch('/api/scan-transfers/actions' + path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + authToken, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: controller.signal });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) { if (response.status === 401 && authToken === token) actor = null; const error = new Error(data.error || 'Não foi possível concluir a consulta.'); error.status = response.status; throw error; }
+      if (!response.ok) { if (response.status === 401 && authToken === token) expireAuthentication(authToken, path !== '/context'); const error = new Error(data.error || 'Não foi possível concluir a consulta.'); error.status = response.status; throw error; }
       return data;
     } finally { clearTimeout(timer); }
   }
   function tokenSubject(value) {
     try { const encoded = String(value).split('.')[1]; if (!encoded) return ''; const payload = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(encoded.length / 4) * 4, '='))); return typeof payload.userId === 'string' ? payload.userId : ''; } catch (_) { return ''; }
   }
+  function expireAuthentication(authToken, retryAutomatically) {
+    if (authToken !== token) return;
+    expiredActor ||= actor || (tokenSubject(authToken) ? { id: tokenSubject(authToken) } : null);
+    actor = null; closeCamera(); invalidate(); refresh();
+    message('Sua sessão expirou. Os bipes guardados ainda precisam ser sincronizados. Entre novamente para continuar.', true);
+    if (retryAutomatically && expiredActor && !automaticAuthenticationAttempts.has(authToken)) {
+      automaticAuthenticationAttempts.add(authToken); clearTimeout(authenticationRecoveryTimer);
+      // Wait until the rejected sync has left its running state. Recovery only
+      // sends saved scan drafts; it never repeats a stock confirmation.
+      authenticationRecoveryTimer = setTimeout(() => { if (token === authToken && !actor) void resumeAuthentication(); }, 0);
+    }
+  }
+  async function resumeAuthentication() {
+    if (actor || !expiredActor || !token) return;
+    if (authenticationRecovery) return authenticationRecovery;
+    const expectedUserId = expiredActor.id;
+    authenticationRecovery = authenticate({ expectedUserId });
+    try { await authenticationRecovery; } finally { authenticationRecovery = null; }
+  }
   async function authenticate(options = {}) {
-    const authToken = token, expectedUserId = actor?.id || tokenSubject(authToken);
+    const authToken = token, expectedUserId = options.expectedUserId || actor?.id || tokenSubject(authToken);
     let operationToken = authToken;
     try {
       const candidates = [authToken];
@@ -371,12 +395,12 @@
       for (let index = 0; index < candidates.length; index++) {
         try {
           const result = await api('/context', undefined, candidates[index]); if (token !== authToken) return;
-          if (index && result.user?.id !== expectedUserId) throw Object.assign(Error('A sessão encontrada pertence a outra conta. Entre com a conta do operador para continuar.'), { status: 403 });
+          if ((index || options.expectedUserId) && result.user?.id !== expectedUserId) throw Object.assign(Error('A sessão encontrada pertence a outra conta. Entre com a conta do operador para continuar.'), { status: 403 });
           data = result; verifiedToken = candidates[index]; break;
         } catch (error) { if (token !== authToken) return; if (error.status !== 401 || index === candidates.length - 1) throw error; }
       }
       token = verifiedToken; operationToken = verifiedToken;
-      actor = data.user; stores = data.stores || []; allowed = data.allowedStoreIds || [];
+      actor = data.user; expiredActor = null; clearTimeout(authenticationRecoveryTimer); stores = data.stores || []; allowed = data.allowedStoreIds || [];
       // Preserve every stored copy before getDraft, shipment rebinding or a
       // fast catalog refresh can write the normal session checkpoint.
       recoverDrafts();
@@ -814,7 +838,7 @@
   $('action-shipment').addEventListener('change', () => { settings.shipment = $('action-shipment').value; saveSettings(); contextChanged(); });
   $('action-refresh-shipments').onclick = loadShipments; $('action-preview').onclick = prepare; $('action-approved').onchange = refresh; $('action-confirm').onclick = () => confirmAction(); $('action-retry').onclick = () => confirmAction(true);
   $('action-clear').onclick = () => { if (busy || read(pendingKey, null) || inflight.size) return; if (!confirm('Começar outro lote? Este ficará arquivado no histórico, com todas as leituras preservadas. Nenhum estoque será alterado.')) return; if (startNewLot()) void loadHistory(1); };
-  $('action-sync-retry').onclick = () => { recoverDrafts(); for (const job of syncJobs.values()) if (canSyncDraft(job.draft)) void flushSync(job.draft); };
+  $('action-sync-retry').onclick = async () => { if (!actor && expiredActor) await resumeAuthentication(); recoverDrafts(); for (const job of syncJobs.values()) if (canSyncDraft(job.draft)) void flushSync(job.draft); };
   $('action-history-transfer').onclick = () => { historyMode = 'transfer'; setupHistory(); void loadHistory(1); };
   $('action-history-receipt').onclick = () => { historyMode = 'receipt'; setupHistory(); void loadHistory(1); };
   $('action-history-refresh').onclick = () => loadHistory(1);
@@ -825,7 +849,7 @@
   $('action-history-close-detail').onclick = () => { $('action-history-detail').hidden = true; };
   for (const id of ['action-history-store', 'action-history-status', 'action-history-from', 'action-history-to']) $(id).addEventListener('change', () => { $('action-history-copy-text').hidden = true; void loadHistory(1); });
   $('action-storage-retry').onclick = () => { if (persist()) message('Lote salvo neste aparelho.'); refresh(); };
-  $('action-switch-user').onclick = () => { if (busy) return; actor = null; token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
+  $('action-switch-user').onclick = () => { if (busy) return; actor = null; expiredActor = null; clearTimeout(authenticationRecoveryTimer); token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
   $('action-login').addEventListener('submit', async event => {
     event.preventDefault(); if (busy) return; busy = true; $('action-login-button').disabled = true;
     try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate({ allowFallback: false }); }
@@ -834,9 +858,10 @@
   });
   document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
   document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { refreshLegacyReads(); recoverDrafts(); } });
-  window.addEventListener('online', recoverDrafts);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { if (!actor && expiredActor) void resumeAuthentication(); refreshLegacyReads(); recoverDrafts(); } });
+  window.addEventListener('online', () => { if (!actor && expiredActor) void resumeAuthentication(); else recoverDrafts(); });
   window.addEventListener('storage', event => {
+    if (['loja_token', 'tc_token', 'tc_admin_token'].includes(event.key) && !actor && expiredActor) void resumeAuthentication();
     if (event.key === pendingKey) refresh();
     if (currentDraft && event.key === draftKey(currentDraft.key) && !busy) {
       const incoming = read(event.key, null);

@@ -311,7 +311,7 @@
   </section>
   </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-action-recovery-1"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-pending-safety-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -397,7 +397,7 @@
       vendNome = sellers.find(s => s.id === vend)?.name || '';
       temVendedor = true;
     }
-    if (loja && temVendedor && window.ScannerRound.id()) {
+    if (loja && temVendedor && window.ScannerRound.id() && !retryStorageFailed) {
       const lojaNome = stores.find(s => s.id === loja)?.name || '';
       status.className = 'setup-status status-ok';
       status.textContent = '✓ Pronto: ' + vendNome + ' em ' + lojaNome;
@@ -411,7 +411,7 @@
       }
     } else {
       status.className = 'setup-status status-warn';
-      status.textContent = !window.ScannerRound.id() ? 'Abra uma rodada de inventário para esta loja.' : vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
+      status.textContent = retryStorageFailed ? 'Não foi possível salvar o último bipe. Mantenha a página aberta e tente salvar a fila novamente.' : !window.ScannerRound.id() ? 'Abra uma rodada de inventário para esta loja.' : vend === '__manual__' && !manualNome ? '⚠️ Digite o nome do vendedor' : '⚠️ Selecione loja e vendedor antes de bipar';
       box.classList.add('locked');
       input.disabled = true;
       input.placeholder = 'Aguardando loja/vendedor...';
@@ -487,28 +487,79 @@
   // 5xx/timeout/rede → fica na fila, retry pega depois.
   // ============================================================
   const RETRY_KEY = 'tc_bipe_retry_queue';
+  let retryStorageFailed = false, retryMemory = [];
+  const retryKey = item => item.clientScanId ? 'id:' + item.clientScanId : 'legacy:' + JSON.stringify(item);
+  function retryEntries(rows) {
+    const occurrences = new Map();
+    return rows.map(item => { const key = retryKey(item), number = occurrences.get(key) || 0; occurrences.set(key, number + 1); return [item.clientScanId ? key : key + ':' + number, item]; });
+  }
   function genClientScanId() {
     return 'cs' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
+  function retryLegacyId(key) {
+    // Two tabs opening the same old queue must assign the same retry identity.
+    // The occurrence suffix keeps physically repeated identical rows separate.
+    let a = 2166136261, b = 2246822519, c = 3266489917, d = 668265263;
+    for (let i = 0; i < key.length; i++) {
+      const value = key.charCodeAt(i);
+      a = Math.imul(a ^ value, 16777619); b = Math.imul(b ^ value, 2246822519);
+      c = Math.imul(c ^ value, 3266489917); d = Math.imul(d ^ value, 668265263);
+    }
+    return 'cslegacy' + [a, b, c, d].map(value => (value >>> 0).toString(16).padStart(8, '0')).join('');
+  }
+  function retryStoredPieces() {
+    const rows = [];
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith('tc_bipe_retry_piece_v1:')) continue;
+      try { const item = JSON.parse(localStorage.getItem(key)); if (item?.clientScanId) rows.push(item); } catch (_) {}
+    }
+    return rows;
+  }
+  function retryAcknowledged(id) { return !!localStorage.getItem('tc_bipe_retry_ack_v1:' + id); }
   function loadRetryQueue() {
-    try { return JSON.parse(localStorage.getItem(RETRY_KEY) || '[]'); }
-    catch { return []; }
+    let saved = []; try { saved = JSON.parse(localStorage.getItem(RETRY_KEY) || '[]'); } catch (_) {}
+    if (!Array.isArray(saved)) saved = [];
+    const normalize = rows => retryEntries(rows).map(([key, item]) => {
+      const row = item.clientScanId ? item : { ...item, clientScanId: retryLegacyId(key) };
+      return [retryKey(row), row];
+    });
+    return [...new Map([...normalize(saved), ...normalize(retryMemory), ...normalize(retryStoredPieces())]).values()]
+      .filter(item => !retryAcknowledged(item.clientScanId));
   }
   function saveRetryQueue(q) {
-    try { localStorage.setItem(RETRY_KEY, JSON.stringify(q.slice(0, 5000))); }
-    catch {}
+    const wasBlocked = retryStorageFailed;
+    try {
+      // The aggregate can race between tabs; independent IDs remain recoverable.
+      // ACKs have their own key so an older pending snapshot cannot undo them.
+      for (const item of q) {
+        if (!item.clientScanId || retryAcknowledged(item.clientScanId)) continue;
+        const key = 'tc_bipe_retry_piece_v1:' + item.clientScanId, value = JSON.stringify(item);
+        if (localStorage.getItem(key) !== value) localStorage.setItem(key, value);
+      }
+      retryMemory = q;
+      localStorage.setItem(RETRY_KEY, JSON.stringify(loadRetryQueue())); retryStorageFailed = false; retryMemory = [];
+    }
+    catch (_) { retryMemory = q; retryStorageFailed = true; }
+    if ((wasBlocked || retryStorageFailed) && typeof atualizarStatus === 'function') atualizarStatus();
+    return !retryStorageFailed;
   }
   function enqueueRetry(payload) {
+    if (retryStorageFailed && !saveRetryQueue(loadRetryQueue())) { updatePendingBadge(); return null; }
     const q = loadRetryQueue();
     // garante clientScanId pra idempotência
     if (!payload.clientScanId) payload.clientScanId = genClientScanId();
     q.push({ ...payload, ts: new Date().toISOString() });
-    saveRetryQueue(q);
+    const saved = saveRetryQueue(q);
     updatePendingBadge();
-    return payload.clientScanId;
+    return saved ? payload.clientScanId : null;
   }
   function removeFromQueue(clientScanId) {
     if (!clientScanId) return;
+    try {
+      localStorage.setItem('tc_bipe_retry_ack_v1:' + clientScanId, new Date().toISOString());
+      localStorage.removeItem('tc_bipe_retry_piece_v1:' + clientScanId);
+    } catch (_) { retryStorageFailed = true; updatePendingBadge(); return; }
     const q = loadRetryQueue().filter(it => it.clientScanId !== clientScanId);
     saveRetryQueue(q);
     updatePendingBadge();
@@ -520,12 +571,12 @@
       el = document.createElement('div');
       el.id = 'bipe-pending-badge';
       el.style.cssText = 'position:fixed;top:10px;right:10px;background:#d70015;color:white;padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;z-index:99998;box-shadow:0 4px 12px rgba(0,0,0,0.2);cursor:pointer;display:none;';
-      el.onclick = () => { if (confirm('Tentar reenviar ' + loadRetryQueue().length + ' bipes pendentes agora?')) processRetryQueue(); };
+      el.onclick = () => { if (retryStorageFailed || confirm('Tentar reenviar ' + loadRetryQueue().length + ' bipes pendentes agora?')) processRetryQueue(); };
       document.body.appendChild(el);
     }
     if (q.length > 0) {
       el.style.display = 'block';
-      el.textContent = '⚠ ' + q.filter(x=>!x.blocked).length + ' para enviar · '+q.filter(x=>x.blocked).length+' para revisão (não contados)';
+      el.textContent = retryStorageFailed ? '⚠ Último bipe ainda não salvo. Mantenha a página aberta. Toque para tentar salvar novamente.' : '⚠ ' + q.filter(x=>!x.blocked).length + ' para enviar · '+q.filter(x=>x.blocked).length+' para revisão (não contados)';
     } else {
       el.style.display = 'none';
     }
@@ -537,6 +588,10 @@
     _retrying = true;
     try {
       let q = loadRetryQueue();
+      // A retry must keep the same identity after a crash or another tab opens.
+      // Do not issue a POST until every identity is durably stored.
+      if (!saveRetryQueue(q)) { updatePendingBadge(); return; }
+      const queuedAtStart = new Set(q.map(retryKey));
       const remaining = [];
       for (const item of q) {
         if (window.BiparActions && !window.BiparActions.isInventory()) { remaining.push(item); continue; }
@@ -565,6 +620,7 @@
           }
           if (!r.ok) { remaining.push(item); continue; }
           const d = await r.json();
+          removeFromQueue(item.clientScanId);
           window.ScannerTransfer?.update(item, {saved:true, bipeId:d.bipeId || null});
           // sucesso: atualiza o bipe local existente
           const local = bipes.find(b => b._pending && b.clientScanId === item.clientScanId);
@@ -579,7 +635,10 @@
         } catch (e) { remaining.push(item); }
         finally { window.ScannerTransfer?.activity('retry:' + item.clientScanId, null); }
       }
-      saveRetryQueue(remaining);
+      // New physical pieces can be queued while a request above is in flight.
+      // Preserve those additions; this response only settles its own snapshot.
+      const appended = loadRetryQueue().filter(item => !queuedAtStart.has(retryKey(item)));
+      saveRetryQueue([...remaining, ...appended]);
       updatePendingBadge();
       renderLista();
       renderStats();
@@ -610,7 +669,7 @@
     try { roundId=window.ScannerRound.requireRound(storeId); } catch(e) { alert(e.message);return; }
     const payload = { barcode, storeId, sellerId, sellerName, clientScanId, roundId };
     window.ScannerTransfer?.start(payload);
-    enqueueRetry(payload);
+    if (!enqueueRetry(payload)) return;
 
     // Mostra bipe local como pendente IMEDIATAMENTE
     const ts = new Date().toISOString();
@@ -749,16 +808,92 @@
   // Câmera contínua: lê o código de barras em tempo real (zxing), captura o frame sozinho,
   // SALVA em fila com confirmação (✅) e segue pro próximo — o reconhecimento (visão no servidor)
   // roda em background e o resultado aparece na listinha (poll). Nada trava o fluxo.
-  let etiqFila = []; try { etiqFila = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
+  let etiqFila = []; try { etiqFila = etiqReadStored(); } catch (_) {}
+  let etiqStorageFailed = false;
   // A fila visual do modal vive em memória. Depois de recarregar a página,
   // libera a reentrada dos tamanhos ainda pendentes via /etiqueta-status.
   etiqFila.forEach((item) => { if (item.needsSize && !item.sizeDismissed) item.sizeQueued = false; });
   let etiqAuto = null;
   let etiqReader = null, etiqStream = null, etiqLoop = null, etiqUltimo = '', etiqUltimoTs = 0, etiqPoll = null, etiqSendTimer = null, etiqBusy = false;
-  function etiqSave() {
-    try { localStorage.setItem('etiqFila', JSON.stringify(etiqFila.slice(-30))); } catch (_) {}
-    etiqFila.forEach(item => window.ScannerTransfer?.update(item, {saved:!!item.capId, bipeId:item.bipeId || null}));
+  function etiqStorageNotice() {
+    let notice = document.getElementById('etiq-storage-warning');
+    if (!notice && etiqStorageFailed) {
+      notice = document.createElement('div'); notice.id = 'etiq-storage-warning';
+      notice.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:100001;background:#fff3cd;color:#442900;border:2px solid #9a6700;border-radius:12px;padding:12px;font-weight:700';
+      const text = document.createElement('div');
+      text.textContent = 'A última foto ainda não foi salva no navegador. As anteriores foram preservadas. Mantenha esta página aberta enquanto tentamos enviar e salvar; novas capturas estão pausadas.';
+      const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Tentar salvar e enviar novamente';
+      retry.onclick = () => { etiqSave(); enviarFila(); };
+      notice.append(text, retry); document.body.appendChild(notice);
+    }
+    if (notice) notice.hidden = !etiqStorageFailed;
   }
+  function etiqIdentity(item) { return item.clientScanId ? 'id:' + (item.roundId || '') + ':' + item.clientScanId : item.lid ? 'lid:' + item.lid : 'legacy:' + JSON.stringify(item); }
+  function etiqCheckpoints() {
+    const rows = [];
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith('tc_bipe_photo_checkpoint_v1:')) continue;
+      try { const data = JSON.parse(localStorage.getItem(key)); if (data?.identity && data.fields && typeof data.fields === 'object') rows.push({ key, ...data }); } catch (_) {}
+    }
+    return rows.sort((a, b) => a.at - b.at || a.key.localeCompare(b.key));
+  }
+  function etiqReadStored() {
+    let saved = []; try { saved = JSON.parse(localStorage.getItem('etiqFila') || '[]'); } catch (_) {}
+    const rows = new Map((Array.isArray(saved) ? saved : []).map(item => [etiqIdentity(item), { ...item }]));
+    for (const checkpoint of etiqCheckpoints()) {
+      const row = rows.get(checkpoint.identity) || {};
+      // Confirmation by the server and an explicit cancelled repeat are terminal.
+      // Old pending snapshots must not restore an upload after either event.
+      if (row.complete && row.capId && !checkpoint.fields.complete) continue;
+      if (row.st === 'revisao' && row.msg === 'Repetição cancelada — não contada' && checkpoint.fields.st === 'fila') continue;
+      Object.assign(row, checkpoint.fields); rows.set(checkpoint.identity, row);
+    }
+    return [...rows.values()];
+  }
+  function etiqSave() {
+    // Independent, append-only updates survive another tab replacing the shared
+    // queue between getItem and setItem. Deltas only contain locally changed
+    // fields, so an old ACK cannot erase another tab's photo, OCR or capture ID.
+    const previous = etiqSave.baseline || new Map();
+    const checkpoints = etiqCheckpoints();
+    const checkpointIds = new Set(checkpoints.map(item => item.identity));
+    let stamp = checkpoints.reduce((latest, row) => Math.max(latest, Number(row.at) || 0), Date.now());
+    const wasBlocked = etiqStorageFailed;
+    try {
+      for (const item of etiqFila) {
+        const identity = etiqIdentity(item), base = previous.get(identity);
+        const fields = Object.fromEntries(Object.entries(item).filter(([key, value]) => !base || JSON.stringify(base[key]) !== JSON.stringify(value)));
+        if (!checkpointIds.has(identity)) Object.assign(fields, item);
+        if (!Object.keys(fields).length) continue;
+        const terminal = item.complete && item.capId;
+        const existing = terminal ? checkpoints.find(row => row.identity === identity) : null;
+        const unique = globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const key = existing?.key || 'tc_bipe_photo_checkpoint_v1:' + encodeURIComponent(identity) + ':' + unique;
+        localStorage.setItem(key, JSON.stringify({ identity, at: ++stamp, fields: terminal ? { ...item, b64: '' } : fields }));
+        // Completed captures already have their photograph on the server. Keep
+        // their terminal record while freeing older local image checkpoints.
+        if (terminal) for (const old of checkpoints) if (old.identity === identity && old.key !== key) localStorage.removeItem(old.key);
+      }
+      const known = new Map(etiqFila.map(item => [etiqIdentity(item), item]));
+      for (const row of etiqReadStored()) {
+        const current = known.get(etiqIdentity(row));
+        if (current) Object.assign(current, row); else { etiqFila.push(row); known.set(etiqIdentity(row), row); }
+      }
+    // Never trim an unsaved or unresolved physical piece. Only completed
+    // server-backed history may leave the browser's recent-history window.
+    const recentComplete = new Set(etiqFila.filter(item => item.complete && item.capId).slice(-30));
+    const retained = etiqFila.filter(item => !item.complete || !item.capId || recentComplete.has(item));
+      localStorage.setItem('etiqFila', JSON.stringify(retained)); etiqStorageFailed = false;
+      etiqSave.baseline = new Map(etiqFila.map(item => [etiqIdentity(item), JSON.parse(JSON.stringify(item))]));
+    }
+    catch (_) { etiqStorageFailed = true; etiqAuto?.stop(); }
+    etiqStorageNotice();
+    if (wasBlocked && !etiqStorageFailed && !etiqPausado) etiqAuto?.reset();
+    etiqFila.forEach(item => window.ScannerTransfer?.update(item, {saved:!!item.capId, bipeId:item.bipeId || null}));
+    return !etiqStorageFailed;
+  }
+  etiqSave.baseline = new Map(etiqFila.map(item => [etiqIdentity(item), JSON.parse(JSON.stringify(item))]));
   function etiqBeep() {
     try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value = 1250; g.gain.value = 0.18; o.start(); setTimeout(() => { o.stop(); a.close(); }, 130); } catch (_) {}
     try { navigator.vibrate && navigator.vibrate(90); } catch (_) {}
@@ -809,7 +944,7 @@
         },
         decode: frame => window.ScannerAuto.decodeInWorker(frame),
         recognize: frame => window.ScannerOCR.recognize(frame),
-        canRead: () => !etiqPausado && !etiqBusy && !!document.getElementById('etiq-overlay'),
+        canRead: () => !etiqStorageFailed && !etiqPausado && !etiqBusy && !!document.getElementById('etiq-overlay'),
         onHint: message => { const h=document.getElementById('etiq-hint');if(h)h.textContent=message; },
         onCapture: prepared => window.capturaManual(prepared)
       });
@@ -904,6 +1039,7 @@
   };
 
   function capturarFrame(ean, prepared) {
+    if (etiqStorageFailed) { etiqStorageNotice(); return null; }
     const video = document.getElementById('etiq-video');
     if (!video || !video.videoWidth) return null;
     const existing = etiqFila.find(x=>x.lid===etiqAtivo);
