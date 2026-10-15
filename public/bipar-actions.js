@@ -12,6 +12,8 @@
   const cameraOcrReads = new Map();
   const inflight = new Set(), drafts = new Map(), lookups = new Map();
   const syncJobs = new Map(), draftBases = new Map(), archivePrefix = 'tc_bipar_action_archive_v1:';
+  let legacyRecoveryInventory = [];
+  const recoveryConflicts = new Map();
   let historyMode = action === 'receipt' ? 'receipt' : 'transfer', historyPage = 1, historyRequest = 0, historyData = null, historyBusy = false, historyRefreshTimer = null;
   const lookupConcurrency = 3;
   const lookupQueue = [];
@@ -48,7 +50,7 @@
     const key = contextKey();
     if (!drafts.has(key)) {
       const saved = read(draftKey(key), null);
-      drafts.set(key, saved && saved.key === key && Array.isArray(saved.scans) ? saved : newDraft(key));
+      drafts.set(key, saved && saved.key === key && saved.context?.actorId === actor?.id && contextKey(saved.context) === key && Array.isArray(saved.scans) ? saved : newDraft(key));
       draftBases.set(drafts.get(key).sessionId, new Map(drafts.get(key).scans.map(item => [item.clientScanId, JSON.stringify(item)])));
     }
     const draft = drafts.get(key);
@@ -58,6 +60,7 @@
   function draftStorageKey(draft) { return draft.status === 'archived' || draft.status === 'confirmed' ? archivePrefix + draft.sessionId : draftKey(draft.key); }
   function persist(draft = currentDraft) {
     if (!draft) return false;
+    if (recoveryConflicts.get(draft.sessionId)?.backupFailed) { storageFailed = true; message('As cópias divergentes deste lote precisam ser preservadas antes de salvar novas leituras. Libere espaço e tente a recuperação novamente.', true); return false; }
     draft.status ||= 'open';
     try {
       const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
@@ -92,41 +95,48 @@
   function syncPayload(draft) {
     return { sessionId: draft.sessionId, mode: draft.context.mode, fromStoreId: draft.context.fromStoreId || '', toStoreId: draft.context.toStoreId, transferId: draft.context.transferId || '', revision: draft.revision, status: draft.status === 'archived' ? 'archived' : 'open', scans: draft.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, product: item.product, confirmedSize: item.confirmedSize || '', requiresSizeConfirmation: item.requiresSizeConfirmation !== false, error: item.error || '' })) };
   }
+  function canRecoverOthers() { return ['admin', 'superadmin'].includes(actor?.role); }
+  function canRecoverDraft(draft) { return !!actor && !!draft?.context?.actorId && (draft.context.actorId === actor.id || canRecoverOthers()); }
+  function canSyncDraft(draft) { return canRecoverDraft(draft) && !recoveryConflicts.has(draft.sessionId); }
   function syncStatus() {
-    const own = [...syncJobs.values()].filter(job => job.draft.context?.actorId === actor?.id && job.draft.status !== 'confirmed');
+    const own = [...syncJobs.values()].filter(job => canSyncDraft(job.draft) && job.draft.status !== 'confirmed');
     const pending = own.filter(job => Number(job.draft.syncedRevision || 0) < Number(job.draft.revision || 1));
     const status = $('action-sync-status');
     status.hidden = !actor || isInventory();
     status.textContent = !pending.length ? 'Bipes salvos no sistema.' : pending.some(job => job.needsReview) ? 'Sincronização pendente: ' + pending.find(job => job.needsReview).error : pending.some(job => job.error) ? 'Sincronização pendente. Os bipes estão guardados e serão enviados ao sistema quando a conexão voltar.' : 'Salvando os bipes no sistema…';
-    status.className = 'transfer-message' + (pending.some(job => job.error) ? ' transfer-error' : '');
-    $('action-sync-retry').hidden = !pending.some(job => job.error);
+    const conflicts = [...recoveryConflicts.values()].filter(item => item.operatorId === actor?.id || canRecoverOthers());
+    if (conflicts.length) status.textContent = 'Recuperação pendente: ' + conflicts.length + ' lote(s) têm cópias divergentes. Todas as cópias foram preservadas para conferir as leituras; não foi escolhido um lote incompleto.';
+    if (canRecoverOthers() && legacyRecoveryInventory.length) status.textContent += ' Há ' + legacyRecoveryInventory.length + ' fonte(s) antiga(s) preservada(s) para conferência; nenhuma movimentação foi reenviada.';
+    status.className = 'transfer-message' + (conflicts.length || pending.some(job => job.error) ? ' transfer-error' : '');
+    $('action-sync-retry').hidden = !conflicts.length && !pending.some(job => job.error);
   }
   function queueSync(draft, immediate = false) {
     if (!draft?.scans?.length || !['transfer', 'receipt'].includes(draft.context?.mode) || draft.status === 'confirmed') return;
     let job = syncJobs.get(draft.sessionId);
     if (!job) { job = { draft, timer: null, running: null, error: '' }; syncJobs.set(draft.sessionId, job); }
     job.draft = draft; clearTimeout(job.timer); syncStatus();
-    if (actor?.id !== draft.context.actorId) return;
+    if (!canSyncDraft(draft)) return;
     if (immediate) return flushSync(draft);
     job.timer = setTimeout(() => { void flushSync(job.draft); }, 250);
   }
   async function flushSync(draft) {
     const job = syncJobs.get(draft?.sessionId);
+    if (recoveryConflicts.has(draft?.sessionId)) return false;
     if (!job || draft.status === 'confirmed') return true;
-    if (job.running) { await job.running; return Number(draft.syncedRevision || 0) >= Number(draft.revision || 1); }
-    if (actor?.id !== draft.context.actorId || !token) return false;
+    if (job.running) { await job.running; return canSyncDraft(draft) && Number(draft.syncedRevision || 0) >= Number(draft.revision || 1); }
+    if (!canSyncDraft(draft) || !token) return false;
     clearTimeout(job.timer);
-    const authToken = token, owner = actor.id;
+    const authToken = token, owner = actor.id, originalOperatorId = draft.context.actorId, recoveringOther = owner !== originalOperatorId;
     let conflictRetry = false;
     job.running = (async () => {
-      while (actor?.id === owner && token === authToken && draft.context.actorId === owner && draft.status !== 'confirmed' && Number(draft.syncedRevision || 0) < Number(draft.revision || 1)) {
+      while (actor?.id === owner && token === authToken && draft.context.actorId === originalOperatorId && canSyncDraft(draft) && draft.status !== 'confirmed' && Number(draft.syncedRevision || 0) < Number(draft.revision || 1)) {
         const body = syncPayload(draft), revision = body.revision;
         try {
-          const data = await api('/drafts/sync', body, authToken);
-          if (actor?.id !== owner || token !== authToken) return false;
+          const data = await api(recoveringOther ? '/drafts/recover' : '/drafts/sync', recoveringOther ? { originalOperatorId, ...body } : body, authToken);
+          if (actor?.id !== owner || token !== authToken || recoveryConflicts.has(draft.sessionId)) return false;
           if (data.lot?.status === 'confirmed') {
             const result = await api('/history/' + encodeURIComponent(draft.sessionId), undefined, authToken);
-            if (actor?.id !== owner || token !== authToken) return false;
+            if (actor?.id !== owner || token !== authToken || recoveryConflicts.has(draft.sessionId)) return false;
             const savedIds = new Set((result.scans || []).map(item => item.clientScanId));
             if (draft.scans.some(item => !savedIds.has(item.clientScanId))) { const conflict = Error('Este lote foi concluído em outra sessão. Há novos bipes guardados localmente que ainda não entraram no histórico; mantenha esta página aberta e confira o lote.'); conflict.status = 409; throw conflict; }
             draft.status = 'confirmed'; draft.syncedRevision = revision;
@@ -143,7 +153,9 @@
           clearTimeout(historyRefreshTimer); historyRefreshTimer = setTimeout(() => { if (actor?.id === owner && token === authToken) void loadHistory(historyPage); }, 750);
           if (job.draft !== draft) draft = job.draft;
         } catch (error) {
-          if (error.status === 409 && !conflictRetry && actor?.id === owner && token === authToken) {
+          // Recovery preserves a different operator's snapshot. A conflicting
+          // lot is left for review, never edited or merged under the admin.
+          if (!recoveringOther && error.status === 409 && !conflictRetry && actor?.id === owner && token === authToken) {
             conflictRetry = true;
             try {
               const latest = await api('/history/' + encodeURIComponent(draft.sessionId), undefined, authToken);
@@ -168,20 +180,57 @@
   function recoverDrafts() {
     if (!actor) return;
     // Preserve the original operator, context, IDs and timestamps of older lots.
-    const recovered = new Map();
+    const recovered = new Map(), savedConflictCopies = new Set(); legacyRecoveryInventory = []; recoveryConflicts.clear();
+    const stable = value => JSON.stringify(value, function (_, item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item; });
     for (let index = 0; index < localStorage.length; index++) {
       const key = localStorage.key(index);
+      if (canRecoverOthers() && ['tc_bipar_transfer_sequence_v1', 'tc_bipar_transfer_pending_v1', pendingKey].includes(key)) {
+        const value = read(key, null);
+        const entries = Array.isArray(value) ? value : value ? [value] : [];
+        if (entries.length) legacyRecoveryInventory.push({ key, type: key === 'tc_bipar_transfer_sequence_v1' ? 'inventory_sequence' : 'pending_confirmation', recordCount: Array.isArray(value) ? value.length : (value.body?.scans || value.payload?.scanKeys || []).length, operatorId: value.actorId || null, sessionId: value.sessionId || null, requestId: value.body?.requestId || value.payload?.requestId || null, needsReview: true });
+        continue;
+      }
       if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
       const draft = read(key, null);
-      if (draft?.context?.actorId !== actor.id || !Array.isArray(draft.scans) || !draft.scans.length || draft.status === 'confirmed') continue;
+      if (!draft?.context?.actorId && canRecoverOthers()) { legacyRecoveryInventory.push({ key, type: 'unidentified_draft', recordCount: Array.isArray(draft?.scans) ? draft.scans.length : null, needsReview: true }); continue; }
+      if (!canRecoverDraft(draft) || !Array.isArray(draft.scans) || !draft.scans.length || draft.status === 'confirmed') continue;
       draft.revision = Number(draft.revision) || 1; draft.status ||= 'open';
-      if (Number(recovered.get(draft.sessionId)?.revision || 0) <= draft.revision) recovered.set(draft.sessionId, draft);
+      if (key.startsWith(archivePrefix + 'recovery:')) savedConflictCopies.add(stable(draft));
+      if (!recovered.has(draft.sessionId)) recovered.set(draft.sessionId, []);
+      recovered.get(draft.sessionId).push(draft);
     }
-    for (const draft of recovered.values()) {
-      const live = drafts.get(draft.key);
-      const target = live?.sessionId === draft.sessionId && Number(live.revision || 1) >= draft.revision ? live : draft;
-      target.revision = Number(target.revision) || 1;
-      queueSync(target, true);
+    for (const [sessionId, copies] of recovered) {
+      const first = copies[0];
+      const header = draft => stable({ context: draft.context, status: draft.status || 'open' });
+      const evidence = new Map(); let conflicting = copies.some(copy => header(copy) !== header(first));
+      for (const copy of copies) {
+        const ownIds = new Set();
+        for (const item of copy.scans) {
+          const value = stable(item);
+          if (ownIds.has(item.clientScanId) || evidence.has(item.clientScanId) && evidence.get(item.clientScanId) !== value) conflicting = true;
+          ownIds.add(item.clientScanId); evidence.set(item.clientScanId, value);
+        }
+      }
+      const revision = Math.max(...copies.map(copy => Number(copy.revision) || 1));
+      // Storage order is not evidence. Only an intact, compatible superset at
+      // the newest revision can represent every copy without losing a scan.
+      const target = copies.find(copy => (Number(copy.revision) || 1) === revision && copy.scans.length === evidence.size);
+      if (conflicting || !target) {
+        const issue = { sessionId, operatorId: first.context.actorId, type: 'conflicting_action_copies', recordCount: evidence.size, copyCount: copies.length, needsReview: true };
+        recoveryConflicts.set(sessionId, issue); legacyRecoveryInventory.push(issue);
+        // Keep independent evidence before the active operator can save another
+        // lookup or scan. The normal checkpoint for this session may be replaced.
+        for (const copy of copies) {
+          const snapshot = stable(copy);
+          if (!savedConflictCopies.has(snapshot)) {
+            try { localStorage.setItem(archivePrefix + 'recovery:' + sessionId + ':' + crypto.randomUUID(), JSON.stringify(copy)); savedConflictCopies.add(snapshot); }
+            catch (_) { storageFailed = true; issue.backupFailed = true; }
+          }
+        }
+        const job = syncJobs.get(sessionId); if (job) { clearTimeout(job.timer); job.error = 'Há cópias divergentes deste lote. As leituras precisam ser conferidas antes de sincronizar.'; job.needsReview = true; }
+        continue;
+      }
+      target.revision = revision; queueSync(target, true);
     }
     syncStatus();
   }
@@ -304,19 +353,41 @@
       return data;
     } finally { clearTimeout(timer); }
   }
-  async function authenticate() {
-    const authToken = token;
+  function tokenSubject(value) {
+    try { const encoded = String(value).split('.')[1]; if (!encoded) return ''; const payload = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(encoded.length / 4) * 4, '='))); return typeof payload.userId === 'string' ? payload.userId : ''; } catch (_) { return ''; }
+  }
+  async function authenticate(options = {}) {
+    const authToken = token, expectedUserId = actor?.id || tokenSubject(authToken);
+    let operationToken = authToken;
     try {
-      const data = await api('/context', undefined, authToken); if (token !== authToken) return;
+      const candidates = [authToken];
+      // A stale tab token must not hide a newer login for the same person.
+      // JWT decoding only selects candidates; /context verifies each identity.
+      if (options.allowFallback !== false && expectedUserId) for (const key of ['loja_token', 'tc_token', 'tc_admin_token']) {
+        const candidate = localStorage.getItem(key);
+        if (candidate && !candidates.includes(candidate) && tokenSubject(candidate) === expectedUserId) candidates.push(candidate);
+      }
+      let data, verifiedToken;
+      for (let index = 0; index < candidates.length; index++) {
+        try {
+          const result = await api('/context', undefined, candidates[index]); if (token !== authToken) return;
+          if (index && result.user?.id !== expectedUserId) throw Object.assign(Error('A sessão encontrada pertence a outra conta. Entre com a conta do operador para continuar.'), { status: 403 });
+          data = result; verifiedToken = candidates[index]; break;
+        } catch (error) { if (token !== authToken) return; if (error.status !== 401 || index === candidates.length - 1) throw error; }
+      }
+      token = verifiedToken; operationToken = verifiedToken;
       actor = data.user; stores = data.stores || []; allowed = data.allowedStoreIds || [];
+      // Preserve every stored copy before getDraft, shipment rebinding or a
+      // fast catalog refresh can write the normal session checkpoint.
+      recoverDrafts();
       if (!isInventory()) setOptions($('loja'), stores.map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja', settings.stores[action] || $('loja').value);
       sessionStorage.setItem('tc_transfer_token', token);
       const personalStore = read('loja_activeStore', null)?.id;
       const origin = [settings.origin, settings.stores.inventory, personalStore].find(id => id && allowed.includes(id) && store(id)) || '';
       setOptions($('action-origin'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja de origem', origin);
       settings.origin = origin; saveSettings(); contextChanged(); if (action === 'receipt') await loadShipments();
-      recoverDrafts(); setupHistory(); void loadHistory(1);
-    } catch (error) { if (token !== authToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
+      setupHistory(); void loadHistory(1);
+    } catch (error) { if (token !== operationToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
   }
   async function loadShipments() {
     const request = ++shipmentRequest, selectedStore = $('loja').value, authToken = token, selectedShipment = $('action-shipment').value || settings.shipment;
@@ -485,7 +556,7 @@
     const totals = data.totals || {};
     $('action-history-summary').textContent = (totals.scans || 0) + ' peças bipadas no período · ' + (totals.lots || data.totalLots || 0) + ' lote(s) · ' + (totals.confirmedLots || 0) + (historyMode === 'receipt' ? ' recebimento(s) confirmado(s)' : ' envio(s) confirmado(s)') + ' · ' + (totals.confirmedScans || 0) + ' peças confirmadas';
     $('action-history-pending').textContent = (totals.recognized || 0) + ' identificadas · ' + (totals.pending || 0) + ' pendentes · ' + (totals.removed || 0) + ' leituras retiradas';
-    if (!(data.lots || []).length) { const empty = document.createElement('p'); empty.textContent = 'Nenhum lote desta ação encontrado no período e nos filtros escolhidos.'; area.append(empty); }
+    if (!(data.lots || []).length) { const empty = document.createElement('p'); empty.textContent = 'Nenhum lote salvo neste histórico para o período e os filtros escolhidos.'; area.append(empty); }
     for (const lot of data.lots || []) {
       const card = document.createElement('article'); card.className = 'action-reading';
       const title = document.createElement('strong'); title.textContent = lotStatus(lot) + (lot.transferCode ? ' · #' + lot.transferCode : '') + ' · ' + lot.scanCount + ' peça(s) no período';
@@ -743,7 +814,7 @@
   $('action-shipment').addEventListener('change', () => { settings.shipment = $('action-shipment').value; saveSettings(); contextChanged(); });
   $('action-refresh-shipments').onclick = loadShipments; $('action-preview').onclick = prepare; $('action-approved').onchange = refresh; $('action-confirm').onclick = () => confirmAction(); $('action-retry').onclick = () => confirmAction(true);
   $('action-clear').onclick = () => { if (busy || read(pendingKey, null) || inflight.size) return; if (!confirm('Começar outro lote? Este ficará arquivado no histórico, com todas as leituras preservadas. Nenhum estoque será alterado.')) return; if (startNewLot()) void loadHistory(1); };
-  $('action-sync-retry').onclick = () => { recoverDrafts(); for (const job of syncJobs.values()) if (job.draft.context?.actorId === actor?.id) void flushSync(job.draft); };
+  $('action-sync-retry').onclick = () => { recoverDrafts(); for (const job of syncJobs.values()) if (canSyncDraft(job.draft)) void flushSync(job.draft); };
   $('action-history-transfer').onclick = () => { historyMode = 'transfer'; setupHistory(); void loadHistory(1); };
   $('action-history-receipt').onclick = () => { historyMode = 'receipt'; setupHistory(); void loadHistory(1); };
   $('action-history-refresh').onclick = () => loadHistory(1);
@@ -757,7 +828,7 @@
   $('action-switch-user').onclick = () => { if (busy) return; actor = null; token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
   $('action-login').addEventListener('submit', async event => {
     event.preventDefault(); if (busy) return; busy = true; $('action-login-button').disabled = true;
-    try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate(); }
+    try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate({ allowFallback: false }); }
     catch (error) { message(error.message, true); }
     finally { busy = false; $('action-login-button').disabled = false; refresh(); refreshLegacyReads(); }
   });
@@ -778,6 +849,6 @@
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     }
   });
-  window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, hasFocus: () => interaction };
+  window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, recoveryInventory: () => canRecoverOthers() ? legacyRecoveryInventory.map(item => ({ ...item })) : [], hasFocus: () => interaction };
   refresh();
 })();

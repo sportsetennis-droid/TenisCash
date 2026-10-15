@@ -109,9 +109,13 @@ async function transaction(db, work) {
   }
 }
 async function sync(db, actor, input) {
-  const value = clean(input), payloadHash = hash(value);
+  const value = clean(input);
   return transaction(db, async tx => {
     const actual = await actualActor(tx, actor);
+    return syncWithin(tx, actual, value, hash(value));
+  });
+}
+async function syncWithin(tx, actual, value, payloadHash) {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + value.sessionId}))::text`;
     let lot = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
     if (lot) sameContext(lot, actual, value);
@@ -154,6 +158,41 @@ async function sync(db, actor, input) {
     }
     lot = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
     return { lot: (await publicLots(tx, [lot]))[0], synced: true };
+}
+
+// Restores an existing browser draft on behalf of its original operator. This
+// grants no authority to confirm stock or edit somebody else's saved readings.
+async function recover(db, actor, input = {}) {
+  const value = clean(input), originalOperatorId = uuid(input.originalOperatorId), payloadHash = hash(value);
+  return transaction(db, async tx => {
+    const recoveredBy = await actualActor(tx, actor);
+    if (!['admin', 'superadmin'].includes(recoveredBy.role)) fail('Somente o administrador pode recuperar lotes de outros operadores.', 403);
+    const original = await actualActor(tx, { id: originalOperatorId });
+    // Both identities are current database identities, never client role claims.
+    if (!canSend(original, value.mode === 'transfer' ? value.fromStoreId : value.toStoreId)) fail('A loja original não está vinculada ao operador deste lote.', 403);
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'scan-action-lot:' + value.sessionId}))::text`;
+    const before = await tx.scanActionLot.findUnique({ where: { sessionId: value.sessionId }, include: { scans: true } });
+    if (before) {
+      sameContext(before, original, value);
+      if (before.status === 'confirmed') return { lot: (await publicLots(tx, [before]))[0], synced: false };
+      if (before.transferId !== value.transferId) fail('A recuperação não pode trocar a remessa de um lote já salvo.');
+      if (before.status !== value.status) fail('A recuperação não pode reabrir ou arquivar um lote já salvo.');
+      for (const scan of value.scans) {
+        const saved = before.scans.find(s => s.clientScanId === scan.clientScanId);
+        if (saved && saved.payloadHash !== hash(scan)) fail('A recuperação encontrou uma leitura já salva com dados diferentes. O histórico original foi preservado.');
+      }
+    }
+    const result = await syncWithin(tx, original, value, payloadHash);
+    if (!result.synced) return result;
+    const auditId = 'scan-recovery:' + hash({ sessionId: value.sessionId, originalOperatorId, revision: value.revision, payloadHash });
+    const metadata = { source: 'bipar-administrative-recovery-v1', recoveredById: recoveredBy.id, originalOperatorId,
+      sessionId: value.sessionId, mode: value.mode, fromStoreId: value.fromStoreId, toStoreId: value.toStoreId,
+      transferId: value.transferId, revision: value.revision, payloadHash, originalStatus: value.status,
+      previousReadCount: before?.scans.length || 0, readCount: value.scans.length, activeCount: result.lot.scanCount,
+      removedCount: result.lot.removedCount, pendingCount: result.lot.pendingCount, stockChanged: false };
+    await tx.adminAction.upsert({ where: { id: auditId }, update: {}, create: { id: auditId, adminId: recoveredBy.id,
+      action: 'scan_action_draft_recovered', description: 'Rascunho de bipagem recuperado com o operador, datas e leituras originais. Nenhum estoque alterado.', metadata: JSON.stringify(metadata) } });
+    return result;
   });
 }
 
@@ -248,4 +287,4 @@ async function markConfirmed(tx, actor, value, transfer, items) {
   return sessionId;
 }
 
-module.exports = { MAX_SCANS, sync, history, detail, markConfirmed };
+module.exports = { MAX_SCANS, sync, recover, history, detail, markConfirmed };

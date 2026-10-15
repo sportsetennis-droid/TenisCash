@@ -13,6 +13,7 @@ router.get('/me',handle(async r=>({user:r.transferActor})));
 router.get('/actions/context',handle(r=>actions.context(prisma,r.transferActor)));
 router.post('/actions/lookup',handle(r=>actions.lookup(prisma,r.transferActor,r.body||{})));
 router.post('/actions/drafts/sync',handle(r=>actionHistory.sync(prisma,r.transferActor,r.body||{})));
+router.post('/actions/drafts/recover',handle(r=>actionHistory.recover(prisma,r.transferActor,r.body||{})));
 router.get('/actions/history',handle(r=>actionHistory.history(prisma,r.transferActor,r.query)));
 router.get('/actions/history/:sessionId',handle(r=>actionHistory.detail(prisma,r.transferActor,r.params.sessionId)));
 router.post('/actions/send-preview',handle(r=>actions.sendPreview(prisma,r.transferActor,r.body||{})));

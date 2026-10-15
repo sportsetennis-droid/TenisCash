@@ -34,6 +34,7 @@ const movementState = async f => ({
   transfers: await db.stockTransfer.findMany({ where: { fromStoreId: f.from.id }, orderBy: { id: 'asc' } }),
 });
 const confirmScan = (f, s) => ({ clientScanId: s.clientScanId, barcode: s.barcode, productSizeId: f.size.id, confirmedSize: '', resolvedSize: f.size.size });
+const recoveryAdmin = (role = 'admin') => db.user.create({ data: { name: 'Recovery administrator', phone: 'HA' + randomUUID(), pin: 'test', role } });
 
 (async () => {
   await test('106 identical EANs remain 106 pieces; replay does not duplicate; snapshots are server sourced and sync never moves stock', async () => {
@@ -133,6 +134,41 @@ const confirmScan = (f, s) => ({ clientScanId: s.clientScanId, barcode: s.barcod
     await assert.rejects(() => history.sync(db, f.sender, input), e => e.status === 403);
   });
 
+  await test('administrative recovery preserves repeated pieces, original operator and evidence with one atomic audit and no stock changes', async () => {
+    const f = await fixture(), admin = await recoveryAdmin(), before = await movementState(f);
+    const scans = Array.from({ length: 106 }, () => f.scan({ createdAt: '2026-10-02T15:30:00-03:00' }));
+    scans.push(f.scan({ removed: true }), f.scan({ barcode: 'UNREAD-RECOVERY', product: null, error: 'Ainda pendente' }));
+    const input = { ...f.lot(scans), originalOperatorId: f.sender.id };
+    const [first, replay] = await Promise.all([history.recover(db, admin, input), history.recover(db, admin, input)]);
+    assert.equal(first.lot.operator.id, f.sender.id); assert.equal(replay.lot.scanCount, 107);
+    assert.equal(first.lot.recognizedCount, 106); assert.equal(first.lot.pendingCount, 1); assert.equal(first.lot.removedCount, 1);
+    const rows = await db.scanActionRead.findMany({ where: { lotId: input.sessionId } });
+    assert.equal(rows.length, 108); assert.equal(rows.filter(s => s.scannedAt.toISOString() === '2026-10-02T18:30:00.000Z').length, 106);
+    const audits = await db.adminAction.findMany({ where: { action: 'scan_action_draft_recovered', metadata: { contains: input.sessionId } } });
+    assert.equal(audits.length, 1); assert.equal(audits[0].adminId, admin.id);
+    const audit = JSON.parse(audits[0].metadata); assert.equal(audit.originalOperatorId, f.sender.id); assert.equal(audit.stockChanged, false); assert.equal(audit.readCount, 108);
+    await history.sync(db, f.sender, input);
+    assert.deepEqual(await movementState(f), before);
+  });
+
+  await test('recovery rejects privilege claims, changed ownership, removed-read revival and conflicting saved evidence', async () => {
+    const f = await fixture(), admin = await recoveryAdmin(), manager = await recoveryAdmin('manager'), read = f.scan({ removed: true }), input = { ...f.lot([read]), originalOperatorId: f.sender.id };
+    for (const actor of [f.sender, { ...f.sender, role: 'superadmin' }, manager]) await assert.rejects(() => history.recover(db, actor, input), e => e.status === 403);
+    await history.recover(db, admin, input);
+    const before = await movementState(f), saved = await db.scanActionLot.findUnique({ where: { sessionId: input.sessionId }, include: { scans: true } });
+    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, scans: [{ ...read, removed: false }] }), e => e.status === 409);
+    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, scans: [{ ...read, barcode: 'OTHER' }] }), e => e.status === 409);
+    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, originalOperatorId: f.receiver.id }), e => e.status === 403);
+    await assert.rejects(() => history.recover(db, admin, { ...input, revision: 2, toStoreId: f.other.id }), e => e.status === 409);
+    await db.user.update({ where: { id: admin.id }, data: { role: 'seller' } });
+    await assert.rejects(() => history.recover(db, { ...admin, role: 'superadmin' }, input), e => e.status === 403);
+    await db.user.update({ where: { id: admin.id }, data: { role: 'admin' } });
+    await db.user.update({ where: { id: f.sender.id }, data: { storeId: f.other.id } });
+    await assert.rejects(() => history.recover(db, admin, input), e => e.status === 403);
+    assert.deepEqual(await db.scanActionLot.findUnique({ where: { sessionId: input.sessionId }, include: { scans: true } }), saved);
+    assert.deepEqual(await movementState(f), before);
+  });
+
   await test('HTTP routes authenticate, scope drafts and return independent complete history exports', async () => {
     process.env.JWT_SECRET = 'local-test-' + randomUUID();
     const express = require('express'), jwt = require('jsonwebtoken'), app = express();
@@ -158,6 +194,11 @@ const confirmScan = (f, s) => ({ clientScanId: s.clientScanId, barcode: s.barcod
       const exported = await request('/actions/history?mode=transfer&export=1&pageSize=1', 200);
       assert.equal(exported.lots.length, 4); assert.equal(exported.totals.scans, 5); assert.ok(exported.exportedAt);
       const receipt = await request('/actions/history?mode=receipt', 200); assert.equal(receipt.totals.scans, 0);
+      const admin = await recoveryAdmin(), recovery = { ...f.lot([f.scan()]), originalOperatorId: f.sender.id };
+      await request('/actions/drafts/recover', 401, recovery, '');
+      await request('/actions/drafts/recover', 403, recovery);
+      const restored = await request('/actions/drafts/recover', 200, recovery, jwt.sign({ userId: admin.id }, process.env.JWT_SECRET));
+      assert.equal(restored.lot.operator.id, f.sender.id); assert.equal(restored.lot.scanCount, 1);
     } finally {
       await new Promise(resolve => server.close(resolve));
       await require('../src/middleware').prisma.$disconnect();

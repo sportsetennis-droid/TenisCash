@@ -21,11 +21,11 @@ function storage(initial = {}) {
   const data = new Map(Object.entries(initial));
   return { get length() { return data.size; }, key: index => [...data.keys()][index] || null, getItem: key => data.has(key) ? data.get(key) : null, setItem: (key, value) => data.set(key, String(value)), removeItem: key => data.delete(key), data };
 }
-function harness(shared) {
+function harness(shared, options = {}) {
   const nodes = new Map(), requests = [], historyRequests = [], scannerInstances = [], tracks = [], intervals = new Map(), timers = new Map();
   let nextTimer = 1;
   const localStorage = shared || storage({ [settingsKey]: JSON.stringify({ mode: 'transfer', stores: { transfer: stores[1].id }, origin: stores[0].id }) });
-  const sessionStorage = storage({ tc_transfer_token: 'isolated-token' });
+  const sessionStorage = storage({ tc_transfer_token: options.token || 'isolated-token' });
   let document;
   class Element {
     constructor(tag = 'div', id = '') { this.tagName = tag.toUpperCase(); this.id = id; this._value = ''; this.children = []; this.events = {}; this.dataset = {}; this.style = { setProperty(name, value) { this[name] = value; } }; this.hidden = false; this.disabled = false; this.checked = false; this.textContent = ''; this.classList = { toggle() {}, add() {}, remove() {} }; }
@@ -63,27 +63,27 @@ function harness(shared) {
   document = { body, hidden: false, activeElement: body, events: {}, getElementById: id => nodes.get(id) || null,
     createElement: tag => new Element(tag), addEventListener(name, fn) { (this.events[name] ||= []).push(fn); } };
   const h = { requests, historyRequests, nodes, localStorage, sessionStorage, scannerInstances, tracks, intervals, timers, document,
-    get: id => nodes.get(id), handler: null, historyHandler: null, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
+    get: id => nodes.get(id), handler: null, historyHandler: null, contextHandler: null, contextUser: person, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
   const window = { events: {}, addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
     ScannerView: { markup: () => '__SCANNER__' }, ScannerOCR: { recognize: canvas => h.recognize(canvas) },
     ScannerAuto: { stopDecoder() {}, decodeInWorker: canvas => h.decode(canvas), create(options) { const scanner = { options, resets: [], stopped: false, tick() {}, reset(value) { this.resets.push(value); this.stopped = false; }, stop() { this.stopped = true; } }; scannerInstances.push(scanner); return scanner; } },
     fecharScanner() {} };
-  const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams,
+  const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams, atob,
     navigator: { clipboard: { writeText: async text => { h.copiedText = text; } }, mediaDevices: { getUserMedia: async () => { const track = { stopped: false, stop() { this.stopped = true; } }; tracks.push(track); return { getTracks: () => [track] }; } } },
     Option: function(text, value) { const option = new Element('option'); option.textContent = text; option.value = value; return option; },
     confirm: () => true, setTimeout: (fn, ms) => { const id = nextTimer++; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), setInterval: fn => { const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
     fetch: async (url, options = {}) => {
       assert.ok(url.startsWith('/api/scan-transfers/actions') || url === '/api/auth/login', 'New action must never call inventory or an external endpoint: ' + url);
       const request = { url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null, auth: options.headers?.Authorization };
-      if (url.includes('/drafts/sync') || url.includes('/history')) {
+      if (/\/drafts\/(sync|recover)$/.test(url) || url.includes('/history')) {
         historyRequests.push(request);
         if (h.historyHandler) return h.historyHandler(request);
-        if (url.endsWith('/drafts/sync')) return response({ synced: true, lot: { sessionId: request.body.sessionId, revision: request.body.revision, status: request.body.status } });
+        if (/\/drafts\/(sync|recover)$/.test(url)) return response({ synced: true, lot: { sessionId: request.body.sessionId, revision: request.body.revision, status: request.body.status } });
         return response({ lots: [], totals: {}, page: 1, totalPages: 1, totalLots: 0 });
       }
       requests.push(request);
       if (url === '/api/auth/login') return response({ token: 'isolated-login-token' });
-      if (url.endsWith('/context')) return response({ user: person, stores, allowedStoreIds: [stores[0].id, stores[1].id] });
+      if (url.endsWith('/context')) return h.contextHandler ? h.contextHandler(request) : response({ user: h.contextUser, stores, allowedStoreIds: [stores[0].id, stores[1].id] });
       if (h.handler) return h.handler(request);
       if (url.endsWith('/lookup')) return response({ product, requiresSizeConfirmation: true });
       if (url.includes('/pending?')) return response({ transfers: [] });
@@ -100,6 +100,12 @@ function harness(shared) {
 }
 async function flush() { for (let i = 0; i < 6; i++) await Promise.resolve(); }
 async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
+function legacyActionDraft(operatorId, mode = 'transfer', count = 2) {
+  const context = { actorId: operatorId, mode, fromStoreId: mode === 'transfer' ? stores[0].id : '', toStoreId: stores[1].id, transferId: '' };
+  return { key: JSON.stringify([context.actorId, context.mode, context.fromStoreId, context.toStoreId, context.transferId]), sessionId: randomUUID(), context,
+    scans: Array.from({ length: count }, (_, i) => ({ clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: new Date(Date.parse('2026-10-14T19:22:00Z') + i * 1000).toISOString(), product: lupo, removed: i === count - 1 })) };
+}
+function tokenFor(userId, marker) { return Buffer.from('{}').toString('base64url') + '.' + Buffer.from(JSON.stringify({ userId, marker })).toString('base64url') + '.test-only'; }
 
 (async () => {
   await test('reload in transfer mode loads destination options and keeps the selected origin and destination', async () => {
@@ -691,6 +697,174 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(posts.some(r => r.body.sessionId === other.sessionId), false);
     assert.equal(JSON.stringify(first.scans.map(s => [s.clientScanId, s.createdAt])), original);
   });
+  await test('admin and superadmin recover every foreign lot without changing operator, repeated pieces or removed flags', async () => {
+    for (const role of ['admin', 'superadmin']) {
+      const h = harness(); h.contextUser = { ...person, role };
+      const other = legacyActionDraft(randomUUID(), 'transfer', 106), receipt = legacyActionDraft(other.context.actorId, 'receipt', 3);
+      receipt.context.transferId = receipts[0].id; receipt.key = JSON.stringify([receipt.context.actorId, 'receipt', '', receipt.context.toStoreId, receipt.context.transferId]);
+      for (const d of [other, receipt]) h.localStorage.setItem('tc_bipar_action_draft_v1:' + d.key, JSON.stringify(d));
+      await h.boot(); await flush();
+      const posts = h.historyRequests.filter(r => r.url.endsWith('/drafts/recover'));
+      assert.equal(posts.length, 2); assert.equal(posts[0].body.originalOperatorId, other.context.actorId);
+      assert.equal(posts[0].body.sessionId, other.sessionId); assert.equal(posts[0].body.scans.length, 106);
+      assert.deepEqual(posts[0].body.scans.map(s => [s.clientScanId, s.createdAt, s.barcode, s.removed]), other.scans.map(s => [s.clientScanId, s.createdAt, s.barcode, s.removed]));
+      assert.equal(posts[1].body.transferId, receipts[0].id);
+      assert.equal(h.api.state().currentDraft.context.actorId, person.id); assert.equal(h.api.activeReads().length, 0);
+      assert.equal(h.get('action-readings').querySelectorAll('[data-scan-size]').length, 0);
+      assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), JSON.stringify(other));
+      assert.equal(h.requests.some(r => /confirm$/.test(r.url)), false);
+    }
+  });
+  await test('seller and manager never recover or edit another operator draft', async () => {
+    for (const role of ['seller', 'manager']) {
+      const h = harness(); h.contextUser = { ...person, role }; const other = legacyActionDraft(randomUUID());
+      h.localStorage.setItem('tc_bipar_action_draft_v1:' + other.key, JSON.stringify(other)); await h.boot(); await flush();
+      assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+      assert.equal(h.api.activeReads().length, 0); assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), JSON.stringify(other));
+    }
+  });
+  await test('a rejected administrative recovery stays preserved and is never retried as the administrator own sync', async () => {
+    const h = harness(); h.contextUser = { ...person, role: 'admin' }; const other = legacyActionDraft(randomUUID());
+    h.localStorage.setItem('tc_bipar_action_draft_v1:' + other.key, JSON.stringify(other));
+    h.historyHandler = request => request.url.endsWith('/drafts/recover') ? response({ error: 'Original operator unavailable' }, 403) : response({ lots: [], totals: {} });
+    await h.boot(); await flush(); assert.equal(h.historyRequests.filter(r => r.url.endsWith('/drafts/recover')).length, 1);
+    assert.equal(h.historyRequests.some(r => r.url.endsWith('/drafts/sync')), false);
+    assert.match(h.get('action-sync-status').textContent, /Original operator unavailable/);
+    assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), JSON.stringify(other));
+  });
+  await test('legacy inventory sequences and pending confirmations are inventoried without reclassification or replay', async () => {
+    const h = harness(); h.contextUser = { ...person, role: 'superadmin' };
+    const sources = { tc_bipar_transfer_sequence_v1: [{ scanKey: 'round:scan', storeId: stores[0].id, roundId: 'round', archived: true }],
+      tc_bipar_transfer_pending_v1: { actorId: randomUUID(), payload: { scanKeys: ['round:scan'], requestId: randomUUID() } },
+      [pendingKey]: { actorId: randomUUID(), sessionId: randomUUID(), body: { scans: [{ clientScanId: randomUUID() }], requestId: randomUUID() } },
+      'tc_bipar_action_draft_v1:unknown': { scans: [{ clientScanId: randomUUID() }], context: {} } };
+    for (const [key, value] of Object.entries(sources)) h.localStorage.setItem(key, JSON.stringify(value));
+    await h.boot(); await flush(); const inventory = h.window.BiparActions.recoveryInventory();
+    assert.equal(inventory.length, 4); assert.equal(inventory.find(s => s.type === 'inventory_sequence').recordCount, 1);
+    assert.equal(inventory.filter(s => s.type === 'pending_confirmation').length, 2); assert.ok(inventory.every(s => s.needsReview));
+    assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+    assert.equal(h.requests.some(r => /confirm$/.test(r.url)), false);
+    for (const [key, value] of Object.entries(sources)) assert.equal(h.localStorage.getItem(key), JSON.stringify(value));
+  });
+  await test('expired session token falls back to a verified existing token for the same user and recovers unchanged scans', async () => {
+    const expired = tokenFor(person.id, 'expired'), fresh = tokenFor(person.id, 'fresh'), shared = storage({ loja_token: fresh, [settingsKey]: JSON.stringify({ mode: 'transfer', stores: { transfer: stores[1].id }, origin: stores[0].id }) });
+    const draft = legacyActionDraft(person.id), original = JSON.stringify(draft); shared.setItem('tc_bipar_action_draft_v1:' + draft.key, original);
+    const h = harness(shared, { token: expired }); h.contextHandler = request => request.auth === 'Bearer ' + expired ? response({ error: 'Expired' }, 401) : response({ user: person, stores, allowedStoreIds: [stores[0].id, stores[1].id] });
+    await h.boot(); await flush(); assert.equal(h.requests.filter(r => r.url.endsWith('/context')).length, 2);
+    assert.equal(h.sessionStorage.getItem('tc_transfer_token'), fresh); assert.equal(h.api.state().actor.id, person.id);
+    const posted = h.historyRequests.find(r => r.url.endsWith('/drafts/sync'));
+    assert.equal(posted.auth, 'Bearer ' + fresh); assert.equal(posted.body.sessionId, draft.sessionId);
+    assert.deepEqual(posted.body.scans.map(s => [s.clientScanId, s.createdAt, s.removed]), draft.scans.map(s => [s.clientScanId, s.createdAt, s.removed]));
+  });
+  await test('expired token never silently switches to a valid login belonging to another user', async () => {
+    const expired = tokenFor(person.id, 'expired'), shared = storage({ loja_token: tokenFor(randomUUID(), 'other') });
+    const draft = legacyActionDraft(person.id), original = JSON.stringify(draft); shared.setItem('tc_bipar_action_draft_v1:' + draft.key, original);
+    const h = harness(shared, { token: expired }); h.contextHandler = () => response({ error: 'Expired' }, 401);
+    await h.boot(); assert.equal(h.requests.filter(r => r.url.endsWith('/context')).length, 1); assert.equal(h.api.state().actor, null);
+    assert.equal(h.historyRequests.length, 0); assert.equal(shared.getItem('tc_bipar_action_draft_v1:' + draft.key), original);
+  });
+  await test('fallback candidate identity is verified by the server before any draft is synchronized', async () => {
+    const expired = tokenFor(person.id, 'expired'), fresh = tokenFor(person.id, 'fresh'), shared = storage({ loja_token: fresh });
+    const h = harness(shared, { token: expired }); h.contextHandler = request => request.auth === 'Bearer ' + expired ? response({}, 401) : response({ user: { ...person, id: randomUUID(), role: 'superadmin' }, stores, allowedStoreIds: [stores[0].id] });
+    await h.boot(); assert.equal(h.api.state().actor, null); assert.equal(h.historyRequests.length, 0);
+    assert.equal(h.sessionStorage.getItem('tc_transfer_token'), expired); assert.match(h.get('action-message').textContent, /outra conta/);
+  });
+  await test('a conflicting foreign lot is left for review without merging or changing the original snapshot', async () => {
+    const h = harness(); h.contextUser = { ...person, role: 'superadmin' }; const other = legacyActionDraft(randomUUID());
+    const original = JSON.stringify(other); h.localStorage.setItem('tc_bipar_action_draft_v1:' + other.key, original);
+    h.historyHandler = request => request.url.endsWith('/drafts/recover') ? response({ error: 'Review original lot' }, 409) : response({ lots: [], totals: {} });
+    await h.boot(); await flush(); assert.equal(h.historyRequests.filter(r => r.url.endsWith('/drafts/recover')).length, 1);
+    assert.equal(h.historyRequests.some(r => r.url.includes('/history/' + other.sessionId)), false);
+    assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), original); assert.equal(h.api.activeReads().length, 0);
+  });
+  await test('late recovery acknowledgement after admin logout cannot alter original operator storage', async () => {
+    const h = harness(); h.contextUser = { ...person, role: 'admin' }; const other = legacyActionDraft(randomUUID()); other.revision = 1;
+    const original = JSON.stringify(other); h.localStorage.setItem('tc_bipar_action_draft_v1:' + other.key, original); const late = deferred();
+    h.historyHandler = request => request.url.endsWith('/drafts/recover') ? late.promise : response({ lots: [], totals: {} });
+    await h.boot(); await flush(); h.get('action-switch-user').onclick(); late.resolve(response({ synced: true, lot: { revision: 1, status: 'open' } })); await flush();
+    assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), original); assert.equal(h.api.state().actor, null);
+  });
+  await test('a mismatched stored context never makes another operator lot editable in the admin workspace', async () => {
+    const h = harness(); h.contextUser = { ...person, role: 'admin' }; const other = legacyActionDraft(randomUUID());
+    other.key = JSON.stringify([person.id, 'transfer', stores[0].id, stores[1].id, '']);
+    h.localStorage.setItem('tc_bipar_action_draft_v1:' + other.key, JSON.stringify(other)); await h.boot(); await flush();
+    assert.equal(h.api.state().currentDraft.context.actorId, person.id); assert.equal(h.api.activeReads().length, 0);
+    assert.equal(h.historyRequests.filter(r => r.url.endsWith('/drafts/recover')).length, 1);
+    assert.equal(h.localStorage.getItem('tc_bipar_action_draft_v1:' + other.key), JSON.stringify(other));
+  });
+  await test('equal or missing revisions choose the compatible complete superset regardless of storage order', async () => {
+    for (const reversed of [false, true]) {
+      const h = harness(); h.contextUser = { ...person, role: 'superadmin' };
+      const full = legacyActionDraft(randomUUID(), 'transfer', 3), partial = JSON.parse(JSON.stringify(full)); partial.scans.pop();
+      const sources = [['tc_bipar_action_draft_v1:' + full.key, full], ['tc_bipar_action_archive_v1:' + full.sessionId, partial]];
+      for (const [key, value] of reversed ? [...sources].reverse() : sources) h.localStorage.setItem(key, JSON.stringify(value));
+      await h.boot(); await flush(); const posts = h.historyRequests.filter(r => r.url.endsWith('/drafts/recover'));
+      assert.equal(posts.length, 1); assert.equal(posts[0].body.scans.length, 3);
+      assert.deepEqual(posts[0].body.scans.map(s => s.clientScanId), full.scans.map(s => s.clientScanId));
+      assert.equal(h.window.BiparActions.recoveryInventory().length, 0);
+      for (const [key, value] of sources) assert.equal(h.localStorage.getItem(key), JSON.stringify(value));
+    }
+  });
+  await test('incompatible copies preserve all evidence and cannot silently sync a subset or claim success', async () => {
+    for (const cause of ['barcode', 'extra_ids', 'newer_missing', 'context']) {
+      const h = harness(); h.contextUser = { ...person, role: 'admin' };
+      const first = legacyActionDraft(randomUUID(), 'transfer', 3), second = JSON.parse(JSON.stringify(first));
+      if (cause === 'barcode') second.scans[0].barcode = '7900373303889';
+      if (cause === 'extra_ids') { first.scans.pop(); second.scans.shift(); }
+      if (cause === 'newer_missing') { second.scans.pop(); second.revision = 2; }
+      if (cause === 'context') second.context.toStoreId = stores[2].id;
+      const sources = [['tc_bipar_action_draft_v1:' + first.key, first], ['tc_bipar_action_archive_v1:' + first.sessionId, second]];
+      for (const [key, value] of sources) h.localStorage.setItem(key, JSON.stringify(value));
+      await h.boot(); await flush(); assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+      assert.match(h.get('action-sync-status').textContent, /cópias divergentes/); assert.doesNotMatch(h.get('action-sync-status').textContent, /Bipes salvos/);
+      assert.equal(h.window.BiparActions.recoveryInventory().filter(i => i.type === 'conflicting_action_copies').length, 1);
+      for (const [key, value] of sources) assert.equal(h.localStorage.getItem(key), JSON.stringify(value));
+    }
+  });
+  await test('conflicting copies also stop an ordinary operator own recovery instead of hiding lost read IDs', async () => {
+    const h = harness(), first = legacyActionDraft(person.id, 'transfer', 3), second = JSON.parse(JSON.stringify(first));
+    second.scans.pop(); second.revision = 5;
+    h.localStorage.setItem('tc_bipar_action_draft_v1:' + first.key, JSON.stringify(first));
+    h.localStorage.setItem('tc_bipar_action_archive_v1:' + first.sessionId, JSON.stringify(second));
+    h.localStorage.setItem(pendingKey, JSON.stringify({ actorId: person.id, body: {} })); // Avoid independent catalog refresh while inspecting these saved copies.
+    await h.boot(); await flush(); assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+    assert.equal(h.api.activeReads().length, 2); assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
+  });
+  await test('independent conflict snapshots survive normal checkpoint writes and reload without inventing pieces', async () => {
+    const h = harness(), first = legacyActionDraft(person.id, 'transfer', 3), second = JSON.parse(JSON.stringify(first)); second.scans[0].barcode = '7900373303889';
+    h.localStorage.setItem('tc_bipar_action_draft_v1:' + first.key, JSON.stringify(first)); h.localStorage.setItem('tc_bipar_action_archive_v1:' + first.sessionId, JSON.stringify(second));
+    h.localStorage.setItem(pendingKey, JSON.stringify({ actorId: person.id, body: {} }));
+    await h.boot(); await flush();
+    const backups = () => [...h.localStorage.data.keys()].filter(key => key.startsWith('tc_bipar_action_archive_v1:recovery:'));
+    assert.equal(backups().length, 2); h.api.recoverDrafts(); await flush(); assert.equal(backups().length, 2);
+    assert.equal(h.api.persist(), true);
+    const reloaded = harness(h.localStorage); await reloaded.boot(); await flush();
+    assert.match(reloaded.get('action-sync-status').textContent, /cópias divergentes/);
+    assert.equal(reloaded.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+    const all = backups().flatMap(key => JSON.parse(h.localStorage.getItem(key)).scans);
+    assert.equal(new Set(all.map(s => s.clientScanId)).size, 3); assert.ok(all.some(s => s.barcode === '7900373303889'));
+  });
+  await test('failed conflict checkpoint storage blocks subsequent writes that would erase an original copy', async () => {
+    const h = harness(), first = legacyActionDraft(person.id, 'transfer', 3), second = JSON.parse(JSON.stringify(first)); second.scans[0].barcode = '7900373303889';
+    const archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId, original = JSON.stringify(second);
+    h.localStorage.setItem('tc_bipar_action_draft_v1:' + first.key, JSON.stringify(first)); h.localStorage.setItem(archiveKey, original);
+    h.localStorage.setItem(pendingKey, JSON.stringify({ actorId: person.id, body: {} }));
+    const save = h.localStorage.setItem; h.localStorage.setItem = (key, value) => { if (key.startsWith('tc_bipar_action_archive_v1:recovery:')) throw Error('Quota full'); save(key, value); };
+    await h.boot(); await flush(); assert.equal(h.api.persist(), false); assert.equal(h.localStorage.getItem(archiveKey), original);
+    assert.match(h.get('action-message').textContent, /preservadas/); assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+  });
+  await test('receipt boot preserves divergent checkpoints before fast lookups and delayed shipment loading can save', async () => {
+    const shared = receiptStorage(), first = legacyActionDraft(person.id, 'receipt', 3), second = JSON.parse(JSON.stringify(first)); second.scans[0].barcode = '7900373303889';
+    const archiveKey = 'tc_bipar_action_archive_v1:' + first.sessionId;
+    shared.setItem('tc_bipar_action_draft_v1:' + first.key, JSON.stringify(first)); shared.setItem(archiveKey, JSON.stringify(second));
+    const h = harness(shared), delayed = deferred(); h.handler = request => request.url.includes('/pending?') ? delayed.promise : response({ product: lupo, requiresSizeConfirmation: false });
+    const booting = h.boot(); await flush(); await flush(); delayed.resolve(response({ transfers: [] })); await booting; await flush();
+    const copies = [...shared.data.keys()].filter(key => key.startsWith('tc_bipar_action_archive_v1:recovery:')).map(key => JSON.parse(shared.getItem(key)));
+    assert.ok(copies.some(copy => copy.scans.some(scan => scan.barcode === '7900373303889')));
+    assert.equal(new Set(copies.flatMap(copy => copy.scans.map(scan => scan.clientScanId))).size, 3);
+    assert.equal(h.historyRequests.some(r => /\/drafts\/(sync|recover)$/.test(r.url)), false);
+    assert.match(h.get('action-sync-status').textContent, /cópias divergentes/);
+  });
   await test('late synchronization acknowledgement after account change cannot mark another account saved', async () => {
     const h = harness(); await h.boot(); await h.scan(product.barcode); const draft = h.api.state().currentDraft, late = deferred();
     h.historyHandler = () => late.promise; const sending = h.api.flushSync(draft); await flush();
@@ -764,5 +938,5 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
       assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
     }
   });
-  console.log('PASS: 58 action UI regression groups; isolated mocks only.');
+  console.log('PASS: 74 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
