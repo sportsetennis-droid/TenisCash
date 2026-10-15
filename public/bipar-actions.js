@@ -503,6 +503,7 @@
   }
   async function loadHistory(page = 1) {
     const request = ++historyRequest, authToken = token, owner = actor?.id, filters = historyFilters(); historyPage = page;
+    $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true;
     $('action-history-detail').hidden = true; $('action-history-list').replaceChildren(); $('action-history-summary').textContent = ''; $('action-history-pending').textContent = '';
     $('action-history-copy').disabled = true; $('action-history-previous').disabled = true; $('action-history-next').disabled = true;
     if (!owner) { historyMessage('Entre com sua conta para consultar os históricos.'); return; }

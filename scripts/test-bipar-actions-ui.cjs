@@ -756,5 +756,13 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     late.resolve(response({ lots: [{ scanCount: 999, operator: { name: 'Old actor data' } }], totals: { scans: 999 }, totalPages: 1 })); await loading;
     assert.equal(h.get('action-history-list').children.length, 0); assert.equal(h.get('action-history-summary').textContent, '');
   });
-  console.log('PASS: 57 action UI regression groups; isolated mocks only.');
+  await test('a new history query immediately clears a copied report from the previous action or filters', async () => {
+    const h = harness(); await h.boot();
+    for (const run of [() => h.get('action-history-receipt').onclick(), () => h.get('action-history-transfer').onclick(), () => h.get('action-history-store').emit('change'), () => h.get('action-history-refresh').onclick()]) {
+      h.get('action-history-copy-text').value = '*RECEBIMENTOS*\nTexto anterior'; h.get('action-history-copy-text').hidden = false;
+      await run();
+      assert.equal(h.get('action-history-copy-text').value, ''); assert.equal(h.get('action-history-copy-text').hidden, true);
+    }
+  });
+  console.log('PASS: 58 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
