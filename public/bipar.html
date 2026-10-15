@@ -111,6 +111,16 @@
   .action-reading input { width:100%;min-height:46px;font:inherit;padding:10px;border:1.5px solid #bbb;border-radius:8px;margin:6px 0; }
   #action-setup .btn,#action-workspace .btn { min-height:44px; }
   #action-confirm { width:100%; }
+  .action-history-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .action-history-tabs button { flex:1; }
+  .action-history-tabs [aria-pressed="true"] { background:#d95316;color:white;border-color:#d95316; }
+  .action-history-filters { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0; }
+  .action-history-filters label { display:block;min-width:0;font-size:14px;font-weight:600; }
+  .action-history-filters input,.action-history-filters select { width:100%;min-width:0;min-height:44px;padding:8px;font:inherit;border:1px solid #bbb;border-radius:8px;background:#fff;color:#222;margin-top:5px; }
+  .action-history-pagination { display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  #action-history-copy-text { width:100%;min-height:220px;font:14px/1.5 monospace;padding:10px;border:1px solid #aaa;border-radius:8px;margin-top:12px; }
+  .action-history-scan { padding:10px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere; }
+  #action-history-detail { margin-top:18px;padding-top:14px;border-top:2px solid #ddd; }
 
   @media (max-width: 600px) {
     .transfer-card { padding:14px; }
@@ -225,6 +235,8 @@
   <section id="action-workspace" class="transfer-card" hidden>
     <h2 id="action-title">Mercadoria desta ação</h2>
     <p id="action-context" aria-live="polite"></p>
+    <p id="action-sync-status" class="transfer-message" role="status" aria-live="polite" hidden></p>
+    <button id="action-sync-retry" type="button" class="btn btn-secondary" hidden>Tentar sincronizar os bipes</button>
     <div id="action-readings" class="action-readings"></div>
     <div class="actions"><button id="action-preview" type="button" class="btn btn-secondary">Conferir lote</button><button id="action-clear" type="button" class="btn btn-secondary">Começar novo lote</button></div>
     <section id="action-review" hidden>
@@ -234,6 +246,27 @@
     </section>
     <div id="action-pending" hidden><p class="transfer-message transfer-error">O resultado do envio precisa ser confirmado. Consulte a mesma operação antes de começar outro lote.</p><button id="action-retry" class="btn btn-secondary" type="button">Verificar envio pendente</button></div>
     <p id="action-result" class="transfer-message" role="status" hidden></p>
+  </section>
+
+  <section id="action-history" class="transfer-card" hidden aria-labelledby="action-history-title">
+    <h2 id="action-history-title">Históricos por ação</h2>
+    <div class="action-history-tabs" aria-label="Ação do histórico">
+      <button id="action-history-transfer" type="button" class="btn btn-secondary" aria-pressed="true">Transferências</button>
+      <button id="action-history-receipt" type="button" class="btn btn-secondary" aria-pressed="false">Recebimentos</button>
+    </div>
+    <div class="action-history-filters">
+      <label>Loja<select id="action-history-store"><option value="">Todas as lojas permitidas</option></select></label>
+      <label>Situação<select id="action-history-status"><option value="all">Todas</option><option value="open">Em bipagem</option><option value="confirmed">Confirmados</option><option value="archived">Arquivados sem confirmação</option></select></label>
+      <label>De<input id="action-history-from" type="date"></label>
+      <label>Até<input id="action-history-to" type="date"></label>
+    </div>
+    <div class="actions"><button id="action-history-month" type="button" class="btn btn-secondary">Mês atual</button><button id="action-history-refresh" type="button" class="btn btn-secondary">Atualizar histórico</button><button id="action-history-copy" type="button" class="btn btn-secondary" disabled>Copiar relação para WhatsApp</button></div>
+    <p id="action-history-message" class="transfer-message" role="status" hidden></p>
+    <p id="action-history-summary" aria-live="polite"></p><p id="action-history-pending"></p>
+    <div id="action-history-list"></div>
+    <div class="action-history-pagination"><button id="action-history-previous" type="button" class="btn btn-secondary" disabled>Anterior</button><span id="action-history-page"></span><button id="action-history-next" type="button" class="btn btn-secondary" disabled>Próxima</button></div>
+    <textarea id="action-history-copy-text" aria-label="Relação completa para copiar" readonly hidden></textarea>
+    <section id="action-history-detail" hidden><h3 id="action-history-detail-title">Bipes do lote</h3><p id="action-history-detail-note"></p><div id="action-history-detail-list"></div><button id="action-history-close-detail" type="button" class="btn btn-secondary">Fechar detalhes</button></section>
   </section>
 
   <details id="legacy-inventory-transfer" style="margin-top:20px" hidden><summary>Sequência de inventário anterior</summary>
@@ -278,7 +311,7 @@
   </section>
   </details>
 
-<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261014-pending-continuous-1"></script>
+<script src="/scanner-confirm.js?v=20260915-resume-2"></script><script src="/scanner-view.js?v=20260915-fullcamera-2"></script><script src="/scanner-round.js?v=20261002-actions-1"></script><script src="/bipar-transfer.js?v=20261002-actions-1"></script><script src="/bipar-actions.js?v=20261015-action-history-1"></script>
 <script src="/vendor/barcode/zxing-reader-3.1.4.js"></script><script src="/scanner-auto.js?v=20260915-resume-2"></script><script src="/scanner-regions.js?v=20260914-worker-1"></script><script src="/scanner-ocr.js?v=20260914-auto-3"></script>
 <script>
   const STORAGE_LOJA = 'sports_tennis_bipar_loja';
@@ -1449,7 +1482,7 @@
   // Mantém foco no campo do bipe APENAS se o usuário não estiver editando outro input/select
   // Não rouba foco de inputs (vendedor-manual) nem dropdowns.
   document.addEventListener('click', (e) => {
-    if (e.target.closest('#action-setup,#action-workspace,#action-camera') || window.BiparActions?.hasFocus()) return;
+    if (e.target.closest('#action-setup,#action-workspace,#action-camera,#action-history') || window.BiparActions?.hasFocus()) return;
     if (e.target.closest('#bipar-transfer') || window.ScannerTransfer?.hasFocus()) return;
     if (document.getElementById('size-overlay') || document.getElementById('etiq-overlay') || document.getElementById('scanner-repeat-dialog')) return; // modal de tamanho aberto — não rouba foco
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' ||

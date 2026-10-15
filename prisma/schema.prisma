@@ -742,6 +742,55 @@ model StockTransfer {
   @@index([createdAt])
 }
 
+// Each distinct clientScanId is one physical piece, including repeated EANs.
+// These records describe scanning only; they never change a stock balance.
+model ScanActionLot {
+  sessionId    String @id
+  mode         String
+  operatorId   String
+  fromStoreId  String?
+  toStoreId    String
+  transferId   String?
+  transferHistory Json @default("[]")
+  revision     Int @default(0)
+  payloadHash  String
+  status       String @default("open")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  confirmedAt  DateTime?
+  scans        ScanActionRead[]
+
+  @@index([mode, fromStoreId, createdAt])
+  @@index([mode, toStoreId, createdAt])
+  @@index([transferId])
+  @@index([confirmedAt])
+}
+
+model ScanActionRead {
+  clientScanId String @id
+  lotId        String
+  lot          ScanActionLot @relation(fields: [lotId], references: [sessionId], onDelete: Restrict)
+  barcode      String
+  originalBarcode String?
+  barcodeHistory Json @default("[]")
+  payloadHash  String @default("")
+  scannedAt    DateTime
+  recordedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  removed      Boolean @default(false)
+  recognized   Boolean @default(false)
+  productSizeId String?
+  productName  String?
+  brand        String?
+  size         String?
+  confirmedSize String?
+  requiresSizeConfirmation Boolean @default(false)
+  error        String?
+
+  @@index([lotId, scannedAt])
+  @@index([scannedAt])
+}
+
 model StockTransferItem {
   id            String        @id @default(uuid())
   transferId    String

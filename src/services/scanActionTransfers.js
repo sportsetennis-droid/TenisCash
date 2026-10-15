@@ -5,6 +5,7 @@ const { operator, canSend } = require('./scanTransfers');
 const { resolveBarcodeRows, aliasRows } = require('./scannerCatalog');
 const { fiscalBarcodeTarget, learnScannerBarcode, validGtin } = require('./scannerReference');
 const { applyStoreStockDelta } = require('./storeStockLedger');
+const { markConfirmed } = require('./scanActionHistory');
 
 const SOURCE = 'bipar-actions-v1';
 const MAX_SCANS = 500;
@@ -70,7 +71,8 @@ function sendInput(input = {}) {
 }
 function receiveInput(input = {}) {
   if (!uuid(input.storeId)) fail('Selecione a loja de recebimento.', 400);
-  return { storeId: input.storeId.toLowerCase(), scans: scansInput(input, true) };
+  if (input.sessionId && !uuid(input.sessionId)) fail('Sessão inválida.', 400);
+  return { storeId: input.storeId.toLowerCase(), scans: scansInput(input, true), ...(input.sessionId ? { sessionId: input.sessionId.toLowerCase() } : {}) };
 }
 function confirmationInput(input) {
   if (!uuid(input.requestId) || !/^[a-f0-9]{64}$/.test(input.reviewToken || '')) fail('Confira o resumo antes de confirmar.', 400);
@@ -156,7 +158,6 @@ async function inspectScans(db, scans, blockers, expected = null) {
   const sizes = await db.productSize.findMany({ where: { id: { in: [...new Set(scans.map(scan => scan.productSizeId))] } }, include: { product: true } });
   const matches = await resolveCodes(db, scans, expected ? sizes.filter(size => expected.some(item => item.productSizeId === size.id)) : []);
   const sizesById = new Map(sizes.map(size => [size.id, size]));
-  const repeated = new Map();
   for (const scan of scans) {
     const size = sizesById.get(scan.productSizeId);
     const details = { clientScanId: scan.clientScanId, productSizeId: scan.productSizeId };
@@ -176,13 +177,9 @@ async function inspectScans(db, scans, blockers, expected = null) {
       if (!sent) block(blockers, 'unexpected_item', 'Foi lida uma peça que não pertence à transferência.', details);
       else if (!size || sizeKey(sent.size) !== sizeKey(size.size)) block(blockers, 'changed_variant', 'O tamanho da variante mudou após o envio. Confira o cadastro antes de receber.', details);
     }
-    const key = barcodeKey(scan.barcode);
-    if (!repeated.has(key)) repeated.set(key, []);
-    repeated.get(key).push(scan);
   }
-  // Sorting by UUID does not preserve scanning order. Exactly one reading of
-  // each code may omit confirmation; every additional piece needs consent.
-  for (const group of repeated.values()) if (group.length > 1 && group.filter(scan => !scan.duplicateConfirmed).length > 1) block(blockers, 'duplicate_confirmation', 'Confirme que cada repetição do código corresponde a outra peça física.', { barcode: group[0].barcode });
+  // Each new clientScanId is one piece, including identical products/EANs.
+  // Idempotency is enforced by scan identity, never by barcode repetition.
   return { sizes, sizesById };
 }
 async function buildSendPreview(db, actor, selection) {
@@ -251,6 +248,7 @@ async function sendConfirm(db, actor, input = {}) {
     for (const item of report.items) await applyStoreStockDelta(tx, { storeId: selection.fromStoreId, productSizeId: item.productSizeId, quantity: -item.quantity,
       type: 'transfer_out', source: SOURCE, reason: 'Envio da transferência #' + saved.code,
       metadata: { transferId: saved.id, actorId: actual.id, sessionId: selection.sessionId, clientScanIds: selection.scans.filter(scan => scan.productSizeId === item.productSizeId).map(scan => scan.clientScanId) } });
+    await markConfirmed(tx, actual, { ...selection, mode: 'transfer' }, saved, report.items);
     return { transfer: publicTransfer(saved), alreadySaved: false };
   });
 }
@@ -325,6 +323,7 @@ async function receiveConfirm(db, actor, id, input = {}) {
     for (const item of report.items) await applyStoreStockDelta(tx, { storeId: selection.storeId, productSizeId: item.productSizeId, quantity: item.expected,
       type: 'transfer_in', source: SOURCE, reason: 'Recebimento conferido da transferência #' + saved.code,
       metadata: { transferId: id, requestId: input.requestId, actorId: actual.id, clientScanIds: selection.scans.filter(scan => scan.productSizeId === item.productSizeId).map(scan => scan.clientScanId) } });
+    await markConfirmed(tx, actual, { ...selection, mode: 'receipt' }, saved, report.items);
     return { transfer: publicTransfer(saved), alreadySaved: false };
   });
 }

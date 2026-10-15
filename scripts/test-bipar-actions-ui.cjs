@@ -19,10 +19,10 @@ function deferred() { let resolve, reject; const promise = new Promise((ok, fail
 function response(data, status = 200) { return { ok: status >= 200 && status < 300, status, json: async () => data }; }
 function storage(initial = {}) {
   const data = new Map(Object.entries(initial));
-  return { getItem: key => data.has(key) ? data.get(key) : null, setItem: (key, value) => data.set(key, String(value)), removeItem: key => data.delete(key), data };
+  return { get length() { return data.size; }, key: index => [...data.keys()][index] || null, getItem: key => data.has(key) ? data.get(key) : null, setItem: (key, value) => data.set(key, String(value)), removeItem: key => data.delete(key), data };
 }
 function harness(shared) {
-  const nodes = new Map(), requests = [], scannerInstances = [], tracks = [], intervals = new Map();
+  const nodes = new Map(), requests = [], historyRequests = [], scannerInstances = [], tracks = [], intervals = new Map(), timers = new Map();
   let nextTimer = 1;
   const localStorage = shared || storage({ [settingsKey]: JSON.stringify({ mode: 'transfer', stores: { transfer: stores[1].id }, origin: stores[0].id }) });
   const sessionStorage = storage({ tc_transfer_token: 'isolated-token' });
@@ -42,6 +42,7 @@ function harness(shared) {
     querySelectorAll(selector) { const all = this.children.flatMap(child => [child, ...child.querySelectorAll('*')]); return all.filter(child => selector === '*' || selector === 'input' && child.tagName === 'INPUT' || selector === 'button' && child.tagName === 'BUTTON' || selector === '[data-scan-size]' && child.dataset.scanSize); }
     focus() { document.activeElement = this; }
     setSelectionRange() {}
+    select() {}
     getContext() { return { drawImage() {} }; }
     closest() { return null; }
     set innerHTML(value) {
@@ -57,22 +58,29 @@ function harness(shared) {
   function attach(node) { if (node.id) nodes.set(node.id, node); for (const child of node.children) attach(child); }
   function detach(node) { if (node.id && nodes.get(node.id) === node) nodes.delete(node.id); for (const child of node.children) detach(child); }
   for (const match of html.matchAll(/<(\w+)[^>]*\bid="([^"]+)"/g)) nodes.set(match[2], new Element(match[1], match[2]));
+  for (const match of html.matchAll(/<select[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) for (const option of match[2].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)) { const element = new Element('option'); element.value = option[1]; element.textContent = option[2]; nodes.get(match[1]).append(element); }
   const body = new Element('body');
   document = { body, hidden: false, activeElement: body, events: {}, getElementById: id => nodes.get(id) || null,
     createElement: tag => new Element(tag), addEventListener(name, fn) { (this.events[name] ||= []).push(fn); } };
-  const h = { requests, nodes, localStorage, sessionStorage, scannerInstances, tracks, intervals, document,
-    get: id => nodes.get(id), handler: null, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
-  const window = { addEventListener() {}, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
+  const h = { requests, historyRequests, nodes, localStorage, sessionStorage, scannerInstances, tracks, intervals, timers, document,
+    get: id => nodes.get(id), handler: null, historyHandler: null, play: async () => {}, recognize: async () => '', decode: async () => '', confirmDuplicate: async () => true };
+  const window = { events: {}, addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }, ScannerTransfer: { refresh() {} }, ScannerConfirm: { ask: text => h.confirmDuplicate(text) },
     ScannerView: { markup: () => '__SCANNER__' }, ScannerOCR: { recognize: canvas => h.recognize(canvas) },
     ScannerAuto: { stopDecoder() {}, decodeInWorker: canvas => h.decode(canvas), create(options) { const scanner = { options, resets: [], stopped: false, tick() {}, reset(value) { this.resets.push(value); this.stopped = false; }, stop() { this.stopped = true; } }; scannerInstances.push(scanner); return scanner; } },
     fecharScanner() {} };
-  const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController,
-    navigator: { mediaDevices: { getUserMedia: async () => { const track = { stopped: false, stop() { this.stopped = true; } }; tracks.push(track); return { getTracks: () => [track] }; } } },
+  const context = vm.createContext({ window, document, localStorage, sessionStorage, console, crypto: { randomUUID }, AbortController, URLSearchParams,
+    navigator: { clipboard: { writeText: async text => { h.copiedText = text; } }, mediaDevices: { getUserMedia: async () => { const track = { stopped: false, stop() { this.stopped = true; } }; tracks.push(track); return { getTracks: () => [track] }; } } },
     Option: function(text, value) { const option = new Element('option'); option.textContent = text; option.value = value; return option; },
-    confirm: () => true, setTimeout: () => nextTimer++, clearTimeout() {}, setInterval: fn => { const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
+    confirm: () => true, setTimeout: (fn, ms) => { const id = nextTimer++; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), setInterval: fn => { const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: id => intervals.delete(id),
     fetch: async (url, options = {}) => {
       assert.ok(url.startsWith('/api/scan-transfers/actions') || url === '/api/auth/login', 'New action must never call inventory or an external endpoint: ' + url);
       const request = { url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null, auth: options.headers?.Authorization };
+      if (url.includes('/drafts/sync') || url.includes('/history')) {
+        historyRequests.push(request);
+        if (h.historyHandler) return h.historyHandler(request);
+        if (url.endsWith('/drafts/sync')) return response({ synced: true, lot: { sessionId: request.body.sessionId, revision: request.body.revision, status: request.body.status } });
+        return response({ lots: [], totals: {}, page: 1, totalPages: 1, totalLots: 0 });
+      }
       requests.push(request);
       if (url === '/api/auth/login') return response({ token: 'isolated-login-token' });
       if (url.endsWith('/context')) return response({ user: person, stores, allowedStoreIds: [stores[0].id, stores[1].id] });
@@ -81,7 +89,7 @@ function harness(shared) {
       if (url.includes('/pending?')) return response({ transfers: [] });
       throw Error('Unexpected isolated request: ' + url);
     } });
-  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation}) };';
+  const exportCode = 'window.__test = { authenticate, loadShipments, openCamera, closeCamera, capture, resolveRead, refreshIdentifications, activeReads, scansPayload, contextChanged, storeChanged, prepare, confirmAction, persist, signature, flushSync, queueSync, recoverDrafts, startNewLot, loadHistory, showHistoryDetail, copyHistory, syncPayload, historyFilters, state:()=>({actor,currentDraft,preview,cameraRead,cameraRetry,busy,stream,scanner,generation,syncJobs,historyData,historyPage,historyMode}) };';
   assert.ok(source.endsWith('})();\n') || source.trimEnd().endsWith('})();'));
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, exportCode + '\n})();'), context, { filename: 'public/bipar-actions.js' });
   h.api = window.__test; h.window = window; h.boot = () => h.api.authenticate();
@@ -125,15 +133,14 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     const before = h.api.signature(); item.product.size = 'M'; assert.notEqual(h.api.signature(), before, 'Catalog snapshot participates in the reviewed payload');
     item.product.size = 'P'; h.api.closeCamera();
   });
-  await test('resolved Lupo keeps duplicate physical-piece confirmation and cancels without counting', async () => {
+  await test('each intentional repeated Lupo barcode counts one piece without a duplicate prompt', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
     await h.scan(lupo.barcode); const firstId = h.api.activeReads()[0].clientScanId, questions = [];
     h.confirmDuplicate = async text => { questions.push(text); return false; };
-    assert.equal(await h.scan(lupo.barcode), null); assert.equal(h.api.activeReads().length, 1);
-    h.confirmDuplicate = async text => { questions.push(text); return true; }; await h.scan(lupo.barcode);
+    await h.scan(lupo.barcode);
     assert.equal(h.api.activeReads().length, 2); assert.equal(h.api.activeReads()[0].clientScanId, firstId);
     assert.equal(h.api.activeReads()[1].duplicateConfirmed, true); assert.notEqual(h.api.activeReads()[1].clientScanId, firstId);
-    assert.ok(questions.every(text => /outra peça física/.test(text))); assert.ok(h.api.scansPayload().every(scan => scan.confirmedSize === '' && scan.resolvedSize === 'P'));
+    assert.equal(questions.length, 0); assert.ok(h.api.scansPayload().every(scan => scan.confirmedSize === '' && scan.resolvedSize === 'P'));
   });
   await test('Adidas and a lookup without an explicit exemption retain physical size confirmation', async () => {
     for (const result of [{ product, requiresSizeConfirmation: false }, { product: lupo }, { product: lupo, requiresSizeConfirmation: true }]) {
@@ -298,17 +305,14 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(item.barcodeCorrections[0].previous, wrong); assert.equal(item.confirmedSize, '');
     assert.equal(h.api.state().currentDraft.sessionId, session); assert.equal(h.api.activeReads().length, 1); h.api.closeCamera();
   });
-  await test('corrected retry code matching an earlier piece requires other-physical-piece confirmation without adding a scan', async () => {
+  await test('corrected retry code matching an earlier piece keeps its scan ID without another duplicate prompt', async () => {
     const h = harness(); await h.boot(); await h.scan(product.barcode); const wrong = '7891234567888';
     h.handler = request => request.body.barcode === wrong ? response({ error: 'Unknown code' }, 404) : response({ product });
     await h.api.openCamera(); await h.api.capture({ ean: wrong }); const item = h.api.activeReads()[1]; let questions = [];
     h.confirmDuplicate = async text => { questions.push(text); return questions.length === 1; };
     await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
-    assert.equal(item.barcode, wrong); assert.equal(h.api.activeReads().length, 2); assert.match(questions[1], /OUTRA peça física/);
-    questions = []; h.confirmDuplicate = async text => { questions.push(text); return true; };
-    await h.cameraClick('retry-pending'); await h.api.capture({ ean: product.barcode });
     assert.equal(item.barcode, product.barcode); assert.equal(item.duplicateConfirmed, true); assert.equal(h.api.activeReads().length, 2);
-    assert.equal(questions.length, 2); h.api.closeCamera();
+    assert.equal(questions.length, 1); assert.match(questions[0], /MESMA peça física/); h.api.closeCamera();
   });
   await test('unresolved EAN advances automatically with a small pending notice, but prevents final review and stock writes', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ error: 'Unknown code' }, 404);
@@ -561,7 +565,9 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     const button = reloaded.get('action-readings').querySelectorAll('button').find(node => node.textContent === 'Atualizar identificação');
     assert.equal(button.disabled, true); await button.onclick(); await reloaded.api.prepare(); await reloaded.api.refreshIdentifications(true);
     assert.equal(reloaded.requests.filter(request => request.url.endsWith('/lookup')).length, 0); assert.equal(reloaded.requests.filter(request => request.url.includes('-preview')).length, 0);
-    assert.equal(reloaded.localStorage.getItem(pendingKey), pending); assert.equal(JSON.stringify(reloaded.api.state().currentDraft), draftBefore);
+    assert.equal(reloaded.localStorage.getItem(pendingKey), pending);
+    const after = { ...reloaded.api.state().currentDraft, syncedRevision: 0 };
+    assert.equal(JSON.stringify(after), draftBefore, 'Synchronization metadata may change; the uncertain operation and its pieces remain intact');
   });
   await test('a confirmation appearing while lookup is pending prevents new identification and review', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false }); await h.scan(lupo.barcode);
@@ -622,14 +628,13 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(second.ocrText, ''); assert.equal(second.confirmedSize, ''); assert.equal(h.get('etiq-confirm-btn').disabled, true);
     assert.equal(h.api.activeReads().length, 2); assert.equal(h.get('action-confirm').disabled, true); h.api.closeCamera();
   });
-  await test('a new physical piece with the same unresolved code still requires duplicate consent', async () => {
+  await test('a new physical piece with the same unresolved code counts separately without a duplicate prompt', async () => {
     const h = harness(); await h.boot(); h.handler = () => response({ error: 'Size pending' }, 422);
     await h.api.openCamera(); await h.api.capture({ ean: lupo.barcode }); const firstId = h.api.activeReads()[0].clientScanId, questions = [];
     h.confirmDuplicate = async text => { questions.push(text); return false; }; await h.api.capture({ ean: lupo.barcode });
-    assert.equal(h.api.activeReads().length, 1); assert.equal(h.api.state().cameraRead, null);
-    h.confirmDuplicate = async text => { questions.push(text); return true; }; await h.api.capture({ ean: lupo.barcode });
+    assert.equal(h.api.state().cameraRead, null);
     assert.equal(h.api.activeReads().length, 2); assert.equal(h.api.activeReads()[0].clientScanId, firstId); assert.equal(h.api.activeReads()[1].duplicateConfirmed, true);
-    assert.notEqual(h.api.activeReads()[1].clientScanId, firstId); assert.ok(questions.every(text => /outra peça física/.test(text)));
+    assert.notEqual(h.api.activeReads()[1].clientScanId, firstId); assert.equal(questions.length, 0);
     assert.equal(h.get('etiq-confirm').style.display, 'none'); h.api.closeCamera();
   });
   await test('failure to save a newly captured EAN pauses scanning and never claims the reading was stored', async () => {
@@ -649,5 +654,107 @@ async function test(name, fn) { await fn(); console.log('PASS: ' + name); }
     assert.equal(h.api.state().scanner.options.canRead(), false); assert.equal(h.api.activeReads()[0].pendingAutoContinuedAt, undefined);
     assert.equal(h.get('etiq-confirm-btn').disabled, true); assert.equal(h.get('action-camera-notice').hidden, true); h.api.closeCamera();
   });
-  console.log('PASS: 46 action UI regression groups; isolated mocks only.');
+  await test('central synchronization retains repeated barcodes as distinct pieces and never calls stock confirmation', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.scan(lupo.barcode); await h.scan(lupo.barcode); const draft = h.api.state().currentDraft;
+    assert.equal(await h.api.flushSync(draft), true);
+    const saved = h.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).at(-1).body;
+    assert.equal(saved.scans.length, 2); assert.equal(new Set(saved.scans.map(s => s.clientScanId)).size, 2);
+    assert.equal(saved.scans[0].barcode, saved.scans[1].barcode); assert.equal(saved.mode, 'transfer');
+    assert.equal(saved.fromStoreId, stores[0].id); assert.equal(saved.toStoreId, stores[1].id);
+    assert.equal(saved.sessionId, draft.sessionId); assert.ok(saved.scans.every(s => s.createdAt));
+    assert.equal(h.requests.some(r => /confirm$/.test(r.url)), false);
+    assert.equal(draft.syncedRevision, draft.revision); assert.match(h.get('action-sync-status').textContent, /salvos no sistema/);
+  });
+  await test('network failure leaves all scans locally and camera available, then retries the same IDs', async () => {
+    const h = harness(); await h.boot(); h.handler = () => response({ product: lupo, requiresSizeConfirmation: false });
+    await h.scan(lupo.barcode); const draft = h.api.state().currentDraft, id = draft.scans[0].clientScanId;
+    h.historyHandler = () => { throw Error('Network offline'); };
+    assert.equal(await h.api.flushSync(draft), false); assert.match(h.get('action-sync-status').textContent, /Sincronização pendente/);
+    await h.api.openCamera(); assert.ok(h.get('action-camera')); assert.equal(h.get('codigo').disabled, false); h.api.closeCamera();
+    const local = JSON.parse(h.localStorage.getItem('tc_bipar_action_draft_v1:' + draft.key)); assert.equal(local.scans[0].clientScanId, id);
+    h.historyHandler = request => response({ synced: true, lot: { revision: request.body.revision, status: 'open' } });
+    assert.equal(await h.api.flushSync(draft), true); assert.equal(h.api.activeReads().length, 1);
+    assert.equal(h.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).at(-1).body.scans[0].clientScanId, id);
+  });
+  await test('legacy recovery restores every own action lot while excluding a different operator', async () => {
+    const h = harness(); await h.boot(); const first = h.api.state().currentDraft;
+    for (let n = 0; n < 106; n++) first.scans.push({ clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: '2026-10-14T19:20:00.000Z', confirmedSize: '' });
+    h.api.persist(first); const original = JSON.stringify(first.scans.map(s => [s.clientScanId, s.createdAt]));
+    const ownReceipt = { ...JSON.parse(JSON.stringify(first)), key: 'own-receipt', sessionId: randomUUID(), context: { ...first.context, mode: 'receipt', fromStoreId: '' }, scans: [{ clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: '2026-10-03T10:00:00Z' }] };
+    const other = { ...ownReceipt, key: 'other-operator', sessionId: randomUUID(), context: { ...ownReceipt.context, actorId: randomUUID() } };
+    h.localStorage.setItem('tc_bipar_action_draft_v1:own-receipt', JSON.stringify(ownReceipt)); h.localStorage.setItem('tc_bipar_action_draft_v1:other-operator', JSON.stringify(other));
+    h.api.recoverDrafts(); await flush();
+    const posts = h.historyRequests.filter(r => r.url.endsWith('/drafts/sync'));
+    assert.ok(posts.some(r => r.body.sessionId === first.sessionId && r.body.scans.length === 106));
+    assert.ok(posts.some(r => r.body.sessionId === ownReceipt.sessionId && r.body.mode === 'receipt'));
+    assert.equal(posts.some(r => r.body.sessionId === other.sessionId), false);
+    assert.equal(JSON.stringify(first.scans.map(s => [s.clientScanId, s.createdAt])), original);
+  });
+  await test('late synchronization acknowledgement after account change cannot mark another account saved', async () => {
+    const h = harness(); await h.boot(); await h.scan(product.barcode); const draft = h.api.state().currentDraft, late = deferred();
+    h.historyHandler = () => late.promise; const sending = h.api.flushSync(draft); await flush();
+    h.get('action-switch-user').onclick(); late.resolve(response({ synced: true, lot: { revision: draft.revision, status: 'open' } }));
+    assert.equal(await sending, false); assert.equal(draft.syncedRevision, 0); assert.equal(h.api.state().actor, null);
+    assert.equal(h.get('action-sync-status').hidden, true); assert.equal(h.get('action-history-list').children.length, 0);
+  });
+  await test('new lot archives its complete snapshot without treating every piece as removed', async () => {
+    const h = harness(); await h.boot(); await h.scan(product.barcode); await h.scan(product.barcode); const old = h.api.state().currentDraft;
+    await h.get('action-clear').onclick(); assert.notEqual(h.api.state().currentDraft.sessionId, old.sessionId); assert.equal(h.api.activeReads().length, 0);
+    const archived = JSON.parse(h.localStorage.getItem('tc_bipar_action_archive_v1:' + old.sessionId));
+    assert.equal(archived.status, 'archived'); assert.equal(archived.scans.length, 2); assert.ok(archived.scans.every(s => !s.removed));
+    await h.api.flushSync(old); const sent = h.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).at(-1).body;
+    assert.equal(sent.status, 'archived'); assert.ok(sent.scans.every(s => s.removed === false));
+  });
+  await test('the 500-reading limit includes removed rows and retains the earlier history', async () => {
+    const h = harness(); await h.boot(); const draft = h.api.state().currentDraft;
+    for (let n = 0; n < 500; n++) draft.scans.push({ clientScanId: randomUUID(), barcode: lupo.barcode, createdAt: new Date().toISOString(), removed: n === 0 });
+    h.api.persist(); const before = h.requests.length; assert.equal(await h.scan(lupo.barcode), null);
+    assert.equal(h.requests.length, before); assert.equal(draft.scans.length, 500); assert.equal(h.api.activeReads().length, 499); assert.match(h.get('action-message').textContent, /incluindo as retiradas/);
+  });
+  await test('two tabs appending to the same session preserve each distinct scan and cannot lose it to a late acknowledgement', async () => {
+    const a = harness(); await a.boot(); await a.scan(product.barcode); const b = harness(a.localStorage); await b.boot(); await flush();
+    const late = deferred(); a.historyHandler = () => late.promise; const sending = a.api.flushSync(a.api.state().currentDraft); await flush();
+    await b.scan(lupo.barcode); const bId = b.api.activeReads().at(-1).clientScanId;
+    late.resolve(response({ synced: true, lot: { revision: a.api.state().currentDraft.revision, status: 'open' } })); await sending;
+    await a.scan('7891234567888'); const saved = JSON.parse(a.localStorage.getItem('tc_bipar_action_draft_v1:' + a.api.state().currentDraft.key));
+    assert.equal(saved.scans.length, 3); assert.ok(saved.scans.some(s => s.clientScanId === bId)); assert.equal(new Set(saved.scans.map(s => s.clientScanId)).size, 3);
+  });
+  await test('two first-time offline tabs retain separate session checkpoints even when the active context changes', async () => {
+    const a = harness(), b = harness(a.localStorage); await a.boot(); await b.boot();
+    await a.scan(product.barcode); await b.scan(lupo.barcode); const sa = a.api.state().currentDraft.sessionId, sb = b.api.state().currentDraft.sessionId;
+    assert.notEqual(sa, sb);
+    assert.equal(JSON.parse(a.localStorage.getItem('tc_bipar_action_archive_v1:' + sa)).scans.length, 1);
+    assert.equal(JSON.parse(a.localStorage.getItem('tc_bipar_action_archive_v1:' + sb)).scans.length, 1);
+    const reloaded = harness(a.localStorage); await reloaded.boot(); await flush();
+    const recovered = new Set(reloaded.historyRequests.filter(r => r.url.endsWith('/drafts/sync')).map(r => r.body.sessionId));
+    assert.ok(recovered.has(sa) && recovered.has(sb));
+  });
+  await test('stale server revision recovers the other session reads, unions their IDs and retries once at a higher revision', async () => {
+    const h = harness(); await h.boot(); await h.scan(product.barcode); const draft = h.api.state().currentDraft, other = { clientScanId: randomUUID(), barcode: product.barcode, createdAt: '2026-10-02T10:00:00Z' }; let posts = 0;
+    h.historyHandler = request => {
+      if (request.url.includes('/history/')) return response({ lot: { sessionId: draft.sessionId, revision: 20, status: 'open', operator: person }, scans: [other] });
+      if (++posts === 1) return response({ synced: false, lot: { revision: 20, status: 'open' } });
+      return response({ synced: true, lot: { revision: request.body.revision, status: 'open' } });
+    };
+    assert.equal(await h.api.flushSync(draft), true); assert.equal(posts, 2); assert.ok(draft.revision > 20);
+    assert.equal(draft.scans.length, 2); assert.ok(draft.scans.some(s => s.clientScanId === other.clientScanId));
+  });
+  await test('separate action history filters paginate and WhatsApp export includes every page', async () => {
+    const h = harness(); await h.boot(); h.get('action-history-from').value = '2026-10-01'; h.get('action-history-to').value = '2026-10-15';
+    const lot = number => ({ sessionId: randomUUID(), mode: 'receipt', status: number === 1 ? 'open' : 'confirmed', fromStore: stores[0], toStore: stores[1], operator: { name: 'Operator ' + number }, firstScannedAt: '2026-10-02T10:00:00Z', lastScannedAt: '2026-10-02T10:30:00Z', scanCount: number, totalScanCount: number, pendingCount: 0 });
+    h.historyHandler = request => { const query = new URL(request.url, 'https://example.test').searchParams; assert.equal(query.get('mode'), 'receipt'); assert.equal(query.get('from'), '2026-10-01'); const page = Number(query.get('page')); return response({ lots: query.get('export') === '1' ? [lot(1), lot(2)] : [lot(page)], totals: { scans: 3, lots: 2, confirmedLots: 1, confirmedScans: 2, recognized: 3 }, page, totalLots: 2, totalPages: 2 }); };
+    await h.get('action-history-receipt').onclick(); await flush();
+    assert.equal(h.get('action-history-next').disabled, false); assert.match(h.get('action-history-summary').textContent, /3 peças bipadas/);
+    await h.get('action-history-next').onclick(); assert.equal(h.api.state().historyPage, 2); assert.equal(h.get('action-history-next').disabled, true);
+    await h.api.copyHistory(); assert.match(h.copiedText, /RECEBIMENTOS/); assert.match(h.copiedText, /Operator 1/); assert.match(h.copiedText, /Operator 2/); assert.match(h.copiedText, /Peças bipadas: 3/);
+    assert.equal(h.get('action-history-transfer')['aria-pressed'], 'false'); assert.equal(h.get('action-history-receipt')['aria-pressed'], 'true');
+  });
+  await test('late history responses cannot replace the selected action or expose details after logout', async () => {
+    const h = harness(); await h.boot(); const late = deferred(); h.historyHandler = () => late.promise;
+    const loading = h.api.loadHistory(); await flush(); h.get('action-switch-user').onclick();
+    late.resolve(response({ lots: [{ scanCount: 999, operator: { name: 'Old actor data' } }], totals: { scans: 999 }, totalPages: 1 })); await loading;
+    assert.equal(h.get('action-history-list').children.length, 0); assert.equal(h.get('action-history-summary').textContent, '');
+  });
+  console.log('PASS: 57 action UI regression groups; isolated mocks only.');
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

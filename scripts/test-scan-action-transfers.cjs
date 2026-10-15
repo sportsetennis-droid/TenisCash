@@ -203,11 +203,11 @@ async function test(name, work) {
     assert.deepEqual(await snapshot(f), before, 'Malformed receipt cannot change stock or shipment');
   });
 
-  await test('automatic size lookup cannot bypass catalog drift, ambiguous codes, duplicate pieces or Adidas box checks', async () => {
+  await test('automatic size lookup preserves repeated pieces without bypassing catalog drift, ambiguous codes or Adidas box checks', async () => {
     const f = await fixture(), auto = overrides => f.scan(f.size, { confirmedSize: '', resolvedSize: f.size.size, ...overrides });
     await blocked(f, 'send', f.send([auto({ resolvedSize: '41' })]), 'Stale catalog snapshot');
     await blocked(f, 'send', f.send([auto({ confirmedSize: '41' })]), 'An explicit conflicting size is never discarded');
-    await blocked(f, 'send', f.send([auto(), auto()]), 'Repeated physical piece still requires consent');
+    assert.equal((await sendReview(f, f.send([auto(), auto()]))).scanCount, 2, 'Two new readings of the same EAN are two pieces');
     await db.product.update({ where: { id: f.product.id }, data: { brand: 'ADIDAS' } });
     assert.equal((await service.lookup(db, f.sender, { barcode: f.size.barcode })).requiresSizeConfirmation, true);
     await blocked(f, 'send', f.send([auto({ requiresSizeConfirmation: false })]), 'Client flag cannot bypass Adidas BR verification');
@@ -301,8 +301,8 @@ async function test(name, work) {
     await blocked(f, 'send', f.send([f.scan(f.size, { barcode: f.secondSize.barcode })]), 'Barcode belongs to another variant');
     await blocked(f, 'send', f.send([f.scan(f.size, { confirmedSize: '' })]), 'Missing box size');
     await blocked(f, 'send', f.send([f.scan(f.size, { confirmedSize: '42' })]), 'Different box size');
-    await blocked(f, 'send', f.send([f.scan(), f.scan()]), 'Repeated EAN without physical confirmation');
-    await blocked(f, 'send', f.send([f.scan(), f.scan(f.size, { barcode: '0' + f.size.barcode })]), 'Normalized EAN repeated without physical confirmation');
+    assert.equal((await sendReview(f, f.send([f.scan(), f.scan()]))).scanCount, 2, 'Repeated EAN with distinct IDs retains both pieces');
+    assert.equal((await sendReview(f, f.send([f.scan(), f.scan(f.size, { barcode: '0' + f.size.barcode })]))).scanCount, 2, 'Normalized EAN repetition retains both pieces');
     const repeatedId = f.scan();
     await blocked(f, 'send', f.send([repeatedId, { ...repeatedId, barcode: f.secondSize.barcode, productSizeId: f.secondSize.id, confirmedSize: '41' }]), 'One scan ID cannot describe two pieces');
     await db.productSize.update({ where: { id: f.size.id }, data: { size: 'T-PENDING' } });
@@ -360,7 +360,9 @@ async function test(name, work) {
     const f = await fixture(), sentScan = f.scan(), first = await sendOne(f, [sentScan]);
     await blocked(f, 'send', f.send([sentScan], { sessionId: randomUUID() }), 'Same physical scan in a new session');
     await blocked(f, 'receive', f.receive([sentScan]), 'Receipt must scan the physical piece again', { transferId: first.transfer.id });
-    const second = await sendOne(f), receiptScan = f.scan(), receipt = f.receive([receiptScan]);
+    const secondInput = f.send([f.scan()], { sessionId: randomUUID() }), secondReview = await sendReview(f, secondInput);
+    const second = await service.sendConfirm(db, f.sender, { ...secondInput, requestId: randomUUID(), reviewToken: secondReview.reviewToken });
+    const receiptScan = f.scan(), receipt = f.receive([receiptScan]);
     const review = await receiveReview(f, first.transfer.id, receipt);
     await service.receiveConfirm(db, f.receiver, first.transfer.id, { ...receipt, requestId: randomUUID(), reviewToken: review.reviewToken });
     await blocked(f, 'receive', f.receive([receiptScan]), 'One physical receipt scan cannot receive two consignments', { transferId: second.transfer.id });

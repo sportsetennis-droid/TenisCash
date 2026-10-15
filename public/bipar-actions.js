@@ -11,6 +11,8 @@
   let currentDraft = null, stream = null, scanner = null, cameraTimer = null, cameraGeneration = 0, cameraAttempt = 0, cameraRead = null, cameraRetry = null, cameraPendingRead = null;
   const cameraOcrReads = new Map();
   const inflight = new Set(), drafts = new Map(), lookups = new Map();
+  const syncJobs = new Map(), draftBases = new Map(), archivePrefix = 'tc_bipar_action_archive_v1:';
+  let historyMode = action === 'receipt' ? 'receipt' : 'transfer', historyPage = 1, historyRequest = 0, historyData = null, historyBusy = false, historyRefreshTimer = null;
   const lookupConcurrency = 3;
   const lookupQueue = [];
   let runningLookups = 0;
@@ -41,19 +43,160 @@
   function contextKey(value = context()) { return JSON.stringify([value.actorId, value.mode, value.fromStoreId, value.toStoreId, value.mode === 'receipt' ? '' : value.transferId]); }
   function draftKey(key) { return 'tc_bipar_action_draft_v1:' + key; }
   function activeReads(draft = currentDraft) { return (draft?.scans || []).filter(item => !item.removed); }
-  function newDraft(key) { return { key, sessionId: crypto.randomUUID(), scans: [], context: context() }; }
+  function newDraft(key) { return { key, sessionId: crypto.randomUUID(), scans: [], context: context(), revision: 0, syncedRevision: 0, status: 'open' }; }
   function getDraft() {
     const key = contextKey();
     if (!drafts.has(key)) {
       const saved = read(draftKey(key), null);
       drafts.set(key, saved && saved.key === key && Array.isArray(saved.scans) ? saved : newDraft(key));
+      draftBases.set(drafts.get(key).sessionId, new Map(drafts.get(key).scans.map(item => [item.clientScanId, JSON.stringify(item)])));
     }
-    return drafts.get(key);
+    const draft = drafts.get(key);
+    if (draft.context?.mode === 'receipt' && draft.context.transferId !== context().transferId) { draft.context.transferId = context().transferId; if (draft.scans.length) persist(draft); }
+    return draft;
   }
+  function draftStorageKey(draft) { return draft.status === 'archived' || draft.status === 'confirmed' ? archivePrefix + draft.sessionId : draftKey(draft.key); }
   function persist(draft = currentDraft) {
     if (!draft) return false;
-    try { localStorage.setItem(draftKey(draft.key), JSON.stringify(draft)); storageFailed = false; return true; }
+    draft.status ||= 'open';
+    try {
+      const saved = read(draftStorageKey(draft), null), base = draftBases.get(draft.sessionId) || new Map();
+      if (saved?.sessionId && saved.sessionId !== draft.sessionId && saved.scans?.length) {
+        const checkpoint = read(archivePrefix + saved.sessionId, null);
+        if (!checkpoint || Number(checkpoint.revision || 0) < Number(saved.revision || 0)) localStorage.setItem(archivePrefix + saved.sessionId, JSON.stringify(saved));
+      }
+      if (saved?.sessionId === draft.sessionId) {
+        const merged = new Map((saved.scans || []).map(item => [item.clientScanId, item]));
+        for (const item of draft.scans) {
+          const remote = merged.get(item.clientScanId);
+          if (remote && base.get(item.clientScanId) === JSON.stringify(item)) {
+            for (const key of Object.keys(item)) if (!(key in remote)) delete item[key];
+            Object.assign(item, remote);
+          }
+          merged.set(item.clientScanId, item);
+        }
+        // Another tab may have appended a repeated product. Its distinct scan ID
+        // must survive this tab's next write, even when the revision was equal.
+        draft.scans = [...merged.values()];
+      }
+      draft.revision = Math.max(Number(draft.revision) || 0, Number(saved?.sessionId === draft.sessionId ? saved.revision : 0) || 0) + 1;
+      // A session checkpoint survives another tab replacing the active context.
+      // Its status stays open; saving a checkpoint is not archiving the lot.
+      localStorage.setItem(archivePrefix + draft.sessionId, JSON.stringify(draft));
+      localStorage.setItem(draftStorageKey(draft), JSON.stringify(draft));
+      draftBases.set(draft.sessionId, new Map(draft.scans.map(item => [item.clientScanId, JSON.stringify(item)])));
+      storageFailed = false; queueSync(draft); return true;
+    }
     catch (_) { storageFailed = true; message('Não foi possível guardar o lote neste aparelho. Libere espaço no navegador e tente salvar novamente.', true); return false; }
+  }
+  function syncPayload(draft) {
+    return { sessionId: draft.sessionId, mode: draft.context.mode, fromStoreId: draft.context.fromStoreId || '', toStoreId: draft.context.toStoreId, transferId: draft.context.transferId || '', revision: draft.revision, status: draft.status === 'archived' ? 'archived' : 'open', scans: draft.scans.map(item => ({ clientScanId: item.clientScanId, barcode: item.barcode, createdAt: item.createdAt, removed: !!item.removed, product: item.product, confirmedSize: item.confirmedSize || '', requiresSizeConfirmation: item.requiresSizeConfirmation !== false, error: item.error || '' })) };
+  }
+  function syncStatus() {
+    const own = [...syncJobs.values()].filter(job => job.draft.context?.actorId === actor?.id && job.draft.status !== 'confirmed');
+    const pending = own.filter(job => Number(job.draft.syncedRevision || 0) < Number(job.draft.revision || 1));
+    const status = $('action-sync-status');
+    status.hidden = !actor || isInventory();
+    status.textContent = !pending.length ? 'Bipes salvos no sistema.' : pending.some(job => job.needsReview) ? 'Sincronização pendente: ' + pending.find(job => job.needsReview).error : pending.some(job => job.error) ? 'Sincronização pendente. Os bipes estão guardados e serão enviados ao sistema quando a conexão voltar.' : 'Salvando os bipes no sistema…';
+    status.className = 'transfer-message' + (pending.some(job => job.error) ? ' transfer-error' : '');
+    $('action-sync-retry').hidden = !pending.some(job => job.error);
+  }
+  function queueSync(draft, immediate = false) {
+    if (!draft?.scans?.length || !['transfer', 'receipt'].includes(draft.context?.mode) || draft.status === 'confirmed') return;
+    let job = syncJobs.get(draft.sessionId);
+    if (!job) { job = { draft, timer: null, running: null, error: '' }; syncJobs.set(draft.sessionId, job); }
+    job.draft = draft; clearTimeout(job.timer); syncStatus();
+    if (actor?.id !== draft.context.actorId) return;
+    if (immediate) return flushSync(draft);
+    job.timer = setTimeout(() => { void flushSync(job.draft); }, 250);
+  }
+  async function flushSync(draft) {
+    const job = syncJobs.get(draft?.sessionId);
+    if (!job || draft.status === 'confirmed') return true;
+    if (job.running) { await job.running; return Number(draft.syncedRevision || 0) >= Number(draft.revision || 1); }
+    if (actor?.id !== draft.context.actorId || !token) return false;
+    clearTimeout(job.timer);
+    const authToken = token, owner = actor.id;
+    let conflictRetry = false;
+    job.running = (async () => {
+      while (actor?.id === owner && token === authToken && draft.context.actorId === owner && draft.status !== 'confirmed' && Number(draft.syncedRevision || 0) < Number(draft.revision || 1)) {
+        const body = syncPayload(draft), revision = body.revision;
+        try {
+          const data = await api('/drafts/sync', body, authToken);
+          if (actor?.id !== owner || token !== authToken) return false;
+          if (data.lot?.status === 'confirmed') {
+            const result = await api('/history/' + encodeURIComponent(draft.sessionId), undefined, authToken);
+            if (actor?.id !== owner || token !== authToken) return false;
+            const savedIds = new Set((result.scans || []).map(item => item.clientScanId));
+            if (draft.scans.some(item => !savedIds.has(item.clientScanId))) { const conflict = Error('Este lote foi concluído em outra sessão. Há novos bipes guardados localmente que ainda não entraram no histórico; mantenha esta página aberta e confira o lote.'); conflict.status = 409; throw conflict; }
+            draft.status = 'confirmed'; draft.syncedRevision = revision;
+          } else if (!data.synced || Number(data.lot?.revision) < revision) { const conflict = Error('O lote mudou em outra sessão. Atualize o histórico antes de continuar.'); conflict.status = 409; throw conflict; }
+          else draft.syncedRevision = revision;
+          // An acknowledgement must never overwrite a newer tab's local copy.
+          const saved = read(draftStorageKey(draft), null);
+          if (saved?.sessionId === draft.sessionId && Number(saved.revision) === revision && JSON.stringify(syncPayload(saved)) === JSON.stringify(body)) {
+            saved.syncedRevision = Math.max(Number(saved.syncedRevision) || 0, revision);
+            localStorage.setItem(draftStorageKey(draft), JSON.stringify(saved));
+            localStorage.setItem(archivePrefix + draft.sessionId, JSON.stringify(saved));
+          }
+          job.error = ''; job.needsReview = false; syncStatus();
+          clearTimeout(historyRefreshTimer); historyRefreshTimer = setTimeout(() => { if (actor?.id === owner && token === authToken) void loadHistory(historyPage); }, 750);
+          if (job.draft !== draft) draft = job.draft;
+        } catch (error) {
+          if (error.status === 409 && !conflictRetry && actor?.id === owner && token === authToken) {
+            conflictRetry = true;
+            try {
+              const latest = await api('/history/' + encodeURIComponent(draft.sessionId), undefined, authToken);
+              if (actor?.id !== owner || token !== authToken || latest.lot?.operator?.id !== owner || latest.lot?.status !== 'open') throw error;
+              const merged = new Map((latest.scans || []).map(item => [item.clientScanId, item]));
+              for (const item of draft.scans) { if (merged.get(item.clientScanId)?.removed) item.removed = true; merged.set(item.clientScanId, item); }
+              draft.scans = [...merged.values()]; draft.revision = Math.max(draft.revision, Number(latest.lot.revision) || 0);
+              if (!persist(draft)) throw error;
+              continue;
+            } catch (_) { /* Preserve the complete local lot for an explicit retry. */ }
+          }
+          job.error = error.message || 'Sem conexão'; job.needsReview = [400, 403, 404, 409, 422].includes(error.status); syncStatus();
+          if (actor?.id === owner && token === authToken && ![400, 403, 404, 409, 422].includes(error.status)) job.timer = setTimeout(() => { void flushSync(draft); }, 15000);
+          return false;
+        }
+      }
+      if (draft.status === 'confirmed' && currentDraft === draft && !read(pendingKey, null)) return startNewLot('confirmed');
+      return Number(draft.syncedRevision || 0) >= Number(draft.revision || 1);
+    })();
+    try { return await job.running; } finally { job.running = null; syncStatus(); }
+  }
+  function recoverDrafts() {
+    if (!actor) return;
+    // Preserve the original operator, context, IDs and timestamps of older lots.
+    const recovered = new Map();
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith('tc_bipar_action_draft_v1:') && !key?.startsWith(archivePrefix)) continue;
+      const draft = read(key, null);
+      if (draft?.context?.actorId !== actor.id || !Array.isArray(draft.scans) || !draft.scans.length || draft.status === 'confirmed') continue;
+      draft.revision = Number(draft.revision) || 1; draft.status ||= 'open';
+      if (Number(recovered.get(draft.sessionId)?.revision || 0) <= draft.revision) recovered.set(draft.sessionId, draft);
+    }
+    for (const draft of recovered.values()) {
+      const live = drafts.get(draft.key);
+      const target = live?.sessionId === draft.sessionId && Number(live.revision || 1) >= draft.revision ? live : draft;
+      target.revision = Number(target.revision) || 1;
+      queueSync(target, true);
+    }
+    syncStatus();
+  }
+  function startNewLot(status = 'archived') {
+    const previous = currentDraft, key = contextKey(), oldStatus = previous?.status;
+    if (previous?.scans.length) {
+      previous.status = status;
+      if (!persist(previous)) { previous.status = oldStatus; return false; }
+    }
+    const next = newDraft(key);
+    if (!persist(next)) {
+      if (previous) { previous.status = oldStatus; try { localStorage.setItem(archivePrefix + previous.sessionId, JSON.stringify(previous)); } catch (_) {} }
+      return false;
+    }
+    currentDraft = next; drafts.set(key, next); invalidate(); renderReadings(); refresh(); return true;
   }
   function invalidate() { preview = null; $('action-review').hidden = true; $('action-approved').checked = false; }
   function validContext() {
@@ -92,6 +235,7 @@
   function refresh() {
     $('round-box').hidden = !isInventory(); $('inventory-readings').hidden = !isInventory(); $('inventory-seller-wrap').hidden = !isInventory();
     $('action-setup').hidden = isInventory(); $('action-workspace').hidden = isInventory();
+    $('action-history').hidden = isInventory(); syncStatus();
     $('bipar-store-label').textContent = isInventory() ? 'LOJA DO INVENTÁRIO' : action === 'transfer' ? 'LOJA DE DESTINO' : 'LOJA QUE ESTÁ RECEBENDO';
     window.ScannerTransfer?.refresh();
     if (isInventory()) return;
@@ -108,7 +252,7 @@
     $('setup-status').className = 'setup-status ' + (ready ? 'status-ok' : 'status-warn');
     $('setup-status').textContent = ready ? (action === 'transfer' ? 'Transferência: ' + storeName($('action-origin').value) + ' → ' : 'Pronto para bipar o recebimento: ') + storeName($('loja').value) : !actor ? 'Entre com sua conta pessoal para continuar.' : action === 'receipt' ? 'Escolha uma loja vinculada à sua conta para bipar.' : 'Escolha a loja de origem e a loja de destino.';
     $('action-title').textContent = action === 'transfer' ? 'Lote para transferência' : 'Conferência do recebimento';
-    $('action-context').textContent = ready ? activeReads().length + ' peça(s) neste lote · ' + (action === 'transfer' ? storeName($('action-origin').value) + ' → ' : '') + storeName($('loja').value) : 'Cada ação mantém seu próprio lote neste aparelho.';
+    $('action-context').textContent = ready ? activeReads().length + ' peça(s) neste lote · ' + (action === 'transfer' ? storeName($('action-origin').value) + ' → ' : '') + storeName($('loja').value) : 'Transferência e recebimento têm lotes e históricos separados.';
     $('action-preview').disabled = busy || !ready || storageFailed || !!pending || (action === 'transfer' && !activeReads().length) || activeReads().some(item => inflight.has(item.clientScanId));
     $('action-clear').disabled = busy || !!pending || activeReads().some(item => inflight.has(item.clientScanId));
     $('action-confirm').disabled = busy || !hasShipment() || storageFailed || !!pending || !preview?.allowed || !preview || preview.signature !== signature() || !$('action-approved').checked || localPending();
@@ -171,6 +315,7 @@
       const origin = [settings.origin, settings.stores.inventory, personalStore].find(id => id && allowed.includes(id) && store(id)) || '';
       setOptions($('action-origin'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Selecione a loja de origem', origin);
       settings.origin = origin; saveSettings(); contextChanged(); if (action === 'receipt') await loadShipments();
+      recoverDrafts(); setupHistory(); void loadHistory(1);
     } catch (error) { if (token !== authToken) return; actor = null; message(error.status === 401 ? 'Entre com sua conta pessoal para continuar.' : error.message, true); refresh(); }
   }
   async function loadShipments() {
@@ -182,6 +327,7 @@
       if (request !== shipmentRequest || action !== 'receipt' || $('loja').value !== selectedStore || token !== authToken) return;
       shipments = data.transfers || [];
       setOptions($('action-shipment'), shipments.map(item => ({ id: item.id, label: '#' + item.code + ' · ' + (item.fromStore?.name || 'Origem') + ' · ' + item.qtyTotal + ' peça(s)' })), shipments.length ? 'Selecione a transferência para conferir o lote' : 'Nenhuma pendente — você já pode bipar', selectedShipment);
+      if (currentDraft?.context?.mode === 'receipt' && currentDraft.context.toStoreId === selectedStore && currentDraft.context.transferId !== $('action-shipment').value) { currentDraft.context.transferId = $('action-shipment').value; if (currentDraft.scans.length) persist(); }
       invalidate(); renderReadings(); refresh(); refreshLegacyReads();
     } catch (error) { if (request === shipmentRequest && action === 'receipt' && $('loja').value === selectedStore && token === authToken) { setOptions($('action-shipment'), [], 'Falha na consulta — atualize', ''); message(error.message + ' Você pode continuar bipando; atualize a lista antes de confirmar.', true); refresh(); } }
   }
@@ -222,20 +368,18 @@
   async function scan(barcode, ocrText = '') {
     if (isInventory() || !validContext() || busy || read(pendingKey, null)) { message('Escolha a ação, entre na sua conta e confira as lojas antes de bipar.', true); return null; }
     barcode = String(barcode || '').trim(); if (!/^\d{8}$|^\d{12,14}$/.test(barcode)) { message('Leia o código de barras numérico da etiqueta. A referência do modelo não substitui o código.', true); return null; }
-    const draft = currentDraft, key = contextKey(), gen = generation, count = activeReads(draft).filter(item => item.barcode.replace(/^0+/, '') === barcode.replace(/^0+/, '')).length;
-    if (activeReads(draft).length >= 500) { message('Este lote já tem 500 peças. Confira e conclua antes de iniciar outro lote.', true); return null; }
-    let duplicateConfirmed = false;
-    if (count) {
-      duplicateConfirmed = await window.ScannerConfirm.ask('CÓDIGO JÁ BIPADO NESTE LOTE\n\nCódigo: ' + barcode + '\nQuantidade anterior: ' + count + '\n\nÉ outra peça física? Confirmar acrescenta 1. Cancelar não conta novamente.');
-      if (!duplicateConfirmed || key !== contextKey() || gen !== generation) return null;
-    }
+    const draft = currentDraft;
+    if (draft.scans.length >= 500) { message('Este lote chegou a 500 leituras, incluindo as retiradas. Confira e conclua ou comece outro lote; o histórico será preservado.', true); return null; }
+    // Every intentional scan is one physical piece. The camera engine still
+    // suppresses repeated frames; retryRead retains the existing scan identity.
+    const duplicateConfirmed = true;
     const item = { clientScanId: crypto.randomUUID(), barcode, confirmedSize: '', duplicateConfirmed, ocrText: String(ocrText || '').trim().slice(0, 12000), createdAt: new Date().toISOString() };
     draft.scans.push(item); invalidate(); if (!persist(draft)) { renderReadings(); refresh(); return null; }
     renderReadings(); refresh(); await resolveRead(draft, item, ocrText); return item;
   }
   function previewBody() {
     const c = context();
-    return action === 'transfer' ? { sessionId: currentDraft.sessionId, fromStoreId: c.fromStoreId, toStoreId: c.toStoreId, scans: scansPayload() } : { storeId: c.toStoreId, scans: scansPayload() };
+    return action === 'transfer' ? { sessionId: currentDraft.sessionId, fromStoreId: c.fromStoreId, toStoreId: c.toStoreId, scans: scansPayload() } : { sessionId: currentDraft.sessionId, storeId: c.toStoreId, scans: scansPayload() };
   }
   async function prepare() {
     if (!validContext() || busy || storageFailed || read(pendingKey, null)) return;
@@ -270,26 +414,142 @@
     let pending = read(pendingKey, null);
     if (!retry) {
       if (pending || !validContext() || !hasShipment() || !preview?.allowed || preview.signature !== signature() || !$('action-approved').checked || localPending()) return;
-      pending = { actorId: actor.id, mode: action, draftKey: currentDraft.key, sessionId: currentDraft.sessionId, path: preview.path, body: { ...preview.body, requestId: crypto.randomUUID(), reviewToken: preview.data.reviewToken } };
+      pending = { actorId: actor.id, mode: action, draftKey: currentDraft.key, sessionId: currentDraft.sessionId, sent: false, path: preview.path, body: { ...preview.body, requestId: crypto.randomUUID(), reviewToken: preview.data.reviewToken } };
       try { localStorage.setItem(pendingKey, JSON.stringify(pending)); } catch (_) { message('Não foi possível salvar a confirmação. Nenhuma movimentação foi enviada.', true); return; }
     }
     if (!pending || pending.actorId !== actor.id) { message('Entre com a mesma conta usada no envio pendente.', true); return; }
     busy = true; closeCamera(); refresh(); message('Confirmando a operação…');
     try {
-      const data = await api(pending.path, pending.body), transfer = data.transfer;
       const draft = drafts.get(pending.draftKey) || read(draftKey(pending.draftKey), null);
-      if (draft?.sessionId === pending.sessionId) { for (const item of draft.scans) item.removed = true; if (!persist(draft)) throw Error('Operação confirmada no servidor, mas a limpeza local falhou. Verifique o mesmo envio novamente.'); }
+      if (draft?.sessionId === pending.sessionId && draft.status !== 'confirmed') {
+        queueSync(draft);
+        if (!await flushSync(draft)) throw Error('Os bipes ainda precisam ser salvos no sistema antes de concluir a operação.');
+      }
+      if (pending.sent === false && draft && JSON.stringify(scansPayload(draft)) !== JSON.stringify(pending.body.scans)) {
+        localStorage.removeItem(pendingKey); invalidate(); message('O lote recebeu alterações em outra sessão. Confira novamente todas as peças antes de confirmar.', true); return;
+      }
+      pending.sent = true; localStorage.setItem(pendingKey, JSON.stringify(pending));
+      const data = await api(pending.path, pending.body), transfer = data.transfer;
+      if (draft?.sessionId === pending.sessionId) {
+        // Keep the confirmed snapshot intact: completed pieces are not removed.
+        draft.status = 'confirmed'; draft.transferId = transfer.id;
+        if (draft === currentDraft) { if (!startNewLot('confirmed')) throw Error('Operação confirmada no servidor, mas não foi possível preparar o próximo lote. Verifique o mesmo envio novamente.'); }
+        else if (!persist(draft)) throw Error('Operação confirmada no servidor, mas o registro local não foi atualizado. Verifique o mesmo envio novamente.');
+      }
       localStorage.removeItem(pendingKey); invalidate();
       $('action-result').hidden = false; $('action-result').textContent = pending.mode === 'transfer'
         ? 'Transferência #' + transfer.code + ' enviada. ' + transfer.qtyTotal + ' peça(s) aguardando conferência no destino.'
         : 'Transferência #' + transfer.code + ' recebida e conferida. ' + transfer.qtyTotal + ' peça(s) registradas na loja de destino.';
       message(data.alreadySaved ? 'Resultado recuperado. A mesma operação não foi repetida.' : 'Operação confirmada.');
-      renderReadings(); if (action === 'receipt') await loadShipments();
+      renderReadings(); if (action === 'receipt') await loadShipments(); void loadHistory(1);
       $('action-result').hidden = false;
     } catch (error) {
       if ([400, 403, 404, 409, 422].includes(error.status)) { localStorage.removeItem(pendingKey); invalidate(); message(error.message + ' Confira o lote novamente.', true); }
       else message((error.message || 'Conexão interrompida.') + ' Use “Verificar envio pendente”; o mesmo identificador será preservado.', true);
     } finally { busy = false; refresh(); }
+  }
+  function historyDate(value, withTime = false) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}) });
+  }
+  function todayBR() {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const part = type => parts.find(item => item.type === type).value;
+    return part('year') + '-' + part('month') + '-' + part('day');
+  }
+  function setupHistory() {
+    const selected = $('action-history-store').value;
+    setOptions($('action-history-store'), stores.filter(item => allowed.includes(item.id)).map(item => ({ id: item.id, label: storeName(item.id) })), 'Todas as lojas permitidas', selected);
+    if (!$('action-history-from').value) { const today = todayBR(); $('action-history-from').value = today.slice(0, 7) + '-01'; $('action-history-to').value = today; }
+    $('action-history-status').value ||= 'all';
+    $('action-history-transfer').setAttribute('aria-pressed', String(historyMode === 'transfer'));
+    $('action-history-receipt').setAttribute('aria-pressed', String(historyMode === 'receipt'));
+  }
+  function historyFilters() {
+    return { mode: historyMode, storeId: $('action-history-store').value, from: $('action-history-from').value, to: $('action-history-to').value, status: $('action-history-status').value || 'all' };
+  }
+  function historyQuery(filters, page) { return '/history?' + new URLSearchParams({ ...filters, page: String(page), pageSize: '50' }).toString(); }
+  function lotStatus(lot) { return lot.status === 'confirmed' ? lot.mode === 'receipt' ? 'Recebido' : 'Enviada' : lot.status === 'archived' ? 'Arquivado sem confirmação' : 'Em bipagem'; }
+  function historyStore(item, fallback) { return item?.name ? item.name + (item.code ? ' (' + item.code + ')' : '') : fallback || '—'; }
+  function lotDescription(lot) {
+    return historyStore(lot.fromStore, lot.mode === 'receipt' ? 'Origem aguardando remessa' : '') + ' → ' + historyStore(lot.toStore);
+  }
+  function historyMessage(text, error = false) {
+    $('action-history-message').textContent = text;
+    $('action-history-message').className = 'transfer-message' + (error ? ' transfer-error' : '');
+    $('action-history-message').hidden = !text;
+  }
+  function renderHistory(data) {
+    historyData = data; const area = $('action-history-list'); area.replaceChildren();
+    const totals = data.totals || {};
+    $('action-history-summary').textContent = (totals.scans || 0) + ' peças bipadas no período · ' + (totals.lots || data.totalLots || 0) + ' lote(s) · ' + (totals.confirmedLots || 0) + (historyMode === 'receipt' ? ' recebimento(s) confirmado(s)' : ' envio(s) confirmado(s)') + ' · ' + (totals.confirmedScans || 0) + ' peças confirmadas';
+    $('action-history-pending').textContent = (totals.recognized || 0) + ' identificadas · ' + (totals.pending || 0) + ' pendentes · ' + (totals.removed || 0) + ' leituras retiradas';
+    if (!(data.lots || []).length) { const empty = document.createElement('p'); empty.textContent = 'Nenhum lote desta ação encontrado no período e nos filtros escolhidos.'; area.append(empty); }
+    for (const lot of data.lots || []) {
+      const card = document.createElement('article'); card.className = 'action-reading';
+      const title = document.createElement('strong'); title.textContent = lotStatus(lot) + (lot.transferCode ? ' · #' + lot.transferCode : '') + ' · ' + lot.scanCount + ' peça(s) no período';
+      const route = document.createElement('p'); route.textContent = lotDescription(lot);
+      const operator = document.createElement('p'); operator.textContent = 'Operador: ' + (lot.operator?.name || 'Não informado');
+      const dates = document.createElement('p'); dates.textContent = 'Bipes: ' + historyDate(lot.firstScannedAt, true) + ' a ' + historyDate(lot.lastScannedAt, true) + (lot.confirmedAt ? ' · Confirmado: ' + historyDate(lot.confirmedAt, true) : '');
+      const counts = document.createElement('small'); counts.textContent = (lot.recognizedCount || 0) + ' identificadas · ' + (lot.pendingCount || 0) + ' pendentes · ' + (lot.removedCount || 0) + ' retiradas · Lote completo: ' + (lot.totalScanCount ?? lot.scanCount) + ' peças';
+      const details = document.createElement('button'); details.type = 'button'; details.className = 'btn btn-secondary'; details.textContent = 'Ver cada bipe'; details.onclick = () => showHistoryDetail(lot.sessionId);
+      card.append(title, route, operator, dates, counts, details); area.append(card);
+    }
+    const pages = Math.max(1, Number(data.totalPages) || 1);
+    $('action-history-page').textContent = 'Página ' + historyPage + ' de ' + pages;
+    $('action-history-previous').disabled = historyPage <= 1; $('action-history-next').disabled = historyPage >= pages;
+    $('action-history-copy').disabled = !(data.totalLots || data.lots?.length);
+  }
+  async function loadHistory(page = 1) {
+    const request = ++historyRequest, authToken = token, owner = actor?.id, filters = historyFilters(); historyPage = page;
+    $('action-history-detail').hidden = true; $('action-history-list').replaceChildren(); $('action-history-summary').textContent = ''; $('action-history-pending').textContent = '';
+    $('action-history-copy').disabled = true; $('action-history-previous').disabled = true; $('action-history-next').disabled = true;
+    if (!owner) { historyMessage('Entre com sua conta para consultar os históricos.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(filters.from) || !/^\d{4}-\d{2}-\d{2}$/.test(filters.to) || filters.from > filters.to) { historyMessage('Escolha um período válido: a data inicial deve vir antes da final.', true); return; }
+    historyBusy = true; historyMessage('Consultando ' + (filters.mode === 'receipt' ? 'recebimentos' : 'transferências') + '…');
+    try {
+      const data = await api(historyQuery(filters, page), undefined, authToken);
+      if (request !== historyRequest || token !== authToken || actor?.id !== owner || JSON.stringify(filters) !== JSON.stringify(historyFilters())) return;
+      renderHistory(data); historyMessage('');
+    } catch (error) { if (request === historyRequest && token === authToken && actor?.id === owner) historyMessage(error.message, true); }
+    finally { if (request === historyRequest) historyBusy = false; }
+  }
+  async function showHistoryDetail(sessionId) {
+    const request = historyRequest, authToken = token, owner = actor?.id;
+    historyMessage('Carregando cada bipe do lote…');
+    try {
+      const data = await api('/history/' + encodeURIComponent(sessionId), undefined, authToken);
+      if (request !== historyRequest || token !== authToken || actor?.id !== owner) return;
+      const area = $('action-history-detail-list'); area.replaceChildren();
+      $('action-history-detail-title').textContent = lotStatus(data.lot) + ' · ' + lotDescription(data.lot);
+      for (const [index, scan] of (data.scans || []).entries()) {
+        const row = document.createElement('p'); row.className = 'action-history-scan';
+        row.textContent = (index + 1) + '. ' + historyDate(scan.createdAt, true) + ' · ' + scan.barcode + ' · ' + (scan.product?.name || 'Produto pendente') + (scan.product?.size ? ' · Tam. ' + scan.product.size : '') + ' · ' + (scan.removed ? 'Retirada' : scan.recognized ? 'Identificada' : 'Pendente') + (scan.error ? ' · ' + scan.error : '');
+        area.append(row);
+      }
+      $('action-history-detail-note').textContent = 'Detalhe completo do lote, inclusive leituras fora do período filtrado e retiradas. Códigos repetidos aparecem uma vez por bipe.';
+      $('action-history-detail').hidden = false; historyMessage('');
+    } catch (error) { if (request === historyRequest && token === authToken && actor?.id === owner) historyMessage(error.message, true); }
+  }
+  async function copyHistory() {
+    if (!actor || historyBusy) return;
+    const request = historyRequest, filters = historyFilters(), authToken = token, owner = actor.id;
+    $('action-history-copy').disabled = true; historyMessage('Preparando a relação completa do período…');
+    try {
+      // One server snapshot avoids omissions or repeated lots when other stores
+      // scan while an export is being prepared.
+      const data = await api(historyQuery(filters, 1) + '&export=1', undefined, authToken);
+      if (request !== historyRequest || token !== authToken || actor?.id !== owner || JSON.stringify(filters) !== JSON.stringify(historyFilters())) return;
+      const lots = data.lots || [], totals = data.totals || {};
+      const lines = ['*SPORTS & TENNIS — ' + (filters.mode === 'receipt' ? 'RECEBIMENTOS' : 'TRANSFERÊNCIAS') + '*', filters.from.split('-').reverse().join('/') + ' a ' + filters.to.split('-').reverse().join('/'), '', 'Peças bipadas: ' + (totals.scans || 0), 'Lotes: ' + (totals.lots || lots.length), (filters.mode === 'receipt' ? 'Recebimentos' : 'Envios') + ' confirmados: ' + (totals.confirmedLots || 0) + ' · Peças confirmadas: ' + (totals.confirmedScans || 0), 'Identificadas: ' + (totals.recognized || 0) + ' · Pendentes: ' + (totals.pending || 0) + ' · Retiradas: ' + (totals.removed || 0), ''];
+      for (const [index, lot] of lots.entries()) lines.push((index + 1) + '. ' + lotStatus(lot) + (lot.transferCode ? ' #' + lot.transferCode : ''), lotDescription(lot), 'Operador: ' + (lot.operator?.name || 'Não informado'), 'Bipes: ' + historyDate(lot.firstScannedAt, true) + ' a ' + historyDate(lot.lastScannedAt, true), 'Peças no período: ' + lot.scanCount + ' · Pendentes: ' + (lot.pendingCount || 0), ...(lot.confirmedAt ? ['Confirmado: ' + historyDate(lot.confirmedAt, true)] : []), '');
+      const text = lines.join('\n');
+      $('action-history-copy-text').value = text; $('action-history-copy-text').hidden = false;
+      try { await navigator.clipboard.writeText(text); historyMessage('Relação completa copiada. Pronta para colar no WhatsApp.'); }
+      catch (_) { $('action-history-copy-text').focus(); $('action-history-copy-text').select(); historyMessage('Relação completa pronta no campo abaixo. Selecione e copie o texto.'); }
+    } catch (error) { if (request === historyRequest && token === authToken && actor?.id === owner) historyMessage(error.message, true); }
+    finally { if (request === historyRequest) $('action-history-copy').disabled = false; }
   }
   function closeCamera() {
     cameraGeneration++; clearInterval(cameraTimer); scanner?.stop(); scanner = null; window.ScannerAuto?.stopDecoder(); stream?.getTracks().forEach(track => track.stop()); stream = null; cameraRead = null; cameraRetry = null; cameraPendingRead = null; cameraOcrReads.clear(); $('action-camera')?.remove();
@@ -369,12 +629,7 @@
     if (barcode !== item.barcode) {
       const correction = await window.ScannerConfirm.ask('CÓDIGO DIFERENTE NA NOVA LEITURA\n\nAnterior: ' + item.barcode + '\nLido agora: ' + barcode + '\n\nÉ a MESMA peça física, com o código anterior lido incorretamente? Confirmar corrige esta leitura, sem acrescentar outra peça. Se trocou a peça, cancele e continue bipando.');
       if (!correction || !unchanged()) return null;
-      const count = activeReads(draft).filter(other => other !== item && other.barcode.replace(/^0+/, '') === barcode.replace(/^0+/, '')).length;
-      let duplicateConfirmed = false;
-      if (count) {
-        duplicateConfirmed = await window.ScannerConfirm.ask('CÓDIGO JÁ BIPADO NESTE LOTE\n\nCódigo: ' + barcode + '\nQuantidade anterior: ' + count + '\n\nA peça desta leitura pendente é OUTRA peça física, diferente das já contadas? Confirmar mantém esta peça no lote com o código corrigido. Cancelar mantém a pendência anterior.');
-        if (!duplicateConfirmed || !unchanged()) return null;
-      }
+      const duplicateConfirmed = true;
       (item.barcodeCorrections ||= []).push({ previous: item.barcode, barcode, correctedAt: new Date().toISOString() });
       item.barcode = barcode; item.duplicateConfirmed = duplicateConfirmed; item.confirmedSize = ''; delete item.product; delete item.requiresSizeConfirmation; delete item.ocrSize; item.ocrText = '';
       invalidate(); if (!persist(draft)) return null;
@@ -469,13 +724,14 @@
   function storesReady() {
     if (!settings.stores.inventory) settings.stores.inventory = $('loja').value || '';
     if (!isInventory()) $('loja').value = settings.stores[action] || '';
-    saveSettings(); contextChanged(); if (!isInventory() && token && !actor) authenticate();
+    saveSettings(); contextChanged(); if (token && !actor) authenticate();
   }
   function storeChanged() { settings.stores[action] = $('loja').value; saveSettings(); contextChanged(); if (action === 'receipt') loadShipments(); }
   $('bipar-action').addEventListener('change', () => {
     if (busy) { $('bipar-action').value = action; return; }
     settings.stores[action] = $('loja').value; window.fecharScanner?.(); $('manual-overlay')?.remove(); $('size-overlay')?.remove();
     action = $('bipar-action').value; settings.mode = action;
+    if (!isInventory()) { historyMode = action; setupHistory(); if (actor) void loadHistory(1); }
     $('loja').value = settings.stores[action] || (isInventory() ? localStorage.getItem('sports_tennis_bipar_loja') || '' : '');
     if (action === 'transfer' && !settings.origin && allowed.includes(settings.stores.inventory)) { settings.origin = settings.stores.inventory; $('action-origin').value = settings.origin; }
     saveSettings(); contextChanged();
@@ -485,19 +741,42 @@
   $('action-origin').addEventListener('change', () => { settings.origin = $('action-origin').value; saveSettings(); contextChanged(); });
   $('action-shipment').addEventListener('change', () => { settings.shipment = $('action-shipment').value; saveSettings(); contextChanged(); });
   $('action-refresh-shipments').onclick = loadShipments; $('action-preview').onclick = prepare; $('action-approved').onchange = refresh; $('action-confirm').onclick = () => confirmAction(); $('action-retry').onclick = () => confirmAction(true);
-  $('action-clear').onclick = () => { if (busy || read(pendingKey, null)) return; if (!confirm('Começar outro lote neste contexto? As leituras locais deste lote serão retiradas. Nenhum estoque será alterado.')) return; const key = contextKey(); currentDraft = newDraft(key); drafts.set(key, currentDraft); persist(); invalidate(); renderReadings(); refresh(); };
+  $('action-clear').onclick = () => { if (busy || read(pendingKey, null) || inflight.size) return; if (!confirm('Começar outro lote? Este ficará arquivado no histórico, com todas as leituras preservadas. Nenhum estoque será alterado.')) return; if (startNewLot()) void loadHistory(1); };
+  $('action-sync-retry').onclick = () => { recoverDrafts(); for (const job of syncJobs.values()) if (job.draft.context?.actorId === actor?.id) void flushSync(job.draft); };
+  $('action-history-transfer').onclick = () => { historyMode = 'transfer'; setupHistory(); void loadHistory(1); };
+  $('action-history-receipt').onclick = () => { historyMode = 'receipt'; setupHistory(); void loadHistory(1); };
+  $('action-history-refresh').onclick = () => loadHistory(1);
+  $('action-history-month').onclick = () => { const today = todayBR(); $('action-history-from').value = today.slice(0, 7) + '-01'; $('action-history-to').value = today; return loadHistory(1); };
+  $('action-history-previous').onclick = () => loadHistory(Math.max(1, historyPage - 1));
+  $('action-history-next').onclick = () => loadHistory(historyPage + 1);
+  $('action-history-copy').onclick = copyHistory;
+  $('action-history-close-detail').onclick = () => { $('action-history-detail').hidden = true; };
+  for (const id of ['action-history-store', 'action-history-status', 'action-history-from', 'action-history-to']) $(id).addEventListener('change', () => { $('action-history-copy-text').hidden = true; void loadHistory(1); });
   $('action-storage-retry').onclick = () => { if (persist()) message('Lote salvo neste aparelho.'); refresh(); };
-  $('action-switch-user').onclick = () => { if (busy) return; actor = null; token = ''; sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
+  $('action-switch-user').onclick = () => { if (busy) return; actor = null; token = ''; historyRequest++; historyData = null; $('action-history-list').replaceChildren(); $('action-history-detail').hidden = true; $('action-history-copy-text').value = ''; $('action-history-copy-text').hidden = true; $('action-history-summary').textContent = ''; $('action-history-pending').textContent = ''; historyMessage('Entre com sua conta para consultar os históricos.'); sessionStorage.removeItem('tc_transfer_token'); contextChanged(); refresh(); $('action-identity').focus(); };
   $('action-login').addEventListener('submit', async event => {
     event.preventDefault(); if (busy) return; busy = true; $('action-login-button').disabled = true;
     try { const identity = $('action-identity').value.trim(); const response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(identity.includes('@') ? { email: identity } : { phone: identity.replace(/\D/g, '') }), password: $('action-password').value }) }); const data = await response.json(); if (!response.ok) throw Error(data.error || 'Não foi possível entrar.'); token = data.token; $('action-password').value = ''; await authenticate(); }
     catch (error) { message(error.message, true); }
     finally { busy = false; $('action-login-button').disabled = false; refresh(); refreshLegacyReads(); }
   });
-  document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
-  document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera'); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else refreshLegacyReads(); });
-  window.addEventListener('storage', event => { if (event.key === pendingKey) refresh(); if (currentDraft && event.key === draftKey(currentDraft.key) && !busy && !inflight.size) { drafts.delete(currentDraft.key); currentDraft = getDraft(); invalidate(); renderReadings(); refresh(); refreshLegacyReads(); } });
+  document.addEventListener('pointerdown', event => { interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
+  document.addEventListener('focusin', event => { if (event.target !== document.body) interaction = !!event.target.closest('#action-setup,#action-workspace,#action-camera,#action-history'); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) closeCamera(); else { refreshLegacyReads(); recoverDrafts(); } });
+  window.addEventListener('online', recoverDrafts);
+  window.addEventListener('storage', event => {
+    if (event.key === pendingKey) refresh();
+    if (currentDraft && event.key === draftKey(currentDraft.key) && !busy) {
+      const incoming = read(event.key, null);
+      if (incoming?.sessionId === currentDraft.sessionId) {
+        const ownIds = new Set(currentDraft.scans.map(item => item.clientScanId));
+        const foreignIds = new Set((incoming.scans || []).map(item => item.clientScanId));
+        if (currentDraft.scans.some(item => !foreignIds.has(item.clientScanId)) || incoming.scans.some(item => !ownIds.has(item.clientScanId))) persist(currentDraft);
+        else if (!inflight.size && Number(incoming.revision || 0) > Number(currentDraft.revision || 0)) { drafts.delete(currentDraft.key); currentDraft = getDraft(); queueSync(currentDraft); }
+      } else if (incoming && !inflight.size) { drafts.delete(currentDraft.key); currentDraft = getDraft(); }
+      invalidate(); renderReadings(); refresh(); refreshLegacyReads();
+    }
+  });
   window.BiparActions = { mode: () => action, version: () => generation, isInventory, refresh, scan, openCamera, closeCamera, storesReady, storeChanged, hasFocus: () => interaction };
   refresh();
 })();

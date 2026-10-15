@@ -4,6 +4,7 @@ const {authMiddleware,prisma}=require('../middleware');
 const service=require('../services/scanTransfers');
 const stocktakeTransfers=require('../services/stocktakeTransfers');
 const actions=require('../services/scanActionTransfers');
+const actionHistory=require('../services/scanActionHistory');
 const router=express.Router();
 router.use(authMiddleware);
 router.use(async(req,res,next)=>{try{req.transferActor=await service.operator(prisma,req.userId);next();}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Não foi possível verificar seu acesso.'});}});
@@ -11,6 +12,9 @@ function handle(fn){return async(req,res)=>{try{res.set('Cache-Control','no-stor
 router.get('/me',handle(async r=>({user:r.transferActor})));
 router.get('/actions/context',handle(r=>actions.context(prisma,r.transferActor)));
 router.post('/actions/lookup',handle(r=>actions.lookup(prisma,r.transferActor,r.body||{})));
+router.post('/actions/drafts/sync',handle(r=>actionHistory.sync(prisma,r.transferActor,r.body||{})));
+router.get('/actions/history',handle(r=>actionHistory.history(prisma,r.transferActor,r.query)));
+router.get('/actions/history/:sessionId',handle(r=>actionHistory.detail(prisma,r.transferActor,r.params.sessionId)));
 router.post('/actions/send-preview',handle(r=>actions.sendPreview(prisma,r.transferActor,r.body||{})));
 router.post('/actions/send-confirm',handle(r=>actions.sendConfirm(prisma,r.transferActor,r.body||{})));
 router.get('/actions/pending',handle(r=>actions.pending(prisma,r.transferActor,{storeId:String(r.query.storeId||'')})));
